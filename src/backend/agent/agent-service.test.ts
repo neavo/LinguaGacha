@@ -16,7 +16,6 @@ import {
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
-import type { ProjectWriteResult } from "../../shared/project-event";
 import type { AgentWebFetchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -288,7 +287,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     }
     if (after_tool_call) return fauxAssistantMessage("未压缩继续");
     return fauxAssistantMessage(
-      fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "checkpoint-query" }),
+      fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "checkpoint-query" }),
       { stopReason: "toolUse" },
     );
   }
@@ -330,28 +329,19 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage("abcdefghijklmnopqrstuvwxabcdefghijklmnopqrstuvwx");
   }
   if (fake_agent_state.mode === "write") {
-    return fauxAssistantMessage(
-      fauxToolCall(
-        "update_quality_rules",
-        {
-          rule_type: "text_preserve",
-          write: [{ entry: { src: "\\\\N", info: "控制码" } }],
-          expected_revision: 3,
-        },
-        { id: "write-1" },
-      ),
-      { stopReason: "toolUse" },
-    );
+    return fauxAssistantMessage(fauxToolCall("workspace_apply", {}, { id: "write-1" }), {
+      stopReason: "toolUse",
+    });
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "tool-only" }),
+      fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
-      fauxToolCall("query_items", { search: { keywords: ["  "] } }, { id: "schema-invalid" }),
+      fauxToolCall("workspace_run", { script: "" }, { id: "schema-invalid" }),
       { stopReason: "toolUse" },
     );
   }
@@ -359,7 +349,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "tool-1" }),
+        fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "tool-1" }),
         fauxToolCall(
           "read_skill",
           { path: "E:/skills/glossary-audit/references/audit-standard.md" },
@@ -900,8 +890,8 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "tool-1",
           status: "running",
-          toolName: "query_items",
-          input: '{"search":{"keywords":["Alice"]}}',
+          toolName: "workspace_run",
+          input: '{"script":"return { items: [] }"}',
           output: null,
         }),
       }),
@@ -925,8 +915,8 @@ describe("AgentService", () => {
       {
         kind: "tool_call",
         id: "tool-1",
-        toolName: "query_items",
-        input: '{"search":{"keywords":["Alice"]}}',
+        toolName: "workspace_run",
+        input: '{"script":"return { items: [] }"}',
         status: "success",
         output: expect.stringContaining('"items"'),
         createdAt: expect.any(Number),
@@ -1027,22 +1017,6 @@ describe("AgentService", () => {
     });
   });
 
-  it("同一工程事实变化后保留历史并继续原会话", async () => {
-    const { service, publish, change_project_facts } = await create_service();
-
-    await service.send_message({ text: "第一轮" });
-    await wait_for_idle(service);
-    change_project_facts();
-    await service.send_message({ text: "第二轮" });
-    await wait_for_idle(service);
-
-    expect(
-      service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
-    ).toHaveLength(2);
-    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).toContain("第一轮");
-    expect(count_published_events(publish, "snapshot_seed")).toBe(0);
-  });
-
   it("工程会话切换仍清空会话", async () => {
     const { service, publish, session_state } = await create_service();
 
@@ -1060,22 +1034,14 @@ describe("AgentService", () => {
   });
 
   it("真实 Agent 仅注册产品工具并保留写入时间线", async () => {
-    const { service } = await create_service();
+    const { service } = await create_service(true, undefined, null);
     fake_agent_state.mode = "write";
 
     await service.send_message({
       text: "@skill(glossary-audit) 写入",
     });
     await wait_for_idle(service);
-    expect(fake_agent_state.tool_names.at(-1)).toEqual([
-      "query_project_meta",
-      "query_quality_rules",
-      "update_quality_rules",
-      "query_items",
-      "query_warning_items",
-      "update_items",
-      "read_skill",
-    ]);
+    expect(fake_agent_state.tool_names.at(-1)).toEqual(["read_skill"]);
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
       "user_message",
       "tool_call",
@@ -1102,9 +1068,9 @@ describe("AgentService", () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       reset: vi.fn(async () => undefined),
-      export_workspace: vi.fn(),
+      create_workspace: vi.fn(),
       run_script: vi.fn(),
-      import_workspace: vi.fn(),
+      apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
     const { service, session_state } = await create_service(true, undefined, workspace);
 
@@ -1112,9 +1078,12 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
-    expect(fake_agent_state.tool_names.at(-1)).toEqual(
-      expect.arrayContaining(["workspace_export", "workspace_run", "workspace_import"]),
-    );
+    expect(fake_agent_state.tool_names.at(-1)).toEqual([
+      "workspace_create",
+      "workspace_run",
+      "workspace_apply",
+      "read_skill",
+    ]);
     await session_state.mark_loaded("next.lg");
     expect(workspace.reset).toHaveBeenCalled();
   });
@@ -1219,7 +1188,7 @@ describe("AgentService", () => {
       expect.objectContaining({
         kind: "tool_call",
         id: "write-1",
-        input: expect.stringContaining('"rule_type":"text_preserve"'),
+        input: "{}",
         status: "stopped",
         output: null,
       }),
@@ -1780,7 +1749,7 @@ describe("AgentService", () => {
   async function create_service(
     load_resources = true,
     web_fetch?: AgentWebFetchPort,
-    workspace?: AgentWorkspacePort,
+    workspace?: AgentWorkspacePort | null, // undefined 使用默认 fake，null 模拟宿主没有工作区端口
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -1791,29 +1760,11 @@ describe("AgentService", () => {
     select_agent_model: (model_id: "active" | "next") => void;
     read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
-    change_project_facts: () => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
     await session_state.mark_loaded("test.lg");
-    let revision = 3;
-    let items_revision = 0;
-    let proofreading_revision = 0;
     const read_items = vi.fn<() => JsonRecord[]>(() => []);
-    const cache = {
-      snapshot: () => ({
-        projectPath: "test.lg",
-        epoch: 1,
-        freshness: "fresh" as const,
-        sectionRevisions: {
-          quality: revision,
-          items: items_revision,
-          proofreading: proofreading_revision,
-        },
-        itemCount: 0,
-      }),
-      items: { readItems: read_items, readItem: () => null },
-    };
     let agent_model_id: "active" | "next" = "active";
     let setting_read_count = 0;
     const settings = {
@@ -1844,52 +1795,28 @@ describe("AgentService", () => {
         };
       },
     };
-    const quality_rules = {
-      query: () => ({
-        projectPath: "test.lg",
-        sectionRevisions: { quality: revision },
-        qualityRule: { enabled: true, entries: [] },
-      }),
-      update_from_agent: async (
-        _request: JsonRecord,
-        _source: string,
-      ): Promise<ProjectWriteResult> => {
-        if (fake_agent_state.hold_tool_write) {
-          await new Promise<void>((resolve) => {
-            fake_agent_state.release_tool_write = () => {
-              fake_agent_state.hold_tool_write = false;
-              fake_agent_state.release_tool_write = null;
-              resolve();
-            };
-          });
-        }
-        revision += 1;
-        return { accepted: true, changes: [] };
-      },
-    };
-    const proofreading = {
-      query: {
-        query_warnings: async () => ({
-          projectPath: "test.lg",
-          sectionRevisions: {
-            quality: revision,
-            items: items_revision,
-            proofreading: proofreading_revision,
-          },
-          data: { total_item_count: 0, items: [], invalid_regex_message: null },
-        }),
-      },
-      commands: {
-        update_items_from_agent: async (
-          _request: JsonRecord,
-          _source: string,
-        ): Promise<ProjectWriteResult> => {
-          items_revision += 1;
-          proofreading_revision += 1;
-          return { accepted: true, changes: [] };
-        },
-      },
-    };
+    const effective_workspace =
+      workspace === null
+        ? undefined
+        : (workspace ??
+          ({
+            initialize: vi.fn(async () => undefined),
+            reset: vi.fn(async () => undefined),
+            create_workspace: vi.fn(async () => ({ version: 2 })),
+            run_script: vi.fn(async () => ({ items: read_items() })),
+            apply_workspace: vi.fn(async () => {
+              if (fake_agent_state.hold_tool_write) {
+                await new Promise<void>((resolve) => {
+                  fake_agent_state.release_tool_write = () => {
+                    fake_agent_state.hold_tool_write = false;
+                    fake_agent_state.release_tool_write = null;
+                    resolve();
+                  };
+                });
+              }
+              return { status: "applied" };
+            }),
+          } satisfies AgentWorkspacePort));
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
     const log_error = vi.fn();
     const log_warning = vi.fn();
@@ -1908,24 +1835,9 @@ describe("AgentService", () => {
       settings,
       userAgent: "LinguaGacha/Test",
       sessionState: session_state,
-      cache,
-      qualityAnalysis: {
-        read: async () => ({
-          projectPath: "test.lg",
-          sectionRevisions: { quality: revision, items: items_revision },
-          analysis: {
-            entry_ids: [],
-            hits_by_entry_id: {},
-            examples_by_entry_id: {},
-            relations: { subset_parents_by_entry_id: {}, groups: [] },
-          },
-        }),
-      },
-      qualityRules: quality_rules,
-      proofreading,
       runtimeGate: runtime_gate,
       webFetch: web_fetch,
-      workspace,
+      workspace: effective_workspace,
       logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,
     });
@@ -1943,11 +1855,6 @@ describe("AgentService", () => {
       },
       read_setting_count: () => setting_read_count,
       runtime_gate,
-      change_project_facts: () => {
-        revision += 1;
-        items_revision += 1;
-        proofreading_revision += 1;
-      },
       session_state,
     };
   }

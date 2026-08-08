@@ -14,6 +14,7 @@ import { get_section_revision } from "./project-data-reader";
 import type { ProjectEventHandler } from "./project-events";
 import { ProjectWriteStore } from "./project-write-store";
 import type { ProjectChangeEvent } from "../../shared/project-event";
+import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
 
 describe("ProjectWriteStore", () => {
   const cleanup_callbacks: Array<() => void> = [];
@@ -99,7 +100,7 @@ describe("ProjectWriteStore", () => {
     await store.apply_proofreading_item_patch({
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
-      source: "proofreading_update_items",
+      source: "proofreading_apply_item_changes",
       changes: [
         {
           current: { id: 1, dst: "", status: "NONE", retry_count: 0 },
@@ -128,7 +129,7 @@ describe("ProjectWriteStore", () => {
       }),
     });
     expect(published_changes.at(-1)).toMatchObject({
-      source: "proofreading_update_items",
+      source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "field-patch",
@@ -423,6 +424,133 @@ describe("ProjectWriteStore", () => {
     });
   });
 
+  it("Agent 工作区混合差异只开启一个事务并按提交、缓存、公开顺序发布", async () => {
+    const calls: string[] = [];
+    const project_event_handler = vi.fn((event) => {
+      calls.push(`cache:${event.type}`);
+    });
+    const { database, project_path, store } = create_store("agent-workspace", {
+      projectEventHandler: project_event_handler,
+      onPublish: () => calls.push("public"),
+    });
+    seed_items(database, project_path);
+    const original_transaction = database.transaction.bind(database);
+    const transaction = vi
+      .spyOn(database, "transaction")
+      .mockImplementation(<T>(target_path: string, callback: () => T): T => {
+        const result = original_transaction(target_path, callback);
+        calls.push("commit");
+        return result;
+      });
+
+    await store.apply_agent_workspace_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: zero_revisions(),
+      source: "agent_workspace_apply",
+      itemChanges: [
+        {
+          current: { id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 2 },
+          next: { id: 1, dst: "译文", name_dst: "译名", status: "PROCESSED", retry_count: 0 },
+        },
+      ],
+      qualityChanges: [
+        {
+          kind: "glossary",
+          entries: [{ entry_id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false }],
+        },
+        {
+          kind: "pre_replacement",
+          entries: [
+            { entry_id: "r-1", src: "妃", dst: "王妃", regex: false, case_sensitive: false },
+          ],
+        },
+      ],
+      promptChanges: [
+        { kind: "translation", text: "翻译正文" },
+        { kind: "analysis", text: "分析正文" },
+      ],
+    });
+
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(read_items(database, project_path)[0]).toMatchObject({
+      dst: "译文",
+      name_dst: "译名",
+      status: "PROCESSED",
+      retry_count: 0,
+    });
+    expect(database.get_rules(project_path, "glossary")).toHaveLength(1);
+    expect(database.get_rules(project_path, "pre_translation_replacement")).toHaveLength(1);
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
+    expect(database.get_rule_text(project_path, "analysis_prompt")).toBe("分析正文");
+    expect(read_meta(database, project_path)).toMatchObject({
+      "project_runtime_revision.items": 1,
+      "proofreading_revision.proofreading": 1,
+      "quality_rule_revision.glossary": 1,
+      "quality_rule_revision.pre_replacement": 1,
+      "quality_prompt_revision.translation": 1,
+      "quality_prompt_revision.analysis": 1,
+    });
+    expect(calls).toEqual([
+      "commit",
+      "cache:project.items.changed",
+      "cache:project.quality.changed",
+      "cache:project.prompts.changed",
+      "public",
+    ]);
+    expect(project_event_handler.mock.calls[0]?.[0]).toMatchObject({
+      items: { payloadMode: "section-invalidated" },
+    });
+  });
+
+  it("Agent 工作区任一中间写入失败会回滚全部事实与 revision 且不发布事件", async () => {
+    const project_event_handler = vi.fn();
+    const { database, project_path, store, published_changes } = create_store(
+      "agent-workspace-rollback",
+      { projectEventHandler: project_event_handler },
+    );
+    seed_items(database, project_path);
+    const original_set_rule_text = database.set_rule_text.bind(database);
+    vi.spyOn(database, "set_rule_text").mockImplementation((target_path, rule_type, text) => {
+      if (rule_type === "analysis_prompt") throw new Error("prompt write failed");
+      return original_set_rule_text(target_path, rule_type, text);
+    });
+
+    await expect(
+      store.apply_agent_workspace_changes({
+        projectPath: project_path,
+        expectedSectionRevisions: zero_revisions(),
+        source: "agent_workspace_apply",
+        itemChanges: [
+          {
+            current: { id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 2 },
+            next: { id: 1, dst: "译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
+          },
+        ],
+        qualityChanges: [
+          {
+            kind: "glossary",
+            entries: [{ entry_id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false }],
+          },
+        ],
+        promptChanges: [
+          { kind: "translation", text: "翻译正文" },
+          { kind: "analysis", text: "分析正文" },
+        ],
+      }),
+    ).rejects.toThrow("prompt write failed");
+
+    expect(read_items(database, project_path)[0]).toMatchObject({
+      dst: "",
+      status: "NONE",
+      retry_count: 2,
+    });
+    expect(database.get_rules(project_path, "glossary")).toEqual([]);
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("");
+    expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
+    expect(project_event_handler).not.toHaveBeenCalled();
+    expect(published_changes).toEqual([]);
+  });
+
   function create_store(
     name: string,
     options: {
@@ -533,5 +661,13 @@ describe("ProjectWriteStore", () => {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
     database.add_asset_from_source(project_path, asset_path, source_path, sort_order);
+  }
+
+  /** Agent 工作区场景从未写入工程开始，七个 section 均以零作 revision guard。 */
+  function zero_revisions(): Record<(typeof PROJECT_DATA_SECTIONS)[number], number> {
+    return Object.fromEntries(PROJECT_DATA_SECTIONS.map((section) => [section, 0])) as Record<
+      (typeof PROJECT_DATA_SECTIONS)[number],
+      number
+    >;
   }
 });

@@ -10,13 +10,13 @@ describe("Agent 工作区工具", () => {
   it("三个工具只适配参数、取消信号与服务结果", async () => {
     const workspace = create_workspace();
     const tools = create_agent_workspace_tools(workspace);
-    const export_tool = read_tool(tools, "workspace_export");
+    const create_tool = read_tool(tools, "workspace_create");
     const run_tool = read_tool(tools, "workspace_run");
-    const import_tool = read_tool(tools, "workspace_import");
+    const apply_tool = read_tool(tools, "workspace_apply");
 
-    const exported = (await export_tool.execute(
-      "export",
-      { target: "items" },
+    const created = (await create_tool.execute(
+      "create",
+      {},
       undefined,
       undefined,
       undefined as never,
@@ -28,56 +28,49 @@ describe("Agent 工作区工具", () => {
       undefined,
       undefined as never,
     )) as WorkspaceToolResult;
-    const imported = (await import_tool.execute(
-      "import",
+    const applied = (await apply_tool.execute(
+      "apply",
       {},
       undefined,
       undefined,
       undefined as never,
     )) as WorkspaceToolResult;
 
-    expect(workspace.export_workspace).toHaveBeenCalledWith("items");
+    expect(workspace.create_workspace).toHaveBeenCalledOnce();
     expect(workspace.run_script).toHaveBeenCalledWith(
       "return { changed: 2 }",
       expect.any(AbortSignal),
     );
-    expect(workspace.import_workspace).toHaveBeenCalledOnce();
-    expect(exported.details).toEqual({ target: "items", counts: { items: 2 } });
+    expect(workspace.apply_workspace).toHaveBeenCalledOnce();
+    expect(created.details).toEqual({ version: 2, counts: { items: 2 } });
     expect(run.details).toEqual({ result: { changed: 2 } });
-    expect(imported.details).toEqual({ status: "applied", target: "items", updated: 2 });
+    expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
-  it("Schema 只接受已声明 target、非空脚本和无参数导入", () => {
+  it("Schema 只接受空 create/apply 参数与非空脚本", () => {
     const tools = create_agent_workspace_tools(create_workspace());
-    const export_tool = read_tool(tools, "workspace_export");
+    const create_tool = read_tool(tools, "workspace_create");
     const run_tool = read_tool(tools, "workspace_run");
-    const import_tool = read_tool(tools, "workspace_import");
+    const apply_tool = read_tool(tools, "workspace_apply");
 
-    expect(validate(export_tool, { target: "items" })).toEqual({ target: "items" });
+    expect(validate(create_tool, {})).toEqual({});
     expect(validate(run_tool, { script: "return null" })).toEqual({ script: "return null" });
-    expect(validate(import_tool, {})).toEqual({});
-    expect(() => validate(export_tool, { target: "project" })).toThrow();
+    expect(validate(apply_tool, {})).toEqual({});
+    expect(() => validate(create_tool, { target: "items" })).toThrow();
     expect(() => validate(run_tool, { script: "" })).toThrow();
-    expect(() => validate(import_tool, { target: "items" })).toThrow();
+    expect(() => validate(apply_tool, { target: "items" })).toThrow();
   });
 
   it("调用前已取消时不触达工作区服务", async () => {
     const workspace = create_workspace();
-    const export_tool = create_agent_workspace_tools(workspace)[0];
-    if (export_tool === undefined) throw new Error("缺少 workspace_export 工具");
+    const create_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_create");
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
     await expect(
-      export_tool.execute(
-        "export",
-        { target: "items" },
-        controller.signal,
-        undefined,
-        undefined as never,
-      ),
+      create_tool.execute("create", {}, controller.signal, undefined, undefined as never),
     ).rejects.toThrow("提前取消");
-    expect(workspace.export_workspace).not.toHaveBeenCalled();
+    expect(workspace.create_workspace).not.toHaveBeenCalled();
   });
 });
 
@@ -106,8 +99,11 @@ function create_workspace(): AgentWorkspacePort {
   return {
     initialize: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
-    export_workspace: vi.fn(async (target) => ({ target, counts: { items: 2 } })),
+    create_workspace: vi.fn(async () => ({ version: 2, counts: { items: 2 } })),
     run_script: vi.fn(async () => ({ changed: 2 })),
-    import_workspace: vi.fn(async () => ({ status: "applied", target: "items", updated: 2 })),
+    apply_workspace: vi.fn(async () => ({
+      status: "applied",
+      changes: { items: { updated: 2 } },
+    })),
   };
 }

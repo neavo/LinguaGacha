@@ -142,6 +142,11 @@ export class AppPathService {
     return this.get_user_data_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME);
   }
 
+  /** 返回随应用发布的只读 Agent 工作区 recipe 资源目录。 */
+  public get_agent_workspace_recipe_dir(): string {
+    return this.get_resource_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME, "recipes");
+  }
+
   /**
    * 返回指定版本更新包目录，目录名和启动清理规则共享同一约定。
    */

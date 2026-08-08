@@ -120,7 +120,7 @@ function tool_running(input: string): AgentToolEntry {
   return {
     kind: "tool_call",
     id: "tool-1",
-    toolName: "query_items",
+    toolName: "workspace_run",
     input,
     status: "running",
     output: null,
@@ -132,7 +132,7 @@ function tool_success(input: string, output: string): AgentToolEntry {
   return {
     kind: "tool_call",
     id: "tool-1",
-    toolName: "query_items",
+    toolName: "workspace_run",
     input,
     status: "success",
     output,

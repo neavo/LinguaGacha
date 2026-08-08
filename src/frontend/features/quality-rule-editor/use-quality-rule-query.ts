@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import {
-  query_quality_rules,
+  read_quality_rule_snapshot,
   type QualityRuleQuerySlice,
   type QualityRuleType,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
@@ -53,8 +53,8 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
     set_quality_loaded(false);
   }, [default_slice, project_path, rule_type, session_ready]);
 
-  const read_quality_rule_snapshot = useCallback(async (): Promise<TSlice | null> => {
-    const response = await query_quality_rules(rule_type);
+  const load_quality_rule_snapshot = useCallback(async (): Promise<TSlice | null> => {
+    const response = await read_quality_rule_snapshot(rule_type);
     if (response.projectPath !== project_path) {
       return null;
     }
@@ -71,14 +71,14 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
       return default_slice;
     }
 
-    const next_slice = await read_quality_rule_snapshot();
+    const next_slice = await load_quality_rule_snapshot();
     if (request_token_ref.current !== request_token || next_slice === null) {
       return quality_slice;
     }
     set_quality_slice(next_slice);
     set_quality_loaded(true);
     return next_slice;
-  }, [default_slice, quality_slice, query_enabled, read_quality_rule_snapshot]);
+  }, [default_slice, quality_slice, query_enabled, load_quality_rule_snapshot]);
 
   useEffect(() => {
     if (!query_enabled) {
@@ -88,7 +88,7 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
     let cancelled = false;
     const request_token = request_token_ref.current + 1;
     request_token_ref.current = request_token;
-    void read_quality_rule_snapshot()
+    void load_quality_rule_snapshot()
       .then((next_slice) => {
         if (cancelled || request_token_ref.current !== request_token || next_slice === null) {
           return;
@@ -110,7 +110,7 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
     on_load_error,
     quality_rule_change_seq,
     query_enabled,
-    read_quality_rule_snapshot,
+    load_quality_rule_snapshot,
   ]);
 
   return {

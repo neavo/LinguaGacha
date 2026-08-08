@@ -8,7 +8,7 @@ import {
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   create_clear_translations_plan,
-  create_update_items_plan,
+  create_apply_item_changes_plan,
   type ProofreadingCommandItemSnapshot,
   type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
@@ -250,7 +250,7 @@ export function useProofreadingBatchActions(
       const status_label = t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status]);
       await run_project_write({
         path: "/api/proofreading/items/update",
-        plan: create_update_items_plan({
+        plan: create_apply_item_changes_plan({
           snapshot: {
             items: await read_items_by_row_ids(row_ids),
             section_revisions: list_revisions,

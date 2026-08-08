@@ -139,7 +139,7 @@ export class DesktopAgentWorkspaceRunner {
     this.runner_session.protocol.unhandle(AGENT_WORKSPACE_SCHEME);
   }
 
-  /** 协议只映射当前运行目录；target/scratch 可写，其余文件只读。 */
+  /** 协议只映射当前运行目录；editable 固定文件与 scratch 可写，其余只读。 */
   private async handle_protocol_request(request: Request): Promise<Response> {
     const workspace_path = this.active_workspace_path;
     if (workspace_path === null) return response_text(410, "工作区未激活。");
@@ -164,12 +164,14 @@ export async function handle_agent_workspace_protocol_request(
     if (url.pathname.startsWith("/files/")) {
       const relative_path = decode_protocol_path(url.pathname.slice("/files/".length));
       const file_path = resolve_workspace_path(workspace_path, relative_path);
+      await assert_workspace_path_has_no_symlink(workspace_path, relative_path);
       if (request.method === "GET") return await read_workspace_file(file_path);
       if (request.method === "PUT") {
-        if (!is_workspace_write_path(relative_path)) {
+        const editable = await read_workspace_editable_paths(workspace_path);
+        if (!editable.has(relative_path) && !is_workspace_scratch_path(relative_path)) {
           return response_text(403, "该工作区文件只读。");
         }
-        return await write_workspace_file(file_path, request);
+        return await write_workspace_file(file_path, request, editable.has(relative_path));
       }
       if (request.method === "DELETE") {
         if (!is_workspace_scratch_path(relative_path)) {
@@ -182,6 +184,7 @@ export async function handle_agent_workspace_protocol_request(
     if (url.pathname === "/__list__" && request.method === "GET") {
       const relative_path = url.searchParams.get("path") ?? "";
       const directory = resolve_workspace_path(workspace_path, relative_path);
+      await assert_workspace_path_has_no_symlink(workspace_path, relative_path);
       const entries = await fs.promises.readdir(directory, { withFileTypes: true });
       return Response.json(
         entries.map((entry) => ({
@@ -224,12 +227,7 @@ function decode_protocol_path(value: string): string {
   }
 }
 
-/** target 与 scratch 可以覆盖；manifest 和所有 context 永远只读。 */
-function is_workspace_write_path(relative_path: string): boolean {
-  return relative_path.startsWith("target/") || is_workspace_scratch_path(relative_path);
-}
-
-/** 删除只对临时 scratch 开放，target 必须始终保留到 Backend 校验。 */
+/** 删除只对临时 scratch 开放，editable 必须始终保留到 Backend 校验。 */
 function is_workspace_scratch_path(relative_path: string): boolean {
   return relative_path === "scratch" || relative_path.startsWith("scratch/");
 }
@@ -242,9 +240,17 @@ async function read_workspace_file(file_path: string): Promise<Response> {
   return new Response(body, { headers: { "content-type": "application/octet-stream" } });
 }
 
-/** target 写入先落同目录临时文件，再用 rename 原子替换旧版本。 */
-async function write_workspace_file(file_path: string, request: Request): Promise<Response> {
+/** editable 只能覆盖既有文件；所有写入先落同目录临时文件再原子替换。 */
+async function write_workspace_file(
+  file_path: string,
+  request: Request,
+  must_exist: boolean,
+): Promise<Response> {
   if (request.body === null) throw new Error("工作区写入缺少正文。");
+  if (must_exist) {
+    const stat = await fs.promises.lstat(file_path);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
+  }
   await fs.promises.mkdir(path.dirname(file_path), { recursive: true });
   const temp_path = path.join(
     path.dirname(file_path),
@@ -261,6 +267,38 @@ async function write_workspace_file(file_path: string, request: Request): Promis
     return new Response(null, { status: 204 });
   } finally {
     await fs.promises.rm(temp_path, { force: true });
+  }
+}
+
+/** editable 白名单直接读取当前工作区 contract，避免宿主复制固定路径。 */
+async function read_workspace_editable_paths(workspace_path: string): Promise<Set<string>> {
+  const contract_path = resolve_workspace_path(workspace_path, "contract.json");
+  const contract = JSON.parse(await fs.promises.readFile(contract_path, "utf-8")) as {
+    datasets?: Record<string, { path?: unknown; role?: unknown }>;
+  };
+  return new Set(
+    Object.values(contract.datasets ?? {}).flatMap((dataset) =>
+      dataset.role === "editable" && typeof dataset.path === "string" ? [dataset.path] : [],
+    ),
+  );
+}
+
+/** 逐级拒绝已有符号链接；scratch 尚未创建的尾部路径允许继续写入。 */
+async function assert_workspace_path_has_no_symlink(
+  workspace_path: string,
+  relative_path: string,
+): Promise<void> {
+  let current = path.resolve(workspace_path);
+  for (const part of relative_path.split("/").filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      if ((await fs.promises.lstat(current)).isSymbolicLink()) {
+        throw new Error("工作区路径不能包含符号链接。");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
   }
 }
 
@@ -285,6 +323,19 @@ function build_workspace_script(script: string): string {
     const response = await fetch(url, init);
     if (!response.ok) throw new Error(await response.text() || ("工作区请求失败：" + response.status));
     return response;
+  };
+  const isJsonValue = (value, stack = new WeakSet()) => {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+    if (typeof value === "number") return Number.isFinite(value);
+    if (typeof value !== "object") return false;
+    if (stack.has(value)) return false;
+    stack.add(value);
+    const valid = Array.isArray(value)
+      ? value.every((entry) => isJsonValue(entry, stack))
+      : (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) &&
+        Object.values(value).every((entry) => isJsonValue(entry, stack));
+    stack.delete(value);
+    return valid;
   };
   async function* readLines(filePath) {
     const response = await request("/files/" + encodePath(filePath));
@@ -344,6 +395,30 @@ function build_workspace_script(script: string): string {
     },
     remove: async (filePath) => {
       await request("/files/" + encodePath(filePath), { method: "DELETE" });
+    },
+    runRecipe: async (name, args = null) => {
+      if (typeof name !== "string" || name === "" || name.includes("/") || name.includes("\\\\")) {
+        throw new TypeError("recipe name 非法");
+      }
+      const manifest = await workspace.readJson("manifest.json");
+      if (!Array.isArray(manifest.recipes) || !manifest.recipes.includes(name)) {
+        throw new TypeError("未知 recipe");
+      }
+      if (!isJsonValue(args)) throw new TypeError("recipe args 必须是 JSON value");
+      const serializedArgs = JSON.stringify(args);
+      const safeArgs = JSON.parse(serializedArgs);
+      const source = await workspace.readText("recipes/" + name + ".js");
+      const readonlyWorkspace = Object.freeze({
+        readText: workspace.readText,
+        readJson: workspace.readJson,
+        readLines: workspace.readLines,
+        readJsonl: workspace.readJsonl,
+        list: workspace.list,
+      });
+      const recipeResult = await new AsyncFunction("workspace", "args", source)(readonlyWorkspace, safeArgs);
+      if (!isJsonValue(recipeResult ?? null)) throw new TypeError("recipe 结果必须是 JSON value");
+      const serializedResult = JSON.stringify(recipeResult ?? null);
+      return JSON.parse(serializedResult);
     },
   });
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;

@@ -14,12 +14,12 @@
 | --- | --- | --- |
 | 公开状态、完整 UI 时间线、会话生命周期与启动期资源 | `AgentService` | Agent API、`agent.session_event` |
 | 模型可见历史、工具循环、上下文压缩、中断与 settle | 内存 `AgentSession` | `AgentService` 调用 SDK 的 prompt、模型切换与关闭 API |
-| 当前大型数据工作区、导出快照与唯一导入目标 | `AgentWorkspaceService` | `workspace_export`、`workspace_run`、`workspace_import` |
+| 当前完整数据工作区、快照与差异准备 | `AgentWorkspaceService` | `workspace_create`、`workspace_run`、`workspace_apply` |
 
 - Agent 运行时完全内存化。消息受理到整个用户任务最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的运行 lease；一个任务可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次执行。中途压缩失败会结束本轮，并阻断新消息直至压缩恢复。
 - 手动压缩重试同样持有运行 lease；失败轮次恢复成功后追加固定“继续”user 轮次，已完成轮次只恢复模型历史。普通模型回合的 stop 同步封口仍运行的子条目和 user 条目、将公开会话切回 `idle`，再异步取消 SDK，lease 仍到最终 settle 才释放。压缩是不可 stop 的原子阶段，前后端都拒绝压缩期间的 stop；reset、工程切换和 dispose 仍通过运行时关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
-- GUI Agent 至多持有一个位于应用 userdata 的一次性磁盘工作区。新导出替换旧工作区；脚本失败或取消、依赖 revision / 设置变化、reset、工程切换、导入成功和 dispose 都会清理它，应用启动也会删除崩溃遗留目录。工作区不进入 Agent snapshot、模型历史或项目事实。
+- GUI Agent 至多持有一个位于应用 userdata 的一次性磁盘工作区。新 create 全部成功后才替换旧工作区；脚本失败或取消、工程身份 / 七个 section revision / 语言变化、reset、工程切换、apply 成功、stale / 事务 / 未知失败和 dispose 都会清理它，editable 校验错误则保留供脚本修复。应用启动删除崩溃遗留目录，工作区不进入 Agent snapshot、模型历史或项目事实。
 
 ## 3. 模型、资源与 skill
 
@@ -30,17 +30,13 @@
 
 ## 4. 产品工具与宿主能力
 
-- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占结构、必填、枚举与载荷上限。只读查询的可选集合省略或为空时均不限制对应维度，非空时在执行边界按首次出现顺序去重；可选写操作数组省略或为空时均不执行该类操作，写操作的重复目标与“没有任何真实操作”仍由领域校验拒绝。`AgentToolError` 只表达模型可修正的领域错误。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地化应用诊断。
-- SDK 的 `tool_execution_start/end` 是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常；start 保存完整输入，SDK 产生终态时 end 保存完整最终结果与错误标记。公开时间线从同一事件投影内存 UI 所需的输入与文本输出，但不替代持久化记录或公开结构化错误；stop 后的合法终帧仍记录，reset / dispose 在终帧前解除订阅时不伪造 end，单独的 start 即表示调用未完成。
-- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item、warning 与 quality 查询统一返回按领域收窄的 `revisions`；item 写入使用 `expected_revisions`，quality 写入使用查询所得 `revisions.quality` 作为 `expected_revision`。写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
-- 产品 Agent 的 item、warning 与 quality 查询统一以 `search.keywords` 表达文本搜索：省略或空数组不搜索，非空关键词经 NFKC 归一后忽略大小写，按 OR 做字面量包含匹配，正则和通配符没有特殊含义；item 与 warning 另以 scope 选择原文、译文或两者，quality 固定搜索规则 src。
-- 质量规则工具统一查询和原子更新；查询不返回启用状态或文本保护模式，模型可见条目身份统一为 `id`，写入和排序锚点使用 `id` / `before_id`。后端仍以持久化稳定身份决定创建或更新，并在提交前拒绝新增或扩大的重复组。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
-- `query_items` 和 `query_warning_items` 组合结构化精确过滤与文本搜索，结果完整性由分页决定。`query_items` 只从基础 item cache 查询，并返回关键词命中归因；item 查询返回身份、正文、可见姓名、定位、状态和重试事实，且只在未完成分页时携带 `cursor`。`query_warning_items` 复用相同搜索协议、基础投影和当前校对评估运行态，只附加真实 warning 证据且不创建或替换 GUI 列表视图；`update_items` 在 Agent 边界按 item 聚合单字段写入后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。
-- `query_quality_rules` 对四类规则统一返回 `revisions: { quality, items }`、平铺 `entries`、每条规则的 `hits` 和包含单例的稳定 `groups`；只有 `include_examples: true` 时才为条目投影最多两个纯文本 `examples`。搜索查询以 src 直接命中的 ID 为 `target_ids`，并展开目标所在完整组；组内其它条目只是关系证据。Agent 不扫描 item、不调用 worker、不另建统计或分组缓存，全部派生事实直接读取 [`BACKEND.md`](BACKEND.md) 的统一分析缓存。
-- `groups` 只表示共同审校范围，不表示语义等价；关系计算的权威语义归 [`BACKEND.md`](BACKEND.md)。`examples` 是按 item 顺序输出的确定性有限代表语境，姓名存在时格式为 `【name】正文`。后续 `query_items` 以 quality 查询的 `revisions.items` 与 item 查询的 `revisions.items` 相等作为快照边界。
-- `workspace_export`、`workspace_run`、`workspace_import` 仅在 GUI Electron 沙箱端口可用时成组注册，用于普通工具载荷无法可靠承载的完整数据集。导出按 `items | glossary` 选择唯一可导入 target，并固定生成完整相关 context、只读 manifest 与可写 scratch；数据文件使用 JSONL，应用不设置文件数量、单文件大小或工作区总空间配额。模型看不到工作区绝对路径，Backend Runtime 与 Electron main 之间只传脚本、受信任工作区路径和小型 JSON 结果，不传工程数据。
-- `workspace_run` 在无 Node、无 preload、无 Shell 和无外网的一次性 Chromium renderer 中执行 JavaScript；每次运行前清空独立 session 的浏览器存储，成功脚本只通过磁盘工作区延续结果。私有 protocol 只把当前工作区映射为流式 Request / Response，`context` 和 manifest 只读，target 写入先落同目录临时文件再原子替换。失败或 stop 会废弃整个工作区；`workspace_import` 重新校验工程身份、设置、全部依赖 section revision、target 身份和领域字段，只把 target 交给 Agent 专用领域写入口。
-- 脚本改写一次性文件不构成项目写入，只有获批后的 `workspace_import` 修改 `.lg`；items 与 glossary 的校验、事务和事件回流以 [`BACKEND.md`](BACKEND.md) 的项目写入边界为准。
+- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
+- 工程数据工具只保留 `workspace_create`、`workspace_run`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
+- `workspace_create` 无参数生成完整快照与 `contract.json`。`manifest.json` 只记录权威源语言 / 目标语言、完整七 section revision、数据数量与 recipe 白名单，不暴露工程路径、功能开关、UI 状态或模型设置；contract 是路径、字段、身份、可写性、apply 语义与 recipe 协议的唯一代码权威。
+- 工作区固定包含 `editable` 的完整 items、四类质量规则和两类提示词正文，`derived` 的 warnings、analysis、analysis candidates 与四份质量分析，`context` 的文件事实，以及只读 recipes 和可写 scratch。四类质量分析直接投影 [`BACKEND.md`](BACKEND.md) 的统一缓存结果，内置 `inspect-items` 与 `inspect-quality` 只做确定性筛选、搜索、证据联结和结构组展开；自由脚本继续承担 recipe 未覆盖的组合与转换。
+- 模型获取业务知识的顺序固定为 contract 的结构与语义、manifest 的当前快照事实、skill 的领域方法、system prompt 的生命周期约束、最后才是三个工具自身的参数 Schema；skill、prompt 和工具描述不得复制字段 schema 或建立第二条工程数据路径。
+- `workspace_run` 在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行 recipe 或自由 JavaScript。两者共享取消、64 KiB 结果上限与窗口清理；私有 protocol 只允许流式读取当前工作区、原子覆盖 contract 声明且已经存在的 editable 文件，并允许 scratch 创建、覆盖和删除，manifest、contract、derived、context 与 recipes 永远只读，路径穿越、绝对路径、反斜线和符号链接均拒绝。
+- 脚本改写 editable 只形成变更准备，不修改工程。`workspace_apply` 无参数读取并严格校验全部 editable，自动计算 items、quality 与 prompts 的真实差异；校验错误保留工作区供修复，stale、事务或未知失败清理工作区并要求重新 create。无变化不进入项目写口、不推进 revision、不发布事件；成功只返回紧凑计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
 ## 5. 前端消费

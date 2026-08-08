@@ -305,12 +305,14 @@ export class BackendServices {
             settings: this.app_setting_service,
             sessionState: session_state,
             cache: this.cache_manager,
-            proofreading: this.proofreading,
-            qualityRules: quality_rules,
+            qualityAnalysis: this.cache_manager.qualityAnalysis,
+            proofreading: this.proofreading.query,
             readAnalysisCandidates: () =>
               data_reader.build_analysis_candidate_payload(
                 session_state.require_loaded_project_path(),
               ),
+            runtimeGate: this.runtime_gate,
+            writeStore: write_store,
             run: options.agentWorkspaceRun,
           });
     this.agent = new AgentService({
@@ -318,10 +320,6 @@ export class BackendServices {
       settings: this.app_setting_service,
       userAgent: user_agent,
       sessionState: session_state,
-      cache: this.cache_manager,
-      qualityAnalysis: this.cache_manager.qualityAnalysis,
-      qualityRules: quality_rules,
-      proofreading: this.proofreading,
       runtimeGate: this.runtime_gate,
       webFetch: options.agentWebFetch,
       workspace: agent_workspace,

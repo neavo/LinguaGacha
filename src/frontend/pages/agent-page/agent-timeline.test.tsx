@@ -213,13 +213,15 @@ describe("AgentTimeline", () => {
     vi.useFakeTimers();
     vi.setSystemTime(8_001);
     const view = await render_timeline(
-      round_entries([tool_entry("tool-1", "query_items", "running", null, 1, '{"scope":"input"}')]),
+      round_entries([
+        tool_entry("tool-1", "workspace_run", "running", null, 1, '{"scope":"input"}'),
+      ]),
     );
     const tool = view.querySelector<HTMLButtonElement>(".agent-tool-entry");
-    expect(tool?.textContent).toBe("query_items · 8s");
+    expect(tool?.textContent).toBe("workspace_run · 8s");
     expect(tool?.querySelector('[role="timer"]')?.getAttribute("aria-live")).toBe("off");
     await act(async () => vi.advanceTimersByTime(1_000));
-    expect(tool?.textContent).toBe("query_items · 9s");
+    expect(tool?.textContent).toBe("workspace_run · 9s");
     await act(async () => tool?.click());
     expect(get_tool_dialog_json()).toEqual({ scope: "input" });
 
@@ -228,7 +230,7 @@ describe("AgentTimeline", () => {
         [
           tool_entry(
             "tool-1",
-            "query_items",
+            "workspace_run",
             "success",
             '{"scope":"output"}',
             1,
@@ -255,10 +257,10 @@ describe("AgentTimeline", () => {
   it("并行工具复用无图标状态灯并保留独立状态语义", async () => {
     const view = await render_timeline(
       round_entries([
-        tool_entry("tool-running", "query_items", "running", null, 1),
-        tool_entry("tool-success", "query_quality_rules", "success", "{}", 2),
+        tool_entry("tool-running", "workspace_run", "running", null, 1),
+        tool_entry("tool-success", "workspace_create", "success", "{}", 2),
         tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
-        tool_entry("tool-stopped", "update_quality_rules", "stopped", null, 4),
+        tool_entry("tool-stopped", "workspace_apply", "stopped", null, 4),
       ]),
     );
     for (const [status, label] of [
@@ -504,7 +506,7 @@ describe("AgentTimeline", () => {
       assistant_entry("assistant-1", "准备查询", "success", 1000),
       tool_entry(
         "tool-1",
-        "query_items",
+        "workspace_run",
         "success",
         '{"items":[{"item_id":1,"src":"Alice"}]}',
         1500,
@@ -513,8 +515,8 @@ describe("AgentTimeline", () => {
       assistant_entry("assistant-2", "查询完成", "success", 2000),
     ]);
     const visible_text = view.textContent ?? "";
-    expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("query_items"));
-    expect(visible_text.indexOf("query_items")).toBeLessThan(visible_text.indexOf("read_skill"));
+    expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("workspace_run"));
+    expect(visible_text.indexOf("workspace_run")).toBeLessThan(visible_text.indexOf("read_skill"));
     const tools = view.querySelectorAll<HTMLButtonElement>(".agent-tool-entry");
     expect(tools[0]?.textContent).not.toContain("Alice");
     expect(tools[1]?.querySelector(".agent-status-mark--error")?.getAttribute("aria-label")).toBe(
