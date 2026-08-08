@@ -61,6 +61,7 @@ import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
+const AGENT_CONTINUE_TEXT = "继续"; // 内部续跑与用户触发的恢复使用同一模型语义
 
 /** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
 function build_agent_session_settings() {
@@ -91,6 +92,7 @@ function select_agent_skills(
 type AgentRuntime = {
   session: AgentSession;
   unsubscribe: () => void;
+  checkpoint_requested: boolean; // 工具批次结束后是否因容量主动停在安全边界
 };
 
 type AgentAssistantStreamBlock = {
@@ -169,7 +171,6 @@ export class AgentService {
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private context_tokens: number | null = null; // 压缩终态优先采用 SDK 新历史估算，避免复用旧 usage
-  private compaction_retry_text: string | null = null; // 只保存未解决压缩所属的失败任务
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
   private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null;
   private resources: LoadedAgentResources | null = null; // 启动期一次性加载的原子资源集，null 表示未完成加载
@@ -236,6 +237,11 @@ export class AgentService {
         diagnostic_context: { reason: "empty_agent_message" },
       });
     }
+    if (this.find_latest_compaction_entry()?.status === "error") {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "agent_compaction_recovery_required" },
+      });
+    }
     const selected_skills = select_agent_skills(resources.skills, text);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
@@ -248,14 +254,13 @@ export class AgentService {
     return await acceptance;
   }
 
-  /** 重试最近一次失败压缩；成功后自动重发所属的失败任务。 */
+  /** 重试最近一次失败压缩；未完成轮次恢复后以普通“继续”消息重新进入模型。 */
   public async retry_compaction(): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.state !== "idle") {
       throw new AppErrors.RuntimeBusyError();
     }
     this.session_state.require_loaded_project_path();
-    const resources = this.require_resources();
     const runtime = this.runtime;
     const failed_entry = this.find_latest_compaction_entry();
     if (
@@ -267,14 +272,15 @@ export class AgentService {
         diagnostic_context: { reason: "agent_compaction_retry_unavailable" },
       });
     }
-    const retry_text = this.compaction_retry_text;
+    // 只有被中途压缩打断的失败轮次需要续跑；已完成回答只恢复模型历史。
+    const resume_failed_round =
+      this.entries.findLast((entry) => entry.kind === "user_message")?.status === "error";
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
     const acceptance = this.accept_compaction_retry(
       runtime,
       failed_entry,
-      retry_text,
-      retry_text === null ? [] : select_agent_skills(resources.skills, retry_text),
+      resume_failed_round,
       runtime_lease,
     );
     this.operation_acceptance = acceptance;
@@ -404,8 +410,7 @@ export class AgentService {
   private async accept_compaction_retry(
     runtime: AgentRuntime,
     failed_entry: Extract<AgentEntry, { kind: "context_compaction" }>,
-    retry_text: string | null,
-    selected_skills: AgentSkillDefinition[],
+    resume_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<AgentSessionSnapshot> {
     let compaction_started = false;
@@ -421,8 +426,7 @@ export class AgentService {
       const compaction = this.run_compaction(
         runtime,
         generation,
-        retry_text,
-        selected_skills,
+        resume_failed_round,
         runtime_lease,
       );
       this.runtime_settlement = compaction;
@@ -445,7 +449,6 @@ export class AgentService {
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
   ): Promise<void> {
-    this.compaction_retry_text = null;
     this.upsert_entry({
       kind: "user_message",
       id: uuidv7(),
@@ -536,14 +539,29 @@ export class AgentService {
       sessionManager: session_manager,
       settingsManager: settings_manager,
     });
-    const unsubscribe = session.subscribe((event) => {
+    const runtime: AgentRuntime = {
+      session,
+      unsubscribe: () => undefined,
+      checkpoint_requested: false,
+    };
+    session.agent.shouldStopAfterTurn = ({ toolResults, context }) => {
+      const context_window = session.model?.contextWindow;
+      const should_stop =
+        toolResults.length > 0 &&
+        context_window !== undefined &&
+        estimateContextTokens(context.messages).tokens >=
+          context_window - AGENT_COMPACTION_RESERVE_TOKENS;
+      runtime.checkpoint_requested = should_stop;
+      return should_stop;
+    };
+    runtime.unsubscribe = session.subscribe((event) => {
       log_agent_tool_event(this.log_manager, event);
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
-    return { session, unsubscribe };
+    return runtime;
   }
 
-  /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
+  /** 每个安全检查点都先完成压缩再隐藏续跑；只有整个用户任务 settle 才决定公开终态。 */
   private async run_prompt(
     runtime: AgentRuntime,
     generation: number,
@@ -552,6 +570,8 @@ export class AgentService {
   ): Promise<void> {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     try {
+      runtime.checkpoint_requested = false;
+      let previous_compaction_id = this.find_latest_compaction_entry()?.id;
       await runtime.session.prompt(text, {
         expandPromptTemplates: false,
         // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
@@ -566,6 +586,28 @@ export class AgentService {
           }
         },
       });
+      while (this.prompt_is_current(runtime, generation) && runtime.checkpoint_requested) {
+        const compaction = this.find_latest_compaction_entry();
+        // SDK 可能已在 prompt settle 前自动压缩；只有未观察到新条目时才手动补足。
+        const compacted =
+          compaction?.id !== previous_compaction_id
+            ? compaction?.status === "success"
+            : await this.compact_checkpoint(runtime, generation);
+        if (!compacted) {
+          outcome = "error";
+          break;
+        }
+        runtime.checkpoint_requested = false;
+        previous_compaction_id = this.find_latest_compaction_entry()?.id;
+        await runtime.session.sendCustomMessage(
+          {
+            customType: "linguagacha_continue",
+            content: [{ type: "text", text: AGENT_CONTINUE_TEXT }],
+            display: false,
+          },
+          { triggerTurn: true },
+        );
+      }
       if (this.prompt_is_current(runtime, generation)) {
         const final_assistant = runtime.session.messages.findLast(
           (message): message is AssistantMessage => message.role === "assistant",
@@ -590,23 +632,33 @@ export class AgentService {
     }
   }
 
-  /** 压缩与失败任务重发共用运行 lease，避免 renderer 监听终态后补偿。 */
+  /** AgentSession 完全 settle 后才手动压缩，避免拆开工具调用与结果。 */
+  private async compact_checkpoint(runtime: AgentRuntime, generation: number): Promise<boolean> {
+    try {
+      await runtime.session.compact();
+      return this.prompt_is_current(runtime, generation);
+    } catch {
+      // SDK compaction_end 已发布权威失败条目和诊断；失败后不得发起下一次模型请求。
+      return false;
+    }
+  }
+
+  /** 压缩与固定“继续”轮次共用运行 lease，避免 renderer 监听终态后补偿。 */
   private async run_compaction(
     runtime: AgentRuntime,
     generation: number,
-    retry_text: string | null,
-    selected_skills: AgentSkillDefinition[],
+    resume_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<void> {
     let prompt_started = false;
     try {
       await runtime.session.compact();
-      if (retry_text !== null && this.runtime_is_current(runtime, generation)) {
+      if (resume_failed_round && this.runtime_is_current(runtime, generation)) {
         const prompt = this.start_round(
           runtime,
           generation,
-          retry_text,
-          selected_skills,
+          AGENT_CONTINUE_TEXT,
+          [],
           runtime_lease,
         );
         prompt_started = true;
@@ -646,7 +698,6 @@ export class AgentService {
       };
       const success = result !== undefined && !event.aborted && event.errorMessage === undefined;
       this.upsert_entry({ ...entry, status: success ? "success" : "error" });
-      if (success) this.compaction_retry_text = null;
       if (event.errorMessage !== undefined) {
         this.log_manager.warning(t_main_log("app.diagnostic.agent.context_compaction_failed"), {
           source: "agent",
@@ -861,9 +912,6 @@ export class AgentService {
     const user = this.entries[user_index];
     if (user?.kind === "user_message") {
       this.upsert_entry({ ...user, status: outcome, endedAt: Date.now() });
-      if (this.find_latest_compaction_entry()?.status === "error") {
-        this.compaction_retry_text = outcome === "error" ? user.text : null;
-      }
     }
   }
 
@@ -906,7 +954,6 @@ export class AgentService {
     this.state = "idle";
     this.entries = [];
     this.context_tokens = null;
-    this.compaction_retry_text = null;
     if (!this.disposed) {
       this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
     }

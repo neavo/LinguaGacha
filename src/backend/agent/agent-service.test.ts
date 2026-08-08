@@ -114,6 +114,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "thinking"
     | "tool_only"
     | "invalid_tool"
+    | "checkpoint"
     | "tools",
   abort_count: 0,
   system_prompts: [] as string[],
@@ -160,6 +161,7 @@ const fake_provider_streams: ProviderStreams = {
   streamSimple: (model, context, options) => create_fake_agent_stream(model, context, options),
 };
 
+/** 记录每次模型或摘要请求，并按当前测试剧本创建可控远程响应。 */
 function create_fake_agent_stream(
   model: Model<any>,
   context: Context,
@@ -280,6 +282,16 @@ function create_fake_response(context: Context): FauxResponseStep {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
   const after_tool_call = context.messages.at(-1)?.role === "toolResult";
+  if (fake_agent_state.mode === "checkpoint") {
+    if (read_last_user_text(context) === "继续") {
+      return fauxAssistantMessage("压缩后完成");
+    }
+    if (after_tool_call) return fauxAssistantMessage("未压缩继续");
+    return fauxAssistantMessage(
+      fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "checkpoint-query" }),
+      { stopReason: "toolUse" },
+    );
+  }
   if (after_tool_call) {
     return fauxAssistantMessage(fake_agent_state.mode === "tools" ? "查询完成" : []);
   }
@@ -389,6 +401,7 @@ function create_fake_response(context: Context): FauxResponseStep {
   return fauxAssistantMessage("已完成");
 }
 
+/** 从模型实际收到的上下文读取最近 user 文本，兼容字符串与 text block。 */
 function read_last_user_text(context: Context): string {
   const message = context.messages.findLast((candidate) => candidate.role === "user");
   if (message?.role !== "user") return "";
@@ -1518,6 +1531,51 @@ describe("AgentService", () => {
     ).toHaveLength(12);
   });
 
+  it("长工具结果跨阈值后保留调用配对，压缩并继续同一轮次", async () => {
+    const { service, read_items } = await create_service();
+    await prepare_long_tool_checkpoint(service, read_items);
+    expect(fake_agent_state.request_kinds).not.toContain("summary");
+    const requests_before_checkpoint = fake_agent_state.request_kinds.length;
+    fake_agent_state.mode = "checkpoint";
+
+    await service.send_message({ text: "检查长条目" });
+    await wait_for_idle(service);
+
+    const checkpoint_requests = fake_agent_state.request_kinds.slice(requests_before_checkpoint);
+    expect(checkpoint_requests[0]).toBe("model");
+    expect(checkpoint_requests).toContain("summary");
+    expect(checkpoint_requests.at(-1)).toBe("model");
+    expect(checkpoint_requests.filter((kind) => kind === "model")).toHaveLength(2);
+    expect(read_items).toHaveBeenCalledOnce();
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "context_compaction", status: "success" }),
+        expect.objectContaining({
+          kind: "assistant_message",
+          parts: [{ kind: "text", text: "压缩后完成" }],
+          status: "success",
+        }),
+      ]),
+    );
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message" && entry.text === "检查长条目"),
+    ).toHaveLength(1);
+
+    const resumed_context = fake_agent_state.model_contexts.at(-1) ?? [];
+    const call_index = resumed_context.findIndex(
+      (message) =>
+        message.role === "assistant" &&
+        JSON.stringify(message.content).includes("checkpoint-query"),
+    );
+    const result_index = resumed_context.findIndex(
+      (message) => message.role === "toolResult" && message.toolCallId === "checkpoint-query",
+    );
+    expect(call_index).toBeGreaterThanOrEqual(0);
+    expect(result_index).toBeGreaterThan(call_index);
+  });
+
   it("阈值压缩失败原位公开重试，压缩期间不可停止且不推翻已成功回答", async () => {
     const { service, log_error, log_warning } = await create_service();
     fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
@@ -1527,6 +1585,12 @@ describe("AgentService", () => {
         text: `第${round.toString()}轮${"x".repeat(40_000)}`,
       });
       await wait_for_idle(service);
+      if (
+        service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction")
+          ?.status === "error"
+      ) {
+        break;
+      }
     }
 
     expect(fake_agent_state.request_kinds).toContain("summary");
@@ -1573,50 +1637,50 @@ describe("AgentService", () => {
     await expect(service.retry_compaction()).rejects.toThrow("request.validation_failed");
   });
 
-  it("同一失败任务复用压缩条目并在手动恢复后自动重发", async () => {
-    const { service } = await create_service();
-    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
+  it("中途压缩失败阻断模型与消息旁路，手动恢复后只发送继续", async () => {
+    const { service, read_items } = await create_service();
+    await prepare_long_tool_checkpoint(service, read_items);
+    fake_agent_state.mode = "checkpoint";
     fake_agent_state.summary_failures_remaining = 100;
-    for (const round of [1, 2, 3, 4, 5]) {
-      await service.send_message({
-        text: `第${round.toString()}轮${"x".repeat(40_000)}`,
-      });
-      await wait_for_idle(service);
-    }
+    const calls_before_checkpoint = fake_agent_state.model_call_count;
+
+    await service.send_message({ text: "检查长条目" });
+    await wait_for_idle(service);
+
     const failed_compaction = service
       .get_snapshot()
       .entries.findLast((entry) => entry.kind === "context_compaction");
-
-    fake_agent_state.mode = "error";
-    await service.send_message({ text: "继续失败任务" });
-    await wait_for_idle(service);
-
-    expect(
-      service.get_snapshot().entries.filter((entry) => entry.kind === "context_compaction"),
-    ).toEqual([expect.objectContaining({ id: failed_compaction?.id, status: "error" })]);
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-    ).toMatchObject({ text: "继续失败任务", status: "error" });
+    ).toMatchObject({ text: "检查长条目", status: "error" });
+    expect(failed_compaction).toMatchObject({ status: "error" });
+    expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(1);
+    await expect(service.send_message({ text: "绕过恢复" })).rejects.toThrow(
+      "request.validation_failed",
+    );
 
-    fake_agent_state.mode = "success";
     fake_agent_state.summary_failures_remaining = 0;
     await service.retry_compaction();
 
     await vi.waitFor(() =>
       expect(
-        service
-          .get_snapshot()
-          .entries.filter(
-            (entry) => entry.kind === "user_message" && entry.text === "继续失败任务",
-          ),
-      ).toEqual([
-        expect.objectContaining({ status: "error" }),
-        expect.objectContaining({ status: "success" }),
-      ]),
+        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
+      ).toMatchObject({ text: "继续", status: "success" }),
     );
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message" && entry.text === "检查长条目"),
+    ).toHaveLength(1);
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message" && entry.text === "继续"),
+    ).toHaveLength(1);
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
     ).toMatchObject({ id: failed_compaction?.id, status: "success" });
+    expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(2);
   });
 
   it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {
@@ -1854,6 +1918,29 @@ describe("AgentService", () => {
     };
   }
 });
+
+/** 先建立可压缩旧历史，再用单个大工具结果跨过下一请求阈值。 */
+async function prepare_long_tool_checkpoint(
+  service: AgentService,
+  read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>,
+): Promise<void> {
+  read_items.mockReturnValue([
+    {
+      item_id: 1,
+      src: `Alice${"x".repeat(100_000)}`,
+      dst: "",
+      row_number: 1,
+      file_path: "large.json",
+      status: "translated",
+      retry_count: 0,
+    },
+  ]);
+  fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
+  for (const round of [1, 2, 3]) {
+    await service.send_message({ text: `历史${round.toString()}${"x".repeat(40_000)}` });
+    await wait_for_idle(service);
+  }
+}
 
 /** 等待公开会话终态，不依赖 SDK 内部 idle 时序。 */
 async function wait_for_idle(service: AgentService): Promise<void> {
