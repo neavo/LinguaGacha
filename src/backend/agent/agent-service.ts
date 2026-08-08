@@ -55,6 +55,8 @@ import {
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
 import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
+import type { AgentWorkspacePort } from "./agent-workspace-service";
+import { create_agent_workspace_tools } from "./agent-workspace-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
@@ -135,6 +137,7 @@ type AgentServiceOptions = {
   proofreading: AgentProofreading;
   runtimeGate: RuntimeOperationGate;
   webFetch: AgentWebFetchPort | undefined;
+  workspace?: AgentWorkspacePort;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -159,6 +162,7 @@ export class AgentService {
   private readonly proofreading: AgentServiceOptions["proofreading"];
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly web_fetch: AgentWebFetchPort | undefined; // 缺失即不向模型注册 GUI 专属联网工具
+  private readonly workspace: AgentWorkspacePort | undefined; // 缺失即不注册 Electron 专属磁盘工作区
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
@@ -188,6 +192,7 @@ export class AgentService {
     this.proofreading = options.proofreading;
     this.runtime_gate = options.runtimeGate;
     this.web_fetch = options.webFetch;
+    this.workspace = options.workspace;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
@@ -212,6 +217,7 @@ export class AgentService {
 
   /** 启动期原子加载必需的基础 Prompt、会话种子和可降级的 skill 清单。 */
   public async load_resources(): Promise<void> {
+    await this.workspace?.initialize();
     const system_prompt = load_agent_system_prompt(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
@@ -348,6 +354,7 @@ export class AgentService {
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
     ]);
+    await this.workspace?.reset();
   }
 
   /** 在当前运行世代内准备唯一候选运行时。 */
@@ -531,6 +538,7 @@ export class AgentService {
           cache: this.cache,
           proofreading: this.proofreading,
         }),
+        ...(this.workspace === undefined ? [] : create_agent_workspace_tools(this.workspace)),
         ...create_agent_skill_tools(resources.skills),
         ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
       ].map((tool) => wrap_agent_tool_execution(tool, this.log_manager)),
@@ -961,7 +969,7 @@ export class AgentService {
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
     ])
-      .then(() => undefined)
+      .then(async () => await this.workspace?.reset())
       .finally(() => {
         if (this.session_reset === reset) this.session_reset = null;
       });

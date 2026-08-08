@@ -418,7 +418,7 @@ export function query_agent_items(cache: AgentItemCache, request: AgentItemQuery
 }
 
 /** 数据库兼容字段只在工具边界归一一次，模型仅看到稳定窄投影。 */
-function project_agent_item(item: JsonRecord): AgentProjectItem {
+export function project_agent_item(item: JsonRecord): AgentProjectItem {
   const name_src = read_optional_item_name_text(item["name_src"]);
   const name_dst = read_optional_item_name_text(item["name_dst"]);
   return {
@@ -435,7 +435,7 @@ function project_agent_item(item: JsonRecord): AgentProjectItem {
 }
 
 /** warning 工具只返回后续修复必需的条目事实与评估证据。 */
-function project_warning_item(item: ProofreadingClientItem): JsonRecord {
+export function project_warning_item(item: ProofreadingClientItem): JsonRecord {
   return {
     ...project_agent_item({ ...item }),
     warnings: [...item.warnings],

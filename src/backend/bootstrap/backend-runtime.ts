@@ -5,6 +5,7 @@ import { normalize_log_error, to_log_error, type LogError } from "../../shared/e
 import type {
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
+  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeReady,
   BackendRuntimeResult,
   BackendRuntimeWebFetchResponse,
@@ -88,6 +89,11 @@ export async function run_backend_runtime(args: {
     },
     agentWebFetch: async (request, signal) =>
       (await call_host({ kind: "web_fetch", request }, signal)) as BackendRuntimeWebFetchResponse,
+    agentWorkspaceRun: async (request, signal) =>
+      (await call_host(
+        { kind: "run_agent_workspace", request },
+        signal,
+      )) as BackendRuntimeAgentWorkspaceRunResponse,
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });

@@ -207,6 +207,36 @@ describe("ProofreadingService", () => {
     });
   });
 
+  it("Agent 工作区入口原子提交超过普通工具上限的条目并发布整段失效", async () => {
+    const { database, service, lg_path, publisher, runtime_gate } = create_service();
+    runtime_gate.begin_runtime("agent");
+    const items = Array.from({ length: 600 }, (_, index) =>
+      create_project_item({ id: index + 1, row: index, src: `原文-${(index + 1).toString()}` }),
+    );
+    database.set_items(lg_path, items);
+
+    const result = await service.update_items_from_agent_workspace(
+      {
+        changes: items.map((item) => ({ item_id: item["id"], dst: `译文-${String(item["id"])}` })),
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      },
+      "agent_workspace_import_items",
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(database.get_all_items(lg_path)).toHaveLength(600);
+    expect(database.get_items_by_ids(lg_path, [1, 600]) as JsonRecord[]).toMatchObject([
+      { id: 1, dst: "译文-1", status: "PROCESSED" },
+      { id: 600, dst: "译文-600", status: "PROCESSED" },
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "agent_workspace_import_items",
+        items: { payloadMode: "section-invalidated" },
+      }),
+    );
+  });
+
   it("相同非空译文仍会修正错误状态并同步翻译统计", async () => {
     const { database, service, lg_path } = create_service();
     database.set_items(lg_path, [

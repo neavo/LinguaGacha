@@ -58,6 +58,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
+- Agent 磁盘工作区只是一次性项目快照和变更准备区，不是 `.lg` 写入口。items target 在导入前与当前 cache 逐行校验身份并收窄为真实字段差异，再通过 `ProofreadingService` 的 Agent lease 入口和 `ProjectWriteStore` 单事务提交；该入口不继承普通 JSON 工具的批次数量上限，并固定以 `section-invalidated` 回流。glossary target 规范化为最终规则集合后复用 `QualityRuleService` 与 quality revision 写入。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 
 ## 4. 任务、worker 与 LLM

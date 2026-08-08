@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BackendRuntimeHostOperation,
+  BackendRuntimeAgentWorkspaceRunRequest,
+  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeMainMessage,
   BackendRuntimeWebFetchRequest,
   BackendRuntimeWebFetchResponse,
@@ -84,6 +86,10 @@ describe("run_backend_runtime", () => {
         request: BackendRuntimeWebFetchRequest,
         signal: AbortSignal,
       ) => Promise<BackendRuntimeWebFetchResponse>;
+      agentWorkspaceRun: (
+        request: BackendRuntimeAgentWorkspaceRunRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
     };
     const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
@@ -123,6 +129,19 @@ describe("run_backend_runtime", () => {
       result: { ok: true, data: fetch_response },
     });
     await expect(fetch).resolves.toEqual(fetch_response);
+
+    const workspace = bootstrap_options.agentWorkspaceRun(
+      { workspacePath: "E:/userdata/agent/workspace/run-1", script: "return { changed: 2 }" },
+      new AbortController().signal,
+    );
+    const workspace_request = get_host_request(port, "run_agent_workspace");
+    expect(structuredClone(workspace_request)).toEqual(workspace_request);
+    port.emit({
+      type: "host_response",
+      requestId: workspace_request.requestId,
+      result: { ok: true, data: { result: { changed: 2 } } },
+    });
+    await expect(workspace).resolves.toEqual({ result: { changed: 2 } });
 
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({

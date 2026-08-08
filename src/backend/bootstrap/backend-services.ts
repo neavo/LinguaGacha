@@ -3,6 +3,10 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { AgentService } from "../agent/agent-service";
 import type { AgentWebFetchPort } from "../agent/agent-web-tools";
+import {
+  AgentWorkspaceService,
+  type AgentWorkspaceRunPort,
+} from "../agent/agent-workspace-service";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -55,6 +59,7 @@ export interface BackendServicesOptions {
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
   systemProxySnapshot: SystemProxySnapshot | null; // 启动期系统代理事实，传给 LLM worker 线程复用
   agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 提供 Electron 抓取端口
+  agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
@@ -291,6 +296,23 @@ export class BackendServices {
       this.runtime_gate,
       this.logManager,
     );
+    // 工作区只有 Electron 沙箱端口存在时才装配，CLI 不建立不可执行的半套能力。
+    const agent_workspace =
+      options.agentWorkspaceRun === undefined
+        ? undefined
+        : new AgentWorkspaceService({
+            paths,
+            settings: this.app_setting_service,
+            sessionState: session_state,
+            cache: this.cache_manager,
+            proofreading: this.proofreading,
+            qualityRules: quality_rules,
+            readAnalysisCandidates: () =>
+              data_reader.build_analysis_candidate_payload(
+                session_state.require_loaded_project_path(),
+              ),
+            run: options.agentWorkspaceRun,
+          });
     this.agent = new AgentService({
       paths,
       settings: this.app_setting_service,
@@ -302,6 +324,7 @@ export class BackendServices {
       proofreading: this.proofreading,
       runtimeGate: this.runtime_gate,
       webFetch: options.agentWebFetch,
+      workspace: agent_workspace,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
     });

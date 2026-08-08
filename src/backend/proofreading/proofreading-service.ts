@@ -84,14 +84,28 @@ export class ProofreadingService {
     );
   }
 
+  /** 工作区导入不受单次工具载荷上限约束，并以整段失效事件提交全量差异。 */
+  public async update_items_from_agent_workspace(
+    request: JsonRecord,
+    source: string,
+  ): Promise<ProjectWriteResult> {
+    return await this.runtime_gate.run_agent_project_write(
+      async () => await this.update_items_under_lease(request, source, "workspace"),
+    );
+  }
+
   /** 在项目写租约内构造最终 item 事实，并保留调用方来源到提交事件。 */
   private async update_items_under_lease(
     request: JsonRecord,
     source: string,
+    mode: "regular" | "workspace" = "regular",
   ): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
-    const updates = this.normalize_item_updates(request["changes"]);
+    const updates = this.normalize_item_updates(
+      request["changes"],
+      mode === "workspace" ? null : MAX_PROOFREADING_ITEM_UPDATES,
+    );
     const current_by_id = this.get_item_write_facts_by_ids(
       project_path,
       updates.map((update) => update.item_id),
@@ -129,10 +143,13 @@ export class ProofreadingService {
       expected_section_revisions,
       {
         changes,
-        items_payload: {
-          payloadMode: "canonical-delta",
-          changedIds: this.collect_item_ids(changes.map((change) => change.next)),
-        },
+        items_payload:
+          mode === "workspace"
+            ? { payloadMode: "section-invalidated" }
+            : {
+                payloadMode: "canonical-delta",
+                changedIds: this.collect_item_ids(changes.map((change) => change.next)),
+              },
         update_translation_extras,
       },
       source,
@@ -370,11 +387,14 @@ export class ProofreadingService {
   /**
    * item 更新命令必须非空、字段已知、ID 唯一且每项至少包含一个可写字段。
    */
-  private normalize_item_updates(value: JsonValue | undefined): ProofreadingItemUpdate[] {
+  private normalize_item_updates(
+    value: JsonValue | undefined,
+    max_updates: number | null = MAX_PROOFREADING_ITEM_UPDATES,
+  ): ProofreadingItemUpdate[] {
     if (
       !Array.isArray(value) ||
       value.length === 0 ||
-      value.length > MAX_PROOFREADING_ITEM_UPDATES
+      (max_updates !== null && value.length > max_updates)
     ) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "invalid_proofreading_item_updates" },

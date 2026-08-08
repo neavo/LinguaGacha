@@ -153,6 +153,7 @@ vi.mock("./agent-system-prompt", () => ({
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
 import { AgentService } from "./agent-service";
+import type { AgentWorkspacePort } from "./agent-workspace-service";
 
 /** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
 const fake_provider_streams: ProviderStreams = {
@@ -1097,6 +1098,27 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
   });
 
+  it("仅在 Electron 工作区端口可用时初始化并注册三个工作区工具", async () => {
+    const workspace = {
+      initialize: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined),
+      export_workspace: vi.fn(),
+      run_script: vi.fn(),
+      import_workspace: vi.fn(),
+    } satisfies AgentWorkspacePort;
+    const { service, session_state } = await create_service(true, undefined, workspace);
+
+    await service.send_message({ text: "批量处理" });
+    await wait_for_idle(service);
+
+    expect(workspace.initialize).toHaveBeenCalledOnce();
+    expect(fake_agent_state.tool_names.at(-1)).toEqual(
+      expect.arrayContaining(["workspace_export", "workspace_run", "workspace_import"]),
+    );
+    await session_state.mark_loaded("next.lg");
+    expect(workspace.reset).toHaveBeenCalled();
+  });
+
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -1758,6 +1780,7 @@ describe("AgentService", () => {
   async function create_service(
     load_resources = true,
     web_fetch?: AgentWebFetchPort,
+    workspace?: AgentWorkspacePort,
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -1902,6 +1925,7 @@ describe("AgentService", () => {
       proofreading,
       runtimeGate: runtime_gate,
       webFetch: web_fetch,
+      workspace,
       logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,
     });

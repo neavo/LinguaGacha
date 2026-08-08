@@ -1,5 +1,6 @@
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
+import type { JsonValue } from "../domain/json";
 
 /** Backend 启动完成后 main 创建窗口所需的最小可克隆快照。 */
 export type BackendRuntimeReady = {
@@ -30,11 +31,23 @@ export type BackendRuntimeWebFetchResponse = Readonly<{
   body: Uint8Array; // 已受宿主字节上限约束的原始响应体
 }>;
 
+/** Backend 只把当前工作区绝对路径与模型脚本交给受信任 Electron main。 */
+export type BackendRuntimeAgentWorkspaceRunRequest = Readonly<{
+  workspacePath: string;
+  script: string;
+}>;
+
+/** 沙箱结果必须收口为普通 JSON，避免原型和大对象跨线程泄漏。 */
+export type BackendRuntimeAgentWorkspaceRunResponse = Readonly<{
+  result: JsonValue;
+}>;
+
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
   | { kind: "resolve_proxy"; url: string }
   | { kind: "open_output_folder"; path: string }
-  | { kind: "web_fetch"; request: BackendRuntimeWebFetchRequest };
+  | { kind: "web_fetch"; request: BackendRuntimeWebFetchRequest }
+  | { kind: "run_agent_workspace"; request: BackendRuntimeAgentWorkspaceRunRequest };
 
 export type BackendRuntimeDiagnosticLevel = "warning" | "error" | "fatal";
 

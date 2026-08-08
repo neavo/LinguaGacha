@@ -85,7 +85,7 @@ export class NativeFs {
   /**
    * 异步递归创建目录，和同步入口共享根目录 no-op 语义。
    */
-  private async make_dir_async(directory: string): Promise<void> {
+  public async make_dir_async(directory: string): Promise<void> {
     if (this.should_skip_make_dir(directory)) {
       return;
     }
@@ -121,6 +121,17 @@ export class NativeFs {
    */
   public read_text_file(file_path: string, encoding: BufferEncoding = "utf-8"): string {
     return fs.readFileSync(this.to_native_path(file_path), encoding);
+  }
+
+  /** 流式读取大文件，仍复用平台长路径策略。 */
+  public create_read_stream(file_path: string): fs.ReadStream {
+    return fs.createReadStream(this.to_native_path(file_path));
+  }
+
+  /** 流式写入大文件，并同步补齐父目录后立即返回 writable。 */
+  public create_write_stream(file_path: string): fs.WriteStream {
+    this.ensure_parent_dir(file_path);
+    return fs.createWriteStream(this.to_native_path(file_path));
   }
 
   /**
@@ -182,6 +193,11 @@ export class NativeFs {
    */
   public remove(target_path: string, options: NativeRemoveOptions = {}): void {
     fs.rmSync(this.to_native_path(target_path), options);
+  }
+
+  /** 异步删除可能很大的临时目录，避免阻塞 Backend worker 事件循环。 */
+  public async remove_async(target_path: string, options: NativeRemoveOptions = {}): Promise<void> {
+    await fs.promises.rm(this.to_native_path(target_path), options);
   }
 
   /**
