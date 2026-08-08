@@ -133,6 +133,22 @@
   display: none;
 }
 
+.app-editor--viewer .cm-content {
+  letter-spacing: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.app-editor--viewer.app-editor--wrap-lines .cm-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-editor--viewer .cm-cursor,
+.app-editor--viewer .cm-dropCursor {
+  display: none;
+}
+
 .app-editor--invalid {
   border-color: var(--destructive);
   background: color-mix(in srgb, var(--destructive) 6%, var(--popover));

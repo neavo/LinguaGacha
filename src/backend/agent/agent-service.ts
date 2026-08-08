@@ -34,6 +34,7 @@ import {
   type AgentSessionState,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
+import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
@@ -677,10 +678,12 @@ export class AgentService {
       return;
     }
     if (event.type === "tool_execution_start") {
+      // SDK 参数先序列化为不可变公开值，后续执行不得通过原对象引用改写时间线输入。
       this.upsert_entry({
         kind: "tool_call",
         id: event.toolCallId,
         toolName: event.toolName,
+        input: JsonTool.stringifyStrict(event.args),
         status: "running",
         output: null,
         createdAt: Date.now(),
@@ -849,10 +852,11 @@ export class AgentService {
       if (entry.status !== "running") continue;
       // 压缩终态只由 SDK compaction_end 确认，轮次收尾不代写结果。
       if (entry.kind === "context_compaction") continue;
-      this.upsert_entry({
-        ...entry,
-        status: entry.kind === "tool_call" && outcome !== "success" ? "stopped" : outcome,
-      });
+      if (entry.kind === "tool_call") {
+        this.upsert_entry({ ...entry, status: "stopped", output: null });
+        continue;
+      }
+      this.upsert_entry({ ...entry, status: outcome });
     }
     const user = this.entries[user_index];
     if (user?.kind === "user_message") {

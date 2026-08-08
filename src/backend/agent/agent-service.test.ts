@@ -888,6 +888,7 @@ describe("AgentService", () => {
           id: "tool-1",
           status: "running",
           toolName: "query_items",
+          input: '{"search":{"keywords":["Alice"]}}',
           output: null,
         }),
       }),
@@ -912,6 +913,7 @@ describe("AgentService", () => {
         kind: "tool_call",
         id: "tool-1",
         toolName: "query_items",
+        input: '{"search":{"keywords":["Alice"]}}',
         status: "success",
         output: expect.stringContaining('"items"'),
         createdAt: expect.any(Number),
@@ -920,6 +922,7 @@ describe("AgentService", () => {
         kind: "tool_call",
         id: "tool-2",
         toolName: "read_skill",
+        input: '{"path":"E:/skills/glossary-audit/references/audit-standard.md"}',
         status: "success",
         output: expect.stringContaining("完整正文。"),
         createdAt: expect.any(Number),
@@ -943,7 +946,11 @@ describe("AgentService", () => {
     expect(published_tool_entries).toHaveLength(4);
     expect(
       published_tool_entries.every(
-        (entry) => !("args" in entry) && !("details" in entry) && "output" in entry,
+        (entry) =>
+          !("args" in entry) &&
+          !("details" in entry) &&
+          typeof entry["input"] === "string" &&
+          "output" in entry,
       ),
     ).toBe(true);
     const published_events = publish.mock.calls.map(([, payload]) => payload);
@@ -1175,7 +1182,13 @@ describe("AgentService", () => {
         status: "stopped",
         endedAt: expect.any(Number),
       }),
-      expect.objectContaining({ kind: "tool_call", id: "write-1", status: "stopped" }),
+      expect.objectContaining({
+        kind: "tool_call",
+        id: "write-1",
+        input: expect.stringContaining('"rule_type":"text_preserve"'),
+        status: "stopped",
+        output: null,
+      }),
     ]);
 
     fake_agent_state.release_tool_write?.();

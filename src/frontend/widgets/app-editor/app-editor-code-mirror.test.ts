@@ -1,3 +1,4 @@
+import { syntaxTree } from "@codemirror/language";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +7,7 @@ import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,
   resolve_app_editor_readonly_extensions,
+  resolve_app_editor_syntax_extensions,
   set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 
@@ -84,5 +86,16 @@ describe("resolve_app_editor_readonly_extensions", () => {
     expect(content?.getAttribute("contenteditable")).toBe("false");
     expect(content?.getAttribute("tabindex")).toBe("0");
     expect(content?.getAttribute("aria-readonly")).toBe("true");
+  });
+});
+
+describe("resolve_app_editor_syntax_extensions", () => {
+  it("JSON 语法使用正式解析器并保留输入", () => {
+    create_editor('{"items":[true,null]}', [resolve_app_editor_syntax_extensions("json")]);
+
+    expect(editor_view?.state.doc.toString()).toBe('{"items":[true,null]}');
+    expect(editor_view === null ? null : syntaxTree(editor_view.state).topNode.type.name).toBe(
+      "JsonText",
+    );
   });
 });

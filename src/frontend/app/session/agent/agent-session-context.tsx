@@ -496,20 +496,23 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   if (
     status === null ||
     typeof value["toolName"] !== "string" ||
-    (value["output"] !== null && typeof value["output"] !== "string")
+    typeof value["input"] !== "string"
   ) {
     return [];
   }
-  return [
-    {
-      kind: "tool_call",
-      id: value["id"] as string,
-      toolName: value["toolName"],
-      status,
-      output: value["output"],
-      createdAt: value["createdAt"] as number,
-    },
-  ];
+  const entry_base = {
+    kind: "tool_call" as const,
+    id: value["id"] as string,
+    toolName: value["toolName"],
+    input: value["input"],
+    createdAt: value["createdAt"] as number,
+  };
+  if (status === "running" || status === "stopped") {
+    if (value["output"] !== null) return [];
+    return [{ ...entry_base, status, output: null }];
+  }
+  if (typeof value["output"] !== "string") return [];
+  return [{ ...entry_base, status, output: value["output"] }];
 }
 
 /** 所有条目共享一个公开值域，kind 只决定字段形状，不建立平行状态词表。 */

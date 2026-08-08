@@ -16,29 +16,63 @@ import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,
   create_app_editor_text_mark_hover_extension,
-  type AppEditorMode,
+  type AppEditorSyntax,
   type AppTextMark,
   normalize_app_text_marks,
-  resolve_app_editor_mode_extensions,
   resolve_app_editor_readonly_extensions,
+  resolve_app_editor_syntax_extensions,
   resolve_app_editor_theme_extensions,
   set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import "@frontend/widgets/app-editor/app-editor.css";
 
-type AppEditorVariant = "editor" | "field";
+type AppEditorVariant = "document" | "field" | "viewer";
 
-type AppEditorProps = {
+type AppEditorBaseProps = {
   value: string;
   aria_label: string;
+  class_name?: string;
+};
+
+type AppEditorEditingProps = {
   read_only: boolean;
   invalid?: boolean;
   aria_invalid?: boolean;
-  mode?: AppEditorMode;
-  variant?: AppEditorVariant;
   indent_with_tab?: boolean;
   marks?: readonly AppTextMark[];
-  class_name?: string;
+  on_change?: (next_value: string) => void;
+  on_blur?: () => void;
+};
+
+type AppEditorDocumentProps = AppEditorBaseProps &
+  AppEditorEditingProps & {
+    variant?: "document";
+    syntax?: AppEditorSyntax;
+  };
+
+type AppEditorFieldProps = AppEditorBaseProps &
+  AppEditorEditingProps & {
+    variant: "field";
+    syntax?: never;
+  };
+
+type AppEditorViewerProps = AppEditorBaseProps & {
+  variant: "viewer";
+  syntax?: AppEditorSyntax;
+  wrap_lines: boolean;
+};
+
+type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorViewerProps;
+
+type NormalizedAppEditorProps = AppEditorBaseProps & {
+  variant: AppEditorVariant;
+  syntax: AppEditorSyntax;
+  wrap_lines: boolean;
+  read_only: boolean;
+  invalid: boolean;
+  aria_invalid: boolean;
+  indent_with_tab: boolean;
+  marks: readonly AppTextMark[];
   on_change?: (next_value: string) => void;
   on_blur?: () => void;
 };
@@ -46,9 +80,36 @@ type AppEditorProps = {
 // 各维度独立重配，避免 React 属性变化时重建 EditorView 和丢失选区。
 const editor_theme_compartment = new Compartment();
 const editor_readonly_compartment = new Compartment();
-const editor_mode_compartment = new Compartment();
+const editor_syntax_compartment = new Compartment();
 const editor_variant_compartment = new Compartment();
 const editor_keymap_compartment = new Compartment();
+const empty_app_text_marks: readonly AppTextMark[] = Object.freeze([]);
+
+/** 把互斥的公开形态收口为 CodeMirror 唯一运行配置。 */
+function normalize_app_editor_props(props: AppEditorProps): NormalizedAppEditorProps {
+  if (props.variant === "viewer") {
+    return {
+      ...props,
+      syntax: props.syntax ?? "plain",
+      read_only: true,
+      invalid: false,
+      aria_invalid: false,
+      indent_with_tab: false,
+      marks: empty_app_text_marks,
+    };
+  }
+
+  return {
+    ...props,
+    variant: props.variant ?? "document",
+    syntax: props.variant === "field" ? "plain" : (props.syntax ?? "plain"),
+    wrap_lines: props.variant !== "field",
+    invalid: props.invalid === true,
+    aria_invalid: (props.aria_invalid ?? props.invalid) === true,
+    indent_with_tab: props.indent_with_tab ?? true,
+    marks: props.marks ?? empty_app_text_marks,
+  };
+}
 
 /** 字段形态不允许换行，外部多行值统一折叠为空格。 */
 function normalize_field_editor_value(value: string): string {
@@ -90,18 +151,24 @@ const field_editor_single_line_extension: Extension = [
   ),
 ];
 
-/** 编辑器形态启用行号与空白标记，字段形态只启用单行约束。 */
-function resolve_app_editor_variant_extensions(variant: AppEditorVariant): Extension[] {
-  if (variant === "field") {
-    return [field_editor_single_line_extension];
+/** 三种形态在同一入口声明行号、空白标记与换行契约。 */
+function resolve_app_editor_variant_extensions(
+  variant: AppEditorVariant,
+  wrap_lines: boolean,
+): Extension[] {
+  switch (variant) {
+    case "field":
+      return [field_editor_single_line_extension];
+    case "viewer":
+      return [lineNumbers(), ...(wrap_lines ? [EditorView.lineWrapping] : [])];
+    case "document":
+      return [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        app_editor_whitespace_extension,
+        EditorView.lineWrapping,
+      ];
   }
-
-  return [
-    lineNumbers(),
-    highlightActiveLineGutter(),
-    app_editor_whitespace_extension,
-    EditorView.lineWrapping,
-  ];
 }
 
 /** 外部值进入字段形态前先应用与事务一致的单行规则。 */
@@ -153,7 +220,7 @@ function create_clamped_selection(
 /** 组合只创建一次的基础扩展；运行期变化通过各自 Compartment 重配。 */
 function create_editor_extensions(args: {
   theme_extension: Extension;
-  mode_extension: Extension;
+  syntax_extension: Extension;
   variant_extension: Extension;
   keymap_extension: Extension;
   read_only: boolean;
@@ -165,7 +232,7 @@ function create_editor_extensions(args: {
   return [
     editor_theme_compartment.of(args.theme_extension),
     editor_readonly_compartment.of(resolve_app_editor_readonly_extensions(args.read_only)),
-    editor_mode_compartment.of(args.mode_extension),
+    editor_syntax_compartment.of(args.syntax_extension),
     editor_variant_compartment.of(args.variant_extension),
     app_editor_text_mark_field,
     create_app_editor_text_mark_hover_extension(args.marks_ref),
@@ -188,39 +255,39 @@ function create_editor_extensions(args: {
   ];
 }
 
-/** 受控 CodeMirror 编辑器，统一字段/正文形态、标记和只读语义。 */
+/** 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。 */
 export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolvedTheme } = useTheme();
-  const mode = props.mode ?? "plain";
-  const variant = props.variant ?? "editor";
-  const indent_with_tab = props.indent_with_tab ?? true;
+  const config = normalize_app_editor_props(props);
+  const { indent_with_tab, read_only, syntax, variant, wrap_lines } = config;
   const value = resolve_app_editor_value(props.value, variant);
   const host_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
-  const on_change_ref = useRef(props.on_change);
-  const on_blur_ref = useRef(props.on_blur);
+  const on_change_ref = useRef(config.on_change);
+  const on_blur_ref = useRef(config.on_blur);
   const suppress_change_ref = useRef(false);
   // EditorView 生命周期独立于 React 重渲染，首帧配置固定后只通过 Compartment 同步。
   const initial_value_ref = useRef(value);
   const initial_aria_label_ref = useRef(props.aria_label);
-  const initial_aria_invalid_ref = useRef((props.aria_invalid ?? props.invalid) === true);
-  const initial_read_only_ref = useRef(props.read_only);
-  const initial_mode_ref = useRef(mode);
+  const initial_aria_invalid_ref = useRef(config.aria_invalid);
+  const initial_read_only_ref = useRef(read_only);
+  const initial_syntax_ref = useRef(syntax);
   const initial_variant_ref = useRef(variant);
+  const initial_wrap_lines_ref = useRef(wrap_lines);
   const initial_indent_with_tab_ref = useRef(indent_with_tab);
-  const initial_marks_ref = useRef(normalize_app_text_marks(value.length, props.marks ?? []));
+  const initial_marks_ref = useRef(normalize_app_text_marks(value.length, config.marks));
   const marks_ref = useRef<readonly AppTextMark[]>(initial_marks_ref.current);
   const initial_theme_extension_ref = useRef(
-    resolve_app_editor_theme_extensions(resolvedTheme, mode),
+    resolve_app_editor_theme_extensions(resolvedTheme, syntax),
   );
 
   useEffect(() => {
-    on_change_ref.current = props.on_change;
-  }, [props.on_change]);
+    on_change_ref.current = config.on_change;
+  }, [config.on_change]);
 
   useEffect(() => {
-    on_blur_ref.current = props.on_blur;
-  }, [props.on_blur]);
+    on_blur_ref.current = config.on_blur;
+  }, [config.on_blur]);
 
   useEffect(() => {
     if (host_ref.current === null) {
@@ -231,8 +298,11 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       doc: initial_value_ref.current,
       extensions: create_editor_extensions({
         theme_extension: initial_theme_extension_ref.current,
-        mode_extension: resolve_app_editor_mode_extensions(initial_mode_ref.current),
-        variant_extension: resolve_app_editor_variant_extensions(initial_variant_ref.current),
+        syntax_extension: resolve_app_editor_syntax_extensions(initial_syntax_ref.current),
+        variant_extension: resolve_app_editor_variant_extensions(
+          initial_variant_ref.current,
+          initial_wrap_lines_ref.current,
+        ),
         keymap_extension: editor_keymap_compartment.of(
           resolve_app_editor_keymap_extension(initial_indent_with_tab_ref.current),
         ),
@@ -277,11 +347,8 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     }
 
     editor_view.contentDOM.setAttribute("aria-label", props.aria_label);
-    editor_view.contentDOM.setAttribute(
-      "aria-invalid",
-      (props.aria_invalid ?? props.invalid) === true ? "true" : "false",
-    );
-  }, [props.aria_invalid, props.aria_label, props.invalid]);
+    editor_view.contentDOM.setAttribute("aria-invalid", config.aria_invalid ? "true" : "false");
+  }, [config.aria_invalid, props.aria_label]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -291,10 +358,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     editor_view.dispatch({
       effects: editor_theme_compartment.reconfigure(
-        resolve_app_editor_theme_extensions(resolvedTheme, mode),
+        resolve_app_editor_theme_extensions(resolvedTheme, syntax),
       ),
     });
-  }, [mode, resolvedTheme]);
+  }, [resolvedTheme, syntax]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -303,9 +370,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     }
 
     editor_view.dispatch({
-      effects: editor_mode_compartment.reconfigure(resolve_app_editor_mode_extensions(mode)),
+      effects: editor_syntax_compartment.reconfigure(resolve_app_editor_syntax_extensions(syntax)),
     });
-  }, [mode]);
+  }, [syntax]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -315,10 +382,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     editor_view.dispatch({
       effects: editor_variant_compartment.reconfigure(
-        resolve_app_editor_variant_extensions(variant),
+        resolve_app_editor_variant_extensions(variant, wrap_lines),
       ),
     });
-  }, [variant]);
+  }, [variant, wrap_lines]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -341,10 +408,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     editor_view.dispatch({
       effects: editor_readonly_compartment.reconfigure(
-        resolve_app_editor_readonly_extensions(props.read_only),
+        resolve_app_editor_readonly_extensions(read_only),
       ),
     });
-  }, [props.read_only]);
+  }, [read_only]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -380,23 +447,25 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       return;
     }
 
-    const next_marks = normalize_app_text_marks(value.length, props.marks ?? []);
+    const next_marks = normalize_app_text_marks(value.length, config.marks);
     marks_ref.current = next_marks;
     editor_view.dispatch({
       effects: set_app_editor_text_marks_effect.of(next_marks),
     });
-  }, [props.marks, value]);
+  }, [config.marks, value]);
 
   return (
     <div
       ref={host_ref}
-      data-invalid={props.invalid === true ? "true" : undefined}
-      data-readonly={props.read_only ? "true" : undefined}
+      data-invalid={config.invalid ? "true" : undefined}
+      data-readonly={read_only ? "true" : undefined}
       className={cn(
         "app-editor",
         variant === "field" ? "app-editor--field" : undefined,
-        props.read_only ? "app-editor--readonly" : undefined,
-        props.invalid === true ? "app-editor--invalid" : undefined,
+        variant === "viewer" ? "app-editor--viewer" : undefined,
+        wrap_lines ? "app-editor--wrap-lines" : undefined,
+        read_only && variant !== "viewer" ? "app-editor--readonly" : undefined,
+        config.invalid ? "app-editor--invalid" : undefined,
         props.class_name,
       )}
     />

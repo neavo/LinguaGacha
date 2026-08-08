@@ -393,12 +393,13 @@ describe("AgentPage", () => {
       render_page({
         state: "running",
         entries: [
+          user_entry("user-thinking", "开始检查", "running", 0, null),
           assistant_parts_entry("assistant-thinking", [{ kind: "thinking", text }], "running", 1),
         ],
       });
     const view = await render_thinking("第一步\n第二步");
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    const thinking = view.querySelector<HTMLPreElement>(".agent-detail-entry--thinking pre");
+    const thinking = view.querySelector<HTMLPreElement>(".agent-thinking-entry pre");
     if (conversation === null || thinking === null) throw new Error("缺少嵌套滚动容器");
     let outer_top = 600;
     let inner_top = 240;
@@ -612,7 +613,10 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   ];
   return {
     state: "idle",
-    entries: [assistant_entry("assistant-1", "**变更方案**", "success", 1)],
+    entries: [
+      user_entry("user-1", "开始", "success", 0, 1),
+      assistant_entry("assistant-1", "**变更方案**", "success", 1),
+    ],
     skills,
     contextTokens: overrides.contextTokens ?? null,
     transport: "ready",

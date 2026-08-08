@@ -1,5 +1,6 @@
 import { tags } from "@lezer/highlight";
 
+import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import {
@@ -23,7 +24,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
-export type AppEditorMode = "plain" | "markdown";
+export type AppEditorSyntax = "plain" | "markdown" | "json";
 export type AppTextMarkTone = "success" | "warning";
 
 export type AppTextMark = {
@@ -44,6 +45,13 @@ type MarkdownPalette = {
   separator: string;
 };
 
+type JsonPalette = {
+  property: string;
+  string: string;
+  number: string;
+  literal: string;
+};
+
 type EditorPalette = {
   background: string;
   foreground: string;
@@ -52,6 +60,7 @@ type EditorPalette = {
   gutter_active_foreground: string;
   active_line_background: string;
   markdown: MarkdownPalette;
+  json: JsonPalette;
 };
 
 // CodeMirror 主题不读取 DOM token，明暗 palette 在扩展创建时冻结并随主题重配。
@@ -72,6 +81,12 @@ const light_editor_palette: EditorPalette = {
     quote: "#6e7781",
     separator: "#9a6700",
   },
+  json: {
+    property: "#0451a5",
+    string: "#a31515",
+    number: "#098658",
+    literal: "#0000ff",
+  },
 };
 
 const dark_editor_palette: EditorPalette = {
@@ -90,6 +105,12 @@ const dark_editor_palette: EditorPalette = {
     link: "#569cd6",
     quote: "#8b949e",
     separator: "#d7ba7d",
+  },
+  json: {
+    property: "#9cdcfe",
+    string: "#ce9178",
+    number: "#b5cea8",
+    literal: "#569cd6",
   },
 };
 
@@ -371,16 +392,31 @@ function create_markdown_highlight_extension(palette: EditorPalette): Extension 
   );
 }
 
-/** 普通模式只返回基础主题，Markdown 模式再叠加语义高亮。 */
+/** 按统一 palette 生成 JSON 语义高亮。 */
+function create_json_highlight_extension(palette: EditorPalette): Extension {
+  return syntaxHighlighting(
+    HighlightStyle.define([
+      { tag: tags.propertyName, color: palette.json.property },
+      { tag: tags.string, color: palette.json.string },
+      { tag: tags.number, color: palette.json.number },
+      { tag: [tags.bool, tags.null], color: palette.json.literal },
+    ]),
+  );
+}
+
+/** 普通语法只返回基础主题，结构化语法再叠加对应高亮。 */
 export function resolve_app_editor_theme_extensions(
   resolved_theme: string | undefined,
-  mode: AppEditorMode,
+  syntax: AppEditorSyntax,
 ): Extension {
   const palette = resolved_theme === "dark" ? dark_editor_palette : light_editor_palette;
   const base_theme = create_editor_theme(palette, resolved_theme === "dark");
 
-  if (mode === "markdown") {
+  if (syntax === "markdown") {
     return [base_theme, create_markdown_highlight_extension(palette)];
+  }
+  if (syntax === "json") {
+    return [base_theme, create_json_highlight_extension(palette)];
   }
 
   return base_theme;
@@ -404,10 +440,13 @@ export const app_editor_whitespace_extension: Extension = [
   fullwidth_space_highlight_extension,
 ];
 
-/** 仅 Markdown 模式启用语言解析与稳定高亮，纯文本模式不承担额外语法成本。 */
-export function resolve_app_editor_mode_extensions(mode: AppEditorMode): Extension {
-  if (mode === "markdown") {
+/** 仅结构化语法启用语言解析，纯文本不承担额外语法成本。 */
+export function resolve_app_editor_syntax_extensions(syntax: AppEditorSyntax): Extension {
+  if (syntax === "markdown") {
     return markdown({ base: markdownLanguage });
+  }
+  if (syntax === "json") {
+    return json();
   }
 
   return [];

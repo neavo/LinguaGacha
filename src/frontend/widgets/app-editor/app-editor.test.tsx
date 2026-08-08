@@ -120,6 +120,50 @@ describe("AppEditor", () => {
     expect(content.getAttribute("contenteditable")).toBe("true");
   });
 
+  it("查看器固定只读和行号，并在切换换行时保留同一内容节点", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <AppEditor
+          variant="viewer"
+          value={'{"name":"Alice Smith"}'}
+          syntax="json"
+          aria_label="工具输出"
+          wrap_lines={false}
+        />,
+      );
+    });
+
+    const editor = container.querySelector(".app-editor--viewer");
+    const content = get_editor_content(container);
+    expect(editor?.classList.contains("app-editor--readonly")).toBe(false);
+    expect(editor?.classList.contains("app-editor--wrap-lines")).toBe(false);
+    expect(content.getAttribute("contenteditable")).toBe("false");
+    expect(content.getAttribute("tabindex")).toBe("0");
+    expect(container.querySelector(".cm-lineNumbers")).not.toBeNull();
+    expect(container.querySelector(".cm-highlightSpace")).toBeNull();
+    expect(container.querySelector(".cm-line span")).not.toBeNull();
+
+    await act(async () => {
+      root?.render(
+        <AppEditor
+          variant="viewer"
+          value={'{"name":"Alice Smith"}'}
+          syntax="json"
+          aria_label="工具输出"
+          wrap_lines
+        />,
+      );
+    });
+
+    expect(container.querySelector(".app-editor--wrap-lines")).not.toBeNull();
+    expect(get_editor_content(container)).toBe(content);
+    expect(content.textContent).toBe('{"name":"Alice Smith"}');
+  });
+
   it("默认使用 Tab 缩进", async () => {
     container = document.createElement("div");
     document.body.append(container);

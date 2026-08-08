@@ -23,15 +23,20 @@ export type AgentSessionState = "idle" | "running";
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
-/** 工具条目保留原始工具名与模型实际收到的完整文本输出；参数不进入公开会话。 */
-export type AgentToolEntry = JsonRecord & {
+type AgentToolEntryBase = JsonRecord & {
   kind: "tool_call";
   id: string;
   toolName: string;
-  status: AgentEntryStatus;
-  output: string | null;
+  input: string;
   createdAt: number;
 };
+
+/** 工具条目冻结完整输入；只有 SDK 工具终帧能产生带文本输出的成功或失败终态。 */
+export type AgentToolEntry = AgentToolEntryBase &
+  (
+    | { status: "running" | "stopped"; output: null }
+    | { status: "success" | "error"; output: string }
+  );
 
 /** 上下文压缩沿用时间线条目状态；压缩不可停止，因此不公开 stopped。 */
 export type AgentContextCompactionEntry = JsonRecord & {
