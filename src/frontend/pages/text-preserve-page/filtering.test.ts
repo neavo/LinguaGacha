@@ -27,9 +27,8 @@ describe("text preserve filtering", () => {
     expect(
       sort_text_preserve_entries(entries, { column_id: "hit", direction: "descending" }, true, {
         running: false,
-        completed_snapshot: null,
-        completed_entry_ids: ["a", "b", "c"],
-        matched_count_by_entry_id: { a: 1, b: 3, c: 1 },
+        entry_ids: ["a", "b", "c"],
+        hits_by_entry_id: { a: 1, b: 3, c: 1 },
       }).map((entry) => entry.entry_id),
     ).toEqual(["b", "a", "c"]);
   });

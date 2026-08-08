@@ -1,15 +1,17 @@
 import { compile_literal_patterns, normalize_literal_text } from "../text/literal-matcher";
 
+/** 潜在词根按用户可见字符切分，避免拆开代理对或组合字符。 */
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
-const MIN_LATENT_ROOT_GRAPHEMES = 2;
-const MIN_LATENT_ROOT_COVERAGE = 0.5;
-const MAX_LATENT_GROUP_ENTRIES = 12;
+const MIN_LATENT_ROOT_GRAPHEMES = 2; // 单字相似不足以形成共同审校关系
+const MIN_LATENT_ROOT_COVERAGE = 0.5; // 词根至少覆盖每个候选的一半
+const MAX_LATENT_GROUP_ENTRIES = 12; // 限制弱关系组规模，强包含组不受此限制
 
 export type QualityRuleRelationCandidate = {
   entry_id: string; // 关系结果与规则条目的稳定关联键
-  src: string; // 只有字面量规则参与结构关系
+  src: string; // 规则匹配文本
+  pattern_kind: "literal" | "regex"; // 正则只参与确定性重复分组
   case_sensitive: boolean; // 强包含关系复用规则真实的大小写策略
 };
 
@@ -19,30 +21,30 @@ export type QualityRuleRelations = {
 };
 
 type StrongGroup = {
-  entry_indexes: number[];
+  entry_indexes: number[]; // 同一强连通分量内的原始候选位置
 };
 
 type StrongRelations = {
-  subset_parents_by_entry_id: Record<string, string[]>;
-  groups: StrongGroup[];
+  subset_parents_by_entry_id: Record<string, string[]>; // 只记录真实部分包含关系
+  groups: StrongGroup[]; // 强关系形成的互斥连通分量
 };
 
 type RootOccurrence = {
-  coverage: number;
-  first_entry_index: number;
+  coverage: number; // 该词根在强组内候选中的最大覆盖率
+  first_entry_index: number; // 强组内最早候选位置，用于稳定排序
 };
 
 type RootIndexEntry = {
-  root_length: number;
-  occurrences: Map<number, RootOccurrence>;
+  root_length: number; // 以 grapheme 计的词根长度
+  occurrences: Map<number, RootOccurrence>; // strong group index 到覆盖证据
 };
 
 type LatentAnchor = {
-  root: string;
-  root_length: number;
-  strong_group_indexes: number[];
-  min_coverage: number;
-  first_entry_index: number;
+  root: string; // 能直接覆盖全部待合并强组的单一连续词根
+  root_length: number; // 优先选择更长、更具体的词根
+  strong_group_indexes: number[]; // 由该词根直接覆盖的强组
+  min_coverage: number; // 所有强组中的最低覆盖率
+  first_entry_index: number; // 用于确定性打破同分关系
 };
 
 /**
@@ -52,18 +54,34 @@ type LatentAnchor = {
 export function analyze_quality_rule_relations(
   candidates: QualityRuleRelationCandidate[],
 ): QualityRuleRelations {
-  const strong_relations = analyze_strong_relations(candidates);
+  const literal_candidates = candidates.filter((candidate) => candidate.pattern_kind === "literal");
+  const strong_relations = analyze_strong_relations(literal_candidates);
+  const literal_groups = merge_latent_groups(literal_candidates, strong_relations.groups);
+  const regex_groups = group_regex_candidates(candidates);
+  const input_index_by_entry_id = new Map(
+    candidates.map((candidate, index) => [candidate.entry_id, index] as const),
+  );
   return {
     subset_parents_by_entry_id: strong_relations.subset_parents_by_entry_id,
-    groups: merge_latent_groups(candidates, strong_relations.groups),
+    groups: [...literal_groups, ...regex_groups].toSorted((left, right) => {
+      const left_index = input_index_by_entry_id.get(left[0] ?? "") ?? Number.MAX_SAFE_INTEGER;
+      const right_index = input_index_by_entry_id.get(right[0] ?? "") ?? Number.MAX_SAFE_INTEGER;
+      return left_index - right_index;
+    }),
   };
 }
 
-/** 统计任务只需要真实包含父级，不承担潜在词根分组成本。 */
-export function find_quality_rule_subset_parents(
-  candidates: QualityRuleRelationCandidate[],
-): Record<string, string[]> {
-  return analyze_strong_relations(candidates).subset_parents_by_entry_id;
+/** 正则语义不可由源码包含关系推导，只合并执行配置完全相同的规则。 */
+function group_regex_candidates(candidates: QualityRuleRelationCandidate[]): string[][] {
+  const groups_by_signature = new Map<string, string[]>();
+  for (const candidate of candidates) {
+    if (candidate.pattern_kind !== "regex") continue;
+    const signature = JSON.stringify([candidate.src, candidate.case_sensitive]);
+    const group = groups_by_signature.get(signature) ?? [];
+    group.push(candidate.entry_id);
+    groups_by_signature.set(signature, group);
+  }
+  return [...groups_by_signature.values()];
 }
 
 /** 真实字面量包含或匹配等价关系使用并查集形成不可拆分的强组。 */
@@ -82,6 +100,7 @@ function analyze_strong_relations(candidates: QualityRuleRelationCandidate[]): S
   );
   const parents = candidates.map((_candidate, index) => index);
   const sizes = candidates.map(() => 1);
+  /** 查找并压缩并查集路径。 */
   const find = (index: number): number => {
     let root = index;
     while (parents[root] !== root) root = parents[root] ?? root;
@@ -92,6 +111,7 @@ function analyze_strong_relations(candidates: QualityRuleRelationCandidate[]): S
     }
     return root;
   };
+  /** 按集合大小合并强关系，避免树退化。 */
   const union = (left: number, right: number): void => {
     let left_root = find(left);
     let right_root = find(right);
@@ -248,10 +268,12 @@ function merge_latent_groups(
     .map((group) => group.entry_ids);
 }
 
+/** 把规范化文本拆成用户可见字符，供连续词根枚举使用。 */
 function segment_graphemes(text: string): string[] {
   return [...GRAPHEME_SEGMENTER.segment(text)].map((segment) => segment.segment);
 }
 
+/** 同一组集合只保留最长词根，再以输入顺序和文本稳定打破平局。 */
 function compare_same_group_anchors(left: LatentAnchor, right: LatentAnchor): number {
   return (
     right.root_length - left.root_length ||
@@ -260,6 +282,7 @@ function compare_same_group_anchors(left: LatentAnchor, right: LatentAnchor): nu
   );
 }
 
+/** 全局先分配更具体、更强且覆盖更多组的词根，阻止弱关系传递扩张。 */
 function compare_latent_anchors(left: LatentAnchor, right: LatentAnchor): number {
   return (
     right.root_length - left.root_length ||
@@ -270,6 +293,7 @@ function compare_latent_anchors(left: LatentAnchor, right: LatentAnchor): number
   );
 }
 
+/** 不依赖运行时 locale 的确定性文本顺序。 */
 function compare_text(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }

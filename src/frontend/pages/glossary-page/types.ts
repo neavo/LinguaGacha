@@ -1,5 +1,3 @@
-import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
-
 export type { GlossaryEntry } from "@shared/quality/glossary";
 import type { GlossaryEntry } from "@shared/quality/glossary";
 
@@ -26,19 +24,18 @@ export type GlossaryFilterState = {
 };
 
 export type GlossaryHitState = {
-  running: boolean;
-  completed_snapshot: QualityStatisticsDependencySnapshot | null;
-  completed_entry_ids: GlossaryEntryId[];
-  matched_count_by_entry_id: Record<GlossaryEntryId, number>;
-  subset_parent_labels_by_entry_id: Record<GlossaryEntryId, string[]>;
+  running: boolean; // 首次分析是否仍在计算
+  entry_ids: GlossaryEntryId[] | null; // null 表示尚无可展示结果
+  hits_by_entry_id: Record<GlossaryEntryId, number>; // 已完成规则的 item 命中数
+  subset_parents_by_entry_id: Record<GlossaryEntryId, string[]>; // 字面量真实包含父文本
 };
 
 export type GlossaryHitBadgeKind = "matched" | "unmatched" | "related";
 
 export type GlossaryHitBadgeState = {
   kind: GlossaryHitBadgeKind;
-  matched_count: number;
-  subset_parent_labels: string[];
+  hits: number;
+  subset_parents: string[]; // tooltip 展示的父规则原文
   tooltip: string;
 };
 

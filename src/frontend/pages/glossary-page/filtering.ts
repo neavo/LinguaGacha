@@ -63,8 +63,8 @@ function resolve_glossary_sort_comparison(
     return direction === "ascending" ? left_value - right_value : right_value - left_value;
   }
 
-  const left_value = hit_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
-  const right_value = hit_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
+  const left_value = hit_state.hits_by_entry_id[left_entry.entry_id] ?? 0;
+  const right_value = hit_state.hits_by_entry_id[right_entry.entry_id] ?? 0;
   return direction === "ascending" ? left_value - right_value : right_value - left_value;
 }
 

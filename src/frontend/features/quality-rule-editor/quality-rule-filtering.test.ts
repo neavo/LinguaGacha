@@ -24,8 +24,8 @@ describe("quality rule filtering", () => {
 
   it("从统计事实解析徽章状态", () => {
     const statistics_state = {
-      matched_count_by_entry_id: { related: 2, missing: 0 },
-      subset_parent_labels_by_entry_id: { related: ["parent"] },
+      hits_by_entry_id: { related: 2, missing: 0 },
+      subset_parents_by_entry_id: { related: ["parent"] },
     };
     const completed = new Set(["related", "missing"]);
 
@@ -39,8 +39,8 @@ describe("quality rule filtering", () => {
       resolve_quality_rule_hit_badge_kind(
         "matched",
         {
-          matched_count_by_entry_id: { matched: 1 },
-          subset_parent_labels_by_entry_id: { matched: [] },
+          hits_by_entry_id: { matched: 1 },
+          subset_parents_by_entry_id: { matched: [] },
         },
         new Set(["matched"]),
       ),

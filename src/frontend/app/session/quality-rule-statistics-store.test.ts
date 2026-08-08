@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import {
   createEmptyQualityRuleStatisticsCacheSnapshot,
   createQualityRuleStatisticsStore,
@@ -13,21 +12,6 @@ import {
   type QualityRuleStatisticsProjectChangeSignal,
 } from "@frontend/app/session/quality-rule-statistics-store";
 
-// 测试快照只保留一个有语义的规则，便于确认 phase helper 不依赖规则数量。
-const TEST_STATISTICS_SNAPSHOT: QualityStatisticsDependencySnapshot = {
-  text_source: "src",
-  text_signature: "texts",
-  dependency_signature: "deps",
-  snapshot_signature: "snapshot",
-  rules: [
-    {
-      key: "apple::0",
-      dependency_signature: "apple",
-      token: "apple",
-    },
-  ],
-};
-
 /**
  * 构造指定 phase 的已完成缓存，用公开 builder 保持结果形状贴近真实运行态。
  */
@@ -37,11 +21,9 @@ function create_cache_with_phase(
   return {
     ...createEmptyQualityRuleStatisticsCacheSnapshot(),
     phase,
-    current_snapshot: TEST_STATISTICS_SNAPSHOT,
-    completed_snapshot: TEST_STATISTICS_SNAPSHOT,
-    completed_entry_ids: ["apple::0"],
-    matched_count_by_entry_id: { "apple::0": 1 },
-    subset_parent_labels_by_entry_id: { "apple::0": [] },
+    entry_ids: ["apple::0"],
+    hits_by_entry_id: { "apple::0": 1 },
+    subset_parents_by_entry_id: { "apple::0": [] },
     updated_at: Date.now(),
   };
 }
@@ -71,16 +53,10 @@ function create_project_change_signal(
 }
 
 describe("quality rule statistics cache helpers", () => {
-  it("页面前台刷新只补算空缓存和待刷新缓存", () => {
+  it("页面前台刷新只补算空缓存", () => {
     expect(
       shouldRequestQualityRuleStatisticsForeground(createEmptyQualityRuleStatisticsCacheSnapshot()),
     ).toBe(true);
-
-    (["scheduled"] satisfies QualityRuleStatisticsCachePhase[]).forEach((phase) => {
-      expect(shouldRequestQualityRuleStatisticsForeground(create_cache_with_phase(phase))).toBe(
-        true,
-      );
-    });
 
     (["running", "current", "failed"] satisfies QualityRuleStatisticsCachePhase[]).forEach(
       (phase) => {
@@ -95,7 +71,7 @@ describe("quality rule statistics cache helpers", () => {
     expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("current"))).toBe(true);
     expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("running"))).toBe(false);
     expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("running"))).toBe(true);
-    expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("scheduled"))).toBe(false);
+    expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("current"))).toBe(false);
   });
 
   it("updateCache 返回原对象时不通知订阅者", () => {

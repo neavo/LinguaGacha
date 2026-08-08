@@ -38,12 +38,12 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
+import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
-import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { create_agent_item_tools, type AgentProofreading } from "./agent-item-tools";
 import { register_agent_model } from "./agent-model";
 import { create_agent_project_tools } from "./agent-project-tools";
@@ -130,10 +130,10 @@ type AgentServiceOptions = {
   userAgent: string;
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
+  qualityAnalysis: Pick<QualityRuleAnalysisCache, "read">;
   qualityRules: Pick<QualityRuleService, "query" | "update_from_agent">;
   proofreading: AgentProofreading;
   runtimeGate: RuntimeOperationGate;
-  computeWorker: ComputeWorkerClient;
   webFetch: AgentWebFetchPort | undefined;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
@@ -154,10 +154,10 @@ export class AgentService {
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly cache: AgentServiceOptions["cache"];
+  private readonly quality_analysis: AgentServiceOptions["qualityAnalysis"];
   private readonly quality_rules: AgentServiceOptions["qualityRules"];
   private readonly proofreading: AgentServiceOptions["proofreading"];
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
-  private readonly compute_worker: ComputeWorkerClient;
   private readonly web_fetch: AgentWebFetchPort | undefined; // 缺失即不向模型注册 GUI 专属联网工具
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
@@ -183,10 +183,10 @@ export class AgentService {
     this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.cache = options.cache;
+    this.quality_analysis = options.qualityAnalysis;
     this.quality_rules = options.qualityRules;
     this.proofreading = options.proofreading;
     this.runtime_gate = options.runtimeGate;
-    this.compute_worker = options.computeWorker;
     this.web_fetch = options.webFetch;
     this.log_manager = options.logManager;
     this.publish = options.publish;
@@ -525,8 +525,7 @@ export class AgentService {
         }),
         ...create_agent_quality_tools({
           qualityRules: this.quality_rules,
-          cache: this.cache,
-          computeWorker: this.compute_worker,
+          qualityAnalysis: this.quality_analysis,
         }),
         ...create_agent_item_tools({
           cache: this.cache,

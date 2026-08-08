@@ -27,8 +27,8 @@ const quality_query_state = vi.hoisted(() => ({
 }));
 const quality_statistics_state = vi.hoisted(() => ({
   current: {
-    completed_entry_ids: [] as string[],
-    matched_count_by_entry_id: {} as Record<string, number>,
+    entry_ids: [] as string[],
+    hits_by_entry_id: {} as Record<string, number>,
   },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
@@ -143,8 +143,8 @@ describe("AgentPage", () => {
     quality_query_state.entries = [];
     quality_query_state.last_args = null;
     quality_statistics_state.current = {
-      completed_entry_ids: [],
-      matched_count_by_entry_id: {},
+      entry_ids: [],
+      hits_by_entry_id: {},
     };
     push_toast.mockReset();
     model_agent_limits.context_window = 288_000;
@@ -261,8 +261,8 @@ describe("AgentPage", () => {
       },
     ];
     quality_statistics_state.current = {
-      completed_entry_ids: ["alice"],
-      matched_count_by_entry_id: { alice: 7 },
+      entry_ids: ["alice"],
+      hits_by_entry_id: { alice: 7 },
     };
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });

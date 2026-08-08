@@ -259,17 +259,15 @@ function normalize_glossary_quality_slice(
 function build_hit_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: GlossaryEntry,
-  matched_count: number,
-  subset_parent_labels: string[],
+  hits: number,
+  subset_parents: string[],
 ): string {
-  const tooltip_lines = [
-    t("quality_editor.hit.hit_count").replace("{COUNT}", matched_count.toString()),
-  ];
+  const tooltip_lines = [t("quality_editor.hit.hit_count").replace("{COUNT}", hits.toString())];
 
-  if (subset_parent_labels.length > 0) {
+  if (subset_parents.length > 0) {
     tooltip_lines.push(t("quality_editor.hit.subset_relations"));
     tooltip_lines.push(
-      ...subset_parent_labels.map((label) => {
+      ...subset_parents.map((label) => {
         return `${entry.src} -> ${label}`;
       }),
     );
@@ -287,10 +285,9 @@ function build_glossary_hit_state_from_cache(
   // 页面只从质量统计缓存计算展示状态，不持有也不修改项目质量规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
-    completed_snapshot: statistics_cache.completed_snapshot,
-    completed_entry_ids: statistics_cache.completed_entry_ids,
-    matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
-    subset_parent_labels_by_entry_id: statistics_cache.subset_parent_labels_by_entry_id,
+    entry_ids: statistics_cache.entry_ids,
+    hits_by_entry_id: statistics_cache.hits_by_entry_id,
+    subset_parents_by_entry_id: statistics_cache.subset_parents_by_entry_id,
   };
 }
 
@@ -429,7 +426,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return build_glossary_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
-  const hit_sort_available = hit_ready || hit_state.completed_snapshot !== null;
+  const hit_sort_available = hit_ready || hit_state.entry_ids !== null;
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
   }, [dialog_state]);
@@ -463,8 +460,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
   const completed_hit_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
-    return new Set(hit_state.completed_entry_ids);
-  }, [hit_state.completed_entry_ids]);
+    return new Set(hit_state.entry_ids ?? []);
+  }, [hit_state.entry_ids]);
   const build_result_snapshot = useCallback(
     (
       next_filter_state: GlossaryFilterState,
@@ -554,7 +551,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const drag_disabled = readonly || has_active_filters || has_active_sort; // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用
   const hit_badge_by_entry_id = useMemo<Record<GlossaryEntryId, GlossaryHitBadgeState>>(() => {
     const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState> = {};
-    if (!hit_ready && hit_state.completed_snapshot === null) {
+    if (!hit_ready && hit_state.entry_ids === null) {
       return next_badge_by_entry_id;
     }
 
@@ -573,14 +570,14 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
-      const subset_parent_labels = hit_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
+      const hits = hit_state.hits_by_entry_id[entry_id] ?? 0;
+      const subset_parents = hit_state.subset_parents_by_entry_id[entry_id] ?? [];
 
       next_badge_by_entry_id[entry_id] = {
         kind,
-        matched_count,
-        subset_parent_labels,
-        tooltip: build_hit_badge_tooltip(t, entry, matched_count, subset_parent_labels),
+        hits,
+        subset_parents,
+        tooltip: build_hit_badge_tooltip(t, entry, hits, subset_parents),
       };
     });
 

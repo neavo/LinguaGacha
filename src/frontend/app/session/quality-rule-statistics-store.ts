@@ -1,5 +1,4 @@
 import { QUALITY_RULE_KINDS } from "@domain/quality";
-import { type QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import {
   resolve_quality_statistics_item_text_change_scope,
   type QualityStatisticsTextChangeScope,
@@ -13,20 +12,13 @@ export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_RULE_KINDS;
 export type QualityRuleStatisticsRuleType = (typeof QUALITY_RULE_STATISTICS_RULE_TYPES)[number];
 
 // phase 是质量统计缓存唯一的刷新状态源，避免 loose boolean 组合出现不可达中间态。
-export type QualityRuleStatisticsCachePhase =
-  | "empty"
-  | "scheduled"
-  | "running"
-  | "current"
-  | "failed";
+export type QualityRuleStatisticsCachePhase = "empty" | "running" | "current" | "failed";
 
 export type QualityRuleStatisticsCacheSnapshot = {
   phase: QualityRuleStatisticsCachePhase; // 页面刷新、排序可用性和前台补算的唯一判定入口。
-  current_snapshot: QualityStatisticsDependencySnapshot | null; // 记录最近一次观察到的项目依赖快照。
-  completed_snapshot: QualityStatisticsDependencySnapshot | null; // 记录统计结果实际对应的依赖快照。
-  completed_entry_ids: string[]; // 约束页面只展示当前完成快照内的条目结果。
-  matched_count_by_entry_id: Record<string, number>; // 徽标命中数的计算结果表。
-  subset_parent_labels_by_entry_id: Record<string, string[]>; // 子集关系徽标的计算结果表。
+  entry_ids: string[] | null; // null 区分尚无结果和已完成的空规则集合。
+  hits_by_entry_id: Record<string, number>; // 徽标 hits 的计算结果表。
+  subset_parents_by_entry_id: Record<string, string[]>; // 子集关系徽标的计算结果表。
   last_error: Error | null; // 只描述最近一次统计执行失败，不参与项目事实判断。
   request_token: number; // 废弃迟到刷新结果，保证旧 in-flight 不能覆盖新缓存。
   updated_at: number | null; // 仅用于调试观察，不作为缓存新旧依据。
@@ -71,11 +63,9 @@ export type QualityRuleStatisticsStore = {
 export function createEmptyQualityRuleStatisticsCacheSnapshot(): QualityRuleStatisticsCacheSnapshot {
   return {
     phase: "empty",
-    current_snapshot: null,
-    completed_snapshot: null,
-    completed_entry_ids: [],
-    matched_count_by_entry_id: {},
-    subset_parent_labels_by_entry_id: {},
+    entry_ids: null,
+    hits_by_entry_id: {},
+    subset_parents_by_entry_id: {},
     last_error: null,
     request_token: 0,
     updated_at: null,
@@ -92,7 +82,7 @@ export function isQualityRuleStatisticsCacheReady(
 }
 
 /**
- * running 只表示统计正在计算；scheduled 仍可继续展示旧结果。
+ * running 只表示首次统计正在计算；刷新已有结果时继续保持 current 展示旧值。
  */
 export function isQualityRuleStatisticsCacheRunning(
   cache: QualityRuleStatisticsCacheSnapshot,
@@ -106,7 +96,7 @@ export function isQualityRuleStatisticsCacheRunning(
 export function shouldRequestQualityRuleStatisticsForeground(
   cache: QualityRuleStatisticsCacheSnapshot,
 ): boolean {
-  return cache.phase === "empty" || cache.phase === "scheduled";
+  return cache.phase === "empty";
 }
 
 /**

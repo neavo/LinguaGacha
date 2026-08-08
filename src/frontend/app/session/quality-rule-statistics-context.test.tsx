@@ -101,25 +101,11 @@ function create_statistics_snapshot(
 ): QualityRuleStatisticsCacheSnapshot {
   return {
     phase: "current",
-    current_snapshot: {
-      text_source: "src",
-      text_signature: "source",
-      dependency_signature: "current",
-      snapshot_signature: "current",
-      rules: [],
-    },
-    completed_snapshot: {
-      text_source: "src",
-      text_signature: "source",
-      dependency_signature: "completed",
-      snapshot_signature: "completed",
-      rules: [],
-    },
-    completed_entry_ids: ["苹果::0"],
-    matched_count_by_entry_id: {
+    entry_ids: ["苹果::0"],
+    hits_by_entry_id: {
       "苹果::0": 1,
     },
-    subset_parent_labels_by_entry_id: {},
+    subset_parents_by_entry_id: {},
     last_error: null,
     request_token: 0,
     updated_at: null,
@@ -237,8 +223,8 @@ describe("QualityRuleStatisticsProvider", () => {
     });
     expect(snapshots.at(-1)).toMatchObject({
       phase: "current",
-      completed_entry_ids: ["苹果::0"],
-      matched_count_by_entry_id: {
+      entry_ids: ["苹果::0"],
+      hits_by_entry_id: {
         "苹果::0": 1,
       },
       last_error: null,
@@ -274,7 +260,7 @@ describe("QualityRuleStatisticsProvider", () => {
       deferred.resolve({
         projectPath: "E:/demo/old.lg",
         statistics: create_statistics_snapshot({
-          completed_entry_ids: ["过期::0"],
+          entry_ids: ["过期::0"],
         }),
       });
       await deferred.promise;
@@ -289,7 +275,7 @@ describe("QualityRuleStatisticsProvider", () => {
     });
     expect(snapshots.at(-1)).toMatchObject({
       phase: "running",
-      completed_entry_ids: [],
+      entry_ids: null,
     });
   });
 
@@ -325,18 +311,18 @@ describe("QualityRuleStatisticsProvider", () => {
       .mockResolvedValueOnce({
         projectPath: "E:/demo/sample.lg",
         statistics: create_statistics_snapshot({
-          matched_count_by_entry_id: { "苹果::0": 1 },
+          hits_by_entry_id: { "苹果::0": 1 },
         }),
       })
       .mockResolvedValueOnce({
         projectPath: "E:/demo/sample.lg",
         statistics: create_statistics_snapshot({
-          matched_count_by_entry_id: { "苹果::0": 3 },
+          hits_by_entry_id: { "苹果::0": 3 },
         }),
       });
 
     await render_provider("glossary");
-    await wait_for_condition(() => snapshots.at(-1)?.matched_count_by_entry_id["苹果::0"] === 1);
+    await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 1);
 
     current_project_change_signal = create_project_change_signal({
       seq: 1,
@@ -345,7 +331,7 @@ describe("QualityRuleStatisticsProvider", () => {
     });
     await render_provider("glossary");
 
-    await wait_for_condition(() => snapshots.at(-1)?.matched_count_by_entry_id["苹果::0"] === 3);
+    await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 3);
 
     expect(api_fetch_mock).toHaveBeenCalledTimes(2);
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/statistics/view", {
@@ -376,7 +362,7 @@ describe("QualityRuleStatisticsProvider", () => {
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
     expect(snapshots.at(-1)).toMatchObject({
       phase: "current",
-      completed_entry_ids: ["苹果::0"],
+      entry_ids: ["苹果::0"],
     });
   });
 
@@ -385,18 +371,18 @@ describe("QualityRuleStatisticsProvider", () => {
       .mockResolvedValueOnce({
         projectPath: "E:/demo/sample.lg",
         statistics: create_statistics_snapshot({
-          matched_count_by_entry_id: { "苹果::0": 1 },
+          hits_by_entry_id: { "苹果::0": 1 },
         }),
       })
       .mockResolvedValueOnce({
         projectPath: "E:/demo/sample.lg",
         statistics: create_statistics_snapshot({
-          matched_count_by_entry_id: { "苹果::0": 4 },
+          hits_by_entry_id: { "苹果::0": 4 },
         }),
       });
 
     await render_provider("post_replacement");
-    await wait_for_condition(() => snapshots.at(-1)?.matched_count_by_entry_id["苹果::0"] === 1);
+    await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 1);
 
     current_project_change_signal = create_project_change_signal({
       seq: 1,
@@ -411,7 +397,7 @@ describe("QualityRuleStatisticsProvider", () => {
     });
     await render_provider("post_replacement");
 
-    await wait_for_condition(() => snapshots.at(-1)?.matched_count_by_entry_id["苹果::0"] === 4);
+    await wait_for_condition(() => snapshots.at(-1)?.hits_by_entry_id["苹果::0"] === 4);
 
     expect(api_fetch_mock).toHaveBeenCalledTimes(2);
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/statistics/view", {

@@ -212,37 +212,11 @@ function create_hit_cache(
 ): QualityRuleStatisticsCacheSnapshot {
   return {
     phase: "current",
-    current_snapshot: {
-      text_source: "src",
-      text_signature: "texts",
-      dependency_signature: "deps",
-      snapshot_signature: "snapshot",
-      rules: [
-        {
-          key: "hero::0",
-          dependency_signature: "hero",
-          token: "hero",
-        },
-      ],
-    },
-    completed_snapshot: {
-      text_source: "src",
-      text_signature: "texts",
-      dependency_signature: "deps",
-      snapshot_signature: "snapshot",
-      rules: [
-        {
-          key: "hero::0",
-          dependency_signature: "hero",
-          token: "hero",
-        },
-      ],
-    },
-    completed_entry_ids: ["hero::0"],
-    matched_count_by_entry_id: {
+    entry_ids: ["hero::0"],
+    hits_by_entry_id: {
       "hero::0": 1,
     },
-    subset_parent_labels_by_entry_id: {
+    subset_parents_by_entry_id: {
       "hero::0": [],
     },
     last_error: null,
@@ -673,7 +647,7 @@ describe("useTextReplacementPageState", () => {
     await mount_probe();
 
     expect(latest_state?.hit_ready).toBe(true);
-    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.hits).toBe(1);
   });
 
   it("功能开关写入成功后显示对应状态提醒", async () => {
@@ -737,7 +711,7 @@ describe("useTextReplacementPageState", () => {
 
     expect(latest_state?.hit_ready).toBe(false);
     expect(latest_state?.sort_state).toBeNull();
-    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.hits).toBe(1);
   });
 
   it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {

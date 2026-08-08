@@ -14,15 +14,10 @@ import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
 } from "../../shared/quality/quality-rule-entry-id";
-import { analyze_quality_rule_relations } from "../../shared/quality/quality-rule-relations";
-import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { create_text_keywords_matcher } from "../../shared/text/text-pattern";
-import type { CacheReadPort } from "../cache/cache-types";
+import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
 import type { QualityRuleService } from "../quality/quality-rule-service";
-import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import type { ResolvedGlossaryEntry } from "../../shared/quality/glossary";
-import { read_item_name_text } from "../../shared/item-name";
 import { AgentToolError, agent_tool_result } from "./agent-tool";
 
 const MAX_QUERY_KEYWORDS = 500;
@@ -67,20 +62,20 @@ const QUALITY_RULE_ENTRY_PARAMETERS = Type.Object(
   },
 );
 
-/** write 以 entry_id 区分更新和创建，before_entry_id 只表达新条目位置。 */
+/** write 以 id 区分更新和创建，before_id 只表达新条目位置。 */
 const QUALITY_RULE_WRITE_PARAMETERS = Type.Object(
   {
-    entry_id: Type.Optional(
+    id: Type.Optional(
       Type.String({
         minLength: 1,
         description: "已有条目必须携带当前快照中的稳定 ID；省略表示创建独立新条目。",
       }),
     ),
     entry: QUALITY_RULE_ENTRY_PARAMETERS,
-    before_entry_id: Type.Optional(
+    before_id: Type.Optional(
       Type.String({
         minLength: 1,
-        description: "仅创建时可用；把新条目插入该现有 entry_id 之前。省略表示追加。",
+        description: "仅创建时可用；把新条目插入该现有 ID 之前。省略表示追加。",
       }),
     ),
   },
@@ -90,13 +85,13 @@ const QUALITY_RULE_WRITE_PARAMETERS = Type.Object(
 /** 已有条目排序与内容写入分离，允许一次提交同时更新并移动同一条目。 */
 const QUALITY_RULE_MOVE_PARAMETERS = Type.Object(
   {
-    entry_id: Type.String({
+    id: Type.String({
       minLength: 1,
       description: "要移动的已有条目 ID，必须来自当前快照。",
     }),
     // null 分支必须在前，避免 SDK 的 TypeBox 转换把 null 改为空字符串。
-    before_entry_id: Type.Union([Type.Null(), Type.String({ minLength: 1 })], {
-      description: "移动到该现有 entry_id 之前；null 表示移到末尾。",
+    before_id: Type.Union([Type.Null(), Type.String({ minLength: 1 })], {
+      description: "移动到该现有 ID 之前；null 表示移到末尾。",
     }),
   },
   { additionalProperties: false },
@@ -128,6 +123,11 @@ const QUERY_QUALITY_RULES_PARAMETERS = Type.Object(
         },
       ),
     ),
+    include_examples: Type.Optional(
+      Type.Boolean({
+        description: "是否为返回条目附带最多两个确定性代表例句；默认 false。",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -139,14 +139,13 @@ const UPDATE_QUALITY_RULES_PARAMETERS = Type.Object(
     write: Type.Optional(
       Type.Array(QUALITY_RULE_WRITE_PARAMETERS, {
         description:
-          "该类操作省略或空数组表示不写内容；非空时，有 entry_id 更新已有条目，无 entry_id 创建新条目，entry 始终是完整最终值。",
+          "该类操作省略或空数组表示不写内容；非空时，有 id 更新已有条目，无 id 创建新条目，entry 始终是完整最终值。",
       }),
     ),
     delete: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
         uniqueItems: true,
-        description:
-          "要删除的已有 entry_id；省略或空数组表示不删除。ID 必须来自当前快照且不可重复。",
+        description: "要删除的已有 ID；省略或空数组表示不删除。ID 必须来自当前快照且不可重复。",
       }),
     ),
     move: Type.Optional(
@@ -185,36 +184,32 @@ type AgentQualityRuleUpdate = AgentQualityRuleChanges & {
 type AgentQualityRuleParameters = {
   rule_type: QualityRuleKind;
   write?: Array<{
-    entry_id?: string;
+    id?: string;
     entry: unknown;
-    before_entry_id?: string;
+    before_id?: string;
   }>;
   delete?: string[];
-  move?: Array<{ entry_id: string; before_entry_id: string | null }>;
+  move?: Array<{ id: string; before_id: string | null }>;
   expected_revision: number;
 };
 
 type AgentQualityRuleQuery = {
   rule_type: QualityRuleKind;
   search?: { keywords: string[] };
-};
-
-type AgentQualityCache = {
-  readonly items: Pick<CacheReadPort["items"], "readItems">;
+  include_examples?: boolean;
 };
 
 type AgentQualityRules = Pick<QualityRuleService, "query" | "update_from_agent">;
 
 type AgentQualityDependencies = {
   qualityRules: AgentQualityRules;
-  cache: AgentQualityCache;
-  computeWorker: Pick<ComputeWorkerClient, "run">;
+  qualityAnalysis: Pick<QualityRuleAnalysisCache, "read">;
 };
 
 /** Agent 发起的规则提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_QUALITY_RULE_UPDATE_SOURCE = "agent_quality_rule_update";
 
-/** 一个普通对象入口按 rule_type 收窄业务字段，并以 entry_id 决定创建或更新。 */
+/** 一个普通对象入口按 rule_type 收窄业务字段，并以 id 决定创建或更新。 */
 function read_agent_quality_rule_update(
   params: AgentQualityRuleParameters,
 ): AgentQualityRuleUpdate {
@@ -222,28 +217,29 @@ function read_agent_quality_rule_update(
   const update: AgentQualityRuleUpdate = {
     rule_type,
     write: (params.write ?? []).map((change, write_index) => {
-      if (change.entry_id !== undefined && change.before_entry_id !== undefined) {
+      if (change.id !== undefined && change.before_id !== undefined) {
         throw new AgentToolError({
           code: "quality_rule.invalid_write",
-          path: `write[${write_index.toString()}].before_entry_id`,
+          path: `write[${write_index.toString()}].before_id`,
           action: "move",
         });
       }
       return {
         write_index,
-        ...(change.entry_id === undefined ? {} : { entry_id: change.entry_id }),
+        ...(change.id === undefined ? {} : { entry_id: change.id }),
         entry: read_agent_quality_rule_entry(
           rule_type,
           change.entry,
           `write[${write_index.toString()}].entry`,
         ),
-        ...(change.before_entry_id === undefined
-          ? {}
-          : { before_entry_id: change.before_entry_id }),
+        ...(change.before_id === undefined ? {} : { before_entry_id: change.before_id }),
       };
     }),
     delete: [...(params.delete ?? [])],
-    move: [...(params.move ?? [])],
+    move: (params.move ?? []).map((move) => ({
+      entry_id: move.id,
+      before_entry_id: move.before_id,
+    })),
     expected_revision: params.expected_revision,
   };
   if (update.write.length === 0 && update.delete.length === 0 && update.move.length === 0) {
@@ -297,7 +293,7 @@ export function create_agent_quality_tools(
       name: "query_quality_rules",
       label: "查询质量规则",
       description:
-        "只读查询当前工程指定类型的有序质量规则和 revision。search 对规则 src 做 NFKC 归一、大小写不敏感的字面量包含匹配，多个 keywords 按 OR 组合；省略 search 或 keywords 为空读取全部。glossary 会把直接命中条目标记为 target_entry_ids，展开其完整结构组，并额外返回 item_revision、groups、覆盖数和最多两个纯文本代表语境；姓名存在时语境格式为【name_src】src，供后续审查与精确更新。",
+        "只读查询当前工程指定类型的有序质量规则。返回 quality/items 版本、通用结构组和每条规则命中的 item 数；include_examples=true 时额外返回最多两个确定性代表例句。search 对规则 src 做 NFKC 归一、大小写不敏感的字面量包含匹配，多个 keywords 按 OR 组合；搜索时返回直接命中的 target_ids，并展开这些目标所在的完整结构组。",
       parameters: QUERY_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
@@ -308,7 +304,7 @@ export function create_agent_quality_tools(
       name: "update_quality_rules",
       label: "更新质量规则",
       description:
-        "基于 query_quality_rules 快照按 rule_type 原子应用内容写入、删除和排序。write、delete、move 可组合，未使用的操作组省略或传空数组，三组全空会拒绝；write 有 entry_id 时更新，无 entry_id 时创建，move 只排序。expected_revision 必须来自所依据的查询快照；任一版本或业务校验失败均不写入。返回 applied/unchanged、最新 revision 及实际变更的精简回执。",
+        "基于 query_quality_rules 快照按 rule_type 原子应用内容写入、删除和排序。write、delete、move 可组合，未使用的操作组省略或传空数组，三组全空会拒绝；write 有 id 时更新，无 id 时创建，move 只排序。expected_revision 必须来自 revisions.quality；任一版本或业务校验失败均不写入。返回 applied/unchanged、最新 revision 及实际变更的精简回执。",
       executionMode: "sequential",
       parameters: UPDATE_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
@@ -337,7 +333,7 @@ async function execute_agent_quality_rule_update(
     delete: update.delete,
     move: update.move,
   });
-  const current_revision = read_json_integer(current["revision"], 0);
+  const current_revision = current.revision;
   if (
     applied.created.length === 0 &&
     applied.updated.length === 0 &&
@@ -395,68 +391,55 @@ export async function query_agent_quality_rules(
   signal: AbortSignal = new AbortController().signal,
 ): Promise<JsonRecord & { entries: JsonRecord[] }> {
   const { rule_type } = request;
-  // readItems 可能先恢复 cache；随后读取 revision 才能与本次统计使用的 item 快照一致。
-  const items = rule_type === "glossary" ? dependencies.cache.items.readItems() : [];
-  const result = read_agent_quality_rules_snapshot(
-    dependencies.qualityRules,
-    rule_type,
-    rule_type === "glossary",
-  );
-  const all_entries = result.entries;
+  signal.throwIfAborted();
+  const snapshot = read_agent_quality_rules_snapshot(dependencies.qualityRules, rule_type);
+  const analysis = await dependencies.qualityAnalysis.read(rule_type);
+  signal.throwIfAborted();
+  const all_entries = snapshot.entries;
   const matcher = create_text_keywords_matcher({
     keywords: request.search?.keywords ?? [],
     is_regex: false,
   });
   const is_searching = matcher.keywords.length > 0;
-  if (rule_type !== "glossary") {
-    if (!is_searching) return result;
-    result.entries = all_entries.filter((entry) => matcher.matches(String(entry["src"] ?? "")));
-    return result;
-  }
-
-  const all_glossary_entries = all_entries.map((entry) => normalize_glossary_entry(entry));
-  const relations = analyze_quality_rule_relations(
-    all_glossary_entries.map((entry) => ({
-      entry_id: entry.entry_id,
-      src: entry.src,
-      case_sensitive: entry.case_sensitive,
-    })),
+  const target_ids = new Set(
+    all_entries
+      .filter((entry) => !is_searching || matcher.matches(String(entry["src"] ?? "")))
+      .map((entry) => String(entry["entry_id"] ?? "")),
   );
-  const target_entries = !is_searching
-    ? all_glossary_entries
-    : all_glossary_entries.filter((entry) => matcher.matches(entry.src));
-  const target_entry_ids = new Set(target_entries.map((entry) => entry.entry_id));
-  const groups = relations.groups.filter((group) =>
-    group.some((entry_id) => target_entry_ids.has(entry_id)),
+  const groups = analysis.analysis.relations.groups.filter((group) =>
+    group.some((id) => target_ids.has(id)),
   );
-  const included_entry_ids = new Set(groups.flat());
-  const glossary_entries = all_glossary_entries.filter((entry) =>
-    included_entry_ids.has(entry.entry_id),
-  );
-  const statistics = await compute_glossary_statistics(
-    dependencies,
-    glossary_entries,
-    signal,
-    items,
-  );
-  result.entries = glossary_entries.map((entry) =>
-    enrich_glossary_entry(
-      entry,
-      statistics.matched_count_by_entry_id[entry.entry_id] ?? 0,
-      project_glossary_samples(items, statistics.context_samples_by_entry_id[entry.entry_id] ?? []),
-    ),
-  );
-  result["groups"] = groups;
-  if (is_searching) result["target_entry_ids"] = [...target_entry_ids];
-  return result;
+  const included_ids = new Set(groups.flat());
+  const entries = all_entries
+    .filter((entry) => included_ids.has(String(entry["entry_id"] ?? "")))
+    .map((entry) => {
+      const id = String(entry["entry_id"] ?? "");
+      return {
+        ...Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "entry_id")),
+        id,
+        hits: analysis.analysis.hits_by_entry_id[id] ?? 0,
+        ...(request.include_examples === true
+          ? { examples: analysis.analysis.examples_by_entry_id[id] ?? [] }
+          : {}),
+      };
+    });
+  return {
+    rule_type,
+    revisions: {
+      quality: snapshot.revision,
+      items: read_json_integer(analysis.sectionRevisions["items"], 0),
+    },
+    entries,
+    groups,
+    ...(is_searching ? { target_ids: [...target_ids] } : {}),
+  };
 }
 
 /** 读取规则结构和 revision，不触发语料计算；query 与 update 共用同一规范化入口。 */
 function read_agent_quality_rules_snapshot(
   quality_rules: AgentQualityRules,
   rule_type: QualityRuleKind,
-  include_item_revision = false,
-): JsonRecord & { entries: JsonRecord[] } {
+): { revision: number; entries: JsonRecord[] } {
   const payload = quality_rules.query({ rule_type });
   const section_revisions = read_json_record(payload["sectionRevisions"]);
   const quality_rule = read_json_record(payload["qualityRule"]);
@@ -465,15 +448,10 @@ function read_agent_quality_rules_snapshot(
   const entries = ensure_quality_rule_entry_ids(
     normalize_quality_rule_entries(QualityRule.from_json(rule_type), raw_entries),
   ) as JsonRecord[];
-  const result: JsonRecord & { entries: JsonRecord[] } = {
-    rule_type,
+  return {
     revision: read_json_integer(section_revisions["quality"], 0),
-    ...(include_item_revision
-      ? { item_revision: read_json_integer(section_revisions["items"], 0) }
-      : {}),
     entries,
   };
-  return result;
 }
 
 /** 验证已持久化身份唯一；旧工程缺失的身份随后由共享 normalizer 稳定补齐。 */
@@ -509,7 +487,7 @@ function apply_agent_quality_rule_changes(
   },
 ): {
   entries: JsonRecord[];
-  created: Array<{ write_index: number; entry_id: string }>;
+  created: Array<{ write_index: number; id: string }>;
   updated: string[];
   deleted: string[];
   moved: string[];
@@ -531,7 +509,7 @@ function apply_agent_quality_rule_changes(
     path: string;
     report_move: boolean;
   }> = [];
-  const created: Array<{ write_index: number; entry_id: string }> = [];
+  const created: Array<{ write_index: number; id: string }> = [];
   const updated: string[] = [];
   const deleted: string[] = [];
   const moved: string[] = [];
@@ -567,19 +545,19 @@ function apply_agent_quality_rule_changes(
     if (write.entry_id === undefined) {
       const entry_id = create_quality_rule_entry_id();
       entries.push({ entry_id, ...normalized });
-      created.push({ write_index: write.write_index, entry_id });
+      created.push({ write_index: write.write_index, id: entry_id });
       origins.set(entry_id, { path, created: true });
       if (write.before_entry_id !== undefined) {
         placements.push({
           entry_id,
           before_entry_id: write.before_entry_id,
-          path: `${path}.before_entry_id`,
+          path: `${path}.before_id`,
           report_move: false,
         });
       }
       continue;
     }
-    const { entry_id, index } = find_exclusive_target(write.entry_id, `${path}.entry_id`);
+    const { entry_id, index } = find_exclusive_target(write.entry_id, `${path}.id`);
     const next_entry = { entry_id, ...normalized };
     if (JSON.stringify(entries[index]) !== JSON.stringify(next_entry)) {
       entries[index] = next_entry;
@@ -604,7 +582,7 @@ function apply_agent_quality_rule_changes(
       throw new AgentToolError({
         code: "quality_rule.target_conflict",
         entry_id,
-        paths: [delete_path, `${path}.entry_id`],
+        paths: [delete_path, `${path}.id`],
       });
     }
     const previous_path = moved_paths.get(entry_id);
@@ -612,21 +590,21 @@ function apply_agent_quality_rule_changes(
       throw new AgentToolError({
         code: "quality_rule.target_conflict",
         entry_id,
-        paths: [previous_path, `${path}.entry_id`],
+        paths: [previous_path, `${path}.id`],
       });
     }
-    moved_paths.set(entry_id, `${path}.entry_id`);
+    moved_paths.set(entry_id, `${path}.id`);
     if (!entries.some((entry) => entry["entry_id"] === entry_id)) {
       throw new AgentToolError({
         code: "quality_rule.entry_not_found",
         entry_id,
-        path: `${path}.entry_id`,
+        path: `${path}.id`,
       });
     }
     placements.push({
       entry_id,
       before_entry_id: move.before_entry_id,
-      path: `${path}.before_entry_id`,
+      path: `${path}.before_id`,
       report_move: true,
     });
   }
@@ -795,112 +773,4 @@ function move_entry_before(
   }
   entries.splice(target_index, 0, entry);
   return source_index !== target_index;
-}
-
-/** 模型可见的术语条目只保留审校所需字段与当前快照事实。 */
-type AgentGlossaryEntry = ResolvedGlossaryEntry &
-  JsonRecord & {
-    matched_item_count: number;
-    samples: string[];
-  };
-
-/** 术语读取统一补齐事实分析字段的空初值。 */
-function normalize_glossary_entry(entry: JsonRecord): AgentGlossaryEntry {
-  return {
-    entry_id: String(entry["entry_id"] ?? ""),
-    src: String(entry["src"] ?? ""),
-    dst: String(entry["dst"] ?? ""),
-    info: String(entry["info"] ?? ""),
-    case_sensitive: entry["case_sensitive"] === true,
-    matched_item_count: 0,
-    samples: [],
-  };
-}
-
-/** 附加覆盖与代表语境；结构关系统一由顶层 groups 表达。 */
-function enrich_glossary_entry(
-  entry: AgentGlossaryEntry,
-  matched_item_count: number,
-  samples: string[],
-): AgentGlossaryEntry {
-  return {
-    ...entry,
-    matched_item_count,
-    samples,
-  };
-}
-
-/** compute worker 返回的索引只允许投影同一次捕获的 item 快照。 */
-type GlossaryContextSample = {
-  item_index: number; // captured items 中的稳定数组索引
-};
-
-/** worker 只返回数组索引，主线程用启动任务前捕获的同一 item 快照投影最小语境。 */
-function project_glossary_samples(
-  items: JsonRecord[],
-  evidence: GlossaryContextSample[],
-): string[] {
-  return evidence.flatMap(({ item_index }) => {
-    const item = items[item_index];
-    if (item === undefined) return [];
-    const src = String(item["src"] ?? "");
-    const name_src = read_item_name_text(item["name_src"]);
-    return [name_src === "" ? src : `【${name_src}】${src}`];
-  });
-}
-
-/** 在 compute worker 计算当前缓存文本的术语统计，并收窄跨线程返回值。 */
-async function compute_glossary_statistics(
-  dependencies: Pick<AgentQualityDependencies, "computeWorker">,
-  entries: JsonRecord[],
-  signal: AbortSignal,
-  items: JsonRecord[],
-): Promise<{
-  matched_count_by_entry_id: Record<string, number>;
-  context_samples_by_entry_id: Record<string, GlossaryContextSample[]>;
-}> {
-  const result = await dependencies.computeWorker.run(
-    {
-      type: "quality_statistics",
-      input: prepare_quality_statistics_task_input({
-        rule_key: "glossary",
-        entries,
-        relation_entries: [],
-        items,
-        collect_context_samples: true,
-      }),
-    },
-    signal,
-  );
-  return {
-    matched_count_by_entry_id: read_number_record(result["matched_count_by_entry_id"]),
-    context_samples_by_entry_id: read_context_samples_record(result["context_samples_by_entry_id"]),
-  };
-}
-
-/** 跨线程计数映射只接受有限数字成员。 */
-function read_number_record(value: unknown): Record<string, number> {
-  return Object.fromEntries(
-    Object.entries(read_json_record(value)).flatMap(([key, item]) =>
-      typeof item === "number" && Number.isFinite(item) ? [[key, item]] : [],
-    ),
-  );
-}
-
-/** 跨线程 samples 只接受最多两个有效数组索引。 */
-function read_context_samples_record(value: unknown): Record<string, GlossaryContextSample[]> {
-  return Object.fromEntries(
-    Object.entries(read_json_record(value)).map(([key, item]) => {
-      if (!Array.isArray(item)) return [key, []];
-      return [
-        key,
-        item.slice(0, 2).flatMap((sample) => {
-          const item_index = read_json_record(sample)["item_index"];
-          return Number.isSafeInteger(item_index) && (item_index as number) >= 0
-            ? [{ item_index: item_index as number }]
-            : [];
-        }),
-      ];
-    }),
-  );
 }

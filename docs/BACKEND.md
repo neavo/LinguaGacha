@@ -48,7 +48,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - 翻译与校对复用共享的逐行源文准备事实，固定 Ruby 清理、空白与保护前后缀提取、译前替换和保护样例收集的顺序；校对不逆推译后规则。校对 worker 与 cache identity 携带完整文本处理配置，增量评估沿用全量同步冻结的配置。
 - 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文与按 ID 读取只查询共享评估运行态，不创建或替换该视图。
-- 质量规则统计表示原始文本中的命中并按 item 去重，不模拟启用态、保护抽取、替换链或模型执行；术语按原始字段统计，译前/译后替换与文本保护按对应字段内逐行统计，模式语义与生产消费者一致。`QualityStatisticsCache` 只在能证明影响范围时局部失效，否则全量失效。
+- `QualityRuleAnalysisCache` 是四类质量规则命中数、代表例句和结构关系的唯一后端分析缓存，GUI query 与 Agent 共用该结果；缓存命中只读取缓存引用和轻量 revision，不复制 item、不重建文本组或计算内容签名。quality 变化同时失效统计与关系，item 变化只按受影响文本侧失效统计并保留关系；无法证明范围时失效全部统计。
+- 质量规则分析按不同 item 去重计算 `hits`，同一 item 内多字段、多次或重叠命中只计一次；术语读取原文字段，其余规则按生产语义逐行读取原文或译文。worker 在同一遍命中扫描中保留最多两个确定性 `examples`，不保存完整候选集，并按 item 顺序输出。
+- 结构关系覆盖全部质量规则：字面量先按真实包含或匹配等价形成强组，再以有界公共连续词根合并审校组；正则只合并表达式与大小写配置完全相同的条目。结果是按规则顺序排列、互斥且包含单例的 `groups`，只表示共同审校范围。
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。

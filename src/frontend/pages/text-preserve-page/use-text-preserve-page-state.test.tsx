@@ -219,37 +219,11 @@ function create_hit_cache(
 ): QualityRuleStatisticsCacheSnapshot {
   return {
     phase: "current",
-    current_snapshot: {
-      text_source: "src",
-      text_signature: "texts",
-      dependency_signature: "deps",
-      snapshot_signature: "snapshot",
-      rules: [
-        {
-          key: "foo::0",
-          dependency_signature: "foo",
-          token: "foo",
-        },
-      ],
-    },
-    completed_snapshot: {
-      text_source: "src",
-      text_signature: "texts",
-      dependency_signature: "deps",
-      snapshot_signature: "snapshot",
-      rules: [
-        {
-          key: "foo::0",
-          dependency_signature: "foo",
-          token: "foo",
-        },
-      ],
-    },
-    completed_entry_ids: ["foo::0"],
-    matched_count_by_entry_id: {
+    entry_ids: ["foo::0"],
+    hits_by_entry_id: {
       "foo::0": 1,
     },
-    subset_parent_labels_by_entry_id: {
+    subset_parents_by_entry_id: {
       "foo::0": [],
     },
     last_error: null,
@@ -848,7 +822,7 @@ describe("useTextPreservePageState", () => {
     await mount_probe();
 
     expect(latest_state?.hit_ready).toBe(true);
-    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.hits).toBe(1);
   });
 
   it("统计未 ready 时不会保留旧 hit 排序", async () => {
@@ -877,7 +851,7 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.hit_ready).toBe(false);
     expect(latest_state?.sort_state).toBeNull();
-    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.hits).toBe(1);
   });
 
   it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {

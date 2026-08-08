@@ -88,8 +88,8 @@ export function sort_text_preserve_entries(
         sort_state.direction,
       );
     } else if (sort_state.column_id === "hit") {
-      const left_value = hit_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
-      const right_value = hit_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
+      const left_value = hit_state.hits_by_entry_id[left_entry.entry_id] ?? 0;
+      const right_value = hit_state.hits_by_entry_id[right_entry.entry_id] ?? 0;
       comparison_result =
         sort_state.direction === "ascending" ? left_value - right_value : right_value - left_value;
     }

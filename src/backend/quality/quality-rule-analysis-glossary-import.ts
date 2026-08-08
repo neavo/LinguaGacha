@@ -11,7 +11,10 @@ import {
   run_quality_statistics_task_sync,
   type QualityStatisticsRuleInput,
 } from "../../shared/quality/quality-statistics";
-import type { QualityRuleRelationCandidate } from "../../shared/quality/quality-rule-relations";
+import {
+  analyze_quality_rule_relations,
+  type QualityRuleRelationCandidate,
+} from "../../shared/quality/quality-rule-relations";
 import { read_item_source_text_parts } from "../../shared/item-text";
 import {
   QualityRuleImportRuleTypeValue,
@@ -193,14 +196,15 @@ function filter_import_candidates(args: {
     return {
       entry_id: build_glossary_stat_key(entry),
       src: entry.src,
+      pattern_kind: "literal",
       case_sensitive: entry.case_sensitive,
     };
   });
   const statistics_result = run_quality_statistics_task_sync({
     rules,
     text_groups: src_text_groups,
-    relation_candidates,
   });
+  const relations = analyze_quality_rule_relations(relation_candidates);
   const key_by_src = new Map<string, string>();
   merged_entries.forEach((entry) => {
     key_by_src.set(entry.src, build_glossary_stat_key(entry));
@@ -213,22 +217,19 @@ function filter_import_candidates(args: {
       continue;
     }
     const entry_key = build_glossary_stat_key(preview_entry);
-    const matched_item_count = statistics_result.results[entry_key]?.matched_item_count ?? 0;
-    if (
-      !is_analysis_control_code_self_mapping(preview_entry.src, preview_entry.dst) &&
-      matched_item_count < 1
-    ) {
+    const hits = statistics_result.hits_by_entry_id[entry_key] ?? 0;
+    if (!is_analysis_control_code_self_mapping(preview_entry.src, preview_entry.dst) && hits < 1) {
       filtered_indexes.add(index);
       continue;
     }
 
-    for (const parent_src of statistics_result.results[entry_key]?.subset_parents ?? []) {
+    for (const parent_src of relations.subset_parents_by_entry_id[entry_key] ?? []) {
       const parent_key = key_by_src.get(parent_src);
       if (parent_key === undefined) {
         continue;
       }
-      const parent_count = statistics_result.results[parent_key]?.matched_item_count ?? 0;
-      if (parent_count !== matched_item_count || parent_src.length < preview_entry.src.length) {
+      const parent_hits = statistics_result.hits_by_entry_id[parent_key] ?? 0;
+      if (parent_hits !== hits || parent_src.length < preview_entry.src.length) {
         continue;
       }
       filtered_indexes.add(index);

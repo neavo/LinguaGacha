@@ -86,12 +86,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 只展示已完成统计的命中数，避免把尚未计算的术语误报为零命中。
   const term_hit_counts = useMemo<Readonly<Record<string, number>>>(() => {
     return Object.fromEntries(
-      term_statistics.completed_entry_ids.map((entry_id) => [
+      (term_statistics.entry_ids ?? []).map((entry_id) => [
         entry_id,
-        term_statistics.matched_count_by_entry_id[entry_id] ?? 0,
+        term_statistics.hits_by_entry_id[entry_id] ?? 0,
       ]),
     );
-  }, [term_statistics.completed_entry_ids, term_statistics.matched_count_by_entry_id]);
+  }, [term_statistics.entry_ids, term_statistics.hits_by_entry_id]);
   const available_terms =
     project_snapshot.loaded && project_session_status === "ready" ? terms : EMPTY_AGENT_TERMS;
   const mention_tokens = useMemo(

@@ -1,18 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { QualityStatisticsCache } from "../cache/quality-statistics-cache";
+import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import { QualityStatisticsService } from "./quality-statistics-service";
 
-function create_cache(): QualityStatisticsCache {
+function create_cache(): Pick<QualityRuleAnalysisCache, "read"> {
   return {
     read: vi.fn(async () => ({
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 1, quality: 2 },
-      statistics: { matched_item_count: 1 },
+      analysis: {
+        entry_ids: ["hp"],
+        hits_by_entry_id: { hp: 1 },
+        examples_by_entry_id: { hp: ["HP +10"] },
+        relations: { subset_parents_by_entry_id: {}, groups: [["hp"]] },
+      },
     })),
-  } as unknown as QualityStatisticsCache;
+  };
 }
 
 describe("QualityStatisticsService", () => {
@@ -27,8 +32,11 @@ describe("QualityStatisticsService", () => {
     expect(cache.read).toHaveBeenCalledWith("glossary");
     expect(result).toEqual({
       projectPath: "E:/Project/demo.lg",
-      sectionRevisions: { items: 1, quality: 2 },
-      statistics: { matched_item_count: 1 },
+      statistics: {
+        entry_ids: ["hp"],
+        hits_by_entry_id: { hp: 1 },
+        subset_parents_by_entry_id: {},
+      },
     });
   });
 

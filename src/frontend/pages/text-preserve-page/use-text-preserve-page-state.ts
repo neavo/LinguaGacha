@@ -243,11 +243,9 @@ function create_empty_confirm_state(): TextPreserveConfirmState {
   };
 }
 
-/**
- * 将命中数和子集父项关系合并成徽章的多行说明。
- */
-function build_hit_badge_tooltip(t: (key: LocaleKey) => string, matched_count: number): string {
-  return t("text_preserve_page.hit.hit_count").replace("{COUNT}", matched_count.toString());
+/** 把命中数投影为文本保护徽章说明。 */
+function build_hit_badge_tooltip(t: (key: LocaleKey) => string, hits: number): string {
+  return t("text_preserve_page.hit.hit_count").replace("{COUNT}", hits.toString());
 }
 
 /** 以设置协议字段名构造默认预设更新载荷。 */
@@ -271,9 +269,8 @@ function build_text_preserve_hit_state_from_cache(
   // 页面只从质量统计缓存计算展示状态，不持有也不修改文本保护规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
-    completed_snapshot: statistics_cache.completed_snapshot,
-    completed_entry_ids: statistics_cache.completed_entry_ids,
-    matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
+    entry_ids: statistics_cache.entry_ids,
+    hits_by_entry_id: statistics_cache.hits_by_entry_id,
   };
 }
 
@@ -397,8 +394,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
   const completed_hit_entry_id_set = useMemo<ReadonlySet<TextPreserveEntryId>>(() => {
-    return new Set(hit_state.completed_entry_ids);
-  }, [hit_state.completed_entry_ids]);
+    return new Set(hit_state.entry_ids ?? []);
+  }, [hit_state.entry_ids]);
 
   const build_result_snapshot = useCallback(
     (
@@ -507,7 +504,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     Record<TextPreserveEntryId, TextPreserveHitBadgeState>
   >(() => {
     const next_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState> = {};
-    if (!hit_ready && hit_state.completed_snapshot === null) {
+    if (!hit_ready && hit_state.entry_ids === null) {
       return next_badge_by_entry_id;
     }
 
@@ -516,11 +513,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
+      const hits = hit_state.hits_by_entry_id[entry_id] ?? 0;
       next_badge_by_entry_id[entry_id] = {
-        kind: matched_count > 0 ? "matched" : "unmatched",
-        matched_count,
-        tooltip: build_hit_badge_tooltip(t, matched_count),
+        kind: hits > 0 ? "matched" : "unmatched",
+        hits,
+        tooltip: build_hit_badge_tooltip(t, hits),
       };
     });
 

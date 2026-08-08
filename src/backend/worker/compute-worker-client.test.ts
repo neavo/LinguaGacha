@@ -51,12 +51,15 @@ vi.mock("node:worker_threads", () => ({
  */
 function create_quality_task(pattern: string): ComputeWorkerTask {
   return {
-    type: "quality_statistics",
-    input: prepare_quality_statistics_task_input({
-      rule_key: "glossary",
-      entries: [{ entry_id: pattern, src: pattern }],
-      items: [{ src: `${pattern} appeared`, dst: "" }],
-    }),
+    type: "quality_rule_analysis",
+    input: {
+      ...prepare_quality_statistics_task_input({
+        rule_key: "glossary",
+        entries: [{ entry_id: pattern, src: pattern }],
+        items: [{ src: `${pattern} appeared`, dst: "" }],
+      }),
+      include_relations: true,
+    },
   };
 }
 
@@ -72,12 +75,12 @@ describe("ComputeWorkerClient", () => {
     const second = client.run(create_quality_task("MP"), new AbortController().signal);
 
     await expect(first).resolves.toMatchObject({
-      completed_entry_ids: ["HP"],
-      matched_count_by_entry_id: { HP: 1 },
+      entry_ids: ["HP"],
+      hits_by_entry_id: { HP: 1 },
     });
     await expect(second).resolves.toMatchObject({
-      completed_entry_ids: ["MP"],
-      matched_count_by_entry_id: { MP: 1 },
+      entry_ids: ["MP"],
+      hits_by_entry_id: { MP: 1 },
     });
 
     await client.dispose();
@@ -92,7 +95,7 @@ describe("ComputeWorkerClient", () => {
     controller.abort();
 
     await expect(first).resolves.toMatchObject({
-      matched_count_by_entry_id: { HP: 1 },
+      hits_by_entry_id: { HP: 1 },
     });
     await expect(queued).rejects.toMatchObject({ code: "runtime.cancelled" });
 
@@ -109,7 +112,7 @@ describe("ComputeWorkerClient", () => {
 
     await expect(active).rejects.toMatchObject({ code: "runtime.cancelled" });
     await expect(next).resolves.toMatchObject({
-      matched_count_by_entry_id: { MP: 1 },
+      hits_by_entry_id: { MP: 1 },
     });
 
     await client.dispose();

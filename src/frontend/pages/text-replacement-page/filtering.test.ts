@@ -39,10 +39,9 @@ describe("text replacement filtering", () => {
     expect(
       sort_text_replacement_entries(entries, { column_id: "rule", direction: "ascending" }, false, {
         running: false,
-        completed_snapshot: null,
-        completed_entry_ids: [],
-        matched_count_by_entry_id: {},
-        subset_parent_labels_by_entry_id: {},
+        entry_ids: [],
+        hits_by_entry_id: {},
+        subset_parents_by_entry_id: {},
       }).map((entry) => entry.entry_id),
     ).toEqual(["plain", "case", "regex"]);
   });
