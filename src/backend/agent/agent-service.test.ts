@@ -20,7 +20,6 @@ import type { ProjectWriteResult } from "../../shared/project-event";
 import type { AgentWebFetchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { ComputeWorkerClient } from "../worker/compute-worker-client";
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
@@ -1887,10 +1886,21 @@ describe("AgentService", () => {
       userAgent: "LinguaGacha/Test",
       sessionState: session_state,
       cache,
+      qualityAnalysis: {
+        read: async () => ({
+          projectPath: "test.lg",
+          sectionRevisions: { quality: revision, items: items_revision },
+          analysis: {
+            entry_ids: [],
+            hits_by_entry_id: {},
+            examples_by_entry_id: {},
+            relations: { subset_parents_by_entry_id: {}, groups: [] },
+          },
+        }),
+      },
       qualityRules: quality_rules,
       proofreading,
       runtimeGate: runtime_gate,
-      computeWorker: new ComputeWorkerClient({ execution: { kind: "in_process" } }),
       webFetch: web_fetch,
       logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,

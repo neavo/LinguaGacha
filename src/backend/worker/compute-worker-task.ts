@@ -11,9 +11,10 @@ import {
 } from "../../shared/text/ts-conversion";
 import type { TextPreserveEntry } from "../../domain/quality";
 import {
-  run_quality_statistics_worker_task,
-  type QualityStatisticsWorkerTaskInput,
-} from "./tasks/quality-statistics-worker-task";
+  run_quality_rule_analysis_worker_task,
+  type QualityRuleAnalysisWorkerTaskInput,
+  type QualityRuleAnalysisWorkerTaskResult,
+} from "./tasks/quality-rule-analysis-worker-task";
 
 type TsConversionWorkerTaskInput = {
   items: TsConversionItem[];
@@ -25,13 +26,13 @@ type TsConversionWorkerTaskInput = {
 };
 
 export type ComputeWorkerTaskInputByType = {
-  quality_statistics: QualityStatisticsWorkerTaskInput;
+  quality_rule_analysis: QualityRuleAnalysisWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
   proofreading_sync: ProofreadingSyncInput;
 };
 
 export type ComputeWorkerTaskResultByType = {
-  quality_statistics: Record<string, unknown>;
+  quality_rule_analysis: QualityRuleAnalysisWorkerTaskResult;
   ts_conversion: TsConversionConvertedItem[];
   proofreading_sync: ProofreadingEvaluatedSlice;
 };
@@ -53,8 +54,8 @@ export async function run_compute_worker_task<TTask extends ComputeWorkerTask>(
   task: TTask,
 ): Promise<ComputeWorkerTaskResult<TTask>> {
   switch (task.type) {
-    case "quality_statistics":
-      return run_quality_statistics_worker_task(task.input) as ComputeWorkerTaskResult<TTask>;
+    case "quality_rule_analysis":
+      return run_quality_rule_analysis_worker_task(task.input) as ComputeWorkerTaskResult<TTask>;
     case "ts_conversion":
       return build_ts_conversion_converted_items(task.input) as ComputeWorkerTaskResult<TTask>;
     case "proofreading_sync":

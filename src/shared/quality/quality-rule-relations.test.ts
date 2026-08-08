@@ -9,6 +9,7 @@ function candidates(srcs: string[]): QualityRuleRelationCandidate[] {
   return srcs.map((src, index) => ({
     entry_id: index.toString(),
     src,
+    pattern_kind: "literal",
     case_sensitive: true,
   }));
 }
@@ -16,14 +17,14 @@ function candidates(srcs: string[]): QualityRuleRelationCandidate[] {
 describe("analyze_quality_rule_relations", () => {
   it("保留真实包含、等价形式和父文本顺序", () => {
     const result = analyze_quality_rule_relations([
-      { entry_id: "erin", src: "艾琳", case_sensitive: true },
-      { entry_id: "saint", src: "圣女艾琳", case_sensitive: true },
-      { entry_id: "duplicate", src: "圣女艾琳", case_sensitive: true },
-      { entry_id: "captain", src: "舰长艾琳", case_sensitive: true },
-      { entry_id: "child", src: "JK", case_sensitive: true },
-      { entry_id: "case-only", src: "Xｊｋ", case_sensitive: true },
-      { entry_id: "nfkc", src: "XＪＫ", case_sensitive: true },
-      { entry_id: "wide", src: "ＪＫ", case_sensitive: true },
+      { entry_id: "erin", src: "艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "saint", src: "圣女艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "duplicate", src: "圣女艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "captain", src: "舰长艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "child", src: "JK", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "case-only", src: "Xｊｋ", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "nfkc", src: "XＪＫ", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "wide", src: "ＪＫ", pattern_kind: "literal", case_sensitive: true },
     ]);
 
     expect(result.subset_parents_by_entry_id).toMatchObject({
@@ -78,8 +79,8 @@ describe("analyze_quality_rule_relations", () => {
 
   it("条目 ID 与对象原型成员同名时仍保留包含关系", () => {
     const result = analyze_quality_rule_relations([
-      { entry_id: "toString", src: "艾琳", case_sensitive: true },
-      { entry_id: "parent", src: "圣女艾琳", case_sensitive: true },
+      { entry_id: "toString", src: "艾琳", pattern_kind: "literal", case_sensitive: true },
+      { entry_id: "parent", src: "圣女艾琳", pattern_kind: "literal", case_sensitive: true },
     ]);
 
     expect(result.subset_parents_by_entry_id["toString"]).toEqual(["圣女艾琳"]);
@@ -94,5 +95,16 @@ describe("analyze_quality_rule_relations", () => {
     expect(analyze_quality_rule_relations(input).groups).toEqual([
       Array.from({ length: 13 }, (_value, index) => index.toString()),
     ]);
+  });
+
+  it("正则仅按完全相同的表达式和大小写配置分组", () => {
+    const result = analyze_quality_rule_relations([
+      { entry_id: "a", src: "A.+", pattern_kind: "regex", case_sensitive: false },
+      { entry_id: "b", src: "A.+", pattern_kind: "regex", case_sensitive: false },
+      { entry_id: "c", src: "A.+", pattern_kind: "regex", case_sensitive: true },
+    ]);
+
+    expect(result.groups).toEqual([["a", "b"], ["c"]]);
+    expect(result.subset_parents_by_entry_id).toEqual({});
   });
 });

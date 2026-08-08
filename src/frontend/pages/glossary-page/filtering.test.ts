@@ -4,10 +4,9 @@ import { build_glossary_filter_result } from "./filtering";
 
 const hit_state = {
   running: false,
-  completed_snapshot: null,
-  completed_entry_ids: [],
-  matched_count_by_entry_id: {},
-  subset_parent_labels_by_entry_id: {},
+  entry_ids: [],
+  hits_by_entry_id: {},
+  subset_parents_by_entry_id: {},
 };
 
 describe("glossary filtering", () => {

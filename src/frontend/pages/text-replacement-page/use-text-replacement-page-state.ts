@@ -285,17 +285,15 @@ function normalize_text_replacement_quality_slice(
 function build_hit_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextReplacementEntry,
-  matched_count: number,
-  subset_parent_labels: string[],
+  hits: number,
+  subset_parents: string[],
 ): string {
-  const tooltip_lines = [
-    t("quality_editor.hit.hit_count").replace("{COUNT}", matched_count.toString()),
-  ];
+  const tooltip_lines = [t("quality_editor.hit.hit_count").replace("{COUNT}", hits.toString())];
 
-  if (subset_parent_labels.length > 0) {
+  if (subset_parents.length > 0) {
     tooltip_lines.push(t("text_replacement_page.hit.subset_relations"));
     tooltip_lines.push(
-      ...subset_parent_labels.map((label) => {
+      ...subset_parents.map((label) => {
         return t("quality_editor.hit.relation_line")
           .replace("{CHILD}", entry.src)
           .replace("{PARENT}", label);
@@ -327,10 +325,9 @@ function build_text_replacement_hit_state_from_cache(
   // 页面只从质量统计缓存计算展示状态，不持有也不修改替换规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
-    completed_snapshot: statistics_cache.completed_snapshot,
-    completed_entry_ids: statistics_cache.completed_entry_ids,
-    matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
-    subset_parent_labels_by_entry_id: statistics_cache.subset_parent_labels_by_entry_id,
+    entry_ids: statistics_cache.entry_ids,
+    hits_by_entry_id: statistics_cache.hits_by_entry_id,
+    subset_parents_by_entry_id: statistics_cache.subset_parents_by_entry_id,
   };
 }
 
@@ -451,8 +448,8 @@ export function useTextReplacementPageState(
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
   const completed_hit_entry_id_set = useMemo<ReadonlySet<TextReplacementEntryId>>(() => {
-    return new Set(hit_state.completed_entry_ids);
-  }, [hit_state.completed_entry_ids]);
+    return new Set(hit_state.entry_ids ?? []);
+  }, [hit_state.entry_ids]);
 
   const build_result_snapshot = useCallback(
     (
@@ -561,7 +558,7 @@ export function useTextReplacementPageState(
     Record<TextReplacementEntryId, TextReplacementHitBadgeState>
   >(() => {
     const next_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementHitBadgeState> = {};
-    if (!hit_ready && hit_state.completed_snapshot === null) {
+    if (!hit_ready && hit_state.entry_ids === null) {
       return next_badge_by_entry_id;
     }
 
@@ -580,14 +577,14 @@ export function useTextReplacementPageState(
         return;
       }
 
-      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
-      const subset_parent_labels = hit_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
+      const hits = hit_state.hits_by_entry_id[entry_id] ?? 0;
+      const subset_parents = hit_state.subset_parents_by_entry_id[entry_id] ?? [];
 
       next_badge_by_entry_id[entry_id] = {
         kind,
-        matched_count,
-        subset_parent_labels,
-        tooltip: build_hit_badge_tooltip(t, entry, matched_count, subset_parent_labels),
+        hits,
+        subset_parents,
+        tooltip: build_hit_badge_tooltip(t, entry, hits, subset_parents),
       };
     });
 

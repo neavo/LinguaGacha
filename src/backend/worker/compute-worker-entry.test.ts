@@ -10,12 +10,15 @@ import type { ComputeWorkerTask } from "./compute-worker-task";
 
 function create_task(): ComputeWorkerTask {
   return {
-    type: "quality_statistics",
-    input: prepare_quality_statistics_task_input({
-      rule_key: "glossary",
-      entries: [{ entry_id: "hp", src: "HP" }],
-      items: [{ src: "HP + 1", dst: "" }],
-    }),
+    type: "quality_rule_analysis",
+    input: {
+      ...prepare_quality_statistics_task_input({
+        rule_key: "glossary",
+        entries: [{ entry_id: "hp", src: "HP" }],
+        items: [{ src: "HP + 1", dst: "" }],
+      }),
+      include_relations: true,
+    },
   };
 }
 
@@ -71,7 +74,7 @@ describe("Compute worker entry", () => {
         ok: false,
         error: expect.objectContaining({
           message: "Compute worker 任务已取消。",
-          context: { worker_task_type: "quality_statistics" },
+          context: { worker_task_type: "quality_rule_analysis" },
         }),
       }),
     );

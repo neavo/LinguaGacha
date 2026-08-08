@@ -12,7 +12,7 @@ import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types
 import { FileCache } from "./file-cache";
 import { ItemCache } from "./item-cache";
 import { ProofreadingCache } from "./proofreading-cache";
-import { QualityStatisticsCache } from "./quality-statistics-cache";
+import { QualityRuleAnalysisCache } from "./quality-rule-analysis-cache";
 
 /**
  * CacheManager 内部的小型数据块缓存；只隔离顶层对象，嵌套 JSON 按不可变值使用。
@@ -53,7 +53,7 @@ export class CacheManager implements CacheReadPort {
   public readonly prompts = new ProjectDataBlockCache(() => this.recover_if_needed());
   public readonly analysis = new ProjectDataBlockCache(() => this.recover_if_needed());
   public readonly proofreading: ProofreadingCache;
-  public readonly qualityStatistics: QualityStatisticsCache;
+  public readonly qualityAnalysis: QualityRuleAnalysisCache;
 
   /**
    * 构造所有子缓存，并把可恢复读取钩子下发给轻量 block 缓存。
@@ -72,7 +72,7 @@ export class CacheManager implements CacheReadPort {
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
     });
-    this.qualityStatistics = new QualityStatisticsCache({
+    this.qualityAnalysis = new QualityRuleAnalysisCache({
       cache: this,
       workerClient: options.workerClient,
     });
@@ -104,6 +104,7 @@ export class CacheManager implements CacheReadPort {
     this.quality.clear();
     this.prompts.clear();
     this.analysis.clear();
+    this.qualityAnalysis.clear();
     this.section_revisions = {};
     this.recoverable_error = null;
   }
@@ -115,13 +116,11 @@ export class CacheManager implements CacheReadPort {
     if (event.type === "project.opened_for_cache") {
       await this.warmProject(event.projectPath);
       await this.proofreading.clearProject();
-      this.qualityStatistics.clear();
       return;
     }
     if (event.type === "project.unloaded") {
       this.clearProject(event.projectPath);
       await this.proofreading.clearProject(event.projectPath);
-      this.qualityStatistics.clear();
       return;
     }
     if (event.projectPath !== this.project_path) {
@@ -188,6 +187,7 @@ export class CacheManager implements CacheReadPort {
     this.quality.replace(quality_block);
     this.prompts.replace(prompts_block);
     this.analysis.replace(analysis_block);
+    this.qualityAnalysis.clear();
     this.section_revisions = section_revisions;
     this.freshness = "fresh";
     this.recoverable_error = null;
@@ -248,7 +248,7 @@ export class CacheManager implements CacheReadPort {
     next_section_revisions: ProjectDataSectionRevisions,
   ): Promise<void> {
     await this.proofreading.applyChange(change, next_section_revisions);
-    this.qualityStatistics.applyChange(change);
+    this.qualityAnalysis.applyChange(change);
   }
 
   /**

@@ -13,7 +13,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 
 type QualityRuleHitBadgeState = {
   kind: "matched" | "unmatched" | "related";
-  matched_count: number;
+  hits: number;
   tooltip: string;
 };
 
@@ -68,7 +68,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
 
   const badge = (
     <Badge className={cn(props.badge_class_name, COLOR_CLASS_NAME_BY_KIND[props.badge_state.kind])}>
-      {props.badge_state.matched_count.toString()}
+      {props.badge_state.hits.toString()}
     </Badge>
   );
   const tooltip_content = (

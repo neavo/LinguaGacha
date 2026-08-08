@@ -12,8 +12,8 @@ type QualityRuleFilterState = {
 };
 
 type QualityRuleStatisticsState = {
-  matched_count_by_entry_id: Record<string, number>;
-  subset_parent_labels_by_entry_id: Record<string, string[]>;
+  hits_by_entry_id: Record<string, number>;
+  subset_parents_by_entry_id: Record<string, string[]>;
 };
 
 /**
@@ -87,11 +87,11 @@ export function resolve_quality_rule_hit_badge_kind(
     return null;
   }
 
-  if ((statistics_state.matched_count_by_entry_id[entry_id] ?? 0) === 0) {
+  if ((statistics_state.hits_by_entry_id[entry_id] ?? 0) === 0) {
     return "unmatched";
   }
 
-  return (statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? []).length > 0
+  return (statistics_state.subset_parents_by_entry_id[entry_id] ?? []).length > 0
     ? "related"
     : "matched";
 }

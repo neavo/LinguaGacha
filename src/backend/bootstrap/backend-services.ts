@@ -270,7 +270,7 @@ export class BackendServices {
       ),
       statistics: new QualityStatisticsService({
         sessionState: session_state,
-        cache: this.cache_manager.qualityStatistics,
+        cache: this.cache_manager.qualityAnalysis,
       }),
     };
     this.files = {
@@ -297,10 +297,10 @@ export class BackendServices {
       userAgent: user_agent,
       sessionState: session_state,
       cache: this.cache_manager,
+      qualityAnalysis: this.cache_manager.qualityAnalysis,
       qualityRules: quality_rules,
       proofreading: this.proofreading,
       runtimeGate: this.runtime_gate,
-      computeWorker: this.compute_worker_client,
       webFetch: options.agentWebFetch,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),

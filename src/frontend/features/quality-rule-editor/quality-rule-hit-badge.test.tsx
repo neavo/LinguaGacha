@@ -54,7 +54,7 @@ describe("QualityRuleHitBadge", () => {
         <QualityRuleHitBadge
           entry_id="rule-1"
           running={false}
-          badge_state={{ kind: "matched", matched_count: 2, tooltip: "命中 2" }}
+          badge_state={{ kind: "matched", hits: 2, tooltip: "命中 2" }}
           badge_class_name="badge"
           running_class_name="running"
           wrap_class_name="wrap"
@@ -84,7 +84,7 @@ describe("QualityRuleHitBadge", () => {
     const on_query_entry_source = vi.fn(async () => {});
     const on_search_entry_relations = vi.fn();
     const rendered = await render_badge({
-      badge_state: { kind: "related", matched_count: 1, tooltip: "存在父项" },
+      badge_state: { kind: "related", hits: 1, tooltip: "存在父项" },
       on_query_entry_source,
       on_search_entry_relations,
     });

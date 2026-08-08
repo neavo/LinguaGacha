@@ -25,7 +25,11 @@ import {
 
 type QualityStatisticsQueryResponse = {
   projectPath: string; // 后端确认的项目身份，用于丢弃迟到旧项目结果。
-  statistics: QualityRuleStatisticsCacheSnapshot | null; // null 表示后端无可复用统计，前端恢复成当前快照形状。
+  statistics: {
+    entry_ids: string[]; // 后端完成分析时的完整规则身份
+    hits_by_entry_id: Record<string, number>; // 每条规则命中的不同 item 数
+    subset_parents_by_entry_id: Record<string, string[]>; // 字面量真实包含父文本
+  };
 };
 
 type QualityRuleStatisticsContextValue = {
@@ -156,16 +160,15 @@ export function QualityRuleStatisticsProvider(props: { children: ReactNode }): J
 }
 
 /**
- * 后端返回 null 或旧形状时恢复完整缓存结构，并标记为当前结果。
+ * 把后端紧凑统计结果合并进 renderer 自己拥有的请求状态。
  */
 function normalize_quality_statistics_cache(
-  value: QualityRuleStatisticsCacheSnapshot | null,
+  value: QualityStatisticsQueryResponse["statistics"],
   request_token: number,
 ): QualityRuleStatisticsCacheSnapshot {
-  const previous_value = value ?? undefined;
   return {
     ...createEmptyQualityRuleStatisticsCacheSnapshot(),
-    ...previous_value,
+    ...value,
     phase: "current",
     last_error: null,
     request_token,

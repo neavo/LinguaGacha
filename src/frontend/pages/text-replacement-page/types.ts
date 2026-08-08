@@ -1,4 +1,3 @@
-import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 
@@ -30,19 +29,18 @@ export type TextReplacementFilterState = {
 };
 
 export type TextReplacementHitState = {
-  running: boolean;
-  completed_snapshot: QualityStatisticsDependencySnapshot | null;
-  completed_entry_ids: TextReplacementEntryId[];
-  matched_count_by_entry_id: Record<TextReplacementEntryId, number>;
-  subset_parent_labels_by_entry_id: Record<TextReplacementEntryId, string[]>;
+  running: boolean; // 首次分析是否仍在计算
+  entry_ids: TextReplacementEntryId[] | null; // null 表示尚无可展示结果
+  hits_by_entry_id: Record<TextReplacementEntryId, number>; // 已完成规则的 item 命中数
+  subset_parents_by_entry_id: Record<TextReplacementEntryId, string[]>; // 字面量真实包含父文本
 };
 
 export type TextReplacementHitBadgeKind = "matched" | "unmatched" | "related";
 
 export type TextReplacementHitBadgeState = {
   kind: TextReplacementHitBadgeKind;
-  matched_count: number;
-  subset_parent_labels: string[];
+  hits: number;
+  subset_parents: string[]; // tooltip 展示的父规则原文
   tooltip: string;
 };
 

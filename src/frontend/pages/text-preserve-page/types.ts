@@ -1,4 +1,3 @@
-import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 
@@ -31,17 +30,16 @@ export type TextPreserveFilterState = {
 };
 
 export type TextPreserveHitState = {
-  running: boolean;
-  completed_snapshot: QualityStatisticsDependencySnapshot | null;
-  completed_entry_ids: TextPreserveEntryId[];
-  matched_count_by_entry_id: Record<TextPreserveEntryId, number>;
+  running: boolean; // 首次分析是否仍在计算
+  entry_ids: TextPreserveEntryId[] | null; // null 表示尚无可展示结果
+  hits_by_entry_id: Record<TextPreserveEntryId, number>; // 已完成规则的 item 命中数
 };
 
 export type TextPreserveHitBadgeKind = "matched" | "unmatched";
 
 export type TextPreserveHitBadgeState = {
   kind: TextPreserveHitBadgeKind;
-  matched_count: number;
+  hits: number;
   tooltip: string;
 };
 
