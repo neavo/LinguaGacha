@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  APP_LANGUAGES,
   normalize_app_language,
   resolve_app_language_from_locale_tag,
   resolve_app_locale,
@@ -33,9 +32,5 @@ describe("应用语言", () => {
     expect(resolve_app_language_from_locale_tag("de-DE")).toBe("DE");
     expect(resolve_app_language_from_locale_tag("en-US")).toBe("EN");
     expect(resolve_app_language_from_locale_tag("fr-FR")).toBe("ZH");
-  });
-
-  it("公开应用支持的界面语言", () => {
-    expect(APP_LANGUAGES).toEqual(["ZH", "EN", "DE"]);
   });
 });

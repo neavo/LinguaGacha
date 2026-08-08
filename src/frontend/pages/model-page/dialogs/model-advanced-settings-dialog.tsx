@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 import {
-  parse_model_agent_config,
-  resolve_model_agent_limits,
+  resolve_model_agent_config,
   type ModelAgentConfig,
+  type ResolvedModelAgentConfig,
 } from "@domain/model-agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
@@ -19,7 +19,7 @@ type ModelAdvancedSettingsDialogProps = {
   model: ModelEntrySnapshot | null;
   readonly: boolean;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
-  onAgentLimitsError: () => void;
+  onAgentLimitsAdjusted: () => void;
   onJsonFormatError: () => void;
   onClose: () => void;
 };
@@ -168,18 +168,17 @@ function create_agent_limit_draft(
   };
 }
 
-/** 两项草稿共用领域校验，避免前端维护第二套数值关系。 */
-function parse_agent_limit_draft(
+/** 两项草稿共用领域规范化，避免前端维护第二套数值关系。 */
+function resolve_agent_limit_draft(
   model_id: string,
   draft: Record<AgentLimitFieldName, string>,
-): ModelAgentConfig | null {
+): ResolvedModelAgentConfig {
   const context_window_text = draft.context_window.trim();
   const max_output_tokens_text = draft.max_output_tokens.trim();
-  const config = parse_model_agent_config({
+  return resolve_model_agent_config(model_id, {
     context_window: context_window_text === "" ? null : Number(context_window_text),
     max_output_tokens: max_output_tokens_text === "" ? null : Number(max_output_tokens_text),
   });
-  return config !== null && resolve_model_agent_limits(model_id, config) !== null ? config : null;
 }
 
 /** 编辑协议支持的生成参数与自定义请求字段。 */
@@ -204,7 +203,6 @@ export function ModelAdvancedSettingsDialog(
   const [agent_limit_draft, set_agent_limit_draft] = useState(
     create_agent_limit_draft(props.model),
   );
-  const [agent_limits_error, set_agent_limits_error] = useState(false);
   const [slider_values, set_slider_values] = useState<Record<SliderFieldName, number>>(
     create_slider_value_state(props.model),
   );
@@ -219,7 +217,6 @@ export function ModelAdvancedSettingsDialog(
       set_headers_error(false);
       set_body_error(false);
       set_agent_limit_draft(create_agent_limit_draft(props.model));
-      set_agent_limits_error(false);
     }
   }, [props.model]);
 
@@ -253,30 +250,21 @@ export function ModelAdvancedSettingsDialog(
     void props.onPatch({ request: { [field]: parsed_result.value } });
   }
 
-  /** 两项容量必须作为一组校验和保存，避免产生瞬时非法组合。 */
+  /** 两项容量必须作为一组规范化和保存，避免产生瞬时非法组合。 */
   function commit_agent_limits(): void {
-    const candidate = parse_agent_limit_draft(model.model_id, agent_limit_draft);
-    if (candidate === null) {
-      set_agent_limits_error(true);
-      props.onAgentLimitsError();
-      return;
+    const resolved = resolve_agent_limit_draft(model.model_id, agent_limit_draft);
+    set_agent_limit_draft({
+      context_window: resolved.config.context_window.toString(),
+      max_output_tokens: resolved.config.max_output_tokens.toString(),
+    });
+    if (resolved.adjusted) {
+      props.onAgentLimitsAdjusted();
     }
-    save_agent_limits(candidate);
-  }
-
-  /** 已显示错误时，任一修改恢复合法组合便立即清错并提交。 */
-  function update_agent_limit_draft(field_name: AgentLimitFieldName, text: string): void {
-    const next_draft = { ...agent_limit_draft, [field_name]: text };
-    set_agent_limit_draft(next_draft);
-    if (!agent_limits_error) return;
-    const candidate = parse_agent_limit_draft(model.model_id, next_draft);
-    if (candidate === null) return;
-    save_agent_limits(candidate);
+    save_agent_limits(resolved.config);
   }
 
   /** 只提交与当前模型不同的完整容量配置。 */
   function save_agent_limits(candidate: ModelAgentConfig): void {
-    set_agent_limits_error(false);
     if (
       candidate.context_window !== model.agent.context_window ||
       candidate.max_output_tokens !== model.agent.max_output_tokens
@@ -310,9 +298,11 @@ export function ModelAdvancedSettingsDialog(
                   value={agent_limit_draft[field_config.field_name]}
                   disabled={props.readonly}
                   aria-label={t(field_config.title_key)}
-                  aria-invalid={agent_limits_error || undefined}
                   onChange={(event) => {
-                    update_agent_limit_draft(field_config.field_name, event.target.value);
+                    set_agent_limit_draft({
+                      ...agent_limit_draft,
+                      [field_config.field_name]: event.target.value,
+                    });
                   }}
                   onBlur={commit_agent_limits}
                 />

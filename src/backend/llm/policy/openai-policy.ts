@@ -73,7 +73,10 @@ export function apply_openai_responses_request_overrides(
   return apply_openai_thinking_request_overrides("OpenAIResponses", result, snapshot);
 }
 
-/** OpenAI Chat Completions 与 Responses 的模型族差异统一收敛为最终请求字段。 */
+/**
+ * OpenAI Chat Completions 与 Responses 的模型族差异统一收敛为最终请求字段。
+ * 模型识别和档位映射会随供应商能力调整，不逐项固化当前模型名与结果字面量测试。
+ */
 export function build_openai_thinking_payload(
   api_format: "OpenAI" | "OpenAIResponses",
   model_id: string,

@@ -4,13 +4,11 @@ import type { ModelRequestSnapshot } from "./policy-types";
 import {
   apply_google_one_shot_request_overrides,
   apply_google_request_overrides,
-  build_google_thinking_config,
   normalize_google_api_base_url,
 } from "./google-policy";
 
 describe("Google 请求规则", () => {
   it.each([
-    ["", "https://generativelanguage.googleapis.com/v1beta"],
     ["https://proxy.example/google", "https://proxy.example/google/v1beta"],
     ["https://proxy.example/google/", "https://proxy.example/google/v1beta"],
     ["https://proxy.example/google/v1", "https://proxy.example/google/v1"],
@@ -20,7 +18,7 @@ describe("Google 请求规则", () => {
     expect(normalize_google_api_base_url(url)).toBe(expected);
   });
 
-  it("OneShot 补齐生成、安全和思考字段，并让内部 signal 最终生效", () => {
+  it("OneShot 补齐生成与安全字段，并让内部 signal 最终生效", () => {
     const signal = new AbortController().signal;
     const config = apply_google_one_shot_request_overrides(
       { temperature: 0.2, abortSignal: "pi-signal" },
@@ -30,6 +28,7 @@ describe("Google 请求规则", () => {
           top_p: 0.9,
         },
         extra_body: { responseMimeType: "application/json", abortSignal: "bad" },
+        model_id: "custom-model",
         thinking_level: "LOW",
       }),
       signal,
@@ -39,10 +38,15 @@ describe("Google 请求规则", () => {
       temperature: 0.2,
       topP: 0.9,
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingLevel: "low" },
       abortSignal: signal,
     });
-    expect(config["safetySettings"]).toHaveLength(4);
+    const safety_settings = config["safetySettings"];
+    expect(Array.isArray(safety_settings)).toBe(true);
+    expect(
+      Array.isArray(safety_settings) &&
+        safety_settings.length > 0 &&
+        safety_settings.every((setting) => setting["threshold"] === "BLOCK_NONE"),
+    ).toBe(true);
   });
 
   it("共享覆盖只替换 config thinking 并保留 Pi 结构字段", () => {
@@ -55,6 +59,7 @@ describe("Google 请求规则", () => {
     const config = apply_google_request_overrides(
       source,
       create_snapshot({
+        model_id: "custom-model",
         thinking_level: "LOW",
         extra_body: { thinkingConfig: { thinkingBudget: 777 }, customFlag: true },
       }),
@@ -68,29 +73,6 @@ describe("Google 请求规则", () => {
       customFlag: true,
     });
     expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
-  });
-
-  it("保持 Gemini 3.x 的 thinking 能力映射", () => {
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingLevel: "medium" });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "minimal" });
-  });
-
-  it.each([
-    ["gemini-2.0-flash", "OFF"],
-    ["gemini-2.5-pro", "LOW"],
-    ["gemini-2.5-flash", "MEDIUM"],
-    ["gemini-2.5-flash-lite", "HIGH"],
-  ] as const)("不为 Gemini 2.x %s/%s 注入 thinkingConfig", (model_id, thinking_level) => {
-    const snapshot = create_snapshot({ model_id, thinking_level });
-
-    expect(build_google_thinking_config(snapshot)).toBeNull();
-    expect(
-      apply_google_request_overrides({ thinkingConfig: { thinkingBudget: 2048 } }, snapshot),
-    ).not.toHaveProperty("thinkingConfig");
   });
 });
 

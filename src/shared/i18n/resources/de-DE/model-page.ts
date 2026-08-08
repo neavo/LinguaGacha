@@ -59,8 +59,8 @@ export const de_de_model_page = {
       "Fehler beim Speichern der Modellreihenfolge. Bitte versuchen Sie es später erneut",
     delete_last_one: "In jeder Kategorie muss mindestens ein Modell verbleiben",
     reset_success: "Modell erfolgreich zurückgesetzt",
-    agent_limits_invalid:
-      "Das Kontextfenster muss größer als das Doppelte der maximalen Ausgabelänge sein",
+    agent_limits_adjusted:
+      "Ungültige Einstellungen wurden automatisch auf eine gültige Konfiguration angepasst",
     json_format_error: "JSON-Formatfehler. Bitte geben Sie ein gültiges JSON-Objekt ein",
     selector_load_failed:
       "Fehler beim Laden der Modellliste. Bitte überprüfen Sie die API-Konfiguration",

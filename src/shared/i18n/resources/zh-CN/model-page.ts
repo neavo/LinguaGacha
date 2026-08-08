@@ -53,7 +53,7 @@ export const zh_cn_model_page = {
     reorder_failed: "模型顺序保存失败，请稍后再试 …",
     delete_last_one: "每个分类至少需要保留一个模型，无法删除 …",
     reset_success: "模型已重置 …",
-    agent_limits_invalid: "上下文窗口必须大于最大输出长度的两倍",
+    agent_limits_adjusted: "设置值非法，已为您自动调整为可用配置 …",
     json_format_error: "JSON 格式错误，请输入有效的 JSON 对象 …",
     selector_load_failed: "获取模型列表失败，请检查接口配置 …",
     test_failed: "模型测试失败，请稍后再试 …",

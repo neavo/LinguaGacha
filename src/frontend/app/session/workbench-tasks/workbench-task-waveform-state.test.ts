@@ -57,8 +57,19 @@ describe("task waveform", () => {
       now_seconds: 150,
       total_output_tokens: 5980,
     });
+    const capped_history_length = state.history.length;
 
-    expect(state.history).toHaveLength(256);
+    for (let index = 300; index < 400; index += 1) {
+      state = advance_task_waveform_state(state, {
+        active: true,
+        now_seconds: index * 0.5,
+        total_output_tokens: index * 20,
+      });
+    }
+
+    expect(capped_history_length).toBeGreaterThan(0);
+    expect(capped_history_length).toBeLessThan(300);
+    expect(state.history).toHaveLength(capped_history_length);
     expect(state.history.at(-1)).toBeGreaterThan(0);
     expect(has_unsettled_task_waveform_tail(state.history)).toBe(true);
   });

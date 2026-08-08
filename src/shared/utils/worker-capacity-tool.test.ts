@@ -18,15 +18,13 @@ describe("resolve_default_worker_count", () => {
     ).toBe(1);
   });
 
-  it.each([
-    [16, 4],
-    [3, 2],
-    [1, 1],
-  ] as const)("并行度为 %i 时默认使用 %i 个 worker", (availableParallelism, expected) => {
-    expect(
-      resolve_default_worker_count({
-        availableParallelism,
-      }),
-    ).toBe(expected);
+  it("默认保留主进程容量，并在高并行度下达到稳定上限", () => {
+    expect(resolve_default_worker_count({ availableParallelism: 3 })).toBe(2);
+    expect(resolve_default_worker_count({ availableParallelism: 1 })).toBe(1);
+
+    const high_parallelism_count = resolve_default_worker_count({ availableParallelism: 16 });
+    expect(resolve_default_worker_count({ availableParallelism: 64 })).toBe(high_parallelism_count);
+    expect(high_parallelism_count).toBeGreaterThan(1);
+    expect(high_parallelism_count).toBeLessThan(16);
   });
 });

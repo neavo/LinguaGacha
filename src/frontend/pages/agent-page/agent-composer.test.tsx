@@ -384,17 +384,17 @@ describe("AgentComposer", () => {
   });
 
   it("底栏在上下文达到预警阈值时标记警告", async () => {
-    const view = await render_composer({ context_tokens: 224_000 });
+    const view = await render_composer({ context_tokens: 240_000 });
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("77.8%");
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("83.3%");
     expect(view.querySelector(".agent-composer__context-usage")?.getAttribute("data-tone")).toBe(
       "warning",
     );
     expect(
       [...view.querySelectorAll('[role="tooltip"]')].some(
-        (tooltip) => tooltip.textContent?.includes("224K / 288K") === true,
+        (tooltip) => tooltip.textContent?.includes("240K / 288K") === true,
       ),
     ).toBe(true);
   });

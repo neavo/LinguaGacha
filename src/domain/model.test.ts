@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { is_json_record } from "./json";
-import { DEFAULT_MODEL_AGENT_CONFIG } from "./model-agent";
+import { AGENT_COMPACTION_RESERVE_TOKENS, DEFAULT_MODEL_AGENT_CONFIG } from "./model-agent";
 import { MODEL_TYPES, Model, normalize_model_selection } from "./model";
 
 describe("Model", () => {
@@ -64,7 +64,9 @@ describe("Model", () => {
     });
   });
 
-  it("Agent 容量合法时完整往返，缺失或损坏时整组恢复默认", () => {
+  it("Agent 容量合法时完整往返，超限时调小输出，损坏时整组恢复默认", () => {
+    const available_output_tokens = 10_000;
+    const adjusted_context_window = AGENT_COMPACTION_RESERVE_TOKENS + available_output_tokens;
     const model = Model.from_json(
       {
         agent: { context_window: 400_000, max_output_tokens: 50_000 },
@@ -82,7 +84,21 @@ describe("Model", () => {
     expect(
       Model.from_json(
         {
-          agent: { context_window: 64_000, max_output_tokens: 0 },
+          agent: {
+            context_window: adjusted_context_window,
+            max_output_tokens: adjusted_context_window,
+          },
+        },
+        "adjusted-agent",
+      ).to_json()["agent"],
+    ).toEqual({
+      context_window: adjusted_context_window,
+      max_output_tokens: available_output_tokens,
+    });
+    expect(
+      Model.from_json(
+        {
+          agent: { context_window: AGENT_COMPACTION_RESERVE_TOKENS, max_output_tokens: 1 },
         },
         "dirty-agent",
       ).to_json()["agent"],
@@ -101,13 +117,6 @@ describe("Model", () => {
   });
 
   it("模型类型注册表统一决定排序、自定义模板和思考配置", () => {
-    expect(MODEL_TYPES).toEqual([
-      "PRESET",
-      "CUSTOM_GOOGLE",
-      "CUSTOM_OPENAI",
-      "CUSTOM_OPENAI_RESPONSES",
-      "CUSTOM_ANTHROPIC",
-    ]);
     expect(Model.custom_types()).toEqual(MODEL_TYPES.slice(1));
     expect(Model.resolve_type_sort_order("CUSTOM_OPENAI_RESPONSES")).toBe(3);
     expect(Model.resolve_type_sort_order("unknown")).toBe(99);

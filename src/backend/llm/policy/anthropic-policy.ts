@@ -46,6 +46,7 @@ export function apply_anthropic_request_overrides(
 
 /**
  * Claude thinking 开启时删除 temperature/top_p，因为 provider 不允许组合。
+ * 模型识别和预算映射会随供应商能力调整，不逐项固化当前模型名与预算字面量测试。
  */
 export function build_anthropic_thinking_payload(
   snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,

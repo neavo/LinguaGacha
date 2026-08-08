@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  APP_TABLE_DEFAULT_ROW_HEIGHT,
   build_app_table_placeholder_fill,
   build_app_table_spacer_heights,
   resolve_app_table_row_zebra,
@@ -9,6 +8,7 @@ import {
 
 describe("app-table-virtualization", () => {
   it("短列表会把视口剩余高度拆成占位行和残余 spacer", () => {
+    const row_height = 30;
     const spacer_heights = build_app_table_spacer_heights({
       viewport_height: 120,
       total_size: 72,
@@ -17,7 +17,7 @@ describe("app-table-virtualization", () => {
     });
     const placeholder_fill = build_app_table_placeholder_fill(
       spacer_heights.viewport_fill_height,
-      APP_TABLE_DEFAULT_ROW_HEIGHT,
+      row_height,
     );
 
     expect(spacer_heights).toEqual({
@@ -27,8 +27,8 @@ describe("app-table-virtualization", () => {
       bottom_spacer_height: 48,
     });
     expect(placeholder_fill).toEqual({
-      placeholder_row_heights: [36],
-      residual_spacer_height: 12,
+      placeholder_row_heights: [row_height],
+      residual_spacer_height: 18,
     });
   });
 

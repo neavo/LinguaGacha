@@ -2,8 +2,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
+import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
+
+import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -57,7 +59,7 @@ describe("ModelAdvancedSettingsDialog", () => {
             })}
             readonly={false}
             onPatch={on_patch}
-            onAgentLimitsError={() => {}}
+            onAgentLimitsAdjusted={() => {}}
             onJsonFormatError={() => {}}
             onClose={() => {}}
           />,
@@ -90,12 +92,14 @@ describe("ModelAdvancedSettingsDialog", () => {
     });
   });
 
-  it("把 Agent 容量置顶并只原子提交合法数值对", async () => {
+  it("把 Agent 容量置顶，并将超限值调小、不可用组合整组恢复自动", async () => {
+    const available_output_tokens = 10_000;
+    const adjusted_context_window = AGENT_COMPACTION_RESERVE_TOKENS + available_output_tokens;
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     const on_patch = vi.fn(async () => {});
-    const on_agent_limits_error = vi.fn();
+    const on_agent_limits_adjusted = vi.fn();
     await act(async () => {
       root?.render(
         <ModelAdvancedSettingsDialog
@@ -103,7 +107,7 @@ describe("ModelAdvancedSettingsDialog", () => {
           model={create_model_snapshot()}
           readonly={false}
           onPatch={on_patch}
-          onAgentLimitsError={on_agent_limits_error}
+          onAgentLimitsAdjusted={on_agent_limits_adjusted}
           onJsonFormatError={() => {}}
           onClose={() => {}}
         />,
@@ -142,20 +146,53 @@ describe("ModelAdvancedSettingsDialog", () => {
     });
 
     on_patch.mockClear();
-    await act(async () => change_input_value(context_window, "64000"));
+    await act(async () => change_input_value(context_window, adjusted_context_window.toString()));
     await act(async () =>
       context_window.dispatchEvent(new FocusEvent("focusout", { bubbles: true })),
     );
-    expect(on_patch).not.toHaveBeenCalled();
-    expect(on_agent_limits_error).toHaveBeenCalledOnce();
-    expect(context_window.value).toBe("64000");
-    expect(context_window.getAttribute("aria-invalid")).toBe("true");
-    expect(max_output_tokens.getAttribute("aria-invalid")).toBe("true");
-
-    await act(async () => change_input_value(context_window, "300000"));
     expect(on_patch).toHaveBeenLastCalledWith({
-      agent: { context_window: 300_000, max_output_tokens: 0 },
+      agent: {
+        context_window: adjusted_context_window,
+        max_output_tokens: available_output_tokens,
+      },
     });
+    expect(on_agent_limits_adjusted).toHaveBeenCalledOnce();
+    expect(context_window.value).toBe(adjusted_context_window.toString());
+    expect(max_output_tokens.value).toBe(available_output_tokens.toString());
+    expect(context_window.getAttribute("aria-invalid")).toBeNull();
+    expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
+
+    await act(async () => {
+      root?.render(
+        <ModelAdvancedSettingsDialog
+          open
+          model={create_model_snapshot({
+            agent: {
+              context_window: adjusted_context_window,
+              max_output_tokens: available_output_tokens,
+            },
+          })}
+          readonly={false}
+          onPatch={on_patch}
+          onAgentLimitsAdjusted={on_agent_limits_adjusted}
+          onJsonFormatError={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+    on_patch.mockClear();
+    await act(async () =>
+      change_input_value(context_window, AGENT_COMPACTION_RESERVE_TOKENS.toString()),
+    );
+    await act(async () =>
+      context_window.dispatchEvent(new FocusEvent("focusout", { bubbles: true })),
+    );
+    expect(on_patch).toHaveBeenCalledWith({
+      agent: { context_window: 0, max_output_tokens: 0 },
+    });
+    expect(on_agent_limits_adjusted).toHaveBeenCalledTimes(2);
+    expect(context_window.value).toBe("0");
+    expect(max_output_tokens.value).toBe("0");
     expect(context_window.getAttribute("aria-invalid")).toBeNull();
     expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
   });
@@ -171,7 +208,7 @@ describe("ModelAdvancedSettingsDialog", () => {
           model={create_model_snapshot()}
           readonly={false}
           onPatch={async () => {}}
-          onAgentLimitsError={() => {}}
+          onAgentLimitsAdjusted={() => {}}
           onJsonFormatError={() => {}}
           onClose={() => {}}
         />,

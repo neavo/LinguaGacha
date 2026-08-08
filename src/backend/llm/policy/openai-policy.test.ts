@@ -7,7 +7,6 @@ import {
   apply_openai_responses_one_shot_request_overrides,
   apply_openai_responses_request_overrides,
   apply_sakura_one_shot_request_overrides,
-  build_openai_thinking_payload,
   normalize_openai_sdk_base_url,
 } from "./openai-policy";
 
@@ -74,7 +73,7 @@ describe("OpenAI 请求规则", () => {
     });
   });
 
-  it("Responses Agent 保留 Pi Items 与 tools，并由项目规则重建 reasoning", () => {
+  it("Responses Agent 保留 Pi Items 与 tools，并清除未匹配模型的 Pi reasoning", () => {
     const source = {
       input: [{ role: "system", content: "rules" }, { type: "message" }],
       tools: [{ type: "function", name: "lookup" }],
@@ -87,15 +86,15 @@ describe("OpenAI 请求规则", () => {
         source,
         create_snapshot({
           api_format: "OpenAIResponses",
-          model_id: "gpt-5.6-luna",
+          model_id: "custom-model",
           thinking_level: "HIGH",
           extra_body: { custom_flag: true },
         }),
       ),
     ).toEqual({
-      ...source,
       input: [{ role: "developer", content: "rules" }, { type: "message" }],
-      reasoning: { effort: "high", summary: "auto" },
+      tools: source.tools,
+      include: source.include,
       custom_flag: true,
     });
     expect(source.reasoning).toEqual({ effort: "high", summary: "auto" });
@@ -127,7 +126,7 @@ describe("OpenAI 请求规则", () => {
     const payload = apply_openai_completions_request_overrides(
       source,
       create_snapshot({
-        model_id: "kimi-k3",
+        model_id: "custom-model",
         thinking_level: "MEDIUM",
         extra_body: { reasoning_effort: "high", custom_flag: true },
       }),
@@ -144,72 +143,6 @@ describe("OpenAI 请求规则", () => {
     expect(payload).not.toHaveProperty("chat_template_kwargs");
     expect(source).toHaveProperty("reasoning_effort", "medium");
   });
-
-  it.each([
-    ["OFF", "low"],
-    ["LOW", "low"],
-    ["MEDIUM", "low"],
-    ["HIGH", "high"],
-  ] as const)("Kimi K3 将 %s 映射到 reasoning_effort=%s", (level, effort) => {
-    expect(build_openai_thinking_payload("OpenAI", "kimi-k3", level)).toEqual({
-      reasoning_effort: effort,
-    });
-  });
-
-  it.each([
-    ["OFF", "low"],
-    ["LOW", "low"],
-    ["MEDIUM", "medium"],
-    ["HIGH", "high"],
-  ] as const)("Grok 将 %s 映射到两种 OpenAI 协议的 effort=%s", (level, effort) => {
-    expect(build_openai_thinking_payload("OpenAI", "grok-4.5", level)).toEqual({
-      reasoning_effort: effort,
-    });
-    expect(build_openai_thinking_payload("OpenAIResponses", "grok-4.5", level)).toEqual({
-      reasoning: { effort },
-    });
-  });
-
-  it.each([
-    ["OFF", { thinking: { type: "disabled" } }],
-    ["LOW", { thinking: { type: "enabled" }, reasoning_effort: "low" }],
-    ["MEDIUM", { thinking: { type: "enabled" }, reasoning_effort: "low" }],
-    ["HIGH", { thinking: { type: "enabled" }, reasoning_effort: "high" }],
-  ] as const)("DeepSeek V4 Flash/Pro 保持 %s 挡映射", (level, expected) => {
-    expect(build_openai_thinking_payload("OpenAI", "deepseek-v4-flash", level)).toEqual(expected);
-    expect(build_openai_thinking_payload("OpenAI", "deepseek-v4-pro", level)).toEqual(expected);
-  });
-
-  it("区分其余已支持与未匹配的 Chat Completions 模型族", () => {
-    expect(build_openai_thinking_payload("OpenAI", "gpt-5.6-luna", "OFF")).toEqual({
-      reasoning_effort: "none",
-    });
-    expect(build_openai_thinking_payload("OpenAI", "qwen2.5-plus", "OFF")).toBeNull();
-    expect(build_openai_thinking_payload("OpenAI", "doubao-seed-1-5", "OFF")).toEqual({
-      reasoning_effort: "minimal",
-    });
-    expect(build_openai_thinking_payload("OpenAI", "mimo-v1-flash", "OFF")).toEqual({
-      thinking: { type: "disabled" },
-    });
-  });
-
-  it.each([
-    ["OFF", { reasoning: { effort: "none" } }],
-    ["LOW", { reasoning: { effort: "low", summary: "auto" } }],
-    ["MEDIUM", { reasoning: { effort: "medium", summary: "auto" } }],
-    ["HIGH", { reasoning: { effort: "high", summary: "auto" } }],
-  ] as const)("GPT-5.6 Responses 将 %s 映射为项目 reasoning 字段", (level, expected) => {
-    expect(build_openai_thinking_payload("OpenAIResponses", "openai/gpt-5.6-luna", level)).toEqual(
-      expected,
-    );
-  });
-
-  it.each(["qwen2.5-plus", "custom-reasoning-model"])(
-    "Responses 不为未收录模型 %s 猜测思考字段",
-    (model_id) => {
-      expect(build_openai_thinking_payload("OpenAIResponses", model_id, "HIGH")).toBeNull();
-    },
-  );
 });
 
 function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {

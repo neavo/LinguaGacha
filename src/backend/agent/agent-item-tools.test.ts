@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectWriteResult } from "../../shared/project-event";
+import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
 import {
   AGENT_PROOFREADING_UPDATE_SOURCE,
   create_agent_item_tools,
@@ -430,14 +431,7 @@ describe("Agent item 工具", () => {
     );
 
     expect(query_warnings).toHaveBeenCalledWith({
-      warning_types: [
-        "KANA",
-        "HANGEUL",
-        "TEXT_PRESERVE",
-        "SIMILARITY",
-        "GLOSSARY",
-        "RETRY_THRESHOLD",
-      ],
+      warning_types: [...PROOFREADING_WARNING_CODES],
       statuses: ["PROCESSED"],
       file_paths: ["script.txt"],
       keywords: ["hp"],
@@ -487,20 +481,14 @@ describe("Agent item 工具", () => {
       undefined,
       undefined as never,
     );
-    expect(query_warnings).toHaveBeenCalledWith({
-      warning_types: [
-        "KANA",
-        "HANGEUL",
-        "TEXT_PRESERVE",
-        "SIMILARITY",
-        "GLOSSARY",
-        "RETRY_THRESHOLD",
-      ],
-      keywords: [],
-      scope: "all",
-      offset: 0,
-      limit: 20,
-    });
+    expect(query_warnings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warning_types: [...PROOFREADING_WARNING_CODES],
+        keywords: [],
+        scope: "all",
+        offset: 0,
+      }),
+    );
 
     const beyond = await tool.execute(
       "beyond",

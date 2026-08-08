@@ -21,6 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
+import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
   AGENT_SESSION_EVENT_TOPIC,
   format_agent_skill_reference,
@@ -60,15 +61,14 @@ import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 
-/** 产品会话只从当前模型容量派生压缩预算，不读取 coding-agent 用户设置。 */
-function build_agent_session_settings(max_tokens: number) {
+/** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
+function build_agent_session_settings() {
   return {
     enableInstallTelemetry: false,
     enableSkillCommands: false,
     compaction: {
       enabled: true,
-      // SDK 使用严格大于判断；多预留一个 token 后，产品阈值等价于 context >= window - max。
-      reserveTokens: max_tokens + 1,
+      reserveTokens: AGENT_COMPACTION_RESERVE_TOKENS,
       keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
     },
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
@@ -473,9 +473,7 @@ export class AgentService {
       this.user_agent,
     );
     await runtime.session.setModel(resolved_model.model);
-    runtime.session.settingsManager.applyOverrides(
-      build_agent_session_settings(resolved_model.model.maxTokens),
-    );
+    runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
     runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
   }
 
@@ -491,10 +489,9 @@ export class AgentService {
       allowModelNetwork: false,
     });
     const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
-    const settings_manager = SettingsManager.inMemory(
-      build_agent_session_settings(resolved_model.model.maxTokens),
-      { projectTrusted: false },
-    );
+    const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
+      projectTrusted: false,
+    });
     const resource_loader = new DefaultResourceLoader({
       cwd: app_root,
       agentDir: app_root,

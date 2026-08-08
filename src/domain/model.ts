@@ -1,9 +1,7 @@
 import type { JsonRecord } from "./json";
 import { read_json_record } from "./json";
 import {
-  DEFAULT_MODEL_AGENT_CONFIG,
-  normalize_model_agent_config,
-  resolve_model_agent_limits,
+  resolve_model_agent_config,
   type ModelAgentConfig,
   type ModelAgentLimits,
 } from "./model-agent";
@@ -158,13 +156,7 @@ export class Model {
   public static from_json(payload: unknown, fallback_id: string): Model {
     const record = read_json_model_record(payload);
     const model_id = String(record["model_id"] ?? "");
-    let agent = normalize_model_agent_config(record["agent"]);
-    let agent_limits = resolve_model_agent_limits(model_id, agent);
-    if (agent_limits === null) {
-      agent = { ...DEFAULT_MODEL_AGENT_CONFIG };
-      agent_limits = resolve_model_agent_limits(model_id, agent);
-    }
-    if (agent_limits === null) throw new RangeError("默认 Agent 容量无效");
+    const resolved_agent = resolve_model_agent_config(model_id, record["agent"]);
     return new Model({
       id: String(record["id"] ?? fallback_id),
       type: Model.normalize_type(record["type"]),
@@ -173,8 +165,8 @@ export class Model {
       api_url: String(record["api_url"] ?? ""),
       api_key: String(record["api_key"] ?? "no_key_required"),
       model_id,
-      agent,
-      agent_limits,
+      agent: resolved_agent.config,
+      agent_limits: resolved_agent.limits,
       request: Model.normalize_request_config(record["request"]),
       threshold: Model.normalize_threshold_config(record["threshold"]),
       thinking: Model.normalize_thinking_config(record["thinking"]),

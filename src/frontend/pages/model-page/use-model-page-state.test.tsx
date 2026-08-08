@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { MODEL_TYPES } from "@domain/model";
+
 import { useModelPageState } from "./use-model-page-state";
 
 const { api_fetch_mock, push_toast, translate } = vi.hoisted(() => ({
@@ -89,13 +91,7 @@ describe("useModelPageState", () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
 
-    expect(latest_state?.grouped_categories.map((category) => category.type)).toEqual([
-      "PRESET",
-      "CUSTOM_GOOGLE",
-      "CUSTOM_OPENAI",
-      "CUSTOM_OPENAI_RESPONSES",
-      "CUSTOM_ANTHROPIC",
-    ]);
+    expect(latest_state?.grouped_categories.map((category) => category.type)).toEqual(MODEL_TYPES);
     expect(
       latest_state?.grouped_categories.find(
         (category) => category.type === "CUSTOM_OPENAI_RESPONSES",
