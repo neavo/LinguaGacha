@@ -3,10 +3,6 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { clone_translation_scope, type TranslationScope } from "@domain/task";
 import {
-  create_translation_reset_all_plan,
-  create_translation_reset_failed_plan,
-} from "@shared/workbench/workbench-command-planner";
-import {
   type ProjectWriteOperation,
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
@@ -25,7 +21,6 @@ import {
   resolve_task_terminal_transition,
   useTerminalPromptSuppression,
 } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
-import { read_workbench_task_section_revisions } from "@frontend/app/session/workbench-tasks/workbench-task-revisions-api";
 import { should_open_translation_export_followup } from "@shared/workbench/task-completion-followup";
 import {
   advance_task_waveform_state,
@@ -332,7 +327,6 @@ export function useTranslationWorkbenchTask(
     }
 
     const should_continue = has_translation_task_progress(translation_task_display_snapshot);
-    const section_revisions = await read_workbench_task_section_revisions();
     clear_terminal_prompt_suppression();
 
     try {
@@ -340,10 +334,6 @@ export function useTranslationWorkbenchTask(
         task_type: "translation",
         mode: should_continue ? "continue" : "new",
         scope: { kind: "all" },
-        expected_section_revisions: {
-          quality: section_revisions.quality ?? 0,
-          prompts: section_revisions.prompts ?? 0,
-        },
       });
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
       sync_runtime_task_snapshot(next_snapshot);
@@ -420,27 +410,26 @@ export function useTranslationWorkbenchTask(
         await api_fetch("/api/translation/files/export", {});
         set_task_confirm_state(null);
       } else {
-        const section_revisions = await read_workbench_task_section_revisions();
-        const reset_plan =
+        const reset_request =
           task_confirm_state.kind === "reset-all"
-            ? create_translation_reset_all_plan({
-                section_revisions,
-                source_language: String(settings_snapshot.source_language ?? "ALL"),
-                mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
-                skip_duplicate_source_text_enable: Boolean(
-                  settings_snapshot.skip_duplicate_source_text_enable,
-                ),
-              })
-            : create_translation_reset_failed_plan({
-                section_revisions,
-              });
+            ? {
+                mode: "all",
+                project_settings: {
+                  source_language: String(settings_snapshot.source_language ?? "ALL"),
+                  mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
+                  skip_duplicate_source_text_enable: Boolean(
+                    settings_snapshot.skip_duplicate_source_text_enable,
+                  ),
+                },
+              }
+            : { mode: "failed" };
         await commit_project_write({
           operation: WORKBENCH_TRANSLATION_WRITE,
           task_type: "translation",
           run: async () => {
             return await api_fetch<ProjectWriteResultPayload>(
               "/api/workbench/translation/reset",
-              reset_plan.requestBody,
+              reset_request,
             );
           },
         });

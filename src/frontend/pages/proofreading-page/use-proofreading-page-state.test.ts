@@ -2364,10 +2364,7 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("sync 顶层 sectionRevisions 会作为重翻的完整操作基线", async () => {
-    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
-      return create_sync_state({}, { prompts: 3 });
-    });
+  it("校对重翻只提交去重后的稳定 item 身份", async () => {
     await render_hook();
     vi.mocked(api_fetch).mockResolvedValueOnce({
       accepted: true,
@@ -2389,16 +2386,10 @@ describe("useProofreadingPageState", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "items", item_ids: [1] },
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-        quality: 0,
-        prompts: 3,
-      },
     });
   });
 
-  it("只含提示词的变更只更新操作基线并让后续重翻使用最新提示词 revision", async () => {
+  it("只含提示词的变更不重建校对列表且不改变重翻意图载荷", async () => {
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({}, { prompts: 3 });
     });
@@ -2441,12 +2432,6 @@ describe("useProofreadingPageState", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "items", item_ids: [1] },
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-        quality: 0,
-        prompts: 4,
-      },
     });
   });
 
@@ -2514,12 +2499,6 @@ describe("useProofreadingPageState", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "items", item_ids: [2, 1] },
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-        quality: 0,
-        prompts: 0,
-      },
     });
     expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({

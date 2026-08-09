@@ -347,7 +347,6 @@ describe("ProjectContentService", () => {
     const ack = await service.reset_translation({
       mode: "all",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { items: 0, analysis: 0 },
     });
 
     expect(ack).toMatchObject({
@@ -387,7 +386,6 @@ describe("ProjectContentService", () => {
         items: [create_public_item()],
         translation_extras: {},
         prefilter_config: {},
-        expected_section_revisions: { items: 0, analysis: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
 
@@ -415,14 +413,12 @@ describe("ProjectContentService", () => {
     const reset_all_promise = service.reset_translation({
       mode: "all",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { items: 0, analysis: 0 },
     });
     await parse_started;
     try {
       await expect(
         service.reset_translation({
           mode: "failed",
-          expected_section_revisions: { items: 0 },
         }),
       ).rejects.toThrow("runtime.busy");
     } finally {
@@ -488,7 +484,6 @@ describe("ProjectContentService", () => {
       await expect(
         service.reset_translation({
           mode: "failed",
-          expected_section_revisions: { items: 0 },
         }),
       ).rejects.toThrow("runtime.busy");
     } finally {
@@ -862,7 +857,6 @@ describe("ProjectContentService", () => {
       service.reset_translation({
         mode: "all",
         project_settings: { source_language: "JA" },
-        expected_section_revisions: { items: 0, analysis: 0 },
       }),
     ).rejects.toThrow("runtime.busy");
 
@@ -879,7 +873,6 @@ describe("ProjectContentService", () => {
     await expect(
       service.reset_analysis({
         mode: "all",
-        expected_section_revisions: { analysis: 0 },
       }),
     ).rejects.toThrow("runtime.busy");
 
@@ -962,7 +955,7 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("revision 冲突时拒绝写入并不触发 state sync", async () => {
+  it("翻译与分析重置命令都拒绝旧 revision 字段", async () => {
     const { database, service, lg_path } = create_service();
     database.set_meta(lg_path, "project_runtime_revision.items", 2);
 
@@ -971,7 +964,13 @@ describe("ProjectContentService", () => {
         mode: "failed",
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("data.revision_conflict");
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.reset_analysis({
+        mode: "failed",
+        expected_section_revisions: { analysis: 1 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
     database.close();
   });
 });

@@ -65,7 +65,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -128,7 +127,6 @@ describe("TaskEngine", () => {
     await start_task(task_engine, task_runtime, {
       task_type: "analysis",
       mode: "new",
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -190,9 +188,8 @@ describe("TaskEngine", () => {
               task_type,
               mode: "new",
               scope: { kind: "all" },
-              expected_section_revisions: {},
             }
-          : { task_type, mode: "new", expected_section_revisions: {} };
+          : { task_type, mode: "new" };
       await start_task(task_engine, task_runtime, command);
       await done.promise;
     }
@@ -251,7 +248,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -304,7 +300,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await lease_released;
     await wait_until(
@@ -377,7 +372,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -432,7 +426,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -465,7 +458,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -499,7 +491,6 @@ describe("TaskEngine", () => {
     await start_task(task_engine, task_runtime, {
       task_type: "analysis",
       mode: "new",
-      expected_section_revisions: {},
     });
     await done.promise;
 
@@ -547,7 +538,6 @@ describe("TaskEngine", () => {
       task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
-      expected_section_revisions: {},
     });
     await execution_started;
 

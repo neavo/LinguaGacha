@@ -6,22 +6,6 @@ export type StartTaskCommand =
       task_type: "translation";
       mode: TaskStartMode; // 只描述本轮启动语义，不参与状态机
       scope: TranslationScope; // 普通翻译与重翻的唯一分叉
-      expected_section_revisions: Record<string, number>; // revision 锁保护后台任务输入不基于旧快照运行
-    }
-  | {
-      task_type: "analysis";
-      mode: TaskStartMode;
-      expected_section_revisions: Record<string, number>;
-    };
-
-/**
- * CLI 等同进程入口只描述当前工程上的任务意图，revision 由 TaskService 读取。
- */
-export type CurrentProjectTaskStartCommand =
-  | {
-      task_type: "translation";
-      mode: TaskStartMode;
-      scope: TranslationScope;
     }
   | {
       task_type: "analysis";

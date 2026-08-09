@@ -44,7 +44,6 @@ type UseProofreadingBatchActionsOptions = {
   is_writing: boolean;
   dialog_open: boolean;
   list_revisions: ProjectDataSectionRevisions; // 当前校对列表已经消费的项目、质量和校对事实锁
-  operation_revisions: ProjectDataSectionRevisions; // 任务命令需要但列表 query 不必重建的操作锁
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingCommandItemSnapshot[]>;
   task_snapshot: TaskSnapshot;
   sync_task_snapshot: (snapshot: TaskSnapshot) => void;
@@ -132,7 +131,6 @@ export function useProofreadingBatchActions(
     is_writing,
     dialog_open,
     list_revisions,
-    operation_revisions,
     read_items_by_row_ids,
     task_snapshot,
     sync_task_snapshot,
@@ -168,12 +166,6 @@ export function useProofreadingBatchActions(
           task_type: "translation",
           mode: "new",
           scope: { kind: "items", item_ids },
-          expected_section_revisions: {
-            items: list_revisions.items ?? 0,
-            proofreading: list_revisions.proofreading ?? 0,
-            quality: list_revisions.quality ?? 0,
-            prompts: operation_revisions.prompts ?? 0, // 提示词 revision 影响重翻输入
-          },
         });
         sync_task_snapshot(
           build_retranslate_task_snapshot({
@@ -195,10 +187,6 @@ export function useProofreadingBatchActions(
       close_edit_dialog,
       dialog_open,
       handle_api_error,
-      list_revisions.items,
-      list_revisions.proofreading,
-      list_revisions.quality,
-      operation_revisions.prompts,
       remember_preferred_row_id,
       resolve_preferred_row_id,
       set_is_writing,

@@ -76,7 +76,7 @@ export type ProjectAssetWrite =
 type RuntimeCommitRequest = {
   projectPath: string;
   expectedSectionRevisions?: ProjectExpectedSectionRevisions;
-  requireExpectedSectionRevisions: boolean;
+  requireExpectedSectionRevisions: boolean; // 快照派生写入校验 revision，当前事实命令只读取事务内快照
   revisionSections: ProjectDataSection[];
   source: string;
   updatedSections: ProjectDataSection[];
@@ -428,23 +428,36 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 工作台结构性写入集中提交 asset、items、meta 与分析清理。
+   * 工作台结构性写入集中提交 asset、items、meta 与分析清理；当前事实命令须显式关闭 revision guard。
    */
-  public async replace_project_items_and_files(request: {
-    projectPath: string;
-    expectedSectionRevisions: ProjectExpectedSectionRevisions;
-    revisionSections: ProjectDataSection[];
-    source: string;
-    updatedSections: ProjectDataSection[];
-    assetWrites?: ProjectAssetWrite[];
-    items?: MutableJsonRecord[];
-    meta?: MutableJsonRecord;
-    resetAnalysis?: boolean;
-    itemsPayload?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
-    filesPayload?: Pick<ProjectChangeFilesPayload, "payloadMode" | "changedPaths" | "deletePaths">;
-    sections?: RuntimeCommitRequest["sections"];
-    sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
-  }): Promise<ProjectWriteResult> {
+  public async replace_project_items_and_files(
+    request: {
+      projectPath: string;
+      revisionSections: ProjectDataSection[];
+      source: string;
+      updatedSections: ProjectDataSection[];
+      assetWrites?: ProjectAssetWrite[];
+      items?: MutableJsonRecord[];
+      meta?: MutableJsonRecord;
+      resetAnalysis?: boolean;
+      itemsPayload?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
+      filesPayload?: Pick<
+        ProjectChangeFilesPayload,
+        "payloadMode" | "changedPaths" | "deletePaths"
+      >;
+      sections?: RuntimeCommitRequest["sections"];
+      sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
+    } & (
+      | {
+          requireExpectedSectionRevisions: false;
+          expectedSectionRevisions?: undefined;
+        }
+      | {
+          requireExpectedSectionRevisions?: true;
+          expectedSectionRevisions: ProjectExpectedSectionRevisions;
+        }
+    ),
+  ): Promise<ProjectWriteResult> {
     const items_payload =
       request.itemsPayload ??
       (request.items !== undefined && request.updatedSections.includes("items")
@@ -458,7 +471,7 @@ export class ProjectWriteStore {
     return await this.commit_runtime_change({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
-      requireExpectedSectionRevisions: true,
+      requireExpectedSectionRevisions: request.requireExpectedSectionRevisions ?? true,
       revisionSections: request.revisionSections,
       source: request.source,
       updatedSections: request.updatedSections,
@@ -550,13 +563,12 @@ export class ProjectWriteStore {
    */
   public async reset_translation_state(request: {
     projectPath: string;
-    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     items: MutableJsonRecord[];
     translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteResult> {
     return await this.replace_project_items_and_files({
       projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
+      requireExpectedSectionRevisions: false,
       revisionSections: ["items"],
       source: "translation_reset",
       updatedSections: ["items"],

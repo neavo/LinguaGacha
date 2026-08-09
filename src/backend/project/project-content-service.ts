@@ -437,12 +437,17 @@ export class ProjectContentService {
   }
 
   /**
-   * 提交翻译重置结果，保持 all 与 failed 两种旧语义分离
+   * 提交翻译重置结果；命令表达当前事实操作，进入项目写 lease 后才读取工程数据
    */
   public async reset_translation(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
-    this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
+    this.assert_no_legacy_fields(request, [
+      "items",
+      "translation_extras",
+      "prefilter_config",
+      "expected_section_revisions",
+    ]);
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
         const reset_item_drafts = await this.reparse_all_asset_identity_items(project_path);
@@ -468,9 +473,7 @@ export class ProjectContentService {
         });
         return await this.write_store.replace_project_items_and_files({
           projectPath: project_path,
-          expectedSectionRevisions: require_project_expected_section_revisions(
-            request["expected_section_revisions"],
-          ),
+          requireExpectedSectionRevisions: false,
           revisionSections: ["items", "analysis"],
           source: "translation_reset",
           updatedSections: ["items", "analysis"],
@@ -493,9 +496,6 @@ export class ProjectContentService {
         const translation_extras = this.build_translation_extras_for_items(project_path, items);
         return await this.write_store.reset_translation_state({
           projectPath: project_path,
-          expectedSectionRevisions: require_project_expected_section_revisions(
-            request["expected_section_revisions"],
-          ),
           items: build_project_item_persistent_records(items),
           translationExtras: translation_extras as MutableJsonRecord,
         });
@@ -505,12 +505,12 @@ export class ProjectContentService {
   }
 
   /**
-   * 提交分析重置结果，all 清空全部分析事实，failed 只清失败 checkpoint
+   * 提交分析重置结果；项目写 lease 内按当前事实执行 all 或 failed 语义
    */
   public async reset_analysis(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
-    this.assert_no_legacy_fields(request, ["analysis_extras"]);
+    this.assert_no_legacy_fields(request, ["analysis_extras", "expected_section_revisions"]);
     return this.runtime_gate.run_project_write(async () => {
       const analysis_extras = this.build_analysis_reset_extras(project_path, mode);
       if (mode !== "all" && mode !== "failed") {
@@ -518,10 +518,7 @@ export class ProjectContentService {
       }
       return await this.write_store.reset_analysis_state({
         projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
-        requireExpectedSectionRevisions: true,
+        requireExpectedSectionRevisions: false,
         source: "analysis_reset",
         mode,
         analysisExtras: analysis_extras as MutableJsonRecord,

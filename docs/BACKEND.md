@@ -43,7 +43,7 @@ project, files, items, quality, prompts, analysis, proofreading
 ```
 
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
-- 功能 query 返回其结果依赖的 `sectionRevisions`，用户写入和任务命令以这些 revision 做乐观锁；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
+- 功能 query 返回其结果依赖的 `sectionRevisions`；只有基于已消费快照形成的用户写入或预演提交才以这些 revision 做乐观锁。任务启动和面向当前项目事实的 reset 不携带 revision，由运行或项目写 lease 后读取当前事实；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
 - 所有质量规则消费链统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；入口不得另建字段或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
@@ -52,8 +52,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - `QualityRuleAnalysisCache` 是四类质量规则命中数、代表例句和结构关系的唯一后端分析缓存，GUI query 与 Agent 共用该结果；缓存命中只读取缓存引用和轻量 revision，不复制 item、不重建文本组或计算内容签名。quality 变化同时失效统计与关系，item 变化只按受影响文本侧失效统计并保留关系；无法证明范围时失效全部统计。
 - 质量规则分析按不同 item 去重计算 `hits`，同一 item 内多字段、多次或重叠命中只计一次；术语读取原文字段，其余规则按生产语义逐行读取原文或译文。worker 在同一遍命中扫描中保留最多两个确定性 `examples`，不保存完整候选集，并按 item 顺序输出。
 - 结构关系覆盖全部质量规则：字面量先按真实包含或匹配等价形成强组，再以有界公共连续词根合并审校组；正则只合并表达式与大小写配置完全相同的条目。结果是按规则顺序排列、互斥且包含单例的 `groups`，只表示共同审校范围。
-- 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
-- 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
+- 客户端只提交用户意图和必要的设置镜像；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
+- 快照派生写入在最终提交点完成 revision guard 与单 `.lg` 事务；当前事实 reset、任务 artifact 等写入不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
 - 项目事实事务提交后才把类型化 committed event 交给唯一缓存 handler，缓存完成后再发布公开 change。未捕获的 handler 失败不会回滚已提交事务，但会令请求失败并阻止公开 change；常规增量维护失败由 `CacheManager` 标记为可恢复，并在后续 query 前从数据库重建。
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
@@ -66,8 +66,8 @@ project, files, items, quality, prompts, analysis, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验和 Engine 命令转交；`TaskRuntime.begin` 原子取得共享运行 lease。`TaskEngine` 在每轮 run 开始时按 translation / analysis 用途解析模型，并与限流、提示词配置一起冻结到运行上下文。行级重翻和 CLI 复用同一任务入口，不另建模型选择旁路。
-- 启动任务必须携带 `TaskService` 按 task type 与 scope 固定要求的 `expected_section_revisions`；取得运行 lease 后立即进入 task busy，Engine 启动失败时恢复前置状态并释放 lease。
+- `TaskService` 只负责命令 JSON 收窄、task / mode / scope 归一和 Engine 命令转交；启动命令不携带 `expected_section_revisions`。`TaskRuntime.begin` 原子取得共享运行 lease，成为任务受理的唯一并发边界；`TaskEngine` 随后读取当前工程事实，并在每轮 run 开始时按 translation / analysis 用途解析模型，与限流、提示词配置一起冻结到运行上下文。行级重翻和 CLI 复用同一任务入口，不另建模型选择旁路。
+- Agent、任务或结构性项目写入占用共享门禁时，任务启动统一返回 `runtime.busy`；取得 task lease 后立即进入 busy，Engine 启动失败时恢复前置状态并释放 lease。
 - 所有任务命令 ack 都通过 `TaskRuntime.build_snapshot` 重新读取当前事实，避免旧命令意图覆盖更晚的终态。
 - 每次成功 load / unload 都推进 `ProjectSessionState` 的内部会话世代；生命周期返回前，`TaskRuntime` 重置为新会话的 idle、推进 `run_revision` 并发布快照，因此旧工程迟到帧严格早于新工程事实。
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
