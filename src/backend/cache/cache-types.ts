@@ -1,3 +1,4 @@
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
@@ -18,11 +19,6 @@ export type CacheSnapshot = {
 };
 
 /**
- * CacheItem 保持数据库 item 行的普通 JSON 形状。
- */
-export type CacheItem = JsonRecord;
-
-/**
  * CacheFileEntry 是前端和校对列表需要的轻量文件事实。
  */
 export type CacheFileEntry = {
@@ -36,8 +32,8 @@ export type CacheFileEntry = {
  */
 export interface CacheReadPort {
   readonly items: {
-    readItems(): CacheItem[];
-    readItem(itemId: number): CacheItem | null;
+    readItems(): ProjectItemPublicRecord[];
+    readItem(itemId: number): ProjectItemPublicRecord | null;
   };
   readonly files: {
     readFileEntries(): CacheFileEntry[];

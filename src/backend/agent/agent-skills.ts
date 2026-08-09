@@ -24,7 +24,6 @@ import { t_main_log } from "../log/log-text";
 
 const I18N_FILE_NAME = "i18n.json";
 const REFERENCES_DIR_NAME = "references";
-const REFERENCE_EXTENSION = ".md";
 
 export type AgentSkillReference = {
   path: string; // 相对 skill 根目录的 POSIX 路径，供正文解析相对引用
@@ -42,6 +41,12 @@ export type AgentSkillDefinition = Skill &
   AgentSkillUi & {
     references: AgentSkillReference[];
   };
+
+type AgentSkillCatalogDefinition = Pick<
+  AgentSkillDefinition,
+  "name" | "description" | "filePath" | "disableModelInvocation"
+>;
+type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "filePath" | "content">;
 
 type AgentSkillLog = Pick<LogManager, "error" | "warning">;
 type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
@@ -87,6 +92,40 @@ export async function load_agent_skills(
     });
     return [];
   }
+}
+
+/** 产品只注入能力事实，skill 路由规则由 system prompt 唯一拥有。 */
+export function format_agent_skills_for_system_prompt(
+  skills: readonly AgentSkillCatalogDefinition[],
+): string {
+  const visible_skills = skills.filter((skill) => !skill.disableModelInvocation);
+  if (visible_skills.length === 0) return "";
+  return [
+    "<available_skills>",
+    ...visible_skills.flatMap((skill) => [
+      "  <skill>",
+      `    <name>${escape_agent_skill_xml(skill.name)}</name>`,
+      `    <description>${escape_agent_skill_xml(skill.description)}</description>`,
+      `    <location>${escape_agent_skill_xml(skill.filePath)}</location>`,
+      "  </skill>",
+    ]),
+    "</available_skills>",
+  ].join("\n");
+}
+
+/** 显式 marker 直接注入完整正文，不再附带 SDK 的第二套路由说明。 */
+export function format_agent_skill_invocation(skill: AgentSkillInvocationDefinition): string {
+  return `<skill name="${escape_agent_skill_xml(skill.name)}" location="${escape_agent_skill_xml(skill.filePath)}">\n${skill.content}\n</skill>`;
+}
+
+/** 只转义 XML 结构字段；skill 正文保持原始 Markdown。 */
+function escape_agent_skill_xml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 /**
@@ -144,7 +183,7 @@ function load_skill_ui(
 }
 
 /**
- * 递归读取 references 目录下的 Markdown 并形成进程内快照；符号链接与其它文件不进入白名单。
+ * 递归读取 references 目录下的普通文件并形成进程内快照；符号链接不进入白名单。
  */
 function load_skill_references(
   skill_file_path: string,
@@ -190,7 +229,7 @@ function collect_skill_references(
       collect_skill_references(skill_dir, entry_path, references, log_manager, native_fs);
       continue;
     }
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(REFERENCE_EXTENSION)) continue;
+    if (!entry.isFile()) continue;
     try {
       references.push({
         path: normalize_path(path.relative(skill_dir, entry_path)),

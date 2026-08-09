@@ -287,20 +287,6 @@ function build_workspace_program(
     if (!response.ok) throw new Error(await response.text() || ("工作区请求失败：" + response.status));
     return response;
   };
-  // 先拒绝非有限数字、非普通对象和循环引用，避免 JSON.stringify 静默丢字段。
-  const isJsonValue = (value, stack = new WeakSet()) => {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-    if (typeof value === "number") return Number.isFinite(value);
-    if (typeof value !== "object") return false;
-    if (stack.has(value)) return false;
-    stack.add(value);
-    const valid = Array.isArray(value)
-      ? value.every((entry) => isJsonValue(entry, stack))
-      : (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) &&
-        Object.values(value).every((entry) => isJsonValue(entry, stack));
-    stack.delete(value);
-    return valid;
-  };
   const readText = async (filePath) => (await request("/files/" + encodePath(filePath))).text();
   const readJson = async (filePath) => JSON.parse(await readText(filePath));
   async function* iterateLines(filePath) {
@@ -375,8 +361,8 @@ function build_workspace_program(
   });
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const result = ${operation};
-  if (!isJsonValue(result ?? null)) throw new TypeError("工作区结果必须是 JSON value");
   const serialized = JSON.stringify(result ?? null);
+  if (serialized === undefined) throw new TypeError("工作区结果无法序列化为 JSON。");
   if (new TextEncoder().encode(serialized).byteLength > ${AGENT_WORKSPACE_MAX_RESULT_BYTES.toString()}) {
     throw new Error(${JSON.stringify(result_too_large_message)});
   }

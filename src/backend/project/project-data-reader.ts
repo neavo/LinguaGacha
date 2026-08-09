@@ -5,6 +5,7 @@ import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
 } from "../../domain/item";
 import { is_json_record, read_json_integer, read_json_record } from "../../domain/json";
 import {
@@ -77,7 +78,7 @@ function read_revision_meta(value: JsonValue | undefined): number {
  * items 快照同时服务 files 回退索引和 items section，调用方负责按需触发读取
  */
 export type ProjectDataItemsSnapshot = {
-  item_records: JsonRecord[];
+  item_records: ProjectItemPublicRecord[];
   records_by_path: Map<string, { rel_path: string; file_type: string }>;
 };
 
@@ -215,7 +216,10 @@ export class ProjectDataReader {
   /**
    * 行级规范化增量只回读指定 item，避免小变更退化成完整 items 替换
    */
-  public build_item_records_by_ids(project_path: string, item_ids: number[]): JsonRecord[] {
+  public build_item_records_by_ids(
+    project_path: string,
+    item_ids: number[],
+  ): ProjectItemPublicRecord[] {
     const value = this.database.get_items_by_ids(project_path, item_ids);
     return Array.isArray(value)
       ? value
@@ -331,7 +335,7 @@ export class ProjectDataReader {
    * 一次读取 item 表并计算文件索引，让 files/items 在同一次组装中自洽
    */
   public build_runtime_items_snapshot(project_path: string): ProjectDataItemsSnapshot {
-    const item_records: JsonRecord[] = [];
+    const item_records: ProjectItemPublicRecord[] = [];
     const records_by_path = new Map<string, { rel_path: string; file_type: string }>();
     for (const item of this.get_all_items(project_path)) {
       const record = this.normalize_item_record(item);
@@ -378,7 +382,7 @@ export class ProjectDataReader {
   /**
    * 数据库 item JSON 转成公开 item 行记录
    */
-  private normalize_item_record(item: JsonRecord): JsonRecord {
+  private normalize_item_record(item: JsonRecord): ProjectItemPublicRecord {
     const record = normalize_project_item_public_record(item);
     if (record === null) {
       throw new AppErrors.InternalInvariantError({
@@ -389,7 +393,7 @@ export class ProjectDataReader {
         },
       });
     }
-    return record as unknown as JsonRecord;
+    return record;
   }
 
   /**

@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { JsonRecord } from "../../domain/json";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { CacheChange } from "./cache-change";
 import { QualityRuleAnalysisCache } from "./quality-rule-analysis-cache";
 
 type AnalysisCacheOptions = ConstructorParameters<typeof QualityRuleAnalysisCache>[0];
 type AnalysisCacheReadPort = AnalysisCacheOptions["cache"] & {
-  items_value: JsonRecord[];
+  items_value: ProjectItemPublicRecord[];
 };
 type AnalysisWorker = AnalysisCacheOptions["workerClient"];
 type AnalysisWorkerTask = Parameters<AnalysisWorker["run"]>[0];
 
 function create_cache_read_port(): AnalysisCacheReadPort {
   const port: AnalysisCacheReadPort = {
-    items_value: [{ item_id: 1, src: "HP", dst: "生命值", status: "PROCESSED" }],
+    items_value: [create_item()],
     snapshot: vi.fn(() => ({
       projectPath: "E:/Project/demo.lg",
       epoch: 1,
@@ -36,6 +36,25 @@ function create_cache_read_port(): AnalysisCacheReadPort {
     },
   };
   return port;
+}
+
+function create_item(): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "HP",
+    dst: "生命值",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "script.txt",
+    text_type: "NONE",
+    status: "PROCESSED",
+    retry_count: 0,
+    skip_internal_filter: false,
+  };
 }
 
 function create_worker(): AnalysisWorker & {

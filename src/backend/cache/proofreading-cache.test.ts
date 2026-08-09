@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
@@ -12,25 +13,36 @@ import type { CacheChange } from "./cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
 import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
 
+function create_cache_item(
+  overrides: Partial<ProjectItemPublicRecord> = {},
+): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "HP",
+    dst: "HP",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 1,
+    file_type: "TXT",
+    file_path: "script.txt",
+    text_type: "NONE",
+    status: "PROCESSED",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 // 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
 function create_cache_read_port(options: {
   epoch?: number;
   revisions?: Record<string, number>;
-  items?: Array<Record<string, unknown>>;
+  items?: ProjectItemPublicRecord[];
 }): CacheReadPort {
   const revisions = options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 };
-  const items = options.items ?? [
-    {
-      id: 1,
-      file_path: "script.txt",
-      row: 1,
-      src: "HP",
-      dst: "HP",
-      status: "PROCESSED",
-      text_type: "NONE",
-      retry_count: 0,
-    },
-  ];
+  const items = options.items ?? [create_cache_item()];
   return {
     snapshot: () => ({
       projectPath: "E:/Project/demo.lg",
@@ -43,7 +55,7 @@ function create_cache_read_port(options: {
     items: {
       readItems: () => items,
       readItem: (itemId: number) => {
-        const item = items.find((entry) => Number(entry["item_id"] ?? entry["id"] ?? 0) === itemId);
+        const item = items.find((entry) => entry.item_id === itemId);
         return item === undefined ? null : { ...item };
       },
     },
@@ -66,7 +78,7 @@ function create_cache_read_port(options: {
     analysis: {
       readBlock: () => ({}),
     },
-  } as CacheReadPort;
+  };
 }
 
 // 固定测试语言设置，避免缓存测试依赖真实 app setting。
@@ -184,18 +196,13 @@ describe("ProofreadingCache", () => {
   it("按 row id 查询时只从热缓存补 TRANS 内部路径", async () => {
     const worker = create_worker();
     const items = [
-      {
-        id: 1,
+      create_cache_item({
         file_path: "game.trans",
         file_type: "TRANS",
-        row: 1,
         src: "A",
         dst: "甲",
-        status: "PROCESSED",
-        text_type: "NONE",
-        retry_count: 0,
         extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
-      },
+      }),
     ];
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({ items }),
@@ -308,16 +315,10 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const items = [
-      {
-        item_id: 1,
-        file_path: "script.txt",
-        row_number: 1,
+      create_cache_item({
         src: "HP",
         dst: "HP",
-        status: "PROCESSED",
-        text_type: "NONE",
-        retry_count: 0,
-      },
+      }),
     ];
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({ revisions, items }),
@@ -359,26 +360,20 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const items = [
-      {
+      create_cache_item({
         item_id: 1,
-        file_path: "script.txt",
         row_number: 1,
         src: "A",
         dst: "M",
         status: "NONE",
-        text_type: "NONE",
-        retry_count: 0,
-      },
-      {
+      }),
+      create_cache_item({
         item_id: 2,
-        file_path: "script.txt",
         row_number: 2,
         src: "B",
         dst: "Z",
         status: "NONE",
-        text_type: "NONE",
-        retry_count: 0,
-      },
+      }),
     ];
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({ revisions, items }),
@@ -429,26 +424,20 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const items = [
-      {
+      create_cache_item({
         item_id: 1,
-        file_path: "script.txt",
         row_number: 1,
         src: "A",
         dst: "A",
         status: "NONE",
-        text_type: "NONE",
-        retry_count: 0,
-      },
-      {
+      }),
+      create_cache_item({
         item_id: 2,
-        file_path: "script.txt",
         row_number: 2,
         src: "B",
         dst: "B",
         status: "NONE",
-        text_type: "NONE",
-        retry_count: 0,
-      },
+      }),
     ];
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({ revisions, items }),

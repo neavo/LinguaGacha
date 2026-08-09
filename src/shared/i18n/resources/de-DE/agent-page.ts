@@ -42,6 +42,7 @@ export const de_de_agent_page = {
     sending: "Wird gesendet",
     stop: "Stoppen",
     stopping: "Wird gestoppt",
+    applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
     remove_image: "Bild {index} entfernen",

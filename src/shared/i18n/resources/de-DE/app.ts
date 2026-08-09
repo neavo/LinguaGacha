@@ -197,6 +197,11 @@ export const de_de_app = {
           "Die Datenversion hat sich geändert. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
         action: "Aktuelle Daten aktualisieren und erneut senden …",
       },
+      committed_sync_failed: {
+        message:
+          "Die Daten wurden gespeichert, aber die Oberfläche konnte nicht synchronisiert werden …",
+        action: "Laden Sie das aktuelle Projekt neu und senden Sie die Änderung nicht erneut …",
+      },
     },
     model: {
       not_found: {

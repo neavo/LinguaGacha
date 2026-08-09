@@ -1,5 +1,5 @@
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { Item, type ItemNameField, type ItemStatus } from "../../domain/item";
+import { Item } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type { PromptKind } from "../../domain/prompt";
 import type { QualityRuleKind } from "../../domain/quality";
@@ -10,17 +10,23 @@ import {
   type TaskProgressStatus,
 } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
-import type { ProjectDataSection } from "../../shared/project-event";
+import type {
+  ProjectChangeItemFieldPatch,
+  ProjectDataSection,
+  ProjectDataSectionRevisions,
+} from "../../shared/project-event";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
 
 export type ProjectExpectedSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 
-/** Agent 工作区一次提交所需的不可变领域差异。 */
-export type AgentWorkspaceItemChange = Readonly<{
-  current: Readonly<JsonRecord>;
-  next: Readonly<JsonRecord>;
+/** Agent 与校对写入口共用的显式 item 身份和前后字段事实。 */
+export type ProjectItemWriteChange = Readonly<{
+  item_id: number;
+  current: Readonly<ProjectItemWriteFields>;
+  next: Readonly<ProjectItemWriteFields>;
 }>;
 
-/** 单个 quality kind 的完整最终有序集合。 */
+/** 显式操作为单个受影响 quality kind 构造的最终有序集合。 */
 export type AgentWorkspaceQualityChange = Readonly<{
   kind: QualityRuleKind;
   entries: readonly JsonRecord[];
@@ -32,14 +38,15 @@ export type AgentWorkspacePromptChange = Readonly<{
   text: string;
 }>;
 
+/** Agent apply 的提交确认不依赖公开事件是否存在。 */
+export type AgentWorkspaceApplyAck = Readonly<{
+  committed: true;
+  sectionRevisions: ProjectDataSectionRevisions;
+}>;
+
 export type TranslationItemPatch = {
   item_id: number;
-  patch: {
-    dst?: string;
-    name_dst?: ItemNameField;
-    status?: ItemStatus;
-    retry_count?: number;
-  };
+  patch: ProjectChangeItemFieldPatch;
 };
 
 export type AnalysisCheckpointWrite = {

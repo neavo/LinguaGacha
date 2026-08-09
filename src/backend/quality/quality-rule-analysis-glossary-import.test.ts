@@ -4,7 +4,7 @@ import {
   prepare_analysis_glossary_import_from_cache,
   type AnalysisGlossaryImportPrepareRequest,
 } from "./quality-rule-analysis-glossary-import";
-import type { JsonRecord } from "../../domain/json";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 
 const CANDIDATE_AGGREGATE: Record<string, unknown> = {
   艾琳: {
@@ -19,17 +19,24 @@ const CANDIDATE_AGGREGATE: Record<string, unknown> = {
   },
 };
 
-function create_test_item(overrides: JsonRecord = {}): JsonRecord {
+function create_test_item(
+  overrides: Partial<ProjectItemPublicRecord> = {},
+): ProjectItemPublicRecord {
   return {
     item_id: 1,
     src: "艾琳",
     dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
     file_path: "chapter01.txt",
     row_number: 1,
     file_type: "TXT",
     text_type: "NONE",
     status: "NONE",
     retry_count: 0,
+    skip_internal_filter: false,
     ...overrides,
   };
 }

@@ -185,6 +185,10 @@ export const zh_cn_app = {
         message: "数据版本已变化，请刷新后重试 …",
         action: "请刷新当前数据后再次提交 …",
       },
+      committed_sync_failed: {
+        message: "数据已写入，但界面同步失败 …",
+        action: "请重新加载当前工程，切勿重复提交 …",
+      },
     },
     model: {
       not_found: {

@@ -95,6 +95,13 @@ export type AgentSessionEvent = JsonRecord &
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 
+/** Agent marker 的稳定字面量范围；前后端共用同一转义与重叠规则。 */
+export type AgentReferenceRange = Readonly<{
+  from: number;
+  to: number;
+  marker: string;
+}>;
+
 /** API、SSE 与 renderer 存储共用的用户正文边界，只裁剪整条消息外缘。 */
 export function normalize_agent_user_message_text(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -123,4 +130,34 @@ export function format_agent_skill_reference(name: string): string {
 /** 生成只供模型阅读、不触发宿主解析的术语 marker。 */
 export function format_agent_term_reference(src: string): string {
   return `@term(${src})`;
+}
+
+/** 找出未被反斜线转义的 marker；重叠时由较长 marker 优先占用范围。 */
+export function find_agent_reference_ranges(
+  text: string,
+  markers: readonly string[],
+): AgentReferenceRange[] {
+  const ranges: AgentReferenceRange[] = [];
+  const ordered_markers = [...new Set(markers)].sort((left, right) => right.length - left.length);
+  for (const marker of ordered_markers) {
+    let from = text.indexOf(marker);
+    while (from >= 0) {
+      const to = from + marker.length;
+      if (
+        !agent_reference_is_escaped(text, from) &&
+        !ranges.some((range) => from < range.to && to > range.from)
+      ) {
+        ranges.push({ from, to, marker });
+      }
+      from = text.indexOf(marker, to);
+    }
+  }
+  return ranges.sort((left, right) => left.from - right.from);
+}
+
+/** 奇数个连续反斜线转义 marker，偶数个仍表示一次真实引用。 */
+function agent_reference_is_escaped(text: string, from: number): boolean {
+  let slash_count = 0;
+  for (let index = from - 1; index >= 0 && text[index] === "\\"; index -= 1) slash_count += 1;
+  return slash_count % 2 === 1;
 }

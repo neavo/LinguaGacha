@@ -104,6 +104,7 @@ type AgentComposerProps = {
   terms: readonly GlossaryEntry[];
   term_hit_counts: Readonly<Record<string, number>>;
   running: boolean;
+  stop_disabled: boolean; // 当前原子阶段只禁用 stop，不锁定草稿编辑
   compacting: boolean;
   compaction_failed: boolean;
   unavailable_reason: AgentUnavailableReason | null;
@@ -185,13 +186,15 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const submit_label = t(
     compacting
       ? "agent_page.compaction.running"
-      : props.command === "send"
-        ? "agent_page.action.sending"
-        : props.command === "stop"
-          ? "agent_page.action.stopping"
-          : props.running
-            ? "agent_page.action.stop"
-            : "agent_page.action.send",
+      : props.running && props.stop_disabled
+        ? "agent_page.action.applying"
+        : props.command === "send"
+          ? "agent_page.action.sending"
+          : props.command === "stop"
+            ? "agent_page.action.stopping"
+            : props.running
+              ? "agent_page.action.stop"
+              : "agent_page.action.send",
   );
   const submit_command_active = props.command === "send" || props.command === "stop";
   const submit_tooltip =
@@ -796,11 +799,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   }
                   size="icon-xs"
                   onClick={
-                    props.running && !compacting && props.command === null
+                    props.running && !props.stop_disabled && !compacting && props.command === null
                       ? () => void props.on_stop()
                       : undefined
                   }
-                  disabled={compacting || props.command !== null || (!props.running && !can_send)}
+                  disabled={
+                    props.stop_disabled ||
+                    compacting ||
+                    props.command !== null ||
+                    (!props.running && !can_send)
+                  }
                   aria-label={submit_label}
                 >
                   {compacting || submit_command_active ? (

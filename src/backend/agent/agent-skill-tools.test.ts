@@ -32,7 +32,7 @@ function create_tool() {
 }
 
 describe("Agent 技能读取工具", () => {
-  it("按绝对白名单路径读取自动 skill 正文与 reference", async () => {
+  it("按启动期绝对白名单读取 skill 正文与 reference", async () => {
     const tool = create_tool();
 
     await expect(
@@ -76,7 +76,7 @@ describe("Agent 技能读取工具", () => {
     }
   });
 
-  it("允许读取已加载的 manual-only skill", async () => {
+  it("白名单不依赖模型清单可见性，允许读取 manual-only skill", async () => {
     const tool = create_tool();
 
     await expect(

@@ -25,8 +25,8 @@ import {
   type QualityRuleImportPreview,
 } from "../../shared/quality/quality-rule-import";
 import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import { QualityRule } from "../../domain/quality";
-import type { CacheItem } from "../cache/cache-types";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { GlossaryEntry } from "../../shared/quality/glossary";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
@@ -47,7 +47,7 @@ export type PreparedAnalysisGlossaryImport = {
 
 export type AnalysisGlossaryImportPrepareRequest = {
   quality_block: JsonRecord;
-  items: CacheItem[];
+  items: ProjectItemPublicRecord[];
   section_revisions: ProjectDataSectionRevisions;
   candidate_aggregate: Record<string, unknown>;
   action?: QualityRuleImportAction;
@@ -144,7 +144,7 @@ function build_candidate_pool_consumption_import(args: {
 function filter_import_candidates(args: {
   existing_entries: GlossaryEntry[];
   incoming_entries: GlossaryEntry[];
-  items: CacheItem[];
+  items: ProjectItemPublicRecord[];
 }): GlossaryEntry[] {
   if (args.incoming_entries.length === 0) {
     return [];

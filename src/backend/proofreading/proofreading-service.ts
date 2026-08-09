@@ -6,12 +6,14 @@ import { ProjectSessionState } from "../project/project-session-state";
 import {
   require_project_expected_section_revisions,
   type ProjectExpectedSectionRevisions,
+  type ProjectItemWriteChange,
 } from "../project/project-write-request";
 import { Item } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type { ProjectChangeItemsPayload, ProjectWriteResult } from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
 import { clear_item_translation_fields } from "../../shared/item-text";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
@@ -23,11 +25,6 @@ import {
   are_proofreading_item_write_fields_equal,
   type ProofreadingItemUpdateFields,
 } from "./proofreading-item-update";
-
-type ProofreadingItemChange = {
-  current: MutableJsonRecord; // 数据库提交前的行事实，用于计算统计增量
-  next: MutableJsonRecord; // 数据库将要写入的最终行事实
-};
 
 type ProofreadingItemUpdate = ProofreadingItemUpdateFields & {
   item_id: number;
@@ -85,7 +82,7 @@ export class ProofreadingService {
       project_path,
       updates.map((update) => update.item_id),
     );
-    const changes: ProofreadingItemChange[] = [];
+    const changes: ProjectItemWriteChange[] = [];
     for (const update of updates) {
       const current = current_by_id.get(update.item_id);
       if (current === undefined) {
@@ -95,15 +92,9 @@ export class ProofreadingService {
       }
       const next = apply_proofreading_item_update(current, update);
       if (!are_proofreading_item_write_fields_equal(current, next)) {
-        changes.push({ current, next });
+        changes.push({ item_id: update.item_id, current, next });
       }
     }
-    const update_translation_extras = changes.some(
-      ({ current, next }) =>
-        String(current["dst"] ?? "") !== String(next["dst"] ?? "") ||
-        String(current["status"] ?? "") !== String(next["status"] ?? "") ||
-        Number(current["retry_count"] ?? 0) !== Number(next["retry_count"] ?? 0),
-    );
     return await this.persist_changed_items(
       project_path,
       expected_section_revisions,
@@ -111,9 +102,8 @@ export class ProofreadingService {
         changes,
         items_payload: {
           payloadMode: "canonical-delta",
-          changedIds: this.collect_item_ids(changes.map((change) => change.next)),
+          changedIds: changes.map((change) => change.item_id),
         },
-        update_translation_extras,
       },
       source,
     );
@@ -144,7 +134,7 @@ export class ProofreadingService {
       return { accepted: true, changes: [] };
     }
     const current_by_id = this.get_items_by_ids(project_path, item_ids);
-    const changes: ProofreadingItemChange[] = [];
+    const changes: ProjectItemWriteChange[] = [];
     for (const item_id of item_ids) {
       const item = current_by_id.get(item_id);
       if (item === undefined) {
@@ -179,15 +169,14 @@ export class ProofreadingService {
       if (are_proofreading_item_write_fields_equal(item, next_item)) {
         continue;
       }
-      changes.push({ current: item, next: next_item });
+      changes.push({ item_id, current: item, next: next_item });
     }
     return await this.persist_changed_items(project_path, expected_section_revisions, {
       changes,
       items_payload: {
         payloadMode: "canonical-delta",
-        changedIds: this.collect_item_ids(changes.map((change) => change.next)),
+        changedIds: changes.map((change) => change.item_id),
       },
-      update_translation_extras: true,
     });
   }
 
@@ -206,7 +195,7 @@ export class ProofreadingService {
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
-    const changes: ProofreadingItemChange[] = [];
+    const changes: ProjectItemWriteChange[] = [];
     for (const item_id of item_ids) {
       const item = current_by_id.get(item_id);
       if (item === undefined) {
@@ -216,7 +205,7 @@ export class ProofreadingService {
       if (are_proofreading_item_write_fields_equal(item, next_item)) {
         continue;
       }
-      changes.push({ current: item, next: next_item });
+      changes.push({ item_id, current: item, next: next_item });
     }
     if (changes.length === 0) {
       return { accepted: true, changes: [] };
@@ -227,7 +216,6 @@ export class ProofreadingService {
       source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
       changes,
       fieldPatch: { dst: "", name_dst: null },
-      updateTranslationExtras: false,
     });
   }
 
@@ -259,12 +247,11 @@ export class ProofreadingService {
     project_path: string,
     expected_section_revisions: ProjectExpectedSectionRevisions,
     args: {
-      changes: ProofreadingItemChange[];
+      changes: ProjectItemWriteChange[];
       items_payload: Pick<
         ProjectChangeItemsPayload,
         "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
       >;
-      update_translation_extras: boolean;
     },
     source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
   ): Promise<ProjectWriteResult> {
@@ -277,25 +264,7 @@ export class ProofreadingService {
       source,
       changes: args.changes,
       itemsPayload: args.items_payload,
-      updateTranslationExtras: args.update_translation_extras,
     });
-  }
-
-  /**
-   * 只从最终实际写入的 item 中收集变更 id，避免不存在的提交触发行级补读
-   */
-  private collect_item_ids(items: MutableJsonRecord[]): number[] {
-    const item_ids: number[] = [];
-    const seen_item_ids = new Set<number>();
-    for (const item of items) {
-      const item_id = this.parse_integer_like(item["id"]);
-      if (item_id === null || item_id <= 0 || seen_item_ids.has(item_id)) {
-        continue;
-      }
-      seen_item_ids.add(item_id);
-      item_ids.push(item_id);
-    }
-    return item_ids;
   }
 
   /**
@@ -390,8 +359,8 @@ export class ProofreadingService {
   private get_items_by_ids(
     project_path: string,
     item_ids: number[],
-  ): Map<number, MutableJsonRecord> {
-    const items_by_id = new Map<number, MutableJsonRecord>();
+  ): Map<number, MutableJsonRecord & ProjectItemWriteFields> {
+    const items_by_id = new Map<number, MutableJsonRecord & ProjectItemWriteFields>();
     const value = this.database.get_items_by_ids(project_path, item_ids);
     if (!Array.isArray(value)) {
       return items_by_id;
@@ -404,7 +373,14 @@ export class ProofreadingService {
       if (item_id === null || item_id <= 0) {
         continue;
       }
-      items_by_id.set(item_id, { ...item, id: item_id });
+      items_by_id.set(item_id, {
+        ...item,
+        id: item_id,
+        dst: String(item["dst"] ?? ""),
+        name_dst: Item.normalize_name_field(item["name_dst"]),
+        status: String(item["status"] ?? ""),
+        retry_count: Number(item["retry_count"] ?? 0),
+      });
     }
     return items_by_id;
   }
@@ -415,8 +391,8 @@ export class ProofreadingService {
   private get_item_write_facts_by_ids(
     project_path: string,
     item_ids: number[],
-  ): Map<number, MutableJsonRecord> {
-    const items_by_id = new Map<number, MutableJsonRecord>();
+  ): Map<number, ProjectItemWriteFields> {
+    const items_by_id = new Map<number, ProjectItemWriteFields>();
     const value = this.database.get_item_write_facts_by_ids(project_path, item_ids);
     if (!Array.isArray(value)) {
       return items_by_id;
@@ -430,7 +406,6 @@ export class ProofreadingService {
         continue;
       }
       items_by_id.set(item_id, {
-        id: item_id,
         dst: String(item["dst"] ?? ""),
         name_dst: Item.normalize_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),

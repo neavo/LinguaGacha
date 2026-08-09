@@ -6,18 +6,19 @@ const PROJECT_ITEM_FIELD_PATCH_KEYS = ["dst", "name_dst", "status", "retry_count
 
 type ProjectItemFieldPatchKey = (typeof PROJECT_ITEM_FIELD_PATCH_KEYS)[number];
 
+/** 项目 item 人工写入口共同依赖的完整字段事实。 */
+export type ProjectItemWriteFields = {
+  dst: string;
+  name_dst: ItemNameField;
+  status: string;
+  retry_count: number;
+};
+
 type ProjectItemFieldPatchSource = {
   dst?: unknown;
   name_dst?: unknown;
   status?: unknown;
   retry_count?: unknown;
-};
-
-type ProjectItemFieldPatchTarget = {
-  dst: string;
-  name_dst: ItemNameField;
-  status: string;
-  retry_count: number;
 };
 
 function has_own_field(
@@ -64,7 +65,7 @@ export function normalize_project_item_field_patch(
 }
 
 // 返回新条目或 null，调用方可用 null 区分幂等 patch 与真实状态变化。
-export function apply_project_item_field_patch<TItem extends ProjectItemFieldPatchTarget>(
+export function apply_project_item_field_patch<TItem extends ProjectItemWriteFields>(
   item: TItem,
   patch: ProjectChangeItemFieldPatch | null | undefined,
 ): TItem | null {

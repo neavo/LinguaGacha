@@ -309,6 +309,7 @@ export class BackendServices {
             proofreading: this.proofreading.query,
             runtimeGate: this.runtime_gate,
             writeStore: write_store,
+            logManager: this.logManager,
             run: options.agentWorkspaceRun,
           });
     this.agent = new AgentService({

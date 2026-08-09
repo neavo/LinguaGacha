@@ -15,11 +15,13 @@ import type {
   ProjectChangeItemsPayload,
   ProjectChangePayloadMode,
   ProjectDataSection,
+  ProjectDataSectionRevisions,
   ProjectWriteResult,
 } from "../../shared/project-event";
 import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
 import {
   build_analysis_section_delta,
@@ -34,9 +36,10 @@ import type {
   AnalysisCheckpointWrite,
   AnalysisGlossaryWrite,
   AnalysisProgressWrite,
-  AgentWorkspaceItemChange,
+  AgentWorkspaceApplyAck,
   AgentWorkspacePromptChange,
   AgentWorkspaceQualityChange,
+  ProjectItemWriteChange,
   TranslationItemPatch,
 } from "./project-write-request";
 import {
@@ -103,11 +106,6 @@ export type ProjectWriteSectionAck = {
   changed_item_ids: number[];
   section_revisions: MutableJsonRecord;
 };
-
-type ProofreadingItemChange = Readonly<{
-  current: Readonly<MutableJsonRecord>;
-  next: Readonly<MutableJsonRecord>;
-}>;
 
 type TranslationProgressCounters = {
   total_line: number;
@@ -324,14 +322,13 @@ export class ProjectWriteStore {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: string;
-    changes: ProofreadingItemChange[];
+    changes: ProjectItemWriteChange[];
     fieldPatch: ProjectChangeItemFieldPatch;
-    updateTranslationExtras: boolean;
   }): Promise<ProjectWriteResult> {
     if (request.changes.length === 0) {
       return this.empty_project_write_result();
     }
-    const changed_item_ids = this.collect_changed_item_ids(request.changes);
+    const changed_item_ids = request.changes.map((change) => change.item_id);
     return await this.commit_runtime_change({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
@@ -345,7 +342,7 @@ export class ProjectWriteStore {
         fieldPatch: request.fieldPatch,
       },
       buildWrites: (revision_context) => {
-        const translation_extras = request.updateTranslationExtras
+        const translation_extras = this.has_translation_status_change(request.changes)
           ? this.build_translation_extras_after_status_changes(
               request.projectPath,
               revision_context,
@@ -380,15 +377,14 @@ export class ProjectWriteStore {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: string;
-    changes: ProofreadingItemChange[];
+    changes: ProjectItemWriteChange[];
     itemsPayload: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
-    updateTranslationExtras: boolean;
   }): Promise<ProjectWriteResult> {
     if (request.changes.length === 0) {
       return this.empty_project_write_result();
     }
     const patches = request.changes.map((change) => ({
-      item_id: this.read_positive_item_id(change.next["id"], "proofreading_patch_item_id"),
+      item_id: change.item_id,
       patch: this.build_translation_patch_from_items(change.current, change.next),
     }));
     return await this.commit_runtime_change({
@@ -400,7 +396,7 @@ export class ProjectWriteStore {
       updatedSections: ["items", "proofreading"],
       items: request.itemsPayload,
       buildWrites: (revision_context) => {
-        const translation_extras = request.updateTranslationExtras
+        const translation_extras = this.has_translation_status_change(request.changes)
           ? this.build_translation_extras_after_status_changes(
               request.projectPath,
               revision_context,
@@ -804,34 +800,35 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 将 Agent 工作区的 items、quality 与 prompts 差异放入同一个 revision guard 和数据库事务。
+   * 将 Agent 工作区差异放入同一个 revision guard 和事务，并返回提交后 revision 确认。
    */
   public async apply_agent_workspace_changes(request: {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: "agent_workspace_apply";
-    itemChanges: readonly AgentWorkspaceItemChange[];
+    itemChanges: readonly ProjectItemWriteChange[];
     qualityChanges: readonly AgentWorkspaceQualityChange[];
     promptChanges: readonly AgentWorkspacePromptChange[];
-  }): Promise<ProjectWriteResult> {
+  }): Promise<AgentWorkspaceApplyAck> {
     const updated_sections: ProjectDataSection[] = [];
     if (request.itemChanges.length > 0) updated_sections.push("items", "proofreading");
     if (request.qualityChanges.length > 0) updated_sections.push("quality");
     if (request.promptChanges.length > 0) updated_sections.push("prompts");
-    if (updated_sections.length === 0) return this.empty_project_write_result();
+    if (updated_sections.length === 0) {
+      return {
+        committed: true,
+        sectionRevisions: build_section_revisions_from_meta(
+          this.read_project_meta(request.projectPath),
+        ),
+      };
+    }
 
     const item_patches = request.itemChanges.map((change) => ({
-      item_id: this.read_positive_item_id(change.next["id"], "agent_workspace_item_id"),
+      item_id: change.item_id,
       patch: this.build_translation_patch_from_items(change.current, change.next),
     }));
-    const update_translation_extras = request.itemChanges.some(
-      ({ current, next }) =>
-        String(current["dst"] ?? "") !== String(next["dst"] ?? "") ||
-        String(current["status"] ?? "") !== String(next["status"] ?? "") ||
-        Number(current["retry_count"] ?? 0) !== Number(next["retry_count"] ?? 0),
-    );
 
-    return await this.commit_runtime_change({
+    await this.commit_runtime_change({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
       requireExpectedSectionRevisions: true,
@@ -850,7 +847,7 @@ export class ProjectWriteStore {
               this.to_database_translation_patches(item_patches),
             ),
           );
-          if (update_translation_extras) {
+          if (this.has_translation_status_change(request.itemChanges)) {
             const translation_extras = this.build_translation_extras_after_status_changes(
               request.projectPath,
               revision_context,
@@ -895,6 +892,23 @@ export class ProjectWriteStore {
         return writes;
       },
     });
+    try {
+      return {
+        committed: true,
+        sectionRevisions: build_section_revisions_from_meta(
+          this.read_project_meta(request.projectPath),
+        ),
+      };
+    } catch (cause) {
+      throw new AppErrors.CommittedChangeSyncError({
+        cause,
+        public_details: { committed: true, section_revisions: {}, action: "reload_project" },
+        diagnostic_context: {
+          reason: "agent_workspace_commit_ack_failed",
+          source: request.source,
+        },
+      });
+    }
   }
 
   /**
@@ -940,7 +954,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 在同一数据库事务内校验 revision、构造写入并提交，成功后依次维护内部缓存和公开事件。
+   * 在同一事务内校验并提交；提交后的缓存、公开事件或 ack 读取失败统一标记 committed。
    */
   private async commit_runtime_change(
     request: RuntimeCommitRequest,
@@ -973,11 +987,31 @@ export class ProjectWriteStore {
       ...(request.sections === undefined ? {} : { sections: request.sections }),
       ...(request.sectionModes === undefined ? {} : { sectionModes: request.sectionModes }),
     };
-    await this.publish_app_events_for_committed_change(change_request);
-    if (options.publishPublic === false) {
-      return this.empty_project_write_result();
+    // 事务已经提交；后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
+    let committed_section_revisions: ProjectDataSectionRevisions = {};
+    try {
+      committed_section_revisions = build_section_revisions_from_meta(
+        this.read_project_meta(request.projectPath),
+      );
+      await this.publish_app_events_for_committed_change(change_request);
+      if (options.publishPublic === false) {
+        return this.empty_project_write_result();
+      }
+      return this.publish_project_data_change(change_request);
+    } catch (cause) {
+      throw new AppErrors.CommittedChangeSyncError({
+        cause,
+        public_details: {
+          committed: true,
+          section_revisions: committed_section_revisions as JsonValue,
+          action: "reload_project",
+        },
+        diagnostic_context: {
+          reason: "project_committed_change_sync_failed",
+          source: request.source,
+        },
+      });
     }
-    return this.publish_project_data_change(change_request);
   }
 
   /**
@@ -1190,8 +1224,8 @@ export class ProjectWriteStore {
    * 复用公开字段差异算法构造校对 patch，并拒绝无变化提交。
    */
   private build_translation_patch_from_items(
-    current: Readonly<MutableJsonRecord>,
-    next: Readonly<MutableJsonRecord>,
+    current: Readonly<ProjectItemWriteFields>,
+    next: Readonly<ProjectItemWriteFields>,
   ): TranslationItemPatch["patch"] {
     const patch = build_project_item_field_patch(current, next);
     if (patch === null) {
@@ -1202,21 +1236,9 @@ export class ProjectWriteStore {
     return patch;
   }
 
-  /**
-   * 按首次出现顺序稳定去重实际变更 item id。
-   */
-  private collect_changed_item_ids(changes: ProofreadingItemChange[]): number[] {
-    const item_ids: number[] = [];
-    const seen = new Set<number>();
-    for (const change of changes) {
-      const item_id = read_json_integer(change.next["id"], 0);
-      if (item_id <= 0 || seen.has(item_id)) {
-        continue;
-      }
-      seen.add(item_id);
-      item_ids.push(item_id);
-    }
-    return item_ids;
+  /** 翻译统计只由状态变化驱动，调用方不再传递派生布尔值。 */
+  private has_translation_status_change(changes: readonly ProjectItemWriteChange[]): boolean {
+    return changes.some(({ current, next }) => current.status !== next.status);
   }
 
   /**
@@ -1225,7 +1247,7 @@ export class ProjectWriteStore {
   private build_translation_extras_after_status_changes(
     project_path: string,
     revision_context: ProjectWriteRevisionContext,
-    changes: readonly ProofreadingItemChange[],
+    changes: readonly ProjectItemWriteChange[],
   ): Record<string, unknown> {
     const stored_progress = {
       ...read_json_record(revision_context.meta["translation_extras"]),
@@ -1301,14 +1323,14 @@ export class ProjectWriteStore {
    */
   private apply_translation_status_deltas(
     counters: TranslationProgressCounters,
-    changes: readonly ProofreadingItemChange[],
+    changes: readonly ProjectItemWriteChange[],
   ): TranslationProgressCounters {
     let total_line = counters.total_line;
     let processed_line = counters.processed_line;
     let error_line = counters.error_line;
     for (const change of changes) {
-      const before = this.count_translation_status(change.current["status"]);
-      const after = this.count_translation_status(change.next["status"]);
+      const before = this.count_translation_status(change.current.status);
+      const after = this.count_translation_status(change.next.status);
       total_line += after.total_line - before.total_line;
       processed_line += after.processed_line - before.processed_line;
       error_line += after.error_line - before.error_line;
@@ -1326,8 +1348,7 @@ export class ProjectWriteStore {
   /**
    * 将单个状态映射为翻译进度的四项计数贡献。
    */
-  private count_translation_status(value: JsonValue | undefined): TranslationProgressCounters {
-    const status = String(value ?? "");
+  private count_translation_status(status: string): TranslationProgressCounters {
     const is_progress_status = is_task_progress_status(status);
     const processed_line = status === "PROCESSED" ? 1 : 0;
     const error_line = status === "ERROR" ? 1 : 0;
@@ -1502,19 +1523,6 @@ export class ProjectWriteStore {
    */
   private read_project_meta(project_path: string): MutableJsonRecord {
     return { ...read_json_record(this.database.get_all_meta(project_path)) };
-  }
-
-  /**
-   * 任务 artifact 的 item id 必须是正整数，否则视为内部契约破坏。
-   */
-  private read_positive_item_id(value: JsonValue | undefined, reason: string): number {
-    const item_id = read_json_integer(value, 0);
-    if (!Number.isInteger(item_id) || item_id <= 0) {
-      throw new AppErrors.InternalInvariantError({
-        diagnostic_context: { reason },
-      });
-    }
-    return item_id;
   }
 
   /**

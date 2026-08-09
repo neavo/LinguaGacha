@@ -42,6 +42,7 @@ export const en_us_agent_page = {
     sending: "Sending",
     stop: "Stop",
     stopping: "Stopping",
+    applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
     add_image: "Add images",
     remove_image: "Remove image {index}",

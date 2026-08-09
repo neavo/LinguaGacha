@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  find_agent_reference_ranges,
   format_agent_skill_reference,
   format_agent_term_reference,
   normalize_agent_message_input,
@@ -42,5 +43,18 @@ describe("Agent 用户消息协议", () => {
     for (const term of ["エリス", "爱丽丝", "Alice Smith", "(hero) ✨"]) {
       expect(format_agent_term_reference(term)).toBe(`@term(${term})`);
     }
+  });
+
+  it("按长 marker 优先解析未转义引用，并保留偶数反斜线后的真实引用", () => {
+    expect(
+      find_agent_reference_ranges(String.raw`\@skill(review) \\@skill(review) @term(Alice))`, [
+        "@skill(review)",
+        "@term(Alice)",
+        "@term(Alice))",
+      ]),
+    ).toEqual([
+      { from: 18, to: 32, marker: "@skill(review)" },
+      { from: 33, to: 46, marker: "@term(Alice))" },
+    ]);
   });
 });

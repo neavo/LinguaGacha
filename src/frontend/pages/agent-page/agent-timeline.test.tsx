@@ -270,7 +270,7 @@ describe("AgentTimeline", () => {
     const view = await render_timeline(
       round_entries([
         tool_entry("tool-running", "workspace_script", "running", null, 1),
-        tool_entry("tool-success", "workspace_create", "success", "{}", 2),
+        tool_entry("tool-success", "workspace_load", "success", "{}", 2),
         tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
         tool_entry("tool-stopped", "workspace_apply", "stopped", null, 4),
       ]),

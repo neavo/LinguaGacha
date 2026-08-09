@@ -1,8 +1,4 @@
-import {
-  estimateContextTokens,
-  formatSkillInvocation,
-  formatSkillsForSystemPrompt,
-} from "@earendil-works/pi-agent-core";
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import {
   contentText,
   InMemoryCredentialStore,
@@ -25,6 +21,7 @@ import type { JsonRecord } from "../../domain/json";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
   AGENT_SESSION_EVENT_TOPIC,
+  find_agent_reference_ranges,
   format_agent_skill_reference,
   normalize_agent_message_input,
   type AgentAssistantMessagePart,
@@ -53,7 +50,12 @@ import { create_agent_skill_tools } from "./agent-skill-tools";
 import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
-import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
+import {
+  format_agent_skill_invocation,
+  format_agent_skills_for_system_prompt,
+  load_agent_skills,
+  type AgentSkillDefinition,
+} from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 
@@ -82,11 +84,19 @@ function select_agent_skills(
   skills: readonly AgentSkillDefinition[],
   text: string,
 ): AgentSkillDefinition[] {
-  return skills
-    .map((skill) => ({ skill, index: text.indexOf(format_agent_skill_reference(skill.name)) }))
-    .filter((item) => item.index >= 0)
-    .sort((left, right) => left.index - right.index)
-    .map((item) => item.skill);
+  const skill_by_marker = new Map(
+    skills.map((skill) => [format_agent_skill_reference(skill.name), skill] as const),
+  );
+  const selected: AgentSkillDefinition[] = [];
+  const selected_names = new Set<string>();
+  for (const range of find_agent_reference_ranges(text, [...skill_by_marker.keys()])) {
+    const skill = skill_by_marker.get(range.marker);
+    if (skill !== undefined && !selected_names.has(skill.name)) {
+      selected.push(skill);
+      selected_names.add(skill.name);
+    }
+  }
+  return selected;
 }
 
 type AgentRuntime = {
@@ -203,7 +213,7 @@ export class AgentService {
     const system_prompt = load_agent_system_prompt(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
-    const skills_prompt = formatSkillsForSystemPrompt(skills);
+    const skills_prompt = format_agent_skills_for_system_prompt(skills);
     this.resources = {
       systemPrompt: skills_prompt === "" ? system_prompt : `${system_prompt}\n\n${skills_prompt}`,
       sessionSeed: session_seed,
@@ -293,11 +303,12 @@ export class AgentService {
     }
   }
 
-  /** 立即封口公开轮次并保留历史；压缩是不可停止的原子阶段。 */
+  /** 立即封口公开轮次并保留历史；压缩与 workspace_apply 不接受中途停止。 */
   public stop(): AgentSessionSnapshot {
     this.assert_not_disposed();
     if (
       this.find_open_compaction_entry() !== undefined ||
+      this.find_open_workspace_apply_entry() !== undefined ||
       this.runtime?.session.isCompacting === true
     ) {
       throw new AppErrors.RuntimeBusyError();
@@ -876,6 +887,16 @@ export class AgentService {
     return entry?.status === "running" ? entry : undefined;
   }
 
+  /** apply 从开始校验到 SDK 接收终帧都不可停止，避免提交事实被迟到取消覆盖。 */
+  private find_open_workspace_apply_entry(): AgentEntry | undefined {
+    return this.entries.find(
+      (entry) =>
+        entry.kind === "tool_call" &&
+        entry.toolName === "workspace_apply" &&
+        entry.status === "running",
+    );
+  }
+
   /** 先封口本轮开放的子条目，再冻结轮次结果；终态只在后端写一次。 */
   private finish_current_round(
     outcome: Extract<AgentEntryStatus, "success" | "error" | "stopped">,
@@ -1024,7 +1045,7 @@ export class AgentService {
 function build_agent_prompt(text: string, skills: readonly AgentSkillDefinition[]): string {
   const user_text = text === "" ? AGENT_IMAGE_ONLY_TEXT : text;
   if (skills.length === 0) return user_text;
-  const blocks = skills.map((skill) => formatSkillInvocation(skill));
+  const blocks = skills.map((skill) => format_agent_skill_invocation(skill));
   blocks.push(user_text);
   return blocks.join("\n\n");
 }

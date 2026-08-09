@@ -103,6 +103,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [agent.skills, available_terms],
   );
   const is_running = agent.state === "running";
+  // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
+  const workspace_apply_running = agent.entries.some(
+    (entry) =>
+      entry.kind === "tool_call" &&
+      entry.toolName === "workspace_apply" &&
+      entry.status === "running",
+  );
   const agent_restoring = agent.transport === "restoring";
   const last_user = agent.entries.findLast((entry) => entry.kind === "user_message");
   const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
@@ -315,6 +322,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         terms={available_terms}
         term_hit_counts={term_hit_counts}
         running={is_running}
+        stop_disabled={workspace_apply_running}
         compacting={compacting}
         compaction_failed={compaction_failed}
         unavailable_reason={unavailable_reason}

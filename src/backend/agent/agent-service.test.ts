@@ -122,8 +122,8 @@ const fake_agent_state = vi.hoisted(() => ({
   tool_names: [] as string[][],
   release_pending: null as (() => void) | null,
   hold_idle: false,
-  hold_tool_write: false,
-  release_tool_write: null as (() => void) | null,
+  hold_tool_execution: false,
+  release_tool_execution: null as (() => void) | null,
   context_window: 288_000,
   max_tokens: 32_000,
   model_call_count: 0,
@@ -141,7 +141,10 @@ const fake_agent_state = vi.hoisted(() => ({
   stream_tokens_per_second: undefined as number | undefined,
 }));
 
-vi.mock("./agent-skills", () => ({ load_agent_skills: skill_test_fixture.loader }));
+vi.mock("./agent-skills", async (import_original) => ({
+  ...(await import_original<typeof import("./agent-skills")>()),
+  load_agent_skills: skill_test_fixture.loader,
+}));
 vi.mock("./agent-session-seed", async (import_original) => ({
   ...(await import_original<typeof import("./agent-session-seed")>()),
   load_agent_session_seed: session_seed_loader,
@@ -441,8 +444,8 @@ describe("AgentService", () => {
     fake_agent_state.tool_names = [];
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
-    fake_agent_state.hold_tool_write = false;
-    fake_agent_state.release_tool_write = null;
+    fake_agent_state.hold_tool_execution = false;
+    fake_agent_state.release_tool_execution = null;
     fake_agent_state.context_window = 288_000;
     fake_agent_state.max_tokens = 32_000;
     fake_agent_state.model_call_count = 0;
@@ -470,7 +473,7 @@ describe("AgentService", () => {
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_auth?.();
     fake_agent_state.release_summary?.();
-    fake_agent_state.release_tool_write?.();
+    fake_agent_state.release_tool_execution?.();
     fake_agent_state.release_pending?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
@@ -593,6 +596,18 @@ describe("AgentService", () => {
     expect(prompt).not.toContain('<skill name="unknown"');
     expect(prompt).toContain(text);
     expect(fixture.service.get_snapshot().entries[0]).toMatchObject({ text });
+  });
+
+  it("转义 marker 只作为用户正文，不注入 skill", async () => {
+    const fixture = await create_service();
+    const text = String.raw`\@skill(glossary-audit) 只讨论语法`;
+
+    await fixture.service.send_message({ text, images: [] });
+    await wait_for_idle(fixture.service);
+
+    const prompt = fake_agent_state.prompts.at(-1) ?? "";
+    expect(prompt).toBe(text);
+    expect(prompt).not.toContain('<skill name="glossary-audit"');
   });
 
   it("隐藏能力不进入系统清单，但精确 marker 仍显式注入并保留正文", async () => {
@@ -1106,7 +1121,7 @@ describe("AgentService", () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       reset: vi.fn(async () => undefined),
-      create_workspace: vi.fn(),
+      load_workspace: vi.fn(),
       run_recipe: vi.fn(),
       run_script: vi.fn(),
       apply_workspace: vi.fn(),
@@ -1119,7 +1134,7 @@ describe("AgentService", () => {
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
       [
-        "workspace_create",
+        "workspace_load",
         "workspace_recipe",
         "workspace_script",
         "workspace_apply",
@@ -1207,10 +1222,39 @@ describe("AgentService", () => {
     expect(log_error).not.toHaveBeenCalled();
   });
 
-  it("停止会先封口运行中的工具，迟到的工具结果不能改写历史", async () => {
+  it("停止会封口普通运行工具，迟到结果不能改写历史", async () => {
+    const { service, runtime_gate } = await create_service();
+    fake_agent_state.mode = "tool_only";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "查询", images: [] });
+    await vi.waitFor(() => {
+      expect(service.get_snapshot().entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "tool_call", id: "tool-only", status: "running" }),
+        ]),
+      );
+    });
+
+    const stopped_entries = service.stop().entries;
+    expect(stopped_entries).toEqual([
+      expect.objectContaining({ kind: "user_message", status: "stopped" }),
+      expect.objectContaining({
+        kind: "tool_call",
+        id: "tool-only",
+        status: "stopped",
+        output: null,
+      }),
+    ]);
+
+    fake_agent_state.release_tool_execution?.();
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    expect(service.get_snapshot().entries).toEqual(stopped_entries);
+  });
+
+  it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
     const { service, runtime_gate, log_append } = await create_service();
     fake_agent_state.mode = "write";
-    fake_agent_state.hold_tool_write = true;
+    fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "写入", images: [] });
     await vi.waitFor(() => {
       expect(service.get_snapshot().entries).toEqual(
@@ -1220,25 +1264,16 @@ describe("AgentService", () => {
       );
     });
 
-    const stopped_entries = service.stop().entries;
-    expect(stopped_entries).toEqual([
-      expect.objectContaining({
-        kind: "user_message",
-        status: "stopped",
-        endedAt: expect.any(Number),
-      }),
-      expect.objectContaining({
-        kind: "tool_call",
-        id: "write-1",
-        input: "{}",
-        status: "stopped",
-        output: null,
-      }),
-    ]);
+    expect(() => service.stop()).toThrow("runtime.busy");
+    expect(service.get_snapshot()).toMatchObject({ state: "running" });
 
-    fake_agent_state.release_tool_write?.();
+    fake_agent_state.release_tool_execution?.();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
-    expect(service.get_snapshot().entries).toEqual(stopped_entries);
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "tool_call", id: "write-1", status: "success" }),
+      ]),
+    );
     expect(
       log_append.mock.calls
         .map(([payload]) => JSON.parse(payload.content.text) as JsonRecord)
@@ -1850,25 +1885,29 @@ describe("AgentService", () => {
           ({
             initialize: vi.fn(async () => undefined),
             reset: vi.fn(async () => undefined),
-            create_workspace: vi.fn(async () => ({
-              project_meta: { counts: { items: 2 } },
-              contract: { datasets: {} },
-            })),
+            load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
             run_recipe: vi.fn(async () => ({ items: read_items() })),
-            run_script: vi.fn(async () => ({ items: read_items() })),
+            run_script: vi.fn(async () => {
+              await wait_for_held_tool();
+              return { items: read_items() };
+            }),
             apply_workspace: vi.fn(async () => {
-              if (fake_agent_state.hold_tool_write) {
-                await new Promise<void>((resolve) => {
-                  fake_agent_state.release_tool_write = () => {
-                    fake_agent_state.hold_tool_write = false;
-                    fake_agent_state.release_tool_write = null;
-                    resolve();
-                  };
-                });
-              }
+              await wait_for_held_tool();
               return { status: "applied" };
             }),
           } satisfies AgentWorkspacePort));
+
+    /** 把单个工具停在执行体内，分别验证普通工具与原子 apply 的 stop 语义。 */
+    async function wait_for_held_tool(): Promise<void> {
+      if (!fake_agent_state.hold_tool_execution) return;
+      await new Promise<void>((resolve) => {
+        fake_agent_state.release_tool_execution = () => {
+          fake_agent_state.hold_tool_execution = false;
+          fake_agent_state.release_tool_execution = null;
+          resolve();
+        };
+      });
+    }
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
     const log_error = vi.fn();
     const log_warning = vi.fn();
@@ -1963,6 +2002,7 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).not.toContain("执行术语审校。");
   expect(prompt).not.toContain("完整正文。");
   expect(prompt).not.toContain("You are an expert coding assistant operating inside pi");
+  expect(prompt).not.toContain("Read the full skill file when the task matches");
   expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
   expect(prompt?.match(/Current working directory:/gu)).toHaveLength(1);
   expect(prompt?.endsWith("Current working directory: E:/Project/LinguaGacha")).toBe(true);

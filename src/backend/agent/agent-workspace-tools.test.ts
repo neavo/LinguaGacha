@@ -8,15 +8,15 @@ type WorkspaceToolResult = { details: unknown };
 
 describe("Agent 工作区工具", () => {
   it("四个工具只适配参数、取消信号与服务结果", async () => {
-    const workspace = create_workspace();
+    const workspace = build_workspace_port();
     const tools = create_agent_workspace_tools(workspace);
-    const create_tool = read_tool(tools, "workspace_create");
+    const load_tool = read_tool(tools, "workspace_load");
     const recipe_tool = read_tool(tools, "workspace_recipe");
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
-    const created = (await create_tool.execute(
-      "create",
+    const loaded = (await load_tool.execute(
+      "load",
       {},
       undefined,
       undefined,
@@ -44,7 +44,7 @@ describe("Agent 工作区工具", () => {
       undefined as never,
     )) as WorkspaceToolResult;
 
-    expect(workspace.create_workspace).toHaveBeenCalledOnce();
+    expect(workspace.load_workspace).toHaveBeenCalledOnce();
     expect(workspace.run_script).toHaveBeenCalledWith(
       "return { changed: 2 }",
       expect.any(AbortSignal),
@@ -55,18 +55,15 @@ describe("Agent 工作区工具", () => {
       expect.any(AbortSignal),
     );
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
-    expect(created.details).toEqual({
-      project_meta: { counts: { items: 2 } },
-      contract: { datasets: {} },
-    });
+    expect(loaded.details).toEqual({ status: "loaded", counts: { items: 2 } });
     expect(script.details).toEqual({ result: { changed: 2 } });
     expect(recipe.details).toEqual({ result: { total_item_count: 2 } });
     expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
   it("Schema 严格区分 recipe 参数并限制枚举与分页", () => {
-    const tools = create_agent_workspace_tools(create_workspace());
-    const create_tool = read_tool(tools, "workspace_create");
+    const tools = create_agent_workspace_tools(build_workspace_port());
+    const load_tool = read_tool(tools, "workspace_load");
     const recipe_tool = read_tool(tools, "workspace_recipe");
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
@@ -78,7 +75,7 @@ describe("Agent 工作区工具", () => {
     });
     expect(recipe_tool.parameters).not.toHaveProperty("anyOf");
     expect(JSON.stringify(recipe_tool.parameters)).not.toContain('"pattern"');
-    expect(validate(create_tool, {})).toEqual({});
+    expect(validate(load_tool, {})).toEqual({});
     expect(validate(script_tool, { script: "return null" })).toEqual({ script: "return null" });
     expect(validate(recipe_tool, { recipe: { name: "query-items", args: {} } })).toEqual({
       recipe: { name: "query-items", args: {} },
@@ -113,7 +110,7 @@ describe("Agent 工作区工具", () => {
       }),
     ).toMatchObject({ recipe: { name: "query-quality-rule-groups" } });
     expect(validate(apply_tool, {})).toEqual({});
-    expect(() => validate(create_tool, { target: "items" })).toThrow();
+    expect(() => validate(load_tool, { target: "items" })).toThrow();
     expect(() => validate(script_tool, { script: "" })).toThrow();
     expect(() =>
       validate(recipe_tool, {
@@ -160,7 +157,7 @@ describe("Agent 工作区工具", () => {
   });
 
   it("Schema 兼容约束不放宽空白关键词语义", async () => {
-    const workspace = create_workspace();
+    const workspace = build_workspace_port();
     const recipe_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_recipe");
 
     await expect(
@@ -190,15 +187,15 @@ describe("Agent 工作区工具", () => {
   });
 
   it("调用前已取消时不触达工作区服务", async () => {
-    const workspace = create_workspace();
-    const create_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_create");
+    const workspace = build_workspace_port();
+    const load_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_load");
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
     await expect(
-      create_tool.execute("create", {}, controller.signal, undefined, undefined as never),
+      load_tool.execute("load", {}, controller.signal, undefined, undefined as never),
     ).rejects.toThrow("提前取消");
-    expect(workspace.create_workspace).not.toHaveBeenCalled();
+    expect(workspace.load_workspace).not.toHaveBeenCalled();
   });
 });
 
@@ -223,14 +220,11 @@ function read_tool(
 }
 
 /** 测试替换工作区业务边界，不伪造具体服务的私有状态。 */
-function create_workspace(): AgentWorkspacePort {
+function build_workspace_port(): AgentWorkspacePort {
   return {
     initialize: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
-    create_workspace: vi.fn(async () => ({
-      project_meta: { counts: { items: 2 } },
-      contract: { datasets: {} },
-    })),
+    load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
     run_recipe: vi.fn(async () => ({ total_item_count: 2 })),
     run_script: vi.fn(async () => ({ changed: 2 })),
     apply_workspace: vi.fn(async () => ({

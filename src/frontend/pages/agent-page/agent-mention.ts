@@ -1,7 +1,9 @@
 import type { GlossaryEntry } from "@domain/quality";
 import {
+  find_agent_reference_ranges,
   format_agent_skill_reference,
   format_agent_term_reference,
+  type AgentReferenceRange,
   type AgentSkillSnapshot,
 } from "@shared/agent";
 import type { Locale } from "@shared/i18n";
@@ -88,11 +90,7 @@ export function create_agent_mention_candidates(
 export type AgentMentionToken = Readonly<{ marker: string }>;
 
 /** 已知 marker 在正文中的非重叠范围，供编辑器与时间线分别投影。 */
-export type AgentMentionRange = Readonly<{
-  from: number;
-  to: number;
-  marker: string;
-}>;
+export type AgentMentionRange = AgentReferenceRange;
 
 /** 从当前能力与术语生成去重 marker，长 marker 优先解决括号术语的前缀重叠。 */
 export function create_agent_mention_tokens(
@@ -113,17 +111,8 @@ export function find_agent_mention_ranges(
   text: string,
   tokens: readonly AgentMentionToken[],
 ): AgentMentionRange[] {
-  const ranges: AgentMentionRange[] = [];
-  // ponytail: 短消息用直接扫描最省结构；真实性能热点出现时再换多模式匹配器。
-  for (const token of tokens) {
-    let from = text.indexOf(token.marker);
-    while (from >= 0) {
-      const to = from + token.marker.length;
-      if (!ranges.some((range) => from < range.to && to > range.from)) {
-        ranges.push({ from, to, marker: token.marker });
-      }
-      from = text.indexOf(token.marker, to);
-    }
-  }
-  return ranges.sort((left, right) => left.from - right.from);
+  return find_agent_reference_ranges(
+    text,
+    tokens.map((token) => token.marker),
+  );
 }
