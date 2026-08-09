@@ -290,14 +290,14 @@ describe("TaskProjectStore", () => {
 
   it("构建任务质量快照时术语表缺启用 meta 仍按领域默认值启用", async () => {
     const { cache_manager, database, project_path, store } = create_store();
-    database.set_rules(project_path, "glossary", [{ src: "HP", dst: "生命值" }]);
+    database.set_rules(project_path, "glossary", [{ entry_id: "hp", src: "HP", dst: "生命值" }]);
     await cache_manager.warmProject(project_path);
 
     const snapshot = store.build_quality_snapshot() as MutableJsonRecord;
     const quality = snapshot["quality"] as MutableJsonRecord;
 
     expect(quality["glossary"]).toEqual({
-      entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+      entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
       enabled: true,
       revision: 0,
     });

@@ -3,10 +3,14 @@ import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-ty
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
-import type { TextReplacementEntry } from "@domain/quality";
-export type { TextReplacementEntry } from "@domain/quality";
+import type { QualityRuleTextReplacementEntry as TextReplacementEntry } from "@domain/quality";
+export type { QualityRuleTextReplacementEntry as TextReplacementEntry } from "@domain/quality";
 
 export type TextReplacementEntryId = string;
+/** 创建草稿尚未分配项目身份，编辑草稿保留既有身份。 */
+export type TextReplacementEntryDraft = Omit<TextReplacementEntry, "entry_id"> & {
+  entry_id?: string;
+};
 
 export type TextReplacementDialogMode = "create" | "edit";
 
@@ -15,7 +19,7 @@ export type TextReplacementDialogState = {
   mode: TextReplacementDialogMode;
   target_entry_id: TextReplacementEntryId | null;
   insert_after_entry_id: TextReplacementEntryId | null;
-  draft_entry: TextReplacementEntry;
+  draft_entry: TextReplacementEntryDraft;
   saving: boolean;
   validation_message: string | null;
 };
@@ -105,7 +109,7 @@ export type UseTextReplacementPageStateResult = {
   update_enabled: (next_enabled: boolean) => Promise<void>;
   open_create_dialog: () => void;
   open_edit_dialog: (entry_id: TextReplacementEntryId) => void;
-  update_dialog_draft: (patch: Partial<TextReplacementEntry>) => void;
+  update_dialog_draft: (patch: Partial<TextReplacementEntryDraft>) => void;
   import_entries_from_path: (path: string) => Promise<void>;
   import_entries_from_picker: () => Promise<void>;
   export_entries_from_picker: () => Promise<void>;

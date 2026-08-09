@@ -53,10 +53,7 @@ import {
 } from "@frontend/app/result/snapshot";
 import { create_project_section_result_refresh } from "@frontend/app/result/refresh";
 import { useResultSnapshotState } from "@frontend/app/result/hook";
-import {
-  create_quality_rule_entry_id,
-  ensure_quality_rule_entry_ids,
-} from "@shared/quality/quality-rule-entry-id";
+import { create_quality_rule_entry_id } from "@shared/quality/quality-rule-entry";
 import {
   create_quality_rule_duplicate_resolution_plan,
   useQualityRuleImportConfirmation,
@@ -66,10 +63,7 @@ import {
   useProjectSessionTableUiState,
   type ProjectSessionTableSelectionState,
 } from "@frontend/app/session/project-session-ui-state-context";
-import {
-  reorder_selected_quality_rule_entries,
-  resolve_quality_rule_entry_id,
-} from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import { reorder_selected_quality_rule_entries } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
   useQualityRuleSelectionPruning,
   useQualityRuleTableSessionReset,
@@ -82,6 +76,7 @@ import type {
   GlossaryConfirmState,
   GlossaryDialogState,
   GlossaryEntry,
+  GlossaryEntryDraft,
   GlossaryEntryId,
   GlossaryFilterScope,
   GlossaryFilterState,
@@ -122,7 +117,7 @@ const GLOSSARY_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "glossary.entries_sav
 const GLOSSARY_META_UPDATE_WRITE: ProjectWriteOperation = "glossary.meta_update";
 
 // 对话框总是克隆该模板，避免复用可变草稿引用。
-const EMPTY_ENTRY: GlossaryEntry = {
+const EMPTY_ENTRY: GlossaryEntryDraft = {
   src: "",
   dst: "",
   info: "",
@@ -134,14 +129,15 @@ const DEFAULT_QUALITY_SLICE: GlossaryQualitySlice = {
   entries: [],
   section_revision: 0,
 };
-function clone_entry(entry: GlossaryEntry): GlossaryEntry {
+/** 按术语字段白名单克隆，避免重复规划联合类型中的异类字段泄漏。 */
+function clone_entry<Entry extends GlossaryEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: entry.src,
     dst: entry.dst,
     info: entry.info,
     case_sensitive: entry.case_sensitive,
-  };
+  } as Entry;
 }
 
 /** 新项目或清空筛选时的完整筛选状态。 */
@@ -218,37 +214,29 @@ function create_empty_confirm_state(): GlossaryConfirmState {
 }
 
 /**
- * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
+ * 在保存边界按术语字段白名单投影并裁掉文本两端空白，同时保留稳定条目 ID。
  */
-function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
+function normalize_dialog_entry<Entry extends GlossaryEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: entry.src.trim(),
     dst: entry.dst.trim(),
     info: entry.info.trim(),
     case_sensitive: entry.case_sensitive,
-  };
+  } as Entry;
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
+ * 将后端 quality 查询收窄为页面稳定切片。
  */
 function normalize_glossary_quality_slice(
-  slice: QualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice<"glossary"> | undefined,
   section_revision: number,
 ): GlossaryQualitySlice {
   const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
   return {
     enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
-    entries: ensure_quality_rule_entry_ids(
-      raw_entries.map((entry) => {
-        const record = typeof entry === "object" && entry !== null ? entry : {};
-        return normalize_dialog_entry({
-          ...EMPTY_ENTRY,
-          ...(record as Partial<GlossaryEntry>),
-        });
-      }),
-    ),
+    entries: raw_entries.map((entry) => normalize_dialog_entry(entry)),
     section_revision,
   };
 }
@@ -320,7 +308,7 @@ type UseGlossaryPageStateResult = {
   update_enabled: (next_enabled: boolean) => Promise<void>;
   open_create_dialog: () => void;
   open_edit_dialog: (entry_id: GlossaryEntryId) => void;
-  update_dialog_draft: (patch: Partial<GlossaryEntry>) => void;
+  update_dialog_draft: (patch: Partial<GlossaryEntryDraft>) => void;
   import_entries_from_path: (path: string) => Promise<void>;
   import_entries_from_picker: () => Promise<void>;
   export_entries_from_picker: () => Promise<void>;
@@ -436,9 +424,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [entries]);
 
   const entry_ids = useMemo<GlossaryEntryId[]>(() => {
-    return entries.map((entry, index) => {
-      return resolve_quality_rule_entry_id(entry, index);
-    });
+    return entries.map((entry) => entry.entry_id);
   }, [entries]);
 
   const entry_index_by_id = useMemo(() => {
@@ -594,11 +580,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
 
-      const normalized_entries = ensure_quality_rule_entry_ids(
-        next_entries.map((entry) => {
-          return normalize_dialog_entry(entry);
-        }),
-      );
+      const normalized_entries = next_entries.map((entry) => normalize_dialog_entry(entry));
 
       try {
         await commit_project_write({
@@ -688,9 +670,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const build_dialog_duplicate_resolution_plan = useCallback(
     (current_dialog_state: GlossaryDialogState, normalized_entry: GlossaryEntry) => {
       const current_entries = read_current_glossary_entries();
-      const current_entry_ids = current_entries.map((entry, index) => {
-        return resolve_quality_rule_entry_id(entry, index);
-      });
+      const current_entry_ids = current_entries.map((entry) => entry.entry_id);
       const existing_entries =
         current_dialog_state.mode === "edit"
           ? current_entries.filter((_entry, index) => {
@@ -974,7 +954,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
-  const update_dialog_draft = useCallback((patch: Partial<GlossaryEntry>): void => {
+  const update_dialog_draft = useCallback((patch: Partial<GlossaryEntryDraft>): void => {
     set_dialog_state((previous_state) => {
       return {
         ...previous_state,
@@ -1092,7 +1072,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     const current_dialog_state = dialog_state;
     const normalized_entry = {
       ...normalize_dialog_entry(dialog_state.draft_entry),
-      entry_id: dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(),
+      entry_id:
+        dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(new Set(entry_ids)),
     };
 
     if (normalized_entry.src === "") {
@@ -1136,6 +1117,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [
     build_dialog_duplicate_resolution_plan,
     dialog_state,
+    entry_ids,
     persist_entries_with_duplicate_resolution,
     push_toast,
     readonly,

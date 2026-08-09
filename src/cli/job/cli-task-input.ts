@@ -6,7 +6,7 @@ import { build_project_quality_rule_input } from "../../backend/project/project-
 import { load_quality_rule_entries_from_file } from "../../backend/quality/quality-rule-file-io";
 import { Prompt, type PromptKind } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
-import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+import { create_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { default_native_fs } from "../../native/native-fs";
 import type { CLICommandOptions } from "../cli-parser";
 
@@ -18,7 +18,7 @@ export async function build_cli_task_input(command: CLICommandOptions): Promise<
     quality_rules: await Promise.all(
       QualityRule.all().map(async (rule) => {
         const resource_path = read_rule_resource_path(command, rule.kind);
-        const entries = normalize_quality_rule_entries(
+        const entries = create_quality_rule_entries(
           rule,
           resource_path === null ? [] : await load_quality_rule_entries_from_file(resource_path),
         );

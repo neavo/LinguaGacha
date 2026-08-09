@@ -57,18 +57,12 @@ import {
 } from "@frontend/app/result/snapshot";
 import { create_project_section_result_refresh } from "@frontend/app/result/refresh";
 import { useResultSnapshotState } from "@frontend/app/result/hook";
-import {
-  create_quality_rule_entry_id,
-  ensure_quality_rule_entry_ids,
-} from "@shared/quality/quality-rule-entry-id";
+import { create_quality_rule_entry_id } from "@shared/quality/quality-rule-entry";
 import {
   create_quality_rule_duplicate_resolution_plan,
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
-import {
-  reorder_selected_quality_rule_entries,
-  resolve_quality_rule_entry_id,
-} from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import { reorder_selected_quality_rule_entries } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
   useQualityRuleSelectionPruning,
   useQualityRuleTableSessionReset,
@@ -77,6 +71,7 @@ import type {
   TextPreserveConfirmState,
   TextPreserveDialogState,
   TextPreserveEntry,
+  TextPreserveEntryDraft,
   TextPreserveEntryId,
   TextPreserveFilterScope,
   TextPreserveFilterState,
@@ -164,32 +159,33 @@ const TEXT_PRESERVE_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "text_preserve.e
 const TEXT_PRESERVE_MODE_UPDATE_WRITE: ProjectWriteOperation = "text_preserve.mode_update";
 
 // 对话框总是克隆该模板，避免复用可变草稿引用。
-const EMPTY_ENTRY: TextPreserveEntry = {
+const EMPTY_ENTRY: TextPreserveEntryDraft = {
   src: "",
   info: "",
 };
 
-function clone_entry(entry: TextPreserveEntry): TextPreserveEntry {
+/** 按文本保护字段白名单克隆，避免重复规划联合类型中的异类字段泄漏。 */
+function clone_entry<Entry extends TextPreserveEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: entry.src,
     info: entry.info,
-  };
+  } as Entry;
 }
 
 /**
- * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
+ * 在保存边界按文本保护字段白名单投影并裁掉文本两端空白，同时保留稳定条目 ID。
  */
-function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
+function normalize_entry<Entry extends TextPreserveEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: String(entry.src ?? "").trim(),
     info: String(entry.info ?? "").trim(),
-  };
+  } as Entry;
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
+ * 将后端 quality 查询收窄为页面稳定切片。
  */
 function normalize_text_preserve_quality_slice(
   slice: QualityRuleQuerySlice<"text_preserve"> | undefined,
@@ -198,7 +194,7 @@ function normalize_text_preserve_quality_slice(
   const raw_entries = slice?.entries ?? [];
   return {
     mode: normalize_text_preserve_mode(slice?.mode),
-    entries: ensure_quality_rule_entry_ids(raw_entries.map(clone_entry)),
+    entries: raw_entries.map(clone_entry),
     section_revision,
   };
 }
@@ -370,9 +366,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [entries]);
 
   const entry_ids = useMemo<TextPreserveEntryId[]>(() => {
-    return entries.map((entry, index) => {
-      return resolve_quality_rule_entry_id(entry, index);
-    });
+    return entries.map((entry) => entry.entry_id);
   }, [entries]);
 
   const entry_index_by_id = useMemo(() => {
@@ -542,11 +536,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
 
-      const normalized_entries = ensure_quality_rule_entry_ids(
-        next_entries.map((entry) => {
-          return normalize_entry(entry);
-        }),
-      );
+      const normalized_entries = next_entries.map((entry) => normalize_entry(entry));
 
       try {
         await commit_project_write({
@@ -861,7 +851,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
-  const update_dialog_draft = useCallback((patch: Partial<TextPreserveEntry>): void => {
+  const update_dialog_draft = useCallback((patch: Partial<TextPreserveEntryDraft>): void => {
     set_dialog_state((previous_state) => {
       return {
         ...previous_state,
@@ -1319,7 +1309,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     const current_dialog_state = dialog_state;
     const normalized_entry = {
       ...normalize_entry(dialog_state.draft_entry),
-      entry_id: dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(),
+      entry_id:
+        dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(new Set(entry_ids)),
     };
     const validation_message = validate_entry(normalized_entry);
     if (validation_message !== null) {

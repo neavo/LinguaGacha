@@ -2,7 +2,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type {
   TextPreserveDialogMode,
-  TextPreserveEntry,
+  TextPreserveEntryDraft,
 } from "@frontend/pages/text-preserve-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
@@ -12,11 +12,11 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 type TextPreserveEditDialogProps = {
   open: boolean;
   mode: TextPreserveDialogMode;
-  entry: TextPreserveEntry;
+  entry: TextPreserveEntryDraft;
   saving: boolean;
   readonly: boolean;
   validation_message: string | null;
-  on_change: (patch: Partial<TextPreserveEntry>) => void;
+  on_change: (patch: Partial<TextPreserveEntryDraft>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };

@@ -2,6 +2,8 @@ export type { GlossaryEntry } from "@shared/quality/glossary";
 import type { GlossaryEntry } from "@shared/quality/glossary";
 
 export type GlossaryEntryId = string;
+/** 创建草稿尚未分配项目身份，编辑草稿保留既有身份。 */
+export type GlossaryEntryDraft = Omit<GlossaryEntry, "entry_id"> & { entry_id?: string };
 
 export type GlossaryDialogMode = "create" | "edit";
 
@@ -10,7 +12,7 @@ export type GlossaryDialogState = {
   mode: GlossaryDialogMode;
   target_entry_id: GlossaryEntryId | null;
   insert_after_entry_id: GlossaryEntryId | null;
-  draft_entry: GlossaryEntry;
+  draft_entry: GlossaryEntryDraft;
   dirty: boolean;
   saving: boolean;
 };

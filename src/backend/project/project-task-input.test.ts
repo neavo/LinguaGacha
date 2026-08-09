@@ -12,12 +12,12 @@ describe("project-task-input", () => {
     expect(
       build_project_quality_rule_input(
         QualityRule.from_json("text_preserve"),
-        [{ src: "<[^>]+>", info: "" }],
+        [{ entry_id: "tag", src: "<[^>]+>", info: "" }],
         true,
       ),
     ).toEqual({
       kind: "text_preserve",
-      entries: [{ src: "<[^>]+>", info: "" }],
+      entries: [{ entry_id: "tag", src: "<[^>]+>", info: "" }],
       enabled: null,
       mode: "custom",
     });

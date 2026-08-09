@@ -30,6 +30,7 @@ const {
 function create_default_glossary_entries(): GlossaryEntry[] {
   return [
     {
+      entry_id: "苹果::0",
       src: "苹果",
       dst: "Apple",
       info: "水果",
@@ -749,18 +750,21 @@ describe("useGlossaryPageState", () => {
   it("统计刷新中会保留 hit 排序并继续使用旧命中结果", async () => {
     run_state.quality.glossary.entries = [
       {
+        entry_id: "苹果::0",
         src: "苹果",
         dst: "Apple",
         info: "水果",
         case_sensitive: false,
       },
       {
+        entry_id: "香蕉::1",
         src: "香蕉",
         dst: "Banana",
         info: "水果",
         case_sensitive: false,
       },
       {
+        entry_id: "梨::2",
         src: "梨",
         dst: "Pear",
         info: "水果",
@@ -852,12 +856,14 @@ describe("useGlossaryPageState", () => {
   it("首次没有统计快照时不会用空统计结果排序", async () => {
     run_state.quality.glossary.entries = [
       {
+        entry_id: "苹果::0",
         src: "苹果",
         dst: "Apple",
         info: "水果",
         case_sensitive: false,
       },
       {
+        entry_id: "香蕉::1",
         src: "香蕉",
         dst: "Banana",
         info: "水果",
@@ -887,7 +893,7 @@ describe("useGlossaryPageState", () => {
     ]);
   });
 
-  it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {
+  it("新增条目会携带短身份提交，并在回包前关闭弹窗", async () => {
     await mount_probe();
     api_fetch_mock.mockReturnValueOnce(new Promise(() => {}));
 
@@ -910,6 +916,20 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.dialog_state.open).toBe(false);
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/update", {
+      rule_type: "glossary",
+      expected_section_revisions: { quality: 1 },
+      entries: [
+        create_default_glossary_entries()[0],
+        {
+          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          src: "香蕉",
+          dst: "Banana",
+          info: "水果",
+          case_sensitive: false,
+        },
+      ],
+    });
   });
 
   it("新增重复术语时先确认，覆盖后改写已有条目", async () => {
@@ -1281,12 +1301,14 @@ describe("useGlossaryPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "import-apple",
             src: "苹果",
             dst: "Malus",
             info: "新说明",
             case_sensitive: false,
           },
           {
+            entry_id: "香蕉::1",
             src: "香蕉",
             dst: "Banana",
             info: "水果",
@@ -1367,6 +1389,7 @@ describe("useGlossaryPageState", () => {
     run_state.quality.glossary.entries = [
       ...create_default_glossary_entries(),
       {
+        entry_id: "苹果派::1",
         src: "苹果派",
         dst: "Apple pie",
         info: "甜点",
@@ -1382,6 +1405,7 @@ describe("useGlossaryPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "香蕉::2",
             src: "香蕉",
             dst: "Banana",
             info: "水果",
@@ -1404,12 +1428,14 @@ describe("useGlossaryPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "import-apple",
             src: "苹果",
             dst: "Malus",
             info: "新说明",
             case_sensitive: false,
           },
           {
+            entry_id: "香蕉::2",
             src: "香蕉",
             dst: "Banana",
             info: "水果",
@@ -1458,12 +1484,14 @@ describe("useGlossaryPageState", () => {
 
     run_state.quality.glossary.entries = [
       {
+        entry_id: "苹果::0",
         src: "苹果",
         dst: "Apple",
         info: "水果",
         case_sensitive: false,
       },
       {
+        entry_id: "梨::1",
         src: "梨",
         dst: "Pear",
         info: "水果",
@@ -1588,12 +1616,14 @@ describe("useGlossaryPageState", () => {
     vi.useFakeTimers();
     run_state.quality.glossary.entries = [
       {
+        entry_id: "苹果::0",
         src: "苹果",
         dst: "Apple",
         info: "",
         case_sensitive: false,
       },
       {
+        entry_id: "香蕉::1",
         src: "香蕉",
         dst: "Banana",
         info: "",
@@ -1628,12 +1658,14 @@ describe("useGlossaryPageState", () => {
         ...run_state.quality.glossary,
         entries: [
           {
+            entry_id: "香蕉::0",
             src: "香蕉",
             dst: "Banana",
             info: "",
             case_sensitive: false,
           },
           {
+            entry_id: "梨::1",
             src: "梨",
             dst: "Pear",
             info: "",
@@ -1687,12 +1719,14 @@ describe("useGlossaryPageState", () => {
   it("重新进入术语表页时保留搜索排序和选中位置", async () => {
     run_state.quality.glossary.entries = [
       {
+        entry_id: "苹果::0",
         src: "苹果",
         dst: "Apple",
         info: "水果",
         case_sensitive: false,
       },
       {
+        entry_id: "香蕉::1",
         src: "香蕉",
         dst: "Banana",
         info: "水果",

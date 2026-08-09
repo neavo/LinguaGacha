@@ -1,19 +1,3 @@
-import { build_legacy_quality_rule_entry_id } from "@shared/quality/quality-rule-entry-id";
-
-type QualityRuleEntry = {
-  entry_id?: string;
-  src?: unknown;
-};
-
-/**
- * 新载荷优先使用稳定 entry_id，旧载荷继续沿用共享兼容 ID 规则。
- */
-export function resolve_quality_rule_entry_id(entry: QualityRuleEntry, index: number): string {
-  return typeof entry.entry_id === "string" && entry.entry_id !== ""
-    ? entry.entry_id
-    : build_legacy_quality_rule_entry_id(entry, index);
-}
-
 /**
  * 选区顺序也是表格交互状态的一部分，因此按位置而非集合比较。
  */

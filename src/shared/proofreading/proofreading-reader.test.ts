@@ -29,7 +29,7 @@ function create_quality(): QualitySnapshot {
       enabled: true,
       mode: "custom",
       revision: 1,
-      entries: [{ src: "HP", dst: "生命值" }],
+      entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
     },
     pre_replacement: { enabled: false, mode: "custom", revision: 0, entries: [] },
     post_replacement: { enabled: false, mode: "custom", revision: 0, entries: [] },
@@ -153,7 +153,7 @@ describe("proofreading-reader", () => {
       warnings: ["GLOSSARY"],
       glossary_applications: [
         {
-          entry_id: "HP::0",
+          entry_id: "hp",
           fields: [{ source_field: "src", target_field: "dst", applied: false }],
         },
       ],
@@ -291,7 +291,7 @@ describe("proofreading-reader", () => {
       warnings: expect.arrayContaining(["GLOSSARY"]),
       glossary_applications: [
         {
-          entry_id: "HP::0",
+          entry_id: "hp",
           src: "HP",
           dst: "生命值",
           fields: [{ source_field: "src", target_field: "dst", applied: false }],
@@ -477,7 +477,7 @@ describe("proofreading-reader", () => {
           enabled: true,
           mode: "custom",
           revision: 1,
-          entries: [{ src: "Alice", dst: "艾丽丝" }],
+          entries: [{ entry_id: "alice", src: "Alice", dst: "艾丽丝" }],
         },
       },
       upsertItems: [
@@ -497,7 +497,7 @@ describe("proofreading-reader", () => {
 
     expect(panel.glossary_term_entries).toEqual([
       {
-        entry_id: "Alice::0",
+        entry_id: "alice",
         src: "Alice",
         dst: "艾丽丝",
         count: 1,
@@ -605,13 +605,15 @@ describe("proofreading-reader", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<A>", dst: "<X>", regex: false, case_sensitive: true }],
+        entries: [
+          { entry_id: "replace-a", src: "<A>", dst: "<X>", regex: false, case_sensitive: true },
+        ],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<[^>]+>" }],
+        entries: [{ entry_id: "tag", src: "<[^>]+>" }],
       },
     };
     sync_full(service, {

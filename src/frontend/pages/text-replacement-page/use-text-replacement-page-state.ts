@@ -66,18 +66,12 @@ import {
 } from "@frontend/app/result/snapshot";
 import { create_project_section_result_refresh } from "@frontend/app/result/refresh";
 import { useResultSnapshotState } from "@frontend/app/result/hook";
-import {
-  create_quality_rule_entry_id,
-  ensure_quality_rule_entry_ids,
-} from "@shared/quality/quality-rule-entry-id";
+import { create_quality_rule_entry_id } from "@shared/quality/quality-rule-entry";
 import {
   create_quality_rule_duplicate_resolution_plan,
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
-import {
-  reorder_selected_quality_rule_entries,
-  resolve_quality_rule_entry_id,
-} from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import { reorder_selected_quality_rule_entries } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
   useQualityRuleSelectionPruning,
   useQualityRuleTableSessionReset,
@@ -86,6 +80,7 @@ import type {
   TextReplacementConfirmState,
   TextReplacementDialogState,
   TextReplacementEntry,
+  TextReplacementEntryDraft,
   TextReplacementEntryId,
   TextReplacementFilterScope,
   TextReplacementFilterState,
@@ -188,7 +183,7 @@ function create_quality_rule_meta_update_write(
 }
 
 // 对话框总是克隆该模板，避免复用可变草稿引用。
-const EMPTY_ENTRY: TextReplacementEntry = {
+const EMPTY_ENTRY: TextReplacementEntryDraft = {
   src: "",
   dst: "",
   regex: false,
@@ -201,14 +196,15 @@ const DEFAULT_QUALITY_SLICE: TextReplacementQualitySlice = {
   section_revision: 0,
 };
 
-function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
+/** 按替换规则字段白名单克隆，避免重复规划联合类型中的异类字段泄漏。 */
+function clone_entry<Entry extends TextReplacementEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: entry.src,
     dst: entry.dst,
     regex: entry.regex,
     case_sensitive: entry.case_sensitive,
-  };
+  } as Entry;
 }
 
 /** 新项目或清空筛选时的完整筛选状态。 */
@@ -252,20 +248,20 @@ function create_empty_confirm_state(): TextReplacementConfirmState {
 }
 
 /**
- * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
+ * 在保存边界按替换规则字段白名单投影并裁掉文本两端空白，同时保留稳定条目 ID。
  */
-function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
+function normalize_entry<Entry extends TextReplacementEntryDraft>(entry: Entry): Entry {
   return {
     entry_id: entry.entry_id,
     src: entry.src.trim(),
     dst: entry.dst.trim(),
     regex: entry.regex,
     case_sensitive: entry.case_sensitive,
-  };
+  } as Entry;
 }
 
 /**
- * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
+ * 将后端 quality 查询收窄为页面稳定切片。
  */
 function normalize_text_replacement_quality_slice(
   slice: QualityRuleQuerySlice<"pre_replacement" | "post_replacement"> | undefined,
@@ -274,7 +270,7 @@ function normalize_text_replacement_quality_slice(
   const raw_entries = slice?.entries ?? [];
   return {
     enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
-    entries: ensure_quality_rule_entry_ids(raw_entries.map(clone_entry)),
+    entries: raw_entries.map(clone_entry),
     section_revision,
   };
 }
@@ -424,9 +420,7 @@ export function useTextReplacementPageState(
   }, [entries]);
 
   const entry_ids = useMemo<TextReplacementEntryId[]>(() => {
-    return entries.map((entry, index) => {
-      return resolve_quality_rule_entry_id(entry, index);
-    });
+    return entries.map((entry) => entry.entry_id);
   }, [entries]);
 
   const entry_index_by_id = useMemo(() => {
@@ -602,11 +596,7 @@ export function useTextReplacementPageState(
         return false;
       }
 
-      const normalized_entries = ensure_quality_rule_entry_ids(
-        next_entries.map((entry) => {
-          return normalize_entry(entry);
-        }),
-      );
+      const normalized_entries = next_entries.map((entry) => normalize_entry(entry));
 
       try {
         await commit_project_write({
@@ -911,7 +901,7 @@ export function useTextReplacementPageState(
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
-  const update_dialog_draft = useCallback((patch: Partial<TextReplacementEntry>): void => {
+  const update_dialog_draft = useCallback((patch: Partial<TextReplacementEntryDraft>): void => {
     set_dialog_state((previous_state) => {
       return {
         ...previous_state,
@@ -1477,7 +1467,8 @@ export function useTextReplacementPageState(
     const current_dialog_state = dialog_state;
     const normalized_entry = {
       ...normalize_entry(dialog_state.draft_entry),
-      entry_id: dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(),
+      entry_id:
+        dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(new Set(entry_ids)),
     };
     const validation_message = validate_entry(normalized_entry);
     if (validation_message !== null) {

@@ -498,7 +498,7 @@ export function project_agent_workspace_quality_entry(
   return Object.fromEntries(
     AGENT_WORKSPACE_QUALITY_FIELDS[kind].map((field) => [
       field,
-      field === "id" ? String(entry["entry_id"] ?? "") : (entry[field] ?? null),
+      field === "id" ? String(entry["entry_id"]) : (entry[field] ?? null),
     ]),
   ) as JsonRecord;
 }

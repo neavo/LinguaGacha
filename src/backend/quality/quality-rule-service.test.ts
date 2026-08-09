@@ -20,6 +20,7 @@ describe("QualityRuleService", () => {
   const cleanup_databases: ProjectDatabase[] = [];
 
   afterEach(() => {
+    vi.restoreAllMocks();
     while (cleanup_databases.length > 0) {
       cleanup_databases.pop()?.close();
     }
@@ -43,7 +44,15 @@ describe("QualityRuleService", () => {
         virtual_id: "builtin:demo.json",
       }),
     ).toEqual({
-      entries: [{ src: "A", dst: "甲", info: "", case_sensitive: false }],
+      entries: [
+        {
+          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          src: "A",
+          dst: "甲",
+          info: "",
+          case_sensitive: false,
+        },
+      ],
     });
   });
 
@@ -62,7 +71,57 @@ describe("QualityRuleService", () => {
         rule_type: "text_preserve",
         virtual_id: "builtin:renpy.json",
       }),
-    ).toEqual({ entries: [{ src: "\\[[^\\]]+\\]", info: "" }] });
+    ).toEqual({
+      entries: [
+        {
+          entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+          src: "\\[[^\\]]+\\]",
+          info: "",
+        },
+      ],
+    });
+  });
+
+  it("读取预设时避开当前 kind 已有身份", () => {
+    let call_count = 0;
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(((value: Uint8Array) => {
+      value.fill(call_count === 0 ? 0 : 1);
+      call_count += 1;
+      return value;
+    }) as typeof globalThis.crypto.getRandomValues);
+    const { service, app_root } = create_service();
+    const preset_dir = path.join(app_root, "resource", "glossary", "preset");
+    fs.mkdirSync(preset_dir, { recursive: true });
+    fs.writeFileSync(path.join(preset_dir, "collision.json"), '[{"src":"A","dst":"甲"}]', "utf-8");
+
+    const result = service.read_rule_preset({
+      rule_type: "glossary",
+      virtual_id: "builtin:collision.json",
+    });
+    const entries = result["entries"] as JsonRecord[];
+
+    expect(entries[0]?.["entry_id"]).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
+    expect(entries[0]?.["entry_id"]).not.toBe("00000");
+  });
+
+  it("保存用户预设时不把项目内 entry_id 写入外部资源", () => {
+    const { service } = create_service();
+
+    const result = service.save_rule_preset({
+      rule_type: "glossary",
+      name: "demo",
+      entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
+    });
+    const preset_path = String((result["item"] as JsonRecord)["path"]);
+
+    expect(JSON.parse(fs.readFileSync(preset_path, "utf-8"))).toEqual([
+      {
+        src: "HP",
+        dst: "生命值",
+        info: "",
+        case_sensitive: false,
+      },
+    ]);
   });
 
   it("读取规则预设时拒绝带目录边界的虚拟文件名", () => {
@@ -100,6 +159,7 @@ describe("QualityRuleService", () => {
       {
         entries: [
           {
+            entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
             src: "HP",
             dst: "生命值",
             info: "",
@@ -118,7 +178,7 @@ describe("QualityRuleService", () => {
       service.export_rules({
         rule_type: "glossary",
         path: export_path,
-        entries: [{ src: "HP", dst: "生命值" }],
+        entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
       }),
     ).resolves.toEqual({ path: path.join(app_root, "exports", "rules.json").replace(/\\/gu, "/") });
     expect(fs.existsSync(path.join(app_root, "exports", "rules.json"))).toBe(true);
@@ -181,7 +241,7 @@ describe("QualityRuleService", () => {
       service.update({
         rule_type: "glossary",
         expected_section_revisions: { quality: 0 },
-        entries: [{ src: "HP", dst: "生命值" }],
+        entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
         meta: { enabled: false },
       }),
     ).resolves.toMatchObject({
@@ -215,7 +275,7 @@ describe("QualityRuleService", () => {
     ).rejects.toThrow("data.revision_conflict");
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
     expect(database.get_rules(lg_path, "glossary")).toEqual([
-      { src: "HP", dst: "生命值", info: "", case_sensitive: false },
+      { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
     ]);
   });
 
@@ -239,6 +299,20 @@ describe("QualityRuleService", () => {
         case_sensitive: false,
       },
     ]);
+  });
+
+  it("保存质量规则时拒绝缺失 entry_id", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service } = create_workbench_service(database);
+
+    await expect(
+      service.update({
+        rule_type: "glossary",
+        expected_section_revisions: { quality: 0 },
+        entries: [{ src: "HP", dst: "生命值" }],
+      }),
+    ).rejects.toThrow("request.validation_failed");
   });
 
   it("保存质量规则时拒绝旧 expected_revision 字段", async () => {
@@ -313,7 +387,7 @@ describe("QualityRuleService", () => {
     expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
         enabled: true,
-        entries: [{ src: "HP", dst: "生命值" }],
+        entries: [{ entry_id: "00000", src: "HP", dst: "生命值" }],
       },
       sectionRevisions: { quality: 0, analysis: 0 },
     });
@@ -324,7 +398,14 @@ describe("QualityRuleService", () => {
     cleanup_databases.push(database);
     const { service, lg_path } = create_workbench_service(database);
     database.set_rules(lg_path, "glossary", [
-      { src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true },
+      {
+        entry_id: "alice",
+        src: "艾琳",
+        dst: "Eileen",
+        info: "旧名",
+        regex: false,
+        case_sensitive: true,
+      },
     ]);
     database.upsert_analysis_candidate_aggregates(lg_path, [
       {
@@ -339,7 +420,16 @@ describe("QualityRuleService", () => {
     ]);
 
     const result = await service.import_analysis_glossary({
-      entries: [{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }],
+      entries: [
+        {
+          entry_id: "alice",
+          src: "艾琳",
+          dst: "Erin",
+          info: "角色名",
+          regex: false,
+          case_sensitive: true,
+        },
+      ],
       consumed_candidate_srcs: ["艾琳"],
       expected_section_revisions: { quality: 0, analysis: 0 },
     });
@@ -349,7 +439,7 @@ describe("QualityRuleService", () => {
       changes: [{ updatedSections: ["quality", "analysis"] }],
     });
     expect(database.get_rules(lg_path, "glossary")).toEqual([
-      { src: "艾琳", dst: "Erin", info: "角色名", case_sensitive: true },
+      { entry_id: "alice", src: "艾琳", dst: "Erin", info: "角色名", case_sensitive: true },
     ]);
     expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
@@ -359,7 +449,14 @@ describe("QualityRuleService", () => {
     cleanup_databases.push(database);
     const { service, lg_path } = create_workbench_service(database);
     const glossary_entries = [
-      { src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true },
+      {
+        entry_id: "alice",
+        src: "艾琳",
+        dst: "Erin",
+        info: "角色名",
+        regex: false,
+        case_sensitive: true,
+      },
     ];
     database.set_rules(lg_path, "glossary", glossary_entries);
     database.upsert_analysis_candidate_aggregates(lg_path, [
@@ -497,7 +594,7 @@ describe("QualityRuleService", () => {
           glossary: {
             enabled: true,
             revision: 0,
-            entries: [{ src: "HP", dst: "生命值" }],
+            entries: [{ entry_id: "00000", src: "HP", dst: "生命值" }],
           },
         }),
       },

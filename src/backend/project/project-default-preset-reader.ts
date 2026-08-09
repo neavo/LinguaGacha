@@ -15,7 +15,7 @@ import {
   type QualityRuleKind,
   type TextPreserveMode,
 } from "../../domain/quality";
-import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+import { create_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import type {
   ProjectPromptInput,
   ProjectQualityRuleInput,
@@ -158,7 +158,7 @@ export class ProjectDefaultPresetReader {
         },
       });
     }
-    return normalize_quality_rule_entries(rule, data);
+    return create_quality_rule_entries(rule, data);
   }
 
   /**

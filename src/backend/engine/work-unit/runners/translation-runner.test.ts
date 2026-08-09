@@ -236,7 +236,7 @@ describe("TranslationWorkUnitRunner", () => {
     };
     quality_block["pre_replacement"] = {
       enabled: true,
-      entries: [{ src: "HP", dst: "Mana", regex: false, case_sensitive: true }],
+      entries: [{ entry_id: "hp", src: "HP", dst: "Mana", regex: false, case_sensitive: true }],
     };
 
     await runner.execute_unit(

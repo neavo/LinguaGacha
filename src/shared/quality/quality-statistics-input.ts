@@ -7,7 +7,6 @@ import {
 } from "../item-text";
 import type { QualityStatisticsRuleInput } from "./quality-statistics";
 import { normalize_quality_rule_entries } from "./quality-rule-entry";
-import { ensure_quality_rule_entry_ids } from "./quality-rule-entry-id";
 
 export type QualityStatisticsPreparedTaskInput = {
   rule_key: QualityRuleKind;
@@ -28,7 +27,7 @@ export function prepare_quality_statistics_task_input(
   args: QualityStatisticsPrepareTaskInputArgs,
 ): QualityStatisticsPreparedTaskInput {
   const rule = QualityRule.from_json(args.rule_key);
-  const entries = ensure_quality_rule_entry_ids(normalize_quality_rule_entries(rule, args.entries));
+  const entries = normalize_quality_rule_entries(rule, args.entries);
   const rules = entries.map((entry): QualityStatisticsRuleInput => {
     const pattern_kind =
       args.rule_key === "text_preserve" ||
