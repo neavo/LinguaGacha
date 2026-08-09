@@ -134,17 +134,6 @@ function flush_microtasks(): Promise<void> {
   });
 }
 
-function create_workbench_query_response(): Record<string, unknown> {
-  return {
-    sectionRevisions: {
-      items: 4,
-      analysis: 6,
-      quality: 0,
-      prompts: 0,
-    },
-  };
-}
-
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTranslationWorkbenchTask>) => void;
 }): JSX.Element | null {
@@ -573,9 +562,6 @@ describe("useTranslationWorkbenchTask", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
-      }
       if (path === "/api/tasks/start") {
         return {
           task: create_task_snapshot({
@@ -597,6 +583,12 @@ describe("useTranslationWorkbenchTask", () => {
       await latest_state?.request_start_or_continue_translation();
     });
     await flush_microtasks();
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+    });
 
     expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -898,9 +890,6 @@ describe("useTranslationWorkbenchTask", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
-      }
       if (path === "/api/workbench/translation/reset") {
         return {
           accepted: true,
@@ -974,10 +963,6 @@ describe("useTranslationWorkbenchTask", () => {
           mtool_optimizer_enable: false,
           skip_duplicate_source_text_enable: true,
         },
-        expected_section_revisions: {
-          items: 4,
-          analysis: 6,
-        },
       }),
     );
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
@@ -1003,9 +988,6 @@ describe("useTranslationWorkbenchTask", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
-      }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
       }
       if (path === "/api/workbench/translation/reset") {
         return {
@@ -1064,15 +1046,9 @@ describe("useTranslationWorkbenchTask", () => {
         task_type: "translation",
       }),
     );
-    expect(api_fetch_mock).toHaveBeenCalledWith(
-      "/api/workbench/translation/reset",
-      expect.objectContaining({
-        mode: "failed",
-        expected_section_revisions: {
-          items: 4,
-        },
-      }),
-    );
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/translation/reset", {
+      mode: "failed",
+    });
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("translation");
   });
 
@@ -1082,9 +1058,6 @@ describe("useTranslationWorkbenchTask", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
-      }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
       }
       if (path === "/api/workbench/translation/reset") {
         throw new Error("reset boom");

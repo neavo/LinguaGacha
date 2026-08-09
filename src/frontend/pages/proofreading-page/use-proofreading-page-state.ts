@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
@@ -18,7 +18,6 @@ import {
   useTaskSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -70,19 +69,6 @@ import {
 
 // 校对页所有保存动作共享同一业务 operation，具体 item 范围留在写入 context。
 const PROOFREADING_WRITE: ProjectWriteOperation = "proofreading.write";
-
-// 提示词变更不重建校对列表，但后续重翻任务必须使用最新 prompts revision。
-function resolve_prompt_revision_from_change_signal(signal: ProjectChangeSignal): number | null {
-  if (!signal.updated_sections.includes("prompts")) {
-    return null;
-  }
-
-  const revisions = signal.results.flatMap((result) => {
-    const revision = result.sectionRevisions.prompts;
-    return typeof revision === "number" ? [revision] : [];
-  });
-  return revisions.length > 0 ? Math.max(...revisions) : null;
-}
 
 /**
  * 聚合校对页 session 状态、后端 query、写入动作与生命周期，向页面暴露单一公开状态。
@@ -150,7 +136,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     "idle",
   );
   const [list_revisions, set_list_revisions] = useState<ProjectDataSectionRevisions>({}); // 列表可见事实锁
-  const [operation_revisions, set_operation_revisions] = useState<ProjectDataSectionRevisions>({}); // 任务命令依赖锁
   const [settled_project_path, set_settled_project_path] = useState("");
   const [is_writing, set_is_writing] = useState(false);
   // preserve_scroll_anchor 通知 AppTable 在数据刷新前后保持当前窗口视觉偏移。
@@ -195,23 +180,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     () => resolve_proofreading_refresh_signal(project_change_signal),
     [project_change_signal],
   );
-  useEffect(() => {
-    const prompt_revision = resolve_prompt_revision_from_change_signal(project_change_signal);
-    if (prompt_revision === null) {
-      return;
-    }
-
-    set_operation_revisions((previous_revisions) => {
-      if (previous_revisions.prompts === prompt_revision) {
-        return previous_revisions;
-      }
-
-      return {
-        ...previous_revisions,
-        prompts: prompt_revision, // 只推进任务命令锁，列表刷新由校对 change signal 决定
-      };
-    });
-  }, [project_change_signal]);
   // 避免同一 revision 和筛选参数重复请求筛选面板。
   const last_filter_panel_signature_ref = useRef("");
   const warm_filter_panel_query_ref = useRef<(filters: ProofreadingFilterOptions) => void>(
@@ -516,7 +484,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_writing,
     dialog_open: dialog_state.open,
     list_revisions,
-    operation_revisions,
     read_items_by_row_ids: read_items_by_row_ids_for_batch,
     task_snapshot,
     sync_task_snapshot,
@@ -595,7 +562,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_panel(create_empty_proofreading_filter_panel_state());
     set_filter_panel_loading(false);
     set_list_revisions({});
-    set_operation_revisions({});
     set_settled_project_path("");
     set_replace_text("");
     set_filter_dialog_open(false);
@@ -630,7 +596,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_panel(create_empty_proofreading_filter_panel_state());
     set_filter_panel_loading(false);
     set_list_revisions({});
-    set_operation_revisions({});
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_writing(false);
@@ -676,7 +641,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     resolve_current_list_query,
     set_cache_status,
     set_list_revisions,
-    set_operation_revisions,
     set_filter_dialog_filters,
     set_filter_dialog_open,
     set_filter_panel,

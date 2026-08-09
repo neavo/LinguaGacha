@@ -1,11 +1,6 @@
 import type { ProjectSessionState } from "../project/project-session-state";
-import { normalize_project_expected_section_revisions } from "../project/project-write-request";
 import type { TaskEngine } from "./core/engine";
-import type {
-  CurrentProjectTaskStartCommand,
-  StartTaskCommand,
-  StopTaskCommand,
-} from "./protocol/task-command";
+import type { StartTaskCommand, StopTaskCommand } from "./protocol/task-command";
 import type { TaskSnapshot, TaskSnapshotListener } from "./protocol/task-snapshot";
 import type { TaskRuntime } from "./task-runtime";
 import * as AppErrors from "../../shared/error";
@@ -31,10 +26,10 @@ export class TaskService {
 
   private readonly task_runtime: TaskRuntime; // 任务锁、快照、取消和失败恢复的唯一所有者
 
-  private readonly session_state: ProjectSessionState; // 决定重翻 revision 校验是否能定位当前工程
+  private readonly session_state: ProjectSessionState; // 任务启动前只负责确认当前工程已加载
 
   /**
-   * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试
+   * 注入任务命令依赖，保持公开协议、运行态桥和工程会话边界可测试
    */
   public constructor(
     task_engine: TaskEngine,
@@ -54,7 +49,7 @@ export class TaskService {
   }
 
   /**
-   * 启动任务；公开层只做 JSON 收窄、revision 校验、模型检查和 Engine 命令转交
+   * 启动任务；公开层只收窄任务意图，运行 lease 是唯一并发受理边界
    */
   public async start_task(request: JsonRecord): Promise<MutableJsonRecord> {
     const command = this.normalize_start_command(request);
@@ -66,23 +61,10 @@ export class TaskService {
   }
 
   /**
-   * 当前工程入口读取最新 revision 后复用同一启动流程，供 CLI 等同进程调用方使用。
+   * 当前工程入口复用同一启动流程，供 CLI 等同进程调用方使用。
    */
-  public async start_current_project_task(
-    command: CurrentProjectTaskStartCommand,
-  ): Promise<TaskSnapshot> {
-    const sections = this.resolve_required_sections(
-      command.task_type,
-      command.task_type === "translation" ? command.scope : { kind: "all" },
-    );
-    const expected_section_revisions = Object.fromEntries(
-      sections.map((section) => [section, this.task_runtime.get_section_revision(section)]),
-    );
-    const start_command: StartTaskCommand = {
-      ...command,
-      expected_section_revisions,
-    };
-    return await this.start_command(start_command);
+  public async start_current_project_task(command: StartTaskCommand): Promise<TaskSnapshot> {
+    return await this.start_command(command);
   }
 
   /**
@@ -133,50 +115,6 @@ export class TaskService {
   }
 
   /**
-   * 任务启动必须声明所有被读取 section 的 revision，避免后台任务基于过期输入运行
-   */
-  private assert_expected_section_revisions(
-    expected: Record<string, number> | null,
-    sections: string[],
-  ): void {
-    if (expected === null) {
-      throw new AppErrors.RequestValidationError();
-    }
-    for (const section of sections) {
-      if (!(section in expected)) {
-        throw new AppErrors.RequestValidationError({
-          public_details: { section },
-        });
-      }
-      this.assert_expected_revision(
-        section,
-        expected,
-        this.task_runtime.get_section_revision(section),
-      );
-    }
-  }
-
-  /**
-   * 单个 section revision 比对集中在这里，避免错误消息分支重复转换
-   */
-  private assert_expected_revision(
-    section: string,
-    expected: Record<string, number>,
-    current_revision: number,
-  ): void {
-    const expected_revision = expected[section] ?? 0;
-    if (current_revision !== expected_revision) {
-      throw new AppErrors.RevisionConflictError({
-        public_details: {
-          current_revision,
-          expected_revision,
-          section,
-        },
-      });
-    }
-  }
-
-  /**
    * item_ids 在公开边界去重并保留顺序，避免 Engine 收到重复重翻条目
    */
   private normalize_item_ids(value: JsonValue | undefined): number[] {
@@ -197,15 +135,6 @@ export class TaskService {
   }
 
   /**
-   * expected_section_revisions 必须是对象；锁值只接受 JSON number 整数
-   */
-  private normalize_expected_section_revisions(
-    value: JsonValue | undefined,
-  ): Record<string, number> | null {
-    return normalize_project_expected_section_revisions(value);
-  }
-
-  /**
    * item_id 只接受整数数字或整数字符串，拒绝布尔值和小数兼容
    */
   private parse_integer_like(value: JsonValue | undefined): number | null {
@@ -222,46 +151,18 @@ export class TaskService {
    * 统一 start 请求收窄为 Engine 命令
    */
   private normalize_start_command(request: JsonRecord): StartTaskCommand {
+    if (Object.hasOwn(request, "expected_section_revisions")) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "task_start_legacy_revision_field" },
+      });
+    }
     const task_type = this.require_task_type(request["task_type"]);
     const mode = this.normalize_mode(request["mode"]);
-    const expected_section_revisions = this.normalize_expected_section_revisions(
-      request["expected_section_revisions"],
-    );
     if (task_type === "analysis") {
-      const command: StartTaskCommand = {
-        task_type,
-        mode,
-        expected_section_revisions: expected_section_revisions ?? {},
-      };
-      this.assert_expected_section_revisions(
-        expected_section_revisions,
-        this.resolve_required_sections(task_type, { kind: "all" }),
-      );
-      return command;
+      return { task_type, mode };
     }
     const scope = this.normalize_translation_scope(request);
-    const command: StartTaskCommand = {
-      task_type,
-      mode,
-      scope,
-      expected_section_revisions: expected_section_revisions ?? {},
-    };
-    this.assert_expected_section_revisions(
-      expected_section_revisions,
-      this.resolve_required_sections(task_type, scope),
-    );
-    return command;
-  }
-
-  /**
-   * 两类启动入口共用 section 依赖集合，避免 CLI 绕过新增的输入事实。
-   */
-  private resolve_required_sections(task_type: TaskType, scope: TranslationScope): string[] {
-    if (task_type === "translation" && scope.kind === "items") {
-      this.session_state.require_loaded_project_path();
-      return ["items", "proofreading", "quality", "prompts"];
-    }
-    return ["quality", "prompts"];
+    return { task_type, mode, scope };
   }
 
   /**

@@ -167,16 +167,6 @@ function create_prepared_import(
   };
 }
 
-function create_workbench_query_response(): Record<string, unknown> {
-  return {
-    sectionRevisions: {
-      analysis: 4,
-      quality: 0,
-      prompts: 0,
-    },
-  };
-}
-
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useAnalysisWorkbenchTask>) => void;
 }): JSX.Element | null {
@@ -642,15 +632,38 @@ describe("useAnalysisWorkbenchTask", () => {
     });
   });
 
+  it("分析启动只提交当前工程任务意图", async () => {
+    runtime_fixture.current = create_runtime_fixture(create_task_snapshot());
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return { task: runtime_fixture.current.task_snapshot };
+      }
+      if (path === "/api/tasks/start") {
+        return {
+          task: create_task_snapshot({ status: "requested", busy: true }),
+        };
+      }
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+    await act(async () => {
+      await latest_state?.request_start_or_continue_analysis();
+    });
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "analysis",
+      mode: "new",
+    });
+  });
+
   it("analysis reset all 成功时应用后端变更并刷新任务快照", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
-      }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
       }
       if (path === "/api/analysis/reset") {
         return {
@@ -699,6 +712,7 @@ describe("useAnalysisWorkbenchTask", () => {
         task_type: "analysis",
       }),
     );
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/analysis/reset", { mode: "all" });
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("analysis");
   });
@@ -709,9 +723,6 @@ describe("useAnalysisWorkbenchTask", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
-      }
-      if (path === "/api/workbench/snapshot") {
-        return create_workbench_query_response();
       }
       if (path === "/api/analysis/reset") {
         throw new Error("analysis reset boom");

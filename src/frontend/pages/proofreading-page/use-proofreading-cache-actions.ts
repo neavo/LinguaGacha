@@ -74,7 +74,6 @@ type UseProofreadingCacheActionsOptions = {
   resolve_current_list_query: () => ProofreadingResolvedListQuery;
   set_cache_status: Dispatch<SetStateAction<"idle" | "refreshing" | "ready" | "error">>;
   set_list_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>; // 列表内写入锁
-  set_operation_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>; // 任务命令锁
   set_filter_dialog_filters: Dispatch<SetStateAction<ProofreadingFilterOptions>>;
   set_filter_dialog_open: Dispatch<SetStateAction<boolean>>;
   set_filter_panel: Dispatch<SetStateAction<ProofreadingFilterPanelState>>;
@@ -422,12 +421,12 @@ export function useProofreadingCacheActions(
       if (sync_mode === "full") {
         options.sync_state_ref.current = null;
       }
-      const sync_snapshot =
+      sync_state = (
         await options.proofreading_runtime_client_ref.current.sync_proofreading_cache({
           sourceLanguage: options.source_language,
           targetLanguage: options.target_language,
-        });
-      sync_state = sync_snapshot.syncState;
+        })
+      ).syncState;
 
       if (request_id !== options.refresh_generation_ref.current || sync_state === null) {
         return;
@@ -540,9 +539,8 @@ export function useProofreadingCacheActions(
         );
       }
       options.set_cache_status("ready");
-      // syncState.revisions 维持列表缓存身份，顶层 sectionRevisions 维持写入和任务命令锁。
+      // syncState.revisions 同时维持列表缓存身份与列表派生写入锁。
       options.set_list_revisions(sync_state.revisions);
-      options.set_operation_revisions(sync_snapshot.sectionRevisions);
       options.set_settled_project_path(options.project_path);
     } catch (error) {
       if (request_id !== options.refresh_generation_ref.current) {

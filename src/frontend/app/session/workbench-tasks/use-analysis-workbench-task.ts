@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  create_analysis_reset_all_plan,
-  create_analysis_reset_failed_plan,
-} from "@shared/workbench/workbench-command-planner";
 import { type QualityRuleImportAction } from "@shared/quality/quality-rule-import";
 import {
   create_empty_quality_rule_import_confirm_state,
@@ -30,7 +26,6 @@ import {
   resolve_task_terminal_transition,
   useTerminalPromptSuppression,
 } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
-import { read_workbench_task_section_revisions } from "@frontend/app/session/workbench-tasks/workbench-task-revisions-api";
 import {
   advance_task_waveform_state,
   create_empty_task_waveform_state,
@@ -343,17 +338,12 @@ export function useAnalysisWorkbenchTask(
     }
 
     const should_continue = has_analysis_task_progress(analysis_task_display_snapshot);
-    const section_revisions = await read_workbench_task_section_revisions();
     clear_terminal_prompt_suppression();
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>("/api/tasks/start", {
         task_type: "analysis",
         mode: should_continue ? "continue" : "new",
-        expected_section_revisions: {
-          quality: section_revisions.quality ?? 0,
-          prompts: section_revisions.prompts ?? 0,
-        },
       });
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
       sync_runtime_task_snapshot(next_snapshot);
@@ -533,23 +523,14 @@ export function useAnalysisWorkbenchTask(
         return;
       }
 
-      const section_revisions = await read_workbench_task_section_revisions();
-      const reset_plan =
-        analysis_confirm_state.kind === "reset-all"
-          ? create_analysis_reset_all_plan({
-              section_revisions,
-            })
-          : create_analysis_reset_failed_plan({
-              section_revisions,
-            });
+      const reset_mode = analysis_confirm_state.kind === "reset-all" ? "all" : "failed";
       await commit_project_write({
         operation: WORKBENCH_ANALYSIS_RESET_WRITE,
         task_type: "analysis",
         run: async () => {
-          return await api_fetch<ProjectWriteResultPayload>(
-            "/api/analysis/reset",
-            reset_plan.requestBody,
-          );
+          return await api_fetch<ProjectWriteResultPayload>("/api/analysis/reset", {
+            mode: reset_mode,
+          });
         },
       });
       await refresh_task("analysis");

@@ -383,13 +383,6 @@ export class TaskRuntime {
   }
 
   /**
-   * 任务命令 revision 校验与快照读取共享同一 meta 口径。
-   */
-  public get_section_revision(section: string): number {
-    return this.data_reader.get_section_revision(this.get_loaded_project_meta(), section);
-  }
-
-  /**
    * 向所有 listener 发布完整快照；无订阅者时不读 meta。
    */
   private async publish_snapshot(task_type: TaskType): Promise<void> {
