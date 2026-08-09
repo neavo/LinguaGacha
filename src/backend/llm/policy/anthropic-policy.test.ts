@@ -7,7 +7,7 @@ import {
 } from "./anthropic-policy";
 
 describe("Anthropic 请求规则", () => {
-  it("thinking 开启时删除不允许组合的采样字段", () => {
+  it("thinking 开启时使用 adaptive 与 effort 档位并删除采样字段", () => {
     const payload = apply_anthropic_one_shot_request_overrides(
       {
         messages: [],
@@ -20,15 +20,14 @@ describe("Anthropic 请求规则", () => {
       }),
     );
 
-    expect(payload["thinking"]).toEqual({
-      type: "enabled",
-      budget_tokens: expect.any(Number),
-    });
+    expect(payload["thinking"]).toEqual({ type: "adaptive" });
+    expect(payload["output_config"]).toEqual({ effort: "high" });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
+    expect(payload).not.toHaveProperty("thinking.budget_tokens");
   });
 
-  it("共享覆盖用项目预算替换 Pi thinking 且不修改输入", () => {
+  it("共享覆盖用项目档位替换 Pi thinking 并保留 output_config 其它字段", () => {
     const source = {
       messages: [{ role: "user", content: "こんにちは" }],
       thinking: { type: "adaptive" },
@@ -38,30 +37,56 @@ describe("Anthropic 请求规则", () => {
     };
     const payload = apply_anthropic_request_overrides(
       source,
-      create_snapshot({ thinking_level: "MEDIUM" }),
+      create_snapshot({
+        thinking_level: "MEDIUM",
+        extra_body: {
+          thinking: { type: "enabled", budget_tokens: 4096 },
+          output_config: { effort: "low", format: { type: "json_schema" } },
+        },
+      }),
     );
 
     expect(payload).toMatchObject({
       messages: source.messages,
-      thinking: { type: "enabled", budget_tokens: expect.any(Number) },
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium", format: { type: "json_schema" } },
     });
-    expect(payload).not.toHaveProperty("output_config");
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
     expect(source).toHaveProperty("thinking.type", "adaptive");
+    expect(source).toHaveProperty("output_config.effort", "high");
   });
 
-  it("不支持的模型只保留用户显式 extra_body thinking", () => {
+  it("不按模型 ID 匹配思考能力", () => {
     const payload = apply_anthropic_request_overrides(
-      { thinking: { type: "adaptive" }, output_config: { effort: "high" } },
+      {},
       create_snapshot({
-        model_id: "claude-3-5-haiku",
-        thinking_level: "HIGH",
-        extra_body: { thinking: { type: "enabled", budget_tokens: 4096 } },
+        model_id: "provider-defined-model",
+        thinking_level: "XHIGH",
       }),
     );
 
-    expect(payload).toEqual({ thinking: { type: "enabled", budget_tokens: 4096 } });
+    expect(payload).toEqual({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "xhigh" },
+    });
+  });
+
+  it("OFF 显式关闭 thinking 并移除用户扩展中的 effort", () => {
+    const payload = apply_anthropic_request_overrides(
+      {},
+      create_snapshot({
+        thinking_level: "OFF",
+        extra_body: {
+          output_config: { effort: "xhigh", format: { type: "json_schema" } },
+        },
+      }),
+    );
+
+    expect(payload).toEqual({
+      thinking: { type: "disabled" },
+      output_config: { format: { type: "json_schema" } },
+    });
   });
 });
 

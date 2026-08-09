@@ -10,7 +10,6 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   apply_anthropic_one_shot_request_overrides,
   apply_anthropic_request_overrides,
-  build_anthropic_thinking_payload,
 } from "./policy/anthropic-policy";
 import {
   apply_google_one_shot_request_overrides,
@@ -169,13 +168,13 @@ export function apply_agent_request_overrides(
   return apply_openai_completions_request_overrides(record, snapshot);
 }
 
-/** Pi model 的 reasoning 能力只来自项目已知模型规则，不按用户挡位或未知模型猜测。 */
+/** Pi model 的 reasoning 能力来自协议策略；Anthropic 按 API 格式启用，其它协议按已知模型规则判定。 */
 export function model_supports_pi_reasoning(snapshot: ModelRequestSnapshot): boolean {
   if (snapshot.api_format === "Google") {
     return build_google_thinking_config(snapshot) !== null;
   }
   if (snapshot.api_format === "Anthropic") {
-    return build_anthropic_thinking_payload(snapshot) !== null;
+    return true;
   }
   if (snapshot.api_format === "SakuraLLM") {
     return false;

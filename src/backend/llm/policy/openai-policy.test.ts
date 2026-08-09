@@ -7,6 +7,7 @@ import {
   apply_openai_responses_one_shot_request_overrides,
   apply_openai_responses_request_overrides,
   apply_sakura_one_shot_request_overrides,
+  build_openai_thinking_payload,
   normalize_openai_sdk_base_url,
 } from "./openai-policy";
 
@@ -142,6 +143,33 @@ describe("OpenAI 请求规则", () => {
     expect(payload).not.toHaveProperty("enable_thinking");
     expect(payload).not.toHaveProperty("chat_template_kwargs");
     expect(source).toHaveProperty("reasoning_effort", "medium");
+  });
+
+  it("GPT 特高档原样下传 xhigh", () => {
+    expect(build_openai_thinking_payload("OpenAI", "gpt-5.6-luna", "XHIGH")).toEqual({
+      reasoning_effort: "xhigh",
+    });
+  });
+
+  it.each([
+    ["OpenAI", "kimi-k3", "HIGH", { reasoning_effort: "high" }],
+    ["OpenAI", "kimi-k3", "XHIGH", { reasoning_effort: "max" }],
+    [
+      "OpenAI",
+      "deepseek-v4-flash",
+      "HIGH",
+      { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    ],
+    [
+      "OpenAI",
+      "deepseek-v4-flash",
+      "XHIGH",
+      { thinking: { type: "enabled" }, reasoning_effort: "max" },
+    ],
+    ["OpenAIResponses", "deepseek-v4-pro", "HIGH", { reasoning: { effort: "high" } }],
+    ["OpenAIResponses", "deepseek-v4-pro", "XHIGH", { reasoning: { effort: "max" } }],
+  ] as const)("%s/%s 把 %s 映射为供应商档位", (api_format, model_id, level, expected) => {
+    expect(build_openai_thinking_payload(api_format, model_id, level)).toEqual(expected);
   });
 });
 

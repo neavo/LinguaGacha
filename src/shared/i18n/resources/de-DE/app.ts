@@ -30,6 +30,7 @@ export const de_de_app = {
       low: "Niedrig",
       medium: "Mittel",
       high: "Hoch",
+      xhigh: "Sehr hoch",
     },
   },
   action: {

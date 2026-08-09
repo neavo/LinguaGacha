@@ -1,6 +1,6 @@
 import type { ModelThinkingLevel } from "../../../domain/model";
 import { is_json_record, type JsonRecord } from "../../../domain/json";
-import { invalid_pi_payload, patch_top_p } from "./policy-shared";
+import { invalid_pi_payload, patch_top_p, resolve_high_capped_level } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 const OPENAI_ENDPOINT_SUFFIX_PATTERN = /\/(?:chat\/completions|responses)$/iu;
@@ -90,17 +90,21 @@ export function build_openai_thinking_payload(
 
     // https://docs.x.ai/developers/model-capabilities/text/reasoning
     if (/grok/iu.test(model_id)) {
-      return { reasoning_effort: level === "OFF" ? "low" : level.toLowerCase() };
+      return { reasoning_effort: level === "OFF" ? "low" : resolve_high_capped_level(level) };
     }
 
     // https://docs.volcengine.com/docs/82379/1449737?lang=zh#fc5eac89
     if (/doubao-seed/iu.test(model_id)) {
-      return { reasoning_effort: level === "OFF" ? "minimal" : level.toLowerCase() };
+      return {
+        reasoning_effort: level === "OFF" ? "minimal" : resolve_high_capped_level(level),
+      };
     }
 
     // https://platform.kimi.com/docs/guide/use-thinking-models
     if (/kimi-k3/iu.test(model_id)) {
-      return { reasoning_effort: level === "HIGH" ? "high" : "low" };
+      return {
+        reasoning_effort: level === "OFF" ? "low" : resolve_low_high_max_level(level),
+      };
     }
 
     // https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
@@ -109,7 +113,7 @@ export function build_openai_thinking_payload(
         ? { thinking: { type: "disabled" } }
         : {
             thinking: { type: "enabled" },
-            reasoning_effort: level === "MEDIUM" ? "low" : level.toLowerCase(),
+            reasoning_effort: resolve_low_high_max_level(level),
           };
     }
 
@@ -124,7 +128,7 @@ export function build_openai_thinking_payload(
     if (/grok/iu.test(model_id)) {
       return {
         reasoning: {
-          effort: level === "OFF" ? "low" : level.toLowerCase(),
+          effort: level === "OFF" ? "low" : resolve_high_capped_level(level),
         },
       };
     }
@@ -133,7 +137,7 @@ export function build_openai_thinking_payload(
     if (/doubao-seed/iu.test(model_id)) {
       return {
         reasoning: {
-          effort: level === "OFF" ? "minimal" : level.toLowerCase(),
+          effort: level === "OFF" ? "minimal" : resolve_high_capped_level(level),
         },
       };
     }
@@ -142,7 +146,7 @@ export function build_openai_thinking_payload(
     if (/deepseek-v4/iu.test(model_id)) {
       return {
         reasoning: {
-          effort: level === "OFF" ? "none" : level === "MEDIUM" ? "low" : level.toLowerCase(),
+          effort: level === "OFF" ? "none" : resolve_low_high_max_level(level),
         },
       };
     }
@@ -151,7 +155,7 @@ export function build_openai_thinking_payload(
     if (/mimo/iu.test(model_id)) {
       return {
         reasoning: {
-          effort: level === "OFF" ? "none" : level.toLowerCase(),
+          effort: level === "OFF" ? "none" : resolve_high_capped_level(level),
         },
       };
     }
@@ -168,6 +172,14 @@ export function build_openai_thinking_payload(
   }
 
   return null;
+}
+
+/** Kimi K3 与 DeepSeek V4 只消费 low/high/max，统一把特高档映射为 max。 */
+function resolve_low_high_max_level(
+  level: Exclude<ModelThinkingLevel, "OFF">,
+): "low" | "high" | "max" {
+  if (level === "XHIGH") return "max";
+  return level === "HIGH" ? "high" : "low";
 }
 
 /** 清除 Pi 的思考字段后应用项目模型规则；显式 extra_body 始终最后覆盖。 */

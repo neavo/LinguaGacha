@@ -159,7 +159,7 @@ describe("Agent 模型注册", () => {
       runtime,
       build_config("OpenAIResponses", {
         model_id: "gpt-5.6-luna",
-        thinking: { level: "HIGH" },
+        thinking: { level: "XHIGH" },
         request: {
           extra_headers_custom_enable: false,
           extra_body_custom_enable: true,
@@ -173,14 +173,14 @@ describe("Agent 模型注册", () => {
       api: "openai-responses",
       reasoning: true,
     });
-    expect(resolved.thinkingLevel).toBe("high");
+    expect(resolved.thinkingLevel).toBe("xhigh");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 Responses streamSimple");
     }
-    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "high" });
+    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "xhigh" });
     const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
-    expect(options).toMatchObject({ reasoning: "high" });
+    expect(options).toMatchObject({ reasoning: "xhigh" });
     if (options?.onPayload === undefined) throw new Error("Agent 缺少 Responses payload hook");
     expect(
       options.onPayload(
@@ -189,7 +189,7 @@ describe("Agent 模型注册", () => {
             { role: "system", content: "系统约束" },
             { role: "user", content: "用户输入" },
           ],
-          reasoning: { effort: "high", summary: "auto" },
+          reasoning: { effort: "xhigh", summary: "auto" },
           store: false,
         },
         resolved.model,
@@ -199,7 +199,7 @@ describe("Agent 模型注册", () => {
         { role: "developer", content: "系统约束" },
         { role: "user", content: "用户输入" },
       ],
-      reasoning: { effort: "high", summary: "auto" },
+      reasoning: { effort: "xhigh", summary: "auto" },
       store: false,
       custom_flag: true,
     });

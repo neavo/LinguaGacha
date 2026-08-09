@@ -202,18 +202,18 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
-  it("GPT-5.6 Responses 的非 OFF 档启用 Pi reasoning 连续性", async () => {
+  it("GPT-5.6 Responses 的特高档启用 Pi reasoning 连续性", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
       model_id: "gpt-5.6-luna",
-      thinking: { level: "HIGH" },
+      thinking: { level: "XHIGH" },
     });
     const payload = await capture_payload(request);
 
     expect(request.model.reasoning).toBe(true);
-    expect(request.options).toMatchObject({ reasoningEffort: "high" });
+    expect(request.options).toMatchObject({ reasoningEffort: "xhigh" });
     expect(payload).toMatchObject({
-      reasoning: { effort: "high", summary: "auto" },
+      reasoning: { effort: "xhigh", summary: "auto" },
       include: ["reasoning.encrypted_content"],
     });
     expect(payload["input"]).toEqual([
@@ -268,7 +268,8 @@ describe("pi-ai 请求适配", () => {
       messages: [{ role: "user", content: "こんにちは" }],
       stream: true,
       max_tokens: 8192,
-      thinking: { type: "enabled", budget_tokens: 2048 },
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
     });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");

@@ -1,4 +1,4 @@
-import { patch_top_p } from "./policy-shared";
+import { patch_top_p, resolve_high_capped_level } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 const GOOGLE_DEFAULT_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -61,10 +61,12 @@ export function build_google_thinking_config(
   const level = snapshot.thinking_level;
   // 3.1 Pro 不支持 minimal，OFF 映射为最低可用的 low。
   if (/gemini-3\.1-pro/iu.test(model_id)) {
-    return { thinkingLevel: level === "OFF" ? "low" : level.toLowerCase() };
+    return { thinkingLevel: level === "OFF" ? "low" : resolve_high_capped_level(level) };
   }
   if (/gemini-3/iu.test(model_id)) {
-    return { thinkingLevel: level === "OFF" ? "minimal" : level.toLowerCase() };
+    return {
+      thinkingLevel: level === "OFF" ? "minimal" : resolve_high_capped_level(level),
+    };
   }
   return null;
 }

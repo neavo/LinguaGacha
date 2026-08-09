@@ -2,7 +2,7 @@ import { type Model as PiModel } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
-import { Model } from "../../domain/model";
+import { Model, type ModelThinkingLevel } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import {
   apply_agent_request_overrides,
@@ -18,6 +18,9 @@ type AgentApi =
   | "anthropic-messages"
   | "google-generative-ai";
 
+/** AgentSession SDK 直接消费领域思考档位的小写投影。 */
+type AgentThinkingLevel = Lowercase<ModelThinkingLevel>;
+
 /** 把当前统一请求快照注册到 coding-agent 模型运行时。 */
 export function register_agent_model(
   model_runtime: ModelRuntime,
@@ -25,7 +28,7 @@ export function register_agent_model(
   user_agent: string,
 ): {
   model: PiModel<AgentApi>;
-  thinkingLevel: "off" | "low" | "medium" | "high";
+  thinkingLevel: AgentThinkingLevel;
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.ModelNotFoundError();
@@ -74,6 +77,6 @@ export function register_agent_model(
   }
   return {
     model,
-    thinkingLevel: snapshot.thinking_level.toLowerCase() as "off" | "low" | "medium" | "high",
+    thinkingLevel: snapshot.thinking_level.toLowerCase() as AgentThinkingLevel,
   };
 }

@@ -162,16 +162,11 @@ describe("ModelSelectionMenu", () => {
     expect(document.querySelector('[role="radiogroup"]')?.getAttribute("data-value")).toBe(
       "MEDIUM",
     );
-    expect(
-      [...document.querySelectorAll('[role="radio"]')].map((item) => item.textContent),
-    ).toEqual([
-      "app.model.thinking_level.off",
-      "app.model.thinking_level.low",
-      "app.model.thinking_level.medium",
-      "app.model.thinking_level.high",
-    ]);
-    menu_state.on_value_change?.("HIGH");
-    expect(update_thinking_level).toHaveBeenCalledWith("agent", "HIGH");
+    expect(document.querySelector('[role="radio"][data-value="XHIGH"]')?.textContent).toBe(
+      "app.model.thinking_level.xhigh",
+    );
+    menu_state.on_value_change?.("XHIGH");
+    expect(update_thinking_level).toHaveBeenCalledWith("agent", "XHIGH");
   });
 
   it("当前模型不可配置思考档位时不渲染选项", () => {
