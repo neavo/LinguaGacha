@@ -41,7 +41,7 @@ const page_parameters = (unit: string) => ({
   ),
 });
 
-/** recipe 的结构与值域在工具边界一次校验，脚本源码只负责查询算法。 */
+/** recipe 的结构与值域在工具边界一次校验；函数协议要求联合 Schema 显式声明 object 根类型。 */
 const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
   Type.Object(
     {
@@ -153,6 +153,7 @@ const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
     { additionalProperties: false },
   ),
 ]);
+Object.assign(WORKSPACE_RECIPE_PARAMETERS, { type: "object" });
 
 /** apply 始终消费当前活动工作区，不接受模型重传身份或 revision。 */
 const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false });
