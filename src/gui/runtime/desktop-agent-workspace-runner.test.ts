@@ -21,7 +21,6 @@ const electron_mocks = vi.hoisted(() => {
     on: session_on,
     clearStorageData: clear_storage_data,
   };
-  const from_partition = vi.fn(() => runner_session);
   const execute_javascript = vi.fn(async (_script: string) => '{"changed":2}');
   class BrowserWindow {
     static instances: BrowserWindow[] = [];
@@ -54,7 +53,7 @@ const electron_mocks = vi.hoisted(() => {
     permission_request,
     session_on,
     clear_storage_data,
-    from_partition,
+    from_partition: vi.fn(() => runner_session),
     execute_javascript,
     BrowserWindow,
   };
@@ -68,9 +67,7 @@ vi.mock("electron", () => ({
 
 import {
   DesktopAgentWorkspaceRunner,
-  handle_agent_workspace_protocol_request,
   register_agent_workspace_scheme,
-  resolve_workspace_path,
 } from "./desktop-agent-workspace-runner";
 
 let workspace_path = "";
@@ -78,22 +75,27 @@ let workspace_path = "";
 beforeEach(() => {
   vi.clearAllMocks();
   electron_mocks.BrowserWindow.instances.length = 0;
+  electron_mocks.execute_javascript.mockResolvedValue('{"changed":2}');
   workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-runner-"));
-  fs.mkdirSync(path.join(workspace_path, "editable"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "context"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "derived"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "scratch"), { recursive: true });
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
-      datasets: {
-        items: { path: "editable/items.jsonl", role: "editable" },
-        context: { path: "context/items.jsonl", role: "context" },
+      datasets: { items: { path: "items/entries.jsonl", writable: true } },
+      recipes: {
+        "query-items": {
+          path: "recipes/query-items.js",
+          readonly: true,
+        },
       },
     }),
   );
-  fs.writeFileSync(path.join(workspace_path, "editable", "items.jsonl"), "original");
+  fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), "original");
+  fs.writeFileSync(
+    path.join(workspace_path, "recipes", "query-items.js"),
+    "return {marker: args.limit};",
+  );
 });
 
 afterEach(() => {
@@ -101,32 +103,41 @@ afterEach(() => {
   fs.rmSync(workspace_path, { recursive: true, force: true });
 });
 
-describe("Agent 工作区私有协议", () => {
-  it("注册私有 scheme，并以无 Node 的独立沙箱窗口执行脚本", async () => {
+describe("DesktopAgentWorkspaceRunner", () => {
+  it("注册完整沙箱边界，并在结果过门后提交脚本事务", async () => {
     register_agent_workspace_scheme();
     const runner = new DesktopAgentWorkspaceRunner();
+    prepare_program_execution();
 
     const result = await runner.run(
-      { workspacePath: workspace_path, script: "return { changed: 2 }" },
+      {
+        workspacePath: workspace_path,
+        operation: {
+          kind: "script",
+          script:
+            'await workspace.writeText("items/entries.jsonl", "changed"); return { text: await workspace.readText("items/entries.jsonl") };',
+        },
+      },
       new AbortController().signal,
     );
 
+    expect(result).toEqual({ status: "success", result: { text: "changed" } });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      "changed",
+    );
     expect(electron_mocks.register_schemes).toHaveBeenCalledWith([
-      expect.objectContaining({
+      {
         scheme: "lg-agent-workspace",
-        privileges: expect.objectContaining({
+        privileges: {
           standard: true,
           secure: true,
           supportFetchAPI: true,
           stream: true,
-        }),
-      }),
+        },
+      },
     ]);
-    expect(electron_mocks.from_partition).toHaveBeenCalledWith("agent-workspace", {
-      cache: false,
-    });
-    const target_window = electron_mocks.BrowserWindow.instances[0];
-    expect(target_window?.options).toMatchObject({
+    expect(electron_mocks.from_partition).toHaveBeenCalledWith("agent-workspace", { cache: false });
+    expect(electron_mocks.BrowserWindow.instances[0]?.options).toMatchObject({
       show: false,
       webPreferences: {
         sandbox: true,
@@ -135,258 +146,161 @@ describe("Agent 工作区私有协议", () => {
         webSecurity: true,
       },
     });
-    expect(target_window?.webContents.executeJavaScript).toHaveBeenCalledWith(
-      expect.stringContaining('new AsyncFunction("workspace", "return { changed: 2 }")'),
-      true,
-    );
-    expect(electron_mocks.clear_storage_data).toHaveBeenCalledOnce();
-    expect(target_window?.destroyed).toBe(true);
-    expect(result).toEqual({ result: { changed: 2 } });
+    expect(electron_mocks.BrowserWindow.instances[0]?.destroyed).toBe(true);
+
+    const filter = electron_mocks.on_before_request.mock.calls[0]?.[0] as
+      | ((details: { url: string }, callback: (result: { cancel: boolean }) => void) => void)
+      | undefined;
+    if (filter === undefined) throw new Error("缺少网络过滤器");
+    const network_result = vi.fn();
+    const workspace_result = vi.fn();
+    filter({ url: "https://example.com" }, network_result);
+    filter({ url: "lg-agent-workspace://workspace/files/prompts.json" }, workspace_result);
+    expect(network_result).toHaveBeenCalledWith({ cancel: true });
+    expect(workspace_result).toHaveBeenCalledWith({ cancel: false });
+    expect(electron_mocks.permission_check.mock.calls[0]?.[0]()).toBe(false);
+    const permission_result = vi.fn();
+    electron_mocks.permission_request.mock.calls[0]?.[0](undefined, undefined, permission_result);
+    expect(permission_result).toHaveBeenCalledWith(false);
+    const download_event = { preventDefault: vi.fn() };
+    electron_mocks.session_on.mock.calls[0]?.[1](download_event);
+    expect(download_event.preventDefault).toHaveBeenCalledOnce();
 
     runner.dispose();
     expect(electron_mocks.protocol_unhandle).toHaveBeenCalledWith("lg-agent-workspace");
   });
 
-  it("main 对脚本结果独立执行 64 KiB 上限并销毁窗口", async () => {
+  it("官方 recipe 从 contract 路径读取，并只接收只读 workspace", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
-    const oversized = JSON.stringify("x".repeat(64 * 1024));
-    electron_mocks.execute_javascript.mockResolvedValueOnce(oversized);
-    const execution = runner.run(
-      { workspacePath: workspace_path, script: "return null" },
+    fs.writeFileSync(
+      path.join(workspace_path, "recipes", "query-items.js"),
+      'return { marker: args.limit, can_write: "writeText" in workspace };',
+    );
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: { kind: "recipe", name: "query-items", args: { limit: 7 } },
+      },
       new AbortController().signal,
     );
 
-    await expect(execution).rejects.toThrow("脚本返回结果过大");
-    const target_window = electron_mocks.BrowserWindow.instances[0];
-    expect(target_window?.destroyed).toBe(true);
+    expect(result).toEqual({ status: "success", result: { marker: 7, can_write: false } });
+    expect(fs.existsSync(path.join(workspace_path, ".transactions"))).toBe(false);
   });
 
-  it("首个异步准备阶段即拒绝并发脚本", async () => {
-    let release_storage: () => void = () => undefined;
+  it("脚本异常返回可修复消息并隐藏工作区绝对路径", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockRejectedValueOnce(
+      new Error(`第十步语法错误：${workspace_path}\\secret`),
+    );
+
+    const result = await runner.run(
+      { workspacePath: workspace_path, operation: { kind: "script", script: "bad" } },
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+    });
+    if (result.status !== "failed") throw new Error("脚本异常没有返回失败结果");
+    expect(result.message).toContain("[workspace]");
+    expect(result.message).not.toContain(workspace_path);
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      "original",
+    );
+  });
+
+  it("超大结果返回 preserved 与稳定错误消息", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockResolvedValueOnce(`"${"x".repeat(70 * 1024)}"`);
+
+    await expect(
+      runner.run(
+        { workspacePath: workspace_path, operation: { kind: "script", script: "return big" } },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+      message: "脚本返回结果过大；请写入 scratch 并只返回摘要。",
+    });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      "original",
+    );
+  });
+
+  it("停止会等待当前事务回滚后再以原始原因拒绝", async () => {
+    let reject_execution: ((error: Error) => void) | undefined;
+    electron_mocks.execute_javascript.mockImplementationOnce(
+      async () =>
+        await new Promise<string>((_resolve, reject) => {
+          reject_execution = reject;
+        }),
+    );
+    const runner = new DesktopAgentWorkspaceRunner();
+    const controller = new AbortController();
+    const reason = new Error("用户停止");
+    const running = runner.run(
+      { workspacePath: workspace_path, operation: { kind: "script", script: "await pending" } },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(electron_mocks.execute_javascript).toHaveBeenCalledOnce());
+
+    controller.abort(reason);
+    reject_execution?.(new Error("renderer destroyed"));
+
+    await expect(running).rejects.toBe(reason);
+    expect(fs.readdirSync(path.join(workspace_path, ".transactions"))).toEqual([]);
+  });
+
+  it("从异步准备开始拒绝并发操作", async () => {
+    let release: (() => void) | undefined;
     electron_mocks.clear_storage_data.mockImplementationOnce(
       async () =>
         await new Promise<void>((resolve) => {
-          release_storage = resolve;
+          release = resolve;
         }),
     );
     const runner = new DesktopAgentWorkspaceRunner();
     const first = runner.run(
-      { workspacePath: workspace_path, script: "return null" },
+      { workspacePath: workspace_path, operation: { kind: "script", script: "return null" } },
       new AbortController().signal,
     );
     await vi.waitFor(() => expect(electron_mocks.clear_storage_data).toHaveBeenCalledOnce());
 
     await expect(
       runner.run(
-        { workspacePath: workspace_path, script: "return null" },
+        { workspacePath: workspace_path, operation: { kind: "script", script: "return null" } },
         new AbortController().signal,
       ),
     ).rejects.toThrow("正在运行");
-
-    release_storage();
-    await expect(first).resolves.toEqual({ result: { changed: 2 } });
-  });
-
-  it("拒绝绝对路径、反斜线和根目录穿越", () => {
-    expect(() => resolve_workspace_path(workspace_path, "../secret.txt")).toThrow("越界");
-    expect(() => resolve_workspace_path(workspace_path, "C:/secret.txt")).toThrow("非法");
-    expect(() => resolve_workspace_path(workspace_path, "context\\secret.txt")).toThrow("非法");
-  });
-
-  it("流式原子覆盖 contract 声明的 editable 文件并保持其它数据只读", async () => {
-    const content = "译文".repeat(400_000);
-    const editable_response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/editable/items.jsonl", {
-        method: "PUT",
-        body: content,
-      }),
-    );
-
-    expect(editable_response.status).toBe(204);
-    expect(fs.readFileSync(path.join(workspace_path, "editable", "items.jsonl"), "utf-8")).toBe(
-      content,
-    );
-
-    const context_response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/context/items.jsonl", {
-        method: "PUT",
-        body: "bad",
-      }),
-    );
-    expect(context_response.status).toBe(403);
-    expect(fs.existsSync(path.join(workspace_path, "context", "items.jsonl"))).toBe(false);
-
-    const undeclared_response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/editable/extra.json", {
-        method: "PUT",
-        body: "bad",
-      }),
-    );
-    expect(undeclared_response.status).toBe(403);
-    expect(fs.existsSync(path.join(workspace_path, "editable", "extra.json"))).toBe(false);
-  });
-
-  it("写入流失败时保留原 editable 文件并清理临时文件", async () => {
-    const target_path = path.join(workspace_path, "editable", "items.jsonl");
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("partial"));
-        controller.error(new Error("stream failed"));
-      },
-    });
-
-    const response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/editable/items.jsonl", {
-        method: "PUT",
-        body,
-        // Chromium 上传流要求 half duplex；Node Request 同样校验该字段。
-        duplex: "half",
-      } as RequestInit),
-    );
-
-    expect(response.status).toBe(400);
-    expect(fs.readFileSync(target_path, "utf-8")).toBe("original");
-    expect(fs.readdirSync(path.dirname(target_path))).toEqual(["items.jsonl"]);
-  });
-
-  it("允许读取上下文并只删除 scratch", async () => {
-    fs.writeFileSync(path.join(workspace_path, "context", "project.json"), '{"ok":true}');
-    fs.writeFileSync(path.join(workspace_path, "scratch", "report.txt"), "report");
-
-    const read_response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/context/project.json"),
-    );
-    expect(await read_response.text()).toBe('{"ok":true}');
-
-    const delete_response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/scratch/report.txt", {
-        method: "DELETE",
-      }),
-    );
-    expect(delete_response.status).toBe(204);
-    expect(fs.existsSync(path.join(workspace_path, "scratch", "report.txt"))).toBe(false);
-
-    const denied = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/context/project.json", {
-        method: "DELETE",
-      }),
-    );
-    expect(denied.status).toBe(403);
-
-    const editable_denied = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/editable/items.jsonl", {
-        method: "DELETE",
-      }),
-    );
-    expect(editable_denied.status).toBe(403);
-  });
-
-  it("scratch 可创建覆盖删除，符号链接路径始终拒绝", async () => {
-    const scratch_write = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/scratch/report.txt", {
-        method: "PUT",
-        body: "report",
-      }),
-    );
-    expect(scratch_write.status).toBe(204);
-    expect(fs.readFileSync(path.join(workspace_path, "scratch", "report.txt"), "utf-8")).toBe(
-      "report",
-    );
-
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-workspace-outside-"));
-    fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
-    fs.symlinkSync(outside, path.join(workspace_path, "scratch", "link"), "junction");
-    const linked = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/scratch/link/secret.txt"),
-    );
-    expect(linked.status).toBe(400);
-    expect(await linked.text()).toContain("符号链接");
-    fs.rmSync(outside, { recursive: true, force: true });
-  });
-
-  it.each([
-    ["未声明名称", "unknown", "未知 recipe"],
-    ["路径形式名称", "../x", "recipe name 非法"],
-  ])("runRecipe 拒绝%s", async (_case, recipe_name, message) => {
-    const runner = new DesktopAgentWorkspaceRunner();
-    prepare_recipe_execution("return null;");
-
-    await expect(
-      runner.run(
-        {
-          workspacePath: workspace_path,
-          script: `return await workspace.runRecipe(${JSON.stringify(recipe_name)}, {})`,
-        },
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow(message);
-  });
-
-  it("runRecipe 拒绝非 JSON 参数", async () => {
-    const runner = new DesktopAgentWorkspaceRunner();
-    prepare_recipe_execution("return null;");
-
-    await expect(
-      runner.run(
-        {
-          workspacePath: workspace_path,
-          script: 'return await workspace.runRecipe("inspect-items", { bad: () => undefined })',
-        },
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow("recipe args 必须是 JSON value");
-  });
-
-  it("runRecipe 拒绝非 JSON 结果", async () => {
-    const runner = new DesktopAgentWorkspaceRunner();
-    prepare_recipe_execution("return () => undefined;");
-
-    await expect(
-      runner.run(
-        {
-          workspacePath: workspace_path,
-          script: 'return await workspace.runRecipe("inspect-items", {})',
-        },
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow("recipe 结果必须是 JSON value");
-  });
-
-  it("文件系统错误不会向脚本泄露工作区绝对路径", async () => {
-    const response = await handle_agent_workspace_protocol_request(
-      workspace_path,
-      new Request("lg-agent-workspace://workspace/files/context/missing.json"),
-    );
-    const message = await response.text();
-
-    expect(response.status).toBe(400);
-    expect(message).toBe("工作区文件操作失败。");
-    expect(message).not.toContain(workspace_path);
+    release?.();
+    await expect(first).resolves.toMatchObject({ status: "success" });
   });
 });
 
-/** 让 runner 在测试进程执行生成脚本，并只暴露一个已声明 recipe。 */
-function prepare_recipe_execution(recipe_source: string): void {
-  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-    const url = String(input);
-    if (url.endsWith("/files/manifest.json")) {
-      return Response.json({ recipes: ["inspect-items"] });
-    }
-    if (url.endsWith("/files/recipes/inspect-items.js")) {
-      return new Response(recipe_source);
-    }
-    return new Response("missing", { status: 404 });
-  });
+/** 在测试进程执行 renderer 程序，并把相对 fetch 接回 runner 已注册的私有协议。 */
+function prepare_program_execution(): void {
+  const handler = electron_mocks.protocol_handle.mock.calls[0]?.[1] as
+    | ((request: Request) => Promise<Response>)
+    | undefined;
+  if (handler === undefined) throw new Error("缺少工作区协议处理器");
+  vi.stubGlobal(
+    "fetch",
+    async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const raw_url = input instanceof Request ? input.url : String(input);
+      const request_init =
+        init?.body instanceof ReadableStream ? ({ ...init, duplex: "half" } as RequestInit) : init;
+      return await handler(
+        new Request(new URL(raw_url, "lg-agent-workspace://workspace/__runner__"), request_init),
+      );
+    },
+  );
   electron_mocks.execute_javascript.mockImplementationOnce(
     async (script: string) => await (0, eval)(script),
   );

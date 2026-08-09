@@ -45,10 +45,10 @@ const mocks = vi.hoisted(() => {
   }
 
   const register_agent_workspace_scheme = vi.fn();
-  const agent_workspace_run = vi.fn(async () => ({ result: null }));
+  const agent_workspace_execute = vi.fn(async () => ({ status: "success", result: null }));
   const agent_workspace_dispose = vi.fn();
   class DesktopAgentWorkspaceRunner {
-    run = agent_workspace_run;
+    run = agent_workspace_execute;
     dispose = agent_workspace_dispose;
   }
 
@@ -69,7 +69,7 @@ const mocks = vi.hoisted(() => {
     cleanup_updates,
     register_agent_workspace_scheme,
     DesktopAgentWorkspaceRunner,
-    agent_workspace_run,
+    agent_workspace_execute,
     agent_workspace_dispose,
     app_exit: vi.fn(),
     app_quit: vi.fn(),

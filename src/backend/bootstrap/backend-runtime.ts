@@ -31,6 +31,10 @@ type PendingHostRequest = {
   reject: (reason?: unknown) => void;
   signal?: AbortSignal; // Agent stop 的原始取消来源
   abortListener?: () => void; // 结算时必须解绑，避免长会话积累监听器
+  dispatched: boolean; // 已发给 main 的请求必须等待宿主清理回执
+  cancelled: boolean; // 防止同一 signal 重复发送 host_cancel
+  cancelReason?: unknown;
+  operation: BackendRuntimeHostOperation; // 工作区事务完成结果不能被普通取消覆盖
 };
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
@@ -48,14 +52,27 @@ export async function run_backend_runtime(args: {
     signal?.throwIfAborted();
     const request_id = randomUUID();
     const result = new Promise<unknown>((resolve, reject) => {
-      const pending: PendingHostRequest = { resolve, reject, signal };
+      const pending: PendingHostRequest = {
+        resolve,
+        reject,
+        signal,
+        dispatched: false,
+        cancelled: false,
+        operation,
+      };
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
         const abort_listener = () => {
-          if (!pending_host_requests.delete(request_id)) return;
-          signal.removeEventListener("abort", abort_listener);
-          args.port.postMessage({ type: "host_cancel", requestId: request_id });
-          reject(signal.reason);
+          if (!pending_host_requests.has(request_id) || pending.cancelled) return;
+          pending.cancelled = true;
+          pending.cancelReason = signal.reason;
+          if (pending.dispatched) {
+            args.port.postMessage({ type: "host_cancel", requestId: request_id });
+          } else {
+            pending_host_requests.delete(request_id);
+            signal.removeEventListener("abort", abort_listener);
+            reject(signal.reason);
+          }
         };
         pending.abortListener = abort_listener;
         signal.addEventListener("abort", abort_listener, { once: true });
@@ -63,6 +80,8 @@ export async function run_backend_runtime(args: {
       }
     });
     if (pending_host_requests.has(request_id)) {
+      const pending = pending_host_requests.get(request_id);
+      if (pending !== undefined) pending.dispatched = true;
       args.port.postMessage({ type: "host_request", requestId: request_id, operation });
     }
     return await result;
@@ -107,7 +126,15 @@ export async function run_backend_runtime(args: {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
         pending.signal.removeEventListener("abort", pending.abortListener);
       }
-      if (message.result.ok) pending.resolve(message.result.data);
+      // 工作区事务可能在取消到达前完成提交；成功或失效结果都必须交给状态拥有者。
+      if (
+        pending.cancelled &&
+        message.result.ok &&
+        pending.operation.kind === "run_agent_workspace"
+      ) {
+        pending.resolve(message.result.data);
+      } else if (pending.cancelled) pending.reject(pending.cancelReason);
+      else if (message.result.ok) pending.resolve(message.result.data);
       else pending.reject(to_error(message.result.error));
       return;
     }

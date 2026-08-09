@@ -7,11 +7,12 @@ import { create_agent_workspace_tools } from "./agent-workspace-tools";
 type WorkspaceToolResult = { details: unknown };
 
 describe("Agent 工作区工具", () => {
-  it("三个工具只适配参数、取消信号与服务结果", async () => {
+  it("四个工具只适配参数、取消信号与服务结果", async () => {
     const workspace = create_workspace();
     const tools = create_agent_workspace_tools(workspace);
     const create_tool = read_tool(tools, "workspace_create");
-    const run_tool = read_tool(tools, "workspace_run");
+    const recipe_tool = read_tool(tools, "workspace_recipe");
+    const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
     const created = (await create_tool.execute(
@@ -21,9 +22,16 @@ describe("Agent 工作区工具", () => {
       undefined,
       undefined as never,
     )) as WorkspaceToolResult;
-    const run = (await run_tool.execute(
-      "run",
+    const script = (await script_tool.execute(
+      "script",
       { script: "return { changed: 2 }" },
+      undefined,
+      undefined,
+      undefined as never,
+    )) as WorkspaceToolResult;
+    const recipe = (await recipe_tool.execute(
+      "recipe",
+      { name: "query-items", args: { limit: 10 } },
       undefined,
       undefined,
       undefined as never,
@@ -41,23 +49,65 @@ describe("Agent 工作区工具", () => {
       "return { changed: 2 }",
       expect.any(AbortSignal),
     );
+    expect(workspace.run_recipe).toHaveBeenCalledWith(
+      "query-items",
+      { limit: 10 },
+      expect.any(AbortSignal),
+    );
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
-    expect(created.details).toEqual({ version: 2, counts: { items: 2 } });
-    expect(run.details).toEqual({ result: { changed: 2 } });
+    expect(created.details).toEqual({
+      project_meta: { counts: { items: 2 } },
+      contract: { datasets: {} },
+    });
+    expect(script.details).toEqual({ result: { changed: 2 } });
+    expect(recipe.details).toEqual({ result: { total_item_count: 2 } });
     expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
-  it("Schema 只接受空 create/apply 参数与非空脚本", () => {
+  it("Schema 严格区分 recipe 参数并限制枚举与分页", () => {
     const tools = create_agent_workspace_tools(create_workspace());
     const create_tool = read_tool(tools, "workspace_create");
-    const run_tool = read_tool(tools, "workspace_run");
+    const recipe_tool = read_tool(tools, "workspace_recipe");
+    const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
     expect(validate(create_tool, {})).toEqual({});
-    expect(validate(run_tool, { script: "return null" })).toEqual({ script: "return null" });
+    expect(validate(script_tool, { script: "return null" })).toEqual({ script: "return null" });
+    expect(validate(recipe_tool, { name: "query-items", args: {} })).toEqual({
+      name: "query-items",
+      args: {},
+    });
+    expect(
+      validate(recipe_tool, {
+        name: "query-item-contexts",
+        args: { item_ids: [1, 2] },
+      }),
+    ).toMatchObject({ name: "query-item-contexts" });
+    expect(
+      validate(recipe_tool, {
+        name: "query-quality-rule-groups",
+        args: { kind: "glossary", keywords: ["姫"], include_examples: true, limit: 100 },
+      }),
+    ).toMatchObject({ name: "query-quality-rule-groups" });
     expect(validate(apply_tool, {})).toEqual({});
     expect(() => validate(create_tool, { target: "items" })).toThrow();
-    expect(() => validate(run_tool, { script: "" })).toThrow();
+    expect(() => validate(script_tool, { script: "" })).toThrow();
+    expect(() => validate(recipe_tool, { name: "query-items", args: { limit: 101 } })).toThrow();
+    expect(() =>
+      validate(recipe_tool, { name: "query-items", args: { filters: { statuses: ["BAD"] } } }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, { name: "query-item-contexts", args: { item_ids: [] } }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, { name: "query-quality-rule-groups", args: { kind: "unknown" } }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        name: "query-quality-rule-groups",
+        args: { kind: "glossary", extra: true },
+      }),
+    ).toThrow();
     expect(() => validate(apply_tool, { target: "items" })).toThrow();
   });
 
@@ -99,7 +149,11 @@ function create_workspace(): AgentWorkspacePort {
   return {
     initialize: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
-    create_workspace: vi.fn(async () => ({ version: 2, counts: { items: 2 } })),
+    create_workspace: vi.fn(async () => ({
+      project_meta: { counts: { items: 2 } },
+      contract: { datasets: {} },
+    })),
+    run_recipe: vi.fn(async () => ({ total_item_count: 2 })),
     run_script: vi.fn(async () => ({ changed: 2 })),
     apply_workspace: vi.fn(async () => ({
       status: "applied",

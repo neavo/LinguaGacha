@@ -62,11 +62,12 @@ import {
   AGENT_WORKSPACE_CONTRACT,
   AGENT_WORKSPACE_ITEM_FIELDS,
   AGENT_WORKSPACE_PATHS,
-  AGENT_WORKSPACE_QUALITY_ANALYSIS_PATHS,
+  AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
+  AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_QUALITY_FIELDS,
-  AGENT_WORKSPACE_QUALITY_PATHS,
   AGENT_WORKSPACE_RECIPE_NAMES,
   AGENT_WORKSPACE_RECIPE_PATHS,
+  type AgentWorkspaceRecipeName,
   is_agent_workspace_manual_status,
   project_agent_workspace_item,
   project_agent_workspace_quality_entry,
@@ -95,7 +96,7 @@ type WorkspaceQualitySummary = {
   moved: number;
 };
 
-/** 全部 editable 校验完成后交给唯一事务的差异集合。 */
+/** 全部可写数据集校验完成后交给唯一事务的差异集合。 */
 type PreparedWorkspaceApply = {
   itemChanges: AgentWorkspaceItemChange[];
   qualityChanges: AgentWorkspaceQualityChange[];
@@ -129,7 +130,6 @@ export class AgentWorkspaceService {
       cache: CacheReadPort;
       qualityAnalysis: Pick<QualityRuleAnalysisCache, "read">;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      readAnalysisCandidates: () => JsonRecord;
       runtimeGate: {
         run_agent_project_write(
           operation: () => Promise<ProjectWriteResult>,
@@ -169,38 +169,33 @@ export class AgentWorkspaceService {
       const language = read_workspace_language(this.options.settings.read_setting());
       const language_key = JsonTool.stringifyStrict(language);
       const current_items = this.options.cache.items.readItems();
-      const items = current_items.map(project_agent_workspace_item);
-      const files = this.options.cache.files.readFileEntries().map((entry) => ({ ...entry }));
+      const files = this.options.cache.files.readFileEntries().map((entry) => ({
+        file_path: entry.rel_path,
+        file_type: entry.file_type,
+      }));
       const quality_block = this.options.cache.quality.readBlock();
       const quality_entries = Object.fromEntries(
         QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
       ) as Record<QualityRuleKind, JsonRecord[]>;
       const prompts = project_workspace_prompts(this.options.cache.prompts.readBlock());
-      const analysis = project_workspace_analysis(this.options.cache.analysis.readBlock());
-      const [warning_result, analysis_candidate_payload, quality_analysis_results] =
-        await Promise.all([
-          this.options.proofreading.query_warnings({
-            warning_types: [...PROOFREADING_WARNING_CODES],
-            keywords: [],
-            scope: "all",
-            offset: 0,
-            limit: Number.MAX_SAFE_INTEGER,
-          }),
-          Promise.resolve(this.options.readAnalysisCandidates()),
-          Promise.all(
-            QUALITY_RULE_KINDS.map(
-              async (kind) => [kind, await this.options.qualityAnalysis.read(kind)] as const,
-            ),
+      const [warning_result, quality_analysis_results] = await Promise.all([
+        this.options.proofreading.query_warnings({
+          warning_types: [...PROOFREADING_WARNING_CODES],
+          keywords: [],
+          scope: "all",
+          offset: 0,
+          limit: Number.MAX_SAFE_INTEGER,
+        }),
+        Promise.all(
+          QUALITY_RULE_KINDS.map(
+            async (kind) => [kind, await this.options.qualityAnalysis.read(kind)] as const,
           ),
-        ]);
-      const warnings = warning_result.data.items.map(project_agent_workspace_warning);
-      const analysis_candidates = Object.values(
-        read_json_record(analysis_candidate_payload["candidate_aggregate"]),
-      ).filter(is_json_record);
-      const quality_analysis = Object.fromEntries(
+        ),
+      ]);
+      const quality_evidence = Object.fromEntries(
         quality_analysis_results.map(([kind, result]) => [
           kind,
-          project_quality_analysis(kind, result, quality_entries[kind]),
+          project_quality_evidence(kind, result, quality_entries[kind]),
         ]),
       ) as Record<QualityRuleKind, JsonRecord>;
       assert_create_dependencies_fresh({
@@ -215,36 +210,31 @@ export class AgentWorkspaceService {
         ),
       });
 
-      const manifest: JsonRecord = {
-        project: language,
-        revisions,
+      const project_meta: JsonRecord = {
+        ...language,
         counts: {
-          items: items.length,
           files: files.length,
-          warnings: warnings.length,
-          analysis_candidates: analysis_candidates.length,
-          quality: Object.fromEntries(
+          items: current_items.length,
+          items_with_warnings: warning_result.data.items.length,
+          ...Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
           ),
-          prompts: PROMPT_KINDS.length,
         },
-        recipes: [...AGENT_WORKSPACE_RECIPE_NAMES],
+        files,
       };
       const workspace_path = path.join(this.root_path, randomUUID());
       try {
-        await Promise.all([
-          this.native_fs.make_dir_async(path.join(workspace_path, "editable", "quality")),
-          this.native_fs.make_dir_async(path.join(workspace_path, "derived", "quality_analysis")),
-          this.native_fs.make_dir_async(path.join(workspace_path, "context")),
-          this.native_fs.make_dir_async(path.join(workspace_path, "recipes")),
-          this.native_fs.make_dir_async(path.join(workspace_path, "scratch")),
-        ]);
+        await Promise.all(
+          ["items", ...QUALITY_RULE_KINDS, "recipes", "scratch"].map((directory) =>
+            this.native_fs.make_dir_async(path.join(workspace_path, directory)),
+          ),
+        );
         const recipe_root = this.options.paths.get_agent_workspace_recipe_dir();
         await Promise.all([
           write_json_file(
             this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.manifest),
-            manifest,
+            path.join(workspace_path, AGENT_WORKSPACE_PATHS.projectMeta),
+            project_meta,
           ),
           write_json_file(
             this.native_fs,
@@ -254,7 +244,7 @@ export class AgentWorkspaceService {
           write_jsonl_file(
             this.native_fs,
             path.join(workspace_path, AGENT_WORKSPACE_PATHS.items),
-            items,
+            map_iterable(current_items, project_agent_workspace_item),
           ),
           write_json_file(
             this.native_fs,
@@ -264,35 +254,20 @@ export class AgentWorkspaceService {
           write_jsonl_file(
             this.native_fs,
             path.join(workspace_path, AGENT_WORKSPACE_PATHS.warnings),
-            warnings,
-          ),
-          write_json_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.analysis),
-            analysis,
-          ),
-          write_jsonl_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.analysisCandidates),
-            analysis_candidates,
-          ),
-          write_jsonl_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.files),
-            files,
+            map_iterable(warning_result.data.items, project_agent_workspace_warning),
           ),
           ...QUALITY_RULE_KINDS.flatMap((kind) => [
             write_jsonl_file(
               this.native_fs,
-              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_PATHS[kind]),
-              quality_entries[kind].map((entry) =>
+              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
+              map_iterable(quality_entries[kind], (entry) =>
                 project_agent_workspace_quality_entry(kind, entry),
               ),
             ),
             write_json_file(
               this.native_fs,
-              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ANALYSIS_PATHS[kind]),
-              quality_analysis[kind],
+              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind]),
+              quality_evidence[kind],
             ),
           ]),
           ...AGENT_WORKSPACE_RECIPE_NAMES.map(async (name) => {
@@ -323,25 +298,72 @@ export class AgentWorkspaceService {
         revisions,
         languageKey: language_key,
       };
-      return manifest;
+      return { project_meta, contract: AGENT_WORKSPACE_CONTRACT };
     });
   }
 
-  /** 失败脚本可能留下跨文件半成品，因此直接废弃工作区。 */
+  /** 模型脚本由宿主事务隔离；失败只回滚本次运行。 */
   public async run_script(script: string, signal: AbortSignal): Promise<JsonValue> {
     return await this.exclusive(async () => {
       const active = this.require_active();
       await this.assert_fresh(active);
-      try {
-        return (await this.options.run({ workspacePath: active.path, script }, signal)).result;
-      } catch (error) {
-        await this.reset_active();
-        throw workspace_recovery_error(error, "agent_workspace_run_failed");
-      }
+      return await this.run_workspace_operation(
+        active,
+        { kind: "script", script },
+        "workspace_script",
+        signal,
+      );
     });
   }
 
-  /** 校验全部 editable 并自动把真实差异交给一次跨 section 事务。 */
+  /** 官方 recipe 只读执行，参数已在工具 Schema 边界完成校验。 */
+  public async run_recipe(
+    name: AgentWorkspaceRecipeName,
+    args: JsonRecord,
+    signal: AbortSignal,
+  ): Promise<JsonValue> {
+    return await this.exclusive(async () => {
+      const active = this.require_active();
+      await this.assert_fresh(active);
+      return await this.run_workspace_operation(
+        active,
+        { kind: "recipe", name, args },
+        "workspace_recipe",
+        signal,
+      );
+    });
+  }
+
+  /** 宿主已完成回滚后才返回失败；仅明确失效时销毁活动工作区。 */
+  private async run_workspace_operation(
+    active: ActiveAgentWorkspace,
+    operation: BackendRuntimeAgentWorkspaceRunRequest["operation"],
+    action: "workspace_script" | "workspace_recipe",
+    signal: AbortSignal,
+  ): Promise<JsonValue> {
+    let response: BackendRuntimeAgentWorkspaceRunResponse;
+    try {
+      response = await this.options.run({ workspacePath: active.path, operation }, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      await this.reset_active();
+      throw workspace_recovery_error(error, "agent_workspace_execute_host_failed");
+    }
+    if (response.status === "success") return response.result;
+    if (response.workspaceState === "invalidated") {
+      await this.reset_active();
+      throw workspace_recovery_error(
+        new Error(response.message),
+        `agent_workspace_${response.failure}`,
+      );
+    }
+    throw new AppErrors.RequestValidationError({
+      public_details: { action, message: response.message },
+      diagnostic_context: { reason: `agent_workspace_${response.failure}` },
+    });
+  }
+
+  /** 校验全部可写数据集并自动把真实差异交给一次跨 section 事务。 */
   public async apply_workspace(): Promise<JsonRecord> {
     return await this.exclusive(async () => {
       const active = this.require_active();
@@ -414,7 +436,7 @@ export class AgentWorkspaceService {
     await this.reset_active();
   }
 
-  /** 三类 editable 必须全部校验成功后才形成一次提交请求。 */
+  /** 三类可写数据集必须全部校验成功后才形成一次提交请求。 */
   private async prepare_apply(active: ActiveAgentWorkspace): Promise<PreparedWorkspaceApply> {
     const itemChanges = await this.prepare_item_changes(active);
     const { changes: qualityChanges, summary: qualitySummary } =
@@ -485,7 +507,7 @@ export class AgentWorkspaceService {
     for (const kind of QUALITY_RULE_KINDS) {
       const rows = await read_jsonl_file(
         this.native_fs,
-        path.join(active.path, AGENT_WORKSPACE_QUALITY_PATHS[kind]),
+        path.join(active.path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
       );
       const current = read_quality_entries(quality_block, kind);
       const next = normalize_workspace_quality_rows(kind, current, rows);
@@ -569,10 +591,10 @@ export class AgentWorkspaceService {
 /** AgentService 只依赖工作区生命周期，不接触领域协作者。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
-  "initialize" | "create_workspace" | "run_script" | "apply_workspace" | "reset"
+  "initialize" | "create_workspace" | "run_recipe" | "run_script" | "apply_workspace" | "reset"
 >;
 
-/** manifest 只暴露解释快照所需的权威语言，不复制完整设置。 */
+/** project_meta 只暴露解释快照所需的权威语言，不复制完整设置。 */
 function read_workspace_language(value: unknown): JsonRecord {
   const settings = normalize_setting_snapshot(value);
   return {
@@ -616,17 +638,8 @@ function project_workspace_prompts(block: JsonRecord): JsonRecord {
   );
 }
 
-/** analysis 只导出 Agent 审查需要的稳定摘要。 */
-function project_workspace_analysis(block: JsonRecord): JsonRecord {
-  return {
-    extras: block["extras"] ?? {},
-    candidate_count: read_json_integer(block["candidate_count"], 0),
-    status_summary: block["status_summary"] ?? {},
-  };
-}
-
-/** 质量分析必须与 editable 的稳定 ID 顺序完全一致。 */
-function project_quality_analysis(
+/** 质量证据必须与规则集合的稳定 ID 顺序完全一致。 */
+function project_quality_evidence(
   kind: QualityRuleKind,
   result: QualityRuleAnalysisCacheResult,
   entries: JsonRecord[],
@@ -641,13 +654,17 @@ function project_quality_analysis(
     );
   }
   return {
-    entry_ids: [...result.analysis.entry_ids],
-    hits_by_id: { ...result.analysis.hits_by_entry_id },
-    examples_by_id: { ...result.analysis.examples_by_entry_id },
-    relations: {
-      subset_parents_by_id: { ...result.analysis.relations.subset_parents_by_entry_id },
-      groups: result.analysis.relations.groups.map((group) => [...group]),
-    },
+    by_id: Object.fromEntries(
+      expected_ids.map((id) => [
+        id,
+        {
+          hits: result.analysis.hits_by_entry_id[id] ?? 0,
+          examples: [...(result.analysis.examples_by_entry_id[id] ?? [])],
+          parent_sources: [...(result.analysis.relations.subset_parents_by_entry_id[id] ?? [])],
+        },
+      ]),
+    ),
+    groups: result.analysis.relations.groups.map((group) => [...group]),
   };
 }
 
@@ -708,7 +725,7 @@ function assert_create_dependencies_fresh(args: {
   }
 }
 
-/** editable quality 行校验字段、身份与真实执行语义后恢复内部形状。 */
+/** 可写 quality 行校验字段、身份与真实执行语义后恢复内部形状。 */
 function normalize_workspace_quality_rows(
   kind: QualityRuleKind,
   current: JsonRecord[],
@@ -842,6 +859,14 @@ async function write_json_file(
   await native_fs.write_file(file_path, `${JsonTool.stringifyStrict(value, { indent: 2 })}\n`);
 }
 
+/** 延迟执行边界投影，避免为 JSONL 写入再保留一份完整数组。 */
+function* map_iterable<T>(
+  values: Iterable<T>,
+  project: (value: T) => JsonRecord,
+): Generator<JsonRecord> {
+  for (const value of values) yield project(value);
+}
+
 /** JSONL 逐行写入，避免 create 再构造完整文本副本。 */
 async function write_jsonl_file(
   native_fs: NativeFs,
@@ -858,7 +883,7 @@ async function write_jsonl_file(
   );
 }
 
-/** editable JSON 解析失败统一归类为可修复校验错误。 */
+/** 可写 JSON 解析失败统一归类为可修复校验错误。 */
 async function read_json_file(native_fs: NativeFs, file_path: string): Promise<JsonRecord> {
   try {
     const value = JsonTool.parseStrict(native_fs.read_text_file(file_path));
@@ -872,7 +897,7 @@ async function read_json_file(native_fs: NativeFs, file_path: string): Promise<J
   }
 }
 
-/** editable JSONL 逐行解析并保留准确行号诊断。 */
+/** 可写 JSONL 逐行解析并保留准确行号诊断。 */
 async function read_jsonl_file(native_fs: NativeFs, file_path: string): Promise<JsonRecord[]> {
   const rows: JsonRecord[] = [];
   let lines: readline.Interface | null = null;
@@ -902,10 +927,10 @@ async function read_jsonl_file(native_fs: NativeFs, file_path: string): Promise<
   }
 }
 
-/** 工作区校验错误默认要求修复当前 editable，stale 才要求重新 create。 */
+/** 工作区校验错误默认要求修复当前可写数据集，stale 才要求重新 create。 */
 function workspace_validation_error(
   reason: string,
-  action: "workspace_create" | "workspace_run" = "workspace_run",
+  action: "workspace_create" | "workspace_script" = "workspace_script",
 ): AppErrors.RequestValidationError {
   return new AppErrors.RequestValidationError({
     public_details: { action },

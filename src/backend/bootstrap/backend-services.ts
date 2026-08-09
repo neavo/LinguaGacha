@@ -307,10 +307,6 @@ export class BackendServices {
             cache: this.cache_manager,
             qualityAnalysis: this.cache_manager.qualityAnalysis,
             proofreading: this.proofreading.query,
-            readAnalysisCandidates: () =>
-              data_reader.build_analysis_candidate_payload(
-                session_state.require_loaded_project_path(),
-              ),
             runtimeGate: this.runtime_gate,
             writeStore: write_store,
             run: options.agentWorkspaceRun,

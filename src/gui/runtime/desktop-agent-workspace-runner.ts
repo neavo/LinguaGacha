@@ -1,16 +1,15 @@
-import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-
 import { BrowserWindow, protocol, session, type Session } from "electron";
 
+import type { JsonValue } from "../../domain/json";
 import type {
   BackendRuntimeAgentWorkspaceRunRequest,
   BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
-import type { JsonValue } from "../../domain/json";
+import {
+  AgentWorkspaceInvalidError,
+  AgentWorkspaceTransactionError,
+  DesktopAgentWorkspaceFiles,
+} from "./desktop-agent-workspace-files";
 
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
@@ -33,12 +32,10 @@ export function register_agent_workspace_scheme(): void {
   ]);
 }
 
-/**
- * 在独立 Chromium 沙箱中执行一次 Agent 脚本，并仅开放当前工作区文件协议。
- */
+/** 在独立 Chromium 沙箱中执行脚本或官方 recipe，并拥有本次文件事务。 */
 export class DesktopAgentWorkspaceRunner {
   private readonly runner_session: Session; // 不复用默认 session 的 cookie、代理状态或权限
-  private active_workspace_path: string | null = null; // protocol 只映射当前一次 run
+  private active_files: DesktopAgentWorkspaceFiles | null = null; // protocol 只映射当前合并视图
   private active_window: BrowserWindow | null = null; // abort / dispose 共享的唯一 renderer 句柄
   private running = false; // 在首个 await 前占位，阻止并发请求同时通过空闲检查
 
@@ -58,15 +55,13 @@ export class DesktopAgentWorkspaceRunner {
     this.runner_session.on("will-download", (event) => event.preventDefault());
   }
 
-  /** 同一 runner 只允许一个工作区运行，调用结束即销毁 renderer。 */
+  /** 同一 runner 只允许一个操作，调用结束即销毁 renderer。 */
   public async run(
     request: BackendRuntimeAgentWorkspaceRunRequest,
     signal: AbortSignal,
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
     signal.throwIfAborted();
-    if (this.running) {
-      throw new Error("Agent 工作区脚本正在运行。");
-    }
+    if (this.running) throw new Error("Agent 工作区操作正在运行。");
     this.running = true;
     try {
       return await this.run_once(request, signal);
@@ -75,30 +70,61 @@ export class DesktopAgentWorkspaceRunner {
     }
   }
 
-  /** 校验目录、清空浏览器状态并完成一次 renderer 执行与资源收尾。 */
+  /** 结果过门后才提交自由脚本事务；所有已知失败都显式返回基线状态。 */
   private async run_once(
     request: BackendRuntimeAgentWorkspaceRunRequest,
     signal: AbortSignal,
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
-    const workspace_path = path.resolve(request.workspacePath);
-    const workspace_stat = await fs.promises.stat(workspace_path);
-    if (!workspace_stat.isDirectory()) {
-      throw new Error("Agent 工作区目录不存在。");
+    let files: DesktopAgentWorkspaceFiles;
+    try {
+      files = await DesktopAgentWorkspaceFiles.open(
+        request.workspacePath,
+        request.operation.kind === "script" ? "transactional" : "readonly",
+      );
+    } catch (error) {
+      return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
-    // 每次脚本只复用磁盘工作区；浏览器存储不得跨 run 或跨工程形成第二份状态。
-    await this.runner_session.clearStorageData();
-    const target_window = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        session: this.runner_session,
-        sandbox: true,
-        nodeIntegration: false,
-        contextIsolation: true,
-        webSecurity: true,
-        backgroundThrottling: false,
-      },
-    });
-    this.active_workspace_path = workspace_path;
+
+    let recipe_source: string | null = null;
+    if (request.operation.kind === "recipe") {
+      try {
+        recipe_source = await files.read_recipe_source(request.operation.name);
+      } catch (error) {
+        await files.rollback();
+        return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
+      }
+    }
+
+    let target_window: BrowserWindow;
+    try {
+      await this.runner_session.clearStorageData();
+      signal.throwIfAborted();
+      target_window = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          session: this.runner_session,
+          sandbox: true,
+          nodeIntegration: false,
+          contextIsolation: true,
+          webSecurity: true,
+          backgroundThrottling: false,
+        },
+      });
+    } catch (error) {
+      try {
+        await files.rollback();
+      } catch (rollback_error) {
+        return failure_response(
+          rollback_error,
+          "transaction_failed",
+          "invalidated",
+          request.workspacePath,
+        );
+      }
+      if (signal.aborted) signal.throwIfAborted();
+      return failure_response(error, "execution_failed", "preserved", request.workspacePath);
+    }
+    this.active_files = files;
     this.active_window = target_window;
     target_window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     target_window.webContents.on("will-navigate", (event, url) => {
@@ -110,212 +136,136 @@ export class DesktopAgentWorkspaceRunner {
       await target_window.loadURL(AGENT_WORKSPACE_URL);
       signal.throwIfAborted();
       const serialized = await target_window.webContents.executeJavaScript(
-        build_workspace_script(request.script),
+        build_workspace_program(request, recipe_source),
         true,
       );
       signal.throwIfAborted();
       const serialized_text = String(serialized);
-      // renderer 内的快速检查改善模型错误；main 的独立硬门防止脚本改写全局对象后绕过上限。
       if (Buffer.byteLength(serialized_text, "utf-8") > MAX_AGENT_WORKSPACE_RESULT_BYTES) {
         throw new Error(AGENT_WORKSPACE_RESULT_TOO_LARGE);
       }
-      return { result: JSON.parse(serialized_text) as JsonValue };
+      const result = JSON.parse(serialized_text) as JsonValue;
+      await files.commit(signal);
+      return { status: "success", result };
     } catch (error) {
-      signal.throwIfAborted();
-      throw error;
+      let rollback_error: unknown = null;
+      try {
+        await files.rollback();
+      } catch (caught) {
+        rollback_error = caught;
+      }
+      if (signal.aborted && rollback_error === null) {
+        if (error instanceof AgentWorkspaceTransactionError && !error.workspacePreserved) {
+          return failure_response(
+            error,
+            "transaction_failed",
+            "invalidated",
+            request.workspacePath,
+          );
+        }
+        signal.throwIfAborted();
+      }
+      if (rollback_error !== null) {
+        return failure_response(
+          rollback_error,
+          "transaction_failed",
+          "invalidated",
+          request.workspacePath,
+        );
+      }
+      if (error instanceof AgentWorkspaceInvalidError) {
+        return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
+      }
+      if (error instanceof AgentWorkspaceTransactionError) {
+        return failure_response(
+          error,
+          "transaction_failed",
+          error.workspacePreserved ? "preserved" : "invalidated",
+          request.workspacePath,
+        );
+      }
+      return failure_response(error, "execution_failed", "preserved", request.workspacePath);
     } finally {
       signal.removeEventListener("abort", abort);
       if (!target_window.isDestroyed()) target_window.destroy();
       if (this.active_window === target_window) this.active_window = null;
-      if (this.active_workspace_path === workspace_path) this.active_workspace_path = null;
+      if (this.active_files === files) this.active_files = null;
     }
   }
 
-  /** 应用退出时封口协议和仍在运行的 renderer。 */
+  /** 应用退出时终止 renderer；run_once 会在执行栈恢复后回滚事务。 */
   public dispose(): void {
     this.active_window?.destroy();
     this.active_window = null;
-    this.active_workspace_path = null;
+    this.active_files = null;
     this.runner_session.protocol.unhandle(AGENT_WORKSPACE_SCHEME);
   }
 
-  /** 协议只映射当前运行目录；editable 固定文件与 scratch 可写，其余只读。 */
+  /** runner 文档与活动文件视图共用同一私有 scheme，未运行时拒绝文件请求。 */
   private async handle_protocol_request(request: Request): Promise<Response> {
-    const workspace_path = this.active_workspace_path;
-    if (workspace_path === null) return response_text(410, "工作区未激活。");
-    return await handle_agent_workspace_protocol_request(workspace_path, request);
+    if (new URL(request.url).pathname === "/__runner__" && request.method === "GET") {
+      return runner_document();
+    }
+    const files = this.active_files;
+    if (files === null) return response_text(410, "工作区未激活。");
+    return await files.handle(request);
   }
 }
 
-/** 真实协议读写保持为纯 Request/Response 边界，便于不启动 Electron 即验证流语义。 */
-export async function handle_agent_workspace_protocol_request(
+/** 把已知失败压缩为跨线程可克隆的稳定结果。 */
+function failure_response(
+  error: unknown,
+  failure: "execution_failed" | "transaction_failed" | "workspace_invalid",
+  workspaceState: "preserved" | "invalidated",
   workspace_path: string,
-  request: Request,
-): Promise<Response> {
-  const url = new URL(request.url);
-  if (url.hostname !== "workspace") return response_text(404, "未知工作区。");
-  if (url.pathname === "/__runner__" && request.method === "GET") {
-    return new Response(
-      "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-eval'; connect-src 'self'\">",
-      { headers: { "content-type": "text/html; charset=utf-8" } },
-    );
-  }
-  try {
-    if (url.pathname.startsWith("/files/")) {
-      const relative_path = decode_protocol_path(url.pathname.slice("/files/".length));
-      const file_path = resolve_workspace_path(workspace_path, relative_path);
-      await assert_workspace_path_has_no_symlink(workspace_path, relative_path);
-      if (request.method === "GET") return await read_workspace_file(file_path);
-      if (request.method === "PUT") {
-        const editable = await read_workspace_editable_paths(workspace_path);
-        if (!editable.has(relative_path) && !is_workspace_scratch_path(relative_path)) {
-          return response_text(403, "该工作区文件只读。");
-        }
-        return await write_workspace_file(file_path, request, editable.has(relative_path));
-      }
-      if (request.method === "DELETE") {
-        if (!is_workspace_scratch_path(relative_path)) {
-          return response_text(403, "只能删除 scratch 文件。");
-        }
-        await fs.promises.rm(file_path, { recursive: true, force: true });
-        return new Response(null, { status: 204 });
-      }
-    }
-    if (url.pathname === "/__list__" && request.method === "GET") {
-      const relative_path = url.searchParams.get("path") ?? "";
-      const directory = resolve_workspace_path(workspace_path, relative_path);
-      await assert_workspace_path_has_no_symlink(workspace_path, relative_path);
-      const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-      return Response.json(
-        entries.map((entry) => ({
-          name: entry.name,
-          type: entry.isDirectory() ? "directory" : "file",
-        })),
-      );
-    }
-  } catch (error) {
-    return response_text(400, project_protocol_error(error));
-  }
-  return response_text(405, "不支持的工作区操作。");
-}
-
-/** 路径只接受正斜线相对路径，并在 resolve 后再次校验根目录边界。 */
-export function resolve_workspace_path(workspace_path: string, relative_path: string): string {
-  if (
-    relative_path.includes("\\") ||
-    relative_path.includes("\0") ||
-    path.posix.isAbsolute(relative_path) ||
-    path.win32.isAbsolute(relative_path)
-  ) {
-    throw new Error("工作区路径非法。");
-  }
-  const root = path.resolve(workspace_path);
-  const target = path.resolve(root, ...relative_path.split("/"));
-  const relative = path.relative(root, target);
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error("工作区路径越界。");
-  }
-  return target;
-}
-
-/** URL path 只解码一次，非法百分号不会进入平台路径解析。 */
-function decode_protocol_path(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    throw new Error("工作区路径编码非法。");
-  }
-}
-
-/** 删除只对临时 scratch 开放，editable 必须始终保留到 Backend 校验。 */
-function is_workspace_scratch_path(relative_path: string): boolean {
-  return relative_path === "scratch" || relative_path.startsWith("scratch/");
-}
-
-/** 读取只接受普通文件，拒绝最终路径为符号链接。 */
-async function read_workspace_file(file_path: string): Promise<Response> {
-  const stat = await fs.promises.lstat(file_path);
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
-  const body = Readable.toWeb(fs.createReadStream(file_path)) as ReadableStream<Uint8Array>;
-  return new Response(body, { headers: { "content-type": "application/octet-stream" } });
-}
-
-/** editable 只能覆盖既有文件；所有写入先落同目录临时文件再原子替换。 */
-async function write_workspace_file(
-  file_path: string,
-  request: Request,
-  must_exist: boolean,
-): Promise<Response> {
-  if (request.body === null) throw new Error("工作区写入缺少正文。");
-  if (must_exist) {
-    const stat = await fs.promises.lstat(file_path);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
-  }
-  await fs.promises.mkdir(path.dirname(file_path), { recursive: true });
-  const temp_path = path.join(
-    path.dirname(file_path),
-    `.${path.basename(file_path)}.${randomUUID()}.tmp`,
-  );
-  try {
-    await pipeline(
-      Readable.fromWeb(
-        request.body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
-      ),
-      fs.createWriteStream(temp_path, { flags: "wx" }),
-    );
-    await fs.promises.rename(temp_path, file_path);
-    return new Response(null, { status: 204 });
-  } finally {
-    await fs.promises.rm(temp_path, { force: true });
-  }
-}
-
-/** editable 白名单直接读取当前工作区 contract，避免宿主复制固定路径。 */
-async function read_workspace_editable_paths(workspace_path: string): Promise<Set<string>> {
-  const contract_path = resolve_workspace_path(workspace_path, "contract.json");
-  const contract = JSON.parse(await fs.promises.readFile(contract_path, "utf-8")) as {
-    datasets?: Record<string, { path?: unknown; role?: unknown }>;
+): BackendRuntimeAgentWorkspaceRunResponse {
+  return {
+    status: "failed",
+    workspaceState,
+    failure,
+    message: safe_error_message(error, workspace_path),
   };
-  return new Set(
-    Object.values(contract.datasets ?? {}).flatMap((dataset) =>
-      dataset.role === "editable" && typeof dataset.path === "string" ? [dataset.path] : [],
-    ),
+}
+
+/** 只返回首行、去除绝对路径并封顶，既保留可修复信息也不泄漏宿主细节。 */
+function safe_error_message(error: unknown, workspace_path: string): string {
+  const raw = error instanceof Error ? error.message : "工作区执行失败。";
+  const first_line = raw.split(/\r?\n/u, 1)[0]?.trim() ?? "";
+  const workspace_paths = new Set([
+    workspace_path,
+    workspace_path.replaceAll("\\", "/"),
+    workspace_path.replaceAll("/", "\\"),
+  ]);
+  let without_workspace_path = first_line;
+  for (const candidate of workspace_paths) {
+    without_workspace_path = without_workspace_path.replaceAll(candidate, "[workspace]");
+  }
+  const without_windows_path = without_workspace_path.replace(/[A-Za-z]:[\\/][^\s]*/gu, "[path]");
+  return (without_windows_path === "" ? "工作区执行失败。" : without_windows_path).slice(0, 500);
+}
+
+/** runner 只需要允许自身 fetch 与内联 AsyncFunction，其余资源全部禁用。 */
+function runner_document(): Response {
+  return new Response(
+    "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-eval'; connect-src 'self'\">",
+    { headers: { "content-type": "text/html; charset=utf-8" } },
   );
 }
 
-/** 逐级拒绝已有符号链接；scratch 尚未创建的尾部路径允许继续写入。 */
-async function assert_workspace_path_has_no_symlink(
-  workspace_path: string,
-  relative_path: string,
-): Promise<void> {
-  let current = path.resolve(workspace_path);
-  for (const part of relative_path.split("/").filter(Boolean)) {
-    current = path.join(current, part);
-    try {
-      if ((await fs.promises.lstat(current)).isSymbolicLink()) {
-        throw new Error("工作区路径不能包含符号链接。");
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw error;
-    }
-  }
-}
-
-/** protocol 只返回无路径的稳定错误，完整文件系统异常留在宿主边界。 */
-function project_protocol_error(error: unknown): string {
-  if (error instanceof Error && error.message.startsWith("工作区")) return error.message;
-  return "工作区文件操作失败。";
-}
-
-/** 所有文本响应显式声明 UTF-8，避免 Chromium 猜测本地编码。 */
+/** 私有协议错误统一使用 UTF-8 纯文本响应。 */
 function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-/** 模型代码在异步函数内直接执行，不落盘、不建立长期 REPL。 */
-function build_workspace_script(script: string): string {
-  const script_literal = JSON.stringify(script);
+/** 模型代码只在异步函数内执行，不落盘、不建立长期 REPL。 */
+function build_workspace_program(
+  request: BackendRuntimeAgentWorkspaceRunRequest,
+  recipe_source: string | null,
+): string {
+  const operation =
+    request.operation.kind === "script"
+      ? `await new AsyncFunction("workspace", ${JSON.stringify(request.operation.script)})(workspace)`
+      : `await new AsyncFunction("workspace", "args", ${JSON.stringify(recipe_source ?? "")})(readonlyWorkspace, ${JSON.stringify(request.operation.args)})`;
   return `
 (async () => {
   const encodePath = (value) => String(value).split("/").map(encodeURIComponent).join("/");
@@ -360,15 +310,20 @@ function build_workspace_script(script: string): string {
       reader.releaseLock();
     }
   }
-  const workspace = Object.freeze({
+  const readonlyWorkspace = Object.freeze({
     readText: async (filePath) => (await request("/files/" + encodePath(filePath))).text(),
-    readJson: async (filePath) => JSON.parse(await workspace.readText(filePath)),
+    readJson: async (filePath) => JSON.parse(await readonlyWorkspace.readText(filePath)),
     readLines,
     readJsonl: async function* (filePath) {
-      for await (const line of readLines(filePath)) {
-        if (line.trim() !== "") yield JSON.parse(line);
-      }
+      for await (const line of readLines(filePath)) if (line.trim() !== "") yield JSON.parse(line);
     },
+    list: async (directory = "") => {
+      const response = await request("/__list__?path=" + encodeURIComponent(directory));
+      return response.json();
+    },
+  });
+  const workspace = Object.freeze({
+    ...readonlyWorkspace,
     writeText: async (filePath, text) => {
       await request("/files/" + encodePath(filePath), { method: "PUT", body: String(text) });
     },
@@ -389,40 +344,13 @@ function build_workspace_script(script: string): string {
       });
       await request("/files/" + encodePath(filePath), { method: "PUT", body, duplex: "half" });
     },
-    list: async (directory = "") => {
-      const response = await request("/__list__?path=" + encodeURIComponent(directory));
-      return response.json();
-    },
     remove: async (filePath) => {
       await request("/files/" + encodePath(filePath), { method: "DELETE" });
     },
-    runRecipe: async (name, args = null) => {
-      if (typeof name !== "string" || name === "" || name.includes("/") || name.includes("\\\\")) {
-        throw new TypeError("recipe name 非法");
-      }
-      const manifest = await workspace.readJson("manifest.json");
-      if (!Array.isArray(manifest.recipes) || !manifest.recipes.includes(name)) {
-        throw new TypeError("未知 recipe");
-      }
-      if (!isJsonValue(args)) throw new TypeError("recipe args 必须是 JSON value");
-      const serializedArgs = JSON.stringify(args);
-      const safeArgs = JSON.parse(serializedArgs);
-      const source = await workspace.readText("recipes/" + name + ".js");
-      const readonlyWorkspace = Object.freeze({
-        readText: workspace.readText,
-        readJson: workspace.readJson,
-        readLines: workspace.readLines,
-        readJsonl: workspace.readJsonl,
-        list: workspace.list,
-      });
-      const recipeResult = await new AsyncFunction("workspace", "args", source)(readonlyWorkspace, safeArgs);
-      if (!isJsonValue(recipeResult ?? null)) throw new TypeError("recipe 结果必须是 JSON value");
-      const serializedResult = JSON.stringify(recipeResult ?? null);
-      return JSON.parse(serializedResult);
-    },
   });
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const result = await new AsyncFunction("workspace", ${script_literal})(workspace);
+  const result = ${operation};
+  if (!isJsonValue(result ?? null)) throw new TypeError("工作区结果必须是 JSON value");
   const serialized = JSON.stringify(result ?? null);
   if (new TextEncoder().encode(serialized).byteLength > ${MAX_AGENT_WORKSPACE_RESULT_BYTES.toString()}) {
     throw new Error(${JSON.stringify(AGENT_WORKSPACE_RESULT_TOO_LARGE)});

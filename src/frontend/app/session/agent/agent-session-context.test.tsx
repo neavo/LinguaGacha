@@ -237,7 +237,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "success",
-          toolName: "workspace_run",
+          toolName: "workspace_script",
           input: '{"script":"return []"}',
           status: "success",
           output: '{"items":[]}',
@@ -255,7 +255,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "legacy",
-          toolName: "workspace_run",
+          toolName: "workspace_script",
           status: "success",
           detail: "旧协议不得兼容",
           createdAt: 4,
@@ -272,7 +272,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "invalid-running-output",
-          toolName: "workspace_run",
+          toolName: "workspace_script",
           input: "{}",
           status: "running",
           output: "不应存在",
@@ -281,7 +281,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "invalid-success-output",
-          toolName: "workspace_run",
+          toolName: "workspace_script",
           input: "{}",
           status: "success",
           output: null,
@@ -385,7 +385,7 @@ describe("AgentSessionProvider", () => {
       {
         kind: "tool_call",
         id: "success",
-        toolName: "workspace_run",
+        toolName: "workspace_script",
         input: '{"script":"return []"}',
         status: "success",
         output: '{"items":[]}',

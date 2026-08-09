@@ -135,7 +135,10 @@ describe("BackendRuntimeClient", () => {
       requestId: "workspace-1",
       operation: {
         kind: "run_agent_workspace",
-        request: { workspacePath: "E:/workspace/run-1", script: "return null" },
+        request: {
+          workspacePath: "E:/workspace/run-1",
+          operation: { kind: "script", script: "return null" },
+        },
       },
     } satisfies BackendRuntimeWorkerMessage);
     await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(4));
@@ -144,7 +147,10 @@ describe("BackendRuntimeClient", () => {
     expect(open_output_folder).toHaveBeenCalledWith("E:/output");
     expect(web_fetch).toHaveBeenCalledWith({ url: "https://example.com" }, expect.any(AbortSignal));
     expect(run_agent_workspace).toHaveBeenCalledWith(
-      { workspacePath: "E:/workspace/run-1", script: "return null" },
+      {
+        workspacePath: "E:/workspace/run-1",
+        operation: { kind: "script", script: "return null" },
+      },
       expect.any(AbortSignal),
     );
     expect(worker.posted_messages).toContainEqual({
@@ -174,7 +180,10 @@ describe("BackendRuntimeClient", () => {
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "workspace-1",
-      result: { ok: true, data: { result: { workspace_path: "E:/workspace/run-1" } } },
+      result: {
+        ok: true,
+        data: { status: "success", result: { workspace_path: "E:/workspace/run-1" } },
+      },
     });
   });
 
@@ -307,6 +316,7 @@ function create_client(overrides?: {
       body: new Uint8Array([111, 107]),
     }));
   const run_agent_workspace = vi.fn(async (request: { workspacePath: string }) => ({
+    status: "success" as const,
     result: { workspace_path: request.workspacePath },
   }));
   return {

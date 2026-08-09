@@ -5,65 +5,44 @@ import { describe, expect, it } from "vitest";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 
-// recipe 作为原始发布资源不夹带测试文件；此处从真实资源路径集中执行两个只读入口。
+// recipe 是直接发布给模型阅读的源码；测试从真实资源路径执行，避免另建测试实现。
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<JsonValue>;
 
 describe("Agent 工作区内置 recipes", () => {
-  it("inspect-items 组合过滤、NFKC 搜索、分页并联结真实 warning", async () => {
-    const result = await run_recipe(
-      "inspect-items",
-      {
-        filters: { statuses: ["NONE"], file_paths: ["a.txt"], warning_types: ["GLOSSARY"] },
-        search: { keywords: [" ＡＬＩＣＥ ", "alice"], scope: "src" },
-        offset: 0,
-        limit: 1,
-      },
-      {
-        "contract.json": contract(),
-        "editable/items.jsonl": [
-          {
-            item_id: 1,
-            src: "Alice",
-            name_src: "",
-            dst: "",
-            name_dst: "",
-            status: "NONE",
-            file_path: "a.txt",
-          },
-          {
-            item_id: 2,
-            src: "Alice",
-            name_src: "",
-            dst: "",
-            name_dst: "",
-            status: "NONE",
-            file_path: "a.txt",
-          },
-          {
-            item_id: 3,
-            src: "Alice",
-            name_src: "",
-            dst: "",
-            name_dst: "",
-            status: "PROCESSED",
-            file_path: "a.txt",
-          },
-        ],
-        "derived/warnings.jsonl": [
-          { item_id: 1, warnings: ["GLOSSARY"], glossary_applications: [{ entry_id: "g-1" }] },
-          { item_id: 2, warnings: ["GLOSSARY"], glossary_applications: [{ entry_id: "g-2" }] },
-        ],
-      },
-    );
+  it("query-items 组合过滤、NFKC 搜索、分页并按独立开关联结 warning", async () => {
+    const files = {
+      "contract.json": contract(),
+      "items/entries.jsonl": [
+        item(1, { src: "Alice", file_path: "a.txt" }),
+        item(2, { src: "Alice", file_path: "a.txt" }),
+        item(3, { src: "Alice", file_path: "a.txt", status: "PROCESSED" }),
+      ],
+      "items/warnings.jsonl": [
+        { item_id: 1, warnings: ["GLOSSARY"], glossary_applications: [{ entry_id: "g-1" }] },
+        { item_id: 2, warnings: ["GLOSSARY"], glossary_applications: [{ entry_id: "g-2" }] },
+      ],
+    } satisfies Record<string, JsonValue>;
+    const args = {
+      filters: { statuses: ["NONE"], file_paths: ["a.txt"], warning_types: ["GLOSSARY"] },
+      search: { keywords: [" ＡＬＩＣＥ ", "alice"], scope: "src" },
+      offset: 0,
+      limit: 1,
+    };
 
-    expect(result).toEqual({
+    await expect(run_recipe("query-items", args, files)).resolves.toEqual({
+      total_item_count: 2,
+      items: [expect.objectContaining({ item_id: 1, matched_keywords: [" ＡＬＩＣＥ "] })],
+      next_offset: 1,
+    });
+    await expect(
+      run_recipe("query-items", { ...args, include_warnings: true }, files),
+    ).resolves.toEqual({
       total_item_count: 2,
       items: [
         expect.objectContaining({
           item_id: 1,
-          matched_keywords: [" ＡＬＩＣＥ "],
           warning_evidence: expect.objectContaining({ warnings: ["GLOSSARY"] }),
         }),
       ],
@@ -71,96 +50,99 @@ describe("Agent 工作区内置 recipes", () => {
     });
   });
 
-  it("inspect-quality 返回分页目标、代表证据和相交的完整结构组", async () => {
+  it("query-items 没有警告条件时不读取警告文件", async () => {
+    await expect(
+      run_recipe(
+        "query-items",
+        {},
+        {
+          "contract.json": contract(),
+          "items/entries.jsonl": [item(1)],
+        },
+      ),
+    ).resolves.toMatchObject({ total_item_count: 1 });
+  });
+
+  it("query-item-contexts 批量返回同文件前后各两条非空原文并合并重复条目", async () => {
     const result = await run_recipe(
-      "inspect-quality",
+      "query-item-contexts",
+      { item_ids: [12, 14, 999] },
+      {
+        "contract.json": contract(),
+        "items/entries.jsonl": [
+          item(1, { src: "前文件", file_path: "before.txt" }),
+          item(9, { src: "原文 9", file_path: "script.txt" }),
+          item(10, { src: "  ", file_path: "script.txt" }),
+          item(11, { src: "原文 11", file_path: "script.txt" }),
+          item(12, { src: "原文 12", file_path: "script.txt" }),
+          item(13, { src: "\t　", file_path: "script.txt" }),
+          item(14, { src: "原文 14", file_path: "script.txt" }),
+          item(15, { src: "原文 15", file_path: "script.txt" }),
+          item(20, { src: "后文件", file_path: "after.txt" }),
+        ],
+      },
+    );
+
+    expect(result).toEqual({
+      contexts: [
+        { target_item_id: 12, item_ids: [9, 11, 12, 14, 15] },
+        { target_item_id: 14, item_ids: [11, 12, 14, 15] },
+      ],
+      items: [
+        expect.objectContaining({ item_id: 9 }),
+        expect.objectContaining({ item_id: 11 }),
+        expect.objectContaining({ item_id: 12 }),
+        expect.objectContaining({ item_id: 14 }),
+        expect.objectContaining({ item_id: 15 }),
+      ],
+      missing_item_ids: [999],
+    });
+  });
+
+  it("query-quality-rule-groups 按完整关系组分页并区分目标与范围外证据", async () => {
+    const result = await run_recipe(
+      "query-quality-rule-groups",
       {
         kind: "glossary",
-        keywords: ["姫"],
+        keywords: ["姫", "孤立"],
         include_examples: true,
         offset: 0,
         limit: 1,
       },
       {
         "contract.json": contract(),
-        "editable/quality/glossary.jsonl": [
+        "glossary/entries.jsonl": [
           { id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false },
-          { id: "g-2", src: "姫君", dst: "殿下", info: "", case_sensitive: false },
-          { id: "g-3", src: "城", dst: "城堡", info: "", case_sensitive: false },
+          { id: "g-2", src: "王女", dst: "殿下", info: "", case_sensitive: false },
+          { id: "g-3", src: "孤立规则", dst: "结果", info: "", case_sensitive: false },
         ],
-        "derived/quality_analysis/glossary.json": {
-          entry_ids: ["g-1", "g-2", "g-3"],
-          hits_by_id: { "g-1": 2, "g-2": 1, "g-3": 4 },
-          examples_by_id: { "g-1": [{ item_id: 1 }], "g-2": [{ item_id: 2 }] },
-          relations: {
-            subset_parents_by_id: { "g-1": ["g-2"] },
-            groups: [["g-1", "g-2"], ["g-3"]],
+        "glossary/evidence.json": {
+          by_id: {
+            "g-1": { hits: 2, examples: ["姫の例句"], parent_sources: ["姫君"] },
+            "g-2": { hits: 1, examples: ["王女の例句"], parent_sources: [] },
+            "g-3": { hits: 4, examples: [], parent_sources: [] },
           },
+          groups: [["g-1", "g-2"], ["g-3"]],
         },
       },
     );
 
     expect(result).toEqual({
-      total_entry_count: 2,
-      target_ids: ["g-1"],
+      total_target_rule_count: 2,
+      total_group_count: 2,
+      groups: [{ target_ids: ["g-1"], evidence_ids: ["g-2"] }],
       entries: [
-        expect.objectContaining({ id: "g-1", hits: 2, examples: [{ item_id: 1 }] }),
-        expect.objectContaining({ id: "g-2", hits: 1, examples: [{ item_id: 2 }] }),
+        expect.objectContaining({ id: "g-1", hits: 2, examples: ["姫の例句"] }),
+        expect.objectContaining({ id: "g-2", hits: 1, examples: ["王女の例句"] }),
       ],
-      groups: [["g-1", "g-2"]],
       next_offset: 1,
     });
-  });
-
-  it("inspect-quality 保留不属于任何结构组的直接命中条目", async () => {
-    const result = await run_recipe(
-      "inspect-quality",
-      { kind: "glossary", keywords: ["孤立"] },
-      {
-        "contract.json": contract(),
-        "editable/quality/glossary.jsonl": [
-          { id: "g-1", src: "孤立规则", dst: "结果", info: "", case_sensitive: false },
-        ],
-        "derived/quality_analysis/glossary.json": {
-          entry_ids: ["g-1"],
-          hits_by_id: { "g-1": 3 },
-          examples_by_id: {},
-          relations: { subset_parents_by_id: {}, groups: [] },
-        },
-      },
-    );
-
-    expect(result).toEqual({
-      total_entry_count: 1,
-      target_ids: ["g-1"],
-      entries: [expect.objectContaining({ id: "g-1", hits: 3 })],
-      groups: [],
-    });
-  });
-
-  it("inspect-items 拒绝未知参数、非法枚举和越界分页", async () => {
-    await expect(run_recipe("inspect-items", { limit: 101, unknown: true }, {})).rejects.toThrow();
-    await expect(
-      run_recipe(
-        "inspect-items",
-        { filters: { statuses: ["UNKNOWN"] } },
-        {
-          "contract.json": contract(),
-        },
-      ),
-    ).rejects.toThrow();
-  });
-
-  it("inspect-quality 拒绝未知规则类型", async () => {
-    await expect(
-      run_recipe("inspect-quality", { kind: "unknown" }, { "contract.json": contract() }),
-    ).rejects.toThrow();
   });
 });
 
 /** 用真实发布源码和最小只读工作区 API 验证 recipe 的公开结果。 */
 async function run_recipe(
-  name: "inspect-items" | "inspect-quality",
+  name: "query-items" | "query-item-contexts" | "query-quality-rule-groups",
   args: JsonRecord,
   files: Record<string, JsonValue>,
 ): Promise<JsonValue> {
@@ -179,20 +161,30 @@ async function run_recipe(
   return await new AsyncFunction("workspace", "args", source)(workspace, args);
 }
 
-/** 测试 contract 只声明当前场景实际消费的路径与枚举。 */
+/** 测试 contract 只声明当前 recipe 场景实际消费的数据路径。 */
 function contract(): JsonRecord {
   return {
     datasets: {
-      items: {
-        path: "editable/items.jsonl",
-        fields: { status: { values: ["NONE", "PROCESSED"] } },
-      },
-      warnings: {
-        path: "derived/warnings.jsonl",
-        fields: { warnings: { values: ["GLOSSARY"] } },
-      },
-      "quality.glossary": { path: "editable/quality/glossary.jsonl" },
-      "quality_analysis.glossary": { path: "derived/quality_analysis/glossary.json" },
+      items: { path: "items/entries.jsonl" },
+      warnings: { path: "items/warnings.jsonl" },
+      glossary: { path: "glossary/entries.jsonl" },
+      glossary_evidence: { path: "glossary/evidence.json" },
     },
+  };
+}
+
+/** 构造完整条目，场景只覆盖与当前判断有关的字段。 */
+function item(item_id: number, overrides: JsonRecord = {}): JsonRecord {
+  return {
+    item_id,
+    src: `原文 ${item_id.toString()}`,
+    name_src: "",
+    dst: "",
+    name_dst: "",
+    status: "NONE",
+    file_path: "script.txt",
+    row_number: item_id,
+    retry_count: 0,
+    ...overrides,
   };
 }

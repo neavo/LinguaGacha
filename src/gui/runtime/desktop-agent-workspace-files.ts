@@ -1,0 +1,496 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
+type WorkspaceFileMode = "readonly" | "transactional";
+
+type WorkspaceContract = {
+  datasets?: Record<string, { path?: unknown; writable?: unknown }>; // Backend 声明的数据文件权限
+  recipes?: Record<string, { path?: unknown; readonly?: unknown }>; // Backend 声明的发布 recipe
+};
+
+type CommitRecord = {
+  root: string; // 本次替换的最上层非重叠相对路径
+  hadBase: boolean; // 原基线是否已经移动到 backup
+  installed: boolean; // upper 是否已经安装到基线
+};
+
+/** 工作区本体或契约已经不可信，调用方必须销毁活动工作区。 */
+export class AgentWorkspaceInvalidError extends Error {}
+
+/** 文件提交失败会标明补偿是否完整，避免调用方猜测基线状态。 */
+export class AgentWorkspaceTransactionError extends Error {
+  public constructor(
+    message: string,
+    public readonly workspacePreserved: boolean,
+    cause?: unknown,
+  ) {
+    super(message, { cause });
+  }
+}
+
+/**
+ * 单次沙箱执行的磁盘视图。transactional 模式只写 upper，完成后才替换基线；
+ * readonly 模式不创建事务目录，供官方 recipe 使用。
+ */
+export class DesktopAgentWorkspaceFiles {
+  private readonly writable_paths: ReadonlySet<string>; // open 时冻结的数据集写白名单
+  private readonly recipes: ReadonlyMap<string, string>; // open 时冻结的只读 recipe 路径
+  private readonly transaction_path: string | null; // 当前 UUID 事务根
+  private readonly upper_path: string | null; // 脚本本次写入形成的覆盖层
+  private readonly backup_path: string | null; // 提交过程中暂存的原基线
+  private readonly written_paths = new Set<string>(); // upper 中完成原子写入的文件
+  private readonly tombstones = new Set<string>(); // 当前合并视图隐藏的 scratch 路径
+  private finalized = false; // commit / rollback 只允许第一次改变事务状态
+
+  private constructor(
+    private readonly workspace_path: string,
+    private readonly mode: WorkspaceFileMode,
+    contract: WorkspaceContract,
+    transaction_path: string | null,
+  ) {
+    this.writable_paths = new Set(
+      Object.values(contract.datasets ?? {}).flatMap((dataset) =>
+        dataset.writable === true && typeof dataset.path === "string"
+          ? [normalize_workspace_path(dataset.path)]
+          : [],
+      ),
+    );
+    this.recipes = new Map(
+      Object.entries(contract.recipes ?? {}).flatMap(([name, recipe]) =>
+        recipe.readonly === true && typeof recipe.path === "string"
+          ? [[name, normalize_workspace_path(recipe.path)] as const]
+          : [],
+      ),
+    );
+    this.transaction_path = transaction_path;
+    this.upper_path = transaction_path === null ? null : path.join(transaction_path, "upper");
+    this.backup_path = transaction_path === null ? null : path.join(transaction_path, "backup");
+  }
+
+  /** 打开时缓存 contract 白名单；脚本不能通过改写 contract 扩大当前运行权限。 */
+  public static async open(
+    workspace_path: string,
+    mode: WorkspaceFileMode,
+  ): Promise<DesktopAgentWorkspaceFiles> {
+    const root = path.resolve(workspace_path);
+    try {
+      const root_stat = await fs.promises.lstat(root);
+      if (!root_stat.isDirectory() || root_stat.isSymbolicLink()) {
+        throw new AgentWorkspaceInvalidError("Agent 工作区目录无效。");
+      }
+      await assert_path_has_no_symlink(root, "contract.json");
+      const contract_text = await fs.promises.readFile(path.join(root, "contract.json"), "utf-8");
+      const contract = read_workspace_contract(JSON.parse(contract_text));
+      const transaction_path =
+        mode === "transactional" ? path.join(root, ".transactions", randomUUID()) : null;
+      if (transaction_path !== null) {
+        await assert_path_has_no_symlink(root, ".transactions");
+        await Promise.all([
+          fs.promises.mkdir(path.join(transaction_path, "upper"), { recursive: true }),
+          fs.promises.mkdir(path.join(transaction_path, "backup"), { recursive: true }),
+        ]);
+      }
+      return new DesktopAgentWorkspaceFiles(root, mode, contract, transaction_path);
+    } catch (error) {
+      if (error instanceof AgentWorkspaceInvalidError) throw error;
+      throw new AgentWorkspaceInvalidError("Agent 工作区或 contract.json 无效。", {
+        cause: error,
+      });
+    }
+  }
+
+  /** recipe 名称只从创建时写入的 contract 解析，且脚本文件始终按基线只读。 */
+  public async read_recipe_source(name: string): Promise<string> {
+    const recipe_path = this.recipes.get(name);
+    if (recipe_path === undefined || !recipe_path.startsWith("recipes/")) {
+      throw new AgentWorkspaceInvalidError("工作区 recipe 契约无效。");
+    }
+    await assert_path_has_no_symlink(this.workspace_path, recipe_path);
+    const source_path = resolve_workspace_path(this.workspace_path, recipe_path);
+    const stat = await fs.promises.lstat(source_path);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new AgentWorkspaceInvalidError("工作区 recipe 文件无效。");
+    }
+    return await fs.promises.readFile(source_path, "utf-8");
+  }
+
+  /** protocol 的所有文件请求都经过当前事务合并视图。 */
+  public async handle(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.hostname !== "workspace") return response_text(404, "未知工作区。");
+    try {
+      if (url.pathname.startsWith("/files/")) {
+        const relative_path = decode_protocol_path(url.pathname.slice("/files/".length));
+        if (request.method === "GET") return await this.read_file(relative_path);
+        if (request.method === "PUT") return await this.write_file(relative_path, request);
+        if (request.method === "DELETE") return await this.remove_file(relative_path);
+      }
+      if (url.pathname === "/__list__" && request.method === "GET") {
+        return await this.list(url.searchParams.get("path") ?? "");
+      }
+    } catch (error) {
+      return response_text(400, project_protocol_error(error));
+    }
+    return response_text(405, "不支持的工作区操作。");
+  }
+
+  /** 成功结果产生后才把非重叠变更根替换进基线，失败则反向恢复备份。 */
+  public async commit(signal?: AbortSignal): Promise<void> {
+    if (this.finalized) return;
+    signal?.throwIfAborted();
+    if (this.mode === "readonly") {
+      this.finalized = true;
+      return;
+    }
+    const upper_path = this.require_transaction_path(this.upper_path);
+    const backup_path = this.require_transaction_path(this.backup_path);
+    const roots = collapse_roots([...this.tombstones, ...this.written_paths]);
+    const records: CommitRecord[] = [];
+    try {
+      for (const root of roots) {
+        // scratch 允许任意子路径，提交前必须再次验证基线路径没有被替换为符号链接。
+        await assert_path_has_no_symlink(this.workspace_path, root);
+        const record: CommitRecord = { root, hadBase: false, installed: false };
+        records.push(record);
+        const base_target = resolve_workspace_path(this.workspace_path, root);
+        const backup_target = resolve_workspace_path(backup_path, root);
+        const upper_target = resolve_workspace_path(upper_path, root);
+        if (await path_exists(base_target)) {
+          await fs.promises.mkdir(path.dirname(backup_target), { recursive: true });
+          await fs.promises.rename(base_target, backup_target);
+          record.hadBase = true;
+          signal?.throwIfAborted();
+        }
+        if (await path_exists(upper_target)) {
+          await fs.promises.mkdir(path.dirname(base_target), { recursive: true });
+          await fs.promises.rename(upper_target, base_target);
+          record.installed = true;
+          signal?.throwIfAborted();
+        }
+      }
+      signal?.throwIfAborted();
+    } catch (error) {
+      const restored = await restore_commit(this.workspace_path, backup_path, records);
+      this.finalized = true;
+      let cleaned = true;
+      try {
+        await this.cleanup_transaction();
+      } catch {
+        cleaned = false;
+      }
+      const preserved = restored && cleaned;
+      throw new AgentWorkspaceTransactionError(
+        preserved ? "工作区文件事务提交失败，已回滚本次修改。" : "工作区文件事务补偿失败。",
+        preserved,
+        error,
+      );
+    }
+    this.finalized = true;
+    try {
+      await this.cleanup_transaction();
+    } catch (error) {
+      throw new AgentWorkspaceTransactionError("工作区事务清理失败。", false, error);
+    }
+  }
+
+  /** 未提交执行只删除当前 upper；删除失败时不能再声称基线可安全复用。 */
+  public async rollback(): Promise<void> {
+    if (this.finalized) return;
+    this.finalized = true;
+    try {
+      await this.cleanup_transaction();
+    } catch (error) {
+      throw new AgentWorkspaceTransactionError("工作区事务回滚失败。", false, error);
+    }
+  }
+
+  /** 读取优先命中 upper，再应用删除标记，最后回落到只读基线。 */
+  private async read_file(relative_path: string): Promise<Response> {
+    const normalized = normalize_workspace_path(relative_path);
+    const upper_file = await this.find_upper_path(normalized);
+    if (upper_file !== null) return await read_regular_file(upper_file);
+    if (this.is_tombstoned(normalized)) return response_text(404, "工作区文件不存在。");
+    await assert_path_has_no_symlink(this.workspace_path, normalized);
+    return await read_regular_file(resolve_workspace_path(this.workspace_path, normalized));
+  }
+
+  /** 写入只落到 upper，固定数据集必须已由 contract 标记为可写。 */
+  private async write_file(relative_path: string, request: Request): Promise<Response> {
+    if (this.mode !== "transactional") return response_text(403, "当前工作区操作只读。");
+    const normalized = normalize_workspace_path(relative_path);
+    const writable = this.writable_paths.has(normalized);
+    if (!writable && !is_workspace_scratch_entry(normalized)) {
+      return response_text(403, "该工作区文件只读。");
+    }
+    if (request.body === null) throw new Error("工作区写入缺少正文。");
+    if (writable) {
+      await assert_path_has_no_symlink(this.workspace_path, normalized);
+      const stat = await fs.promises.lstat(resolve_workspace_path(this.workspace_path, normalized));
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
+    }
+    const upper_path = this.require_transaction_path(this.upper_path);
+    const file_path = resolve_workspace_path(upper_path, normalized);
+    await assert_path_has_no_symlink(upper_path, normalized);
+    await fs.promises.mkdir(path.dirname(file_path), { recursive: true });
+    const temp_path = path.join(
+      path.dirname(file_path),
+      `.${path.basename(file_path)}.${randomUUID()}.tmp`,
+    );
+    try {
+      await pipeline(
+        Readable.fromWeb(
+          request.body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+        ),
+        fs.createWriteStream(temp_path, { flags: "wx" }),
+      );
+      await fs.promises.rename(temp_path, file_path);
+      this.written_paths.add(normalized);
+      return new Response(null, { status: 204 });
+    } finally {
+      await fs.promises.rm(temp_path, { force: true });
+    }
+  }
+
+  /** 删除只允许 scratch，并以 tombstone 遮蔽仍存在的基线内容。 */
+  private async remove_file(relative_path: string): Promise<Response> {
+    if (this.mode !== "transactional") return response_text(403, "当前工作区操作只读。");
+    const normalized = normalize_workspace_path(relative_path);
+    if (!is_workspace_scratch_root_or_entry(normalized)) {
+      return response_text(403, "只能删除 scratch 文件。");
+    }
+    const upper_path = this.require_transaction_path(this.upper_path);
+    await fs.promises.rm(resolve_workspace_path(upper_path, normalized), {
+      recursive: true,
+      force: true,
+    });
+    for (const written of this.written_paths) {
+      if (written === normalized || written.startsWith(`${normalized}/`)) {
+        this.written_paths.delete(written);
+      }
+    }
+    this.tombstones.add(normalized);
+    return new Response(null, { status: 204 });
+  }
+
+  /** 目录列表合并基线与 upper，并排除 tombstone 和事务实现目录。 */
+  private async list(relative_path: string): Promise<Response> {
+    const normalized = normalize_workspace_path(relative_path, true);
+    const entries = new Map<string, "directory" | "file">();
+    if (!this.is_tombstoned(normalized)) {
+      await add_directory_entries(this.workspace_path, normalized, entries, (child) =>
+        this.is_tombstoned(child),
+      );
+    }
+    if (this.upper_path !== null) {
+      await add_directory_entries(this.upper_path, normalized, entries, () => false);
+    }
+    if (normalized === "") entries.delete(".transactions");
+    return Response.json(
+      [...entries.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, type]) => ({ name, type })),
+    );
+  }
+
+  /** 返回 upper 中已覆盖的普通路径；只读模式始终没有 upper。 */
+  private async find_upper_path(relative_path: string): Promise<string | null> {
+    if (this.upper_path === null) return null;
+    await assert_path_has_no_symlink(this.upper_path, relative_path);
+    const candidate = resolve_workspace_path(this.upper_path, relative_path);
+    return (await path_exists(candidate)) ? candidate : null;
+  }
+
+  /** 父目录删除会同时遮蔽所有后代。 */
+  private is_tombstoned(relative_path: string): boolean {
+    for (const removed of this.tombstones) {
+      if (relative_path === removed || relative_path.startsWith(`${removed}/`)) return true;
+    }
+    return false;
+  }
+
+  /** transactional 专用路径缺失说明文件会话初始化已失效。 */
+  private require_transaction_path(value: string | null): string {
+    if (value === null) throw new AgentWorkspaceInvalidError("工作区事务未初始化。");
+    return value;
+  }
+
+  /** 清理只针对本次 UUID 目录，不触碰其它并发或崩溃遗留事务。 */
+  private async cleanup_transaction(): Promise<void> {
+    if (this.transaction_path !== null) {
+      await fs.promises.rm(this.transaction_path, { recursive: true, force: true });
+    }
+  }
+}
+
+/** 只读取宿主授权所需的 contract 两个顶层区块。 */
+function read_workspace_contract(value: unknown): WorkspaceContract {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new AgentWorkspaceInvalidError("工作区 contract.json 根节点无效。");
+  }
+  const contract = value as WorkspaceContract;
+  for (const section of [contract.datasets, contract.recipes]) {
+    if (typeof section !== "object" || section === null || Array.isArray(section)) {
+      throw new AgentWorkspaceInvalidError("工作区 contract.json 结构无效。");
+    }
+  }
+  return contract;
+}
+
+/** 路径只接受正斜线相对路径，并拒绝访问宿主事务实现目录。 */
+function resolve_workspace_path(workspace_path: string, relative_path: string): string {
+  const normalized = normalize_workspace_path(relative_path, true);
+  const root = path.resolve(workspace_path);
+  const target = path.resolve(root, ...normalized.split("/").filter(Boolean));
+  const relative = path.relative(root, target);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error("工作区路径越界。");
+  }
+  return target;
+}
+
+/** 统一为正斜线相对路径，并拒绝所有绝对、回退和事务实现路径。 */
+function normalize_workspace_path(relative_path: string, allow_empty = false): string {
+  if (
+    relative_path.includes("\\") ||
+    relative_path.includes("\0") ||
+    path.posix.isAbsolute(relative_path) ||
+    path.win32.isAbsolute(relative_path)
+  ) {
+    throw new Error("工作区路径非法。");
+  }
+  const parts = relative_path.split("/").filter((part) => part !== "");
+  if ((!allow_empty && parts.length === 0) || parts.includes(".") || parts.includes("..")) {
+    throw new Error("工作区路径非法。");
+  }
+  if (parts[0] === ".transactions") throw new Error("工作区事务目录不可访问。");
+  return parts.join("/");
+}
+
+/** URL 路径只解码一次，非法转义由协议边界直接拒绝。 */
+function decode_protocol_path(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new Error("工作区路径编码非法。");
+  }
+}
+
+/** scratch 根目录本身不能作为文件覆盖，只有其后代可写。 */
+function is_workspace_scratch_entry(relative_path: string): boolean {
+  return relative_path.startsWith("scratch/");
+}
+
+/** 删除允许指向 scratch 整体或任一后代。 */
+function is_workspace_scratch_root_or_entry(relative_path: string): boolean {
+  return relative_path === "scratch" || relative_path.startsWith("scratch/");
+}
+
+/** 以流式响应读取普通文件，避免把大数据集整体复制进内存。 */
+async function read_regular_file(file_path: string): Promise<Response> {
+  const stat = await fs.promises.lstat(file_path);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
+  const body = Readable.toWeb(fs.createReadStream(file_path)) as ReadableStream<Uint8Array>;
+  return new Response(body, { headers: { "content-type": "application/octet-stream" } });
+}
+
+/** 把单层目录内容合并到结果；符号链接从可见视图中排除。 */
+async function add_directory_entries(
+  root: string,
+  relative_path: string,
+  target: Map<string, "directory" | "file">,
+  excluded: (child: string) => boolean,
+): Promise<void> {
+  const directory = resolve_workspace_path(root, relative_path);
+  await assert_path_has_no_symlink(root, relative_path);
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const child = relative_path === "" ? entry.name : `${relative_path}/${entry.name}`;
+    if (excluded(child) || entry.isSymbolicLink()) continue;
+    target.set(entry.name, entry.isDirectory() ? "directory" : "file");
+  }
+}
+
+/** 从受信任根逐段 lstat，拒绝现存路径中的任意符号链接。 */
+async function assert_path_has_no_symlink(root_path: string, relative_path: string): Promise<void> {
+  let current = path.resolve(root_path);
+  for (const part of relative_path.split("/").filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      if ((await fs.promises.lstat(current)).isSymbolicLink()) {
+        throw new Error("工作区路径不能包含符号链接。");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
+/** 折叠被父目录覆盖的后代，避免同一提交重复移动嵌套路径。 */
+function collapse_roots(paths: string[]): string[] {
+  const sorted = [...new Set(paths)].sort(
+    (left, right) => left.split("/").length - right.split("/").length || left.localeCompare(right),
+  );
+  return sorted.filter(
+    (candidate, index) =>
+      !sorted
+        .slice(0, index)
+        .some((root) => candidate === root || candidate.startsWith(`${root}/`)),
+  );
+}
+
+/** 按提交逆序恢复已安装路径；任一步失败都把工作区判为不可复用。 */
+async function restore_commit(
+  workspace_path: string,
+  backup_path: string,
+  records: CommitRecord[],
+): Promise<boolean> {
+  try {
+    for (const record of [...records].reverse()) {
+      const base_target = resolve_workspace_path(workspace_path, record.root);
+      if (record.installed) {
+        await fs.promises.rm(base_target, { recursive: true, force: true });
+      }
+      if (record.hadBase) {
+        const backup_target = resolve_workspace_path(backup_path, record.root);
+        await fs.promises.mkdir(path.dirname(base_target), { recursive: true });
+        await fs.promises.rename(backup_target, base_target);
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 只把 ENOENT 视为不存在，其余文件系统错误保留原始上下文。 */
+async function path_exists(file_path: string): Promise<boolean> {
+  try {
+    await fs.promises.lstat(file_path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** 只投影可修复的工作区诊断，隐藏宿主文件系统细节。 */
+function project_protocol_error(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith("工作区")) return error.message;
+  if (error instanceof Error && error.message.startsWith("目标")) return error.message;
+  return "工作区文件操作失败。";
+}
+
+/** 协议错误统一使用 UTF-8 纯文本响应。 */
+function response_text(status: number, text: string): Response {
+  return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+}

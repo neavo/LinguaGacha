@@ -14,12 +14,12 @@
 | --- | --- | --- |
 | 公开状态、完整 UI 时间线、会话生命周期与启动期资源 | `AgentService` | Agent API、`agent.session_event` |
 | 模型可见历史、工具循环、上下文压缩、中断与 settle | 内存 `AgentSession` | `AgentService` 调用 SDK 的 prompt、模型切换与关闭 API |
-| 当前完整数据工作区、快照与差异准备 | `AgentWorkspaceService` | `workspace_create`、`workspace_run`、`workspace_apply` |
+| 当前完整数据工作区、快照与差异准备 | `AgentWorkspaceService` | `workspace_create`、`workspace_recipe`、`workspace_script`、`workspace_apply` |
 
 - Agent 运行时完全内存化。消息受理到整个用户任务最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的运行 lease；一个任务可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次执行。中途压缩失败会结束本轮，并阻断新消息直至压缩恢复。
 - 手动压缩重试同样持有运行 lease；失败轮次恢复成功后追加固定“继续”user 轮次，已完成轮次只恢复模型历史。普通模型回合的 stop 同步封口仍运行的子条目和 user 条目、将公开会话切回 `idle`，再异步取消 SDK，lease 仍到最终 settle 才释放。压缩是不可 stop 的原子阶段，前后端都拒绝压缩期间的 stop；reset、工程切换和 dispose 仍通过运行时关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
-- GUI Agent 至多持有一个位于应用 userdata 的一次性磁盘工作区。新 create 全部成功后才替换旧工作区；脚本失败或取消、工程身份 / 七个 section revision / 语言变化、reset、工程切换、apply 成功、stale / 事务 / 未知失败和 dispose 都会清理它，editable 校验错误则保留供脚本修复。应用启动删除崩溃遗留目录，工作区不进入 Agent snapshot、模型历史或项目事实。
+- GUI Agent 至多持有一个位于应用 userdata 的一次性磁盘工作区。新 create 全部成功后才替换旧工作区；每次成功 `workspace_script` 把当前文件事务提交到该工作区基线，脚本失败、取消或结果无效只回滚本次运行，保留此前成功结果。工程身份 / 七个 section revision / 语言变化、reset、工程切换、apply 成功、stale、无法补偿的文件事务 / 未知宿主失败和 dispose 才清理工作区，可写数据集校验错误则保留供 `workspace_script` 修复。应用启动删除崩溃遗留目录，工作区不进入 Agent snapshot、模型历史或项目事实。
 
 ## 3. 模型、资源与 skill
 
@@ -31,12 +31,12 @@
 ## 4. 产品工具与宿主能力
 
 - 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
-- 工程数据工具只保留 `workspace_create`、`workspace_run`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
-- `workspace_create` 无参数生成完整快照与 `contract.json`。`manifest.json` 只记录权威源语言 / 目标语言、完整七 section revision、数据数量与 recipe 白名单，不暴露工程路径、功能开关、UI 状态或模型设置；contract 是路径、字段、身份、可写性、apply 语义与 recipe 协议的唯一代码权威。
-- 工作区固定包含 `editable` 的完整 items、四类质量规则和两类提示词正文，`derived` 的 warnings、analysis、analysis candidates 与四份质量分析，`context` 的文件事实，以及只读 recipes 和可写 scratch。四类质量分析直接投影 [`BACKEND.md`](BACKEND.md) 的统一缓存结果，内置 `inspect-items` 与 `inspect-quality` 只做确定性筛选、搜索、证据联结和结构组展开；自由脚本继续承担 recipe 未覆盖的组合与转换。
-- 模型获取业务知识的顺序固定为 contract 的结构与语义、manifest 的当前快照事实、skill 的领域方法、system prompt 的生命周期约束、最后才是三个工具自身的参数 Schema；skill、prompt 和工具描述不得复制字段 schema 或建立第二条工程数据路径。
-- `workspace_run` 在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行 recipe 或自由 JavaScript。两者共享取消、64 KiB 结果上限与窗口清理；私有 protocol 只允许流式读取当前工作区、原子覆盖 contract 声明且已经存在的 editable 文件，并允许 scratch 创建、覆盖和删除，manifest、contract、derived、context 与 recipes 永远只读，路径穿越、绝对路径、反斜线和符号链接均拒绝。
-- 脚本改写 editable 只形成变更准备，不修改工程。`workspace_apply` 无参数读取并严格校验全部 editable，自动计算 items、quality 与 prompts 的真实差异；校验错误保留工作区供修复，stale、事务或未知失败清理工作区并要求重新 create。无变化不进入项目写口、不推进 revision、不发布事件；成功只返回紧凑计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。
+- 工程数据工具只保留 `workspace_create`、`workspace_recipe`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
+- `workspace_create` 无参数生成完整快照，并在工具结果与磁盘文件中返回同源的 project_meta 和 contract。前者只暴露解释快照所需的语言、数量与文件顺序；后者是数据布局、字段、身份、可写性、apply 语义、脚本 API 及 recipe 源码入口的唯一代码权威，不承载运行时生命周期。
+- 工作区按业务领域相邻组织可写数据和创建时证据，提示词保持单体 JSON；analysis 状态与候选不进入工作区，warnings 与 evidence 不随脚本改写重新计算。具体路径、字段与 recipe 查询算法留在 contract、发布源码和行为测试。
+- recipe 源码既是只读可执行资源，也是自由脚本的可选参考；`workspace_recipe` 与 `workspace_script` 是平级入口，不建立推荐或回退顺序。recipe 参数只由前者的按名称判别 Schema 定义，skill、prompt 和 contract 不复制这份输入协议。
+- `workspace_recipe` 与 `workspace_script` 都在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行。前者按工具 Schema 校验参数，从 contract 指向的工作区源码执行只读 recipe；后者执行模型提供的 JavaScript，把 contract 标记为 writable 的固定文件与 scratch 写入单次磁盘 overlay，返回值通过 JSON 和 64 KiB 上限后才提交到工作区基线，失败、停止或超限只回滚该 overlay。脚本 API 不提供 recipe 执行旁路；提交失败先恢复被替换基线，补偿或清理失败才把工作区标为失效。私有 protocol 提供合并视图的流式读写，project_meta、contract、warnings、evidence 与 recipes 永远只读，路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
+- 脚本改写可写数据集只形成变更准备，不修改工程。`workspace_apply` 无参数读取并严格校验全部可写数据集，自动计算 items、quality 与 prompts 的真实差异；校验错误保留工作区供修复，stale、事务或未知失败清理工作区并要求重新 create。无变化不进入项目写口、不推进 revision、不发布事件；成功只返回紧凑计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
 ## 5. 前端消费

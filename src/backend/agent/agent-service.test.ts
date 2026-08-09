@@ -287,7 +287,11 @@ function create_fake_response(context: Context): FauxResponseStep {
     }
     if (after_tool_call) return fauxAssistantMessage("未压缩继续");
     return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "checkpoint-query" }),
+      fauxToolCall(
+        "workspace_script",
+        { script: "return { items: [] }" },
+        { id: "checkpoint-query" },
+      ),
       { stopReason: "toolUse" },
     );
   }
@@ -335,13 +339,13 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "tool-only" }),
+      fauxToolCall("workspace_script", { script: "return { items: [] }" }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_run", { script: "" }, { id: "schema-invalid" }),
+      fauxToolCall("workspace_script", { script: "" }, { id: "schema-invalid" }),
       { stopReason: "toolUse" },
     );
   }
@@ -349,7 +353,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall("workspace_run", { script: "return { items: [] }" }, { id: "tool-1" }),
+        fauxToolCall("workspace_script", { script: "return { items: [] }" }, { id: "tool-1" }),
         fauxToolCall(
           "read_skill",
           { path: "E:/skills/glossary-audit/references/audit-standard.md" },
@@ -890,7 +894,7 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "tool-1",
           status: "running",
-          toolName: "workspace_run",
+          toolName: "workspace_script",
           input: '{"script":"return { items: [] }"}',
           output: null,
         }),
@@ -915,7 +919,7 @@ describe("AgentService", () => {
       {
         kind: "tool_call",
         id: "tool-1",
-        toolName: "workspace_run",
+        toolName: "workspace_script",
         input: '{"script":"return { items: [] }"}',
         status: "success",
         output: expect.stringContaining('"items"'),
@@ -1064,11 +1068,12 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
   });
 
-  it("仅在 Electron 工作区端口可用时初始化并注册三个工作区工具", async () => {
+  it("仅在 Electron 工作区端口可用时初始化并注册四个工作区工具", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       reset: vi.fn(async () => undefined),
       create_workspace: vi.fn(),
+      run_recipe: vi.fn(),
       run_script: vi.fn(),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
@@ -1078,12 +1083,15 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
-    expect(fake_agent_state.tool_names.at(-1)).toEqual([
-      "workspace_create",
-      "workspace_run",
-      "workspace_apply",
-      "read_skill",
-    ]);
+    expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
+      [
+        "workspace_create",
+        "workspace_recipe",
+        "workspace_script",
+        "workspace_apply",
+        "read_skill",
+      ].sort(),
+    );
     await session_state.mark_loaded("next.lg");
     expect(workspace.reset).toHaveBeenCalled();
   });
@@ -1802,7 +1810,11 @@ describe("AgentService", () => {
           ({
             initialize: vi.fn(async () => undefined),
             reset: vi.fn(async () => undefined),
-            create_workspace: vi.fn(async () => ({ version: 2 })),
+            create_workspace: vi.fn(async () => ({
+              project_meta: { counts: { items: 2 } },
+              contract: { datasets: {} },
+            })),
+            run_recipe: vi.fn(async () => ({ items: read_items() })),
             run_script: vi.fn(async () => ({ items: read_items() })),
             apply_workspace: vi.fn(async () => {
               if (fake_agent_state.hold_tool_write) {
