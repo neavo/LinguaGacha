@@ -2,6 +2,7 @@ import { Item, ITEM_STATUSES } from "../../domain/item";
 import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
+import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
 import { read_optional_item_name_text } from "../../shared/item-name";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
@@ -246,6 +247,9 @@ const quality_evidence_datasets = Object.fromEntries(
 
 /** 工作区结构、字段、可写性和 apply 语义的唯一代码权威。 */
 export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
+  limits: {
+    result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
+  },
   datasets: {
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
@@ -292,17 +296,30 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     ...quality_evidence_datasets,
   },
   script_api: {
-    methods: [
-      "readText",
-      "readJson",
-      "readLines",
-      "readJsonl",
-      "writeText",
-      "writeJson",
-      "writeJsonl",
-      "list",
-      "remove",
-    ],
+    argument: "workspace",
+    properties: {
+      contract: {
+        source: AGENT_WORKSPACE_PATHS.contract,
+        purpose: "当前工作区同源契约快照",
+      },
+    },
+    methods: {
+      readText: { signature: "(path: string) => Promise<string>" },
+      readJson: { signature: "(path: string) => Promise<JsonValue>" },
+      iterateLines: { signature: "(path: string) => AsyncIterable<string>" },
+      iterateJsonl: { signature: "(path: string) => AsyncIterable<JsonValue>" },
+      writeText: { signature: "(path: string, text: string) => Promise<void>" },
+      writeJson: { signature: "(path: string, value: JsonValue) => Promise<void>" },
+      writeJsonl: {
+        signature:
+          "(path: string, rows: Iterable<JsonValue> | AsyncIterable<JsonValue>) => Promise<void>",
+      },
+      list: {
+        signature:
+          "(path?: string) => Promise<Array<{ name: string, type: 'file' | 'directory' }>>",
+      },
+      remove: { signature: "(path: string) => Promise<void>" },
+    },
     scratch: "scratch/",
   },
   recipes: {

@@ -32,10 +32,10 @@
 
 - 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - 工程数据工具只保留 `workspace_create`、`workspace_recipe`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
-- `workspace_create` 无参数生成完整快照，并在工具结果与磁盘文件中返回同源的 project_meta 和 contract。前者只暴露解释快照所需的语言、数量与文件顺序；后者是数据布局、字段、身份、可写性、apply 语义、脚本 API 及 recipe 源码入口的唯一代码权威，不承载运行时生命周期。
+- `workspace_create` 无参数生成完整快照，并在工具结果与磁盘文件中返回同源的 project_meta 和 contract；脚本与 recipe 运行时再把同一磁盘 contract 投影为 `workspace.contract`。project_meta 只暴露解释快照所需的语言、数量与文件顺序；contract 是数据布局、字段、身份、可写性、apply 语义、模型结果字节上限、脚本 API 及 recipe 源码入口的唯一代码权威，不承载运行时生命周期。
 - 工作区按业务领域相邻组织可写数据和创建时证据，提示词保持单体 JSON；analysis 状态与候选不进入工作区，warnings 与 evidence 不随脚本改写重新计算。具体路径、字段与 recipe 查询算法留在 contract、发布源码和行为测试。
-- recipe 源码既是只读可执行资源，也是自由脚本的可选参考；`workspace_recipe` 与 `workspace_script` 是平级入口，不建立推荐或回退顺序。recipe 参数只由前者的按名称判别 Schema 定义，skill、prompt 和 contract 不复制这份输入协议。
-- `workspace_recipe` 与 `workspace_script` 都在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行。前者按工具 Schema 校验参数，从 contract 指向的工作区源码执行只读 recipe；后者执行模型提供的 JavaScript，把 contract 标记为 writable 的固定文件与 scratch 写入单次磁盘 overlay，返回值通过 JSON 和 64 KiB 上限后才提交到工作区基线，失败、停止或超限只回滚该 overlay。脚本 API 不提供 recipe 执行旁路；提交失败先恢复被替换基线，补偿或清理失败才把工作区标为失效。私有 protocol 提供合并视图的流式读写，project_meta、contract、warnings、evidence 与 recipes 永远只读，路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
+- recipe 源码既是只读可执行资源，也是自由脚本的可选参考；`workspace_recipe` 与 `workspace_script` 是平级入口，不建立推荐或回退顺序。recipe 参数及分页值域只由前者的按名称判别 Schema 定义，skill、prompt 和 contract 不复制这份输入协议；重复同构记录以字段表和对应数组行返回，单个事实与关系保留具名对象，分页以 `next_offset` 延续。
+- `workspace_recipe` 与 `workspace_script` 都在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行，并共享由运行时常量定义、经 `contract.limits.result_bytes` 暴露的模型结果字节硬门。二者获得同源 `workspace.contract` 和显式区分 Promise 与 AsyncIterable 的文件 API；前者只读执行 contract 指向的发布源码，后者把 contract 标记为 writable 的固定文件与 scratch 写入单次磁盘 overlay。结果通过 JSON 与字节硬门后才提交脚本事务，失败、停止或超限只回滚该 overlay。脚本 API 不提供 recipe 执行旁路；提交失败先恢复被替换基线，补偿或清理失败才把工作区标为失效。私有 protocol 提供合并视图的流式读写，project_meta、contract、warnings、evidence 与 recipes 永远只读，路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
 - 脚本改写可写数据集只形成变更准备，不修改工程。`workspace_apply` 无参数读取并严格校验全部可写数据集，自动计算 items、quality 与 prompts 的真实差异；校验错误保留工作区供修复，stale、事务或未知失败清理工作区并要求重新 create。无变化不进入项目写口、不推进 revision、不发布事件；成功只返回紧凑计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
@@ -43,6 +43,6 @@
 
 - Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
 - `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、纯文本草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。
-- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / stop / reset 与压缩重试的受理失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿。
+- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / stop / reset 与压缩重试的受理失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。合法消息 ack 原子更新辅助输入历史并清空草稿；失败保留草稿。
 - 页面持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；回合失败由公开条目状态投影到所属轮次末尾，用户重试会直接追加并发送同文新轮次。上述页面事实都不进入 Agent snapshot、历史或发送协议，输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent 回合运行态与 stop 命令不锁定草稿编辑，send / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset 与模型选择 / 思考档位控制。压缩期间保留草稿编辑但禁用发送、reset、模型控制和 stop，失败后允许更换模型或开始新任务；压缩重试成功后的条件续跑由后端拥有，renderer 不监听终态补发命令。

@@ -24,7 +24,7 @@ import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_text } from "@s
 import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
-import { append_agent_input_history, read_agent_input_history } from "./agent-input-history";
+import { read_agent_input_history, update_agent_input_history } from "./agent-input-history";
 
 /** 首帧占位不代表恢复成功；transport 在合法快照或明确失败后才离开 restoring。 */
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
@@ -288,7 +288,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
   }, []);
   const read_history = useCallback((): readonly string[] => input_history_ref.current ?? [], []);
   const accept_message = useCallback((text: string): void => {
-    input_history_ref.current = append_agent_input_history(
+    input_history_ref.current = update_agent_input_history(
       window.localStorage,
       input_history_ref.current ?? [],
       text,

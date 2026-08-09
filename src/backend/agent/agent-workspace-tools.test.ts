@@ -77,6 +77,9 @@ describe("Agent 工作区工具", () => {
       name: "query-items",
       args: {},
     });
+    expect(validate(recipe_tool, { name: "query-items", args: { limit: 100 } })).toMatchObject({
+      name: "query-items",
+    });
     expect(
       validate(recipe_tool, {
         name: "query-item-contexts",
@@ -98,6 +101,12 @@ describe("Agent 工作区工具", () => {
     ).toThrow();
     expect(() =>
       validate(recipe_tool, { name: "query-item-contexts", args: { item_ids: [] } }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        name: "query-item-contexts",
+        args: { item_ids: Array.from({ length: 21 }, (_, index) => index + 1) },
+      }),
     ).toThrow();
     expect(() =>
       validate(recipe_tool, { name: "query-quality-rule-groups", args: { kind: "unknown" } }),

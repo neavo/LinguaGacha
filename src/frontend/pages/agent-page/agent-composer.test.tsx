@@ -8,11 +8,6 @@ import { EditorView } from "@codemirror/view";
 import type { GlossaryEntry } from "@domain/quality";
 import type { Locale } from "@shared/i18n/types";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
-import {
-  AGENT_INPUT_HISTORY_STORAGE_KEY,
-  append_agent_input_history,
-  read_agent_input_history,
-} from "@frontend/app/session/agent/agent-input-history";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 
@@ -40,7 +35,7 @@ type RenderComposerOptions = Partial<
 };
 
 type TestAgentInputSession = AgentInputSession & {
-  accept_message: (text: string) => void;
+  accept_message: () => void;
 };
 
 /** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
@@ -125,7 +120,6 @@ describe("AgentComposer", () => {
     root = null;
     default_input_session = null;
     locale_state.value = "zh-CN";
-    window.localStorage.clear();
   });
 
   it("输入 @ 后按技能、术语分组显示三条术语及命中次数", async () => {
@@ -295,8 +289,8 @@ describe("AgentComposer", () => {
   });
 
   it("用纯文本历史双向浏览并恢复当前草稿", async () => {
-    seed_input_history(["第一条", "检查 @skill(glossary-audit) 完成"]);
-    const view = await render_composer();
+    const input_session = create_input_session(["第一条", "检查 @skill(glossary-audit) 完成"]);
+    const view = await render_composer({ input_session });
     const editor = get_editor(view);
     await set_document(editor, "当前草稿", 4);
     await dispatch_key(editor.contentDOM, "ArrowUp");
@@ -309,8 +303,8 @@ describe("AgentComposer", () => {
   });
 
   it("历史导航只从视觉首行启动，并在用户编辑后退出", async () => {
-    seed_input_history(["历史消息"]);
-    const view = await render_composer();
+    const input_session = create_input_session(["历史消息"]);
+    const view = await render_composer({ input_session });
     const editor = get_editor(view);
     const draft = "第一行\n第二行";
     await set_document(editor, draft, draft.length);
@@ -331,18 +325,17 @@ describe("AgentComposer", () => {
     expect(editor.state.doc.toString()).toBe("历史消息！");
   });
 
-  it("跨重渲染保留纯文本草稿，受理后清空并写入历史", async () => {
-    const input_session = create_input_session(window.localStorage);
+  it("跨重渲染保留纯文本草稿，并在受理后同步清空编辑器", async () => {
+    const input_session = create_input_session();
     const composer_ref = createRef<AgentComposerHandle>();
     const on_send = vi.fn();
     const view = await render_composer({ composer_ref, input_session, on_send });
     await act(async () => composer_ref.current?.write_draft("  检查 @skill(glossary-audit)  "));
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith("检查 @skill(glossary-audit)");
-    input_session.accept_message("检查 @skill(glossary-audit)");
+    input_session.accept_message();
     await render_composer({ composer_ref, input_session, on_send });
     expect(get_editor(view).state.doc.toString()).toBe("");
-    expect(input_session.read_history()).toEqual(["检查 @skill(glossary-audit)"]);
   });
 
   it("运行态仍可编辑，只由按钮停止当前任务", async () => {
@@ -406,7 +399,7 @@ describe("AgentComposer", () => {
     }
     root ??= createRoot(container);
     await act(async () => {
-      default_input_session ??= create_input_session(window.localStorage);
+      default_input_session ??= create_input_session();
       root?.render(
         <AgentComposer
           ref={options.composer_ref}
@@ -458,13 +451,9 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-function seed_input_history(history: readonly string[]): void {
-  window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(history));
-}
-
-function create_input_session(storage: Storage): TestAgentInputSession {
+/** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
+function create_input_session(history: readonly string[] = []): TestAgentInputSession {
   let draft = "";
-  let history = read_agent_input_history(storage);
   const session: TestAgentInputSession = {
     revision: 0,
     read_draft: () => draft,
@@ -472,8 +461,7 @@ function create_input_session(storage: Storage): TestAgentInputSession {
       draft = text;
     },
     read_history: () => history,
-    accept_message: (text) => {
-      history = append_agent_input_history(storage, history, text);
+    accept_message: () => {
       draft = "";
       session.revision += 1;
     },

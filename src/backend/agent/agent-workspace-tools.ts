@@ -10,6 +10,8 @@ import type { AgentWorkspacePort } from "./agent-workspace-service";
 
 /** create 不接受模型重传工程身份或快照选项。 */
 const WORKSPACE_CREATE_PARAMETERS = Type.Object({}, { additionalProperties: false });
+/** 单页上限属于模型输入边界；描述与 TypeBox 约束必须共用同一值。 */
+const AGENT_WORKSPACE_RECIPE_PAGE_LIMIT = 100;
 
 /** 模型只提交函数体，不接触工作区绝对路径。 */
 const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
@@ -17,19 +19,25 @@ const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
     script: Type.String({
       minLength: 1,
       description:
-        "异步 JavaScript 函数体；通过参数 workspace 使用 contract 声明的文件 API，return 小型 JSON 结果。",
+        "异步 JavaScript 函数体；唯一参数 workspace 提供同源 contract 及其 script_api 声明的方法，return 小型 JSON 结果。",
     }),
   },
   { additionalProperties: false },
 );
 
+/** 枚举 Schema 直接复用领域常量，不另建允许值列表。 */
 const enum_schema = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((value) => Type.Literal(value)));
 
+/** 两个分页 recipe 共用同一 offset / limit 契约。 */
 const page_parameters = (unit: string) => ({
   offset: Type.Optional(Type.Integer({ minimum: 0, description: `跳过的${unit}数量，默认 0。` })),
   limit: Type.Optional(
-    Type.Integer({ minimum: 1, maximum: 100, description: `本页最多返回的${unit}数量，默认 20。` }),
+    Type.Integer({
+      minimum: 1,
+      maximum: AGENT_WORKSPACE_RECIPE_PAGE_LIMIT,
+      description: `本页最多返回的${unit}数量，默认 20，最大 ${AGENT_WORKSPACE_RECIPE_PAGE_LIMIT.toString()}。`,
+    }),
   ),
 });
 
@@ -170,7 +178,7 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       name: "workspace_recipe",
       label: "运行工作区配方",
       description:
-        "运行 contract 声明的只读 recipe 并返回 JSON 结果。三个入口分别查询目标条目、条目邻近文本和质量规则关系组；recipe 源码也可从工作区读取作为实现参考。",
+        "运行 contract 声明的只读 recipe 并返回自描述分页 JSON；重复记录由 *_fields 声明列顺序。三个入口分别查询目标条目、条目邻近文本和质量规则关系组；存在 next_offset 时按其继续，recipe 源码也可从工作区读取作为实现参考。",
       executionMode: "sequential",
       parameters: WORKSPACE_RECIPE_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {

@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
+
 const electron_mocks = vi.hoisted(() => {
   const register_schemes = vi.fn();
   const protocol_handle = vi.fn();
@@ -71,6 +73,7 @@ import {
 } from "./desktop-agent-workspace-runner";
 
 let workspace_path = "";
+const ORIGINAL_ITEMS = '{"value":"original"}\n';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -91,10 +94,10 @@ beforeEach(() => {
       },
     }),
   );
-  fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), "original");
+  fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), ORIGINAL_ITEMS);
   fs.writeFileSync(
     path.join(workspace_path, "recipes", "query-items.js"),
-    "return {marker: args.limit};",
+    "async function runRecipe(_workspace, args) { return { marker: args.limit }; }\nvoid runRecipe;",
   );
 });
 
@@ -115,13 +118,31 @@ describe("DesktopAgentWorkspaceRunner", () => {
         operation: {
           kind: "script",
           script:
-            'await workspace.writeText("items/entries.jsonl", "changed"); return { text: await workspace.readText("items/entries.jsonl") };',
+            'const rows = []; for await (const row of workspace.iterateJsonl(workspace.contract.datasets.items.path)) rows.push(row); await workspace.writeText(workspace.contract.datasets.items.path, "changed"); return { text: await workspace.readText(workspace.contract.datasets.items.path), rows, api: Object.keys(workspace).sort() };',
         },
       },
       new AbortController().signal,
     );
 
-    expect(result).toEqual({ status: "success", result: { text: "changed" } });
+    expect(result).toEqual({
+      status: "success",
+      result: {
+        text: "changed",
+        rows: [{ value: "original" }],
+        api: [
+          "contract",
+          "iterateJsonl",
+          "iterateLines",
+          "list",
+          "readJson",
+          "readText",
+          "remove",
+          "writeJson",
+          "writeJsonl",
+          "writeText",
+        ],
+      },
+    });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
       "changed",
     );
@@ -174,7 +195,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
     const runner = new DesktopAgentWorkspaceRunner();
     fs.writeFileSync(
       path.join(workspace_path, "recipes", "query-items.js"),
-      'return { marker: args.limit, can_write: "writeText" in workspace };',
+      "async function runRecipe(workspace, args) { return { marker: args.limit, path: workspace.contract.datasets.items.path, api: Object.keys(workspace).sort() }; }\nvoid runRecipe;",
     );
     prepare_program_execution();
 
@@ -186,7 +207,14 @@ describe("DesktopAgentWorkspaceRunner", () => {
       new AbortController().signal,
     );
 
-    expect(result).toEqual({ status: "success", result: { marker: 7, can_write: false } });
+    expect(result).toEqual({
+      status: "success",
+      result: {
+        marker: 7,
+        path: "items/entries.jsonl",
+        api: ["contract", "iterateJsonl", "iterateLines", "list", "readJson", "readText"],
+      },
+    });
     expect(fs.existsSync(path.join(workspace_path, ".transactions"))).toBe(false);
   });
 
@@ -210,13 +238,15 @@ describe("DesktopAgentWorkspaceRunner", () => {
     expect(result.message).toContain("[workspace]");
     expect(result.message).not.toContain(workspace_path);
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
+      ORIGINAL_ITEMS,
     );
   });
 
   it("超大结果返回 preserved 与稳定错误消息", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
-    electron_mocks.execute_javascript.mockResolvedValueOnce(`"${"x".repeat(70 * 1024)}"`);
+    electron_mocks.execute_javascript.mockResolvedValueOnce(
+      `"${"x".repeat(AGENT_WORKSPACE_MAX_RESULT_BYTES)}"`,
+    );
 
     await expect(
       runner.run(
@@ -230,7 +260,33 @@ describe("DesktopAgentWorkspaceRunner", () => {
       message: "脚本返回结果过大；请写入 scratch 并只返回摘要。",
     });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
+      ORIGINAL_ITEMS,
+    );
+  });
+
+  it("超大 recipe 结果提示缩小页面并保留工作区", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockResolvedValueOnce(
+      `"${"x".repeat(AGENT_WORKSPACE_MAX_RESULT_BYTES)}"`,
+    );
+
+    await expect(
+      runner.run(
+        {
+          workspacePath: workspace_path,
+          operation: { kind: "recipe", name: "query-items", args: { limit: 100 } },
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+      message:
+        "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 将中间结果写入 scratch 后只返回摘要。",
+    });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      ORIGINAL_ITEMS,
     );
   });
 

@@ -1,9 +1,10 @@
 import { BrowserWindow, protocol, session, type Session } from "electron";
 
 import type { JsonValue } from "../../domain/json";
-import type {
-  BackendRuntimeAgentWorkspaceRunRequest,
-  BackendRuntimeAgentWorkspaceRunResponse,
+import {
+  AGENT_WORKSPACE_MAX_RESULT_BYTES,
+  type BackendRuntimeAgentWorkspaceRunRequest,
+  type BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
 import {
   AgentWorkspaceInvalidError,
@@ -14,8 +15,9 @@ import {
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
 const AGENT_WORKSPACE_PARTITION = "agent-workspace"; // 无 persist: 前缀，应用退出后不落盘
-const MAX_AGENT_WORKSPACE_RESULT_BYTES = 64 * 1024; // worker 只接收小型 JSON 摘要
-const AGENT_WORKSPACE_RESULT_TOO_LARGE = "脚本返回结果过大；请写入 scratch 并只返回摘要。";
+const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE = "脚本返回结果过大；请写入 scratch 并只返回摘要。";
+const AGENT_WORKSPACE_RECIPE_RESULT_TOO_LARGE =
+  "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 将中间结果写入 scratch 后只返回摘要。";
 
 /** 自定义 scheme 权限必须在 Electron ready 前注册。 */
 export function register_agent_workspace_scheme(): void {
@@ -141,8 +143,9 @@ export class DesktopAgentWorkspaceRunner {
       );
       signal.throwIfAborted();
       const serialized_text = String(serialized);
-      if (Buffer.byteLength(serialized_text, "utf-8") > MAX_AGENT_WORKSPACE_RESULT_BYTES) {
-        throw new Error(AGENT_WORKSPACE_RESULT_TOO_LARGE);
+      // renderer 属于不可信执行边界；main 在解析和提交事务前必须独立复核字节门。
+      if (Buffer.byteLength(serialized_text, "utf-8") > AGENT_WORKSPACE_MAX_RESULT_BYTES) {
+        throw new Error(workspace_result_too_large_message(request.operation.kind));
       }
       const result = JSON.parse(serialized_text) as JsonValue;
       await files.commit(signal);
@@ -257,15 +260,25 @@ function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
+/** 自由脚本可以把大结果落到 scratch；只读 recipe 只能继续缩小页面。 */
+function workspace_result_too_large_message(kind: "script" | "recipe"): string {
+  return kind === "script"
+    ? AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE
+    : AGENT_WORKSPACE_RECIPE_RESULT_TOO_LARGE;
+}
+
 /** 模型代码只在异步函数内执行，不落盘、不建立长期 REPL。 */
 function build_workspace_program(
   request: BackendRuntimeAgentWorkspaceRunRequest,
   recipe_source: string | null,
 ): string {
+  // 发布资源保持可静态检查的函数声明，runner 在可信包装末尾显式调用。
+  const recipe_program = `${recipe_source ?? ""}\nreturn await runRecipe(workspace, args);`;
   const operation =
     request.operation.kind === "script"
       ? `await new AsyncFunction("workspace", ${JSON.stringify(request.operation.script)})(workspace)`
-      : `await new AsyncFunction("workspace", "args", ${JSON.stringify(recipe_source ?? "")})(readonlyWorkspace, ${JSON.stringify(request.operation.args)})`;
+      : `await new AsyncFunction("workspace", "args", ${JSON.stringify(recipe_program)})(readonlyWorkspace, ${JSON.stringify(request.operation.args)})`;
+  const result_too_large_message = workspace_result_too_large_message(request.operation.kind);
   return `
 (async () => {
   const encodePath = (value) => String(value).split("/").map(encodeURIComponent).join("/");
@@ -274,6 +287,7 @@ function build_workspace_program(
     if (!response.ok) throw new Error(await response.text() || ("工作区请求失败：" + response.status));
     return response;
   };
+  // 先拒绝非有限数字、非普通对象和循环引用，避免 JSON.stringify 静默丢字段。
   const isJsonValue = (value, stack = new WeakSet()) => {
     if (value === null || typeof value === "string" || typeof value === "boolean") return true;
     if (typeof value === "number") return Number.isFinite(value);
@@ -287,7 +301,9 @@ function build_workspace_program(
     stack.delete(value);
     return valid;
   };
-  async function* readLines(filePath) {
+  const readText = async (filePath) => (await request("/files/" + encodePath(filePath))).text();
+  const readJson = async (filePath) => JSON.parse(await readText(filePath));
+  async function* iterateLines(filePath) {
     const response = await request("/files/" + encodePath(filePath));
     if (response.body === null) return;
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -310,50 +326,59 @@ function build_workspace_program(
       reader.releaseLock();
     }
   }
+  async function* iterateJsonl(filePath) {
+    for await (const line of iterateLines(filePath)) if (line.trim() !== "") yield JSON.parse(line);
+  }
+  // contract 从当前磁盘快照读取；recipe 与自由脚本不会各自维护第二份声明。
+  const contract = await readJson("contract.json");
+  // recipe 只获得冻结的读取面，自由脚本在同一基础上追加事务写方法。
   const readonlyWorkspace = Object.freeze({
-    readText: async (filePath) => (await request("/files/" + encodePath(filePath))).text(),
-    readJson: async (filePath) => JSON.parse(await readonlyWorkspace.readText(filePath)),
-    readLines,
-    readJsonl: async function* (filePath) {
-      for await (const line of readLines(filePath)) if (line.trim() !== "") yield JSON.parse(line);
-    },
+    contract,
+    readText,
+    readJson,
+    iterateLines,
+    iterateJsonl,
     list: async (directory = "") => {
       const response = await request("/__list__?path=" + encodeURIComponent(directory));
       return response.json();
     },
   });
+  const writeText = async (filePath, text) => {
+    await request("/files/" + encodePath(filePath), { method: "PUT", body: String(text) });
+  };
+  const writeJson = async (filePath, value) => {
+    await writeText(filePath, JSON.stringify(value, null, 2) + "\\n");
+  };
+  const writeJsonl = async (filePath, rows) => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const row of rows) controller.enqueue(encoder.encode(JSON.stringify(row) + "\\n"));
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+    });
+    await request("/files/" + encodePath(filePath), { method: "PUT", body, duplex: "half" });
+  };
+  const remove = async (filePath) => {
+    await request("/files/" + encodePath(filePath), { method: "DELETE" });
+  };
   const workspace = Object.freeze({
     ...readonlyWorkspace,
-    writeText: async (filePath, text) => {
-      await request("/files/" + encodePath(filePath), { method: "PUT", body: String(text) });
-    },
-    writeJson: async (filePath, value) => {
-      await workspace.writeText(filePath, JSON.stringify(value, null, 2) + "\\n");
-    },
-    writeJsonl: async (filePath, rows) => {
-      const encoder = new TextEncoder();
-      const body = new ReadableStream({
-        async start(controller) {
-          try {
-            for await (const row of rows) controller.enqueue(encoder.encode(JSON.stringify(row) + "\\n"));
-            controller.close();
-          } catch (error) {
-            controller.error(error);
-          }
-        },
-      });
-      await request("/files/" + encodePath(filePath), { method: "PUT", body, duplex: "half" });
-    },
-    remove: async (filePath) => {
-      await request("/files/" + encodePath(filePath), { method: "DELETE" });
-    },
+    writeText,
+    writeJson,
+    writeJsonl,
+    remove,
   });
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const result = ${operation};
   if (!isJsonValue(result ?? null)) throw new TypeError("工作区结果必须是 JSON value");
   const serialized = JSON.stringify(result ?? null);
-  if (new TextEncoder().encode(serialized).byteLength > ${MAX_AGENT_WORKSPACE_RESULT_BYTES.toString()}) {
-    throw new Error(${JSON.stringify(AGENT_WORKSPACE_RESULT_TOO_LARGE)});
+  if (new TextEncoder().encode(serialized).byteLength > ${AGENT_WORKSPACE_MAX_RESULT_BYTES.toString()}) {
+    throw new Error(${JSON.stringify(result_too_large_message)});
   }
   return serialized;
 })()

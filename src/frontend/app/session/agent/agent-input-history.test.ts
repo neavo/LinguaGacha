@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AGENT_INPUT_HISTORY_LIMIT,
   AGENT_INPUT_HISTORY_STORAGE_KEY,
-  append_agent_input_history,
   read_agent_input_history,
+  update_agent_input_history,
 } from "./agent-input-history";
 
 describe("Agent 输入历史持久化", () => {
@@ -17,7 +17,7 @@ describe("Agent 输入历史持久化", () => {
     expect(read_agent_input_history(storage)).toEqual([]);
   });
 
-  it("读取纯文本历史并只保留最后 20 条", () => {
+  it("读取纯文本历史并只保留容量内的最近记录", () => {
     const history = Array.from(
       { length: AGENT_INPUT_HISTORY_LIMIT + 1 },
       (_, index) => `消息 ${index.toString()}`,
@@ -25,6 +25,21 @@ describe("Agent 输入历史持久化", () => {
     expect(read_agent_input_history(create_storage(JSON.stringify(history)).storage)).toEqual(
       history.slice(1),
     );
+  });
+
+  it("读取旧重复记录时保留最近使用位置，并让容量作用于唯一消息", () => {
+    const history = Array.from(
+      { length: AGENT_INPUT_HISTORY_LIMIT },
+      (_, index) => `消息 ${index.toString()}`,
+    );
+    const repeated = history[5]!;
+    const { storage, setItem } = create_storage(JSON.stringify([...history, repeated]));
+
+    expect(read_agent_input_history(storage)).toEqual([
+      ...history.filter((message) => message !== repeated),
+      repeated,
+    ]);
+    expect(setItem).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -41,16 +56,26 @@ describe("Agent 输入历史持久化", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it("追加时裁剪旧记录并写入纯文本", () => {
+  it("更新时裁剪最旧记录并写入纯文本", () => {
     const current = Array.from(
       { length: AGENT_INPUT_HISTORY_LIMIT },
       (_, index) => `消息 ${index.toString()}`,
     );
     const { storage, setItem } = create_storage(null);
-    const next = append_agent_input_history(storage, current, "最新消息");
+    const next = update_agent_input_history(storage, current, "最新消息");
 
     expect(next).toEqual([...current.slice(1), "最新消息"]);
     expect(setItem).toHaveBeenCalledWith(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(next));
+  });
+
+  it.each([
+    ["连续重复", ["第一条"], "第一条", ["第一条"]],
+    ["非连续重复", ["第一条", "重复", "第三条"], "重复", ["第一条", "第三条", "重复"]],
+  ])("%s 输入只保留最近位置", (_name, current, text, expected) => {
+    const { storage } = create_storage(null);
+    const next = update_agent_input_history(storage, current, text);
+
+    expect(next).toEqual(expected);
   });
 
   it("持久化写入失败时仍返回包含新消息的内存历史", () => {
@@ -60,12 +85,13 @@ describe("Agent 输入历史持久化", () => {
         throw new Error("quota exceeded");
       }),
     );
-    expect(append_agent_input_history(storage, [], "@skill(glossary-audit)")).toEqual([
+    expect(update_agent_input_history(storage, [], "@skill(glossary-audit)")).toEqual([
       "@skill(glossary-audit)",
     ]);
   });
 });
 
+/** 构造最小 Storage 边界，并暴露唯一需要观察的持久化调用。 */
 function create_storage(raw: string | null, setItem = vi.fn()) {
   const storage = {
     length: raw === null ? 0 : 1,
