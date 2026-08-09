@@ -129,6 +129,9 @@ export class BackendBootstrap {
         ...(this.options.agentWebFetch === undefined
           ? {}
           : { agentWebFetch: this.options.agentWebFetch }),
+        ...(this.options.agentWorkspaceRun === undefined
+          ? {}
+          : { agentWorkspaceRun: this.options.agentWorkspaceRun }),
         openOutputFolder: this.options.openOutputFolder,
         workerExecution: this.options.workerExecution,
       });

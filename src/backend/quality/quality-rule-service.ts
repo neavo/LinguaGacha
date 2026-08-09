@@ -152,22 +152,12 @@ export class QualityRuleService {
    */
   public async update(request: JsonRecord): Promise<ProjectWriteResult> {
     return await this.runtime_gate.run_project_write(
-      async () => await this.update_under_lease(request, DEFAULT_QUALITY_RULE_UPDATE_SOURCE),
+      async () => await this.update_under_lease(request),
     );
   }
 
-  /** Agent 工具只能在自己的运行 lease 内复用同一规则提交实现。 */
-  public async update_from_agent(request: JsonRecord, source: string): Promise<ProjectWriteResult> {
-    return await this.runtime_gate.run_agent_project_write(
-      async () => await this.update_under_lease(request, source),
-    );
-  }
-
-  /** 用户与 Agent 两条门禁入口在取得 lease 后共享同一规范化和事务提交。 */
-  private async update_under_lease(
-    request: JsonRecord,
-    source: string,
-  ): Promise<ProjectWriteResult> {
+  /** 取得用户项目写 lease 后统一规范化并提交规则事实。 */
+  private async update_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = this.session_state.require_loaded_project_path();
@@ -192,7 +182,7 @@ export class QualityRuleService {
       expectedSectionRevisions: require_project_expected_section_revisions(
         request["expected_section_revisions"],
       ),
-      source,
+      source: DEFAULT_QUALITY_RULE_UPDATE_SOURCE,
       rule:
         entries === undefined
           ? undefined

@@ -21,6 +21,10 @@ import {
 import { DesktopUpdateService } from "./shell/desktop-update-service";
 import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
 import { desktop_web_fetch } from "./runtime/desktop-web-fetch";
+import {
+  DesktopAgentWorkspaceRunner,
+  register_agent_workspace_scheme,
+} from "./runtime/desktop-agent-workspace-runner";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
@@ -31,6 +35,7 @@ export interface GuiEntryOptions {
  * 启动 Electron GUI 入口；模块导入本身不注册 Electron 事件，便于顶层 index 分发 CLI。
  */
 export function run_gui_entry(options: GuiEntryOptions): void {
+  register_agent_workspace_scheme();
   const desktop_bundle_dir = options.desktopBundleDir;
   configure_renderer_public_path(desktop_bundle_dir);
   configure_development_remote_debugging();
@@ -44,6 +49,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let system_proxy_startup_notice: DesktopSystemProxyStartupNotice =
     EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE; // 启动期代理提示只保存脱敏摘要，窗口重建时复用同一事实
   let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
+  let agent_workspace_runner: DesktopAgentWorkspaceRunner | null = null; // 模型脚本只进入独立 Chromium 沙箱
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
@@ -66,6 +72,14 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
     webFetch: (request, signal) => desktop_web_fetch(session.defaultSession, request, signal),
+    runAgentWorkspace: async (request, signal) => {
+      if (agent_workspace_runner === null) {
+        throw new AppErrors.InternalInvariantError({
+          diagnostic_context: { reason: "agent_workspace_runner_not_ready" },
+        });
+      }
+      return await agent_workspace_runner.run(request, signal);
+    },
     onUnexpectedExit: (error) => {
       try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
       void quit_app_after_backend_shutdown(1);
@@ -158,6 +172,8 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     try {
       await backend_runtime.stop();
     } finally {
+      agent_workspace_runner?.dispose();
+      agent_workspace_runner = null;
       app.exit(exit_code);
     }
   }
@@ -188,6 +204,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
+      agent_workspace_runner = new DesktopAgentWorkspaceRunner();
       const backend_start_result = await backend_runtime.start();
       backend_api_base_url = backend_start_result.apiBaseUrl;
       system_proxy_startup_notice = backend_start_result.systemProxyStartupNotice;

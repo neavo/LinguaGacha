@@ -108,7 +108,8 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_output_folder, web_fetch } = create_client();
+    const { client, resolve_proxy, open_output_folder, web_fetch, run_agent_workspace } =
+      create_client();
     const start = client.start();
     const worker = get_worker();
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
@@ -129,11 +130,29 @@ describe("BackendRuntimeClient", () => {
       requestId: "open-1",
       operation: { kind: "open_output_folder", path: "E:/output" },
     } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(3));
+    worker.emit("message", {
+      type: "host_request",
+      requestId: "workspace-1",
+      operation: {
+        kind: "run_agent_workspace",
+        request: {
+          workspacePath: "E:/workspace/run-1",
+          operation: { kind: "script", script: "return null" },
+        },
+      },
+    } satisfies BackendRuntimeWorkerMessage);
+    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(4));
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
     expect(open_output_folder).toHaveBeenCalledWith("E:/output");
     expect(web_fetch).toHaveBeenCalledWith({ url: "https://example.com" }, expect.any(AbortSignal));
+    expect(run_agent_workspace).toHaveBeenCalledWith(
+      {
+        workspacePath: "E:/workspace/run-1",
+        operation: { kind: "script", script: "return null" },
+      },
+      expect.any(AbortSignal),
+    );
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "fetch-1",
@@ -157,6 +176,14 @@ describe("BackendRuntimeClient", () => {
       type: "host_response",
       requestId: "open-1",
       result: { ok: false, error: expect.objectContaining({ message: "无法打开目录" }) },
+    });
+    expect(worker.posted_messages).toContainEqual({
+      type: "host_response",
+      requestId: "workspace-1",
+      result: {
+        ok: true,
+        data: { status: "success", result: { workspace_path: "E:/workspace/run-1" } },
+      },
     });
   });
 
@@ -288,6 +315,10 @@ function create_client(overrides?: {
       contentType: "text/plain",
       body: new Uint8Array([111, 107]),
     }));
+  const run_agent_workspace = vi.fn(async (request: { workspacePath: string }) => ({
+    status: "success" as const,
+    result: { workspace_path: request.workspacePath },
+  }));
   return {
     client: new BackendRuntimeClient({
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
@@ -295,11 +326,13 @@ function create_client(overrides?: {
       resolveProxy: resolve_proxy,
       openOutputFolder: open_output_folder,
       webFetch: web_fetch,
+      runAgentWorkspace: run_agent_workspace,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
     open_output_folder,
     web_fetch,
+    run_agent_workspace,
     on_unexpected_exit,
   };
 }

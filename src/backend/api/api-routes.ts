@@ -85,7 +85,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   const proofreading_query = services.proofreading.query;
   const proofreading = services.proofreading.commands;
   context.postJson("/api/proofreading/query", (body) => proofreading_query.query(body));
-  context.postJson("/api/proofreading/items/update", (body) => proofreading.update_items(body));
+  context.postJson("/api/proofreading/items/update", (body) =>
+    proofreading.apply_item_changes(body),
+  );
   context.postJson("/api/proofreading/translations/clear", (body) =>
     proofreading.clear_translations(body),
   );

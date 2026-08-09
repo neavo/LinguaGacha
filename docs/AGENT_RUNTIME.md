@@ -14,10 +14,12 @@
 | --- | --- | --- |
 | 公开状态、完整 UI 时间线、会话生命周期与启动期资源 | `AgentService` | Agent API、`agent.session_event` |
 | 模型可见历史、工具循环、上下文压缩、中断与 settle | 内存 `AgentSession` | `AgentService` 调用 SDK 的 prompt、模型切换与关闭 API |
+| 当前完整数据工作区、快照与差异准备 | `AgentWorkspaceService` | `workspace_create`、`workspace_recipe`、`workspace_script`、`workspace_apply` |
 
 - Agent 运行时完全内存化。消息受理到整个用户任务最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的运行 lease；一个任务可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次执行。中途压缩失败会结束本轮，并阻断新消息直至压缩恢复。
 - 手动压缩重试同样持有运行 lease；失败轮次恢复成功后追加固定“继续”user 轮次，已完成轮次只恢复模型历史。普通模型回合的 stop 同步封口仍运行的子条目和 user 条目、将公开会话切回 `idle`，再异步取消 SDK，lease 仍到最终 settle 才释放。压缩是不可 stop 的原子阶段，前后端都拒绝压缩期间的 stop；reset、工程切换和 dispose 仍通过运行时关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
+- GUI Agent 至多持有一个位于应用 userdata 的一次性磁盘工作区。新 create 全部成功后才替换旧工作区；每次成功 `workspace_script` 把当前文件事务提交到该工作区基线，脚本失败、取消或结果无效只回滚本次运行，保留此前成功结果。工程身份 / 七个 section revision / 语言变化、reset、工程切换、apply 成功、stale、无法补偿的文件事务 / 未知宿主失败和 dispose 才清理工作区，可写数据集校验错误则保留供 `workspace_script` 修复。应用启动删除崩溃遗留目录，工作区不进入 Agent snapshot、模型历史或项目事实。
 
 ## 3. 模型、资源与 skill
 
@@ -28,20 +30,19 @@
 
 ## 4. 产品工具与宿主能力
 
-- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占结构、必填、枚举与载荷上限。只读查询的可选集合省略或为空时均不限制对应维度，非空时在执行边界按首次出现顺序去重；可选写操作数组省略或为空时均不执行该类操作，写操作的重复目标与“没有任何真实操作”仍由领域校验拒绝。`AgentToolError` 只表达模型可修正的领域错误。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地化应用诊断。
-- SDK 的 `tool_execution_start/end` 是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常；start 保存完整输入，SDK 产生终态时 end 保存完整最终结果与错误标记。公开时间线从同一事件投影内存 UI 所需的输入与文本输出，但不替代持久化记录或公开结构化错误；stop 后的合法终帧仍记录，reset / dispose 在终帧前解除订阅时不伪造 end，单独的 start 即表示调用未完成。
-- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item、warning 与 quality 查询统一返回按领域收窄的 `revisions`；item 写入使用 `expected_revisions`，quality 写入使用查询所得 `revisions.quality` 作为 `expected_revision`。写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
-- 产品 Agent 的 item、warning 与 quality 查询统一以 `search.keywords` 表达文本搜索：省略或空数组不搜索，非空关键词经 NFKC 归一后忽略大小写，按 OR 做字面量包含匹配，正则和通配符没有特殊含义；item 与 warning 另以 scope 选择原文、译文或两者，quality 固定搜索规则 src。
-- 质量规则工具统一查询和原子更新；查询不返回启用状态或文本保护模式，模型可见条目身份统一为 `id`，写入和排序锚点使用 `id` / `before_id`。后端仍以持久化稳定身份决定创建或更新，并在提交前拒绝新增或扩大的重复组。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
-- `query_items` 和 `query_warning_items` 组合结构化精确过滤与文本搜索，结果完整性由分页决定。`query_items` 只从基础 item cache 查询，并返回关键词命中归因；item 查询返回身份、正文、可见姓名、定位、状态和重试事实，且只在未完成分页时携带 `cursor`。`query_warning_items` 复用相同搜索协议、基础投影和当前校对评估运行态，只附加真实 warning 证据且不创建或替换 GUI 列表视图；`update_items` 在 Agent 边界按 item 聚合单字段写入后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。
-- `query_quality_rules` 对四类规则统一返回 `revisions: { quality, items }`、平铺 `entries`、每条规则的 `hits` 和包含单例的稳定 `groups`；只有 `include_examples: true` 时才为条目投影最多两个纯文本 `examples`。搜索查询以 src 直接命中的 ID 为 `target_ids`，并展开目标所在完整组；组内其它条目只是关系证据。Agent 不扫描 item、不调用 worker、不另建统计或分组缓存，全部派生事实直接读取 [`BACKEND.md`](BACKEND.md) 的统一分析缓存。
-- `groups` 只表示共同审校范围，不表示语义等价；关系计算的权威语义归 [`BACKEND.md`](BACKEND.md)。`examples` 是按 item 顺序输出的确定性有限代表语境，姓名存在时格式为 `【name】正文`。后续 `query_items` 以 quality 查询的 `revisions.items` 与 item 查询的 `revisions.items` 相等作为快照边界。
+- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
+- 工程数据工具只保留 `workspace_create`、`workspace_recipe`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
+- `workspace_create` 无参数生成完整快照，并在工具结果与磁盘文件中返回同源的 project_meta 和 contract；脚本与 recipe 运行时再把同一磁盘 contract 投影为 `workspace.contract`。project_meta 只暴露解释快照所需的语言、数量与文件顺序；contract 是数据布局、字段、身份、可写性、apply 语义、模型结果字节上限、脚本 API 及 recipe 源码入口的唯一代码权威，不承载运行时生命周期。
+- 工作区按业务领域相邻组织可写数据和创建时证据，提示词保持单体 JSON；analysis 状态与候选不进入工作区，warnings 与 evidence 不随脚本改写重新计算。具体路径、字段与 recipe 查询算法留在 contract、发布源码和行为测试。
+- recipe 源码既是只读可执行资源，也是自由脚本的可选参考；`workspace_recipe` 与 `workspace_script` 是平级入口，不建立推荐或回退顺序。recipe 参数及分页值域只由前者的按名称判别 Schema 定义，skill、prompt 和 contract 不复制这份输入协议；重复同构记录以字段表和对应数组行返回，单个事实与关系保留具名对象，分页以 `next_offset` 延续。
+- `workspace_recipe` 与 `workspace_script` 都在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行，并共享由运行时常量定义、经 `contract.limits.result_bytes` 暴露的模型结果字节硬门。二者获得同源 `workspace.contract` 和显式区分 Promise 与 AsyncIterable 的文件 API；前者只读执行 contract 指向的发布源码，后者把 contract 标记为 writable 的固定文件与 scratch 写入单次磁盘 overlay。结果通过 JSON 与字节硬门后才提交脚本事务，失败、停止或超限只回滚该 overlay。脚本 API 不提供 recipe 执行旁路；提交失败先恢复被替换基线，补偿或清理失败才把工作区标为失效。私有 protocol 提供合并视图的流式读写，project_meta、contract、warnings、evidence 与 recipes 永远只读，路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
+- 脚本改写可写数据集只形成变更准备，不修改工程。`workspace_apply` 无参数读取并严格校验全部可写数据集，自动计算 items、quality 与 prompts 的真实差异；校验错误保留工作区供修复，stale、事务或未知失败清理工作区并要求重新 create。无变化不进入项目写口、不推进 revision、不发布事件；成功只返回紧凑计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
 ## 5. 前端消费
 
 - Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
 - `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、纯文本草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。
-- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / stop / reset 与压缩重试的受理失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿。
+- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / stop / reset 与压缩重试的受理失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。合法消息 ack 原子更新辅助输入历史并清空草稿；失败保留草稿。
 - 页面持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；回合失败由公开条目状态投影到所属轮次末尾，用户重试会直接追加并发送同文新轮次。上述页面事实都不进入 Agent snapshot、历史或发送协议，输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent 回合运行态与 stop 命令不锁定草稿编辑，send / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset 与模型选择 / 思考档位控制。压缩期间保留草稿编辑但禁用发送、reset、模型控制和 stop，失败后允许更换模型或开始新任务；压缩重试成功后的条件续跑由后端拥有，renderer 不监听终态补发命令。

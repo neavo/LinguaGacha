@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -96,6 +98,25 @@ describe("原生文件系统门面", () => {
     native_fs.remove(path.join(temp_dir, "removable"), { recursive: true, force: true });
 
     expect(fs.existsSync(path.join(temp_dir, "removable"))).toBe(false);
+  });
+
+  it("流式接口复用父目录与路径策略，并支持异步清理临时目录", async () => {
+    const native_fs = new NativeFs(new NativePathPolicy(process.platform));
+    const target_dir = path.join(temp_dir, "stream");
+    const target_path = path.join(target_dir, "payload.jsonl");
+
+    await pipeline(
+      Readable.from(["第一行\n", "第二行\n"]),
+      native_fs.create_write_stream(target_path),
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of native_fs.create_read_stream(target_path)) {
+      chunks.push(Buffer.from(chunk));
+    }
+    expect(Buffer.concat(chunks).toString("utf-8")).toBe("第一行\n第二行\n");
+
+    await native_fs.remove_async(target_dir, { recursive: true, force: true });
+    expect(fs.existsSync(target_dir)).toBe(false);
   });
 
   it("第三方二进制输出会收窄成 Uint8Array", () => {

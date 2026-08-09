@@ -4,7 +4,7 @@ import type { ProjectItemPublicRecord } from "../../domain/item";
 import {
   create_clear_translations_plan,
   create_replace_all_plan,
-  create_update_items_plan,
+  create_apply_item_changes_plan,
   type ProofreadingCommandSnapshot,
 } from "./proofreading-command-planner";
 
@@ -34,7 +34,7 @@ function create_test_snapshot(items: ProjectItemPublicRecord[]): ProofreadingCom
 
 describe("proofreading command planner", () => {
   it("批量译文、译名和状态变化统一提交 changes 与 revision 锁", () => {
-    const plan = create_update_items_plan({
+    const plan = create_apply_item_changes_plan({
       snapshot: create_test_snapshot([
         create_test_item({ item_id: 1, dst: "旧正文", name_dst: "旧译名" }),
         create_test_item({ item_id: 2, status: "PROCESSED", retry_count: 2 }),
@@ -62,13 +62,13 @@ describe("proofreading command planner", () => {
       create_test_item({ item_id: 1, dst: "正文", name_dst: ["译名", "保留"] }),
     ]);
     expect(
-      create_update_items_plan({
+      create_apply_item_changes_plan({
         snapshot,
         changes: [{ item_id: 1, dst: "正文", name_dst: "译名" }],
       }),
     ).toBeNull();
     expect(
-      create_update_items_plan({
+      create_apply_item_changes_plan({
         snapshot,
         changes: [{ item_id: 1, name_dst: "新译名" }],
       })?.request_body.changes,
@@ -76,7 +76,7 @@ describe("proofreading command planner", () => {
   });
 
   it("显式状态在必要时覆盖 dst 自动状态并清理 retry", () => {
-    const plan = create_update_items_plan({
+    const plan = create_apply_item_changes_plan({
       snapshot: create_test_snapshot([
         create_test_item({ item_id: 1, dst: "旧", status: "EXCLUDED", retry_count: 0 }),
       ]),
@@ -85,7 +85,7 @@ describe("proofreading command planner", () => {
     expect(plan?.request_body.changes).toEqual([{ item_id: 1, dst: "新", status: "EXCLUDED" }]);
 
     expect(
-      create_update_items_plan({
+      create_apply_item_changes_plan({
         snapshot: create_test_snapshot([
           create_test_item({ item_id: 1, status: "PROCESSED", retry_count: 0 }),
         ]),

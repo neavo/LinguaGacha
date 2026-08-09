@@ -9,14 +9,14 @@ import { useTextReplacementPageState } from "@frontend/pages/text-replacement-pa
 const {
   api_fetch_mock,
   push_toast_mock,
-  query_quality_rules_mock,
+  read_quality_rule_snapshot_mock,
   translate_mock,
   page_ui_state_store,
 } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
-    query_quality_rules_mock: vi.fn(),
+    read_quality_rule_snapshot_mock: vi.fn(),
     translate_mock: (key: string) => key,
     page_ui_state_store: new Map<string, unknown>(),
   };
@@ -249,7 +249,7 @@ vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async 
     >();
   return {
     ...actual,
-    query_quality_rules: query_quality_rules_mock,
+    read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
   };
 });
 
@@ -537,8 +537,8 @@ describe("useTextReplacementPageState", () => {
     project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    query_quality_rules_mock.mockReset();
-    query_quality_rules_mock.mockImplementation(
+    read_quality_rule_snapshot_mock.mockReset();
+    read_quality_rule_snapshot_mock.mockImplementation(
       async (rule_type: keyof typeof run_state.quality) => ({
         projectPath: run_state.project.path,
         sectionRevisions: { ...run_state.revisions.sections },

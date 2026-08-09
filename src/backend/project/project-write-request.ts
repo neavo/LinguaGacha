@@ -1,6 +1,8 @@
-import type { JsonValue } from "../../domain/json";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { Item, type ItemNameField, type ItemStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
+import type { PromptKind } from "../../domain/prompt";
+import type { QualityRuleKind } from "../../domain/quality";
 import {
   normalize_task_progress_snapshot,
   TASK_PROGRESS_STATUSES,
@@ -11,6 +13,24 @@ import * as AppErrors from "../../shared/error";
 import type { ProjectDataSection } from "../../shared/project-event";
 
 export type ProjectExpectedSectionRevisions = Partial<Record<ProjectDataSection, number>>;
+
+/** Agent 工作区一次提交所需的不可变领域差异。 */
+export type AgentWorkspaceItemChange = Readonly<{
+  current: Readonly<JsonRecord>;
+  next: Readonly<JsonRecord>;
+}>;
+
+/** 单个 quality kind 的完整最终有序集合。 */
+export type AgentWorkspaceQualityChange = Readonly<{
+  kind: QualityRuleKind;
+  entries: readonly JsonRecord[];
+}>;
+
+/** 单个固定 prompt 正文的最终值。 */
+export type AgentWorkspacePromptChange = Readonly<{
+  kind: PromptKind;
+  text: string;
+}>;
 
 export type TranslationItemPatch = {
   item_id: number;

@@ -2,8 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { query_quality_rules_mock } = vi.hoisted(() => ({
-  query_quality_rules_mock: vi.fn(),
+const { read_quality_rule_snapshot_mock } = vi.hoisted(() => ({
+  read_quality_rule_snapshot_mock: vi.fn(),
 }));
 
 vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async (import_actual) => {
@@ -13,7 +13,7 @@ vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async 
     >();
   return {
     ...actual,
-    query_quality_rules: query_quality_rules_mock,
+    read_quality_rule_snapshot: read_quality_rule_snapshot_mock,
   };
 });
 
@@ -57,7 +57,7 @@ describe("quality rule query lifecycle", () => {
   let root: Root;
 
   beforeEach(() => {
-    query_quality_rules_mock.mockReset();
+    read_quality_rule_snapshot_mock.mockReset();
     on_load_error.mockReset();
     current_state = null;
     project_change_signal = {
@@ -75,21 +75,21 @@ describe("quality rule query lifecycle", () => {
   });
 
   it("只在会话可读且 quality 事实变化时刷新规则切片", async () => {
-    query_quality_rules_mock.mockResolvedValue({
+    read_quality_rule_snapshot_mock.mockResolvedValue({
       projectPath: "E:/demo/demo.lg",
       sectionRevisions: { quality: 3 },
       qualityRule: { enabled: false },
     });
 
     await act(async () => root.render(<QueryProbe project_path="" />));
-    expect(query_quality_rules_mock).not.toHaveBeenCalled();
+    expect(read_quality_rule_snapshot_mock).not.toHaveBeenCalled();
     expect(current_state).toMatchObject({
       quality_slice: DEFAULT_SLICE,
       quality_loaded: false,
     });
 
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
-    expect(query_quality_rules_mock).toHaveBeenCalledTimes(1);
+    expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(1);
     expect(current_state).toMatchObject({
       quality_slice: { enabled: false, section_revision: 3 },
       quality_loaded: true,
@@ -101,7 +101,7 @@ describe("quality rule query lifecycle", () => {
       updated_sections: ["items"],
     };
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
-    expect(query_quality_rules_mock).toHaveBeenCalledTimes(1);
+    expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(1);
 
     project_change_signal = {
       ...project_change_signal,
@@ -109,12 +109,12 @@ describe("quality rule query lifecycle", () => {
       updated_sections: ["quality"],
     };
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
-    expect(query_quality_rules_mock).toHaveBeenCalledTimes(2);
+    expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(2);
   });
 
   it("初次查询失败时只交给页面错误出口", async () => {
     const error = new Error("load failed");
-    query_quality_rules_mock.mockRejectedValue(error);
+    read_quality_rule_snapshot_mock.mockRejectedValue(error);
 
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
 
@@ -125,7 +125,7 @@ describe("quality rule query lifecycle", () => {
   it("项目切换后不接纳旧项目的迟到响应", async () => {
     let resolve_old!: (value: unknown) => void;
     let resolve_new!: (value: unknown) => void;
-    query_quality_rules_mock
+    read_quality_rule_snapshot_mock
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -140,7 +140,7 @@ describe("quality rule query lifecycle", () => {
       );
 
     await act(async () => root.render(<QueryProbe project_path="E:/old/old.lg" />));
-    await vi.waitFor(() => expect(query_quality_rules_mock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(1));
     await act(async () => root.render(<QueryProbe project_path="E:/new/new.lg" />));
     expect(current_state).toMatchObject({ quality_slice: DEFAULT_SLICE, quality_loaded: false });
 
@@ -167,7 +167,7 @@ describe("quality rule query lifecycle", () => {
   });
 
   it("显式刷新迟到时不覆盖新工程切片", async () => {
-    query_quality_rules_mock.mockResolvedValueOnce({
+    read_quality_rule_snapshot_mock.mockResolvedValueOnce({
       projectPath: "E:/old/old.lg",
       sectionRevisions: { quality: 1 },
       qualityRule: { enabled: true },
@@ -176,7 +176,7 @@ describe("quality rule query lifecycle", () => {
     await vi.waitFor(() => expect(current_state?.quality_loaded).toBe(true));
 
     let resolve_refresh!: (value: unknown) => void;
-    query_quality_rules_mock.mockImplementationOnce(
+    read_quality_rule_snapshot_mock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolve_refresh = resolve;
@@ -188,7 +188,7 @@ describe("quality rule query lifecycle", () => {
       await Promise.resolve();
     });
 
-    query_quality_rules_mock.mockResolvedValueOnce({
+    read_quality_rule_snapshot_mock.mockResolvedValueOnce({
       projectPath: "E:/new/new.lg",
       sectionRevisions: { quality: 4 },
       qualityRule: { enabled: false },

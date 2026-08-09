@@ -1870,7 +1870,7 @@ describe("useProofreadingPageState", () => {
                 {
                   type: "project.changed",
                   eventId: "clear-write-1",
-                  source: "proofreading_update_items",
+                  source: "proofreading_apply_item_changes",
                   projectPath: "E:/demo/sample.lg",
                   projectRevision: 1,
                   sectionRevisions: { items: 8, proofreading: 2 },

@@ -14,6 +14,8 @@ const HOME_DATA_ROOT_NAME = "LinguaGacha";
 const RESOURCE_DIR_NAME = "resource";
 const USER_DATA_DIR_NAME = "userdata";
 const BERSERKER_DIR_NAME = "berserker";
+const AGENT_DIR_NAME = "agent";
+const AGENT_WORKSPACE_DIR_NAME = "workspace";
 const LOG_DIR_NAME = "log";
 const TEMPLATE_DIR_NAME = "template";
 const PRESET_DIR_NAME = "preset";
@@ -135,6 +137,16 @@ export class AppPathService {
     return this.get_user_data_path(BERSERKER_DIR_NAME);
   }
 
+  /** 返回一次性 Agent 数据工作区根目录；启动与会话清理共用同一落点。 */
+  public get_agent_workspace_root_dir(): string {
+    return this.get_user_data_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME);
+  }
+
+  /** 返回随应用发布的只读 Agent 工作区 recipe 资源目录。 */
+  public get_agent_workspace_recipe_dir(): string {
+    return this.get_resource_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME, "recipes");
+  }
+
   /**
    * 返回指定版本更新包目录，目录名和启动清理规则共享同一约定。
    */
@@ -195,7 +207,7 @@ export class AppPathService {
    * 返回用户 Agent skill 根目录，和内置资源保持同一目录协议。
    */
   public get_agent_user_skill_dir(): string {
-    return this.get_user_data_path("agent", "skill");
+    return this.get_user_data_path(AGENT_DIR_NAME, "skill");
   }
 
   /**

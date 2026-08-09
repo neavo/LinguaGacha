@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BackendRuntimeHostOperation,
+  BackendRuntimeAgentWorkspaceRunRequest,
+  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeMainMessage,
   BackendRuntimeWebFetchRequest,
   BackendRuntimeWebFetchResponse,
@@ -84,6 +86,10 @@ describe("run_backend_runtime", () => {
         request: BackendRuntimeWebFetchRequest,
         signal: AbortSignal,
       ) => Promise<BackendRuntimeWebFetchResponse>;
+      agentWorkspaceRun: (
+        request: BackendRuntimeAgentWorkspaceRunRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
     };
     const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
@@ -124,6 +130,22 @@ describe("run_backend_runtime", () => {
     });
     await expect(fetch).resolves.toEqual(fetch_response);
 
+    const workspace = bootstrap_options.agentWorkspaceRun(
+      {
+        workspacePath: "E:/userdata/agent/workspace/run-1",
+        operation: { kind: "script", script: "return { changed: 2 }" },
+      },
+      new AbortController().signal,
+    );
+    const workspace_request = get_host_request(port, "run_agent_workspace");
+    expect(structuredClone(workspace_request)).toEqual(workspace_request);
+    port.emit({
+      type: "host_response",
+      requestId: workspace_request.requestId,
+      result: { ok: true, data: { status: "success", result: { changed: 2 } } },
+    });
+    await expect(workspace).resolves.toEqual({ status: "success", result: { changed: 2 } });
+
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({
       type: "record_host_diagnostic",
@@ -147,7 +169,7 @@ describe("run_backend_runtime", () => {
     expect(runtime_mocks.stop).toHaveBeenCalledOnce();
   });
 
-  it("取消宿主抓取后发送 host_cancel、保留原始原因并忽略迟到结果", async () => {
+  it("取消宿主操作后等待清理回执，再以原始原因结算", async () => {
     const port = create_port();
     await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -163,11 +185,21 @@ describe("run_backend_runtime", () => {
       controller.signal,
     );
     const request = get_host_request(port, "web_fetch");
+    let settled = false;
+    void fetch.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
 
     controller.abort(reason);
 
-    await expect(fetch).rejects.toBe(reason);
     expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
+    await Promise.resolve();
+    expect(settled).toBe(false);
     expect(() =>
       port.emit({
         type: "host_response",
@@ -175,6 +207,47 @@ describe("run_backend_runtime", () => {
         result: { ok: true, data: null },
       }),
     ).not.toThrow();
+    await expect(fetch).rejects.toBe(reason);
+  });
+
+  it.each([
+    ["已提交成功", { status: "success" as const, result: { changed: 1 } }],
+    [
+      "回滚失败",
+      {
+        status: "failed" as const,
+        workspaceState: "invalidated" as const,
+        failure: "transaction_failed" as const,
+        message: "工作区事务回滚失败。",
+      },
+    ],
+  ])("取消工作区操作后把%s结果交回服务处理", async (_case, completed) => {
+    const port = create_port();
+    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    const bootstrap_options = runtime_mocks.constructor_options[0] as {
+      agentWorkspaceRun: (
+        request: BackendRuntimeAgentWorkspaceRunRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
+    };
+    const controller = new AbortController();
+    const running = bootstrap_options.agentWorkspaceRun(
+      {
+        workspacePath: "E:/workspace/run-1",
+        operation: { kind: "script", script: "return null" },
+      },
+      controller.signal,
+    );
+    const request = get_host_request(port, "run_agent_workspace");
+    controller.abort(new Error("用户停止"));
+
+    port.emit({
+      type: "host_response",
+      requestId: request.requestId,
+      result: { ok: true, data: completed },
+    });
+
+    await expect(running).resolves.toEqual(completed);
   });
 
   it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {

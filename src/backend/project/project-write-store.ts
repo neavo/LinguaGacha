@@ -17,6 +17,7 @@ import type {
   ProjectDataSection,
   ProjectWriteResult,
 } from "../../shared/project-event";
+import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
@@ -33,6 +34,9 @@ import type {
   AnalysisCheckpointWrite,
   AnalysisGlossaryWrite,
   AnalysisProgressWrite,
+  AgentWorkspaceItemChange,
+  AgentWorkspacePromptChange,
+  AgentWorkspaceQualityChange,
   TranslationItemPatch,
 } from "./project-write-request";
 import {
@@ -100,10 +104,10 @@ export type ProjectWriteSectionAck = {
   section_revisions: MutableJsonRecord;
 };
 
-type ProofreadingItemChange = {
-  current: MutableJsonRecord;
-  next: MutableJsonRecord;
-};
+type ProofreadingItemChange = Readonly<{
+  current: Readonly<MutableJsonRecord>;
+  next: Readonly<MutableJsonRecord>;
+}>;
 
 type TranslationProgressCounters = {
   total_line: number;
@@ -788,6 +792,100 @@ export class ProjectWriteStore {
   }
 
   /**
+   * 将 Agent 工作区的 items、quality 与 prompts 差异放入同一个 revision guard 和数据库事务。
+   */
+  public async apply_agent_workspace_changes(request: {
+    projectPath: string;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    source: "agent_workspace_apply";
+    itemChanges: readonly AgentWorkspaceItemChange[];
+    qualityChanges: readonly AgentWorkspaceQualityChange[];
+    promptChanges: readonly AgentWorkspacePromptChange[];
+  }): Promise<ProjectWriteResult> {
+    const updated_sections: ProjectDataSection[] = [];
+    if (request.itemChanges.length > 0) updated_sections.push("items", "proofreading");
+    if (request.qualityChanges.length > 0) updated_sections.push("quality");
+    if (request.promptChanges.length > 0) updated_sections.push("prompts");
+    if (updated_sections.length === 0) return this.empty_project_write_result();
+
+    const item_patches = request.itemChanges.map((change) => ({
+      item_id: this.read_positive_item_id(change.next["id"], "agent_workspace_item_id"),
+      patch: this.build_translation_patch_from_items(change.current, change.next),
+    }));
+    const update_translation_extras = request.itemChanges.some(
+      ({ current, next }) =>
+        String(current["dst"] ?? "") !== String(next["dst"] ?? "") ||
+        String(current["status"] ?? "") !== String(next["status"] ?? "") ||
+        Number(current["retry_count"] ?? 0) !== Number(next["retry_count"] ?? 0),
+    );
+
+    return await this.commit_runtime_change({
+      projectPath: request.projectPath,
+      expectedSectionRevisions: request.expectedSectionRevisions,
+      requireExpectedSectionRevisions: true,
+      revisionSections: [...PROJECT_DATA_SECTIONS],
+      source: request.source,
+      updatedSections: updated_sections,
+      ...(item_patches.length === 0
+        ? {}
+        : { items: { payloadMode: "section-invalidated" as const } }),
+      buildWrites: (revision_context) => {
+        const writes: ProjectDatabaseWrite[] = [];
+        if (item_patches.length > 0) {
+          writes.push((database) =>
+            database.patch_item_translation_fields(
+              request.projectPath,
+              this.to_database_translation_patches(item_patches),
+            ),
+          );
+          if (update_translation_extras) {
+            const translation_extras = this.build_translation_extras_after_status_changes(
+              request.projectPath,
+              revision_context,
+              request.itemChanges,
+            );
+            writes.push((database) =>
+              database.upsert_meta_entries(request.projectPath, {
+                translation_extras: translation_extras as unknown as JsonValue,
+              } as unknown as JsonRecord),
+            );
+          }
+          writes.push(
+            ...this.build_section_revision_writes(revision_context, ["items", "proofreading"]),
+          );
+        }
+
+        const quality_revision = get_section_revision(revision_context.meta, "quality") + 1;
+        for (const change of request.qualityChanges) {
+          const storage = resolve_project_quality_rule_storage(change.kind);
+          writes.push(
+            (database) =>
+              database.set_rules(
+                request.projectPath,
+                storage.database_type,
+                change.entries as unknown as JsonValue[],
+              ),
+            (database) =>
+              database.set_meta(request.projectPath, storage.revision_meta_key, quality_revision),
+          );
+        }
+
+        const prompts_revision = get_section_revision(revision_context.meta, "prompts") + 1;
+        for (const change of request.promptChanges) {
+          const storage = resolve_project_prompt_storage(change.kind);
+          writes.push(
+            (database) =>
+              database.set_rule_text(request.projectPath, storage.database_type, change.text),
+            (database) =>
+              database.set_meta(request.projectPath, storage.revision_meta_key, prompts_revision),
+          );
+        }
+        return writes;
+      },
+    });
+  }
+
+  /**
    * 任务 artifact item patch 共享同一写入链路和进度 meta 更新。
    */
   private async apply_task_item_patches(request: {
@@ -1080,8 +1178,8 @@ export class ProjectWriteStore {
    * 复用公开字段差异算法构造校对 patch，并拒绝无变化提交。
    */
   private build_translation_patch_from_items(
-    current: MutableJsonRecord,
-    next: MutableJsonRecord,
+    current: Readonly<MutableJsonRecord>,
+    next: Readonly<MutableJsonRecord>,
   ): TranslationItemPatch["patch"] {
     const patch = build_project_item_field_patch(current, next);
     if (patch === null) {
@@ -1115,7 +1213,7 @@ export class ProjectWriteStore {
   private build_translation_extras_after_status_changes(
     project_path: string,
     revision_context: ProjectWriteRevisionContext,
-    changes: ProofreadingItemChange[],
+    changes: readonly ProofreadingItemChange[],
   ): Record<string, unknown> {
     const stored_progress = {
       ...read_json_record(revision_context.meta["translation_extras"]),
@@ -1191,7 +1289,7 @@ export class ProjectWriteStore {
    */
   private apply_translation_status_deltas(
     counters: TranslationProgressCounters,
-    changes: ProofreadingItemChange[],
+    changes: readonly ProofreadingItemChange[],
   ): TranslationProgressCounters {
     let total_line = counters.total_line;
     let processed_line = counters.processed_line;

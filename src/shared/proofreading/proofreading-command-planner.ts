@@ -120,7 +120,7 @@ function has_replace_all_change(args: {
 }
 
 // 字段变更统一投影为批量更新命令，最终状态与进度统计由后端计算。
-export function create_update_items_plan(args: {
+export function create_apply_item_changes_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
   changes: ProofreadingItemFieldUpdate[];
 }): ProofreadingCommandPlan | null {

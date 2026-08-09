@@ -11,6 +11,8 @@ import {
 import type { LocaleKey } from "../../shared/i18n";
 import type {
   BackendRuntimeDiagnosticLevel,
+  BackendRuntimeAgentWorkspaceRunRequest,
+  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
@@ -47,6 +49,11 @@ export class BackendRuntimeClient {
         request: BackendRuntimeWebFetchRequest,
         signal: AbortSignal,
       ) => Promise<BackendRuntimeWebFetchResponse>;
+      /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
+      runAgentWorkspace: (
+        request: BackendRuntimeAgentWorkspaceRunRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
       onUnexpectedExit: (error: Error) => void;
     },
   ) {}
@@ -178,6 +185,9 @@ export class BackendRuntimeClient {
           break;
         case "web_fetch":
           data = await this.options.webFetch(operation.request, controller.signal);
+          break;
+        case "run_agent_workspace":
+          data = await this.options.runAgentWorkspace(operation.request, controller.signal);
           break;
       }
       result = { ok: true, data };

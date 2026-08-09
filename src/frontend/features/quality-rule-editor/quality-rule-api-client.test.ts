@@ -8,7 +8,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: api_fetch_mock,
 }));
 
-import { import_quality_rule_entries, query_quality_rules } from "./quality-rule-api-client";
+import { import_quality_rule_entries, read_quality_rule_snapshot } from "./quality-rule-api-client";
 
 describe("quality rule api client", () => {
   beforeEach(() => {
@@ -21,7 +21,7 @@ describe("quality rule api client", () => {
       const response = { projectPath: "E:/demo/demo.lg" };
       api_fetch_mock.mockResolvedValue(response);
 
-      await expect(query_quality_rules(rule_type)).resolves.toBe(response);
+      await expect(read_quality_rule_snapshot(rule_type)).resolves.toBe(response);
       expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/query", { rule_type });
     },
   );

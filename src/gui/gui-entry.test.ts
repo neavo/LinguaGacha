@@ -44,6 +44,14 @@ const mocks = vi.hoisted(() => {
     cleanup_berserker_version_dirs = cleanup_updates;
   }
 
+  const register_agent_workspace_scheme = vi.fn();
+  const agent_workspace_execute = vi.fn(async () => ({ status: "success", result: null }));
+  const agent_workspace_dispose = vi.fn();
+  class DesktopAgentWorkspaceRunner {
+    run = agent_workspace_execute;
+    dispose = agent_workspace_dispose;
+  }
+
   return {
     app_listeners,
     backend_instances,
@@ -59,6 +67,10 @@ const mocks = vi.hoisted(() => {
     DesktopUpdateService,
     update_options,
     cleanup_updates,
+    register_agent_workspace_scheme,
+    DesktopAgentWorkspaceRunner,
+    agent_workspace_execute,
+    agent_workspace_dispose,
     app_exit: vi.fn(),
     app_quit: vi.fn(),
     resolve_proxy: vi.fn(async () => "DIRECT"),
@@ -93,6 +105,10 @@ vi.mock("electron", () => ({
 }));
 vi.mock("./runtime/backend-runtime-client", () => ({
   BackendRuntimeClient: mocks.BackendRuntimeClient,
+}));
+vi.mock("./runtime/desktop-agent-workspace-runner", () => ({
+  DesktopAgentWorkspaceRunner: mocks.DesktopAgentWorkspaceRunner,
+  register_agent_workspace_scheme: mocks.register_agent_workspace_scheme,
 }));
 vi.mock("./shell/desktop-update-service", () => ({
   DesktopUpdateService: mocks.DesktopUpdateService,
@@ -141,7 +157,9 @@ describe("run_gui_entry", () => {
     expect(mocks.backend_instances[0]).toMatchObject({
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
+      runAgentWorkspace: expect.any(Function),
     });
+    expect(mocks.register_agent_workspace_scheme).toHaveBeenCalledOnce();
     expect(mocks.update_options).toEqual([
       {
         appRoot: process.cwd(),
@@ -207,6 +225,7 @@ describe("run_gui_entry", () => {
 
     expect(prevent_default).toHaveBeenCalledOnce();
     expect(mocks.backend_stop).toHaveBeenCalledOnce();
+    expect(mocks.agent_workspace_dispose).toHaveBeenCalledOnce();
     expect(mocks.backend_stop.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.app_exit.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
