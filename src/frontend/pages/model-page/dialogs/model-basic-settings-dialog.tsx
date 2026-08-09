@@ -1,7 +1,7 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { MODEL_THINKING_LEVELS, Model } from "@domain/model";
+import { MODEL_THINKING_LEVELS, Model, is_model_thinking_level } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
@@ -203,12 +203,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     value={model.thinking.level}
                     disabled={props.readonly}
                     onValueChange={(next_value) => {
-                      if (
-                        next_value === "OFF" ||
-                        next_value === "LOW" ||
-                        next_value === "MEDIUM" ||
-                        next_value === "HIGH"
-                      ) {
+                      if (is_model_thinking_level(next_value)) {
                         void props.onPatch({
                           thinking: {
                             level: next_value,

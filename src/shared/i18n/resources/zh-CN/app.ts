@@ -28,6 +28,7 @@ export const zh_cn_app = {
       low: "低",
       medium: "中",
       high: "高",
+      xhigh: "特高",
     },
   },
   action: {

@@ -33,11 +33,8 @@ export function apply_anthropic_request_overrides(
   delete result["thinking"];
   delete result["output_config"];
   Object.assign(result, snapshot.extra_body);
-  const thinking = build_anthropic_thinking_payload(snapshot);
-  if (thinking !== null) {
-    result["thinking"] = thinking;
-  }
-  if (snapshot.thinking_level !== "OFF" && thinking !== null) {
+  apply_anthropic_thinking_level(result, snapshot.thinking_level);
+  if (snapshot.thinking_level !== "OFF") {
     delete result["temperature"];
     delete result["top_p"];
   }
@@ -45,26 +42,24 @@ export function apply_anthropic_request_overrides(
 }
 
 /**
- * Claude thinking 开启时删除 temperature/top_p，因为 provider 不允许组合。
- * 模型识别和预算映射会随供应商能力调整，不逐项固化当前模型名与预算字面量测试。
+ * Claude 统一使用 adaptive thinking 与 effort 档位；具体模型支持范围交给供应商校验。
  */
-export function build_anthropic_thinking_payload(
-  snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,
-): Record<string, unknown> | null {
-  if (
-    !/claude-3-7-sonnet|claude-opus-4-\d|claude-haiku-4-\d|claude-sonnet-4-\d/iu.test(
-      snapshot.model_id,
-    )
-  ) {
-    return null;
+function apply_anthropic_thinking_level(
+  result: Record<string, unknown>,
+  level: ModelRequestSnapshot["thinking_level"],
+): void {
+  result["thinking"] = { type: level === "OFF" ? "disabled" : "adaptive" };
+  const output_config = is_json_record(result["output_config"])
+    ? { ...result["output_config"] }
+    : {};
+  if (level === "OFF") {
+    delete output_config["effort"];
+  } else {
+    output_config["effort"] = level.toLowerCase();
   }
-  if (snapshot.thinking_level === "OFF") {
-    return { type: "disabled" };
+  if (Object.keys(output_config).length === 0) {
+    delete result["output_config"];
+  } else {
+    result["output_config"] = output_config;
   }
-  const budgets: Record<"LOW" | "MEDIUM" | "HIGH", number> = {
-    LOW: 1024,
-    MEDIUM: 1536,
-    HIGH: 2048,
-  };
-  return { type: "enabled", budget_tokens: budgets[snapshot.thinking_level] };
 }

@@ -117,7 +117,7 @@ describe("LLM 请求策略", () => {
     ["OpenAIResponses", "gpt-5.6-luna", "OFF", true],
     ["OpenAIResponses", "gpt-5.6-luna", "HIGH", true],
     ["OpenAIResponses", "custom-reasoning-model", "HIGH", false],
-    ["Anthropic", "claude-sonnet-4-5", "OFF", true],
+    ["Anthropic", "provider-defined-model", "OFF", true],
     ["Google", "gemini-3.1-pro", "OFF", true],
     ["Google", "gemini-2.5-flash", "HIGH", false],
     ["SakuraLLM", "sakura-v1", "HIGH", false],

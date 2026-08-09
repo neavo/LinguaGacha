@@ -40,7 +40,7 @@ export const MODEL_API_FORMATS = [
   "Anthropic",
 ] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
 
-export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
+export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
 export type ModelUsage = (typeof MODEL_USAGES)[number];
 /** 每种执行用途当前选择的模型 ID。 */
