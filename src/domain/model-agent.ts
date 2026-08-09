@@ -41,7 +41,9 @@ const FALLBACK_MODEL_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
 const MODEL_AGENT_LIMIT_RULES = [
   { pattern: /gpt-5\.6/iu, context_window: 372_000, max_output_tokens: 32_000 },
   { pattern: /grok-4\.5/iu, context_window: 500_000, max_output_tokens: 64_000 },
-  { pattern: /deepseek-v4/iu, context_window: 1_000_000, max_output_tokens: 128_000 },
+  { pattern: /gemini/iu, context_window: 512_000, max_output_tokens: 64_000 },
+  { pattern: /claude/iu, context_window: 512_000, max_output_tokens: 64_000 },
+  { pattern: /deepseek-v4/iu, context_window: 512_000, max_output_tokens: 64_000 },
 ] as const;
 
 /** 读取持久化配置；两个字段都允许用 0 独立表示自动。 */
