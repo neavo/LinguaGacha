@@ -681,7 +681,7 @@ describe("ModelService 远端模型能力", () => {
         success: true,
       }),
       expect.objectContaining({
-        error_reason: "请求超时（120 秒）",
+        error_reason: "请求超时（180 秒）",
         masked_key: "*******",
         success: false,
       }),
@@ -696,7 +696,7 @@ describe("ModelService 远端模型能力", () => {
     );
     expect(log_entries.find((entry) => entry.message === "接口测试失败 …")?.payload).toMatchObject({
       error: {
-        message: "请求超时（120 秒）",
+        message: "请求超时（180 秒）",
       },
       source: "model",
     });
