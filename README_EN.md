@@ -89,18 +89,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260805 v0.111.3
-  - Enhanced automatic glossary review
-  - Adjustments and improvements [#713](https://github.com/neavo/LinguaGacha/issues/713) [#718](https://github.com/neavo/LinguaGacha/issues/718) [#720](https://github.com/neavo/LinguaGacha/issues/720) [#722](https://github.com/neavo/LinguaGacha/issues/722) [#723](https://github.com/neavo/LinguaGacha/issues/723) [#724](https://github.com/neavo/LinguaGacha/issues/724) [#725](https://github.com/neavo/LinguaGacha/issues/725)
-
-- 20260805 v0.111.2
-  - Significantly improved AGENT instruction following
-  - Adjustments and improvements [#715](https://github.com/neavo/LinguaGacha/issues/715) [#716](https://github.com/neavo/LinguaGacha/issues/716)
-
-- 20260805 v0.111.1
-  - New AGENT capability: `Translation Review`
-  - New AGENT capability: `Web Data Retrieval`
-  - Adjustments and improvements [#703](https://github.com/neavo/LinguaGacha/issues/703) [#704](https://github.com/neavo/LinguaGacha/issues/704) [#705](https://github.com/neavo/LinguaGacha/issues/705) [#707](https://github.com/neavo/LinguaGacha/issues/707) [#709](https://github.com/neavo/LinguaGacha/issues/709)
+- 20260809 v0.112.0
+  - Enhanced `AGENT` mode
+    - Optimized the context compaction workflow
+    - New CodeAct-based tool system
+    - Added image input support (requires a multimodal model)
+  - Adjustments and improvements [#728](https://github.com/neavo/LinguaGacha/issues/728) [#729](https://github.com/neavo/LinguaGacha/issues/729) [#730](https://github.com/neavo/LinguaGacha/issues/730) [731](https://github.com/neavo/LinguaGacha/issues/731) [#733](https://github.com/neavo/LinguaGacha/issues/733) [#734](https://github.com/neavo/LinguaGacha/issues/734) [736](https://github.com/neavo/LinguaGacha/issues/736)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`

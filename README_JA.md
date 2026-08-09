@@ -88,18 +88,12 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260805 v0.111.3
-  - 用語の自動レビュー能力を強化
-  - 調整と改善 [#713](https://github.com/neavo/LinguaGacha/issues/713) [#718](https://github.com/neavo/LinguaGacha/issues/718) [#720](https://github.com/neavo/LinguaGacha/issues/720) [#722](https://github.com/neavo/LinguaGacha/issues/722) [#723](https://github.com/neavo/LinguaGacha/issues/723) [#724](https://github.com/neavo/LinguaGacha/issues/724) [#725](https://github.com/neavo/LinguaGacha/issues/725)
-
-- 20260805 v0.111.2
-  - AGENT の指示遵守能力を大幅に強化
-  - 調整と改善 [#715](https://github.com/neavo/LinguaGacha/issues/715) [#716](https://github.com/neavo/LinguaGacha/issues/716)
-
-- 20260805 v0.111.1
-  - 新しい AGENT 機能 `翻訳レビュー`
-  - 新しい AGENT 機能 `ウェブデータ取得`
-  - 調整と改善 [#703](https://github.com/neavo/LinguaGacha/issues/703) [#704](https://github.com/neavo/LinguaGacha/issues/704) [#705](https://github.com/neavo/LinguaGacha/issues/705) [#707](https://github.com/neavo/LinguaGacha/issues/707) [#709](https://github.com/neavo/LinguaGacha/issues/709)
+- 20260809 v0.112.0
+  - `AGENT` モードを強化
+    - コンテキスト圧縮フローを最適化
+    - CodeAct ベースの新しいツールシステム
+    - 画像入力に対応（マルチモーダルモデルが必要）
+  - 調整と改善 [#728](https://github.com/neavo/LinguaGacha/issues/728) [#729](https://github.com/neavo/LinguaGacha/issues/729) [#730](https://github.com/neavo/LinguaGacha/issues/730) [731](https://github.com/neavo/LinguaGacha/issues/731) [#733](https://github.com/neavo/LinguaGacha/issues/733) [#734](https://github.com/neavo/LinguaGacha/issues/734) [736](https://github.com/neavo/LinguaGacha/issues/736)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します
