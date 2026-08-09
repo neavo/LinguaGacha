@@ -167,6 +167,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   };
 
+  /** 模型失败恢复追加本地化“继续”轮次，不改写当前输入草稿。 */
+  const continue_after_failure = (): void => {
+    resume_follow();
+    void agent.continueAfterFailure().catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.send");
+    });
+  };
+
   /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
   const stop = async (): Promise<void> => {
     try {
@@ -283,7 +291,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             mention_tokens={mention_tokens}
             resume_revision={resume_revision}
             on_follow_hold_change={set_follow_hold}
-            on_retry={send}
+            on_continue={continue_after_failure}
             on_compaction_retry={retry_compaction}
             message_retry_disabled={
               agent.command !== null ||

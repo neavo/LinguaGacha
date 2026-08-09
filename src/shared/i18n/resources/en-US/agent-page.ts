@@ -25,6 +25,7 @@ export const en_us_agent_page = {
     hint: "Enter to send · Shift + Enter for a new line",
     drop_images: "Release to add images",
   },
+  message: { continue: "Continue" },
   mention: {
     groups: { skills: "Skills", terms: "Terms" },
     no_matches: "No matching items …",

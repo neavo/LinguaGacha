@@ -36,7 +36,7 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
 };
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
-export type AgentCommand = "send" | "stop" | "compact" | "reset" | null;
+export type AgentCommand = "send" | "continue" | "stop" | "compact" | "reset" | null;
 /** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
@@ -48,6 +48,8 @@ type AgentSessionStateView = {
   transport: AgentTransportState;
   command: AgentCommand;
   send: (message: AgentMessageInput) => Promise<void>;
+  /** 由后端恢复最新失败轮次，不消费 renderer 输入草稿或历史。 */
+  continueAfterFailure: () => Promise<void>;
   stop: () => Promise<void>;
   retryCompaction: () => Promise<void>;
   reset: () => Promise<void>;
@@ -185,6 +187,26 @@ function useAgentSessionState(
     }
   };
 
+  /** 所有窄命令共用 HTTP ack 与命令期间 SSE 重放，只保留各自前置条件和受理副作用。 */
+  const execute_command = async (
+    next_command: Exclude<AgentCommand, null>,
+    request: () => Promise<AgentSessionSnapshot>,
+    on_accepted?: () => void,
+  ): Promise<void> => {
+    const events = begin_command(next_command);
+    if (events === null) return;
+    try {
+      const next = await request();
+      finish_command(events, next);
+      on_accepted?.();
+    } catch (error) {
+      finish_command(events);
+      throw error;
+    } finally {
+      set_command(null);
+    }
+  };
+
   /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
   const send = async (message: AgentMessageInput): Promise<void> => {
     if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
@@ -192,64 +214,37 @@ function useAgentSessionState(
     }
     const normalized_message = normalize_agent_message_input(message);
     if (normalized_message === null) return;
-    const command_events = begin_command("send");
-    if (command_events === null) return;
-    try {
-      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", normalized_message);
-      finish_command(command_events, next);
-      on_message_accepted(normalized_message);
-    } catch (error) {
-      finish_command(command_events);
-      throw error;
-    } finally {
-      set_command(null);
+    await execute_command(
+      "send",
+      () => api_fetch<AgentSessionSnapshot>("/api/agent/message", normalized_message),
+      () => on_message_accepted(normalized_message),
+    );
+  };
+
+  /** 失败恢复由后端追加本地化“继续”轮次，不占用 renderer 输入草稿或历史。 */
+  const continue_after_failure = async (): Promise<void> => {
+    if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
+      return;
     }
+    await execute_command("continue", () => api_fetch<AgentSessionSnapshot>("/api/agent/continue"));
   };
 
   /** stop 失败保留仍在运行的权威快照，让用户可以继续尝试停止。 */
   const stop = async (): Promise<void> => {
     if (snapshot.state !== "running") return;
-    const command_events = begin_command("stop");
-    if (command_events === null) return;
-    try {
-      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/stop");
-      finish_command(command_events, next);
-    } catch (error) {
-      finish_command(command_events);
-      throw error;
-    } finally {
-      set_command(null);
-    }
+    await execute_command("stop", () => api_fetch<AgentSessionSnapshot>("/api/agent/stop"));
   };
 
   /** 后端在压缩恢复成功后原子续跑失败任务，renderer 只应用权威快照与事件。 */
   const retry_compaction = async (): Promise<void> => {
-    const command_events = begin_command("compact");
-    if (command_events === null) return;
-    try {
-      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/compaction/retry");
-      finish_command(command_events, next);
-    } catch (error) {
-      finish_command(command_events);
-      throw error;
-    } finally {
-      set_command(null);
-    }
+    await execute_command("compact", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/compaction/retry"),
+    );
   };
 
   /** reset 只有收到合法权威快照才算成功，失败时保留当前对话。 */
   const reset = async (): Promise<void> => {
-    const command_events = begin_command("reset");
-    if (command_events === null) return;
-    try {
-      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
-      finish_command(command_events, next);
-    } catch (error) {
-      finish_command(command_events);
-      throw error;
-    } finally {
-      set_command(null);
-    }
+    await execute_command("reset", () => api_fetch<AgentSessionSnapshot>("/api/agent/reset"));
   };
 
   /** 显式重试把 transport 置回 restoring，并推进 connection revision 重建传输。 */
@@ -266,6 +261,7 @@ function useAgentSessionState(
     transport,
     command,
     send,
+    continueAfterFailure: continue_after_failure,
     stop,
     retryCompaction: retry_compaction,
     reset,

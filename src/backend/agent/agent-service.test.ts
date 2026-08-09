@@ -14,8 +14,10 @@ import {
   type StreamOptions,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
+import { format_i18n_message } from "../../shared/i18n";
 import type { AgentWebFetchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -1072,6 +1074,46 @@ describe("AgentService", () => {
     });
   });
 
+  it.each(["ZH", "EN", "DE"] as const)("失败后按 %s UI 语言追加继续轮次", async (app_language) => {
+    const continue_text = format_i18n_message(
+      resolve_app_locale(app_language),
+      "agent_page.message.continue",
+    );
+    const { service, set_app_language } = await create_service();
+    fake_agent_state.mode = "error";
+    await service.send_message({ text: "原任务", images: [] });
+    await wait_for_idle(service);
+
+    set_app_language(app_language);
+    fake_agent_state.mode = "success";
+    await service.continue_after_failure();
+    await wait_for_idle(service);
+
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message")
+        .map((entry) => entry.text),
+    ).toEqual(["原任务", continue_text]);
+    expect(fake_agent_state.prompts.at(-1)).toBe(continue_text);
+  });
+
+  it("最新轮次已经成功时拒绝恢复更早的失败轮次", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "error";
+    await service.send_message({ text: "旧失败任务", images: [] });
+    await wait_for_idle(service);
+    fake_agent_state.mode = "success";
+    await service.send_message({ text: "最新成功任务", images: [] });
+    await wait_for_idle(service);
+    const before = service.get_snapshot();
+
+    await expect(service.continue_after_failure()).rejects.toThrow("request.validation_failed");
+
+    expect(service.get_snapshot()).toEqual(before);
+    expect(fake_agent_state.model_call_count).toBe(2);
+  });
+
   it("工程会话切换仍清空会话", async () => {
     const { service, publish, session_state } = await create_service();
 
@@ -1841,6 +1883,7 @@ describe("AgentService", () => {
     log_warning: ReturnType<typeof vi.fn>;
     log_append: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
+    set_app_language: (app_language: AppLanguage) => void;
     read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
     session_state: ProjectSessionState;
@@ -1849,11 +1892,13 @@ describe("AgentService", () => {
     await session_state.mark_loaded("test.lg");
     const read_items = vi.fn<() => JsonRecord[]>(() => []);
     let agent_model_id: "active" | "next" = "active";
+    let app_language: AppLanguage = "ZH";
     let setting_read_count = 0;
     const settings = {
       read_setting: () => {
         setting_read_count += 1;
         return {
+          app_language,
           model_selection: { translation: "active", analysis: "active", agent: agent_model_id },
           models: [
             {
@@ -1943,6 +1988,9 @@ describe("AgentService", () => {
       log_append,
       select_agent_model: (model_id) => {
         agent_model_id = model_id;
+      },
+      set_app_language: (next_app_language) => {
+        app_language = next_app_language;
       },
       read_setting_count: () => setting_read_count,
       runtime_gate,

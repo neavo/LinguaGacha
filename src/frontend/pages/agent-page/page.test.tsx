@@ -547,18 +547,25 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
-  it("失败轮次的恢复条目自动重发原消息", async () => {
+  it("失败轮次的恢复条目调用继续命令并保留当前草稿", async () => {
     const send = vi.fn(async () => undefined);
+    const continueAfterFailure = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
+      continueAfterFailure,
+    });
+    const editor = get_editor(view);
+    await act(async () => {
+      editor.dispatch({ changes: { from: 0, insert: "正在编辑的新任务" } });
     });
     const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
     if (retry === null) throw new Error("缺少轮次重试按钮");
     await act(async () => retry.click());
 
-    expect(send).toHaveBeenCalledWith({ text: "重新检查术语", images: [] });
-    expect(get_editor(view).state.doc.toString()).toBe("");
+    expect(continueAfterFailure).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
   });
 
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
@@ -657,6 +664,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       read_history: () => [],
     },
     send: vi.fn(async () => undefined),
+    continueAfterFailure: vi.fn(async () => undefined),
     stop: vi.fn(),
     retryCompaction: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),

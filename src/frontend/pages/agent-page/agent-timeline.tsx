@@ -1,12 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronsDownUp, CircleAlert } from "lucide-react";
 
-import type {
-  AgentEntry,
-  AgentEntryStatus,
-  AgentMessageInput,
-  AgentToolEntry,
-} from "@shared/agent";
+import type { AgentEntry, AgentEntryStatus, AgentToolEntry } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   find_agent_mention_ranges,
@@ -48,7 +43,7 @@ type AgentTimelineProps = {
   mention_tokens: readonly AgentMentionToken[];
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  on_retry: (message: AgentMessageInput) => void;
+  on_continue: () => void;
   on_compaction_retry: () => void;
   message_retry_disabled: boolean;
   compaction_retry_disabled: boolean;
@@ -67,7 +62,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   return (
     <>
       <div className="agent-page__messages">
-        {rounds.map((round) => (
+        {rounds.map((round, index) => (
           <AgentRound
             key={round.user.id}
             round={round}
@@ -75,7 +70,8 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             t={t}
             resume_revision={props.resume_revision}
             on_follow_hold_change={props.on_follow_hold_change}
-            on_retry={props.on_retry}
+            continue_available={index === rounds.length - 1}
+            on_continue={props.on_continue}
             on_compaction_retry={props.on_compaction_retry}
             message_retry_disabled={props.message_retry_disabled}
             compaction_retry_disabled={props.compaction_retry_disabled}
@@ -114,7 +110,8 @@ function AgentRound(props: {
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  on_retry: (message: AgentMessageInput) => void;
+  continue_available: boolean;
+  on_continue: () => void;
   on_compaction_retry: () => void;
   message_retry_disabled: boolean;
   compaction_retry_disabled: boolean;
@@ -127,7 +124,9 @@ function AgentRound(props: {
     mention_ranges[0]?.from === 0 &&
     mention_ranges[0]?.to === user.text.length;
   const show_message_retry =
-    user.status === "error" && !entries.some((entry) => entry.kind === "context_compaction");
+    props.continue_available &&
+    user.status === "error" &&
+    !entries.some((entry) => entry.kind === "context_compaction");
   return (
     <>
       <article
@@ -171,7 +170,7 @@ function AgentRound(props: {
           label={props.t("app.error.model.provider_failed.message")}
           retry_label={props.t("agent_page.action.click_to_retry")}
           disabled={props.message_retry_disabled}
-          on_retry={() => props.on_retry({ text: user.text, images: [...user.images] })}
+          on_retry={props.on_continue}
         />
       ) : null}
       <AgentRoundFooter user={user} t={props.t} />
@@ -191,7 +190,7 @@ function AgentRetryEntry(props: {
       type="button"
       className="agent-retry-entry"
       disabled={props.disabled}
-      onClick={props.on_retry}
+      onClick={() => props.on_retry()}
     >
       <CircleAlert aria-hidden="true" />
       <span>{props.label}</span>

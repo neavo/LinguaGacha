@@ -60,6 +60,7 @@ export function register_api_routes(context: ApiRouteContext): void {
     hono_context.json(ok(services.agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
+  context.postJson("/api/agent/continue", () => services.agent.continue_after_failure());
   context.postJson("/api/agent/stop", () => services.agent.stop());
   context.postJson("/api/agent/compaction/retry", () => services.agent.retry_compaction());
   context.postJson("/api/agent/reset", () => services.agent.reset());

@@ -20,6 +20,7 @@ const POST_PATHS = new Set([
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
+  "/api/agent/continue",
   "/api/agent/stop",
   "/api/agent/compaction/retry",
   "/api/agent/reset",
@@ -133,6 +134,10 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
+    await expect(read_post_handler(fixture.post_json, "/api/agent/continue")({})).resolves.toEqual({
+      state: "running",
+    });
+    expect(fixture.continue_after_failure).toHaveBeenCalledWith();
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
       state: "idle",
     });
@@ -184,6 +189,7 @@ function create_route_fixture() {
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(async () => ({ state: "running" }));
+  const continue_after_failure = vi.fn(async () => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
   const retry_compaction = vi.fn(async () => ({ state: "idle" }));
   const reset = vi.fn(async () => ({
@@ -224,6 +230,7 @@ function create_route_fixture() {
         contextTokens: null,
       })),
       send_message,
+      continue_after_failure,
       stop,
       retry_compaction,
       reset,
@@ -246,6 +253,7 @@ function create_route_fixture() {
   return {
     get,
     post_json,
+    continue_after_failure,
     reset,
     send_message,
     retry_compaction,

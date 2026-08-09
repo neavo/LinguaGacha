@@ -2,6 +2,7 @@ import { StrictMode, act, useEffect, useMemo, useRef, type ReactNode } from "rea
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { normalize_setting_snapshot } from "@domain/setting";
 import type { QualitySnapshot } from "@shared/quality/quality-rule-snapshot";
 import {
   DesktopStateProvider,
@@ -451,13 +452,8 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
 }
 
 describe("设置快照归一", () => {
-  it("缺字段 settings payload 使用 base 设置领域默认值", () => {
-    expect(normalize_settings_snapshot({ settings: {} })).toMatchObject({
-      output_folder_open_on_finish: false,
-      request_timeout: 120,
-      mtool_optimizer_enable: true,
-      skip_duplicate_source_text_enable: true,
-    });
+  it("缺字段 settings payload 与设置领域默认快照一致", () => {
+    expect(normalize_settings_snapshot({ settings: {} })).toEqual(normalize_setting_snapshot({}));
   });
 });
 
