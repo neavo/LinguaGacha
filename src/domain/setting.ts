@@ -114,7 +114,7 @@ export const DEFAULT_SETTING: JsonRecord = {
   project_save_mode: "MANUAL",
   project_fixed_path: "",
   output_folder_open_on_finish: false,
-  request_timeout: 120,
+  request_timeout: 180,
   preceding_lines_threshold: 0,
   clean_ruby: false,
   deduplication_in_bilingual: true,

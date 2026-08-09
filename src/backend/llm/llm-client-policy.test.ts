@@ -69,7 +69,7 @@ describe("LLM 请求策略", () => {
   });
 
   it("保持请求超时换算、默认值和最小一秒语义", () => {
-    expect(read_request_timeout_ms({})).toBe(120_000);
+    expect(read_request_timeout_ms({})).toBe(180_000);
     expect(read_request_timeout_ms({ request_timeout: 1.9 })).toBe(1_900);
     expect(read_request_timeout_ms({ request_timeout: 0 })).toBe(1_000);
   });
