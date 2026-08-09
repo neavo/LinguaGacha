@@ -1,7 +1,12 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronsDownUp, CircleAlert } from "lucide-react";
 
-import type { AgentEntry, AgentEntryStatus, AgentToolEntry } from "@shared/agent";
+import type {
+  AgentEntry,
+  AgentEntryStatus,
+  AgentMessageInput,
+  AgentToolEntry,
+} from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   find_agent_mention_ranges,
@@ -43,7 +48,7 @@ type AgentTimelineProps = {
   mention_tokens: readonly AgentMentionToken[];
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  on_retry: (text: string) => void;
+  on_retry: (message: AgentMessageInput) => void;
   on_compaction_retry: () => void;
   message_retry_disabled: boolean;
   compaction_retry_disabled: boolean;
@@ -109,7 +114,7 @@ function AgentRound(props: {
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  on_retry: (text: string) => void;
+  on_retry: (message: AgentMessageInput) => void;
   on_compaction_retry: () => void;
   message_retry_disabled: boolean;
   compaction_retry_disabled: boolean;
@@ -129,9 +134,25 @@ function AgentRound(props: {
         className="agent-message agent-message--user"
         data-mention-only={mention_only || undefined}
       >
-        <p className="agent-message__user-text">
-          {render_agent_mention_text(user.text, mention_ranges)}
-        </p>
+        {user.images.length > 0 ? (
+          <div className="agent-message__user-images">
+            {user.images.map((image, index) => (
+              <img
+                key={index}
+                src={`data:image/webp;base64,${image}`}
+                alt={props.t("agent_page.image.message", {
+                  index: (index + 1).toString(),
+                })}
+                decoding="async"
+              />
+            ))}
+          </div>
+        ) : null}
+        {user.text === "" ? null : (
+          <p className="agent-message__user-text">
+            {render_agent_mention_text(user.text, mention_ranges)}
+          </p>
+        )}
       </article>
       {entries.map((entry) => (
         <AgentEntryView
@@ -150,7 +171,7 @@ function AgentRound(props: {
           label={props.t("app.error.model.provider_failed.message")}
           retry_label={props.t("agent_page.action.click_to_retry")}
           disabled={props.message_retry_disabled}
-          on_retry={() => props.on_retry(user.text)}
+          on_retry={() => props.on_retry({ text: user.text, images: [...user.images] })}
         />
       ) : null}
       <AgentRoundFooter user={user} t={props.t} />

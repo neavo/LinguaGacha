@@ -2,7 +2,11 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent }
 import { ArrowDown, BookCheck, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
-import { format_agent_skill_reference, type AgentEntryStatus } from "@shared/agent";
+import {
+  format_agent_skill_reference,
+  type AgentEntryStatus,
+  type AgentMessageInput,
+} from "@shared/agent";
 import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -149,9 +153,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
 
   /** 新消息代表用户重新进入最新上下文，提交前统一恢复信息流跟随。 */
-  const send = (text: string): void => {
+  const send = (message: AgentMessageInput): void => {
     resume_follow();
-    void agent.send(text).catch((error: unknown) => {
+    void agent.send(message).catch((error: unknown) => {
       show_command_error(error, "agent_page.error.send");
     });
   };
@@ -320,6 +324,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         model_selection={model_selection}
         input_session={agent.input}
         on_send={send}
+        on_image_error={() => push_toast("error", t("agent_page.error.image"))}
         on_stop={stop}
         on_reset={() => set_reset_dialog_open(true)}
       />

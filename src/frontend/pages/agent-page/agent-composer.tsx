@@ -6,10 +6,12 @@ import {
   Brain,
   ChevronDown,
   Cpu,
+  ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -36,7 +38,11 @@ import {
 
 import type { GlossaryEntry } from "@domain/quality";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
-import type { AgentSkillSnapshot } from "@shared/agent";
+import {
+  AGENT_MESSAGE_IMAGE_LIMIT,
+  type AgentMessageInput,
+  type AgentSkillSnapshot,
+} from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   ModelSelectionCategories,
@@ -69,6 +75,7 @@ import {
   type AgentMentionCandidate,
   type AgentMentionToken,
 } from "./agent-mention";
+import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -105,7 +112,8 @@ type AgentComposerProps = {
   context_tokens: number | null;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
-  on_send: (text: string) => void;
+  on_send: (message: AgentMessageInput) => void;
+  on_image_error: () => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
@@ -191,6 +199,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       ? submit_label
       : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason]);
   const host_ref = useRef<HTMLDivElement | null>(null);
+  const file_input_ref = useRef<HTMLInputElement | null>(null);
   const menu_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
@@ -202,7 +211,14 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   // Session 引用承接跨路由草稿与历史，索引只属于当前 Composer 的临时浏览位置。
   const input_session_ref = useRef(props.input_session);
   const input_history_index_ref = useRef<number | null>(null);
+  // 图片 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
+  const draft_images_ref = useRef(props.input_session.read_draft().images);
+  const image_processing_ref = useRef(false);
+  const image_drag_depth_ref = useRef(0);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
+  const [draft_images, set_draft_images] = useState<string[]>(() => [...draft_images_ref.current]);
+  const [image_processing, set_image_processing] = useState(false);
+  const [image_drop_active, set_image_drop_active] = useState(false);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
@@ -232,7 +248,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.unavailable_reason === null &&
     props.command === null &&
     !props.model_selection.updating &&
-    snapshot.text !== "";
+    !image_processing &&
+    (snapshot.text !== "" || draft_images.length > 0);
+  const image_limit_reached = draft_images.length >= AGENT_MESSAGE_IMAGE_LIMIT;
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
     props.running || compacting || props.unavailable_reason !== null || props.command !== null;
@@ -357,7 +375,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 )
               ) {
                 input_history_index_ref.current = null;
-                input_session_ref.current.write_draft(update.state.doc.toString());
+                input_session_ref.current.write_draft({
+                  text: update.state.doc.toString(),
+                  images: draft_images_ref.current,
+                });
               }
               emit_snapshot(update.state);
             }
@@ -380,11 +401,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     const view = view_ref.current;
     if (view === null) return;
     input_history_index_ref.current = null;
-    write_agent_message_text(
-      view,
-      input_session_ref.current.read_draft(),
-      input_session_sync_annotations,
-    );
+    const draft = input_session_ref.current.read_draft();
+    draft_images_ref.current = draft.images;
+    set_draft_images([...draft.images]);
+    write_agent_message_text(view, draft.text, input_session_sync_annotations);
   }, [input_revision]);
 
   useEffect(() => {
@@ -466,21 +486,93 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   };
   select_candidate_ref.current = select_candidate;
 
+  /** 同步更新异步判定、可见附件与跨路由草稿，避免形成三套可写图片状态。 */
+  const write_draft_images = (images: string[]): void => {
+    draft_images_ref.current = images;
+    set_draft_images(images);
+    input_session_ref.current.write_draft({
+      text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.read_draft().text,
+      images,
+    });
+  };
+
+  /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
+  const append_image_files = async (files: Iterable<File>): Promise<void> => {
+    if (image_processing_ref.current) return;
+    const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - draft_images_ref.current.length;
+    if (remaining_slots <= 0) return;
+    const input_files = Array.from(files).slice(0, remaining_slots);
+    if (input_files.length === 0) return;
+    image_processing_ref.current = true;
+    set_image_processing(true);
+    try {
+      write_draft_images([
+        ...draft_images_ref.current,
+        ...(await normalize_agent_images(input_files)),
+      ]);
+    } catch {
+      props.on_image_error();
+    } finally {
+      image_processing_ref.current = false;
+      set_image_processing(false);
+    }
+  };
+
+  /** 嵌套元素产生的 dragenter / dragleave 通过深度归零后统一关闭遮罩。 */
+  const reset_image_drop = (): void => {
+    image_drag_depth_ref.current = 0;
+    set_image_drop_active(false);
+  };
+
   /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !can_send) return;
     const text = view.state.doc.toString().trim();
-    if (text !== "") props.on_send(text);
+    props.on_send({ text, images: [...draft_images_ref.current] });
   };
   submit_ref.current = submit;
 
   return (
     <form
       className="agent-composer"
+      data-image-drop-active={image_drop_active ? "true" : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
+      }}
+      onPaste={(event) => {
+        if (editor_read_only || event.clipboardData.files.length === 0) return;
+        event.preventDefault();
+        void append_image_files(event.clipboardData.files);
+      }}
+      onDragEnter={(event) => {
+        if (editor_read_only || !Array.from(event.dataTransfer.types).includes("Files")) {
+          return;
+        }
+        event.preventDefault();
+        if (image_limit_reached) return;
+        image_drag_depth_ref.current += 1;
+        set_image_drop_active(true);
+      }}
+      onDragOver={(event) => {
+        if (editor_read_only || !Array.from(event.dataTransfer.types).includes("Files")) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = image_limit_reached ? "none" : "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        image_drag_depth_ref.current = Math.max(0, image_drag_depth_ref.current - 1);
+        if (image_drag_depth_ref.current === 0) set_image_drop_active(false);
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        reset_image_drop();
+        if (!editor_read_only) void append_image_files(event.dataTransfer.files);
       }}
     >
       {menu_open && (
@@ -516,11 +608,75 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           )}
         </div>
       )}
+      {draft_images.length > 0 ? (
+        <div className="agent-composer__attachments">
+          {draft_images.map((image, index) => (
+            <figure className="agent-composer__attachment" key={index}>
+              <img
+                src={`data:image/webp;base64,${image}`}
+                alt={t("agent_page.image.attachment", { index: (index + 1).toString() })}
+              />
+              <AppButton
+                type="button"
+                size="icon-xs"
+                variant="secondary"
+                className="agent-composer__attachment-remove"
+                disabled={editor_read_only || image_processing}
+                aria-label={t("agent_page.action.remove_image", {
+                  index: (index + 1).toString(),
+                })}
+                onClick={() => {
+                  write_draft_images(draft_images.filter((_, item_index) => item_index !== index));
+                }}
+              >
+                <X aria-hidden="true" />
+              </AppButton>
+            </figure>
+          ))}
+        </div>
+      ) : null}
       <div className="agent-composer__editor">
         <div ref={host_ref} className="agent-composer__input" />
       </div>
+      <input
+        ref={file_input_ref}
+        className="agent-composer__file-input"
+        type="file"
+        accept={AGENT_IMAGE_FILE_ACCEPT}
+        multiple
+        tabIndex={-1}
+        onChange={(event) => {
+          void append_image_files(event.currentTarget.files ?? []);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="agent-composer__drop-overlay" aria-hidden={!image_drop_active}>
+        {t("agent_page.input.drop_images")}
+      </div>
       <div className="agent-composer__footer">
         <div className="agent-composer__footer-actions">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AppButton
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="agent-composer__image-trigger"
+                disabled={editor_read_only || image_processing || image_limit_reached}
+                aria-label={t("agent_page.action.add_image")}
+                onClick={() => file_input_ref.current?.click()}
+              >
+                {image_processing ? (
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <ImagePlus aria-hidden="true" />
+                )}
+              </AppButton>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>
+              <p>{t("agent_page.action.add_image")}</p>
+            </TooltipContent>
+          </Tooltip>
           <AppButton
             type="button"
             size="xs"
@@ -725,7 +881,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       input_history_index_ref.current = null;
       write_agent_message_text(
         view,
-        input_session_ref.current.read_draft(),
+        input_session_ref.current.read_draft().text,
         input_history_navigation_annotations,
       );
       return true;

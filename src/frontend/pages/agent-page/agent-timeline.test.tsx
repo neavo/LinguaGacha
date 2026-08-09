@@ -152,6 +152,18 @@ describe("AgentTimeline", () => {
     expect(messages[1]?.textContent).toContain("@term(Unknown)");
   });
 
+  it("渲染纯图片和多图片消息而不生成空文本段落", async () => {
+    const view = await render_timeline([
+      user_entry("user-images", "", "success", 0, 1_000, ["webp-a", "webp-b"]),
+    ]);
+
+    const images = view.querySelectorAll<HTMLImageElement>(".agent-message__user-images img");
+    expect(images).toHaveLength(2);
+    expect(images[0]?.src).toBe("data:image/webp;base64,webp-a");
+    expect(images[0]?.alt).toBe("agent_page.image.message:1");
+    expect(view.querySelector(".agent-message__user-text")).toBeNull();
+  });
+
   it("失败恢复条目位于所属轮次末尾且整块点击回传原消息", async () => {
     const view = await render_timeline([
       user_entry("user-error", "重新检查术语", "error", 0, 2_000),
@@ -177,7 +189,7 @@ describe("AgentTimeline", () => {
     expect(error.textContent).toContain("点击重试");
     expect(error.querySelectorAll("svg")).toHaveLength(1);
     await act(async () => error.click());
-    expect(on_retry).toHaveBeenCalledWith("重新检查术语");
+    expect(on_retry).toHaveBeenCalledWith({ text: "重新检查术语", images: [] });
   });
 
   it("压缩三态原位覆盖，失败时只开放压缩重试", async () => {
@@ -551,11 +563,13 @@ function user_entry(
   status: AgentEntryStatus,
   createdAt: number,
   endedAt: number | null,
+  images: string[] = [],
 ) {
   return {
     kind: "user_message" as const,
     id,
     text,
+    images,
     status,
     createdAt,
     endedAt,

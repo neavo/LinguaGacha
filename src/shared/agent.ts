@@ -23,6 +23,15 @@ export type AgentSessionState = "idle" | "running";
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
+/** 单条用户消息按输入顺序最多保留的图片数。 */
+export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
+
+/** Renderer、公开 API 与重试入口共用的完整用户消息。图片固定为 WebP 原始 base64。 */
+export type AgentMessageInput = JsonRecord & {
+  text: string;
+  images: string[];
+};
+
 type AgentToolEntryBase = JsonRecord & {
   kind: "tool_call";
   id: string;
@@ -53,6 +62,7 @@ export type AgentEntry = JsonRecord &
         kind: "user_message";
         id: string;
         text: string;
+        images: string[];
         status: AgentEntryStatus;
         createdAt: number;
         endedAt: number | null;
@@ -90,6 +100,19 @@ export function normalize_agent_user_message_text(value: unknown): string | null
   if (typeof value !== "string") return null;
   const text = value.trim();
   return text === "" ? null : text;
+}
+
+/** 完整消息允许纯图片，但文本与图片不能同时为空；超出数量上限的图片按顺序静默忽略。 */
+export function normalize_agent_message_input(value: unknown): AgentMessageInput | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record["text"] !== "string" || !Array.isArray(record["images"])) return null;
+  const text = record["text"].trim();
+  const images = record["images"]
+    .slice(0, AGENT_MESSAGE_IMAGE_LIMIT)
+    .map((image) => (typeof image === "string" ? image.trim() : ""));
+  if (images.some((image) => image === "") || (text === "" && images.length === 0)) return null;
+  return { text, images };
 }
 
 /** 生成不会随 UI locale 改变的显式能力 marker。 */

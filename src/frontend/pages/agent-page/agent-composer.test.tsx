@@ -20,6 +20,7 @@ type RenderComposerOptions = Partial<
     | "compacting"
     | "compaction_failed"
     | "context_tokens"
+    | "on_image_error"
     | "on_reset"
     | "on_send"
     | "on_stop"
@@ -44,6 +45,7 @@ const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
 const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.input.placeholder": "描述任务，或输入 @ 选择技能或术语 …",
   "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
+  "agent_page.input.drop_images": "松开以添加图片",
   "agent_page.mention.groups.skills": "技能",
   "agent_page.mention.groups.terms": "术语",
   "agent_page.mention.no_matches": "没有匹配的项目 …",
@@ -51,12 +53,25 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.compaction.running": "正在压缩上下文 …",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
+  "agent_page.action.add_image": "添加图片",
+  "agent_page.action.remove_image": "移除图片",
   "agent_page.unavailable.restoring": "正在恢复会话",
   "agent_page.unavailable.runtime_busy": "其它任务正在运行",
   "agent_page.unavailable.settling": "正在结束当前任务",
   "app.model.selection.label": "选择模型",
   "app.model.thinking_level.label": "思考等级",
   "app.model.thinking_level.medium": "中",
+}));
+
+const image_mocks = vi.hoisted(() => ({
+  normalize_agent_images: vi.fn(async (files: Iterable<File>) =>
+    Array.from(files, (file) => `webp-${file.name}`),
+  ),
+}));
+
+vi.mock("./agent-image", () => ({
+  AGENT_IMAGE_FILE_ACCEPT: ".png,.jpg,.jpeg,.bmp,.webp,.avif",
+  normalize_agent_images: image_mocks.normalize_agent_images,
 }));
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -120,6 +135,7 @@ describe("AgentComposer", () => {
     root = null;
     default_input_session = null;
     locale_state.value = "zh-CN";
+    image_mocks.normalize_agent_images.mockClear();
   });
 
   it("输入 @ 后按技能、术语分组显示三条术语及命中次数", async () => {
@@ -197,7 +213,7 @@ describe("AgentComposer", () => {
     await act(async () => option.click());
     expect(editor.state.doc.toString()).toBe("@term(Bob) ");
     await click_send(view);
-    expect(on_send).toHaveBeenCalledWith("@term(Bob)");
+    expect(on_send).toHaveBeenCalledWith({ text: "@term(Bob)", images: [] });
   });
 
   it("方向键导航到深层候选时把活动项滚入菜单可视区域", async () => {
@@ -254,7 +270,7 @@ describe("AgentComposer", () => {
     await dispatch_key(editor.contentDOM, "ArrowDown");
     expect(editor.state.doc.toString()).toBe("@missing");
     await dispatch_key(editor.contentDOM, "Enter");
-    expect(on_send).toHaveBeenCalledWith("@missing");
+    expect(on_send).toHaveBeenCalledWith({ text: "@missing", images: [] });
   });
 
   it("Escape 关闭当前菜单，查询变化后重新打开", async () => {
@@ -325,17 +341,140 @@ describe("AgentComposer", () => {
     expect(editor.state.doc.toString()).toBe("历史消息！");
   });
 
-  it("跨重渲染保留纯文本草稿，并在受理后同步清空编辑器", async () => {
+  it("跨重渲染保留完整草稿，并在受理后同步清空编辑器", async () => {
     const input_session = create_input_session();
     const composer_ref = createRef<AgentComposerHandle>();
     const on_send = vi.fn();
     const view = await render_composer({ composer_ref, input_session, on_send });
     await act(async () => composer_ref.current?.write_draft("  检查 @skill(glossary-audit)  "));
     await click_send(view);
-    expect(on_send).toHaveBeenCalledWith("检查 @skill(glossary-audit)");
+    expect(on_send).toHaveBeenCalledWith({
+      text: "检查 @skill(glossary-audit)",
+      images: [],
+    });
     input_session.accept_message();
     await render_composer({ composer_ref, input_session, on_send });
     expect(get_editor(view).state.doc.toString()).toBe("");
+  });
+
+  it("文件选择后允许发送纯图片并可移除缩略图", async () => {
+    const on_send = vi.fn();
+    const view = await render_composer({ on_send });
+    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
+    if (input === null) throw new Error("缺少图片文件输入");
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([], "a.png", { type: "image/png" })],
+    });
+
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(1);
+    await click_send(view);
+    expect(on_send).toHaveBeenCalledWith({ text: "", images: ["webp-a.png"] });
+
+    await act(async () => {
+      view.querySelector<HTMLButtonElement>(".agent-composer__attachment-remove")?.click();
+    });
+    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(0);
+  });
+
+  it("拖入与粘贴图片均按顺序追加到草稿", async () => {
+    const input_session = create_input_session();
+    const view = await render_composer({ input_session });
+    const form = view.querySelector<HTMLFormElement>(".agent-composer");
+    if (form === null) throw new Error("缺少 Composer 表单");
+    const dropped = new File([], "drop.webp", { type: "image/webp" });
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { types: ["Files"], files: [dropped], dropEffect: "none" },
+    });
+    await act(async () => {
+      form.dispatchEvent(drop);
+      await Promise.resolve();
+    });
+
+    const pasted = new File([], "paste.png", { type: "image/png" });
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { files: [pasted] } });
+    await act(async () => {
+      form.dispatchEvent(paste);
+      await Promise.resolve();
+    });
+
+    expect(input_session.read_draft()).toEqual({
+      text: "",
+      images: ["webp-drop.webp", "webp-paste.png"],
+    });
+    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(2);
+  });
+
+  it("累计只接收前十张图片，满额后静默忽略新输入", async () => {
+    const input_session = create_input_session();
+    const existing_images = Array.from({ length: 8 }, (_, index) => `existing-${index + 1}`);
+    input_session.write_draft({ text: "", images: existing_images });
+    const on_image_error = vi.fn();
+    const view = await render_composer({ input_session, on_image_error });
+    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
+    const image_trigger = view.querySelector<HTMLButtonElement>(".agent-composer__image-trigger");
+    if (input === null || image_trigger === null) throw new Error("缺少图片输入控件");
+    const selected = Array.from(
+      { length: 5 },
+      (_, index) => new File([], `selected-${index + 1}.png`, { type: "image/png" }),
+    );
+    Object.defineProperty(input, "files", { configurable: true, value: selected });
+
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(input_session.read_draft()).toEqual({
+      text: "",
+      images: [...existing_images, "webp-selected-1.png", "webp-selected-2.png"],
+    });
+    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(10);
+    expect(image_trigger.disabled).toBe(true);
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { files: [new File([], "ignored.png", { type: "image/png" })] },
+    });
+    await act(async () => {
+      view.querySelector(".agent-composer")?.dispatchEvent(paste);
+      await Promise.resolve();
+    });
+
+    expect(on_image_error).not.toHaveBeenCalled();
+
+    await act(async () => {
+      view.querySelector<HTMLButtonElement>(".agent-composer__attachment-remove")?.click();
+    });
+    expect(image_trigger.disabled).toBe(false);
+  });
+
+  it("图片转换失败时保留原草稿并交给页面提示", async () => {
+    image_mocks.normalize_agent_images.mockRejectedValueOnce(new Error("decode failed"));
+    const on_image_error = vi.fn();
+    const input_session = create_input_session();
+    const view = await render_composer({ input_session, on_image_error });
+    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
+    if (input === null) throw new Error("缺少图片文件输入");
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([], "broken.avif", { type: "image/avif" })],
+    });
+
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(on_image_error).toHaveBeenCalledOnce();
+    expect(input_session.read_draft()).toEqual({ text: "", images: [] });
+    expect(view.querySelector(".agent-composer__attachment")).toBeNull();
   });
 
   it("运行态仍可编辑，只由按钮停止当前任务", async () => {
@@ -435,6 +574,7 @@ describe("AgentComposer", () => {
           }}
           input_session={options.input_session ?? default_input_session}
           on_send={options.on_send ?? vi.fn()}
+          on_image_error={options.on_image_error ?? vi.fn()}
           on_stop={options.on_stop ?? vi.fn(async () => undefined)}
           on_reset={options.on_reset ?? vi.fn()}
         />,
@@ -453,16 +593,16 @@ function get_editor(container: HTMLElement): EditorView {
 
 /** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
 function create_input_session(history: readonly string[] = []): TestAgentInputSession {
-  let draft = "";
+  let draft = { text: "", images: [] as string[] };
   const session: TestAgentInputSession = {
     revision: 0,
     read_draft: () => draft,
-    write_draft: (text) => {
-      draft = text;
+    write_draft: (next_draft) => {
+      draft = next_draft;
     },
     read_history: () => history,
     accept_message: () => {
-      draft = "";
+      draft = { text: "", images: [] };
       session.revision += 1;
     },
   };

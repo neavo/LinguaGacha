@@ -8,6 +8,7 @@ import {
   InMemoryCredentialStore,
   type AssistantMessage,
   type AssistantMessageEvent,
+  type ImageContent,
   uuidv7,
 } from "@earendil-works/pi-ai";
 import {
@@ -25,10 +26,11 @@ import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
   AGENT_SESSION_EVENT_TOPIC,
   format_agent_skill_reference,
-  normalize_agent_user_message_text,
+  normalize_agent_message_input,
   type AgentAssistantMessagePart,
   type AgentEntry,
   type AgentEntryStatus,
+  type AgentMessageInput,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
   type AgentSessionState,
@@ -58,6 +60,8 @@ import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 const AGENT_CONTINUE_TEXT = "继续"; // 内部续跑与用户触发的恢复使用同一模型语义
+const AGENT_IMAGE_ONLY_TEXT = "(see attached image)"; // 避免供应商收到带图片的空文本块
+const AGENT_IMAGE_MIME_TYPE = "image/webp";
 
 /** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
 function build_agent_session_settings() {
@@ -215,8 +219,8 @@ export class AgentService {
     }
     const resources = this.require_resources();
     this.session_state.require_loaded_project_path();
-    const text = normalize_agent_user_message_text(request["text"]);
-    if (text === null) {
+    const message = normalize_agent_message_input(request);
+    if (message === null) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "empty_agent_message" },
       });
@@ -226,10 +230,10 @@ export class AgentService {
         diagnostic_context: { reason: "agent_compaction_recovery_required" },
       });
     }
-    const selected_skills = select_agent_skills(resources.skills, text);
+    const selected_skills = select_agent_skills(resources.skills, message.text);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    const acceptance = this.accept_message(resources, text, selected_skills, runtime_lease);
+    const acceptance = this.accept_message(resources, message, selected_skills, runtime_lease);
     this.operation_acceptance = acceptance;
     const clear_acceptance = () => {
       if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
@@ -338,7 +342,7 @@ export class AgentService {
   /** 在当前运行世代内准备唯一候选运行时。 */
   private async accept_message(
     resources: LoadedAgentResources,
-    text: string,
+    message: AgentMessageInput,
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
   ): Promise<AgentSessionSnapshot> {
@@ -378,7 +382,7 @@ export class AgentService {
         throw error;
       }
 
-      const prompt = this.start_round(runtime, generation, text, selected_skills, runtime_lease);
+      const prompt = this.start_round(runtime, generation, message, selected_skills, runtime_lease);
       this.runtime_settlement = prompt;
       prompt_started = true;
       const clear_prompt = () => {
@@ -430,14 +434,15 @@ export class AgentService {
   private start_round(
     runtime: AgentRuntime,
     generation: number,
-    text: string,
+    message: AgentMessageInput,
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
   ): Promise<void> {
     this.upsert_entry({
       kind: "user_message",
       id: uuidv7(),
-      text,
+      text: message.text,
+      images: message.images,
       status: "running",
       createdAt: Date.now(),
       endedAt: null,
@@ -446,7 +451,8 @@ export class AgentService {
     return this.run_prompt(
       runtime,
       generation,
-      build_agent_prompt(text, selected_skills),
+      build_agent_prompt(message.text, selected_skills),
+      message.images,
       runtime_lease,
     );
   }
@@ -539,6 +545,7 @@ export class AgentService {
     runtime: AgentRuntime,
     generation: number,
     text: string,
+    images: readonly string[],
     runtime_lease: RuntimeLease,
   ): Promise<void> {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
@@ -547,6 +554,11 @@ export class AgentService {
       let previous_compaction_id = this.find_latest_compaction_entry()?.id;
       await runtime.session.prompt(text, {
         expandPromptTemplates: false,
+        images: images.map<ImageContent>((data) => ({
+          type: "image",
+          data,
+          mimeType: AGENT_IMAGE_MIME_TYPE,
+        })),
         // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
         preflightResult: (accepted) => {
           if (accepted && !this.prompt_is_current(runtime, generation)) {
@@ -630,7 +642,7 @@ export class AgentService {
         const prompt = this.start_round(
           runtime,
           generation,
-          AGENT_CONTINUE_TEXT,
+          { text: AGENT_CONTINUE_TEXT, images: [] },
           [],
           runtime_lease,
         );
@@ -1010,9 +1022,10 @@ export class AgentService {
 
 /** skill 指令块按 marker 首次出现顺序置前，原始用户正文始终随后进入历史。 */
 function build_agent_prompt(text: string, skills: readonly AgentSkillDefinition[]): string {
-  if (skills.length === 0) return text;
+  const user_text = text === "" ? AGENT_IMAGE_ONLY_TEXT : text;
+  if (skills.length === 0) return user_text;
   const blocks = skills.map((skill) => formatSkillInvocation(skill));
-  blocks.push(text);
+  blocks.push(user_text);
   return blocks.join("\n\n");
 }
 

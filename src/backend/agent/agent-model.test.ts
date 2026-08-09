@@ -37,7 +37,7 @@ describe("Agent 模型注册", () => {
       const runtime = await create_model_runtime();
       const resolved = register_agent_model(runtime, build_config(api_format), TEST_USER_AGENT);
 
-      expect(resolved.model).toMatchObject({ provider, api });
+      expect(resolved.model).toMatchObject({ provider, api, input: ["text", "image"] });
       if (compat === undefined) expect(resolved.model).not.toHaveProperty("compat");
       else expect(resolved.model.compat).toEqual(compat);
       expect(runtime.getModels(provider)).toEqual([resolved.model]);

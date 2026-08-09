@@ -6,7 +6,11 @@ export const en_us_agent_page = {
     label: "Diagram",
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
   },
-  image: { omitted: "Image omitted" },
+  image: {
+    omitted: "Image omitted",
+    attachment: "Pending image {index}",
+    message: "User image {index}",
+  },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
@@ -19,6 +23,7 @@ export const en_us_agent_page = {
   input: {
     placeholder: "Describe a task, or type @ to select a skill or term …",
     hint: "Enter to send · Shift + Enter for a new line",
+    drop_images: "Release to add images",
   },
   mention: {
     groups: { skills: "Skills", terms: "Terms" },
@@ -38,6 +43,8 @@ export const en_us_agent_page = {
     stop: "Stop",
     stopping: "Stopping",
     new_task: "New Task",
+    add_image: "Add images",
+    remove_image: "Remove image {index}",
     retry: "Retry",
     click_to_retry: "Click to retry",
     return_latest: "Return to latest",
@@ -66,6 +73,7 @@ export const en_us_agent_page = {
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",
+    image: "The image could not be read. Use PNG, JPG, BMP, WebP, or AVIF.",
     stop: "The task could not be stopped. Try again.",
     compaction_retry: "Context compaction could not be retried. Try again.",
     reset: "A new task could not be created. Try again.",

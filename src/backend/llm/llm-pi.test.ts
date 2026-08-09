@@ -21,6 +21,7 @@ describe("pi-ai 请求适配", () => {
       contextWindow: 32_000,
       maxTokens: 4096,
       reasoning: false,
+      input: ["text"],
     });
 
     expect(resolved.model).toMatchObject({ provider, api, name: "Test" });
@@ -67,6 +68,7 @@ describe("pi-ai 请求适配", () => {
       api: "openai-completions",
       baseUrl: "https://openai.example/v1",
       reasoning: false,
+      input: ["text"],
       compat: {
         supportsDeveloperRole: false,
         supportsStore: false,

@@ -6,7 +6,11 @@ export const de_de_agent_page = {
     label: "Diagramm",
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
   },
-  image: { omitted: "Bild ausgelassen" },
+  image: {
+    omitted: "Bild ausgelassen",
+    attachment: "Ausstehendes Bild {index}",
+    message: "Benutzerbild {index}",
+  },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
@@ -19,6 +23,7 @@ export const de_de_agent_page = {
   input: {
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
+    drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
   mention: {
     groups: { skills: "Skills", terms: "Begriffe" },
@@ -38,6 +43,8 @@ export const de_de_agent_page = {
     stop: "Stoppen",
     stopping: "Wird gestoppt",
     new_task: "Neue Aufgabe",
+    add_image: "Bilder hinzufügen",
+    remove_image: "Bild {index} entfernen",
     retry: "Erneut versuchen",
     click_to_retry: "Zum Wiederholen klicken",
     return_latest: "Zum neuesten Stand",
@@ -66,6 +73,7 @@ export const de_de_agent_page = {
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
+    image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     compaction_retry:
       "Die Kontextkomprimierung konnte nicht wiederholt werden. Bitte erneut versuchen.",
