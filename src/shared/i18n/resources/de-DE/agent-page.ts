@@ -25,6 +25,7 @@ export const de_de_agent_page = {
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
+  message: { continue: "Fortfahren" },
   mention: {
     groups: { skills: "Skills", terms: "Begriffe" },
     no_matches: "Keine passenden Einträge …",

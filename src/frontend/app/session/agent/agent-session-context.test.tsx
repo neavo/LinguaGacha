@@ -556,6 +556,30 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_history()).toEqual([]);
   });
 
+  it("失败继续使用独立命令且不改写输入历史或草稿", async () => {
+    window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["历史消息"]));
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "正在编辑的新任务", images: ["webp-draft"] });
+
+    await act(async () => {
+      await latest.continueAfterFailure();
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue");
+    expect(latest.input.read_draft()).toEqual({
+      text: "正在编辑的新任务",
+      images: ["webp-draft"],
+    });
+    expect(latest.input.read_history()).toEqual(["历史消息"]);
+    expect(latest.input.revision).toBe(0);
+    expect(latest.command).toBeNull();
+  });
+
   it("消费页面卸载后仍保留完整草稿", async () => {
     let latest: ReturnType<typeof useAgentSession> | null = null;
     function Probe(): null {

@@ -17,6 +17,7 @@ import {
   type AgentSessionEvent as PiAgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 
+import { resolve_app_locale } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
@@ -33,6 +34,7 @@ import {
   type AgentSessionState,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
+import { format_i18n_message } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
@@ -61,7 +63,6 @@ import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
-const AGENT_CONTINUE_TEXT = "继续"; // 内部续跑与用户触发的恢复使用同一模型语义
 const AGENT_IMAGE_ONLY_TEXT = "(see attached image)"; // 避免供应商收到带图片的空文本块
 const AGENT_IMAGE_MIME_TYPE = "image/webp";
 
@@ -250,6 +251,18 @@ export class AgentService {
     };
     void acceptance.then(clear_acceptance, clear_acceptance);
     return await acceptance;
+  }
+
+  /** 仅为最新失败轮次追加本地化“继续”消息，完整执行仍复用普通消息入口。 */
+  public async continue_after_failure(): Promise<AgentSessionSnapshot> {
+    this.assert_not_disposed();
+    const latest_user = this.entries.findLast((entry) => entry.kind === "user_message");
+    if (this.state !== "idle" || latest_user?.status !== "error") {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "agent_continue_unavailable" },
+      });
+    }
+    return await this.send_message({ text: this.read_continue_text(), images: [] });
   }
 
   /** 重试最近一次失败压缩；未完成轮次恢复后以普通“继续”消息重新进入模型。 */
@@ -598,7 +611,7 @@ export class AgentService {
         await runtime.session.sendCustomMessage(
           {
             customType: "linguagacha_continue",
-            content: [{ type: "text", text: AGENT_CONTINUE_TEXT }],
+            content: [{ type: "text", text: this.read_continue_text() }],
             display: false,
           },
           { triggerTurn: true },
@@ -639,7 +652,7 @@ export class AgentService {
     }
   }
 
-  /** 压缩与固定“继续”轮次共用运行 lease，避免 renderer 监听终态后补偿。 */
+  /** 压缩与本地化“继续”轮次共用运行 lease，避免 renderer 监听终态后补偿。 */
   private async run_compaction(
     runtime: AgentRuntime,
     generation: number,
@@ -653,7 +666,7 @@ export class AgentService {
         const prompt = this.start_round(
           runtime,
           generation,
-          { text: AGENT_CONTINUE_TEXT, images: [] },
+          { text: this.read_continue_text(), images: [] },
           [],
           runtime_lease,
         );
@@ -1033,6 +1046,15 @@ export class AgentService {
       });
     }
     return this.resources;
+  }
+
+  /** 公开与隐藏续跑共用当前 UI 语言下的唯一模型消息。 */
+  private read_continue_text(): string {
+    const setting = this.settings.read_setting();
+    return format_i18n_message(
+      resolve_app_locale(setting["app_language"]),
+      "agent_page.message.continue",
+    );
   }
 
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */

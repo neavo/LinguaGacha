@@ -26,7 +26,7 @@ export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 /** 单条用户消息按输入顺序最多保留的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
 
-/** Renderer、公开 API 与重试入口共用的完整用户消息。图片固定为 WebP 原始 base64。 */
+/** Renderer 与公开 message API 共用的完整用户消息。图片固定为 WebP 原始 base64。 */
 export type AgentMessageInput = JsonRecord & {
   text: string;
   images: string[];

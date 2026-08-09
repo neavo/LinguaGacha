@@ -22,6 +22,7 @@ export const zh_cn_agent_page = {
     hint: "Enter 发送 · Shift + Enter 换行",
     drop_images: "松开以添加图片",
   },
+  message: { continue: "继续" },
   mention: {
     groups: { skills: "技能", terms: "术语" },
     no_matches: "没有匹配的项目 …",

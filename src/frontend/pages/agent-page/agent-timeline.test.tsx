@@ -48,7 +48,7 @@ describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   const on_follow_hold_change = vi.fn();
-  const on_retry = vi.fn();
+  const on_continue = vi.fn();
   const on_compaction_retry = vi.fn();
 
   afterEach(async () => {
@@ -58,7 +58,7 @@ describe("AgentTimeline", () => {
     root = null;
     container = null;
     on_follow_hold_change.mockReset();
-    on_retry.mockReset();
+    on_continue.mockReset();
     on_compaction_retry.mockReset();
   });
 
@@ -80,7 +80,7 @@ describe("AgentTimeline", () => {
             mention_tokens={MENTION_TOKENS}
             resume_revision={resume_revision}
             on_follow_hold_change={on_follow_hold_change}
-            on_retry={on_retry}
+            on_continue={on_continue}
             on_compaction_retry={on_compaction_retry}
             message_retry_disabled={false}
             compaction_retry_disabled={false}
@@ -164,32 +164,36 @@ describe("AgentTimeline", () => {
     expect(view.querySelector(".agent-message__user-text")).toBeNull();
   });
 
-  it("失败恢复条目位于所属轮次末尾且整块点击回传原消息", async () => {
+  it("只有最新失败轮次开放恢复入口且点击不回传旧消息", async () => {
     const view = await render_timeline([
-      user_entry("user-error", "重新检查术语", "error", 0, 2_000),
-      assistant_entry("assistant-error", "部分结果", "error", 1_000),
-      user_entry("user-next", "继续", "success", 3_000, 4_000),
+      user_entry("user-old-error", "旧任务", "error", 0, 2_000),
+      assistant_entry("assistant-old-error", "旧部分结果", "error", 1_000),
+      user_entry("user-error", "最新任务", "error", 3_000, 5_000),
+      assistant_entry("assistant-error", "最新部分结果", "error", 4_000),
     ]);
-    const assistant = view.querySelector(".agent-message--assistant");
-    const error = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
-    const first_footer = view.querySelector(".agent-round-footer");
-    const next_user = view.querySelectorAll(".agent-message--user")[1];
-    if (assistant === null || error === null || first_footer === null || next_user === undefined) {
+    const assistants = view.querySelectorAll(".agent-message--assistant");
+    const retries = view.querySelectorAll<HTMLButtonElement>(".agent-retry-entry");
+    const footers = view.querySelectorAll(".agent-round-footer");
+    const error = retries[0];
+    const latest_assistant = assistants[1];
+    const latest_footer = footers[1];
+    if (error === undefined || latest_assistant === undefined || latest_footer === undefined) {
       throw new Error("缺少失败轮次结构");
     }
 
-    expect(assistant.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(error.compareDocumentPosition(first_footer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
+    expect(retries).toHaveLength(1);
     expect(
-      first_footer.compareDocumentPosition(next_user) & Node.DOCUMENT_POSITION_FOLLOWING,
+      latest_assistant.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      error.compareDocumentPosition(latest_footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(error.textContent).toContain("模型服务请求失败。");
     expect(error.textContent).toContain("点击重试");
     expect(error.querySelectorAll("svg")).toHaveLength(1);
     await act(async () => error.click());
-    expect(on_retry).toHaveBeenCalledWith({ text: "重新检查术语", images: [] });
+    expect(on_continue).toHaveBeenCalledOnce();
+    expect(on_continue).toHaveBeenCalledWith();
   });
 
   it("压缩三态原位覆盖，失败时只开放压缩重试", async () => {
