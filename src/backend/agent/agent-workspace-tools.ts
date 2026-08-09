@@ -5,7 +5,7 @@ import { ITEM_STATUSES } from "../../domain/item";
 import type { JsonRecord } from "../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
-import { agent_tool_result } from "./agent-tool";
+import { AgentToolError, agent_tool_result } from "./agent-tool";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 
 /** create 不接受模型重传工程身份或快照选项。 */
@@ -29,6 +29,16 @@ const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
 const enum_schema = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((value) => Type.Literal(value)));
 
+/** 供应商 Schema 只使用基础字符串约束；非空白语义在执行边界校验。 */
+const keyword_array_schema = (description: string) =>
+  Type.Array(
+    Type.String({
+      minLength: 1,
+      description: "一个完整的字面量关键词或短语。",
+    }),
+    { minItems: 1, description },
+  );
+
 /** 两个分页 recipe 共用同一 offset / limit 契约。 */
 const page_parameters = (unit: string) => ({
   offset: Type.Optional(Type.Integer({ minimum: 0, description: `跳过的${unit}数量，默认 0。` })),
@@ -41,8 +51,8 @@ const page_parameters = (unit: string) => ({
   ),
 });
 
-/** recipe 的结构与值域在工具边界一次校验；函数协议要求联合 Schema 显式声明 object 根类型。 */
-const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
+/** recipe 的名称与参数保持同一判别联合，避免交叉组合通过校验。 */
+const WORKSPACE_RECIPE = Type.Union([
   Type.Object(
     {
       name: Type.Literal("query-items"),
@@ -85,10 +95,9 @@ const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
           search: Type.Optional(
             Type.Object(
               {
-                keywords: Type.Array(Type.String({ pattern: "\\S" }), {
-                  minItems: 1,
-                  description: "按输入顺序去重后进行 NFKC、大小写折叠的字面量 OR 匹配。",
-                }),
+                keywords: keyword_array_schema(
+                  "多个元素按输入顺序去重后进行 NFKC、大小写折叠的字面量 OR 匹配。",
+                ),
                 scope: Type.Optional(
                   Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")], {
                     description: "搜索原文、译文或两者；默认 all。",
@@ -137,10 +146,7 @@ const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
             { description: "要查询的质量规则类型。" },
           ),
           keywords: Type.Optional(
-            Type.Array(Type.String({ pattern: "\\S" }), {
-              minItems: 1,
-              description: "对规则原文进行 NFKC、大小写折叠的字面量 OR 匹配。",
-            }),
+            keyword_array_schema("多个元素对规则原文进行 NFKC、大小写折叠的字面量 OR 匹配。"),
           ),
           include_examples: Type.Optional(
             Type.Boolean({ description: "是否附带每条规则的代表例句；默认 false。" }),
@@ -153,10 +159,22 @@ const WORKSPACE_RECIPE_PARAMETERS = Type.Union([
     { additionalProperties: false },
   ),
 ]);
-Object.assign(WORKSPACE_RECIPE_PARAMETERS, { type: "object" });
+
+/** 真实 object 根满足函数工具协议，并避免供应商从无属性联合根生成空对象。 */
+const WORKSPACE_RECIPE_PARAMETERS = Type.Object(
+  { recipe: WORKSPACE_RECIPE },
+  { additionalProperties: false },
+);
 
 /** apply 始终消费当前活动工作区，不接受模型重传身份或 revision。 */
 const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false });
+
+/** pattern 不是跨供应商稳定约束，执行前单独保留关键词的非空白语义。 */
+function assert_non_blank_keywords(keywords: readonly string[] | undefined): void {
+  if (keywords?.some((keyword) => keyword.trim() === "")) {
+    throw new AgentToolError({ code: "workspace_recipe.invalid_keywords" });
+  }
+}
 
 /** 工作区始终保持单一状态拥有者，四个工具只做参数适配。 */
 export function create_agent_workspace_tools(workspace: AgentWorkspacePort): ToolDefinition[] {
@@ -185,11 +203,16 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       execute: async (_tool_call_id, params, signal) => {
         const effective_signal = signal ?? new AbortController().signal;
         effective_signal.throwIfAborted();
+        if (params.recipe.name === "query-items") {
+          assert_non_blank_keywords(params.recipe.args.search?.keywords);
+        } else if (params.recipe.name === "query-quality-rule-groups") {
+          assert_non_blank_keywords(params.recipe.args.keywords);
+        }
         return agent_tool_result({
           result: await workspace.run_recipe(
-            params.name,
+            params.recipe.name,
             // TypeBox 已验证为 JSON 对象；SDK 推导类型只缺少 JsonRecord 的索引签名。
-            params.args as unknown as JsonRecord,
+            params.recipe.args as unknown as JsonRecord,
             effective_signal,
           ),
         });

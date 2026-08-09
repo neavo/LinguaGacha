@@ -376,13 +376,6 @@ export class ProjectDataReader {
   }
 
   /**
-   * 对外暴露 section revision 读取，任务快照和重翻校验不再重复解析 meta key
-   */
-  public get_section_revision(meta: JsonRecord, section: string): number {
-    return get_section_revision(meta, section);
-  }
-
-  /**
    * 数据库 item JSON 转成公开 item 行记录
    */
   private normalize_item_record(item: JsonRecord): JsonRecord {

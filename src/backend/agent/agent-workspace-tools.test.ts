@@ -31,7 +31,7 @@ describe("Agent 工作区工具", () => {
     )) as WorkspaceToolResult;
     const recipe = (await recipe_tool.execute(
       "recipe",
-      { name: "query-items", args: { limit: 10 } },
+      { recipe: { name: "query-items", args: { limit: 10 } } },
       undefined,
       undefined,
       undefined as never,
@@ -73,55 +73,120 @@ describe("Agent 工作区工具", () => {
 
     expect(recipe_tool.parameters).toMatchObject({
       type: "object",
-      anyOf: expect.any(Array),
+      properties: { recipe: { anyOf: expect.any(Array) } },
+      required: ["recipe"],
     });
+    expect(recipe_tool.parameters).not.toHaveProperty("anyOf");
+    expect(JSON.stringify(recipe_tool.parameters)).not.toContain('"pattern"');
     expect(validate(create_tool, {})).toEqual({});
     expect(validate(script_tool, { script: "return null" })).toEqual({ script: "return null" });
-    expect(validate(recipe_tool, { name: "query-items", args: {} })).toEqual({
-      name: "query-items",
-      args: {},
-    });
-    expect(validate(recipe_tool, { name: "query-items", args: { limit: 100 } })).toMatchObject({
-      name: "query-items",
+    expect(validate(recipe_tool, { recipe: { name: "query-items", args: {} } })).toEqual({
+      recipe: { name: "query-items", args: {} },
     });
     expect(
-      validate(recipe_tool, {
-        name: "query-item-contexts",
-        args: { item_ids: [1, 2] },
-      }),
-    ).toMatchObject({ name: "query-item-contexts" });
+      validate(recipe_tool, { recipe: { name: "query-items", args: { limit: 100 } } }),
+    ).toMatchObject({ recipe: { name: "query-items" } });
     expect(
       validate(recipe_tool, {
-        name: "query-quality-rule-groups",
-        args: { kind: "glossary", keywords: ["姫"], include_examples: true, limit: 100 },
+        recipe: {
+          name: "query-items",
+          args: { search: { keywords: ["ドン・カイザー"] } },
+        },
       }),
-    ).toMatchObject({ name: "query-quality-rule-groups" });
+    ).toMatchObject({ recipe: { name: "query-items" } });
+    expect(
+      validate(recipe_tool, {
+        recipe: { name: "query-item-contexts", args: { item_ids: [1, 2] } },
+      }),
+    ).toMatchObject({ recipe: { name: "query-item-contexts" } });
+    expect(
+      validate(recipe_tool, {
+        recipe: {
+          name: "query-quality-rule-groups",
+          args: {
+            kind: "glossary",
+            keywords: ["ドン・カイザー"],
+            include_examples: true,
+            limit: 100,
+          },
+        },
+      }),
+    ).toMatchObject({ recipe: { name: "query-quality-rule-groups" } });
     expect(validate(apply_tool, {})).toEqual({});
     expect(() => validate(create_tool, { target: "items" })).toThrow();
     expect(() => validate(script_tool, { script: "" })).toThrow();
-    expect(() => validate(recipe_tool, { name: "query-items", args: { limit: 101 } })).toThrow();
-    expect(() =>
-      validate(recipe_tool, { name: "query-items", args: { filters: { statuses: ["BAD"] } } }),
-    ).toThrow();
-    expect(() =>
-      validate(recipe_tool, { name: "query-item-contexts", args: { item_ids: [] } }),
-    ).toThrow();
     expect(() =>
       validate(recipe_tool, {
-        name: "query-item-contexts",
-        args: { item_ids: Array.from({ length: 21 }, (_, index) => index + 1) },
+        recipe: { name: "query-items", args: { limit: 101 } },
       }),
     ).toThrow();
     expect(() =>
-      validate(recipe_tool, { name: "query-quality-rule-groups", args: { kind: "unknown" } }),
+      validate(recipe_tool, {
+        recipe: { name: "query-items", args: { search: { keywords: [""] } } },
+      }),
     ).toThrow();
     expect(() =>
       validate(recipe_tool, {
-        name: "query-quality-rule-groups",
-        args: { kind: "glossary", extra: true },
+        recipe: { name: "query-items", args: { filters: { statuses: ["BAD"] } } },
+      }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        recipe: { name: "query-item-contexts", args: { item_ids: [] } },
+      }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        recipe: {
+          name: "query-item-contexts",
+          args: { item_ids: Array.from({ length: 21 }, (_, index) => index + 1) },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        recipe: { name: "query-quality-rule-groups", args: { kind: "unknown" } },
+      }),
+    ).toThrow();
+    expect(() =>
+      validate(recipe_tool, {
+        recipe: {
+          name: "query-quality-rule-groups",
+          args: { kind: "glossary", extra: true },
+        },
       }),
     ).toThrow();
     expect(() => validate(apply_tool, { target: "items" })).toThrow();
+  });
+
+  it("Schema 兼容约束不放宽空白关键词语义", async () => {
+    const workspace = create_workspace();
+    const recipe_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_recipe");
+
+    await expect(
+      recipe_tool.execute(
+        "blank-item-keyword",
+        { recipe: { name: "query-items", args: { search: { keywords: [" "] } } } },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toMatchObject({ details: { code: "workspace_recipe.invalid_keywords" } });
+    await expect(
+      recipe_tool.execute(
+        "blank-rule-keyword",
+        {
+          recipe: {
+            name: "query-quality-rule-groups",
+            args: { kind: "glossary", keywords: ["\t"] },
+          },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toMatchObject({ details: { code: "workspace_recipe.invalid_keywords" } });
+    expect(workspace.run_recipe).not.toHaveBeenCalled();
   });
 
   it("调用前已取消时不触达工作区服务", async () => {

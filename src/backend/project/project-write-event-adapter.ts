@@ -59,13 +59,16 @@ export function adapt_project_change(
   const normalized = normalize_change_request(payload);
   const meta = data_reader.get_all_meta(project_path);
   const all_section_revisions = data_reader.build_section_revisions(meta);
+  // 工程 revision 取全量最大值；事件只投影本次变化 section 的当前 revision。
   return {
     type: "project.changed",
     eventId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     source: normalized.source,
     projectPath: project_path,
     projectRevision: Math.max(...Object.values(all_section_revisions), 0),
-    sectionRevisions: build_section_revision_payload(data_reader, meta, normalized.updatedSections),
+    sectionRevisions: Object.fromEntries(
+      normalized.updatedSections.map((section) => [section, all_section_revisions[section]]),
+    ),
     updatedSections: normalized.updatedSections,
     ...build_items_payload(data_reader, normalized.items, project_path),
     ...build_files_payload(data_reader, normalized.files, project_path),
@@ -215,19 +218,6 @@ function build_sections_payload(
     };
   }
   return Object.keys(sections).length === 0 ? {} : { sections };
-}
-
-/** 只暴露本次更新 section 的 revision。 */
-function build_section_revision_payload(
-  data_reader: ProjectDataReader,
-  meta: JsonRecord,
-  updated_sections: ProjectDataSection[],
-): Partial<Record<ProjectDataSection, number>> {
-  const revisions: Partial<Record<ProjectDataSection, number>> = {};
-  for (const section of updated_sections) {
-    revisions[section] = data_reader.get_section_revision(meta, section);
-  }
-  return revisions;
 }
 
 /** canonical-delta 缺少显式 data 时回读当前 section 事实。 */
