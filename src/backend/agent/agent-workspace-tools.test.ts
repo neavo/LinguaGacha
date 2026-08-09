@@ -71,6 +71,10 @@ describe("Agent 工作区工具", () => {
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
+    expect(recipe_tool.parameters).toMatchObject({
+      type: "object",
+      anyOf: expect.any(Array),
+    });
     expect(validate(create_tool, {})).toEqual({});
     expect(validate(script_tool, { script: "return null" })).toEqual({ script: "return null" });
     expect(validate(recipe_tool, { name: "query-items", args: {} })).toEqual({
