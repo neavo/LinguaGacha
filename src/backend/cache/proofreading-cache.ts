@@ -1,8 +1,8 @@
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import type { CacheFileEntry, CacheItem, CacheReadPort } from "./cache-types";
+import type { CacheFileEntry, CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
-import { Item } from "../../domain/item";
+import { Item, type ProjectItemPublicRecord } from "../../domain/item";
 import { is_json_record, read_json_record, type JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type {
@@ -406,15 +406,15 @@ export class ProofreadingCache {
    * 将基础 item 缓存收窄为校对列表需要的稳定字段。
    */
   private to_runtime_item(
-    item: CacheItem,
+    item: ProjectItemPublicRecord,
     file_order_by_path: Map<string, number>,
   ): ProofreadingItemRecord {
     const file_path = String(item["file_path"] ?? "");
     return {
-      item_id: this.read_number(item["item_id"] ?? item["id"], 0),
+      item_id: item.item_id,
       file_path,
       file_order: file_order_by_path.get(file_path) ?? Number.MAX_SAFE_INTEGER,
-      row_number: this.read_number(item["row_number"] ?? item["row"], 0),
+      row_number: item.row_number,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
       name_src: Item.normalize_name_field(item["name_src"]),

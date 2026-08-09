@@ -77,7 +77,7 @@ export class TsConversionExportService {
       }),
     );
     const export_items = source_items.map((item) => {
-      const item_id = Number(item["item_id"] ?? item["id"] ?? 0);
+      const item_id = item.item_id;
       const converted = converted_by_id.get(item_id);
       return Item.from_json({
         ...item,

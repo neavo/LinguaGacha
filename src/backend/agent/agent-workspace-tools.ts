@@ -8,8 +8,8 @@ import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreadi
 import { AgentToolError, agent_tool_result } from "./agent-tool";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 
-/** create 不接受模型重传工程身份或快照选项。 */
-const WORKSPACE_CREATE_PARAMETERS = Type.Object({}, { additionalProperties: false });
+/** load 不接受模型重传工程身份或快照选项。 */
+const WORKSPACE_LOAD_PARAMETERS = Type.Object({}, { additionalProperties: false });
 /** 单页上限属于模型输入边界；描述与 TypeBox 约束必须共用同一值。 */
 const AGENT_WORKSPACE_RECIPE_PAGE_LIMIT = 100;
 
@@ -180,15 +180,15 @@ function assert_non_blank_keywords(keywords: readonly string[] | undefined): voi
 export function create_agent_workspace_tools(workspace: AgentWorkspacePort): ToolDefinition[] {
   return [
     defineTool({
-      name: "workspace_create",
-      label: "创建工作区",
+      name: "workspace_load",
+      label: "加载工作区",
       description:
-        "任务需要读取或准备修改当前工程数据时创建完整工作区，并返回 project_meta 与 contract。创建本身不修改工程；再次调用会在新工作区成功后替换旧工作区。",
+        "加载当前工程的完整只读快照、空 change 文件与 scratch，并返回语言和数量摘要。加载本身不修改工程；再次调用会以最新工程事实替换旧工作区。",
       executionMode: "sequential",
-      parameters: WORKSPACE_CREATE_PARAMETERS,
+      parameters: WORKSPACE_LOAD_PARAMETERS,
       execute: async (_tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
-        const result = await workspace.create_workspace();
+        const result = await workspace.load_workspace();
         signal?.throwIfAborted();
         return agent_tool_result(result);
       },
@@ -222,7 +222,7 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       name: "workspace_script",
       label: "运行工作区脚本",
       description:
-        "运行模型提供的 JavaScript 并返回 JSON 结果。脚本可读取工作区，也可通过文件事务修改 contract 标记为 writable 的数据集或 scratch；成功保留本次修改，失败只回滚本次运行。",
+        "运行模型提供的 JavaScript 并返回 JSON 结果。脚本可读取只读快照，通过文件事务覆盖 contract.changes 声明的固定文件并自由管理 scratch；成功保留本次修改，失败只回滚本次运行。",
       executionMode: "sequential",
       parameters: WORKSPACE_SCRIPT_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
@@ -238,13 +238,12 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       name: "workspace_apply",
       label: "应用工作区",
       description:
-        "在用户明确批准当前方案后，校验当前全部可写数据集差异并以一个事务应用到工程；无变化不会写入，任一校验、revision 或领域规则失败都不会部分应用。",
+        "在当前具体差异或确定规则已经获得用户授权后，校验非空 change 文件并以一个事务应用到工程；无变化不会写入，任一提交前校验、revision 或领域规则失败都不会部分应用。执行期间不可停止。",
       executionMode: "sequential",
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (_tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
         const result = await workspace.apply_workspace();
-        signal?.throwIfAborted();
         return agent_tool_result(result);
       },
     }),

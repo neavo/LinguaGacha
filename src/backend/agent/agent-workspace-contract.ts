@@ -11,7 +11,7 @@ import {
   type ProofreadingManualStatusCode,
 } from "../../shared/proofreading/proofreading-types";
 
-/** 工作区固定相对路径；宿主协议与 Backend 只消费这份布局词表。 */
+/** 工作区固定只读路径；宿主协议与 Backend 只消费这份布局词表。 */
 export const AGENT_WORKSPACE_PATHS = Object.freeze({
   projectMeta: "project_meta.json",
   contract: "contract.json",
@@ -35,6 +35,42 @@ export const AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS = Object.freeze(
     string
   >,
 );
+
+/** 质量规则的四种显式操作各占一个 JSONL 文件。 */
+export const AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS = Object.freeze([
+  "creates",
+  "updates",
+  "deletes",
+  "moves",
+] as const);
+
+/** 固定 quality change 文件允许的操作名。 */
+export type AgentWorkspaceQualityChangeOperation =
+  (typeof AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS)[number];
+
+/** 每个 quality kind 复用同一 changes/<kind>/<operation>.jsonl 布局。 */
+export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
+  Object.fromEntries(
+    QUALITY_RULE_KINDS.map((kind) => [
+      kind,
+      Object.freeze(
+        Object.fromEntries(
+          AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((operation) => [
+            operation,
+            `changes/${kind}/${operation}.jsonl`,
+          ]),
+        ) as Record<AgentWorkspaceQualityChangeOperation, string>,
+      ),
+    ]),
+  ) as Record<QualityRuleKind, Readonly<Record<AgentWorkspaceQualityChangeOperation, string>>>,
+);
+
+/** 模型可写的全部固定 change 路径；datasets 本身始终只读。 */
+export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
+  items: Object.freeze({ updates: "changes/items/updates.jsonl" }),
+  prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),
+  ...AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
+});
 
 /** 随应用发布且允许模型调用的只读 recipe 白名单。 */
 export const AGENT_WORKSPACE_RECIPE_NAMES = Object.freeze([
@@ -65,14 +101,17 @@ export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
   "retry_count",
 ] as const);
 
-/** item 字段白名单中真正允许 apply 的人工更新字段。 */
+/** item change 只允许这三个既有人工写字段。 */
 export const AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS = Object.freeze([
   "dst",
   "name_dst",
   "status",
 ] as const);
 
-/** 四类质量规则各自的完整最终集合字段。 */
+/** item 提交建议只控制上下文与失败恢复成本，不构成后端硬门。 */
+const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
+
+/** 四类质量规则各自的完整领域字段。 */
 export const AGENT_WORKSPACE_QUALITY_FIELDS = Object.freeze({
   glossary: ["id", "src", "dst", "info", "case_sensitive"],
   text_preserve: ["id", "src", "info"],
@@ -80,6 +119,7 @@ export const AGENT_WORKSPACE_QUALITY_FIELDS = Object.freeze({
   post_replacement: ["id", "src", "dst", "regex", "case_sensitive"],
 } as const satisfies Record<QualityRuleKind, readonly string[]>);
 
+/** project_meta.json 只承载解释快照所需的语言、数量和文件顺序。 */
 const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
   source_language: { type: "string" },
   target_language: { type: "string" },
@@ -108,6 +148,7 @@ const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
   },
 };
 
+/** items 只读数据集的完整字段契约。 */
 const ITEM_FIELD_CONTRACT: JsonRecord = {
   item_id: { type: "positive_integer", purpose: "稳定条目身份" },
   src: { type: "string", purpose: "原文正文" },
@@ -120,11 +161,23 @@ const ITEM_FIELD_CONTRACT: JsonRecord = {
     type: "enum",
     purpose: "条目状态；主动修改只接受人工状态",
     values: [...ITEM_STATUSES],
-    writable_values: [...PROOFREADING_MANUAL_STATUS_CODES],
   },
   retry_count: { type: "non_negative_integer", purpose: "重试事实" },
 };
 
+/** item update change 的稳定身份与三个可选人工字段。 */
+const ITEM_UPDATE_FIELD_CONTRACT: JsonRecord = {
+  item_id: { type: "positive_integer" },
+  dst: { type: "string", optional: true },
+  name_dst: { type: "string", optional: true },
+  status: {
+    type: "enum",
+    values: [...PROOFREADING_MANUAL_STATUS_CODES],
+    optional: true,
+  },
+};
+
+/** warning 只保存判决证据和 item 关联身份。 */
 const WARNING_FIELD_CONTRACT: JsonRecord = {
   item_id: { type: "positive_integer", purpose: "关联 items 的稳定身份" },
   warnings: { type: "enum_array", values: [...PROOFREADING_WARNING_CODES] },
@@ -164,26 +217,26 @@ const WARNING_FIELD_CONTRACT: JsonRecord = {
 /** quality 字段形状沿用真实领域类型，不建立 Agent 专用别名。 */
 const QUALITY_FIELD_CONTRACT: Record<QualityRuleKind, JsonRecord> = {
   glossary: {
-    id: { type: "string", optional_for_new: true },
+    id: { type: "string" },
     src: { type: "string" },
     dst: { type: "string" },
     info: { type: "string" },
     case_sensitive: { type: "boolean" },
   },
   text_preserve: {
-    id: { type: "string", optional_for_new: true },
+    id: { type: "string" },
     src: { type: "string" },
     info: { type: "string" },
   },
   pre_replacement: {
-    id: { type: "string", optional_for_new: true },
+    id: { type: "string" },
     src: { type: "string" },
     dst: { type: "string" },
     regex: { type: "boolean" },
     case_sensitive: { type: "boolean" },
   },
   post_replacement: {
-    id: { type: "string", optional_for_new: true },
+    id: { type: "string" },
     src: { type: "string" },
     dst: { type: "string" },
     regex: { type: "boolean" },
@@ -191,6 +244,7 @@ const QUALITY_FIELD_CONTRACT: Record<QualityRuleKind, JsonRecord> = {
   },
 };
 
+/** quality evidence 保存命中摘要与完整互斥关系组。 */
 const QUALITY_EVIDENCE_FIELD_CONTRACT: JsonRecord = {
   by_id: {
     type: "record",
@@ -211,41 +265,73 @@ const QUALITY_EVIDENCE_FIELD_CONTRACT: JsonRecord = {
   },
 };
 
+/** 四类只读 quality 数据集共用路径、身份与字段投影。 */
 const quality_entry_datasets = Object.fromEntries(
   QUALITY_RULE_KINDS.map((kind) => [
     kind,
     {
       path: AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind],
       format: "jsonl",
-      writable: true,
-      purpose: `${kind} 规则的完整最终有序集合`,
+      purpose: `${kind} 规则的完整只读有序集合`,
       identity: ["id"],
       fields: QUALITY_FIELD_CONTRACT[kind],
-      writable_fields: AGENT_WORKSPACE_QUALITY_FIELDS[kind].filter((field) => field !== "id"),
-      apply: {
-        mode: "replace_collection",
-        existing_id_immutable: true,
-        new_entry_omits_id: true,
-        missing_entry_deletes: true,
-      },
     },
   ]),
 ) as JsonRecord;
 
+/** 每类 evidence 与对应 quality kind 相邻但始终只读。 */
 const quality_evidence_datasets = Object.fromEntries(
   QUALITY_RULE_KINDS.map((kind) => [
     `${kind}_evidence`,
     {
       path: AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind],
       format: "json",
-      writable: false,
-      purpose: `${kind} 创建时快照的命中、例句与关系组`,
+      purpose: `${kind} 加载时快照的命中、例句与关系组`,
       fields: QUALITY_EVIDENCE_FIELD_CONTRACT,
     },
   ]),
 ) as JsonRecord;
 
-/** 工作区结构、字段、可写性和 apply 语义的唯一代码权威。 */
+/** 从领域字段生成四类显式操作契约，避免手写平行 schema。 */
+const quality_changes = Object.fromEntries(
+  QUALITY_RULE_KINDS.map((kind) => {
+    const mutable_fields = Object.fromEntries(
+      Object.entries(QUALITY_FIELD_CONTRACT[kind])
+        .filter(([field]) => field !== "id")
+        .map(([field, contract]) => [field, { ...(contract as JsonRecord), optional: true }]),
+    );
+    const create_fields = Object.fromEntries(
+      Object.entries(QUALITY_FIELD_CONTRACT[kind]).filter(([field]) => field !== "id"),
+    );
+    return [
+      kind,
+      {
+        creates: {
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].creates,
+          format: "jsonl",
+          fields: { ...create_fields, before_id: { type: "nullable_string", optional: true } },
+        },
+        updates: {
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].updates,
+          format: "jsonl",
+          fields: { id: { type: "string" }, ...mutable_fields },
+        },
+        deletes: {
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].deletes,
+          format: "jsonl",
+          fields: { id: { type: "string" } },
+        },
+        moves: {
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].moves,
+          format: "jsonl",
+          fields: { id: { type: "string" }, before_id: { type: "nullable_string" } },
+        },
+      },
+    ];
+  }),
+) as JsonRecord;
+
+/** 工作区结构、字段、显式 change 和脚本 API 的唯一代码权威。 */
 export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
@@ -254,46 +340,79 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       format: "json",
-      writable: false,
       purpose: "工程语言、完整数量与文件顺序",
       fields: PROJECT_META_FIELD_CONTRACT,
     },
     items: {
       path: AGENT_WORKSPACE_PATHS.items,
       format: "jsonl",
-      writable: true,
-      purpose: "完整条目集合",
+      purpose: "完整只读条目集合",
       identity: ["item_id"],
-      fields: ITEM_FIELD_CONTRACT,
-      writable_fields: [...AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS],
-      apply: {
-        mode: "update_existing",
-        fixed_identity_and_order: true,
-        non_empty_dst_sets_processed: true,
-        explicit_status_wins: true,
-        status_change_resets_retry_count: true,
-      },
+      fields: Object.fromEntries(
+        AGENT_WORKSPACE_ITEM_FIELDS.map((field) => [field, ITEM_FIELD_CONTRACT[field]]),
+      ),
     },
     warnings: {
       path: AGENT_WORKSPACE_PATHS.warnings,
       format: "jsonl",
-      writable: false,
-      purpose: "按 item_id 关联的创建时校对警告证据",
+      purpose: "按 item_id 关联的加载时校对警告证据",
       identity: ["item_id"],
       fields: WARNING_FIELD_CONTRACT,
     },
     prompts: {
       path: AGENT_WORKSPACE_PATHS.prompts,
       format: "json",
-      writable: true,
-      purpose: "两类提示词正文",
+      purpose: "两类提示词只读正文",
       identity: [...PROMPT_KINDS],
       fields: Object.fromEntries(PROMPT_KINDS.map((kind) => [kind, { type: "string" }])),
-      writable_fields: [...PROMPT_KINDS],
-      apply: { mode: "replace_object", fixed_keys: [...PROMPT_KINDS] },
     },
     ...quality_entry_datasets,
     ...quality_evidence_datasets,
+  },
+  changes: {
+    items: {
+      updates: {
+        path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+        format: "jsonl",
+        identity: ["item_id"],
+        fields: ITEM_UPDATE_FIELD_CONTRACT,
+        require_one_of: [...AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS],
+      },
+    },
+    prompts: {
+      updates: {
+        path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
+        format: "jsonl",
+        identity: ["kind"],
+        fields: {
+          kind: { type: "enum", values: [...PROMPT_KINDS] },
+          text: { type: "string" },
+        },
+      },
+    },
+    ...quality_changes,
+  },
+  effects: {
+    item_updates: {
+      non_empty_dst: { status: "PROCESSED" },
+      empty_dst: { status: "preserve" },
+      name_dst: { status: "preserve", retry_count: "preserve" },
+      explicit_status: { precedence: "after_dst", retry_count: 0 },
+    },
+  },
+  guidance: {
+    apply: {
+      item_updates: {
+        preferred_max_rows: AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS,
+        hard_max_rows: null,
+      },
+      quality_changes: { preferred_max_rows: null, hard_max_rows: null },
+    },
+  },
+  apply: {
+    quality_operation_order: [...AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS],
+    freshness: "工程身份、语言、epoch 与全部 section revision 必须仍等于加载快照",
+    transaction: "全部真实 change 在一个数据库事务中提交",
   },
   script_api: {
     argument: "workspace",
@@ -326,17 +445,14 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     "query-items": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-items"],
       purpose: "筛选目标条目并按需联结警告证据",
-      readonly: true,
     },
     "query-item-contexts": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-item-contexts"],
       purpose: "读取目标条目在同文件自然顺序中的邻近文本",
-      readonly: true,
     },
     "query-quality-rule-groups": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-quality-rule-groups"],
-      purpose: "按完整关系组读取目标质量规则与创建时证据",
-      readonly: true,
+      purpose: "按完整关系组读取目标质量规则与加载时证据",
     },
   },
 });

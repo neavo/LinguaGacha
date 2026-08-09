@@ -8,7 +8,7 @@ const READ_SKILL_PARAMETERS = Type.Object(
   {
     path: Type.String({
       description:
-        "要读取的精确路径：必须是 available_skills 给出的 location，或已读取技能正文引用的 Markdown 路径；不能用于任意文件。",
+        "要读取的规范化绝对路径：必须精确匹配启动期白名单中的 SKILL.md 或 reference；不能用于任意文件。",
     }),
   },
   { additionalProperties: false },
@@ -36,7 +36,7 @@ export function create_agent_skill_tools(
       name: "read_skill",
       label: "读技能",
       description:
-        "读取启动期已加载且列入白名单的技能正文或其参考文件。path 必须精确来自 available_skills，或来自此前已读取正文中的引用；不能读取任意本地文件。返回 skill、规范化 path 与 content，只读且不修改资源。",
+        "读取启动期已加载且列入白名单的 SKILL.md 或 reference。path 必须精确匹配白名单中的规范化绝对路径，不能读取任意本地文件。返回 skill、path 与 content，只读且不修改资源。",
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();

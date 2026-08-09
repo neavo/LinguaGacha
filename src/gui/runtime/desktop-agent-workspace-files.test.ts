@@ -11,22 +11,23 @@ let workspace_path = "";
 beforeEach(() => {
   workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-files-"));
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "glossary"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "scratch"), { recursive: true });
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
-      datasets: {
-        items: { path: "items/entries.jsonl", writable: true },
-        project_meta: { path: "project_meta.json", writable: false },
+      changes: {
+        items: { updates: { path: "changes/items/updates.jsonl" } },
       },
       recipes: {
-        "query-items": { path: "recipes/query-items.js", readonly: true },
+        "query-items": { path: "recipes/query-items.js" },
       },
     }),
   );
   fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), "original");
+  fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "original");
   fs.writeFileSync(path.join(workspace_path, "project_meta.json"), "metadata");
   fs.writeFileSync(path.join(workspace_path, "recipes", "query-items.js"), "return args;");
 });
@@ -39,31 +40,34 @@ afterEach(() => {
 describe("DesktopAgentWorkspaceFiles", () => {
   it("事务内读取 upper，回滚只丢弃本次修改", async () => {
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    expect(await put(files, "items/entries.jsonl", "step-10")).toHaveProperty("status", 204);
-    expect(await read(files, "items/entries.jsonl")).toBe("step-10");
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
+    expect(await put(files, "changes/items/updates.jsonl", "step-10")).toHaveProperty(
+      "status",
+      204,
     );
+    expect(await read(files, "changes/items/updates.jsonl")).toBe("step-10");
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("original");
 
     await files.rollback();
 
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
-    );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("original");
   });
 
   it("连续成功运行累积到稳定基线，后续失败不撤销此前提交", async () => {
     const first = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    await put(first, "items/entries.jsonl", "step-9");
+    await put(first, "changes/items/updates.jsonl", "step-9");
     await first.commit();
 
     const second = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    await put(second, "items/entries.jsonl", "broken-step-10");
+    await put(second, "changes/items/updates.jsonl", "broken-step-10");
     await second.rollback();
 
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "step-9",
-    );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("step-9");
   });
 
   it("scratch 删除和新写入组成合并视图，事务目录不可见也不可访问", async () => {
@@ -94,7 +98,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "readonly");
 
     expect(await files.read_recipe_source("query-items")).toBe("return args;");
-    expect((await put(files, "items/entries.jsonl", "changed")).status).toBe(403);
+    expect((await put(files, "changes/items/updates.jsonl", "changed")).status).toBe(403);
     expect(fs.existsSync(path.join(workspace_path, ".transactions"))).toBe(false);
   });
 
@@ -108,7 +112,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
 
   it("提交安装失败会恢复基线并报告 preserved", async () => {
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    await put(files, "items/entries.jsonl", "changed");
+    await put(files, "changes/items/updates.jsonl", "changed");
     const original_rename = fs.promises.rename.bind(fs.promises);
     let failed = false;
     vi.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
@@ -122,14 +126,14 @@ describe("DesktopAgentWorkspaceFiles", () => {
     await expect(files.commit()).rejects.toMatchObject({
       workspacePreserved: true,
     });
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
-    );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("original");
   });
 
   it("停止发生在提交过程中时反向恢复已经移动的基线", async () => {
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    await put(files, "items/entries.jsonl", "changed");
+    await put(files, "changes/items/updates.jsonl", "changed");
     const controller = new AbortController();
     const original_rename = fs.promises.rename.bind(fs.promises);
     vi.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
@@ -142,9 +146,9 @@ describe("DesktopAgentWorkspaceFiles", () => {
     await expect(files.commit(controller.signal)).rejects.toMatchObject({
       workspacePreserved: true,
     });
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
-    );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("original");
   });
 
   it("写入流失败时保留基线并清理 upper 临时文件", async () => {
@@ -157,7 +161,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     });
 
     const response = await files.handle(
-      new Request("lg-agent-workspace://workspace/files/items/entries.jsonl", {
+      new Request("lg-agent-workspace://workspace/files/changes/items/updates.jsonl", {
         method: "PUT",
         body,
         duplex: "half",
@@ -165,13 +169,15 @@ describe("DesktopAgentWorkspaceFiles", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "original",
-    );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("original");
     const transaction = fs.readdirSync(path.join(workspace_path, ".transactions"))[0];
     if (transaction === undefined) throw new Error("缺少事务目录");
     expect(
-      fs.readdirSync(path.join(workspace_path, ".transactions", transaction, "upper", "items")),
+      fs.readdirSync(
+        path.join(workspace_path, ".transactions", transaction, "upper", "changes", "items"),
+      ),
     ).toEqual([]);
     await files.rollback();
   });
@@ -199,13 +205,14 @@ describe("DesktopAgentWorkspaceFiles", () => {
       Buffer.alloc(2 * 1024 * 1024),
     );
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
-    await put(files, "items/entries.jsonl", "changed");
+    await put(files, "changes/items/updates.jsonl", "changed");
     const transaction = fs.readdirSync(path.join(workspace_path, ".transactions"))[0];
     if (transaction === undefined) throw new Error("缺少事务目录");
     expect(
       fs.existsSync(path.join(workspace_path, ".transactions", transaction, "upper", "glossary")),
     ).toBe(false);
     expect((await put(files, "project_meta.json", "changed")).status).toBe(403);
+    expect((await put(files, "items/entries.jsonl", "changed")).status).toBe(403);
     expect((await put(files, "scratch", "changed")).status).toBe(403);
     for (const encoded_path of ["%2e%2e%2fsecret", "C%3A/secret", "items%5Centries.jsonl"]) {
       expect(
@@ -216,7 +223,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     expect(
       (
         await files.handle(
-          new Request("lg-agent-workspace://workspace/files/items/entries.jsonl", {
+          new Request("lg-agent-workspace://workspace/files/changes/items/updates.jsonl", {
             method: "DELETE",
           }),
         )

@@ -103,12 +103,12 @@ describe("ProjectWriteStore", () => {
       source: "proofreading_apply_item_changes",
       changes: [
         {
-          current: { id: 1, dst: "", status: "NONE", retry_count: 0 },
-          next: { id: 1, dst: "校对译文", status: "PROCESSED", retry_count: 0 },
+          item_id: 1,
+          current: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
+          next: { dst: "校对译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
         },
       ],
       fieldPatch: { dst: "校对译文", status: "PROCESSED" },
-      updateTranslationExtras: true,
     });
 
     expect(read_items(database, project_path)[0]).toMatchObject({
@@ -275,8 +275,47 @@ describe("ProjectWriteStore", () => {
         expectedSectionRevisions: { files: 0 },
         orderedPaths: ["a.txt"],
       }),
-    ).rejects.toBe(dispatch_error);
+    ).rejects.toMatchObject({
+      code: "data.committed_sync_failed",
+      public_details: {
+        committed: true,
+        section_revisions: expect.objectContaining({ files: 1 }),
+        action: "reload_project",
+      },
+      cause: dispatch_error,
+    });
 
+    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+    expect(published_changes).toEqual([]);
+  });
+
+  it("公开变更发布失败时同样返回已提交 revision 并禁止重试", async () => {
+    const publish_error = new Error("public publish failed");
+    const { database, project_path, store, published_changes } = create_store(
+      "public-event-failure",
+      {
+        onPublish: () => {
+          throw publish_error;
+        },
+      },
+    );
+    add_test_asset(database, project_path, "a.txt", "a", 0);
+
+    await expect(
+      store.reorder_project_files({
+        projectPath: project_path,
+        expectedSectionRevisions: { files: 0 },
+        orderedPaths: ["a.txt"],
+      }),
+    ).rejects.toMatchObject({
+      code: "data.committed_sync_failed",
+      public_details: {
+        committed: true,
+        section_revisions: expect.objectContaining({ files: 1 }),
+        action: "reload_project",
+      },
+      cause: publish_error,
+    });
     expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
     expect(published_changes).toEqual([]);
   });
@@ -443,14 +482,15 @@ describe("ProjectWriteStore", () => {
         return result;
       });
 
-    await store.apply_agent_workspace_changes({
+    const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
       expectedSectionRevisions: zero_revisions(),
       source: "agent_workspace_apply",
       itemChanges: [
         {
-          current: { id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 2 },
-          next: { id: 1, dst: "译文", name_dst: "译名", status: "PROCESSED", retry_count: 0 },
+          item_id: 1,
+          current: { dst: "", name_dst: null, status: "NONE", retry_count: 2 },
+          next: { dst: "译文", name_dst: "译名", status: "PROCESSED", retry_count: 0 },
         },
       ],
       qualityChanges: [
@@ -471,6 +511,10 @@ describe("ProjectWriteStore", () => {
       ],
     });
 
+    expect(ack).toMatchObject({
+      committed: true,
+      sectionRevisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
+    });
     expect(transaction).toHaveBeenCalledOnce();
     expect(read_items(database, project_path)[0]).toMatchObject({
       dst: "译文",
@@ -522,8 +566,9 @@ describe("ProjectWriteStore", () => {
         source: "agent_workspace_apply",
         itemChanges: [
           {
-            current: { id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 2 },
-            next: { id: 1, dst: "译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
+            item_id: 1,
+            current: { dst: "", name_dst: null, status: "NONE", retry_count: 2 },
+            next: { dst: "译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
           },
         ],
         qualityChanges: [

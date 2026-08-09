@@ -1,5 +1,6 @@
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonValue, MutableJsonRecord } from "../../domain/json";
-import type { CacheFileEntry, CacheItem, CacheReadPort } from "../cache/cache-types";
+import type { CacheFileEntry, CacheReadPort } from "../cache/cache-types";
 import { is_json_record } from "../../domain/json";
 import type { ProjectSessionState } from "./project-session-state";
 
@@ -48,10 +49,10 @@ export class ProjectSummaryService {
    * 按文件路径聚合项目列表，统计结果和文件条目使用同一批 item。
    */
   private build_file_entries(
-    items: CacheItem[],
+    items: ProjectItemPublicRecord[],
     cached_file_entries: CacheFileEntry[],
   ): MutableJsonRecord[] {
-    const entries_by_path = new Map<string, CacheItem[]>();
+    const entries_by_path = new Map<string, ProjectItemPublicRecord[]>();
     for (const item of items) {
       const file_path = String(item["file_path"] ?? "");
       if (file_path === "") {
@@ -96,7 +97,7 @@ export class ProjectSummaryService {
    */
   private build_project_file_entry(
     file_entry: CacheFileEntry,
-    file_items: CacheItem[],
+    file_items: ProjectItemPublicRecord[],
     fallback_sort_index: number,
   ): MutableJsonRecord {
     return {
@@ -110,7 +111,7 @@ export class ProjectSummaryService {
   /**
    * 项目进度统计只基于 item status，任务运行态进度由 TaskSnapshot 单独提供。
    */
-  private build_item_stats(items: CacheItem[]): MutableJsonRecord {
+  private build_item_stats(items: ProjectItemPublicRecord[]): MutableJsonRecord {
     let completed_count = 0;
     let failed_count = 0;
     let skipped_count = 0;
@@ -139,7 +140,7 @@ export class ProjectSummaryService {
    * 分析统计优先消费任务写入的 status_summary，缺失时按可分析 item 数生成待处理态。
    */
   private build_analysis_stats(
-    items: CacheItem[],
+    items: ProjectItemPublicRecord[],
     analysis_block: MutableJsonRecord,
   ): MutableJsonRecord {
     const status_summary = analysis_block["status_summary"];

@@ -5,10 +5,12 @@ import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
 import {
   AGENT_WORKSPACE_CONTRACT,
+  AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_ITEM_FIELDS,
   AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
+  AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_QUALITY_FIELDS,
   AGENT_WORKSPACE_RECIPE_PATHS,
@@ -18,7 +20,7 @@ import {
 } from "./agent-workspace-contract";
 
 describe("Agent 工作区 contract", () => {
-  it("contract 完整声明最终路径、字段和可写性", () => {
+  it("contract 把只读快照与显式 change 路径分开声明", () => {
     const datasets = read_json_record(AGENT_WORKSPACE_CONTRACT["datasets"]);
     expect(new Set(Object.keys(datasets))).toEqual(
       new Set([
@@ -35,7 +37,6 @@ describe("Agent 工作区 contract", () => {
     expect(project_meta).toMatchObject({
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       format: "json",
-      writable: false,
     });
     expect(Object.keys(read_json_record(project_meta["fields"]))).toEqual([
       "source_language",
@@ -48,8 +49,6 @@ describe("Agent 工作区 contract", () => {
     expect(items).toMatchObject({
       path: AGENT_WORKSPACE_PATHS.items,
       format: "jsonl",
-      writable: true,
-      writable_fields: AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
     });
     expect(Object.keys(read_json_record(items["fields"]))).toEqual(AGENT_WORKSPACE_ITEM_FIELDS);
 
@@ -57,7 +56,6 @@ describe("Agent 工作区 contract", () => {
     expect(warnings).toMatchObject({
       path: AGENT_WORKSPACE_PATHS.warnings,
       format: "jsonl",
-      writable: false,
     });
     expect(Object.keys(read_json_record(warnings["fields"]))).toEqual([
       "item_id",
@@ -71,7 +69,6 @@ describe("Agent 工作区 contract", () => {
       expect(entries).toMatchObject({
         path: AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind],
         format: "jsonl",
-        writable: true,
       });
       expect(Object.keys(read_json_record(entries["fields"]))).toEqual(
         AGENT_WORKSPACE_QUALITY_FIELDS[kind],
@@ -81,13 +78,34 @@ describe("Agent 工作区 contract", () => {
       expect(evidence).toMatchObject({
         path: AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind],
         format: "json",
-        writable: false,
       });
       expect(Object.keys(read_json_record(evidence["fields"]))).toEqual(["by_id", "groups"]);
     }
 
     for (const dataset of Object.values(datasets).map(read_json_record)) {
+      expect(dataset).not.toHaveProperty("writable");
       expect(Object.keys(read_json_record(dataset["fields"]))).not.toHaveLength(0);
+    }
+
+    const changes = read_json_record(AGENT_WORKSPACE_CONTRACT["changes"]);
+    expect(read_json_record(read_json_record(changes["items"])["updates"])).toMatchObject({
+      path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+      require_one_of: AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
+    });
+    expect(read_json_record(read_json_record(changes["prompts"])["updates"])).toMatchObject({
+      path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
+    });
+    for (const kind of QUALITY_RULE_KINDS) {
+      const operations = read_json_record(changes[kind]);
+      expect(Object.keys(operations)).toEqual(["creates", "updates", "deletes", "moves"]);
+      for (const operation of Object.keys(operations)) {
+        expect(read_json_record(operations[operation])).toMatchObject({
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][
+            operation as keyof (typeof AGENT_WORKSPACE_QUALITY_CHANGE_PATHS)[typeof kind]
+          ],
+          format: "jsonl",
+        });
+      }
     }
   });
 
@@ -123,9 +141,30 @@ describe("Agent 工作区 contract", () => {
       expect(read_json_record(recipes[name])).toEqual({
         path: recipe_path,
         purpose: expect.any(String),
-        readonly: true,
       });
     }
+  });
+
+  it("contract 为无 skill 写入声明 item 副作用与领域提交软建议", () => {
+    const effects = read_json_record(AGENT_WORKSPACE_CONTRACT["effects"]);
+    const item_effects = read_json_record(effects["item_updates"]);
+    const guidance = read_json_record(AGENT_WORKSPACE_CONTRACT["guidance"]);
+    const apply_guidance = read_json_record(guidance["apply"]);
+
+    expect(item_effects).toEqual({
+      non_empty_dst: { status: "PROCESSED" },
+      empty_dst: { status: "preserve" },
+      name_dst: { status: "preserve", retry_count: "preserve" },
+      explicit_status: { precedence: "after_dst", retry_count: 0 },
+    });
+    const item_guidance = read_json_record(apply_guidance["item_updates"]);
+    expect(item_guidance["preferred_max_rows"]).toEqual(expect.any(Number));
+    expect(item_guidance["preferred_max_rows"]).toBeGreaterThan(0);
+    expect(item_guidance["hard_max_rows"]).toBeNull();
+    expect(read_json_record(apply_guidance["quality_changes"])).toEqual({
+      preferred_max_rows: null,
+      hard_max_rows: null,
+    });
   });
 
   it("边界投影保持业务字段并让 warning 只携带证据", () => {

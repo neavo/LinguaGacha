@@ -98,4 +98,18 @@ describe("Agent mention 视觉投影", () => {
       { from: 26, to: 39, marker: "@term(Alice))" },
     ]);
   });
+
+  it("不把反斜线转义的 marker 投影为 mention", () => {
+    const tokens = create_agent_mention_tokens(
+      [
+        {
+          name: "glossary-review",
+          displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "" },
+        },
+      ],
+      [],
+    );
+
+    expect(find_agent_mention_ranges(String.raw`\@skill(glossary-review)`, tokens)).toEqual([]);
+  });
 });

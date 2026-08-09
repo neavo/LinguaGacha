@@ -1,3 +1,4 @@
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonValue } from "../../domain/json";
 import { normalize_task_progress_snapshot } from "../../domain/task";
 import type { CacheReadPort } from "../cache/cache-types";
@@ -217,7 +218,7 @@ export class TaskProjectStore {
     const item_ids = this.normalize_number_list(request["item_ids"]);
     const items = item_ids
       .map((item_id) => this.cache.items.readItem(item_id))
-      .filter((item): item is MutableJsonRecord => item !== null)
+      .filter((item): item is ProjectItemPublicRecord => item !== null)
       .map((item) => ({
         ...item,
         status: "NONE",

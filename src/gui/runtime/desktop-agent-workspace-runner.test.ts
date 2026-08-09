@@ -81,20 +81,22 @@ beforeEach(() => {
   electron_mocks.execute_javascript.mockResolvedValue('{"changed":2}');
   workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-runner-"));
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
-      datasets: { items: { path: "items/entries.jsonl", writable: true } },
+      datasets: { items: { path: "items/entries.jsonl" } },
+      changes: { items: { updates: { path: "changes/items/updates.jsonl" } } },
       recipes: {
         "query-items": {
           path: "recipes/query-items.js",
-          readonly: true,
         },
       },
     }),
   );
   fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), ORIGINAL_ITEMS);
+  fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "");
   fs.writeFileSync(
     path.join(workspace_path, "recipes", "query-items.js"),
     "async function runRecipe(_workspace, args) { return { marker: args.limit }; }\nvoid runRecipe;",
@@ -118,7 +120,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
         operation: {
           kind: "script",
           script:
-            'const rows = []; for await (const row of workspace.iterateJsonl(workspace.contract.datasets.items.path)) rows.push(row); await workspace.writeText(workspace.contract.datasets.items.path, "changed"); return { text: await workspace.readText(workspace.contract.datasets.items.path), rows, api: Object.keys(workspace).sort() };',
+            'const rows = []; for await (const row of workspace.iterateJsonl(workspace.contract.datasets.items.path)) rows.push(row); await workspace.writeText(workspace.contract.changes.items.updates.path, "changed"); return { text: await workspace.readText(workspace.contract.changes.items.updates.path), rows, api: Object.keys(workspace).sort() };',
         },
       },
       new AbortController().signal,
@@ -144,8 +146,11 @@ describe("DesktopAgentWorkspaceRunner", () => {
       },
     });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
-      "changed",
+      ORIGINAL_ITEMS,
     );
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("changed");
     expect(electron_mocks.register_schemes).toHaveBeenCalledWith([
       {
         scheme: "lg-agent-workspace",
@@ -189,6 +194,92 @@ describe("DesktopAgentWorkspaceRunner", () => {
 
     runner.dispose();
     expect(electron_mocks.protocol_unhandle).toHaveBeenCalledWith("lg-agent-workspace");
+  });
+
+  it("脚本结果按原生 JSON 语义省略 undefined 后提交事务", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: {
+          kind: "script",
+          script:
+            'const dataset = workspace.contract.datasets.items; await workspace.writeText(workspace.contract.changes.items.updates.path, "changed"); return { dataset: { path: dataset.path, schema: dataset.schema } };',
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      result: { dataset: { path: "items/entries.jsonl" } },
+    });
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("changed");
+    runner.dispose();
+  });
+
+  it("无法序列化脚本结果时回滚本次事务", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: {
+          kind: "script",
+          script:
+            'await workspace.writeText(workspace.contract.changes.items.updates.path, "changed"); const result = {}; result.self = result; return result;',
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+    });
+    expect(
+      fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),
+    ).toBe("");
+    runner.dispose();
+  });
+
+  it("流式脚本可把一万条确定性变换写入 change 文件并只返回摘要", async () => {
+    fs.writeFileSync(
+      path.join(workspace_path, "items", "entries.jsonl"),
+      `${Array.from({ length: 10_000 }, (_, index) =>
+        JSON.stringify({ item_id: index + 1, dst: `A-${(index + 1).toString()}` }),
+      ).join("\n")}\n`,
+      "utf-8",
+    );
+    const runner = new DesktopAgentWorkspaceRunner();
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: {
+          kind: "script",
+          script:
+            'let updated = 0; async function* changes() { for await (const row of workspace.iterateJsonl(workspace.contract.datasets.items.path)) { updated += 1; yield { item_id: row.item_id, dst: row.dst.replace("A-", "B-") }; } } await workspace.writeJsonl(workspace.contract.changes.items.updates.path, changes()); return { updated };',
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({ status: "success", result: { updated: 10_000 } });
+    expect(
+      fs
+        .readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8")
+        .trim()
+        .split("\n"),
+    ).toHaveLength(10_000);
+    runner.dispose();
   });
 
   it("官方 recipe 从 contract 路径读取，并只接收只读 workspace", async () => {

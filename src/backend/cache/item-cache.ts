@@ -1,12 +1,11 @@
-import type { JsonRecord } from "../../domain/json";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { CacheItemChange } from "./cache-change";
-import type { CacheItem } from "./cache-types";
 
 /**
  * ItemCache 维护按数据库顺序插入的 item 主索引。
  */
 export class ItemCache {
-  private items_by_id = new Map<number, CacheItem>();
+  private items_by_id = new Map<number, ProjectItemPublicRecord>();
 
   /**
    * before_read 由 CacheManager 注入，用来在读取前恢复缓存。
@@ -16,14 +15,10 @@ export class ItemCache {
   /**
    * 用完整 item 快照重建索引。
    */
-  public replace(item_records: JsonRecord[]): void {
-    const next_items_by_id = new Map<number, CacheItem>();
+  public replace(item_records: ProjectItemPublicRecord[]): void {
+    const next_items_by_id = new Map<number, ProjectItemPublicRecord>();
     for (const item of item_records) {
-      const item_id = this.read_number(item["item_id"], 0);
-      if (item_id <= 0) {
-        continue;
-      }
-      next_items_by_id.set(item_id, { ...item });
+      next_items_by_id.set(item.item_id, { ...item });
     }
     this.items_by_id = next_items_by_id;
   }
@@ -38,7 +33,7 @@ export class ItemCache {
   /**
    * 应用事件中的 item 变化，支持全量替换、字段 patch 和完整行 upsert。
    */
-  public applyChange(change: CacheItemChange, upsert_records: JsonRecord[]): void {
+  public applyChange(change: CacheItemChange, upsert_records: ProjectItemPublicRecord[]): void {
     if (change.mode === "keep") {
       return;
     }
@@ -65,8 +60,7 @@ export class ItemCache {
     }
 
     for (const record of upsert_records) {
-      const item_id = this.read_number(record["item_id"] ?? record["id"], 0);
-      if (delete_ids.has(item_id)) {
+      if (delete_ids.has(record.item_id)) {
         continue;
       }
       this.upsert_item(record);
@@ -76,7 +70,7 @@ export class ItemCache {
   /**
    * 读取全部 item，返回浅克隆数组。
    */
-  public readItems(): CacheItem[] {
+  public readItems(): ProjectItemPublicRecord[] {
     this.before_read();
     return Array.from(this.items_by_id.values(), (item) => ({ ...item }));
   }
@@ -84,7 +78,7 @@ export class ItemCache {
   /**
    * 按 item_id 读取单条记录，未命中返回 null。
    */
-  public readItem(item_id: number): CacheItem | null {
+  public readItem(item_id: number): ProjectItemPublicRecord | null {
     this.before_read();
     const item = this.items_by_id.get(item_id);
     return item === undefined ? null : { ...item };
@@ -100,19 +94,7 @@ export class ItemCache {
   /**
    * 写入单条 item；Map 更新既有键时保持顺序，新键追加到末尾。
    */
-  private upsert_item(item: JsonRecord): void {
-    const item_id = this.read_number(item["item_id"] ?? item["id"], 0);
-    if (item_id <= 0) {
-      return;
-    }
-    this.items_by_id.set(item_id, { ...item, item_id });
-  }
-
-  /**
-   * 读取数据库数字字段，非法值回退到调用方默认值。
-   */
-  private read_number(value: unknown, fallback: number): number {
-    const parsed = Number(value ?? fallback);
-    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+  private upsert_item(item: ProjectItemPublicRecord): void {
+    this.items_by_id.set(item.item_id, { ...item });
   }
 }

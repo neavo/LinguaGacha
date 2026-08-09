@@ -263,7 +263,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "invalid",
-          toolName: "workspace_create",
+          toolName: "workspace_load",
           input: "{}",
           status: "success",
           output: { entries: [] },

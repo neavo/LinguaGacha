@@ -17,6 +17,7 @@ export type AppErrorCode =
   | "file.io_failed"
   | "database.conflict"
   | "data.revision_conflict"
+  | "data.committed_sync_failed"
   | "runtime.busy"
   | "model.not_found"
   | "model.provider_failed"
@@ -101,6 +102,11 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
     status: 409,
     severity: "expected",
     action_key: "app.error.data.revision_conflict.action",
+  },
+  "data.committed_sync_failed": {
+    status: 500,
+    severity: "fault",
+    action_key: "app.error.data.committed_sync_failed.action",
   },
   "runtime.busy": {
     status: 423,

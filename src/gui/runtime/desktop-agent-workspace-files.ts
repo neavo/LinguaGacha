@@ -7,8 +7,8 @@ import { pipeline } from "node:stream/promises";
 type WorkspaceFileMode = "readonly" | "transactional";
 
 type WorkspaceContract = {
-  datasets?: Record<string, { path?: unknown; writable?: unknown }>; // Backend 声明的数据文件权限
-  recipes?: Record<string, { path?: unknown; readonly?: unknown }>; // Backend 声明的发布 recipe
+  changes?: Record<string, Record<string, { path?: unknown }>>; // Backend 声明的固定 change 文件
+  recipes?: Record<string, { path?: unknown }>; // Backend 声明的发布 recipe
 };
 
 type CommitRecord = {
@@ -22,6 +22,7 @@ export class AgentWorkspaceInvalidError extends Error {}
 
 /** 文件提交失败会标明补偿是否完整，避免调用方猜测基线状态。 */
 export class AgentWorkspaceTransactionError extends Error {
+  /** workspacePreserved 是调用方决定保留或销毁工作区的唯一依据。 */
   public constructor(
     message: string,
     public readonly workspacePreserved: boolean,
@@ -36,7 +37,7 @@ export class AgentWorkspaceTransactionError extends Error {
  * readonly 模式不创建事务目录，供官方 recipe 使用。
  */
 export class DesktopAgentWorkspaceFiles {
-  private readonly writable_paths: ReadonlySet<string>; // open 时冻结的数据集写白名单
+  private readonly change_paths: ReadonlySet<string>; // open 时冻结的固定 change 文件白名单
   private readonly recipes: ReadonlyMap<string, string>; // open 时冻结的只读 recipe 路径
   private readonly transaction_path: string | null; // 当前 UUID 事务根
   private readonly upper_path: string | null; // 脚本本次写入形成的覆盖层
@@ -45,22 +46,23 @@ export class DesktopAgentWorkspaceFiles {
   private readonly tombstones = new Set<string>(); // 当前合并视图隐藏的 scratch 路径
   private finalized = false; // commit / rollback 只允许第一次改变事务状态
 
+  /** 只允许 open 在验证根目录和 contract 后构造冻结权限视图。 */
   private constructor(
     private readonly workspace_path: string,
     private readonly mode: WorkspaceFileMode,
     contract: WorkspaceContract,
     transaction_path: string | null,
   ) {
-    this.writable_paths = new Set(
-      Object.values(contract.datasets ?? {}).flatMap((dataset) =>
-        dataset.writable === true && typeof dataset.path === "string"
-          ? [normalize_workspace_path(dataset.path)]
-          : [],
+    this.change_paths = new Set(
+      Object.values(contract.changes ?? {}).flatMap((operations) =>
+        Object.values(operations).flatMap((operation) =>
+          typeof operation.path === "string" ? [normalize_workspace_path(operation.path)] : [],
+        ),
       ),
     );
     this.recipes = new Map(
       Object.entries(contract.recipes ?? {}).flatMap(([name, recipe]) =>
-        recipe.readonly === true && typeof recipe.path === "string"
+        typeof recipe.path === "string"
           ? [[name, normalize_workspace_path(recipe.path)] as const]
           : [],
       ),
@@ -217,11 +219,11 @@ export class DesktopAgentWorkspaceFiles {
     return await read_regular_file(resolve_workspace_path(this.workspace_path, normalized));
   }
 
-  /** 写入只落到 upper，固定数据集必须已由 contract 标记为可写。 */
+  /** 写入只落到 upper，固定 change 文件必须由 contract 声明。 */
   private async write_file(relative_path: string, request: Request): Promise<Response> {
     if (this.mode !== "transactional") return response_text(403, "当前工作区操作只读。");
     const normalized = normalize_workspace_path(relative_path);
-    const writable = this.writable_paths.has(normalized);
+    const writable = this.change_paths.has(normalized);
     if (!writable && !is_workspace_scratch_entry(normalized)) {
       return response_text(403, "该工作区文件只读。");
     }
@@ -331,7 +333,7 @@ function read_workspace_contract(value: unknown): WorkspaceContract {
     throw new AgentWorkspaceInvalidError("工作区 contract.json 根节点无效。");
   }
   const contract = value as WorkspaceContract;
-  for (const section of [contract.datasets, contract.recipes]) {
+  for (const section of [contract.changes, contract.recipes]) {
     if (typeof section !== "object" || section === null || Array.isArray(section)) {
       throw new AgentWorkspaceInvalidError("工作区 contract.json 结构无效。");
     }

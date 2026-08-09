@@ -39,6 +39,7 @@ export const zh_cn_agent_page = {
     sending: "正在发送",
     stop: "停止",
     stopping: "正在停止",
+    applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
     add_image: "添加图片",
     remove_image: "移除图片 {index}",

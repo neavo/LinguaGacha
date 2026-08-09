@@ -189,6 +189,10 @@ export const en_us_app = {
         message: "The data version changed. Please refresh and try again …",
         action: "Refresh the current data and submit again …",
       },
+      committed_sync_failed: {
+        message: "The data was saved, but the interface failed to synchronize …",
+        action: "Reload the current project and do not submit the change again …",
+      },
     },
     model: {
       not_found: {

@@ -5,7 +5,46 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppPathService } from "../app/app-path-service";
-import { load_agent_skills } from "./agent-skills";
+import {
+  format_agent_skill_invocation,
+  format_agent_skills_for_system_prompt,
+  load_agent_skills,
+} from "./agent-skills";
+
+describe("Agent skill 模型投影", () => {
+  const skills = [
+    {
+      name: "visible",
+      description: "使用 <能力> & 规则",
+      filePath: "E:/skills/a&b/SKILL.md",
+      content: "执行正文。",
+      disableModelInvocation: false,
+    },
+    {
+      name: "manual",
+      description: "仅手动调用",
+      filePath: "E:/skills/manual/SKILL.md",
+      content: "手动正文。",
+      disableModelInvocation: true,
+    },
+  ];
+
+  it("系统清单只投影自动能力事实，不附带 SDK 路由文案", () => {
+    const prompt = format_agent_skills_for_system_prompt(skills);
+
+    expect(prompt).toContain("<name>visible</name>");
+    expect(prompt).toContain("使用 &lt;能力&gt; &amp; 规则");
+    expect(prompt).toContain("E:/skills/a&amp;b/SKILL.md");
+    expect(prompt).not.toContain("manual");
+    expect(prompt).not.toContain("Read the full skill file");
+  });
+
+  it("显式调用只包装产品 skill 正文和位置", () => {
+    expect(format_agent_skill_invocation(skills[0]!)).toBe(
+      '<skill name="visible" location="E:/skills/a&amp;b/SKILL.md">\n执行正文。\n</skill>',
+    );
+  });
+});
 
 describe("Agent skill 加载", () => {
   it("内置 skill 资源可直接加载且不产生诊断", async () => {
@@ -214,7 +253,7 @@ describe("Agent skill 加载", () => {
     expect(warning).not.toHaveBeenCalled();
   });
 
-  it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
+  it("递归加载排序后的 references，并忽略符号链接", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-ref-"),
     );
@@ -230,7 +269,7 @@ describe("Agent skill 加载", () => {
       "# 标准\n\n第二份正文。",
     );
     write_skill(path.join(skill_dir, "references", "a-first.md"), "# 第一份\n\n首份正文。");
-    write_skill(path.join(skill_dir, "references", "ignore.txt"), "不应加载");
+    write_skill(path.join(skill_dir, "references", "rules.json"), '{"strict":true}');
     const linked_dir = path.join(app_root, "linked-references");
     write_skill(path.join(linked_dir, "secret.md"), "不应跟随符号链接");
     fs.symlinkSync(linked_dir, path.join(skill_dir, "references", "linked"), "junction");
@@ -259,6 +298,11 @@ describe("Agent skill 加载", () => {
         path: "references/nested/b-standard.md",
         filePath: expect.stringMatching(/\/references\/nested\/b-standard\.md$/u),
         content: "# 标准\n\n第二份正文。",
+      },
+      {
+        path: "references/rules.json",
+        filePath: expect.stringMatching(/\/references\/rules\.json$/u),
+        content: '{"strict":true}',
       },
     ]);
   });

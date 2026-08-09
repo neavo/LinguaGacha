@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import { ItemCache } from "./item-cache";
 
 describe("ItemCache", () => {
@@ -7,9 +8,8 @@ describe("ItemCache", () => {
     const cache = new ItemCache();
 
     cache.replace([
-      { item_id: 1, file_path: "a.txt", src: "A" },
-      { item_id: 2, file_path: "b.txt", src: "B" },
-      { item_id: 0, file_path: "bad.txt", src: "bad" },
+      create_item(1, { file_path: "a.txt", src: "A" }),
+      create_item(2, { file_path: "b.txt", src: "B" }),
     ]);
     const first = cache.readItems()[0];
     if (first !== undefined) {
@@ -17,16 +17,16 @@ describe("ItemCache", () => {
     }
 
     expect(cache.size()).toBe(2);
-    expect(cache.readItem(1)).toEqual({ item_id: 1, file_path: "a.txt", src: "A" });
+    expect(cache.readItem(1)).toMatchObject({ item_id: 1, file_path: "a.txt", src: "A" });
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 2]);
   });
 
   it("应用 item 增量时维护 upsert、delete、字段补丁和稳定顺序", () => {
     const cache = new ItemCache();
     cache.replace([
-      { item_id: 1, file_path: "a.txt", src: "A", dst: "" },
-      { item_id: 2, file_path: "a.txt", src: "B", dst: "" },
-      { item_id: 3, file_path: "b.txt", src: "C", dst: "" },
+      create_item(1, { file_path: "a.txt", src: "A" }),
+      create_item(2, { file_path: "a.txt", src: "B" }),
+      create_item(3, { file_path: "b.txt", src: "C" }),
     ]);
 
     cache.applyChange(
@@ -48,13 +48,13 @@ describe("ItemCache", () => {
         sourcePayloadMode: "canonical-delta",
       },
       [
-        { item_id: 3, file_path: "c.txt", src: "C", dst: "译文 C" },
-        { item_id: 4, file_path: "c.txt", src: "D", dst: "译文 D" },
+        create_item(3, { file_path: "c.txt", src: "C", dst: "译文 C" }),
+        create_item(4, { file_path: "c.txt", src: "D", dst: "译文 D" }),
       ],
     );
 
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 3, 4]);
-    expect(cache.readItem(1)).toEqual({
+    expect(cache.readItem(1)).toMatchObject({
       item_id: 1,
       file_path: "a.txt",
       src: "A",
@@ -63,3 +63,26 @@ describe("ItemCache", () => {
     });
   });
 });
+
+function create_item(
+  item_id: number,
+  overrides: Partial<ProjectItemPublicRecord> = {},
+): ProjectItemPublicRecord {
+  return {
+    item_id,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: item_id,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}

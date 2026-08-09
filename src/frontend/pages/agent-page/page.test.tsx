@@ -117,6 +117,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.error.compaction_retry") return "上下文压缩重试失败，请重试。";
       if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
       if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
+      if (key === "agent_page.action.applying") return "正在应用工程修改，完成前不可停止";
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
       if (key === "agent_page.compaction.success") return "上下文压缩成功";
@@ -458,6 +459,31 @@ describe("AgentPage", () => {
     const view = await render_page({ state: "running", stop });
     await act(async () => get_button_by_label(view, "agent_page.action.stop").click());
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("workspace_apply 运行期间把不可停止状态传给操作栏", async () => {
+    const stop = vi.fn();
+    const view = await render_page({
+      state: "running",
+      stop,
+      entries: [
+        user_entry("user-1", "写入", "running", 0, null),
+        {
+          kind: "tool_call",
+          id: "apply-1",
+          toolName: "workspace_apply",
+          input: "{}",
+          status: "running",
+          output: null,
+          createdAt: 1,
+        },
+      ],
+    });
+    const submit = get_button_by_label(view, "正在应用工程修改，完成前不可停止");
+
+    expect(submit.disabled).toBe(true);
+    await act(async () => submit.click());
+    expect(stop).not.toHaveBeenCalled();
   });
 
   it("压缩失败只显示原位恢复入口并调用压缩重试", async () => {

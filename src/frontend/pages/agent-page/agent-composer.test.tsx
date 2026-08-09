@@ -25,6 +25,7 @@ type RenderComposerOptions = Partial<
     | "on_send"
     | "on_stop"
     | "running"
+    | "stop_disabled"
     | "term_hit_counts"
     | "terms"
     | "unavailable_reason"
@@ -53,6 +54,7 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.compaction.running": "正在压缩上下文 …",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
+  "agent_page.action.applying": "正在应用工程修改，完成前不可停止",
   "agent_page.action.add_image": "添加图片",
   "agent_page.action.remove_image": "移除图片",
   "agent_page.unavailable.restoring": "正在恢复会话",
@@ -489,6 +491,17 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
+  it("apply 运行期间禁用停止并解释不可取消阶段", async () => {
+    const on_stop = vi.fn(async () => undefined);
+    const view = await render_composer({ running: true, stop_disabled: true, on_stop });
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+
+    expect(submit?.disabled).toBe(true);
+    expect(submit?.getAttribute("aria-label")).toBe("正在应用工程修改，完成前不可停止");
+    await act(async () => submit?.click());
+    expect(on_stop).not.toHaveBeenCalled();
+  });
+
   it("压缩期间保留草稿编辑但禁用停止，失败后阻止发送并允许切换模型", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
@@ -546,6 +559,7 @@ describe("AgentComposer", () => {
           terms={options.terms ?? terms}
           term_hit_counts={options.term_hit_counts ?? term_hit_counts}
           running={options.running ?? false}
+          stop_disabled={options.stop_disabled ?? false}
           compacting={options.compacting ?? false}
           compaction_failed={options.compaction_failed ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
