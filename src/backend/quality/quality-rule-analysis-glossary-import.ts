@@ -1,6 +1,8 @@
 /**
  * 分析候选到质量术语规则的纯导入规划。
  */
+import { isDeepStrictEqual } from "node:util";
+
 import {
   build_analysis_glossary_entries_from_candidates,
   collect_analysis_candidate_srcs_from_aggregate,
@@ -74,36 +76,6 @@ function create_glossary_import_preview(
     existing: existing_entries,
     incoming: incoming_entries,
   });
-}
-
-/**
- * 按持久字段和原顺序比较完整术语表，避免无变化时推进 quality revision。
- */
-function are_glossary_entries_equal(
-  left_entries: GlossaryEntry[],
-  right_entries: GlossaryEntry[],
-): boolean {
-  if (left_entries.length !== right_entries.length) {
-    return false;
-  }
-
-  for (let index = 0; index < left_entries.length; index += 1) {
-    const left_entry = left_entries[index];
-    const right_entry = right_entries[index];
-    if (left_entry === undefined || right_entry === undefined) {
-      return false;
-    }
-    if (
-      left_entry.entry_id !== right_entry.entry_id ||
-      left_entry.src !== right_entry.src ||
-      left_entry.dst !== right_entry.dst ||
-      left_entry.info !== right_entry.info ||
-      left_entry.case_sensitive !== right_entry.case_sensitive
-    ) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /**
@@ -285,10 +257,7 @@ export function prepare_analysis_glossary_import_from_cache(
     QualityRule.from_json("glossary"),
     next_entries,
   ) as GlossaryEntry[];
-  const quality_changed = !are_glossary_entries_equal(
-    existing_glossary_entries,
-    next_glossary_entries,
-  );
+  const quality_changed = !isDeepStrictEqual(existing_glossary_entries, next_glossary_entries);
   const consumed_count = consumed_candidate_srcs.length;
   const imported_count =
     action === "skip" ? import_preview.non_duplicate_count : filtered_entries.length;

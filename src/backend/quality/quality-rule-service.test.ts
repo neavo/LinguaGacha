@@ -354,6 +354,40 @@ describe("QualityRuleService", () => {
     expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
 
+  it("分析术语导入未改变规则时只推进 analysis revision", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, lg_path } = create_workbench_service(database);
+    const glossary_entries = [
+      { src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true },
+    ];
+    database.set_rules(lg_path, "glossary", glossary_entries);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "艾琳",
+        dst_votes: { Erin: 1 },
+        info_votes: { 角色名: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: true,
+      },
+    ]);
+
+    const result = await service.import_analysis_glossary({
+      entries: glossary_entries,
+      consumed_candidate_srcs: ["艾琳"],
+      expected_section_revisions: { quality: 0, analysis: 0 },
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      changes: [{ sectionRevisions: { analysis: 1 }, updatedSections: ["analysis"] }],
+    });
+    expect(database.get_rules(lg_path, "glossary")).toEqual(glossary_entries);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
+  });
+
   /**
    * 构造只依赖预设文件 IO 的质量规则服务，数据库边界在这些用例中不参与。
    */

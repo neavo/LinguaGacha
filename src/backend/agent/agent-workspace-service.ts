@@ -3,6 +3,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   is_json_record,
@@ -512,9 +513,10 @@ export class AgentWorkspaceService {
       const current = read_quality_entries(quality_block, kind);
       const next = normalize_workspace_quality_rows(kind, current, rows);
       assert_no_new_duplicate_groups(kind, current, next);
-      if (JsonTool.stringifyStrict(current) === JsonTool.stringifyStrict(next)) continue;
+      const change_summary = summarize_quality_changes(current, next);
+      if (Object.values(change_summary).every((count) => count === 0)) continue;
       changes.push({ kind, entries: next });
-      summary[kind] = summarize_quality_changes(current, next);
+      summary[kind] = change_summary;
     }
     return { changes, summary };
   }
@@ -814,10 +816,7 @@ function summarize_quality_changes(
     created: next.filter((entry) => !current_by_id.has(String(entry["entry_id"]))).length,
     updated: next.filter((entry) => {
       const previous = current_by_id.get(String(entry["entry_id"]));
-      return (
-        previous !== undefined &&
-        JsonTool.stringifyStrict(previous) !== JsonTool.stringifyStrict(entry)
-      );
+      return previous !== undefined && !isDeepStrictEqual(previous, entry);
     }).length,
     deleted: current.filter((entry) => !next_by_id.has(String(entry["entry_id"]))).length,
     moved: next_retained.filter((id, index) => current_retained[index] !== id).length,
