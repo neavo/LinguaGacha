@@ -3,7 +3,11 @@ export const zh_cn_agent_page = {
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: { label: "图表", render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
-  image: { omitted: "图片已省略" },
+  image: {
+    omitted: "图片已省略",
+    attachment: "待发送图片 {index}",
+    message: "用户图片 {index}",
+  },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
@@ -16,6 +20,7 @@ export const zh_cn_agent_page = {
   input: {
     placeholder: "描述任务，或输入 @ 选择技能或术语 …",
     hint: "Enter 发送 · Shift + Enter 换行",
+    drop_images: "松开以添加图片",
   },
   mention: {
     groups: { skills: "技能", terms: "术语" },
@@ -35,6 +40,8 @@ export const zh_cn_agent_page = {
     stop: "停止",
     stopping: "正在停止",
     new_task: "新任务",
+    add_image: "添加图片",
+    remove_image: "移除图片 {index}",
     retry: "重试",
     click_to_retry: "点击重试",
     return_latest: "回到最新",
@@ -58,6 +65,7 @@ export const zh_cn_agent_page = {
     restore: "会话恢复失败，请重试。",
     connection: "连接中断，正在等待重连。",
     send: "发送失败，草稿已保留。",
+    image: "图片读取失败，仅支持 PNG、JPG、BMP、WebP 和 AVIF。",
     stop: "停止失败，请重试。",
     compaction_retry: "上下文压缩重试失败，请重试。",
     reset: "新任务创建失败，请重试。",

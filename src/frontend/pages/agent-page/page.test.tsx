@@ -207,7 +207,7 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith("介绍你的能力");
+    expect(send).toHaveBeenLastCalledWith({ text: "介绍你的能力", images: [] });
 
     await act(async () => suggestions[2]?.click());
     expect(document.activeElement).toBe(editor);
@@ -215,7 +215,10 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith("请帮我审校译文 @skill(translation-review)");
+    expect(send).toHaveBeenLastCalledWith({
+      text: "请帮我审校译文 @skill(translation-review)",
+      images: [],
+    });
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
@@ -528,7 +531,7 @@ describe("AgentPage", () => {
     if (retry === null) throw new Error("缺少轮次重试按钮");
     await act(async () => retry.click());
 
-    expect(send).toHaveBeenCalledWith("重新检查术语");
+    expect(send).toHaveBeenCalledWith({ text: "重新检查术语", images: [] });
     expect(get_editor(view).state.doc.toString()).toBe("");
   });
 
@@ -623,7 +626,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     command: null,
     input: {
       revision: 0,
-      read_draft: () => "",
+      read_draft: () => ({ text: "", images: [] }),
       write_draft: vi.fn(),
       read_history: () => [],
     },
@@ -643,7 +646,7 @@ function user_entry(
   createdAt: number,
   endedAt: number | null,
 ) {
-  return { kind: "user_message" as const, id, text, status, createdAt, endedAt };
+  return { kind: "user_message" as const, id, text, images: [], status, createdAt, endedAt };
 }
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {

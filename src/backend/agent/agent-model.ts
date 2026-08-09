@@ -39,6 +39,7 @@ export function register_agent_model(
     contextWindow: configured_model.agent_limits.context_window,
     maxTokens: configured_model.agent_limits.max_output_tokens,
     reasoning: model_supports_pi_reasoning(snapshot),
+    input: ["text", "image"],
   });
   // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。
   const force_request_policy = <TOptions extends object>(options?: TOptions) => ({

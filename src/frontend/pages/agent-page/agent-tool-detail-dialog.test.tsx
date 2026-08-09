@@ -74,31 +74,34 @@ describe("AgentToolDetailDialog", () => {
     expect(dialog?.textContent).not.toContain('"items": []');
   });
 
-  it("运行工具默认显示输入，同 id 完成后保留当前面板和换行状态", async () => {
+  it("运行工具默认显示输入并启用换行，同 id 完成后保留当前面板和换行状态", async () => {
     await render_dialog(tool_running('{"path":"SKILL.md"}'));
     const input_tab = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
       (tab) => tab.textContent === "agent_page.tool.input",
     );
     const wrap_button = document.body.querySelector<HTMLButtonElement>(
-      "button[aria-label='agent_page.tool.wrap_disabled']",
+      "button[aria-label='agent_page.tool.wrap_enabled']",
     );
     expect(input_tab?.getAttribute("data-state")).toBe("active");
-    expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
+    expect(wrap_button?.getAttribute("aria-pressed")).toBe("true");
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
         ?.textContent,
     ).toContain("SKILL.md");
-
-    await act(async () => wrap_button?.click());
-    expect(wrap_button?.getAttribute("aria-pressed")).toBe("true");
-    expect(wrap_button?.getAttribute("aria-label")).toBe("agent_page.tool.wrap_enabled");
     expect(
       document.body.querySelector(".agent-tool-detail__viewer.app-editor--wrap-lines"),
     ).not.toBeNull();
 
+    await act(async () => wrap_button?.click());
+    expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
+    expect(wrap_button?.getAttribute("aria-label")).toBe("agent_page.tool.wrap_disabled");
+    expect(
+      document.body.querySelector(".agent-tool-detail__viewer.app-editor--wrap-lines"),
+    ).toBeNull();
+
     await render_dialog(tool_success('{"path":"SKILL.md"}', "完整正文。"));
     expect(input_tab?.getAttribute("data-state")).toBe("active");
-    expect(wrap_button?.getAttribute("aria-pressed")).toBe("true");
+    expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
         ?.textContent,

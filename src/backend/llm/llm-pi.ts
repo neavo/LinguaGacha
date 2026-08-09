@@ -32,6 +32,7 @@ type PiModelSettings = Readonly<{
   contextWindow: number;
   maxTokens: number;
   reasoning: boolean;
+  input: PiModel<PiApi>["input"];
 }>;
 
 /** OneShot 与 Agent 共用的 Pi model 和惰性 API 解析入口。 */
@@ -51,7 +52,7 @@ export function resolve_pi_model(
     api: api.api,
     baseUrl: snapshot.base_url,
     reasoning: settings.reasoning,
-    input: ["text"],
+    input: settings.input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: settings.contextWindow,
     maxTokens: settings.maxTokens,
@@ -80,6 +81,7 @@ export function resolve_one_shot_pi_request(
     contextWindow: 0,
     maxTokens: generation.maxTokens ?? 0,
     reasoning: snapshot.api_format === "OpenAIResponses" && supports_reasoning,
+    input: ["text"],
   });
   // Chat Completions 保持既有 payload；Responses 直接使用 Pi 的原生 Items 与 store:false 契约。
   const model: PiModel<PiApi> =

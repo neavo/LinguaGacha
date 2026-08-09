@@ -251,6 +251,29 @@
   white-space: pre-wrap;
 }
 
+.agent-message__user-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  gap: 4px;
+}
+
+.agent-message__user-images + .agent-message__user-text {
+  margin-top: 7px;
+}
+
+.agent-message__user-images img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  border-radius: var(--ui-radius-button);
+  object-fit: contain;
+}
+
+.agent-message__user-images img:only-child {
+  grid-column: 1 / -1;
+  max-width: 360px;
+}
+
 .agent-message__markdown > :first-child {
   margin-top: 0;
 }
@@ -661,6 +684,73 @@
   border-color: var(--primary);
 }
 
+.agent-composer__attachments {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px 2px;
+}
+
+.agent-composer__attachment {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+}
+
+.agent-composer__attachment > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-composer__attachment-remove {
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-end: 3px;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+.agent-composer__attachment-remove > svg {
+  width: 11px;
+  height: 11px;
+}
+
+.agent-composer__file-input {
+  display: none;
+}
+
+.agent-composer__drop-overlay {
+  position: absolute;
+  inset: 5px;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--primary);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 90%, var(--primary));
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.agent-composer[data-image-drop-active="true"] .agent-composer__drop-overlay {
+  opacity: 1;
+}
+
 .agent-composer__editor {
   min-width: 0;
 }
@@ -950,6 +1040,7 @@
 
   .agent-thinking-entry summary::before,
   .agent-thinking-entry::details-content,
+  .agent-composer__drop-overlay,
   .agent-composer {
     transition: none;
   }

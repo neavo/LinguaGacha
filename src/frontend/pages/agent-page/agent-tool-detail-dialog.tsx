@@ -18,7 +18,7 @@ type AgentToolDetailDialogProps = {
 /** 工具详情只挂载当前输入或输出面板，避免长载荷进入会话信息流 DOM。 */
 export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.Element {
   const { t } = useI18n();
-  const [wrap_lines, set_wrap_lines] = useState(false);
+  const [wrap_lines, set_wrap_lines] = useState(true);
   const entry = props.entry;
   const active = entry.status === "running";
   const duration = useAgentElapsed(entry.createdAt, active);
