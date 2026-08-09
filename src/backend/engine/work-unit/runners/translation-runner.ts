@@ -37,7 +37,6 @@ import {
   compile_glossary,
   match_glossary_source,
   type GlossaryEntry,
-  type ResolvedGlossaryEntry,
 } from "../../../../shared/quality/glossary";
 
 /**
@@ -308,18 +307,16 @@ export class TranslationWorkUnitRunner {
   private resolve_activated_glossary_entries(
     quality_snapshot: TextQualitySnapshot,
     items: TextTaskItemRecord[],
-  ): ResolvedGlossaryEntry[] {
+  ): GlossaryEntry[] {
     if (!quality_snapshot.glossary_enable) return [];
     const compiled = compile_glossary(
-      quality_snapshot.glossary_entries.map(
-        (entry): GlossaryEntry => ({
-          entry_id: typeof entry["entry_id"] === "string" ? entry["entry_id"] : undefined,
-          src: String(entry["src"] ?? ""),
-          dst: String(entry["dst"] ?? ""),
-          info: String(entry["info"] ?? ""),
-          case_sensitive: entry["case_sensitive"] === true,
-        }),
-      ),
+      quality_snapshot.glossary_entries.map((entry): GlossaryEntry => ({
+        entry_id: String(entry["entry_id"]),
+        src: String(entry["src"] ?? ""),
+        dst: String(entry["dst"] ?? ""),
+        info: String(entry["info"] ?? ""),
+        case_sensitive: entry["case_sensitive"] === true,
+      })),
     );
     const activated_ids = new Set(
       items.flatMap((item) =>

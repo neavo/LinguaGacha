@@ -40,7 +40,7 @@ describe("TsConversionExportService", () => {
           readBlock: () => ({
             text_preserve: {
               mode: "smart",
-              entries: [{ src: "HP", info: "" }],
+              entries: [{ entry_id: "hp", src: "HP", info: "" }],
             },
           }),
         },
@@ -62,7 +62,7 @@ describe("TsConversionExportService", () => {
           convert_name: true,
           preserve_text: true,
           text_preserve_mode: "smart",
-          text_preserve_entries: [{ src: "HP", info: "" }],
+          text_preserve_entries: [{ entry_id: "hp", src: "HP", info: "" }],
         },
       },
       expect.any(AbortSignal),

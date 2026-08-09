@@ -2,7 +2,7 @@ import { CaseSensitive } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import type { GlossaryDialogMode, GlossaryEntry } from "@frontend/pages/glossary-page/types";
+import type { GlossaryDialogMode, GlossaryEntryDraft } from "@frontend/pages/glossary-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
@@ -12,10 +12,10 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 type GlossaryEditDialogProps = {
   open: boolean;
   mode: GlossaryDialogMode;
-  entry: GlossaryEntry;
+  entry: GlossaryEntryDraft;
   saving: boolean;
   readonly: boolean;
-  on_change: (patch: Partial<GlossaryEntry>) => void;
+  on_change: (patch: Partial<GlossaryEntryDraft>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };

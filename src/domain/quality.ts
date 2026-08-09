@@ -15,7 +15,7 @@ export type TextPreserveMode = (typeof TEXT_PRESERVE_MODES)[number];
 export type QualityRuleKind = (typeof QUALITY_RULE_KINDS)[number];
 
 export type TextReplacementEntry = {
-  entry_id?: string; // 旧工程可缺失，消费前按原顺序补稳定身份
+  entry_id?: string; // 项目质量规则可携带的稳定身份，纯执行规则不依赖该字段
   src: string; // 字面量或正则源模式
   dst: string; // 规则命中后的替换文本
   regex: boolean; // true 时 src/dst 使用规则型正则语义
@@ -23,20 +23,30 @@ export type TextReplacementEntry = {
 };
 
 export type TextPreserveEntry = {
-  entry_id?: string; // 旧工程可缺失，消费前按原顺序补稳定身份
+  entry_id?: string; // 项目质量规则可携带的稳定身份，纯执行规则不依赖该字段
   src: string; // 自定义模式下直接编译为正则
   info: string; // 用户说明，不参与匹配
 };
 
 export type GlossaryEntry = {
-  entry_id?: string; // 旧工程可缺失，跨页面与统计前补稳定身份
+  entry_id?: string; // 项目质量规则可携带的稳定身份，纯字段归一不依赖该字段
   src: string; // 只在原始源文字段匹配
   dst: string; // 只在对应译文字段检查应用
   info: string; // 提示词和页面使用的术语说明
   case_sensitive: boolean; // 源文字面量的大小写策略
 };
 
-export type QualityRuleEntry = GlossaryEntry | TextReplacementEntry | TextPreserveEntry;
+/** 项目内 canonical 条目必须持有身份；基础条目类型仍供不依赖身份的纯执行逻辑使用。 */
+export type QualityRuleGlossaryEntry = GlossaryEntry & { entry_id: string };
+export type QualityRuleTextReplacementEntry = TextReplacementEntry & { entry_id: string };
+export type QualityRuleTextPreserveEntry = TextPreserveEntry & { entry_id: string };
+export type QualityRuleEntry =
+  | QualityRuleGlossaryEntry
+  | QualityRuleTextReplacementEntry
+  | QualityRuleTextPreserveEntry;
+
+/** 尚未进入项目身份边界的规则字段输入。 */
+export type QualityRuleEntryInput = GlossaryEntry | TextReplacementEntry | TextPreserveEntry;
 
 export type QualityRuleDatabaseType =
   | "glossary"
@@ -212,9 +222,9 @@ export class QualityRule {
   }
 
   /**
-   * 将页面、导入文件或旧工程中的规则条目归一为数据库可写形状
+   * 将未识别的规则输入归一为领域字段形状；项目身份由调用边界单独处理
    */
-  public normalize_entry(entry: unknown): QualityRuleEntry {
+  public normalize_entry(entry: unknown): QualityRuleEntryInput {
     const record = require_record(entry, "质量规则条目必须是对象");
     const src = read_string_field(record, "src").trim();
     if (src === "") throw new TypeError("质量规则 src 不能为空");
@@ -247,7 +257,7 @@ export class QualityRule {
   }
 
   /** 规则列表逐项归一；任一坏项会令整批失败。 */
-  public normalize_entries(value: unknown): QualityRuleEntry[] {
+  public normalize_entries(value: unknown): QualityRuleEntryInput[] {
     if (!Array.isArray(value)) throw new TypeError("质量规则 entries 必须是数组");
     return value.map((entry) => this.normalize_entry(entry));
   }

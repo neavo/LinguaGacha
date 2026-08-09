@@ -27,7 +27,10 @@ import {
   prepare_analysis_glossary_import_from_cache,
   to_analysis_glossary_import_prepare_payload,
 } from "./quality-rule-analysis-glossary-import";
-import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+import {
+  create_quality_rule_entries,
+  normalize_quality_rule_entries,
+} from "../../shared/quality/quality-rule-entry";
 
 const DEFAULT_QUALITY_RULE_UPDATE_SOURCE = "quality_rule_update";
 
@@ -202,7 +205,7 @@ export class QualityRuleService {
   public async import_rules(request: JsonRecord): Promise<JsonRecord> {
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const file_path = String(request["path"] ?? "");
-    const entries = this.normalize_rule_entries(
+    const entries = this.create_rule_entries(
       rule_type,
       (await this.load_rules_from_file(file_path)) as unknown as JsonValue,
     );
@@ -279,7 +282,7 @@ export class QualityRuleService {
       });
     }
     return {
-      entries: this.normalize_rule_entries(rule_type, data as JsonValue) as unknown as JsonValue,
+      entries: this.create_rule_entries(rule_type, data as JsonValue) as unknown as JsonValue,
     };
   }
 
@@ -299,9 +302,14 @@ export class QualityRuleService {
       builtin_directory: directory,
       user_directory: directory,
     });
+    const preset_entries = entries.map((entry) => {
+      const result = { ...entry };
+      delete result["entry_id"];
+      return result;
+    });
     this.native_fs.write_file_sync(
       preset_file.file_path,
-      JsonTool.stringifyStrict(entries, { indent: 4 }),
+      JsonTool.stringifyStrict(preset_entries, { indent: 4 }),
     );
     return {
       item: this.build_preset_item("user", preset_file.file_name, directory, ".json"),
@@ -411,9 +419,26 @@ export class QualityRuleService {
     }
   }
 
-  /**
-   * 归一单条规则，兼容导入和页面编辑两种来源
-   */
+  /** 外部文件和预设不复用项目身份，并避开当前 kind 的全部既有身份。 */
+  private create_rule_entries(
+    rule_type: QualityRuleKind,
+    value: JsonValue | undefined,
+  ): JsonRecord[] {
+    try {
+      const rule = QualityRule.from_json(rule_type);
+      const current_slice = this.normalize_record(this.cache.quality.readBlock()[rule_type]);
+      const current_entries = normalize_quality_rule_entries(rule, current_slice["entries"] ?? []);
+      return create_quality_rule_entries(
+        rule,
+        value,
+        current_entries.map((entry) => entry.entry_id),
+      ) as JsonRecord[];
+    } catch (cause) {
+      throw new AppErrors.RequestValidationError({ cause });
+    }
+  }
+
+  /** 归一待导出的单条候选规则字段，不分配项目身份。 */
   private normalize_rule_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
     try {
       return QualityRule.from_json(rule_type).normalize_entry(entry) as JsonRecord;

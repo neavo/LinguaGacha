@@ -2,12 +2,20 @@ import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-ru
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { TextPreserveEntry, TextPreserveMode } from "@domain/quality";
+import type {
+  QualityRuleTextPreserveEntry as TextPreserveEntry,
+  TextPreserveMode,
+} from "@domain/quality";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
-export type { TextPreserveEntry, TextPreserveMode } from "@domain/quality";
+export type {
+  QualityRuleTextPreserveEntry as TextPreserveEntry,
+  TextPreserveMode,
+} from "@domain/quality";
 
 export type TextPreserveEntryId = string;
+/** 创建草稿尚未分配项目身份，编辑草稿保留既有身份。 */
+export type TextPreserveEntryDraft = Omit<TextPreserveEntry, "entry_id"> & { entry_id?: string };
 
 export type TextPreserveDialogMode = "create" | "edit";
 
@@ -16,7 +24,7 @@ export type TextPreserveDialogState = {
   mode: TextPreserveDialogMode;
   target_entry_id: TextPreserveEntryId | null;
   insert_after_entry_id: TextPreserveEntryId | null;
-  draft_entry: TextPreserveEntry;
+  draft_entry: TextPreserveEntryDraft;
   saving: boolean;
   validation_message: string | null;
 };
@@ -104,7 +112,7 @@ export type UseTextPreservePageStateResult = {
   update_mode: (next_mode: TextPreserveMode) => Promise<void>;
   open_create_dialog: () => void;
   open_edit_dialog: (entry_id: TextPreserveEntryId) => void;
-  update_dialog_draft: (patch: Partial<TextPreserveEntry>) => void;
+  update_dialog_draft: (patch: Partial<TextPreserveEntryDraft>) => void;
   import_entries_from_path: (path: string) => Promise<void>;
   import_entries_from_picker: () => Promise<void>;
   export_entries_from_picker: () => Promise<void>;

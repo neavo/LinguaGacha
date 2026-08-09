@@ -27,7 +27,7 @@ describe("quality rule api client", () => {
   );
 
   it("导入规则时只返回数组 entries", async () => {
-    const entries = [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }];
+    const entries = [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }];
     api_fetch_mock.mockResolvedValueOnce({ entries }).mockResolvedValueOnce({ entries: null });
 
     await expect(import_quality_rule_entries("glossary", "E:/rules.json")).resolves.toBe(entries);

@@ -13,9 +13,8 @@ import {
 } from "../../shared/quality/quality-rule-import";
 import {
   create_quality_rule_entry_id,
-  ensure_quality_rule_entry_ids,
-} from "../../shared/quality/quality-rule-entry-id";
-import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+  normalize_quality_rule_entries,
+} from "../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { NativeFs } from "../../native/native-fs";
 import type { CacheReadPort } from "../cache/cache-types";
@@ -261,7 +260,7 @@ function apply_quality_operations(
   for (const row of rows.creates) {
     const create = read_quality_create(kind, row);
     assert_quality_anchor(null, create.before_id, current_ids, deleted_ids);
-    const entry = { entry_id: create_quality_rule_entry_id(), ...create.fields };
+    const entry = { entry_id: create_quality_rule_entry_id(current_ids), ...create.fields };
     const index = find_anchor_index(next, create.before_id);
     next.splice(index, 0, entry);
   }
@@ -421,16 +420,16 @@ function read_id(value: unknown): string {
 
 /** 内部 quality 身份只在本模块用 entry_id 表示。 */
 function read_entry_id(entry: JsonRecord): string {
-  return String(entry["entry_id"] ?? "");
+  return String(entry["entry_id"]);
 }
 
-/** 当前 quality 集合先走真实执行语义校验，再补齐迁移期稳定 ID。 */
+/** 当前 quality 集合统一校验项目身份与真实执行语义。 */
 function read_quality_entries(quality: JsonRecord, kind: QualityRuleKind): JsonRecord[] {
   const entries = normalize_quality_rule_entries(
     QualityRule.from_json(kind),
     read_json_record(quality[kind])["entries"] ?? [],
   ) as JsonRecord[];
-  return ensure_quality_rule_entry_ids(entries);
+  return entries;
 }
 
 /** prompt 读侧只投影两类固定正文，不把 enabled 等设置带入工作区。 */

@@ -40,7 +40,7 @@ describe("prepare_quality_statistics_task_input", () => {
     expect(() =>
       prepare_quality_statistics_task_input({
         rule_key: "pre_replacement",
-        entries: [{ src: "(", dst: "x", regex: true }],
+        entries: [{ entry_id: "invalid", src: "(", dst: "x", regex: true }],
         items: [],
       }),
     ).toThrow("质量规则正则不是合法正则");

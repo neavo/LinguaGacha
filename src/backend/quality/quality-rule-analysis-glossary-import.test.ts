@@ -75,6 +75,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
     expect(prepared_import?.updated_sections).toEqual(["quality", "analysis"]);
     expect(prepared_import?.request_body.entries).toEqual([
       {
+        entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
@@ -96,6 +97,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
           glossary: {
             entries: [
               {
+                entry_id: "alice",
                 src: "艾琳",
                 dst: "Eileen",
                 info: "既有角色名",
@@ -115,6 +117,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
     expect(prepared_import?.updated_sections).toEqual(["analysis"]);
     expect(prepared_import?.request_body.entries).toEqual([
       {
+        entry_id: "alice",
         src: "艾琳",
         dst: "Eileen",
         info: "既有角色名",
@@ -132,6 +135,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
           glossary: {
             entries: [
               {
+                entry_id: "alice",
                 src: "艾琳",
                 dst: "Eileen",
                 info: "既有角色名",
@@ -149,6 +153,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
     expect(prepared_import?.quality_changed).toBe(true);
     expect(prepared_import?.request_body.entries).toEqual([
       {
+        entry_id: "alice",
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
@@ -208,6 +213,7 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
     expect(prepared_import?.imported_count).toBe(1);
     expect(prepared_import?.request_body.entries).toEqual([
       {
+        entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
         src: "艾琳",
         dst: "Erin",
         info: "角色名",

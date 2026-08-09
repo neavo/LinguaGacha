@@ -45,7 +45,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
 - 功能 query 返回其结果依赖的 `sectionRevisions`；只有基于已消费快照形成的用户写入或预演提交才以这些 revision 做乐观锁。任务启动和面向当前项目事实的 reset 不携带 revision，由运行或项目写 lease 后读取当前事实；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
-- 所有质量规则消费链统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；入口不得另建字段或正则容错。
+- 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；每个 kind 内的 `entry_id` 必须非空且唯一，既有身份只校验和保留。无项目身份的导入文件、预设、CLI 资源与分析候选只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - 翻译与校对复用共享的逐行源文准备事实，固定 Ruby 清理、空白与保护前后缀提取、译前替换和保护样例收集的顺序；校对不逆推译后规则。校对 worker 与 cache identity 携带完整文本处理配置，增量评估沿用全量同步冻结的配置。
 - 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文与按 ID 读取只查询共享评估运行态，不创建或替换该视图。

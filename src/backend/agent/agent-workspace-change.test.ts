@@ -104,6 +104,15 @@ describe("Agent 工作区显式 change", () => {
       "公主",
       "姫",
     ]);
+    expect(
+      prepared.qualityChanges[0]?.entries.slice(0, 2).map((entry) => entry["entry_id"]),
+    ).toEqual([
+      expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+      expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+    ]);
+    expect(
+      new Set(prepared.qualityChanges[0]?.entries.map((entry) => entry["entry_id"])).size,
+    ).toBe(4);
     expect(prepared.qualityChanges[0]?.entries.at(-1)).toMatchObject({ dst: "王女" });
     expect(prepared.qualitySummary.glossary).toEqual({
       created: 2,

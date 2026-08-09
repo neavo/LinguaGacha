@@ -41,6 +41,7 @@ let run_state = {
     text_preserve: {
       entries: [
         {
+          entry_id: "foo::0",
           src: "foo",
           info: "bar",
         },
@@ -565,6 +566,7 @@ describe("useTextPreservePageState", () => {
         text_preserve: {
           entries: [
             {
+              entry_id: "foo::0",
               src: "foo",
               info: "bar",
             },
@@ -966,10 +968,12 @@ describe("useTextPreservePageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "import-foo",
             src: "foo",
             info: "new",
           },
           {
+            entry_id: "baz::1",
             src: "baz",
             info: "keep",
           },
@@ -1044,10 +1048,12 @@ describe("useTextPreservePageState", () => {
           ...run_state.quality.text_preserve,
           entries: [
             {
+              entry_id: "foo::0",
               src: "foo",
               info: "bar",
             },
             {
+              entry_id: "foobar::1",
               src: "foobar",
               info: "hidden",
             },
@@ -1070,6 +1076,7 @@ describe("useTextPreservePageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "baz::2",
             src: "baz",
             info: "keep",
           },
@@ -1090,6 +1097,7 @@ describe("useTextPreservePageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "preset-foo",
             src: "foo",
             info: "",
           },
@@ -1169,10 +1177,12 @@ describe("useTextPreservePageState", () => {
           ...run_state.quality.text_preserve,
           entries: [
             {
+              entry_id: "foo::0",
               src: "foo",
               info: "bar",
             },
             {
+              entry_id: "baz::1",
               src: "baz",
               info: "keep",
             },

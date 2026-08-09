@@ -22,10 +22,7 @@ import {
   normalize_language_code,
 } from "../../../domain/language";
 import type { TranslationLine, TranslationPromptMode } from "./translation-line";
-import {
-  format_glossary_entry,
-  type ResolvedGlossaryEntry,
-} from "../../../shared/quality/glossary";
+import { format_glossary_entry, type GlossaryEntry } from "../../../shared/quality/glossary";
 
 /**
  * 提示词构造所需的最小配置快照，worker 只读取语言与提示词增强开关
@@ -52,7 +49,7 @@ export class PromptBuilder {
   private readonly app_root: string;
   private readonly config: PromptBuilderConfig;
   private readonly quality_snapshot: TextQualitySnapshot;
-  private readonly activated_glossary_entries: readonly ResolvedGlossaryEntry[];
+  private readonly activated_glossary_entries: readonly GlossaryEntry[];
 
   /**
    * app_root 由 Electron main 注入，worker 不自行猜测资源根
@@ -61,7 +58,7 @@ export class PromptBuilder {
     app_root: string,
     config: Partial<PromptBuilderConfig>,
     quality_snapshot: TextQualitySnapshot,
-    activated_glossary_entries: readonly ResolvedGlossaryEntry[],
+    activated_glossary_entries: readonly GlossaryEntry[],
   ) {
     const setting_snapshot = normalize_setting_snapshot(config);
     this.app_root = app_root;

@@ -13,7 +13,6 @@ import {
   PROJECT_DATA_SECTIONS,
   type ProjectDataSectionRevisions,
 } from "../../shared/project-event";
-import { ensure_quality_rule_entry_ids } from "../../shared/quality/quality-rule-entry-id";
 import { NativeFs } from "../../native/native-fs";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { QualityRuleAnalysisCacheResult } from "../cache/quality-rule-analysis-cache";
@@ -408,9 +407,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   };
   const quality_analysis = vi.fn(
     async (kind: QualityRuleKind): Promise<QualityRuleAnalysisCacheResult> => {
-      const entries = ensure_quality_rule_entry_ids(
-        (quality[kind] as { entries: JsonRecord[] }).entries,
-      );
+      const entries = (quality[kind] as { entries: JsonRecord[] }).entries;
       const entry_ids = entries.map((entry) => String(entry["entry_id"]));
       return {
         projectPath: snapshot.projectPath,

@@ -1,20 +1,19 @@
-import type { GlossaryEntry } from "../../domain/quality";
+import type { QualityRuleGlossaryEntry } from "../../domain/quality";
 import type { ItemTextPart } from "../item-text";
 import {
   compile_literal_patterns,
   type LiteralMatcher,
   type TextRange,
 } from "../text/literal-matcher";
-import { ensure_quality_rule_entry_ids } from "./quality-rule-entry-id";
 
-export type { GlossaryEntry } from "../../domain/quality";
+/** 术语匹配与应用结果必须能回传项目条目身份。 */
+export type GlossaryEntry = QualityRuleGlossaryEntry;
 
-export type ResolvedGlossaryEntry = GlossaryEntry & { entry_id: string };
 export type GlossarySourceField = "src" | "name_src";
 export type GlossaryTargetField = "dst" | "name_dst";
 
 export type GlossarySourceMatch = {
-  entry: ResolvedGlossaryEntry; // 命中的规范术语及稳定身份
+  entry: GlossaryEntry; // 命中的规范术语及稳定身份
   fields: Array<{
     source_field: GlossarySourceField; // 实际命中的原始源文字段
     target_field: GlossaryTargetField; // 必须检查的对应译文字段
@@ -35,32 +34,25 @@ export type GlossaryApplication = {
 };
 
 export type CompiledGlossary = {
-  readonly entries: readonly ResolvedGlossaryEntry[]; // 保持输入顺序的规范术语
+  readonly entries: readonly GlossaryEntry[]; // 保持输入顺序的规范术语
   readonly source_matcher: LiteralMatcher; // 以 entry_id 输出源文字段命中
   readonly target_matcher: LiteralMatcher; // 以 entry_id 输出非空目标字段命中
 };
 
-/** 为旧规则补稳定身份，并丢弃无法参与匹配的空源文。 */
-function resolve_glossary_entries(entries: readonly GlossaryEntry[]): ResolvedGlossaryEntry[] {
-  return ensure_quality_rule_entry_ids(entries.map((entry) => ({ ...entry }))).filter(
-    (entry) => entry.src.trim() !== "",
-  );
-}
-
 /** 编译术语源文，entry_id 是跨页面、统计与校对链路共用的命中身份。 */
 export function compile_glossary(entries: readonly GlossaryEntry[]): CompiledGlossary {
-  const resolved_entries = resolve_glossary_entries(entries);
+  const matchable_entries = entries.filter((entry) => entry.src.trim() !== "");
   return {
-    entries: resolved_entries,
+    entries: matchable_entries,
     source_matcher: compile_literal_patterns(
-      resolved_entries.map((entry) => ({
+      matchable_entries.map((entry) => ({
         key: entry.entry_id,
         text: entry.src,
         case_sensitive: entry.case_sensitive,
       })),
     ),
     target_matcher: compile_literal_patterns(
-      resolved_entries.flatMap((entry) =>
+      matchable_entries.flatMap((entry) =>
         entry.dst.trim() === ""
           ? []
           : [{ key: entry.entry_id, text: entry.dst, case_sensitive: entry.case_sensitive }],
@@ -134,7 +126,7 @@ export function resolve_glossary_application_state(
 }
 
 /** 生成供提示词与诊断信息复用的稳定单行术语表示。 */
-export function format_glossary_entry(entry: ResolvedGlossaryEntry): string {
+export function format_glossary_entry(entry: GlossaryEntry): string {
   return entry.info === ""
     ? `${entry.src} -> ${entry.dst}`
     : `${entry.src} -> ${entry.dst} #${entry.info}`;

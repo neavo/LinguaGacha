@@ -1,19 +1,19 @@
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
-  GlossaryEntry,
   QualityRuleKind,
-  TextPreserveEntry,
-  TextReplacementEntry,
+  QualityRuleGlossaryEntry,
+  QualityRuleTextPreserveEntry,
+  QualityRuleTextReplacementEntry,
 } from "@domain/quality";
 
 type QualityRuleSectionRevisions = Record<string, number | undefined>;
 export type QualityRuleType = QualityRuleKind;
 
 type QualityRuleEntryByType = {
-  glossary: GlossaryEntry;
-  pre_replacement: TextReplacementEntry;
-  post_replacement: TextReplacementEntry;
-  text_preserve: TextPreserveEntry;
+  glossary: QualityRuleGlossaryEntry;
+  pre_replacement: QualityRuleTextReplacementEntry;
+  post_replacement: QualityRuleTextReplacementEntry;
+  text_preserve: QualityRuleTextPreserveEntry;
 };
 
 export type QualityRuleQuerySlice<TType extends QualityRuleType = QualityRuleType> = {

@@ -17,7 +17,6 @@ import type {
   BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
 import * as AppErrors from "../../shared/error";
-import { ensure_quality_rule_entry_ids } from "../../shared/quality/quality-rule-entry-id";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import {
   PROJECT_DATA_SECTIONS,
@@ -512,13 +511,13 @@ function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecor
   );
 }
 
-/** quality 快照复用生产归一化与迁移期稳定 ID。 */
+/** quality 快照复用生产归一化并要求项目内稳定身份。 */
 function read_quality_entries(quality: JsonRecord, kind: QualityRuleKind): JsonRecord[] {
   const entries = normalize_quality_rule_entries(
     QualityRule.from_json(kind),
     read_json_record(quality[kind])["entries"] ?? [],
   ) as JsonRecord[];
-  return ensure_quality_rule_entry_ids(entries);
+  return entries;
 }
 
 /** prompt 快照只保留固定正文，不复制功能开关。 */
@@ -534,7 +533,7 @@ function project_quality_evidence(
   result: QualityRuleAnalysisCacheResult,
   entries: JsonRecord[],
 ): JsonRecord {
-  const expected_ids = entries.map((entry) => String(entry["entry_id"] ?? ""));
+  const expected_ids = entries.map((entry) => String(entry["entry_id"]));
   if (
     JsonTool.stringifyStrict(result.analysis.entry_ids) !== JsonTool.stringifyStrict(expected_ids)
   ) {

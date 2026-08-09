@@ -807,12 +807,14 @@ describe("useTextReplacementPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "import-hero",
             src: "hero",
             dst: "英雄",
             regex: false,
             case_sensitive: false,
           },
           {
+            entry_id: "mage::1",
             src: "mage",
             dst: "法师",
             regex: false,
@@ -915,6 +917,7 @@ describe("useTextReplacementPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "mage::1",
             src: "mage",
             dst: "法师",
             regex: false,
@@ -937,6 +940,7 @@ describe("useTextReplacementPageState", () => {
       .mockResolvedValueOnce({
         entries: [
           {
+            entry_id: "hero::1",
             src: "hero",
             dst: "",
             regex: true,

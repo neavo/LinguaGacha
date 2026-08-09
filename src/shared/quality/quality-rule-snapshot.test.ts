@@ -8,22 +8,22 @@ describe("quality rule snapshot", () => {
       quality: {
         glossary: {
           enabled: true,
-          entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
           revision: 3,
         },
         text_preserve: {
           mode: "SMART",
-          entries: [{ src: "<i>", dst: "<i>" }],
+          entries: [{ entry_id: "italic", src: "<i>", dst: "<i>" }],
           revision: "2",
         },
         pre_replacement: {
           enabled: true,
-          entries: [{ src: "A", dst: "B" }],
+          entries: [{ entry_id: "a-to-b", src: "A", dst: "B" }],
           revision: -1,
         },
         post_replacement: {
           enabled: true,
-          entries: [{ src: "B", dst: "A" }],
+          entries: [{ entry_id: "b-to-a", src: "B", dst: "A" }],
           revision: "bad",
         },
       },
@@ -43,10 +43,10 @@ describe("quality rule snapshot", () => {
 
     expect(snapshot.glossary_enable).toBe(true);
     expect(snapshot.glossary_entries).toEqual([
-      { src: "HP", dst: "生命值", info: "", case_sensitive: false },
+      { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false },
     ]);
     expect(snapshot.text_preserve_mode).toBe("smart");
-    expect(snapshot.text_preserve_entries).toEqual([{ src: "<i>", info: "" }]);
+    expect(snapshot.text_preserve_entries).toEqual([{ entry_id: "italic", src: "<i>", info: "" }]);
     expect(snapshot.translation_prompt).toBe("translation-prompt");
     expect(snapshot.pre_replacement_revision).toBe(0);
     expect(snapshot.post_replacement_revision).toBe(0);
@@ -56,7 +56,7 @@ describe("quality rule snapshot", () => {
   it("坏规则事实显式失败", () => {
     expect(() =>
       QualityRuleSnapshotTool.from_json({
-        quality: { glossary: { entries: [{ src: "  ", dst: "忽略" }] } },
+        quality: { glossary: { entries: [{ entry_id: "invalid", src: "  ", dst: "忽略" }] } },
       }),
     ).toThrow("质量规则 src 不能为空");
   });
@@ -65,10 +65,10 @@ describe("quality rule snapshot", () => {
     const snapshot = QualityRuleSnapshotTool.from_json({
       quality: {
         glossary: {
-          entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
         },
         text_preserve: {
-          entries: [{ src: "<i>", dst: "<i>" }],
+          entries: [{ entry_id: "italic", src: "<i>", dst: "<i>" }],
         },
       },
     });
@@ -84,12 +84,12 @@ describe("quality rule snapshot", () => {
       quality: {
         glossary: {
           enabled: true,
-          entries: [{ src: "HP", dst: "生命值" }],
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
           revision: 3,
         },
         text_preserve: {
           mode: "custom",
-          entries: [{ src: "<i>", info: "" }],
+          entries: [{ entry_id: "italic", src: "<i>", info: "" }],
           revision: 2,
         },
       },
@@ -105,12 +105,12 @@ describe("quality rule snapshot", () => {
     expect(QualityRuleSnapshotTool.to_json(snapshot)).toEqual({
       quality: {
         glossary: {
-          entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+          entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
           enabled: true,
           revision: 3,
         },
         text_preserve: {
-          entries: [{ src: "<i>", info: "" }],
+          entries: [{ entry_id: "italic", src: "<i>", info: "" }],
           mode: "custom",
           revision: 2,
         },

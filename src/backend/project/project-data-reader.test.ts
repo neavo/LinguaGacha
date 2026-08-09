@@ -145,7 +145,7 @@ describe("ProjectDataReader", () => {
     const service = new ProjectDataReader(
       create_database_stub({
         get_rules: (_project_path, rule_type) =>
-          rule_type === "glossary" ? [{ src: "HP", dst: "生命值" }] : [],
+          rule_type === "glossary" ? [{ entry_id: "hp", src: "HP", dst: "生命值" }] : [],
       }),
     );
 
@@ -158,7 +158,7 @@ describe("ProjectDataReader", () => {
 
     expect(quality["glossary"]).toMatchObject({
       enabled: true,
-      entries: [{ src: "HP", dst: "生命值" }],
+      entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
     });
     expect(quality["text_preserve"]).toMatchObject({ enabled: false, mode: "smart" });
     expect(quality["pre_replacement"]?.enabled).toBe(false);

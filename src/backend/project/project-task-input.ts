@@ -1,30 +1,31 @@
 import { Prompt, type PromptKind } from "../../domain/prompt";
 import {
   QualityRule,
-  type GlossaryEntry,
   type QualityRuleEntry,
+  type QualityRuleGlossaryEntry,
   type QualityRuleKind,
-  type TextPreserveEntry,
+  type QualityRuleTextPreserveEntry,
+  type QualityRuleTextReplacementEntry,
   type TextPreserveMode,
-  type TextReplacementEntry,
 } from "../../domain/quality";
 
+/** 任务写入边界只接收已分配项目身份的 canonical 质量规则。 */
 export type ProjectQualityRuleInput =
   | {
       kind: "glossary";
-      entries: GlossaryEntry[];
+      entries: QualityRuleGlossaryEntry[];
       enabled: boolean;
       mode: null;
     }
   | {
       kind: "text_preserve";
-      entries: TextPreserveEntry[];
+      entries: QualityRuleTextPreserveEntry[];
       enabled: null;
       mode: TextPreserveMode;
     }
   | {
       kind: "pre_replacement" | "post_replacement";
-      entries: TextReplacementEntry[];
+      entries: QualityRuleTextReplacementEntry[];
       enabled: boolean;
       mode: null;
     };
@@ -49,19 +50,24 @@ export function build_project_quality_rule_input(
   enabled: boolean,
 ): ProjectQualityRuleInput {
   if (rule.kind === "glossary") {
-    return { kind: rule.kind, entries: entries as GlossaryEntry[], enabled, mode: null };
+    return {
+      kind: rule.kind,
+      entries: entries as QualityRuleGlossaryEntry[],
+      enabled,
+      mode: null,
+    };
   }
   if (rule.kind === "text_preserve") {
     return {
       kind: rule.kind,
-      entries: entries as TextPreserveEntry[],
+      entries: entries as QualityRuleTextPreserveEntry[],
       enabled: null,
       mode: enabled ? "custom" : "off",
     };
   }
   return {
     kind: rule.kind,
-    entries: entries as TextReplacementEntry[],
+    entries: entries as QualityRuleTextReplacementEntry[],
     enabled,
     mode: null,
   };

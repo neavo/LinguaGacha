@@ -4,7 +4,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type {
   TextReplacementDialogMode,
-  TextReplacementEntry,
+  TextReplacementEntryDraft,
 } from "@frontend/pages/text-replacement-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
@@ -15,11 +15,11 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 type TextReplacementEditDialogProps = {
   open: boolean;
   mode: TextReplacementDialogMode;
-  entry: TextReplacementEntry;
+  entry: TextReplacementEntryDraft;
   saving: boolean;
   readonly: boolean;
   validation_message: string | null;
-  on_change: (patch: Partial<TextReplacementEntry>) => void;
+  on_change: (patch: Partial<TextReplacementEntryDraft>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };

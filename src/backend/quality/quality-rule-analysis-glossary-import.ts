@@ -7,7 +7,6 @@ import {
   build_analysis_glossary_entries_from_candidates,
   collect_analysis_candidate_srcs_from_aggregate,
   is_analysis_control_code_self_mapping,
-  type AnalysisCandidateGlossaryEntry,
 } from "../../shared/analysis-candidate";
 import {
   run_quality_statistics_task_sync,
@@ -29,7 +28,10 @@ import type { ProjectItemPublicRecord } from "../../domain/item";
 import { QualityRule } from "../../domain/quality";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { GlossaryEntry } from "../../shared/quality/glossary";
-import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
+import {
+  create_quality_rule_entries,
+  normalize_quality_rule_entries,
+} from "../../shared/quality/quality-rule-entry";
 
 export type PreparedAnalysisGlossaryImport = {
   duplicate_count: number; // 用于确认弹窗提示重复候选数量
@@ -99,13 +101,6 @@ function build_duplicate_signature(preview: QualityRuleImportPreview): string {
  */
 function build_glossary_stat_key(entry: GlossaryEntry): string {
   return JSON.stringify([entry.src, entry.case_sensitive]);
-}
-
-/**
- * 候选条目复制为质量规则输入，阻断分析聚合对象的可变引用。
- */
-function to_glossary_entries(entries: AnalysisCandidateGlossaryEntry[]): GlossaryEntry[] {
-  return entries.map((entry) => ({ ...entry }));
 }
 
 /**
@@ -222,9 +217,11 @@ export function prepare_analysis_glossary_import_from_cache(
   const consumed_candidate_srcs = collect_analysis_candidate_srcs_from_aggregate(
     request.candidate_aggregate,
   );
-  const incoming_entries = to_glossary_entries(
+  const incoming_entries = create_quality_rule_entries(
+    QualityRule.from_json("glossary"),
     build_analysis_glossary_entries_from_candidates(request.candidate_aggregate),
-  );
+    existing_glossary_entries.map((entry) => entry.entry_id),
+  ) as GlossaryEntry[];
   if (incoming_entries.length === 0) {
     return build_candidate_pool_consumption_import({
       existing_glossary_entries,

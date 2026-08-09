@@ -1,6 +1,6 @@
 import {
   QualityRule,
-  type GlossaryEntry,
+  type QualityRuleGlossaryEntry,
   type TextPreserveEntry,
   type TextReplacementEntry,
 } from "../../domain/quality";
@@ -55,7 +55,7 @@ export function buildProofreadingEvaluationContext(
   const glossary_entries = normalize_quality_rule_entries(
     QualityRule.from_json("glossary"),
     quality.glossary.entries,
-  ) as GlossaryEntry[];
+  ) as QualityRuleGlossaryEntry[];
   const pre_entries = normalize_quality_rule_entries(
     QualityRule.from_json("pre_replacement"),
     quality.pre_replacement.entries,
@@ -237,6 +237,7 @@ export function evaluateProofreadingItem(args: {
   });
 }
 
+/** 逐行移除保护片段，避免正则跨行改变翻译与校对共用的处理语义。 */
 function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule | null): string {
   return rule === null
     ? text
@@ -246,6 +247,7 @@ function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule |
         .join("\n");
 }
 
+/** 按原行号收集非空保护片段，供源文与译文做精确对照。 */
 function collect_non_blank_segments_by_line(
   text: string,
   rule: TextPreserveRule | null,

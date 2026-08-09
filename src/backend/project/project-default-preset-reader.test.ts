@@ -51,7 +51,15 @@ describe("ProjectDefaultPresetReader", () => {
       quality_rules: [
         {
           kind: "glossary",
-          entries: [{ src: "勇者", dst: "Hero", info: "", case_sensitive: false }],
+          entries: [
+            {
+              entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+              src: "勇者",
+              dst: "Hero",
+              info: "",
+              case_sensitive: false,
+            },
+          ],
           enabled: true,
           mode: null,
         },
@@ -87,7 +95,13 @@ describe("ProjectDefaultPresetReader", () => {
     expect(input.quality_rules).toEqual([
       {
         kind: "text_preserve",
-        entries: [{ src: "\\[[^\\]]+\\]", info: "" }],
+        entries: [
+          {
+            entry_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{5}$/u),
+            src: "\\[[^\\]]+\\]",
+            info: "",
+          },
+        ],
         enabled: null,
         mode: "custom",
       },

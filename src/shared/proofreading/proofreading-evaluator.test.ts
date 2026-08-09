@@ -64,7 +64,7 @@ describe("proofreading-evaluator", () => {
         enabled: false,
         mode: "off",
         revision: 1,
-        entries: [{ src: "(", dst: "x", regex: true }],
+        entries: [{ entry_id: "invalid", src: "(", dst: "x", regex: true }],
       },
     });
 
@@ -86,13 +86,13 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "HP", dst: "生命值" }],
+        entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "\\{[^}]+\\}" }],
+        entries: [{ entry_id: "player", src: "\\{[^}]+\\}" }],
       },
     });
 
@@ -125,7 +125,7 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "Alice", dst: "艾丽丝" }],
+        entries: [{ entry_id: "alice", src: "Alice", dst: "艾丽丝" }],
       },
     });
 
@@ -154,13 +154,13 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "Alice", dst: "艾丽丝" }],
+        entries: [{ entry_id: "alice", src: "Alice", dst: "艾丽丝" }],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "\\{[^}]+\\}" }],
+        entries: [{ entry_id: "player", src: "\\{[^}]+\\}" }],
       },
     });
 
@@ -189,13 +189,13 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "off",
         revision: 1,
-        entries: [{ src: '^"', dst: "<Q>", regex: true, case_sensitive: true }],
+        entries: [{ entry_id: "quote", src: '^"', dst: "<Q>", regex: true, case_sensitive: true }],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<Q>", info: "" }],
+        entries: [{ entry_id: "quote", src: "<Q>", info: "" }],
       },
     });
     expect(
@@ -212,13 +212,13 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "off",
         revision: 1,
-        entries: [{ src: '^"', dst: "「", regex: true, case_sensitive: true }],
+        entries: [{ entry_id: "quote", src: '^"', dst: "「", regex: true, case_sensitive: true }],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: '\\^"', info: "" }],
+        entries: [{ entry_id: "quote", src: '\\^"', info: "" }],
       },
     });
     expect(
@@ -233,7 +233,10 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<[^>]+>" }, { src: "A\\nB" }],
+        entries: [
+          { entry_id: "tag", src: "<[^>]+>" },
+          { entry_id: "line", src: "A\\nB" },
+        ],
       },
     });
 
@@ -260,13 +263,15 @@ describe("proofreading-evaluator", () => {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<A>", dst: "<X>", regex: false, case_sensitive: true }],
+        entries: [
+          { entry_id: "replace-a", src: "<A>", dst: "<X>", regex: false, case_sensitive: true },
+        ],
       },
       text_preserve: {
         enabled: true,
         mode: "custom",
         revision: 1,
-        entries: [{ src: "<[^>]+>" }],
+        entries: [{ entry_id: "tag", src: "<[^>]+>" }],
       },
     });
 

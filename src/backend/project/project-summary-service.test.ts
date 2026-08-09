@@ -165,10 +165,10 @@ describe("ProjectSummaryService", () => {
       get_all_asset_records: () => asset_records,
       get_rules: (_project_path: string, rule_type: string) => {
         if (rule_type === "glossary") {
-          return [{ src: "HP", dst: "生命值" }];
+          return [{ entry_id: "hp", src: "HP", dst: "生命值" }];
         }
         if (rule_type === "text_preserve") {
-          return [{ src: "\\[[^\\]]+\\]" }];
+          return [{ entry_id: "renpy", src: "\\[[^\\]]+\\]" }];
         }
         return [];
       },

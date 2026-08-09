@@ -6,8 +6,8 @@ describe("text preserve filtering", () => {
   it("按备注范围过滤，并保留对应稳定 ID", () => {
     const result = build_text_preserve_filter_result({
       entries: [
-        { src: "\\N", info: "line break" },
-        { src: "\\C", info: "color" },
+        { entry_id: "newline", src: "\\N", info: "line break" },
+        { entry_id: "color", src: "\\C", info: "color" },
       ],
       entry_ids: ["newline", "color"],
       filter_state: { keyword: "break", scope: "info", is_regex: false },
@@ -19,9 +19,9 @@ describe("text preserve filtering", () => {
 
   it("统计就绪后按命中数排序，命中数相同时保持源顺序", () => {
     const entries = [
-      { entry: { src: "A", info: "" }, entry_id: "a", source_index: 0 },
-      { entry: { src: "B", info: "" }, entry_id: "b", source_index: 1 },
-      { entry: { src: "C", info: "" }, entry_id: "c", source_index: 2 },
+      { entry: { entry_id: "a", src: "A", info: "" }, entry_id: "a", source_index: 0 },
+      { entry: { entry_id: "b", src: "B", info: "" }, entry_id: "b", source_index: 1 },
+      { entry: { entry_id: "c", src: "C", info: "" }, entry_id: "c", source_index: 2 },
     ];
 
     expect(

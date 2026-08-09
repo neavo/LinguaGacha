@@ -65,6 +65,11 @@ describe("build_cli_task_input", () => {
         mode: null,
       },
     });
+    for (const rule of input.quality_rules) {
+      for (const entry of rule.entries) {
+        expect(entry.entry_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
+      }
+    }
     expect(input.prompts).toEqual([
       { kind: "translation", text: "自定义翻译提示词", enabled: true },
       { kind: "analysis", text: "", enabled: false },
