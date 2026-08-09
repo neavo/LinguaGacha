@@ -1,0 +1,363 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
+
+const electron_mocks = vi.hoisted(() => {
+  const register_schemes = vi.fn();
+  const protocol_handle = vi.fn();
+  const protocol_unhandle = vi.fn();
+  const on_before_request = vi.fn();
+  const permission_check = vi.fn();
+  const permission_request = vi.fn();
+  const session_on = vi.fn();
+  const clear_storage_data = vi.fn<() => Promise<void>>(async () => undefined);
+  const runner_session = {
+    protocol: { handle: protocol_handle, unhandle: protocol_unhandle },
+    webRequest: { onBeforeRequest: on_before_request },
+    setPermissionCheckHandler: permission_check,
+    setPermissionRequestHandler: permission_request,
+    on: session_on,
+    clearStorageData: clear_storage_data,
+  };
+  const execute_javascript = vi.fn(async (_script: string) => '{"changed":2}');
+  class BrowserWindow {
+    static instances: BrowserWindow[] = [];
+    destroyed = false;
+    loadURL = vi.fn(async () => undefined);
+    webContents = {
+      setWindowOpenHandler: vi.fn(),
+      on: vi.fn(),
+      executeJavaScript: execute_javascript,
+    };
+
+    constructor(readonly options: Record<string, unknown>) {
+      BrowserWindow.instances.push(this);
+    }
+
+    destroy(): void {
+      this.destroyed = true;
+    }
+
+    isDestroyed(): boolean {
+      return this.destroyed;
+    }
+  }
+  return {
+    register_schemes,
+    protocol_handle,
+    protocol_unhandle,
+    on_before_request,
+    permission_check,
+    permission_request,
+    session_on,
+    clear_storage_data,
+    from_partition: vi.fn(() => runner_session),
+    execute_javascript,
+    BrowserWindow,
+  };
+});
+
+vi.mock("electron", () => ({
+  BrowserWindow: electron_mocks.BrowserWindow,
+  protocol: { registerSchemesAsPrivileged: electron_mocks.register_schemes },
+  session: { fromPartition: electron_mocks.from_partition },
+}));
+
+import {
+  DesktopAgentWorkspaceRunner,
+  register_agent_workspace_scheme,
+} from "./desktop-agent-workspace-runner";
+
+let workspace_path = "";
+const ORIGINAL_ITEMS = '{"value":"original"}\n';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  electron_mocks.BrowserWindow.instances.length = 0;
+  electron_mocks.execute_javascript.mockResolvedValue('{"changed":2}');
+  workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-runner-"));
+  fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
+  fs.writeFileSync(
+    path.join(workspace_path, "contract.json"),
+    JSON.stringify({
+      datasets: { items: { path: "items/entries.jsonl", writable: true } },
+      recipes: {
+        "query-items": {
+          path: "recipes/query-items.js",
+          readonly: true,
+        },
+      },
+    }),
+  );
+  fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), ORIGINAL_ITEMS);
+  fs.writeFileSync(
+    path.join(workspace_path, "recipes", "query-items.js"),
+    "async function runRecipe(_workspace, args) { return { marker: args.limit }; }\nvoid runRecipe;",
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  fs.rmSync(workspace_path, { recursive: true, force: true });
+});
+
+describe("DesktopAgentWorkspaceRunner", () => {
+  it("注册完整沙箱边界，并在结果过门后提交脚本事务", async () => {
+    register_agent_workspace_scheme();
+    const runner = new DesktopAgentWorkspaceRunner();
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: {
+          kind: "script",
+          script:
+            'const rows = []; for await (const row of workspace.iterateJsonl(workspace.contract.datasets.items.path)) rows.push(row); await workspace.writeText(workspace.contract.datasets.items.path, "changed"); return { text: await workspace.readText(workspace.contract.datasets.items.path), rows, api: Object.keys(workspace).sort() };',
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      result: {
+        text: "changed",
+        rows: [{ value: "original" }],
+        api: [
+          "contract",
+          "iterateJsonl",
+          "iterateLines",
+          "list",
+          "readJson",
+          "readText",
+          "remove",
+          "writeJson",
+          "writeJsonl",
+          "writeText",
+        ],
+      },
+    });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      "changed",
+    );
+    expect(electron_mocks.register_schemes).toHaveBeenCalledWith([
+      {
+        scheme: "lg-agent-workspace",
+        privileges: {
+          standard: true,
+          secure: true,
+          supportFetchAPI: true,
+          stream: true,
+        },
+      },
+    ]);
+    expect(electron_mocks.from_partition).toHaveBeenCalledWith("agent-workspace", { cache: false });
+    expect(electron_mocks.BrowserWindow.instances[0]?.options).toMatchObject({
+      show: false,
+      webPreferences: {
+        sandbox: true,
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: true,
+      },
+    });
+    expect(electron_mocks.BrowserWindow.instances[0]?.destroyed).toBe(true);
+
+    const filter = electron_mocks.on_before_request.mock.calls[0]?.[0] as
+      | ((details: { url: string }, callback: (result: { cancel: boolean }) => void) => void)
+      | undefined;
+    if (filter === undefined) throw new Error("缺少网络过滤器");
+    const network_result = vi.fn();
+    const workspace_result = vi.fn();
+    filter({ url: "https://example.com" }, network_result);
+    filter({ url: "lg-agent-workspace://workspace/files/prompts.json" }, workspace_result);
+    expect(network_result).toHaveBeenCalledWith({ cancel: true });
+    expect(workspace_result).toHaveBeenCalledWith({ cancel: false });
+    expect(electron_mocks.permission_check.mock.calls[0]?.[0]()).toBe(false);
+    const permission_result = vi.fn();
+    electron_mocks.permission_request.mock.calls[0]?.[0](undefined, undefined, permission_result);
+    expect(permission_result).toHaveBeenCalledWith(false);
+    const download_event = { preventDefault: vi.fn() };
+    electron_mocks.session_on.mock.calls[0]?.[1](download_event);
+    expect(download_event.preventDefault).toHaveBeenCalledOnce();
+
+    runner.dispose();
+    expect(electron_mocks.protocol_unhandle).toHaveBeenCalledWith("lg-agent-workspace");
+  });
+
+  it("官方 recipe 从 contract 路径读取，并只接收只读 workspace", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    fs.writeFileSync(
+      path.join(workspace_path, "recipes", "query-items.js"),
+      "async function runRecipe(workspace, args) { return { marker: args.limit, path: workspace.contract.datasets.items.path, api: Object.keys(workspace).sort() }; }\nvoid runRecipe;",
+    );
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        operation: { kind: "recipe", name: "query-items", args: { limit: 7 } },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      result: {
+        marker: 7,
+        path: "items/entries.jsonl",
+        api: ["contract", "iterateJsonl", "iterateLines", "list", "readJson", "readText"],
+      },
+    });
+    expect(fs.existsSync(path.join(workspace_path, ".transactions"))).toBe(false);
+  });
+
+  it("脚本异常返回可修复消息并隐藏工作区绝对路径", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockRejectedValueOnce(
+      new Error(`第十步语法错误：${workspace_path}\\secret`),
+    );
+
+    const result = await runner.run(
+      { workspacePath: workspace_path, operation: { kind: "script", script: "bad" } },
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+    });
+    if (result.status !== "failed") throw new Error("脚本异常没有返回失败结果");
+    expect(result.message).toContain("[workspace]");
+    expect(result.message).not.toContain(workspace_path);
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      ORIGINAL_ITEMS,
+    );
+  });
+
+  it("超大结果返回 preserved 与稳定错误消息", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockResolvedValueOnce(
+      `"${"x".repeat(AGENT_WORKSPACE_MAX_RESULT_BYTES)}"`,
+    );
+
+    await expect(
+      runner.run(
+        { workspacePath: workspace_path, operation: { kind: "script", script: "return big" } },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+      message: "脚本返回结果过大；请写入 scratch 并只返回摘要。",
+    });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      ORIGINAL_ITEMS,
+    );
+  });
+
+  it("超大 recipe 结果提示缩小页面并保留工作区", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    electron_mocks.execute_javascript.mockResolvedValueOnce(
+      `"${"x".repeat(AGENT_WORKSPACE_MAX_RESULT_BYTES)}"`,
+    );
+
+    await expect(
+      runner.run(
+        {
+          workspacePath: workspace_path,
+          operation: { kind: "recipe", name: "query-items", args: { limit: 100 } },
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      workspaceState: "preserved",
+      failure: "execution_failed",
+      message:
+        "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 将中间结果写入 scratch 后只返回摘要。",
+    });
+    expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
+      ORIGINAL_ITEMS,
+    );
+  });
+
+  it("停止会等待当前事务回滚后再以原始原因拒绝", async () => {
+    let reject_execution: ((error: Error) => void) | undefined;
+    electron_mocks.execute_javascript.mockImplementationOnce(
+      async () =>
+        await new Promise<string>((_resolve, reject) => {
+          reject_execution = reject;
+        }),
+    );
+    const runner = new DesktopAgentWorkspaceRunner();
+    const controller = new AbortController();
+    const reason = new Error("用户停止");
+    const running = runner.run(
+      { workspacePath: workspace_path, operation: { kind: "script", script: "await pending" } },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(electron_mocks.execute_javascript).toHaveBeenCalledOnce());
+
+    controller.abort(reason);
+    reject_execution?.(new Error("renderer destroyed"));
+
+    await expect(running).rejects.toBe(reason);
+    expect(fs.readdirSync(path.join(workspace_path, ".transactions"))).toEqual([]);
+  });
+
+  it("从异步准备开始拒绝并发操作", async () => {
+    let release: (() => void) | undefined;
+    electron_mocks.clear_storage_data.mockImplementationOnce(
+      async () =>
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const runner = new DesktopAgentWorkspaceRunner();
+    const first = runner.run(
+      { workspacePath: workspace_path, operation: { kind: "script", script: "return null" } },
+      new AbortController().signal,
+    );
+    await vi.waitFor(() => expect(electron_mocks.clear_storage_data).toHaveBeenCalledOnce());
+
+    await expect(
+      runner.run(
+        { workspacePath: workspace_path, operation: { kind: "script", script: "return null" } },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("正在运行");
+    release?.();
+    await expect(first).resolves.toMatchObject({ status: "success" });
+  });
+});
+
+/** 在测试进程执行 renderer 程序，并把相对 fetch 接回 runner 已注册的私有协议。 */
+function prepare_program_execution(): void {
+  const handler = electron_mocks.protocol_handle.mock.calls[0]?.[1] as
+    | ((request: Request) => Promise<Response>)
+    | undefined;
+  if (handler === undefined) throw new Error("缺少工作区协议处理器");
+  vi.stubGlobal(
+    "fetch",
+    async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const raw_url = input instanceof Request ? input.url : String(input);
+      const request_init =
+        init?.body instanceof ReadableStream ? ({ ...init, duplex: "half" } as RequestInit) : init;
+      return await handler(
+        new Request(new URL(raw_url, "lg-agent-workspace://workspace/__runner__"), request_init),
+      );
+    },
+  );
+  electron_mocks.execute_javascript.mockImplementationOnce(
+    async (script: string) => await (0, eval)(script),
+  );
+}

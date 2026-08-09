@@ -23,6 +23,7 @@
 | 普通任务 / Agent 活动所有者与项目写互斥 | `RuntimeOperationGate` | 运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed` |
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
 | loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
+| Agent 工程数据快照与变更准备 | `AgentWorkspaceService` | 完整 create / run / apply 生命周期 |
 | 项目事实提交 | `ProjectWriteStore` | 单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change` |
 | 活动任务类型、translation scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
 | 任务 progress / analysis candidate count | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
@@ -31,7 +32,7 @@
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
 | 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
 
-`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，设置和模型配置写入也必须先确认运行时空闲。Agent 只能在自己的运行 lease 内通过专用服务入口串行写项目；冲突统一返回 `runtime.busy`。
+`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，设置和模型配置写入也必须先确认运行时空闲。Agent 只能在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；冲突统一返回 `runtime.busy`。
 
 ## 3. 项目读取与写入
 
@@ -58,6 +59,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
+- Agent 磁盘工作区只是一次性完整快照和变更准备区，不是 `.lg` 写入口。`AgentWorkspaceService` 对完整七 section revision、工程 epoch 与语言做 freshness 守卫，严格校验 items 身份与人工更新语义、四类质量规则的稳定 ID / 真实执行语义 / prospective 重复组，以及两类提示词固定正文；功能开关不进入工作区，也不随 apply 改变。
+- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：一次 `BEGIN IMMEDIATE` 内完成完整 revision guard，并组合 items / proofreading 字段补丁、任意多个 quality kind 最终集合和两个 prompt 正文。每个变化 section 的 aggregate revision 只推进一次，同一事务内变化的 quality kind 或 prompt kind 共用各自的新 revision；items 公开载荷固定为 `section-invalidated`。
+- 工作区无差异时不调用 store、不推进 revision、不发布事件。任一数据库写失败会回滚所有 item、规则、提示词与 revision，且不发布内部或公开事件；成功提交后才按 items、quality、prompts 顺序维护 cache，最后发布一个统一公开 change。revision 冲突、事务失败与未知异常不做补偿或部分成功。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 
 ## 4. 任务、worker 与 LLM

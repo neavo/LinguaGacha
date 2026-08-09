@@ -31,7 +31,7 @@ type QualityRuleQueryResponse<TType extends QualityRuleType = QualityRuleType> =
 /**
  * 通过统一质量规则查询入口读取指定规则切片，页面负责在边界处窄化载荷。
  */
-export async function query_quality_rules<TType extends QualityRuleType>(
+export async function read_quality_rule_snapshot<TType extends QualityRuleType>(
   rule_type: TType,
 ): Promise<QualityRuleQueryResponse<TType>> {
   return await api_fetch<QualityRuleQueryResponse<TType>>("/api/quality/rules/query", {

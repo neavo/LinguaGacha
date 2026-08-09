@@ -1019,7 +1019,7 @@ describe("DesktopStateProvider", () => {
 
     await act(async () => {
       event_stream.emit("project.data_changed", {
-        source: "proofreading_update_items",
+        source: "proofreading_apply_item_changes",
         projectPath: "E:/demo/demo.lg",
         projectRevision: 2,
         updatedSections: ["items", "proofreading"],
@@ -1048,7 +1048,7 @@ describe("DesktopStateProvider", () => {
         },
       });
       event_stream.emit("project.data_changed", {
-        source: "proofreading_update_items",
+        source: "proofreading_apply_item_changes",
         projectPath: "E:/demo/demo.lg",
         projectRevision: 3,
         updatedSections: ["items", "proofreading"],
@@ -1087,7 +1087,7 @@ describe("DesktopStateProvider", () => {
 
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingSeq: 2,
-      proofreadingReason: "proofreading_update_items",
+      proofreadingReason: "proofreading_apply_item_changes",
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
       proofreadingItemIds: [1, 2],

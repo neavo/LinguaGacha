@@ -3,7 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
-  create_update_items_plan,
+  create_apply_item_changes_plan,
   type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
 import { read_item_name_text } from "@shared/item-name";
@@ -229,7 +229,7 @@ export function useProofreadingDialogActions(
     try {
       await options.run_project_write({
         path: "/api/proofreading/items/update",
-        plan: create_update_items_plan({
+        plan: create_apply_item_changes_plan({
           snapshot: {
             items: [target_item],
             section_revisions: options.list_revisions,

@@ -28,6 +28,12 @@ describe("AppPathService", () => {
     expect(service.get_berserker_update_root_dir()).toBe(
       path.join(app_root, "userdata", "berserker"),
     );
+    expect(service.get_agent_workspace_root_dir()).toBe(
+      path.join(app_root, "userdata", "agent", "workspace"),
+    );
+    expect(service.get_agent_workspace_recipe_dir()).toBe(
+      path.join(app_root, "resource", "agent", "workspace", "recipes"),
+    );
     expect(service.get_berserker_version_dir("1.2.4")).toBe(
       path.join(app_root, "userdata", "berserker", "v1.2.4"),
     );

@@ -132,79 +132,12 @@ describe("ProofreadingService", () => {
     const { service } = create_service(true);
 
     for (const operation of [
-      async () => await service.update_items({}),
+      async () => await service.apply_item_changes({}),
       async () => await service.replace_all({}),
       async () => await service.clear_translations({}),
     ]) {
       await expect(operation()).rejects.toThrow("runtime.busy");
     }
-  });
-
-  it("Agent 校对写入口在自身租约内提交命令并由后端计算事实", async () => {
-    const { database, service, lg_path, publisher, runtime_gate } = create_service();
-    runtime_gate.begin_runtime("agent");
-    database.set_items(lg_path, [
-      create_project_item({
-        src: "旧原文",
-        dst: "旧译文",
-        name_dst: "保留姓名",
-        status: "NONE",
-        text_type: "dialogue",
-        retry_count: 7,
-      }),
-    ]);
-    database.upsert_meta_entries(lg_path, {
-      "project_runtime_revision.items": 2,
-      "proofreading_revision.proofreading": 3,
-      translation_extras: { total_tokens: 99, time: 5 },
-    });
-
-    const ack = await service.update_items_from_agent(
-      {
-        changes: [{ item_id: 1, dst: "新译文" }],
-        expected_section_revisions: { items: 2, proofreading: 3 },
-      },
-      "agent_proofreading_update_items",
-    );
-
-    expect(ack).toMatchObject({
-      accepted: true,
-      changes: [
-        {
-          source: "agent_proofreading_update_items",
-          projectRevision: 4,
-          sectionRevisions: { items: 3, proofreading: 4 },
-          updatedSections: ["items", "proofreading"],
-        },
-      ],
-    });
-    expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({
-        src: "旧原文",
-        dst: "新译文",
-        name_dst: "保留姓名",
-        status: "PROCESSED",
-        text_type: "dialogue",
-        retry_count: 7,
-      }),
-    ]);
-    expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      total_tokens: 99,
-      time: 5,
-      processed_line: 1,
-      error_line: 0,
-      total_line: 1,
-      line: 1,
-    });
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      projectPath: lg_path,
-      source: "agent_proofreading_update_items",
-      updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: [1],
-      },
-    });
   });
 
   it("相同非空译文仍会修正错误状态并同步翻译统计", async () => {
@@ -219,7 +152,7 @@ describe("ProofreadingService", () => {
       line: 1,
     });
 
-    await service.update_items({
+    await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "既有译文" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -248,7 +181,7 @@ describe("ProofreadingService", () => {
       }),
     ]);
 
-    const result = await service.update_items({
+    const result = await service.apply_item_changes({
       changes: [
         { item_id: 1, dst: "新译文" },
         { item_id: 2, name_dst: "新名" },
@@ -259,7 +192,7 @@ describe("ProofreadingService", () => {
     expect(result).toMatchObject({
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
         },
       ],
@@ -277,7 +210,7 @@ describe("ProofreadingService", () => {
     expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
     expect(publisher.publish_project_change).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: "proofreading_update_items",
+        source: "proofreading_apply_item_changes",
         items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
       }),
     );
@@ -288,7 +221,7 @@ describe("ProofreadingService", () => {
     database.set_items(lg_path, [create_project_item({ id: 1, dst: "旧译文" })]);
 
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [
           { item_id: 1, dst: "A" },
           { item_id: 1, name_dst: "B" },
@@ -297,31 +230,31 @@ describe("ProofreadingService", () => {
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, dst: null }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: Number.MAX_SAFE_INTEGER + 1, dst: "A" }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1 }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, dst: "A", legacy: true }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [
           { item_id: 1, dst: "A" },
           { item_id: 404, dst: "B" },
@@ -348,7 +281,7 @@ describe("ProofreadingService", () => {
       }),
     ]);
 
-    const ack = await service.update_items({
+    const ack = await service.apply_item_changes({
       changes: [{ item_id: 1, name_dst: "新译名" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -357,7 +290,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
           updatedSections: ["items", "proofreading"],
         },
@@ -375,7 +308,7 @@ describe("ProofreadingService", () => {
     expect(read_meta(database, lg_path, "translation_extras", null)).toBeNull();
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
-      source: "proofreading_update_items",
+      source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "canonical-delta",
@@ -394,7 +327,7 @@ describe("ProofreadingService", () => {
       }),
     ]);
 
-    await service.update_items({
+    await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "新译文", name_dst: "新译名" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -436,7 +369,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
           updatedSections: ["items", "proofreading"],
         },
@@ -521,7 +454,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
           updatedSections: ["items", "proofreading"],
         },
@@ -538,7 +471,7 @@ describe("ProofreadingService", () => {
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
-      source: "proofreading_update_items",
+      source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "field-patch",
@@ -583,7 +516,7 @@ describe("ProofreadingService", () => {
       create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
     ]);
 
-    const ack = await service.update_items({
+    const ack = await service.apply_item_changes({
       changes: [{ item_id: 1, status: "PROCESSED" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -592,7 +525,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           sectionRevisions: { items: 1, proofreading: 1 },
           updatedSections: ["items", "proofreading"],
         },
@@ -607,7 +540,7 @@ describe("ProofreadingService", () => {
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
-      source: "proofreading_update_items",
+      source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "canonical-delta",
@@ -622,7 +555,7 @@ describe("ProofreadingService", () => {
       create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
     ]);
 
-    await service.update_items({
+    await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "新译文", status: "EXCLUDED" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -632,7 +565,7 @@ describe("ProofreadingService", () => {
     publisher.publish_project_change.mockClear();
 
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, status: "ERROR" }],
         expected_section_revisions: { items: 1, proofreading: 1 },
       }),
@@ -686,7 +619,7 @@ describe("ProofreadingService", () => {
     database.set_meta(lg_path, "proofreading_revision.proofreading", 4);
 
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, dst: "新译文" }],
         expected_section_revisions: { items: 0, proofreading: 3 },
       }),
@@ -704,7 +637,7 @@ describe("ProofreadingService", () => {
       "proofreading_revision.proofreading": "bad",
     });
 
-    const ack = await service.update_items({
+    const ack = await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "译文" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -713,7 +646,7 @@ describe("ProofreadingService", () => {
       accepted: true,
       changes: [
         {
-          source: "proofreading_update_items",
+          source: "proofreading_apply_item_changes",
           projectRevision: 1,
           sectionRevisions: { items: 1, proofreading: 1 },
           updatedSections: ["items", "proofreading"],
@@ -727,7 +660,7 @@ describe("ProofreadingService", () => {
     database.set_items(lg_path, [create_project_item()]);
 
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, dst: "译文" }],
         expected_section_revisions: { items: "not-a-number", proofreading: 0 },
       }),
@@ -747,7 +680,7 @@ describe("ProofreadingService", () => {
       }),
     ]);
 
-    await service.update_items({
+    await service.apply_item_changes({
       changes: [{ item_id: 1, dst: "" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
@@ -762,7 +695,7 @@ describe("ProofreadingService", () => {
     session_state.clear();
 
     await expect(
-      service.update_items({
+      service.apply_item_changes({
         changes: [{ item_id: 1, dst: "译文" }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),

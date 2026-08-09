@@ -319,26 +319,6 @@ describe("QualityRuleService", () => {
     });
   });
 
-  it("Agent 规则写入口只在 Agent 租约内复用同一事务提交", async () => {
-    const database = new ProjectDatabase();
-    cleanup_databases.push(database);
-    const { service, runtime_gate } = create_workbench_service(database);
-    runtime_gate.begin_runtime("agent");
-    const request = {
-      rule_type: "glossary",
-      entries: [{ src: "MP", dst: "魔力值" }],
-      expected_section_revisions: { quality: 0 },
-    };
-
-    await expect(service.update(request)).rejects.toThrow("runtime.busy");
-    await expect(
-      service.update_from_agent(request, "agent_quality_rule_update"),
-    ).resolves.toMatchObject({
-      accepted: true,
-      changes: [expect.objectContaining({ source: "agent_quality_rule_update" })],
-    });
-  });
-
   it("分析术语导入写入变化规则并消费候选池", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
