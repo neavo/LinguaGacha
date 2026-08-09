@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
@@ -118,7 +119,7 @@ export class QualityRuleService {
         "glossary",
         this.database.get_rules(project_path, QualityRule.from_json("glossary").database_type),
       );
-      const quality_changed = !this.are_rule_entries_equal(current_rules, next_rules);
+      const quality_changed = !isDeepStrictEqual(current_rules, next_rules);
       const updated_sections: ProjectDataSection[] = quality_changed
         ? ["quality", "analysis"]
         : ["analysis"];
@@ -450,13 +451,6 @@ export class QualityRuleService {
     return Array.isArray(value)
       ? value.map((entry) => String(entry).trim()).filter((entry) => entry !== "")
       : [];
-  }
-
-  /**
-   * 规则条目按规范化完整形状比较，只有真实变化才推进 quality revision。
-   */
-  private are_rule_entries_equal(left_entries: JsonRecord[], right_entries: JsonRecord[]): boolean {
-    return JSON.stringify(left_entries) === JSON.stringify(right_entries);
   }
 
   /**

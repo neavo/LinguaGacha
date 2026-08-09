@@ -337,8 +337,11 @@ describe("AgentWorkspaceService apply", () => {
     expect(fs.readdirSync(fixture.workspace_root)).toEqual([]);
   });
 
-  it("未改动时不进入写租约、不推进 revision 并销毁工作区", async () => {
-    const fixture = create_fixture();
+  it.each([
+    { name: "已有持久化 ID", legacyQualityIds: false },
+    { name: "无持久化 ID 的旧质量规则", legacyQualityIds: true },
+  ])("$name 未改动时不进入写租约、不推进 revision 并销毁工作区", async ({ legacyQualityIds }) => {
+    const fixture = create_fixture({ legacyQualityIds });
     await fixture.service.initialize();
     await fixture.service.create_workspace();
 
@@ -415,11 +418,21 @@ describe("AgentWorkspaceService apply", () => {
     await fixture.service.initialize();
     await fixture.service.create_workspace();
     await fixture.service.run_script("edit all quality", new AbortController().signal);
-    await fixture.service.apply_workspace();
+    const result = await fixture.service.apply_workspace();
 
     expect(
       fixture.write_store.mock.calls[0]?.[0].qualityChanges.map((change) => change.kind),
     ).toEqual(QUALITY_RULE_KINDS);
+    expect(result).toMatchObject({
+      changes: {
+        quality: {
+          glossary: { created: 0, updated: 1, deleted: 0, moved: 0 },
+          text_preserve: { created: 0, updated: 0, deleted: 1, moved: 0 },
+          pre_replacement: { created: 1, updated: 0, deleted: 0, moved: 0 },
+          post_replacement: { created: 0, updated: 0, deleted: 0, moved: 2 },
+        },
+      },
+    });
   });
 
   it("拒绝未知 quality 字段、新增重复组和非法 prompt 形状", async () => {
