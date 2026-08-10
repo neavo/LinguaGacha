@@ -11,6 +11,7 @@ describe("migration-registry", () => {
       "model-selection",
       "project-schema",
       "project-rule-storage",
+      "quality-rule-entry-identity",
       "project-item-stable-metadata",
       "trans-item-metadata",
       "project-item-public-contract",
@@ -22,6 +23,7 @@ describe("migration-registry", () => {
     ]);
     expect(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS).toEqual([
       "project-rule-storage",
+      "quality-rule-entry-identity",
       "project-item-stable-metadata",
       "trans-item-metadata",
       "project-item-public-contract",
