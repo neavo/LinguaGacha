@@ -20,11 +20,6 @@ describe("analysis candidate helpers", () => {
         dst_votes: { 无效自映射: 1 },
         info_votes: { 术语: 1 },
       },
-      其它类型: {
-        src: "其它类型",
-        dst_votes: { Other: 1 },
-        info_votes: { 其他: 1 },
-      },
       "\\n[1]": {
         src: "\\n[1]",
         dst_votes: { "\\n[1]": 1 },
@@ -60,7 +55,7 @@ describe("analysis candidate helpers", () => {
         王: {
           src: "王",
           dst_votes: { King: 1 },
-          info_votes: { 其他: 1 },
+          info_votes: { 特殊概念: 1 },
         },
         空译文: {
           src: "空译文",

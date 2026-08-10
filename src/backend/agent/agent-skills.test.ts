@@ -27,12 +27,21 @@ describe("Agent skill 模型投影", () => {
       content: "手动正文。",
       disableModelInvocation: true,
     },
+    {
+      name: "knowledge",
+      description: "UI 隐藏的模型知识",
+      filePath: "E:/skills/knowledge/SKILL.md",
+      content: "知识正文。",
+      disableModelInvocation: false,
+      visible: false,
+    },
   ];
 
-  it("系统清单只投影自动能力事实，不附带 SDK 路由文案", () => {
+  it("系统清单投影全部自动能力且不受 UI 可见性影响", () => {
     const prompt = format_agent_skills_for_system_prompt(skills);
 
     expect(prompt).toContain("<name>visible</name>");
+    expect(prompt).toContain("<name>knowledge</name>");
     expect(prompt).toContain("使用 &lt;能力&gt; &amp; 规则");
     expect(prompt).toContain("E:/skills/a&amp;b/SKILL.md");
     expect(prompt).not.toContain("manual");
@@ -66,6 +75,13 @@ describe("Agent skill 加载", () => {
     expect(skills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "adult-fiction-writing", visible: false }),
+        expect.objectContaining({ name: "glossary-create", visible: true }),
+        expect.objectContaining({ name: "glossary-review", visible: true }),
+        expect.objectContaining({
+          name: "glossary-rules",
+          visible: false,
+          disableModelInvocation: false,
+        }),
       ]),
     );
     expect(warning).not.toHaveBeenCalled();

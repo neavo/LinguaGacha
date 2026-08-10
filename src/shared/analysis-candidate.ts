@@ -1,12 +1,11 @@
 export type AnalysisCandidateGlossaryEntry = {
   src: string; // 候选原文，作为候选池消费和术语表 key 的共同身份
   dst: string; // 最高票译文，进入术语表前已去掉空白
-  info: string; // 最高票类型说明，决定候选是否能作为术语导出
+  info: string; // 最高票类型说明，非空时原样写入导出的术语条目
   case_sensitive: boolean; // 是否大小写敏感，沿用候选聚合行的服务端事实
 };
 
 const CONTROL_CODE_SELF_MAPPING_PATTERN = /\\(?:n|N){1,2}\[\d+\]/u; // 控制码自映射允许入表，普通原译相同候选会被过滤
-const NON_GLOSSARY_INFO_VALUES = new Set(["其它", "其他", "other", "others"]); // 非术语类型跨中英文模型输出统一排除
 
 // 本模块消费跨前后端 JSON，先用窄化函数隔离坏载荷，避免各调用点重复写对象判断。
 function is_record(value: unknown): value is Record<string, unknown> {
@@ -76,10 +75,6 @@ export function build_analysis_glossary_entry_from_candidate(
   if (dst === src && !is_analysis_control_code_self_mapping(src, dst)) {
     return null;
   }
-  if (NON_GLOSSARY_INFO_VALUES.has(info.toLowerCase())) {
-    return null;
-  }
-
   return {
     src,
     dst,

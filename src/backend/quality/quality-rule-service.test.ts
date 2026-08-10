@@ -358,7 +358,7 @@ describe("QualityRuleService", () => {
       {
         src: "王",
         dst_votes: { 王: 2 },
-        info_votes: { other: 2 },
+        info_votes: { 特殊概念: 2 },
         observation_count: 2,
         first_seen_at: "2026-05-16T00:04:00.000Z",
         last_seen_at: "2026-05-16T00:04:00.000Z",

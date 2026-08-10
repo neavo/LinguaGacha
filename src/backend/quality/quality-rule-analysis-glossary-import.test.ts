@@ -221,29 +221,4 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
       },
     ]);
   });
-
-  it("候选全被静态规则过滤时仍消费候选池", () => {
-    const prepared_import = prepare_analysis_glossary_import_from_cache(
-      create_prepare_request({
-        candidate_aggregate: {
-          艾琳: {
-            src: "艾琳",
-            dst_votes: {
-              Erin: 1,
-            },
-            info_votes: {
-              其他: 1,
-            },
-            case_sensitive: true,
-          },
-        },
-      }),
-    );
-
-    expect(prepared_import).not.toBeNull();
-    expect(prepared_import?.imported_count).toBe(0);
-    expect(prepared_import?.consumed_count).toBe(1);
-    expect(prepared_import?.request_body.entries).toEqual([]);
-    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
-  });
 });

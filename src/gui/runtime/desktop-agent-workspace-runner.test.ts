@@ -348,7 +348,8 @@ describe("DesktopAgentWorkspaceRunner", () => {
       status: "failed",
       workspaceState: "preserved",
       failure: "execution_failed",
-      message: "脚本返回结果过大；请写入 scratch 并只返回摘要。",
+      message:
+        "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，跨步骤确有需要时再把最小结构化状态写入 scratch。",
     });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
       ORIGINAL_ITEMS,
@@ -374,7 +375,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
       workspaceState: "preserved",
       failure: "execution_failed",
       message:
-        "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 将中间结果写入 scratch 后只返回摘要。",
+        "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 在工作区内聚合后只返回摘要。",
     });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
       ORIGINAL_ITEMS,
