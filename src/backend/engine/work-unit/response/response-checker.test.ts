@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { UnknownSourceLanguageCodeError } from "../../../../shared/error";
 import { ResponseChecker } from "./response-checker";
 
 describe("响应检查器整体检查", () => {
@@ -21,7 +20,7 @@ describe("响应检查器整体检查", () => {
 
   it("未知源语言显式失败，避免损坏配置静默提交译文", () => {
     expect(() => ResponseChecker.check_aligned(["Hello"], ["你好"], "INVALID")).toThrowError(
-      UnknownSourceLanguageCodeError,
+      expect.objectContaining({ code: "language.unknown_source_language_code" }),
     );
   });
 });

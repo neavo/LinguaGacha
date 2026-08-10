@@ -17,7 +17,7 @@ import JSZip from "jszip";
 
 import { Item } from "../../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
-import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
+import { AppError } from "../../../../shared/error";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本
@@ -400,7 +400,7 @@ export class EpubAst {
         return this.normalize_epub_path(full_path);
       }
     }
-    throw new InvalidFileStructureError({
+    throw new AppError("file.invalid_structure", {
       public_details: { format: "EPUB" },
       diagnostic_context: { entry: "META-INF/container.xml", reason: "missing_opf_rootfile" },
     });
@@ -1058,7 +1058,7 @@ export class EpubAst {
     });
     const root = this.first_root_element(doc);
     if (root === null || (!recover && this.looks_like_parser_error(root))) {
-      throw new FileParseFailedError({
+      throw new AppError("file.parse_failed", {
         public_details: { format: "EPUB", parser: "XML" },
         diagnostic_context: {
           recover,
@@ -1082,7 +1082,7 @@ export class EpubAst {
     });
     const root = this.first_root_element(doc);
     if (root === null) {
-      throw new FileParseFailedError({
+      throw new AppError("file.parse_failed", {
         public_details: { format: "EPUB", parser: "HTML" },
         diagnostic_context: { reason: "missing_root_element" },
       });
@@ -1114,7 +1114,7 @@ export class EpubAst {
   private async require_zip_text(zip_reader: JSZip, file_path: string): Promise<string> {
     const file = zip_reader.file(file_path);
     if (file === null) {
-      throw new InvalidFileStructureError({
+      throw new AppError("file.invalid_structure", {
         public_details: { format: "EPUB" },
         diagnostic_context: { entry: file_path, reason: "missing_required_zip_entry" },
       });
@@ -1141,7 +1141,7 @@ export class EpubAst {
     return parts.map((part) => {
       const match = /^([A-Za-z0-9:_-]+)\[(\d+)\]$/u.exec(part);
       if (match === null) {
-        throw new InvalidFileStructureError({
+        throw new AppError("file.invalid_structure", {
           public_details: { format: "EPUB" },
           diagnostic_context: { elem_path, reason: "invalid_element_path" },
         });

@@ -2,12 +2,8 @@ export const zh_cn_agent_page = {
   title: "AGENT",
   thinking: "思考过程",
   thinking_active: "正在思考",
-  diagram: { label: "图表", render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
-  image: {
-    omitted: "图片已省略",
-    attachment: "待发送图片 {index}",
-    message: "用户图片 {index}",
-  },
+  diagram: { render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
+  image: { omitted: "图片已省略" },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
@@ -22,13 +18,11 @@ export const zh_cn_agent_page = {
     hint: "Enter 发送 · Shift + Enter 换行",
     drop_images: "松开以添加图片",
   },
-  message: { continue: "继续" },
   mention: {
     groups: { skills: "技能", terms: "术语" },
     no_matches: "没有匹配的项目 …",
     term_hits: "{count} 次",
   },
-  context_usage: "上下文 {percent} · {used} / {total}",
   context_usage_warning: "即将自动压缩上下文",
   compaction: {
     running: "正在压缩上下文 …",
@@ -43,8 +37,6 @@ export const zh_cn_agent_page = {
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
     add_image: "添加图片",
-    remove_image: "移除图片 {index}",
-    retry: "重试",
     click_to_retry: "点击重试",
     return_latest: "回到最新",
   },

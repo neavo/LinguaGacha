@@ -171,7 +171,7 @@ export class QualityRuleService {
       : undefined;
     const meta = { ...read_json_record(request["meta"]) };
     if (!has_entries && Object.keys(meta).length === 0) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "empty_quality_rule_update" },
       });
     }
@@ -275,7 +275,7 @@ export class QualityRuleService {
     ).file_path;
     const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: {
           filename: path.basename(preset_path),
         },
@@ -326,7 +326,7 @@ export class QualityRuleService {
       String(request["virtual_id"] ?? ""),
     );
     if (current_file.source !== "user") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     const new_file = resolve_preset_file({
@@ -351,7 +351,7 @@ export class QualityRuleService {
       String(request["virtual_id"] ?? ""),
     );
     if (preset_file.source !== "user") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     this.native_fs.remove(preset_file.file_path);
     return { path: preset_file.file_path.replace(/\\/g, "/") };
@@ -388,7 +388,7 @@ export class QualityRuleService {
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
       if (Object.prototype.hasOwnProperty.call(request, field)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_quality_write_field", field },
         });
       }
@@ -415,7 +415,7 @@ export class QualityRuleService {
         value,
       ) as JsonRecord[];
     } catch (cause) {
-      throw new AppErrors.RequestValidationError({ cause });
+      throw new AppErrors.AppError("request.validation_failed", { cause });
     }
   }
 
@@ -434,7 +434,7 @@ export class QualityRuleService {
         current_entries.map((entry) => entry.entry_id),
       ) as JsonRecord[];
     } catch (cause) {
-      throw new AppErrors.RequestValidationError({ cause });
+      throw new AppErrors.AppError("request.validation_failed", { cause });
     }
   }
 
@@ -443,7 +443,7 @@ export class QualityRuleService {
     try {
       return QualityRule.from_json(rule_type).normalize_entry(entry) as JsonRecord;
     } catch (cause) {
-      throw new AppErrors.RequestValidationError({ cause });
+      throw new AppErrors.AppError("request.validation_failed", { cause });
     }
   }
 
@@ -464,7 +464,7 @@ export class QualityRuleService {
     if (value === "skip") {
       return "skip";
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_analysis_glossary_import_action" },
     });
   }
@@ -604,7 +604,7 @@ export class QualityRuleService {
   private normalize_preset_name(name: string): string {
     const normalized_name = name.trim();
     if (normalized_name === "") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return normalized_name;
   }

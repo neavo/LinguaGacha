@@ -14,7 +14,7 @@ import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
 
 const TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE = {
-  all: "quality_editor.filter.scope.all",
+  all: "quality_rule_editor.filter.scope.all",
   src: "text_preserve_page.filter.scope.rule",
   info: "text_preserve_page.filter.scope.note",
 } satisfies Record<TextPreserveFilterScope, LocaleKey>;
@@ -26,7 +26,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
   const page_state = useTextPreservePageState();
   const scope_button_label =
     page_state.filter_state.scope === "all"
-      ? t("quality_editor.filter.scope.label")
+      ? t("quality_rule_editor.filter.scope.label")
       : t(TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope]);
   const scope_state_label = t(
     TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope],
@@ -34,11 +34,11 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
   const regex_state_label = page_state.filter_state.is_regex
     ? t("app.toggle.enabled")
     : t("app.toggle.disabled");
-  const scope_tooltip = t("quality_editor.toggle.status")
-    .replace("{TITLE}", t("quality_editor.filter.scope.tooltip_label"))
+  const scope_tooltip = t("app.toggle.status")
+    .replace("{TITLE}", t("quality_rule_editor.filter.scope.tooltip_label"))
     .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("quality_editor.toggle.status")
-    .replace("{TITLE}", t("quality_editor.filter.regex_tooltip_label"))
+  const regex_tooltip = t("app.toggle.status")
+    .replace("{TITLE}", t("quality_rule_editor.filter.regex_tooltip_label"))
     .replace("{STATE}", regex_state_label);
   const text_preserve_scope_options: SearchBarScopeOption<TextPreserveFilterScope>[] =
     TEXT_PRESERVE_FILTER_SCOPES.map((scope) => {
@@ -53,21 +53,20 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
       <SearchBar
         variant="filter"
         keyword={page_state.filter_state.keyword}
-        placeholder={t("quality_editor.filter.placeholder")}
-        clear_label={t("quality_editor.filter.clear")}
+        placeholder={t("quality_rule_editor.filter.placeholder")}
+        clear_label={t("quality_rule_editor.filter.clear")}
         invalid_message={page_state.invalid_filter_message}
         on_keyword_change={page_state.update_filter_keyword}
         scope={{
           value: page_state.filter_state.scope,
           button_label: scope_button_label,
-          aria_label: t("quality_editor.filter.scope.label"),
           tooltip: scope_tooltip,
           options: text_preserve_scope_options,
           on_change: page_state.update_filter_scope,
         }}
         regex={{
           value: page_state.filter_state.is_regex,
-          label: t("quality_editor.filter.regex"),
+          label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
           enabled_label: t("app.toggle.enabled"),
           disabled_label: t("app.toggle.disabled"),

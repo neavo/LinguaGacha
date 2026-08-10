@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   build_app_table_placeholder_fill,
   build_app_table_spacer_heights,
-  resolve_app_table_row_zebra,
 } from "@frontend/widgets/app-table/app-table-virtualization";
 
 describe("app-table-virtualization", () => {
@@ -30,11 +29,5 @@ describe("app-table-virtualization", () => {
       placeholder_row_heights: [row_height],
       residual_spacer_height: 18,
     });
-  });
-
-  it("斑马纹按源索引保持稳定", () => {
-    expect(resolve_app_table_row_zebra(0)).toBe("odd");
-    expect(resolve_app_table_row_zebra(1)).toBe("even");
-    expect(resolve_app_table_row_zebra(-1)).toBe("even");
   });
 });

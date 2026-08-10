@@ -315,7 +315,7 @@ export class ProofreadingCache {
     const sectionRevisions = this.cache.readSectionRevisions();
     const snapshot = this.cache.snapshot();
     if (snapshot.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
+      throw new AppErrors.AppError("project.not_loaded");
     }
     const settings = normalize_setting_snapshot(this.app_setting_service.read_setting());
     const processingConfig: TextProcessingConfig = {

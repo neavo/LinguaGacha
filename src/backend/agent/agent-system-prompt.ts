@@ -15,13 +15,13 @@ export function load_agent_system_prompt(
   try {
     system_prompt = native_fs.read_text_file(file_path).trim();
   } catch (error) {
-    throw new AppErrors.FileIoFailedError({
+    throw new AppErrors.AppError("file.io_failed", {
       cause: error,
       diagnostic_context: { reason: "agent_system_prompt_read_failed", path: file_path },
     });
   }
   if (system_prompt === "") {
-    throw new AppErrors.InvalidFileStructureError({
+    throw new AppErrors.AppError("file.invalid_structure", {
       diagnostic_context: { reason: "empty_agent_system_prompt", path: file_path },
     });
   }

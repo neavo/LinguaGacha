@@ -143,13 +143,4 @@ describe("useTsConversionPageState", () => {
       "ts_conversion_page.feedback.task_success",
     );
   });
-
-  it("挂载时提示优先使用原生繁中目标语言", async () => {
-    await mount_probe();
-
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "info",
-      "ts_conversion_page.feedback.prefer_native_traditional_chinese",
-    );
-  });
 });

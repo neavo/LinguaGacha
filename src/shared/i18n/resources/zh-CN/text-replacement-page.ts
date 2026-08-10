@@ -1,9 +1,5 @@
 export const zh_cn_text_replacement_page = {
   title: "文本替换",
-  action: {
-    create: "新增",
-  },
-
   fields: {
     replacement: "替换",
 
@@ -16,8 +12,6 @@ export const zh_cn_text_replacement_page = {
   filter: {
     scope: {
       tooltip_label: "搜索范围",
-
-      replacement: "替换",
     },
   },
 

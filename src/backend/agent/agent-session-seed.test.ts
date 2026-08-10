@@ -5,11 +5,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
-import {
-  FileIoFailedError,
-  FileParseFailedError,
-  InvalidFileStructureError,
-} from "../../shared/error";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_session_seed } from "./agent-session-seed";
 
@@ -64,7 +59,7 @@ describe("Agent 会话种子加载", () => {
       thrown = error;
     }
 
-    expect(thrown).toBeInstanceOf(FileIoFailedError);
+    expect(thrown).toMatchObject({ code: "file.io_failed" });
     expect((thrown as Error).cause).toBeInstanceOf(Error);
   });
 
@@ -72,7 +67,9 @@ describe("Agent 会话种子加载", () => {
     const paths = create_paths();
     write_seed(paths, "{ 不是 JSON");
 
-    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(FileParseFailedError);
+    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(
+      expect.objectContaining({ code: "file.parse_failed" }),
+    );
   });
 
   it.each([
@@ -86,7 +83,9 @@ describe("Agent 会话种子加载", () => {
     const paths = create_paths();
     write_seed(paths, JSON.stringify(value));
 
-    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(InvalidFileStructureError);
+    expect(() => load_agent_session_seed(paths, new NativeFs())).toThrow(
+      expect.objectContaining({ code: "file.invalid_structure" }),
+    );
   });
 });
 

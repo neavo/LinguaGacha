@@ -2,6 +2,10 @@ import { useEffect, useRef } from "react";
 import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import {
+  PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
+  PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
+} from "@frontend/pages/proofreading-page/proofreading-label-keys";
 import { ProofreadingContextView } from "@frontend/pages/proofreading-page/components/proofreading-context-view";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
@@ -10,8 +14,6 @@ import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-m
 import {
   format_proofreading_glossary_term,
   PROOFREADING_MANUAL_STATUS_CODES,
-  PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
-  PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
   type ProofreadingItem,
   type ProofreadingManualStatusCode,
 } from "@shared/proofreading/proofreading-types";
@@ -393,7 +395,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const context_open = context.status !== "idle";
   const context_trigger_ref = useRef<HTMLButtonElement>(null);
   const previous_context_open_ref = useRef(false);
-  const save_label = t("proofreading_page.action.save");
+  const save_label = t("app.action.save");
   const save_disabled = props.readonly || saving;
 
   useEffect(() => {
@@ -463,9 +465,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   return (
     <AppPageDialog
       open={open}
-      title={t(
-        context_open ? "proofreading_page.action.view_context" : "proofreading_page.action.edit",
-      )}
+      title={t(context_open ? "proofreading_page.action.view_context" : "app.action.edit")}
       size="lg"
       dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}
       onClose={context_open ? props.on_close_context : props.on_close}
@@ -546,7 +546,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 disabled={saving}
                 onClick={props.on_close}
               >
-                {t("proofreading_page.action.cancel")}
+                {t("app.action.cancel")}
                 <ShortcutKbd action="cancel" />
               </AppButton>
               <AppButton
@@ -610,7 +610,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         variant="field"
                         class_name="proofreading-page__dialog-name-input"
                         value={source_name}
-                        aria_label={t("proofreading_page.fields.source_name")}
+                        aria_label={t("proofreading_page.fields.source")}
                         aria_invalid={source_name_glossary_state.tone === "warning"}
                         marks={source_name_marks}
                         read_only
@@ -640,7 +640,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         variant="field"
                         class_name="proofreading-page__dialog-name-input"
                         value={translation_name}
-                        aria_label={t("proofreading_page.fields.translation_name")}
+                        aria_label={t("proofreading_page.fields.translation")}
                         aria_invalid={translation_name_glossary_state.tone === "warning"}
                         marks={translation_name_marks}
                         read_only={translation_readonly}

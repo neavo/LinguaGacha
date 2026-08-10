@@ -2,11 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent }
 import { ArrowDown, BookCheck, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
-import {
-  format_agent_skill_reference,
-  type AgentEntryStatus,
-  type AgentMessageInput,
-} from "@shared/agent";
+import { format_agent_skill_reference, type AgentMessageInput } from "@shared/agent";
 import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -44,14 +40,6 @@ const FEATURED_AGENT_SKILLS = [
 const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
 /** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
 const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
-/** live region 只播报离散轮次状态，不复述高频流式正文。 */
-const AGENT_STATUS_LABEL_KEYS = Object.freeze({
-  running: "agent_page.status.running",
-  success: "agent_page.status.success",
-  error: "agent_page.status.error",
-  stopped: "agent_page.status.stopped",
-} satisfies Readonly<Record<AgentEntryStatus, LocaleKey>>);
-
 /** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
 function normalize_agent_terms(
   slice: QualityRuleQuerySlice<"glossary"> | undefined,
@@ -111,7 +99,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       entry.status === "running",
   );
   const agent_restoring = agent.transport === "restoring";
-  const last_user = agent.entries.findLast((entry) => entry.kind === "user_message");
   const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
   const compaction_failed = last_compaction?.status === "error";
@@ -192,19 +179,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   };
 
-  // live region 只播报离散会话结果，不朗读高频流式正文。
-  const live_status = agent_restoring
-    ? t("agent_page.loading")
-    : compacting
-      ? t("agent_page.compaction.running")
-      : compaction_failed
-        ? t("agent_page.compaction.error")
-        : is_running
-          ? t("agent_page.status.running")
-          : last_user === undefined
-            ? ""
-            : t(AGENT_STATUS_LABEL_KEYS[last_user.status]);
-
   return (
     <div className="agent-page page-shell page-shell--full">
       <section
@@ -227,7 +201,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               <Bot className="agent-page__empty-icon" aria-hidden="true" />
               <p>{t("agent_page.error.restore")}</p>
               <AppButton type="button" size="sm" variant="outline" onClick={agent.reconnect}>
-                {t("agent_page.action.retry")}
+                {t("app.action.retry")}
               </AppButton>
             </div>
           </div>
@@ -312,9 +286,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         />
       </section>
 
-      <span className="sr-only" role="status" aria-live="polite">
-        {live_status}
-      </span>
       {follow_paused && (
         <div className="agent-page__follow-control">
           <AppButton type="button" size="xs" variant="secondary" onClick={resume_follow}>

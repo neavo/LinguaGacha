@@ -97,16 +97,16 @@ describe("PresetMenu", () => {
     await act(async () => {
       find_button("打开").click();
       find_button("app.action.reset").click();
-      find_button("quality_editor.preset.save").click();
+      find_button("preset_editor.action.save").click();
       for (const apply_button of [
         ...(container?.querySelectorAll<HTMLButtonElement>("button") ?? []),
-      ].filter((button) => button.textContent?.includes("quality_editor.preset.apply"))) {
+      ].filter((button) => button.textContent?.includes("preset_editor.action.apply"))) {
         apply_button.click();
       }
-      find_button("quality_editor.preset.set_default").click();
-      find_button("quality_editor.preset.rename").click();
-      find_button("quality_editor.preset.delete").click();
-      find_button("quality_editor.preset.cancel_default").click();
+      find_button("preset_editor.action.set_default").click();
+      find_button("preset_editor.action.rename").click();
+      find_button("preset_editor.action.delete").click();
+      find_button("preset_editor.action.cancel_default").click();
     });
 
     expect(callbacks.on_open_change).toHaveBeenCalledWith(true);

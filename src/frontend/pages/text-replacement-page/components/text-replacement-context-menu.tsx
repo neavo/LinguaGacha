@@ -30,7 +30,7 @@ export function TextReplacementContextMenuContent(
       <AppContextMenuGroup>
         <AppContextMenuItem onSelect={props.on_open_edit}>
           <PencilLine />
-          {t("quality_editor.action.edit")}
+          {t("app.action.edit")}
         </AppContextMenuItem>
         <AppContextMenuSub>
           <AppContextMenuSubTrigger disabled={props.readonly}>

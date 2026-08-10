@@ -24,9 +24,6 @@ export const en_us_model_page = {
     basic_settings: "Basic Settings",
     task_settings: "Task Settings",
     advanced_settings: "Advanced Settings",
-    delete: "Delete",
-    reset: "Reset",
-    add: "Add",
     input: "Input",
     fetch: "Fetch",
     test: "Test",
@@ -36,9 +33,6 @@ export const en_us_model_page = {
       loading: "Loading model list …",
       search_placeholder: "Filter models …",
       empty: "No valid data …",
-    },
-    model_id_input: {
-      confirm: "Confirm",
     },
   },
   confirm: {

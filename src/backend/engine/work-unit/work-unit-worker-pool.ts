@@ -9,13 +9,7 @@ import { WorkUnitRunner } from "./work-unit-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
-import {
-  normalize_log_error,
-  RuntimeCancelledError,
-  RuntimeDisposedError,
-  to_log_error,
-  type LogError,
-} from "../../../shared/error";
+import { AppError, normalize_log_error, to_log_error, type LogError } from "../../../shared/error";
 import type { SystemProxySnapshot } from "../../llm/llm-system-proxy-dispatcher";
 
 /**
@@ -113,7 +107,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => result.reason);
     if (terminate_errors.length > 0) {
-      throw new AggregateError(terminate_errors, "WorkUnitWorkerPool worker 终止失败");
+      throw new AggregateError(terminate_errors, "Failed to terminate WorkUnitWorkerPool workers.");
     }
   }
 
@@ -196,7 +190,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private create_slot(): WorkerSlot {
     if (this.execution.kind !== "worker_threads") {
-      throw new Error("WorkUnitWorkerPool 创建 worker slot 时必须使用 worker_threads 执行模式。");
+      throw new Error("WorkUnitWorkerPool requires worker_threads mode to create a worker slot.");
     }
     const slot: WorkerSlot = {
       worker: new Worker(this.execution.workUnitWorkerEntryUrl, {
@@ -330,7 +324,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     task.reject(
       new WorkUnitExecutorTransportError(
-        normalize_log_error(message.error, "work unit 执行失败。"),
+        normalize_log_error(message.error, "Work unit execution failed."),
         null,
       ),
     );
@@ -339,8 +333,8 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   /**
    * WorkUnitWorkerPool 生命周期错误集中生成，调用方只按稳定 code 判断资源是否已释放。
    */
-  private create_disposed_error(): RuntimeDisposedError {
-    return new RuntimeDisposedError({
+  private create_disposed_error(): AppError {
+    return new AppError("runtime.disposed", {
       public_details: { resource: "WorkUnitWorkerPool" },
       diagnostic_context: {
         in_flight_count:
@@ -353,8 +347,8 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   /**
    * 主动取消和内部失败分离，避免取消路径被任务日志当作故障。
    */
-  private create_cancelled_error(): RuntimeCancelledError {
-    return new RuntimeCancelledError({
+  private create_cancelled_error(): AppError {
+    return new AppError("runtime.cancelled", {
       public_details: { resource: "work_unit" },
     });
   }

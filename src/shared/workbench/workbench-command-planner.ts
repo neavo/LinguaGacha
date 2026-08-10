@@ -26,34 +26,6 @@ export type WorkbenchCommandPlan = {
   requestBody: Record<string, unknown>; // 只包含命令体，不包含渲染进程计算的最终 items/meta
 };
 
-type WorkbenchCommandPlanErrorCode =
-  | "invalid_file_path"
-  | "invalid_file_order"
-  | "target_file_not_found";
-
-/**
- * WorkbenchCommandPlanError 只表达 planner 稳定失败原因，页面展示由调用处 fallback 决定。
- */
-class WorkbenchCommandPlanError extends Error {
-  public readonly code: WorkbenchCommandPlanErrorCode; // 工作台 planner 唯一稳定错误分支
-
-  /**
-   * message 使用诊断标识而非自然语言，避免本地异常文本进入用户界面。
-   */
-  public constructor(code: WorkbenchCommandPlanErrorCode) {
-    super(`workbench_command.${code}`);
-    this.name = "WorkbenchCommandPlanError";
-    this.code = code;
-  }
-}
-
-// 创建稳定 planner 异常，避免调用点直接依赖 Error message。
-function create_workbench_plan_error(
-  code: WorkbenchCommandPlanErrorCode,
-): WorkbenchCommandPlanError {
-  return new WorkbenchCommandPlanError(code);
-}
-
 // 从工作台 query 文件视图收窄出路径校验需要的字段。
 function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
   if (typeof value !== "object" || value === null) {
@@ -97,7 +69,7 @@ function normalize_target_rel_paths(rel_paths: string[]): string[] {
     ...new Set(rel_paths.map((rel_path) => String(rel_path).trim()).filter(Boolean)),
   ];
   if (normalized_rel_paths.length === 0) {
-    throw create_workbench_plan_error("invalid_file_path");
+    throw new Error("At least one target file path is required.");
   }
   return normalized_rel_paths;
 }
@@ -145,14 +117,11 @@ export function create_workbench_reorder_plan(args: {
 }): WorkbenchCommandPlan {
   const file_map = build_file_map(args.state);
   const ordered_rel_paths = normalize_target_rel_paths(args.ordered_rel_paths);
-  if (ordered_rel_paths.length !== file_map.size) {
-    throw create_workbench_plan_error("invalid_file_order");
-  }
-
-  for (const rel_path of ordered_rel_paths) {
-    if (!file_map.has(rel_path)) {
-      throw create_workbench_plan_error("invalid_file_order");
-    }
+  if (
+    ordered_rel_paths.length !== file_map.size ||
+    ordered_rel_paths.some((rel_path) => !file_map.has(rel_path))
+  ) {
+    throw new Error("File order must contain every current workbench file exactly once.");
   }
 
   return {
@@ -173,10 +142,10 @@ export function create_workbench_reset_file_plan(args: {
   const file_map = build_file_map(args.state);
   const target_rel_path = String(args.rel_path).trim();
   if (target_rel_path === "") {
-    throw create_workbench_plan_error("invalid_file_path");
+    throw new Error("A target file path is required.");
   }
   if (!file_map.has(target_rel_path)) {
-    throw create_workbench_plan_error("target_file_not_found");
+    throw new Error("Target file was not found in the current workbench.");
   }
 
   return {
@@ -198,7 +167,7 @@ export function create_workbench_delete_files_plan(args: {
   const target_rel_paths = normalize_target_rel_paths(args.rel_paths);
   const file_map = build_file_map(args.state);
   if (!target_rel_paths.some((rel_path) => file_map.has(rel_path))) {
-    throw create_workbench_plan_error("target_file_not_found");
+    throw new Error("No target file exists in the current workbench.");
   }
 
   return {
@@ -335,7 +304,7 @@ export function create_workbench_import_files_plan(args: {
   });
   const files_to_import = select_import_files(preview, args.conflict_action);
   if (files_to_import.length === 0) {
-    throw create_workbench_plan_error("invalid_file_path");
+    throw new Error("No importable workbench files were selected.");
   }
 
   const files = files_to_import.map((parsed_file) => {

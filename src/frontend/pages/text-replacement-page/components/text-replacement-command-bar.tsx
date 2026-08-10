@@ -50,7 +50,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
     },
   ] as const;
   const toggle_state_key = props.enabled ? "app.toggle.enabled" : "app.toggle.disabled";
-  const toggle_tooltip_title = t("quality_editor.toggle.status")
+  const toggle_tooltip_title = t("app.toggle.status")
     .replace("{TITLE}", t(props.title_key))
     .replace("{STATE}", t(toggle_state_key));
 
@@ -69,7 +69,6 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
 
   return (
     <CommandBar
-      title={t(props.title_key)}
       actions={
         <>
           <CommandBarGroup>
@@ -80,7 +79,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               onClick={props.on_create}
             >
               <Plus data-icon="inline-start" />
-              {t("text_replacement_page.action.create")}
+              {t("app.action.add")}
               <ShortcutKbd action="create" />
             </AppButton>
             <AppButton
@@ -92,7 +91,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               }}
             >
               <Trash2 data-icon="inline-start" />
-              {t("quality_editor.action.delete")}
+              {t("app.action.delete")}
               <ShortcutKbd action="delete" />
             </AppButton>
           </CommandBarGroup>
@@ -107,7 +106,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               }}
             >
               <FileDown data-icon="inline-start" />
-              {t("quality_editor.action.import")}
+              {t("app.action.import")}
             </AppButton>
             <AppButton
               variant="ghost"
@@ -117,7 +116,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               }}
             >
               <FileUp data-icon="inline-start" />
-              {t("quality_editor.action.export")}
+              {t("app.action.export")}
             </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
@@ -125,7 +124,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             items={props.preset_items}
             open={props.preset_menu_open}
             readonly={props.readonly}
-            trigger_label={t("quality_editor.action.preset")}
+            trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}
             on_apply={props.on_apply_preset}

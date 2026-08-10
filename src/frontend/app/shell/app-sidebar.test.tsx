@@ -80,24 +80,6 @@ describe("AppSidebar", () => {
     });
   }
 
-  it("打开语言菜单时列出本地语言名称并标记当前语言", async () => {
-    await render_sidebar({ app_language: "EN" });
-    await open_language_menu();
-
-    const options = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
-
-    expect(options.map((option) => option.textContent?.trim())).toEqual([
-      "中文",
-      "English",
-      "Deutsch",
-    ]);
-    expect(options.map((option) => option.getAttribute("aria-checked"))).toEqual([
-      "false",
-      "true",
-      "false",
-    ]);
-  });
-
   it("选择语言后提交明确的应用语言", async () => {
     const selected_languages: AppLanguage[] = [];
     await render_sidebar({

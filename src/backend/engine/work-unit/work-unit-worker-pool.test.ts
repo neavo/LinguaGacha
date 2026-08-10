@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LLMClient } from "../../llm/llm-client";
 import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
-import { RuntimeDisposedError } from "../../../shared/error";
 
 const cleanup_roots: string[] = []; // 记录测试创建的临时 appRoot 和 worker 文件目录
 
@@ -149,7 +148,7 @@ parentPort?.on("message", (message) => {
 
     await expect(
       pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
-    ).rejects.toThrow(RuntimeDisposedError);
+    ).rejects.toMatchObject({ code: "runtime.disposed" });
   });
 });
 

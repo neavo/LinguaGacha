@@ -7,7 +7,7 @@ import type {
   TextPreserveHitBadgeState,
   TextPreserveVisibleEntry,
 } from "@frontend/pages/text-preserve-page/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
@@ -77,7 +77,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         id: "drag",
         width: 64,
         align: "center",
-        title: t("quality_editor.fields.drag"),
+        title: t("app.drag.handle"),
         head_class_name: "text-preserve-page__table-drag-head",
         cell_class_name: "text-preserve-page__table-drag-cell",
         render_cell: (payload) => {
@@ -95,13 +95,13 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
       {
         kind: "data",
         id: "src",
-        title: t("quality_editor.fields.rule"),
+        title: t("quality_rule_editor.fields.rule"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-rule-head",
@@ -117,9 +117,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-note-head",
@@ -137,9 +137,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         sortable: {
           disabled: !props.hit_ready,
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-hit-head",
@@ -158,7 +158,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
               running_class_name="preserve-page__hit-badge--running"
               wrap_class_name="text-preserve-page__hit-badge-wrap"
               button_class_name="preserve-page__hit-badge-button"
-              query_label={t("quality_editor.action.query")}
+              query_label={t("app.action.query")}
               on_query_entry_source={props.on_query_entry_source}
             />
           );
@@ -175,9 +175,6 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
 
   return (
     <Card variant="table" className="text-preserve-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t(props.title_key)}</CardTitle>
-      </CardHeader>
       <CardContent className="text-preserve-page__table-card-content">
         <AppTable
           rows={props.entries}

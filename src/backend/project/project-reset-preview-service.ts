@@ -28,7 +28,7 @@ export class ProjectResetPreviewService {
   public async preview_translation_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "all") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
@@ -81,7 +81,7 @@ export class ProjectResetPreviewService {
   public async preview_analysis_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "failed") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const project_path = await this.require_idle_project_path();
     const checkpoints = this.get_analysis_checkpoints(project_path);
@@ -117,7 +117,7 @@ export class ProjectResetPreviewService {
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
+      throw new AppErrors.AppError("project.not_loaded");
     }
     this.runtime_gate.assert_runtime_idle();
     return state.projectPath;
@@ -264,7 +264,7 @@ export class ProjectResetPreviewService {
     reason: string,
     diagnostic_context: JsonRecord = {},
   ): never {
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: {
         reason,
         ...diagnostic_context,

@@ -21,9 +21,6 @@ export const zh_cn_model_page = {
     basic_settings: "基础设置",
     task_settings: "任务设置",
     advanced_settings: "高级设置",
-    delete: "删除",
-    reset: "重置",
-    add: "新增",
     input: "输入",
     fetch: "获取",
     test: "测试",
@@ -33,9 +30,6 @@ export const zh_cn_model_page = {
       loading: "正在获取模型列表 …",
       search_placeholder: "筛选模型 …",
       empty: "没有有效数据 …",
-    },
-    model_id_input: {
-      confirm: "确认",
     },
   },
   confirm: {

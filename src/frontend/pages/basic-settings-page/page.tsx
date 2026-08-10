@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/pages/basic-settings-page/basic-settings-page.css";
 import {
@@ -13,7 +14,6 @@ import {
   TARGET_LANGUAGE_CODES,
   is_project_save_mode,
 } from "@frontend/pages/basic-settings-page/types";
-import { get_language_label_key } from "@domain/setting";
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
 import { Input } from "@frontend/shadcn/input";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";

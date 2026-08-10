@@ -385,7 +385,7 @@ export class ProjectDataReader {
   private normalize_item_record(item: JsonRecord): ProjectItemPublicRecord {
     const record = normalize_project_item_public_record(item);
     if (record === null) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: {
           source: "project-data-reader",
           missing_fields: collect_project_item_missing_public_fields(item),

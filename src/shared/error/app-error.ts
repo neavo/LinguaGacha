@@ -3,50 +3,16 @@ import type { JsonRecord, JsonValue } from "../../domain/json";
 
 type AppErrorSeverity = "expected" | "warning" | "fault";
 
-// 跨 API、renderer 和日志的稳定语义码，禁止按调用点另建词表。
-export type AppErrorCode =
-  | "request.validation_failed"
-  | "request.invalid_json"
-  | "request.route_not_found"
-  | "project.not_loaded"
-  | "project.not_found"
-  | "file.not_found"
-  | "file.unsupported_format"
-  | "file.parse_failed"
-  | "file.invalid_structure"
-  | "file.io_failed"
-  | "database.conflict"
-  | "data.revision_conflict"
-  | "data.committed_sync_failed"
-  | "runtime.busy"
-  | "model.not_found"
-  | "model.provider_failed"
-  | "worker.failed"
-  | "worker.execution_failed"
-  | "runtime.capability_missing"
-  | "runtime.disposed"
-  | "runtime.cancelled"
-  | "runtime.internal_invariant"
-  | "language.invalid_target_language"
-  | "language.unsupported_all_target_language"
-  | "language.unknown_source_language_code"
-  | "quality.unknown_rule_type"
-  | "quality.unsupported_rule_meta"
-  | "prompt.unknown_prompt_type";
-
 export type AppErrorPublicDetails = JsonRecord;
 export type AppErrorDiagnosticContext = Record<string, unknown>;
-export type AppErrorMessageKey = Extract<LocaleKey, `app.error.${AppErrorCode}.message`>;
-export type AppErrorActionKey = Extract<LocaleKey, `app.error.${AppErrorCode}.action`>;
 
 export interface AppErrorDefinition {
   status: 400 | 404 | 409 | 415 | 423 | 500 | 502;
   severity: AppErrorSeverity;
-  action_key?: AppErrorActionKey;
 }
 
-// 定义表只保存协议和公开形状策略，用户可见文案统一由 i18n 资源解析。
-export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefinition>> = {
+// 稳定错误码只由定义表键拥有，调用点不得再建立类名或并行词表。
+export const APP_ERROR_DEFINITIONS = {
   "request.validation_failed": {
     status: 400,
     severity: "expected",
@@ -62,32 +28,22 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
   "project.not_loaded": {
     status: 409,
     severity: "expected",
-    action_key: "app.error.project.not_loaded.action",
   },
   "project.not_found": {
     status: 404,
     severity: "expected",
-    action_key: "app.error.project.not_found.action",
   },
   "file.not_found": {
     status: 404,
     severity: "expected",
-    action_key: "app.error.file.not_found.action",
-  },
-  "file.unsupported_format": {
-    status: 415,
-    severity: "expected",
-    action_key: "app.error.file.unsupported_format.action",
   },
   "file.parse_failed": {
     status: 415,
     severity: "expected",
-    action_key: "app.error.file.parse_failed.action",
   },
   "file.invalid_structure": {
     status: 415,
     severity: "expected",
-    action_key: "app.error.file.invalid_structure.action",
   },
   "file.io_failed": {
     status: 500,
@@ -96,32 +52,26 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
   "database.conflict": {
     status: 409,
     severity: "expected",
-    action_key: "app.error.database.conflict.action",
   },
   "data.revision_conflict": {
     status: 409,
     severity: "expected",
-    action_key: "app.error.data.revision_conflict.action",
   },
   "data.committed_sync_failed": {
     status: 500,
     severity: "fault",
-    action_key: "app.error.data.committed_sync_failed.action",
   },
   "runtime.busy": {
     status: 423,
     severity: "expected",
-    action_key: "app.error.runtime.busy.action",
   },
   "model.not_found": {
     status: 404,
     severity: "expected",
-    action_key: "app.error.model.not_found.action",
   },
   "model.provider_failed": {
     status: 502,
     severity: "warning",
-    action_key: "app.error.model.provider_failed.action",
   },
   "worker.failed": {
     status: 502,
@@ -171,16 +121,16 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
     status: 400,
     severity: "expected",
   },
-};
+} as const satisfies Readonly<Record<string, AppErrorDefinition>>;
+
+export type AppErrorCode = keyof typeof APP_ERROR_DEFINITIONS;
+export type AppErrorMessageKey = Extract<LocaleKey, `app.error.${AppErrorCode}.message`>;
 
 interface AppErrorOptions {
-  code: AppErrorCode;
   public_details?: AppErrorPublicDetails;
   diagnostic_context?: AppErrorDiagnosticContext;
   cause?: unknown;
 }
-
-export type AppErrorArgs = Omit<AppErrorOptions, "code">;
 
 /**
  * AppError 是跨 main / renderer / worker 的唯一错误事实，不承担日志写入副作用。
@@ -188,25 +138,31 @@ export type AppErrorArgs = Omit<AppErrorOptions, "code">;
 export class AppError extends Error {
   public readonly code: AppErrorCode;
   public readonly severity: AppErrorSeverity;
-  public readonly message_key: AppErrorMessageKey;
-  public readonly action_key?: AppErrorActionKey;
   public readonly public_details: AppErrorPublicDetails;
   public readonly diagnostic_context: AppErrorDiagnosticContext;
 
   /**
    * 构造时只冻结错误事实，HTTP 和日志快照由独立纯函数完成。
    */
-  public constructor(options: AppErrorOptions) {
-    const definition = APP_ERROR_DEFINITIONS[options.code];
-    super(options.code, options.cause === undefined ? undefined : { cause: options.cause });
+  public constructor(code: AppErrorCode, options: AppErrorOptions = {}) {
+    const definition = APP_ERROR_DEFINITIONS[code];
+    super(code, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = new.target.name;
-    this.code = options.code;
+    this.code = code;
     this.severity = definition.severity;
-    this.message_key = `app.error.${options.code}.message` as AppErrorMessageKey;
-    this.action_key = definition.action_key;
     this.public_details = sanitize_app_error_public_details(options.public_details ?? {});
     this.diagnostic_context = { ...options.diagnostic_context };
   }
+}
+
+/** 用户可见错误文案只从稳定 code 推导，不保存第二份 message key 事实。 */
+export function app_error_message_key(code: AppErrorCode): AppErrorMessageKey {
+  return `app.error.${code}.message` as AppErrorMessageKey;
+}
+
+/** 动态载荷只接受定义表已声明的稳定错误码。 */
+export function is_app_error_code(value: unknown): value is AppErrorCode {
+  return typeof value === "string" && Object.hasOwn(APP_ERROR_DEFINITIONS, value);
 }
 
 // 跨 realm 不做结构猜测，只有统一基类实例才属于受控应用错误。

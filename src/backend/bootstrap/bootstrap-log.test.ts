@@ -1,20 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { format_bootstrap_log, write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
+import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-});
-
-describe("format_bootstrap_log", () => {
-  it("使用 Rich 风格的主进程日志列", () => {
-    const date = new Date(2026, 3, 26, 12, 12, 12);
-
-    expect(format_bootstrap_log("后端服务正在启动 …", date)).toBe(
-      "[12:12:12] MAIN     后端服务正在启动 …",
-    );
-  });
 });
 
 describe("write_bootstrap_log", () => {
@@ -27,40 +17,9 @@ describe("write_bootstrap_log", () => {
 
     expect(stdout_write).toHaveBeenCalledWith("[12:12:12] MAIN     Backend 正在启动\n");
   });
-
-  it("存在日志管理器时写入生命周期来源的 info 记录", () => {
-    const info = vi.fn();
-    write_bootstrap_log("Backend 已启动", { info });
-
-    expect(info).toHaveBeenCalledWith("Backend 已启动", { source: "backend-bootstrap" });
-  });
 });
 
 describe("write_bootstrap_error", () => {
-  it("没有日志管理器时写入主进程 stderr 兜底日志", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 3, 26, 12, 12, 12));
-    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-
-    write_bootstrap_error("Backend 启动失败");
-
-    expect(stderr_write).toHaveBeenCalledWith("[12:12:12] MAIN     Backend 启动失败\n");
-  });
-
-  it("没有日志管理器时把诊断拼到 stderr 兜底日志", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 3, 26, 12, 12, 12));
-    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-
-    write_bootstrap_error("Backend 启动失败", {
-      error: new Error("端口占用"),
-    });
-
-    expect(stderr_write).toHaveBeenCalledWith(
-      expect.stringContaining("Backend 启动失败\n端口占用"),
-    );
-  });
-
   it("存在日志管理器时写入生命周期来源的 error 记录", () => {
     const error = vi.fn();
     write_bootstrap_error("Backend 启动失败", { error: new Error("端口占用") }, { error });

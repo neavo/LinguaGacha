@@ -6,7 +6,7 @@ import {
   type ResultSource,
 } from "./snapshot";
 import type { ProjectWriteResult } from "@frontend/app/state/desktop-project-write";
-import { InternalInvariantError } from "@shared/error";
+import { AppError } from "@shared/error";
 import type { ProjectDataSection } from "@shared/project-event";
 
 // 结果型页面以后端写入结果确认的 project path 与 section revision 作为重建门闩。
@@ -48,7 +48,7 @@ export function resolve_project_section_result_source(
   });
 
   if (section_sources.length === 0) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "project_section_write_missing_section_revision",
         section,

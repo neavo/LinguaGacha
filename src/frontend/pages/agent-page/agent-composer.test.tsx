@@ -6,7 +6,6 @@ import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { GlossaryEntry } from "@domain/quality";
-import type { Locale } from "@shared/i18n/types";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
@@ -40,8 +39,6 @@ type TestAgentInputSession = AgentInputSession & {
   accept_message: () => void;
 };
 
-/** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
-const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
 /** 只列当前组件断言涉及的可见文案，其余 key 原样返回以便定位。 */
 const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.input.placeholder": "描述任务，或输入 @ 选择技能或术语 …",
@@ -56,7 +53,6 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.action.stop": "停止",
   "agent_page.action.applying": "正在应用工程修改，完成前不可停止",
   "agent_page.action.add_image": "添加图片",
-  "agent_page.action.remove_image": "移除图片",
   "agent_page.unavailable.restoring": "正在恢复会话",
   "agent_page.unavailable.runtime_busy": "其它任务正在运行",
   "agent_page.unavailable.settling": "正在结束当前任务",
@@ -84,13 +80,11 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    locale: locale_state.value,
+    locale: "zh-CN",
     t: (key: string, params?: Record<string, string>) =>
-      key === "agent_page.context_usage"
-        ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
-        : key === "agent_page.mention.term_hits"
-          ? `${params?.["count"]} 次`
-          : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
+      key === "agent_page.mention.term_hits"
+        ? `${params?.["count"]} 次`
+        : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
   }),
 }));
 
@@ -136,53 +130,7 @@ describe("AgentComposer", () => {
     container = null;
     root = null;
     default_input_session = null;
-    locale_state.value = "zh-CN";
     image_mocks.normalize_agent_images.mockClear();
-  });
-
-  it("输入 @ 后按技能、术语分组显示三条术语及命中次数", async () => {
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await set_document(editor, "@", 1);
-    const menu = await wait_for_element(view, '[role="listbox"]');
-    const groups = [...menu.querySelectorAll<HTMLElement>('[role="group"]')];
-    const options = [...menu.querySelectorAll<HTMLElement>('[role="option"]')];
-
-    expect(groups.map((group) => group.getAttribute("aria-labelledby"))).toEqual([
-      "agent-mention-skills-label",
-      "agent-mention-terms-label",
-    ]);
-    expect(groups.map((group) => group.textContent)).toEqual([
-      expect.stringContaining("技能"),
-      expect.stringContaining("术语"),
-    ]);
-    expect(menu.querySelectorAll(".lucide-sparkles")).toHaveLength(skills.length);
-    expect(menu.querySelectorAll(".lucide-book-a")).toHaveLength(3);
-    expect(options[0]?.textContent).toContain("glossary-audit审校术语");
-    expect(options[skills.length]?.textContent).toContain("Alice Smith爱丽丝 · 女主角 · 7 次");
-    expect(editor.contentDOM.getAttribute("role")).toBe("combobox");
-    expect(editor.contentDOM.getAttribute("aria-controls")).toBe("agent-mention-menu");
-    expect(editor.contentDOM.getAttribute("aria-activedescendant")).toBe("agent-mention-option-0");
-  });
-
-  it("能力描述跟随当前语言，术语描述只连接存在的字段", async () => {
-    locale_state.value = "en-US";
-    let view = await render_composer();
-    let editor = get_editor(view);
-    await set_document(editor, "@review", 7);
-    expect((await wait_for_element(view, '[role="option"]')).textContent).toContain(
-      "glossary-auditReview glossary",
-    );
-
-    locale_state.value = "zh-CN";
-    view = await render_composer();
-    editor = get_editor(view);
-    await set_document(editor, "@Bob", 4);
-    expect((await wait_for_element(view, '[role="option"] small')).textContent).toBe("鲍勃 · 2 次");
-    await set_document(editor, "@Carol", 6);
-    expect((await wait_for_element(view, '[role="option"] small')).textContent).toBe(
-      "反派角色 · 0 次",
-    );
   });
 
   it("选择能力和术语插入字面量，活动索引跨分组连续移动", async () => {
@@ -329,7 +277,9 @@ describe("AgentComposer", () => {
 
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe(draft);
-    editor.dispatch({ selection: EditorSelection.cursor(0) });
+    await act(async () => {
+      editor.dispatch({ selection: EditorSelection.cursor(0) });
+    });
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe("历史消息");
 
@@ -374,11 +324,16 @@ describe("AgentComposer", () => {
       await Promise.resolve();
     });
     expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(1);
+    expect(view.querySelector<HTMLImageElement>(".agent-composer__attachment img")?.alt).toBe("");
+    const remove_button = view.querySelector<HTMLButtonElement>(
+      ".agent-composer__attachment-remove",
+    );
+    expect(remove_button?.getAttribute("aria-label")).toBe("app.action.close");
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({ text: "", images: ["webp-a.png"] });
 
     await act(async () => {
-      view.querySelector<HTMLButtonElement>(".agent-composer__attachment-remove")?.click();
+      remove_button?.click();
     });
     expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(0);
   });
@@ -526,22 +481,6 @@ describe("AgentComposer", () => {
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
       false,
     );
-  });
-
-  it("底栏在上下文达到预警阈值时标记警告", async () => {
-    const view = await render_composer({ context_tokens: 240_000 });
-    expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
-      "Agent Model",
-    );
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("83.3%");
-    expect(view.querySelector(".agent-composer__context-usage")?.getAttribute("data-tone")).toBe(
-      "warning",
-    );
-    expect(
-      [...view.querySelectorAll('[role="tooltip"]')].some(
-        (tooltip) => tooltip.textContent?.includes("240K / 288K") === true,
-      ),
-    ).toBe(true);
   });
 
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {

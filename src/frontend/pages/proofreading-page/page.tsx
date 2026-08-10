@@ -14,8 +14,8 @@ import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-b
 
 const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {
   all: "proofreading_page.search.scope.all",
-  src: "proofreading_page.search.scope.source",
-  dst: "proofreading_page.search.scope.translation",
+  src: "proofreading_page.fields.source",
+  dst: "proofreading_page.fields.translation",
 } satisfies Record<ProofreadingSearchScope, LocaleKey>;
 
 // 搜索栏作用域的稳定顺序，避免菜单渲染散落魔术数组。
@@ -46,10 +46,10 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const scope_state_label = t(
     PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE[proofreading_page_state.search_scope],
   );
-  const scope_tooltip = t("proofreading_page.toggle.status")
+  const scope_tooltip = t("app.toggle.status")
     .replace("{TITLE}", t("proofreading_page.search.scope.tooltip_label"))
     .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("proofreading_page.toggle.status")
+  const regex_tooltip = t("app.toggle.status")
     .replace("{TITLE}", t("proofreading_page.search.regex_tooltip_label"))
     .replace("{STATE}", regex_state_label);
   const proofreading_scope_options: SearchBarScopeOption<ProofreadingSearchScope>[] =
@@ -74,7 +74,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         replace_placeholder={t("proofreading_page.search.replace_placeholder")}
         replace_clear_label={t("proofreading_page.search.replace_clear")}
         on_replace_text_change={proofreading_page_state.update_replace_text}
-        replace_next_label={t("proofreading_page.action.replace")}
+        replace_next_label={t("app.action.replace")}
         replace_all_label={t("proofreading_page.action.replace_all")}
         replace_actions_disabled={write_actions_disabled}
         on_replace_next={proofreading_page_state.replace_next_visible_match}
@@ -82,7 +82,6 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         scope={{
           value: proofreading_page_state.search_scope,
           button_label: scope_button_label,
-          aria_label: t("proofreading_page.search.scope.label"),
           tooltip: scope_tooltip,
           options: proofreading_scope_options,
           on_change: proofreading_page_state.update_search_scope,

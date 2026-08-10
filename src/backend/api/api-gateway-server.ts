@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import type { Server } from "node:http";
 
 import { Hono } from "hono";
@@ -9,17 +8,13 @@ import { record_app_error } from "../log/app-error-reporter";
 import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
 import type { LogEvent } from "../../shared/log";
 import type { BackendServices } from "../bootstrap/backend-services";
-import { resolve_app_locale } from "../../domain/app-language";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { create_text_resolver } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { BACKEND_API_HOST, build_backend_api_base_url } from "./api-base-url";
 import {
-  RouteNotFoundError,
-  RuntimeDisposedError,
+  AppError,
   normalize_renderer_error_report,
   resolve_app_error_http_status,
-  type AppError,
 } from "../../shared/error";
 import type { ApiGatewayStartResult } from "./api-types";
 import { api_error_envelope, normalize_api_error } from "./api-error";
@@ -85,7 +80,7 @@ export class ApiGatewayServer {
           pending_server.off("error", handle_start_error);
           const address = pending_server.address();
           if (address === null || typeof address === "string") {
-            handle_start_error(new Error("API Gateway 未取得本机监听端口。"));
+            handle_start_error(new Error("API Gateway did not obtain a local listening port."));
             return;
           }
           this.public_base_url = build_backend_api_base_url(address.port);
@@ -167,11 +162,12 @@ export class ApiGatewayServer {
     register_api_routes(route_context);
 
     app.all("*", (context) => {
-      const error = new RouteNotFoundError(context.req.path);
-      return context.json(
-        this.error_to_envelope(error, crypto.randomUUID()),
-        resolve_app_error_http_status(error),
-      );
+      const route_path = context.req.path;
+      const error = new AppError("request.route_not_found", {
+        public_details: { path: route_path },
+        diagnostic_context: { path: route_path },
+      });
+      return context.json(api_error_envelope(error), resolve_app_error_http_status(error));
     });
 
     return app;
@@ -183,7 +179,7 @@ export class ApiGatewayServer {
   private post_json(app: Hono, path_name: string, handler: ApiJsonHandler): void {
     register_post_json_route(app, path_name, handler, (error, route_path, request_id) => {
       const normalized_error = normalize_api_error(error);
-      const envelope = this.error_to_envelope(normalized_error, request_id);
+      const envelope = api_error_envelope(normalized_error);
       const status = resolve_app_error_http_status(normalized_error);
       if (status >= 500 || normalized_error.severity !== "expected") {
         record_app_error(normalized_error, {
@@ -211,7 +207,7 @@ export class ApiGatewayServer {
    */
   private async run_tracked_request<T>(run: () => Promise<T>): Promise<T> {
     if (!this.accepting_requests) {
-      throw new RuntimeDisposedError({
+      throw new AppError("runtime.disposed", {
         diagnostic_context: { reason: "api_gateway_stopping" },
       });
     }
@@ -260,18 +256,6 @@ export class ApiGatewayServer {
     );
 
     return {};
-  }
-
-  /**
-   * 错误响应按当前应用语言解析，公开响应壳不携带诊断上下文。
-   */
-  private error_to_envelope(error: AppError, request_id: string) {
-    const app_language = this.options.backendServices.app.settings.read_setting()["app_language"];
-    return api_error_envelope(
-      error,
-      request_id,
-      create_text_resolver(resolve_app_locale(app_language)),
-    );
   }
 
   /**

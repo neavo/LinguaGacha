@@ -3,14 +3,9 @@ export const en_us_agent_page = {
   thinking: "Thinking",
   thinking_active: "Thinking",
   diagram: {
-    label: "Diagram",
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
   },
-  image: {
-    omitted: "Image omitted",
-    attachment: "Pending image {index}",
-    message: "User image {index}",
-  },
+  image: { omitted: "Image omitted" },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
@@ -25,13 +20,11 @@ export const en_us_agent_page = {
     hint: "Enter to send · Shift + Enter for a new line",
     drop_images: "Release to add images",
   },
-  message: { continue: "Continue" },
   mention: {
     groups: { skills: "Skills", terms: "Terms" },
     no_matches: "No matching items …",
     term_hits: "{count} Hits",
   },
-  context_usage: "Context {percent} · {used} / {total}",
   context_usage_warning: "Context will be compacted soon",
   compaction: {
     running: "Compacting context …",
@@ -46,8 +39,6 @@ export const en_us_agent_page = {
     applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
     add_image: "Add images",
-    remove_image: "Remove image {index}",
-    retry: "Retry",
     click_to_retry: "Click to retry",
     return_latest: "Return to latest",
   },

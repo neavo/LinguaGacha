@@ -18,10 +18,10 @@ type PresetNameDialogProps = {
 
 const COPY_BY_MODE: Record<NonNullable<PresetInputState["mode"]>, { confirm_key: LocaleKey }> = {
   save: {
-    confirm_key: "quality_editor.preset.dialog.save_confirm",
+    confirm_key: "app.action.save",
   },
   rename: {
-    confirm_key: "quality_editor.preset.dialog.rename_confirm",
+    confirm_key: "preset_editor.action.rename",
   },
 };
 
@@ -82,9 +82,7 @@ export function PresetNameDialog(props: PresetNameDialogProps): JSX.Element {
         autoFocus
         value={props.state.value}
         disabled={props.state.submitting}
-        placeholder={t(
-          props.name_placeholder_key ?? "quality_editor.preset.dialog.name_placeholder",
-        )}
+        placeholder={t(props.name_placeholder_key ?? "preset_editor.dialog.name_placeholder")}
         onChange={(event) => {
           props.on_change(event.target.value);
         }}

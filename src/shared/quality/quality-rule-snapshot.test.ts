@@ -58,7 +58,7 @@ describe("quality rule snapshot", () => {
       QualityRuleSnapshotTool.from_json({
         quality: { glossary: { entries: [{ entry_id: "invalid", src: "  ", dst: "忽略" }] } },
       }),
-    ).toThrow("质量规则 src 不能为空");
+    ).toThrow("Quality rule src must not be empty.");
   });
 
   it("缺少质量规则 meta 时使用统一领域默认值", () => {

@@ -35,7 +35,7 @@ const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, Dia
     description_key: "workbench_page.dialog.delete.description",
   },
   "generate-translation": {
-    description_key: "workbench_page.dialog.generate_translation.description",
+    description_key: "workbench_page.translation_task.confirm.generate_description",
   },
   "close-project": {
     description_key: "workbench_page.dialog.close_project.description",

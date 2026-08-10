@@ -13,17 +13,16 @@ export const en_us_custom_prompt_page = {
     enable_after_import: {
       description: "Enable custom prompts …?",
     },
+    reset: {
+      description: "Confirm resetting data …?",
+    },
   },
   feedback: {
     load_failed: "Task failed …",
     save_failed: "Task failed …",
     import_failed: "Task failed …",
-
     export_failed: "Task failed …",
-
     preset_failed: "Task failed …",
-
-    preset_renamed: "Task succeeded …",
-    preset_deleted: "Task succeeded …",
+    preset_succeeded: "Task succeeded …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

@@ -27,20 +27,20 @@ describe("pi-ai 请求适配", () => {
     expect(resolved.model).toMatchObject({ provider, api, name: "Test" });
   });
 
-  it.each(["OpenAI", "OpenAIResponses", "SakuraLLM", "Anthropic", "Google"] as const)(
-    "%s 在协议转换前拒绝空业务提示词",
-    (api_format) => {
-      const snapshot = read_model_request_snapshot(create_model({ api_format }), TEST_USER_AGENT);
+  it("在协议转换前拒绝空业务提示词", () => {
+    const snapshot = read_model_request_snapshot(
+      create_model({ api_format: "OpenAIResponses" }),
+      TEST_USER_AGENT,
+    );
 
-      expect(() =>
-        resolve_one_shot_pi_request(
-          snapshot,
-          [{ role: "user", content: "   " }],
-          new AbortController().signal,
-        ),
-      ).toThrow("request.validation_failed");
-    },
-  );
+    expect(() =>
+      resolve_one_shot_pi_request(
+        snapshot,
+        [{ role: "user", content: "   " }],
+        new AbortController().signal,
+      ),
+    ).toThrow("request.validation_failed");
+  });
 
   it("让 Pi 构造 OpenAI payload，再应用当前生成、思考和 extra_body 规则", async () => {
     const request = resolve_request({

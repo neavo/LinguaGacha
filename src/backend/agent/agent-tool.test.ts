@@ -6,11 +6,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  ModelProviderFailedError,
-  RequestValidationError,
-  RevisionConflictError,
-} from "../../shared/error";
+import { AppError } from "../../shared/error";
 import type { FileLogWriter } from "../log/log-manager";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader } from "../log/log-text";
@@ -65,14 +61,14 @@ describe("Agent 工具公共边界", () => {
       wrapped.execute("domain", {}, undefined, undefined, undefined as never),
     ).rejects.toBe(tool_error);
 
-    const validation_error = new RequestValidationError();
+    const validation_error = new AppError("request.validation_failed");
     execute.mockRejectedValueOnce(validation_error);
     await expect(
       wrapped.execute("validation", {}, undefined, undefined, undefined as never),
     ).rejects.toMatchObject({ details: { code: validation_error.code } });
 
     execute.mockRejectedValueOnce(
-      new RevisionConflictError({
+      new AppError("data.revision_conflict", {
         public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
       }),
     );
@@ -88,7 +84,7 @@ describe("Agent 工具公共边界", () => {
     });
     expect(error).not.toHaveBeenCalled();
 
-    const provider_error = new ModelProviderFailedError();
+    const provider_error = new AppError("model.provider_failed");
     execute.mockRejectedValueOnce(provider_error);
     await expect(
       wrapped.execute("warning", {}, undefined, undefined, undefined as never),

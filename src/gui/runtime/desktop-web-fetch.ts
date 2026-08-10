@@ -76,9 +76,10 @@ export async function desktop_web_fetch(
     if (REDIRECT_STATUSES.has(response.status)) {
       const location = response.headers.get("location");
       await response.body?.cancel().catch(() => undefined);
-      if (location === null) throw new Error(`网页重定向缺少 Location：${response.status}`);
+      if (location === null)
+        throw new Error(`Web redirect is missing Location: ${response.status}.`);
       if (redirect_count >= WEB_FETCH_MAX_REDIRECTS) {
-        throw new Error(`网页重定向超过 ${WEB_FETCH_MAX_REDIRECTS.toString()} 次。`);
+        throw new Error(`Web request exceeded ${WEB_FETCH_MAX_REDIRECTS.toString()} redirects.`);
       }
       current_url = new URL(location, current_url);
       redirect_count += 1;
@@ -87,7 +88,7 @@ export async function desktop_web_fetch(
 
     if (response.status < 200 || response.status >= 300) {
       await response.body?.cancel().catch(() => undefined);
-      throw new Error(`网页请求失败：HTTP ${response.status.toString()}`);
+      throw new Error(`Web request failed: HTTP ${response.status.toString()}.`);
     }
 
     return {
@@ -107,13 +108,13 @@ async function assert_public_web_url(
   signal: AbortSignal,
 ): Promise<URL> {
   if (value.protocol !== "http:" && value.protocol !== "https:") {
-    throw new Error("只允许抓取 HTTP 或 HTTPS URL。");
+    throw new Error("Only HTTP and HTTPS URLs can be fetched.");
   }
   if (value.username !== "" || value.password !== "") {
-    throw new Error("网页 URL 不得包含用户名或密码。");
+    throw new Error("Web URL must not contain a username or password.");
   }
   const hostname = value.hostname.toLowerCase().replace(/^\[|\]$/gu, "");
-  if (hostname === "") throw new Error("网页 URL 缺少 hostname。");
+  if (hostname === "") throw new Error("Web URL is missing a hostname.");
   if (
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||
@@ -121,7 +122,7 @@ async function assert_public_web_url(
     hostname.endsWith(".local") ||
     hostname === "metadata.google.internal"
   ) {
-    throw new Error(`不允许抓取本地 hostname：${hostname}`);
+    throw new Error(`Local hostname is not allowed: ${hostname}.`);
   }
 
   const ip_version = isIP(hostname);
@@ -138,13 +139,13 @@ async function assert_public_web_url(
     ));
   } catch (error) {
     signal.throwIfAborted();
-    throw new Error(`无法解析网页 hostname：${hostname}`, { cause: error });
+    throw new Error(`Failed to resolve web hostname: ${hostname}.`, { cause: error });
   }
-  if (endpoints.length === 0) throw new Error(`网页 hostname 没有可用地址：${hostname}`);
+  if (endpoints.length === 0) throw new Error(`Web hostname has no usable address: ${hostname}.`);
   for (const endpoint of endpoints) {
     const endpoint_version = isIP(endpoint.address);
     if (endpoint_version !== 4 && endpoint_version !== 6) {
-      throw new Error(`网页 hostname 返回了无效地址：${endpoint.address}`);
+      throw new Error(`Web hostname returned an invalid address: ${endpoint.address}.`);
     }
     assert_public_address(endpoint.address, endpoint_version);
   }
@@ -179,7 +180,7 @@ function assert_public_address(address: string, version: 4 | 6): void {
       ? BLOCKED_IPV4_ADDRESSES.check(address, "ipv4")
       : BLOCKED_IPV6_ADDRESSES.check(address, "ipv6");
   if (blocked) {
-    throw new Error(`不允许抓取受限地址：${address}`);
+    throw new Error(`Restricted address is not allowed: ${address}.`);
   }
 }
 
@@ -191,7 +192,7 @@ async function read_response_body(response: Response, signal: AbortSignal): Prom
     /^\d+$/u.test(content_length) &&
     BigInt(content_length) > BigInt(WEB_FETCH_MAX_RESPONSE_BYTES)
   ) {
-    const error = new Error("网页响应超过 2 MiB 上限。");
+    const error = new Error("Web response exceeds the 2 MiB limit.");
     await response.body?.cancel(error).catch(() => undefined);
     throw error;
   }
@@ -210,7 +211,7 @@ async function read_response_body(response: Response, signal: AbortSignal): Prom
       if (done) break;
       size += value.byteLength;
       if (size > WEB_FETCH_MAX_RESPONSE_BYTES) {
-        const error = new Error("网页响应超过 2 MiB 上限。");
+        const error = new Error("Web response exceeds the 2 MiB limit.");
         await reader.cancel(error).catch(() => undefined);
         throw error;
       }

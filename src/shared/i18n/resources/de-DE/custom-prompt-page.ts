@@ -13,17 +13,16 @@ export const de_de_custom_prompt_page = {
     enable_after_import: {
       description: "Eigene Prompts aktivieren …?",
     },
+    reset: {
+      description: "Daten wirklich zurücksetzen …?",
+    },
   },
   feedback: {
     load_failed: "Aufgabe fehlgeschlagen …",
     save_failed: "Aufgabe fehlgeschlagen …",
     import_failed: "Aufgabe fehlgeschlagen …",
-
     export_failed: "Aufgabe fehlgeschlagen …",
-
     preset_failed: "Aufgabe fehlgeschlagen …",
-
-    preset_renamed: "Aufgabe erfolgreich …",
-    preset_deleted: "Aufgabe erfolgreich …",
+    preset_succeeded: "Aufgabe erfolgreich …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

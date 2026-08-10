@@ -281,7 +281,7 @@ describe("AgentWorkspaceService", () => {
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
       { item_id: 1, dst: "译文" },
     ]);
-    fixture.write_store.mockRejectedValueOnce(new AppErrors.RevisionConflictError());
+    fixture.write_store.mockRejectedValueOnce(new AppErrors.AppError("data.revision_conflict"));
 
     await expect(fixture.service.apply_workspace()).rejects.toMatchObject({
       public_details: { action: "workspace_load" },
@@ -297,7 +297,7 @@ describe("AgentWorkspaceService", () => {
       { item_id: 1, dst: "译文" },
     ]);
     fixture.write_store.mockRejectedValueOnce(
-      new AppErrors.CommittedChangeSyncError({
+      new AppErrors.AppError("data.committed_sync_failed", {
         public_details: { committed: true, action: "reload_project" },
       }),
     );

@@ -27,7 +27,7 @@ export class RuntimeOperationGate {
   /** 同步占用保证检查与首个异步阶段之间没有并发窗口。 */
   public begin_runtime(owner: RuntimeActivityOwner): RuntimeLease {
     if (this.active_runtime !== null || this.project_write_running) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     const lease = Object.freeze({ owner });
     this.active_runtime = lease;
@@ -44,13 +44,13 @@ export class RuntimeOperationGate {
 
   /** 设置与模型配置等同步写入口在提交前复用同一空闲检查。 */
   public assert_runtime_idle(): void {
-    if (this.active_runtime !== null) throw new AppErrors.RuntimeBusyError();
+    if (this.active_runtime !== null) throw new AppErrors.AppError("runtime.busy");
   }
 
   /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */
   public async run_project_write<T>(operation: () => Promise<T> | T): Promise<T> {
     if (this.active_runtime !== null || this.project_write_running) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     return await this.run_project_write_under_lease(operation);
   }
@@ -58,7 +58,7 @@ export class RuntimeOperationGate {
   /** Agent 写工具复用项目写串行 lease，但只能在自己的运行回合内调用。 */
   public async run_agent_project_write<T>(operation: () => Promise<T> | T): Promise<T> {
     if (this.active_runtime?.owner !== "agent" || this.project_write_running) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     return await this.run_project_write_under_lease(operation);
   }

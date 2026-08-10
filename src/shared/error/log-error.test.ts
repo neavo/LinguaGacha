@@ -46,8 +46,7 @@ describe("log error", () => {
   });
 
   it("把 AppError 事实合并到日志上下文", () => {
-    const error = new AppError({
-      code: "runtime.internal_invariant",
+    const error = new AppError("runtime.internal_invariant", {
       public_details: { request: "safe" },
       diagnostic_context: { stage: "commit" },
       cause: new Error("底层失败"),
@@ -77,7 +76,7 @@ describe("log error", () => {
     ["model.provider_failed", "warning"],
     ["runtime.internal_invariant", "error"],
   ] as const)("把 %s 映射为 %s 日志等级", (code, expected_level) => {
-    expect(to_app_error_log_snapshot(new AppError({ code })).level).toBe(expected_level);
+    expect(to_app_error_log_snapshot(new AppError(code)).level).toBe(expected_level);
   });
 
   it("会把误拼进 message 的调用栈拆到 stack 字段", () => {

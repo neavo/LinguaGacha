@@ -3,14 +3,9 @@ export const de_de_agent_page = {
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
-    label: "Diagramm",
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
   },
-  image: {
-    omitted: "Bild ausgelassen",
-    attachment: "Ausstehendes Bild {index}",
-    message: "Benutzerbild {index}",
-  },
+  image: { omitted: "Bild ausgelassen" },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
@@ -25,13 +20,11 @@ export const de_de_agent_page = {
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
-  message: { continue: "Fortfahren" },
   mention: {
     groups: { skills: "Skills", terms: "Begriffe" },
     no_matches: "Keine passenden Einträge …",
     term_hits: "{count} Treffer",
   },
-  context_usage: "Kontext {percent} · {used} / {total}",
   context_usage_warning: "Kontext wird bald automatisch komprimiert",
   compaction: {
     running: "Kontext wird komprimiert …",
@@ -46,8 +39,6 @@ export const de_de_agent_page = {
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
-    remove_image: "Bild {index} entfernen",
-    retry: "Erneut versuchen",
     click_to_retry: "Zum Wiederholen klicken",
     return_latest: "Zum neuesten Stand",
   },

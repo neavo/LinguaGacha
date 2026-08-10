@@ -59,16 +59,6 @@ describe("WorkbenchTaskDetailSheet", () => {
     root = null;
   });
 
-  it("按 display 渲染详情指标和停止入口", async () => {
-    await render_sheet();
-
-    expect(document.body.textContent).toContain("速度趋势");
-    expect(document.body.textContent).toContain("42%");
-    expect(document.body.textContent).toContain("已处理");
-    expect(document.body.textContent).toContain("42");
-    expect(document.body.textContent).toContain("停止任务");
-  });
-
   it("点击停止入口后请求确认", async () => {
     const on_request_stop_confirmation = vi.fn();
     await render_sheet({ on_request_stop_confirmation });

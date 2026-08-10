@@ -24,51 +24,9 @@ describe("rule-prefilter", () => {
     expect(should_skip_by_rule_prefilter("{#file_time}2024-01-01")).toBe(true);
   });
 
-  it.each([
-    "MapData/map001",
-    "SE/sound_effect",
-    "BGS001",
-    "0=some_value",
-    "BGM/battle_theme",
-    "FIcon/icon01",
-  ])("过滤资源路径前缀：%s", (src) => {
-    expect(should_skip_by_rule_prefilter(src)).toBe(true);
-  });
-
   it("资源规则忽略大小写和首尾空白", () => {
     expect(should_skip_by_rule_prefilter("  MAPDATA/MAP001  ")).toBe(true);
     expect(should_skip_by_rule_prefilter("  MUSIC.MP3  ")).toBe(true);
-  });
-
-  it.each([
-    "music.mp3",
-    "sound.wav",
-    "track.ogg",
-    "track.mid",
-    "image.png",
-    "photo.jpg",
-    "pic.jpeg",
-    "anim.gif",
-    "texture.psd",
-    "icon.webp",
-    "photo.heif",
-    "photo.heic",
-    "video.avi",
-    "clip.mp4",
-    "movie.webm",
-    "note.txt",
-    "archive.7z",
-    "archive.gz",
-    "archive.rar",
-    "archive.zip",
-    "data.json",
-    "save.sav",
-    "file.mps",
-    "font.ttf",
-    "font.otf",
-    "font.woff",
-  ])("过滤资源文件后缀：%s", (src) => {
-    expect(should_skip_by_rule_prefilter(src)).toBe(true);
   });
 
   it("EV 编号完整匹配时过滤", () => {

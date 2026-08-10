@@ -263,7 +263,7 @@ describe("run_backend_runtime", () => {
       { url: "https://example.com" },
       new AbortController().signal,
     );
-    const rejection = expect(pending).rejects.toThrow("Backend runtime 已关闭");
+    const rejection = expect(pending).rejects.toThrow("Backend runtime is closed.");
     const request = get_host_request(port, "web_fetch");
 
     port.emit({ type: "stop", requestId: "stop-pending" });

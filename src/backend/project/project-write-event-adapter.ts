@@ -47,7 +47,7 @@ export function adapt_project_change(
   const state = session_state.snapshot();
   const project_path = payload.projectPath.trim();
   if (project_path === "") {
-    throw new AppErrors.InternalInvariantError({
+    throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: { reason: "project_change_target_missing" },
     });
   }

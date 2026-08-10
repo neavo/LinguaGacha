@@ -313,7 +313,7 @@ export class ProjectLifecycleService {
       "file_record",
     ]) {
       if (Object.prototype.hasOwnProperty.call(body, field)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_create_commit_field", field },
         });
       }
@@ -366,7 +366,7 @@ export class ProjectLifecycleService {
       return;
     }
     this.log_create_commit_parse_failures(draft.failed_files);
-    throw new AppErrors.FileParseFailedError({
+    throw new AppErrors.AppError("file.parse_failed", {
       public_details: {
         failed_files: draft.failed_files as unknown as JsonValue,
       },
@@ -443,7 +443,7 @@ export class ProjectLifecycleService {
   private normalize_public_item(value: unknown): ProjectItemPublicRecord {
     const public_item = normalize_project_item_public_record(value);
     if (public_item === null) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: {
           reason: "parsed_item_incomplete",
           missing_fields: collect_project_item_missing_public_fields(value),
@@ -778,7 +778,7 @@ export class ProjectLifecycleService {
   private require_body_string(body: JsonRecord, key: string): string {
     const value = body[key];
     if (typeof value !== "string" || value.trim() === "") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return value;
   }
@@ -788,7 +788,7 @@ export class ProjectLifecycleService {
    */
   private assert_project_file_exists(project_path: string): void {
     if (!this.native_fs.exists(project_path)) {
-      throw new AppErrors.ProjectNotFoundError({
+      throw new AppErrors.AppError("project.not_found", {
         public_details: { filename: path.basename(project_path) },
       });
     }

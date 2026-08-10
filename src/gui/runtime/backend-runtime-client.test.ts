@@ -242,7 +242,7 @@ describe("BackendRuntimeClient", () => {
 
     worker.emit("exit", 0);
 
-    await expect(language).rejects.toThrow("Backend runtime worker 退出：0");
+    await expect(language).rejects.toThrow("Backend runtime worker exited: 0.");
     expect(on_unexpected_exit).toHaveBeenCalledTimes(1);
     expect(client.isStopped()).toBe(true);
   });
@@ -258,7 +258,9 @@ describe("BackendRuntimeClient", () => {
     worker.emit("error", new Error("worker error"));
 
     await expect(language).rejects.toThrow("worker error");
-    await expect(client.readAppLanguage()).rejects.toThrow("Backend runtime worker 未启动");
+    await expect(client.readAppLanguage()).rejects.toThrow(
+      "Backend runtime worker has not started.",
+    );
     worker.emit("exit", 1);
     expect(on_unexpected_exit).toHaveBeenCalledTimes(1);
     expect(client.isStopped()).toBe(true);
@@ -290,7 +292,7 @@ describe("BackendRuntimeClient", () => {
 
     worker.emit("exit", 0);
 
-    await expect(stop).rejects.toThrow("Backend runtime worker 退出：0");
+    await expect(stop).rejects.toThrow("Backend runtime worker exited: 0.");
     expect(on_unexpected_exit).not.toHaveBeenCalled();
   });
 });

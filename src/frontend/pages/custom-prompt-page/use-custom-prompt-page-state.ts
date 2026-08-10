@@ -115,9 +115,7 @@ export function useCustomPromptPageState(
   const commit_prompt_text = useCallback(
     async (
       next_text: string,
-      success_message_key:
-        | "quality_editor.feedback.import_success"
-        | "quality_editor.feedback.reset_success",
+      success_message_key: "app.feedback.import_success" | "app.feedback.reset_success",
     ): Promise<boolean> => {
       if (readonly) {
         return false;
@@ -136,10 +134,7 @@ export function useCustomPromptPageState(
   const import_prompt_text = useCallback(
     async (next_text: string): Promise<boolean> => {
       const previous_enabled = enabled;
-      const succeeded = await commit_prompt_text(
-        next_text,
-        "quality_editor.feedback.import_success",
-      );
+      const succeeded = await commit_prompt_text(next_text, "app.feedback.import_success");
       if (succeeded && !previous_enabled) {
         set_confirm_state({
           kind: "enable-after-import",
@@ -192,7 +187,7 @@ export function useCustomPromptPageState(
         task_type: config.task_type,
         path: selected_path,
       });
-      push_toast("success", t("quality_editor.feedback.export_success"));
+      push_toast("success", t("app.feedback.export_success"));
     } catch (error) {
       push_toast(
         "error",
@@ -302,7 +297,7 @@ export function useCustomPromptPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -313,7 +308,7 @@ export function useCustomPromptPageState(
           text: normalize_prompt_text(prompt_text),
         });
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_saved"));
+        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -334,7 +329,7 @@ export function useCustomPromptPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -356,7 +351,7 @@ export function useCustomPromptPageState(
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("custom_prompt_page.feedback.preset_renamed"));
+        push_toast("success", t("custom_prompt_page.feedback.preset_succeeded"));
         return true;
       } catch (error) {
         push_toast(
@@ -382,7 +377,7 @@ export function useCustomPromptPageState(
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.default_preset_set"));
+        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -405,7 +400,7 @@ export function useCustomPromptPageState(
       );
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
+      push_toast("success", t("preset_editor.feedback.default_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -438,7 +433,7 @@ export function useCustomPromptPageState(
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+      push_toast("warning", t("preset_editor.feedback.name_required"));
       return;
     }
 
@@ -463,7 +458,7 @@ export function useCustomPromptPageState(
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("quality_editor.feedback.preset_exists"));
+      push_toast("warning", t("preset_editor.feedback.exists"));
       return;
     }
 
@@ -509,7 +504,7 @@ export function useCustomPromptPageState(
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("custom_prompt_page.feedback.preset_deleted"));
+        push_toast("success", t("custom_prompt_page.feedback.preset_succeeded"));
         return true;
       } catch (error) {
         push_toast(
@@ -541,10 +536,7 @@ export function useCustomPromptPageState(
 
     switch (confirm_state.kind) {
       case "reset": {
-        succeeded = await commit_prompt_text(
-          template.default_text,
-          "quality_editor.feedback.reset_success",
-        );
+        succeeded = await commit_prompt_text(template.default_text, "app.feedback.reset_success");
         if (succeeded) {
           set_preset_menu_open(false);
         }

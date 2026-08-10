@@ -284,7 +284,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
       const stats = this.native_fs.stat(resolved_path);
       const kind = stats.isFile() ? "file" : stats.isDirectory() ? "directory" : null;
       if (kind === null) {
-        return err(new FileError("invalid", "不支持的 skill 文件类型", resolved_path));
+        return err(new FileError("invalid", "Unsupported skill file type.", resolved_path));
       }
       return ok({
         name: resolved_path.split("/").at(-1) ?? resolved_path,

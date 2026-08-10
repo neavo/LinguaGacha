@@ -3,7 +3,7 @@ import path from "node:path";
 import type { JsonRecord } from "../../../domain/json";
 import { t_main_log } from "../../log/log-text";
 import { default_native_fs } from "../../../native/native-fs";
-import { InternalInvariantError } from "../../../shared/error";
+import { AppError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { relocate_directory_items } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
@@ -313,7 +313,7 @@ function is_same_directory(
  */
 function build_virtual_id(source: PresetSource, file_name: string): string {
   if (!is_preset_file_name(file_name)) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "invalid_quality_rule_preset_file_name",
         file_name,

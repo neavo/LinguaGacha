@@ -19,7 +19,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.success") return "已完成";
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.status.stopped") return "已停止";
-      if (key === "agent_page.action.retry") return "重试";
+      if (key === "app.action.retry") return "重试";
       if (key === "agent_page.action.click_to_retry") return "点击重试";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
       if (key === "agent_page.compaction.success") return "上下文压缩成功";
@@ -99,68 +99,12 @@ describe("AgentTimeline", () => {
     return JSON.parse(get_tool_dialog_text() ?? "");
   }
 
-  it("渲染流式 Markdown、空 parts 与运行轮次尾标", async () => {
-    const view = await render_timeline(
-      round_entries([assistant_entry("assistant-1", "**变更方案**", "running", 1)]),
-    );
-    expect(view.querySelector("strong")?.textContent).toBe("变更方案");
-    expect(view.querySelector(".agent-message__cursor")).toBeNull();
-    const footer = view.querySelector<HTMLElement>(".agent-round-footer");
-    expect(footer).toBe(view.querySelector(".agent-page__messages")?.lastElementChild);
-    expect(footer?.dataset["running"]).toBe("true");
-    expect(footer?.querySelector(".agent-round-footer__running")?.getAttribute("aria-hidden")).toBe(
-      "false",
-    );
-    expect(footer?.querySelector(".agent-round-footer__result")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
-
-    await render_timeline(
-      round_entries([assistant_parts_entry("assistant-empty", [], "running", 2)]),
-    );
-    expect(view.querySelector(".agent-message--assistant")).toBeNull();
-    expect(view.querySelector(".agent-round-footer__running")?.getAttribute("aria-hidden")).toBe(
-      "false",
-    );
-    expect(view.querySelector(".agent-round-footer")?.textContent).toContain(
-      "agent_page.round.running",
-    );
-
-    await render_timeline([]);
-    expect(view.querySelector(".agent-round-footer")).toBeNull();
-  });
-
-  it("用户消息把已知能力与术语显示为整块，未知 marker 保持普通文本", async () => {
+  it("消息图片使用空 alt 且不生成空文本段落", async () => {
     const view = await render_timeline([
-      user_entry("user-1", "@term(Alice)", "success", 0, 1_000),
-      user_entry(
-        "user-2",
-        "使用 @skill(glossary-audit) 和 @term(Unknown)",
-        "success",
-        2_000,
-        3_000,
-      ),
-    ]);
-    const messages = view.querySelectorAll<HTMLElement>(".agent-message--user");
-
-    expect(messages[0]?.dataset["mentionOnly"]).toBe("true");
-    expect(
-      [...view.querySelectorAll<HTMLElement>(".agent-mention-token > span")].map(
-        (token) => token.textContent,
-      ),
-    ).toEqual(["@term(Alice)", "@skill(glossary-audit)"]);
-    expect(messages[1]?.textContent).toContain("@term(Unknown)");
-  });
-
-  it("渲染纯图片和多图片消息而不生成空文本段落", async () => {
-    const view = await render_timeline([
-      user_entry("user-images", "", "success", 0, 1_000, ["webp-a", "webp-b"]),
+      user_entry("user-images", "", "success", 0, 1_000, ["webp-a"]),
     ]);
 
-    const images = view.querySelectorAll<HTMLImageElement>(".agent-message__user-images img");
-    expect(images).toHaveLength(2);
-    expect(images[0]?.src).toBe("data:image/webp;base64,webp-a");
-    expect(images[0]?.alt).toBe("agent_page.image.message:1");
+    expect(view.querySelector<HTMLImageElement>(".agent-message__user-images img")?.alt).toBe("");
     expect(view.querySelector(".agent-message__user-text")).toBeNull();
   });
 
@@ -235,7 +179,6 @@ describe("AgentTimeline", () => {
     );
     const tool = view.querySelector<HTMLButtonElement>(".agent-tool-entry");
     expect(tool?.textContent).toBe("workspace_script · 8s");
-    expect(tool?.querySelector('[role="timer"]')?.getAttribute("aria-live")).toBe("off");
     await act(async () => vi.advanceTimersByTime(1_000));
     expect(tool?.textContent).toBe("workspace_script · 9s");
     await act(async () => tool?.click());
@@ -291,37 +234,6 @@ describe("AgentTimeline", () => {
       expect(mark?.getAttribute("aria-label")).toBe(label);
       expect(mark?.childElementCount).toBe(0);
     }
-  });
-
-  it("轮次运行时更新耗时，结束后冻结并保持紧凑格式", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(45_295_000);
-    const view = await render_timeline([user_entry("user-1", "开始", "running", 0, null)]);
-    const timer = view.querySelector<HTMLElement>('[role="timer"]');
-    if (timer === null) throw new Error("缺少轮次计时器");
-    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 55s");
-    expect(view.querySelector<HTMLElement>(".agent-round-footer")?.dataset["running"]).toBe("true");
-    await act(async () => vi.advanceTimersByTime(1_000));
-    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 56s");
-
-    await render_timeline([
-      user_entry("user-1", "开始", "success", 0, 45_296_000),
-      user_entry("user-2", "长任务", "stopped", 10_000, 738_000),
-    ]);
-    expect(
-      [...view.querySelectorAll<HTMLElement>('[role="timer"]')].map((entry) => entry.textContent),
-    ).toEqual(["agent_page.round.success:12h 34m 56s", "agent_page.round.stopped:12m 08s"]);
-    expect(view.querySelector(".agent-round-footer[data-running]")).toBeNull();
-    expect(view.querySelector(".agent-round-footer__running")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
-    expect(view.querySelector(".agent-round-footer__result")?.getAttribute("aria-hidden")).toBe(
-      "false",
-    );
-    const completed_timer = view.querySelector<HTMLElement>('[role="timer"]');
-    if (completed_timer === null) throw new Error("缺少已完成轮次计时器");
-    await act(async () => vi.advanceTimersByTime(3_600_000));
-    expect(completed_timer.textContent).toBe("agent_page.round.success:12h 34m 56s");
   });
 
   it("流式思考只在底端自动跟随，用户上划后保持位置并可回到底端恢复", async () => {

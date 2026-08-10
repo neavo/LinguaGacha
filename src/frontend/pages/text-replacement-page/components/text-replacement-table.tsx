@@ -8,7 +8,7 @@ import type {
   TextReplacementHitBadgeState,
   TextReplacementVisibleEntry,
 } from "@frontend/pages/text-replacement-page/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
@@ -173,7 +173,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         id: "drag",
         width: 64,
         align: "center",
-        title: t("quality_editor.fields.drag"),
+        title: t("app.drag.handle"),
         head_class_name: "text-replacement-page__table-drag-head",
         cell_class_name: "text-replacement-page__table-drag-cell",
         render_cell: (payload) => {
@@ -191,13 +191,13 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       {
         kind: "data",
         id: "src",
-        title: t("quality_editor.fields.source"),
+        title: t("quality_rule_editor.fields.source"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-source-head",
@@ -213,9 +213,9 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-replacement-head",
@@ -227,26 +227,26 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       {
         kind: "data",
         id: "rule",
-        title: t("quality_editor.fields.rule"),
+        title: t("quality_rule_editor.fields.rule"),
         width: 120,
         align: "center",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-rule-head",
         cell_class_name: "text-replacement-page__table-rule-cell",
         render_cell: (payload) => {
-          const regex_tooltip = t("quality_editor.toggle.status")
+          const regex_tooltip = t("app.toggle.status")
             .replace("{TITLE}", t("text_replacement_page.rule.regex"))
             .replace(
               "{STATE}",
               t(payload.row.entry.regex ? "app.toggle.enabled" : "app.toggle.disabled"),
             );
-          const case_tooltip = t("quality_editor.toggle.status")
+          const case_tooltip = t("app.toggle.status")
             .replace("{TITLE}", t("text_replacement_page.rule.case_sensitive"))
             .replace(
               "{STATE}",
@@ -278,9 +278,9 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         sortable: {
           disabled: !props.hit_ready,
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-hit-head",
@@ -299,7 +299,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
               running_class_name="replacement-page__hit-badge--running"
               wrap_class_name="text-replacement-page__hit-badge-wrap"
               button_class_name="replacement-page__hit-badge-button"
-              query_label={t("quality_editor.action.query")}
+              query_label={t("app.action.query")}
               relation_label={t("text_replacement_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
@@ -319,9 +319,6 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
 
   return (
     <Card variant="table" className="text-replacement-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t(props.title_key)}</CardTitle>
-      </CardHeader>
       <CardContent className="text-replacement-page__table-card-content">
         <AppTable
           rows={props.entries}

@@ -43,7 +43,7 @@ import {
 import type { AppLanguage } from "@domain/app-language";
 import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
-import { InternalInvariantError } from "@shared/error";
+import { AppError } from "@shared/error";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
 
@@ -616,7 +616,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       manifest_project_path !== next_project_snapshot.path ||
       manifest_project_path !== session_identity.path
     ) {
-      throw new InternalInvariantError({
+      throw new AppError("runtime.internal_invariant", {
         diagnostic_context: {
           reason: "project_state_manifest_identity_mismatch",
           manifest_project_path,

@@ -314,7 +314,7 @@ export class AgentWorkspaceService {
         `agent_workspace_${response.failure}`,
       );
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       public_details: { action, message: response.message },
       diagnostic_context: { reason: `agent_workspace_${response.failure}` },
     });
@@ -333,7 +333,8 @@ export class AgentWorkspaceService {
           cache: this.options.cache,
         });
       } catch (error) {
-        if (error instanceof AppErrors.RequestValidationError) throw error;
+        if (AppErrors.is_app_error(error) && error.code === "request.validation_failed")
+          throw error;
         await this.discard_active();
         throw workspace_recovery_error(error, "agent_workspace_apply_prepare_failed");
       }
@@ -360,11 +361,11 @@ export class AgentWorkspaceService {
             }),
         );
       } catch (error) {
-        if (error instanceof AppErrors.CommittedChangeSyncError) {
+        if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed") {
           await this.discard_active();
           throw error;
         }
-        if (error instanceof AppErrors.RevisionConflictError) {
+        if (AppErrors.is_app_error(error) && error.code === "data.revision_conflict") {
           await this.discard_active();
           throw workspace_error_with_action(error, "workspace_load");
         }
@@ -445,7 +446,7 @@ export class AgentWorkspaceService {
 
   /** load、run 与 apply 在服务内串行，避免活动目录被交叉替换。 */
   private async exclusive<T>(action: () => Promise<T>): Promise<T> {
-    if (this.busy) throw new AppErrors.RuntimeBusyError();
+    if (this.busy) throw new AppErrors.AppError("runtime.busy");
     this.busy = true;
     try {
       return await action();
@@ -648,8 +649,8 @@ async function write_jsonl_file(
 function workspace_validation_error(
   reason: string,
   action: "workspace_load" | "workspace_script" = "workspace_script",
-): AppErrors.RequestValidationError {
-  return new AppErrors.RequestValidationError({
+): AppErrors.AppError {
+  return new AppErrors.AppError("request.validation_failed", {
     public_details: { action },
     diagnostic_context: { reason },
   });
@@ -667,8 +668,7 @@ function workspace_error_with_action(
   reason?: string,
 ): AppErrors.AppError {
   if (AppErrors.is_app_error(error)) {
-    return new AppErrors.AppError({
-      code: error.code,
+    return new AppErrors.AppError(error.code, {
       cause: error,
       public_details: { ...error.public_details, action },
       diagnostic_context: {
@@ -677,7 +677,7 @@ function workspace_error_with_action(
       },
     });
   }
-  return new AppErrors.InternalInvariantError({
+  return new AppErrors.AppError("runtime.internal_invariant", {
     cause: error,
     public_details: { action },
     diagnostic_context: reason === undefined ? {} : { reason },

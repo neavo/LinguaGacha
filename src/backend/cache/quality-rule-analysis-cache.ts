@@ -59,7 +59,7 @@ export class QualityRuleAnalysisCache {
   public async read(rule_key: QualityRuleKind): Promise<QualityRuleAnalysisCacheResult> {
     const section_revisions = this.cache_reader.readSectionRevisions();
     const snapshot = this.cache_reader.snapshot();
-    if (snapshot.projectPath === "") throw new AppErrors.ProjectNotLoadedError();
+    if (snapshot.projectPath === "") throw new AppErrors.AppError("project.not_loaded");
 
     const entry = this.read_entry(rule_key);
     const analysis = await (entry.analysis ?? this.compute(rule_key, entry));
@@ -113,7 +113,9 @@ export class QualityRuleAnalysisCache {
       )
       .then((result): QualityRuleAnalysis => {
         const relations = result.relations ?? entry.relations;
-        if (relations === null) throw new Error("质量规则分析缺少关系结果");
+        if (relations === null) {
+          throw new Error("Quality rule analysis is missing relation results.");
+        }
         if (this.values.get(rule_key) === entry) entry.relations = relations;
         return { ...result, relations };
       })

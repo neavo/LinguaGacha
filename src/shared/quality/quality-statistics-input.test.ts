@@ -43,7 +43,7 @@ describe("prepare_quality_statistics_task_input", () => {
         entries: [{ entry_id: "invalid", src: "(", dst: "x", regex: true }],
         items: [],
       }),
-    ).toThrow("质量规则正则不是合法正则");
+    ).toThrow("Quality rule regex is invalid.");
   });
 
   it("替换与文本保护按字段内逐行统计", () => {

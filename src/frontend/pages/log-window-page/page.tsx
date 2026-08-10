@@ -23,7 +23,7 @@ import {
 import { LogAppendBuffer } from "@frontend/pages/log-window-page/log-append-buffer";
 import { LogDetailView } from "@frontend/pages/log-window-page/log-detail-view";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
@@ -446,7 +446,7 @@ export function LogWindowPage(): JSX.Element {
           <div className="topbar__left log-window-page__titlebar-left">
             <ScrollText size={16} aria-hidden="true" />
             <div className="topbar__brand">
-              <strong>{t("log_window_page.window_title")}</strong>
+              <strong>{t("log_window_page.title")}</strong>
             </div>
           </div>
         </div>
@@ -466,7 +466,6 @@ export function LogWindowPage(): JSX.Element {
             value: level_filter,
             button_label:
               level_filter === "all" ? t("log_window_page.search.scope.label") : level_filter_label,
-            aria_label: t("log_window_page.search.scope.label"),
             tooltip: scope_tooltip,
             options: level_filter_options,
             on_change: set_level_filter,
@@ -509,9 +508,6 @@ export function LogWindowPage(): JSX.Element {
           )}
         >
           <Card variant="table" className="log-window-page__table-card">
-            <CardHeader className="sr-only">
-              <CardTitle>{t("log_window_page.title")}</CardTitle>
-            </CardHeader>
             <CardContent className="log-window-page__table-card-content">
               <AppTable
                 rows={visible_events}

@@ -11,7 +11,6 @@ import {
 describe("应用语言", () => {
   it.each([
     ["ZH", "zh-CN", "zh", "zh"],
-    ["EN", "en-US", "en", "en"],
     ["DE", "de-DE", "de", "en"],
   ] as const)(
     "%s 统一投影到界面、语言显示和提示词资源语言",

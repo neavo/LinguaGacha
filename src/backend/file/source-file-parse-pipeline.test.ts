@@ -59,7 +59,6 @@ describe("SourceFileParsePipeline", () => {
         rel_path: "broken.json",
         filename: "broken.json",
         code: "file.parse_failed",
-        message_key: "app.error.file.parse_failed.message",
       },
     ]);
   });

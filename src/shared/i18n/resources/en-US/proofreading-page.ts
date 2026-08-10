@@ -5,29 +5,17 @@ export const en_us_proofreading_page = {
   title: "Proofreading",
   action: {
     filter: "Filter",
-    replace: "Replace",
     replace_all: "Replace All",
-    edit: "Edit",
     retranslate: "Retranslate",
     clear_translation: "Clear Translation",
     set_translation_status: "Set Translation Status",
-    save: "Save",
-    cancel: "Cancel",
-    confirm: "Confirm",
     view_context: "View Context",
     back: "Back",
-    retry: "Retry",
-  },
-  toggle: {
-    status: "{TITLE} - {STATE}",
   },
   fields: {
-    drag: "Drag",
     status: "Status",
     source: "Source",
-    source_name: "Source Name",
     translation: "Translation",
-    translation_name: "Translation Name",
   },
   search: {
     placeholder: "Query …",
@@ -40,8 +28,6 @@ export const en_us_proofreading_page = {
       label: "Scope",
       tooltip_label: "Search Scope",
       all: "All",
-      source: "Source",
-      translation: "Translation",
     },
   },
   sort: {
@@ -50,13 +36,10 @@ export const en_us_proofreading_page = {
     clear: "Clear",
   },
   status: {
-    none: "Awaiting Translation",
-    processed: "Translation Completed",
     excluded: "Excluded",
     rule_skipped: "Rule Skipped",
     non_target_source_language: "Non-target language",
     duplicated: "Duplicated",
-    error: "Translation Failed",
   },
   warning: {
     kana: "Kana Residue",

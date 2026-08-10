@@ -18,7 +18,7 @@ describe("Backend Runtime worker 入口", () => {
       workerData: {},
     }));
 
-    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow("缺少 parentPort");
+    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow("missing parentPort");
   });
 
   it("缺少 appRoot 时拒绝启动", async () => {
@@ -28,7 +28,7 @@ describe("Backend Runtime worker 入口", () => {
       workerData: {},
     }));
 
-    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow("缺少 appRoot");
+    await expect(import("./backend-runtime-worker-entry")).rejects.toThrow("missing appRoot");
   });
 
   it("把收窄后的 workerData 和 parentPort 交给运行时", async () => {

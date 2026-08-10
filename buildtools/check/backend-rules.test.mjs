@@ -50,7 +50,7 @@ describe("backend boundary rules", () => {
         "src/backend/model/catalog.test.ts": 'import OpenAI from "openai";',
         "src/native/native-fs.ts": 'import "node:fs/promises";',
         "src/shared/error/app-error.ts": [
-          'export const APP_ERROR_DEFINITIONS = { ok: { message_key: "app.error" } };',
+          'export const APP_ERROR_DEFINITIONS = { ok: { status: 400, severity: "expected" } };',
           "export interface AppErrorOptions {}",
         ].join("\n"),
       }),

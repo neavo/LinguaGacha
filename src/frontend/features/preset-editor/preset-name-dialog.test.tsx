@@ -75,7 +75,7 @@ describe("PresetNameDialog", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       [...container!.querySelectorAll("button")]
-        .find((button) => button.textContent?.includes("quality_editor.preset.dialog.save_confirm"))
+        .find((button) => button.textContent?.includes("app.action.save"))
         ?.click();
     });
 

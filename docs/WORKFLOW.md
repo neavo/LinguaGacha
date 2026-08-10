@@ -29,6 +29,7 @@ npm run format -- --check
 ```
 
 格式检查失败时运行 `npm run format` 修复相关文件，再重新执行 `npm run format -- --check`。
+`npm run check` 同时禁止生产异常使用中文非 i18n 字面量，以及按 `Error.message` 文本建立控制流。
 
 | 改动范围 | 基线后追加验证 |
 | --- | --- |

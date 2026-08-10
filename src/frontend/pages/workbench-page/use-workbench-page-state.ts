@@ -578,8 +578,8 @@ function build_translation_task_detail_display(args: {
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
-      ? args.t("workbench_page.action.translation_stopping")
-      : args.t("workbench_page.action.stop_translation"),
+      ? args.t("workbench_page.task.summary.stopping")
+      : args.t("workbench_page.action.stop_task"),
     stop_disabled: !args.metrics.active || args.metrics.stopping,
     waveform_history: args.waveform_history,
   };
@@ -603,8 +603,8 @@ function build_analysis_task_detail_display(args: {
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_analysis_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
-      ? args.t("workbench_page.action.analysis_stopping")
-      : args.t("workbench_page.action.stop_analysis"),
+      ? args.t("workbench_page.task.summary.stopping")
+      : args.t("workbench_page.action.stop_task"),
     stop_disabled: !args.metrics.active || args.metrics.stopping,
     waveform_history: args.waveform_history,
   };

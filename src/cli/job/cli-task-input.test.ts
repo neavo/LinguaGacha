@@ -100,7 +100,7 @@ describe("build_cli_task_input", () => {
       build_cli_task_input(
         create_command("translate", { preReplacementPath: pre_replacement_path }),
       ),
-    ).rejects.toThrow("质量规则正则不是合法正则");
+    ).rejects.toThrow("Quality rule regex is invalid.");
   });
 });
 

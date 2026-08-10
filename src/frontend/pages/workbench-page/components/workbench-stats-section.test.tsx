@@ -44,18 +44,14 @@ describe("WorkbenchStatsSection", () => {
       );
     });
 
-    const section = container.querySelector<HTMLElement>(
-      'section[aria-label="workbench_page.section.stats"]',
-    );
+    const section = container.querySelector<HTMLElement>(".workbench-page__stats-grid");
     expect(section).toBeInstanceOf(HTMLElement);
-    expect(section?.textContent).toContain("workbench_page.stats.analysis_completed");
-    expect(section?.textContent).not.toContain("workbench_page.stats.translation_completed");
+    expect(section?.textContent).toContain("task_progress.analysis_completed");
+    expect(section?.textContent).not.toContain("task_progress.translation_completed");
 
     const completed_card = [
       ...(section?.querySelectorAll<HTMLElement>('[role="button"]') ?? []),
-    ].find((candidate) =>
-      candidate.textContent?.includes("workbench_page.stats.analysis_completed"),
-    );
+    ].find((candidate) => candidate.textContent?.includes("task_progress.analysis_completed"));
     if (completed_card === undefined) {
       throw new Error("缺少可切换的分析完成统计卡片");
     }

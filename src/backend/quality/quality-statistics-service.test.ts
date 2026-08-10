@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
 import { ProjectSessionState } from "../project/project-session-state";
-import * as AppErrors from "../../shared/error";
 import { QualityStatisticsService } from "./quality-statistics-service";
 
 function create_cache(): Pick<QualityRuleAnalysisCache, "read"> {
@@ -48,9 +47,9 @@ describe("QualityStatisticsService", () => {
       cache: create_cache(),
     });
 
-    await expect(service.read({ rule_key: "unknown" })).rejects.toBeInstanceOf(
-      AppErrors.RequestValidationError,
-    );
+    await expect(service.read({ rule_key: "unknown" })).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
   });
 
   it("未加载工程时不读取统计缓存", async () => {
@@ -60,9 +59,9 @@ describe("QualityStatisticsService", () => {
       cache,
     });
 
-    await expect(service.read({ rule_key: "glossary" })).rejects.toBeInstanceOf(
-      AppErrors.ProjectNotLoadedError,
-    );
+    await expect(service.read({ rule_key: "glossary" })).rejects.toMatchObject({
+      code: "project.not_loaded",
+    });
     expect(cache.read).not.toHaveBeenCalled();
   });
 });

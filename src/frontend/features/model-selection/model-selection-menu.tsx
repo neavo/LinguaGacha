@@ -66,9 +66,6 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
             >
               <CategoryIcon aria-hidden="true" />
               <span>{t(MODEL_TYPE_TITLE_KEY[model_type])}</span>
-              {current_category ? (
-                <span className="sr-only">{t("app.model.selection.current_category")}</span>
-              ) : null}
             </AppDropdownMenuSubTrigger>
             <AppDropdownMenuSubContent>
               <AppDropdownMenuRadioGroup

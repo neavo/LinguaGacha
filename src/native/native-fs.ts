@@ -21,7 +21,7 @@ export function normalize_native_file_bytes(content: unknown): Uint8Array {
   if (content instanceof ArrayBuffer) {
     return new Uint8Array(content);
   }
-  throw new TypeError("文件二进制内容必须是 Uint8Array 或 ArrayBuffer。");
+  throw new TypeError("Binary file content must be a Uint8Array or ArrayBuffer.");
 }
 
 /**

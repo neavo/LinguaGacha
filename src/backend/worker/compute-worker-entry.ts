@@ -66,7 +66,7 @@ async function execute_message(message: ComputeWorkerRunMessage): Promise<void> 
 
 function assert_not_cancelled(state: ComputeWorkerTaskState): void {
   if (state.cancelled) {
-    throw new Error("Compute worker 任务已取消。");
+    throw new Error("Compute worker task was cancelled.");
   }
 }
 

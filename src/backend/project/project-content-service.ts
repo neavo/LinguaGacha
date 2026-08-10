@@ -125,7 +125,7 @@ export class ProjectContentService {
       const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
       const file_commands = this.normalize_import_file_commands(request["files"]);
       if (file_commands.length === 0) {
-        throw new AppErrors.RequestValidationError();
+        throw new AppErrors.AppError("request.validation_failed");
       }
       const parse_result = await this.parse_import_file_commands(file_commands);
       this.assert_project_import_has_parseable_files(parse_result);
@@ -158,7 +158,7 @@ export class ProjectContentService {
       for (const file of parse_result.file_drafts) {
         const target_key = file.rel_path.toLowerCase();
         if (incoming_paths.has(target_key)) {
-          throw new AppErrors.RequestValidationError({
+          throw new AppErrors.AppError("request.validation_failed", {
             diagnostic_context: {
               reason: "duplicate_import_target",
               rel_path: file.rel_path,
@@ -205,7 +205,7 @@ export class ProjectContentService {
         });
       }
       if (imported_files.length === 0) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "no_importable_files" },
         });
       }
@@ -280,7 +280,7 @@ export class ProjectContentService {
       ]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
-        throw new AppErrors.RequestValidationError();
+        throw new AppErrors.AppError("request.validation_failed");
       }
       const snapshot = this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
@@ -331,7 +331,7 @@ export class ProjectContentService {
       ]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
-        throw new AppErrors.RequestValidationError();
+        throw new AppErrors.AppError("request.validation_failed");
       }
       const snapshot = this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
@@ -398,7 +398,7 @@ export class ProjectContentService {
   public async align_settings(request: JsonRecord): Promise<ProjectWriteResult> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "settings_only" && mode !== "prefiltered_items") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return this.runtime_gate.run_project_write(async () => {
       const project_path = await this.resolve_project_path(request);
@@ -500,7 +500,7 @@ export class ProjectContentService {
           translationExtras: translation_extras as MutableJsonRecord,
         });
       }
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     });
   }
 
@@ -514,7 +514,7 @@ export class ProjectContentService {
     return this.runtime_gate.run_project_write(async () => {
       const analysis_extras = this.build_analysis_reset_extras(project_path, mode);
       if (mode !== "all" && mode !== "failed") {
-        throw new AppErrors.RequestValidationError();
+        throw new AppErrors.AppError("request.validation_failed");
       }
       return await this.write_store.reset_analysis_state({
         projectPath: project_path,
@@ -536,7 +536,7 @@ export class ProjectContentService {
     if (value === "skip" || value === "replace") {
       return value;
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_import_conflict_action" },
     });
   }
@@ -585,7 +585,7 @@ export class ProjectContentService {
       return;
     }
     this.log_project_import_parse_failures(result.failed_files);
-    throw new AppErrors.FileParseFailedError({
+    throw new AppErrors.AppError("file.parse_failed", {
       public_details: {
         failed_files: result.failed_files as unknown as JsonValue,
       },
@@ -627,7 +627,7 @@ export class ProjectContentService {
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
       if (field in request) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_payload_field", field },
         });
       }
@@ -763,7 +763,7 @@ export class ProjectContentService {
   private normalize_public_item(value: unknown): ProjectItemPublicRecord {
     const public_item = normalize_project_item_public_record(value);
     if (public_item === null) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: {
           reason: "item_incomplete",
           missing_fields: collect_project_item_missing_public_fields(value),
@@ -1067,7 +1067,7 @@ export class ProjectContentService {
     reason: string,
     diagnostic_context: JsonRecord = {},
   ): never {
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: {
         reason,
         ...diagnostic_context,
@@ -1185,7 +1185,7 @@ export class ProjectContentService {
    */
   private assert_explicit_project_file_exists(project_path: string): void {
     if (!this.native_fs.exists(project_path)) {
-      throw new AppErrors.ProjectNotFoundError({
+      throw new AppErrors.AppError("project.not_found", {
         public_details: {
           filename: project_path.split(/[\\/]/u).at(-1) ?? "",
         },
@@ -1205,12 +1205,12 @@ export class ProjectContentService {
    */
   private assert_rel_paths_exist(asset_records: ProjectAssetRecord[], rel_paths: string[]): void {
     if (rel_paths.length === 0) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const existing = new Set(asset_records.map((record) => record.path));
     for (const rel_path of rel_paths) {
       if (!existing.has(rel_path)) {
-        throw new AppErrors.FileNotFoundError({
+        throw new AppErrors.AppError("file.not_found", {
           public_details: { rel_path },
         });
       }
@@ -1222,16 +1222,16 @@ export class ProjectContentService {
    */
   private assert_complete_path_order(current_paths: string[], ordered_paths: string[]): void {
     if (current_paths.length !== ordered_paths.length) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const current = new Set(current_paths);
     const ordered = new Set(ordered_paths);
     if (current.size !== ordered.size) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     for (const rel_path of current) {
       if (!ordered.has(rel_path)) {
-        throw new AppErrors.RequestValidationError();
+        throw new AppErrors.AppError("request.validation_failed");
       }
     }
   }

@@ -82,7 +82,7 @@ describe("TextReplacementEditDialog", () => {
     });
 
     expect(
-      container.querySelector('textarea[aria-label="quality_editor.fields.source"]'),
+      container.querySelector('textarea[aria-label="quality_rule_editor.fields.source"]'),
     ).not.toBeNull();
     expect(
       container.querySelector('textarea[aria-label="text_replacement_page.fields.replacement"]'),

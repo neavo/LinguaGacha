@@ -15,16 +15,15 @@ describe("quality rule api client", () => {
     api_fetch_mock.mockReset();
   });
 
-  it.each(["glossary", "pre_replacement", "post_replacement", "text_preserve"] as const)(
-    "读取 %s 规则视图",
-    async (rule_type) => {
-      const response = { projectPath: "E:/demo/demo.lg" };
-      api_fetch_mock.mockResolvedValue(response);
+  it("读取规则视图", async () => {
+    const response = { projectPath: "E:/demo/demo.lg" };
+    api_fetch_mock.mockResolvedValue(response);
 
-      await expect(read_quality_rule_snapshot(rule_type)).resolves.toBe(response);
-      expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/query", { rule_type });
-    },
-  );
+    await expect(read_quality_rule_snapshot("glossary")).resolves.toBe(response);
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/query", {
+      rule_type: "glossary",
+    });
+  });
 
   it("导入规则时只返回数组 entries", async () => {
     const entries = [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }];

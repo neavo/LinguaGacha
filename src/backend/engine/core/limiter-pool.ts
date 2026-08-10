@@ -1,4 +1,4 @@
-import { RuntimeCancelledError } from "../../../shared/error";
+import { AppError } from "../../../shared/error";
 import { read_json_integer, read_json_record } from "../../../domain/json";
 
 const DEFAULT_CONCURRENCY_LIMIT = 8; // 用户未设置并发且未设置 RPM 时，默认同时执行 8 个 LLM work unit
@@ -240,7 +240,7 @@ export class TaskLimiter {
    * 停止错误统一创建，避免各等待分支产生不同错误文本。
    */
   private create_abort_error(): Error {
-    return new RuntimeCancelledError({
+    return new AppError("runtime.cancelled", {
       public_details: { resource: "task_limiter" },
       diagnostic_context: { reason: "abort_signal" },
     });

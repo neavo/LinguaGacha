@@ -7,11 +7,7 @@ import {
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
 import { summarize_project_change_for_diagnostics } from "@frontend/app/state/desktop-diagnostics";
 import type { DesktopRecoveryActions } from "@frontend/app/state/desktop-recovery";
-import {
-  InternalInvariantError,
-  type LogErrorContextInput,
-  type RendererErrorContextInput,
-} from "@shared/error";
+import { AppError, type LogErrorContextInput, type RendererErrorContextInput } from "@shared/error";
 import type { TaskType } from "@domain/task";
 
 export type ProjectWriteResultPayload = {
@@ -67,7 +63,7 @@ export function normalize_project_write_result(
   payload: ProjectWriteResultPayload,
 ): ProjectWriteResult {
   if (payload.accepted !== true || !Array.isArray(payload.changes)) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: { reason: "invalid_project_write_result_payload" },
     });
   }
@@ -136,7 +132,7 @@ function normalize_project_write_change_event(
   index: number,
 ): ProjectChangeEventForState {
   if (!is_project_change_record(change)) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "invalid_project_write_change_record",
         index,
@@ -146,7 +142,7 @@ function normalize_project_write_change_event(
 
   const normalized_change = normalize_project_change_event(change);
   if (normalized_change === null) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "invalid_project_write_change_payload",
         index,

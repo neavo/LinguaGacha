@@ -27,8 +27,8 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
     return models.sort();
   } catch (error) {
     // fetch_json 已完成公开状态收窄；重复包装会丢失这份安全诊断。
-    if (error instanceof AppErrors.ModelProviderFailedError) throw error;
-    throw new AppErrors.ModelProviderFailedError({ cause: error });
+    if (AppErrors.is_app_error(error) && error.code === "model.provider_failed") throw error;
+    throw new AppErrors.AppError("model.provider_failed", { cause: error });
   }
 }
 
@@ -92,7 +92,7 @@ async function fetch_anthropic_available_models(model: JsonRecord): Promise<stri
 async function fetch_json(url: string, headers: Record<string, string>): Promise<JsonValue> {
   const response = await fetch(url, { headers, method: "GET" });
   if (!response.ok) {
-    throw new AppErrors.ModelProviderFailedError({
+    throw new AppErrors.AppError("model.provider_failed", {
       public_details: { status: response.status },
       cause: response,
     });

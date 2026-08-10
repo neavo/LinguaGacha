@@ -110,8 +110,6 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
 
       <CommandBar
         className="ts-conversion-page__command-bar"
-        title={t("ts_conversion_page.title")}
-        description={t("ts_conversion_page.description")}
         actions={
           <CommandBarGroup>
             <AppButton

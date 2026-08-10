@@ -2,10 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  ProofreadingStatusCell,
-  ProofreadingTable,
-} from "@frontend/pages/proofreading-page/components/proofreading-table";
+import { ProofreadingTable } from "@frontend/pages/proofreading-page/components/proofreading-table";
 import type {
   ProofreadingItem,
   ProofreadingVisibleItem,
@@ -127,64 +124,6 @@ function create_visible_item(
   };
 }
 
-describe("ProofreadingStatusCell", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
-
-    container?.remove();
-    container = null;
-    root = null;
-  });
-
-  async function render_cell(
-    retranslating: boolean,
-    item: ProofreadingItem = create_item(),
-  ): Promise<HTMLDivElement> {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <TooltipProvider>
-          <ProofreadingStatusCell item={item} retranslating={retranslating} />
-        </TooltipProvider>,
-      );
-    });
-
-    return container;
-  }
-
-  it("重翻中的状态单元格只渲染 Spinner", async () => {
-    const rendered = await render_cell(true);
-
-    expect(rendered.querySelector('[role="status"]')).not.toBeNull();
-    expect(rendered.querySelectorAll("svg")).toHaveLength(1);
-  });
-
-  it("非重翻状态仍按原状态与 warning 图标渲染", async () => {
-    const rendered = await render_cell(false);
-
-    expect(rendered.querySelector('[role="status"]')).toBeNull();
-    expect(rendered.querySelectorAll("svg")).toHaveLength(2);
-  });
-
-  it.each(["RULE_SKIPPED", "DUPLICATED"])("%s 状态渲染中性状态图标", async (status) => {
-    const rendered = await render_cell(false, create_item({ status, warnings: [] }));
-
-    expect(rendered.querySelector('[role="status"]')).toBeNull();
-    expect(rendered.querySelectorAll("svg")).toHaveLength(1);
-    expect(rendered.querySelector(".proofreading-page__status-icon--neutral")).not.toBeNull();
-  });
-});
-
 describe("ProofreadingTable", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -269,48 +208,5 @@ describe("ProofreadingTable", () => {
         ?.click();
     });
     expect(on_visible_range_change).toHaveBeenCalledWith({ start: 2, count: 5 });
-  });
-
-  it("有姓名字段时在原文和译文前展示中性姓名胶囊", async () => {
-    await render_table(
-      create_visible_item(1, {
-        name_src: ["虎铁", "保留原名"],
-        name_dst: "虎铁译",
-      }),
-    );
-
-    const source_cell = container?.querySelector('[data-testid="app-table-cell-src"]');
-    const translation_cell = container?.querySelector('[data-testid="app-table-cell-dst"]');
-    const source_badge = source_cell?.querySelector(".proofreading-page__table-name-badge");
-    const translation_badge = translation_cell?.querySelector(
-      ".proofreading-page__table-name-badge",
-    );
-
-    expect(source_badge?.getAttribute("data-variant")).toBe("secondary");
-    expect(
-      source_badge?.querySelector(".proofreading-page__table-name-badge-label"),
-    ).not.toBeNull();
-    expect(source_badge?.textContent).toBe("虎铁");
-    expect(source_cell?.querySelector(".proofreading-page__table-text")?.textContent).toBe("src-1");
-    expect(translation_badge?.getAttribute("data-variant")).toBe("secondary");
-    expect(translation_badge?.textContent).toBe("虎铁译");
-    expect(translation_cell?.querySelector(".proofreading-page__table-text")?.textContent).toBe(
-      "dst-1",
-    );
-  });
-
-  it("姓名数组首项为空时不展示后续槽位姓名", async () => {
-    await render_table(
-      create_visible_item(1, {
-        name_src: ["", "Bob"],
-        name_dst: ["", "鲍勃"],
-      }),
-    );
-
-    const source_cell = container?.querySelector('[data-testid="app-table-cell-src"]');
-    const translation_cell = container?.querySelector('[data-testid="app-table-cell-dst"]');
-
-    expect(source_cell?.querySelector(".proofreading-page__table-name-badge")).toBeNull();
-    expect(translation_cell?.querySelector(".proofreading-page__table-name-badge")).toBeNull();
   });
 });

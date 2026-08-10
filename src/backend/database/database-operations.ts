@@ -91,7 +91,7 @@ function bytes_from_blob(value: unknown): Buffer {
  */
 function ensure_database_runtime_available(): void {
   if (!ZstdTool.isRuntimeAvailable()) {
-    throw new AppErrors.RuntimeCapabilityMissingError();
+    throw new AppErrors.AppError("runtime.capability_missing");
   }
 }
 
@@ -125,7 +125,7 @@ export class ProjectDatabase {
       }
     }
     if (errors.length > 0) {
-      throw new AggregateError(errors, "项目数据库连接关闭失败");
+      throw new AggregateError(errors, "Failed to close project database connections.");
     }
   }
 
@@ -426,7 +426,10 @@ export class ProjectDatabase {
       try {
         db.close();
       } catch (close_error) {
-        throw new AggregateError([open_error, close_error], "项目数据库初始化失败且连接关闭失败");
+        throw new AggregateError(
+          [open_error, close_error],
+          "Project database initialization and connection cleanup both failed.",
+        );
       }
       throw open_error;
     }
@@ -516,7 +519,7 @@ export class ProjectDatabase {
       throw errors[0];
     }
     if (errors.length > 1) {
-      throw new AggregateError(errors, "项目数据库单连接关闭失败");
+      throw new AggregateError(errors, "Failed to close a project database connection.");
     }
   }
 
@@ -851,8 +854,8 @@ export class ProjectDatabase {
       )
       .run(compressed, original_data.byteLength, compressed.byteLength, asset_path);
     if (Number(result.changes) === 0) {
-      throw new AppErrors.DatabaseConflictError({
-        diagnostic_context: { reason: "资产不存在，无法更新。" },
+      throw new AppErrors.AppError("database.conflict", {
+        diagnostic_context: { reason: "Asset does not exist and cannot be updated." },
       });
     }
   }
@@ -1159,7 +1162,7 @@ export class ProjectDatabase {
       const entry = this.value_record(raw_patch);
       const item_id = Number(entry["id"]);
       if (!Number.isInteger(item_id) || item_id <= 0) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "invalid_translation_patch_item_id" },
         });
       }
@@ -1168,7 +1171,7 @@ export class ProjectDatabase {
         clamp_retry_count: true,
       });
       if (patch_entries.length === 0) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "empty_translation_patch" },
         });
       }
@@ -1189,7 +1192,7 @@ export class ProjectDatabase {
         .prepare(`UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id = ?`)
         .run(...patch_values, item_id);
       if (Number(result.changes) !== 1) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "translation_patch_item_not_found", item_id },
         });
       }

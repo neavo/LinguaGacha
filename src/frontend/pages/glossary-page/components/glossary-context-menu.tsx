@@ -30,7 +30,7 @@ export function GlossaryContextMenuContent(props: GlossaryContextMenuContentProp
           }}
         >
           <PencilLine />
-          {t("quality_editor.action.edit")}
+          {t("app.action.edit")}
         </AppContextMenuItem>
         <AppContextMenuSub>
           <AppContextMenuSubTrigger disabled={props.readonly}>

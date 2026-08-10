@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { MutableJsonRecord } from "../../../../domain/json";
-import { InvalidFileStructureError } from "../../../../shared/error";
 import { RPGMakerTransProcessor } from "./processors/rpgmaker-processor";
 import { WolfTransProcessor } from "./processors/wolf-processor";
 import type { PatchTarget, TransSnapshot } from "./trans-processor";
@@ -14,7 +13,7 @@ describe("collect_patch_targets", () => {
     });
 
     expect(() => collect_patch_targets([snap], { "/demo.map": { data: [["原文", ""]] } })).toThrow(
-      InvalidFileStructureError,
+      expect.objectContaining({ code: "file.invalid_structure" }),
     );
   });
 });

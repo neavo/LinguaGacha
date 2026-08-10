@@ -449,7 +449,9 @@ export class TaskPlanner {
    */
   private throw_if_aborted(signal: AbortSignal): void {
     if (signal.aborted) {
-      throw signal.reason instanceof Error ? signal.reason : new Error("任务规划已取消。");
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error("Task planning was cancelled.");
     }
   }
 }

@@ -106,7 +106,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     fs.writeFileSync(path.join(workspace_path, "contract.json"), "[]");
 
     await expect(DesktopAgentWorkspaceFiles.open(workspace_path, "transactional")).rejects.toThrow(
-      "contract.json 根节点无效",
+      "Workspace contract.json root is invalid.",
     );
   });
 

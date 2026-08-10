@@ -55,7 +55,7 @@ export function normalize_quality_rule_entries(
 /** 收窄项目身份；格式保持不透明，只约束可用性。 */
 function normalize_quality_rule_entry_id(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError("质量规则 entry_id 不能为空");
+    throw new TypeError("Quality rule entry_id must not be empty.");
   }
   return value.trim();
 }
@@ -68,7 +68,7 @@ function validate_quality_rule_entries(
   const entry_ids = new Set<string>();
   for (const entry of entries) {
     if (entry_ids.has(entry.entry_id)) {
-      throw new TypeError(`质量规则 entry_id 重复：${entry.entry_id}`);
+      throw new TypeError(`Duplicate quality rule entry_id: ${entry.entry_id}.`);
     }
     entry_ids.add(entry.entry_id);
   }
@@ -87,7 +87,7 @@ function validate_quality_rule_entries(
       compile_text_replacements(entries as TextReplacementEntry[]);
     }
   } catch (cause) {
-    throw new TypeError("质量规则正则不是合法正则", { cause });
+    throw new TypeError("Quality rule regex is invalid.", { cause });
   }
   return entries;
 }

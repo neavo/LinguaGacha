@@ -82,7 +82,10 @@ export class TaskService {
       try {
         await this.task_runtime.cancel_start(handle);
       } catch (restore_error) {
-        throw new AggregateError([error, restore_error], "任务启动失败且恢复快照发布失败");
+        throw new AggregateError(
+          [error, restore_error],
+          "Task startup and recovery snapshot publication both failed.",
+        );
       }
       throw error;
     }
@@ -152,7 +155,7 @@ export class TaskService {
    */
   private normalize_start_command(request: JsonRecord): StartTaskCommand {
     if (Object.hasOwn(request, "expected_section_revisions")) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "task_start_legacy_revision_field" },
       });
     }
@@ -179,7 +182,7 @@ export class TaskService {
     if (is_task_type(value)) {
       return value;
     }
-    throw new AppErrors.RequestValidationError();
+    throw new AppErrors.AppError("request.validation_failed");
   }
 
   /**
@@ -188,7 +191,7 @@ export class TaskService {
   private normalize_mode(value: JsonValue | undefined): TaskStartMode {
     const mode = String(value ?? "new").toLowerCase();
     if (!is_task_start_mode(mode)) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return mode;
   }
@@ -203,11 +206,11 @@ export class TaskService {
       return { kind: "all" };
     }
     if (scope_kind !== "items") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const item_ids = this.normalize_item_ids(scope["item_ids"] ?? request["item_ids"]);
     if (item_ids.length === 0) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return { kind: "items", item_ids };
   }

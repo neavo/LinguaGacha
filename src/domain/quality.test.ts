@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { UnknownQualityRuleTypeError } from "../shared/error";
 import { QualityRule, normalize_text_preserve_mode } from "./quality";
 
 describe("QualityRule", () => {
@@ -11,7 +10,9 @@ describe("QualityRule", () => {
       "pre_replacement",
       "post_replacement",
     ]);
-    expect(() => QualityRule.from_json("legacy")).toThrowError(UnknownQualityRuleTypeError);
+    expect(() => QualityRule.from_json("legacy")).toThrowError(
+      expect.objectContaining({ code: "quality.unknown_rule_type" }),
+    );
   });
 
   it("文本保护模式兼容历史大小写并尊重调用方默认值", () => {
@@ -47,13 +48,15 @@ describe("QualityRule", () => {
 
   it("错误字段类型和空 src 整批拒绝", () => {
     const rule = QualityRule.from_json("post_replacement");
-    expect(() => rule.normalize_entries([null])).toThrow("质量规则条目必须是对象");
-    expect(() => rule.normalize_entries([{ src: "", dst: "x" }])).toThrow("质量规则 src 不能为空");
+    expect(() => rule.normalize_entries([null])).toThrow("Quality rule entry must be an object.");
+    expect(() => rule.normalize_entries([{ src: "", dst: "x" }])).toThrow(
+      "Quality rule src must not be empty.",
+    );
     expect(() => rule.normalize_entries([{ src: "a", dst: 1 }])).toThrow(
-      "质量规则 dst 必须是字符串",
+      "Quality rule dst must be a string.",
     );
     expect(() => rule.normalize_entries([{ src: "a", dst: "b", regex: 1 }])).toThrow(
-      "质量规则 regex 必须是布尔值",
+      "Quality rule regex must be a boolean.",
     );
   });
 

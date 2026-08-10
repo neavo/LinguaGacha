@@ -80,7 +80,7 @@ export class TaskEngine {
    */
   public async start(handle: TaskRunHandle, command: StartTaskCommand): Promise<void> {
     if (!this.task_runtime.is_current(handle.run_id) || handle.task_type !== command.task_type) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     const completion =
       command.task_type === "translation"
@@ -399,7 +399,7 @@ export class TaskEngine {
     result: WorkUnitExecutionResult,
   ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
-      throw new AppErrors.WorkerExecutionFailedError({
+      throw new AppErrors.AppError("worker.execution_failed", {
         diagnostic_context: {
           expected_kind: "translation",
           result_kind: result.kind,
@@ -422,7 +422,7 @@ export class TaskEngine {
    */
   private to_analysis_work_unit_result(result: WorkUnitExecutionResult): AnalysisWorkUnitResult {
     if (result.kind !== "analysis" || result.output.kind !== "analysis") {
-      throw new AppErrors.WorkerExecutionFailedError({
+      throw new AppErrors.AppError("worker.execution_failed", {
         diagnostic_context: {
           expected_kind: "analysis",
           result_kind: result.kind,
@@ -768,7 +768,7 @@ export class TaskEngine {
     const config_snapshot = this.app_setting_service.read_setting();
     const model = resolve_model_for_usage(config_snapshot, task_type);
     if (model === null) {
-      throw new AppErrors.ModelNotFoundError();
+      throw new AppErrors.AppError("model.not_found");
     }
     return { config_snapshot, model };
   }

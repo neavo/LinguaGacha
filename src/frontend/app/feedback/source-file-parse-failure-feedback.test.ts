@@ -15,21 +15,19 @@ describe("source file parse failure feedback", () => {
         value: [
           {
             filename: "chapter01.txt",
-            code: "decode_failed",
-            message_key: "app.error.decode_failed.message",
+            code: "file.io_failed",
           },
           { filename: "", code: "missing_filename" },
           {
             filename: "chapter02.txt",
-            code: "parse_failed",
-            message_key: "app.error.parse_failed.message",
+            code: "file.parse_failed",
           },
         ],
         text,
       }),
     ).toBe(
-      "chapter01.txt - 原因：app.error.decode_failed.message\n" +
-        "chapter02.txt - 原因：app.error.parse_failed.message",
+      "chapter01.txt - 原因：app.error.file.io_failed.message\n" +
+        "chapter02.txt - 原因：app.error.file.parse_failed.message",
     );
   });
 
@@ -39,12 +37,12 @@ describe("source file parse failure feedback", () => {
         error: {
           message: "不得解析这段文本",
           details: {
-            failed_files: [{ filename: "broken.txt", code: "parse_failed" }],
+            failed_files: [{ filename: "broken.txt", code: "file.parse_failed" }],
           },
         },
         text,
       }),
-    ).toBe("broken.txt - 原因：app.error.parse_failed.message");
+    ).toBe("broken.txt - 原因：app.error.file.parse_failed.message");
 
     expect(
       format_source_file_parse_failure_error_toast({

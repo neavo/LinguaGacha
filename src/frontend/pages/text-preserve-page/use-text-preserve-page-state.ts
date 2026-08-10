@@ -28,7 +28,10 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import {
+  ModalProgressToastTimeoutError,
+  useDesktopToast,
+} from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
@@ -153,7 +156,6 @@ function clone_text_preserve_filter_state(
 }
 
 // 仅该内部哨兵错误由调用方静默补偿，真实请求错误仍需反馈给用户。
-const MODAL_PROGRESS_TIMEOUT_MESSAGE = "模态进度通知等待超时。";
 // 保留文本页分别标记条目保存和模式保存，诊断名由页面领域拥有。
 const TEXT_PRESERVE_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "text_preserve.entries_save";
 const TEXT_PRESERVE_MODE_UPDATE_WRITE: ProjectWriteOperation = "text_preserve.mode_update";
@@ -249,11 +251,6 @@ function build_default_preset_update_payload(value: string): Record<string, stri
   return {
     [TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY]: value,
   };
-}
-
-/** 识别等待事件回流的内部超时，不吞掉真实后端错误。 */
-function is_modal_progress_timeout_error(error: unknown): boolean {
-  return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE;
 }
 
 /**
@@ -590,7 +587,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       clear_selection_state();
-      push_toast("success", t("quality_editor.feedback.import_success"));
+      push_toast("success", t("app.feedback.import_success"));
 
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
@@ -783,7 +780,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           }),
         );
       } catch (error) {
-        if (snapshot_committed && is_modal_progress_timeout_error(error)) {
+        if (snapshot_committed && error instanceof ModalProgressToastTimeoutError) {
           push_toast("warning", t("text_preserve_page.feedback.mode_refresh_pending"));
         } else {
           push_action_error_toast(error);
@@ -1031,7 +1028,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         }),
       });
       if (exported) {
-        push_toast("success", t("quality_editor.feedback.export_success"));
+        push_toast("success", t("app.feedback.export_success"));
       }
     } catch (error) {
       push_action_error_toast(error);
@@ -1173,7 +1170,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_saved"));
+        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1213,7 +1210,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_renamed"));
+        push_toast("success", t("preset_editor.feedback.renamed"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1244,7 +1241,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.default_preset_set"));
+        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_action_error_toast(error);
       }
@@ -1295,7 +1292,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
-        return `${t("quality_editor.feedback.regex_invalid")}: ${detail}`;
+        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
       }
     },
     [t],
@@ -1446,7 +1443,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("quality_editor.feedback.preset_exists"));
+      push_toast("warning", t("preset_editor.feedback.exists"));
       return;
     }
 
@@ -1529,7 +1526,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("quality_editor.feedback.preset_deleted"));
+          push_toast("success", t("preset_editor.feedback.deleted"));
           succeeded = true;
         }
       } catch (error) {

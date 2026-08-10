@@ -21,7 +21,7 @@ type GlossaryEditDialogProps = {
 };
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("quality_editor.action.save");
+  const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
   const boolean_segmented_options = [
     {
@@ -33,8 +33,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
       label: t("app.toggle.enabled"),
     },
   ] as const;
-  const title =
-    props.mode === "create" ? t("quality_editor.action.create") : t("quality_editor.action.edit");
+  const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
   useActionShortcut({
     action: "save",
@@ -63,7 +62,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               void props.on_close();
             }}
           >
-            {t("quality_editor.action.cancel")}
+            {t("app.action.cancel")}
             <ShortcutKbd action="cancel" />
           </AppButton>
           <AppButton
@@ -86,12 +85,12 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
             <div className="glossary-page__dialog-main-panel-content">
               <label className="glossary-page__dialog-section">
                 <span className="glossary-page__dialog-section-title font-medium">
-                  {t("quality_editor.fields.source")}
+                  {t("quality_rule_editor.fields.source")}
                 </span>
                 <AppEditor
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.src}
-                  aria_label={t("quality_editor.fields.source")}
+                  aria_label={t("quality_rule_editor.fields.source")}
                   read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {

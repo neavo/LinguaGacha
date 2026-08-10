@@ -104,10 +104,10 @@ export class DesktopUpdateService {
     try {
       const response = await this.runtime.fetch(download_target.zip_url, { method: "GET" });
       if (!response.ok) {
-        throw new Error(`下载更新包失败：HTTP ${response.status.toString()}`);
+        throw new Error(`Failed to download update package: HTTP ${response.status.toString()}.`);
       }
       if (response.body === null) {
-        throw new Error("下载更新包失败：响应体为空");
+        throw new Error("Failed to download update package: response body is empty.");
       }
 
       const downloaded_bytes = await write_response_body_to_file({
@@ -146,7 +146,7 @@ export class DesktopUpdateService {
     const version_dir = this.get_version_dir(request.latest_version);
     const resolved_zip_path = path.resolve(request.zip_path);
     if (!is_path_inside(resolved_zip_path, version_dir)) {
-      throw new Error("更新包路径不在当前版本目录内");
+      throw new Error("Update package path is outside the current version directory.");
     }
     const target_arch = normalize_windows_release_arch(this.runtime.arch);
     if (
@@ -157,7 +157,7 @@ export class DesktopUpdateService {
         target_arch,
       )
     ) {
-      throw new Error("更新包架构与当前应用不匹配");
+      throw new Error("Update package architecture does not match the current application.");
     }
 
     await fs.mkdir(this.update_root_dir, { recursive: true });
@@ -265,7 +265,7 @@ async function write_response_body_to_file(args: {
 }): Promise<number> {
   const body = args.response.body;
   if (body === null) {
-    throw new Error("下载更新包失败：响应体为空");
+    throw new Error("Failed to download update package: response body is empty.");
   }
 
   const total_bytes = read_content_length(args.response.headers);

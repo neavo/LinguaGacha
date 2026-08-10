@@ -15,13 +15,13 @@ type ConfirmCopy = {
 
 const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>, ConfirmCopy> = {
   reset: {
-    description_key: "quality_editor.confirm.reset.description",
+    description_key: "custom_prompt_page.confirm.reset.description",
   },
   "delete-preset": {
-    description_key: "quality_editor.confirm.delete_preset.description",
+    description_key: "preset_editor.confirm.delete.description",
   },
   "overwrite-preset": {
-    description_key: "quality_editor.confirm.overwrite_preset.description",
+    description_key: "preset_editor.confirm.overwrite.description",
   },
   "enable-after-import": {
     description_key: "custom_prompt_page.confirm.enable_after_import.description",

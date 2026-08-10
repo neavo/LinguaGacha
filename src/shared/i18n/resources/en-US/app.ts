@@ -3,9 +3,6 @@ import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
-  aria: {
-    toggle_navigation: "Toggle navigation",
-  },
   metadata: {
     app_name: "LinguaGacha",
   },
@@ -20,7 +17,6 @@ export const en_us_app = {
     selection: {
       label: "Select model",
       unavailable: "No model available",
-      current_category: "Current model category",
       load_failed: "Failed to load model selection. Please try again …",
       update_failed: "Failed to save model selection. Please try again …",
     },
@@ -34,10 +30,20 @@ export const en_us_app = {
     },
   },
   action: {
+    add: "Add",
     cancel: "Cancel",
     confirm: "Confirm",
     close: "Close",
+    create: "Create",
+    delete: "Delete",
+    edit: "Edit",
+    export: "Export",
+    import: "Import",
+    preset: "Preset",
+    query: "Query",
     reset: "Reset",
+    retry: "Retry",
+    save: "Save",
     skip: "Skip",
     overwrite: "Overwrite",
     replace: "Replace",
@@ -46,7 +52,10 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
+    export_success: "Data exported …",
+    import_success: "Data imported …",
     save_success: "Saved …",
+    reset_success: "Reset …",
     no_valid_data: "No valid data …",
     update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings …",
@@ -91,10 +100,12 @@ export const en_us_app = {
   toggle: {
     disabled: "OFF",
     enabled: "ON",
+    status: "{TITLE} - {STATE}",
   },
   drag: {
     enabled: "Drag to reorder",
     disabled: "Drag disabled",
+    handle: "Drag",
   },
   language: Object.fromEntries(
     Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.en]),
@@ -151,29 +162,20 @@ export const en_us_app = {
     project: {
       not_loaded: {
         message: "No project is loaded …",
-        action: "Open or create a project first …",
       },
       not_found: {
         message: "The project file does not exist …",
-        action: "Make sure the project file is still in its original location …",
       },
     },
     file: {
       not_found: {
         message: "The file does not exist …",
-        action: "Make sure the file is still in its original location …",
-      },
-      unsupported_format: {
-        message: "This file format is not supported …",
-        action: "Choose a source file supported by LinguaGacha …",
       },
       parse_failed: {
         message: "File content parsing failed …",
-        action: "Make sure the file is complete, or import an undamaged original file …",
       },
       invalid_structure: {
         message: "The file structure does not match the expected format …",
-        action: "Make sure the file came from the expected source, or export it again …",
       },
       io_failed: {
         message: "File read or write failed …",
@@ -182,27 +184,22 @@ export const en_us_app = {
     database: {
       conflict: {
         message: "Database write conflict. Please refresh and try again …",
-        action: "Refresh the current data and submit again …",
       },
     },
     data: {
       revision_conflict: {
         message: "The data version changed. Please refresh and try again …",
-        action: "Refresh the current data and submit again …",
       },
       committed_sync_failed: {
         message: "The data was saved, but the interface failed to synchronize …",
-        action: "Reload the current project and do not submit the change again …",
       },
     },
     model: {
       not_found: {
         message: "The model configuration does not exist …",
-        action: "Select a model configuration again …",
       },
       provider_failed: {
         message: "The model service request failed. Please check the API settings …",
-        action: "Check the model URL, API key, and provider status …",
       },
     },
     worker: {
@@ -216,7 +213,6 @@ export const en_us_app = {
     runtime: {
       busy: {
         message: "The model runtime is busy. Please try again later …",
-        action: "Wait for the current task or Agent turn to finish …",
       },
       capability_missing: {
         message: "The current runtime is missing a required capability …",

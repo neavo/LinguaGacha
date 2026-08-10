@@ -615,19 +615,14 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         <div className="agent-composer__attachments">
           {draft_images.map((image, index) => (
             <figure className="agent-composer__attachment" key={index}>
-              <img
-                src={`data:image/webp;base64,${image}`}
-                alt={t("agent_page.image.attachment", { index: (index + 1).toString() })}
-              />
+              <img src={`data:image/webp;base64,${image}`} alt="" />
               <AppButton
                 type="button"
                 size="icon-xs"
                 variant="secondary"
                 className="agent-composer__attachment-remove"
                 disabled={editor_read_only || image_processing}
-                aria-label={t("agent_page.action.remove_image", {
-                  index: (index + 1).toString(),
-                })}
+                aria-label={t("app.action.close")}
                 onClick={() => {
                   write_draft_images(draft_images.filter((_, item_index) => item_index !== index));
                 }}
@@ -766,11 +761,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   className="agent-composer__context-usage"
                   data-tone={context_usage.tone}
                   tabIndex={0}
-                  aria-label={`${t("agent_page.context_usage", {
-                    percent: context_usage.percent,
-                    used: context_usage.used,
-                    total: context_usage.total,
-                  })}${context_usage.warning ? ` · ${t("agent_page.context_usage_warning")}` : ""}`}
                 >
                   {context_usage.percent}
                 </span>

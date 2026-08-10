@@ -83,7 +83,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     {
       id: "delete-file",
       icon: Trash2,
-      label_key: "workbench_page.action.delete_file",
+      label_key: "app.action.delete",
       disabled: delete_file_disabled,
       on_click: props.on_delete_selected,
     },
@@ -117,7 +117,6 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   return (
     <CommandBar
       className="workbench-page__task-command-bar"
-      title={t("workbench_page.section.command_bar")}
       actions={
         <>
           <CommandBarGroup>

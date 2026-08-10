@@ -79,7 +79,7 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
       <div className="proofreading-page__context-state" role="alert">
         <span>{t("proofreading_page.context.load_failed")}</span>
         <AppButton type="button" variant="outline" size="sm" onClick={props.on_retry}>
-          {t("proofreading_page.action.retry")}
+          {t("app.action.retry")}
         </AppButton>
       </div>
     );

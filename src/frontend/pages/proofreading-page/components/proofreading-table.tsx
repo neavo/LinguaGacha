@@ -15,15 +15,17 @@ import { useMemo } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
-  PROOFREADING_MANUAL_STATUS_CODES,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
+} from "@frontend/pages/proofreading-page/proofreading-label-keys";
+import {
+  PROOFREADING_MANUAL_STATUS_CODES,
   type ProofreadingItem,
   type ProofreadingManualStatusCode,
   type ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Spinner } from "@frontend/shadcn/spinner";
 import {
   AppContextMenuContent,
@@ -196,7 +198,7 @@ export function ProofreadingStatusCell(props: {
       props.item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
     ];
   const status_label = status_label_key === undefined ? props.item.status : t(status_label_key);
-  const compact_tooltip_template = t("proofreading_page.toggle.status");
+  const compact_tooltip_template = t("app.toggle.status");
 
   if (props.retranslating) {
     return (
@@ -320,7 +322,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         id: "drag",
         width: 64,
         align: "center",
-        title: t("proofreading_page.fields.drag"),
+        title: t("app.drag.handle"),
         head_class_name: "proofreading-page__table-drag-head",
         cell_class_name: "proofreading-page__table-drag-cell",
         render_cell: (payload) => {
@@ -408,9 +410,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
 
   return (
     <Card variant="table" className="proofreading-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t("proofreading_page.title")}</CardTitle>
-      </CardHeader>
       <CardContent className="proofreading-page__table-card-content">
         <AppTable
           rows={props.items}
@@ -449,7 +448,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                     }}
                   >
                     <PencilLine />
-                    {t("proofreading_page.action.edit")}
+                    {t("app.action.edit")}
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}

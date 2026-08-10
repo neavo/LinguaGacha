@@ -23,7 +23,6 @@ export const zh_cn_glossary_page = {
   },
   filter: {
     scope: {
-      translation: "译文",
       description: "备注",
     },
   },

@@ -101,7 +101,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     t: (key: string, params?: Record<string, string>) => {
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
-      if (key === "agent_page.action.retry") return "重试";
+      if (key === "app.action.retry") return "重试";
       if (key === "agent_page.action.click_to_retry") return "点击重试";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
@@ -225,35 +225,6 @@ describe("AgentPage", () => {
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
   });
 
-  it("featured skill 各自按真实加载状态显示，非 featured skill 不进入空态", async () => {
-    const glossary = build_state().skills.find((skill) => skill.name === "glossary-review");
-    const translation = build_state().skills.find((skill) => skill.name === "translation-review");
-    const corpus = build_state().skills.find((skill) => skill.name === "corpus-search");
-    if (glossary === undefined || translation === undefined || corpus === undefined) {
-      throw new Error("缺少 skill fixture");
-    }
-    const view = await render_page({ entries: [], skills: [translation, corpus] });
-    expect(
-      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
-        (button) => button.textContent,
-      ),
-    ).toEqual(["介绍你的能力", "请帮我审校译文 @skill(translation-review)"]);
-
-    await render_page({ entries: [], skills: [glossary, corpus] });
-    expect(
-      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
-        (button) => button.textContent,
-      ),
-    ).toEqual(["介绍你的能力", "请帮我审校术语 @skill(glossary-review)"]);
-
-    await render_page({ entries: [], skills: [corpus] });
-    expect(
-      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
-        (button) => button.textContent,
-      ),
-    ).toEqual(["介绍你的能力"]);
-  });
-
   it("按当前工程接入规范术语，未加载工程与读取失败不阻断能力和发送", async () => {
     quality_query_state.entries = [
       {
@@ -302,18 +273,6 @@ describe("AgentPage", () => {
     expect(view.querySelector('[aria-labelledby="agent-mention-terms-label"]')).toBeNull();
   });
 
-  it("底栏用会话 token 和当前模型容量即时重算", async () => {
-    const view = await render_page({
-      contextTokens: 31_488,
-    });
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
-
-    model_agent_limits.context_window = 64_000;
-    model_agent_limits.max_output_tokens = 16_000;
-    await render_page({ contextTokens: 31_488 });
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("49.2%");
-  });
-
   it("恢复失败时显示单一重试入口并重新连接", async () => {
     const reconnect = vi.fn();
     const view = await render_page({ transport: "restore_failed", reconnect });
@@ -331,10 +290,11 @@ describe("AgentPage", () => {
     expect(reconnect).toHaveBeenCalledOnce();
   });
 
-  it("连接中断时在对话区持续提示且不污染操作栏", async () => {
+  it("删除通用 live region 时保留断线状态", async () => {
     const view = await render_page({ transport: "disconnected" });
-    expect(view.querySelector('[role="status"]')?.textContent).toBe("连接中断，正在等待重连。");
-    expect(view.querySelector(".agent-composer__error")).toBeNull();
+
+    expect(view.querySelector('.agent-page__connection-status[role="status"]')).not.toBeNull();
+    expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {

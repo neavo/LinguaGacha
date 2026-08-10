@@ -143,7 +143,9 @@ export function resolve_windows_go_arch(context) {
     return arch_name;
   }
 
-  throw new Error(`不支持的 Windows 发布架构：${String(arch_name ?? context.arch)}`);
+  throw new Error(
+    `Unsupported Windows release architecture: ${String(arch_name ?? context.arch)}.`,
+  );
 }
 
 /**
@@ -158,7 +160,7 @@ function resolve_windows_go_arch_from_name(windows_arch) {
     return "arm64";
   }
 
-  throw new Error(`不支持的 Windows 发布架构：${String(windows_arch)}`);
+  throw new Error(`Unsupported Windows release architecture: ${String(windows_arch)}.`);
 }
 
 /**
@@ -189,7 +191,9 @@ function run_go(args, cwd, env, run_command, tool) {
     });
   } catch (error) {
     if (error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      throw new Error(`构建 ${tool.label}需要 Go 工具链；请先安装 Go 并确保 go 在 PATH 中`);
+      throw new Error(
+        `Building ${tool.label} requires the Go toolchain; install Go and ensure go is available on PATH.`,
+      );
     }
     throw error;
   }
@@ -207,5 +211,5 @@ async function assert_windows_go_tool_exists(tool_path, tool) {
   } catch {
     // 下面抛出带构建上下文的统一错误。
   }
-  throw new Error(`缺少 ${tool.label}：${tool_path}，请检查 Go 构建输出`);
+  throw new Error(`Missing ${tool.label}: ${tool_path}. Check the Go build output.`);
 }

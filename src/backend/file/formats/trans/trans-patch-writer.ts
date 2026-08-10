@@ -1,5 +1,5 @@
 import type { JsonValue, MutableJsonRecord } from "../../../../domain/json";
-import { InvalidFileStructureError } from "../../../../shared/error";
+import { AppError } from "../../../../shared/error";
 import {
   derive_trans_filter_effect,
   string_array,
@@ -26,7 +26,7 @@ export function collect_patch_targets(
       typeof row_index !== "number" ||
       !Number.isInteger(row_index)
     ) {
-      throw new InvalidFileStructureError({
+      throw new AppError("file.invalid_structure", {
         public_details: { format: "TRANS" },
         diagnostic_context: { reason: "missing_trans_ref" },
       });
@@ -34,7 +34,7 @@ export function collect_patch_targets(
     const entry = to_mutable_record(files[file_key]);
     const data_list = Array.isArray(entry["data"]) ? entry["data"] : null;
     if (data_list === null || row_index < 0 || row_index >= data_list.length) {
-      throw new InvalidFileStructureError({
+      throw new AppError("file.invalid_structure", {
         public_details: { format: "TRANS" },
         diagnostic_context: { file_key, row_index, reason: "trans_ref_out_of_range" },
       });

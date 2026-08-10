@@ -2,12 +2,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
 
-import {
-  normalize_log_error,
-  RuntimeCancelledError,
-  RuntimeDisposedError,
-  WorkerExecutionFailedError,
-} from "../../../shared/error";
+import { AppError, normalize_log_error } from "../../../shared/error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import type { BackendWorkerExecution } from "../../worker/worker-execution";
 import { create_o200k_base_token_counter, type TokenCounter } from "../core/token-counter";
@@ -108,7 +103,7 @@ export class PlanningWorkerPool {
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => result.reason);
     if (terminate_errors.length > 0) {
-      throw new AggregateError(terminate_errors, "PlanningWorkerPool worker 终止失败");
+      throw new AggregateError(terminate_errors, "Failed to terminate PlanningWorkerPool workers.");
     }
   }
 
@@ -246,7 +241,7 @@ export class PlanningWorkerPool {
    */
   private create_slot(): PlanningWorkerSlot {
     if (this.execution.kind !== "worker_threads") {
-      throw new Error("PlanningWorkerPool 创建 worker slot 时必须使用 worker_threads 执行模式。");
+      throw new Error("PlanningWorkerPool requires worker_threads mode to create a worker slot.");
     }
     const slot: PlanningWorkerSlot = {
       worker: new Worker(this.execution.planningWorkerEntryUrl),
@@ -281,9 +276,9 @@ export class PlanningWorkerPool {
       task.resolve(message.data ?? []);
     } else {
       task.reject(
-        new WorkerExecutionFailedError({
+        new AppError("worker.execution_failed", {
           diagnostic_context: {
-            failure: normalize_log_error(message.error, "planning worker 计数失败。"),
+            failure: normalize_log_error(message.error, "Planning worker counting failed."),
           },
         }),
       );
@@ -351,8 +346,8 @@ export class PlanningWorkerPool {
   /**
    * 释放后的错误使用稳定 shared AppError，调用方可按资源名定位问题。
    */
-  private create_disposed_error(): RuntimeDisposedError {
-    return new RuntimeDisposedError({
+  private create_disposed_error(): AppError {
+    return new AppError("runtime.disposed", {
       public_details: { resource: "PlanningWorkerPool" },
       diagnostic_context: { queue_length: this.queue.length },
     });
@@ -361,8 +356,8 @@ export class PlanningWorkerPool {
   /**
    * 主动取消和执行失败分离，避免任务日志把停止视作异常崩溃。
    */
-  private create_cancelled_error(): RuntimeCancelledError {
-    return new RuntimeCancelledError({
+  private create_cancelled_error(): AppError {
+    return new AppError("runtime.cancelled", {
       public_details: { resource: "planning_worker" },
     });
   }

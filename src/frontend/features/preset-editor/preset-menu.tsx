@@ -62,7 +62,7 @@ function PresetDefaultMenuItem(props: {
       }}
     >
       <HeartOff />
-      {t("quality_editor.preset.cancel_default")}
+      {t("preset_editor.action.cancel_default")}
     </AppDropdownMenuItem>
   ) : (
     <AppDropdownMenuItem
@@ -72,7 +72,7 @@ function PresetDefaultMenuItem(props: {
       }}
     >
       <Heart />
-      {t("quality_editor.preset.set_default")}
+      {t("preset_editor.action.set_default")}
     </AppDropdownMenuItem>
   );
 }
@@ -109,7 +109,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
           </AppDropdownMenuItem>
           <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_save}>
             <Save />
-            {t("quality_editor.preset.save")}
+            {t("preset_editor.action.save")}
           </AppDropdownMenuItem>
         </AppDropdownMenuGroup>
         {builtin_items.length > 0 || user_items.length > 0 ? <AppDropdownMenuSeparator /> : null}
@@ -129,7 +129,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     }}
                   >
                     <FileDown />
-                    {t("quality_editor.preset.apply")}
+                    {t("preset_editor.action.apply")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuSeparator />
                   <PresetDefaultMenuItem
@@ -160,7 +160,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     }}
                   >
                     <FileDown />
-                    {t("quality_editor.preset.apply")}
+                    {t("preset_editor.action.apply")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
                     disabled={props.readonly}
@@ -169,7 +169,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     }}
                   >
                     <PencilLine />
-                    {t("quality_editor.preset.rename")}
+                    {t("preset_editor.action.rename")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
                     disabled={props.readonly}
@@ -178,7 +178,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     }}
                   >
                     <Trash2 />
-                    {t("quality_editor.preset.delete")}
+                    {t("preset_editor.action.delete")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuSeparator />
                   <PresetDefaultMenuItem

@@ -34,12 +34,12 @@ describe("normalize_quality_rule_entries", () => {
       normalize_quality_rule_entries(QualityRule.from_json("post_replacement"), [
         { entry_id: "broken", src: "(", dst: "x", regex: true, case_sensitive: false },
       ]),
-    ).toThrow("质量规则正则不是合法正则");
+    ).toThrow("Quality rule regex is invalid.");
     expect(() =>
       normalize_quality_rule_entries(QualityRule.from_json("text_preserve"), [
         { entry_id: "broken", src: "(", info: "" },
       ]),
-    ).toThrow("质量规则正则不是合法正则");
+    ).toThrow("Quality rule regex is invalid.");
   });
 
   it("拒绝归一后身份重复的整批规则", () => {
@@ -48,7 +48,7 @@ describe("normalize_quality_rule_entries", () => {
         { entry_id: "same", src: "HP", dst: "生命值" },
         { entry_id: " same ", src: "MP", dst: "魔力值" },
       ]),
-    ).toThrow("entry_id 重复");
+    ).toThrow("Duplicate quality rule entry_id");
   });
 
   it("拒绝缺失或空白身份", () => {
@@ -56,12 +56,12 @@ describe("normalize_quality_rule_entries", () => {
       normalize_quality_rule_entries(QualityRule.from_json("glossary"), [
         { src: "苹果", dst: "Apple", info: "", case_sensitive: false },
       ]),
-    ).toThrow("entry_id 不能为空");
+    ).toThrow("Quality rule entry_id must not be empty.");
     expect(() =>
       normalize_quality_rule_entries(QualityRule.from_json("glossary"), [
         { entry_id: "  ", src: "苹果", dst: "Apple", info: "", case_sensitive: false },
       ]),
-    ).toThrow("entry_id 不能为空");
+    ).toThrow("Quality rule entry_id must not be empty.");
   });
 
   it("为无身份外部规则创建短身份并忽略外部身份", () => {

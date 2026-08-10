@@ -1,5 +1,5 @@
 import type { JsonRecord } from "./json";
-import { UnknownPromptTypeError } from "../shared/error";
+import { AppError } from "../shared/error";
 
 export const PROMPT_KINDS = ["translation", "analysis"] as const; // 提示词只暴露翻译和分析两类任务，重翻复用翻译语义
 
@@ -66,7 +66,9 @@ export class Prompt {
     if (is_prompt_kind(value)) {
       return new Prompt(value);
     }
-    throw new UnknownPromptTypeError(value);
+    throw new AppError("prompt.unknown_prompt_type", {
+      diagnostic_context: { value: String(value) },
+    });
   }
 
   /**

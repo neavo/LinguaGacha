@@ -72,7 +72,6 @@ describe("WorkbenchFileTable", () => {
       [...(container?.querySelectorAll('[data-testid="file-row"]') ?? [])].map(
         (row) => row.textContent,
       );
-    expect(container.textContent).toContain("workbench_page.section.file_list");
     expect(read_rows()).toEqual(["chapter10.txt", "chapter2.txt"]);
 
     await act(async () => container?.querySelector("button")?.click());

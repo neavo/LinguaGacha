@@ -108,6 +108,6 @@ describe("共享字面量匹配器", () => {
         { key: "same", text: "a", case_sensitive: true },
         { key: "same", text: "b", case_sensitive: false },
       ]),
-    ).toThrow("key 重复");
+    ).toThrow("Duplicate literal pattern key");
   });
 });

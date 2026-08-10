@@ -230,7 +230,7 @@ export function replace_text_pattern(args: {
 }): { text: string; count: number } {
   if (args.pattern.kind === "literal") {
     if (args.replacement_syntax !== "literal") {
-      throw new Error("字面量模式只支持 literal replacement syntax");
+      throw new Error("Literal mode only supports literal replacement syntax.");
     }
     const ranges = select_literal_replacement_ranges(args.text, args.pattern);
     return {
@@ -288,7 +288,7 @@ function build_text_pattern_flags(args: {
  */
 function clone_text_pattern_regexp(pattern: CompiledTextPattern): RegExp {
   if (pattern.kind !== "regex") {
-    throw new Error("字面量模式没有 RegExp 实例");
+    throw new Error("Literal mode does not have a RegExp instance.");
   }
   return new RegExp(pattern.regexp);
 }

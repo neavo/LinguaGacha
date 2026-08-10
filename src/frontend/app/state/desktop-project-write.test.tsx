@@ -8,7 +8,7 @@ import {
   type ProjectWriteCommitter,
   type ProjectWriteResult,
 } from "./desktop-project-write";
-import { InternalInvariantError } from "@shared/error";
+import { AppError } from "@shared/error";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -40,14 +40,14 @@ function CommitterProbe(props: CommitterProbeProps): JSX.Element | null {
   return null;
 }
 
-function capture_internal_invariant(operation: () => unknown): InternalInvariantError {
+function capture_internal_invariant(operation: () => unknown): AppError {
   try {
     operation();
   } catch (error) {
-    expect(error).toBeInstanceOf(InternalInvariantError);
-    return error as InternalInvariantError;
+    expect(error).toMatchObject({ code: "runtime.internal_invariant" });
+    return error as AppError;
   }
-  throw new Error("预期抛出 InternalInvariantError。");
+  throw new Error("Expected an internal invariant error.");
 }
 
 // wait_for_expectation 构造测试所需的稳定夹具，避免每个用例重复铺设环境。

@@ -284,13 +284,15 @@ function build_hit_badge_tooltip(
   hits: number,
   subset_parents: string[],
 ): string {
-  const tooltip_lines = [t("quality_editor.hit.hit_count").replace("{COUNT}", hits.toString())];
+  const tooltip_lines = [
+    t("quality_rule_editor.hit.hit_count").replace("{COUNT}", hits.toString()),
+  ];
 
   if (subset_parents.length > 0) {
     tooltip_lines.push(t("text_replacement_page.hit.subset_relations"));
     tooltip_lines.push(
       ...subset_parents.map((label) => {
-        return t("quality_editor.hit.relation_line")
+        return t("quality_rule_editor.hit.relation_line")
           .replace("{CHILD}", entry.src)
           .replace("{PARENT}", label);
       }),
@@ -659,7 +661,7 @@ export function useTextReplacementPageState(
       }
 
       clear_selection_state();
-      push_toast("success", t("quality_editor.feedback.import_success"));
+      push_toast("success", t("app.feedback.import_success"));
 
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
@@ -1169,7 +1171,7 @@ export function useTextReplacementPageState(
         }),
       });
       if (exported) {
-        push_toast("success", t("quality_editor.feedback.export_success"));
+        push_toast("success", t("app.feedback.export_success"));
       }
     } catch (error) {
       push_toast(
@@ -1310,7 +1312,7 @@ export function useTextReplacementPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -1325,7 +1327,7 @@ export function useTextReplacementPageState(
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_saved"));
+        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -1350,7 +1352,7 @@ export function useTextReplacementPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -1372,7 +1374,7 @@ export function useTextReplacementPageState(
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_renamed"));
+        push_toast("success", t("preset_editor.feedback.renamed"));
         return true;
       } catch (error) {
         push_toast(
@@ -1402,7 +1404,7 @@ export function useTextReplacementPageState(
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.default_preset_set"));
+        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -1429,7 +1431,7 @@ export function useTextReplacementPageState(
       );
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
+      push_toast("success", t("preset_editor.feedback.default_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -1441,7 +1443,7 @@ export function useTextReplacementPageState(
   const validate_entry = useCallback(
     (entry: TextReplacementEntry): string | null => {
       if (entry.src === "") {
-        return t("quality_editor.feedback.source_required");
+        return t("quality_rule_editor.feedback.source_required");
       }
 
       if (!entry.regex) {
@@ -1453,7 +1455,7 @@ export function useTextReplacementPageState(
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
-        return `${t("quality_editor.feedback.regex_invalid")}: ${detail}`;
+        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
       }
     },
     [t],
@@ -1575,7 +1577,7 @@ export function useTextReplacementPageState(
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+      push_toast("warning", t("preset_editor.feedback.name_required"));
       return;
     }
 
@@ -1604,7 +1606,7 @@ export function useTextReplacementPageState(
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("quality_editor.feedback.preset_exists"));
+      push_toast("warning", t("preset_editor.feedback.exists"));
       return;
     }
 
@@ -1687,7 +1689,7 @@ export function useTextReplacementPageState(
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("quality_editor.feedback.preset_deleted"));
+          push_toast("success", t("preset_editor.feedback.deleted"));
           succeeded = true;
         }
       } catch (error) {

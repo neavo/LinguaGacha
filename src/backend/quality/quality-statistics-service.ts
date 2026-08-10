@@ -46,7 +46,7 @@ export class QualityStatisticsService {
     if (is_quality_rule_kind(value)) {
       return value;
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_quality_statistics_rule_key", rule_key: value },
     });
   }

@@ -89,7 +89,7 @@ describe("desktop_web_fetch", () => {
   );
 
   it.each([
-    [301, "缺少 Location"],
+    [301, "missing Location"],
     [304, "HTTP 304"],
   ])("拒绝无效重定向响应 %i", async (status, error) => {
     fetch_mock.mockResolvedValue(new Response(null, { status }));
@@ -104,7 +104,7 @@ describe("desktop_web_fetch", () => {
     );
     await expect(
       desktop_web_fetch(runtime, { url: "https://example.com" }, new AbortController().signal),
-    ).rejects.toThrow(`超过 ${WEB_FETCH_MAX_REDIRECTS.toString()} 次`);
+    ).rejects.toThrow(`exceeded ${WEB_FETCH_MAX_REDIRECTS.toString()} redirects`);
   });
 
   it("非 2xx 只暴露状态码且不读取错误正文", async () => {
@@ -146,7 +146,7 @@ describe("desktop_web_fetch", () => {
     "http://[::ffff:127.0.0.1]/",
   ])("拒绝受限 IP literal：%s", async (url) => {
     await expect(desktop_web_fetch(runtime, { url }, new AbortController().signal)).rejects.toThrow(
-      "受限地址",
+      "Restricted address",
     );
     expect(resolve_host).not.toHaveBeenCalled();
   });
@@ -158,7 +158,7 @@ describe("desktop_web_fetch", () => {
 
     await expect(
       desktop_web_fetch(runtime, { url: "https://example.com" }, new AbortController().signal),
-    ).rejects.toThrow("受限地址");
+    ).rejects.toThrow("Restricted address");
     expect(fetch_mock).not.toHaveBeenCalled();
   });
 
@@ -166,12 +166,12 @@ describe("desktop_web_fetch", () => {
     resolve_host.mockRejectedValueOnce(new Error("dns failed"));
     await expect(
       desktop_web_fetch(runtime, { url: "https://one.example" }, new AbortController().signal),
-    ).rejects.toThrow("无法解析");
+    ).rejects.toThrow("Failed to resolve");
 
     resolve_host.mockResolvedValueOnce({ endpoints: [] });
     await expect(
       desktop_web_fetch(runtime, { url: "https://two.example" }, new AbortController().signal),
-    ).rejects.toThrow("没有可用地址");
+    ).rejects.toThrow("no usable address");
   });
 
   it("Content-Length 超限时在读取前取消响应", async () => {

@@ -250,10 +250,12 @@ function build_hit_badge_tooltip(
   hits: number,
   subset_parents: string[],
 ): string {
-  const tooltip_lines = [t("quality_editor.hit.hit_count").replace("{COUNT}", hits.toString())];
+  const tooltip_lines = [
+    t("quality_rule_editor.hit.hit_count").replace("{COUNT}", hits.toString()),
+  ];
 
   if (subset_parents.length > 0) {
-    tooltip_lines.push(t("quality_editor.hit.subset_relations"));
+    tooltip_lines.push(t("quality_rule_editor.hit.subset_relations"));
     tooltip_lines.push(
       ...subset_parents.map((label) => {
         return `${entry.src} -> ${label}`;
@@ -637,7 +639,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       if (options.feedback === "import") {
         clear_selection_state();
-        push_toast("success", t("quality_editor.feedback.import_success"));
+        push_toast("success", t("app.feedback.import_success"));
       }
 
       if (options.close_preset_menu) {
@@ -1077,7 +1079,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     };
 
     if (normalized_entry.src === "") {
-      push_toast("error", t("quality_editor.feedback.source_required"));
+      push_toast("error", t("quality_rule_editor.feedback.source_required"));
       return false;
     }
 
@@ -1223,7 +1225,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         }),
       });
       if (exported) {
-        push_toast("success", t("quality_editor.feedback.export_success"));
+        push_toast("success", t("app.feedback.export_success"));
       }
     } catch (error) {
       push_toast(
@@ -1363,7 +1365,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -1378,7 +1380,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_saved"));
+        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -1399,7 +1401,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+        push_toast("warning", t("preset_editor.feedback.name_required"));
         return false;
       }
 
@@ -1423,7 +1425,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.preset_renamed"));
+        push_toast("success", t("preset_editor.feedback.renamed"));
         return true;
       } catch (error) {
         push_toast(
@@ -1448,7 +1450,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         });
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("quality_editor.feedback.default_preset_set"));
+        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -1470,7 +1472,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       });
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
+      push_toast("success", t("preset_editor.feedback.default_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -1503,7 +1505,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
+      push_toast("warning", t("preset_editor.feedback.name_required"));
       return;
     }
 
@@ -1532,7 +1534,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("quality_editor.feedback.preset_exists"));
+      push_toast("warning", t("preset_editor.feedback.exists"));
       return;
     }
 
@@ -1573,7 +1575,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     clear_selection_state();
-    push_toast("success", t("quality_editor.feedback.reset_success"));
+    push_toast("success", t("app.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
   }, [clear_selection_state, push_toast, readonly, save_entries_snapshot, t]);
@@ -1617,7 +1619,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("quality_editor.feedback.preset_deleted"));
+          push_toast("success", t("preset_editor.feedback.deleted"));
           succeeded = true;
         }
       } catch (error) {

@@ -1077,7 +1077,7 @@ describe("AgentService", () => {
   it.each(["ZH", "EN", "DE"] as const)("失败后按 %s UI 语言追加继续轮次", async (app_language) => {
     const continue_text = format_i18n_message(
       resolve_app_locale(app_language),
-      "agent_page.message.continue",
+      "agent_runtime.message.continue",
     );
     const { service, set_app_language } = await create_service();
     fake_agent_state.mode = "error";

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProofreadingCache } from "../cache/proofreading-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingQueryService } from "./proofreading-query-service";
-import { ProjectNotLoadedError } from "../../shared/error";
 
 function create_cache(): ProofreadingCache {
   const base_result = {
@@ -131,7 +130,9 @@ describe("ProofreadingQueryService", () => {
       limit: 20,
     };
 
-    expect(() => service.query_warnings(query)).toThrow(ProjectNotLoadedError);
+    expect(() => service.query_warnings(query)).toThrow(
+      expect.objectContaining({ code: "project.not_loaded" }),
+    );
     session_state.mark_loaded("E:/Project/demo.lg");
     await expect(service.query_warnings(query)).resolves.toMatchObject({
       projectPath: "E:/Project/demo.lg",

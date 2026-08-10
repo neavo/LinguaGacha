@@ -92,11 +92,11 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
           <SegmentedProgress
             stats={props.workbench_stats}
             labels={{
-              skipped: t(`workbench_page.stats.${props.task_kind}_skipped`),
-              failed: t(`workbench_page.stats.${props.task_kind}_failed`),
-              completed: t(`workbench_page.stats.${props.task_kind}_completed`),
-              pending: t(`workbench_page.stats.${props.task_kind}_pending`),
-              total: t("workbench_page.stats.total_lines"),
+              skipped: t(`task_progress.${props.task_kind}_skipped`),
+              failed: t(`task_progress.${props.task_kind}_failed`),
+              completed: t(`task_progress.${props.task_kind}_completed`),
+              pending: t(`task_progress.${props.task_kind}_pending`),
+              total: t("task_progress.total_lines"),
             }}
           />
         </div>
@@ -142,7 +142,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
             ) : (
               <BrushCleaning data-icon="inline-start" />
             )}
-            {t(`workbench_page.action.reset_${props.task_kind}_all`)}
+            {t("workbench_page.action.reset_task_all")}
           </AppDropdownMenuItem>
           <AppDropdownMenuItem
             variant="destructive"
@@ -156,7 +156,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
             ) : (
               <Paintbrush data-icon="inline-start" />
             )}
-            {t(`workbench_page.action.reset_${props.task_kind}_failed`)}
+            {t("workbench_page.action.reset_task_failed")}
           </AppDropdownMenuItem>
         </AppDropdownMenuGroup>
 

@@ -34,7 +34,7 @@ import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { RuntimeBusyError } from "../../shared/error";
+import { AppError } from "../../shared/error";
 
 function create_backend_services_options(): BackendServicesOptions {
   return {
@@ -162,7 +162,7 @@ describe("BackendServices", () => {
     const assert_idle_spy = vi
       .spyOn(RuntimeOperationGate.prototype, "assert_runtime_idle")
       .mockImplementation(() => {
-        throw new RuntimeBusyError();
+        throw new AppError("runtime.busy");
       });
     const services = new BackendServices(options);
 

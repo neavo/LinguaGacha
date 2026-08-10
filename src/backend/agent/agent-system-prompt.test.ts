@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
-import { FileIoFailedError, InvalidFileStructureError } from "../../shared/error";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 
@@ -36,7 +35,7 @@ describe("Agent system prompt 加载与资源契约", () => {
       thrown = error;
     }
 
-    expect(thrown).toBeInstanceOf(FileIoFailedError);
+    expect(thrown).toMatchObject({ code: "file.io_failed" });
     expect((thrown as Error).cause).toBeInstanceOf(Error);
   });
 
@@ -45,7 +44,7 @@ describe("Agent system prompt 加载与资源契约", () => {
     write_system_prompt(paths, " \r\n\t");
 
     expect(() => load_agent_system_prompt(paths, new NativeFs())).toThrow(
-      InvalidFileStructureError,
+      expect.objectContaining({ code: "file.invalid_structure" }),
     );
   });
 });

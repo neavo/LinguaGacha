@@ -86,7 +86,7 @@ export class ProofreadingService {
     for (const update of updates) {
       const current = current_by_id.get(update.item_id);
       if (current === undefined) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "item_not_found", item_id: update.item_id },
         });
       }
@@ -233,7 +233,7 @@ export class ProofreadingService {
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
       if (field in request) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_payload_field", field },
         });
       }
@@ -296,7 +296,7 @@ export class ProofreadingService {
       value.length === 0 ||
       value.length > MAX_PROOFREADING_ITEM_UPDATES
     ) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "invalid_proofreading_item_updates" },
       });
     }
@@ -304,13 +304,13 @@ export class ProofreadingService {
     const item_ids = new Set<number>();
     for (const raw_update of value) {
       if (!is_json_record(raw_update)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "invalid_proofreading_item_update" },
         });
       }
       const item_id = this.parse_integer_or_throw(raw_update["item_id"]);
       if (item_id <= 0 || item_ids.has(item_id)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "duplicate_or_invalid_item_id", item_id },
         });
       }
@@ -321,7 +321,7 @@ export class ProofreadingService {
         (field) => !["item_id", "dst", "name_dst", "status"].includes(field),
       );
       if (unknown_field !== undefined) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: {
             reason: "unknown_proofreading_item_update_field",
             item_id,
@@ -330,7 +330,7 @@ export class ProofreadingService {
         });
       }
       if (!has_dst && !has_name_dst && !has_status) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "empty_proofreading_item_update", item_id },
         });
       }
@@ -338,7 +338,7 @@ export class ProofreadingService {
         (has_dst && typeof raw_update["dst"] !== "string") ||
         (has_name_dst && typeof raw_update["name_dst"] !== "string")
       ) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "invalid_proofreading_translation_field", item_id },
         });
       }
@@ -426,7 +426,7 @@ export class ProofreadingService {
       return value as ProofreadingManualStatusCode;
     }
 
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: {
         reason: "invalid_proofreading_manual_status",
         status: value,
@@ -440,7 +440,7 @@ export class ProofreadingService {
   private parse_integer_or_throw(value: JsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
     if (parsed === null) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return parsed;
   }

@@ -71,7 +71,7 @@ export class ProjectSessionState {
    */
   public require_loaded_project_path(): string {
     if (!this.loaded || this.project_path === "") {
-      throw new AppErrors.ProjectNotLoadedError();
+      throw new AppErrors.AppError("project.not_loaded");
     }
     return this.project_path;
   }
@@ -93,7 +93,7 @@ export class ProjectSessionState {
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
       .map((result) => result.reason);
     if (errors.length > 0) {
-      throw new AggregateError(errors, "项目会话变更发布失败");
+      throw new AggregateError(errors, "Failed to publish project session changes.");
     }
   }
 }

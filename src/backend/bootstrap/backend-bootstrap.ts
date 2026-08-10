@@ -10,7 +10,7 @@ import {
   read_config_model_preset_records,
   read_config_model_records,
 } from "../model/model-config-resolver";
-import { InternalInvariantError, RuntimeDisposedError } from "../../shared/error";
+import { AppError } from "../../shared/error";
 import { resolve_app_root } from "../app/app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 import { BackendServices } from "./backend-services";
@@ -65,7 +65,7 @@ export class BackendBootstrap {
   public async start(): Promise<BackendBootstrapStartResult> {
     const stop_in_progress = this.stop_promise !== null;
     if ((this.state !== "idle" && this.state !== "stopped") || stop_in_progress) {
-      throw new InternalInvariantError({
+      throw new AppError("runtime.internal_invariant", {
         diagnostic_context: {
           reason: "backend_bootstrap_start_invalid_state",
           state: this.state,
@@ -80,7 +80,7 @@ export class BackendBootstrap {
       const stopping = this.stop_promise;
       if (stopping !== null) {
         await stopping;
-        throw new RuntimeDisposedError({
+        throw new AppError("runtime.disposed", {
           diagnostic_context: {
             reason: "backend_bootstrap_stopped_during_start",
           },
@@ -167,7 +167,10 @@ export class BackendBootstrap {
         failures.push(cleanup_error);
       }
       if (failures.length > 1) {
-        throw new AggregateError(failures, "Backend 启动失败且诊断或资源收尾失败");
+        throw new AggregateError(
+          failures,
+          "Backend startup failed and diagnostics or cleanup also failed.",
+        );
       }
       throw error;
     }
@@ -297,7 +300,7 @@ export class BackendBootstrap {
     set_main_log_language_reader(null);
     this.state = "stopped";
     if (errors.length > 0) {
-      throw new AggregateError(errors, "Backend 资源关闭失败");
+      throw new AggregateError(errors, "Failed to close Backend resources.");
     }
   }
 }

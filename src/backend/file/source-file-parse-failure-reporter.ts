@@ -20,7 +20,6 @@ export function build_source_file_parse_failure(args: {
     rel_path: args.rel_path,
     filename: path.basename(args.source_path),
     code: app_error.code,
-    message_key: app_error.message_key,
   };
 }
 
@@ -48,7 +47,6 @@ export function log_source_file_parse_failures(args: {
           source_path: failure.source_path,
           rel_path: failure.rel_path,
           code: failure.code,
-          message_key: failure.message_key,
         })),
       },
     },
@@ -63,12 +61,12 @@ function normalize_source_file_parse_error(error: unknown): AppErrors.AppError {
     return error;
   }
   if (error instanceof SyntaxError) {
-    return new AppErrors.FileParseFailedError({ cause: error });
+    return new AppErrors.AppError("file.parse_failed", { cause: error });
   }
   if (read_node_error_code(error) === "ENOENT") {
-    return new AppErrors.FileNotFoundError({ cause: error });
+    return new AppErrors.AppError("file.not_found", { cause: error });
   }
-  return new AppErrors.FileIoFailedError({ cause: error });
+  return new AppErrors.AppError("file.io_failed", { cause: error });
 }
 
 /**

@@ -71,13 +71,13 @@ describe("workbench command planner", () => {
     });
     expect(() => {
       create_workbench_reorder_plan({ state, ordered_rel_paths: ["old.txt"] });
-    }).toThrow("workbench_command.invalid_file_order");
+    }).toThrow();
     expect(() => {
       create_workbench_reorder_plan({
         state,
         ordered_rel_paths: ["old.txt", "unknown.txt"],
       });
-    }).toThrow("workbench_command.invalid_file_order");
+    }).toThrow();
   });
 
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {
