@@ -112,7 +112,7 @@ describe("Model", () => {
     expect(Model.normalize_api_format("Anthropic")).toBe("Anthropic");
     expect(Model.normalize_api_format("OpenAIResponses")).toBe("OpenAIResponses");
     expect(Model.normalize_api_format("unknown")).toBe("OpenAI");
-    expect(Model.normalize_thinking_level("XHIGH")).toBe("XHIGH");
+    expect(Model.normalize_thinking_level("MAX")).toBe("MAX");
     expect(Model.normalize_thinking_level("unknown")).toBe("OFF");
   });
 

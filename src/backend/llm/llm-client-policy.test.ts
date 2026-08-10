@@ -5,7 +5,6 @@ import {
   apply_agent_request_overrides,
   collect_api_keys,
   get_primary_api_key,
-  model_supports_pi_reasoning,
   normalize_pi_api_url,
   read_model_request_snapshot,
   read_request_timeout_ms,
@@ -110,27 +109,6 @@ describe("LLM 请求策略", () => {
       "runtime.internal_invariant",
     );
   });
-
-  it.each([
-    ["OpenAI", "kimi-k3", "OFF", true],
-    ["OpenAI", "unknown-model", "HIGH", false],
-    ["OpenAIResponses", "gpt-5.6-luna", "OFF", true],
-    ["OpenAIResponses", "gpt-5.6-luna", "HIGH", true],
-    ["OpenAIResponses", "custom-reasoning-model", "HIGH", false],
-    ["Anthropic", "provider-defined-model", "OFF", true],
-    ["Google", "gemini-3.1-pro", "OFF", true],
-    ["Google", "gemini-2.5-flash", "HIGH", false],
-    ["SakuraLLM", "sakura-v1", "HIGH", false],
-  ] as const)(
-    "从 %s/%s/%s 判断 Pi reasoning 能力",
-    (api_format, model_id, thinking_level, expected) => {
-      const snapshot = read_model_request_snapshot(
-        create_model({ api_format, model_id, thinking: { level: thinking_level } }),
-        TEST_USER_AGENT,
-      );
-      expect(model_supports_pi_reasoning(snapshot)).toBe(expected);
-    },
-  );
 });
 
 function create_model(overrides: JsonRecord = {}): JsonRecord {

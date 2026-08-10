@@ -22,11 +22,12 @@ export const de_de_app = {
     },
     thinking_level: {
       label: "Denkstufe",
-      off: "Aus",
-      low: "Niedrig",
-      medium: "Mittel",
-      high: "Hoch",
-      xhigh: "Sehr hoch",
+      off: "OFF",
+      low: "LOW",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra High",
+      max: "MAX",
     },
   },
   action: {

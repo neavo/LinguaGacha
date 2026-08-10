@@ -20,11 +20,12 @@ export const zh_cn_app = {
     },
     thinking_level: {
       label: "思考等级",
-      off: "无",
-      low: "低",
-      medium: "中",
-      high: "高",
-      xhigh: "特高",
+      off: "无 - OFF",
+      low: "低 - LOW",
+      medium: "中 - Medium",
+      high: "高 - High",
+      xhigh: "特高 - Extra High",
+      max: "最高 - MAX",
     },
   },
   action: {

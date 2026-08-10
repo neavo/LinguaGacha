@@ -14,7 +14,6 @@ import {
 import {
   apply_google_one_shot_request_overrides,
   apply_google_request_overrides,
-  build_google_thinking_config,
   normalize_google_api_base_url,
 } from "./policy/google-policy";
 import {
@@ -23,7 +22,6 @@ import {
   apply_openai_responses_one_shot_request_overrides,
   apply_openai_responses_request_overrides,
   apply_sakura_one_shot_request_overrides,
-  build_openai_thinking_payload,
   normalize_openai_sdk_base_url,
 } from "./policy/openai-policy";
 import {
@@ -166,26 +164,6 @@ export function apply_agent_request_overrides(
     return apply_openai_responses_request_overrides(record, snapshot);
   }
   return apply_openai_completions_request_overrides(record, snapshot);
-}
-
-/** Pi model 的 reasoning 能力来自协议策略；Anthropic 按 API 格式启用，其它协议按已知模型规则判定。 */
-export function model_supports_pi_reasoning(snapshot: ModelRequestSnapshot): boolean {
-  if (snapshot.api_format === "Google") {
-    return build_google_thinking_config(snapshot) !== null;
-  }
-  if (snapshot.api_format === "Anthropic") {
-    return true;
-  }
-  if (snapshot.api_format === "SakuraLLM") {
-    return false;
-  }
-  return (
-    build_openai_thinking_payload(
-      snapshot.api_format,
-      snapshot.model_id,
-      snapshot.thinking_level,
-    ) !== null
-  );
 }
 
 /** 自定义 header 只有显式启用才覆盖默认 User-Agent。 */

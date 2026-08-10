@@ -94,7 +94,7 @@ describe("ModelBasicSettingsDialog", () => {
     expect(on_patch).not.toHaveBeenCalled();
   });
 
-  it("Responses 模型显示连接字段并提交特高思考档位", async () => {
+  it("Responses 模型显示连接字段并提交最高思考档位", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -122,14 +122,14 @@ describe("ModelBasicSettingsDialog", () => {
     if (!(thinking_select instanceof HTMLSelectElement)) {
       throw new Error("思考档位选择器未挂载。");
     }
-    expect(thinking_select.querySelector('option[value="XHIGH"]')?.textContent).toBe(
-      "app.model.thinking_level.xhigh",
+    expect(thinking_select.querySelector('option[value="MAX"]')?.textContent).toBe(
+      "app.model.thinking_level.max",
     );
     await act(async () => {
-      thinking_select.value = "XHIGH";
+      thinking_select.value = "MAX";
       thinking_select.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "XHIGH" } });
+    expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "MAX" } });
   });
 });

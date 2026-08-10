@@ -1,6 +1,7 @@
 import {
   type Context,
   type Model as PiModel,
+  type ModelThinkingLevel as PiModelThinkingLevel,
   type ProviderStreamOptions,
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
@@ -12,10 +13,10 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import { AppError } from "../../shared/error";
 import {
   apply_one_shot_request_overrides,
-  model_supports_pi_reasoning,
   resolve_one_shot_generation_options,
 } from "./llm-client-policy";
 import type { LLMMessage } from "./llm-types";
+import { resolve_model_thinking } from "./policy/model-thinking-policy";
 import type { ModelRequestSnapshot } from "./policy/policy-types";
 
 // Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
@@ -31,27 +32,33 @@ type PiModelSettings = Readonly<{
   name: string;
   contextWindow: number;
   maxTokens: number;
-  reasoning: boolean;
   input: PiModel<PiApi>["input"];
 }>;
 
-/** OneShot 与 Agent 共用的 Pi model 和惰性 API 解析入口。 */
+/** OneShot 与 Agent 共用同一次策略解析生成 Pi 能力映射和实际思考档位。 */
 export function resolve_pi_model(
   snapshot: ModelRequestSnapshot,
   settings: PiModelSettings,
 ): {
   model: PiModel<PiApi>;
+  thinkingLevel: PiModelThinkingLevel;
   stream: ProviderStreams["stream"];
   streamSimple: ProviderStreams["streamSimple"];
 } {
   const api = resolve_pi_api(snapshot.api_format);
+  const thinking = resolve_model_thinking(
+    snapshot.api_format,
+    snapshot.model_id,
+    snapshot.thinking_level,
+  );
   const model: PiModel<PiApi> = {
     id: snapshot.model_id,
     name: settings.name,
     provider: api.provider,
     api: api.api,
     baseUrl: snapshot.base_url,
-    reasoning: settings.reasoning,
+    reasoning: thinking !== null,
+    ...(thinking === null ? {} : { thinkingLevelMap: { ...thinking.thinking_level_map } }),
     input: settings.input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: settings.contextWindow,
@@ -60,7 +67,12 @@ export function resolve_pi_model(
     // 自定义 OpenAI-compatible 服务只共同保证 system role；OneShot 会继续冻结旧 payload 形状。
     ...(api.api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
   };
-  return { model, stream: api.stream, streamSimple: api.streamSimple };
+  return {
+    model,
+    thinkingLevel: thinking?.effective_level ?? "off",
+    stream: api.stream,
+    streamSimple: api.streamSimple,
+  };
 }
 
 /** 组装一次 OneShot Pi 请求；应用级超时仍由 LLMClient 独立拥有。 */
@@ -75,12 +87,10 @@ export function resolve_one_shot_pi_request(
   stream: ProviderStreams["stream"];
 } {
   const generation = resolve_one_shot_generation_options(snapshot);
-  const supports_reasoning = model_supports_pi_reasoning(snapshot);
   const resolved = resolve_pi_model(snapshot, {
     name: snapshot.model_id,
     contextWindow: 0,
     maxTokens: generation.maxTokens ?? 0,
-    reasoning: snapshot.api_format === "OpenAIResponses" && supports_reasoning,
     input: ["text"],
   });
   // Chat Completions 保持既有 payload；Responses 直接使用 Pi 的原生 Items 与 store:false 契约。
@@ -105,9 +115,9 @@ export function resolve_one_shot_pi_request(
     ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
     ...(generation.maxTokens === undefined ? {} : { maxTokens: generation.maxTokens }),
     ...(snapshot.api_format === "OpenAIResponses" &&
-    supports_reasoning &&
-    snapshot.thinking_level !== "OFF"
-      ? { reasoningEffort: snapshot.thinking_level.toLowerCase() }
+    resolved.model.reasoning &&
+    resolved.thinkingLevel !== "off"
+      ? { reasoningEffort: resolved.thinkingLevel }
       : {}),
     ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
     onPayload: (payload) => apply_one_shot_request_overrides(snapshot, payload, signal),

@@ -20,7 +20,6 @@ describe("pi-ai 请求适配", () => {
       name: "Test",
       contextWindow: 32_000,
       maxTokens: 4096,
-      reasoning: false,
       input: ["text"],
     });
 
@@ -67,7 +66,7 @@ describe("pi-ai 请求适配", () => {
       provider: "openai",
       api: "openai-completions",
       baseUrl: "https://openai.example/v1",
-      reasoning: false,
+      reasoning: true,
       input: ["text"],
       compat: {
         supportsDeveloperRole: false,
@@ -187,10 +186,10 @@ describe("pi-ai 请求适配", () => {
     ]);
   });
 
-  it("GPT-5.6 Responses 的 OFF 档显式发送 reasoning.effort=none", async () => {
+  it("GPT Responses 的 OFF 档显式发送 reasoning.effort=none", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
-      model_id: "gpt-5.6-luna",
+      model_id: "gpt-5.5",
       thinking: { level: "OFF" },
     });
     const payload = await capture_payload(request);
@@ -202,18 +201,19 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
-  it("GPT-5.6 Responses 的特高档启用 Pi reasoning 连续性", async () => {
+  it("GPT Responses 的最高档启用 Pi reasoning 连续性", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
-      model_id: "gpt-5.6-luna",
-      thinking: { level: "XHIGH" },
+      model_id: "gpt-5.5",
+      thinking: { level: "MAX" },
     });
     const payload = await capture_payload(request);
 
     expect(request.model.reasoning).toBe(true);
-    expect(request.options).toMatchObject({ reasoningEffort: "xhigh" });
+    expect(request.model.thinkingLevelMap).toMatchObject({ xhigh: "xhigh", max: "max" });
+    expect(request.options).toMatchObject({ reasoningEffort: "max" });
     expect(payload).toMatchObject({
-      reasoning: { effort: "xhigh", summary: "auto" },
+      reasoning: { effort: "max", summary: "auto" },
       include: ["reasoning.encrypted_content"],
     });
     expect(payload["input"]).toEqual([
@@ -223,6 +223,23 @@ describe("pi-ai 请求适配", () => {
         content: [{ type: "input_text", text: "こんにちは" }],
       },
     ]);
+  });
+
+  it("Kimi K3 的特高档在 Pi 与最终 payload 中统一降为 high", async () => {
+    const request = resolve_request({
+      api_format: "OpenAI",
+      model_id: "kimi-k3",
+      thinking: { level: "XHIGH" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model).toMatchObject({ reasoning: true });
+    expect(request.model.thinkingLevelMap).toMatchObject({
+      high: "high",
+      xhigh: null,
+      max: "max",
+    });
+    expect(payload).toHaveProperty("reasoning_effort", "high");
   });
 
   it("Responses 未收录模型即使选择 HIGH 也不启用 reasoning", async () => {
