@@ -15,9 +15,10 @@ import {
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
 const AGENT_WORKSPACE_PARTITION = "agent-workspace"; // 无 persist: 前缀，应用退出后不落盘
-const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE = "脚本返回结果过大；请写入 scratch 并只返回摘要。";
+const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE =
+  "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，跨步骤确有需要时再把最小结构化状态写入 scratch。";
 const AGENT_WORKSPACE_RECIPE_RESULT_TOO_LARGE =
-  "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 将中间结果写入 scratch 后只返回摘要。";
+  "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 在工作区内聚合后只返回摘要。";
 
 /** 自定义 scheme 权限必须在 Electron ready 前注册。 */
 export function register_agent_workspace_scheme(): void {
@@ -260,7 +261,7 @@ function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-/** 自由脚本可以把大结果落到 scratch；只读 recipe 只能继续缩小页面。 */
+/** 自由脚本应在工作区内聚合结果；只读 recipe 只能继续缩小页面。 */
 function workspace_result_too_large_message(kind: "script" | "recipe"): string {
   return kind === "script"
     ? AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE
