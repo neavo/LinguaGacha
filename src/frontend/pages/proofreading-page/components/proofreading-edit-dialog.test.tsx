@@ -12,27 +12,25 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
       return {
         t: (key: string) => {
           const messages: Record<string, string> = {
-            "proofreading_page.action.cancel": "取消",
+            "app.action.cancel": "取消",
             "proofreading_page.action.clear_translation": "清空译文",
             "proofreading_page.action.retranslate": "重新翻译",
             "proofreading_page.action.set_translation_status": "设置翻译状态",
-            "proofreading_page.action.save": "保存",
-            "proofreading_page.action.edit": "编辑",
+            "app.action.save": "保存",
+            "app.action.edit": "编辑",
             "proofreading_page.action.view_context": "查看上下文",
             "proofreading_page.action.back": "返回",
             "proofreading_page.fields.source": "原文",
-            "proofreading_page.fields.source_name": "原文姓名",
             "proofreading_page.fields.status": "状态",
             "proofreading_page.fields.translation": "译文",
-            "proofreading_page.fields.translation_name": "译文姓名",
             "proofreading_page.glossary.missing": "术语未落实",
             "proofreading_page.glossary.applied": "术语已落实",
             "proofreading_page.glossary.partial": "术语部分落实",
             "proofreading_page.glossary.tooltip_applied": "术语已落实",
             "proofreading_page.glossary.tooltip_missing": "术语未落实",
             "proofreading_page.status.excluded": "已排除",
-            "proofreading_page.status.none": "等待翻译",
-            "proofreading_page.status.processed": "翻译成功",
+            "task_progress.translation_pending": "等待翻译",
+            "task_progress.translation_completed": "翻译成功",
             "proofreading_page.tooltip.glossary_applied_terms": "已落实",
             "proofreading_page.tooltip.glossary_missing_terms": "未落实",
           };
@@ -190,12 +188,14 @@ function create_dialog_state(
   };
 }
 
-function get_textbox_by_name(container: HTMLElement, name: string): HTMLTextAreaElement {
-  const editor = [...container.querySelectorAll<HTMLTextAreaElement>("textarea")].find(
-    (candidate) => candidate.getAttribute("aria-label") === name,
-  );
-  if (editor === undefined) throw new Error(`缺少名为“${name}”的文本框。`);
-  return editor;
+function get_name_textboxes(
+  container: HTMLElement,
+): readonly [HTMLTextAreaElement, HTMLTextAreaElement] {
+  const editors = container.querySelectorAll<HTMLTextAreaElement>(".app-editor--field textarea");
+  const source = editors.item(0);
+  const translation = editors.item(1);
+  if (source === null || translation === null) throw new Error("缺少姓名字段编辑器。");
+  return [source, translation];
 }
 
 describe("ProofreadingEditDialog", () => {
@@ -286,8 +286,7 @@ describe("ProofreadingEditDialog", () => {
       on_change,
     });
 
-    const source_input = get_textbox_by_name(rendered, "原文姓名");
-    const translation_input = get_textbox_by_name(rendered, "译文姓名");
+    const [source_input, translation_input] = get_name_textboxes(rendered);
     expect(source_input.value).toBe("Alice");
     expect(source_input.readOnly).toBe(true);
     expect(source_input.getAttribute("data-readonly")).toBe("true");
@@ -333,7 +332,7 @@ describe("ProofreadingEditDialog", () => {
       readonly: true,
     });
 
-    const translation_input = get_textbox_by_name(rendered, "译文姓名");
+    const [, translation_input] = get_name_textboxes(rendered);
 
     expect(translation_input.readOnly).toBe(true);
     expect(translation_input.disabled).toBe(false);
@@ -363,8 +362,7 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "" } }),
     });
 
-    const source_input = get_textbox_by_name(rendered, "原文姓名");
-    const translation_input = get_textbox_by_name(rendered, "译文姓名");
+    const [source_input, translation_input] = get_name_textboxes(rendered);
     const source_root = source_input.closest(".app-editor--field");
     const translation_root = translation_input.closest(".app-editor--field");
     if (source_root === null || translation_root === null) {
@@ -383,8 +381,7 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "艾丽丝" } }),
     });
 
-    const next_source_input = get_textbox_by_name(rendered, "原文姓名");
-    const next_translation_input = get_textbox_by_name(rendered, "译文姓名");
+    const [next_source_input, next_translation_input] = get_name_textboxes(rendered);
     const next_source_root = next_source_input.closest(".app-editor--field");
     const next_translation_root = next_translation_input.closest(".app-editor--field");
     if (next_source_root === null || next_translation_root === null) {

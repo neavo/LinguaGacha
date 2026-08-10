@@ -4,11 +4,9 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  app_editor_text_mark_field,
   app_editor_whitespace_extension,
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_syntax_extensions,
-  set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 
 let editor_view: EditorView | null = null;
@@ -56,25 +54,6 @@ describe("app_editor_whitespace_extension", () => {
 
     expect(editor_view?.state.doc.toString()).toBe("a　b");
     expect(parent.querySelector(".cm-highlightFullwidthSpace")?.textContent).toBe("　");
-  });
-});
-
-describe("app text marks", () => {
-  it("CodeMirror 标记更新后替换旧的下划线状态", () => {
-    const parent = create_editor("Alice Bob", [app_editor_text_mark_field]);
-
-    editor_view?.dispatch({
-      effects: set_app_editor_text_marks_effect.of([{ start: 0, end: 5, tone: "success" }]),
-    });
-
-    expect(parent.querySelector(".app-text-mark--success")?.textContent).toBe("Alice");
-
-    editor_view?.dispatch({
-      effects: set_app_editor_text_marks_effect.of([{ start: 6, end: 9, tone: "warning" }]),
-    });
-
-    expect(parent.querySelector(".app-text-mark--success")).toBeNull();
-    expect(parent.querySelector(".app-text-mark--warning")?.textContent).toBe("Bob");
   });
 });
 

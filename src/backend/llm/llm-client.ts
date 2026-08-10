@@ -85,7 +85,7 @@ function normalize_pi_result(
     message.stopReason === "aborted" ||
     message.stopReason === "pending"
   ) {
-    throw new Error(message.errorMessage ?? "供应商请求未正常结束。");
+    throw new Error(message.errorMessage ?? "Provider request did not complete normally.");
   }
   const response_think = message.content
     .filter((block) => block.type === "thinking")

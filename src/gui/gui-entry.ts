@@ -59,7 +59,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   async function open_output_folder(output_path: string): Promise<void> {
     const error_message = await shell.openPath(output_path);
     if (error_message !== "") {
-      throw new AppErrors.FileIoFailedError({
+      throw new AppErrors.AppError("file.io_failed", {
         diagnostic_context: { output_path, reason: error_message },
       });
     }
@@ -74,7 +74,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     webFetch: (request, signal) => desktop_web_fetch(session.defaultSession, request, signal),
     runAgentWorkspace: async (request, signal) => {
       if (agent_workspace_runner === null) {
-        throw new AppErrors.InternalInvariantError({
+        throw new AppErrors.AppError("runtime.internal_invariant", {
           diagnostic_context: { reason: "agent_workspace_runner_not_ready" },
         });
       }
@@ -105,7 +105,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
    */
   function require_backend_api_base_url(): string {
     if (backend_api_base_url === null) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "backend_api_base_url_not_ready" },
       });
     }
@@ -138,7 +138,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
    */
   function register_runtime_ipc_handlers(): void {
     if (desktop_update_service === null) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "desktop_update_service_not_ready" },
       });
     }

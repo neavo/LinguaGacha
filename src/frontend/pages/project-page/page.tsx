@@ -711,11 +711,11 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
         <SegmentedProgress
           stats={preview.translation_stats}
           labels={{
-            skipped: t("workbench_page.stats.translation_skipped"),
-            failed: t("workbench_page.stats.translation_failed"),
-            completed: t("workbench_page.stats.translation_completed"),
-            pending: t("workbench_page.stats.translation_pending"),
-            total: t("workbench_page.stats.total_lines"),
+            skipped: t("task_progress.translation_skipped"),
+            failed: t("task_progress.translation_failed"),
+            completed: t("task_progress.translation_completed"),
+            pending: t("task_progress.translation_pending"),
+            total: t("task_progress.total_lines"),
           }}
         />
         <div className="project-home__preview-progress-meta">
@@ -1524,7 +1524,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               on_remove={() => {
                 void handle_recent_project_remove(project_item.path);
               }}
-              remove_aria_label={t("quality_editor.action.delete")}
+              remove_aria_label={t("app.action.delete")}
             />
           ))}
         </div>

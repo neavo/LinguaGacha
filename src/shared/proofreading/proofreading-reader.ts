@@ -26,7 +26,7 @@ import {
   compare_proofreading_text,
   sort_proofreading_client_items,
 } from "./list";
-import { InternalInvariantError } from "../error";
+import { AppError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 import { apply_project_item_field_patch } from "../project/project-item-field-patch";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
@@ -1061,7 +1061,7 @@ export function createProofreadingReader() {
      */
     apply_item_delta(input: ProofreadingDeltaInput): ProofreadingSyncState {
       if (state === null || state.projectId !== input.projectId) {
-        throw new InternalInvariantError({
+        throw new AppError("runtime.internal_invariant", {
           diagnostic_context: { reason: "proofreading_runtime_requires_project_sync" },
         });
       }
@@ -1074,7 +1074,7 @@ export function createProofreadingReader() {
         revisions.quality !== current_state.revisions.quality ||
         revisions.proofreading < current_state.revisions.proofreading
       ) {
-        throw new InternalInvariantError({
+        throw new AppError("runtime.internal_invariant", {
           diagnostic_context: {
             reason: "proofreading_runtime_delta_revision_incompatible",
             current_revisions: current_state.revisions,

@@ -209,7 +209,7 @@ describe("DesktopUpdateService", () => {
         latest_version: "1.2.4",
         zip_path: path.join(app_root, "userdata", "berserker", "v1.2.5", "update.zip"),
       }),
-    ).rejects.toThrow("更新包路径不在当前版本目录内");
+    ).rejects.toThrow("Update package path is outside the current version directory.");
   });
 });
 

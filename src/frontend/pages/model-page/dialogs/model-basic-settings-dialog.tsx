@@ -259,7 +259,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 void commit_model_id_input();
               }}
             >
-              {t("model_page.dialog.model_id_input.confirm")}
+              {t("app.action.confirm")}
             </AppButton>
           </>
         }

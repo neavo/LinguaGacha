@@ -4,11 +4,8 @@ import * as AppErrors from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 /** 统一构造 Pi payload 结构异常，保留 API 格式与可选字段定位。 */
-export function invalid_pi_payload(
-  api_format: ModelApiFormat,
-  field?: string,
-): AppErrors.InternalInvariantError {
-  return new AppErrors.InternalInvariantError({
+export function invalid_pi_payload(api_format: ModelApiFormat, field?: string): AppErrors.AppError {
+  return new AppErrors.AppError("runtime.internal_invariant", {
     diagnostic_context: {
       reason: "invalid_model_request_payload",
       api_format,

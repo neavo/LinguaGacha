@@ -5,11 +5,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getGlobalDispatcher } from "undici";
 
-import {
-  FileIoFailedError,
-  InternalInvariantError,
-  RuntimeDisposedError,
-} from "../../shared/error";
 import { AgentService } from "../agent/agent-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { NPM_INITIAL_CWD_ENV_NAME } from "../app/app-root-resolver";
@@ -80,7 +75,7 @@ describe("BackendBootstrap", () => {
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
 
-    await expect(manager.start()).rejects.toBeInstanceOf(FileIoFailedError);
+    await expect(manager.start()).rejects.toMatchObject({ code: "file.io_failed" });
 
     expect(agent_dispose).toHaveBeenCalledTimes(1);
     expect(database_close).toHaveBeenCalledTimes(1);
@@ -377,8 +372,8 @@ describe("BackendBootstrap", () => {
     }
     await stopping;
 
-    expect(start_error).toBeInstanceOf(RuntimeDisposedError);
     expect(start_error).toMatchObject({
+      code: "runtime.disposed",
       diagnostic_context: {
         reason: "backend_bootstrap_stopped_during_start",
       },
@@ -463,7 +458,6 @@ describe("BackendBootstrap", () => {
         repeated_start_error = error;
       }
 
-      expect(repeated_start_error).toBeInstanceOf(InternalInvariantError);
       expect(repeated_start_error).toMatchObject({
         code: "runtime.internal_invariant",
         diagnostic_context: {

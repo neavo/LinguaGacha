@@ -3,7 +3,7 @@ import {
   has_language_character,
   normalize_language_code,
 } from "../../domain/language";
-import { UnknownSourceLanguageCodeError } from "../error";
+import { AppError } from "../error";
 
 /**
  * 返回 true 表示需要排除；ALL 关闭过滤，未知语言显式暴露损坏配置。
@@ -16,7 +16,10 @@ export function should_skip_by_language_prefilter(text: string, source_language:
   }
 
   if (language_code === null) {
-    throw new UnknownSourceLanguageCodeError(source_language);
+    throw new AppError("language.unknown_source_language_code", {
+      public_details: { source_language },
+      diagnostic_context: { source_language },
+    });
   }
 
   return !has_language_character(text, language_code);

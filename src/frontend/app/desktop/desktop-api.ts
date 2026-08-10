@@ -8,6 +8,7 @@ import {
   type LogLevel,
 } from "@shared/log";
 import {
+  is_app_error_code,
   normalize_log_error,
   type ApiErrorPayload,
   type AppErrorCode,
@@ -69,7 +70,6 @@ export type DesktopLocalErrorCode =
   | "timeout";
 
 export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
-export type DesktopLocalErrorMessageKey = `app.error.desktop.${DesktopLocalErrorCode}.message`;
 
 // CORE API HEALTH PATH 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const BACKEND_API_HEALTH_PATH = "/api/health";
@@ -87,33 +87,21 @@ let pending_backend_api_base_url_resolution: Promise<string> | null = null;
  * 携带 Backend API 错误码，保持渲染层错误分支可判定
  */
 export class DesktopApiError extends Error {
-  code: DesktopApiErrorCode;
-  status: number;
-  details: Record<string, unknown>;
-  action: string | null;
-  message_key: string | null;
-  request_id: string | null;
+  public readonly code: DesktopApiErrorCode;
+  public readonly details: Record<string, unknown>;
 
   /**
    * 初始化 DesktopApiError 依赖，保留 renderer 可判定的错误元数据
    */
   constructor(args: {
-    message: string;
     code: DesktopApiErrorCode;
-    status: number;
     details?: Record<string, unknown>;
-    action?: string;
-    message_key?: string;
-    request_id?: string;
+    cause?: unknown;
   }) {
-    super(args.message);
+    super(args.code, args.cause === undefined ? undefined : { cause: args.cause });
     this.name = "DesktopApiError";
     this.code = args.code;
-    this.status = args.status;
     this.details = args.details ?? {};
-    this.action = args.action ?? null;
-    this.message_key = args.message_key ?? null;
-    this.request_id = args.request_id ?? null;
   }
 
   /**
@@ -121,21 +109,10 @@ export class DesktopApiError extends Error {
    */
   public static local(
     code: DesktopLocalErrorCode,
-    status = 500,
     details: Record<string, unknown> = {},
   ): DesktopApiError {
-    const message_key = build_desktop_local_error_message_key(code);
-    return new DesktopApiError({ code, details, message: message_key, message_key, status });
+    return new DesktopApiError({ code, details });
   }
-}
-
-/**
- * 将本地错误码映射成 renderer 可本地化的 message key。
- */
-function build_desktop_local_error_message_key(
-  code: DesktopLocalErrorCode,
-): DesktopLocalErrorMessageKey {
-  return `app.error.desktop.${code}.message`;
 }
 
 /**
@@ -143,19 +120,13 @@ function build_desktop_local_error_message_key(
  */
 function build_desktop_api_error<data_type>(
   path: string,
-  response: Response,
   payload: ApiEnvelope<data_type> | null,
 ): DesktopApiError {
   const error = payload?.error;
-  const fallback_message_key = build_desktop_local_error_message_key("http_error");
+  const code = is_app_error_code(error?.code) ? error.code : "http_error";
   return new DesktopApiError({
-    message: error?.message ?? fallback_message_key,
-    code: error?.code ?? "http_error",
-    status: response.status,
+    code,
     details: error?.details ?? { path },
-    action: error?.action,
-    message_key: error?.message_key ?? fallback_message_key,
-    request_id: error?.request_id,
   });
 }
 
@@ -175,13 +146,10 @@ async function read_api_envelope<data_type>(
 function create_network_error(path: string, cause: unknown): DesktopApiError {
   const code: DesktopLocalErrorCode =
     cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
-  const message_key = build_desktop_local_error_message_key(code);
   return new DesktopApiError({
-    message: message_key,
     code,
     details: { path },
-    message_key,
-    status: 503,
+    cause,
   });
 }
 
@@ -189,7 +157,7 @@ function read_backend_api_base_url(): string {
   const base_url = normalize_backend_api_base_url(window.desktopApp.backendApi.baseUrl);
 
   if (base_url === "") {
-    throw DesktopApiError.local("missing_backend_api_base_url", 500);
+    throw DesktopApiError.local("missing_backend_api_base_url");
   }
 
   return base_url;
@@ -336,7 +304,7 @@ async function resolve_backend_api_base_url(): Promise<string> {
       return base_url;
     }
 
-    throw DesktopApiError.local("backend_api_unavailable", 503);
+    throw DesktopApiError.local("backend_api_unavailable");
   })();
 
   try {
@@ -349,7 +317,7 @@ async function resolve_backend_api_base_url(): Promise<string> {
 export async function get_backend_metadata(): Promise<BackendMetadata> {
   await resolve_backend_api_base_url();
   if (cached_backend_metadata === null) {
-    throw DesktopApiError.local("backend_metadata_unavailable", 503);
+    throw DesktopApiError.local("backend_metadata_unavailable");
   }
 
   return cached_backend_metadata;
@@ -411,7 +379,7 @@ async function api_request<data_type>(path: string, init: RequestInit): Promise<
   const payload = await read_api_envelope<data_type>(response);
 
   if (!response.ok || payload?.ok !== true || payload.data === undefined) {
-    throw build_desktop_api_error(path, response, payload);
+    throw build_desktop_api_error(path, payload);
   }
 
   return payload.data;
@@ -479,7 +447,7 @@ async function* open_json_event_source_stream(args: {
    * 标记流错误并复用关闭流程通知消费方。
    */
   function fail_stream(): void {
-    stream_error = DesktopApiError.local("event_stream_failed", 503);
+    stream_error = DesktopApiError.local("event_stream_failed");
     close_stream();
   }
 

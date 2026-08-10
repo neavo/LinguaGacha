@@ -25,25 +25,6 @@ beforeEach(() => {
 });
 
 describe("Agent 模型注册", () => {
-  it.each([
-    ["OpenAI", "openai", "openai-completions", { supportsDeveloperRole: false }],
-    ["OpenAIResponses", "openai", "openai-responses", undefined],
-    ["SakuraLLM", "openai-compatible", "openai-completions", { supportsDeveloperRole: false }],
-    ["Anthropic", "anthropic", "anthropic-messages", undefined],
-    ["Google", "google", "google-generative-ai", undefined],
-  ] as const)(
-    "把 %s 注册为对应 Provider、API 与 developer 角色能力",
-    async (api_format, provider, api, compat) => {
-      const runtime = await create_model_runtime();
-      const resolved = register_agent_model(runtime, build_config(api_format), TEST_USER_AGENT);
-
-      expect(resolved.model).toMatchObject({ provider, api, input: ["text", "image"] });
-      if (compat === undefined) expect(resolved.model).not.toHaveProperty("compat");
-      else expect(resolved.model.compat).toEqual(compat);
-      expect(runtime.getModels(provider)).toEqual([resolved.model]);
-    },
-  );
-
   it("注册统一模型事实，并在 streamSimple 强制 LinguaGacha 请求策略", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(

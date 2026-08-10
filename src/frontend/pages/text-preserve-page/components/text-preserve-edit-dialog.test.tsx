@@ -67,12 +67,12 @@ describe("TextPreserveEditDialog", () => {
     });
 
     const rule = container.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="quality_editor.fields.rule"]',
+      'textarea[aria-label="quality_rule_editor.fields.rule"]',
     );
     expect(rule?.readOnly).toBe(true);
     expect(rule?.getAttribute("aria-invalid")).toBe("true");
     expect(container.textContent).toContain("转义序列无效");
-    expect(find_button(container, "quality_editor.action.save")?.disabled).toBe(true);
+    expect(find_button(container, "app.action.save")?.disabled).toBe(true);
     expect(shortcut_mock).toHaveBeenCalledWith(
       expect.objectContaining({ action: "save", enabled: false }),
     );

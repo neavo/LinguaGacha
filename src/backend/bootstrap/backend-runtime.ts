@@ -150,13 +150,13 @@ export async function run_backend_runtime(args: {
   ): Promise<void> => {
     try {
       if (message.type === "stop") {
-        reject_pending_host_requests(new Error("Backend runtime 已关闭。"));
+        reject_pending_host_requests(new Error("Backend runtime is closed."));
         await bootstrap.stop();
         respond(message.requestId, { ok: true, data: null });
         args.port.close?.();
         return;
       }
-      if (start_result === null) throw new Error("Backend runtime 尚未就绪。");
+      if (start_result === null) throw new Error("Backend runtime is not ready.");
       if (message.type === "read_app_language") {
         respond(message.requestId, {
           ok: true,
@@ -178,7 +178,7 @@ export async function run_backend_runtime(args: {
 
   try {
     start_result = await bootstrap.start();
-    if (start_result.apiBaseUrl === null) throw new Error("GUI Backend API 未公开。");
+    if (start_result.apiBaseUrl === null) throw new Error("GUI Backend API is not exposed.");
     const paths = new AppPathService({ appRoot: args.appRoot });
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,

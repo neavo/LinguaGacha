@@ -12,24 +12,24 @@ export function WorkbenchStatsSection(props: WorkbenchStatsSectionProps): JSX.El
   const { t } = useI18n();
   const completed_title =
     props.stats_mode === "analysis"
-      ? t("workbench_page.stats.analysis_completed")
-      : t("workbench_page.stats.translation_completed");
+      ? t("task_progress.analysis_completed")
+      : t("task_progress.translation_completed");
   const failed_title =
     props.stats_mode === "analysis"
-      ? t("workbench_page.stats.analysis_failed")
-      : t("workbench_page.stats.translation_failed");
+      ? t("task_progress.analysis_failed")
+      : t("task_progress.translation_failed");
   const pending_title =
     props.stats_mode === "analysis"
-      ? t("workbench_page.stats.analysis_pending")
-      : t("workbench_page.stats.translation_pending");
+      ? t("task_progress.analysis_pending")
+      : t("task_progress.translation_pending");
   const skipped_title =
     props.stats_mode === "analysis"
-      ? t("workbench_page.stats.analysis_skipped")
-      : t("workbench_page.stats.translation_skipped");
-  const toggle_tooltip = t("workbench_page.stats.toggle_tooltip");
+      ? t("task_progress.analysis_skipped")
+      : t("task_progress.translation_skipped");
+  const toggle_tooltip = t("task_progress.toggle_tooltip");
 
   return (
-    <section className="workbench-page__stats-grid" aria-label={t("workbench_page.section.stats")}>
+    <section className="workbench-page__stats-grid">
       <WorkbenchStatCard
         title={skipped_title}
         value={props.stats.skipped_count}

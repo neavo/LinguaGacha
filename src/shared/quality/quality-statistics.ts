@@ -113,7 +113,7 @@ function assign_regex_hits(
         case_sensitive: rule.case_sensitive,
         trim: false,
       });
-      if (pattern === null) throw new TypeError("质量统计正则不能为空");
+      if (pattern === null) throw new TypeError("Quality statistics regex must not be empty.");
       return { rule, pattern };
     });
   for (const { rule, pattern } of compiled) {

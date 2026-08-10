@@ -312,9 +312,7 @@ describe("useCustomPromptEditorState", () => {
     save_handler = (_body, current_save_index) => {
       if (current_save_index === 1) {
         throw new DesktopApiError({
-          message: "revision conflict",
           code: "data.revision_conflict",
-          status: 409,
         });
       }
     };

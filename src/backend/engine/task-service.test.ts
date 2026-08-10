@@ -183,7 +183,7 @@ describe("TaskService", () => {
         mode: "new",
         scope: { kind: "all" },
       }),
-    ).rejects.toThrow("任务启动失败且恢复快照发布失败");
+    ).rejects.toThrow("Task startup and recovery snapshot publication both failed.");
 
     expect((await runtime.build_snapshot({ task_type: "translation" })).busy).toBe(false);
     await expect(runtime.begin("analysis")).resolves.toMatchObject({ task_type: "analysis" });

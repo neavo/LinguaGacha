@@ -93,7 +93,6 @@ describe("AgentMarkdown", () => {
     await wait_for_condition(() => view.querySelector("figure svg") !== null);
 
     const figure = view.querySelector<HTMLElement>("figure.agent-message__diagram");
-    expect(figure?.getAttribute("aria-label")).toBe("agent_page.diagram.label");
     expect(figure?.tabIndex).toBe(0);
     expect(view.querySelector("code.language-mermaid")).toBeNull();
     expect(mocks.render).toHaveBeenCalledWith(

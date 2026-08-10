@@ -1,7 +1,6 @@
-import { act, type ComponentProps } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
@@ -120,33 +119,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
 }
 
 describe("WorkbenchCommandBar", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => root?.unmount());
-    }
-    container?.remove();
-    container = null;
-    root = null;
-  });
-
-  it("添加与删除文件按钮展示平台化快捷键提示", () => {
-    const html = renderToStaticMarkup(
-      <TooltipProvider>
-        <WorkbenchCommandBar {...create_workbench_command_bar_props()} />
-      </TooltipProvider>,
-    );
-
-    expect(html).toContain("workbench_page.section.command_bar");
-    expect(html).toContain("workbench_page.action.add_file");
-    expect(html).toContain("Ctrl+N");
-    expect(html).toContain("workbench_page.action.delete_file");
-    expect(html).toContain("Del");
-    expect(html.match(/data-model-selection="true"/g)).toHaveLength(2);
-  });
-
   it("删除按钮只消费上游删除权限", () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
@@ -161,35 +133,10 @@ describe("WorkbenchCommandBar", () => {
     const container = document.createElement("div");
     container.innerHTML = html;
     const delete_button = [...container.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("workbench_page.action.delete_file"),
+      button.textContent?.includes("app.action.delete"),
     );
 
     expect(delete_button).toBeInstanceOf(HTMLButtonElement);
     expect(delete_button?.disabled).toBe(true);
-  });
-
-  it("运行中的翻译任务会自动展示详情提示", async () => {
-    const props = create_workbench_command_bar_props();
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <TooltipProvider>
-          <WorkbenchCommandBar
-            {...props}
-            active_workbench_task_view={{ task_kind: "translation", can_open_detail: true }}
-            active_workbench_task_summary={{
-              ...props.active_workbench_task_summary,
-              show_spinner: true,
-              detail_tooltip_text: "translation-running-detail",
-            }}
-          />
-        </TooltipProvider>,
-      );
-    });
-
-    expect(document.body.textContent).toContain("translation-running-detail");
   });
 });

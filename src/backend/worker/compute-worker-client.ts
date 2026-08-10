@@ -1,12 +1,7 @@
 import crypto from "node:crypto";
 import { Worker } from "node:worker_threads";
 
-import {
-  normalize_log_error,
-  RuntimeCancelledError,
-  RuntimeDisposedError,
-  WorkerExecutionFailedError,
-} from "../../shared/error";
+import { AppError, normalize_log_error } from "../../shared/error";
 import type { BackendWorkerExecution } from "./worker-execution";
 import {
   run_compute_worker_task,
@@ -145,7 +140,7 @@ export class ComputeWorkerClient {
 
   private create_worker(): Worker {
     if (this.execution.kind !== "worker_threads") {
-      throw new Error("ComputeWorkerClient 创建线程时必须使用 worker_threads。");
+      throw new Error("ComputeWorkerClient requires worker_threads mode to create a worker.");
     }
     const worker = new Worker(this.execution.computeWorkerEntryUrl);
     worker.on("message", (message: ComputeWorkerOutgoingMessage) => {
@@ -172,9 +167,9 @@ export class ComputeWorkerClient {
       this.finish_task(
         task.id,
         null,
-        new WorkerExecutionFailedError({
+        new AppError("worker.execution_failed", {
           diagnostic_context: {
-            failure: normalize_log_error(message.error, "Compute worker 执行失败。"),
+            failure: normalize_log_error(message.error, "Compute worker execution failed."),
           },
         }),
       );
@@ -218,15 +213,15 @@ export class ComputeWorkerClient {
     task.reject(error);
   }
 
-  private create_disposed_error(): RuntimeDisposedError {
-    return new RuntimeDisposedError({
+  private create_disposed_error(): AppError {
+    return new AppError("runtime.disposed", {
       public_details: { resource: "ComputeWorkerClient" },
       diagnostic_context: { queue_length: this.queue.length },
     });
   }
 
-  private create_cancelled_error(): RuntimeCancelledError {
-    return new RuntimeCancelledError({
+  private create_cancelled_error(): AppError {
+    return new AppError("runtime.cancelled", {
       public_details: { resource: "compute_worker" },
     });
   }

@@ -8,7 +8,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string) =>
       ({
-        "proofreading_page.action.retry": "重试",
+        "app.action.retry": "重试",
         "proofreading_page.context.load_failed": "无法读取上下文",
         "proofreading_page.context.loading": "正在读取上下文 …",
         "proofreading_page.title": "校对",

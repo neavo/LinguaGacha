@@ -9,7 +9,7 @@ import type {
   GlossaryHitBadgeState,
   GlossaryVisibleEntry,
 } from "@frontend/pages/glossary-page/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
@@ -175,7 +175,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         id: "drag",
         width: 64,
         align: "center",
-        title: t("quality_editor.fields.drag"),
+        title: t("app.drag.handle"),
         head_class_name: "glossary-page__table-drag-head",
         cell_class_name: "glossary-page__table-drag-cell",
         render_cell: (payload) => {
@@ -193,13 +193,13 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "src",
-        title: t("quality_editor.fields.source"),
+        title: t("quality_rule_editor.fields.source"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-source-head",
@@ -215,9 +215,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-translation-head",
@@ -233,9 +233,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-description-head",
@@ -247,20 +247,20 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "rule",
-        title: t("quality_editor.fields.rule"),
+        title: t("quality_rule_editor.fields.rule"),
         width: 96,
         align: "center",
         sortable: {
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-rule-head",
         cell_class_name: "glossary-page__table-rule-cell",
         render_cell: (payload) => {
-          const case_tooltip = t("quality_editor.toggle.status")
+          const case_tooltip = t("app.toggle.status")
             .replace("{TITLE}", t("glossary_page.rule.case_sensitive"))
             .replace(
               "{STATE}",
@@ -281,9 +281,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         sortable: {
           disabled: !props.hit_sort_available,
           action_labels: {
-            ascending: t("quality_editor.sort.ascending"),
-            descending: t("quality_editor.sort.descending"),
-            clear: t("quality_editor.sort.clear"),
+            ascending: t("quality_rule_editor.sort.ascending"),
+            descending: t("quality_rule_editor.sort.descending"),
+            clear: t("quality_rule_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-hit-head",
@@ -321,9 +321,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
 
   return (
     <Card variant="table" className="glossary-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t("glossary_page.title")}</CardTitle>
-      </CardHeader>
       <CardContent className="glossary-page__table-card-content">
         <AppTable
           rows={props.entries}

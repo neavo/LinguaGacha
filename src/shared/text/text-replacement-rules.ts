@@ -26,7 +26,7 @@ export function compile_text_replacements(
       global: true,
       trim: false,
     });
-    if (pattern === null) throw new TypeError("替换规则 src 不能为空");
+    if (pattern === null) throw new TypeError("Replacement rule src must not be empty.");
     return {
       pattern,
       replacement_text: entry.dst,

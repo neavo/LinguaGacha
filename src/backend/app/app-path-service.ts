@@ -50,7 +50,7 @@ export function resolve_preset_file(options: {
     has_path_boundary ||
     !file_name.toLowerCase().endsWith(options.extension)
   ) {
-    throw new AppErrors.RequestValidationError();
+    throw new AppErrors.AppError("request.validation_failed");
   }
   const directory = source === "builtin" ? options.builtin_directory : options.user_directory;
   const file_path = path.join(directory, file_name);
@@ -60,7 +60,7 @@ export function resolve_preset_file(options: {
     relative_path.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative_path)
   ) {
-    throw new AppErrors.RequestValidationError();
+    throw new AppErrors.AppError("request.validation_failed");
   }
   return { source, file_name, file_path };
 }
@@ -236,7 +236,7 @@ export class AppPathService {
    */
   public get_prompt_task_dir_name(task_type: string): string {
     if (task_type !== "translation" && task_type !== "analysis") {
-      throw new AppErrors.InternalInvariantError();
+      throw new AppErrors.AppError("runtime.internal_invariant");
     }
     return `${task_type}_prompt`;
   }

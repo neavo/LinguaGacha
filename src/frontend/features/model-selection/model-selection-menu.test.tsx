@@ -85,7 +85,7 @@ describe("ModelSelectionMenu", () => {
       "OpenAI Main",
       "app.model.type.preset",
       "app.model.type.google",
-      "app.model.type.openaiapp.model.selection.current_category",
+      "app.model.type.openai",
       "app.model.type.openai_responses",
       "app.model.type.anthropic",
     ]);

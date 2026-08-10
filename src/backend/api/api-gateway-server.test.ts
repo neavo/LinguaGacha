@@ -117,9 +117,9 @@ describe("ApiGatewayServer", () => {
     const response = await post_json(started.baseUrl, "/api/diagnostics/renderer-error", {
       source: "scheduler",
       error: {
-        name: "InternalInvariantError",
-        message: "缺少完整 item DTO",
-        stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
+        name: "AppError",
+        message: "Missing complete item DTO.",
+        stack: "Error: Missing complete item DTO.\n    at applyProjectChangeBatch",
       },
       route: "workbench",
       triggeringEvent: {
@@ -135,8 +135,8 @@ describe("ApiGatewayServer", () => {
     expect(event).toMatchObject({ level: "error", source: "renderer" });
     expect(detail).toMatchObject({
       error: {
-        name: "InternalInvariantError",
-        message: "缺少完整 item DTO",
+        name: "AppError",
+        message: "Missing complete item DTO.",
         context: {
           renderer_source: "scheduler",
           route: "workbench",

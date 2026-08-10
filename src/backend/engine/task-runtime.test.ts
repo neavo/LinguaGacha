@@ -331,7 +331,9 @@ describe("TaskRuntime", () => {
     );
     runtime.subscribe(() => undefined);
 
-    await expect(runtime.begin("translation")).rejects.toThrow("任务启动失败且恢复快照发布失败");
+    await expect(runtime.begin("translation")).rejects.toThrow(
+      "Task startup and recovery snapshot publication both failed.",
+    );
 
     expect(runtime_gate.get_snapshot().owner).toBeNull();
     await expect(runtime.begin("analysis")).rejects.not.toThrow("runtime.busy");

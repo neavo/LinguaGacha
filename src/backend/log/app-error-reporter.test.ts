@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ModelProviderFailedError, RequestValidationError } from "../../shared/error";
+import { AppError } from "../../shared/error";
 import { LogManager, type FileLogWriter } from "./log-manager";
 import { record_app_error } from "./app-error-reporter";
 
@@ -14,7 +14,7 @@ describe("record_app_error", () => {
       now: () => new Date(2012, 11, 12, 12, 12, 12),
     });
 
-    record_app_error(new ModelProviderFailedError({ cause: new Error("provider boom") }), {
+    record_app_error(new AppError("model.provider_failed", { cause: new Error("provider boom") }), {
       logManager: log_manager,
       message: "模型请求失败",
       source: "test",
@@ -43,7 +43,7 @@ describe("record_app_error", () => {
       logDir: ".",
     });
 
-    record_app_error(new RequestValidationError(), {
+    record_app_error(new AppError("request.validation_failed"), {
       logManager: log_manager,
       message: "请求无效",
       source: "test",

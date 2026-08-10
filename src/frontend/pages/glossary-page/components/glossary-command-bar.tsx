@@ -48,7 +48,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
     },
   ] as const;
   const toggle_state_key = props.enabled ? "app.toggle.enabled" : "app.toggle.disabled";
-  const toggle_tooltip_title = t("quality_editor.toggle.status")
+  const toggle_tooltip_title = t("app.toggle.status")
     .replace("{TITLE}", t("glossary_page.title"))
     .replace("{STATE}", t(toggle_state_key));
 
@@ -67,7 +67,6 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
 
   return (
     <CommandBar
-      title={t("glossary_page.title")}
       actions={
         <>
           <CommandBarGroup>
@@ -78,7 +77,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               onClick={props.on_create}
             >
               <Plus data-icon="inline-start" />
-              {t("quality_editor.action.create")}
+              {t("app.action.create")}
               <ShortcutKbd action="create" />
             </AppButton>
             <AppButton
@@ -90,7 +89,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               }}
             >
               <Trash2 data-icon="inline-start" />
-              {t("quality_editor.action.delete")}
+              {t("app.action.delete")}
               <ShortcutKbd action="delete" />
             </AppButton>
           </CommandBarGroup>
@@ -105,7 +104,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               }}
             >
               <FileDown data-icon="inline-start" />
-              {t("quality_editor.action.import")}
+              {t("app.action.import")}
             </AppButton>
             <AppButton
               variant="ghost"
@@ -115,7 +114,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               }}
             >
               <FileUp data-icon="inline-start" />
-              {t("quality_editor.action.export")}
+              {t("app.action.export")}
             </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />

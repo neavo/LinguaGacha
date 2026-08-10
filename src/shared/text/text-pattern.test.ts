@@ -91,7 +91,7 @@ describe("text-pattern", () => {
         replacement_text: "$&",
         replacement_syntax: "javascript",
       }),
-    ).toThrow("字面量模式只支持 literal replacement syntax");
+    ).toThrow("Literal mode only supports literal replacement syntax.");
   });
 
   it("规则型正则替换使用反斜杠捕获语法", () => {

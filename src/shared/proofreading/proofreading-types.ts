@@ -38,29 +38,7 @@ export const PROOFREADING_STATUS_ORDER = [
   "DUPLICATED",
 ] as const;
 
-// 状态码到 i18n key 的公开映射。
-export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
-  NONE: "proofreading_page.status.none",
-  PROCESSED: "proofreading_page.status.processed",
-  EXCLUDED: "proofreading_page.status.excluded",
-  RULE_SKIPPED: "proofreading_page.status.rule_skipped",
-  LANGUAGE_SKIPPED: "proofreading_page.status.non_target_source_language",
-  DUPLICATED: "proofreading_page.status.duplicated",
-  ERROR: "proofreading_page.status.error",
-} as const;
-
 export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
-
-// 警告码到 i18n key 的公开映射。
-export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
-  KANA: "proofreading_page.warning.kana",
-  HANGEUL: "proofreading_page.warning.hangeul",
-  TEXT_PRESERVE: "proofreading_page.warning.text_preserve",
-  SIMILARITY: "proofreading_page.warning.similarity",
-  GLOSSARY: "proofreading_page.warning.glossary",
-  RETRY_THRESHOLD: "proofreading_page.warning.retry_threshold",
-  NO_WARNING: "proofreading_page.filter.no_warning",
-} as const;
 
 export type ProofreadingWarningFragmentsByCode = {
   KANA?: string[];

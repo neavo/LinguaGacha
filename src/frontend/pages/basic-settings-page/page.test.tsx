@@ -172,32 +172,6 @@ describe("BasicSettingsPage", () => {
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledWith(1234);
   });
 
-  it("语言选项使用共享语言 label key", async () => {
-    await mount_page();
-
-    const source_section = container?.querySelector(
-      'section[aria-label="basic_settings_page.fields.source_language.title"]',
-    );
-    const target_section = container?.querySelector(
-      'section[aria-label="basic_settings_page.fields.target_language.title"]',
-    );
-
-    expect(source_section?.querySelector('[data-value="ALL"]')?.textContent).toBe(
-      "app.language.ALL",
-    );
-    expect(source_section?.querySelector('[data-value="JA"]')?.textContent).toBe("app.language.JA");
-    expect(source_section?.querySelector('[data-value="ZH-HANT"]')).toBeNull();
-    expect(target_section?.querySelector('[data-value="ZH"]')?.textContent).toBe("app.language.ZH");
-    expect(target_section?.querySelector('[data-value="ZH-HANT"]')?.textContent).toBe(
-      "app.language.ZH-HANT",
-    );
-    expect(
-      [...(target_section?.querySelectorAll("[data-value]") ?? [])]
-        .slice(0, 3)
-        .map((item) => item.getAttribute("data-value")),
-    ).toEqual(["ZH", "ZH-HANT", "EN"]);
-  });
-
   it("提交非法请求超时时间时标记红框并弹 toast", async () => {
     await mount_page();
     const input = get_request_timeout_input();

@@ -17,7 +17,7 @@ import {
 } from "@frontend/pages/custom-prompt-page/config";
 import type { CustomPromptTemplate } from "@frontend/pages/custom-prompt-page/types";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
-import { InternalInvariantError } from "@shared/error";
+import { AppError } from "@shared/error";
 
 type PromptSlice = {
   text: string;
@@ -96,7 +96,7 @@ function are_prompt_slices_equal(left: PromptSlice, right: PromptSlice): boolean
 
 function read_prompts_revision(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new InternalInvariantError({
+    throw new AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "invalid_custom_prompt_revision",
       },

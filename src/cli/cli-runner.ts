@@ -46,7 +46,7 @@ export async function run_cli_command(
     } catch (stop_error) {
       throw new AggregateError(
         [operation_error, stop_error],
-        "CLI 执行失败且 Backend 资源收尾失败",
+        "CLI execution failed and Backend cleanup also failed.",
       );
     }
     throw operation_error;

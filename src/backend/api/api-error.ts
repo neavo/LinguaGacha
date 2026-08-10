@@ -1,15 +1,11 @@
 import path from "node:path";
 
 import {
-  FileNotFoundError,
-  InternalInvariantError,
-  InvalidJsonError,
-  type AppError,
+  AppError,
   type AppErrorPublicDetails,
   is_app_error,
   to_api_error_payload,
 } from "../../shared/error";
-import type { TextResolver } from "../../shared/i18n";
 import { api_error } from "./api-types";
 
 /**
@@ -20,23 +16,23 @@ export function normalize_api_error(error: unknown): AppError {
     return error;
   }
   if (error instanceof SyntaxError) {
-    return new InvalidJsonError(error);
+    return new AppError("request.invalid_json", { cause: error });
   }
   const node_code = read_node_error_code(error);
   if (node_code === "ENOENT") {
-    return new FileNotFoundError({
+    return new AppError("file.not_found", {
       public_details: safe_path_detail(error),
       cause: error,
     });
   }
-  return InternalInvariantError.from_unknown(error);
+  return new AppError("runtime.internal_invariant", { cause: error });
 }
 
 /**
- * 响应壳只包含安全字段，request_id 用于 UI 和日志对齐诊断。
+ * 响应壳只包含稳定错误码和安全详情；request_id 仅用于服务端日志关联。
  */
-export function api_error_envelope(error: AppError, request_id: string, text: TextResolver) {
-  return api_error(to_api_error_payload(error, request_id, text));
+export function api_error_envelope(error: AppError) {
+  return api_error(to_api_error_payload(error));
 }
 
 function read_node_error_code(error: unknown): string {

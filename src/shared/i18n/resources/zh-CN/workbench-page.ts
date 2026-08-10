@@ -1,27 +1,9 @@
 export const zh_cn_workbench_page = {
   title: "工作台",
-  section: {
-    stats: "工作台统计",
-    file_list: "文件列表",
-    command_bar: "工作台命令栏",
-  },
   unit: {
     line: "Line",
   },
-  stats: {
-    total_lines: "总计",
-    translation_completed: "翻译成功",
-    translation_failed: "翻译失败",
-    translation_pending: "等待翻译",
-    translation_skipped: "无需翻译",
-    analysis_completed: "分析成功",
-    analysis_failed: "分析失败",
-    analysis_pending: "等待分析",
-    analysis_skipped: "无需分析",
-    toggle_tooltip: "点击切换",
-  },
   table: {
-    drag_handle: "拖拽",
     file_name: "文件名",
     line_count: "行数",
     actions: "操作",
@@ -41,23 +23,17 @@ export const zh_cn_workbench_page = {
   },
   action: {
     add_file: "添加",
-    delete_file: "删除",
     generate_translation: "生成译文",
     close_project: "关闭项目",
     reset: "重置翻译状态",
     translation_task: "翻译",
     start_translation: "开始翻译",
-    reset_translation_all: "重置所有数据",
-    reset_translation_failed: "重置失败数据",
-    stop_translation: "停止",
-    translation_stopping: "停止中",
+    reset_task_all: "重置所有数据",
+    reset_task_failed: "重置失败数据",
+    stop_task: "停止",
     analysis_task: "分析",
     start_analysis: "开始分析",
-    reset_analysis_all: "重置所有数据",
-    reset_analysis_failed: "重置失败数据",
     import_analysis_glossary: "导入候选术语",
-    stop_analysis: "停止",
-    analysis_stopping: "停止中",
   },
   task: {
     menu: {
@@ -162,9 +138,6 @@ export const zh_cn_workbench_page = {
     },
     delete: {
       description: "是否确认删除所选文件及其所有翻译条目 …?",
-    },
-    generate_translation: {
-      description: "是否确认生成当前可用译文 …?",
     },
     close_project: {
       description: "是否确认关闭当前工程 …?",

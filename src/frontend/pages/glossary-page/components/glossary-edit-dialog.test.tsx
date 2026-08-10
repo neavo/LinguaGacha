@@ -73,9 +73,9 @@ describe("GlossaryEditDialog", () => {
     };
 
     await render_dialog(false);
-    expect(container.querySelector('[aria-label="quality_editor.action.create"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="app.action.create"]')).not.toBeNull();
     expect(
-      container.querySelector('textarea[aria-label="quality_editor.fields.source"]'),
+      container.querySelector('textarea[aria-label="quality_rule_editor.fields.source"]'),
     ).not.toBeNull();
     expect(
       container.querySelector('textarea[aria-label="glossary_page.fields.translation"]'),
@@ -84,7 +84,7 @@ describe("GlossaryEditDialog", () => {
       container
         .querySelector<HTMLButtonElement>('button[aria-label="glossary_page.rule.case_sensitive"]')
         ?.click();
-      find_button(container, "quality_editor.action.save")?.click();
+      find_button(container, "app.action.save")?.click();
     });
     expect(on_change).toHaveBeenCalledWith({ case_sensitive: true });
     expect(on_save).toHaveBeenCalledOnce();
@@ -92,10 +92,10 @@ describe("GlossaryEditDialog", () => {
     await render_dialog(true);
     expect(
       container.querySelector<HTMLTextAreaElement>(
-        'textarea[aria-label="quality_editor.fields.source"]',
+        'textarea[aria-label="quality_rule_editor.fields.source"]',
       )?.readOnly,
     ).toBe(true);
-    expect(find_button(container, "quality_editor.action.save")?.disabled).toBe(true);
+    expect(find_button(container, "app.action.save")?.disabled).toBe(true);
 
     await act(async () => root.unmount());
     container.remove();

@@ -98,7 +98,7 @@ export class ProofreadingQueryService {
       });
       return this.with_revision(result, { filterPanel: result.data as unknown as JsonValue });
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_proofreading_query_action", action },
     });
   }

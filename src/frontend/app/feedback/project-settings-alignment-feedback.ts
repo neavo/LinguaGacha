@@ -1,4 +1,5 @@
-import { get_language_label_key, normalize_language_code } from "@domain/setting";
+import { normalize_language_code } from "@domain/setting";
+import { get_language_label_key } from "@frontend/app/locale/language-label";
 import type { TextResolver } from "@shared/i18n";
 
 type Translate = TextResolver;

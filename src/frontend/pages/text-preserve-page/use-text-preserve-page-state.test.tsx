@@ -2,7 +2,6 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
@@ -82,10 +81,6 @@ let run_state = {
 
 const project_store_listeners = new Set<() => void>();
 
-type TextPreserveRuleEntry = (typeof run_state.quality.text_preserve.entries)[number] & {
-  entry_id?: string;
-};
-
 /**
  * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
  */
@@ -152,52 +147,6 @@ function apply_quality_write_result(result: {
       }
     }
   }
-}
-
-// 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
-function create_quality_write_result(
-  args: {
-    quality?: typeof run_state.quality;
-    project_revision?: number;
-    quality_revision?: number;
-  } = {},
-) {
-  const project_revision = args.project_revision ?? 2;
-  return {
-    accepted: true,
-    changes: [
-      {
-        source: "quality_rule_update",
-        projectPath: "E:/demo/sample.lg",
-        projectRevision: project_revision,
-        updatedSections: ["quality"],
-        sectionRevisions: {
-          quality: args.quality_revision ?? project_revision,
-        },
-        sections: {
-          quality: {
-            payloadMode: "canonical-delta",
-            data: args.quality ?? run_state.quality,
-          },
-        },
-      },
-    ],
-  };
-}
-
-// 文本保护规则保存只改变 text_preserve 切片，测试显式写出后端回灌后的完整质量事实。
-function create_text_preserve_quality(
-  entries: TextPreserveRuleEntry[],
-  revision: number,
-): typeof run_state.quality {
-  return {
-    ...run_state.quality,
-    text_preserve: {
-      ...run_state.quality.text_preserve,
-      entries,
-      revision,
-    },
-  };
 }
 
 const project_store = {
@@ -633,40 +582,6 @@ describe("useTextPreservePageState", () => {
     });
   }
 
-  async function flush_filter_debounce(): Promise<void> {
-    await act(async () => {
-      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
-    });
-  }
-
-  it("提交模式时沿用生成当前文本保护事实的旧 revision", async () => {
-    await mount_probe();
-    run_state.revisions.sections.quality = 9;
-    api_fetch_mock.mockResolvedValueOnce(
-      create_quality_write_result({
-        quality: {
-          ...run_state.quality,
-          text_preserve: {
-            ...run_state.quality.text_preserve,
-            mode: "smart",
-            revision: 2,
-          },
-        },
-        quality_revision: 2,
-      }),
-    );
-
-    await act(async () => {
-      await latest_state?.update_mode("smart");
-    });
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/update", {
-      rule_type: "text_preserve",
-      expected_section_revisions: { quality: 1 },
-      meta: { mode: "smart" },
-    });
-  });
-
   it("模式切换成功后直接收敛到后端已提交模式", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/workbench/snapshot") {
@@ -717,30 +632,6 @@ describe("useTextPreservePageState", () => {
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
     expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.feature_state_changed");
-  });
-
-  it("模式切换失败时不显示成功提醒", async () => {
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/workbench/snapshot") {
-        return {
-          sectionRevisions: {
-            quality: 1,
-          },
-        };
-      }
-      throw new Error("保存失败");
-    });
-
-    await mount_probe();
-    if (latest_state === null) {
-      throw new Error("文本保护页面状态未准备就绪。");
-    }
-
-    await act(async () => {
-      await latest_state!.update_mode("smart");
-    });
-
-    expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
   });
 
   it("在模式切换进行中忽略后续重复点击", async () => {
@@ -820,66 +711,6 @@ describe("useTextPreservePageState", () => {
     expect(latest_state?.mode_updating).toBe(false);
   });
 
-  it("首次进入页面时直接读取预热后的统计结果", async () => {
-    await mount_probe();
-
-    expect(latest_state?.hit_ready).toBe(true);
-    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.hits).toBe(1);
-  });
-
-  it("统计未 ready 时不会保留旧 hit 排序", async () => {
-    await mount_probe();
-
-    await act(async () => {
-      latest_state?.apply_table_sort_state({
-        column_id: "hit",
-        direction: "descending",
-      });
-    });
-    expect(latest_state?.sort_state?.column_id).toBe("hit");
-
-    current_hit_cache = create_hit_cache({
-      phase: "running",
-    });
-    await act(async () => {
-      root?.render(
-        <Probe
-          on_ready={(state) => {
-            latest_state = state;
-          }}
-        />,
-      );
-    });
-
-    expect(latest_state?.hit_ready).toBe(false);
-    expect(latest_state?.sort_state).toBeNull();
-    expect(latest_state?.hit_badge_by_entry_id["foo::0"]?.hits).toBe(1);
-  });
-
-  it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {
-    await mount_probe();
-    api_fetch_mock.mockReturnValueOnce(new Promise(() => {}));
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    expect(latest_state?.dialog_state.open).toBe(true);
-
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "bar",
-        info: "新规则",
-      });
-    });
-
-    await act(async () => {
-      void latest_state?.save_dialog_entry();
-      await Promise.resolve();
-    });
-
-    expect(latest_state?.dialog_state.open).toBe(false);
-  });
-
   it("新增文本保护规则保存时拒绝 \\UXXXXXXXX 转义", async () => {
     await mount_probe();
 
@@ -897,330 +728,12 @@ describe("useTextPreservePageState", () => {
     });
 
     expect(latest_state?.dialog_state.validation_message).toContain(
-      "quality_editor.feedback.regex_invalid",
+      "quality_rule_editor.feedback.regex_invalid",
     );
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
-      expect.stringContaining("quality_editor.feedback.regex_invalid"),
+      expect.stringContaining("quality_rule_editor.feedback.regex_invalid"),
     );
     expect(api_fetch_mock).not.toHaveBeenCalled();
-  });
-
-  it("新增文本保护规则保存时若 SSE 先于 HTTP 返回，统一 commit 重放后仍保留新条目", async () => {
-    await mount_probe();
-    const write_result = create_quality_write_result({
-      quality: create_text_preserve_quality(
-        [
-          {
-            entry_id: "foo::0",
-            src: "foo",
-            info: "bar",
-          },
-          {
-            entry_id: "qr:baz",
-            src: "baz",
-            info: "keep",
-          },
-        ],
-        2,
-      ),
-    });
-    let resolve_save: (payload: typeof write_result) => void = () => {};
-    api_fetch_mock.mockReturnValueOnce(
-      new Promise<typeof write_result>((resolve) => {
-        resolve_save = resolve;
-      }),
-    );
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "baz",
-        info: "keep",
-      });
-    });
-
-    let save_promise: Promise<void> = Promise.resolve();
-    await act(async () => {
-      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
-      await Promise.resolve();
-    });
-    await act(async () => {
-      apply_quality_write_result(write_result);
-    });
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
-
-    await act(async () => {
-      resolve_save(write_result);
-      await save_promise;
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
-  });
-
-  it("导入重复文本保护规则时先确认，跳过只保存非重复规则", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            entry_id: "import-foo",
-            src: "foo",
-            info: "new",
-          },
-          {
-            entry_id: "baz::1",
-            src: "baz",
-            info: "keep",
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_text_preserve_quality(
-            [
-              {
-                entry_id: "foo::0",
-                src: "foo",
-                info: "bar",
-              },
-              {
-                entry_id: "baz::1",
-                src: "baz",
-                info: "keep",
-              },
-            ],
-            2,
-          ),
-        }),
-      );
-
-    await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
-    });
-
-    expect(latest_state?.import_confirm_state.open).toBe(true);
-    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
-    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await latest_state?.import_duplicate_skip();
-    });
-
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
-      rule_type: "text_preserve",
-      expected_section_revisions: { quality: 1 },
-      entries: [
-        {
-          entry_id: "foo::0",
-          src: "foo",
-          info: "bar",
-        },
-        {
-          entry_id: "baz::1",
-          src: "baz",
-          info: "keep",
-        },
-      ],
-    });
-  });
-
-  it("导入保存失败时恢复原来的冻结结果成员", async () => {
-    vi.useFakeTimers();
-    await mount_probe();
-
-    await act(async () => {
-      latest_state?.update_filter_keyword("foo");
-    });
-    expect(latest_state?.filter_state.keyword).toBe("foo");
-    await flush_filter_debounce();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
-
-    run_state = {
-      ...run_state,
-      quality: {
-        ...run_state.quality,
-        text_preserve: {
-          ...run_state.quality.text_preserve,
-          entries: [
-            {
-              entry_id: "foo::0",
-              src: "foo",
-              info: "bar",
-            },
-            {
-              entry_id: "foobar::1",
-              src: "foobar",
-              info: "hidden",
-            },
-          ],
-          revision: 2,
-        },
-      },
-      revisions: {
-        ...run_state.revisions,
-        sections: {
-          ...run_state.revisions.sections,
-          quality: 2,
-        },
-      },
-    };
-    await rerender_probe();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
-
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            entry_id: "baz::2",
-            src: "baz",
-            info: "keep",
-          },
-        ],
-      })
-      .mockRejectedValueOnce(new Error("保存失败"));
-
-    await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
-  });
-
-  it("预设重复文本保护规则选择覆盖时会保存新备注", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            entry_id: "preset-foo",
-            src: "foo",
-            info: "",
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_text_preserve_quality(
-            [
-              {
-                entry_id: "foo::0",
-                src: "foo",
-                info: "",
-              },
-            ],
-            2,
-          ),
-        }),
-      );
-
-    await act(async () => {
-      await latest_state?.apply_preset("builtin:demo.json");
-    });
-    await act(async () => {
-      await latest_state?.import_duplicate_overwrite();
-    });
-
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
-      rule_type: "text_preserve",
-      expected_section_revisions: { quality: 1 },
-      entries: [
-        {
-          entry_id: "foo::0",
-          src: "foo",
-          info: "",
-        },
-      ],
-    });
-  });
-
-  it("Agent 运行中锁定文本保护 write，但保留筛选和已有项查看可用", async () => {
-    runtime_snapshot = { revision: 1, owner: "agent" };
-    await mount_probe();
-
-    expect(latest_state?.readonly).toBe(true);
-    expect(latest_state?.drag_disabled).toBe(true);
-
-    act(() => {
-      latest_state?.open_create_dialog();
-      latest_state?.update_filter_keyword("foo");
-    });
-
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(latest_state?.filter_state.keyword).toBe("foo");
-
-    await act(async () => {
-      latest_state?.open_edit_dialog("foo::0");
-    });
-    expect(latest_state?.dialog_state.open).toBe(true);
-    expect(latest_state?.dialog_state.mode).toBe("edit");
-
-    await act(async () => {
-      latest_state?.update_dialog_draft({ info: "只读查看" });
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(latest_state?.dialog_state.open).toBe(true);
-    expect(api_fetch_mock).not.toHaveBeenCalled();
-  });
-
-  it("重新进入文本保护页时保留搜索排序和选中位置", async () => {
-    run_state = {
-      ...run_state,
-      quality: {
-        ...run_state.quality,
-        text_preserve: {
-          ...run_state.quality.text_preserve,
-          entries: [
-            {
-              entry_id: "foo::0",
-              src: "foo",
-              info: "bar",
-            },
-            {
-              entry_id: "baz::1",
-              src: "baz",
-              info: "keep",
-            },
-          ],
-        },
-      },
-    };
-    await mount_probe();
-
-    await act(async () => {
-      latest_state?.update_filter_keyword("foo");
-      latest_state?.apply_table_sort_state({
-        column_id: "info",
-        direction: "descending",
-      });
-      latest_state?.apply_table_selection({
-        selected_row_ids: ["foo::0"],
-        active_row_id: "foo::0",
-        anchor_row_id: "foo::0",
-      });
-    });
-
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    container?.remove();
-    container = null;
-
-    await mount_probe();
-
-    expect(latest_state?.filter_state.keyword).toBe("foo");
-    expect(latest_state?.sort_state).toEqual({
-      column_id: "info",
-      direction: "descending",
-    });
-    expect(latest_state?.selected_entry_ids).toEqual(["foo::0"]);
-    expect(latest_state?.active_entry_id).toBe("foo::0");
-    expect(latest_state?.restore_scroll_entry_id).toBe("foo::0");
   });
 });

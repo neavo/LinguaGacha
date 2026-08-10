@@ -3,9 +3,6 @@ import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_app = {
-  aria: {
-    toggle_navigation: "Navigation umschalten",
-  },
   metadata: {
     app_name: "LinguaGacha",
   },
@@ -20,7 +17,6 @@ export const de_de_app = {
     selection: {
       label: "Modell auswählen",
       unavailable: "Kein Modell verfügbar",
-      current_category: "Aktuelle Modellkategorie",
       load_failed: "Modellauswahl konnte nicht geladen werden. Bitte erneut versuchen …",
       update_failed: "Modellauswahl konnte nicht gespeichert werden. Bitte erneut versuchen …",
     },
@@ -34,10 +30,20 @@ export const de_de_app = {
     },
   },
   action: {
+    add: "Hinzufügen",
     cancel: "Abbrechen",
     confirm: "Bestätigen",
     close: "Schließen",
+    create: "Erstellen",
+    delete: "Löschen",
+    edit: "Bearbeiten",
+    export: "Exportieren",
+    import: "Importieren",
+    preset: "Voreinstellung",
+    query: "Abfrage",
     reset: "Zurücksetzen",
+    retry: "Erneut versuchen",
+    save: "Speichern",
     skip: "Überspringen",
     overwrite: "Überschreiben",
     replace: "Ersetzen",
@@ -46,7 +52,10 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    export_success: "Daten exportiert …",
+    import_success: "Daten importiert …",
     save_success: "Gespeichert …",
+    reset_success: "Zurückgesetzt …",
     no_valid_data: "Keine gültigen Daten …",
     update_failed: "Aktualisierung fehlgeschlagen …",
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen …",
@@ -92,10 +101,12 @@ export const de_de_app = {
   toggle: {
     disabled: "AUS",
     enabled: "AN",
+    status: "{TITLE} - {STATE}",
   },
   drag: {
     enabled: "Zum Neuanordnen ziehen",
     disabled: "Ziehen deaktiviert",
+    handle: "Ziehen",
   },
   language: Object.fromEntries(
     Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.de]),
@@ -153,33 +164,20 @@ export const de_de_app = {
     project: {
       not_loaded: {
         message: "Kein Projekt geladen …",
-        action: "Öffnen oder erstellen Sie zuerst ein Projekt …",
       },
       not_found: {
         message: "Die Projektdatei existiert nicht …",
-        action:
-          "Stellen Sie sicher, dass die Projektdatei sich noch an ihrem ursprünglichen Speicherort befindet …",
       },
     },
     file: {
       not_found: {
         message: "Die Datei existiert nicht …",
-        action:
-          "Stellen Sie sicher, dass die Datei sich noch an ihrem ursprünglichen Speicherort befindet …",
-      },
-      unsupported_format: {
-        message: "Dieses Dateiformat wird nicht unterstützt …",
-        action: "Wählen Sie eine von LinguaGacha unterstützte Quelldatei …",
       },
       parse_failed: {
         message: "Dateiinhalt-Analyse fehlgeschlagen …",
-        action:
-          "Stellen Sie sicher, dass die Datei vollständig ist, oder importieren Sie eine unbeschädigte Originaldatei …",
       },
       invalid_structure: {
         message: "Die Dateistruktur entspricht nicht dem erwarteten Format …",
-        action:
-          "Stellen Sie sicher, dass die Datei von der erwarteten Quelle stammt, oder exportieren Sie sie erneut …",
       },
       io_failed: {
         message: "Datei-Lese- oder Schreibvorgang fehlgeschlagen …",
@@ -189,30 +187,25 @@ export const de_de_app = {
       conflict: {
         message:
           "Datenbank-Schreibkonflikt. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
-        action: "Aktuelle Daten aktualisieren und erneut senden …",
       },
     },
     data: {
       revision_conflict: {
         message:
           "Die Datenversion hat sich geändert. Bitte aktualisieren Sie die Daten und versuchen Sie es erneut …",
-        action: "Aktuelle Daten aktualisieren und erneut senden …",
       },
       committed_sync_failed: {
         message:
           "Die Daten wurden gespeichert, aber die Oberfläche konnte nicht synchronisiert werden …",
-        action: "Laden Sie das aktuelle Projekt neu und senden Sie die Änderung nicht erneut …",
       },
     },
     model: {
       not_found: {
         message: "Die Modellkonfiguration existiert nicht …",
-        action: "Wählen Sie eine Modellkonfiguration erneut aus …",
       },
       provider_failed: {
         message:
           "Die Modellservice-Anfrage ist fehlgeschlagen. Bitte überprüfen Sie die API-Einstellungen …",
-        action: "Überprüfen Sie die Modell-URL, den API-Schlüssel und den Anbieterstatus …",
       },
     },
     worker: {
@@ -226,7 +219,6 @@ export const de_de_app = {
     runtime: {
       busy: {
         message: "Die Modelllaufzeit ist belegt. Bitte versuchen Sie es später erneut …",
-        action: "Warten Sie, bis die aktuelle Aufgabe oder Agent-Runde beendet ist …",
       },
       capability_missing: {
         message: "Der aktuellen Laufzeitumgebung fehlt eine erforderliche Fähigkeit …",

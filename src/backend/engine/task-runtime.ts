@@ -145,9 +145,9 @@ export class TaskRuntime {
     scope: TranslationScope = { kind: "all" },
   ): Promise<TaskRunHandle> {
     if (this.disposed) {
-      throw new AppErrors.RuntimeDisposedError();
+      throw new AppErrors.AppError("runtime.disposed");
     }
-    if (this.active_run !== null) throw new AppErrors.RuntimeBusyError();
+    if (this.active_run !== null) throw new AppErrors.AppError("runtime.busy");
     const previous_state = this.snapshot_state();
     const abort_controller = new AbortController();
     const runtime_lease = this.runtime_gate.begin_runtime("task");
@@ -182,7 +182,7 @@ export class TaskRuntime {
   public bind_completion(handle: TaskRunHandle, completion: Promise<void>): void {
     const active_run = this.read_current_run(handle.run_id);
     if (active_run === null) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     const tracked_completion = completion.catch(() => undefined);
     active_run.completion = tracked_completion;
@@ -411,7 +411,7 @@ export class TaskRuntime {
       return;
     }
     if (this.active_run !== null) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: {
           reason: "project_session_changed_while_task_active",
           session_revision: change.sessionRevision,
@@ -445,7 +445,10 @@ export class TaskRuntime {
       this.runtime_gate.finish_runtime(active_run.runtime_lease);
     }
     if (restore_error !== undefined) {
-      throw new AggregateError([cause, restore_error], "任务启动失败且恢复快照发布失败");
+      throw new AggregateError(
+        [cause, restore_error],
+        "Task startup and recovery snapshot publication both failed.",
+      );
     }
     throw cause;
   }

@@ -226,18 +226,18 @@ export class AgentService {
   public async send_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     const resources = this.require_resources();
     this.session_state.require_loaded_project_path();
     const message = normalize_agent_message_input(request);
     if (message === null) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "empty_agent_message" },
       });
     }
     if (this.find_latest_compaction_entry()?.status === "error") {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_compaction_recovery_required" },
       });
     }
@@ -258,7 +258,7 @@ export class AgentService {
     this.assert_not_disposed();
     const latest_user = this.entries.findLast((entry) => entry.kind === "user_message");
     if (this.state !== "idle" || latest_user?.status !== "error") {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_continue_unavailable" },
       });
     }
@@ -269,7 +269,7 @@ export class AgentService {
   public async retry_compaction(): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.state !== "idle") {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     this.session_state.require_loaded_project_path();
     const runtime = this.runtime;
@@ -279,7 +279,7 @@ export class AgentService {
       failed_entry?.kind !== "context_compaction" ||
       failed_entry.status !== "error"
     ) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_compaction_retry_unavailable" },
       });
     }
@@ -324,7 +324,7 @@ export class AgentService {
       this.find_open_workspace_apply_entry() !== undefined ||
       this.runtime?.session.isCompacting === true
     ) {
-      throw new AppErrors.RuntimeBusyError();
+      throw new AppErrors.AppError("runtime.busy");
     }
     this.flush_assistant_stream();
     this.runtime_generation += 1;
@@ -391,7 +391,7 @@ export class AgentService {
             await this.close_runtime(runtime);
             candidate_closed = true;
           }
-          throw new AppErrors.RequestValidationError({
+          throw new AppErrors.AppError("request.validation_failed", {
             diagnostic_context: { reason: "agent_message_invalidated" },
           });
         }
@@ -431,7 +431,7 @@ export class AgentService {
       const generation = this.runtime_generation;
       await this.update_runtime_model(runtime, this.settings.read_setting());
       if (this.disposed || generation !== this.runtime_generation || this.runtime !== runtime) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "agent_compaction_retry_invalidated" },
         });
       }
@@ -586,7 +586,7 @@ export class AgentService {
         // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
         preflightResult: (accepted) => {
           if (accepted && !this.prompt_is_current(runtime, generation)) {
-            throw new AppErrors.RuntimeCancelledError({
+            throw new AppErrors.AppError("runtime.cancelled", {
               diagnostic_context: {
                 resource: "agent_prompt",
                 reason: "agent_message_invalidated",
@@ -623,7 +623,9 @@ export class AgentService {
         );
         if (final_assistant?.stopReason === "error") {
           outcome = "error";
-          this.log_request_failure(new Error(final_assistant.errorMessage ?? "Agent 模型回合失败"));
+          this.log_request_failure(
+            new Error(final_assistant.errorMessage ?? "Agent model turn failed."),
+          );
         }
       }
     } catch (error) {
@@ -755,7 +757,7 @@ export class AgentService {
         (entry) => entry.kind === "tool_call" && entry.id === event.toolCallId,
       );
       if (running_entry?.kind !== "tool_call") {
-        throw new AppErrors.InternalInvariantError({
+        throw new AppErrors.AppError("runtime.internal_invariant", {
           diagnostic_context: {
             reason: "agent_tool_start_missing",
             tool_call_id: event.toolCallId,
@@ -1041,7 +1043,7 @@ export class AgentService {
   /** 资源加载是发送消息的硬前置，不能用部分资源降级启动。 */
   private require_resources(): LoadedAgentResources {
     if (this.resources === null) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "agent_resources_not_loaded" },
       });
     }
@@ -1053,13 +1055,13 @@ export class AgentService {
     const setting = this.settings.read_setting();
     return format_i18n_message(
       resolve_app_locale(setting["app_language"]),
-      "agent_page.message.continue",
+      "agent_runtime.message.continue",
     );
   }
 
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
   private assert_not_disposed(): void {
-    if (this.disposed) throw new AppErrors.RuntimeDisposedError();
+    if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
   }
 }
 

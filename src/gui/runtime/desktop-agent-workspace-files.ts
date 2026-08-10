@@ -17,6 +17,9 @@ type CommitRecord = {
   installed: boolean; // upper 是否已经安装到基线
 };
 
+/** 只有显式协议校验错误可以把 message 返回给沙箱脚本。 */
+class WorkspaceProtocolError extends Error {}
+
 /** 工作区本体或契约已经不可信，调用方必须销毁活动工作区。 */
 export class AgentWorkspaceInvalidError extends Error {}
 
@@ -81,7 +84,7 @@ export class DesktopAgentWorkspaceFiles {
     try {
       const root_stat = await fs.promises.lstat(root);
       if (!root_stat.isDirectory() || root_stat.isSymbolicLink()) {
-        throw new AgentWorkspaceInvalidError("Agent 工作区目录无效。");
+        throw new AgentWorkspaceInvalidError("Agent workspace directory is invalid.");
       }
       await assert_path_has_no_symlink(root, "contract.json");
       const contract_text = await fs.promises.readFile(path.join(root, "contract.json"), "utf-8");
@@ -98,7 +101,7 @@ export class DesktopAgentWorkspaceFiles {
       return new DesktopAgentWorkspaceFiles(root, mode, contract, transaction_path);
     } catch (error) {
       if (error instanceof AgentWorkspaceInvalidError) throw error;
-      throw new AgentWorkspaceInvalidError("Agent 工作区或 contract.json 无效。", {
+      throw new AgentWorkspaceInvalidError("Agent workspace or contract.json is invalid.", {
         cause: error,
       });
     }
@@ -108,13 +111,13 @@ export class DesktopAgentWorkspaceFiles {
   public async read_recipe_source(name: string): Promise<string> {
     const recipe_path = this.recipes.get(name);
     if (recipe_path === undefined || !recipe_path.startsWith("recipes/")) {
-      throw new AgentWorkspaceInvalidError("工作区 recipe 契约无效。");
+      throw new AgentWorkspaceInvalidError("Workspace recipe contract is invalid.");
     }
     await assert_path_has_no_symlink(this.workspace_path, recipe_path);
     const source_path = resolve_workspace_path(this.workspace_path, recipe_path);
     const stat = await fs.promises.lstat(source_path);
     if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw new AgentWorkspaceInvalidError("工作区 recipe 文件无效。");
+      throw new AgentWorkspaceInvalidError("Workspace recipe file is invalid.");
     }
     return await fs.promises.readFile(source_path, "utf-8");
   }
@@ -136,7 +139,7 @@ export class DesktopAgentWorkspaceFiles {
     } catch (error) {
       return response_text(400, project_protocol_error(error));
     }
-    return response_text(405, "不支持的工作区操作。");
+    return response_text(405, "Unsupported workspace operation.");
   }
 
   /** 成功结果产生后才把非重叠变更根替换进基线，失败则反向恢复备份。 */
@@ -185,7 +188,9 @@ export class DesktopAgentWorkspaceFiles {
       }
       const preserved = restored && cleaned;
       throw new AgentWorkspaceTransactionError(
-        preserved ? "工作区文件事务提交失败，已回滚本次修改。" : "工作区文件事务补偿失败。",
+        preserved
+          ? "Workspace file transaction commit failed; changes were rolled back."
+          : "Workspace file transaction compensation failed.",
         preserved,
         error,
       );
@@ -194,7 +199,11 @@ export class DesktopAgentWorkspaceFiles {
     try {
       await this.cleanup_transaction();
     } catch (error) {
-      throw new AgentWorkspaceTransactionError("工作区事务清理失败。", false, error);
+      throw new AgentWorkspaceTransactionError(
+        "Workspace transaction cleanup failed.",
+        false,
+        error,
+      );
     }
   }
 
@@ -205,7 +214,11 @@ export class DesktopAgentWorkspaceFiles {
     try {
       await this.cleanup_transaction();
     } catch (error) {
-      throw new AgentWorkspaceTransactionError("工作区事务回滚失败。", false, error);
+      throw new AgentWorkspaceTransactionError(
+        "Workspace transaction rollback failed.",
+        false,
+        error,
+      );
     }
   }
 
@@ -227,11 +240,13 @@ export class DesktopAgentWorkspaceFiles {
     if (!writable && !is_workspace_scratch_entry(normalized)) {
       return response_text(403, "该工作区文件只读。");
     }
-    if (request.body === null) throw new Error("工作区写入缺少正文。");
+    if (request.body === null) throw new WorkspaceProtocolError("Workspace write body is missing.");
     if (writable) {
       await assert_path_has_no_symlink(this.workspace_path, normalized);
       const stat = await fs.promises.lstat(resolve_workspace_path(this.workspace_path, normalized));
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new WorkspaceProtocolError("Target is not a regular workspace file.");
+      }
     }
     const upper_path = this.require_transaction_path(this.upper_path);
     const file_path = resolve_workspace_path(upper_path, normalized);
@@ -315,7 +330,9 @@ export class DesktopAgentWorkspaceFiles {
 
   /** transactional 专用路径缺失说明文件会话初始化已失效。 */
   private require_transaction_path(value: string | null): string {
-    if (value === null) throw new AgentWorkspaceInvalidError("工作区事务未初始化。");
+    if (value === null) {
+      throw new AgentWorkspaceInvalidError("Workspace transaction is not initialized.");
+    }
     return value;
   }
 
@@ -330,12 +347,12 @@ export class DesktopAgentWorkspaceFiles {
 /** 只读取宿主授权所需的 contract 两个顶层区块。 */
 function read_workspace_contract(value: unknown): WorkspaceContract {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new AgentWorkspaceInvalidError("工作区 contract.json 根节点无效。");
+    throw new AgentWorkspaceInvalidError("Workspace contract.json root is invalid.");
   }
   const contract = value as WorkspaceContract;
   for (const section of [contract.changes, contract.recipes]) {
     if (typeof section !== "object" || section === null || Array.isArray(section)) {
-      throw new AgentWorkspaceInvalidError("工作区 contract.json 结构无效。");
+      throw new AgentWorkspaceInvalidError("Workspace contract.json structure is invalid.");
     }
   }
   return contract;
@@ -348,7 +365,7 @@ function resolve_workspace_path(workspace_path: string, relative_path: string): 
   const target = path.resolve(root, ...normalized.split("/").filter(Boolean));
   const relative = path.relative(root, target);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error("工作区路径越界。");
+    throw new WorkspaceProtocolError("Workspace path escapes the workspace root.");
   }
   return target;
 }
@@ -361,13 +378,15 @@ function normalize_workspace_path(relative_path: string, allow_empty = false): s
     path.posix.isAbsolute(relative_path) ||
     path.win32.isAbsolute(relative_path)
   ) {
-    throw new Error("工作区路径非法。");
+    throw new WorkspaceProtocolError("Workspace path is invalid.");
   }
   const parts = relative_path.split("/").filter((part) => part !== "");
   if ((!allow_empty && parts.length === 0) || parts.includes(".") || parts.includes("..")) {
-    throw new Error("工作区路径非法。");
+    throw new WorkspaceProtocolError("Workspace path is invalid.");
   }
-  if (parts[0] === ".transactions") throw new Error("工作区事务目录不可访问。");
+  if (parts[0] === ".transactions") {
+    throw new WorkspaceProtocolError("Workspace transaction directory is not accessible.");
+  }
   return parts.join("/");
 }
 
@@ -376,7 +395,7 @@ function decode_protocol_path(value: string): string {
   try {
     return decodeURIComponent(value);
   } catch {
-    throw new Error("工作区路径编码非法。");
+    throw new WorkspaceProtocolError("Workspace path encoding is invalid.");
   }
 }
 
@@ -393,7 +412,9 @@ function is_workspace_scratch_root_or_entry(relative_path: string): boolean {
 /** 以流式响应读取普通文件，避免把大数据集整体复制进内存。 */
 async function read_regular_file(file_path: string): Promise<Response> {
   const stat = await fs.promises.lstat(file_path);
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("目标不是普通工作区文件。");
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new WorkspaceProtocolError("Target is not a regular workspace file.");
+  }
   const body = Readable.toWeb(fs.createReadStream(file_path)) as ReadableStream<Uint8Array>;
   return new Response(body, { headers: { "content-type": "application/octet-stream" } });
 }
@@ -428,7 +449,7 @@ async function assert_path_has_no_symlink(root_path: string, relative_path: stri
     current = path.join(current, part);
     try {
       if ((await fs.promises.lstat(current)).isSymbolicLink()) {
-        throw new Error("工作区路径不能包含符号链接。");
+        throw new WorkspaceProtocolError("Workspace path must not contain symbolic links.");
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -487,9 +508,9 @@ async function path_exists(file_path: string): Promise<boolean> {
 
 /** 只投影可修复的工作区诊断，隐藏宿主文件系统细节。 */
 function project_protocol_error(error: unknown): string {
-  if (error instanceof Error && error.message.startsWith("工作区")) return error.message;
-  if (error instanceof Error && error.message.startsWith("目标")) return error.message;
-  return "工作区文件操作失败。";
+  return error instanceof WorkspaceProtocolError
+    ? error.message
+    : "Workspace file operation failed.";
 }
 
 /** 协议错误统一使用 UTF-8 纯文本响应。 */

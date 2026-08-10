@@ -1,9 +1,6 @@
 import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 
 export const zh_cn_app = {
-  aria: {
-    toggle_navigation: "切换导航",
-  },
   metadata: {
     app_name: "LinguaGacha",
   },
@@ -18,7 +15,6 @@ export const zh_cn_app = {
     selection: {
       label: "选择模型",
       unavailable: "暂无可用模型",
-      current_category: "当前模型分类",
       load_failed: "模型选择加载失败，请稍后重试 …",
       update_failed: "模型选择保存失败，请稍后重试 …",
     },
@@ -32,10 +28,20 @@ export const zh_cn_app = {
     },
   },
   action: {
+    add: "新增",
     cancel: "取消",
     confirm: "确认",
     close: "关闭",
+    create: "新增",
+    delete: "删除",
+    edit: "编辑",
+    export: "导出",
+    import: "导入",
+    preset: "预设",
+    query: "查询",
     reset: "重置",
+    retry: "重试",
+    save: "保存",
     skip: "跳过",
     overwrite: "覆盖",
     replace: "替换",
@@ -44,7 +50,10 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
+    export_success: "数据已导出 …",
+    import_success: "数据已导入 …",
     save_success: "已保存 …",
+    reset_success: "已重置 …",
     no_valid_data: "没有有效数据 …",
     update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新项目设置 …",
@@ -87,10 +96,12 @@ export const zh_cn_app = {
   toggle: {
     disabled: "禁用",
     enabled: "启用",
+    status: "{TITLE} - {STATE}",
   },
   drag: {
     enabled: "拖拽排序",
     disabled: "禁止拖拽",
+    handle: "拖拽",
   },
   language: Object.fromEntries(
     Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.zh]),
@@ -147,29 +158,20 @@ export const zh_cn_app = {
     project: {
       not_loaded: {
         message: "工程未加载 …",
-        action: "请先打开或创建工程 …",
       },
       not_found: {
         message: "工程文件不存在 …",
-        action: "请确认工程文件仍在原位置 …",
       },
     },
     file: {
       not_found: {
         message: "文件不存在 …",
-        action: "请确认文件仍在原位置 …",
-      },
-      unsupported_format: {
-        message: "不支持的文件格式 …",
-        action: "请选择 LinguaGacha 支持的源文件 …",
       },
       parse_failed: {
         message: "文件内容解析失败 …",
-        action: "请确认文件内容完整，或换用原始未损坏的文件 …",
       },
       invalid_structure: {
         message: "文件结构不符合格式要求 …",
-        action: "请确认文件来源正确，或重新导出后再导入 …",
       },
       io_failed: {
         message: "文件读写失败 …",
@@ -178,27 +180,22 @@ export const zh_cn_app = {
     database: {
       conflict: {
         message: "数据库写入冲突，请刷新后重试 …",
-        action: "请刷新当前数据后再次提交 …",
       },
     },
     data: {
       revision_conflict: {
         message: "数据版本已变化，请刷新后重试 …",
-        action: "请刷新当前数据后再次提交 …",
       },
       committed_sync_failed: {
         message: "数据已写入，但界面同步失败 …",
-        action: "请重新加载当前工程，切勿重复提交 …",
       },
     },
     model: {
       not_found: {
         message: "模型配置不存在 …",
-        action: "请重新选择模型配置 …",
       },
       provider_failed: {
         message: "模型服务请求失败，请检查接口配置 …",
-        action: "请检查模型地址、密钥和服务商状态 …",
       },
     },
     worker: {
@@ -212,7 +209,6 @@ export const zh_cn_app = {
     runtime: {
       busy: {
         message: "模型运行时正在执行中，请稍后再试 …",
-        action: "请等待当前任务或 Agent 回合结束 …",
       },
       capability_missing: {
         message: "当前运行环境缺少必要能力 …",

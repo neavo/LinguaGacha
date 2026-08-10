@@ -73,7 +73,7 @@ describe("Compute worker entry", () => {
         id: "task-2",
         ok: false,
         error: expect.objectContaining({
-          message: "Compute worker 任务已取消。",
+          message: "Compute worker task was cancelled.",
           context: { worker_task_type: "quality_rule_analysis" },
         }),
       }),

@@ -3,28 +3,10 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_workbench_page = {
   title: "Workbench",
-  section: {
-    stats: "Workbench Stats",
-    file_list: "File List",
-    command_bar: "Workbench Command Bar",
-  },
   unit: {
     line: "Line",
   },
-  stats: {
-    total_lines: "Total",
-    translation_completed: "Translation Completed",
-    translation_failed: "Translation Failed",
-    translation_pending: "Awaiting Translation",
-    translation_skipped: "No Translation Needed",
-    analysis_completed: "Analysis Completed",
-    analysis_failed: "Analysis Failed",
-    analysis_pending: "Awaiting Analysis",
-    analysis_skipped: "No Analysis Needed",
-    toggle_tooltip: "Click to switch",
-  },
   table: {
-    drag_handle: "Drag",
     file_name: "File Name",
     line_count: "Lines",
     actions: "Actions",
@@ -45,23 +27,17 @@ export const en_us_workbench_page = {
   },
   action: {
     add_file: "Add",
-    delete_file: "Delete",
     generate_translation: "Generate Translation",
     close_project: "Close",
     reset: "Reset Translation",
     translation_task: "Translation",
     start_translation: "Start Translation",
-    reset_translation_all: "Reset All Data",
-    reset_translation_failed: "Reset Failed Data",
-    stop_translation: "Stop",
-    translation_stopping: "Stopping",
+    reset_task_all: "Reset All Data",
+    reset_task_failed: "Reset Failed Data",
+    stop_task: "Stop",
     analysis_task: "Analysis",
     start_analysis: "Start Analysis",
-    reset_analysis_all: "Reset All Data",
-    reset_analysis_failed: "Reset Failed Data",
     import_analysis_glossary: "Import Candidate Terms",
-    stop_analysis: "Stop",
-    analysis_stopping: "Stopping",
   },
   task: {
     menu: {
@@ -166,9 +142,6 @@ export const en_us_workbench_page = {
     },
     delete: {
       description: "Confirm deleting the selected file and all of its translation entries …?",
-    },
-    generate_translation: {
-      description: "Confirm generating currently available translation files …?",
     },
     close_project: {
       description: "Confirm closing the current project …?",

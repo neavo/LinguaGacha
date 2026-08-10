@@ -900,7 +900,7 @@ export class ProjectWriteStore {
         ),
       };
     } catch (cause) {
-      throw new AppErrors.CommittedChangeSyncError({
+      throw new AppErrors.AppError("data.committed_sync_failed", {
         cause,
         public_details: { committed: true, section_revisions: {}, action: "reload_project" },
         diagnostic_context: {
@@ -999,7 +999,7 @@ export class ProjectWriteStore {
       }
       return this.publish_project_data_change(change_request);
     } catch (cause) {
-      throw new AppErrors.CommittedChangeSyncError({
+      throw new AppErrors.AppError("data.committed_sync_failed", {
         cause,
         public_details: {
           committed: true,
@@ -1030,19 +1030,19 @@ export class ProjectWriteStore {
     sections: ProjectDataSection[],
   ): ProjectWriteRevisionContext {
     if (expected_section_revisions === undefined) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const meta = this.read_project_meta(project_path);
     for (const section of sections) {
       if (!Object.prototype.hasOwnProperty.call(expected_section_revisions, section)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           public_details: { section },
         });
       }
       const current_revision = get_section_revision(meta, section);
       const expected_revision = expected_section_revisions[section] ?? 0;
       if (current_revision !== expected_revision) {
-        throw new AppErrors.RevisionConflictError({
+        throw new AppErrors.AppError("data.revision_conflict", {
           public_details: { current_revision, expected_revision, section },
         });
       }
@@ -1200,7 +1200,7 @@ export class ProjectWriteStore {
     }
     for (const patch of patches) {
       if (!existing_ids.has(patch.item_id)) {
-        throw new AppErrors.InternalInvariantError({
+        throw new AppErrors.AppError("runtime.internal_invariant", {
           diagnostic_context: {
             reason: "translation_patch_item_not_found",
             item_id: patch.item_id,
@@ -1229,7 +1229,7 @@ export class ProjectWriteStore {
   ): TranslationItemPatch["patch"] {
     const patch = build_project_item_field_patch(current, next);
     if (patch === null) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "empty_proofreading_patch" },
       });
     }

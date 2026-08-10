@@ -364,7 +364,9 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
-  if (context_tokens === undefined) throw new TypeError("Agent snapshot contextTokens 非法");
+  if (context_tokens === undefined) {
+    throw new TypeError("Agent snapshot contextTokens is invalid.");
+  }
   return { state, entries, skills, contextTokens: context_tokens };
 }
 
@@ -525,7 +527,7 @@ function normalize_entry_status(value: unknown): AgentEntryStatus | null {
 /** 完整快照不兼容旧会话状态，避免把协议错误伪装为空闲。 */
 function normalize_state(value: unknown): AgentSessionState {
   if (value === "idle" || value === "running") return value;
-  throw new TypeError("Agent snapshot state 非法");
+  throw new TypeError("Agent snapshot state is invalid.");
 }
 
 /** skill snapshot 严格接纳新协议的完整 UI 描述，不兼容旧单数 description。 */

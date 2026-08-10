@@ -27,7 +27,6 @@ export const de_de_glossary_page = {
   },
   filter: {
     scope: {
-      translation: "Übersetzung",
       description: "Notizen",
     },
   },

@@ -8,7 +8,7 @@ import {
 } from "@frontend/pages/workbench-page/components/workbench-table-action-menu";
 import type { WorkbenchFileEntry } from "@frontend/pages/workbench-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
 import type {
@@ -113,7 +113,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         id: "drag",
         width: 64,
         align: "center",
-        title: t("workbench_page.table.drag_handle"),
+        title: t("app.drag.handle"),
         head_class_name: "workbench-page__table-drag-head",
         cell_class_name: "workbench-page__table-drag-cell",
         render_cell: (payload) => {
@@ -212,9 +212,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
 
   return (
     <Card variant="table" className="workbench-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t("workbench_page.section.file_list")}</CardTitle>
-      </CardHeader>
       <CardContent className="workbench-page__table-card-content">
         <AppTable
           rows={sorted_entries}

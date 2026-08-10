@@ -31,7 +31,7 @@ export function register_agent_model(
   thinkingLevel: AgentThinkingLevel;
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
-  if (raw_model === null) throw new AppErrors.ModelNotFoundError();
+  if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
   const snapshot = read_model_request_snapshot(raw_model, user_agent);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
@@ -67,7 +67,7 @@ export function register_agent_model(
     | PiModel<AgentApi>
     | undefined;
   if (model === undefined) {
-    throw new AppErrors.InternalInvariantError({
+    throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: {
         reason: "agent_registered_model_missing",
         provider: pi.model.provider,

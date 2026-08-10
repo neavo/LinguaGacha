@@ -26,12 +26,6 @@ describe("shared i18n", () => {
       create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
     ).toBe("Glossar aktiviert …");
   });
-
-  it("各 locale 保持 AGENT 品牌", () => {
-    for (const locale of LOCALES) {
-      expect(create_text_resolver(locale)("agent_page.title")).toBe("AGENT");
-    }
-  });
 });
 
 /**

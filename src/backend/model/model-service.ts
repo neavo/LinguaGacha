@@ -109,12 +109,12 @@ export class ModelService {
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const patch = patch_value as JsonRecord;
     for (const key of Object.keys(patch)) {
       if (!PATCH_ALLOWED_KEYS.has(key)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           public_details: { field: key },
         });
       }
@@ -149,7 +149,7 @@ export class ModelService {
     const usage = this.read_model_usage(request["usage"]);
     const thinking_level = request["thinking_level"];
     if (!is_model_thinking_level(thinking_level)) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "thinking_level" },
       });
     }
@@ -163,7 +163,7 @@ export class ModelService {
         Model.normalize_api_format(model["api_format"]),
       )
     ) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "thinking_level" },
       });
     }
@@ -179,7 +179,7 @@ export class ModelService {
     this.runtime_gate.assert_runtime_idle();
     const model_type = String(request["model_type"] ?? "");
     if (!Model.is_custom_type(model_type)) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: { model_type },
       });
     }
@@ -201,7 +201,7 @@ export class ModelService {
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
     if (String(target_model["type"] ?? "PRESET") === "PRESET") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     models.splice(index, 1);
     const selection = normalize_model_selection(config["model_selection"]);
@@ -226,11 +226,11 @@ export class ModelService {
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const preset = this.load_preset_models().find((item) => String(item["id"] ?? "") === model_id);
     if (preset === undefined) {
-      throw new AppErrors.ModelNotFoundError();
+      throw new AppErrors.AppError("model.not_found");
     }
     models[index] = this.normalize_model(preset);
     config["models"] = models as unknown as JsonValue;
@@ -244,11 +244,11 @@ export class ModelService {
     this.runtime_gate.assert_runtime_idle();
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const ordered_ids = ordered_ids_raw.map((value) => String(value).trim()).filter(Boolean);
     if (ordered_ids.length === 0) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -263,7 +263,7 @@ export class ModelService {
       expected_ids.length !== ordered_ids.length ||
       expected_ids.some((model_id) => !ordered_id_set.has(model_id))
     ) {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const reordered = this.reorder_group(models, model_type, ordered_ids);
     config["models"] = reordered as unknown as JsonValue;
@@ -635,7 +635,7 @@ export class ModelService {
     for (const [key, value] of Object.entries(patch)) {
       if (PATCH_OBJECT_KEYS.has(key)) {
         if (typeof value !== "object" || value === null || Array.isArray(value)) {
-          throw new AppErrors.RequestValidationError({
+          throw new AppErrors.AppError("request.validation_failed", {
             public_details: { field: key },
           });
         }
@@ -643,7 +643,7 @@ export class ModelService {
           key === "agent" &&
           Object.keys(value).some((field) => !MODEL_AGENT_PATCH_KEYS.has(field))
         ) {
-          throw new AppErrors.RequestValidationError({
+          throw new AppErrors.AppError("request.validation_failed", {
             public_details: { field: "agent" },
           });
         }
@@ -673,7 +673,7 @@ export class ModelService {
   private find_model_index_or_raise(models: JsonRecord[], model_id: string): number {
     const index = models.findIndex((model) => String(model["id"] ?? "") === model_id);
     if (index < 0) {
-      throw new AppErrors.ModelNotFoundError();
+      throw new AppErrors.AppError("model.not_found");
     }
     return index;
   }
@@ -682,7 +682,7 @@ export class ModelService {
   private read_model_usage(value: unknown): ModelUsage {
     const usage = MODEL_USAGES.find((candidate) => candidate === value);
     if (usage === undefined) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "usage" },
       });
     }

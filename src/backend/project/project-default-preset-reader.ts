@@ -152,7 +152,7 @@ export class ProjectDefaultPresetReader {
     const preset_path = this.resolve_quality_rule_preset_path(rule, virtual_id);
     const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         public_details: {
           filename: path.basename(preset_path),
         },

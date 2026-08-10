@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchTaskMenu } from "./workbench-task-menu";
@@ -112,27 +111,6 @@ describe("WorkbenchTaskMenu", () => {
     });
   }
 
-  it("按任务类型展示菜单说明与共享进度", () => {
-    const html = renderToStaticMarkup(
-      <>
-        <WorkbenchTaskMenu task_kind="translation" {...shared_props} />
-        <WorkbenchTaskMenu
-          task_kind="analysis"
-          {...shared_props}
-          analysis_import={{
-            candidate_count: 2,
-            importing: false,
-            on_request: () => {},
-          }}
-        />
-      </>,
-    );
-
-    expect(html).toContain("workbench_page.translation_task.menu.tooltip");
-    expect(html).toContain("workbench_page.analysis_task.menu.tooltip");
-    expect(html.match(/workbench_page\.task\.menu\.progress/g)).toHaveLength(2);
-  });
-
   it("启动与重置动作复用同一条交互路径", async () => {
     const on_start_or_continue = vi.fn(async () => {});
     const on_request_reset = vi.fn();
@@ -147,36 +125,13 @@ describe("WorkbenchTaskMenu", () => {
 
     await act(async () => {
       find_button("workbench_page.action.start_translation").click();
-      find_button("workbench_page.action.reset_translation_all").click();
-      find_button("workbench_page.action.reset_translation_failed").click();
+      find_button("workbench_page.action.reset_task_all").click();
+      find_button("workbench_page.action.reset_task_failed").click();
     });
 
     expect(on_start_or_continue).toHaveBeenCalledOnce();
     expect(on_request_reset).toHaveBeenNthCalledWith(1, "reset-all");
     expect(on_request_reset).toHaveBeenNthCalledWith(2, "reset-failed");
-  });
-
-  it("开始、模型选择与重置按固定顺序呈现，并继承任务禁用态", async () => {
-    await render_menu(<WorkbenchTaskMenu task_kind="translation" {...shared_props} />);
-
-    const text = container?.textContent ?? "";
-    expect(text.indexOf("workbench_page.action.start_translation")).toBeLessThan(
-      text.indexOf("model-selection-translation"),
-    );
-    expect(text.indexOf("model-selection-translation")).toBeLessThan(
-      text.indexOf("workbench_page.action.reset_translation_all"),
-    );
-
-    await render_menu(
-      <WorkbenchTaskMenu
-        task_kind="analysis"
-        {...shared_props}
-        busy
-        analysis_import={{ candidate_count: 0, importing: false, on_request: () => {} }}
-      />,
-    );
-    expect(find_button("workbench_page.action.start_analysis").disabled).toBe(true);
-    expect(find_button("model-selection-analysis").disabled).toBe(true);
   });
 
   it("分析候选数控制导入动作并在提交前请求确认", async () => {

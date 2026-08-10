@@ -54,9 +54,7 @@ describe("AppTitlebar", () => {
 
     expect(container.querySelector("header")?.dataset.titlebarControlSide).toBe("right");
     expect(container.querySelector("strong")?.textContent).toBe("LinguaGacha");
-    const toggle_button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.aria.toggle_navigation"]',
-    );
+    const toggle_button = container.querySelector<HTMLButtonElement>(".topbar__menu-button");
     if (toggle_button === null) {
       throw new Error("缺少侧栏切换按钮。");
     }

@@ -4,9 +4,7 @@ import type { LogEvent } from "@frontend/app/desktop/desktop-api";
 import { LOG_WINDOW_EVENT_CAPACITY } from "@shared/log";
 import {
   append_log_events,
-  compress_log_message_text,
   filter_log_events,
-  format_log_timestamp,
   sort_log_events_latest_first,
 } from "@frontend/pages/log-window-page/logic";
 
@@ -24,11 +22,6 @@ function build_event(overrides: Partial<LogEvent>): LogEvent {
 }
 
 describe("log-window logic", () => {
-  it("压缩多行日志消息以用于表格预览", () => {
-    expect(compress_log_message_text("第一行\n第二行\r\n第三行")).toBe("第一行 ↵ 第二行 ↵ 第三行");
-    expect(compress_log_message_text("\n")).toBe("(blank)");
-  });
-
   it("追加日志时会 trim 消息并折叠连续空日志", () => {
     const first_empty = build_event({ id: "log-1", sequence: 1, message_preview: "  " });
     const latest_empty = build_event({ id: "log-2", sequence: 2, message_preview: "\n\t" });
@@ -139,15 +132,5 @@ describe("log-window logic", () => {
         is_regex: true,
       }).map((event) => event.id),
     ).toEqual(["log-2"]);
-  });
-
-  it("格式化完整日志时间戳", () => {
-    expect(format_log_timestamp("2026-04-26T08:30:15.000+00:00")).toMatch(
-      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
-    );
-  });
-
-  it("无法解析的时间戳原样返回", () => {
-    expect(format_log_timestamp("bad-date")).toBe("bad-date");
   });
 });

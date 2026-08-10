@@ -581,7 +581,7 @@ describe("desktop-api", () => {
     });
   });
 
-  it("api_fetch 保留 Backend 错误 code、details 和 request_id", async () => {
+  it("api_fetch 保留 Backend 错误 code 和 details", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -606,12 +606,7 @@ describe("desktop-api", () => {
             ok: false,
             error: {
               code: "data.revision_conflict",
-              message: "数据版本已变化，请刷新后重试 …",
-              message_key: "app.error.data.revision_conflict.message",
               details: { section: "items" },
-              action: "请刷新当前数据后再次提交 …",
-              action_key: "app.error.data.revision_conflict.action",
-              request_id: "request-1",
             },
           }),
         } as Response;
@@ -623,13 +618,9 @@ describe("desktop-api", () => {
     const promise = api_fetch("/api/workbench/files/import", {});
 
     await expect(promise).rejects.toMatchObject({
-      action: "请刷新当前数据后再次提交 …",
       code: "data.revision_conflict",
       details: { section: "items" },
-      message: "数据版本已变化，请刷新后重试 …",
-      message_key: "app.error.data.revision_conflict.message",
-      request_id: "request-1",
-      status: 409,
+      message: "data.revision_conflict",
     });
     await expect(promise).rejects.toBeInstanceOf(DesktopApiError);
   });

@@ -9,7 +9,7 @@ import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generati
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 
-import { RequestValidationError } from "../../shared/error";
+import { AppError } from "../../shared/error";
 import {
   apply_one_shot_request_overrides,
   model_supports_pi_reasoning,
@@ -183,7 +183,7 @@ function assert_non_empty_messages(
   api_format: ModelRequestSnapshot["api_format"],
 ): void {
   if (count > 0) return;
-  throw new RequestValidationError({
+  throw new AppError("request.validation_failed", {
     public_details: { field: "messages" },
     diagnostic_context: { api_format, reason: "empty_messages" },
   });

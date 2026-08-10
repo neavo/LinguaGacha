@@ -20,7 +20,6 @@ describe("source-file-parse-failure-reporter", () => {
       rel_path: "nested/broken.json",
       filename: "broken.json",
       code: "file.parse_failed",
-      message_key: "app.error.file.parse_failed.message",
     });
     expect(
       build_source_file_parse_failure({
@@ -61,7 +60,6 @@ describe("source-file-parse-failure-reporter", () => {
             source_path: "E:/input/broken.json",
             rel_path: "broken.json",
             code: "file.parse_failed",
-            message_key: "app.error.file.parse_failed.message",
           },
         ],
       },

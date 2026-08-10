@@ -35,7 +35,6 @@ type SearchBarSharedProps<scope_value extends string = string> = React.Component
   scope: {
     value: scope_value;
     button_label: React.ReactNode;
-    aria_label: string;
     tooltip: React.ReactNode;
     options: SearchBarScopeOption<scope_value>[];
     on_change: (next_value: scope_value) => void;
@@ -250,7 +249,6 @@ function SearchBarScopeAction<scope_value extends string = string>(
               disabled={props.search_disabled}
               className="search-bar__action-trigger"
               data-active={props.scope.value === "all" ? undefined : "true"}
-              aria-label={props.scope.aria_label}
             >
               <ListFilter data-icon="inline-start" />
               {props.scope.button_label}

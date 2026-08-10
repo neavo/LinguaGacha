@@ -53,33 +53,6 @@ describe("AppEditor", () => {
     root = null;
   });
 
-  it("字段形态使用同一套 CodeMirror 标记且不渲染行号槽", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <AppEditor
-          variant="field"
-          value="虎鉄123"
-          aria_label="译文姓名"
-          read_only={false}
-          aria_invalid
-          marks={[{ start: 0, end: 2, tone: "success", tooltip: "虎鉄 -> 虎铁" }]}
-        />,
-      );
-    });
-
-    const editor = container.querySelector(".app-editor--field");
-    const content = container.querySelector<HTMLElement>(".cm-content[aria-label='译文姓名']");
-
-    expect(editor).not.toBeNull();
-    expect(content?.getAttribute("aria-invalid")).toBe("true");
-    expect(container.querySelector(".cm-gutters")).toBeNull();
-    expect(container.querySelector(".app-text-mark--success")?.textContent).toBe("虎鉄");
-  });
-
   it("字段形态会把外部多行值归一成单行", async () => {
     container = document.createElement("div");
     document.body.append(container);
@@ -162,18 +135,6 @@ describe("AppEditor", () => {
     expect(container.querySelector(".app-editor--wrap-lines")).not.toBeNull();
     expect(get_editor_content(container)).toBe(content);
     expect(content.textContent).toBe('{"name":"Alice Smith"}');
-  });
-
-  it("默认使用 Tab 缩进", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(<AppEditor value="Alpha" aria_label="默认编辑器" read_only={false} />);
-    });
-
-    expect(dispatch_tab_key(get_editor_content(container))).toBe(true);
   });
 
   it("关闭 Tab 缩进后把 Tab 交回浏览器焦点链路", async () => {

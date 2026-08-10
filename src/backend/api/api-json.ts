@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import type { Hono } from "hono";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { InvalidJsonError } from "../../shared/error";
+import { AppError } from "../../shared/error";
 import { ok } from "./api-types";
 
 export type ApiJsonHandler = (body: JsonRecord) => JsonValue | Promise<JsonValue>;
@@ -29,7 +29,7 @@ export function register_post_json_route(
     const request_id = crypto.randomUUID();
     try {
       const body = (await context.req.json().catch((error: unknown) => {
-        throw new InvalidJsonError(error);
+        throw new AppError("request.invalid_json", { cause: error });
       })) as JsonRecord;
       const data = await handler(body);
       return context.json(ok(data));

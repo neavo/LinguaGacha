@@ -3,28 +3,10 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_workbench_page = {
   title: "Werkbank",
-  section: {
-    stats: "Werkbank-Statistiken",
-    file_list: "Dateiliste",
-    command_bar: "Werkbank-Befehlsleiste",
-  },
   unit: {
     line: "Zeile",
   },
-  stats: {
-    total_lines: "Gesamt",
-    translation_completed: "Übersetzung abgeschlossen",
-    translation_failed: "Übersetzung fehlgeschlagen",
-    translation_pending: "Übersetzung ausstehend",
-    translation_skipped: "Keine Übersetzung nötig",
-    analysis_completed: "Analyse abgeschlossen",
-    analysis_failed: "Analyse fehlgeschlagen",
-    analysis_pending: "Analyse ausstehend",
-    analysis_skipped: "Keine Analyse nötig",
-    toggle_tooltip: "Zum Umschalten klicken",
-  },
   table: {
-    drag_handle: "Ziehen",
     file_name: "Dateiname",
     line_count: "Zeilen",
     actions: "Aktionen",
@@ -46,23 +28,17 @@ export const de_de_workbench_page = {
   },
   action: {
     add_file: "Hinzufügen",
-    delete_file: "Löschen",
     generate_translation: "Übersetzung erstellen",
     close_project: "Schließen",
     reset: "Übersetzung zurücksetzen",
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
-    reset_translation_all: "Alle Daten zurücksetzen",
-    reset_translation_failed: "Fehlgeschlagene Daten zurücksetzen",
-    stop_translation: "Stopp",
-    translation_stopping: "Wird gestoppt",
+    reset_task_all: "Alle Daten zurücksetzen",
+    reset_task_failed: "Fehlgeschlagene Daten zurücksetzen",
+    stop_task: "Stopp",
     analysis_task: "Analyse",
     start_analysis: "Analyse starten",
-    reset_analysis_all: "Alle Daten zurücksetzen",
-    reset_analysis_failed: "Fehlgeschlagene Daten zurücksetzen",
     import_analysis_glossary: "Kandidatenbegriffe importieren",
-    stop_analysis: "Stopp",
-    analysis_stopping: "Wird gestoppt",
   },
   task: {
     menu: {
@@ -172,9 +148,6 @@ export const de_de_workbench_page = {
     delete: {
       description:
         "Ausgewählte Datei und alle zugehörigen Übersetzungseinträge wirklich löschen …?",
-    },
-    generate_translation: {
-      description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
     },
     close_project: {
       description: "Aktuelles Projekt wirklich schließen …?",

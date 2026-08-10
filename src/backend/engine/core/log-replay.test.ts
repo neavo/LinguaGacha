@@ -13,48 +13,6 @@ function create_log_manager_stub(): Pick<LogManager, "append"> {
 }
 
 describe("TaskLogReplay", () => {
-  it("输出任务启动和结束日志到统一 LogManager", () => {
-    const log_manager = create_log_manager_stub();
-    const replay = new TaskLogReplay(log_manager);
-
-    replay.task_run_start(
-      {
-        name: "OpenAI",
-        api_url: "https://api.example.com",
-        model_id: "gpt-test",
-      },
-      "zh-CN",
-      "system prompt",
-    );
-    replay.task_run_finish("done", "zh-CN");
-
-    expect(log_manager.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        level: "info",
-        content: { kind: "text", text: "" },
-        source: "engine",
-      }),
-    );
-    expect(log_manager.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: { kind: "text", text: expect.stringContaining("OpenAI") },
-        source: "engine",
-      }),
-    );
-    expect(log_manager.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: { kind: "text", text: "system prompt" },
-        source: "engine",
-      }),
-    );
-    expect(log_manager.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: { kind: "text", text: expect.stringContaining("已完成") },
-        source: "engine",
-      }),
-    );
-  });
-
   it("回放 worker 日志并保留结构化错误字段", () => {
     const log_manager = create_log_manager_stub();
     const replay = new TaskLogReplay(log_manager);

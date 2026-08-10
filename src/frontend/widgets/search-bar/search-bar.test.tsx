@@ -191,7 +191,6 @@ describe("SearchBar", () => {
           scope={{
             value: "all",
             button_label: "范围",
-            aria_label: "搜索范围",
             tooltip: "当前范围",
             options: SCOPE_OPTIONS,
             on_change: () => undefined,
@@ -248,7 +247,7 @@ describe("SearchBar", () => {
 
     expect(query_input("搜索").disabled).toBe(true);
     expect(query_button_by_label("清空搜索").disabled).toBe(true);
-    expect(query_button_by_label("搜索范围").disabled).toBe(true);
+    expect(query_button_by_text("范围").disabled).toBe(true);
     expect(query_button_by_text("正则").disabled).toBe(true);
     expect(query_input("替换为").disabled).toBe(false);
     expect(query_button_by_label("清空替换").disabled).toBe(false);
@@ -262,7 +261,7 @@ describe("SearchBar", () => {
 
     expect(query_input("搜索").disabled).toBe(false);
     expect(query_button_by_label("清空搜索").disabled).toBe(false);
-    expect(query_button_by_label("搜索范围").disabled).toBe(false);
+    expect(query_button_by_text("范围").disabled).toBe(false);
     expect(query_button_by_text("正则").disabled).toBe(false);
     expect(query_input("替换为").disabled).toBe(false);
     expect_replace_submit_disabled(true);

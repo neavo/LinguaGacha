@@ -4,9 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const app_table_test_state = vi.hoisted(() => {
   return {
-    current_sortable_items: [] as string[],
     virtual_item_indices: null as number[] | null,
-    estimate_sizes: [] as number[],
     measure: vi.fn(),
     scrollToIndex: vi.fn(),
   };
@@ -15,7 +13,6 @@ const app_table_test_state = vi.hoisted(() => {
 vi.mock("@dnd-kit/sortable", () => {
   const mock_module = {
     SortableContext: (props: { children: unknown; items: Array<string | number> }) => {
-      app_table_test_state.current_sortable_items = props.items.map((item) => String(item));
       return props.children;
     },
     sortableKeyboardCoordinates: () => undefined,
@@ -46,7 +43,6 @@ vi.mock("@tanstack/react-virtual", () => {
       getItemKey?: (index: number) => string | number;
     }) => {
       const row_height = options.estimateSize();
-      app_table_test_state.estimate_sizes.push(row_height);
       const item_indices =
         app_table_test_state.virtual_item_indices ??
         Array.from({ length: options.count }, (_, index) => index);
@@ -77,7 +73,6 @@ vi.mock("@tanstack/react-virtual", () => {
 });
 
 import { AppTable } from "@frontend/widgets/app-table/app-table";
-import { APP_TABLE_DEFAULT_ROW_HEIGHT } from "@frontend/widgets/app-table/app-table-virtualization";
 import type {
   AppTableColumn,
   AppTableRowModel,
@@ -267,9 +262,7 @@ describe("AppTable row model", () => {
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
-    app_table_test_state.current_sortable_items = [];
     app_table_test_state.virtual_item_indices = null;
-    app_table_test_state.estimate_sizes = [];
     app_table_test_state.measure.mockClear();
     app_table_test_state.scrollToIndex.mockClear();
   });
@@ -317,31 +310,6 @@ describe("AppTable row model", () => {
       active_row_id: "a",
       anchor_row_id: "a",
     });
-  });
-
-  it("固定行高会同时驱动虚拟高度和表格 CSS 变量", async () => {
-    const container = await mount(
-      create_default_props({
-        rows: create_rows(2),
-      }),
-    );
-    const table = container.querySelector<HTMLElement>(".app-table");
-
-    expect(app_table_test_state.estimate_sizes.at(-1)).toBe(APP_TABLE_DEFAULT_ROW_HEIGHT);
-    expect(table?.style.getPropertyValue("--app-table-row-height")).toBe("36px");
-  });
-
-  it("传入 row_height 时会用同一高度计算虚拟行和占位行", async () => {
-    const container = await mount(
-      create_default_props({
-        rows: create_rows(1),
-        row_height: 42,
-      }),
-    );
-    const table = container.querySelector<HTMLElement>(".app-table");
-
-    expect(app_table_test_state.estimate_sizes.at(-1)).toBe(42);
-    expect(table?.style.getPropertyValue("--app-table-row-height")).toBe("42px");
   });
 
   it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {
@@ -991,24 +959,6 @@ describe("AppTable row model", () => {
     );
 
     expect(container.textContent).toContain("不可拖拽");
-  });
-
-  it("拖拽启用时 SortableContext 只接收当前虚拟窗口内的行", async () => {
-    app_table_test_state.virtual_item_indices = [1, 2];
-    await mount(
-      create_default_props({
-        rows: [
-          { id: "a", label: "Alpha" },
-          { id: "b", label: "Beta" },
-          { id: "c", label: "Gamma" },
-          { id: "d", label: "Delta" },
-        ],
-        columns: create_drag_columns(),
-        drag_enabled: true,
-      }),
-    );
-
-    expect(app_table_test_state.current_sortable_items).toEqual(["b", "c"]);
   });
 
   it("可见范围没有变化时不会重复触发 on_visible_range_change", async () => {

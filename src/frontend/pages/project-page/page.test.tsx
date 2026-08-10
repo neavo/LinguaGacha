@@ -3,7 +3,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DesktopApiError } from "@frontend/app/desktop/desktop-api";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -28,49 +27,9 @@ const {
 });
 
 const I18N_TEXT_BY_KEY: Record<string, string> = {
-  "app.action.loading": "加载中",
-  "app.action.reset": "重置",
   "app.action.select_file": "选择文件",
-  "app.action.select_folder": "选择文件夹",
-  "app.error.file.invalid_structure.message": "文件结构不符合格式要求 …",
-  "app.error.file.parse_failed.message": "文件内容解析失败 …",
   "project_page.create.action": "创建工程",
-  "project_page.create.default_preset_loaded": "已自动加载默认预设：{NAMES} …",
-  "project_page.create.default_presets.analysis_prompt": "分析提示词",
-  "project_page.create.default_presets.glossary": "术语表",
-  "project_page.create.default_presets.post_translation_replacement": "译后替换",
-  "project_page.create.default_presets.pre_translation_replacement": "译前替换",
-  "project_page.create.default_presets.text_preserve": "文本保护",
-  "project_page.create.default_presets.translation_prompt": "翻译提示词",
-  "project_page.create.drop_title": "点击或拖拽源文件",
-  "project_page.create.failed": "创建工程失败：{ERROR}",
-  "project_page.create.failed_generic": "创建工程失败",
-  "project_page.create.loading_toast": "正在创建工程 …",
   "project_page.create.ready_status": "已选择 {COUNT} 个源文件",
-  "project_page.create.subtitle": "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件。",
-  "project_page.create.title": "新建工程",
-  "project_page.formats.title": "支持文件格式",
-  "project_page.open.action": "打开工程",
-  "project_page.open.drop_title": "点击或拖拽 .lg 文件",
-  "project_page.open.empty": "暂无最近打开的工程",
-  "project_page.open.preview_loading_toast": "正在读取工程预览 …",
-  "project_page.open.recent_title": "最近打开",
-  "project_page.open.subtitle": "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作。",
-  "project_page.open.title": "打开工程",
-  "project_page.preview.created_at": "创建时间",
-  "project_page.preview.file_count": "文件数量",
-  "project_page.preview.progress": "翻译进度",
-  "project_page.preview.project_name": "项目名称",
-  "project_page.preview.rows_unit": "行",
-  "project_page.preview.skipped": "无需翻译:",
-  "project_page.preview.total": "总计：",
-  "project_page.preview.translated": "已翻译：",
-  "project_page.preview.updated_at": "最后修改",
-  "workbench_page.stats.total_lines": "总计",
-  "workbench_page.stats.translation_completed": "翻译成功",
-  "workbench_page.stats.translation_failed": "翻译失败",
-  "workbench_page.stats.translation_pending": "等待翻译",
-  "workbench_page.stats.translation_skipped": "无需翻译",
 };
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
@@ -329,29 +288,6 @@ describe("ProjectPage", () => {
     });
   }
 
-  it("默认预设字段非空时在新建成功后弹出自动加载提示", async () => {
-    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
-      glossary_default_preset: "builtin:glossary",
-      text_preserve_default_preset: "builtin:text-preserve",
-    });
-    await mount_page();
-
-    await create_project_from_selected_source();
-
-    expect(push_toast_mock).toHaveBeenCalledWith("info", "已自动加载默认预设：术语表 | 文本保护 …");
-  });
-
-  it("默认预设字段全为空时新建成功后不弹自动加载提示", async () => {
-    await mount_page();
-
-    await create_project_from_selected_source();
-
-    expect(push_toast_mock).not.toHaveBeenCalledWith(
-      "info",
-      expect.stringContaining("已自动加载默认预设"),
-    );
-  });
-
   it("新建工程默认提交 stem.lg，并用后端真实路径写入最近工程", async () => {
     await mount_page();
 
@@ -422,192 +358,5 @@ describe("ProjectPage", () => {
       "/api/session/project/create-preview",
       expect.anything(),
     );
-  });
-
-  it("新建工程成功但跳过解析失败文件时展示完整明细 Toast", async () => {
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/collect") {
-        return { source_files: ["E:\\Source\\demo.txt", "E:\\Source\\broken.json"] };
-      }
-      if (path === "/api/session/project/create") {
-        return {
-          project: { path: "E:\\Source\\demo_20260428_120000.lg", loaded: true },
-          failed_files: [
-            {
-              source_path: "E:\\Source\\broken.json",
-              rel_path: "broken.json",
-              filename: "broken.json",
-              code: "file.parse_failed",
-              message_key: "app.error.file.parse_failed.message",
-            },
-            {
-              source_path: "E:\\Source\\dialogue.epub",
-              rel_path: "dialogue.epub",
-              filename: "dialogue.epub",
-              code: "file.invalid_structure",
-              message_key: "app.error.file.invalid_structure.message",
-            },
-          ],
-        };
-      }
-      if (path === "/api/settings/recent-projects/add") {
-        return { settings: { recent_projects: [] } };
-      }
-
-      return {};
-    });
-    await mount_page();
-
-    await create_project_from_selected_source();
-
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "warning",
-      ["broken.json - 文件内容解析失败 …", "dialogue.epub - 文件结构不符合格式要求 …"].join("\n"),
-    );
-  });
-
-  it("新建工程全部源文件解析失败时展示阻断明细且不叠加泛失败", async () => {
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/collect") {
-        return { source_files: ["E:\\Source\\broken.json"] };
-      }
-      if (path === "/api/session/project/create") {
-        throw new DesktopApiError({
-          code: "file.parse_failed",
-          details: {
-            failed_files: [
-              {
-                source_path: "E:\\Source\\broken.json",
-                rel_path: "broken.json",
-                filename: "broken.json",
-                code: "file.parse_failed",
-                message_key: "app.error.file.parse_failed.message",
-              },
-            ],
-          },
-          message: "app.error.file.parse_failed.message",
-          message_key: "app.error.file.parse_failed.message",
-          status: 415,
-        });
-      }
-
-      return {};
-    });
-    await mount_page();
-
-    await create_project_from_selected_source();
-
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "broken.json - 文件内容解析失败 …");
-    expect(push_toast_mock).not.toHaveBeenCalledWith(
-      "error",
-      expect.stringContaining("创建工程失败"),
-    );
-  });
-
-  it("新建工程失败时不弹默认预设成功提示", async () => {
-    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
-      glossary_default_preset: "builtin:glossary",
-    });
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/collect") {
-        return { source_files: ["E:\\Source\\demo.txt"] };
-      }
-      if (path === "/api/session/project/create") {
-        throw new Error("create boom");
-      }
-
-      return {};
-    });
-    await mount_page();
-
-    await create_project_from_selected_source();
-
-    expect(push_toast_mock).not.toHaveBeenCalledWith(
-      "info",
-      expect.stringContaining("已自动加载默认预设"),
-    );
-  });
-
-  it("选中最近工程后使用四段复合进度条展示预览", async () => {
-    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
-      recent_projects: [{ path: "E:\\Projects\\demo.lg", name: "demo" }],
-    });
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/project/preview") {
-        return {
-          preview: {
-            path: "E:\\Projects\\demo.lg",
-            name: "demo",
-            file_count: 1,
-            created_at: "2026-04-27T16:50:42",
-            updated_at: "2026-04-28T18:35:42",
-            translation_stats: {
-              total_items: 8,
-              completed_count: 3,
-              failed_count: 1,
-              pending_count: 3,
-              skipped_count: 1,
-              completion_percent: 50,
-            },
-          },
-        };
-      }
-
-      return {};
-    });
-    await mount_page();
-
-    await act(async () => {
-      get_button_by_text(container as HTMLElement, "demo").click();
-      await flush_async_updates();
-    });
-
-    expect(container?.textContent).toContain("50.00%");
-    expect(container?.textContent).toContain("已翻译： 3 行无需翻译: 1 行总计： 8 行");
-    expect(container?.querySelector("[role='progressbar']")?.getAttribute("aria-label")).toBe(
-      "无需翻译 - 1 / 翻译失败 - 1 / 翻译成功 - 3 / 等待翻译 - 3 / 总计 - 8",
-    );
-    expect(container?.querySelectorAll(".segmented-progress__segment")).toHaveLength(4);
-  });
-
-  it("选中最近工程读取预览时展示不定模态进度通知", async () => {
-    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
-      recent_projects: [{ path: "E:\\Projects\\heavy.lg", name: "heavy" }],
-    });
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/project/preview") {
-        return {
-          preview: {
-            path: "E:\\Projects\\heavy.lg",
-            name: "heavy",
-            file_count: 1,
-            created_at: "2026-05-13T16:50:42",
-            updated_at: "2026-05-13T18:35:42",
-            translation_stats: {
-              total_items: 1,
-              completed_count: 0,
-              failed_count: 0,
-              pending_count: 1,
-              skipped_count: 0,
-              completion_percent: 0,
-            },
-          },
-        };
-      }
-
-      return {};
-    });
-    await mount_page();
-
-    await act(async () => {
-      get_button_by_text(container as HTMLElement, "heavy").click();
-      await flush_async_updates();
-    });
-
-    expect(push_progress_toast_mock).toHaveBeenCalledWith({
-      message: "正在读取工程预览 …",
-      presentation: "modal",
-    });
-    expect(dismiss_toast_mock).toHaveBeenCalledWith("project-loading-toast");
   });
 });

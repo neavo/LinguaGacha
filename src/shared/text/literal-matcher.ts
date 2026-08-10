@@ -54,7 +54,7 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
   const keys = new Set<string>();
   for (const pattern of patterns) {
     if (keys.has(pattern.key)) {
-      throw new Error(`字面量 pattern key 重复：${pattern.key}`);
+      throw new Error(`Duplicate literal pattern key: ${pattern.key}.`);
     }
     keys.add(pattern.key);
   }

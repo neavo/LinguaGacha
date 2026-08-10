@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import { InvalidJsonError } from "../../shared/error";
 import { register_post_json_route } from "./api-json";
 
 describe("register_post_json_route", () => {
@@ -35,7 +34,7 @@ describe("register_post_json_route", () => {
 
     expect(response.status).toBe(400);
     expect(on_error).toHaveBeenCalledWith(
-      expect.any(InvalidJsonError),
+      expect.objectContaining({ code: "request.invalid_json" }),
       "/api/test",
       expect.stringMatching(/^[0-9a-f-]{36}$/u),
     );

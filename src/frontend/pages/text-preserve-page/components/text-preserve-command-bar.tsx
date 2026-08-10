@@ -64,7 +64,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       label: t("text_preserve_page.mode.options.custom"),
     },
   ];
-  const mode_tooltip_title = t("quality_editor.toggle.status")
+  const mode_tooltip_title = t("app.toggle.status")
     .replace("{TITLE}", t("text_preserve_page.mode.label"))
     .replace("{STATE}", t(MODE_LABEL_KEY_BY_MODE[props.mode]));
 
@@ -83,7 +83,6 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
 
   return (
     <CommandBar
-      title={t(props.title_key)}
       actions={
         <>
           <CommandBarGroup>
@@ -94,7 +93,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               onClick={props.on_create}
             >
               <Plus data-icon="inline-start" />
-              {t("quality_editor.action.create")}
+              {t("app.action.create")}
               <ShortcutKbd action="create" />
             </AppButton>
             <AppButton
@@ -106,7 +105,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <Trash2 data-icon="inline-start" />
-              {t("quality_editor.action.delete")}
+              {t("app.action.delete")}
               <ShortcutKbd action="delete" />
             </AppButton>
           </CommandBarGroup>
@@ -121,7 +120,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <FileDown data-icon="inline-start" />
-              {t("quality_editor.action.import")}
+              {t("app.action.import")}
             </AppButton>
             <AppButton
               variant="ghost"
@@ -131,7 +130,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <FileUp data-icon="inline-start" />
-              {t("quality_editor.action.export")}
+              {t("app.action.export")}
             </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
@@ -139,7 +138,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             items={props.preset_items}
             open={props.preset_menu_open}
             readonly={props.readonly}
-            trigger_label={t("quality_editor.action.preset")}
+            trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}
             on_apply={props.on_apply_preset}

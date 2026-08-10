@@ -63,7 +63,7 @@ export class DesktopAgentWorkspaceRunner {
     signal: AbortSignal,
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
     signal.throwIfAborted();
-    if (this.running) throw new Error("Agent 工作区操作正在运行。");
+    if (this.running) throw new Error("An agent workspace operation is already running.");
     this.running = true;
     try {
       return await this.run_once(request, signal);

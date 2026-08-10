@@ -129,7 +129,7 @@ export class JsonTool {
     const indent = options.indent ?? 0;
     const text = indent > 0 ? JSON.stringify(value, null, indent) : JSON.stringify(value);
     if (text === undefined) {
-      throw new TypeError("JSON 序列化结果为空。");
+      throw new TypeError("JSON serialization returned undefined.");
     }
     return text;
   }

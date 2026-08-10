@@ -2,12 +2,10 @@ import * as React from "react";
 
 import { cn } from "@frontend/shadcn/classnames";
 import "@frontend/widgets/command-bar/command-bar.css";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@frontend/shadcn/card";
+import { Card, CardContent } from "@frontend/shadcn/card";
 import { Separator } from "@frontend/shadcn/separator";
 
 type CommandBarProps = React.ComponentProps<"section"> & {
-  title?: React.ReactNode;
-  description?: React.ReactNode;
   hint?: React.ReactNode;
   actions: React.ReactNode;
 };
@@ -37,24 +35,9 @@ function CommandBarSeparatorPrimitive({
   );
 }
 
-export function CommandBar({
-  className,
-  title,
-  description,
-  hint,
-  actions,
-  ...props
-}: CommandBarProps): JSX.Element {
-  const has_a11y_copy = title !== undefined || description !== undefined; // 保留隐藏标题与描述，确保动作条在辅助技术里仍有清晰语义
-
+export function CommandBar({ className, hint, actions, ...props }: CommandBarProps): JSX.Element {
   return (
     <Card variant="toolbar" className={cn("command-bar", className)} {...props}>
-      {has_a11y_copy ? (
-        <CardHeader className="sr-only">
-          {title !== undefined ? <CardTitle>{title}</CardTitle> : null}
-          {description !== undefined ? <CardDescription>{description}</CardDescription> : null}
-        </CardHeader>
-      ) : null}
       <CardContent>
         <CommandBarToolbar>
           <CommandBarActions>{actions}</CommandBarActions>

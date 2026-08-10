@@ -1,6 +1,5 @@
 export const zh_cn_log_window_page = {
   title: "日志",
-  window_title: "日志",
   level: {
     all: "全部",
     debug: "调试",

@@ -97,7 +97,6 @@ function AgentMermaid({ source }: { source: string }): JSX.Element {
   return (
     <figure
       className="agent-message__diagram"
-      aria-label={t("agent_page.diagram.label")}
       tabIndex={0}
       dangerouslySetInnerHTML={{ __html: render_state.svg }}
     />

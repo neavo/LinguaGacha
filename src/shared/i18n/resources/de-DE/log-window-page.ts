@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_log_window_page = {
   title: "Protokolle",
-  window_title: "Protokolle",
   level: {
     all: "Alle",
     debug: "Debug",

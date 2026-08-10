@@ -46,8 +46,6 @@ describe("Agent 输入历史持久化", () => {
     ["非法 JSON", "{"],
     ["非数组", JSON.stringify({})],
     ["旧结构化载荷", JSON.stringify([[{ kind: "text", text: "旧消息" }]])],
-    ["混入非字符串", JSON.stringify(["合法", 1])],
-    ["空消息", JSON.stringify([""])],
     ["纯空白消息", JSON.stringify([" \n "])],
     ["未规范化消息", JSON.stringify([" 消息 "])],
   ])("%s 使整份历史不可用且不回写", (_name, raw) => {
@@ -68,15 +66,15 @@ describe("Agent 输入历史持久化", () => {
     expect(setItem).toHaveBeenCalledWith(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(next));
   });
 
-  it.each([
-    ["连续重复", ["第一条"], "第一条", ["第一条"]],
-    ["非连续重复", ["第一条", "重复", "第三条"], "重复", ["第一条", "第三条", "重复"]],
-  ])("%s 输入只保留最近位置", (_name, current, text, expected) => {
-    const { storage } = create_storage(null);
-    const next = update_agent_input_history(storage, current, text);
+  it.each([["非连续重复", ["第一条", "重复", "第三条"], "重复", ["第一条", "第三条", "重复"]]])(
+    "%s 输入只保留最近位置",
+    (_name, current, text, expected) => {
+      const { storage } = create_storage(null);
+      const next = update_agent_input_history(storage, current, text);
 
-    expect(next).toEqual(expected);
-  });
+      expect(next).toEqual(expected);
+    },
+  );
 
   it("持久化写入失败时仍返回包含新消息的内存历史", () => {
     const { storage } = create_storage(

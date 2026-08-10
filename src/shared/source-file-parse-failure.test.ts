@@ -6,7 +6,7 @@ import {
 } from "./source-file-parse-failure";
 
 describe("source file parse failure", () => {
-  it("收窄可展示的失败记录并补全默认消息键", () => {
+  it("只收窄带有效错误码的可展示失败记录", () => {
     expect(
       normalize_source_file_parse_failures([
         {
@@ -16,6 +16,7 @@ describe("source file parse failure", () => {
           code: " file.parse_failed ",
         },
         { filename: "missing-code.json" },
+        { filename: "unknown-code.json", code: "file.unknown" },
         null,
       ]),
     ).toEqual([
@@ -24,7 +25,6 @@ describe("source file parse failure", () => {
         rel_path: "data/demo.json",
         filename: "demo.json",
         code: "file.parse_failed",
-        message_key: "app.error.file.parse_failed.message",
       },
     ]);
   });
@@ -38,14 +38,12 @@ describe("source file parse failure", () => {
             rel_path: "a.json",
             filename: "a.json",
             code: "file.parse_failed",
-            message_key: "app.error.file.parse_failed.message",
           },
           {
             source_path: "E:/source/b.xlsx",
             rel_path: "b.xlsx",
             filename: "b.xlsx",
             code: "file.invalid_structure",
-            message_key: "app.error.file.invalid_structure.message",
           },
         ],
         text: (key) => `原因:${key}`,

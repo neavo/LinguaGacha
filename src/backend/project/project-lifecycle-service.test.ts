@@ -496,7 +496,6 @@ describe("ProjectLifecycleService", () => {
             rel_path: path.join("source", "broken.json"),
             filename: "broken.json",
             code: "file.parse_failed",
-            message_key: "app.error.file.parse_failed.message",
           },
         ],
       });
@@ -541,7 +540,6 @@ describe("ProjectLifecycleService", () => {
               rel_path: path.join("source", "broken.json"),
               filename: "broken.json",
               code: "file.parse_failed",
-              message_key: "app.error.file.parse_failed.message",
             },
           ],
         },

@@ -5,29 +5,17 @@ export const de_de_proofreading_page = {
   title: "Korrekturlesen",
   action: {
     filter: "Filtern",
-    replace: "Ersetzen",
     replace_all: "Alle ersetzen",
-    edit: "Bearbeiten",
     retranslate: "Neu übersetzen",
     clear_translation: "Übersetzung löschen",
     set_translation_status: "Übersetzungsstatus setzen",
-    save: "Speichern",
-    cancel: "Abbrechen",
-    confirm: "Bestätigen",
     view_context: "Kontext anzeigen",
     back: "Zurück",
-    retry: "Erneut versuchen",
-  },
-  toggle: {
-    status: "{TITLE} - {STATE}",
   },
   fields: {
-    drag: "Ziehen",
     status: "Status",
     source: "Quelle",
-    source_name: "Quellname",
     translation: "Übersetzung",
-    translation_name: "Übersetzungsname",
   },
   search: {
     placeholder: "Abfrage …",
@@ -40,8 +28,6 @@ export const de_de_proofreading_page = {
       label: "Bereich",
       tooltip_label: "Suchbereich",
       all: "Alle",
-      source: "Quelle",
-      translation: "Übersetzung",
     },
   },
   sort: {
@@ -50,13 +36,10 @@ export const de_de_proofreading_page = {
     clear: "Löschen",
   },
   status: {
-    none: "Übersetzung ausstehend",
-    processed: "Übersetzung abgeschlossen",
     excluded: "Ausgeschlossen",
     rule_skipped: "Regel übersprungen",
     non_target_source_language: "Nicht-Zielsprache",
     duplicated: "Dupliziert",
-    error: "Übersetzung fehlgeschlagen",
   },
   warning: {
     kana: "Kana-Rückstand",

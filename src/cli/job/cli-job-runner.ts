@@ -83,7 +83,7 @@ export async function run_cli_job(
     const error =
       failures.length === 1
         ? failures[0]
-        : new AggregateError(failures, "CLI 任务执行或临时资源收尾失败");
+        : new AggregateError(failures, "CLI job execution or temporary resource cleanup failed.");
     status_reporter.emit_finished("error", error);
     throw error;
   }

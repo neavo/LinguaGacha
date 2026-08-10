@@ -50,7 +50,7 @@ export class TsConversionExportService {
     const preserve_text = request["preserve_text"] !== false;
     const source_items = this.cache.items.readItems();
     if (source_items.length === 0) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "empty_ts_conversion_items" },
       });
     }
@@ -121,7 +121,7 @@ export class TsConversionExportService {
     if (value === "s2t" || value === "t2s") {
       return value;
     }
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: { reason: "invalid_ts_conversion_direction" },
     });
   }

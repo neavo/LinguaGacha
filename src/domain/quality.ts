@@ -1,5 +1,5 @@
 import type { JsonRecord } from "./json";
-import { UnknownQualityRuleTypeError, UnsupportedQualityRuleMetaError } from "../shared/error";
+import { AppError } from "../shared/error";
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
@@ -148,7 +148,9 @@ export class QualityRule {
     if (is_quality_rule_kind(value)) {
       return new QualityRule(value);
     }
-    throw new UnknownQualityRuleTypeError(value);
+    throw new AppError("quality.unknown_rule_type", {
+      diagnostic_context: { value: String(value) },
+    });
   }
 
   /**
@@ -225,9 +227,9 @@ export class QualityRule {
    * 将未识别的规则输入归一为领域字段形状；项目身份由调用边界单独处理
    */
   public normalize_entry(entry: unknown): QualityRuleEntryInput {
-    const record = require_record(entry, "质量规则条目必须是对象");
+    const record = require_record(entry, "Quality rule entry must be an object.");
     const src = read_string_field(record, "src").trim();
-    if (src === "") throw new TypeError("质量规则 src 不能为空");
+    if (src === "") throw new TypeError("Quality rule src must not be empty.");
     const entry_id = read_optional_string_field(record, "entry_id")?.trim();
     const identity = entry_id === undefined || entry_id === "" ? {} : { entry_id };
 
@@ -258,7 +260,7 @@ export class QualityRule {
 
   /** 规则列表逐项归一；任一坏项会令整批失败。 */
   public normalize_entries(value: unknown): QualityRuleEntryInput[] {
-    if (!Array.isArray(value)) throw new TypeError("质量规则 entries 必须是数组");
+    if (!Array.isArray(value)) throw new TypeError("Quality rule entries must be an array.");
     return value.map((entry) => this.normalize_entry(entry));
   }
 
@@ -285,14 +287,18 @@ export class QualityRule {
   public resolve_meta_key(key: string): string {
     if (key === "enabled") {
       if (this.enabled_meta_key === null) {
-        throw new UnsupportedQualityRuleMetaError(this.kind, key);
+        throw new AppError("quality.unsupported_rule_meta", {
+          diagnostic_context: { kind: this.kind, key },
+        });
       }
       return this.enabled_meta_key;
     }
     if (key === "mode" && this.mode_meta_key !== null) {
       return this.mode_meta_key;
     }
-    throw new UnsupportedQualityRuleMetaError(this.kind, key);
+    throw new AppError("quality.unsupported_rule_meta", {
+      diagnostic_context: { kind: this.kind, key },
+    });
   }
 
   /**
@@ -346,21 +352,21 @@ function require_record(value: unknown, message: string): JsonRecord {
 function read_string_field(record: JsonRecord, key: string, fallback?: string): string {
   const value = record[key];
   if (value === undefined && fallback !== undefined) return fallback;
-  if (typeof value !== "string") throw new TypeError(`质量规则 ${key} 必须是字符串`);
+  if (typeof value !== "string") throw new TypeError(`Quality rule ${key} must be a string.`);
   return value;
 }
 
 function read_optional_string_field(record: JsonRecord, key: string): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
-  if (typeof value !== "string") throw new TypeError(`质量规则 ${key} 必须是字符串`);
+  if (typeof value !== "string") throw new TypeError(`Quality rule ${key} must be a string.`);
   return value;
 }
 
 function read_boolean_field(record: JsonRecord, key: string, fallback: boolean): boolean {
   const value = record[key];
   if (value === undefined) return fallback;
-  if (typeof value !== "boolean") throw new TypeError(`质量规则 ${key} 必须是布尔值`);
+  if (typeof value !== "boolean") throw new TypeError(`Quality rule ${key} must be a boolean.`);
   return value;
 }
 

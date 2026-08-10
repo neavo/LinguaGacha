@@ -3,10 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_text_replacement_page = {
   title: "Textersetzung",
-  action: {
-    create: "Hinzufügen",
-  },
-
   fields: {
     replacement: "Ersetzung",
 
@@ -19,8 +15,6 @@ export const de_de_text_replacement_page = {
   filter: {
     scope: {
       tooltip_label: "Suchbereich",
-
-      replacement: "Ersetzung",
     },
   },
 

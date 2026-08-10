@@ -89,7 +89,7 @@ export class BackendRuntimeClient {
     worker.on("error", (error) => this.handle_exit(error));
     worker.on("exit", (code) => {
       // 主动 stop 期间也必须拒绝尚未收到 response 的请求，否则退出流程会永久等待。
-      this.handle_exit(new Error(`Backend runtime worker 退出：${code.toString()}`));
+      this.handle_exit(new Error(`Backend runtime worker exited: ${code.toString()}.`));
     });
     return this.start_promise;
   }
@@ -140,7 +140,7 @@ export class BackendRuntimeClient {
   /** 注册 requestId 后再发消息，确保同步到达的响应也能找到结算目标。 */
   private async request(message: BackendRuntimeMainMessage): Promise<unknown> {
     const worker = this.worker;
-    if (worker === null) throw new Error("Backend runtime worker 未启动。");
+    if (worker === null) throw new Error("Backend runtime worker has not started.");
     const result = new Promise<unknown>((resolve, reject) => {
       this.pending.set(message.requestId, { resolve, reject });
     });

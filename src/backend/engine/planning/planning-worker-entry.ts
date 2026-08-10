@@ -61,7 +61,7 @@ class PlanningWorkerEntry {
     const results: TaskTokenCountResult[] = [];
     for (const [index, item] of message.items.entries()) {
       if (this.cancelled_ids.has(message.id)) {
-        throw new Error("规划 token 计数已取消。");
+        throw new Error("Planning token counting was cancelled.");
       }
       results.push({
         cache_key: item.cache_key,

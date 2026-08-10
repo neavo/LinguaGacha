@@ -14,16 +14,16 @@ type ConfirmCopy = {
 
 const CONFIRM_COPY_BY_KIND: Record<NonNullable<TextPreserveConfirmState["kind"]>, ConfirmCopy> = {
   "delete-selection": {
-    description_key: "quality_editor.confirm.delete_selection.description",
+    description_key: "quality_rule_editor.confirm.delete_selection.description",
   },
   "delete-preset": {
-    description_key: "quality_editor.confirm.delete_preset.description",
+    description_key: "preset_editor.confirm.delete.description",
   },
   reset: {
-    description_key: "quality_editor.confirm.reset.description",
+    description_key: "quality_rule_editor.confirm.reset.description",
   },
   "overwrite-preset": {
-    description_key: "quality_editor.confirm.overwrite_preset.description",
+    description_key: "preset_editor.confirm.overwrite.description",
   },
 };
 export function TextPreserveConfirmDialog(props: TextPreserveConfirmDialogProps): JSX.Element {

@@ -50,7 +50,7 @@ describe("apply_text_replacements", () => {
     expect(apply("ABC", [{ src: "ABC", dst: "", regex: false, case_sensitive: true }])).toBe("");
     expect(() =>
       compile_text_replacements([{ src: "", dst: "ignored", regex: false, case_sensitive: true }]),
-    ).toThrow("替换规则 src 不能为空");
+    ).toThrow("Replacement rule src must not be empty.");
   });
 
   it("普通大小写不敏感替换会按字面量转义正则特殊字符", () => {

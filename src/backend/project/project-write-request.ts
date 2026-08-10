@@ -77,7 +77,7 @@ export function normalize_project_expected_section_revisions(
   const expected: ProjectExpectedSectionRevisions = {};
   for (const [section, revision] of Object.entries(value)) {
     if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0) {
-      throw new AppErrors.RequestValidationError({
+      throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: {
           reason: "invalid_expected_section_revision",
           section,
@@ -97,7 +97,7 @@ export function require_project_expected_section_revisions(
 ): ProjectExpectedSectionRevisions {
   const expected = normalize_project_expected_section_revisions(value);
   if (expected === null) {
-    throw new AppErrors.RequestValidationError();
+    throw new AppErrors.AppError("request.validation_failed");
   }
   return expected;
 }
@@ -109,7 +109,7 @@ export function normalize_translation_item_patches(
   value: JsonValue | undefined,
 ): TranslationItemPatch[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new AppErrors.InternalInvariantError({
+    throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: { reason: "empty_translation_item_patch" },
     });
   }
@@ -117,13 +117,13 @@ export function normalize_translation_item_patches(
   const seen = new Set<number>();
   for (const raw_item of value) {
     if (!is_json_record(raw_item)) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "invalid_translation_item_patch" },
       });
     }
     const item_id = read_positive_integer(raw_item["item_id"], "invalid_translation_item_id");
     if (seen.has(item_id)) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: {
           reason: "duplicate_translation_item_patch",
           item_id,
@@ -134,7 +134,7 @@ export function normalize_translation_item_patches(
     const patch: TranslationItemPatch["patch"] = {};
     if (Object.prototype.hasOwnProperty.call(raw_item, "dst")) {
       if (typeof raw_item["dst"] !== "string") {
-        throw new AppErrors.InternalInvariantError({
+        throw new AppErrors.AppError("runtime.internal_invariant", {
           diagnostic_context: { reason: "invalid_translation_dst", item_id },
         });
       }
@@ -154,7 +154,7 @@ export function normalize_translation_item_patches(
       );
     }
     if (Object.keys(patch).length === 0) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         diagnostic_context: { reason: "empty_translation_item_patch", item_id },
       });
     }
@@ -237,7 +237,7 @@ export function normalize_analysis_progress_write(
 function read_positive_integer(value: JsonValue | undefined, reason: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new AppErrors.InternalInvariantError({
+    throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: { reason },
     });
   }
@@ -252,7 +252,7 @@ function read_non_negative_integer(
 ): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new AppErrors.InternalInvariantError({
+    throw new AppErrors.AppError("runtime.internal_invariant", {
       diagnostic_context: { reason, item_id },
     });
   }

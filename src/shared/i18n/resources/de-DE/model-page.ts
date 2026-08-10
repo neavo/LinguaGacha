@@ -24,9 +24,6 @@ export const de_de_model_page = {
     basic_settings: "Grundeinstellungen",
     task_settings: "Aufgabeneinstellungen",
     advanced_settings: "Erweiterte Einstellungen",
-    delete: "Löschen",
-    reset: "Zurücksetzen",
-    add: "Hinzufügen",
     input: "Eingabe",
     fetch: "Abrufen",
     test: "Testen",
@@ -36,9 +33,6 @@ export const de_de_model_page = {
       loading: "Modellliste wird geladen …",
       search_placeholder: "Modelle filtern …",
       empty: "Keine gültigen Daten …",
-    },
-    model_id_input: {
-      confirm: "Bestätigen",
     },
   },
   confirm: {

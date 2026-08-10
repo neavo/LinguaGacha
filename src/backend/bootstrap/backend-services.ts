@@ -387,7 +387,7 @@ export class BackendServices {
     }
     this.started = false;
     if (errors.length > 0) {
-      throw new AggregateError(errors, "BackendServices 资源关闭失败");
+      throw new AggregateError(errors, "Failed to close BackendServices resources.");
     }
   }
 }

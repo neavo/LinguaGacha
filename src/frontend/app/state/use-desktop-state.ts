@@ -18,7 +18,7 @@ export function useDesktopState() {
 /** 高频快照统一从稳定 stores context 取源，避免主 DesktopStateContext 被动刷新。 */
 function useDesktopStateStores() {
   const stores = useContext(DesktopStateStoresContext);
-  if (stores === null) throw new Error("Desktop state stores 缺少 Provider。");
+  if (stores === null) throw new Error("Desktop state stores require a Provider.");
   return stores;
 }
 

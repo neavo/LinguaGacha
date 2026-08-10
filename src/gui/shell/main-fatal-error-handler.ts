@@ -1,6 +1,6 @@
 import process from "node:process";
 
-import { AppError, InternalInvariantError, to_app_error_log_snapshot } from "../../shared/error";
+import { AppError, to_app_error_log_snapshot } from "../../shared/error";
 import { try_show_native_error_dialog } from "./native-error-dialog";
 import type { BackendRuntimeClient } from "../runtime/backend-runtime-client";
 
@@ -52,7 +52,10 @@ function handle_main_fatal_error(
   }
   is_fatal_handling = true;
 
-  const error = reason instanceof AppError ? reason : new InternalInvariantError({ cause: reason });
+  const error =
+    reason instanceof AppError
+      ? reason
+      : new AppError("runtime.internal_invariant", { cause: reason });
   const context = {
     kind: args.kind,
     origin: args.origin,

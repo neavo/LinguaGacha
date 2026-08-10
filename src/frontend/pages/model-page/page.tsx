@@ -124,7 +124,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                     }}
                   >
                     <Plus data-icon="inline-start" />
-                    {t("model_page.action.add")}
+                    {t("app.action.add")}
                   </AppButton>
                 ) : null
               }
@@ -137,7 +137,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                   key={model.id}
                   model={model}
                   drag_disabled={model_page_state.readonly}
-                  drag_aria_label={t("workbench_page.table.drag_handle")}
+                  drag_aria_label={t("app.drag.handle")}
                   menu={
                     <AppDropdownMenuContent align="center">
                       <AppDropdownMenuGroup>
@@ -173,7 +173,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                             }}
                           >
                             <Recycle />
-                            {t("model_page.action.reset")}
+                            {t("app.action.reset")}
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
@@ -183,7 +183,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                             }}
                           >
                             <Trash2 />
-                            {t("model_page.action.delete")}
+                            {t("app.action.delete")}
                           </AppDropdownMenuItem>
                         )}
                       </AppDropdownMenuGroup>

@@ -196,29 +196,4 @@ describe("ModelAdvancedSettingsDialog", () => {
     expect(context_window.getAttribute("aria-invalid")).toBeNull();
     expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
   });
-
-  it("不再显示已移除的惩罚参数", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <ModelAdvancedSettingsDialog
-          open
-          model={create_model_snapshot()}
-          readonly={false}
-          onPatch={async () => {}}
-          onAgentLimitsAdjusted={() => {}}
-          onJsonFormatError={() => {}}
-          onClose={() => {}}
-        />,
-      );
-    });
-
-    const visible_text = document.body.textContent ?? "";
-    expect(visible_text).toContain("model_page.fields.top_p.title");
-    expect(visible_text).toContain("model_page.fields.temperature.title");
-    expect(visible_text).not.toContain("model_page.fields.presence_penalty.title");
-    expect(visible_text).not.toContain("model_page.fields.frequency_penalty.title");
-  });
 });

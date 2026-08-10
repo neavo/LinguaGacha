@@ -1,4 +1,4 @@
-import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "../shared/error";
+import { AppError } from "../shared/error";
 
 type CharacterMatcher = (char: string) => boolean;
 type TextMatcher = (text: string) => boolean;
@@ -56,7 +56,6 @@ export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
 // 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
 export type LanguageDisplayLocale = "zh" | "en" | "de";
-export type LanguageLabelKey = `app.language.${LanguageCode}`;
 
 // 语言定义集中携带 CJK 标记和正文 matcher，调用方不直接拼 Unicode 规则
 export type LanguageDefinition = {
@@ -168,11 +167,6 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
   },
 };
 
-// 语言标签 key 从语言码计算，避免 UI 手写 i18n key
-export function get_language_label_key(language_code: LanguageCode): LanguageLabelKey {
-  return `app.language.${language_code}`;
-}
-
 // 展示名统一从语言定义表读取，不在调用点重复维护语言名称
 export function get_language_display_name(
   language_code: LanguageCode,
@@ -199,10 +193,10 @@ export function get_prompt_target_language_name(
   locale: LanguageDisplayLocale,
 ): string {
   if (language_code === ALL_LANGUAGE_CODE) {
-    throw new UnsupportedAllTargetLanguageError();
+    throw new AppError("language.unsupported_all_target_language");
   }
   if (language_code === null) {
-    throw new InvalidTargetLanguageError();
+    throw new AppError("language.invalid_target_language");
   }
 
   return get_language_display_name(language_code, locale);

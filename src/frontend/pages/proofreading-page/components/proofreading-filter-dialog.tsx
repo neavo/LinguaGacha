@@ -5,6 +5,8 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
+} from "@frontend/pages/proofreading-page/proofreading-label-keys";
+import {
   clone_proofreading_filter_options,
   format_proofreading_glossary_term,
   type ProofreadingFilterOptions,
@@ -155,7 +157,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
             disabled={submitting}
             onClick={props.on_close}
           >
-            {t("proofreading_page.action.cancel")}
+            {t("app.action.cancel")}
           </AppButton>
           <AppButton
             type="button"
@@ -165,7 +167,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
               void handle_confirm();
             }}
           >
-            {t("proofreading_page.action.confirm")}
+            {t("app.action.confirm")}
           </AppButton>
         </>
       }

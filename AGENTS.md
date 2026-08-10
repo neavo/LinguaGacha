@@ -53,6 +53,7 @@ TypeScript / React / CSS：
 
 - TypeScript 优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any`。
 - React Hook 维护真实依赖数组，不用 eslint 禁用注释掩盖依赖问题。
+- 无障碍属性、`alt`、`sr-only` 和 live region 只能复用已有可见文案，不得独占 i18n 键。
 - 前端宿主接入、后端 API、用户可见文案和样式消费边界归 [`docs/FRONTEND.md`](docs/FRONTEND.md)，验证入口归 [`docs/WORKFLOW.md`](docs/WORKFLOW.md)。
 
 ## 5. 文档治理硬约束

@@ -21,7 +21,7 @@ export type AgentSessionSeed = readonly AgentSessionSeedMessage[];
 
 /** 所有结构错误共享同一诊断语义，调用方无需理解资源内部 schema。 */
 function throw_invalid_agent_session_seed(file_path: string): never {
-  throw new AppErrors.InvalidFileStructureError({
+  throw new AppErrors.AppError("file.invalid_structure", {
     diagnostic_context: { reason: "invalid_agent_session_seed", path: file_path },
   });
 }
@@ -37,12 +37,12 @@ export function load_agent_session_seed(
     parsed = JsonTool.parseStrict(native_fs.read_text_file(file_path));
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new AppErrors.FileParseFailedError({
+      throw new AppErrors.AppError("file.parse_failed", {
         cause: error,
         diagnostic_context: { reason: "agent_session_seed_parse_failed", path: file_path },
       });
     }
-    throw new AppErrors.FileIoFailedError({
+    throw new AppErrors.AppError("file.io_failed", {
       cause: error,
       diagnostic_context: { reason: "agent_session_seed_read_failed", path: file_path },
     });

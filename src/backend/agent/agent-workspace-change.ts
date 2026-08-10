@@ -282,7 +282,7 @@ function apply_quality_operations(
       moved,
     };
   } catch (cause) {
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       cause,
       public_details: { action: "workspace_script" },
       diagnostic_context: { reason: "agent_workspace_invalid_quality", kind },
@@ -491,7 +491,7 @@ function assert_exact_fields(
     (field) => !optional.includes(field) && !Object.prototype.hasOwnProperty.call(value, field),
   );
   if (unknown !== undefined || missing !== undefined) {
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       public_details: { action: "workspace_script" },
       diagnostic_context: { reason, field: unknown ?? missing },
     });
@@ -507,7 +507,7 @@ function has_own(value: JsonRecord, field: string): boolean {
 async function read_change_rows(native_fs: NativeFs, file_path: string): Promise<JsonRecord[]> {
   try {
     if (!native_fs.exists(file_path)) {
-      throw new AppErrors.InternalInvariantError({
+      throw new AppErrors.AppError("runtime.internal_invariant", {
         public_details: { action: "workspace_load" },
         diagnostic_context: { reason: "agent_workspace_change_file_missing" },
       });
@@ -525,7 +525,7 @@ async function read_change_rows(native_fs: NativeFs, file_path: string): Promise
         if (line.trim() === "") continue;
         const parsed = JsonTool.parseStrict(line);
         if (!is_json_record(parsed)) {
-          throw new TypeError(`工作区 JSONL 第 ${line_number.toString()} 行不是对象`);
+          throw new TypeError(`Workspace JSONL line ${line_number.toString()} is not an object.`);
         }
         rows.push(parsed);
       }
@@ -535,7 +535,7 @@ async function read_change_rows(native_fs: NativeFs, file_path: string): Promise
     }
   } catch (cause) {
     if (AppErrors.is_app_error(cause)) throw cause;
-    throw new AppErrors.RequestValidationError({
+    throw new AppErrors.AppError("request.validation_failed", {
       cause,
       public_details: { action: "workspace_script" },
       diagnostic_context: { reason: "agent_workspace_invalid_change_file" },
@@ -544,8 +544,8 @@ async function read_change_rows(native_fs: NativeFs, file_path: string): Promise
 }
 
 /** 所有可修复 change 错误都引导模型回到 workspace_script。 */
-function change_validation_error(reason: string): AppErrors.RequestValidationError {
-  return new AppErrors.RequestValidationError({
+function change_validation_error(reason: string): AppErrors.AppError {
+  return new AppErrors.AppError("request.validation_failed", {
     public_details: { action: "workspace_script" },
     diagnostic_context: { reason },
   });

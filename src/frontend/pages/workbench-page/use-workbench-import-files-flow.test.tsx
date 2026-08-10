@@ -236,7 +236,6 @@ describe("useWorkbenchImportFilesFlow", () => {
         {
           filename: "broken.json",
           code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
         },
       ],
     });
@@ -264,7 +263,6 @@ describe("useWorkbenchImportFilesFlow", () => {
         {
           filename: "broken.json",
           code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
         },
       ],
     });

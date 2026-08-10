@@ -52,7 +52,6 @@ describe("FilePreviewService", () => {
           rel_path: "broken.json",
           filename: "broken.json",
           code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
         },
       ],
     });
@@ -122,7 +121,6 @@ describe("FilePreviewService", () => {
           rel_path: "broken.epub",
           filename: "broken.epub",
           code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
         },
       ],
     });
@@ -170,7 +168,6 @@ describe("FilePreviewService", () => {
         rel_path: "broken.json",
         filename: "broken.json",
         code: "file.parse_failed",
-        message_key: "app.error.file.parse_failed.message",
       },
     ]);
   });

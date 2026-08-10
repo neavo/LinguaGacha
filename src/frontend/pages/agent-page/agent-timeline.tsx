@@ -96,7 +96,7 @@ function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[]
     }
     const round = rounds.at(-1);
     if (round === undefined) {
-      throw new Error(`Agent 时间线条目 ${entry.id} 缺少所属用户轮次`);
+      throw new Error(`Agent timeline entry ${entry.id} has no owning user round.`);
     }
     round.entries.push(entry);
   }
@@ -136,14 +136,7 @@ function AgentRound(props: {
         {user.images.length > 0 ? (
           <div className="agent-message__user-images">
             {user.images.map((image, index) => (
-              <img
-                key={index}
-                src={`data:image/webp;base64,${image}`}
-                alt={props.t("agent_page.image.message", {
-                  index: (index + 1).toString(),
-                })}
-                decoding="async"
-              />
+              <img key={index} src={`data:image/webp;base64,${image}`} alt="" decoding="async" />
             ))}
           </div>
         ) : null}
@@ -337,9 +330,7 @@ function AgentToolEntryButton(props: {
         {active ? (
           <>
             {" · "}
-            <span className="agent-tool-entry__elapsed" role="timer" aria-live="off">
-              {duration}
-            </span>
+            <span className="agent-tool-entry__elapsed">{duration}</span>
           </>
         ) : null}
       </span>
@@ -419,9 +410,7 @@ function AgentThinkingDetail(props: {
           {active ? (
             <>
               {" · "}
-              <span className="agent-thinking-entry__elapsed" role="timer" aria-live="off">
-                {duration}
-              </span>
+              <span className="agent-thinking-entry__elapsed">{duration}</span>
             </>
           ) : null}
         </span>
@@ -451,15 +440,11 @@ function AgentRoundFooter({ user, t }: { user: UserEntry; t: Translate }): JSX.E
     <div className="agent-round-footer" data-running={active || undefined}>
       <div className="agent-round-footer__running" aria-hidden={!active}>
         <span className="agent-round-footer__activity" aria-hidden="true" />
-        <small role={active ? "timer" : undefined} aria-live="off">
-          {t(AGENT_ROUND_LABEL_KEYS.running, { duration })}
-        </small>
+        <small>{t(AGENT_ROUND_LABEL_KEYS.running, { duration })}</small>
       </div>
       <div className="agent-round-footer__result" aria-hidden={active}>
         <span className="agent-round-footer__line" aria-hidden="true" />
-        <small role={active ? undefined : "timer"} aria-live="off">
-          {t(AGENT_ROUND_LABEL_KEYS[user.status], { duration })}
-        </small>
+        <small>{t(AGENT_ROUND_LABEL_KEYS[user.status], { duration })}</small>
       </div>
     </div>
   );

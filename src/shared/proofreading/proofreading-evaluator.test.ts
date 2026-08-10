@@ -68,7 +68,9 @@ describe("proofreading-evaluator", () => {
       },
     });
 
-    expect(() => buildProofreadingEvaluationContext(quality)).toThrow("质量规则正则不是合法正则");
+    expect(() => buildProofreadingEvaluationContext(quality)).toThrow(
+      "Quality rule regex is invalid.",
+    );
   });
 
   it("按源语言识别假名和谚文残留", () => {

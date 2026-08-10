@@ -180,7 +180,7 @@ export class QualityPromptService {
       String(request["virtual_id"] ?? ""),
     );
     if (current_file.source !== "user") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     const new_file = resolve_preset_file({
@@ -203,7 +203,7 @@ export class QualityPromptService {
       String(request["virtual_id"] ?? ""),
     );
     if (preset_file.source !== "user") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     this.native_fs.remove(preset_file.file_path);
     return { path: preset_file.file_path.replace(/\\/g, "/") };
@@ -218,7 +218,7 @@ export class QualityPromptService {
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
       if (Object.prototype.hasOwnProperty.call(request, field)) {
-        throw new AppErrors.RequestValidationError({
+        throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_prompt_write_field", field },
         });
       }
@@ -282,7 +282,7 @@ export class QualityPromptService {
   private normalize_preset_name(name: string): string {
     const normalized_name = name.trim();
     if (normalized_name === "") {
-      throw new AppErrors.RequestValidationError();
+      throw new AppErrors.AppError("request.validation_failed");
     }
     return normalized_name;
   }

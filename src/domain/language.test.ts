@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-
-import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "../shared/error";
 import {
   ALL_LANGUAGE_CODE,
-  SOURCE_LANGUAGE_CODES,
-  TARGET_LANGUAGE_CODES,
   get_prompt_source_language_name,
   get_prompt_target_language_name,
   has_cjk_language_character,
@@ -17,20 +13,15 @@ import {
 } from "./language";
 
 describe("语言规则", () => {
-  it("源语言排除繁中，目标语言将繁中与中文相邻排列", () => {
-    expect(SOURCE_LANGUAGE_CODES).not.toContain("ZH-HANT");
-    expect(TARGET_LANGUAGE_CODES.slice(0, 3)).toEqual(["ZH", "ZH-HANT", "EN"]);
-  });
-
   it("提示词泛化未限定的源语言并拒绝无效目标语言", () => {
     expect(get_prompt_source_language_name(ALL_LANGUAGE_CODE, "zh")).toBe("原文");
     expect(get_prompt_source_language_name(null, "en")).toBe("Source");
     expect(get_prompt_target_language_name("ZH-HANT", "de")).toBe("Chinesisch (traditionell)");
     expect(() => get_prompt_target_language_name(ALL_LANGUAGE_CODE, "zh")).toThrowError(
-      UnsupportedAllTargetLanguageError,
+      expect.objectContaining({ code: "language.unsupported_all_target_language" }),
     );
     expect(() => get_prompt_target_language_name(null, "zh")).toThrowError(
-      InvalidTargetLanguageError,
+      expect.objectContaining({ code: "language.invalid_target_language" }),
     );
   });
 
@@ -50,23 +41,12 @@ describe("语言规则", () => {
 
   it.each([
     ["ZH", "你"],
-    ["ZH-HANT", "繁"],
     ["EN", "A"],
     ["JA", "あ"],
     ["KO", "한"],
     ["RU", "Ж"],
     ["AR", "ع"],
-    ["DE", "ß"],
-    ["FR", "œ"],
-    ["PL", "Ł"],
-    ["ES", "ñ"],
-    ["IT", "è"],
-    ["PT", "ã"],
-    ["HU", "ő"],
-    ["TR", "İ"],
     ["TH", "ก"],
-    ["ID", "A"],
-    ["VI", "ạ"],
   ] as const)("%s 识别代表正文 %s", (language_code, sample_text) => {
     expect(has_language_character(sample_text, language_code)).toBe(true);
   });

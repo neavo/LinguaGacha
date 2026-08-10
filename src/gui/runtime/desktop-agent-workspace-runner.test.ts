@@ -425,7 +425,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
         { workspacePath: workspace_path, operation: { kind: "script", script: "return null" } },
         new AbortController().signal,
       ),
-    ).rejects.toThrow("正在运行");
+    ).rejects.toThrow("An agent workspace operation is already running.");
     release?.();
     await expect(first).resolves.toMatchObject({ status: "success" });
   });

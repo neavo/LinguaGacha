@@ -2,29 +2,17 @@ export const zh_cn_proofreading_page = {
   title: "校对",
   action: {
     filter: "筛选",
-    replace: "替换",
     replace_all: "全部替换",
-    edit: "编辑",
     retranslate: "重新翻译",
     clear_translation: "清空译文",
     set_translation_status: "设置翻译状态",
-    save: "保存",
-    cancel: "取消",
-    confirm: "确认",
     view_context: "查看上下文",
     back: "返回",
-    retry: "重试",
-  },
-  toggle: {
-    status: "{TITLE} - {STATE}",
   },
   fields: {
-    drag: "拖拽",
     status: "状态",
     source: "原文",
-    source_name: "原文姓名",
     translation: "译文",
-    translation_name: "译文姓名",
   },
   search: {
     placeholder: "查询 …",
@@ -37,8 +25,6 @@ export const zh_cn_proofreading_page = {
       label: "范围",
       tooltip_label: "搜索范围",
       all: "全部",
-      source: "原文",
-      translation: "译文",
     },
   },
   sort: {
@@ -47,13 +33,10 @@ export const zh_cn_proofreading_page = {
     clear: "取消",
   },
   status: {
-    none: "等待翻译",
-    processed: "翻译成功",
     excluded: "已排除",
     rule_skipped: "规则跳过",
     non_target_source_language: "非目标语言",
     duplicated: "重复条目",
-    error: "翻译失败",
   },
   warning: {
     kana: "假名残留",
