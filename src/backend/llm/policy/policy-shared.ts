@@ -1,5 +1,5 @@
 import type { JsonRecord } from "../../../domain/json";
-import type { ModelApiFormat, ModelThinkingLevel } from "../../../domain/model";
+import type { ModelApiFormat } from "../../../domain/model";
 import * as AppErrors from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 
@@ -35,14 +35,6 @@ export function patch_top_p(
   if (value !== null) {
     payload[target_key] = value;
   }
-}
-
-/** 不支持特高档的供应商统一封顶为 high，避免发送未知枚举。 */
-export function resolve_high_capped_level(
-  level: Exclude<ModelThinkingLevel, "OFF">,
-): "low" | "medium" | "high" {
-  if (level === "HIGH" || level === "XHIGH") return "high";
-  return level === "MEDIUM" ? "medium" : "low";
 }
 
 /**

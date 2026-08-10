@@ -275,18 +275,18 @@ describe("ModelService 配置管理", () => {
     service.select_model({ usage: "agent", model_id: "openai" });
 
     const selection = read_selection_snapshot(
-      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "XHIGH" }),
+      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "MAX" }),
     );
     const selected = selection.models.find((model) => model["id"] === "openai");
     const management = read_request_model_snapshot(service.get_snapshot());
     const persisted = management.models.find((model) => model["id"] === "openai");
 
     expect(selected).toMatchObject({
-      thinking_level: "XHIGH",
+      thinking_level: "MAX",
       thinking_configurable: true,
     });
     expect(selected).not.toHaveProperty("api_key");
-    expect(persisted?.["thinking"]).toEqual({ level: "XHIGH" });
+    expect(persisted?.["thinking"]).toEqual({ level: "MAX" });
   });
 
   it.each([

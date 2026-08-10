@@ -1,4 +1,5 @@
-import { patch_top_p, resolve_high_capped_level } from "./policy-shared";
+import { resolve_model_thinking } from "./model-thinking-policy";
+import { patch_top_p } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 const GOOGLE_DEFAULT_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -50,23 +51,13 @@ export function apply_google_request_overrides(
 }
 
 /**
- * 按 Gemini 子系列支持范围生成 thinkingConfig；其它代际只接受显式 extra_body。
- * 模型识别和档位映射会随供应商能力调整，不逐项固化当前模型名与结果字面量测试。
+ * 使用统一模型思考策略生成 thinkingConfig；未收录代际只接受显式 extra_body。
  */
-// https://ai.google.dev/gemini-api/docs/generate-content/thinking
 export function build_google_thinking_config(
   snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,
 ): Record<string, unknown> | null {
-  const model_id = snapshot.model_id;
-  const level = snapshot.thinking_level;
-  // 3.1 Pro 不支持 minimal，OFF 映射为最低可用的 low。
-  if (/gemini-3\.1-pro/iu.test(model_id)) {
-    return { thinkingLevel: level === "OFF" ? "low" : resolve_high_capped_level(level) };
-  }
-  if (/gemini-3/iu.test(model_id)) {
-    return {
-      thinkingLevel: level === "OFF" ? "minimal" : resolve_high_capped_level(level),
-    };
-  }
-  return null;
+  const resolved = resolve_model_thinking("Google", snapshot.model_id, snapshot.thinking_level);
+  return resolved?.payload_kind === "google_thinking_level"
+    ? { thinkingLevel: resolved.wire_level }
+    : null;
 }

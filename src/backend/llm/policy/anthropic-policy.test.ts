@@ -57,7 +57,7 @@ describe("Anthropic 请求规则", () => {
     expect(source).toHaveProperty("output_config.effort", "high");
   });
 
-  it("不按模型 ID 匹配思考能力", () => {
+  it("未知 Claude 能力使用通用高档上限", () => {
     const payload = apply_anthropic_request_overrides(
       {},
       create_snapshot({
@@ -68,7 +68,7 @@ describe("Anthropic 请求规则", () => {
 
     expect(payload).toEqual({
       thinking: { type: "adaptive" },
-      output_config: { effort: "xhigh" },
+      output_config: { effort: "high" },
     });
   });
 

@@ -134,13 +134,13 @@ describe("Agent 模型注册", () => {
     expect(resolved.model).toMatchObject({ contextWindow: 400_000, maxTokens: 50_000 });
   });
 
-  it("GPT-5.6 Responses 按项目规则注册为 reasoning 模型", async () => {
+  it("GPT Responses 按项目通用规则注册最高思考挡位", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", {
-        model_id: "gpt-5.6-luna",
-        thinking: { level: "XHIGH" },
+        model_id: "gpt-5.5",
+        thinking: { level: "MAX" },
         request: {
           extra_headers_custom_enable: false,
           extra_body_custom_enable: true,
@@ -153,15 +153,16 @@ describe("Agent 模型注册", () => {
     expect(resolved.model).toMatchObject({
       api: "openai-responses",
       reasoning: true,
+      thinkingLevelMap: { xhigh: "xhigh", max: "max" },
     });
-    expect(resolved.thinkingLevel).toBe("xhigh");
+    expect(resolved.thinkingLevel).toBe("max");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 Responses streamSimple");
     }
-    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "xhigh" });
+    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "max" });
     const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
-    expect(options).toMatchObject({ reasoning: "xhigh" });
+    expect(options).toMatchObject({ reasoning: "max" });
     if (options?.onPayload === undefined) throw new Error("Agent 缺少 Responses payload hook");
     expect(
       options.onPayload(
@@ -170,7 +171,7 @@ describe("Agent 模型注册", () => {
             { role: "system", content: "系统约束" },
             { role: "user", content: "用户输入" },
           ],
-          reasoning: { effort: "xhigh", summary: "auto" },
+          reasoning: { effort: "max", summary: "auto" },
           store: false,
         },
         resolved.model,
@@ -180,7 +181,7 @@ describe("Agent 模型注册", () => {
         { role: "developer", content: "系统约束" },
         { role: "user", content: "用户输入" },
       ],
-      reasoning: { effort: "xhigh", summary: "auto" },
+      reasoning: { effort: "max", summary: "auto" },
       store: false,
       custom_flag: true,
     });
@@ -218,7 +219,7 @@ describe("Agent 模型注册", () => {
     );
 
     expect(resolved.model.reasoning).toBe(false);
-    expect(resolved.thinkingLevel).toBe("high");
+    expect(resolved.thinkingLevel).toBe("off");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     expect(provider_config?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
     if (provider_config?.streamSimple === undefined) {

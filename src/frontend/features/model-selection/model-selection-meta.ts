@@ -17,4 +17,5 @@ export const MODEL_THINKING_LEVEL_LABEL_KEY = {
   MEDIUM: "app.model.thinking_level.medium",
   HIGH: "app.model.thinking_level.high",
   XHIGH: "app.model.thinking_level.xhigh",
+  MAX: "app.model.thinking_level.max",
 } as const satisfies Record<ModelThinkingLevel, LocaleKey>;

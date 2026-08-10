@@ -1,12 +1,14 @@
-import { type Model as PiModel } from "@earendil-works/pi-ai";
+import {
+  type Model as PiModel,
+  type ModelThinkingLevel as PiModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
-import { Model, type ModelThinkingLevel } from "../../domain/model";
+import { Model } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import {
   apply_agent_request_overrides,
-  model_supports_pi_reasoning,
   read_model_request_snapshot,
 } from "../llm/llm-client-policy";
 import { resolve_pi_model } from "../llm/llm-pi";
@@ -18,9 +20,6 @@ type AgentApi =
   | "anthropic-messages"
   | "google-generative-ai";
 
-/** AgentSession SDK 直接消费领域思考档位的小写投影。 */
-type AgentThinkingLevel = Lowercase<ModelThinkingLevel>;
-
 /** 把当前统一请求快照注册到 coding-agent 模型运行时。 */
 export function register_agent_model(
   model_runtime: ModelRuntime,
@@ -28,7 +27,7 @@ export function register_agent_model(
   user_agent: string,
 ): {
   model: PiModel<AgentApi>;
-  thinkingLevel: AgentThinkingLevel;
+  thinkingLevel: PiModelThinkingLevel;
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
@@ -41,7 +40,6 @@ export function register_agent_model(
     name: configured_name || snapshot.model_id,
     contextWindow: configured_model.agent_limits.context_window,
     maxTokens: configured_model.agent_limits.max_output_tokens,
-    reasoning: model_supports_pi_reasoning(snapshot),
     input: ["text", "image"],
   });
   // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。
@@ -77,6 +75,6 @@ export function register_agent_model(
   }
   return {
     model,
-    thinkingLevel: snapshot.thinking_level.toLowerCase() as AgentThinkingLevel,
+    thinkingLevel: pi.thinkingLevel,
   };
 }

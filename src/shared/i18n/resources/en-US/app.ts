@@ -22,11 +22,12 @@ export const en_us_app = {
     },
     thinking_level: {
       label: "Thinking level",
-      off: "Off",
-      low: "Low",
+      off: "OFF",
+      low: "LOW",
       medium: "Medium",
       high: "High",
       xhigh: "Extra High",
+      max: "MAX",
     },
   },
   action: {

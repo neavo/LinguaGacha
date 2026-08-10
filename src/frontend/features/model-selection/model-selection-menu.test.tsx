@@ -162,11 +162,11 @@ describe("ModelSelectionMenu", () => {
     expect(document.querySelector('[role="radiogroup"]')?.getAttribute("data-value")).toBe(
       "MEDIUM",
     );
-    expect(document.querySelector('[role="radio"][data-value="XHIGH"]')?.textContent).toBe(
-      "app.model.thinking_level.xhigh",
+    expect(document.querySelector('[role="radio"][data-value="MAX"]')?.textContent).toBe(
+      "app.model.thinking_level.max",
     );
-    menu_state.on_value_change?.("XHIGH");
-    expect(update_thinking_level).toHaveBeenCalledWith("agent", "XHIGH");
+    menu_state.on_value_change?.("MAX");
+    expect(update_thinking_level).toHaveBeenCalledWith("agent", "MAX");
   });
 
   it("当前模型不可配置思考档位时不渲染选项", () => {

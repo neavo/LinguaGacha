@@ -75,10 +75,10 @@ describe("Google 请求规则", () => {
     expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
   });
 
-  it("特高档封顶为 Gemini 支持的 high", () => {
-    expect(
-      apply_google_request_overrides({}, create_snapshot({ thinking_level: "XHIGH" })),
-    ).toEqual({ thinkingConfig: { thinkingLevel: "high" } });
+  it("最高档降为 Gemini 支持的 high", () => {
+    expect(apply_google_request_overrides({}, create_snapshot({ thinking_level: "MAX" }))).toEqual({
+      thinkingConfig: { thinkingLevel: "high" },
+    });
   });
 });
 
