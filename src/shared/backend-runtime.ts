@@ -18,19 +18,6 @@ export type BackendRuntimeResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: LogError };
 
-export type BackendRuntimeWebFetchRequest = Readonly<{
-  url: string; // 模型请求的原始公开 HTTP(S) URL
-}>;
-
-/** main 完成安全下载后传给 Backend 的有限、可克隆响应。 */
-export type BackendRuntimeWebFetchResponse = Readonly<{
-  requestedUrl: string; // 调用方请求 URL，用于区分最终重定向地址
-  url: string; // 经过逐跳校验后的最终 URL
-  status: number; // 当前仅允许 2xx，保留字段用于明确宿主契约
-  contentType: string; // 原始响应头，由 Backend 决定正文归一方式
-  body: Uint8Array; // 已受宿主字节上限约束的原始响应体
-}>;
-
 /** 单次工作区操作进入模型历史前允许返回的最大 UTF-8 JSON 字节数。 */
 export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 
@@ -57,7 +44,6 @@ export type BackendRuntimeAgentWorkspaceRunResponse =
 export type BackendRuntimeHostOperation =
   | { kind: "resolve_proxy"; url: string }
   | { kind: "open_output_folder"; path: string }
-  | { kind: "web_fetch"; request: BackendRuntimeWebFetchRequest }
   | { kind: "run_agent_workspace"; request: BackendRuntimeAgentWorkspaceRunRequest };
 
 export type BackendRuntimeDiagnosticLevel = "warning" | "error" | "fatal";

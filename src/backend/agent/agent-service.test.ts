@@ -18,7 +18,7 @@ import { resolve_app_locale, type AppLanguage } from "../../domain/app-language"
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
 import { format_i18n_message } from "../../shared/i18n";
-import type { AgentWebFetchPort } from "./agent-web-tools";
+import type { AgentWebFetchPort } from "./agent-web-fetch";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 
@@ -1144,10 +1144,8 @@ describe("AgentService", () => {
   });
 
   it("仅在宿主抓取端口可用时注册 web_fetch", async () => {
-    const web_fetch = vi.fn<AgentWebFetchPort>(async (request) => ({
-      requestedUrl: request.url,
-      url: request.url,
-      status: 200,
+    const web_fetch = vi.fn<AgentWebFetchPort>(async (url) => ({
+      url,
       contentType: "text/plain",
       body: new TextEncoder().encode("正文"),
     }));

@@ -2,7 +2,7 @@ import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { AgentService } from "../agent/agent-service";
-import type { AgentWebFetchPort } from "../agent/agent-web-tools";
+import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
 import {
   AgentWorkspaceService,
   type AgentWorkspaceRunPort,
@@ -58,7 +58,7 @@ export interface BackendServicesOptions {
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
   systemProxySnapshot: SystemProxySnapshot | null; // 启动期系统代理事实，传给 LLM worker 线程复用
-  agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 提供 Electron 抓取端口
+  agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 使用宿主代理解析创建 Backend 抓取入口
   agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
