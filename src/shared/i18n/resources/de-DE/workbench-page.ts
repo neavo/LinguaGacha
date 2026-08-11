@@ -65,6 +65,12 @@ export const de_de_workbench_page = {
     menu: {
       tooltip: "Begriffe aus dem Quelltext extrahieren",
     },
+    migration: {
+      description:
+        "Der klassische Analyse-Workflow wird demnächst entfernt …\nNutze AGENT, um das Glossar vollautomatisch, schneller und intelligenter zu erstellen …!",
+      jump: "Zu AGENT",
+      continue: "Aufgabe fortsetzen",
+    },
     summary: {
       running: "Wird analysiert",
     },
@@ -94,6 +100,7 @@ export const de_de_workbench_page = {
         "Kandidatenbegriffe werden importiert und Korrektur-Cache aktualisiert …",
       import_failed: "Fehler beim Importieren der Kandidatenbegriffe",
       import_success: "{COUNT} Kandidatenbegriffe importiert",
+      agent_draft_preserved: "Der vorhandene AGENT-Entwurf wurde beibehalten.",
     },
   },
   translation_task: {
