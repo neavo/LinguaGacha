@@ -1159,12 +1159,11 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
   });
 
-  it("仅在 Electron 工作区端口可用时初始化并注册四个工作区工具", async () => {
+  it("仅在 Electron 工作区端口可用时初始化并注册三个工作区工具", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       reset: vi.fn(async () => undefined),
       load_workspace: vi.fn(),
-      run_recipe: vi.fn(),
       run_script: vi.fn(),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
@@ -1175,13 +1174,7 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      [
-        "workspace_load",
-        "workspace_recipe",
-        "workspace_script",
-        "workspace_apply",
-        "read_skill",
-      ].sort(),
+      ["workspace_load", "workspace_script", "workspace_apply", "read_skill"].sort(),
     );
     await session_state.mark_loaded("next.lg");
     expect(workspace.reset).toHaveBeenCalled();
@@ -1931,7 +1924,6 @@ describe("AgentService", () => {
             initialize: vi.fn(async () => undefined),
             reset: vi.fn(async () => undefined),
             load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
-            run_recipe: vi.fn(async () => ({ items: read_items() })),
             run_script: vi.fn(async () => {
               await wait_for_held_tool();
               return { items: read_items() };

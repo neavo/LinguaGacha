@@ -17,8 +17,6 @@ const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; 
 const AGENT_WORKSPACE_PARTITION = "agent-workspace"; // 无 persist: 前缀，应用退出后不落盘
 const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE =
   "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，跨步骤确有需要时再把最小结构化状态写入 scratch。";
-const AGENT_WORKSPACE_RECIPE_RESULT_TOO_LARGE =
-  "查询结果过大；请保持当前 offset 并减小 limit，或改用 workspace_script 在工作区内聚合后只返回摘要。";
 
 /** 自定义 scheme 权限必须在 Electron ready 前注册。 */
 export function register_agent_workspace_scheme(): void {
@@ -35,7 +33,7 @@ export function register_agent_workspace_scheme(): void {
   ]);
 }
 
-/** 在独立 Chromium 沙箱中执行脚本或官方 recipe，并拥有本次文件事务。 */
+/** 在独立 Chromium 沙箱中执行单次编排脚本，并拥有本次文件事务。 */
 export class DesktopAgentWorkspaceRunner {
   private readonly runner_session: Session; // 不复用默认 session 的 cookie、代理状态或权限
   private active_files: DesktopAgentWorkspaceFiles | null = null; // protocol 只映射当前合并视图
@@ -80,22 +78,17 @@ export class DesktopAgentWorkspaceRunner {
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
     let files: DesktopAgentWorkspaceFiles;
     try {
-      files = await DesktopAgentWorkspaceFiles.open(
-        request.workspacePath,
-        request.operation.kind === "script" ? "transactional" : "readonly",
-      );
+      files = await DesktopAgentWorkspaceFiles.open(request.workspacePath);
     } catch (error) {
       return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
 
-    let recipe_source: string | null = null;
-    if (request.operation.kind === "recipe") {
-      try {
-        recipe_source = await files.read_recipe_source(request.operation.name);
-      } catch (error) {
-        await files.rollback();
-        return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
-      }
+    let recipe_sources: Record<string, string>;
+    try {
+      recipe_sources = await files.read_recipe_sources();
+    } catch (error) {
+      await files.rollback();
+      return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
 
     let target_window: BrowserWindow;
@@ -139,14 +132,14 @@ export class DesktopAgentWorkspaceRunner {
       await target_window.loadURL(AGENT_WORKSPACE_URL);
       signal.throwIfAborted();
       const serialized = await target_window.webContents.executeJavaScript(
-        build_workspace_program(request, recipe_source),
+        build_workspace_program(request.script, recipe_sources),
         true,
       );
       signal.throwIfAborted();
       const serialized_text = String(serialized);
       // renderer 属于不可信执行边界；main 在解析和提交事务前必须独立复核字节门。
       if (Buffer.byteLength(serialized_text, "utf-8") > AGENT_WORKSPACE_MAX_RESULT_BYTES) {
-        throw new Error(workspace_result_too_large_message(request.operation.kind));
+        throw new Error(AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE);
       }
       const result = JSON.parse(serialized_text) as JsonValue;
       await files.commit(signal);
@@ -261,25 +254,11 @@ function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-/** 自由脚本应在工作区内聚合结果；只读 recipe 只能继续缩小页面。 */
-function workspace_result_too_large_message(kind: "script" | "recipe"): string {
-  return kind === "script"
-    ? AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE
-    : AGENT_WORKSPACE_RECIPE_RESULT_TOO_LARGE;
-}
-
 /** 模型代码只在异步函数内执行，不落盘、不建立长期 REPL。 */
 function build_workspace_program(
-  request: BackendRuntimeAgentWorkspaceRunRequest,
-  recipe_source: string | null,
+  script: string,
+  recipe_sources: Readonly<Record<string, string>>,
 ): string {
-  // 发布资源保持可静态检查的函数声明，runner 在可信包装末尾显式调用。
-  const recipe_program = `${recipe_source ?? ""}\nreturn await runRecipe(workspace, args);`;
-  const operation =
-    request.operation.kind === "script"
-      ? `await new AsyncFunction("workspace", ${JSON.stringify(request.operation.script)})(workspace)`
-      : `await new AsyncFunction("workspace", "args", ${JSON.stringify(recipe_program)})(readonlyWorkspace, ${JSON.stringify(request.operation.args)})`;
-  const result_too_large_message = workspace_result_too_large_message(request.operation.kind);
   return `
 (async () => {
   const encodePath = (value) => String(value).split("/").map(encodeURIComponent).join("/");
@@ -353,19 +332,52 @@ function build_workspace_program(
   const remove = async (filePath) => {
     await request("/files/" + encodePath(filePath), { method: "DELETE" });
   };
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  // 发布 recipe 只获得只读 facade；同一脚本内按名称首次调用时编译并复用。
+  const recipeSources = Object.freeze(${JSON.stringify(recipe_sources)});
+  const compiledRecipes = new Map();
+  const runRecipe = async (name, args) => {
+    if (typeof name !== "string" || !Object.prototype.hasOwnProperty.call(recipeSources, name)) {
+      throw new Error("未知 workspace recipe：" + String(name));
+    }
+    if (typeof args !== "object" || args === null || Array.isArray(args)) {
+      throw new TypeError("recipe args 必须是对象。");
+    }
+    let recipe = compiledRecipes.get(name);
+    if (recipe === undefined) {
+      const source = recipeSources[name] + "\\nreturn await runRecipe(workspace, args);";
+      recipe = new AsyncFunction("workspace", "args", source);
+      compiledRecipes.set(name, recipe);
+    }
+    return await recipe(readonlyWorkspace, args);
+  };
+  // 正式匹配留在 Electron main，renderer 只补默认值并转发结构化参数。
+  const matchLiterals = async (args) => {
+    const response = await request("/__match_literals__", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...args,
+        examples_per_pattern:
+          args?.examples_per_pattern ?? contract.limits.literal_match_examples_default,
+      }),
+    });
+    return await response.json();
+  };
   const workspace = Object.freeze({
     ...readonlyWorkspace,
     writeText,
     writeJson,
     writeJsonl,
     remove,
+    runRecipe,
+    matchLiterals,
   });
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const result = ${operation};
+  const result = await new AsyncFunction("workspace", ${JSON.stringify(script)})(workspace);
   const serialized = JSON.stringify(result ?? null);
   if (serialized === undefined) throw new TypeError("工作区结果无法序列化为 JSON。");
   if (new TextEncoder().encode(serialized).byteLength > ${AGENT_WORKSPACE_MAX_RESULT_BYTES.toString()}) {
-    throw new Error(${JSON.stringify(result_too_large_message)});
+    throw new Error(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE)});
   }
   return serialized;
 })()

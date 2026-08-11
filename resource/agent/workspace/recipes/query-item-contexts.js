@@ -1,8 +1,10 @@
 // 固定读取目标在同文件自然顺序中的前后各两条非空原文，保持与产品上下文口径一致。
 async function runRecipe(workspace, args) {
   const contract = workspace.contract;
-  // 字段表来自当前工作区 contract，数组行不会另建一套列顺序。
-  const itemFields = Object.keys(contract.datasets.items.fields);
+  if (!Array.isArray(args.item_ids)) throw new Error("item_ids 必须是数组");
+  if (args.item_ids.length > contract.limits.recipe_context_item_ids_max) {
+    throw new Error(`item_ids 最多 ${contract.limits.recipe_context_item_ids_max} 个`);
+  }
   const targetIds = new Set(args.item_ids);
   const contextsById = new Map();
   const returnedItemById = new Map();
@@ -59,8 +61,7 @@ async function runRecipe(workspace, args) {
   });
   return {
     contexts,
-    item_fields: itemFields,
-    items: [...returnedItemById.values()].map((item) => itemFields.map((field) => item[field])),
+    items: [...returnedItemById.values()],
     missing_item_ids: args.item_ids.filter((itemId) => !contextsById.has(itemId)),
   };
 }

@@ -167,6 +167,7 @@ describe("AgentWorkspaceService", () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
     await fixture.service.load_workspace();
+    const active_path = fixture.active_path();
     fixture.run.mockResolvedValueOnce({
       status: "failed",
       failure: "execution_failed",
@@ -177,6 +178,10 @@ describe("AgentWorkspaceService", () => {
     await expect(
       fixture.service.run_script("throw new Error()", new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_script" } });
+    expect(fixture.run).toHaveBeenCalledWith(
+      { workspacePath: active_path, script: "throw new Error()" },
+      expect.any(AbortSignal),
+    );
     expect(fixture.active_path()).not.toBe("");
 
     fixture.run.mockRejectedValueOnce(new Error("host disconnected"));
@@ -347,7 +352,7 @@ describe("AgentWorkspaceService", () => {
     fixture.snapshot.sectionRevisions[section] = 2;
 
     await expect(
-      fixture.service.run_recipe("query-items", {}, new AbortController().signal),
+      fixture.service.run_script("return null", new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fixture.active_path()).toBe("");
   });

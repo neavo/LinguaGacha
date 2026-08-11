@@ -98,14 +98,15 @@
 
 ## Agent 磁盘工作区
 
-注册工作区工具时，先用 `workspace_load` 加载当前工程快照，之后可以反复调用 `workspace_recipe` 或 `workspace_script`；当前差异或确定规则已有用户授权时，才通过 `workspace_apply` 提交显式 change：
+注册工作区工具时，先用 `workspace_load` 加载当前工程快照，之后用 `workspace_script` 在 JavaScript 内编排读取、查询、聚合和 change 准备；当前差异或确定规则已有用户授权时，才通过 `workspace_apply` 提交显式 change：
 
 - `workspace_load` 无参数加载当前工程的完整一次性只读快照，并只返回权威语言和数量摘要。完整 project_meta 与 contract 保存在工作区；`workspace_script` 通过 `workspace.contract` 按任务读取 `datasets`、`changes`、`effects`、`guidance`、`apply`、`script_api` 和 `recipes`，不得从样例、skill 或旧对话猜 schema。
-- `workspace_recipe` 执行 contract 声明的只读分页 recipe；重复同构记录以 `*_fields` 声明列顺序，并由对应数组行返回，单个事实与关系仍使用具名对象；存在 `next_offset` 时按其继续。`workspace_script` 执行模型提供的 JavaScript。二者是平级处理入口，recipe 源码可以读取并作为实现参考，但读取或复用不是调用前提。
-- `workspace_script` 的唯一参数 `workspace` 携带磁盘 contract，并只提供 `contract.script_api` 声明的方法。大数据使用 `iterateJsonl` / `writeJsonl` 流，执行结果只返回处置计数、代表证据和未决，不返回完整集合。
+- `workspace_script` 的唯一参数 `workspace` 携带磁盘 contract，并只提供 `contract.script_api` 声明的方法。用 `workspace.runRecipe(name, args)` 调用 contract 声明的只读 recipe；参数、默认值、限制和结果形状以 `contract.recipes` 为准。
+- 需要按产品正式语义核验 `src` 与 `name_src` 的完整字面命中时，必须使用 `workspace.matchLiterals`；通用 recipe 的 NFKC 小写 includes 搜索不能代替正式匹配。具体参数与结果形状以 contract 为准。
+- 大数据使用 `iterateJsonl` / `writeJsonl` 流完成查询、聚合和必要写入；执行结果只返回处置计数、代表证据和未决，不返回完整集合。
 - `workspace_script` 可以读取全部只读快照，只能通过文件事务覆盖 `contract.changes` 声明的固定 JSONL 文件，或按下述工作记忆规则管理 `scratch/**`；不得覆盖 datasets、project_meta、contract、warnings、evidence 或 recipes。change 文件表达新增、更新、删除或移动，不保存修改后的完整数据集。
 - 无 skill 时同样以 contract 为准：`datasets` 是只读事实，`changes` 声明唯一可写操作和行结构，`effects` 声明稳定副作用，`guidance` 声明软执行建议；contract 没有声明的操作就是不支持，不得自行模拟。
-- `workspace_recipe` 与 `workspace_script` 都只能使用工作区 API，不能直接访问工程、数据库、网络或工作区外路径。`workspace_script` 成功只把本次 change 与 scratch 修改提交到工作区基线，失败、停止、结果超限或可补偿的提交失败只回滚本次运行。
+- 工作区脚本不能直接访问工程、数据库、网络或工作区外路径。脚本成功只把本次 change 与 scratch 修改提交到工作区基线，失败、停止、结果超限或可补偿的提交失败只回滚本次运行。
 - warnings 与 evidence 只描述本次 load 的快照。change 文件仍只是临时准备，不构成工程写入；只有当前具体差异或确定规则已经获得用户授权后才能调用 `workspace_apply`。
 - `workspace_apply` 无参数，只读取非空 change 文件，按 contract 校验显式操作并在一次事务中整体写入；执行期间不可停止。`status: applied` 与 `status: unchanged` 后工作区销毁，下一批必须重新 `workspace_load`。
 - change 校验失败保留工作区并以 `workspace_script` 修复；数据库事务回滚保留工作区并允许安全重试；stale 或 revision 冲突销毁工作区并要求 `workspace_load`。`data.committed_sync_failed` 明确表示项目已经提交但界面同步失败，必须报告已写入并要求重新加载工程，绝对不得重试 apply。

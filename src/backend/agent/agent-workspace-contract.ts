@@ -2,7 +2,10 @@ import { Item, ITEM_STATUSES } from "../../domain/item";
 import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
-import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
+import {
+  AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_MAX_RESULT_BYTES,
+} from "../../shared/backend-runtime";
 import { read_optional_item_name_text } from "../../shared/item-name";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
@@ -85,8 +88,6 @@ export const AGENT_WORKSPACE_RECIPE_PATHS = Object.freeze(
     AGENT_WORKSPACE_RECIPE_NAMES.map((name) => [name, `recipes/${name}.js`]),
   ) as Record<(typeof AGENT_WORKSPACE_RECIPE_NAMES)[number], string>,
 );
-
-export type AgentWorkspaceRecipeName = (typeof AGENT_WORKSPACE_RECIPE_NAMES)[number];
 
 /** items/entries.jsonl 的完整固定字段和顺序。 */
 export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
@@ -335,6 +336,11 @@ const quality_changes = Object.fromEntries(
 export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
+    recipe_page_default: 20,
+    recipe_page_max: 100,
+    recipe_context_item_ids_max: 20,
+    literal_match_examples_default: 3,
+    literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   },
   datasets: {
     project_meta: {
@@ -438,6 +444,15 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
           "(path?: string) => Promise<Array<{ name: string, type: 'file' | 'directory' }>>",
       },
       remove: { signature: "(path: string) => Promise<void>" },
+      runRecipe: {
+        signature: "(name: string, args: object) => Promise<JsonValue>",
+        purpose: "在当前脚本内调用已发布只读 recipe；recipe 不能写 change 或递归调用 recipe",
+      },
+      matchLiterals: {
+        signature:
+          "(args: { patterns: Array<{ key: string, text: string, case_sensitive: boolean }>; examples_per_pattern?: number }) => Promise<JsonValue>",
+        purpose: "按产品正式字面匹配语义一次扫描 items 的 src 与 name_src",
+      },
     },
     scratch: "scratch/",
   },
@@ -445,14 +460,36 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     "query-items": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-items"],
       purpose: "筛选目标条目并按需联结警告证据",
+      parameters: {
+        filters: "可选 item_ids、statuses、file_paths、warning_types",
+        search:
+          "可选 keywords 与 scope(src、dst、all)；仅用于通用 NFKC 小写 includes 检索，不代表产品正式匹配语义",
+        include_warnings: "可选 boolean，默认 false",
+        offset: "可选非负整数，默认 0",
+        limit: "可选正整数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
+      },
+      returns: "{ total_item_count, items: object[], next_offset? }",
     },
     "query-item-contexts": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-item-contexts"],
       purpose: "读取目标条目在同文件自然顺序中的邻近文本",
+      parameters: {
+        item_ids: "正整数数组，不超过 limits.recipe_context_item_ids_max",
+      },
+      returns: "{ contexts, items: object[], missing_item_ids }",
     },
     "query-quality-rule-groups": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-quality-rule-groups"],
       purpose: "按完整关系组读取目标质量规则与加载时证据",
+      parameters: {
+        kind: "glossary、text_preserve、pre_replacement 或 post_replacement",
+        keywords: "可选非空字符串数组",
+        include_examples: "可选 boolean，默认 false",
+        offset: "可选非负整数，默认 0",
+        limit: "可选正整数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
+      },
+      returns:
+        "{ total_target_rule_count, total_group_count, groups: Array<{ targets: object[], evidence: object[] }>, next_offset? }",
     },
   },
 });

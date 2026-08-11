@@ -1,21 +1,25 @@
-// 参数形状和值域由 workspace_recipe 工具 Schema 校验；recipe 只保留组查询语义。
+// 关系组按加载快照查询；参数只在会造成静默误判或无界输出时就地拒绝。
 async function runRecipe(workspace, args) {
   const keywords = args.keywords ?? [];
+  if (keywords.some((value) => typeof value !== "string" || value.trim() === "")) {
+    throw new Error("keywords 不能包含空白值");
+  }
   const normalizedKeywords = [
     ...new Set(keywords.map((value) => value.trim().normalize("NFKC").toLowerCase())),
   ];
   const includeExamples = args.include_examples ?? false;
   const offset = args.offset ?? 0;
-  const limit = args.limit ?? 20;
   const contract = workspace.contract;
+  const limit = args.limit ?? contract.limits.recipe_page_default;
+  if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
+  if (!Number.isInteger(limit) || limit < 1 || limit > contract.limits.recipe_page_max) {
+    throw new Error(`limit 必须是 1..${contract.limits.recipe_page_max} 的整数`);
+  }
   const dataset = contract.datasets[args.kind];
   const evidenceDataset = contract.datasets[`${args.kind}_evidence`];
-  // 目标与范围外证据共用一张字段表，避免在每行重复键名。
-  const entryFields = [
-    ...Object.keys(dataset.fields),
-    "hits",
-    ...(includeExamples ? ["examples"] : []),
-  ];
+  if (dataset === undefined || evidenceDataset === undefined) {
+    throw new Error(`未知 quality kind: ${String(args.kind)}`);
+  }
 
   const entries = [];
   const entryById = new Map();
@@ -42,25 +46,24 @@ async function runRecipe(workspace, args) {
     }));
 
   const pageGroups = groups.slice(offset, offset + limit);
-  // 行值严格按 entryFields 投影，targets 与 evidence 可以由同一字段表解码。
-  const toEntryRow = (id) => {
+  // 目标与范围外证据共用同一具名对象投影。
+  const toEntry = (id) => {
     const entry = entryById.get(id);
     const entryEvidence = evidence.by_id[id];
-    return entryFields.map((field) => {
-      if (field === "hits") return entryEvidence.hits;
-      if (field === "examples") return entryEvidence.examples;
-      return entry[field];
-    });
+    return {
+      ...entry,
+      hits: entryEvidence.hits,
+      ...(includeExamples ? { examples: entryEvidence.examples } : {}),
+    };
   };
   const nextOffset = offset + pageGroups.length;
 
   return {
     total_target_rule_count: targetIds.length,
     total_group_count: groups.length,
-    entry_fields: entryFields,
     groups: pageGroups.map((group) => ({
-      targets: group.targetIds.map(toEntryRow),
-      evidence: group.evidenceIds.map(toEntryRow),
+      targets: group.targetIds.map(toEntry),
+      evidence: group.evidenceIds.map(toEntry),
     })),
     ...(nextOffset < groups.length ? { next_offset: nextOffset } : {}),
   };

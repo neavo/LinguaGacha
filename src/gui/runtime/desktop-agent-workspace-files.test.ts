@@ -4,9 +4,14 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DesktopAgentWorkspaceFiles } from "./desktop-agent-workspace-files";
+import { AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES } from "../../shared/backend-runtime";
+import {
+  AgentWorkspaceInvalidError,
+  DesktopAgentWorkspaceFiles,
+} from "./desktop-agent-workspace-files";
 
 let workspace_path = "";
+const VALID_LITERAL_PATTERN = { key: "term", text: "A", case_sensitive: true } as const;
 
 beforeEach(() => {
   workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-files-"));
@@ -24,9 +29,19 @@ beforeEach(() => {
       recipes: {
         "query-items": { path: "recipes/query-items.js" },
       },
+      datasets: { items: { path: "items/entries.jsonl" } },
     }),
   );
-  fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), "original");
+  fs.writeFileSync(
+    path.join(workspace_path, "items", "entries.jsonl"),
+    [
+      { item_id: 1, src: "Straße STRASSE", name_src: "Alice" },
+      { item_id: 2, src: "strasse", name_src: "Straße" },
+      { item_id: 3, src: "无关", name_src: "" },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n") + "\n",
+  );
   fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "original");
   fs.writeFileSync(path.join(workspace_path, "project_meta.json"), "metadata");
   fs.writeFileSync(path.join(workspace_path, "recipes", "query-items.js"), "return args;");
@@ -39,7 +54,7 @@ afterEach(() => {
 
 describe("DesktopAgentWorkspaceFiles", () => {
   it("事务内读取 upper，回滚只丢弃本次修改", async () => {
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     expect(await put(files, "changes/items/updates.jsonl", "step-10")).toHaveProperty(
       "status",
       204,
@@ -57,11 +72,11 @@ describe("DesktopAgentWorkspaceFiles", () => {
   });
 
   it("连续成功运行累积到稳定基线，后续失败不撤销此前提交", async () => {
-    const first = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const first = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await put(first, "changes/items/updates.jsonl", "step-9");
     await first.commit();
 
-    const second = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const second = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await put(second, "changes/items/updates.jsonl", "broken-step-10");
     await second.rollback();
 
@@ -72,7 +87,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
 
   it("scratch 删除和新写入组成合并视图，事务目录不可见也不可访问", async () => {
     fs.writeFileSync(path.join(workspace_path, "scratch", "old.txt"), "old");
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await files.handle(
       new Request("lg-agent-workspace://workspace/files/scratch/old.txt", { method: "DELETE" }),
     );
@@ -94,24 +109,125 @@ describe("DesktopAgentWorkspaceFiles", () => {
     expect(fs.readFileSync(path.join(workspace_path, "scratch", "new.txt"), "utf-8")).toBe("new");
   });
 
-  it("只读 recipe 会话不创建事务，也拒绝写入", async () => {
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "readonly");
+  it("读取 contract 声明的全部 recipe 源码", async () => {
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
 
-    expect(await files.read_recipe_source("query-items")).toBe("return args;");
-    expect((await put(files, "changes/items/updates.jsonl", "changed")).status).toBe(403);
-    expect(fs.existsSync(path.join(workspace_path, ".transactions"))).toBe(false);
+    await expect(files.read_recipe_sources()).resolves.toEqual({
+      "query-items": "return args;",
+    });
+    await files.rollback();
+  });
+
+  it("正式字面匹配一次扫描 src 与 name_src，并区分并集、字段和证据计数", async () => {
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    const response = await files.handle(
+      new Request("lg-agent-workspace://workspace/__match_literals__", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          patterns: [
+            { key: "folded", text: "STRASSE", case_sensitive: false },
+            { key: "exact", text: "STRASSE", case_sensitive: true },
+          ],
+          examples_per_pattern: 2,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      scanned_item_count: 3,
+      matched_item_count: 2,
+      patterns: [
+        {
+          key: "folded",
+          matched_item_count: 2,
+          field_item_counts: { src: 2, name_src: 1 },
+          example_matches: [
+            {
+              item_id: 1,
+              field: "src",
+              ranges: [
+                { start: 0, end: 6 },
+                { start: 7, end: 14 },
+              ],
+            },
+            { item_id: 2, field: "src", ranges: [{ start: 0, end: 7 }] },
+          ],
+        },
+        {
+          key: "exact",
+          matched_item_count: 1,
+          field_item_counts: { src: 1, name_src: 0 },
+          example_matches: [{ item_id: 1, field: "src", ranges: [{ start: 7, end: 14 }] }],
+        },
+      ],
+    });
+    await files.rollback();
+  });
+
+  it.each([
+    {
+      label: "重复 pattern key",
+      payload: {
+        patterns: [VALID_LITERAL_PATTERN, { ...VALID_LITERAL_PATTERN, text: "B" }],
+        examples_per_pattern: 1,
+      },
+    },
+    {
+      label: "空 pattern text",
+      payload: {
+        patterns: [{ ...VALID_LITERAL_PATTERN, text: "" }],
+        examples_per_pattern: 1,
+      },
+    },
+    {
+      label: "缺失 case_sensitive",
+      payload: { patterns: [{ key: "flag", text: "A" }], examples_per_pattern: 1 },
+    },
+    {
+      label: "越界证据数量",
+      payload: {
+        patterns: [VALID_LITERAL_PATTERN],
+        examples_per_pattern: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES + 1,
+      },
+    },
+  ])("正式字面匹配拒绝$label", async ({ payload }) => {
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    const response = await files.handle(
+      new Request("lg-agent-workspace://workspace/__match_literals__", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await files.rollback();
   });
 
   it("contract 根结构损坏时拒绝建立文件会话", async () => {
     fs.writeFileSync(path.join(workspace_path, "contract.json"), "[]");
 
-    await expect(DesktopAgentWorkspaceFiles.open(workspace_path, "transactional")).rejects.toThrow(
-      "Workspace contract.json root is invalid.",
+    await expect(DesktopAgentWorkspaceFiles.open(workspace_path)).rejects.toBeInstanceOf(
+      AgentWorkspaceInvalidError,
+    );
+  });
+
+  it("contract 中存在无效 recipe 路径时拒绝建立文件会话", async () => {
+    const contract = JSON.parse(
+      fs.readFileSync(path.join(workspace_path, "contract.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    contract["recipes"] = { "query-items": {} };
+    fs.writeFileSync(path.join(workspace_path, "contract.json"), JSON.stringify(contract));
+
+    await expect(DesktopAgentWorkspaceFiles.open(workspace_path)).rejects.toBeInstanceOf(
+      AgentWorkspaceInvalidError,
     );
   });
 
   it("提交安装失败会恢复基线并报告 preserved", async () => {
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await put(files, "changes/items/updates.jsonl", "changed");
     const original_rename = fs.promises.rename.bind(fs.promises);
     let failed = false;
@@ -132,7 +248,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
   });
 
   it("停止发生在提交过程中时反向恢复已经移动的基线", async () => {
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await put(files, "changes/items/updates.jsonl", "changed");
     const controller = new AbortController();
     const original_rename = fs.promises.rename.bind(fs.promises);
@@ -152,7 +268,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
   });
 
   it("写入流失败时保留基线并清理 upper 临时文件", async () => {
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("partial"));
@@ -188,7 +304,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
     fs.symlinkSync(outside, link_path, "junction");
     try {
-      const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+      const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
       expect(await put(files, "scratch/link/secret.txt", "changed")).toHaveProperty("status", 204);
 
       await expect(files.commit()).rejects.toMatchObject({ workspacePreserved: true });
@@ -204,7 +320,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
       path.join(workspace_path, "glossary", "large.bin"),
       Buffer.alloc(2 * 1024 * 1024),
     );
-    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, "transactional");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
     await put(files, "changes/items/updates.jsonl", "changed");
     const transaction = fs.readdirSync(path.join(workspace_path, ".transactions"))[0];
     if (transaction === undefined) throw new Error("缺少事务目录");

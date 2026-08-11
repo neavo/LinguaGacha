@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { read_json_record } from "../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../domain/quality";
-import { AGENT_WORKSPACE_MAX_RESULT_BYTES } from "../../shared/backend-runtime";
+import {
+  AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_MAX_RESULT_BYTES,
+} from "../../shared/backend-runtime";
 import {
   AGENT_WORKSPACE_CONTRACT,
   AGENT_WORKSPACE_CHANGE_PATHS,
@@ -116,7 +119,14 @@ describe("Agent 工作区 contract", () => {
     const methods = read_json_record(script_api["methods"]);
     const recipes = read_json_record(AGENT_WORKSPACE_CONTRACT["recipes"]);
 
-    expect(limits).toEqual({ result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES });
+    expect(limits).toEqual({
+      result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
+      recipe_page_default: 20,
+      recipe_page_max: 100,
+      recipe_context_item_ids_max: 20,
+      literal_match_examples_default: 3,
+      literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+    });
     expect(script_api).toMatchObject({ argument: "workspace", scratch: "scratch/" });
     expect(read_json_record(properties["contract"])).toMatchObject({
       source: AGENT_WORKSPACE_PATHS.contract,
@@ -132,15 +142,19 @@ describe("Agent 工作区 contract", () => {
         "writeJsonl",
         "list",
         "remove",
+        "runRecipe",
+        "matchLiterals",
       ]),
     );
     expect(read_json_record(methods["iterateJsonl"])).toEqual({
       signature: "(path: string) => AsyncIterable<JsonValue>",
     });
     for (const [name, recipe_path] of Object.entries(AGENT_WORKSPACE_RECIPE_PATHS)) {
-      expect(read_json_record(recipes[name])).toEqual({
+      expect(read_json_record(recipes[name])).toMatchObject({
         path: recipe_path,
         purpose: expect.any(String),
+        parameters: expect.any(Object),
+        returns: expect.any(String),
       });
     }
   });
