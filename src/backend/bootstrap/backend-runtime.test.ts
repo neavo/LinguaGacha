@@ -5,10 +5,9 @@ import type {
   BackendRuntimeAgentWorkspaceRunRequest,
   BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeMainMessage,
-  BackendRuntimeWebFetchRequest,
-  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
+import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
 const runtime_mocks = vi.hoisted(() => {
@@ -32,6 +31,14 @@ const runtime_mocks = vi.hoisted(() => {
 });
 
 vi.mock("./backend-bootstrap", () => ({ BackendBootstrap: runtime_mocks.BackendBootstrap }));
+vi.mock("../agent/agent-web-fetch", () => ({
+  create_agent_web_fetch:
+    (resolve_proxy: (url: string, signal: AbortSignal) => Promise<string>): AgentWebFetchPort =>
+    async (url, signal) => {
+      await resolve_proxy(url, signal);
+      return { url, contentType: "text/plain", body: new Uint8Array([111, 107]) };
+    },
+}));
 vi.mock("../app/app-path-service", () => ({
   AppPathService: class {
     get_berserker_update_root_dir(): string {
@@ -82,10 +89,7 @@ describe("run_backend_runtime", () => {
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openOutputFolder: (path: string) => Promise<void>;
-      agentWebFetch: (
-        request: BackendRuntimeWebFetchRequest,
-        signal: AbortSignal,
-      ) => Promise<BackendRuntimeWebFetchResponse>;
+      agentWebFetch: AgentWebFetchPort;
       agentWorkspaceRun: (
         request: BackendRuntimeAgentWorkspaceRunRequest,
         signal: AbortSignal,
@@ -111,22 +115,23 @@ describe("run_backend_runtime", () => {
 
     const fetch_controller = new AbortController();
     const fetch = bootstrap_options.agentWebFetch(
-      { url: "https://example.com/article" },
+      "https://example.com/article",
       fetch_controller.signal,
     );
-    const fetch_request = get_host_request(port, "web_fetch");
-    expect(structuredClone(fetch_request)).toEqual(fetch_request);
+    const fetch_request = get_host_request(port, "resolve_proxy");
+    expect(fetch_request.operation).toEqual({
+      kind: "resolve_proxy",
+      url: "https://example.com/article",
+    });
     const fetch_response = {
-      requestedUrl: "https://example.com/article",
-      url: "https://example.com/final",
-      status: 200,
+      url: "https://example.com/article",
       contentType: "text/plain",
       body: new Uint8Array([111, 107]),
     };
     port.emit({
       type: "host_response",
       requestId: fetch_request.requestId,
-      result: { ok: true, data: fetch_response },
+      result: { ok: true, data: "DIRECT" },
     });
     await expect(fetch).resolves.toEqual(fetch_response);
 
@@ -173,18 +178,12 @@ describe("run_backend_runtime", () => {
     const port = create_port();
     await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      agentWebFetch: (
-        request: BackendRuntimeWebFetchRequest,
-        signal: AbortSignal,
-      ) => Promise<unknown>;
+      agentWebFetch: AgentWebFetchPort;
     };
     const controller = new AbortController();
     const reason = new Error("用户停止 Agent");
-    const fetch = bootstrap_options.agentWebFetch(
-      { url: "https://example.com" },
-      controller.signal,
-    );
-    const request = get_host_request(port, "web_fetch");
+    const fetch = bootstrap_options.agentWebFetch("https://example.com", controller.signal);
+    const request = get_host_request(port, "resolve_proxy");
     let settled = false;
     void fetch.then(
       () => {
@@ -254,17 +253,14 @@ describe("run_backend_runtime", () => {
     const port = create_port();
     await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      agentWebFetch: (
-        request: BackendRuntimeWebFetchRequest,
-        signal: AbortSignal,
-      ) => Promise<unknown>;
+      agentWebFetch: AgentWebFetchPort;
     };
     const pending = bootstrap_options.agentWebFetch(
-      { url: "https://example.com" },
+      "https://example.com",
       new AbortController().signal,
     );
     const rejection = expect(pending).rejects.toThrow("Backend runtime is closed.");
-    const request = get_host_request(port, "web_fetch");
+    const request = get_host_request(port, "resolve_proxy");
 
     port.emit({ type: "stop", requestId: "stop-pending" });
 

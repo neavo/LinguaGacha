@@ -17,8 +17,6 @@ import type {
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
   BackendRuntimeResult,
-  BackendRuntimeWebFetchRequest,
-  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 
@@ -44,11 +42,6 @@ export class BackendRuntimeClient {
       appRoot: string;
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
-      /** main 专属受控下载能力；worker 只持有这个可取消窄端口。 */
-      webFetch: (
-        request: BackendRuntimeWebFetchRequest,
-        signal: AbortSignal,
-      ) => Promise<BackendRuntimeWebFetchResponse>;
       /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
       runAgentWorkspace: (
         request: BackendRuntimeAgentWorkspaceRunRequest,
@@ -182,9 +175,6 @@ export class BackendRuntimeClient {
           break;
         case "open_output_folder":
           data = await this.options.openOutputFolder(operation.path);
-          break;
-        case "web_fetch":
-          data = await this.options.webFetch(operation.request, controller.signal);
           break;
         case "run_agent_workspace":
           data = await this.options.runAgentWorkspace(operation.request, controller.signal);

@@ -49,7 +49,8 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
-import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
+import type { AgentWebFetchPort } from "./agent-web-fetch";
+import { create_agent_web_tools } from "./agent-web-tools";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
 import {

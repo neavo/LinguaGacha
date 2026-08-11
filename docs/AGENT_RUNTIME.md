@@ -40,7 +40,7 @@
 - 每次 `workspace_script` 都在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中执行，并拥有唯一磁盘事务。脚本只把 contract `changes` 区块声明的固定文件与 `scratch/**` 写入 overlay；最终脚本结果通过 JSON 与 `contract.limits.result_bytes` 字节硬门后才提交，未捕获失败、停止或超限只回滚本次 overlay。提交失败先恢复被替换基线，补偿或清理失败才把工作区标为失效。私有 protocol 提供活动工作区与同级 sources 的合并只读视图、流式文件访问和只读 matcher；datasets、project_meta、contract、warnings、evidence、recipes 与 sources 永远只读，固定 change 文件不能删除。路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
 - `workspace_apply` 无参数，只读取非空显式 change 文件；items 按 ID 定点读取，prompts 只读取目标 kind，quality 只为受影响 kind 构造 prospective 最终集合，不扫描或比较完整 datasets。change 校验错误与数据库事务回滚保留工作区，stale 或 revision 冲突清理工作区并要求重新 load；无变化不进入项目写口、不推进 revision、不发布事件。成功只返回紧凑真实计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。数据库已提交但缓存或公开事件同步失败使用带 `committed: true` 的稳定错误，销毁工作区且禁止重试。
 - Agent 先对完整范围执行确定性程序化处理，只把剩余开放式语义目标按模型上下文软上限组成审查组；审查组不等于提交单元。技术提交只遵循 contract 的领域软建议，后端不以审查组或建议值建立硬上限；同一规则授权可以覆盖多个技术提交，连续 apply 之间重新 load。
-- `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
+- `web_fetch({ url })` 仅由 GUI Backend Runtime 创建并注册，CLI 不提供假实现。Backend 使用 Undici 逐跳抓取 HTTP(S)：直连请求在实际 socket lookup 中只交付公网地址，系统代理请求把用户配置的代理视为目标解析与可达范围的信任边界；每次调用限制总时长、重定向和响应字节，HTTP 失败向模型返回状态码与最终 URL，受支持文本统一归一为 Markdown。系统提示是网页正文不可信规则的唯一归宿，工具描述和结果不重复注入同一规则。
 
 ## 5. 前端消费
 

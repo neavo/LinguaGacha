@@ -20,7 +20,6 @@ import {
 } from "./shell/renderer-process-diagnostics";
 import { DesktopUpdateService } from "./shell/desktop-update-service";
 import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
-import { desktop_web_fetch } from "./runtime/desktop-web-fetch";
 import {
   DesktopAgentWorkspaceRunner,
   register_agent_workspace_scheme,
@@ -71,7 +70,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     appRoot: app_root,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
-    webFetch: (request, signal) => desktop_web_fetch(session.defaultSession, request, signal),
     runAgentWorkspace: async (request, signal) => {
       if (agent_workspace_runner === null) {
         throw new AppErrors.AppError("runtime.internal_invariant", {

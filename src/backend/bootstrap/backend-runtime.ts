@@ -8,9 +8,9 @@ import type {
   BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeReady,
   BackendRuntimeResult,
-  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
+import { create_agent_web_fetch } from "../agent/agent-web-fetch";
 import { AppPathService } from "../app/app-path-service";
 import { t_main_log } from "../log/log-text";
 import {
@@ -106,8 +106,10 @@ export async function run_backend_runtime(args: {
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
-    agentWebFetch: async (request, signal) =>
-      (await call_host({ kind: "web_fetch", request }, signal)) as BackendRuntimeWebFetchResponse,
+    // 下载与内容限制留在 Backend，仅把每跳系统代理解析反向交给 Electron main。
+    agentWebFetch: create_agent_web_fetch(async (url, signal) =>
+      String(await call_host({ kind: "resolve_proxy", url }, signal)),
+    ),
     agentWorkspaceRun: async (request, signal) =>
       (await call_host(
         { kind: "run_agent_workspace", request },
