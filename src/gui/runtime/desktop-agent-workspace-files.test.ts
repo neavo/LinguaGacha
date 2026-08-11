@@ -11,15 +11,22 @@ import {
 } from "./desktop-agent-workspace-files";
 
 let workspace_path = "";
+let session_root = "";
 const VALID_LITERAL_PATTERN = { key: "term", text: "A", case_sensitive: true } as const;
 
 beforeEach(() => {
-  workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-files-"));
+  session_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-files-"));
+  workspace_path = path.join(session_root, "workspace");
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "glossary"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "scratch"), { recursive: true });
+  fs.mkdirSync(path.join(session_root, "sources", "book.epub", "OPS"), { recursive: true });
+  fs.writeFileSync(
+    path.join(session_root, "sources", "book.epub", "OPS", "chapter.xhtml"),
+    "<p>章节</p>",
+  );
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
@@ -49,7 +56,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  fs.rmSync(workspace_path, { recursive: true, force: true });
+  fs.rmSync(session_root, { recursive: true, force: true });
 });
 
 describe("DesktopAgentWorkspaceFiles", () => {
@@ -96,7 +103,7 @@ describe("DesktopAgentWorkspaceFiles", () => {
     const listed = await files.handle(
       new Request("lg-agent-workspace://workspace/__list__?path=scratch"),
     );
-    expect(await listed.json()).toEqual([{ name: "new.txt", type: "file" }]);
+    expect(await listed.json()).toEqual([{ name: "new.txt", type: "file", size_bytes: 3 }]);
     const root = await files.handle(new Request("lg-agent-workspace://workspace/__list__"));
     expect(await root.text()).not.toContain(".transactions");
     const hidden = await files.handle(
@@ -115,6 +122,22 @@ describe("DesktopAgentWorkspaceFiles", () => {
     await expect(files.read_recipe_sources()).resolves.toEqual({
       "query-items": "return args;",
     });
+    await files.rollback();
+  });
+
+  it("通过只读 sources 挂载读取原文件文本，并在 list 中返回文件大小", async () => {
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+
+    expect(await read(files, "sources/book.epub/OPS/chapter.xhtml")).toBe("<p>章节</p>");
+    const root = await files.handle(new Request("lg-agent-workspace://workspace/__list__"));
+    expect(await root.json()).toContainEqual({ name: "sources", type: "directory" });
+    const entries = await files.handle(
+      new Request("lg-agent-workspace://workspace/__list__?path=sources/book.epub/OPS"),
+    );
+    expect(await entries.json()).toEqual([
+      { name: "chapter.xhtml", type: "file", size_bytes: Buffer.byteLength("<p>章节</p>") },
+    ]);
+    expect((await put(files, "sources/book.epub/OPS/chapter.xhtml", "changed")).status).toBe(403);
     await files.rollback();
   });
 

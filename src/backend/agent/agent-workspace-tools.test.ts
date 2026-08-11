@@ -101,7 +101,8 @@ function read_tool(
 function build_workspace_port(): AgentWorkspacePort {
   return {
     initialize: vi.fn(async () => undefined),
-    reset: vi.fn(async () => undefined),
+    reset_workspace: vi.fn(async () => undefined),
+    reset_project: vi.fn(async () => undefined),
     load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
     run_script: vi.fn(async () => ({ changed: 2 })),
     apply_workspace: vi.fn(async () => ({

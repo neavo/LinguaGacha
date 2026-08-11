@@ -307,6 +307,7 @@ export class BackendServices {
             cache: this.cache_manager,
             qualityAnalysis: this.cache_manager.qualityAnalysis,
             proofreading: this.proofreading.query,
+            database: options.database,
             runtimeGate: this.runtime_gate,
             writeStore: write_store,
             logManager: this.logManager,

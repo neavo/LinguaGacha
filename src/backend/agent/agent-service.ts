@@ -188,8 +188,8 @@ export class AgentService {
     this.workspace = options.workspace;
     this.log_manager = options.logManager;
     this.publish = options.publish;
-    this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
-      this.reset_session(),
+    this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
+      this.reset_session("project", change.loaded ? change.projectPath : null),
     );
   }
 
@@ -309,7 +309,7 @@ export class AgentService {
     const reset_lease = existing_lease ?? this.runtime_gate.begin_runtime("agent");
     if (existing_lease === null) this.runtime_lease = reset_lease;
     try {
-      await this.reset_session();
+      await this.reset_session("workspace");
       return this.get_snapshot();
     } finally {
       if (existing_lease === null) this.finish_runtime(reset_lease);
@@ -360,7 +360,7 @@ export class AgentService {
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
     ]);
-    await this.workspace?.reset();
+    await this.workspace?.reset_project(null);
   }
 
   /** 在当前运行世代内准备唯一候选运行时。 */
@@ -963,8 +963,11 @@ export class AgentService {
     this.publish(AGENT_SESSION_EVENT_TOPIC, event);
   }
 
-  /** 立即隔离并清空公开会话，再等待消息受理与旧 SDK 运行时关闭。 */
-  private reset_session(): Promise<void> {
+  /** 立即隔离公开会话；工程切换还把新工程路径交给 sources 生命周期。 */
+  private reset_session(
+    scope: "workspace" | "project",
+    project_path: string | null = null,
+  ): Promise<void> {
     if (this.session_reset !== null) return this.session_reset;
     this.runtime_generation += 1;
     this.clear_assistant_stream();
@@ -983,7 +986,11 @@ export class AgentService {
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
     ])
-      .then(async () => await this.workspace?.reset())
+      .then(async () =>
+        scope === "project"
+          ? await this.workspace?.reset_project(project_path)
+          : await this.workspace?.reset_workspace(),
+      )
       .finally(() => {
         if (this.session_reset === reset) this.session_reset = null;
       });

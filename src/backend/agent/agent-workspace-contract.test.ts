@@ -41,12 +41,20 @@ describe("Agent 工作区 contract", () => {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       format: "json",
     });
-    expect(Object.keys(read_json_record(project_meta["fields"]))).toEqual([
+    const project_meta_fields = read_json_record(project_meta["fields"]);
+    expect(Object.keys(project_meta_fields)).toEqual([
       "source_language",
       "target_language",
       "counts",
       "files",
     ]);
+    const project_file_items = read_json_record(
+      read_json_record(project_meta_fields["files"])["items"],
+    );
+    expect(read_json_record(project_file_items["fields"])).toMatchObject({
+      source_text_path: { type: "string", optional: true },
+      source_text_root: { type: "string", optional: true },
+    });
 
     const items = read_json_record(datasets["items"]);
     expect(items).toMatchObject({
