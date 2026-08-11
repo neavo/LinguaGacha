@@ -37,7 +37,7 @@ npm run format -- --check
 | 单域源码行为 | 运行离改动最近的 `*.test.ts`、`*.test.tsx` 或 `*.test.mjs` |
 | 跨目录、跨前后端或共享契约 | 运行双方相关测试；影响面无法可靠收窄时执行 `npm test` |
 | GUI / preload / native / Backend Runtime worker | 运行相关单测和 `npm run check`；构建入口变化时执行 `npm run build`；只有视觉或原生交互证据确有需要时才执行 `npm run dev` |
-| Agent 磁盘工作区、私有 protocol 或宿主回调 | 运行 contract 投影、显式 change 解析、工具 Schema、三个内置 recipe、工作区服务、文件 overlay / 提交补偿、定点读取与跨 section apply 事务、提交回执、protocol、Backend Runtime 生产者和 main 消费者测试；Electron API、目录权限或 recipe 执行流变化时补一次真实 Electron smoke |
+| Agent 磁盘工作区、私有 protocol 或宿主回调 | 运行 contract 投影、显式 change 解析、三工具注册、三个内置 recipe、`runRecipe` / 正式字面 matcher、工作区服务、单一文件 overlay / 提交补偿、定点读取与跨 section apply 事务、提交回执、protocol、Backend Runtime 生产者和 main 消费者测试；Electron API、目录权限或 renderer 执行流变化时补一次真实 Electron smoke |
 | 前端视觉、CSS、可见文案 | 运行相关页面或组件测试，核对当前设计输入与既有视觉证据，必要时 Electron 真机检查 |
 | Windows Go launcher | 在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...` |
 | 构建、Vite、electron-builder、afterPack、发布资产 | `npm run build`；afterPack 会测试并构建对应 Go module |

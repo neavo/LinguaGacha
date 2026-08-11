@@ -1,6 +1,6 @@
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
-import type { JsonRecord, JsonValue } from "../domain/json";
+import type { JsonValue } from "../domain/json";
 
 /** Backend 启动完成后 main 创建窗口所需的最小可克隆快照。 */
 export type BackendRuntimeReady = {
@@ -34,12 +34,13 @@ export type BackendRuntimeWebFetchResponse = Readonly<{
 /** 单次工作区操作进入模型历史前允许返回的最大 UTF-8 JSON 字节数。 */
 export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 
-/** Backend 只把当前工作区身份与已校验操作交给受信任 Electron main。 */
+/** 单个字面模式最多回传的证据条目数，主进程协议与公开 contract 共用。 */
+export const AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES = 50;
+
+/** Backend 只把当前工作区身份与已校验脚本交给受信任 Electron main。 */
 export type BackendRuntimeAgentWorkspaceRunRequest = Readonly<{
   workspacePath: string;
-  operation:
-    | Readonly<{ kind: "script"; script: string }>
-    | Readonly<{ kind: "recipe"; name: string; args: JsonRecord }>;
+  script: string;
 }>;
 
 /** 已知执行失败显式声明工作区是否仍可继续使用。 */

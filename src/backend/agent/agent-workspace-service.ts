@@ -51,7 +51,6 @@ import {
   AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_RECIPE_NAMES,
   AGENT_WORKSPACE_RECIPE_PATHS,
-  type AgentWorkspaceRecipeName,
   project_agent_workspace_item,
   project_agent_workspace_quality_entry,
   project_agent_workspace_warning,
@@ -259,64 +258,31 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 模型脚本由宿主事务隔离；失败只回滚本次运行。 */
+  /** 模型脚本由宿主事务隔离；仅宿主未知失败或明确失效时销毁工作区。 */
   public async run_script(script: string, signal: AbortSignal): Promise<JsonValue> {
     return await this.exclusive(async () => {
       const active = this.require_active();
       await this.assert_fresh(active);
-      return await this.run_workspace_operation(
-        active,
-        { kind: "script", script },
-        "workspace_script",
-        signal,
-      );
-    });
-  }
-
-  /** 官方 recipe 只读执行，参数已在工具 Schema 边界完成校验。 */
-  public async run_recipe(
-    name: AgentWorkspaceRecipeName,
-    args: JsonRecord,
-    signal: AbortSignal,
-  ): Promise<JsonValue> {
-    return await this.exclusive(async () => {
-      const active = this.require_active();
-      await this.assert_fresh(active);
-      return await this.run_workspace_operation(
-        active,
-        { kind: "recipe", name, args },
-        "workspace_recipe",
-        signal,
-      );
-    });
-  }
-
-  /** 宿主已完成回滚后才返回失败；仅明确失效时销毁活动工作区。 */
-  private async run_workspace_operation(
-    active: ActiveAgentWorkspace,
-    operation: BackendRuntimeAgentWorkspaceRunRequest["operation"],
-    action: "workspace_script" | "workspace_recipe",
-    signal: AbortSignal,
-  ): Promise<JsonValue> {
-    let response: BackendRuntimeAgentWorkspaceRunResponse;
-    try {
-      response = await this.options.run({ workspacePath: active.path, operation }, signal);
-    } catch (error) {
-      if (signal.aborted) throw error;
-      await this.discard_active();
-      throw workspace_recovery_error(error, "agent_workspace_execute_host_failed");
-    }
-    if (response.status === "success") return response.result;
-    if (response.workspaceState === "invalidated") {
-      await this.discard_active();
-      throw workspace_recovery_error(
-        new Error(response.message),
-        `agent_workspace_${response.failure}`,
-      );
-    }
-    throw new AppErrors.AppError("request.validation_failed", {
-      public_details: { action, message: response.message },
-      diagnostic_context: { reason: `agent_workspace_${response.failure}` },
+      let response: BackendRuntimeAgentWorkspaceRunResponse;
+      try {
+        response = await this.options.run({ workspacePath: active.path, script }, signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        await this.discard_active();
+        throw workspace_recovery_error(error, "agent_workspace_execute_host_failed");
+      }
+      if (response.status === "success") return response.result;
+      if (response.workspaceState === "invalidated") {
+        await this.discard_active();
+        throw workspace_recovery_error(
+          new Error(response.message),
+          `agent_workspace_${response.failure}`,
+        );
+      }
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { action: "workspace_script", message: response.message },
+        diagnostic_context: { reason: `agent_workspace_${response.failure}` },
+      });
     });
   }
 
@@ -459,7 +425,7 @@ export class AgentWorkspaceService {
 /** AgentService 只依赖工作区生命周期，不接触领域协作者。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
-  "initialize" | "load_workspace" | "run_recipe" | "run_script" | "apply_workspace" | "reset"
+  "initialize" | "load_workspace" | "run_script" | "apply_workspace" | "reset"
 >;
 
 /** apply 只有至少一个领域存在真实变化时才进入项目写入口。 */

@@ -137,7 +137,7 @@ describe("BackendRuntimeClient", () => {
         kind: "run_agent_workspace",
         request: {
           workspacePath: "E:/workspace/run-1",
-          operation: { kind: "script", script: "return null" },
+          script: "return null",
         },
       },
     } satisfies BackendRuntimeWorkerMessage);
@@ -149,7 +149,7 @@ describe("BackendRuntimeClient", () => {
     expect(run_agent_workspace).toHaveBeenCalledWith(
       {
         workspacePath: "E:/workspace/run-1",
-        operation: { kind: "script", script: "return null" },
+        script: "return null",
       },
       expect.any(AbortSignal),
     );

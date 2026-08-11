@@ -1,11 +1,15 @@
-// 参数形状和值域由 workspace_recipe 工具 Schema 校验；recipe 只保留查询语义。
+// 仅用于通用筛选，不代表产品正式字面匹配语义。
 async function runRecipe(workspace, args) {
   const filters = args.filters ?? {};
   const search = args.search ?? {};
   const includeWarnings = args.include_warnings ?? false;
-  const offset = args.offset ?? 0;
-  const limit = args.limit ?? 20;
   const contract = workspace.contract;
+  const offset = args.offset ?? 0;
+  const limit = args.limit ?? contract.limits.recipe_page_default;
+  if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
+  if (!Number.isInteger(limit) || limit < 1 || limit > contract.limits.recipe_page_max) {
+    throw new Error(`limit 必须是 1..${contract.limits.recipe_page_max} 的整数`);
+  }
 
   const itemIds = new Set(filters.item_ids ?? []);
   const statuses = new Set(filters.statuses ?? []);
@@ -13,6 +17,7 @@ async function runRecipe(workspace, args) {
   const warningTypes = new Set(filters.warning_types ?? []);
   const keywordByNormalized = new Map();
   for (const raw of search.keywords ?? []) {
+    if (typeof raw !== "string" || raw.trim() === "") throw new Error("keywords 不能包含空白值");
     const normalized = raw.trim().normalize("NFKC").toLowerCase();
     if (!keywordByNormalized.has(normalized)) {
       keywordByNormalized.set(normalized, { raw, normalized });
@@ -20,13 +25,6 @@ async function runRecipe(workspace, args) {
   }
   const keywords = [...keywordByNormalized.values()];
   const scope = search.scope ?? "all";
-  // 基础列沿用 contract；可选证据列只在本次结果实际启用时追加。
-  const itemFields = [
-    ...Object.keys(contract.datasets.items.fields),
-    ...(includeWarnings ? ["warning_evidence"] : []),
-    ...(keywords.length > 0 ? ["matched_keywords"] : []),
-  ];
-
   const warningById = new Map();
   if (warningTypes.size > 0 || includeWarnings) {
     for await (const warning of workspace.iterateJsonl(contract.datasets.warnings.path)) {
@@ -61,13 +59,11 @@ async function runRecipe(workspace, args) {
     }
 
     if (totalItemCount >= offset && items.length < limit) {
-      items.push(
-        itemFields.map((field) => {
-          if (field === "warning_evidence") return warning ?? null;
-          if (field === "matched_keywords") return matchedKeywords;
-          return item[field];
-        }),
-      );
+      items.push({
+        ...item,
+        ...(includeWarnings ? { warning_evidence: warning ?? null } : {}),
+        ...(keywords.length > 0 ? { matched_keywords: matchedKeywords } : {}),
+      });
     }
     totalItemCount += 1;
   }
@@ -75,7 +71,6 @@ async function runRecipe(workspace, args) {
   const nextOffset = offset + items.length;
   return {
     total_item_count: totalItemCount,
-    item_fields: itemFields,
     items,
     ...(nextOffset < totalItemCount ? { next_offset: nextOffset } : {}),
   };

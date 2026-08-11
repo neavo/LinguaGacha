@@ -133,7 +133,7 @@ describe("run_backend_runtime", () => {
     const workspace = bootstrap_options.agentWorkspaceRun(
       {
         workspacePath: "E:/userdata/agent/workspace/run-1",
-        operation: { kind: "script", script: "return { changed: 2 }" },
+        script: "return { changed: 2 }",
       },
       new AbortController().signal,
     );
@@ -234,7 +234,7 @@ describe("run_backend_runtime", () => {
     const running = bootstrap_options.agentWorkspaceRun(
       {
         workspacePath: "E:/workspace/run-1",
-        operation: { kind: "script", script: "return null" },
+        script: "return null",
       },
       controller.signal,
     );
