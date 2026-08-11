@@ -60,6 +60,11 @@ export const zh_cn_workbench_page = {
     menu: {
       tooltip: "从原文中提取术语",
     },
+    migration: {
+      description: "经典分析任务流程即将移除 …\n推荐使用 AGENT 全自动生成术语表，更快更智能 …!",
+      jump: "点击跳转",
+      continue: "继续任务",
+    },
     summary: {
       running: "分析中",
     },
@@ -88,6 +93,7 @@ export const zh_cn_workbench_page = {
       import_loading_toast: "正在导入候选术语并刷新校对缓存 …",
       import_failed: "导入候选术语失败",
       import_success: "已导入 {COUNT} 条候选术语",
+      agent_draft_preserved: "AGENT 中已有草稿，已保留原内容。",
     },
   },
   translation_task: {

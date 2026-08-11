@@ -1,6 +1,11 @@
+import { useState } from "react";
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 
+import { format_agent_skill_reference } from "@shared/agent";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
+import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
 import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -14,6 +19,7 @@ import type {
 import { WorkbenchTaskMenu } from "@frontend/pages/workbench-page/components/workbench-task-menu";
 import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/workbench-task-summary";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
+import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
@@ -21,6 +27,9 @@ import {
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+
+/** 产品内置术语生成 skill 的稳定名称，用于构造显式能力 marker。 */
+const GLOSSARY_CREATE_SKILL_NAME = "glossary-create";
 
 type WorkbenchCommandBarProps = {
   translation_workbench_task: TranslationWorkbenchTask;
@@ -52,7 +61,12 @@ type CommandAction = {
  */
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n();
+  const { push_toast } = useDesktopToast();
+  const { navigate_to_route } = useAppNavigation();
+  const agent = useAgentSession();
   const model_selection = useModelSelection();
+  // 迁移提醒每次启动经典分析时重新显示，不持久化已读状态。
+  const [analysis_migration_dialog_open, set_analysis_migration_dialog_open] = useState(false);
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
     props.translation_workbench_task.task_confirm_state?.kind ?? null;
   const active_analysis_task_action_kind: AnalysisTaskActionKind | null =
@@ -114,6 +128,34 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     on_trigger: props.on_delete_selected,
   });
 
+  /** 每次请求启动经典分析都先展示迁移提醒。 */
+  function request_classic_analysis(): Promise<void> {
+    set_analysis_migration_dialog_open(true);
+    return Promise.resolve();
+  }
+
+  /** 关闭迁移提醒后仍复用经典分析任务的唯一启动入口。 */
+  function continue_classic_analysis(): void {
+    set_analysis_migration_dialog_open(false);
+    void props.analysis_workbench_task.request_start_or_continue_analysis();
+  }
+
+  /** 跳转前只填充空草稿，避免覆盖 Agent 跨路由保留的用户输入。 */
+  function jump_to_agent(): void {
+    const draft = agent.input.read_draft();
+    if (draft.text.trim() === "" && draft.images.length === 0) {
+      agent.input.write_draft({
+        text: `${t("agent_page.empty.suggestions.glossary_create")} ${format_agent_skill_reference(GLOSSARY_CREATE_SKILL_NAME)}`,
+        images: [],
+      });
+    } else {
+      push_toast("info", t("workbench_page.analysis_task.feedback.agent_draft_preserved"));
+    }
+
+    set_analysis_migration_dialog_open(false);
+    navigate_to_route("agent");
+  }
+
   return (
     <CommandBar
       className="workbench-page__task-command-bar"
@@ -141,9 +183,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               busy={props.analysis_workbench_task.analysis_task_menu_busy}
               model_selection={model_selection}
               active_task_action_kind={active_analysis_task_action_kind}
-              on_start_or_continue={
-                props.analysis_workbench_task.request_start_or_continue_analysis
-              }
+              on_start_or_continue={request_classic_analysis}
               on_request_reset={
                 props.analysis_workbench_task.request_analysis_task_action_confirmation
               }
@@ -181,6 +221,16 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               </div>
             );
           })}
+          {/* 继续经典任务使用主色确认位，跳转 AGENT 使用描边取消位。 */}
+          <AppAlertDialog
+            open={analysis_migration_dialog_open}
+            description={t("workbench_page.analysis_task.migration.description")}
+            confirmLabel={t("workbench_page.analysis_task.migration.continue")}
+            cancelLabel={t("workbench_page.analysis_task.migration.jump")}
+            onConfirm={continue_classic_analysis}
+            onCancel={jump_to_agent}
+            onClose={() => set_analysis_migration_dialog_open(false)}
+          />
         </>
       }
       hint={

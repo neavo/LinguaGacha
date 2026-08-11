@@ -64,6 +64,12 @@ export const en_us_workbench_page = {
     menu: {
       tooltip: "Extract terms from source text",
     },
+    migration: {
+      description:
+        "The classic Analysis task workflow will be removed soon …\nUse AGENT to generate the glossary automatically—faster and smarter …!",
+      jump: "Go to AGENT",
+      continue: "Continue Task",
+    },
     summary: {
       running: "Analyzing",
     },
@@ -92,6 +98,7 @@ export const en_us_workbench_page = {
       import_loading_toast: "Importing candidate terms and refreshing proofreading cache …",
       import_failed: "Failed to import candidate terms",
       import_success: "Imported {COUNT} candidate terms",
+      agent_draft_preserved: "The existing AGENT draft was preserved.",
     },
   },
   translation_task: {
