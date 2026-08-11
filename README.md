@@ -55,8 +55,7 @@
   - 将 `待翻译的文件` 拖到页面上创建项目
   - 在 `模型管理` 中设置要使用的模型
   - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `工作台` 中选择模型并执行 `分析` 提取术语表（可选）
-  - 在 `AGENT` 中选择模型，然后自动完成术语表的审校（可选）
+  - 在 `AGENT` 中选择模型，完成术语表的自动提取
   - 在 `工作台` 中选择模型并执行 `翻译` 完成翻译
   - Enjoy!
 
@@ -88,12 +87,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260809 v0.112.0
-  - 增强 `AGENT` 模式
-    - 优化上下文压缩流程
-    - 基于 CodeAct 的新工具系统
-    - 支持图片输入（需多模态模型）
-  - 调整与改进 [#728](https://github.com/neavo/LinguaGacha/issues/728) [#729](https://github.com/neavo/LinguaGacha/issues/729) [#730](https://github.com/neavo/LinguaGacha/issues/730) [731](https://github.com/neavo/LinguaGacha/issues/731) [#733](https://github.com/neavo/LinguaGacha/issues/733) [#734](https://github.com/neavo/LinguaGacha/issues/734) [736](https://github.com/neavo/LinguaGacha/issues/736)
+- 20260809 v0.113.0
+  - 全自动 `AGENT` 术语提取能力
+  - 调整与改进 [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`

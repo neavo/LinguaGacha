@@ -57,8 +57,7 @@
   - Drag the `files to translate` onto the page to create a project
   - Configure the model you want to use in `Model Management`
   - Configure essential information such as source and target languages in `Basic Settings`
-  - Select the model and run `Analysis` in `Workbench` to extract the glossary (optional)
-  - Select the model in `AGENT`, then automatically review the glossary (optional)
+  - Select a model in `AGENT` to automatically extract the glossary
   - Select the model and run `Translation` in `Workbench` to complete the translation
   - Enjoy!
 
@@ -89,12 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260809 v0.112.0
-  - Enhanced `AGENT` mode
-    - Optimized the context compaction workflow
-    - New CodeAct-based tool system
-    - Added image input support (requires a multimodal model)
-  - Adjustments and improvements [#728](https://github.com/neavo/LinguaGacha/issues/728) [#729](https://github.com/neavo/LinguaGacha/issues/729) [#730](https://github.com/neavo/LinguaGacha/issues/730) [731](https://github.com/neavo/LinguaGacha/issues/731) [#733](https://github.com/neavo/LinguaGacha/issues/733) [#734](https://github.com/neavo/LinguaGacha/issues/734) [736](https://github.com/neavo/LinguaGacha/issues/736)
+- 20260809 v0.113.0
+  - Fully automated glossary extraction with `AGENT`
+  - Adjustments and improvements [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`

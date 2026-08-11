@@ -56,8 +56,7 @@
   - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
   - `モデル管理` で使用するモデルを設定
   - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
-  - `ワークベンチ` でモデルを選択し、`分析` を実行して用語集を抽出（任意）
-  - `AGENT` でモデルを選択し、用語集のレビューを自動で完了（任意）
+  - `AGENT` でモデルを選択し、用語集を自動抽出
   - `ワークベンチ` でモデルを選択し、`翻訳` を実行して翻訳を完了
   - Enjoy!
 
@@ -88,12 +87,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260809 v0.112.0
-  - `AGENT` モードを強化
-    - コンテキスト圧縮フローを最適化
-    - CodeAct ベースの新しいツールシステム
-    - 画像入力に対応（マルチモーダルモデルが必要）
-  - 調整と改善 [#728](https://github.com/neavo/LinguaGacha/issues/728) [#729](https://github.com/neavo/LinguaGacha/issues/729) [#730](https://github.com/neavo/LinguaGacha/issues/730) [731](https://github.com/neavo/LinguaGacha/issues/731) [#733](https://github.com/neavo/LinguaGacha/issues/733) [#734](https://github.com/neavo/LinguaGacha/issues/734) [736](https://github.com/neavo/LinguaGacha/issues/736)
+- 20260809 v0.113.0
+  - `AGENT` による用語集の完全自動抽出機能
+  - 調整と改善 [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します
