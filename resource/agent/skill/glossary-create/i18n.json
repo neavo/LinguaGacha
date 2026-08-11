@@ -1,5 +1,5 @@
 {
-  "zh-CN": "基于 AI 智能从当前工程语料中自动提取术语并创建术语表",
-  "en-US": "Use AI to automatically extract terminology from the current project and create a glossary",
-  "de-DE": "Terminologie im aktuellen Projekt mithilfe von KI automatisch extrahieren und ein Glossar erstellen"
+  "zh-CN": "基于 AI 智能从当前工程主动发现术语，并协调相关既有规则形成一致术语表",
+  "en-US": "Use AI to discover terminology across the current project and reconcile related existing rules into a consistent glossary",
+  "de-DE": "Terminologie im aktuellen Projekt mithilfe von KI entdecken und betroffene bestehende Regeln zu einem konsistenten Glossar abstimmen"
 }
