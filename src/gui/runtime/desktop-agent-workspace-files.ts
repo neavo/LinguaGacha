@@ -51,6 +51,12 @@ type CommitRecord = {
   installed: boolean; // upper 是否已经安装到基线
 };
 
+/** 私有 protocol 的单层目录条目；大小只属于普通文件。 */
+type WorkspaceListEntry = {
+  type: "directory" | "file"; // 合并视图中的真实路径类型
+  size_bytes?: number; // 只有普通文件携带字节数
+};
+
 /** 只有显式协议校验错误可以把 message 返回给沙箱脚本。 */
 class WorkspaceProtocolError extends Error {}
 
@@ -76,6 +82,7 @@ export class DesktopAgentWorkspaceFiles {
   private readonly change_paths: ReadonlySet<string>; // open 时冻结的固定 change 文件白名单
   private readonly recipes: ReadonlyMap<string, string>; // open 时冻结的只读 recipe 路径
   private readonly items_path: string; // open 时冻结的完整 items 数据集路径
+  private readonly source_path: string; // Backend 在活动 UUID 旁维护的工程源文件纯文本投影
   private readonly upper_path: string; // 脚本本次写入形成的覆盖层
   private readonly backup_path: string; // 提交过程中暂存的原基线
   private readonly written_paths = new Set<string>(); // upper 中完成原子写入的文件
@@ -112,6 +119,7 @@ export class DesktopAgentWorkspaceFiles {
       throw new AgentWorkspaceInvalidError("Workspace items contract is invalid.");
     }
     this.items_path = normalize_workspace_path(items_path);
+    this.source_path = path.join(path.dirname(workspace_path), "sources");
     this.upper_path = path.join(transaction_path, "upper");
     this.backup_path = path.join(transaction_path, "backup");
   }
@@ -262,6 +270,13 @@ export class DesktopAgentWorkspaceFiles {
   /** 读取优先命中 upper，再应用删除标记，最后回落到只读基线。 */
   private async read_file(relative_path: string): Promise<Response> {
     const normalized = normalize_workspace_path(relative_path);
+    if (normalized.startsWith("sources/")) {
+      const source_relative_path = normalized.slice("sources/".length);
+      await assert_path_has_no_symlink(this.source_path, source_relative_path);
+      return await read_regular_file(
+        resolve_workspace_path(this.source_path, source_relative_path),
+      );
+    }
     const upper_file = await this.find_upper_path(normalized);
     if (upper_file !== null) return await read_regular_file(upper_file);
     if (this.is_tombstoned(normalized)) return response_text(404, "工作区文件不存在。");
@@ -330,18 +345,32 @@ export class DesktopAgentWorkspaceFiles {
   /** 目录列表合并基线与 upper，并排除 tombstone 和事务实现目录。 */
   private async list(relative_path: string): Promise<Response> {
     const normalized = normalize_workspace_path(relative_path, true);
-    const entries = new Map<string, "directory" | "file">();
-    if (!this.is_tombstoned(normalized)) {
+    const entries = new Map<string, WorkspaceListEntry>();
+    // null 表示普通事务视图，字符串表示同级 sources 内的相对目录。
+    const source_relative_path =
+      normalized === "sources"
+        ? ""
+        : normalized.startsWith("sources/")
+          ? normalized.slice("sources/".length)
+          : null;
+    if (source_relative_path !== null) {
+      await add_directory_entries(this.source_path, source_relative_path, entries, () => false);
+    } else if (!this.is_tombstoned(normalized)) {
       await add_directory_entries(this.workspace_path, normalized, entries, (child) =>
         this.is_tombstoned(child),
       );
+      if (normalized === "" && (await path_exists(this.source_path))) {
+        entries.set("sources", { type: "directory" });
+      }
     }
-    await add_directory_entries(this.upper_path, normalized, entries, () => false);
+    if (source_relative_path === null) {
+      await add_directory_entries(this.upper_path, normalized, entries, () => false);
+    }
     if (normalized === "") entries.delete(".transactions");
     return Response.json(
       [...entries.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([name, type]) => ({ name, type })),
+        .map(([name, entry]) => ({ name, ...entry })),
     );
   }
 
@@ -560,7 +589,7 @@ async function read_regular_file(file_path: string): Promise<Response> {
 async function add_directory_entries(
   root: string,
   relative_path: string,
-  target: Map<string, "directory" | "file">,
+  target: Map<string, WorkspaceListEntry>,
   excluded: (child: string) => boolean,
 ): Promise<void> {
   const directory = resolve_workspace_path(root, relative_path);
@@ -575,7 +604,14 @@ async function add_directory_entries(
   for (const entry of entries) {
     const child = relative_path === "" ? entry.name : `${relative_path}/${entry.name}`;
     if (excluded(child) || entry.isSymbolicLink()) continue;
-    target.set(entry.name, entry.isDirectory() ? "directory" : "file");
+    if (entry.isDirectory()) {
+      target.set(entry.name, { type: "directory" });
+      continue;
+    }
+    const stat = await fs.promises.lstat(path.join(directory, entry.name));
+    if (stat.isFile() && !stat.isSymbolicLink()) {
+      target.set(entry.name, { type: "file", size_bytes: stat.size });
+    }
   }
 }
 

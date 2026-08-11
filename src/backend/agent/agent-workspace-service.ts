@@ -33,6 +33,7 @@ import type {
   QualityRuleAnalysisCacheResult,
 } from "../cache/quality-rule-analysis-cache";
 import type { LogManager } from "../log/log-manager";
+import type { ProjectDatabase } from "../database/database-operations";
 import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
 import type { AgentWorkspaceApplyAck } from "../project/project-write-request";
 import type { ProjectSessionState } from "../project/project-session-state";
@@ -55,6 +56,10 @@ import {
   project_agent_workspace_quality_entry,
   project_agent_workspace_warning,
 } from "./agent-workspace-contract";
+import {
+  write_agent_workspace_sources,
+  type AgentWorkspaceSourceFile,
+} from "./agent-workspace-sources";
 
 /** Backend Runtime 调用 Electron 沙箱的唯一可取消端口。 */
 export type AgentWorkspaceRunPort = (
@@ -70,10 +75,19 @@ type ActiveAgentWorkspace = {
   languageKey: string; // 只包含解释工作区数据所需的语言
 };
 
+/** 当前工程文件世代共享的 sources 身份与 project_meta 映射。 */
+type AgentWorkspaceSourceSession = {
+  projectPath: string; // 关联的 loaded 工程身份
+  projectEpoch: number; // 隔离同路径重新加载后的旧投影
+  filesRevision: number; // 只在源资产集合变化时重新生成
+  files: AgentWorkspaceSourceFile[]; // project_meta 复用的不可变文件映射
+};
+
 /** 当前 Agent 会话唯一磁盘工作区；拥有完整快照、脚本协调和 apply 编排。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
   private active: ActiveAgentWorkspace | null = null;
+  private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private busy = false;
 
   /** 注入当前工程读侧、唯一写入口与 Electron 脚本端口。 */
@@ -88,6 +102,7 @@ export class AgentWorkspaceService {
       cache: CacheReadPort;
       qualityAnalysis: Pick<QualityRuleAnalysisCache, "read">;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
+      database: Pick<ProjectDatabase, "read_asset_content">;
       runtimeGate: {
         run_agent_project_write(
           operation: () => Promise<AgentWorkspaceApplyAck>,
@@ -110,6 +125,7 @@ export class AgentWorkspaceService {
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
   public async initialize(): Promise<void> {
     this.active = null;
+    this.source_session = null;
     await this.native_fs.remove_async(this.root_path, { recursive: true, force: true });
     await this.native_fs.make_dir_async(this.root_path);
   }
@@ -124,7 +140,7 @@ export class AgentWorkspaceService {
       const language = read_workspace_language(this.options.settings.read_setting());
       const language_key = JsonTool.stringifyStrict(language);
       const current_items = this.options.cache.items.readItems();
-      const files = this.options.cache.files.readFileEntries().map((entry) => ({
+      const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
         file_path: entry.rel_path,
         file_type: entry.file_type,
       }));
@@ -163,6 +179,12 @@ export class AgentWorkspaceService {
         currentLanguageKey: JsonTool.stringifyStrict(
           read_workspace_language(this.options.settings.read_setting()),
         ),
+      });
+      const files = await this.ensure_sources({
+        projectPath: project_path,
+        projectEpoch: start_snapshot.epoch,
+        filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
+        files: snapshot_files,
       });
 
       const project_meta: JsonRecord = {
@@ -358,9 +380,36 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 会话重置只销毁当前活动目录，不保留跨任务恢复状态。 */
-  public async reset(): Promise<void> {
+  /** 显式 Agent reset 只销毁当前快照；同一工程会话继续复用源文件投影。 */
+  public async reset_workspace(): Promise<void> {
     await this.discard_active();
+  }
+
+  /** 工程切换先销毁旧投影；非空路径表示为新 loaded 工程立即生成 sources。 */
+  public async reset_project(project_path: string | null): Promise<void> {
+    await this.discard_active();
+    this.source_session = null;
+    await this.remove_workspace_directory(path.join(this.root_path, "sources"));
+    if (project_path === null) return;
+    const snapshot = this.options.cache.snapshot();
+    try {
+      assert_snapshot_project(snapshot, project_path, "agent_workspace_load_project_changed");
+      await this.ensure_sources({
+        projectPath: project_path,
+        projectEpoch: snapshot.epoch,
+        filesRevision: read_json_integer(snapshot.sectionRevisions.files, 0),
+        files: this.options.cache.files.readFileEntries().map((entry) => ({
+          file_path: entry.rel_path,
+          file_type: entry.file_type,
+        })),
+      });
+    } catch (error) {
+      // sources 是 Agent 附属投影，生成失败不能回滚已经成功的工程加载；workspace_load 会重试。
+      this.options.logManager.warning("Agent 工程源文件投影生成失败。", {
+        source: "agent_workspace",
+        error,
+      });
+    }
   }
 
   /** 任一工程身份、七 section revision 或语言变化都会废弃旧快照。 */
@@ -389,6 +438,42 @@ export class AgentWorkspaceService {
       throw workspace_validation_error("agent_workspace_missing", "workspace_load");
     }
     return this.active;
+  }
+
+  /** 每个工程文件快照只展开一次；普通 workspace_load 复用同一个 sources 目录。 */
+  private async ensure_sources(args: {
+    projectPath: string;
+    projectEpoch: number;
+    filesRevision: number;
+    files: ReadonlyArray<{ file_path: string; file_type: string }>;
+  }): Promise<AgentWorkspaceSourceFile[]> {
+    const current = this.source_session;
+    if (
+      current?.projectPath === args.projectPath &&
+      current.projectEpoch === args.projectEpoch &&
+      current.filesRevision === args.filesRevision
+    ) {
+      return current.files.map((file) => ({ ...file }));
+    }
+    const source_path = path.join(this.root_path, "sources");
+    const staging_path = path.join(this.root_path, `.sources-${randomUUID()}`); // 完整生成后才替换旧树
+    let files: AgentWorkspaceSourceFile[];
+    try {
+      files = await write_agent_workspace_sources({
+        nativeFs: this.native_fs,
+        sourceRoot: staging_path,
+        files: args.files,
+        readAsset: (file_path) =>
+          this.options.database.read_asset_content(args.projectPath, file_path),
+      });
+      await this.native_fs.remove_async(source_path, { recursive: true, force: true });
+      this.native_fs.rename(staging_path, source_path);
+    } catch (error) {
+      await this.native_fs.remove_async(staging_path, { recursive: true, force: true });
+      throw error;
+    }
+    this.source_session = { ...args, files: files.map((file) => ({ ...file })) };
+    return files;
   }
 
   /** 先清空内存身份；临时目录清理失败不改变已经完成的项目事实或隔离。 */
@@ -425,7 +510,12 @@ export class AgentWorkspaceService {
 /** AgentService 只依赖工作区生命周期，不接触领域协作者。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
-  "initialize" | "load_workspace" | "run_script" | "apply_workspace" | "reset"
+  | "initialize"
+  | "load_workspace"
+  | "run_script"
+  | "apply_workspace"
+  | "reset_workspace"
+  | "reset_project"
 >;
 
 /** apply 只有至少一个领域存在真实变化时才进入项目写入口。 */

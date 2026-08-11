@@ -144,6 +144,16 @@ const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
       fields: {
         file_path: { type: "string" },
         file_type: { type: "string" },
+        source_text_path: {
+          type: "string",
+          optional: true,
+          purpose: "普通文本源文件的只读路径",
+        },
+        source_text_root: {
+          type: "string",
+          optional: true,
+          purpose: "EPUB 或 XLSX 包内文本树的只读根目录",
+        },
       },
     },
   },
@@ -441,7 +451,7 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
       },
       list: {
         signature:
-          "(path?: string) => Promise<Array<{ name: string, type: 'file' | 'directory' }>>",
+          "(path?: string) => Promise<Array<{ name: string, type: 'file' | 'directory', size_bytes?: number }>>",
       },
       remove: { signature: "(path: string) => Promise<void>" },
       runRecipe: {

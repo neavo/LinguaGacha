@@ -64,6 +64,18 @@ describe("AgentWorkspaceService", () => {
     });
 
     const active_path = fixture.active_path();
+    expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta))).toMatchObject({
+      files: [
+        {
+          file_path: "script.txt",
+          file_type: "TXT",
+          source_text_path: "sources/script.txt",
+        },
+      ],
+    });
+    expect(
+      fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
+    ).toBe("源文件正文");
     expect(read_json(path.join(active_path, "contract.json"))).toEqual(AGENT_WORKSPACE_CONTRACT);
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toHaveLength(2);
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.warnings))).toEqual([
@@ -99,7 +111,50 @@ describe("AgentWorkspaceService", () => {
       ].sort(),
     );
     expect(await fixture.service.load_workspace()).toMatchObject({ status: "loaded" });
-    expect(fs.readdirSync(fixture.workspace_root)).toHaveLength(1);
+  });
+
+  it("sources 只在工程或 files revision 变化时重新生成", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+
+    await fixture.service.reset_project("test.lg");
+    expect(
+      fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
+    ).toBe("源文件正文");
+    expect(fixture.read_asset_content).toHaveBeenCalledOnce();
+
+    await fixture.service.load_workspace();
+    await fixture.service.reset_workspace();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
+    await fixture.service.load_workspace();
+    expect(fixture.read_asset_content).toHaveBeenCalledOnce();
+
+    await fixture.service.reset_project("test.lg");
+    expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
+    await fixture.service.load_workspace();
+    expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
+
+    fixture.snapshot.sectionRevisions.files = 2;
+    await fixture.service.load_workspace();
+    expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
+
+    await fixture.service.reset_project(null);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+  });
+
+  it("sources 生成失败不阻断工程加载，并由 workspace_load 重试", async () => {
+    const fixture = create_fixture(temp_dir);
+    fixture.read_asset_content.mockImplementation(() => {
+      throw new Error("asset read failed");
+    });
+    await fixture.service.initialize();
+
+    await expect(fixture.service.reset_project("test.lg")).resolves.toBeUndefined();
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
+
+    fixture.read_asset_content.mockReturnValue(Buffer.from("源文件正文", "utf-8"));
+    await expect(fixture.service.load_workspace()).resolves.toMatchObject({ status: "loaded" });
+    expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
   });
 
   it("新 load 失败时继续保留此前成功工作区", async () => {
@@ -160,7 +215,7 @@ describe("AgentWorkspaceService", () => {
 
     await expect(load).rejects.toThrow("contract write failed");
     expect(cleanup_started_while_write_pending).toBe(false);
-    expect(fs.readdirSync(fixture.workspace_root)).toEqual([]);
+    expect(fs.readdirSync(fixture.workspace_root)).toEqual(["sources"]);
   });
 
   it("脚本失败保留工作区，宿主未知失败或明确失效才销毁", async () => {
@@ -446,6 +501,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   );
   const warning_item = items[0] as JsonRecord;
   const setting = { ...DEFAULT_SETTING };
+  const read_asset_content = vi.fn(() => Buffer.from("源文件正文", "utf-8"));
   const service = new AgentWorkspaceService({
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
@@ -483,6 +539,9 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
         },
       }),
     },
+    database: {
+      read_asset_content,
+    },
     runtimeGate: { run_agent_project_write: runtime_gate },
     writeStore: { apply_agent_workspace_changes: write_store },
     logManager: { warning: vi.fn() },
@@ -498,9 +557,10 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     quality_analysis,
     run,
     write_store,
+    read_asset_content,
     active_path: () => {
       if (!fs.existsSync(workspace_root)) return "";
-      const names = fs.readdirSync(workspace_root);
+      const names = fs.readdirSync(workspace_root).filter((name) => name !== "sources");
       return names.length === 1 ? path.join(workspace_root, names[0] as string) : "";
     },
   };

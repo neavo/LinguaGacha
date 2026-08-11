@@ -1159,10 +1159,11 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
   });
 
-  it("仅在 Electron 工作区端口可用时初始化并注册三个工作区工具", async () => {
+  it("Electron 工作区端口随三工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
-      reset: vi.fn(async () => undefined),
+      reset_workspace: vi.fn(async () => undefined),
+      reset_project: vi.fn(async () => undefined),
       load_workspace: vi.fn(),
       run_script: vi.fn(),
       apply_workspace: vi.fn(),
@@ -1176,8 +1177,10 @@ describe("AgentService", () => {
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
       ["workspace_load", "workspace_script", "workspace_apply", "read_skill"].sort(),
     );
+    await service.reset();
+    expect(workspace.reset_workspace).toHaveBeenCalledOnce();
     await session_state.mark_loaded("next.lg");
-    expect(workspace.reset).toHaveBeenCalled();
+    expect(workspace.reset_project).toHaveBeenCalledWith("next.lg");
   });
 
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
@@ -1922,7 +1925,8 @@ describe("AgentService", () => {
         : (workspace ??
           ({
             initialize: vi.fn(async () => undefined),
-            reset: vi.fn(async () => undefined),
+            reset_workspace: vi.fn(async () => undefined),
+            reset_project: vi.fn(async () => undefined),
             load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
             run_script: vi.fn(async () => {
               await wait_for_held_tool();
