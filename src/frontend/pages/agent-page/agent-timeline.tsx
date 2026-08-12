@@ -300,11 +300,7 @@ function render_assistant_entry(
             />
           );
         }
-        return (
-          <div className="agent-message__markdown" key={key}>
-            <AgentMarkdown text={part.text} streaming={entry.status === "running"} />
-          </div>
-        );
+        return <AgentMarkdown key={key} text={part.text} streaming={entry.status === "running"} />;
       })}
     </article>
   );
