@@ -24,29 +24,28 @@ import { RuntimeOperationGate } from "../runtime-operation-gate";
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
-  const snapshots = [
-    {
-      name: "glossary-audit",
-      displayDescriptions: {
-        "zh-CN": "审校术语",
-        "en-US": "Review glossary",
-        "de-DE": "Glossar prüfen",
-      },
+  const corpus_search_snapshot = {
+    name: "corpus-search",
+    displayDescriptions: {
+      "zh-CN": "检索语料",
+      "en-US": "Search corpus",
+      "de-DE": "Korpus durchsuchen",
     },
-    {
-      name: "corpus-search",
-      displayDescriptions: {
-        "zh-CN": "检索语料",
-        "en-US": "Search corpus",
-        "de-DE": "Korpus durchsuchen",
-      },
+  };
+  const glossary_audit_snapshot = {
+    name: "glossary-audit",
+    displayDescriptions: {
+      "zh-CN": "审校术语",
+      "en-US": "Review glossary",
+      "de-DE": "Glossar prüfen",
     },
-  ];
+  };
+  const snapshots = [corpus_search_snapshot, glossary_audit_snapshot];
   return {
     snapshots,
     loader: vi.fn(async () => [
       {
-        ...snapshots[0],
+        ...glossary_audit_snapshot,
         visible: true,
         description: "审校术语",
         content: "执行术语审校。",
@@ -61,8 +60,9 @@ const skill_test_fixture = vi.hoisted(() => {
         ],
       },
       {
-        ...snapshots[1],
+        ...corpus_search_snapshot,
         visible: true,
+        order: Number.MAX_SAFE_INTEGER,
         description: "检索语料",
         content: "执行语料检索。",
         filePath: "E:/skills/corpus-search/SKILL.md",
@@ -72,6 +72,7 @@ const skill_test_fixture = vi.hoisted(() => {
       {
         name: "internal-guidance",
         visible: false,
+        order: 0,
         displayDescriptions: {
           "zh-CN": "内部指导",
           "en-US": "Internal guidance",
@@ -480,7 +481,7 @@ describe("AgentService", () => {
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
-  it("快照下发启动期 skill 清单，并在变更状态前拒绝旧协议、非字符串和空消息", async () => {
+  it("快照按 UI 顺序下发 skill 清单，并在变更状态前拒绝非法消息", async () => {
     const fixture = await create_service();
 
     expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
@@ -2039,6 +2040,9 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain("<location>E:/skills/glossary-audit/SKILL.md</location>");
   expect(prompt).toContain("<name>internal-guidance</name>");
   expect(prompt).toContain("<location>E:/skills/internal-guidance/SKILL.md</location>");
+  expect((prompt ?? "").indexOf("<name>glossary-audit</name>")).toBeLessThan(
+    (prompt ?? "").indexOf("<name>internal-guidance</name>"),
+  );
   expect(prompt).not.toContain("<name>corpus-search</name>");
   expect(prompt).not.toContain("<visible>");
   expect(prompt).not.toContain("执行术语审校。");

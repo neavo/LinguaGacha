@@ -22,8 +22,8 @@ export const de_de_app = {
     },
     thinking_level: {
       label: "Denkstufe",
-      off: "OFF",
-      low: "LOW",
+      off: "Off",
+      low: "Low",
       medium: "Medium",
       high: "High",
       xhigh: "Extra High",

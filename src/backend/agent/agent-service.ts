@@ -194,13 +194,19 @@ export class AgentService {
     );
   }
 
-  /** 返回仅含不可变投影的公开快照，避免 API 调用方持有会话内部引用。 */
+  /** 返回仅含不可变投影的公开快照；UI 排序不改写模型侧持有的原始 skill 顺序。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
       state: this.state,
       entries: structuredClone(this.entries),
       skills: (this.resources?.skills ?? [])
         .filter(({ visible }) => visible)
+        .sort((left, right) => {
+          // 未配置 order 的能力排在显式顺序之后；同类项依赖稳定排序保留加载顺序。
+          if (left.order === undefined) return right.order === undefined ? 0 : 1;
+          if (right.order === undefined) return -1;
+          return left.order - right.order;
+        })
         .map(({ name, displayDescriptions }) => ({
           name,
           displayDescriptions: { ...displayDescriptions },

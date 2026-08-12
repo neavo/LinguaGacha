@@ -22,7 +22,7 @@ import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 
-const I18N_FILE_NAME = "i18n.json";
+const UI_FILE_NAME = "ui.json";
 const REFERENCES_DIR_NAME = "references";
 
 export type AgentSkillReference = {
@@ -33,6 +33,7 @@ export type AgentSkillReference = {
 
 type AgentSkillUi = {
   visible: boolean; // 是否进入公开能力列表，不改变模型调用或读取权限
+  order?: number; // 缺失时排在显式顺序之后，同类保持加载顺序
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
@@ -129,7 +130,7 @@ function escape_agent_skill_xml(value: string): string {
 }
 
 /**
- * 同目录 i18n.json 定义 UI 可见性与描述；缺失或整份无效时统一回退为可见及模型 description。
+ * 同目录 ui.json 定义 UI 可见性、顺序与描述；缺失或整份无效时统一回退默认 UI 配置。
  */
 function load_skill_ui(
   skill: Skill,
@@ -142,27 +143,35 @@ function load_skill_ui(
       LOCALES.map((locale) => [locale, skill.description]),
     ) as AgentSkillDisplayDescriptions,
   };
-  const file_path = path.join(path.dirname(skill.filePath), I18N_FILE_NAME);
+  const file_path = path.join(path.dirname(skill.filePath), UI_FILE_NAME);
   let parsed: unknown;
   try {
     parsed = JSON.parse(native_fs.read_text_file(file_path)) as unknown;
   } catch (error) {
     if (!is_not_found_error(error)) {
-      log_skill_i18n_diagnostic(log_manager, skill.name, file_path, error);
+      log_skill_ui_diagnostic(log_manager, skill.name, file_path, error);
     }
     return fallback;
   }
 
   if (!is_json_record(parsed)) {
-    log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    log_skill_ui_diagnostic(log_manager, skill.name, file_path, "格式无效");
     return fallback;
   }
-  const has_visible = Object.hasOwn(parsed, "visible");
   const visible = parsed["visible"];
-  const description_entries = Object.entries(parsed).filter(([key]) => key !== "visible");
+  const order = parsed["order"];
+  const descriptions = parsed["displayDescriptions"];
+  const description_record = is_json_record(descriptions) ? descriptions : null;
+  const description_entries = description_record === null ? [] : Object.entries(description_record);
   if (
-    (!has_visible && description_entries.length === 0) ||
-    (has_visible && typeof visible !== "boolean") ||
+    Object.keys(parsed).length === 0 ||
+    Object.keys(parsed).some(
+      (key) => key !== "visible" && key !== "order" && key !== "displayDescriptions",
+    ) ||
+    (visible !== undefined && typeof visible !== "boolean") ||
+    (order !== undefined &&
+      (typeof order !== "number" || !Number.isSafeInteger(order) || order < 0)) ||
+    (descriptions !== undefined && description_record === null) ||
     description_entries.some(
       ([locale, description]) =>
         !LOCALES.some((supported_locale) => supported_locale === locale) ||
@@ -170,16 +179,20 @@ function load_skill_ui(
         description.trim() === "",
     )
   ) {
-    log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    log_skill_ui_diagnostic(log_manager, skill.name, file_path, "格式无效");
     return fallback;
   }
 
   const display_descriptions = { ...fallback.displayDescriptions };
   for (const locale of LOCALES) {
-    const description = parsed[locale];
+    const description = description_record?.[locale];
     if (typeof description === "string") display_descriptions[locale] = description.trim();
   }
-  return { visible: visible !== false, displayDescriptions: display_descriptions };
+  return {
+    visible: visible !== false,
+    ...(typeof order === "number" ? { order } : {}),
+    displayDescriptions: display_descriptions,
+  };
 }
 
 /**
@@ -361,8 +374,8 @@ function log_skill_diagnostic(log_manager: AgentSkillLog, diagnostic: SkillDiagn
   });
 }
 
-/** skill UI 翻译失败只降级当前 skill，并保留完整诊断上下文。 */
-function log_skill_i18n_diagnostic(
+/** skill UI 配置失败只降级当前 skill，并保留完整诊断上下文。 */
+function log_skill_ui_diagnostic(
   log_manager: AgentSkillLog,
   skill_name: string,
   file_path: string,

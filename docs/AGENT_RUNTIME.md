@@ -27,7 +27,7 @@
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入并把规范 WebP 直接交给当前供应商；OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败与重试语义。
 - 模型可见上下文超过 `context_window - 32K` 时，自然结束由 `AgentSession` 自动压缩，完整工具批次后由 `AgentService` 在包含工具结果的历史上补足检查。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；压缩成功后 token 仪表直接采用 SDK 对新模型历史的估算，失败保留原用量。
 - 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
-- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。模型能力清单与显式 skill 注入块由产品格式化，不携带 SDK 的第二套路由文案；`SKILL.md` 描述同时作为模型描述和 `i18n.json` UI 描述缺失时的回退。`visible: false` 只排除公开 snapshot，仍允许模型自动选择和其它 skill 按名称读取；`disableModelInvocation` 只排除系统能力清单，二者都不改变启动期文件白名单。已注入 skill 只禁止重复读取自身，正文声明的必读知识 skill 仍从能力清单定位当前有效定义并读取一次；知识依赖不构成第二套工作流、任务对象或范围。已加载技能按首次出现顺序确定性注入，重复项去重，未知 marker 与裸 `@name` 按普通文本处理。`read_skill` 只按规范化绝对路径读取启动期形成的 `SKILL.md` 与 references 白名单，不扫描会话历史建立第二套授权，UI 配置不进入模型上下文。
+- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。模型能力清单与显式 skill 注入块由产品格式化，不携带 SDK 的第二套路由文案；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退，`ui.json` 只配置公开列表的可见性、描述与顺序，不改变模型选择、工具注册、skill 读取或启动期白名单。`disableModelInvocation` 只排除系统能力清单。已注入 skill 只禁止重复读取自身，正文声明的必读知识 skill 仍从能力清单定位当前有效定义并读取一次；知识依赖不构成第二套工作流、任务对象或范围。模型能力按加载时首次出现顺序确定性注入，重复项去重，未知 marker 与裸 `@name` 按普通文本处理。`read_skill` 只按规范化绝对路径读取启动期形成的 `SKILL.md` 与 references 白名单，不扫描会话历史建立第二套授权，UI 配置不进入模型上下文。
 
 ## 4. 产品工具与宿主能力
 
@@ -44,7 +44,7 @@
 
 ## 5. 前端消费
 
-- Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
+- 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
 - `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、完整消息草稿与 renderer 全局纯文本输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。草稿图片不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线与模型历史中的图片随内存会话在 reset、工程切换或 dispose 时清理。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / 失败继续 / stop / reset 与压缩重试的受理失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。只有合法 message ack 会把非空文本更新到输入历史并原子清空完整草稿；失败继续不改写输入历史或草稿。
