@@ -152,6 +152,8 @@ describe("OpenAI 请求规则", () => {
   });
 
   it.each([
+    ["OpenAI", "vendor/GROK-preview", "XHIGH", { reasoning_effort: "xhigh" }],
+    ["OpenAIResponses", "vendor/GROK-preview", "XHIGH", { reasoning: { effort: "xhigh" } }],
     ["OpenAI", "glm-5.1", "MAX", { thinking: { type: "enabled" } }],
     ["OpenAI", "deepseek-v4-flash", "OFF", { thinking: { type: "disabled" } }],
     [

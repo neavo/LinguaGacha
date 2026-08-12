@@ -92,7 +92,7 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     api_format: "OpenAI",
     model_pattern: /grok/iu,
     payload_kind: "openai_effort",
-    level_map: define_level_map(["low", "medium", "high"]),
+    level_map: define_level_map(["low", "medium", "high", "xhigh"]),
   },
   // 豆包 Seed：https://docs.volcengine.com/docs/82379/1449737?lang=zh#fc5eac89
   {
@@ -139,7 +139,7 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     api_format: "OpenAIResponses",
     model_pattern: /grok/iu,
     payload_kind: "responses_reasoning",
-    level_map: define_level_map(["low", "medium", "high"]),
+    level_map: define_level_map(["low", "medium", "high", "xhigh"]),
   },
   // 豆包 Seed：https://docs.volcengine.com/docs/82379/1449737?lang=zh#fc5eac89
   {
