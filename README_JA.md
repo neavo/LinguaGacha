@@ -87,9 +87,10 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260809 v0.113.0
-  - `AGENT` による用語集の完全自動抽出機能
-  - 調整と改善 [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
+- 20260813 v0.114.0
+  - `AGENT` - `ロールプレイ` 機能を追加 [#744](https://github.com/neavo/LinguaGacha/issues/744)
+  - `AGENT` - `用語集作成` 機能を大幅に強化 [#745](https://github.com/neavo/LinguaGacha/issues/745)
+  - 調整と改善 [#746](https://github.com/neavo/LinguaGacha/issues/746)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します

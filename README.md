@@ -87,9 +87,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260809 v0.113.0
-  - 全自动 `AGENT` 术语提取能力
-  - 调整与改进 [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
+- 20260813 v0.114.0
+  - `AGENT` - 新增 `角色扮演` 能力 [#744](https://github.com/neavo/LinguaGacha/issues/744)
+  - `AGENT` - 显著强化 `术语表创建` 能力 [#745](https://github.com/neavo/LinguaGacha/issues/745)
+  - 调整与改进 [#746](https://github.com/neavo/LinguaGacha/issues/746)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`

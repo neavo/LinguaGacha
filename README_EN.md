@@ -88,9 +88,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260809 v0.113.0
-  - Fully automated glossary extraction with `AGENT`
-  - Adjustments and improvements [#738](https://github.com/neavo/LinguaGacha/issues/738) [#741](https://github.com/neavo/LinguaGacha/issues/741)
+- 20260813 v0.114.0
+  - `AGENT` - Added `Role-Playing` capability [#744](https://github.com/neavo/LinguaGacha/issues/744)
+  - `AGENT` - Significantly enhanced `Glossary Creation` capability [#745](https://github.com/neavo/LinguaGacha/issues/745)
+  - Adjustments and improvements [#746](https://github.com/neavo/LinguaGacha/issues/746)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
