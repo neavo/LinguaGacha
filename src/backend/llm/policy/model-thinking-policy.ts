@@ -113,16 +113,15 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     api_format: "OpenAI",
     model_pattern: /deepseek-v4/iu,
     payload_kind: "openai_thinking_effort",
-    level_map: define_level_map(["off", "high", "max"], { off: "disabled" }),
+    level_map: define_level_map(["off", "low", "high", "max"], { off: "disabled" }),
   },
   // 兼容模型仅使用各供应商共同支持的思考开关：
   // GLM：https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode
   // Kimi：https://platform.kimi.com/docs/guide/use-thinking-models
   // MiMo：https://mimo.mi.com/docs/zh-CN/api/chat/responses
-  // DeepSeek：https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
   {
     api_format: "OpenAI",
-    model_pattern: /glm|kimi|mimo|deepseek/iu,
+    model_pattern: /glm|kimi|mimo/iu,
     payload_kind: "openai_thinking_toggle",
     level_map: define_level_map(["off", "low"], { off: "disabled", low: "enabled" }),
   },
@@ -154,7 +153,7 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     api_format: "OpenAIResponses",
     model_pattern: /deepseek-v4/iu,
     payload_kind: "responses_reasoning",
-    level_map: define_level_map(["off", "high", "max"], { off: "none" }),
+    level_map: define_level_map(["off", "low", "high", "max"], { off: "none" }),
   },
   // https://mimo.mi.com/docs/zh-CN/api/chat/responses
   {

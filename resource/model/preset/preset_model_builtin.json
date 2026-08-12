@@ -93,7 +93,7 @@
     "id": "preset-deepseek",
     "type": "PRESET",
     "name": "DeepSeek",
-    "api_format": "OpenAI",
+    "api_format": "OpenAIResponses",
     "api_url": "https://api.deepseek.com",
     "api_key": "no_key_required",
     "model_id": "deepseek-v4-flash",

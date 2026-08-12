@@ -157,9 +157,16 @@ describe("OpenAI 请求规则", () => {
     [
       "OpenAI",
       "deepseek-v4-flash",
+      "MEDIUM",
+      { thinking: { type: "enabled" }, reasoning_effort: "low" },
+    ],
+    [
+      "OpenAI",
+      "deepseek-v4-flash",
       "MAX",
       { thinking: { type: "enabled" }, reasoning_effort: "max" },
     ],
+    ["OpenAIResponses", "deepseek-v4-pro", "MEDIUM", { reasoning: { effort: "low" } }],
     ["OpenAIResponses", "deepseek-v4-pro", "MAX", { reasoning: { effort: "max" } }],
   ] as const)("%s/%s 为 %s 生成对应协议字段", (api_format, model_id, level, expected) => {
     expect(build_openai_thinking_payload(api_format, model_id, level)).toEqual(expected);

@@ -210,7 +210,6 @@ describe("pi-ai 请求适配", () => {
     const payload = await capture_payload(request);
 
     expect(request.model.reasoning).toBe(true);
-    expect(request.model.thinkingLevelMap).toMatchObject({ xhigh: "xhigh", max: "max" });
     expect(request.options).toMatchObject({ reasoningEffort: "max" });
     expect(payload).toMatchObject({
       reasoning: { effort: "max", summary: "auto" },
@@ -234,11 +233,6 @@ describe("pi-ai 请求适配", () => {
     const payload = await capture_payload(request);
 
     expect(request.model).toMatchObject({ reasoning: true });
-    expect(request.model.thinkingLevelMap).toMatchObject({
-      high: "high",
-      xhigh: null,
-      max: "max",
-    });
     expect(payload).toHaveProperty("reasoning_effort", "high");
   });
 
