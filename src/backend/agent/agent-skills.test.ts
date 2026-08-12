@@ -154,13 +154,19 @@ describe("Agent skill 加载", () => {
       path.join(builtin_dir, "SKILL.md"),
       "---\nname: shared\ndescription: 内置能力\n---\n\n内置正文。",
     );
-    write_skill(path.join(builtin_dir, "i18n.json"), '{"en-US":"Built-in skill"}');
+    write_skill(
+      path.join(builtin_dir, "ui.json"),
+      '{"order":100,"displayDescriptions":{"en-US":"Built-in skill"}}',
+    );
     write_skill(path.join(builtin_dir, "references", "guide.md"), "# 内置参考");
     write_skill(
       path.join(user_dir, "SKILL.md"),
       "---\nname: shared\ndescription: 用户能力\n---\n\n用户正文。",
     );
-    write_skill(path.join(user_dir, "i18n.json"), '{"en-US":"User skill"}');
+    write_skill(
+      path.join(user_dir, "ui.json"),
+      '{"order":200,"displayDescriptions":{"en-US":"User skill"}}',
+    );
     write_skill(path.join(user_dir, "references", "guide.md"), "# 用户参考");
 
     await expect(load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() })).resolves.toEqual([
@@ -168,6 +174,7 @@ describe("Agent skill 加载", () => {
         name: "shared",
         description: "用户能力",
         visible: true,
+        order: 200,
         displayDescriptions: {
           "zh-CN": "用户能力",
           "en-US": "User skill",
@@ -189,20 +196,24 @@ describe("Agent skill 加载", () => {
 
   it.each([
     ["坏 JSON", "{"],
-    ["非法语言", '{"ja-JP":"日本語"}'],
+    ["非法语言", '{"displayDescriptions":{"ja-JP":"日本語"}}'],
     ["非法可见性", '{"visible":"false"}'],
-  ])("%s 的 i18n.json 整份回退并记录诊断", async (_case_name, i18n) => {
+    ["非法顺序类型", '{"order":"100"}'],
+    ["负数顺序", '{"order":-1}'],
+    ["小数顺序", '{"order":1.5}'],
+    ["未知字段", '{"enabled":true}'],
+  ])("%s 的 ui.json 整份回退并记录诊断", async (_case_name, ui) => {
     using temp_root = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-agent-skills-i18n-"),
+      path.join(os.tmpdir(), "linguagacha-agent-skills-ui-"),
     );
     const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
-    const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "invalid-i18n");
+    const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "invalid-ui");
     write_skill(
       path.join(skill_dir, "SKILL.md"),
-      "---\nname: invalid-i18n\ndescription: 默认描述\n---\n\n执行任务。",
+      "---\nname: invalid-ui\ndescription: 默认描述\n---\n\n执行任务。",
     );
-    write_skill(path.join(skill_dir, "i18n.json"), i18n);
+    write_skill(path.join(skill_dir, "ui.json"), ui);
     const warning = vi.fn();
 
     const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
@@ -220,15 +231,15 @@ describe("Agent skill 加载", () => {
       expect.objectContaining({
         source: "agent",
         context: expect.objectContaining({
-          skill: "invalid-i18n",
-          path: expect.stringMatching(/i18n\.json$/u),
+          skill: "invalid-ui",
+          path: expect.stringMatching(/ui\.json$/u),
           error: expect.any(String),
         }),
       }),
     );
   });
 
-  it("仅含 visible=false 的 i18n.json 隐藏 UI 能力但保留完整 skill", async () => {
+  it("仅含 visible=false 的 ui.json 隐藏 UI 能力但保留完整 skill", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-hidden-"),
     );
@@ -238,7 +249,7 @@ describe("Agent skill 加载", () => {
       path.join(skill_dir, "SKILL.md"),
       "---\nname: hidden\ndescription: 内部能力\n---\n\n执行内部任务。",
     );
-    write_skill(path.join(skill_dir, "i18n.json"), '{"visible":false}');
+    write_skill(path.join(skill_dir, "ui.json"), '{"visible":false}');
     const warning = vi.fn();
 
     const skills = await load_agent_skills(paths, { warning, error: vi.fn() });

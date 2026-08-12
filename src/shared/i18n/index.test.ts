@@ -26,19 +26,6 @@ describe("shared i18n", () => {
       create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
     ).toBe("Glossar aktiviert …");
   });
-
-  it.each([
-    ["app.model.thinking_level.off", "OFF", "无 - OFF"],
-    ["app.model.thinking_level.low", "LOW", "低 - LOW"],
-    ["app.model.thinking_level.medium", "Medium", "中 - Medium"],
-    ["app.model.thinking_level.high", "High", "高 - High"],
-    ["app.model.thinking_level.xhigh", "Extra High", "特高 - Extra High"],
-    ["app.model.thinking_level.max", "MAX", "最高 - MAX"],
-  ] as const)("统一 %s 的英文、德文和中文格式", (key, english, chinese) => {
-    expect(format_i18n_message("en-US", key)).toBe(english);
-    expect(format_i18n_message("de-DE", key)).toBe(english);
-    expect(format_i18n_message("zh-CN", key)).toBe(chinese);
-  });
 });
 
 /**

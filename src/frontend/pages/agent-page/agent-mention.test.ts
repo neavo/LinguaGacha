@@ -39,6 +39,9 @@ describe("Agent mention 菜单候选", () => {
     const filtered = create_candidates("角色");
 
     expect(initial.skills).toHaveLength(skills.length);
+    expect(initial.skills.map((candidate) => candidate.title)).toEqual(
+      skills.map((skill) => skill.name),
+    );
     expect(initial.terms.length).toBeGreaterThan(0);
     expect(initial.terms.length).toBeLessThan(terms.length);
     expect(initial.terms.map((candidate) => candidate.title)).toEqual(
