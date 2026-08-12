@@ -12,7 +12,6 @@ export const en_us_agent_page = {
     suggestions: {
       capabilities: "Introduce your capabilities",
       glossary_create: "Please create a glossary for my project",
-      glossary_review: "Please review my terminology",
       translation_review: "Please review my translations",
     },
   },

@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { ArrowDown, BookCheck, BookPlus, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
+import { ArrowDown, BookPlus, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import { format_agent_skill_reference, type AgentMessageInput } from "@shared/agent";
@@ -29,11 +29,6 @@ const FEATURED_AGENT_SKILLS = [
     name: "glossary-create",
     suggestionKey: "agent_page.empty.suggestions.glossary_create",
     Icon: BookPlus,
-  },
-  {
-    name: "glossary-review",
-    suggestionKey: "agent_page.empty.suggestions.glossary_review",
-    Icon: BookCheck,
   },
   {
     name: "translation-review",

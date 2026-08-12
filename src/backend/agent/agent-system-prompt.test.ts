@@ -20,9 +20,10 @@ afterEach(() => {
 describe("Agent system prompt 加载与资源契约", () => {
   it("从内置资源读取并裁剪首尾空白", () => {
     const paths = create_paths();
-    write_system_prompt(paths, "\n  基础系统指令。\n第二行。  \n");
+    const lines = ["prompt-line-1", "prompt-line-2"];
+    write_system_prompt(paths, `\n  ${lines.join("\n")}  \n`);
 
-    expect(load_agent_system_prompt(paths, new NativeFs())).toBe("基础系统指令。\n第二行。");
+    expect(load_agent_system_prompt(paths, new NativeFs())).toBe(lines.join("\n"));
   });
 
   it("资源缺失时保留原始读取异常", () => {

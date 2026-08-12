@@ -10,7 +10,6 @@ export const zh_cn_agent_page = {
     suggestions: {
       capabilities: "介绍你的能力",
       glossary_create: "创建术语表",
-      glossary_review: "请帮我审校术语",
       translation_review: "请帮我审校译文",
     },
   },

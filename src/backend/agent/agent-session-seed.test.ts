@@ -26,20 +26,18 @@ describe("Agent 会话种子加载", () => {
 
   it("读取任意顺序的消息并裁剪文本", () => {
     const paths = create_paths();
-    write_seed(
-      paths,
-      JSON.stringify([
-        { role: "assistant", content: " 第一条消息。\n" },
-        { role: "assistant", content: "\t " },
-        { role: "user", content: "" },
-      ]),
-    );
-
-    expect(load_agent_session_seed(paths, new NativeFs())).toEqual([
-      { role: "assistant", content: "第一条消息。" },
-      { role: "assistant", content: "" },
+    const messages = [
+      { role: "assistant", content: " seed-message-1\n" },
+      { role: "assistant", content: "\t " },
       { role: "user", content: "" },
-    ]);
+    ];
+    write_seed(paths, JSON.stringify(messages));
+
+    const loaded = load_agent_session_seed(paths, new NativeFs());
+    expect(loaded.map(({ role }) => role)).toEqual(messages.map(({ role }) => role));
+    expect(loaded.map(({ content }) => content)).toEqual(
+      messages.map(({ content }) => content.trim()),
+    );
   });
 
   it("消息数组为空时返回空种子", () => {

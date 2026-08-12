@@ -87,18 +87,21 @@ const skill_test_fixture = vi.hoisted(() => {
     ]),
   };
 });
-const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
-const session_seed_loader = vi.hoisted(() =>
-  vi.fn(
-    () =>
-      [
-        { role: "user", content: "第一轮种子设定。" },
-        { role: "assistant", content: "第一轮种子确认。" },
-        { role: "user", content: "第二轮种子设定。" },
-        { role: "assistant", content: "第二轮种子确认。" },
-      ] as const,
-  ),
-);
+const agent_resource_fixture = vi.hoisted(() => {
+  const system_prompt = "system-prompt-fixture";
+  const session_seed = [
+    { role: "user", content: "seed-user-1" },
+    { role: "assistant", content: "seed-assistant-1" },
+    { role: "user", content: "seed-user-2" },
+    { role: "assistant", content: "seed-assistant-2" },
+  ] as const;
+  return {
+    system_prompt,
+    session_seed,
+    system_prompt_loader: vi.fn(() => system_prompt),
+    session_seed_loader: vi.fn(() => session_seed),
+  };
+});
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
@@ -150,10 +153,10 @@ vi.mock("./agent-skills", async (import_original) => ({
 }));
 vi.mock("./agent-session-seed", async (import_original) => ({
   ...(await import_original<typeof import("./agent-session-seed")>()),
-  load_agent_session_seed: session_seed_loader,
+  load_agent_session_seed: agent_resource_fixture.session_seed_loader,
 }));
 vi.mock("./agent-system-prompt", () => ({
-  load_agent_system_prompt: system_prompt_loader,
+  load_agent_system_prompt: agent_resource_fixture.system_prompt_loader,
 }));
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
@@ -467,8 +470,8 @@ describe("AgentService", () => {
     agent_model_registrar.mockReset();
     agent_model_registrar.mockImplementation(register_fake_agent_model);
     skill_test_fixture.loader.mockClear();
-    system_prompt_loader.mockClear();
-    session_seed_loader.mockClear();
+    agent_resource_fixture.system_prompt_loader.mockClear();
+    agent_resource_fixture.session_seed_loader.mockClear();
   });
 
   afterEach(async () => {
@@ -545,17 +548,14 @@ describe("AgentService", () => {
     await wait_for_idle(fixture.service);
 
     const context = fake_agent_state.model_contexts[0] ?? [];
-    expect(context[0]).toMatchObject({ role: "user", content: "第一轮种子设定。" });
-    expect(context[1]).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "第一轮种子确认。" }],
-    });
-    expect(context[2]).toMatchObject({ role: "user", content: "第二轮种子设定。" });
-    expect(context[3]).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "第二轮种子确认。" }],
-    });
-    expect(context[4]).toMatchObject({
+    expect(context.slice(0, agent_resource_fixture.session_seed.length)).toMatchObject(
+      agent_resource_fixture.session_seed.map((message) =>
+        message.role === "assistant"
+          ? { role: "assistant", content: [{ type: "text", text: message.content }] }
+          : message,
+      ),
+    );
+    expect(context[agent_resource_fixture.session_seed.length]).toMatchObject({
       role: "user",
       content: [{ type: "text", text: "正文" }],
     });
@@ -564,8 +564,10 @@ describe("AgentService", () => {
       kind: "user_message",
       text: "正文",
     });
-    expect(JSON.stringify(entries)).not.toContain("种子");
-    expect(JSON.stringify(fixture.publish.mock.calls)).not.toContain("种子");
+    const public_content = JSON.stringify([entries, fixture.publish.mock.calls]);
+    for (const message of agent_resource_fixture.session_seed) {
+      expect(public_content).not.toContain(message.content);
+    }
   });
 
   it("按 marker 首次出现顺序展开多个 skill，并保留原始用户正文", async () => {
@@ -613,14 +615,15 @@ describe("AgentService", () => {
     expect(prompt).not.toContain('<skill name="glossary-audit"');
   });
 
-  it("隐藏能力不进入系统清单，但精确 marker 仍显式注入并保留正文", async () => {
+  it("隐藏知识保留在模型清单，但用户精确 marker 不注入正文", async () => {
     const fixture = await create_service();
+    const text = "@skill(internal-guidance)";
 
-    await fixture.service.send_message({ text: "@skill(internal-guidance)", images: [] });
+    await fixture.service.send_message({ text, images: [] });
     await wait_for_idle(fixture.service);
 
-    expect(fake_agent_state.prompts.at(-1)).toMatch(/^<skill name="internal-guidance"/u);
-    expect(fake_agent_state.prompts.at(-1)).toContain("@skill(internal-guidance)");
+    expect(fake_agent_state.prompts.at(-1)).toBe(text);
+    expect(fake_agent_state.prompts.at(-1)).not.toContain('<skill name="internal-guidance"');
     expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
   });
 
@@ -2032,7 +2035,7 @@ function count_published_events(publish: ReturnType<typeof vi.fn>, type: string)
 
 /** 集中断言每轮都必须保持的系统指令边界，避免多个用例复制长清单。 */
 function expect_agent_system_prompt(prompt: string | undefined): void {
-  expect(prompt).toContain("基础系统指令。");
+  expect(prompt).toContain(agent_resource_fixture.system_prompt);
   expect(prompt).toContain("<available_skills>");
   expect(prompt).toContain("<name>glossary-audit</name>");
   expect(prompt).toContain("<description>审校术语</description>");

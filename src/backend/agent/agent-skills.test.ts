@@ -239,7 +239,7 @@ describe("Agent skill 加载", () => {
     );
   });
 
-  it("仅含 visible=false 的 ui.json 隐藏 UI 能力但保留完整 skill", async () => {
+  it("仅含 visible=false 的 ui.json 隐藏用户能力但保留完整 skill", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-hidden-"),
     );
