@@ -32,7 +32,7 @@ export type AgentSkillReference = {
 };
 
 type AgentSkillUi = {
-  visible: boolean; // 是否进入公开能力列表，不改变模型调用或读取权限
+  visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
   order?: number; // 缺失时排在显式顺序之后，同类保持加载顺序
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
@@ -99,11 +99,11 @@ export async function load_agent_skills(
 export function format_agent_skills_for_system_prompt(
   skills: readonly AgentSkillCatalogDefinition[],
 ): string {
-  const visible_skills = skills.filter((skill) => !skill.disableModelInvocation);
-  if (visible_skills.length === 0) return "";
+  const model_skills = skills.filter((skill) => !skill.disableModelInvocation);
+  if (model_skills.length === 0) return "";
   return [
     "<available_skills>",
-    ...visible_skills.flatMap((skill) => [
+    ...model_skills.flatMap((skill) => [
       "  <skill>",
       `    <name>${escape_agent_skill_xml(skill.name)}</name>`,
       `    <description>${escape_agent_skill_xml(skill.description)}</description>`,
@@ -130,7 +130,7 @@ function escape_agent_skill_xml(value: string): string {
 }
 
 /**
- * 同目录 ui.json 定义 UI 可见性、顺序与描述；缺失或整份无效时统一回退默认 UI 配置。
+ * 同目录 ui.json 定义公开可调用性、顺序与描述；缺失或整份无效时统一回退默认 UI 配置。
  */
 function load_skill_ui(
   skill: Skill,

@@ -12,7 +12,6 @@ export const de_de_agent_page = {
     suggestions: {
       capabilities: "Stell deine Fähigkeiten vor",
       glossary_create: "Bitte erstelle ein Glossar für mein Projekt",
-      glossary_review: "Bitte prüfe meine Terminologie",
       translation_review: "Bitte prüfe meine Übersetzungen",
     },
   },

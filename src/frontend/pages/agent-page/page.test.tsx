@@ -106,7 +106,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_create") return "创建术语表";
-      if (key === "agent_page.empty.suggestions.glossary_review") return "请帮我审校术语";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
       if (key === "agent_page.mention.groups.skills") return "技能";
       if (key === "agent_page.mention.groups.terms") return "术语";
@@ -178,7 +177,7 @@ describe("AgentPage", () => {
     return container;
   }
 
-  it("空会话按顺序显示四个起始任务，并把能力写成字面量草稿", async () => {
+  it("空会话按顺序显示三个起始任务，并把能力写成字面量草稿", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });
     const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
@@ -188,7 +187,6 @@ describe("AgentPage", () => {
     expect(suggestions.map((button) => button.textContent)).toEqual([
       "介绍你的能力",
       "创建术语表 @skill(glossary-create)",
-      "请帮我审校术语 @skill(glossary-review)",
       "请帮我审校译文 @skill(translation-review)",
     ]);
     expect(
@@ -197,7 +195,7 @@ describe("AgentPage", () => {
           ".agent-page__suggestion .agent-mention-token > span",
         ),
       ].map((token) => token.textContent),
-    ).toEqual(["@skill(glossary-create)", "@skill(glossary-review)", "@skill(translation-review)"]);
+    ).toEqual(["@skill(glossary-create)", "@skill(translation-review)"]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
@@ -212,7 +210,7 @@ describe("AgentPage", () => {
     });
     expect(send).toHaveBeenLastCalledWith({ text: "介绍你的能力", images: [] });
 
-    await act(async () => suggestions[3]?.click());
+    await act(async () => suggestions[2]?.click());
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();

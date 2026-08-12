@@ -81,13 +81,15 @@ function build_agent_session_settings() {
   };
 }
 
-/** 普通发送与压缩恢复按同一 marker 规则重建模型提示。 */
+/** 只展开公开能力的 marker；隐藏知识仍留在模型清单供自主读取。 */
 function select_agent_skills(
   skills: readonly AgentSkillDefinition[],
   text: string,
 ): AgentSkillDefinition[] {
   const skill_by_marker = new Map(
-    skills.map((skill) => [format_agent_skill_reference(skill.name), skill] as const),
+    skills
+      .filter((skill) => skill.visible)
+      .map((skill) => [format_agent_skill_reference(skill.name), skill] as const),
   );
   const selected: AgentSkillDefinition[] = [];
   const selected_names = new Set<string>();
