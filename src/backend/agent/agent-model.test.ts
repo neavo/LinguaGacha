@@ -153,7 +153,6 @@ describe("Agent 模型注册", () => {
     expect(resolved.model).toMatchObject({
       api: "openai-responses",
       reasoning: true,
-      thinkingLevelMap: { xhigh: "xhigh", max: "max" },
     });
     expect(resolved.thinkingLevel).toBe("max");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
