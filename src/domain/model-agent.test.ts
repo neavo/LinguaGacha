@@ -8,6 +8,19 @@ import {
 } from "./model-agent";
 
 describe("模型 Agent 容量", () => {
+  it("所有包含 grok 的模型都使用 Grok 自动容量规则", () => {
+    const grok_limits = resolve_model_agent_config(
+      "vendor/GROK-preview",
+      DEFAULT_MODEL_AGENT_CONFIG,
+    ).limits;
+    const fallback_limits = resolve_model_agent_config(
+      "vendor/model-preview",
+      DEFAULT_MODEL_AGENT_CONFIG,
+    ).limits;
+
+    expect(grok_limits).not.toEqual(fallback_limits);
+  });
+
   it("保留合法配置与 0/0 自动配置，损坏配置整组恢复自动", () => {
     expect(resolve_model_agent_config("unknown", DEFAULT_MODEL_AGENT_CONFIG)).toMatchObject({
       config: DEFAULT_MODEL_AGENT_CONFIG,
