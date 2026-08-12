@@ -64,6 +64,7 @@ describe("AgentMarkdown", () => {
     if (link === null) throw new Error("缺少 Markdown 链接");
 
     await act(async () => link.click());
+    expect(view.firstElementChild?.className).toBe("agent-markdown");
     expect(view.querySelector("table")?.textContent).toContain("名称");
     expect(mocks.open_external_url).toHaveBeenCalledWith("https://example.com");
     expect(view.querySelector("img")).toBeNull();
@@ -71,10 +72,43 @@ describe("AgentMarkdown", () => {
     expect(view.textContent).toContain("agent_page.image.omitted");
   });
 
+  it("只在完整消息中高亮带显式语言的代码块", async () => {
+    const source = 'const heroine = "Lingua";';
+    const view = await render_markdown(`\`\`\`js\n${source}\n\`\`\``, true);
+
+    expect(view.querySelector('pre[data-language="js"]')).not.toBeNull();
+    expect(view.querySelector("code.language-js")?.textContent).toBe(`${source}\n`);
+    expect(view.querySelector("code.hljs")).toBeNull();
+
+    await render_markdown(`\`\`\`js\n${source}\n\`\`\``, false);
+
+    expect(view.querySelector("code.hljs.language-js")?.textContent).toBe(`${source}\n`);
+    expect(view.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    expect(view.querySelector(".hljs-string")?.textContent).toBe('"Lingua"');
+  });
+
+  it("无语言或未知语言的代码块保持纯文本", async () => {
+    const view = await render_markdown(
+      "```\nconst plain = true;\n```\n\n```linguagacha-unknown\nconst unknown = true;\n```",
+      false,
+    );
+
+    const code_blocks = view.querySelectorAll("pre code");
+    const unknown = view.querySelector("code.language-linguagacha-unknown");
+
+    expect(code_blocks).toHaveLength(2);
+    expect(code_blocks[0]?.className).toBe("");
+    expect(code_blocks[0]?.parentElement?.hasAttribute("data-language")).toBe(false);
+    expect(unknown?.parentElement?.dataset.language).toBe("linguagacha-unknown");
+    expect(unknown?.querySelector("span")).toBeNull();
+    expect(unknown?.textContent).toContain("const unknown = true;");
+  });
+
   it("流式 Mermaid 保留源码且不加载渲染器", async () => {
     const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), true);
 
     expect(view.querySelector("code.language-mermaid")?.textContent).toBe("flowchart LR\nA-->B\n");
+    expect(view.querySelector("pre")?.hasAttribute("data-language")).toBe(false);
     expect(mocks.render).not.toHaveBeenCalled();
   });
 
@@ -85,6 +119,7 @@ describe("AgentMarkdown", () => {
     );
 
     expect(view.querySelector("code.language-mmd")?.textContent).toContain("flowchart LR");
+    expect(view.querySelector('pre[data-language="mmd"]')).not.toBeNull();
     expect(mocks.render).not.toHaveBeenCalled();
   });
 
@@ -92,7 +127,7 @@ describe("AgentMarkdown", () => {
     const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), false);
     await wait_for_condition(() => view.querySelector("figure svg") !== null);
 
-    const figure = view.querySelector<HTMLElement>("figure.agent-message__diagram");
+    const figure = view.querySelector<HTMLElement>("figure.agent-markdown__diagram");
     expect(figure?.tabIndex).toBe(0);
     expect(view.querySelector("code.language-mermaid")).toBeNull();
     expect(mocks.render).toHaveBeenCalledWith(

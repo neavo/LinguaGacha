@@ -1,11 +1,14 @@
 import { isValidElement, useEffect, useId, useState, type ReactNode } from "react";
 import { useTheme } from "next-themes";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import type { MermaidConfig } from "mermaid";
 import { open_external_url } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+
+import "./agent-markdown.css";
 
 type AgentMarkdownProps = {
   text: string;
@@ -19,9 +22,14 @@ type MermaidRenderState =
   | { key: string; status: "error" }
   | null;
 
-type MermaidCodeElementProps = {
+type CodeElementProps = {
   className?: string;
   children?: ReactNode;
+};
+
+type CodeBlock = {
+  language: string | null;
+  source: string;
 };
 
 /** 渲染 Agent 正文 Markdown；图表仅在完整消息内进入 Mermaid 异步边界。 */
@@ -40,24 +48,41 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
       </a>
     ),
     img: ({ alt }) => (
-      <span className="agent-message__image-alt">
+      <span className="agent-markdown__image-alt">
         {alt?.trim() || t("agent_page.image.omitted")}
       </span>
     ),
     pre: ({ node: _node, children, ...pre_props }) => {
-      const source = read_mermaid_source(children);
-      return !props.streaming && source !== null ? (
-        <AgentMermaid source={source} />
-      ) : (
-        <pre {...pre_props}>{children}</pre>
+      const code_block = read_code_block(children);
+      if (!props.streaming && code_block?.language === "mermaid") {
+        return <AgentMermaid source={code_block.source} />;
+      }
+      const language = code_block?.language;
+      return (
+        <pre
+          {...pre_props}
+          data-language={language === "mermaid" ? undefined : (language ?? undefined)}
+        >
+          {children}
+        </pre>
       );
     },
   };
 
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-      {props.text}
-    </ReactMarkdown>
+    <div className="agent-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={
+          props.streaming
+            ? undefined
+            : [[rehypeHighlight, { detect: false, plainText: ["mermaid"] }]]
+        }
+        components={components}
+      >
+        {props.text}
+      </ReactMarkdown>
+    </div>
   );
 }
 
@@ -88,7 +113,7 @@ function AgentMermaid({ source }: { source: string }): JSX.Element {
   if (render_state?.key !== render_key) return <MermaidSource source={source} />;
   if (render_state.status === "error") {
     return (
-      <div className="agent-message__diagram-error">
+      <div className="agent-markdown__diagram-error">
         <p>{t("agent_page.diagram.render_failed")}</p>
         <MermaidSource source={source} />
       </div>
@@ -96,7 +121,7 @@ function AgentMermaid({ source }: { source: string }): JSX.Element {
   }
   return (
     <figure
-      className="agent-message__diagram"
+      className="agent-markdown__diagram"
       tabIndex={0}
       dangerouslySetInnerHTML={{ __html: render_state.svg }}
     />
@@ -112,14 +137,17 @@ function MermaidSource({ source }: { source: string }): JSX.Element {
   );
 }
 
-/** 只把显式 `mermaid` 围栏交给图表渲染器，普通代码块保持原样。 */
-function read_mermaid_source(children: ReactNode): string | null {
-  if (!isValidElement<MermaidCodeElementProps>(children)) return null;
-  const class_name = children.props.className;
-  if (class_name === undefined || !class_name.split(/\s+/u).includes("language-mermaid")) {
-    return null;
-  }
-  return String(children.props.children ?? "").replace(/\n$/u, "");
+/** 从围栏代码元素读取一次显式语言与源码，供标签和 Mermaid 共用。 */
+function read_code_block(children: ReactNode): CodeBlock | null {
+  if (!isValidElement<CodeElementProps>(children)) return null;
+  const language_class = children.props.className
+    ?.split(/\s+/u)
+    .find((class_name) => class_name.startsWith("language-"));
+  const language = language_class?.slice("language-".length) || null;
+  return {
+    language,
+    source: String(children.props.children ?? "").replace(/\n$/u, ""),
+  };
 }
 
 /** next-themes 尚未收敛时，以根节点当前 class 作为首帧主题事实。 */

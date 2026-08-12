@@ -1,0 +1,300 @@
+.agent-markdown {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.agent-markdown > :first-child {
+  margin-top: 0;
+}
+
+.agent-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-markdown h1,
+.agent-markdown h2,
+.agent-markdown h3,
+.agent-markdown h4,
+.agent-markdown h5,
+.agent-markdown h6 {
+  margin: 20px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.agent-markdown h1 {
+  font-size: 16px;
+}
+
+.agent-markdown h2 {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-bottom: 5px;
+  font-size: 14px;
+}
+
+.agent-markdown h3,
+.agent-markdown h4,
+.agent-markdown h5,
+.agent-markdown h6 {
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
+  font-size: 13px;
+}
+
+.agent-markdown p,
+.agent-markdown ul,
+.agent-markdown ol,
+.agent-markdown blockquote,
+.agent-markdown pre,
+.agent-markdown table {
+  margin: 10px 0;
+}
+
+.agent-markdown ul,
+.agent-markdown ol {
+  padding-left: 22px;
+}
+
+.agent-markdown ul {
+  list-style-type: disc;
+}
+
+.agent-markdown ol {
+  list-style-type: decimal;
+}
+
+.agent-markdown li + li {
+  margin-top: 4px;
+}
+
+.agent-markdown li > ul,
+.agent-markdown li > ol {
+  margin: 4px 0;
+}
+
+.agent-markdown .contains-task-list {
+  list-style: none;
+}
+
+.agent-markdown .task-list-item {
+  list-style: none;
+}
+
+.agent-markdown .task-list-item > input {
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 0;
+  accent-color: var(--primary);
+  vertical-align: -2px;
+}
+
+.agent-markdown a {
+  border-radius: var(--ui-radius-button);
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 52%, transparent);
+  text-underline-offset: 2px;
+}
+
+.agent-markdown a:hover {
+  text-decoration-color: currentcolor;
+}
+
+.agent-markdown a:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.agent-markdown blockquote {
+  border-left: 1px solid var(--primary);
+  background: color-mix(in srgb, var(--muted) 38%, transparent);
+  padding: 8px 12px;
+  color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground));
+}
+
+.agent-markdown blockquote > :first-child {
+  margin-top: 0;
+}
+
+.agent-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-markdown hr {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.agent-markdown code {
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+.agent-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  padding: 10px;
+}
+
+.agent-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.agent-markdown pre[data-language] {
+  overflow: hidden;
+  padding: 0;
+}
+
+.agent-markdown pre[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--muted) 34%, transparent);
+  padding: 3px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: right;
+  white-space: normal;
+}
+
+.agent-markdown pre[data-language] code {
+  display: block;
+  overflow-x: auto;
+  padding: 10px;
+}
+
+.agent-markdown .hljs-comment,
+.agent-markdown .hljs-quote {
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
+  font-style: italic;
+}
+
+.agent-markdown .hljs-keyword,
+.agent-markdown .hljs-selector-tag,
+.agent-markdown .hljs-type,
+.agent-markdown .hljs-variable.language_ {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.agent-markdown .hljs-title,
+.agent-markdown .hljs-title.class_,
+.agent-markdown .hljs-title.function_,
+.agent-markdown .hljs-section {
+  color: var(--secondary-foreground);
+  font-weight: 600;
+}
+
+.agent-markdown .hljs-string,
+.agent-markdown .hljs-regexp,
+.agent-markdown .hljs-template-variable,
+.agent-markdown .hljs-addition {
+  color: color-mix(in srgb, var(--primary) 68%, var(--foreground));
+}
+
+.agent-markdown .hljs-number,
+.agent-markdown .hljs-literal,
+.agent-markdown .hljs-symbol,
+.agent-markdown .hljs-bullet {
+  color: var(--accent-foreground);
+}
+
+.agent-markdown .hljs-attr,
+.agent-markdown .hljs-attribute,
+.agent-markdown .hljs-property,
+.agent-markdown .hljs-selector-attr,
+.agent-markdown .hljs-selector-class,
+.agent-markdown .hljs-selector-id,
+.agent-markdown .hljs-variable {
+  color: color-mix(in srgb, var(--primary) 42%, var(--secondary-foreground));
+}
+
+.agent-markdown .hljs-built_in,
+.agent-markdown .hljs-doctag,
+.agent-markdown .hljs-meta,
+.agent-markdown .hljs-name,
+.agent-markdown .hljs-operator,
+.agent-markdown .hljs-selector-pseudo,
+.agent-markdown .hljs-subst {
+  color: var(--foreground);
+}
+
+.agent-markdown .hljs-deletion {
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
+  text-decoration: line-through;
+}
+
+.agent-markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+.agent-markdown .hljs-strong {
+  font-weight: 600;
+}
+
+.agent-markdown__image-alt {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.agent-markdown__diagram {
+  max-width: 100%;
+  margin: 8px 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: var(--popover);
+  padding: 12px;
+}
+
+.agent-markdown__diagram:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-markdown__diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.agent-markdown__diagram-error {
+  margin: 8px 0;
+}
+
+.agent-markdown__diagram-error > p {
+  margin: 0 0 6px;
+  color: var(--ui-failure);
+  font-size: 12px;
+}
+
+.agent-markdown__diagram-error pre {
+  margin: 0;
+}
+
+.agent-markdown table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+}
+
+.agent-markdown th,
+.agent-markdown td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}

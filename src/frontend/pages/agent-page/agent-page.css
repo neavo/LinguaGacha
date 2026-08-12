@@ -238,8 +238,7 @@
   background: color-mix(in srgb, var(--primary) 22%, var(--card));
 }
 
-.agent-message__user-text,
-.agent-message__markdown {
+.agent-message__user-text {
   margin: 0;
   color: var(--foreground);
   font-size: 13px;
@@ -272,113 +271,6 @@
 .agent-message__user-images img:only-child {
   grid-column: 1 / -1;
   max-width: 360px;
-}
-
-.agent-message__markdown > :first-child {
-  margin-top: 0;
-}
-
-.agent-message__markdown > :last-child {
-  margin-bottom: 0;
-}
-
-.agent-message__markdown h1,
-.agent-message__markdown h2,
-.agent-message__markdown h3 {
-  margin: 18px 0 8px;
-  font-weight: 600;
-}
-
-.agent-message__markdown h1 {
-  font-size: 16px;
-}
-
-.agent-message__markdown h2 {
-  font-size: 14px;
-}
-
-.agent-message__markdown h3 {
-  font-size: 13px;
-}
-
-.agent-message__markdown p,
-.agent-message__markdown ul,
-.agent-message__markdown ol,
-.agent-message__markdown pre,
-.agent-message__markdown table {
-  margin: 8px 0;
-}
-
-.agent-message__markdown code {
-  border-radius: var(--ui-radius-button);
-  background: var(--muted);
-  padding: 1px 4px;
-  font-size: 12px;
-}
-
-.agent-message__markdown pre {
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  background: var(--popover);
-  padding: 10px;
-}
-
-.agent-message__markdown pre code {
-  background: transparent;
-  padding: 0;
-}
-
-.agent-message__image-alt {
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-
-.agent-message__diagram {
-  max-width: 100%;
-  margin: 8px 0;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-button);
-  background: var(--popover);
-  padding: 12px;
-}
-
-.agent-message__diagram:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: -1px;
-}
-
-.agent-message__diagram svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-}
-
-.agent-message__diagram-error {
-  margin: 8px 0;
-}
-
-.agent-message__diagram-error > p {
-  margin: 0 0 6px;
-  color: var(--ui-failure);
-  font-size: 12px;
-}
-
-.agent-message__diagram-error pre {
-  margin: 0;
-}
-
-.agent-message__markdown table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.agent-message__markdown th,
-.agent-message__markdown td {
-  border: 1px solid var(--border);
-  padding: 6px 8px;
-  text-align: left;
 }
 
 .agent-tool-entry,
@@ -1002,7 +894,6 @@
 }
 
 .agent-page__messages,
-.agent-message__markdown,
 .agent-message__user-text,
 .agent-thinking-entry,
 .agent-context-compaction,
