@@ -9,7 +9,7 @@ description: 当需要对当前工程内的特定范围或全部现有术语进�
 
 ## 必读领域规则
 
-进行任何术语判断前，检查当前模型上下文是否已经包含 `glossary-rules` 的完整正文。若尚未包含，从 `<available_skills>` 中按名称精确找到它的 `location`，调用 `read_skill` 读取其 `SKILL.md`；同一独立任务只读取一次。
+进行任何术语判断前，检查当前模型上下文是否已经包含 `glossary-rules` 的完整正文。若尚未包含，确认 `<available_skills>` 中存在该名称，再以 `name=glossary-rules` 调用 `read_skill`；同一独立任务只读取一次。
 
 若 `glossary-rules` 不存在、不可读取或正文无效，进入“无法继续”，不得从本技能、旧对话或经验重建术语定义。
 

@@ -42,21 +42,14 @@ const skill_test_fixture = vi.hoisted(() => {
   const snapshots = [corpus_search_snapshot, glossary_audit_snapshot];
   return {
     snapshots,
-    loader: vi.fn(async () => [
+    loader: vi.fn(() => [
       {
         ...glossary_audit_snapshot,
         visible: true,
         description: "审校术语",
         content: "执行术语审校。",
-        filePath: "E:/skills/glossary-audit/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-review/SKILL.md",
         disableModelInvocation: false,
-        references: [
-          {
-            path: "references/audit-standard.md",
-            filePath: "E:/skills/glossary-audit/references/audit-standard.md",
-            content: "# 审校标准\n\n完整正文。",
-          },
-        ],
       },
       {
         ...corpus_search_snapshot,
@@ -64,9 +57,8 @@ const skill_test_fixture = vi.hoisted(() => {
         order: Number.MAX_SAFE_INTEGER,
         description: "检索语料",
         content: "执行语料检索。",
-        filePath: "E:/skills/corpus-search/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-rules/SKILL.md",
         disableModelInvocation: true,
-        references: [],
       },
       {
         name: "internal-guidance",
@@ -79,9 +71,8 @@ const skill_test_fixture = vi.hoisted(() => {
         },
         description: "内部指导",
         content: "执行内部指导。",
-        filePath: "E:/skills/internal-guidance/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/agent-charter/SKILL.md",
         disableModelInvocation: false,
-        references: [],
       },
     ]),
   };
@@ -111,7 +102,6 @@ const fake_agent_state = vi.hoisted(() => ({
     | "write"
     | "error"
     | "pending"
-    | "read_skill"
     | "retry"
     | "streaming"
     | "thinking"
@@ -362,43 +352,10 @@ function create_fake_response(context: Context): FauxResponseStep {
       [
         fauxText("准备查询"),
         fauxToolCall("workspace_script", { script: "return { items: [] }" }, { id: "tool-1" }),
-        fauxToolCall(
-          "read_skill",
-          { path: "E:/skills/glossary-audit/references/audit-standard.md" },
-          { id: "tool-2" },
-        ),
+        fauxToolCall("read_skill", { name: "glossary-audit", path: "ui.json" }, { id: "tool-2" }),
       ],
       { stopReason: "toolUse" },
     );
-  }
-  if (fake_agent_state.mode === "read_skill") {
-    const prompt = read_last_user_text(context);
-    const calls = prompt.includes('<skill name="corpus-search"')
-      ? [
-          fauxToolCall(
-            "read_skill",
-            { path: "E:/skills/corpus-search/SKILL.md" },
-            { id: "manual-after-invocation" },
-          ),
-        ]
-      : [
-          fauxToolCall(
-            "read_skill",
-            { path: "E:/skills/glossary-audit/SKILL.md" },
-            { id: "auto-root" },
-          ),
-          fauxToolCall(
-            "read_skill",
-            { path: "E:/skills/glossary-audit/references/audit-standard.md" },
-            { id: "auto-reference" },
-          ),
-          fauxToolCall(
-            "read_skill",
-            { path: "E:/skills/corpus-search/SKILL.md" },
-            { id: "manual-before-invocation" },
-          ),
-        ];
-    return fauxAssistantMessage(calls, { stopReason: "toolUse" });
   }
   return fauxAssistantMessage("已完成");
 }
@@ -538,6 +495,43 @@ describe("AgentService", () => {
     snapshot.skills[0]!.displayDescriptions["en-US"] = "污染外部快照";
 
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
+  });
+
+  it("当前会话冻结 catalog，reset 后才刷新 System Prompt、mention 与 marker", async () => {
+    const fixture = await create_service();
+    const current_skills = skill_test_fixture.loader.mock.results.at(-1)?.value ?? [];
+    skill_test_fixture.loader.mockReturnValueOnce([
+      ...current_skills,
+      {
+        name: "new-skill",
+        visible: true,
+        order: 50,
+        displayDescriptions: {
+          "zh-CN": "新技能",
+          "en-US": "New skill",
+          "de-DE": "Neue Fähigkeit",
+        },
+        description: "会话中新增的技能",
+        content: "执行新技能。",
+        filePath: "E:/skills/new-skill/SKILL.md",
+        disableModelInvocation: false,
+      },
+    ]);
+
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).not.toContain(
+      "new-skill",
+    );
+    expect(skill_test_fixture.loader).toHaveBeenCalledTimes(1);
+
+    await fixture.service.reset();
+    expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
+    expect(skill_test_fixture.loader).toHaveBeenCalledTimes(2);
+
+    await fixture.service.send_message({ text: "@skill(new-skill) 开始", images: [] });
+    await wait_for_idle(fixture.service);
+    expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
+    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
+    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill">');
   });
 
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
@@ -984,9 +978,9 @@ describe("AgentService", () => {
         kind: "tool_call",
         id: "tool-2",
         toolName: "read_skill",
-        input: '{"path":"E:/skills/glossary-audit/references/audit-standard.md"}',
+        input: '{"name":"glossary-audit","path":"ui.json"}',
         status: "success",
-        output: expect.stringContaining("完整正文。"),
+        output: expect.stringContaining("displayDescriptions"),
         createdAt: expect.any(Number),
       },
       {
@@ -1464,10 +1458,6 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       contextTokens: null,
     });
-    expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
-      type: "snapshot_seed",
-      snapshot: service.get_snapshot(),
-    });
     await Promise.resolve();
     expect(settled).toBe(false);
 
@@ -1485,6 +1475,10 @@ describe("AgentService", () => {
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_pending?.();
     await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
+    expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
+      type: "snapshot_seed",
+      snapshot: service.get_snapshot(),
+    });
     fake_agent_state.mode = "success";
     await service.send_message({ text: "新任务", images: [] });
     await wait_for_idle(service);
@@ -1504,14 +1498,13 @@ describe("AgentService", () => {
     await service.send_message({ text: "旧任务", images: [] });
     await vi.advanceTimersByTimeAsync(25);
     const resetting = service.reset();
+    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+    await vi.runAllTimersAsync();
+    await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
     const seed_index = publish.mock.calls.findLastIndex(
       ([, payload]) => payload["type"] === "snapshot_seed",
     );
-
-    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
     expect(seed_index).toBeGreaterThan(-1);
-    await vi.runAllTimersAsync();
-    await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
     expect(
       publish.mock.calls.slice(seed_index + 1).some(([, payload]) => {
         const event = payload as AgentSessionEvent;
@@ -1926,36 +1919,6 @@ describe("AgentService", () => {
     service.stop();
   });
 
-  it("read_skill 可读取所有启动期白名单资源，包括 manual-only skill", async () => {
-    const { service } = await create_service();
-    fake_agent_state.mode = "read_skill";
-
-    await service.send_message({ text: "普通对话", images: [] });
-    await wait_for_idle(service);
-    expect(service.get_snapshot().entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "tool_call",
-          id: "auto-root",
-          status: "success",
-          output: expect.stringContaining("执行术语审校。"),
-        }),
-        expect.objectContaining({
-          kind: "tool_call",
-          id: "auto-reference",
-          status: "success",
-          output: expect.stringContaining("完整正文。"),
-        }),
-        expect.objectContaining({
-          kind: "tool_call",
-          id: "manual-before-invocation",
-          status: "success",
-          output: expect.stringContaining("执行语料检索。"),
-        }),
-      ]),
-    );
-  });
-
   it("资源未加载时拒绝启动模型回合", async () => {
     const { service } = await create_service(false);
 
@@ -2146,9 +2109,8 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain("<name>glossary-audit</name>");
   expect(prompt).toContain("<description>审校术语</description>");
   expect(prompt).not.toContain("Review glossary");
-  expect(prompt).toContain("<location>E:/skills/glossary-audit/SKILL.md</location>");
   expect(prompt).toContain("<name>internal-guidance</name>");
-  expect(prompt).toContain("<location>E:/skills/internal-guidance/SKILL.md</location>");
+  expect(prompt).not.toContain("<location>");
   expect((prompt ?? "").indexOf("<name>glossary-audit</name>")).toBeLessThan(
     (prompt ?? "").indexOf("<name>internal-guidance</name>"),
   );
