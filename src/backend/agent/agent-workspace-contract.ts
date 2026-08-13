@@ -5,6 +5,7 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import {
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
+  AGENT_WORKSPACE_TASK_ROOT,
 } from "../../shared/backend-runtime";
 import { read_optional_item_name_text } from "../../shared/item-name";
 import {
@@ -348,7 +349,6 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
     recipe_page_default: 20,
     recipe_page_max: 100,
-    recipe_context_item_ids_max: 20,
     literal_match_examples_default: 3,
     literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   },
@@ -464,6 +464,7 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
         purpose: "按产品正式字面匹配语义一次扫描 items 的 src 与 name_src",
       },
     },
+    task: `${AGENT_WORKSPACE_TASK_ROOT}/`,
     scratch: "scratch/",
   },
   recipes: {
@@ -484,7 +485,7 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
       path: AGENT_WORKSPACE_RECIPE_PATHS["query-item-contexts"],
       purpose: "读取目标条目在同文件自然顺序中的邻近文本",
       parameters: {
-        item_ids: "正整数数组，不超过 limits.recipe_context_item_ids_max",
+        item_ids: "需要补充邻近文本的正整数数组",
       },
       returns: "{ contexts, items: object[], missing_item_ids }",
     },

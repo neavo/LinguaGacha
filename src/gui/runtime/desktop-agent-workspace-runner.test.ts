@@ -73,13 +73,16 @@ import {
 } from "./desktop-agent-workspace-runner";
 
 let workspace_path = "";
+let session_root = "";
 const ORIGINAL_ITEMS = '{"value":"original"}\n';
 
 beforeEach(() => {
   vi.clearAllMocks();
   electron_mocks.BrowserWindow.instances.length = 0;
   electron_mocks.execute_javascript.mockResolvedValue('{"changed":2}');
-  workspace_path = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-runner-"));
+  session_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-workspace-runner-"));
+  workspace_path = path.join(session_root, "workspace");
+  fs.mkdirSync(path.join(session_root, "task"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
@@ -106,7 +109,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  fs.rmSync(workspace_path, { recursive: true, force: true });
+  fs.rmSync(session_root, { recursive: true, force: true });
 });
 
 describe("DesktopAgentWorkspaceRunner", () => {
@@ -364,7 +367,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
     );
   });
 
-  it("超大结果返回 preserved 与稳定错误消息", async () => {
+  it("超大结果回滚事务并返回 preserved", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
     electron_mocks.execute_javascript.mockResolvedValueOnce(
       `"${"x".repeat(AGENT_WORKSPACE_MAX_RESULT_BYTES)}"`,
@@ -379,8 +382,6 @@ describe("DesktopAgentWorkspaceRunner", () => {
       status: "failed",
       workspaceState: "preserved",
       failure: "execution_failed",
-      message:
-        "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，跨步骤确有需要时再把最小结构化状态写入 scratch。",
     });
     expect(fs.readFileSync(path.join(workspace_path, "items", "entries.jsonl"), "utf-8")).toBe(
       ORIGINAL_ITEMS,

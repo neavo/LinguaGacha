@@ -6,7 +6,10 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { is_json_record } from "../../domain/json";
-import { AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES } from "../../shared/backend-runtime";
+import {
+  AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_TASK_ROOT,
+} from "../../shared/backend-runtime";
 import {
   compile_literal_patterns,
   type LiteralPattern,
@@ -83,10 +86,11 @@ export class DesktopAgentWorkspaceFiles {
   private readonly recipes: ReadonlyMap<string, string>; // open 时冻结的只读 recipe 路径
   private readonly items_path: string; // open 时冻结的完整 items 数据集路径
   private readonly source_path: string; // Backend 在活动 UUID 旁维护的工程源文件纯文本投影
+  private readonly task_path: string; // Backend 在活动 UUID 旁维护的跨快照自由任务目录
   private readonly upper_path: string; // 脚本本次写入形成的覆盖层
   private readonly backup_path: string; // 提交过程中暂存的原基线
   private readonly written_paths = new Set<string>(); // upper 中完成原子写入的文件
-  private readonly tombstones = new Set<string>(); // 当前合并视图隐藏的 scratch 路径
+  private readonly tombstones = new Set<string>(); // 当前合并视图隐藏的 scratch 或 task 路径
   private finalized = false; // commit / rollback 只允许第一次改变事务状态
 
   /** 只允许 open 在验证根目录和 contract 后构造冻结权限视图。 */
@@ -120,6 +124,7 @@ export class DesktopAgentWorkspaceFiles {
     }
     this.items_path = normalize_workspace_path(items_path);
     this.source_path = path.join(path.dirname(workspace_path), "sources");
+    this.task_path = path.join(path.dirname(workspace_path), AGENT_WORKSPACE_TASK_ROOT);
     this.upper_path = path.join(transaction_path, "upper");
     this.backup_path = path.join(transaction_path, "backup");
   }
@@ -132,6 +137,7 @@ export class DesktopAgentWorkspaceFiles {
       if (!root_stat.isDirectory() || root_stat.isSymbolicLink()) {
         throw new AgentWorkspaceInvalidError("Agent workspace directory is invalid.");
       }
+      await assert_regular_directory(path.join(path.dirname(root), AGENT_WORKSPACE_TASK_ROOT));
       await assert_path_has_no_symlink(root, "contract.json");
       const contract_text = await fs.promises.readFile(path.join(root, "contract.json"), "utf-8");
       const contract = read_workspace_contract(JSON.parse(contract_text));
@@ -201,11 +207,13 @@ export class DesktopAgentWorkspaceFiles {
     const records: CommitRecord[] = [];
     try {
       for (const root of roots) {
-        // scratch 允许任意子路径，提交前必须再次验证基线路径没有被替换为符号链接。
-        await assert_path_has_no_symlink(this.workspace_path, root);
+        // scratch 与 task 允许任意子路径，提交前必须再次验证对应基线没有被替换为符号链接。
+        const baseline = resolve_workspace_baseline(this.workspace_path, this.task_path, root);
+        await assert_regular_directory(baseline.root);
+        await assert_path_has_no_symlink(baseline.root, baseline.relativePath);
         const record: CommitRecord = { root, hadBase: false, installed: false };
         records.push(record);
-        const base_target = resolve_workspace_path(this.workspace_path, root);
+        const base_target = baseline.target;
         const backup_target = resolve_workspace_path(backup_path, root);
         const upper_target = resolve_workspace_path(upper_path, root);
         if (await path_exists(base_target)) {
@@ -223,7 +231,12 @@ export class DesktopAgentWorkspaceFiles {
       }
       signal?.throwIfAborted();
     } catch (error) {
-      const restored = await restore_commit(this.workspace_path, backup_path, records);
+      const restored = await restore_commit(
+        this.workspace_path,
+        this.task_path,
+        backup_path,
+        records,
+      );
       this.finalized = true;
       let cleaned = true;
       try {
@@ -280,24 +293,32 @@ export class DesktopAgentWorkspaceFiles {
     const upper_file = await this.find_upper_path(normalized);
     if (upper_file !== null) return await read_regular_file(upper_file);
     if (this.is_tombstoned(normalized)) return response_text(404, "工作区文件不存在。");
-    await assert_path_has_no_symlink(this.workspace_path, normalized);
-    return await read_regular_file(resolve_workspace_path(this.workspace_path, normalized));
+    const baseline = resolve_workspace_baseline(this.workspace_path, this.task_path, normalized);
+    await assert_regular_directory(baseline.root);
+    await assert_path_has_no_symlink(baseline.root, baseline.relativePath);
+    return await read_regular_file(baseline.target);
   }
 
   /** 写入只落到 upper，固定 change 文件必须由 contract 声明。 */
   private async write_file(relative_path: string, request: Request): Promise<Response> {
     const normalized = normalize_workspace_path(relative_path);
-    const writable = this.change_paths.has(normalized);
-    if (!writable && !is_workspace_scratch_entry(normalized)) {
+    const fixed_change = this.change_paths.has(normalized);
+    const writable =
+      fixed_change || is_workspace_scratch_entry(normalized) || is_workspace_task_entry(normalized);
+    if (!writable) {
       return response_text(403, "该工作区文件只读。");
     }
     if (request.body === null) throw new WorkspaceProtocolError("Workspace write body is missing.");
-    if (writable) {
+    if (fixed_change) {
       await assert_path_has_no_symlink(this.workspace_path, normalized);
       const stat = await fs.promises.lstat(resolve_workspace_path(this.workspace_path, normalized));
       if (!stat.isFile() || stat.isSymbolicLink()) {
         throw new WorkspaceProtocolError("Target is not a regular workspace file.");
       }
+    } else if (is_workspace_task_entry(normalized)) {
+      const baseline = resolve_workspace_baseline(this.workspace_path, this.task_path, normalized);
+      await assert_regular_directory(baseline.root);
+      await assert_path_has_no_symlink(baseline.root, baseline.relativePath);
     }
     const upper_path = this.upper_path;
     const file_path = resolve_workspace_path(upper_path, normalized);
@@ -322,11 +343,11 @@ export class DesktopAgentWorkspaceFiles {
     }
   }
 
-  /** 删除只允许 scratch，并以 tombstone 遮蔽仍存在的基线内容。 */
+  /** 删除只允许 snapshot scratch 或 task 内容，并以 tombstone 遮蔽仍存在的基线。 */
   private async remove_file(relative_path: string): Promise<Response> {
     const normalized = normalize_workspace_path(relative_path);
-    if (!is_workspace_scratch_root_or_entry(normalized)) {
-      return response_text(403, "只能删除 scratch 文件。");
+    if (!is_workspace_scratch_root_or_entry(normalized) && !is_workspace_task_entry(normalized)) {
+      return response_text(403, "只能删除 scratch 或 task 内容。");
     }
     const upper_path = this.upper_path;
     await fs.promises.rm(resolve_workspace_path(upper_path, normalized), {
@@ -346,21 +367,27 @@ export class DesktopAgentWorkspaceFiles {
   private async list(relative_path: string): Promise<Response> {
     const normalized = normalize_workspace_path(relative_path, true);
     const entries = new Map<string, WorkspaceListEntry>();
-    // null 表示普通事务视图，字符串表示同级 sources 内的相对目录。
-    const source_relative_path =
-      normalized === "sources"
-        ? ""
-        : normalized.startsWith("sources/")
-          ? normalized.slice("sources/".length)
-          : null;
+    // null 表示普通 snapshot 事务视图，字符串表示同级挂载内的相对目录。
+    const source_relative_path = mounted_relative_path(normalized, "sources");
+    const task_relative_path = mounted_relative_path(normalized, AGENT_WORKSPACE_TASK_ROOT);
     if (source_relative_path !== null) {
       await add_directory_entries(this.source_path, source_relative_path, entries, () => false);
+    } else if (task_relative_path !== null) {
+      await assert_regular_directory(this.task_path);
+      if (!this.is_tombstoned(normalized)) {
+        await add_directory_entries(this.task_path, task_relative_path, entries, (child) =>
+          this.is_tombstoned(`${AGENT_WORKSPACE_TASK_ROOT}/${child}`),
+        );
+      }
     } else if (!this.is_tombstoned(normalized)) {
       await add_directory_entries(this.workspace_path, normalized, entries, (child) =>
         this.is_tombstoned(child),
       );
       if (normalized === "" && (await path_exists(this.source_path))) {
         entries.set("sources", { type: "directory" });
+      }
+      if (normalized === "" && (await path_exists(this.task_path))) {
+        entries.set(AGENT_WORKSPACE_TASK_ROOT, { type: "directory" });
       }
     }
     if (source_relative_path === null) {
@@ -536,6 +563,28 @@ function resolve_workspace_path(workspace_path: string, relative_path: string): 
   return target;
 }
 
+/** 把虚拟 task 路径映射到对话级任务目录，其它路径仍属于当前 snapshot。 */
+function resolve_workspace_baseline(
+  workspace_path: string,
+  task_path: string,
+  relative_path: string,
+): { root: string; relativePath: string; target: string } {
+  const task_relative_path = mounted_relative_path(relative_path, AGENT_WORKSPACE_TASK_ROOT);
+  const root = task_relative_path === null ? workspace_path : task_path;
+  const normalized = task_relative_path === null ? relative_path : task_relative_path;
+  return {
+    root,
+    relativePath: normalized,
+    target: resolve_workspace_path(root, normalized),
+  };
+}
+
+/** 返回挂载内相对路径；null 表示目标不属于该挂载。 */
+function mounted_relative_path(relative_path: string, mount: string): string | null {
+  if (relative_path === mount) return "";
+  return relative_path.startsWith(`${mount}/`) ? relative_path.slice(mount.length + 1) : null;
+}
+
 /** 统一为正斜线相对路径，并拒绝所有绝对、回退和事务实现路径。 */
 function normalize_workspace_path(relative_path: string, allow_empty = false): string {
   if (
@@ -568,6 +617,11 @@ function decode_protocol_path(value: string): string {
 /** scratch 根目录本身不能作为文件覆盖，只有其后代可写。 */
 function is_workspace_scratch_entry(relative_path: string): boolean {
   return relative_path.startsWith("scratch/");
+}
+
+/** task 根由宿主管理，模型可以自由写入和删除其中任意内容。 */
+function is_workspace_task_entry(relative_path: string): boolean {
+  return relative_path.startsWith(`${AGENT_WORKSPACE_TASK_ROOT}/`);
 }
 
 /** 删除允许指向 scratch 整体或任一后代。 */
@@ -631,6 +685,14 @@ async function assert_path_has_no_symlink(root_path: string, relative_path: stri
   }
 }
 
+/** 同级挂载根也必须是普通目录，不能只验证其后代。 */
+async function assert_regular_directory(root_path: string): Promise<void> {
+  const stat = await fs.promises.lstat(root_path);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new WorkspaceProtocolError("Workspace mount must be a regular directory.");
+  }
+}
+
 /** 折叠被父目录覆盖的后代，避免同一提交重复移动嵌套路径。 */
 function collapse_roots(paths: string[]): string[] {
   const sorted = [...new Set(paths)].sort(
@@ -647,12 +709,13 @@ function collapse_roots(paths: string[]): string[] {
 /** 按提交逆序恢复已安装路径；任一步失败都把工作区判为不可复用。 */
 async function restore_commit(
   workspace_path: string,
+  task_path: string,
   backup_path: string,
   records: CommitRecord[],
 ): Promise<boolean> {
   try {
     for (const record of [...records].reverse()) {
-      const base_target = resolve_workspace_path(workspace_path, record.root);
+      const base_target = resolve_workspace_baseline(workspace_path, task_path, record.root).target;
       if (record.installed) {
         await fs.promises.rm(base_target, { recursive: true, force: true });
       }

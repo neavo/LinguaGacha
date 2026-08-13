@@ -22,6 +22,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(workspace_path, "glossary"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "scratch"), { recursive: true });
+  fs.mkdirSync(path.join(session_root, "task"), { recursive: true });
   fs.mkdirSync(path.join(session_root, "sources", "book.epub", "OPS"), { recursive: true });
   fs.writeFileSync(
     path.join(session_root, "sources", "book.epub", "OPS", "chapter.xhtml"),
@@ -114,6 +115,36 @@ describe("DesktopAgentWorkspaceFiles", () => {
     await files.commit();
     expect(fs.existsSync(path.join(workspace_path, "scratch", "old.txt"))).toBe(false);
     expect(fs.readFileSync(path.join(workspace_path, "scratch", "new.txt"), "utf-8")).toBe("new");
+  });
+
+  it("task 挂载独立于 snapshot，并参与同一脚本事务", async () => {
+    fs.writeFileSync(path.join(session_root, "task", "old.txt"), "old");
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    expect(await read(files, "task/old.txt")).toBe("old");
+    await files.handle(
+      new Request("lg-agent-workspace://workspace/files/task/old.txt", { method: "DELETE" }),
+    );
+    await put(files, "task/nested/state.json", '{"step":1}\n');
+
+    const listed = await files.handle(
+      new Request("lg-agent-workspace://workspace/__list__?path=task"),
+    );
+    expect(await listed.json()).toEqual([{ name: "nested", type: "directory" }]);
+    const root = await files.handle(new Request("lg-agent-workspace://workspace/__list__"));
+    expect(await root.json()).toContainEqual({ name: "task", type: "directory" });
+
+    await files.commit();
+    expect(fs.existsSync(path.join(session_root, "task", "old.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(session_root, "task", "nested", "state.json"), "utf-8")).toBe(
+      '{"step":1}\n',
+    );
+
+    const retry = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    await put(retry, "task/nested/state.json", '{"step":2}\n');
+    await retry.rollback();
+    expect(fs.readFileSync(path.join(session_root, "task", "nested", "state.json"), "utf-8")).toBe(
+      '{"step":1}\n',
+    );
   });
 
   it("读取 contract 声明的全部 recipe 源码", async () => {
@@ -338,7 +369,23 @@ describe("DesktopAgentWorkspaceFiles", () => {
     }
   });
 
-  it("大只读文件不进入 upper，非法路径与非 scratch 删除被拒绝", async () => {
+  it("提交前拒绝 task 内容中的符号链接逃逸", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-outside-"));
+    const link_path = path.join(session_root, "task", "link");
+    fs.writeFileSync(path.join(outside, "secret.txt"), "secret");
+    fs.symlinkSync(outside, link_path, "junction");
+    try {
+      const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+      expect(await put(files, "task/link/secret.txt", "changed")).toHaveProperty("status", 400);
+      await files.rollback();
+      expect(fs.readFileSync(path.join(outside, "secret.txt"), "utf-8")).toBe("secret");
+    } finally {
+      fs.unlinkSync(link_path);
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("大只读文件不进入 upper，非法路径与受保护文件删除被拒绝", async () => {
     fs.writeFileSync(
       path.join(workspace_path, "glossary", "large.bin"),
       Buffer.alloc(2 * 1024 * 1024),
@@ -353,6 +400,13 @@ describe("DesktopAgentWorkspaceFiles", () => {
     expect((await put(files, "project_meta.json", "changed")).status).toBe(403);
     expect((await put(files, "items/entries.jsonl", "changed")).status).toBe(403);
     expect((await put(files, "scratch", "changed")).status).toBe(403);
+    expect(
+      (
+        await files.handle(
+          new Request("lg-agent-workspace://workspace/files/task", { method: "DELETE" }),
+        )
+      ).status,
+    ).toBe(403);
     for (const encoded_path of ["%2e%2e%2fsecret", "C%3A/secret", "items%5Centries.jsonl"]) {
       expect(
         (await files.handle(new Request(`lg-agent-workspace://workspace/files/${encoded_path}`)))

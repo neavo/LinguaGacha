@@ -2,9 +2,6 @@
 async function runRecipe(workspace, args) {
   const contract = workspace.contract;
   if (!Array.isArray(args.item_ids)) throw new Error("item_ids 必须是数组");
-  if (args.item_ids.length > contract.limits.recipe_context_item_ids_max) {
-    throw new Error(`item_ids 最多 ${contract.limits.recipe_context_item_ids_max} 个`);
-  }
   const targetIds = new Set(args.item_ids);
   const contextsById = new Map();
   const returnedItemById = new Map();

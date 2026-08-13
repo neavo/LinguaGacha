@@ -21,6 +21,9 @@ export type BackendRuntimeResult<T = unknown> =
 /** 单次工作区操作进入模型历史前允许返回的最大 UTF-8 JSON 字节数。 */
 export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 
+/** Backend 与 Electron main 共用的对话级任务目录挂载名。 */
+export const AGENT_WORKSPACE_TASK_ROOT = "task";
+
 /** 单个字面模式最多回传的证据条目数，主进程协议与公开 contract 共用。 */
 export const AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES = 50;
 
