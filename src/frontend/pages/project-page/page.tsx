@@ -53,7 +53,6 @@ import {
   type SegmentedProgressStats,
 } from "@frontend/widgets/segmented-progress/segmented-progress";
 import "@frontend/pages/project-page/project-page.css";
-import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@frontend/pages/project-page/support-formats";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
 import { type ProjectStage } from "@frontend/app/state/desktop-project-change-types";
 import {
@@ -62,6 +61,11 @@ import {
   type ProjectSettingsAlignmentSettings,
 } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import {
+  PROJECT_SOURCE_FORMATS,
+  type ProjectSourceFormatHitCounts,
+  type ProjectSourceFileSummary,
+} from "@shared/project-source-formats";
 
 /**
  * 项目页只消费侧栏折叠状态，主体数据来自 DesktopState。
@@ -93,11 +97,9 @@ type SelectedProject = {
 /**
  * 已选择的源路径集合，保留首个路径用于推导默认工程名。
  */
-type SelectedSource = {
-  source_paths: string[];
-  name: string;
-  source_file_count: number;
-  output_name_seed_path: string;
+type SelectedSource = ProjectSourceFileSummary & {
+  source_paths: string[]; // 创建工程时原样提交的归一化用户选择
+  output_name_seed_path: string; // 仅取首个选择推导默认工程文件名
 };
 
 /**
@@ -119,13 +121,6 @@ type ProjectPreviewPayload = {
     updated_at?: string;
     translation_stats?: Partial<SegmentedProgressStats>;
   };
-};
-
-/**
- * 源路径收集接口返回的可导入文件列表。
- */
-type ProjectSourceFilesPayload = {
-  source_files?: string[];
 };
 
 /**
@@ -208,14 +203,6 @@ type DropZoneCardProps = Omit<
   on_drag_over?: (event: DragEvent<HTMLButtonElement>) => void;
   on_drag_leave?: (event: DragEvent<HTMLButtonElement>) => void;
   on_drop?: (event: DragEvent<HTMLButtonElement>) => void;
-};
-
-/**
- * 支持格式卡片只展示格式名和扩展名集合。
- */
-type FormatSupportCardProps = {
-  title: string;
-  extensions: string;
 };
 
 /**
@@ -372,6 +359,19 @@ function normalize_count(value: unknown): number {
   }
 
   return Math.max(0, Math.trunc(numeric_value));
+}
+
+/**
+ * API 边界按共享目录补齐全部格式计数，缺失或无效值归零。
+ */
+function normalize_project_source_format_hit_counts(value: unknown): ProjectSourceFormatHitCounts {
+  const record =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return Object.fromEntries(
+    PROJECT_SOURCE_FORMATS.map((format) => [format.id, normalize_count(record[format.id])]),
+  ) as ProjectSourceFormatHitCounts;
 }
 
 /**
@@ -572,18 +572,6 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
     );
   },
 );
-
-/**
- * 展示单个支持格式条目。
- */
-function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
-  return (
-    <div className="project-home__format-item">
-      <h3 className="project-home__format-title">{props.title}</h3>
-      <p className="project-home__format-extensions">{props.extensions}</p>
-    </div>
-  );
-}
 
 /**
  * 最近工程行同时承载选择和移除操作，移除按钮阻止冒泡。
@@ -953,27 +941,23 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     set_is_source_checking(true);
 
     try {
-      const payload = await api_fetch<ProjectSourceFilesPayload>(
-        "/api/session/source-files/collect",
+      const payload = await api_fetch<Partial<ProjectSourceFileSummary>>(
+        "/api/session/source-files/summary",
         {
           source_paths: normalized_source_paths,
         },
       );
-      const source_files = Array.isArray(payload.source_files) ? payload.source_files : [];
+      const source_file_count = normalize_count(payload.source_file_count);
 
-      if (source_files.length === 0) {
+      if (source_file_count === 0) {
         set_selected_source(null);
         push_toast("warning", t("project_page.create.unavailable"));
       } else {
         const output_name_seed_path = normalized_source_paths[0] ?? "";
-        const selected_name = t("project_page.create.ready_status").replace(
-          "{COUNT}",
-          source_files.length.toString(),
-        );
         set_selected_source({
           source_paths: normalized_source_paths,
-          name: selected_name,
-          source_file_count: source_files.length,
+          source_file_count,
+          format_hit_counts: normalize_project_source_format_hit_counts(payload.format_hit_counts),
           output_name_seed_path,
         });
       }
@@ -1418,7 +1402,11 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                 <SquareMousePointer className="size-11 stroke-[1.85]" />
               </span>
               <div className="project-home__selected-summary">
-                <p className="project-home__selected-name">{selected_source.name}</p>
+                <p className="project-home__selected-name">
+                  {t("project_page.create.ready_status", {
+                    COUNT: selected_source.source_file_count.toString(),
+                  })}
+                </p>
               </div>
             </button>
           </AppContextMenuTrigger>
@@ -1576,15 +1564,37 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
               <section className="project-home__panel-section">
                 <h3 className="project-home__section-title">{t("project_page.formats.title")}</h3>
-                <div className="project-home__format-grid">
-                  {PROJECT_FORMAT_SUPPORT_ITEMS.map((format_item) => (
-                    <FormatSupportCard
-                      key={format_item.id}
-                      title={t(format_item.title_key)}
-                      extensions={format_item.extensions}
-                    />
-                  ))}
-                </div>
+                <ul className="project-home__format-tags">
+                  {PROJECT_SOURCE_FORMATS.map((format) => {
+                    const hit_count = selected_source?.format_hit_counts[format.id] ?? 0;
+                    return (
+                      <Tooltip key={format.id}>
+                        <TooltipTrigger asChild>
+                          <li className="project-home__format-tag">
+                            <span className="project-home__format-title">
+                              {t(format.title_key)}
+                            </span>
+                            <span className="project-home__format-extension">
+                              {format.extension}
+                            </span>
+                            {hit_count > 0 ? (
+                              <span className="project-home__format-count">{hit_count}</span>
+                            ) : null}
+                          </li>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="top"
+                          sideOffset={8}
+                          className="flex-col items-start gap-1"
+                        >
+                          {format.description_keys.map((description_key) => (
+                            <span key={description_key}>{t(description_key)}</span>
+                          ))}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </ul>
               </section>
             </CardContent>
 
