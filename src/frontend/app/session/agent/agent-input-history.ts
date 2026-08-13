@@ -10,6 +10,16 @@ function apply_agent_input_history_text(current: readonly string[], text: string
   return [...current.filter((message) => message !== text), text].slice(-AGENT_INPUT_HISTORY_LIMIT);
 }
 
+/** 输入历史持久化失败只降级辅助 UI，不改变调用方已经接受的新内存值。 */
+function persist_agent_input_history(storage: Storage, next: string[]): string[] {
+  try {
+    storage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // 后端提交已经成功，辅助存储不得反向改变主链路结果。
+  }
+  return next;
+}
+
 /** 从 renderer 私有存储读取纯文本历史；任一条非法即放弃整份载荷。 */
 export function read_agent_input_history(storage: Storage): string[] {
   try {
@@ -38,10 +48,20 @@ export function update_agent_input_history(
   text: string,
 ): string[] {
   const next = apply_agent_input_history_text(current, text);
-  try {
-    storage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // 输入历史是辅助 UI；持久化失败不能反向改变已经成功的后端提交。
-  }
-  return next;
+  return persist_agent_input_history(storage, next);
+}
+
+/** 修改已受理 user 消息时删除旧正文，再按普通受理规则写入新正文。 */
+export function replace_agent_input_history(
+  storage: Storage,
+  current: readonly string[],
+  previous: string,
+  next_text: string,
+): string[] {
+  const without_previous = current.filter((message) => message !== previous);
+  const next =
+    normalize_agent_user_message_text(next_text) === null
+      ? without_previous
+      : apply_agent_input_history_text(without_previous, next_text);
+  return persist_agent_input_history(storage, next);
 }

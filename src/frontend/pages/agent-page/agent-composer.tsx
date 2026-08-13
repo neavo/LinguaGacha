@@ -90,9 +90,10 @@ type EditorSnapshot = {
   query: MentionQuery | null;
 };
 
-/** 页面只能写入草稿，正文与光标所有权仍留在 CodeMirror。 */
+/** 页面只能写入草稿并请求聚焦，正文与光标所有权仍留在 CodeMirror。 */
 export type AgentComposerHandle = {
   write_draft: (text: string) => void;
+  focus: () => void;
 };
 
 /** 互斥于发送的新命令原因；三种状态都允许继续编辑本地草稿。 */
@@ -181,22 +182,28 @@ const mention_token_extension: Extension = [mention_token_config_field, mention_
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolvedTheme } = useTheme();
-  const placeholder_text = t("agent_page.input.placeholder");
-  const compacting = props.compacting || props.command === "compact";
-  const submit_label = t(
-    compacting
-      ? "agent_page.compaction.running"
-      : props.running && props.stop_disabled
-        ? "agent_page.action.applying"
-        : props.command === "send"
-          ? "agent_page.action.sending"
-          : props.command === "stop"
-            ? "agent_page.action.stopping"
-            : props.running
-              ? "agent_page.action.stop"
-              : "agent_page.action.send",
+  const editing = props.input_session.editing;
+  const assistant_editing = editing?.role === "assistant";
+  const placeholder_text = t(
+    assistant_editing
+      ? "agent_page.input.edit_assistant_placeholder"
+      : "agent_page.input.placeholder",
   );
-  const submit_command_active = props.command === "send" || props.command === "stop";
+  const compacting = props.compacting || props.command === "compact";
+  let submit_label_key: LocaleKey = "agent_page.action.send";
+  if (compacting) submit_label_key = "agent_page.compaction.running";
+  else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
+  else if (props.command === "send") submit_label_key = "agent_page.action.sending";
+  else if (props.command === "edit") {
+    submit_label_key =
+      editing?.role === "user" ? "agent_page.action.save_and_retry" : "agent_page.action.save_edit";
+  } else if (props.command === "stop") submit_label_key = "agent_page.action.stopping";
+  else if (props.running) submit_label_key = "agent_page.action.stop";
+  else if (editing?.role === "user") submit_label_key = "agent_page.action.save_and_retry";
+  else if (editing?.role === "assistant") submit_label_key = "agent_page.action.save_edit";
+  const submit_label = t(submit_label_key);
+  const submit_command_active =
+    props.command === "send" || props.command === "edit" || props.command === "stop";
   const submit_tooltip =
     submit_command_active || props.unavailable_reason === null
       ? submit_label
@@ -211,8 +218,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
-  // Session 引用承接跨路由草稿与历史，索引只属于当前 Composer 的临时浏览位置。
+  // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
   const input_session_ref = useRef(props.input_session);
+  const editing_ref = useRef(editing);
   const input_history_index_ref = useRef<number | null>(null);
   // 图片 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
   const draft_images_ref = useRef(props.input_session.read_draft().images);
@@ -227,7 +235,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   const mention_query_text = snapshot.query?.text;
   const candidate_groups =
-    mention_query_text === undefined
+    assistant_editing || mention_query_text === undefined
       ? { skills: [], terms: [] }
       : create_agent_mention_candidates({
           query: mention_query_text,
@@ -241,8 +249,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_skills = candidate_groups.skills;
   const matching_terms = candidate_groups.terms;
   const matching_candidates = [...matching_skills, ...matching_terms];
-  const editor_read_only = props.command === "send" || props.command === "reset";
-  const menu_open = snapshot.query !== null && !editor_read_only && !menu_suppressed;
+  const editor_read_only =
+    props.command === "send" || props.command === "edit" || props.command === "reset";
+  const menu_open =
+    !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const can_send =
     !props.running &&
@@ -252,7 +262,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.command === null &&
     !props.model_selection.updating &&
     !image_processing &&
-    (snapshot.text !== "" || draft_images.length > 0);
+    (snapshot.text !== "" || (!assistant_editing && draft_images.length > 0));
   const image_limit_reached = draft_images.length >= AGENT_MESSAGE_IMAGE_LIMIT;
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
@@ -289,6 +299,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         write_agent_message_text(view, text);
         view.focus();
       },
+      focus() {
+        view_ref.current?.focus();
+      },
     }),
     [editor_read_only],
   );
@@ -297,6 +310,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
   input_session_ref.current = props.input_session;
+  editing_ref.current = editing;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -335,16 +349,20 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             {
               key: "ArrowDown",
               run: (view) =>
-                menu_open_ref.current
-                  ? navigate_mention_menu(1)
-                  : navigate_input_history(view, "newer"),
+                editing_ref.current !== null
+                  ? false
+                  : menu_open_ref.current
+                    ? navigate_mention_menu(1)
+                    : navigate_input_history(view, "newer"),
             },
             {
               key: "ArrowUp",
               run: (view) =>
-                menu_open_ref.current
-                  ? navigate_mention_menu(-1)
-                  : navigate_input_history(view, "older"),
+                editing_ref.current !== null
+                  ? false
+                  : menu_open_ref.current
+                    ? navigate_mention_menu(-1)
+                    : navigate_input_history(view, "older"),
             },
             {
               key: "Escape",
@@ -501,7 +519,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
   const append_image_files = async (files: Iterable<File>): Promise<void> => {
-    if (image_processing_ref.current) return;
+    if (assistant_editing || image_processing_ref.current) return;
     const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - draft_images_ref.current.length;
     if (remaining_slots <= 0) return;
     const input_files = Array.from(files).slice(0, remaining_slots);
@@ -545,12 +563,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         submit();
       }}
       onPaste={(event) => {
-        if (editor_read_only || event.clipboardData.files.length === 0) return;
+        if (editor_read_only || assistant_editing || event.clipboardData.files.length === 0) return;
         event.preventDefault();
         void append_image_files(event.clipboardData.files);
       }}
       onDragEnter={(event) => {
-        if (editor_read_only || !Array.from(event.dataTransfer.types).includes("Files")) {
+        if (
+          editor_read_only ||
+          assistant_editing ||
+          !Array.from(event.dataTransfer.types).includes("Files")
+        ) {
           return;
         }
         event.preventDefault();
@@ -559,7 +581,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         set_image_drop_active(true);
       }}
       onDragOver={(event) => {
-        if (editor_read_only || !Array.from(event.dataTransfer.types).includes("Files")) {
+        if (
+          editor_read_only ||
+          assistant_editing ||
+          !Array.from(event.dataTransfer.types).includes("Files")
+        ) {
           return;
         }
         event.preventDefault();
@@ -575,9 +601,28 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         if (!Array.from(event.dataTransfer.types).includes("Files")) return;
         event.preventDefault();
         reset_image_drop();
-        if (!editor_read_only) void append_image_files(event.dataTransfer.files);
+        if (!editor_read_only && !assistant_editing)
+          void append_image_files(event.dataTransfer.files);
       }}
     >
+      {editing !== null ? (
+        <div className="agent-composer__edit-bar">
+          <span>
+            {t(
+              editing.role === "user" ? "agent_page.editing.user" : "agent_page.editing.assistant",
+            )}
+          </span>
+          <AppButton
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={props.command !== null}
+            onClick={props.input_session.cancel_edit}
+          >
+            {t("app.action.cancel")}
+          </AppButton>
+        </div>
+      ) : null}
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {matching_skills.length > 0 && (
@@ -611,7 +656,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           )}
         </div>
       )}
-      {draft_images.length > 0 ? (
+      {!assistant_editing && draft_images.length > 0 ? (
         <div className="agent-composer__attachments">
           {draft_images.map((image, index) => (
             <figure className="agent-composer__attachment" key={index}>
@@ -653,76 +698,82 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       </div>
       <div className="agent-composer__footer">
         <div className="agent-composer__footer-actions">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <AppButton
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                className="agent-composer__image-trigger"
-                disabled={editor_read_only || image_processing || image_limit_reached}
-                aria-label={t("agent_page.action.add_image")}
-                onClick={() => file_input_ref.current?.click()}
-              >
-                {image_processing ? (
-                  <LoaderCircle className="animate-spin" aria-hidden="true" />
-                ) : (
-                  <ImagePlus aria-hidden="true" />
-                )}
-              </AppButton>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={8}>
-              <p>{t("agent_page.action.add_image")}</p>
-            </TooltipContent>
-          </Tooltip>
-          <AppButton
-            type="button"
-            size="xs"
-            variant="ghost"
-            className="agent-composer__reset"
-            disabled={
-              !props.can_reset ||
-              props.running ||
-              compacting ||
-              props.unavailable_reason !== null ||
-              props.command !== null
-            }
-            onClick={props.on_reset}
-          >
-            <MessageSquarePlus aria-hidden="true" />
-            <span>{t("agent_page.action.new_task")}</span>
-          </AppButton>
-          <AppDropdownMenu>
+          {!assistant_editing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <AppDropdownMenuTrigger asChild>
-                  <AppButton
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    className="agent-composer__model-trigger"
-                    disabled={model_controls_disabled}
-                    aria-label={`${t("app.model.selection.label")}: ${selected_model_name}`}
-                  >
-                    <Cpu aria-hidden="true" />
-                    <span>{selected_model_name}</span>
-                    <ChevronDown aria-hidden="true" />
-                  </AppButton>
-                </AppDropdownMenuTrigger>
+                <AppButton
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  className="agent-composer__image-trigger"
+                  disabled={editor_read_only || image_processing || image_limit_reached}
+                  aria-label={t("agent_page.action.add_image")}
+                  onClick={() => file_input_ref.current?.click()}
+                >
+                  {image_processing ? (
+                    <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ImagePlus aria-hidden="true" />
+                  )}
+                </AppButton>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                <p>{t("app.model.selection.label")}</p>
+                <p>{t("agent_page.action.add_image")}</p>
               </TooltipContent>
             </Tooltip>
-            <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-              <ModelSelectionCategories
-                controller={props.model_selection}
-                usage="agent"
-                disabled={model_commands_disabled}
-              />
-            </AppDropdownMenuContent>
-          </AppDropdownMenu>
-          {selected_thinking_label !== null && (
+          ) : null}
+          {editing === null ? (
+            <AppButton
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="agent-composer__reset"
+              disabled={
+                !props.can_reset ||
+                props.running ||
+                compacting ||
+                props.unavailable_reason !== null ||
+                props.command !== null
+              }
+              onClick={props.on_reset}
+            >
+              <MessageSquarePlus aria-hidden="true" />
+              <span>{t("agent_page.action.new_task")}</span>
+            </AppButton>
+          ) : null}
+          {editing === null ? (
+            <AppDropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AppDropdownMenuTrigger asChild>
+                    <AppButton
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="agent-composer__model-trigger"
+                      disabled={model_controls_disabled}
+                      aria-label={`${t("app.model.selection.label")}: ${selected_model_name}`}
+                    >
+                      <Cpu aria-hidden="true" />
+                      <span>{selected_model_name}</span>
+                      <ChevronDown aria-hidden="true" />
+                    </AppButton>
+                  </AppDropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                  <p>{t("app.model.selection.label")}</p>
+                </TooltipContent>
+              </Tooltip>
+              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                <ModelSelectionCategories
+                  controller={props.model_selection}
+                  usage="agent"
+                  disabled={model_commands_disabled}
+                />
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          ) : null}
+          {editing === null && selected_thinking_label !== null && (
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -754,7 +805,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           )}
-          {context_usage !== null && (
+          {editing === null && context_usage !== null && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span

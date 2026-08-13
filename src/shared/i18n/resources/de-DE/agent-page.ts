@@ -17,6 +17,7 @@ export const de_de_agent_page = {
   },
   input: {
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
+    edit_assistant_placeholder: "Modellantwort bearbeiten …",
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
@@ -40,9 +41,18 @@ export const de_de_agent_page = {
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
     click_to_retry: "Zum Wiederholen klicken",
+    edit: "Bearbeiten",
+    edit_and_retry: "Bearbeiten und wiederholen",
+    save_and_retry: "Speichern und wiederholen",
+    save_edit: "Änderung speichern",
     return_latest: "Zum neuesten Stand",
   },
-  confirm: { new_task: "Wirklich eine neue Unterhaltung starten …?" },
+  editing: { user: "Deine Nachricht wird bearbeitet", assistant: "Modellantwort wird bearbeitet" },
+  confirm: {
+    new_task: "Wirklich eine neue Unterhaltung starten …?",
+    rerun_after_workspace_apply:
+      "Diese Runde hat das Projekt bereits geändert. Wiederholen oder Bearbeiten der Eingabe macht diese Änderungen nicht rückgängig und kann das Projekt erneut ändern. Fortfahren?",
+  },
   status: {
     running: "Wird verarbeitet",
     success: "Abgeschlossen",
@@ -66,6 +76,8 @@ export const de_de_agent_page = {
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
+    retry: "Die Antwort konnte nicht wiederholt werden. Bitte erneut versuchen.",
+    edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
     image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     compaction_retry:

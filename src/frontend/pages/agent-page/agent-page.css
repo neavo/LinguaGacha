@@ -143,10 +143,25 @@
   min-width: 0;
 }
 
-.agent-message--user {
+.agent-message-frame {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.agent-message-frame--user {
   width: fit-content;
   max-width: 75%;
   align-self: flex-end;
+  align-items: flex-end;
+}
+
+.agent-message-frame--assistant {
+  width: 100%;
+}
+
+.agent-message--user {
+  max-width: 100%;
   border-radius: var(--radius-xl) var(--radius-xl) var(--ui-radius-button) var(--radius-xl);
   background: var(--muted);
   padding: 8px 12px;
@@ -212,6 +227,63 @@
 .agent-retry-entry:disabled {
   cursor: default;
   opacity: 0.58;
+}
+
+.agent-message-actions {
+  display: flex;
+  min-height: 24px;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.agent-message-frame--user .agent-message-actions {
+  /* 操作不参与 user 气泡的 fit-content 宽度，仍以气泡右缘对齐。 */
+  width: 0;
+  align-self: flex-end;
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+.agent-message-frame--assistant .agent-message-actions {
+  justify-content: flex-start;
+}
+
+.agent-message-actions button {
+  display: inline-flex;
+  min-height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  padding: 3px 6px;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-message-actions button:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.agent-message-actions button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.agent-message-actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.agent-message-actions svg {
+  width: 12px;
+  height: 12px;
 }
 
 .agent-context-compaction {
@@ -574,6 +646,20 @@
 
 .agent-composer:focus-within {
   border-color: var(--primary);
+}
+
+.agent-composer__edit-bar {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 2px 5px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .agent-composer__attachments {

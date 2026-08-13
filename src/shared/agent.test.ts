@@ -5,6 +5,8 @@ import {
   format_agent_skill_reference,
   format_agent_term_reference,
   normalize_agent_message_input,
+  normalize_agent_message_edit_request,
+  normalize_agent_retry_request,
   normalize_agent_user_message_text,
 } from "./agent";
 
@@ -36,6 +38,18 @@ describe("Agent 用户消息协议", () => {
     expect(
       normalize_agent_message_input({ text: "", images: [...accepted_images, 1, "image-12"] }),
     ).toEqual({ text: "", images: accepted_images });
+  });
+
+  it("规范重试与消息修改目标身份", () => {
+    expect(normalize_agent_retry_request({ entryId: "user-1" })).toEqual({ entryId: "user-1" });
+    expect(normalize_agent_retry_request({ entryId: "" })).toBeNull();
+    expect(
+      normalize_agent_message_edit_request({
+        entryId: "assistant-1",
+        message: { text: " 修订 ", images: [] },
+      }),
+    ).toEqual({ entryId: "assistant-1", message: { text: "修订", images: [] } });
+    expect(normalize_agent_message_edit_request({ entryId: "assistant-1" })).toBeNull();
   });
 
   it("生成固定能力 marker 与原样 Unicode 术语 marker", () => {
