@@ -28,7 +28,7 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       name: "workspace_load",
       label: "加载工作区",
       description:
-        "加载当前工程的完整只读快照、空 change 文件与 scratch 工作记忆目录，并返回语言和数量摘要。加载本身不修改工程；再次调用会以最新工程事实替换旧工作区。",
+        "加载当前工程的完整只读快照、空 change 文件与 scratch 目录，并挂载当前 Agent 对话跨快照保留的 task 目录；返回语言和数量摘要。加载本身不修改工程；再次调用会以最新工程事实替换旧快照。",
       executionMode: "sequential",
       parameters: WORKSPACE_LOAD_PARAMETERS,
       execute: async (_tool_call_id, _params, signal) => {
@@ -42,7 +42,7 @@ export function create_agent_workspace_tools(workspace: AgentWorkspacePort): Too
       name: "workspace_script",
       label: "运行工作区脚本",
       description:
-        "运行模型提供的 JavaScript 并返回 JSON 结果。脚本可编排 contract 声明的只读 recipe 与正式字面匹配，可读取快照、通过文件事务覆盖固定 change 文件，并可在 scratch 保存最小结构化工作记忆；成功保留本次修改，失败只回滚本次运行。",
+        "运行模型提供的 JavaScript 并返回 JSON 结果。脚本可编排 contract 声明的只读 recipe 与正式字面匹配，可读取快照，并通过同一文件事务覆盖固定 change 文件或自由管理 task、scratch 内容；成功保留本次修改，失败只回滚本次运行。",
       executionMode: "sequential",
       parameters: WORKSPACE_SCRIPT_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {

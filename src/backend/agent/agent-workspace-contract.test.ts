@@ -5,6 +5,7 @@ import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import {
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
+  AGENT_WORKSPACE_TASK_ROOT,
 } from "../../shared/backend-runtime";
 import {
   AGENT_WORKSPACE_CONTRACT,
@@ -131,11 +132,14 @@ describe("Agent 工作区 contract", () => {
       result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
       recipe_page_default: 20,
       recipe_page_max: 100,
-      recipe_context_item_ids_max: 20,
       literal_match_examples_default: 3,
       literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
     });
-    expect(script_api).toMatchObject({ argument: "workspace", scratch: "scratch/" });
+    expect(script_api).toMatchObject({
+      argument: "workspace",
+      task: `${AGENT_WORKSPACE_TASK_ROOT}/`,
+      scratch: "scratch/",
+    });
     expect(read_json_record(properties["contract"])).toMatchObject({
       source: AGENT_WORKSPACE_PATHS.contract,
     });

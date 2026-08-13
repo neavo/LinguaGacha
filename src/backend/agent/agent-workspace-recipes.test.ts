@@ -208,14 +208,12 @@ describe("Agent 工作区内置 recipes", () => {
     ).rejects.toThrow();
   });
 
-  it("query-item-contexts 拒绝过多目标", async () => {
+  it("query-item-contexts 完整处理显式目标，不套用发现查询的分页上限", async () => {
+    const item_ids = Array.from({ length: 101 }, (_, index) => index + 1);
+
     await expect(
-      execute_recipe(
-        "query-item-contexts",
-        { item_ids: Array.from({ length: 21 }, (_, index) => index + 1) },
-        { "items/entries.jsonl": [] },
-      ),
-    ).rejects.toThrow();
+      execute_recipe("query-item-contexts", { item_ids }, { "items/entries.jsonl": [] }),
+    ).resolves.toEqual({ contexts: [], items: [], missing_item_ids: item_ids });
   });
 
   it("query-quality-rule-groups 拒绝未知类型", async () => {

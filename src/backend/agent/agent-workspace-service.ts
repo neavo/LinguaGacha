@@ -12,9 +12,10 @@ import {
 import { Prompt } from "../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import type {
-  BackendRuntimeAgentWorkspaceRunRequest,
-  BackendRuntimeAgentWorkspaceRunResponse,
+import {
+  AGENT_WORKSPACE_TASK_ROOT,
+  type BackendRuntimeAgentWorkspaceRunRequest,
+  type BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
 import * as AppErrors from "../../shared/error";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
@@ -83,12 +84,20 @@ type AgentWorkspaceSourceSession = {
   files: AgentWorkspaceSourceFile[]; // project_meta 复用的不可变文件映射
 };
 
-/** 当前 Agent 会话唯一磁盘工作区；拥有完整快照、脚本协调和 apply 编排。 */
+/** 与当前 Agent 对话和工程解释边界绑定、跨数据快照保留的自由任务目录。 */
+type AgentWorkspaceTaskSession = {
+  projectPath: string; // 对话当前绑定的 loaded 工程
+  projectEpoch: number; // 同路径重新加载后不得复用旧任务内容
+  languageKey: string; // 语言解释边界变化时旧任务内容失效
+};
+
+/** 当前 Agent 会话磁盘工作区；协调跨快照 task、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
   private active: ActiveAgentWorkspace | null = null;
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
-  private busy = false;
+  private task_session: AgentWorkspaceTaskSession | null = null; // 不读取目录内容，只拥有生命周期
+  private busy = false; // load、script 与 apply 共用的进程内互斥
 
   /** 注入当前工程读侧、唯一写入口与 Electron 脚本端口。 */
   public constructor(
@@ -122,10 +131,16 @@ export class AgentWorkspaceService {
     return this.options.nativeFs ?? default_native_fs;
   }
 
+  /** task 固定挂在活动 UUID 旁，替换 snapshot 时无需搬运内容。 */
+  private get task_path(): string {
+    return path.join(this.root_path, AGENT_WORKSPACE_TASK_ROOT);
+  }
+
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
   public async initialize(): Promise<void> {
     this.active = null;
     this.source_session = null;
+    this.task_session = null;
     await this.native_fs.remove_async(this.root_path, { recursive: true, force: true });
     await this.native_fs.make_dir_async(this.root_path);
   }
@@ -139,6 +154,11 @@ export class AgentWorkspaceService {
       const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
       const language = read_workspace_language(this.options.settings.read_setting());
       const language_key = JsonTool.stringifyStrict(language);
+      await this.discard_incompatible_task({
+        projectPath: project_path,
+        projectEpoch: start_snapshot.epoch,
+        languageKey: language_key,
+      });
       const current_items = this.options.cache.items.readItems();
       const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
         file_path: entry.rel_path,
@@ -258,6 +278,11 @@ export class AgentWorkspaceService {
           (result): result is PromiseRejectedResult => result.status === "rejected",
         );
         if (write_failure !== undefined) throw write_failure.reason;
+        await this.ensure_task({
+          projectPath: project_path,
+          projectEpoch: start_snapshot.epoch,
+          languageKey: language_key,
+        });
       } catch (error) {
         await this.remove_workspace_directory(workspace_path);
         throw error;
@@ -291,11 +316,13 @@ export class AgentWorkspaceService {
       } catch (error) {
         if (signal.aborted) throw error;
         await this.discard_active();
+        await this.discard_task();
         throw workspace_recovery_error(error, "agent_workspace_execute_host_failed");
       }
       if (response.status === "success") return response.result;
       if (response.workspaceState === "invalidated") {
         await this.discard_active();
+        await this.discard_task();
         throw workspace_recovery_error(
           new Error(response.message),
           `agent_workspace_${response.failure}`,
@@ -380,14 +407,16 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 显式 Agent reset 只销毁当前快照；同一工程会话继续复用源文件投影。 */
+  /** 显式 Agent reset 销毁当前快照和自由任务目录，同一工程会话继续复用源文件投影。 */
   public async reset_workspace(): Promise<void> {
     await this.discard_active();
+    await this.discard_task();
   }
 
   /** 工程切换先销毁旧投影；非空路径表示为新 loaded 工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
     await this.discard_active();
+    await this.discard_task();
     this.source_session = null;
     await this.remove_workspace_directory(path.join(this.root_path, "sources"));
     if (project_path === null) return;
@@ -418,10 +447,12 @@ export class AgentWorkspaceService {
     const language_key = JsonTool.stringifyStrict(
       read_workspace_language(this.options.settings.read_setting()),
     );
-    const fresh =
+    const task_compatible =
       snapshot.projectPath === active.projectPath &&
       snapshot.epoch === active.projectEpoch &&
-      language_key === active.languageKey &&
+      language_key === active.languageKey;
+    const fresh =
+      task_compatible &&
       PROJECT_DATA_SECTIONS.every(
         (section) =>
           read_json_integer(snapshot.sectionRevisions[section], 0) ===
@@ -429,6 +460,7 @@ export class AgentWorkspaceService {
       );
     if (fresh) return;
     await this.discard_active();
+    if (!task_compatible) await this.discard_task();
     throw workspace_validation_error("agent_workspace_stale", "workspace_load");
   }
 
@@ -476,11 +508,48 @@ export class AgentWorkspaceService {
     return files;
   }
 
+  /** task 只绑定对话中的工程身份与语言，普通 revision 和 apply 不改变其生命周期。 */
+  private async ensure_task(args: AgentWorkspaceTaskSession): Promise<void> {
+    const current = this.task_session;
+    if (
+      current?.projectPath === args.projectPath &&
+      current.projectEpoch === args.projectEpoch &&
+      current.languageKey === args.languageKey
+    ) {
+      await this.native_fs.make_dir_async(this.task_path);
+      return;
+    }
+    this.task_session = null;
+    await this.native_fs.remove_async(this.task_path, { recursive: true, force: true });
+    await this.native_fs.make_dir_async(this.task_path);
+    this.task_session = { ...args };
+  }
+
+  /** 新快照尚未生成成功时也不能让身份或语言不兼容的旧 task 继续暴露。 */
+  private async discard_incompatible_task(args: AgentWorkspaceTaskSession): Promise<void> {
+    const current = this.task_session;
+    if (
+      current === null ||
+      (current.projectPath === args.projectPath &&
+        current.projectEpoch === args.projectEpoch &&
+        current.languageKey === args.languageKey)
+    ) {
+      return;
+    }
+    await this.discard_task();
+  }
+
   /** 先清空内存身份；临时目录清理失败不改变已经完成的项目事实或隔离。 */
   private async discard_active(): Promise<void> {
     const active = this.active;
     this.active = null;
     if (active !== null) await this.remove_workspace_directory(active.path);
+  }
+
+  /** 先解除任务身份；删除失败的旧目录不会在下次 load 中被静默复用。 */
+  private async discard_task(): Promise<void> {
+    this.task_session = null;
+    await this.remove_workspace_directory(this.task_path);
   }
 
   /** 临时目录清理是尽力而为；活动身份已先解除，失败只进入诊断。 */
