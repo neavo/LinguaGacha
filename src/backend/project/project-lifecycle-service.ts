@@ -28,6 +28,7 @@ import {
 } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
+import type { ProjectSourceFileSummary } from "../../shared/project-source-formats";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
@@ -548,14 +549,13 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 按用户选择顺序枚举可导入源文件，保持源路径去重和真实文件去重一致
+   * 汇总可导入源文件总数和互斥格式命中数，不向 renderer 暴露本地文件路径
    */
-  public collect_source_files(body: JsonRecord): JsonRecord {
+  public summarize_source_files(body: JsonRecord): ProjectSourceFileSummary {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
-    const source_files = this.create_format_service(this.build_current_project_settings())
-      .collect_source_file_entries(source_paths)
-      .map((file) => file.source_path);
-    return { source_files };
+    return this.create_format_service(this.build_current_project_settings()).summarize_source_files(
+      source_paths,
+    );
   }
 
   /**

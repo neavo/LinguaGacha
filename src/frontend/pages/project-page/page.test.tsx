@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LocaleProvider } from "@frontend/app/locale/locale-provider";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -23,25 +24,6 @@ const {
     push_progress_toast_mock: vi.fn(() => "project-loading-toast"),
     push_toast_mock: vi.fn(),
     update_progress_toast_mock: vi.fn(),
-  };
-});
-
-const I18N_TEXT_BY_KEY: Record<string, string> = {
-  "app.action.select_file": "选择文件",
-  "project_page.create.action": "创建工程",
-  "project_page.create.ready_status": "已选择 {COUNT} 个源文件",
-};
-
-vi.mock("@frontend/app/locale/locale-provider", () => {
-  return {
-    useI18n: () => ({
-      t: (key: string, params: Record<string, string> = {}) => {
-        const template = I18N_TEXT_BY_KEY[key] ?? key;
-        return Object.entries(params).reduce((text, [name, value]) => {
-          return text.replaceAll(`{${name}}`, value);
-        }, template);
-      },
-    }),
   };
 });
 
@@ -131,7 +113,7 @@ vi.mock("@frontend/shadcn/spinner", () => {
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
     Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-    TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
     TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
@@ -142,6 +124,7 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => {
   };
 });
 
+/** 构造项目页需要的最小设置快照，并允许场景定点覆写。 */
 function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   return {
     app_language: "ZH",
@@ -169,6 +152,7 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** 构造页面公开依赖的 DesktopState 测试替身。 */
 function create_desktop_runtime_fixture(settings_overrides: Record<string, unknown> = {}) {
   return {
     project_session_stage: null,
@@ -180,6 +164,7 @@ function create_desktop_runtime_fixture(settings_overrides: Record<string, unkno
   };
 }
 
+/** 安装不访问真实文件系统的桌面桥测试替身。 */
 function install_desktop_app_fixture(): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
@@ -200,12 +185,14 @@ function install_desktop_app_fixture(): void {
   });
 }
 
+/** 等待当前交互链上的 Promise 更新进入 React 状态。 */
 async function flush_async_updates(): Promise<void> {
   for (let index = 0; index < 6; index += 1) {
     await Promise.resolve();
   }
 }
 
+/** 按用户可见文案读取按钮，缺失时给出可定位错误。 */
 function get_button_by_text(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((element) => {
     return element.textContent?.includes(text) ?? false;
@@ -230,8 +217,8 @@ describe("ProjectPage", () => {
       return 1;
     };
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/collect") {
-        return { source_files: ["E:\\Source\\demo.txt"] };
+      if (path === "/api/session/source-files/summary") {
+        return { source_file_count: 1, format_hit_counts: { txt: 1 } };
       }
       if (path === "/api/session/project/create") {
         return { project: { path: "E:\\Source\\demo_20260428_120000.lg", loaded: true } };
@@ -261,16 +248,22 @@ describe("ProjectPage", () => {
     update_progress_toast_mock.mockReset();
   });
 
+  /** 使用真实中文 i18n 资源挂载项目页。 */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ProjectPage is_sidebar_collapsed={false} />);
+      root?.render(
+        <LocaleProvider locale="zh-CN">
+          <ProjectPage is_sidebar_collapsed={false} />
+        </LocaleProvider>,
+      );
     });
   }
 
+  /** 复用公开交互完成一次源文件选择和工程创建。 */
   async function create_project_from_selected_source(): Promise<void> {
     if (container === null) {
       throw new Error("项目页尚未挂载。");
@@ -312,8 +305,8 @@ describe("ProjectPage", () => {
       paths: [...selected_paths, "E:\\Source\\a.txt", " "],
     });
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/session/source-files/collect") {
-        return { source_files: selected_paths };
+      if (path === "/api/session/source-files/summary") {
+        return { source_file_count: 2, format_hit_counts: { txt: 1, md: 1 } };
       }
       if (path === "/api/session/project/create") {
         return { project: { path: "E:\\Source\\a_20260428_120000.lg", loaded: true } };
@@ -338,7 +331,7 @@ describe("ProjectPage", () => {
       await flush_async_updates();
     });
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/source-files/collect", {
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/source-files/summary", {
       source_paths: selected_paths,
     });
     expect(api_fetch_mock).toHaveBeenCalledWith(
@@ -358,5 +351,61 @@ describe("ProjectPage", () => {
       "/api/session/project/create-preview",
       expect.anything(),
     );
+  });
+
+  it("支持格式保持目录顺序并逐行展示旧说明", async () => {
+    await mount_page();
+
+    const format_tags = Array.from(
+      container?.querySelectorAll<HTMLElement>(".project-home__format-tag") ?? [],
+    );
+    expect(format_tags[0]?.textContent).toContain("纯文本");
+    const tooltips = Array.from(container?.querySelectorAll<HTMLElement>('[role="tooltip"]') ?? []);
+    const json_tooltip = tooltips.find((element) => {
+      return (
+        element.textContent?.includes("MTool 导出游戏文本") === true &&
+        element.textContent.includes("SExtractor 导出游戏文本") &&
+        element.textContent.includes("VNTextPatch 导出游戏文本")
+      );
+    });
+    expect(json_tooltip).toBeDefined();
+    const general_text_tooltip = tooltips.find((element) => {
+      return (
+        Array.from(element.children)
+          .map((child) => child.textContent)
+          .join("|") === "字幕|电子书|Markdown"
+      );
+    });
+    expect(general_text_tooltip).toBeDefined();
+  });
+
+  it("选择源文件后显示数字徽标，重置后清除计数", async () => {
+    vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
+      canceled: false,
+      paths: ["E:\\Source\\game.json"],
+    });
+    api_fetch_mock.mockResolvedValueOnce({
+      source_file_count: 1,
+      format_hit_counts: { json: 1 },
+    });
+    await mount_page();
+
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "选择文件").click();
+      await flush_async_updates();
+    });
+
+    const selected_tags = Array.from(
+      container?.querySelectorAll<HTMLElement>(".project-home__format-tag") ?? [],
+    );
+    const json_tag = selected_tags.find((tag) => tag.textContent?.includes("JSON 游戏文本"));
+    expect(json_tag?.querySelector(".project-home__format-count")?.textContent).toBe("1");
+    expect(container?.textContent).not.toContain("命中");
+
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>('button[aria-label="重置"]')?.click();
+    });
+
+    expect(container?.querySelector(".project-home__format-count")).toBeNull();
   });
 });

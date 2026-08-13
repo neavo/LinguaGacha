@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
+import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
 
 /**
  * 测试统一使用显式配置，避免依赖用户本机设置
@@ -90,6 +91,34 @@ describe("FileFormatService", () => {
         .collect_source_file_entries([left_dir, right_dir])
         .map((entry) => entry.rel_path.replace(/\\/gu, "/")),
     ).toEqual(["left/script.txt", "right/script.txt"]);
+  });
+
+  it("源文件摘要按去重后的互斥扩展名统计", () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
+    );
+    const service = create_service();
+    const source_a = path.join(temp_dir.path, "source-a");
+    const source_b = path.join(temp_dir.path, "source-b");
+    const first_txt = path.join(source_a, "b.TXT");
+    const ignored = path.join(source_a, "ignore.bin");
+    fs.mkdirSync(path.join(source_a, "nested"), { recursive: true });
+    fs.mkdirSync(source_b, { recursive: true });
+    fs.writeFileSync(first_txt, "text", "utf-8");
+    fs.writeFileSync(path.join(source_a, "nested", "a.md"), "markdown", "utf-8");
+    fs.writeFileSync(ignored, "ignored", "utf-8");
+    fs.writeFileSync(path.join(source_b, "c.json"), "{}", "utf-8");
+    const expected_format_hit_counts = Object.fromEntries(
+      PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
+    );
+    Object.assign(expected_format_hit_counts, { txt: 1, md: 1, json: 1 });
+
+    expect(
+      service.summarize_source_files(["", source_a, first_txt, ignored, source_b, source_a]),
+    ).toEqual({
+      source_file_count: 3,
+      format_hit_counts: expected_format_hit_counts,
+    });
   });
 
   it("收集单文件路径时使用文件名作为工程相对路径", () => {

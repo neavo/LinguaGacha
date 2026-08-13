@@ -18,19 +18,17 @@ import {
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
 } from "../file/formats/file-format-shared";
+import {
+  PROJECT_SOURCE_FORMATS,
+  type ProjectSourceFormatId,
+  type ProjectSourceFormatHitCounts,
+  type ProjectSourceFileSummary,
+} from "../../shared/project-source-formats";
 
-// 支持扩展名集中在门面层，文件发现和单文件预览共享同一白名单
-const SUPPORTED_EXTENSIONS = new Set([
-  ".txt",
-  ".md",
-  ".json",
-  ".xlsx",
-  ".epub",
-  ".ass",
-  ".srt",
-  ".rpy",
-  ".trans",
-]);
+// 文件发现与摘要统计共用同一扩展名映射，避免支持范围产生第二份白名单。
+const PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION = new Map<string, ProjectSourceFormatId>(
+  PROJECT_SOURCE_FORMATS.map((format) => [format.extension, format.id]),
+);
 
 /**
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
@@ -72,7 +70,7 @@ export class FileFormatService {
    * 判断公开文件域可接收的源文件格式
    */
   public is_supported_file(file_path: string): boolean {
-    return SUPPORTED_EXTENSIONS.has(path.extname(file_path).toLowerCase());
+    return PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.has(path.extname(file_path).toLowerCase());
   }
 
   /**
@@ -141,6 +139,30 @@ export class FileFormatService {
       source_path: entry.source_path,
       rel_path: this.build_unique_relative_path(entry.rel_path, used_rel_paths, index),
     }));
+  }
+
+  /**
+   * 按文件发现的同一去重口径汇总总数和互斥扩展名命中数，不提前解析文件内容。
+   */
+  public summarize_source_files(source_paths: string[]): ProjectSourceFileSummary {
+    const source_files = this.collect_source_file_entries(source_paths);
+    const format_hit_counts = Object.fromEntries(
+      PROJECT_SOURCE_FORMATS.map((format) => [format.id, 0]),
+    ) as ProjectSourceFormatHitCounts;
+
+    for (const source_file of source_files) {
+      const format_id = PROJECT_SOURCE_FORMAT_ID_BY_EXTENSION.get(
+        path.extname(source_file.source_path).toLowerCase(),
+      );
+      if (format_id !== undefined) {
+        format_hit_counts[format_id] += 1;
+      }
+    }
+
+    return {
+      source_file_count: source_files.length,
+      format_hit_counts,
+    };
   }
 
   /**

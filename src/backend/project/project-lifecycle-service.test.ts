@@ -555,27 +555,6 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("source-files 按源路径顺序收集支持格式并去重", () => {
-    const root = create_temp_dir();
-    const source_a = path.join(root, "source-a");
-    const source_b = path.join(root, "source-b");
-    fs.mkdirSync(path.join(source_a, "nested"), { recursive: true });
-    fs.mkdirSync(source_b, { recursive: true });
-    const first_txt = write_file(path.join(source_a, "b.TXT"));
-    const second_md = write_file(path.join(source_a, "nested", "a.md"));
-    const ignored = write_file(path.join(source_a, "ignore.bin"));
-    const third_json = write_file(path.join(source_b, "c.json"));
-    const service = create_service({ database: create_database() });
-
-    const result = service.collect_source_files({
-      source_paths: ["", source_a, first_txt, ignored, source_b, source_a],
-    });
-
-    expect(result).toEqual({
-      source_files: [first_txt, second_md, third_json],
-    });
-  });
-
   it("preview 从 database summary 收窄为公开摘要载荷", () => {
     const project_path = write_file(path.join(create_temp_dir(), "demo.lg"));
     const database = create_database({

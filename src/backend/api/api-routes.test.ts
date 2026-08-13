@@ -29,7 +29,7 @@ const POST_PATHS = new Set([
   "/api/session/project/snapshot",
   "/api/session/project/close",
   "/api/session/project/preview",
-  "/api/session/source-files/collect",
+  "/api/session/source-files/summary",
   "/api/session/project/create-preview",
   "/api/session/project/open",
   "/api/session/project/create",
@@ -170,6 +170,16 @@ describe("register_api_routes", () => {
     });
   });
 
+  it("source-files 摘要路由把显式路径原样转交生命周期服务", () => {
+    const fixture = create_route_fixture();
+    const request = { source_paths: ["E:/source"] };
+
+    expect(read_post_handler(fixture.post_json, "/api/session/source-files/summary")(request)).toBe(
+      fixture.source_file_summary,
+    );
+    expect(fixture.summarize_source_files).toHaveBeenCalledWith(request);
+  });
+
   it("设置更新只调用组合根提供的受保护写入口", () => {
     const fixture = create_route_fixture();
 
@@ -210,10 +220,12 @@ function create_route_fixture() {
   const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
     updated: request,
   }));
+  const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
+  const summarize_source_files = vi.fn(() => source_file_summary);
   const services = {
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
-      lifecycle: {},
+      lifecycle: { summarize_source_files },
       data: {},
       sessionState: {},
       summary: {},
@@ -266,6 +278,8 @@ function create_route_fixture() {
     edit_latest_round_message,
     reset,
     send_message,
+    source_file_summary,
+    summarize_source_files,
     retry_compaction,
     start_task,
     stop,
