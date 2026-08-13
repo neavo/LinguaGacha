@@ -87,6 +87,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260813 v0.114.1
+  - 调整与改进 [#749](https://github.com/neavo/LinguaGacha/issues/749) [#750](https://github.com/neavo/LinguaGacha/issues/750) [#751](https://github.com/neavo/LinguaGacha/issues/751)
+
 - 20260813 v0.114.0
   - `AGENT` - 新增 `角色扮演` 能力 [#744](https://github.com/neavo/LinguaGacha/issues/744)
   - `AGENT` - 显著强化 `术语表创建` 能力 [#745](https://github.com/neavo/LinguaGacha/issues/745)
