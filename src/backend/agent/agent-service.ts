@@ -163,6 +163,8 @@ type AgentServiceOptions = {
 };
 
 type LoadedAgentResources = Readonly<{
+  /** 保留未拼接 skill catalog 的原文，reset 时可重建能力清单而不累积旧投影。 */
+  baseSystemPrompt: string;
   systemPrompt: string;
   sessionSeed: AgentSessionSeed;
   skills: readonly AgentSkillDefinition[];
@@ -196,7 +198,7 @@ export class AgentService {
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
   private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
   private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
-  private resources: LoadedAgentResources | null = null; // 启动期一次性加载的原子资源集，null 表示未完成加载
+  private resources: LoadedAgentResources | null = null; // 基础资源与当前会话 catalog 的唯一原子快照
   private disposed = false;
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
@@ -236,15 +238,17 @@ export class AgentService {
     };
   }
 
-  /** 启动期原子加载必需的基础 Prompt、会话种子和可降级的 skill 清单。 */
+  /** 启动期原子加载必需的基础 Prompt、会话种子和初始 skill catalog。 */
   public async load_resources(): Promise<void> {
     await this.workspace?.initialize();
-    const system_prompt = load_agent_system_prompt(this.paths);
+    const base_system_prompt = load_agent_system_prompt(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
     const skills_prompt = format_agent_skills_for_system_prompt(skills);
     this.resources = {
-      systemPrompt: skills_prompt === "" ? system_prompt : `${system_prompt}\n\n${skills_prompt}`,
+      baseSystemPrompt: base_system_prompt,
+      systemPrompt:
+        skills_prompt === "" ? base_system_prompt : `${base_system_prompt}\n\n${skills_prompt}`,
       sessionSeed: session_seed,
       skills,
     };
@@ -753,7 +757,7 @@ export class AgentService {
       noTools: "builtin",
       customTools: [
         ...(this.workspace === undefined ? [] : create_agent_workspace_tools(this.workspace)),
-        ...create_agent_skill_tools(resources.skills),
+        ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
       ].map((tool) => wrap_agent_tool_execution(tool, this.log_manager)),
       resourceLoader: resource_loader,
@@ -1214,19 +1218,22 @@ export class AgentService {
     this.latest_round_checkpoint = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
-    if (!this.disposed) {
-      this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
-    }
     const reset = Promise.all([
       acceptance?.catch(() => undefined),
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
+      this.reload_session_skills(),
     ])
-      .then(async () =>
-        scope === "project"
-          ? await this.workspace?.reset_project(project_path)
-          : await this.workspace?.reset_workspace(),
-      )
+      .then(async () => {
+        if (scope === "project") {
+          await this.workspace?.reset_project(project_path);
+        } else {
+          await this.workspace?.reset_workspace();
+        }
+        if (!this.disposed) {
+          this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+        }
+      })
       .finally(() => {
         if (this.session_reset === reset) this.session_reset = null;
       });
@@ -1303,6 +1310,21 @@ export class AgentService {
       });
     }
     return this.resources;
+  }
+
+  /** 新产品会话重新冻结 catalog；System Prompt、mention 与 marker 始终共享同一快照。 */
+  private async reload_session_skills(): Promise<void> {
+    if (this.resources === null) return;
+    const skills = await load_agent_skills(this.paths, this.log_manager);
+    const skills_prompt = format_agent_skills_for_system_prompt(skills);
+    this.resources = {
+      ...this.resources,
+      systemPrompt:
+        skills_prompt === ""
+          ? this.resources.baseSystemPrompt
+          : `${this.resources.baseSystemPrompt}\n\n${skills_prompt}`,
+      skills,
+    };
   }
 
   /** 安全检查点与压缩恢复使用当前 UI 语言下的隐藏续跑消息。 */

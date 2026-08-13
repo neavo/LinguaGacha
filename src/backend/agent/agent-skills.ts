@@ -23,13 +23,6 @@ import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 
 const UI_FILE_NAME = "ui.json";
-const REFERENCES_DIR_NAME = "references";
-
-export type AgentSkillReference = {
-  path: string; // 相对 skill 根目录的 POSIX 路径，供正文解析相对引用
-  filePath: string; // 规范化绝对路径，作为 read_skill 的运行期白名单 key
-  content: string; // 启动期固定的完整正文，只在 read_skill 时下发
-};
 
 type AgentSkillUi = {
   visible: boolean; // 是否进入公开能力列表并接受用户 marker，不改变模型自主调用或读取权限
@@ -37,53 +30,68 @@ type AgentSkillUi = {
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
-/** 保留 Pi skill 的模型调用语义，并附加启动期固定的 UI 配置与受控 references。 */
-export type AgentSkillDefinition = Skill &
-  AgentSkillUi & {
-    references: AgentSkillReference[];
-  };
+/** 会话 skill 快照保留 Pi 路由语义、冻结正文与产品 UI 投影。 */
+export type AgentSkillDefinition = Pick<
+  Skill,
+  "name" | "description" | "filePath" | "disableModelInvocation"
+> &
+  AgentSkillUi & { content: string };
 
 type AgentSkillCatalogDefinition = Pick<
   AgentSkillDefinition,
-  "name" | "description" | "filePath" | "disableModelInvocation"
+  "name" | "description" | "disableModelInvocation"
 >;
-type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "filePath" | "content">;
+type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "content">;
 
-type AgentSkillLog = Pick<LogManager, "error" | "warning">;
+export type AgentSkillLog = Pick<LogManager, "error" | "warning">;
 type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
-type AgentSkillPaths = Pick<
+export type AgentSkillPaths = Pick<
   AppPathService,
   "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir" | "get_app_root"
 >;
 
-/**
- * 启动期加载内置与用户 skill；同名用户 skill 后加载并覆盖内置定义。
- */
+/** 按 Pi 的 first-wins 语义加载会话 catalog；用户有效定义优先于内置定义。 */
 export async function load_agent_skills(
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): Promise<AgentSkillDefinition[]> {
   try {
-    const result = await loadSkills(
-      new AgentSkillExecutionEnv({ cwd: paths.get_app_root() }, native_fs),
-      [paths.get_agent_builtin_skill_dir(), paths.get_agent_user_skill_dir()],
-    );
-    for (const diagnostic of result.diagnostics) log_skill_diagnostic(log_manager, diagnostic);
-
-    const invalid_paths = new Set(
-      result.diagnostics
-        .filter((diagnostic) => diagnostic.code === "invalid_metadata")
-        .map((diagnostic) => diagnostic.path),
-    );
-    const skills = new Map<string, AgentSkillDefinition>(); // 输入目录顺序就是同名 skill 的覆盖优先级
-    for (const skill of result.skills) {
-      if (invalid_paths.has(skill.filePath)) continue;
-      skills.set(skill.name, {
-        ...skill,
-        ...load_skill_ui(skill, log_manager, native_fs),
-        references: load_skill_references(skill.filePath, log_manager, native_fs),
-      });
+    const execution_env = new AgentSkillExecutionEnv({ cwd: paths.get_app_root() }, native_fs);
+    const sources = [paths.get_agent_user_skill_dir(), paths.get_agent_builtin_skill_dir()];
+    const skills = new Map<string, AgentSkillDefinition>();
+    for (const source of sources) {
+      const result = await loadSkills(execution_env, source);
+      for (const diagnostic of result.diagnostics) log_skill_diagnostic(log_manager, diagnostic);
+      const invalid_paths = new Set(
+        result.diagnostics
+          .filter((diagnostic) => diagnostic.code === "invalid_metadata")
+          .map((diagnostic) => diagnostic.path),
+      );
+      for (const skill of result.skills.toSorted((left, right) =>
+        left.filePath.localeCompare(right.filePath),
+      )) {
+        if (
+          invalid_paths.has(skill.filePath) ||
+          path.basename(path.dirname(skill.filePath)) !== skill.name
+        ) {
+          continue;
+        }
+        const existing = skills.get(skill.name);
+        if (existing !== undefined) {
+          log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
+            source: "agent",
+            context: {
+              code: "collision",
+              skill: skill.name,
+              winner_path: existing.filePath,
+              loser_path: skill.filePath,
+            },
+          });
+          continue;
+        }
+        skills.set(skill.name, create_agent_skill_definition(skill, log_manager, native_fs));
+      }
     }
     return [...skills.values()];
   } catch (error) {
@@ -93,6 +101,22 @@ export async function load_agent_skills(
     });
     return [];
   }
+}
+
+/** 将 Pi 的协议结果收口为产品会话使用的 skill 定义，并在此补齐 UI 投影。 */
+function create_agent_skill_definition(
+  skill: Skill,
+  log_manager: AgentSkillLog,
+  native_fs: AgentSkillNativeFs,
+): AgentSkillDefinition {
+  return {
+    name: skill.name,
+    description: skill.description,
+    filePath: skill.filePath.replaceAll("\\", "/"),
+    disableModelInvocation: skill.disableModelInvocation,
+    content: skill.content,
+    ...load_skill_ui(skill, log_manager, native_fs),
+  };
 }
 
 /** 产品只注入能力事实，skill 路由规则由 system prompt 唯一拥有。 */
@@ -107,7 +131,6 @@ export function format_agent_skills_for_system_prompt(
       "  <skill>",
       `    <name>${escape_agent_skill_xml(skill.name)}</name>`,
       `    <description>${escape_agent_skill_xml(skill.description)}</description>`,
-      `    <location>${escape_agent_skill_xml(skill.filePath)}</location>`,
       "  </skill>",
     ]),
     "</available_skills>",
@@ -116,7 +139,7 @@ export function format_agent_skills_for_system_prompt(
 
 /** 显式 marker 直接注入完整正文，不再附带 SDK 的第二套路由说明。 */
 export function format_agent_skill_invocation(skill: AgentSkillInvocationDefinition): string {
-  return `<skill name="${escape_agent_skill_xml(skill.name)}" location="${escape_agent_skill_xml(skill.filePath)}">\n${skill.content}\n</skill>`;
+  return `<skill name="${escape_agent_skill_xml(skill.name)}">\n${skill.content}\n</skill>`;
 }
 
 /** 只转义 XML 结构字段；skill 正文保持原始 Markdown。 */
@@ -195,80 +218,14 @@ function load_skill_ui(
   };
 }
 
-/**
- * 递归读取 references 目录下的普通文件并形成进程内快照；符号链接不进入白名单。
- */
-function load_skill_references(
-  skill_file_path: string,
-  log_manager: AgentSkillLog,
-  native_fs: AgentSkillNativeFs,
-): AgentSkillReference[] {
-  const skill_dir = path.dirname(skill_file_path);
-  const references: AgentSkillReference[] = [];
-  collect_skill_references(
-    skill_dir,
-    path.join(skill_dir, REFERENCES_DIR_NAME),
-    references,
-    log_manager,
-    native_fs,
-  );
-  return references.sort((left, right) => left.path.localeCompare(right.path));
-}
-
-/** 深度遍历受控 references 根；失败文件降级为诊断，不污染其它 skill。 */
-function collect_skill_references(
-  skill_dir: string,
-  directory: string,
-  references: AgentSkillReference[],
-  log_manager: AgentSkillLog,
-  native_fs: AgentSkillNativeFs,
-): void {
-  let entries: ReturnType<AgentSkillNativeFs["read_dirents"]>;
-  try {
-    entries = native_fs.read_dirents(directory);
-  } catch (error) {
-    if (!is_not_found_error(error)) {
-      log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
-        source: "agent",
-        context: { path: directory, error: String(error) },
-      });
-    }
-    return;
-  }
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    const entry_path = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      collect_skill_references(skill_dir, entry_path, references, log_manager, native_fs);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-    try {
-      references.push({
-        path: normalize_path(path.relative(skill_dir, entry_path)),
-        filePath: normalize_path(entry_path),
-        content: native_fs.read_text_file(entry_path),
-      });
-    } catch (error) {
-      log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
-        source: "agent",
-        context: { path: entry_path, error: String(error) },
-      });
-    }
-  }
-}
-
 /** 缺失的可选 skill 资源不产生诊断，其它 IO 错误仍需显式暴露。 */
 function is_not_found_error(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-/**
- * pi-agent-core 的 skill walker 使用 POSIX 分隔符比较路径；适配器只复用它的协议解析，
- * 实际读取全部经过 NativeFs。符号链接不进入 skill 扫描，避免越过受控根或形成递归环。
- */
+/** Pi 只负责 skill 协议解析，所有真实扫描与读取仍经过项目 NativeFs 门面。 */
 class AgentSkillExecutionEnv extends NodeExecutionEnv {
-  /** 固定工作目录，并把第三方 loader 的所有文件访问收口到 NativeFs。 */
+  /** 注入应用文件门面，使第三方解析器不直接越过宿主 IO 边界。 */
   public constructor(
     options: { cwd: string },
     private readonly native_fs: AgentSkillNativeFs,
@@ -276,7 +233,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     super(options);
   }
 
-  /** 第三方 loader 只拿 Result，真实读取仍统一经过 NativeFs。 */
+  /** 把 Pi 的文本读取协议适配为应用文件读取，并保留中止与错误语义。 */
   public override async readTextFile(
     file_path: string,
     abort_signal?: AbortSignal,
@@ -290,7 +247,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     }
   }
 
-  /** 只向 skill walker 暴露普通文件和目录，阻断其它平台文件类型。 */
+  /** 将应用文件状态投影成 Pi 识别的普通文件或目录。 */
   public override async fileInfo(file_path: string): Promise<Result<FileInfo, FileError>> {
     const resolved_path = this.resolve_path(file_path);
     try {
@@ -305,13 +262,13 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
         kind,
         size: stats.size,
         mtimeMs: stats.mtimeMs,
-      } satisfies FileInfo);
+      });
     } catch (error) {
       return err(to_file_error(error, resolved_path));
     }
   }
 
-  /** 目录枚举在进入递归前过滤符号链接，避免越过受控 skill 根。 */
+  /** 枚举 skill 目录时忽略符号链接，避免第三方扫描越过目录树。 */
   public override async listDir(
     directory: string,
     abort_signal?: AbortSignal,
@@ -332,20 +289,16 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     }
   }
 
-  /** Pi 使用 POSIX 路径比较；所有绝对化结果在适配器边界统一转换。 */
+  /** 统一相对路径基准与分隔符，保持 Pi 返回路径在各平台一致。 */
   private resolve_path(file_path: string): string {
-    return normalize_path(
-      path.isAbsolute(file_path) ? file_path : path.resolve(this.cwd, file_path),
+    return (path.isAbsolute(file_path) ? file_path : path.resolve(this.cwd, file_path)).replaceAll(
+      "\\",
+      "/",
     );
   }
 }
 
-/** Pi skill 协议统一使用 POSIX 路径作为资源身份。 */
-function normalize_path(file_path: string): string {
-  return file_path.replaceAll("\\", "/");
-}
-
-/** 把 Node IO 错误收窄为 Pi loader 的稳定错误码，同时保留原始 cause。 */
+/** 将宿主 IO 错误映射为 Pi 的窄错误码，同时保留原始 cause。 */
 function to_file_error(error: unknown, file_path: string): FileError {
   const code = error instanceof Error && "code" in error ? String(error.code) : "";
   const mapped_code: FileErrorCode =

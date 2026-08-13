@@ -28,9 +28,10 @@
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入并把规范 WebP 直接交给当前供应商；OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败与重试语义。
 - 模型可见上下文超过 `context_window - 32K` 时，自然结束由 `AgentSession` 自动压缩，完整工具批次后由 `AgentService` 在包含工具结果的历史上补足检查。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；压缩成功后 token 仪表直接采用 SDK 对新模型历史的估算，失败保留原用量。
 - 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
-- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。模型能力清单与显式 skill 注入块由产品格式化，不携带 SDK 的第二套路由文案；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。模型能力按加载时首次出现顺序确定性注入，重复项去重。
+- coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时从用户、内置目录依次加载 skill，以首个有效同名定义获胜，坏 skill 与冲突只记录诊断；形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述，显式注入块只公开名称与正文；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型开始任务前在当前对话历史中检查是否已经存在一次由 `read_skill` 返回的完整宪章，缺失时主动读取，已有时直接复用；后端不注入任务阶段副本，也不跟踪加载状态。
-- `ui.json` 的 `visible` 控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单、`read_skill`、工具注册或启动期白名单；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。已注入领域 skill 只禁止重复读取自身，正文声明的必读知识 skill 仍从能力清单定位当前有效定义并读取一次；知识依赖不构成第二套工作流、任务对象或范围。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理。`read_skill` 只按规范化绝对路径读取启动期形成的 `SKILL.md` 与 references 白名单，不扫描会话历史建立第二套授权，UI 配置不进入模型上下文。
+- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。已注入领域 skill 只禁止重复读取自身，正文声明的必读知识 skill 仍从能力清单定位当前有效定义并读取一次；知识依赖不构成第二套工作流、任务对象或范围。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
+- `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
 - System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织和决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
 
 ## 4. 产品工具与宿主能力

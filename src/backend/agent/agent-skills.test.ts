@@ -16,21 +16,18 @@ describe("Agent skill 模型投影", () => {
     {
       name: "visible",
       description: "使用 <能力> & 规则",
-      filePath: "E:/skills/a&b/SKILL.md",
       content: "执行正文。",
       disableModelInvocation: false,
     },
     {
       name: "manual",
       description: "仅手动调用",
-      filePath: "E:/skills/manual/SKILL.md",
       content: "手动正文。",
       disableModelInvocation: true,
     },
     {
       name: "knowledge",
       description: "UI 隐藏的模型知识",
-      filePath: "E:/skills/knowledge/SKILL.md",
       content: "知识正文。",
       disableModelInvocation: false,
       visible: false,
@@ -43,14 +40,14 @@ describe("Agent skill 模型投影", () => {
     expect(prompt).toContain("<name>visible</name>");
     expect(prompt).toContain("<name>knowledge</name>");
     expect(prompt).toContain("使用 &lt;能力&gt; &amp; 规则");
-    expect(prompt).toContain("E:/skills/a&amp;b/SKILL.md");
+    expect(prompt).not.toContain("<location>");
     expect(prompt).not.toContain("manual");
     expect(prompt).not.toContain("Read the full skill file");
   });
 
-  it("显式调用只包装产品 skill 正文和位置", () => {
+  it("显式调用只包装产品 skill 名称和正文", () => {
     expect(format_agent_skill_invocation(skills[0]!)).toBe(
-      '<skill name="visible" location="E:/skills/a&amp;b/SKILL.md">\n执行正文。\n</skill>',
+      '<skill name="visible">\n执行正文。\n</skill>',
     );
   });
 });
@@ -102,20 +99,6 @@ describe("Agent skill 加载", () => {
 
     await expect(load_agent_skills(paths, log_manager)).resolves.toEqual([
       {
-        name: "valid",
-        description: "合法能力",
-        visible: true,
-        displayDescriptions: {
-          "zh-CN": "合法能力",
-          "en-US": "合法能力",
-          "de-DE": "合法能力",
-        },
-        content: "执行合法任务。",
-        filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
-        disableModelInvocation: false,
-        references: [],
-      },
-      {
         name: "manual",
         description: "手动能力",
         visible: true,
@@ -127,7 +110,19 @@ describe("Agent skill 加载", () => {
         content: "执行手动任务。",
         filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
         disableModelInvocation: true,
-        references: [],
+      },
+      {
+        name: "valid",
+        description: "合法能力",
+        visible: true,
+        displayDescriptions: {
+          "zh-CN": "合法能力",
+          "en-US": "合法能力",
+          "de-DE": "合法能力",
+        },
+        content: "执行合法任务。",
+        filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
+        disableModelInvocation: false,
       },
     ]);
     expect(warning).toHaveBeenCalledWith(
@@ -142,7 +137,7 @@ describe("Agent skill 加载", () => {
     );
   });
 
-  it("用户同名 skill 连同正文、路径与 references 一起覆盖内置定义", async () => {
+  it("用户有效同名 skill 作为完整定义优先于内置 skill", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
     );
@@ -168,8 +163,9 @@ describe("Agent skill 加载", () => {
       '{"order":200,"displayDescriptions":{"en-US":"User skill"}}',
     );
     write_skill(path.join(user_dir, "references", "guide.md"), "# 用户参考");
+    const warning = vi.fn();
 
-    await expect(load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() })).resolves.toEqual([
+    await expect(load_agent_skills(paths, { warning, error: vi.fn() })).resolves.toEqual([
       {
         name: "shared",
         description: "用户能力",
@@ -183,15 +179,19 @@ describe("Agent skill 加载", () => {
         content: "用户正文。",
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
         disableModelInvocation: false,
-        references: [
-          {
-            path: "references/guide.md",
-            filePath: path.join(user_dir, "references", "guide.md").replaceAll("\\", "/"),
-            content: "# 用户参考",
-          },
-        ],
       },
     ]);
+    expect(warning).toHaveBeenCalledWith(
+      "Agent skill 资源加载失败 …",
+      expect.objectContaining({
+        context: expect.objectContaining({
+          code: "collision",
+          skill: "shared",
+          winner_path: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
+          loser_path: expect.stringMatching(/\/shared\/SKILL\.md$/u),
+        }),
+      }),
+    );
   });
 
   it.each([
@@ -267,60 +267,6 @@ describe("Agent skill 加载", () => {
       },
     });
     expect(warning).not.toHaveBeenCalled();
-  });
-
-  it("递归加载排序后的 references，并忽略符号链接", async () => {
-    using temp_root = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-agent-skills-ref-"),
-    );
-    const app_root = temp_root.path;
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
-    const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "glossary-audit");
-    write_skill(
-      path.join(skill_dir, "SKILL.md"),
-      "---\nname: glossary-audit\ndescription: 审校术语\n---\n\n执行术语审校。",
-    );
-    write_skill(
-      path.join(skill_dir, "references", "nested", "b-standard.md"),
-      "# 标准\n\n第二份正文。",
-    );
-    write_skill(path.join(skill_dir, "references", "a-first.md"), "# 第一份\n\n首份正文。");
-    write_skill(path.join(skill_dir, "references", "rules.json"), '{"strict":true}');
-    const linked_dir = path.join(app_root, "linked-references");
-    write_skill(path.join(linked_dir, "secret.md"), "不应跟随符号链接");
-    fs.symlinkSync(linked_dir, path.join(skill_dir, "references", "linked"), "junction");
-    const log_manager = { warning: vi.fn(), error: vi.fn() };
-
-    const skills = await load_agent_skills(paths, log_manager);
-
-    expect(skills).toHaveLength(1);
-    const skill = skills[0];
-    expect(skill?.content).toBe("执行术语审校。");
-    expect(skill).toMatchObject({
-      visible: true,
-      displayDescriptions: {
-        "zh-CN": "审校术语",
-        "en-US": "审校术语",
-        "de-DE": "审校术语",
-      },
-    });
-    expect(skill?.references).toEqual([
-      {
-        path: "references/a-first.md",
-        filePath: expect.stringMatching(/\/references\/a-first\.md$/u),
-        content: "# 第一份\n\n首份正文。",
-      },
-      {
-        path: "references/nested/b-standard.md",
-        filePath: expect.stringMatching(/\/references\/nested\/b-standard\.md$/u),
-        content: "# 标准\n\n第二份正文。",
-      },
-      {
-        path: "references/rules.json",
-        filePath: expect.stringMatching(/\/references\/rules\.json$/u),
-        content: '{"strict":true}',
-      },
-    ]);
   });
 });
 

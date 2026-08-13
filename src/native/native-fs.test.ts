@@ -65,6 +65,18 @@ describe("原生文件系统门面", () => {
     expect(fs.statSync(target_dir).isDirectory()).toBe(true);
   });
 
+  it("真实路径解析会跟随符号链接并兼容 Windows namespaced path", () => {
+    const native_fs = new NativeFs(new NativePathPolicy(process.platform));
+    const target_dir = path.join(temp_dir, "target");
+    const linked_dir = path.join(temp_dir, "linked");
+    fs.mkdirSync(target_dir);
+    fs.symlinkSync(target_dir, linked_dir, "junction");
+
+    expect(native_fs.to_identity_path(native_fs.real_path(linked_dir))).toBe(
+      native_fs.to_identity_path(target_dir),
+    );
+  });
+
   it("同步写入和追加都复用同一父目录策略", () => {
     const native_fs = new NativeFs(new NativePathPolicy(process.platform));
     const target_path = path.join(temp_dir, "log", "app.log");

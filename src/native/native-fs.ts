@@ -62,6 +62,13 @@ export class NativeFs {
   }
 
   /**
+   * 解析现存路径的真实位置，供受控根目录检查阻断符号链接越界。
+   */
+  public real_path(target_path: string): string {
+    return fs.realpathSync.native(this.to_native_path(target_path));
+  }
+
+  /**
    * 读取目录项名称，供只关心文件名的列表场景使用。
    */
   public read_dir_names(directory: string): string[] {
