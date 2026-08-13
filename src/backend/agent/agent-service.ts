@@ -24,7 +24,9 @@ import {
   AGENT_SESSION_EVENT_TOPIC,
   find_agent_reference_ranges,
   format_agent_skill_reference,
+  normalize_agent_message_edit_request,
   normalize_agent_message_input,
+  normalize_agent_retry_request,
   type AgentAssistantMessagePart,
   type AgentEntry,
   type AgentEntryStatus,
@@ -120,6 +122,20 @@ type AgentAssistantStream = {
   blocks: AgentAssistantStreamBlock[];
 };
 
+/** 公开消息只保存当前可修改位置；完整模型历史仍由 SessionManager 单独拥有。 */
+type AgentHistoryCheckpoint = {
+  entry_id: string;
+  leaf_id: string | null;
+};
+
+/** 修订角色显式决定是重新调用模型，还是直接写入人工 assistant。 */
+type AgentRevision = {
+  checkpoint: AgentHistoryCheckpoint;
+  prefix: readonly AgentEntry[];
+  message: AgentMessageInput;
+  role: "user" | "assistant";
+};
+
 type AgentAssistantStreamDelta = Extract<
   AssistantMessageEvent,
   { type: "text_delta" | "thinking_delta" }
@@ -177,6 +193,9 @@ export class AgentService {
   private context_tokens: number | null = null; // 压缩终态优先采用 SDK 新历史估算，避免复用旧 usage
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
   private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null;
+  private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
+  private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
+  private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
   private resources: LoadedAgentResources | null = null; // 启动期一次性加载的原子资源集，null 表示未完成加载
   private disposed = false;
 
@@ -253,25 +272,88 @@ export class AgentService {
     const selected_skills = select_agent_skills(resources.skills, message.text);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    const acceptance = this.accept_message(resources, message, selected_skills, runtime_lease);
-    this.operation_acceptance = acceptance;
-    const clear_acceptance = () => {
-      if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
-    };
-    void acceptance.then(clear_acceptance, clear_acceptance);
-    return await acceptance;
+    return await this.track_operation_acceptance(
+      this.accept_message(resources, message, selected_skills, runtime_lease),
+    );
   }
 
-  /** 仅为最新失败轮次追加本地化“继续”消息，完整执行仍复用普通消息入口。 */
-  public async continue_after_failure(): Promise<AgentSessionSnapshot> {
-    this.assert_not_disposed();
-    const latest_user = this.entries.findLast((entry) => entry.kind === "user_message");
-    if (this.state !== "idle" || latest_user?.status !== "error") {
+  /** 丢弃最新 user 轮次的整个旧尝试，并以原消息重新进入模型。 */
+  public async retry_latest_round(request: JsonRecord): Promise<AgentSessionSnapshot> {
+    this.assert_revision_available();
+    const target = normalize_agent_retry_request(request);
+    const checkpoint = this.latest_round_checkpoint;
+    const user_index = this.entries.findLastIndex((entry) => entry.kind === "user_message");
+    const user = this.entries[user_index];
+    if (
+      target === null ||
+      checkpoint === null ||
+      user?.kind !== "user_message" ||
+      user.id !== target.entryId ||
+      checkpoint.entry_id !== user.id ||
+      user.status === "running"
+    ) {
       throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_continue_unavailable" },
+        diagnostic_context: { reason: "agent_retry_unavailable" },
       });
     }
-    return await this.send_message({ text: this.read_continue_text(), images: [] });
+    return await this.begin_revision({
+      checkpoint,
+      prefix: this.entries.slice(0, user_index),
+      message: { text: user.text, images: user.images },
+      role: "user",
+    });
+  }
+
+  /** 最新轮次输入与最终输出可独立替换；旧尾部不会留在活动历史。 */
+  public async edit_latest_round_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
+    this.assert_revision_available();
+    const revision = normalize_agent_message_edit_request(request);
+    if (revision === null) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_message_edit_unavailable" },
+      });
+    }
+    const user_index = this.entries.findLastIndex((entry) => entry.kind === "user_message");
+    const user = this.entries[user_index];
+    const round_checkpoint = this.latest_round_checkpoint;
+    if (
+      user?.kind === "user_message" &&
+      revision.entryId === user.id &&
+      round_checkpoint?.entry_id === user.id &&
+      user.status !== "running"
+    ) {
+      return await this.begin_revision({
+        checkpoint: round_checkpoint,
+        prefix: this.entries.slice(0, user_index),
+        message: revision.message,
+        role: "user",
+      });
+    }
+
+    const output_index = this.entries.findLastIndex(
+      (entry, index) => index > user_index && entry.kind === "assistant_message",
+    );
+    const output = this.entries[output_index];
+    const output_checkpoint = this.latest_output_checkpoint;
+    if (
+      output?.kind === "assistant_message" &&
+      revision.entryId === output.id &&
+      output_checkpoint?.entry_id === output.id &&
+      output.status !== "running" &&
+      revision.message.text !== "" &&
+      revision.message.images.length === 0
+    ) {
+      return await this.begin_revision({
+        checkpoint: output_checkpoint,
+        prefix: this.entries.slice(0, output_index),
+        message: revision.message,
+        role: "assistant",
+      });
+    }
+
+    throw new AppErrors.AppError("request.validation_failed", {
+      diagnostic_context: { reason: "agent_message_edit_unavailable" },
+    });
   }
 
   /** 重试最近一次失败压缩；未完成轮次恢复后以普通“继续”消息重新进入模型。 */
@@ -297,18 +379,9 @@ export class AgentService {
       this.entries.findLast((entry) => entry.kind === "user_message")?.status === "error";
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    const acceptance = this.accept_compaction_retry(
-      runtime,
-      failed_entry,
-      resume_failed_round,
-      runtime_lease,
+    return await this.track_operation_acceptance(
+      this.accept_compaction_retry(runtime, failed_entry, resume_failed_round, runtime_lease),
     );
-    this.operation_acceptance = acceptance;
-    const clear_acceptance = () => {
-      if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
-    };
-    void acceptance.then(clear_acceptance, clear_acceptance);
-    return await acceptance;
   }
 
   /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
@@ -428,6 +501,127 @@ export class AgentService {
     }
   }
 
+  /** 重试与修改共享同一受理边界，目标检查通过后才取得运行 lease。 */
+  private async begin_revision(revision: AgentRevision): Promise<AgentSessionSnapshot> {
+    const resources = this.require_resources();
+    this.session_state.require_loaded_project_path();
+    const runtime = this.runtime;
+    if (runtime === null) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_revision_runtime_missing" },
+      });
+    }
+    const selected_skills =
+      revision.role === "assistant"
+        ? []
+        : select_agent_skills(resources.skills, revision.message.text);
+    const runtime_lease = this.runtime_gate.begin_runtime("agent");
+    this.runtime_lease = runtime_lease;
+    return await this.track_operation_acceptance(
+      this.accept_revision(runtime, revision, selected_skills, runtime_lease),
+    );
+  }
+
+  /** 模型预检成功后才裁剪；提交段只改内存历史并立即建立唯一替代版本。 */
+  private async accept_revision(
+    runtime: AgentRuntime,
+    revision: AgentRevision,
+    selected_skills: AgentSkillDefinition[],
+    runtime_lease: RuntimeLease,
+  ): Promise<AgentSessionSnapshot> {
+    let prompt_started = false;
+    try {
+      const generation = this.runtime_generation;
+      await this.update_runtime_model(runtime, this.settings.read_setting());
+      if (this.disposed || generation !== this.runtime_generation || this.runtime !== runtime) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { reason: "agent_revision_invalidated" },
+        });
+      }
+
+      this.replace_active_history(runtime, revision.checkpoint.leaf_id);
+      this.pending_assistant_checkpoint = null;
+      if (revision.role === "assistant") {
+        this.replace_with_assistant(runtime, revision.prefix, revision.message.text);
+        return this.get_snapshot();
+      }
+
+      const prompt = this.start_round(
+        runtime,
+        generation,
+        revision.message,
+        selected_skills,
+        runtime_lease,
+        revision.prefix,
+      );
+      this.runtime_settlement = prompt;
+      prompt_started = true;
+      const clear_prompt = () => {
+        if (this.runtime_settlement === prompt) this.runtime_settlement = null;
+      };
+      void prompt.then(clear_prompt, clear_prompt);
+      return this.get_snapshot();
+    } finally {
+      if (!prompt_started) this.finish_runtime(runtime_lease);
+    }
+  }
+
+  /** SessionManager 在内存模式下用根到 leaf 的单一路径替换整棵旧树。 */
+  private replace_active_history(runtime: AgentRuntime, leaf_id: string | null): void {
+    if (leaf_id === null) runtime.session.sessionManager.newSession();
+    else runtime.session.sessionManager.createBranchedSession(leaf_id);
+    runtime.session.agent.state.messages =
+      runtime.session.sessionManager.buildSessionContext().messages;
+    this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
+  }
+
+  /** 人工修改的 assistant 是零 usage 的正常历史消息，不触发供应商请求。 */
+  private replace_with_assistant(
+    runtime: AgentRuntime,
+    prefix: readonly AgentEntry[],
+    text: string,
+  ): void {
+    const model = runtime.session.model;
+    if (model === undefined) {
+      throw new AppErrors.AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "agent_revision_model_missing" },
+      });
+    }
+    const created_at = Date.now();
+    const checkpoint_leaf = runtime.session.sessionManager.getLeafId();
+    runtime.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text }],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: created_at,
+    });
+    runtime.session.agent.state.messages =
+      runtime.session.sessionManager.buildSessionContext().messages;
+    const entry: AgentEntry = {
+      kind: "assistant_message",
+      id: uuidv7(),
+      parts: [{ kind: "text", text }],
+      status: "success",
+      createdAt: created_at,
+    };
+    this.entries = [...structuredClone(prefix), entry];
+    this.latest_output_checkpoint = { entry_id: entry.id, leaf_id: checkpoint_leaf };
+    this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
+    this.state = "idle";
+    this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+  }
+
   /** 重试受理只更新现有运行时模型并原位推进失败条目，不建立第二套压缩状态。 */
   private async accept_compaction_retry(
     runtime: AgentRuntime,
@@ -463,15 +657,16 @@ export class AgentService {
     }
   }
 
-  /** 所有新尝试都追加独立 user 轮次，失败历史保持可追踪。 */
+  /** 新轮次记录模型写入前的唯一切点；替代操作通过 snapshot_seed 原子换掉旧尾部。 */
   private start_round(
     runtime: AgentRuntime,
     generation: number,
     message: AgentMessageInput,
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
+    replacement_prefix?: readonly AgentEntry[],
   ): Promise<void> {
-    this.upsert_entry({
+    const entry: AgentEntry = {
       kind: "user_message",
       id: uuidv7(),
       text: message.text,
@@ -479,8 +674,22 @@ export class AgentService {
       status: "running",
       createdAt: Date.now(),
       endedAt: null,
-    });
-    this.set_state("running");
+    };
+    const checkpoint = {
+      entry_id: entry.id,
+      leaf_id: runtime.session.sessionManager.getLeafId(),
+    };
+    this.latest_round_checkpoint = checkpoint;
+    this.latest_output_checkpoint = null;
+    this.pending_assistant_checkpoint = null;
+    if (replacement_prefix === undefined) {
+      this.upsert_entry(entry);
+      this.set_state("running");
+    } else {
+      this.entries = [...structuredClone(replacement_prefix), entry];
+      this.state = "running";
+      this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+    }
     return this.run_prompt(
       runtime,
       generation,
@@ -729,6 +938,12 @@ export class AgentService {
     }
     // stop 会先切 idle 再取消 SDK，因此取消过程中到达的事件天然失效。
     if (this.state !== "running") return;
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      this.pending_assistant_checkpoint = {
+        leaf_id: this.runtime?.session.sessionManager.getLeafId() ?? null,
+      };
+      return;
+    }
     if (
       event.type === "message_update" &&
       (event.assistantMessageEvent.type === "text_delta" ||
@@ -744,6 +959,7 @@ export class AgentService {
           event.message,
           event.message.stopReason === "error" ? "error" : "success",
         );
+        this.pending_assistant_checkpoint = null;
       }
       this.publish_context_tokens();
       return;
@@ -807,13 +1023,21 @@ export class AgentService {
     const existing = this.find_open_assistant_entry();
     if (existing === undefined) {
       if (parts.length === 0) return;
-      this.upsert_entry({
+      const entry: AgentEntry = {
         kind: "assistant_message",
         id: uuidv7(),
         parts,
         status,
         createdAt: created_at,
-      });
+      };
+      this.upsert_entry(entry);
+      const checkpoint = this.pending_assistant_checkpoint;
+      if (checkpoint !== null) {
+        this.latest_output_checkpoint = {
+          entry_id: entry.id,
+          leaf_id: checkpoint.leaf_id,
+        };
+      }
     } else {
       this.upsert_entry({ ...existing, parts, status });
     }
@@ -987,6 +1211,9 @@ export class AgentService {
     this.state = "idle";
     this.entries = [];
     this.context_tokens = null;
+    this.latest_round_checkpoint = null;
+    this.latest_output_checkpoint = null;
+    this.pending_assistant_checkpoint = null;
     if (!this.disposed) {
       this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
     }
@@ -1040,6 +1267,18 @@ export class AgentService {
     });
   }
 
+  /** 所有异步受理共享同一关闭屏障，命令类型不再各自复制清理时序。 */
+  private async track_operation_acceptance(
+    acceptance: Promise<AgentSessionSnapshot>,
+  ): Promise<AgentSessionSnapshot> {
+    this.operation_acceptance = acceptance;
+    try {
+      return await acceptance;
+    } finally {
+      if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
+    }
+  }
+
   /** 同时清除本地引用和共享 owner；迟到 lease 由 gate 身份校验忽略。 */
   private finish_runtime(lease: RuntimeLease): void {
     if (this.runtime_lease === lease) this.runtime_lease = null;
@@ -1066,7 +1305,7 @@ export class AgentService {
     return this.resources;
   }
 
-  /** 公开与隐藏续跑共用当前 UI 语言下的唯一模型消息。 */
+  /** 安全检查点与压缩恢复使用当前 UI 语言下的隐藏续跑消息。 */
   private read_continue_text(): string {
     const setting = this.settings.read_setting();
     return format_i18n_message(
@@ -1078,6 +1317,19 @@ export class AgentService {
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
   private assert_not_disposed(): void {
     if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
+  }
+
+  /** 消息改写只允许发生在稳定空闲态，且不能绕过失败压缩恢复。 */
+  private assert_revision_available(): void {
+    this.assert_not_disposed();
+    if (this.session_reset !== null || this.state !== "idle") {
+      throw new AppErrors.AppError("runtime.busy");
+    }
+    if (this.find_latest_compaction_entry()?.status === "error") {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_compaction_recovery_required" },
+      });
+    }
   }
 }
 

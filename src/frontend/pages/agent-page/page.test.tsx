@@ -104,6 +104,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "app.action.retry") return "重试";
       if (key === "agent_page.action.click_to_retry") return "点击重试";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
+      if (key === "agent_page.confirm.rerun_after_workspace_apply") return "工程写入重跑确认";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_create") return "创建术语表";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
@@ -113,6 +114,8 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
       if (key === "agent_page.error.terms_load") return "术语加载失败";
       if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
+      if (key === "agent_page.error.retry") return "重试失败，请再次尝试。";
+      if (key === "agent_page.error.edit") return "消息修改失败，编辑内容已保留。";
       if (key === "agent_page.error.stop") return "停止失败，请重试。";
       if (key === "agent_page.error.compaction_retry") return "上下文压缩重试失败，请重试。";
       if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
@@ -470,7 +473,8 @@ describe("AgentPage", () => {
       button.textContent?.includes("模型服务请求失败"),
     );
     expect(compaction_retry?.disabled).toBe(false);
-    expect(message_retry?.disabled).toBe(true);
+    expect(message_retry).toBeUndefined();
+    expect(view.querySelector(".agent-message-actions")).toBeNull();
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
 
     await act(async () => compaction_retry?.click());
@@ -507,13 +511,13 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
-  it("失败轮次的恢复条目调用继续命令并保留当前草稿", async () => {
+  it("失败轮次的恢复条目传递 user 身份并保留当前草稿", async () => {
     const send = vi.fn(async () => undefined);
-    const continueAfterFailure = vi.fn(async () => undefined);
+    const retryLatestRound = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
-      continueAfterFailure,
+      retryLatestRound,
     });
     const editor = get_editor(view);
     await act(async () => {
@@ -523,9 +527,88 @@ describe("AgentPage", () => {
     if (retry === null) throw new Error("缺少轮次重试按钮");
     await act(async () => retry.click());
 
-    expect(continueAfterFailure).toHaveBeenCalledOnce();
+    expect(retryLatestRound).toHaveBeenCalledWith("user-error");
     expect(send).not.toHaveBeenCalled();
     expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
+  });
+
+  it("已成功写入工程的轮次重试必须确认，取消不调用且确认仍传 user 身份", async () => {
+    const retryLatestRound = vi.fn(async () => undefined);
+    const view = await render_page({
+      entries: [
+        user_entry("user-write", "修改工程", "success", 0, 3),
+        workspace_apply_entry("apply-1"),
+        assistant_entry("assistant-write", "修改完成", "success", 2),
+      ],
+      retryLatestRound,
+    });
+    const retry = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--assistant .agent-message-actions button",
+      ),
+    ].find((button) => button.textContent === "重试");
+    if (retry === undefined) throw new Error("缺少轮次重试按钮");
+
+    await act(async () => retry.click());
+    expect(retryLatestRound).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
+      "工程写入重跑确认",
+    );
+    await act(async () => get_portal_button("app.action.cancel").click());
+    expect(retryLatestRound).not.toHaveBeenCalled();
+
+    await act(async () => retry.click());
+    await act(async () => get_portal_button("app.action.confirm").click());
+    expect(retryLatestRound).toHaveBeenCalledWith("user-write");
+  });
+
+  it("已写入工程时修改输入需要确认并保留编辑，修改输出则直接保存", async () => {
+    const editLatestRoundMessage = vi.fn(async () => undefined);
+    const entries = [
+      user_entry("user-write", "原输入", "success", 0, 3),
+      workspace_apply_entry("apply-1"),
+      assistant_entry("assistant-write", "原输出", "success", 2),
+    ];
+    const input = build_state().input;
+    const view = await render_page({
+      entries,
+      editLatestRoundMessage,
+      input: {
+        ...input,
+        editing: { entryId: "user-write", role: "user" },
+        read_draft: () => ({ text: "新输入", images: [] }),
+      },
+    });
+
+    await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
+    expect(editLatestRoundMessage).not.toHaveBeenCalled();
+    await act(async () => get_portal_button("app.action.cancel").click());
+    expect(get_editor(view).state.doc.toString()).toBe("新输入");
+
+    await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
+    await act(async () => get_portal_button("app.action.confirm").click());
+    expect(editLatestRoundMessage).toHaveBeenCalledWith("user-write", {
+      text: "新输入",
+      images: [],
+    });
+
+    editLatestRoundMessage.mockClear();
+    await render_page({
+      entries,
+      editLatestRoundMessage,
+      input: {
+        ...input,
+        revision: input.revision + 1,
+        editing: { entryId: "assistant-write", role: "assistant" },
+        read_draft: () => ({ text: "新输出", images: [] }),
+      },
+    });
+    await act(async () => get_button_by_label(view, "agent_page.action.save_edit").click());
+    expect(editLatestRoundMessage).toHaveBeenCalledWith("assistant-write", {
+      text: "新输出",
+      images: [],
+    });
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
@@ -627,12 +710,16 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     command: null,
     input: {
       revision: 0,
+      editing: null,
       read_draft: () => ({ text: "", images: [] }),
       write_draft: vi.fn(),
       read_history: () => [],
+      start_edit: vi.fn(),
+      cancel_edit: vi.fn(),
     },
     send: vi.fn(async () => undefined),
-    continueAfterFailure: vi.fn(async () => undefined),
+    retryLatestRound: vi.fn(async () => undefined),
+    editLatestRoundMessage: vi.fn(async () => undefined),
     stop: vi.fn(),
     retryCompaction: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
@@ -653,6 +740,19 @@ function user_entry(
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
+}
+
+/** 构造足以触发副作用确认语义的成功 apply 条目。 */
+function workspace_apply_entry(id: string) {
+  return {
+    kind: "tool_call" as const,
+    id,
+    toolName: "workspace_apply",
+    input: "{}",
+    status: "success" as const,
+    output: "{}",
+    createdAt: 1,
+  };
 }
 
 function assistant_parts_entry(

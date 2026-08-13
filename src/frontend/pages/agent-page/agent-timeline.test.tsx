@@ -21,6 +21,8 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.stopped") return "已停止";
       if (key === "app.action.retry") return "重试";
       if (key === "agent_page.action.click_to_retry") return "点击重试";
+      if (key === "agent_page.action.edit") return "修改";
+      if (key === "agent_page.action.edit_and_retry") return "修改并重试";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
       if (key === "agent_page.compaction.success") return "上下文压缩成功";
       if (key === "agent_page.compaction.error") return "上下文压缩失败";
@@ -48,7 +50,8 @@ describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   const on_follow_hold_change = vi.fn();
-  const on_continue = vi.fn();
+  const on_retry = vi.fn();
+  const on_edit = vi.fn();
   const on_compaction_retry = vi.fn();
 
   afterEach(async () => {
@@ -58,7 +61,8 @@ describe("AgentTimeline", () => {
     root = null;
     container = null;
     on_follow_hold_change.mockReset();
-    on_continue.mockReset();
+    on_retry.mockReset();
+    on_edit.mockReset();
     on_compaction_retry.mockReset();
   });
 
@@ -80,9 +84,10 @@ describe("AgentTimeline", () => {
             mention_tokens={MENTION_TOKENS}
             resume_revision={resume_revision}
             on_follow_hold_change={on_follow_hold_change}
-            on_continue={on_continue}
+            on_retry={on_retry}
+            on_edit={on_edit}
             on_compaction_retry={on_compaction_retry}
-            message_retry_disabled={false}
+            revision_disabled={false}
             compaction_retry_disabled={false}
           />
         </TooltipProvider>,
@@ -108,7 +113,7 @@ describe("AgentTimeline", () => {
     expect(view.querySelector(".agent-message__user-text")).toBeNull();
   });
 
-  it("只有最新失败轮次开放恢复入口且点击不回传旧消息", async () => {
+  it("最新失败轮次的输入与最终输出可分别修改，且只保留一处重试", async () => {
     const view = await render_timeline([
       user_entry("user-old-error", "旧任务", "error", 0, 2_000),
       assistant_entry("assistant-old-error", "旧部分结果", "error", 1_000),
@@ -134,10 +139,60 @@ describe("AgentTimeline", () => {
     ).not.toBe(0);
     expect(error.textContent).toContain("模型服务请求失败。");
     expect(error.textContent).toContain("点击重试");
-    expect(error.querySelectorAll("svg")).toHaveLength(1);
     await act(async () => error.click());
-    expect(on_continue).toHaveBeenCalledOnce();
-    expect(on_continue).toHaveBeenCalledWith();
+    expect(on_retry).toHaveBeenCalledWith("user-error");
+    const edits = [...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button")];
+    expect(edits).toHaveLength(2);
+    expect(edits.map((button) => button.textContent)).toEqual(["修改并重试", "修改"]);
+    expect(latest_footer.querySelector("button")).toBeNull();
+    await act(async () => edits[0]?.click());
+    expect(on_edit).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ kind: "user_message", id: "user-error" }),
+    );
+    await act(async () => edits[1]?.click());
+    expect(on_edit).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ kind: "assistant_message", id: "assistant-error" }),
+    );
+  });
+
+  it("成功轮次只允许修改最终 assistant，并把唯一重试放在最终输出下方", async () => {
+    const view = await render_timeline([
+      user_entry("user-1", "开始", "success", 0, 4_000),
+      assistant_entry("assistant-intermediate", "准备调用工具", "success", 1_000),
+      tool_entry("tool-1", "workspace_load", "success", "{}", 2_000),
+      assistant_entry("assistant-final", "最终结果", "success", 3_000),
+    ]);
+    const user_actions = view.querySelectorAll<HTMLButtonElement>(
+      ".agent-message-frame--user .agent-message-actions button",
+    );
+    const output_actions = view.querySelectorAll<HTMLButtonElement>(
+      ".agent-message-frame--assistant .agent-message-actions button",
+    );
+
+    expect([...user_actions].map((button) => button.textContent)).toEqual(["修改并重试"]);
+    expect([...output_actions].map((button) => button.textContent)).toEqual(["修改", "重试"]);
+    await act(async () => output_actions[0]?.click());
+    expect(on_edit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
+    );
+    expect(view.querySelector(".agent-retry-entry")).toBeNull();
+    expect(view.querySelector(".agent-round-footer button")).toBeNull();
+    await act(async () => output_actions[1]?.click());
+    expect(on_retry).toHaveBeenCalledWith("user-1");
+  });
+
+  it("成功轮次没有输出时把唯一重试回落到输入下方", async () => {
+    const view = await render_timeline([user_entry("user-only", "开始", "success", 0, 1_000)]);
+    const actions = view.querySelectorAll<HTMLButtonElement>(
+      ".agent-message-frame--user .agent-message-actions button",
+    );
+
+    expect([...actions].map((button) => button.textContent)).toEqual(["修改并重试", "重试"]);
+    expect(view.querySelector(".agent-round-footer button")).toBeNull();
+    await act(async () => actions[1]?.click());
+    expect(on_retry).toHaveBeenCalledWith("user-only");
   });
 
   it("压缩三态原位覆盖，失败时只开放压缩重试", async () => {
@@ -158,7 +213,6 @@ describe("AgentTimeline", () => {
     const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
     expect(retry?.textContent).toContain("上下文压缩失败");
     expect(retry?.textContent).toContain("点击重试");
-    expect(retry?.querySelectorAll("svg")).toHaveLength(1);
     await act(async () => retry?.click());
     expect(on_compaction_retry).toHaveBeenCalledOnce();
 
@@ -166,7 +220,7 @@ describe("AgentTimeline", () => {
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
       "上下文压缩成功",
     );
-    expect(view.querySelector(".agent-retry-entry")).toBeNull();
+    expect(view.querySelector(".agent-retry-entry")?.textContent).toContain("模型服务请求失败");
   });
 
   it("运行工具逐秒计时，模态按同 id 更新且不抢切输出", async () => {

@@ -42,6 +42,7 @@ type TestAgentInputSession = AgentInputSession & {
 /** 只列当前组件断言涉及的可见文案，其余 key 原样返回以便定位。 */
 const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.input.placeholder": "描述任务，或输入 @ 选择技能或术语 …",
+  "agent_page.input.edit_assistant_placeholder": "修改模型回复 …",
   "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
   "agent_page.input.drop_images": "松开以添加图片",
   "agent_page.mention.groups.skills": "技能",
@@ -50,6 +51,8 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.context_usage_warning": "即将自动压缩上下文",
   "agent_page.compaction.running": "正在压缩上下文 …",
   "agent_page.action.send": "发送",
+  "agent_page.action.save_edit": "保存修改",
+  "agent_page.editing.assistant": "正在修改模型回复",
   "agent_page.action.stop": "停止",
   "agent_page.action.applying": "正在应用工程修改，完成前不可停止",
   "agent_page.action.add_image": "添加图片",
@@ -309,6 +312,29 @@ describe("AgentComposer", () => {
     expect(get_editor(view).state.doc.toString()).toBe("");
   });
 
+  it("修改 assistant 时隐藏 user 专属能力并使用保存修改动作", async () => {
+    const input_session = create_input_session();
+    input_session.editing = { entryId: "assistant-1", role: "assistant" };
+    input_session.write_draft({ text: "人工回复", images: [] });
+    const view = await render_composer({ input_session });
+
+    expect(view.querySelector(".agent-composer__edit-bar")?.textContent).toContain(
+      "正在修改模型回复",
+    );
+    expect(get_editor(view).state.doc.toString()).toBe("人工回复");
+    expect(view.querySelector(".agent-composer__image-trigger")).toBeNull();
+    expect(view.querySelector(".agent-composer__model-trigger")).toBeNull();
+    expect(
+      view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.getAttribute("aria-label"),
+    ).toBe("保存修改");
+
+    await render_composer({ input_session, command: "edit" });
+    expect(get_editor(view).state.readOnly).toBe(true);
+    expect(
+      view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.getAttribute("aria-label"),
+    ).toBe("保存修改");
+  });
+
   it("文件选择后允许发送纯图片并可移除缩略图", async () => {
     const on_send = vi.fn();
     const view = await render_composer({ on_send });
@@ -549,11 +575,14 @@ function create_input_session(history: readonly string[] = []): TestAgentInputSe
   let draft = { text: "", images: [] as string[] };
   const session: TestAgentInputSession = {
     revision: 0,
+    editing: null,
     read_draft: () => draft,
     write_draft: (next_draft) => {
       draft = next_draft;
     },
     read_history: () => history,
+    start_edit: vi.fn(),
+    cancel_edit: vi.fn(),
     accept_message: () => {
       draft = { text: "", images: [] };
       session.revision += 1;

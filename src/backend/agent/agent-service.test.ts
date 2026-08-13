@@ -14,10 +14,9 @@ import {
   type StreamOptions,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
+import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
-import { format_i18n_message } from "../../shared/i18n";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -1078,44 +1077,131 @@ describe("AgentService", () => {
     });
   });
 
-  it.each(["ZH", "EN", "DE"] as const)("失败后按 %s UI 语言追加继续轮次", async (app_language) => {
-    const continue_text = format_i18n_message(
-      resolve_app_locale(app_language),
-      "agent_runtime.message.continue",
-    );
-    const { service, set_app_language } = await create_service();
+  it("主动重试删除旧尝试并以原 user 输入重新调用模型", async () => {
+    const { service } = await create_service();
     fake_agent_state.mode = "error";
     await service.send_message({ text: "原任务", images: [] });
     await wait_for_idle(service);
+    const failed_user = service
+      .get_snapshot()
+      .entries.find((entry) => entry.kind === "user_message");
+    if (failed_user === undefined) throw new Error("缺少失败 user 条目");
 
-    set_app_language(app_language);
     fake_agent_state.mode = "success";
-    await service.continue_after_failure();
+    await service.retry_latest_round({ entryId: failed_user.id });
     await wait_for_idle(service);
 
+    const snapshot = service.get_snapshot();
+    expect(snapshot.entries.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
+    expect(snapshot.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "user_message", text: "原任务", status: "success" }),
+        expect.objectContaining({ kind: "assistant_message", status: "success" }),
+      ]),
+    );
+    expect(fake_agent_state.prompts).toEqual(["原任务", "原任务"]);
     expect(
-      service
-        .get_snapshot()
-        .entries.filter((entry) => entry.kind === "user_message")
-        .map((entry) => entry.text),
-    ).toEqual(["原任务", continue_text]);
-    expect(fake_agent_state.prompts.at(-1)).toBe(continue_text);
+      fake_agent_state.model_contexts
+        .at(-1)
+        ?.filter(
+          (message) => message.role === "user" && JSON.stringify(message).includes("原任务"),
+        ),
+    ).toHaveLength(1);
   });
 
-  it("最新轮次已经成功时拒绝恢复更早的失败轮次", async () => {
+  it("修改最新 user 后删除原输入并重新调用模型", async () => {
     const { service } = await create_service();
-    fake_agent_state.mode = "error";
-    await service.send_message({ text: "旧失败任务", images: [] });
+    await service.send_message({ text: "原输入", images: ["old-image"] });
     await wait_for_idle(service);
+    const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
+    if (user === undefined) throw new Error("缺少可修改 user 条目");
+
+    await service.edit_latest_round_message({
+      entryId: user.id,
+      message: { text: "新输入", images: ["new-image"] },
+    });
+    await wait_for_idle(service);
+
+    const entries = service.get_snapshot().entries;
+    expect(entries[0]).toMatchObject({
+      kind: "user_message",
+      text: "新输入",
+      images: ["new-image"],
+      status: "success",
+    });
+    expect(entries.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
+    expect(entries.filter((entry) => entry.kind === "assistant_message")).toHaveLength(1);
+    expect(fake_agent_state.prompts).toEqual(["原输入", "新输入"]);
+    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("原输入");
+  });
+
+  it("修改最新 assistant 不调用模型，并保留此前完整工具历史", async () => {
+    const { service } = await create_service(true);
+    fake_agent_state.mode = "tools";
+    await service.send_message({ text: "开始", images: [] });
+    await wait_for_idle(service);
+    const assistants = service
+      .get_snapshot()
+      .entries.filter((entry) => entry.kind === "assistant_message");
+    const intermediate_assistant = assistants[0];
+    const assistant = assistants.at(-1);
+    if (intermediate_assistant === undefined || assistant === undefined) {
+      throw new Error("缺少可修改 assistant 条目");
+    }
+    const calls_before_edit = fake_agent_state.model_call_count;
+
+    await expect(
+      service.edit_latest_round_message({
+        entryId: intermediate_assistant.id,
+        message: { text: "越过最终输出", images: [] },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.edit_latest_round_message({
+        entryId: assistant.id,
+        message: { text: "", images: ["image"] },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+
+    await service.edit_latest_round_message({
+      entryId: assistant.id,
+      message: { text: "人工修订", images: [] },
+    });
+
+    expect(fake_agent_state.model_call_count).toBe(calls_before_edit);
+    expect(service.get_snapshot().entries.at(-1)).toMatchObject({
+      kind: "assistant_message",
+      parts: [{ kind: "text", text: "人工修订" }],
+      status: "success",
+    });
+
     fake_agent_state.mode = "success";
-    await service.send_message({ text: "最新成功任务", images: [] });
+    await service.send_message({ text: "下一轮", images: [] });
+    await wait_for_idle(service);
+    const next_context = JSON.stringify(fake_agent_state.model_contexts.at(-1));
+    expect(next_context).toContain("人工修订");
+    expect(next_context).toContain('"role":"toolResult"');
+    expect(next_context).not.toContain("查询完成");
+  });
+
+  it("过期目标身份拒绝改写当前历史", async () => {
+    const { service } = await create_service();
+    await service.send_message({ text: "当前任务", images: [] });
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
-    await expect(service.continue_after_failure()).rejects.toThrow("request.validation_failed");
+    await expect(service.retry_latest_round({ entryId: "stale" })).rejects.toThrow(
+      "request.validation_failed",
+    );
+    await expect(
+      service.edit_latest_round_message({
+        entryId: "stale",
+        message: { text: "越权修改", images: [] },
+      }),
+    ).rejects.toThrow("request.validation_failed");
 
     expect(service.get_snapshot()).toEqual(before);
-    expect(fake_agent_state.model_call_count).toBe(2);
+    expect(fake_agent_state.model_call_count).toBe(1);
   });
 
   it("工程会话切换仍清空会话", async () => {
@@ -1528,6 +1614,26 @@ describe("AgentService", () => {
     await expect(service.send_message({ text: "不会追加", images: [] })).rejects.toThrow(
       "No API key",
     );
+
+    expect(service.get_snapshot()).toEqual(before);
+    expect(fake_agent_state.model_call_count).toBe(1);
+  });
+
+  it("消息修改预检失败时不裁剪公开时间线或模型历史", async () => {
+    const { service } = await create_service();
+    await service.send_message({ text: "第一轮", images: [] });
+    await wait_for_idle(service);
+    const before = service.get_snapshot();
+    const assistant = before.entries.findLast((entry) => entry.kind === "assistant_message");
+    if (assistant === undefined) throw new Error("缺少 assistant 条目");
+    fake_agent_state.auth_configured = false;
+
+    await expect(
+      service.edit_latest_round_message({
+        entryId: assistant.id,
+        message: { text: "不会提交", images: [] },
+      }),
+    ).rejects.toThrow("No API key");
 
     expect(service.get_snapshot()).toEqual(before);
     expect(fake_agent_state.model_call_count).toBe(1);

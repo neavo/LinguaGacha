@@ -4,6 +4,7 @@ import {
   AGENT_INPUT_HISTORY_LIMIT,
   AGENT_INPUT_HISTORY_STORAGE_KEY,
   read_agent_input_history,
+  replace_agent_input_history,
   update_agent_input_history,
 } from "./agent-input-history";
 
@@ -85,6 +86,16 @@ describe("Agent 输入历史持久化", () => {
     );
     expect(update_agent_input_history(storage, [], "@skill(glossary-audit)")).toEqual([
       "@skill(glossary-audit)",
+    ]);
+  });
+
+  it("修改 user 消息时删除旧正文并把新正文放到最近位置", () => {
+    const { storage } = create_storage(null);
+    expect(
+      replace_agent_input_history(storage, ["第一条", "旧正文", "第三条"], "旧正文", "新正文"),
+    ).toEqual(["第一条", "第三条", "新正文"]);
+    expect(replace_agent_input_history(storage, ["第一条", "旧正文"], "旧正文", "")).toEqual([
+      "第一条",
     ]);
   });
 });

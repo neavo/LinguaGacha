@@ -15,6 +15,7 @@ export const zh_cn_agent_page = {
   },
   input: {
     placeholder: "描述任务，或输入 @ 选择技能或术语 …",
+    edit_assistant_placeholder: "修改模型回复 …",
     hint: "Enter 发送 · Shift + Enter 换行",
     drop_images: "松开以添加图片",
   },
@@ -38,9 +39,18 @@ export const zh_cn_agent_page = {
     new_task: "新任务",
     add_image: "添加图片",
     click_to_retry: "点击重试",
+    edit: "修改",
+    edit_and_retry: "修改并重试",
+    save_and_retry: "保存并重试",
+    save_edit: "保存修改",
     return_latest: "回到最新",
   },
-  confirm: { new_task: "是否确认开始新的对话任务 …?" },
+  editing: { user: "正在修改你的消息", assistant: "正在修改模型回复" },
+  confirm: {
+    new_task: "是否确认开始新的对话任务 …?",
+    rerun_after_workspace_apply:
+      "这一轮已经修改过工程。重试或修改输入不会撤销已有变更，并可能再次修改工程，仍要继续吗？",
+  },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
   tool: {
     details: "{tool} 工具调用详情",
@@ -59,6 +69,8 @@ export const zh_cn_agent_page = {
     restore: "会话恢复失败，请重试。",
     connection: "连接中断，正在等待重连。",
     send: "发送失败，草稿已保留。",
+    retry: "重试失败，请再次尝试。",
+    edit: "消息修改失败，编辑内容已保留。",
     image: "图片读取失败，仅支持 PNG、JPG、BMP、WebP 和 AVIF。",
     stop: "停止失败，请重试。",
     compaction_retry: "上下文压缩重试失败，请重试。",

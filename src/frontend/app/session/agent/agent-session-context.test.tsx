@@ -556,7 +556,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_history()).toEqual([]);
   });
 
-  it("失败继续使用独立命令且不改写输入历史或草稿", async () => {
+  it("主动重试使用目标身份且不改写输入历史或草稿", async () => {
     window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["历史消息"]));
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
     let latest!: ReturnType<typeof useAgentSession>;
@@ -567,10 +567,12 @@ describe("AgentSessionProvider", () => {
     latest.input.write_draft({ text: "正在编辑的新任务", images: ["webp-draft"] });
 
     await act(async () => {
-      await latest.continueAfterFailure();
+      await latest.retryLatestRound("user-1");
     });
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue");
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message/retry", {
+      entryId: "user-1",
+    });
     expect(latest.input.read_draft()).toEqual({
       text: "正在编辑的新任务",
       images: ["webp-draft"],
@@ -578,6 +580,36 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_history()).toEqual(["历史消息"]);
     expect(latest.input.revision).toBe(0);
     expect(latest.command).toBeNull();
+  });
+
+  it("user 修改成功后替换输入历史并恢复此前普通草稿", async () => {
+    window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["旧消息"]));
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ entries: [user_entry("user-1", "旧消息", ["old-image"])] }),
+    );
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot());
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "普通草稿", images: ["draft-image"] });
+
+    act(() => latest.input.start_edit(user_entry("user-1", "旧消息", ["old-image"])));
+    expect(latest.input.editing).toEqual({ entryId: "user-1", role: "user" });
+    expect(latest.input.read_draft()).toEqual({ text: "旧消息", images: ["old-image"] });
+
+    await act(async () => {
+      await latest.editLatestRoundMessage("user-1", { text: "新消息", images: [] });
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message/edit", {
+      entryId: "user-1",
+      message: { text: "新消息", images: [] },
+    });
+    expect(latest.input.editing).toBeNull();
+    expect(latest.input.read_draft()).toEqual({ text: "普通草稿", images: ["draft-image"] });
+    expect(latest.input.read_history()).toEqual(["新消息"]);
   });
 
   it("消费页面卸载后仍保留完整草稿", async () => {
@@ -890,6 +922,18 @@ function assistant_entry(id: string, text: string, status: AgentEntryStatus, cre
     parts: [{ kind: "text" as const, text }],
     status,
     createdAt,
+  };
+}
+
+function user_entry(id: string, text: string, images: string[] = []) {
+  return {
+    kind: "user_message" as const,
+    id,
+    text,
+    images,
+    status: "success" as const,
+    createdAt: 1,
+    endedAt: 2,
   };
 }
 

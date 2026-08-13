@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronsDownUp, CircleAlert } from "lucide-react";
+import { ChevronsDownUp, CircleAlert, Pencil, RefreshCw } from "lucide-react";
 
 import type { AgentEntry, AgentEntryStatus, AgentToolEntry } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -43,9 +43,10 @@ type AgentTimelineProps = {
   mention_tokens: readonly AgentMentionToken[];
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  on_continue: () => void;
+  on_retry: (entry_id: string) => void;
+  on_edit: (entry: UserEntry | AssistantEntry) => void;
   on_compaction_retry: () => void;
-  message_retry_disabled: boolean;
+  revision_disabled: boolean;
   compaction_retry_disabled: boolean;
 };
 
@@ -54,6 +55,10 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
   const rounds = group_agent_rounds(props.entries);
+  // 未解决的压缩失败冻结消息改写，只保留原位压缩恢复入口。
+  const revision_blocked = props.entries.some(
+    (entry) => entry.kind === "context_compaction" && entry.status === "error",
+  );
   const selected_tool =
     props.entries.find(
       (entry): entry is AgentToolEntry =>
@@ -70,10 +75,11 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             t={t}
             resume_revision={props.resume_revision}
             on_follow_hold_change={props.on_follow_hold_change}
-            continue_available={index === rounds.length - 1}
-            on_continue={props.on_continue}
+            revision_available={index === rounds.length - 1 && !revision_blocked}
+            on_retry={props.on_retry}
+            on_edit={props.on_edit}
             on_compaction_retry={props.on_compaction_retry}
-            message_retry_disabled={props.message_retry_disabled}
+            revision_disabled={props.revision_disabled}
             compaction_retry_disabled={props.compaction_retry_disabled}
             on_open_tool={set_selected_tool_id}
           />
@@ -110,10 +116,11 @@ function AgentRound(props: {
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
-  continue_available: boolean;
-  on_continue: () => void;
+  revision_available: boolean;
+  on_retry: (entry_id: string) => void;
+  on_edit: (entry: UserEntry | AssistantEntry) => void;
   on_compaction_retry: () => void;
-  message_retry_disabled: boolean;
+  revision_disabled: boolean;
   compaction_retry_disabled: boolean;
   on_open_tool: (id: string) => void;
 }): JSX.Element {
@@ -123,51 +130,139 @@ function AgentRound(props: {
     mention_ranges.length === 1 &&
     mention_ranges[0]?.from === 0 &&
     mention_ranges[0]?.to === user.text.length;
-  const show_message_retry =
-    props.continue_available &&
-    user.status === "error" &&
-    !entries.some((entry) => entry.kind === "context_compaction");
+  const revision_available = props.revision_available && user.status !== "running";
+  const show_failure_retry = revision_available && user.status === "error";
+  const latest_output = entries.findLast(
+    (entry): entry is AssistantEntry => entry.kind === "assistant_message",
+  );
+  const retry_message_id =
+    revision_available && !show_failure_retry ? (latest_output?.id ?? user.id) : null;
   return (
     <>
-      <article
-        className="agent-message agent-message--user"
-        data-mention-only={mention_only || undefined}
+      <AgentMessageFrame
+        role="user"
+        actions={
+          revision_available ? (
+            <AgentMessageActions
+              entry={user}
+              t={props.t}
+              retry={retry_message_id === user.id}
+              disabled={props.revision_disabled}
+              on_edit={props.on_edit}
+              on_retry={() => props.on_retry(user.id)}
+            />
+          ) : null
+        }
       >
-        {user.images.length > 0 ? (
-          <div className="agent-message__user-images">
-            {user.images.map((image, index) => (
-              <img key={index} src={`data:image/webp;base64,${image}`} alt="" decoding="async" />
-            ))}
-          </div>
-        ) : null}
-        {user.text === "" ? null : (
-          <p className="agent-message__user-text">
-            {render_agent_mention_text(user.text, mention_ranges)}
-          </p>
-        )}
-      </article>
-      {entries.map((entry) => (
-        <AgentEntryView
-          key={entry.id}
-          entry={entry}
-          t={props.t}
-          resume_revision={props.resume_revision}
-          on_follow_hold_change={props.on_follow_hold_change}
-          on_compaction_retry={props.on_compaction_retry}
-          compaction_retry_disabled={props.compaction_retry_disabled}
-          on_open_tool={props.on_open_tool}
-        />
-      ))}
-      {show_message_retry ? (
+        <article
+          className="agent-message agent-message--user"
+          data-mention-only={mention_only || undefined}
+        >
+          {user.images.length > 0 ? (
+            <div className="agent-message__user-images">
+              {user.images.map((image, index) => (
+                <img key={index} src={`data:image/webp;base64,${image}`} alt="" decoding="async" />
+              ))}
+            </div>
+          ) : null}
+          {user.text === "" ? null : (
+            <p className="agent-message__user-text">
+              {render_agent_mention_text(user.text, mention_ranges)}
+            </p>
+          )}
+        </article>
+      </AgentMessageFrame>
+      {entries.map((entry) => {
+        const view = (
+          <AgentEntryView
+            key={entry.id}
+            entry={entry}
+            t={props.t}
+            resume_revision={props.resume_revision}
+            on_follow_hold_change={props.on_follow_hold_change}
+            on_compaction_retry={props.on_compaction_retry}
+            compaction_retry_disabled={props.compaction_retry_disabled}
+            on_open_tool={props.on_open_tool}
+          />
+        );
+        if (entry.kind !== "assistant_message") return view;
+        const editable = revision_available && entry.id === latest_output?.id;
+        return (
+          <AgentMessageFrame
+            key={entry.id}
+            role="assistant"
+            actions={
+              editable ? (
+                <AgentMessageActions
+                  entry={entry}
+                  t={props.t}
+                  retry={retry_message_id === entry.id}
+                  disabled={props.revision_disabled}
+                  on_edit={props.on_edit}
+                  on_retry={() => props.on_retry(user.id)}
+                />
+              ) : null
+            }
+          >
+            {view}
+          </AgentMessageFrame>
+        );
+      })}
+      {show_failure_retry ? (
         <AgentRetryEntry
           label={props.t("app.error.model.provider_failed.message")}
           retry_label={props.t("agent_page.action.click_to_retry")}
-          disabled={props.message_retry_disabled}
-          on_retry={props.on_continue}
+          disabled={props.revision_disabled}
+          on_retry={() => props.on_retry(user.id)}
         />
       ) : null}
       <AgentRoundFooter user={user} t={props.t} />
     </>
+  );
+}
+
+/** 消息容器统一拥有角色对齐与操作归属，工具和轮次状态不进入该结构。 */
+function AgentMessageFrame(props: {
+  role: "user" | "assistant";
+  actions: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div className={`agent-message-frame agent-message-frame--${props.role}`}>
+      {props.children}
+      {props.actions}
+    </div>
+  );
+}
+
+/** 修改归属具体消息；唯一轮次重试按需挂到输入或最终输出。 */
+function AgentMessageActions(props: {
+  entry: UserEntry | AssistantEntry;
+  t: Translate;
+  retry: boolean;
+  disabled: boolean;
+  on_edit: (entry: UserEntry | AssistantEntry) => void;
+  on_retry: () => void;
+}): JSX.Element {
+  return (
+    <div className="agent-message-actions">
+      <button type="button" disabled={props.disabled} onClick={() => props.on_edit(props.entry)}>
+        <Pencil aria-hidden="true" />
+        <span>
+          {props.t(
+            props.entry.kind === "user_message"
+              ? "agent_page.action.edit_and_retry"
+              : "agent_page.action.edit",
+          )}
+        </span>
+      </button>
+      {props.retry ? (
+        <button type="button" disabled={props.disabled} onClick={props.on_retry}>
+          <RefreshCw aria-hidden="true" />
+          <span>{props.t("app.action.retry")}</span>
+        </button>
+      ) : null}
+    </div>
   );
 }
 

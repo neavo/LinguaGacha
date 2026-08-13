@@ -17,6 +17,7 @@ export const en_us_agent_page = {
   },
   input: {
     placeholder: "Describe a task, or type @ to select a skill or term …",
+    edit_assistant_placeholder: "Edit the model response …",
     hint: "Enter to send · Shift + Enter for a new line",
     drop_images: "Release to add images",
   },
@@ -40,9 +41,18 @@ export const en_us_agent_page = {
     new_task: "New Task",
     add_image: "Add images",
     click_to_retry: "Click to retry",
+    edit: "Edit",
+    edit_and_retry: "Edit and retry",
+    save_and_retry: "Save and retry",
+    save_edit: "Save edit",
     return_latest: "Return to latest",
   },
-  confirm: { new_task: "Confirm starting a new conversation task …?" },
+  editing: { user: "Editing your message", assistant: "Editing the model response" },
+  confirm: {
+    new_task: "Confirm starting a new conversation task …?",
+    rerun_after_workspace_apply:
+      "This round already changed the project. Retrying or editing the input will not undo those changes and may change the project again. Continue?",
+  },
   status: {
     running: "Processing",
     success: "Completed",
@@ -66,6 +76,8 @@ export const en_us_agent_page = {
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",
+    retry: "The response could not be retried. Try again.",
+    edit: "The message could not be edited. Your changes were preserved.",
     image: "The image could not be read. Use PNG, JPG, BMP, WebP, or AVIF.",
     stop: "The task could not be stopped. Try again.",
     compaction_retry: "Context compaction could not be retried. Try again.",
