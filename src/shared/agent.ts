@@ -32,13 +32,8 @@ export type AgentMessageInput = JsonRecord & {
   images: string[];
 };
 
-/** 主动重试以当前公开 user 条目身份防止旧界面命令改写新历史。 */
-export type AgentRetryRequest = JsonRecord & {
-  entryId: string;
-};
-
-/** 最新消息修改同时携带目标身份与完整替换内容。 */
-export type AgentMessageEditRequest = JsonRecord & {
+/** 最新轮次修订同时携带目标身份与完整替换内容。 */
+export type AgentRevisionRequest = JsonRecord & {
   entryId: string;
   message: AgentMessageInput;
 };
@@ -133,22 +128,15 @@ export function normalize_agent_message_input(value: unknown): AgentMessageInput
   return { text, images };
 }
 
-/** 重试目标只接受非空公开条目身份。 */
-export function normalize_agent_retry_request(value: unknown): AgentRetryRequest | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const entry_id = (value as Record<string, unknown>)["entryId"];
-  return typeof entry_id === "string" && entry_id !== "" ? { entryId: entry_id } : null;
-}
-
-/** 修改请求复用完整消息边界，assistant 的纯文本限制由拥有角色事实的后端校验。 */
-export function normalize_agent_message_edit_request(
-  value: unknown,
-): AgentMessageEditRequest | null {
+/** 修订请求复用完整消息边界，assistant 的纯文本限制由拥有角色事实的后端校验。 */
+export function normalize_agent_revision_request(value: unknown): AgentRevisionRequest | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const target = normalize_agent_retry_request(record);
+  const entry_id = record["entryId"];
   const message = normalize_agent_message_input(record["message"]);
-  return target === null || message === null ? null : { entryId: target.entryId, message };
+  return typeof entry_id !== "string" || entry_id === "" || message === null
+    ? null
+    : { entryId: entry_id, message };
 }
 
 /** 生成不会随 UI locale 改变的显式能力 marker。 */

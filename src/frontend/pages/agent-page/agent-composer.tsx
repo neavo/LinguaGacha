@@ -189,12 +189,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       ? "agent_page.input.edit_assistant_placeholder"
       : "agent_page.input.placeholder",
   );
-  const compacting = props.compacting || props.command === "compact";
+  const compacting = props.compacting;
   let submit_label_key: LocaleKey = "agent_page.action.send";
   if (compacting) submit_label_key = "agent_page.compaction.running";
   else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
   else if (props.command === "send") submit_label_key = "agent_page.action.sending";
-  else if (props.command === "edit") {
+  else if (props.command === "revise") {
     submit_label_key =
       editing?.role === "user" ? "agent_page.action.save_and_retry" : "agent_page.action.save_edit";
   } else if (props.command === "stop") submit_label_key = "agent_page.action.stopping";
@@ -203,7 +203,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   else if (editing?.role === "assistant") submit_label_key = "agent_page.action.save_edit";
   const submit_label = t(submit_label_key);
   const submit_command_active =
-    props.command === "send" || props.command === "edit" || props.command === "stop";
+    props.command === "send" || props.command === "revise" || props.command === "stop";
   const submit_tooltip =
     submit_command_active || props.unavailable_reason === null
       ? submit_label
@@ -250,7 +250,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_terms = candidate_groups.terms;
   const matching_candidates = [...matching_skills, ...matching_terms];
   const editor_read_only =
-    props.command === "send" || props.command === "edit" || props.command === "reset";
+    props.command === "send" || props.command === "revise" || props.command === "reset";
   const menu_open =
     !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));

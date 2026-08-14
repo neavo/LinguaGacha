@@ -19,8 +19,8 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.success") return "已完成";
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.status.stopped") return "已停止";
-      if (key === "app.action.retry") return "重试";
-      if (key === "agent_page.action.click_to_retry") return "点击重试";
+      if (key === "agent_page.action.retry") return "重试";
+      if (key === "agent_page.action.continue") return "继续";
       if (key === "agent_page.action.edit") return "修改";
       if (key === "agent_page.action.edit_and_retry") return "修改并重试";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
@@ -52,7 +52,7 @@ describe("AgentTimeline", () => {
   const on_follow_hold_change = vi.fn();
   const on_retry = vi.fn();
   const on_edit = vi.fn();
-  const on_compaction_retry = vi.fn();
+  const on_continue = vi.fn();
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
@@ -63,7 +63,7 @@ describe("AgentTimeline", () => {
     on_follow_hold_change.mockReset();
     on_retry.mockReset();
     on_edit.mockReset();
-    on_compaction_retry.mockReset();
+    on_continue.mockReset();
   });
 
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
@@ -85,10 +85,10 @@ describe("AgentTimeline", () => {
             resume_revision={resume_revision}
             on_follow_hold_change={on_follow_hold_change}
             on_retry={on_retry}
+            on_continue={on_continue}
             on_edit={on_edit}
-            on_compaction_retry={on_compaction_retry}
             revision_disabled={false}
-            compaction_retry_disabled={false}
+            continue_disabled={false}
           />
         </TooltipProvider>,
       ),
@@ -113,7 +113,7 @@ describe("AgentTimeline", () => {
     expect(view.querySelector(".agent-message__user-text")).toBeNull();
   });
 
-  it("最新失败轮次的输入与最终输出可分别修改，且只保留一处重试", async () => {
+  it("最新失败轮次可分别修改输入与输出，且只保留一处继续入口", async () => {
     const view = await render_timeline([
       user_entry("user-old-error", "旧任务", "error", 0, 2_000),
       assistant_entry("assistant-old-error", "旧部分结果", "error", 1_000),
@@ -121,16 +121,16 @@ describe("AgentTimeline", () => {
       assistant_entry("assistant-error", "最新部分结果", "error", 4_000),
     ]);
     const assistants = view.querySelectorAll(".agent-message--assistant");
-    const retries = view.querySelectorAll<HTMLButtonElement>(".agent-retry-entry");
+    const continue_entries = view.querySelectorAll<HTMLButtonElement>(".agent-continue-entry");
     const footers = view.querySelectorAll(".agent-round-footer");
-    const error = retries[0];
+    const error = continue_entries[0];
     const latest_assistant = assistants[1];
     const latest_footer = footers[1];
     if (error === undefined || latest_assistant === undefined || latest_footer === undefined) {
       throw new Error("缺少失败轮次结构");
     }
 
-    expect(retries).toHaveLength(1);
+    expect(continue_entries).toHaveLength(1);
     expect(
       latest_assistant.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
@@ -138,9 +138,9 @@ describe("AgentTimeline", () => {
       error.compareDocumentPosition(latest_footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(error.textContent).toContain("模型服务请求失败。");
-    expect(error.textContent).toContain("点击重试");
+    expect(error.textContent).toContain("继续");
     await act(async () => error.click());
-    expect(on_retry).toHaveBeenCalledWith("user-error");
+    expect(on_continue).toHaveBeenCalledOnce();
     const edits = [...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button")];
     expect(edits).toHaveLength(2);
     expect(edits.map((button) => button.textContent)).toEqual(["修改并重试", "修改"]);
@@ -177,10 +177,10 @@ describe("AgentTimeline", () => {
     expect(on_edit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
     );
-    expect(view.querySelector(".agent-retry-entry")).toBeNull();
+    expect(view.querySelector(".agent-continue-entry")).toBeNull();
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
     await act(async () => output_actions[1]?.click());
-    expect(on_retry).toHaveBeenCalledWith("user-1");
+    expect(on_retry).toHaveBeenCalledWith(expect.objectContaining({ id: "user-1" }));
   });
 
   it("成功轮次没有输出时把唯一重试回落到输入下方", async () => {
@@ -192,10 +192,10 @@ describe("AgentTimeline", () => {
     expect([...actions].map((button) => button.textContent)).toEqual(["修改并重试", "重试"]);
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
     await act(async () => actions[1]?.click());
-    expect(on_retry).toHaveBeenCalledWith("user-only");
+    expect(on_retry).toHaveBeenCalledWith(expect.objectContaining({ id: "user-only" }));
   });
 
-  it("压缩三态原位覆盖，失败时只开放压缩重试", async () => {
+  it("压缩三态原位覆盖，失败时只开放统一恢复", async () => {
     const round = [
       user_entry("user-error", "继续检查", "error", 0, 2_000),
       assistant_entry("assistant-error", "部分结果", "error", 1_000),
@@ -210,17 +210,17 @@ describe("AgentTimeline", () => {
     expect(view.querySelector(".agent-round-footer[data-running]")).toBeNull();
 
     await render_timeline([...round, compaction_entry("compaction-1", "error", 1_500)]);
-    const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
-    expect(retry?.textContent).toContain("上下文压缩失败");
-    expect(retry?.textContent).toContain("点击重试");
-    await act(async () => retry?.click());
-    expect(on_compaction_retry).toHaveBeenCalledOnce();
+    const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
+    expect(continue_button?.textContent).toContain("上下文压缩失败");
+    expect(continue_button?.textContent).toContain("继续");
+    await act(async () => continue_button?.click());
+    expect(on_continue).toHaveBeenCalledOnce();
 
     await render_timeline([...round, compaction_entry("compaction-1", "success", 1_500)]);
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
       "上下文压缩成功",
     );
-    expect(view.querySelector(".agent-retry-entry")?.textContent).toContain("模型服务请求失败");
+    expect(view.querySelector(".agent-continue-entry")?.textContent).toContain("模型服务请求失败");
   });
 
   it("运行工具逐秒计时，模态按同 id 更新且不抢切输出", async () => {

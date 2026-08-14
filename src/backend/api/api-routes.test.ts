@@ -20,10 +20,9 @@ const POST_PATHS = new Set([
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
-  "/api/agent/message/retry",
-  "/api/agent/message/edit",
+  "/api/agent/round/revise",
+  "/api/agent/resume",
   "/api/agent/stop",
-  "/api/agent/compaction/retry",
   "/api/agent/reset",
   "/api/session/project/manifest",
   "/api/session/project/snapshot",
@@ -135,24 +134,19 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
-    const retry = { entryId: "user-1" };
+    const revision = { entryId: "assistant-1", message: { text: "修订", images: [] } };
     await expect(
-      read_post_handler(fixture.post_json, "/api/agent/message/retry")(retry),
-    ).resolves.toEqual({ state: "running" });
-    expect(fixture.retry_latest_round).toHaveBeenCalledWith(retry);
-    const edit = { entryId: "assistant-1", message: { text: "修订", images: [] } };
-    await expect(
-      read_post_handler(fixture.post_json, "/api/agent/message/edit")(edit),
+      read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
     ).resolves.toEqual({ state: "idle" });
-    expect(fixture.edit_latest_round_message).toHaveBeenCalledWith(edit);
+    expect(fixture.revise_latest_round).toHaveBeenCalledWith(revision);
+    await expect(read_post_handler(fixture.post_json, "/api/agent/resume")({})).resolves.toEqual({
+      state: "running",
+    });
+    expect(fixture.resume).toHaveBeenCalledOnce();
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
       state: "idle",
     });
     expect(fixture.stop).toHaveBeenCalledWith();
-    await expect(
-      read_post_handler(fixture.post_json, "/api/agent/compaction/retry")({}),
-    ).resolves.toEqual({ state: "idle" });
-    expect(fixture.retry_compaction).toHaveBeenCalledWith();
     await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
       state: "idle",
       entries: [],
@@ -206,10 +200,9 @@ function create_route_fixture() {
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(async () => ({ state: "running" }));
-  const retry_latest_round = vi.fn(async () => ({ state: "running" }));
-  const edit_latest_round_message = vi.fn(async () => ({ state: "idle" }));
+  const revise_latest_round = vi.fn(async () => ({ state: "idle" }));
+  const resume = vi.fn(async () => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
-  const retry_compaction = vi.fn(async () => ({ state: "idle" }));
   const reset = vi.fn(async () => ({
     state: "idle",
     entries: [],
@@ -250,10 +243,9 @@ function create_route_fixture() {
         contextTokens: null,
       })),
       send_message,
-      retry_latest_round,
-      edit_latest_round_message,
+      revise_latest_round,
+      resume,
       stop,
-      retry_compaction,
       reset,
     },
     tasks: { start_task },
@@ -274,13 +266,12 @@ function create_route_fixture() {
   return {
     get,
     post_json,
-    retry_latest_round,
-    edit_latest_round_message,
+    revise_latest_round,
+    resume,
     reset,
     send_message,
     source_file_summary,
     summarize_source_files,
-    retry_compaction,
     start_task,
     stop,
     update_selected_model_thinking_level,

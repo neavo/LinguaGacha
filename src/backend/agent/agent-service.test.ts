@@ -101,6 +101,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "success"
     | "write"
     | "error"
+    | "tools_error"
     | "pending"
     | "retry"
     | "streaming"
@@ -294,7 +295,14 @@ function create_fake_response(context: Context): FauxResponseStep {
     );
   }
   if (after_tool_call) {
-    return fauxAssistantMessage(fake_agent_state.mode === "tools" ? "查询完成" : []);
+    if (fake_agent_state.mode === "tools") return fauxAssistantMessage("查询完成");
+    if (fake_agent_state.mode === "tools_error") {
+      return fauxAssistantMessage("部分结果", {
+        stopReason: "error",
+        errorMessage: "request failed",
+      });
+    }
+    return fauxAssistantMessage([]);
   }
   if (fake_agent_state.mode === "error") {
     return fauxAssistantMessage([], {
@@ -347,7 +355,7 @@ function create_fake_response(context: Context): FauxResponseStep {
       { stopReason: "toolUse" },
     );
   }
-  if (fake_agent_state.mode === "tools") {
+  if (fake_agent_state.mode === "tools" || fake_agent_state.mode === "tools_error") {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
@@ -1071,18 +1079,17 @@ describe("AgentService", () => {
     });
   });
 
-  it("主动重试删除旧尝试并以原 user 输入重新调用模型", async () => {
+  it("以相同 user 输入修订轮次时删除旧尝试并重新调用模型", async () => {
     const { service } = await create_service();
-    fake_agent_state.mode = "error";
     await service.send_message({ text: "原任务", images: [] });
     await wait_for_idle(service);
-    const failed_user = service
-      .get_snapshot()
-      .entries.find((entry) => entry.kind === "user_message");
-    if (failed_user === undefined) throw new Error("缺少失败 user 条目");
+    const user = service.get_snapshot().entries.find((entry) => entry.kind === "user_message");
+    if (user === undefined) throw new Error("缺少 user 条目");
 
-    fake_agent_state.mode = "success";
-    await service.retry_latest_round({ entryId: failed_user.id });
+    await service.revise_latest_round({
+      entryId: user.id,
+      message: { text: user.text, images: user.images },
+    });
     await wait_for_idle(service);
 
     const snapshot = service.get_snapshot();
@@ -1103,6 +1110,50 @@ describe("AgentService", () => {
     ).toHaveLength(1);
   });
 
+  it("恢复失败轮次时保留公开工具历史，并以隐藏消息继续原 user", async () => {
+    const { service } = await create_service(true);
+    fake_agent_state.mode = "tools_error";
+    await service.send_message({ text: "原任务", images: [] });
+    await wait_for_idle(service);
+    const failed_entries = service.get_snapshot().entries;
+    const failed_user = failed_entries.find((entry) => entry.kind === "user_message");
+    const failed_assistant = failed_entries.findLast(
+      (entry) => entry.kind === "assistant_message" && entry.status === "error",
+    );
+    const failed_tool_ids = failed_entries
+      .filter((entry) => entry.kind === "tool_call")
+      .map((entry) => entry.id);
+    if (
+      failed_user === undefined ||
+      failed_assistant === undefined ||
+      failed_tool_ids.length === 0
+    ) {
+      throw new Error("缺少失败轮次条目");
+    }
+
+    fake_agent_state.mode = "success";
+    await expect(service.resume()).resolves.toMatchObject({ state: "running" });
+    await wait_for_idle(service);
+
+    const snapshot = service.get_snapshot();
+    expect(snapshot.entries.filter((entry) => entry.kind === "user_message")).toEqual([
+      expect.objectContaining({ id: failed_user.id, text: "原任务", status: "success" }),
+    ]);
+    expect(snapshot.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: failed_assistant.id, status: "error" }),
+        expect.objectContaining({ kind: "assistant_message", status: "success" }),
+      ]),
+    );
+    expect(
+      snapshot.entries.filter((entry) => entry.kind === "tool_call").map((entry) => entry.id),
+    ).toEqual(failed_tool_ids);
+    expect(fake_agent_state.prompts.at(-1)).toBe("继续");
+    expect(
+      fake_agent_state.model_contexts.at(-1)?.some((message) => message.role === "toolResult"),
+    ).toBe(true);
+  });
+
   it("修改最新 user 后删除原输入并重新调用模型", async () => {
     const { service } = await create_service();
     await service.send_message({ text: "原输入", images: ["old-image"] });
@@ -1110,7 +1161,7 @@ describe("AgentService", () => {
     const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少可修改 user 条目");
 
-    await service.edit_latest_round_message({
+    await service.revise_latest_round({
       entryId: user.id,
       message: { text: "新输入", images: ["new-image"] },
     });
@@ -1145,19 +1196,19 @@ describe("AgentService", () => {
     const calls_before_edit = fake_agent_state.model_call_count;
 
     await expect(
-      service.edit_latest_round_message({
+      service.revise_latest_round({
         entryId: intermediate_assistant.id,
         message: { text: "越过最终输出", images: [] },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
-      service.edit_latest_round_message({
+      service.revise_latest_round({
         entryId: assistant.id,
         message: { text: "", images: ["image"] },
       }),
     ).rejects.toThrow("request.validation_failed");
 
-    await service.edit_latest_round_message({
+    await service.revise_latest_round({
       entryId: assistant.id,
       message: { text: "人工修订", images: [] },
     });
@@ -1184,11 +1235,9 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
-    await expect(service.retry_latest_round({ entryId: "stale" })).rejects.toThrow(
-      "request.validation_failed",
-    );
+    await expect(service.resume()).rejects.toThrow("request.validation_failed");
     await expect(
-      service.edit_latest_round_message({
+      service.revise_latest_round({
         entryId: "stale",
         message: { text: "越权修改", images: [] },
       }),
@@ -1622,7 +1671,7 @@ describe("AgentService", () => {
     fake_agent_state.auth_configured = false;
 
     await expect(
-      service.edit_latest_round_message({
+      service.revise_latest_round({
         entryId: assistant.id,
         message: { text: "不会提交", images: [] },
       }),
@@ -1783,7 +1832,7 @@ describe("AgentService", () => {
     expect(result_index).toBeGreaterThan(call_index);
   });
 
-  it("阈值压缩失败原位公开重试，压缩期间不可停止且不推翻已成功回答", async () => {
+  it("已完成回答的压缩失败由统一恢复原位处理，且不会续跑模型", async () => {
     const { service, log_error, log_warning } = await create_service();
     fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
     fake_agent_state.summary_failures_remaining = 100;
@@ -1821,10 +1870,11 @@ describe("AgentService", () => {
     const failed_entry = service
       .get_snapshot()
       .entries.findLast((entry) => entry.kind === "context_compaction");
-    const model_call_count_before_retry = fake_agent_state.model_call_count;
+    const model_call_count_before_resume = fake_agent_state.model_call_count;
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.hold_summary = true;
-    await expect(service.retry_compaction()).resolves.toMatchObject({
+    await expect(service.resume()).resolves.toMatchObject({
+      state: "running",
       entries: expect.arrayContaining([
         expect.objectContaining({
           kind: "context_compaction",
@@ -1837,15 +1887,22 @@ describe("AgentService", () => {
     expect(() => service.stop()).toThrow("runtime.busy");
     fake_agent_state.release_summary?.();
     await vi.waitFor(() =>
-      expect(
-        service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
-      ).toMatchObject({ id: failed_entry?.id, status: "success" }),
+      expect(service.get_snapshot()).toMatchObject({
+        state: "idle",
+        entries: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "context_compaction",
+            id: failed_entry?.id,
+            status: "success",
+          }),
+        ]),
+      }),
     );
-    expect(fake_agent_state.model_call_count).toBe(model_call_count_before_retry);
-    await expect(service.retry_compaction()).rejects.toThrow("request.validation_failed");
+    expect(fake_agent_state.model_call_count).toBe(model_call_count_before_resume);
+    await expect(service.resume()).rejects.toThrow("request.validation_failed");
   });
 
-  it("中途压缩失败阻断模型与消息旁路，手动恢复后只发送继续", async () => {
+  it("中途压缩失败阻断模型与消息旁路，继续后不新增公开 user", async () => {
     const { service, read_items } = await create_service();
     await prepare_long_tool_checkpoint(service, read_items);
     fake_agent_state.mode = "checkpoint";
@@ -1868,12 +1925,12 @@ describe("AgentService", () => {
     );
 
     fake_agent_state.summary_failures_remaining = 0;
-    await service.retry_compaction();
+    await expect(service.resume()).resolves.toMatchObject({ state: "running" });
 
     await vi.waitFor(() =>
       expect(
         service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-      ).toMatchObject({ text: "继续", status: "success" }),
+      ).toMatchObject({ text: "检查长条目", status: "success" }),
     );
     expect(
       service
@@ -1884,11 +1941,12 @@ describe("AgentService", () => {
       service
         .get_snapshot()
         .entries.filter((entry) => entry.kind === "user_message" && entry.text === "继续"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
     ).toMatchObject({ id: failed_compaction?.id, status: "success" });
     expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(2);
+    expect(fake_agent_state.prompts.at(-1)).toBe("继续");
   });
 
   it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {

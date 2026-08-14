@@ -328,7 +328,7 @@ describe("AgentComposer", () => {
       view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.getAttribute("aria-label"),
     ).toBe("保存修改");
 
-    await render_composer({ input_session, command: "edit" });
+    await render_composer({ input_session, command: "revise" });
     expect(get_editor(view).state.readOnly).toBe(true);
     expect(
       view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.getAttribute("aria-label"),

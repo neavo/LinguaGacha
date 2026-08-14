@@ -40,7 +40,8 @@ export const de_de_agent_page = {
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
-    click_to_retry: "Zum Wiederholen klicken",
+    continue: "Fortsetzen",
+    retry: "Wiederholen",
     edit: "Bearbeiten",
     edit_and_retry: "Bearbeiten und wiederholen",
     save_and_retry: "Speichern und wiederholen",
@@ -50,7 +51,7 @@ export const de_de_agent_page = {
   editing: { user: "Deine Nachricht wird bearbeitet", assistant: "Modellantwort wird bearbeitet" },
   confirm: {
     new_task: "Wirklich eine neue Unterhaltung starten …?",
-    rerun_after_workspace_apply:
+    retry_after_workspace_apply:
       "Diese Runde hat das Projekt bereits geändert. Wiederholen oder Bearbeiten der Eingabe macht diese Änderungen nicht rückgängig und kann das Projekt erneut ändern. Fortfahren?",
   },
   status: {
@@ -76,12 +77,11 @@ export const de_de_agent_page = {
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
-    retry: "Die Antwort konnte nicht wiederholt werden. Bitte erneut versuchen.",
+    retry: "Die Runde konnte nicht wiederholt werden. Bitte erneut versuchen.",
+    continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen.",
     edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
     image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
-    compaction_retry:
-      "Die Kontextkomprimierung konnte nicht wiederholt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
     terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
   },

@@ -40,7 +40,7 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
 };
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
-export type AgentCommand = "send" | "retry" | "edit" | "stop" | "compact" | "reset" | null;
+export type AgentCommand = "send" | "revise" | "resume" | "stop" | "reset" | null;
 /** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
@@ -52,10 +52,9 @@ type AgentSessionStateView = {
   transport: AgentTransportState;
   command: AgentCommand;
   send: (message: AgentMessageInput) => Promise<void>;
-  retryLatestRound: (entryId: string) => Promise<void>;
-  editLatestRoundMessage: (entryId: string, message: AgentMessageInput) => Promise<void>;
+  reviseLatestRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
+  resume: () => Promise<void>;
   stop: () => Promise<void>;
-  retryCompaction: () => Promise<void>;
   reset: () => Promise<void>;
   reconnect: () => void;
 };
@@ -84,7 +83,7 @@ const AgentSessionContext = createContext<AgentSessionController | null>(null);
  */
 function useAgentSessionState(
   on_message_accepted: (message: AgentMessageInput) => void,
-  on_message_edited: (message: AgentMessageInput) => void,
+  on_revision_accepted: (message: AgentMessageInput) => void,
 ): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [transport, set_transport] = useState<AgentTransportState>("restoring");
@@ -229,18 +228,8 @@ function useAgentSessionState(
     );
   };
 
-  /** 主动重试只传目标身份，原输入与历史裁剪由后端权威状态拥有。 */
-  const retry_latest_round = async (entry_id: string): Promise<void> => {
-    if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
-      return;
-    }
-    await execute_command("retry", () =>
-      api_fetch<AgentSessionSnapshot>("/api/agent/message/retry", { entryId: entry_id }),
-    );
-  };
-
-  /** 修改成功后才恢复普通草稿并更新 user 输入历史；失败时保留编辑缓冲。 */
-  const edit_latest_round_message = async (
+  /** 修订成功后才恢复普通草稿并更新 user 输入历史；相同输入表示重试。 */
+  const revise_latest_round = async (
     entry_id: string,
     message: AgentMessageInput,
   ): Promise<void> => {
@@ -250,27 +239,28 @@ function useAgentSessionState(
     const normalized_message = normalize_agent_message_input(message);
     if (normalized_message === null) return;
     await execute_command(
-      "edit",
+      "revise",
       () =>
-        api_fetch<AgentSessionSnapshot>("/api/agent/message/edit", {
+        api_fetch<AgentSessionSnapshot>("/api/agent/round/revise", {
           entryId: entry_id,
           message: normalized_message,
         }),
-      () => on_message_edited(normalized_message),
+      () => on_revision_accepted(normalized_message),
     );
+  };
+
+  /** 唯一恢复命令由后端根据尾部失败决定先修复压缩还是直接续跑。 */
+  const resume = async (): Promise<void> => {
+    if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
+      return;
+    }
+    await execute_command("resume", () => api_fetch<AgentSessionSnapshot>("/api/agent/resume"));
   };
 
   /** stop 失败保留仍在运行的权威快照，让用户可以继续尝试停止。 */
   const stop = async (): Promise<void> => {
     if (snapshot.state !== "running") return;
     await execute_command("stop", () => api_fetch<AgentSessionSnapshot>("/api/agent/stop"));
-  };
-
-  /** 后端在压缩恢复成功后原子续跑失败任务，renderer 只应用权威快照与事件。 */
-  const retry_compaction = async (): Promise<void> => {
-    await execute_command("compact", () =>
-      api_fetch<AgentSessionSnapshot>("/api/agent/compaction/retry"),
-    );
   };
 
   /** reset 只有收到合法权威快照才算成功，失败时保留当前对话。 */
@@ -292,10 +282,9 @@ function useAgentSessionState(
     transport,
     command,
     send,
-    retryLatestRound: retry_latest_round,
-    editLatestRoundMessage: edit_latest_round_message,
+    reviseLatestRound: revise_latest_round,
+    resume,
     stop,
-    retryCompaction: retry_compaction,
     reset,
     reconnect,
   };
@@ -365,7 +354,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
   }, []);
 
   /** 只有 user 修改替换输入历史；两种角色成功后都退出修改态。 */
-  const accept_edit = useCallback(
+  const accept_revision = useCallback(
     (message: AgentMessageInput): void => {
       const previous = edited_user_text_ref.current;
       if (previous !== null) {
@@ -381,7 +370,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
     [restore_saved_draft],
   );
 
-  const session = useAgentSessionState(accept_message, accept_edit);
+  const session = useAgentSessionState(accept_message, accept_revision);
   // 后端替换活动历史后，旧目标消失即代表修改已被其它入口受理或会话已重置。
   useEffect(() => {
     if (editing !== null && !session.entries.some((entry) => entry.id === editing.entryId)) {
