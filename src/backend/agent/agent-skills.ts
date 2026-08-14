@@ -77,19 +77,7 @@ export async function load_agent_skills(
         ) {
           continue;
         }
-        const existing = skills.get(skill.name);
-        if (existing !== undefined) {
-          log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
-            source: "agent",
-            context: {
-              code: "collision",
-              skill: skill.name,
-              winner_path: existing.filePath,
-              loser_path: skill.filePath,
-            },
-          });
-          continue;
-        }
+        if (skills.has(skill.name)) continue;
         skills.set(skill.name, create_agent_skill_definition(skill, log_manager, native_fs));
       }
     }
