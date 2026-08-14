@@ -1,6 +1,6 @@
 ---
 name: agent-charter
-description: 最高层任务宪章，执行任何任务前，当前对话尚未加载其完整正文时必须读取
+description: 所有任务共同适用的最高层任务宪章
 ---
 
 # 任务与准则
