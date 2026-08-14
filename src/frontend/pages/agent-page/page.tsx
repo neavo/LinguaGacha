@@ -44,10 +44,12 @@ const FEATURED_AGENT_SKILLS = [
 const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
 /** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
 const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
-/** 只有会重跑模型且可能重复工程副作用的操作进入确认队列。 */
-type PendingRoundExecution =
-  | { kind: "retry"; entryId: string }
-  | { kind: "edit_input"; entryId: string; message: AgentMessageInput };
+/** 页面只保留决定失败反馈与副作用确认所需的修订意图。 */
+type RoundRevision = {
+  entryId: string;
+  message: AgentMessageInput;
+  intent: "retry" | "edit";
+};
 
 /** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
 function normalize_agent_terms(
@@ -72,8 +74,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const [follow_holds, set_follow_holds] = useState<ReadonlySet<string>>(() => new Set());
   const [resume_revision, set_resume_revision] = useState(0); // 统一通知所有展开详情回到各自底端
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
-  const [pending_round_execution, set_pending_round_execution] =
-    useState<PendingRoundExecution | null>(null);
+  const [pending_round_revision, set_pending_round_revision] = useState<RoundRevision | null>(null);
   const handle_terms_load_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.terms_load"));
   }, [push_toast, t]);
@@ -113,7 +114,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
   const compaction_failed = last_compaction?.status === "error";
-  // 副作用确认只检查最新轮次；更早轮次不会被当前重试或输入修改重新执行。
+  // 副作用确认只检查最新轮次；更早轮次不会被当前重试或输入修改再次执行。
   const latest_user_index = agent.entries.findLastIndex((entry) => entry.kind === "user_message");
   const latest_round_applied_workspace = agent.entries.some(
     (entry, index) =>
@@ -145,8 +146,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   }, []);
 
-  /** 显式恢复会同时清除外层与所有详情暂停，并触发详情自身归底。 */
-  const resume_follow = useCallback((): void => {
+  /** 显式回到底端会清除外层与所有详情暂停，并触发详情自身归底。 */
+  const follow_latest = useCallback((): void => {
     set_follow_holds(new Set());
     set_resume_revision((current) => current + 1);
   }, []);
@@ -166,19 +167,18 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [push_toast, t],
   );
 
-  /** 真正执行会重跑模型的轮次操作；确认弹窗只决定何时进入这个唯一入口。 */
-  const execute_round_revision = async (execution: PendingRoundExecution): Promise<void> => {
-    resume_follow();
+  /** 真正执行会重试模型的轮次操作；确认弹窗只决定何时进入这个唯一入口。 */
+  const execute_round_revision = async (revision: RoundRevision): Promise<void> => {
+    follow_latest();
     try {
-      if (execution.kind === "retry") await agent.retryLatestRound(execution.entryId);
-      else await agent.editLatestRoundMessage(execution.entryId, execution.message);
+      await agent.reviseLatestRound(revision.entryId, revision.message);
     } catch (error) {
       show_command_error(
         error,
-        execution.kind === "retry" ? "agent_page.error.retry" : "agent_page.error.edit",
+        revision.intent === "retry" ? "agent_page.error.retry" : "agent_page.error.edit",
       );
     } finally {
-      set_pending_round_execution(null);
+      set_pending_round_revision(null);
     }
   };
 
@@ -186,38 +186,42 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const send = (message: AgentMessageInput): void => {
     const editing = agent.input.editing;
     if (editing === null) {
-      resume_follow();
+      follow_latest();
       void agent.send(message).catch((error: unknown) => {
         show_command_error(error, "agent_page.error.send");
       });
       return;
     }
     if (editing.role === "user" && latest_round_applied_workspace) {
-      set_pending_round_execution({
-        kind: "edit_input",
+      set_pending_round_revision({
         entryId: editing.entryId,
         message: structuredClone(message),
+        intent: "edit",
       });
       return;
     }
     if (editing.role === "user") {
-      void execute_round_revision({ kind: "edit_input", entryId: editing.entryId, message });
+      void execute_round_revision({ entryId: editing.entryId, message, intent: "edit" });
       return;
     }
-    resume_follow();
-    void agent.editLatestRoundMessage(editing.entryId, message).catch((error: unknown) => {
+    follow_latest();
+    void agent.reviseLatestRound(editing.entryId, message).catch((error: unknown) => {
       show_command_error(error, "agent_page.error.edit");
     });
   };
 
-  /** 主动重试由后端删除旧尝试并复用原 user 输入，不改写草稿与输入历史。 */
-  const retry_latest_round = (entry_id: string): void => {
-    const execution: PendingRoundExecution = { kind: "retry", entryId: entry_id };
+  /** 重试只是把原输入作为修订提交，不再维护独立 retry 协议。 */
+  const retry_latest_round = (user: Extract<AgentEntry, { kind: "user_message" }>): void => {
+    const revision: RoundRevision = {
+      entryId: user.id,
+      message: { text: user.text, images: [...user.images] },
+      intent: "retry",
+    };
     if (latest_round_applied_workspace) {
-      set_pending_round_execution(execution);
+      set_pending_round_revision(revision);
       return;
     }
-    void execute_round_revision(execution);
+    void execute_round_revision(revision);
   };
 
   /** 修改入口只切换共享输入会话，再把焦点交还唯一 Composer。 */
@@ -237,11 +241,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     }
   };
 
-  /** 压缩失败由时间线原位恢复；命令受理失败才使用一次性 Toast。 */
-  const retry_compaction = (): void => {
-    resume_follow();
-    void agent.retryCompaction().catch((error: unknown) => {
-      show_command_error(error, "agent_page.error.compaction_retry");
+  /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
+  const continue_latest_round = (): void => {
+    follow_latest();
+    void agent.resume().catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.continue");
     });
   };
 
@@ -332,8 +336,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             resume_revision={resume_revision}
             on_follow_hold_change={set_follow_hold}
             on_retry={retry_latest_round}
+            on_continue={continue_latest_round}
             on_edit={start_edit}
-            on_compaction_retry={retry_compaction}
             revision_disabled={
               agent.command !== null ||
               agent.input.editing !== null ||
@@ -342,7 +346,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               compaction_failed ||
               unavailable_reason !== null
             }
-            compaction_retry_disabled={
+            continue_disabled={
               agent.command !== null || is_running || compacting || unavailable_reason !== null
             }
           />
@@ -356,7 +360,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
       {follow_paused && (
         <div className="agent-page__follow-control">
-          <AppButton type="button" size="xs" variant="secondary" onClick={resume_follow}>
+          <AppButton type="button" size="xs" variant="secondary" onClick={follow_latest}>
             <ArrowDown aria-hidden="true" />
             {t("agent_page.action.return_latest")}
           </AppButton>
@@ -384,15 +388,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         on_reset={() => set_reset_dialog_open(true)}
       />
       <AppAlertDialog
-        open={pending_round_execution !== null}
-        description={t("agent_page.confirm.rerun_after_workspace_apply")}
-        submitting={agent.command === "retry" || agent.command === "edit"}
+        open={pending_round_revision !== null}
+        description={t("agent_page.confirm.retry_after_workspace_apply")}
+        submitting={agent.command === "revise"}
         onConfirm={async () => {
-          if (pending_round_execution !== null) {
-            await execute_round_revision(pending_round_execution);
+          if (pending_round_revision !== null) {
+            await execute_round_revision(pending_round_revision);
           }
         }}
-        onClose={() => set_pending_round_execution(null)}
+        onClose={() => set_pending_round_revision(null)}
       />
       <AppAlertDialog
         open={reset_dialog_open}

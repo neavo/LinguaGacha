@@ -60,12 +60,9 @@ export function register_api_routes(context: ApiRouteContext): void {
     hono_context.json(ok(services.agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
-  context.postJson("/api/agent/message/retry", (body) => services.agent.retry_latest_round(body));
-  context.postJson("/api/agent/message/edit", (body) =>
-    services.agent.edit_latest_round_message(body),
-  );
+  context.postJson("/api/agent/round/revise", (body) => services.agent.revise_latest_round(body));
+  context.postJson("/api/agent/resume", () => services.agent.resume());
   context.postJson("/api/agent/stop", () => services.agent.stop());
-  context.postJson("/api/agent/compaction/retry", () => services.agent.retry_compaction());
   context.postJson("/api/agent/reset", () => services.agent.reset());
 
   const project_content = services.project.content;

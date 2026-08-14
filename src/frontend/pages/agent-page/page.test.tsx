@@ -102,9 +102,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
       if (key === "app.action.retry") return "重试";
-      if (key === "agent_page.action.click_to_retry") return "点击重试";
+      if (key === "agent_page.action.retry") return "重试";
+      if (key === "agent_page.action.continue") return "继续";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
-      if (key === "agent_page.confirm.rerun_after_workspace_apply") return "工程写入重跑确认";
+      if (key === "agent_page.confirm.retry_after_workspace_apply") return "工程写入重试确认";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_create") return "创建术语表";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
@@ -115,9 +116,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.error.terms_load") return "术语加载失败";
       if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
       if (key === "agent_page.error.retry") return "重试失败，请再次尝试。";
+      if (key === "agent_page.error.continue") return "继续失败，请再次尝试。";
       if (key === "agent_page.error.edit") return "消息修改失败，编辑内容已保留。";
       if (key === "agent_page.error.stop") return "停止失败，请重试。";
-      if (key === "agent_page.error.compaction_retry") return "上下文压缩重试失败，请重试。";
       if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
       if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
       if (key === "agent_page.action.applying") return "正在应用工程修改，完成前不可停止";
@@ -449,8 +450,8 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("压缩失败只显示原位恢复入口并调用压缩重试", async () => {
-    const retryCompaction = vi.fn(async () => undefined);
+  it("压缩失败只显示原位继续入口并调用统一命令", async () => {
+    const resume = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [
         user_entry("user-1", "初次检查", "success", 0, 1_000),
@@ -463,23 +464,23 @@ describe("AgentPage", () => {
         user_entry("user-2", "继续检查", "error", 2_000, 3_000),
         assistant_entry("assistant-1", "部分结果", "error", 2_500),
       ],
-      retryCompaction,
+      resume,
     });
-    const retries = [...view.querySelectorAll<HTMLButtonElement>(".agent-retry-entry")];
-    const compaction_retry = retries.find((button) =>
+    const continue_entries = [...view.querySelectorAll<HTMLButtonElement>(".agent-continue-entry")];
+    const compaction_continue = continue_entries.find((button) =>
       button.textContent?.includes("上下文压缩失败"),
     );
-    const message_retry = retries.find((button) =>
+    const message_continue = continue_entries.find((button) =>
       button.textContent?.includes("模型服务请求失败"),
     );
-    expect(compaction_retry?.disabled).toBe(false);
-    expect(message_retry).toBeUndefined();
+    expect(compaction_continue?.disabled).toBe(false);
+    expect(message_continue).toBeUndefined();
     expect(view.querySelector(".agent-message-actions")).toBeNull();
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
 
-    await act(async () => compaction_retry?.click());
+    await act(async () => compaction_continue?.click());
 
-    expect(retryCompaction).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledOnce();
   });
 
   it("停止命令失败时保留运行态并显示错误 Toast", async () => {
@@ -511,36 +512,36 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
-  it("失败轮次的恢复条目传递 user 身份并保留当前草稿", async () => {
+  it("失败轮次通过继续入口续跑并保留当前草稿", async () => {
     const send = vi.fn(async () => undefined);
-    const retryLatestRound = vi.fn(async () => undefined);
+    const resume = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
-      retryLatestRound,
+      resume,
     });
     const editor = get_editor(view);
     await act(async () => {
       editor.dispatch({ changes: { from: 0, insert: "正在编辑的新任务" } });
     });
-    const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
-    if (retry === null) throw new Error("缺少轮次重试按钮");
-    await act(async () => retry.click());
+    const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
+    if (continue_button === null) throw new Error("缺少轮次继续按钮");
+    await act(async () => continue_button.click());
 
-    expect(retryLatestRound).toHaveBeenCalledWith("user-error");
+    expect(resume).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
     expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
   });
 
-  it("已成功写入工程的轮次重试必须确认，取消不调用且确认仍传 user 身份", async () => {
-    const retryLatestRound = vi.fn(async () => undefined);
+  it("已成功写入工程的重试必须确认，确认后以原输入修订轮次", async () => {
+    const reviseLatestRound = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [
         user_entry("user-write", "修改工程", "success", 0, 3),
         workspace_apply_entry("apply-1"),
         assistant_entry("assistant-write", "修改完成", "success", 2),
       ],
-      retryLatestRound,
+      reviseLatestRound,
     });
     const retry = [
       ...view.querySelectorAll<HTMLButtonElement>(
@@ -550,20 +551,23 @@ describe("AgentPage", () => {
     if (retry === undefined) throw new Error("缺少轮次重试按钮");
 
     await act(async () => retry.click());
-    expect(retryLatestRound).not.toHaveBeenCalled();
+    expect(reviseLatestRound).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
-      "工程写入重跑确认",
+      "工程写入重试确认",
     );
     await act(async () => get_portal_button("app.action.cancel").click());
-    expect(retryLatestRound).not.toHaveBeenCalled();
+    expect(reviseLatestRound).not.toHaveBeenCalled();
 
     await act(async () => retry.click());
     await act(async () => get_portal_button("app.action.confirm").click());
-    expect(retryLatestRound).toHaveBeenCalledWith("user-write");
+    expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
+      text: "修改工程",
+      images: [],
+    });
   });
 
   it("已写入工程时修改输入需要确认并保留编辑，修改输出则直接保存", async () => {
-    const editLatestRoundMessage = vi.fn(async () => undefined);
+    const reviseLatestRound = vi.fn(async () => undefined);
     const entries = [
       user_entry("user-write", "原输入", "success", 0, 3),
       workspace_apply_entry("apply-1"),
@@ -572,7 +576,7 @@ describe("AgentPage", () => {
     const input = build_state().input;
     const view = await render_page({
       entries,
-      editLatestRoundMessage,
+      reviseLatestRound,
       input: {
         ...input,
         editing: { entryId: "user-write", role: "user" },
@@ -581,21 +585,21 @@ describe("AgentPage", () => {
     });
 
     await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
-    expect(editLatestRoundMessage).not.toHaveBeenCalled();
+    expect(reviseLatestRound).not.toHaveBeenCalled();
     await act(async () => get_portal_button("app.action.cancel").click());
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
 
     await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
     await act(async () => get_portal_button("app.action.confirm").click());
-    expect(editLatestRoundMessage).toHaveBeenCalledWith("user-write", {
+    expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
       text: "新输入",
       images: [],
     });
 
-    editLatestRoundMessage.mockClear();
+    reviseLatestRound.mockClear();
     await render_page({
       entries,
-      editLatestRoundMessage,
+      reviseLatestRound,
       input: {
         ...input,
         revision: input.revision + 1,
@@ -604,11 +608,34 @@ describe("AgentPage", () => {
       },
     });
     await act(async () => get_button_by_label(view, "agent_page.action.save_edit").click());
-    expect(editLatestRoundMessage).toHaveBeenCalledWith("assistant-write", {
+    expect(reviseLatestRound).toHaveBeenCalledWith("assistant-write", {
       text: "新输出",
       images: [],
     });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+  });
+
+  it("输入修改受理失败时保留编辑内容并显示修改错误", async () => {
+    const reviseLatestRound = vi.fn(() => Promise.reject(new Error("offline")));
+    const input = build_state().input;
+    const view = await render_page({
+      entries: [user_entry("user-1", "原输入", "success", 0, 1)],
+      reviseLatestRound,
+      input: {
+        ...input,
+        editing: { entryId: "user-1", role: "user" },
+        read_draft: () => ({ text: "新输入", images: [] }),
+      },
+    });
+
+    await act(async () => {
+      get_button_by_label(view, "agent_page.action.save_and_retry").click();
+      await vi.waitFor(() =>
+        expect(push_toast).toHaveBeenCalledWith("error", "消息修改失败，编辑内容已保留。"),
+      );
+    });
+
+    expect(get_editor(view).state.doc.toString()).toBe("新输入");
   });
 
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
@@ -718,10 +745,9 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       cancel_edit: vi.fn(),
     },
     send: vi.fn(async () => undefined),
-    retryLatestRound: vi.fn(async () => undefined),
-    editLatestRoundMessage: vi.fn(async () => undefined),
+    reviseLatestRound: vi.fn(async () => undefined),
+    resume: vi.fn(async () => undefined),
     stop: vi.fn(),
-    retryCompaction: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,

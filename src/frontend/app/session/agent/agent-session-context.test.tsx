@@ -556,7 +556,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_history()).toEqual([]);
   });
 
-  it("主动重试使用目标身份且不改写输入历史或草稿", async () => {
+  it("以原输入修订轮次表示重试，且不改写输入历史或草稿", async () => {
     window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["历史消息"]));
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
     let latest!: ReturnType<typeof useAgentSession>;
@@ -567,11 +567,12 @@ describe("AgentSessionProvider", () => {
     latest.input.write_draft({ text: "正在编辑的新任务", images: ["webp-draft"] });
 
     await act(async () => {
-      await latest.retryLatestRound("user-1");
+      await latest.reviseLatestRound("user-1", { text: "历史消息", images: [] });
     });
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message/retry", {
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
       entryId: "user-1",
+      message: { text: "历史消息", images: [] },
     });
     expect(latest.input.read_draft()).toEqual({
       text: "正在编辑的新任务",
@@ -600,10 +601,10 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_draft()).toEqual({ text: "旧消息", images: ["old-image"] });
 
     await act(async () => {
-      await latest.editLatestRoundMessage("user-1", { text: "新消息", images: [] });
+      await latest.reviseLatestRound("user-1", { text: "新消息", images: [] });
     });
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message/edit", {
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
       entryId: "user-1",
       message: { text: "新消息", images: [] },
     });
@@ -821,7 +822,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.entries).toEqual(previous_entries);
   });
 
-  it("压缩重试通过窄命令应用同 id 的运行条目", async () => {
+  it("统一恢复命令应用后端决定的压缩运行条目", async () => {
     const failed_compaction = {
       kind: "context_compaction" as const,
       id: "compaction-1",
@@ -838,9 +839,9 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
-    await act(async () => latest.retryCompaction());
+    await act(async () => latest.resume());
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/compaction/retry");
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/resume");
     expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
     expect(latest.command).toBeNull();
   });

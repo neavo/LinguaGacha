@@ -24,9 +24,8 @@ import {
   AGENT_SESSION_EVENT_TOPIC,
   find_agent_reference_ranges,
   format_agent_skill_reference,
-  normalize_agent_message_edit_request,
   normalize_agent_message_input,
-  normalize_agent_retry_request,
+  normalize_agent_revision_request,
   type AgentAssistantMessagePart,
   type AgentEntry,
   type AgentEntryStatus,
@@ -136,6 +135,11 @@ type AgentRevision = {
   role: "user" | "assistant";
 };
 
+/** 新输入与隐藏续跑共用模型执行主链，但只有前者创建公开 user 轮次。 */
+type AgentModelRequest =
+  | { kind: "prompt"; text: string; images: readonly string[] }
+  | { kind: "continue" };
+
 type AgentAssistantStreamDelta = Extract<
   AssistantMessageEvent,
   { type: "text_delta" | "thinking_delta" }
@@ -186,7 +190,7 @@ export class AgentService {
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
-  private operation_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖建会话、换模与压缩重试
+  private operation_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖建会话、换模与尾部恢复
   private runtime_settlement: Promise<void> | null = null; // SDK idle 未覆盖 preflight，统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
@@ -270,7 +274,7 @@ export class AgentService {
     }
     if (this.find_latest_compaction_entry()?.status === "error") {
       throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_compaction_recovery_required" },
+        diagnostic_context: { reason: "agent_resume_required" },
       });
     }
     const selected_skills = select_agent_skills(resources.skills, message.text);
@@ -281,40 +285,13 @@ export class AgentService {
     );
   }
 
-  /** 丢弃最新 user 轮次的整个旧尝试，并以原消息重新进入模型。 */
-  public async retry_latest_round(request: JsonRecord): Promise<AgentSessionSnapshot> {
+  /** 最新轮次输入与最终输出可独立修订；原输入修订为自身即表示重试。 */
+  public async revise_latest_round(request: JsonRecord): Promise<AgentSessionSnapshot> {
     this.assert_revision_available();
-    const target = normalize_agent_retry_request(request);
-    const checkpoint = this.latest_round_checkpoint;
-    const user_index = this.entries.findLastIndex((entry) => entry.kind === "user_message");
-    const user = this.entries[user_index];
-    if (
-      target === null ||
-      checkpoint === null ||
-      user?.kind !== "user_message" ||
-      user.id !== target.entryId ||
-      checkpoint.entry_id !== user.id ||
-      user.status === "running"
-    ) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_retry_unavailable" },
-      });
-    }
-    return await this.begin_revision({
-      checkpoint,
-      prefix: this.entries.slice(0, user_index),
-      message: { text: user.text, images: user.images },
-      role: "user",
-    });
-  }
-
-  /** 最新轮次输入与最终输出可独立替换；旧尾部不会留在活动历史。 */
-  public async edit_latest_round_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
-    this.assert_revision_available();
-    const revision = normalize_agent_message_edit_request(request);
+    const revision = normalize_agent_revision_request(request);
     if (revision === null) {
       throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_message_edit_unavailable" },
+        diagnostic_context: { reason: "agent_revision_unavailable" },
       });
     }
     const user_index = this.entries.findLastIndex((entry) => entry.kind === "user_message");
@@ -356,35 +333,31 @@ export class AgentService {
     }
 
     throw new AppErrors.AppError("request.validation_failed", {
-      diagnostic_context: { reason: "agent_message_edit_unavailable" },
+      diagnostic_context: { reason: "agent_revision_unavailable" },
     });
   }
 
-  /** 重试最近一次失败压缩；未完成轮次恢复后以普通“继续”消息重新进入模型。 */
-  public async retry_compaction(): Promise<AgentSessionSnapshot> {
+  /** 恢复唯一未解决的尾部失败；必要时先恢复压缩，再隐藏续跑原公开轮次。 */
+  public async resume(): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.state !== "idle") {
       throw new AppErrors.AppError("runtime.busy");
     }
     this.session_state.require_loaded_project_path();
     const runtime = this.runtime;
-    const failed_entry = this.find_latest_compaction_entry();
-    if (
-      runtime === null ||
-      failed_entry?.kind !== "context_compaction" ||
-      failed_entry.status !== "error"
-    ) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_compaction_retry_unavailable" },
-      });
-    }
-    // 只有被中途压缩打断的失败轮次需要续跑；已完成回答只恢复模型历史。
+    const latest_compaction = this.find_latest_compaction_entry();
+    const failed_compaction = latest_compaction?.status === "error" ? latest_compaction : undefined;
     const resume_failed_round =
       this.entries.findLast((entry) => entry.kind === "user_message")?.status === "error";
+    if (runtime === null || (failed_compaction === undefined && !resume_failed_round)) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_resume_unavailable" },
+      });
+    }
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
     return await this.track_operation_acceptance(
-      this.accept_compaction_retry(runtime, failed_entry, resume_failed_round, runtime_lease),
+      this.accept_resume(runtime, failed_compaction, resume_failed_round, runtime_lease),
     );
   }
 
@@ -626,38 +599,42 @@ export class AgentService {
     this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
   }
 
-  /** 重试受理只更新现有运行时模型并原位推进失败条目，不建立第二套压缩状态。 */
-  private async accept_compaction_retry(
+  /** 恢复受理只更新模型并启动唯一尾部恢复，不在 renderer 建立补偿命令。 */
+  private async accept_resume(
     runtime: AgentRuntime,
-    failed_entry: Extract<AgentEntry, { kind: "context_compaction" }>,
+    failed_entry: Extract<AgentEntry, { kind: "context_compaction" }> | undefined,
     resume_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<AgentSessionSnapshot> {
-    let compaction_started = false;
+    let resume_started = false;
     try {
       const generation = this.runtime_generation;
       await this.update_runtime_model(runtime, this.settings.read_setting());
       if (this.disposed || generation !== this.runtime_generation || this.runtime !== runtime) {
         throw new AppErrors.AppError("request.validation_failed", {
-          diagnostic_context: { reason: "agent_compaction_retry_invalidated" },
+          diagnostic_context: { reason: "agent_resume_invalidated" },
         });
       }
-      this.upsert_entry({ ...failed_entry, status: "running" });
-      const compaction = this.run_compaction(
+      if (failed_entry !== undefined) {
+        this.upsert_entry({ ...failed_entry, status: "running" });
+        this.set_state("running");
+      }
+      const resume = this.run_resume(
         runtime,
         generation,
+        failed_entry !== undefined,
         resume_failed_round,
         runtime_lease,
       );
-      this.runtime_settlement = compaction;
-      compaction_started = true;
-      const clear_compaction = () => {
-        if (this.runtime_settlement === compaction) this.runtime_settlement = null;
+      this.runtime_settlement = resume;
+      resume_started = true;
+      const clear_resume = () => {
+        if (this.runtime_settlement === resume) this.runtime_settlement = null;
       };
-      void compaction.then(clear_compaction, clear_compaction);
+      void resume.then(clear_resume, clear_resume);
       return this.get_snapshot();
     } finally {
-      if (!compaction_started) this.finish_runtime(runtime_lease);
+      if (!resume_started) this.finish_runtime(runtime_lease);
     }
   }
 
@@ -694,13 +671,29 @@ export class AgentService {
       this.state = "running";
       this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
     }
-    return this.run_prompt(
-      runtime,
-      generation,
-      build_agent_prompt(message.text, selected_skills),
-      message.images,
-      runtime_lease,
-    );
+    return this.run_round(runtime, generation, runtime_lease, {
+      kind: "prompt",
+      text: build_agent_prompt(message.text, selected_skills),
+      images: message.images,
+    });
+  }
+
+  /** 恢复原 user 轮次并以隐藏消息继续，保留失败前的公开条目与模型历史。 */
+  private resume_round(
+    runtime: AgentRuntime,
+    generation: number,
+    runtime_lease: RuntimeLease,
+  ): Promise<void> {
+    const user = this.entries.findLast((entry) => entry.kind === "user_message");
+    if (user?.kind !== "user_message" || user.status !== "error") {
+      throw new AppErrors.AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "agent_failed_round_missing" },
+      });
+    }
+    this.pending_assistant_checkpoint = null;
+    this.upsert_entry({ ...user, status: "running", endedAt: null });
+    this.set_state("running");
+    return this.run_round(runtime, generation, runtime_lease, { kind: "continue" });
   }
 
   /** 同一请求快照同时更新模型身份、容量、压缩预留与思考等级。 */
@@ -787,36 +780,38 @@ export class AgentService {
   }
 
   /** 每个安全检查点都先完成压缩再隐藏续跑；只有整个用户任务 settle 才决定公开终态。 */
-  private async run_prompt(
+  private async run_round(
     runtime: AgentRuntime,
     generation: number,
-    text: string,
-    images: readonly string[],
     runtime_lease: RuntimeLease,
+    request: AgentModelRequest,
   ): Promise<void> {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     try {
       runtime.checkpoint_requested = false;
       let previous_compaction_id = this.find_latest_compaction_entry()?.id;
-      await runtime.session.prompt(text, {
-        expandPromptTemplates: false,
-        images: images.map<ImageContent>((data) => ({
-          type: "image",
-          data,
-          mimeType: AGENT_IMAGE_MIME_TYPE,
-        })),
-        // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
-        preflightResult: (accepted) => {
-          if (accepted && !this.prompt_is_current(runtime, generation)) {
-            throw new AppErrors.AppError("runtime.cancelled", {
-              diagnostic_context: {
-                resource: "agent_prompt",
-                reason: "agent_message_invalidated",
-              },
-            });
-          }
-        },
-      });
+      if (request.kind === "continue") await this.send_continue(runtime);
+      else {
+        await runtime.session.prompt(request.text, {
+          expandPromptTemplates: false,
+          images: request.images.map<ImageContent>((data) => ({
+            type: "image",
+            data,
+            mimeType: AGENT_IMAGE_MIME_TYPE,
+          })),
+          // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
+          preflightResult: (accepted) => {
+            if (accepted && !this.prompt_is_current(runtime, generation)) {
+              throw new AppErrors.AppError("runtime.cancelled", {
+                diagnostic_context: {
+                  resource: "agent_prompt",
+                  reason: "agent_message_invalidated",
+                },
+              });
+            }
+          },
+        });
+      }
       while (this.prompt_is_current(runtime, generation) && runtime.checkpoint_requested) {
         const compaction = this.find_latest_compaction_entry();
         // SDK 可能已在 prompt settle 前自动压缩；只有未观察到新条目时才手动补足。
@@ -830,14 +825,7 @@ export class AgentService {
         }
         runtime.checkpoint_requested = false;
         previous_compaction_id = this.find_latest_compaction_entry()?.id;
-        await runtime.session.sendCustomMessage(
-          {
-            customType: "linguagacha_continue",
-            content: [{ type: "text", text: this.read_continue_text() }],
-            display: false,
-          },
-          { triggerTurn: true },
-        );
+        await this.send_continue(runtime);
       }
       if (this.prompt_is_current(runtime, generation)) {
         const final_assistant = runtime.session.messages.findLast(
@@ -876,42 +864,40 @@ export class AgentService {
     }
   }
 
-  /** 压缩与本地化“继续”轮次共用运行 lease，避免 renderer 监听终态后补偿。 */
-  private async run_compaction(
+  /** 恢复按需先修复压缩，再在同一公开 user 轮次隐藏续跑。 */
+  private async run_resume(
     runtime: AgentRuntime,
     generation: number,
+    restore_compaction: boolean,
     resume_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<void> {
-    let prompt_started = false;
+    let round_started = false;
     try {
-      await runtime.session.compact();
+      if (restore_compaction) await runtime.session.compact();
       if (resume_failed_round && this.runtime_is_current(runtime, generation)) {
-        const prompt = this.start_round(
-          runtime,
-          generation,
-          { text: this.read_continue_text(), images: [] },
-          [],
-          runtime_lease,
-        );
-        prompt_started = true;
+        const prompt = this.resume_round(runtime, generation, runtime_lease);
+        round_started = true;
         await prompt;
       }
     } catch {
-      // SDK compaction_end 已发布权威失败条目和诊断，命令 Promise 不建立第二套错误通道。
+      // 模型与压缩事件已经发布权威失败条目和诊断，命令 Promise 不建立第二套错误通道。
     } finally {
-      if (!prompt_started) this.finish_runtime(runtime_lease);
+      if (!round_started) {
+        if (this.runtime_is_current(runtime, generation)) this.set_state("idle");
+        this.finish_runtime(runtime_lease);
+      }
     }
   }
 
   /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
   private handle_agent_event(event: PiAgentSessionEvent): void {
     if (event.type === "compaction_start") {
-      const retry_entry = this.find_latest_compaction_entry();
-      if (retry_entry?.status === "running") return;
+      const compaction = this.find_latest_compaction_entry();
+      if (compaction?.status === "running") return;
       this.upsert_entry(
-        retry_entry?.status === "error"
-          ? { ...retry_entry, status: "running" }
+        compaction?.status === "error"
+          ? { ...compaction, status: "running" }
           : {
               kind: "context_compaction",
               id: uuidv7(),
@@ -1121,7 +1107,7 @@ export class AgentService {
     );
   }
 
-  /** 未解决压缩跨自动重试与手动重试保持单一条目身份。 */
+  /** 未解决压缩跨自动重试与手动恢复保持单一条目身份。 */
   private find_latest_compaction_entry():
     | Extract<AgentEntry, { kind: "context_compaction" }>
     | undefined {
@@ -1327,7 +1313,19 @@ export class AgentService {
     };
   }
 
-  /** 安全检查点与压缩恢复使用当前 UI 语言下的隐藏续跑消息。 */
+  /** 所有自动与手动恢复共用同一种隐藏模型消息，不制造公开 user 轮次。 */
+  private async send_continue(runtime: AgentRuntime): Promise<void> {
+    await runtime.session.sendCustomMessage(
+      {
+        customType: "linguagacha_continue",
+        content: [{ type: "text", text: this.read_continue_text() }],
+        display: false,
+      },
+      { triggerTurn: true },
+    );
+  }
+
+  /** 隐藏续跑消息在操作发起时读取当前 UI 语言。 */
   private read_continue_text(): string {
     const setting = this.settings.read_setting();
     return format_i18n_message(
@@ -1349,7 +1347,7 @@ export class AgentService {
     }
     if (this.find_latest_compaction_entry()?.status === "error") {
       throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_compaction_recovery_required" },
+        diagnostic_context: { reason: "agent_resume_required" },
       });
     }
   }
