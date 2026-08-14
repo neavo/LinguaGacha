@@ -1,6 +1,7 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
+import { AGENT_WORKSPACE_SCRIPT_API } from "../../shared/backend-runtime";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
 
@@ -26,7 +27,7 @@ describe("Agent 工作区工具", () => {
     )) as WorkspaceToolResult;
     const script = (await script_tool.execute(
       "script",
-      { script: "return { changed: 2 }" },
+      { script: "async function main() { return { changed: 2 }; }" },
       undefined,
       undefined,
       undefined as never,
@@ -41,7 +42,7 @@ describe("Agent 工作区工具", () => {
 
     expect(workspace.load_workspace).toHaveBeenCalledOnce();
     expect(workspace.run_script).toHaveBeenCalledWith(
-      "return { changed: 2 }",
+      "async function main() { return { changed: 2 }; }",
       expect.any(AbortSignal),
     );
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
@@ -57,11 +58,32 @@ describe("Agent 工作区工具", () => {
     const apply_tool = read_tool(tools, "workspace_apply");
 
     expect(validate(load_tool, {})).toEqual({});
-    expect(validate(script_tool, { script: "return null" })).toEqual({ script: "return null" });
+    expect(validate(script_tool, { script: "async function main() { return null; }" })).toEqual({
+      script: "async function main() { return null; }",
+    });
     expect(validate(apply_tool, {})).toEqual({});
     expect(() => validate(load_tool, { target: "items" })).toThrow();
     expect(() => validate(script_tool, { script: "" })).toThrow();
     expect(() => validate(apply_tool, { target: "items" })).toThrow();
+  });
+
+  it("workspace_script Schema 在首次调用前公开完整固定 SDK", () => {
+    const script_tool = read_tool(
+      create_agent_workspace_tools(build_workspace_port()),
+      "workspace_script",
+    );
+    const parameters = script_tool.parameters as {
+      properties: { script: { description?: string } };
+    };
+    const description = parameters.properties.script.description;
+
+    expect(description).toContain("除此之外没有其他成员");
+    for (const [name, declaration] of Object.entries(AGENT_WORKSPACE_SCRIPT_API.members)) {
+      expect(description).toContain(`${name}${declaration}`);
+    }
+    for (const root of Object.values(AGENT_WORKSPACE_SCRIPT_API.roots)) {
+      expect(description).toContain(root);
+    }
   });
 
   it("调用前已取消时不触达工作区服务", async () => {

@@ -5,7 +5,6 @@ import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import {
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
-  AGENT_WORKSPACE_TASK_ROOT,
 } from "../../shared/backend-runtime";
 import { read_optional_item_name_text } from "../../shared/item-name";
 import {
@@ -343,7 +342,7 @@ const quality_changes = Object.fromEntries(
   }),
 ) as JsonRecord;
 
-/** 工作区结构、字段、显式 change 和脚本 API 的唯一代码权威。 */
+/** 工作区结构、字段、显式 change、写入语义和 recipe 的唯一代码权威。 */
 export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
@@ -429,43 +428,6 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     quality_operation_order: [...AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS],
     freshness: "工程身份、语言、epoch 与全部 section revision 必须仍等于加载快照",
     transaction: "全部真实 change 在一个数据库事务中提交",
-  },
-  script_api: {
-    argument: "workspace",
-    properties: {
-      contract: {
-        source: AGENT_WORKSPACE_PATHS.contract,
-        purpose: "当前工作区同源契约快照",
-      },
-    },
-    methods: {
-      readText: { signature: "(path: string) => Promise<string>" },
-      readJson: { signature: "(path: string) => Promise<JsonValue>" },
-      iterateLines: { signature: "(path: string) => AsyncIterable<string>" },
-      iterateJsonl: { signature: "(path: string) => AsyncIterable<JsonValue>" },
-      writeText: { signature: "(path: string, text: string) => Promise<void>" },
-      writeJson: { signature: "(path: string, value: JsonValue) => Promise<void>" },
-      writeJsonl: {
-        signature:
-          "(path: string, rows: Iterable<JsonValue> | AsyncIterable<JsonValue>) => Promise<void>",
-      },
-      list: {
-        signature:
-          "(path?: string) => Promise<Array<{ name: string, type: 'file' | 'directory', size_bytes?: number }>>",
-      },
-      remove: { signature: "(path: string) => Promise<void>" },
-      runRecipe: {
-        signature: "(name: string, args: object) => Promise<JsonValue>",
-        purpose: "在当前脚本内调用已发布只读 recipe；recipe 不能写 change 或递归调用 recipe",
-      },
-      matchLiterals: {
-        signature:
-          "(args: { patterns: Array<{ key: string, text: string, case_sensitive: boolean }>; examples_per_pattern?: number }) => Promise<JsonValue>",
-        purpose: "按产品正式字面匹配语义一次扫描 items 的 src 与 name_src",
-      },
-    },
-    task: `${AGENT_WORKSPACE_TASK_ROOT}/`,
-    scratch: "scratch/",
   },
   recipes: {
     "query-items": {

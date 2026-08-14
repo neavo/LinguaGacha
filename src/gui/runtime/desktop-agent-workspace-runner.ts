@@ -17,6 +17,9 @@ const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; 
 const AGENT_WORKSPACE_PARTITION = "agent-workspace"; // 无 persist: 前缀，应用退出后不落盘
 const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE =
   "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，按实际生命周期自行管理 task 或 scratch 内容。";
+const AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED =
+  "脚本必须是完整的 async function main(workspace) { ... } 入口函数。";
+const AGENT_WORKSPACE_SCRIPT_RESULT_REQUIRED = "工作区入口函数必须显式返回 JSON 结果。";
 
 /** 自定义 scheme 权限必须在 Electron ready 前注册。 */
 export function register_agent_workspace_scheme(): void {
@@ -267,7 +270,7 @@ function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-/** 模型代码只在异步函数内执行，不落盘、不建立长期 REPL。 */
+/** 模型提供完整 main 入口；单次调用不落盘、不建立长期 REPL。 */
 function build_workspace_program(
   script: string,
   recipe_sources: Readonly<Record<string, string>>,
@@ -386,8 +389,26 @@ function build_workspace_program(
     runRecipe,
     matchLiterals,
   });
-  const result = await new AsyncFunction("workspace", ${JSON.stringify(script)})(workspace);
-  const serialized = JSON.stringify(result ?? null);
+  // 括号把输入限制为单一函数表达式；解析失败统一返回可修复的公开入口错误。
+  let entrypoint;
+  try {
+    entrypoint = await new AsyncFunction("return (" + ${JSON.stringify(script)} + "\\n)")();
+  } catch {
+    throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED)});
+  }
+  // 构造器与名称共同拒绝同步函数、箭头函数和其它具名入口。
+  if (
+    typeof entrypoint !== "function" ||
+    entrypoint.constructor !== AsyncFunction ||
+    entrypoint.name !== "main"
+  ) {
+    throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED)});
+  }
+  const result = await entrypoint(workspace);
+  if (result === undefined) {
+    throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_RESULT_REQUIRED)});
+  }
+  const serialized = JSON.stringify(result);
   if (serialized === undefined) throw new TypeError("工作区结果无法序列化为 JSON。");
   if (new TextEncoder().encode(serialized).byteLength > ${AGENT_WORKSPACE_MAX_RESULT_BYTES.toString()}) {
     throw new Error(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE)});

@@ -71,6 +71,7 @@ const READY: BackendRuntimeReady = {
   berserkerUpdateRootDir: "E:/userdata/berserker",
   systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
 };
+const VALID_WORKSPACE_SCRIPT = "async function main() { return null; }";
 
 describe("BackendRuntimeClient", () => {
   beforeEach(() => {
@@ -131,7 +132,7 @@ describe("BackendRuntimeClient", () => {
         kind: "run_agent_workspace",
         request: {
           workspacePath: "E:/workspace/run-1",
-          script: "return null",
+          script: VALID_WORKSPACE_SCRIPT,
         },
       },
     } satisfies BackendRuntimeWorkerMessage);
@@ -142,7 +143,7 @@ describe("BackendRuntimeClient", () => {
     expect(run_agent_workspace).toHaveBeenCalledWith(
       {
         workspacePath: "E:/workspace/run-1",
-        script: "return null",
+        script: VALID_WORKSPACE_SCRIPT,
       },
       expect.any(AbortSignal),
     );
@@ -185,7 +186,10 @@ describe("BackendRuntimeClient", () => {
       requestId: "workspace-1",
       operation: {
         kind: "run_agent_workspace",
-        request: { workspacePath: "E:/workspace/one", script: "return null" },
+        request: {
+          workspacePath: "E:/workspace/one",
+          script: VALID_WORKSPACE_SCRIPT,
+        },
       },
     } satisfies BackendRuntimeWorkerMessage);
     worker.emit("message", {
@@ -193,7 +197,10 @@ describe("BackendRuntimeClient", () => {
       requestId: "workspace-2",
       operation: {
         kind: "run_agent_workspace",
-        request: { workspacePath: "E:/workspace/two", script: "return null" },
+        request: {
+          workspacePath: "E:/workspace/two",
+          script: VALID_WORKSPACE_SCRIPT,
+        },
       },
     } satisfies BackendRuntimeWorkerMessage);
     await vi.waitFor(() => expect(run_agent_workspace).toHaveBeenCalledTimes(2));

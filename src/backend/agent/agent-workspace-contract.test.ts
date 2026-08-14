@@ -5,7 +5,6 @@ import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import {
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
-  AGENT_WORKSPACE_TASK_ROOT,
 } from "../../shared/backend-runtime";
 import {
   AGENT_WORKSPACE_CONTRACT,
@@ -121,11 +120,8 @@ describe("Agent 工作区 contract", () => {
     }
   });
 
-  it("contract 声明脚本 API 与 recipe 源码路径", () => {
+  it("contract 保留业务限制与 recipe 且不声明固定脚本 SDK", () => {
     const limits = read_json_record(AGENT_WORKSPACE_CONTRACT["limits"]);
-    const script_api = read_json_record(AGENT_WORKSPACE_CONTRACT["script_api"]);
-    const properties = read_json_record(script_api["properties"]);
-    const methods = read_json_record(script_api["methods"]);
     const recipes = read_json_record(AGENT_WORKSPACE_CONTRACT["recipes"]);
 
     expect(limits).toEqual({
@@ -135,32 +131,7 @@ describe("Agent 工作区 contract", () => {
       literal_match_examples_default: 3,
       literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
     });
-    expect(script_api).toMatchObject({
-      argument: "workspace",
-      task: `${AGENT_WORKSPACE_TASK_ROOT}/`,
-      scratch: "scratch/",
-    });
-    expect(read_json_record(properties["contract"])).toMatchObject({
-      source: AGENT_WORKSPACE_PATHS.contract,
-    });
-    expect(new Set(Object.keys(methods))).toEqual(
-      new Set([
-        "readText",
-        "readJson",
-        "iterateLines",
-        "iterateJsonl",
-        "writeText",
-        "writeJson",
-        "writeJsonl",
-        "list",
-        "remove",
-        "runRecipe",
-        "matchLiterals",
-      ]),
-    );
-    expect(read_json_record(methods["iterateJsonl"])).toEqual({
-      signature: "(path: string) => AsyncIterable<JsonValue>",
-    });
+    expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("script_api");
     for (const [name, recipe_path] of Object.entries(AGENT_WORKSPACE_RECIPE_PATHS)) {
       expect(read_json_record(recipes[name])).toMatchObject({
         path: recipe_path,
