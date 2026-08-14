@@ -27,18 +27,24 @@ export interface ExportPaths {
 }
 
 const EPUB_READING_LAYOUT_TARGET_LANGUAGES = new Set(["JA", "ZH-HANT"]); // 日文与繁中导出保留原 EPUB 翻页方向和竖排信息
+const SPLITLINES_CODE_POINTS = new Set([
+  0x000a, 0x000b, 0x000c, 0x000d, 0x001c, 0x001d, 0x001e, 0x0085, 0x2028, 0x2029,
+]); // Python splitlines 识别的全部单码点行边界；CRLF 在扫描时合并
 
 /**
  * 模拟历史 splitlines 行为，但保留每一行作为独立翻译条目
  */
 export function split_text_lines_for_items(text: string): string[] {
-  if (text === "") {
-    return [];
+  const lines: string[] = [];
+  let line_start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code_point = text.charCodeAt(index);
+    if (!SPLITLINES_CODE_POINTS.has(code_point)) continue;
+    lines.push(text.slice(line_start, index));
+    if (code_point === 0x000d && text.charCodeAt(index + 1) === 0x000a) index += 1;
+    line_start = index + 1;
   }
-  const lines = text.split(/\r\n|\r|\n/u);
-  if (lines.at(-1) === "") {
-    lines.pop();
-  }
+  if (line_start < text.length) lines.push(text.slice(line_start));
   return lines;
 }
 

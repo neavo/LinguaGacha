@@ -220,6 +220,38 @@ describe("DesktopAgentWorkspaceFiles", () => {
     await files.rollback();
   });
 
+  it("正式字面匹配保留 JSON 字符串内的 Unicode 行分隔符", async () => {
+    fs.writeFileSync(
+      path.join(workspace_path, "items", "entries.jsonl"),
+      `${JSON.stringify({ item_id: 1, src: "前\u2028後", name_src: "名\u2029字" })}\n`,
+    );
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    const response = await files.handle(
+      new Request("lg-agent-workspace://workspace/__match_literals__", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          patterns: [
+            { key: "body", text: "後", case_sensitive: true },
+            { key: "name", text: "字", case_sensitive: true },
+          ],
+          examples_per_pattern: 1,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      scanned_item_count: 1,
+      matched_item_count: 1,
+      patterns: [
+        { key: "body", matched_item_count: 1, field_item_counts: { src: 1, name_src: 0 } },
+        { key: "name", matched_item_count: 1, field_item_counts: { src: 0, name_src: 1 } },
+      ],
+    });
+    await files.rollback();
+  });
+
   it.each([
     {
       label: "重复 pattern key",

@@ -4,6 +4,7 @@ import {
   check_similarity_by_jaccard,
   decode_text_content,
   is_punctuation_character,
+  iterate_utf8_lf_lines,
   split_by_punctuation,
 } from "./text-tool";
 
@@ -53,6 +54,19 @@ describe("文本工具", () => {
   it("解码 UTF-8 BOM 文本", async () => {
     const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("hello")]);
     await expect(decode_text_content(bytes)).resolves.toBe("hello");
+  });
+
+  it("LF 流式分行保留 Unicode 行分隔符并兼容 CRLF", async () => {
+    const content = new TextEncoder().encode("甲\u2028乙\r\n丙\u2029丁\n尾");
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield content.slice(0, 1);
+      yield content.slice(1, 7);
+      yield content.slice(7);
+    }
+    const lines: string[] = [];
+    for await (const line of iterate_utf8_lf_lines(chunks())) lines.push(line);
+
+    expect(lines).toEqual(["甲\u2028乙", "丙\u2029丁", "尾"]);
   });
 
   it("按探测结果解码非 UTF-8 文本", async () => {

@@ -10,6 +10,11 @@ import {
 describe("file-format-shared", () => {
   it("按历史 splitlines 口径处理尾随换行", () => {
     expect(split_text_lines_for_items("甲\n乙\n")).toEqual(["甲", "乙"]);
+    expect(
+      split_text_lines_for_items(
+        "甲\r\n乙\v丙\f丁\r戊\n己\x1c庚\x1d辛\x1e壬\x85癸\u2028子\u2029丑",
+      ),
+    ).toEqual(["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸", "子", "丑"]);
     expect(split_text_lines_for_items("")).toEqual([]);
   });
 

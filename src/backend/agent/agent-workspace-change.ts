@@ -1,5 +1,4 @@
 import path from "node:path";
-import readline from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 
 import { is_json_record, read_json_record, type JsonRecord } from "../../domain/json";
@@ -16,6 +15,7 @@ import {
   normalize_quality_rule_entries,
 } from "../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../shared/utils/json-tool";
+import { iterate_utf8_lf_lines } from "../../shared/utils/text-tool";
 import type { NativeFs } from "../../native/native-fs";
 import type { CacheReadPort } from "../cache/cache-types";
 import {
@@ -514,25 +514,17 @@ async function read_change_rows(native_fs: NativeFs, file_path: string): Promise
     }
     if (native_fs.stat(file_path).size === 0) return [];
     const rows: JsonRecord[] = [];
-    const lines = readline.createInterface({
-      input: native_fs.create_read_stream(file_path),
-      crlfDelay: Infinity,
-    });
-    try {
-      let line_number = 0;
-      for await (const line of lines) {
-        line_number += 1;
-        if (line.trim() === "") continue;
-        const parsed = JsonTool.parseStrict(line);
-        if (!is_json_record(parsed)) {
-          throw new TypeError(`Workspace JSONL line ${line_number.toString()} is not an object.`);
-        }
-        rows.push(parsed);
+    let line_number = 0;
+    for await (const line of iterate_utf8_lf_lines(native_fs.create_read_stream(file_path))) {
+      line_number += 1;
+      if (line.trim() === "") continue;
+      const parsed = JsonTool.parseStrict(line);
+      if (!is_json_record(parsed)) {
+        throw new TypeError(`Workspace JSONL line ${line_number.toString()} is not an object.`);
       }
-      return rows;
-    } finally {
-      lines.close();
+      rows.push(parsed);
     }
+    return rows;
   } catch (cause) {
     if (AppErrors.is_app_error(cause)) throw cause;
     throw new AppErrors.AppError("request.validation_failed", {

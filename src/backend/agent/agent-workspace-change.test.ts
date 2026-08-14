@@ -273,6 +273,21 @@ describe("Agent 工作区显式 change", () => {
     });
   });
 
+  it("change JSONL 保留字段内的 Unicode 行分隔符", async () => {
+    const fixture = create_cache();
+    write_rows(AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
+      { item_id: 1, dst: "前\u2028後\u2029" },
+    ]);
+
+    const prepared = await prepare_agent_workspace_changes({
+      nativeFs: native_fs,
+      workspacePath: workspace_path,
+      cache: fixture.cache,
+    });
+
+    expect(prepared.itemChanges[0]?.next.dst).toBe("前\u2028後\u2029");
+  });
+
   it("一万条确定性更新保持定点读取且不要求完整集合进入模型结果", async () => {
     const items = new Map(
       Array.from({ length: 10_000 }, (_, index) => {

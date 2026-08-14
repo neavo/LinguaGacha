@@ -343,6 +343,30 @@ describe("DesktopAgentWorkspaceRunner", () => {
     ).toBe("recovered");
   });
 
+  it("私有协议发现可信快照损坏时返回 invalidated 而非脚本校验失败", async () => {
+    const runner = new DesktopAgentWorkspaceRunner();
+    fs.writeFileSync(
+      path.join(workspace_path, "items", "entries.jsonl"),
+      `${JSON.stringify({ item_id: 0, src: "A", name_src: "" })}\n`,
+    );
+    prepare_program_execution();
+
+    const result = await runner.run(
+      {
+        workspacePath: workspace_path,
+        script:
+          'return await workspace.matchLiterals({ patterns: [{ key: "a", text: "A", case_sensitive: true }] });',
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      workspaceState: "invalidated",
+      failure: "workspace_invalid",
+    });
+  });
+
   it("脚本异常返回可修复消息并隐藏工作区绝对路径", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
     electron_mocks.execute_javascript.mockRejectedValueOnce(
