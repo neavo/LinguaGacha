@@ -30,6 +30,8 @@ import {
   AGENT_WORKSPACE_RECIPE_PATHS,
 } from "./agent-workspace-contract";
 
+const VALID_WORKSPACE_SCRIPT = "async function main() { return null; }";
+
 describe("AgentWorkspaceService", () => {
   let temp_dir = "";
 
@@ -159,7 +161,7 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.load_workspace();
     fixture.snapshot.sectionRevisions.items = 2;
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fs.readFileSync(task_file, "utf-8")).toBe('{"step":1}\n');
 
@@ -195,7 +197,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).toBe(previous_path);
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).resolves.toBeNull();
   });
 
@@ -261,10 +263,13 @@ describe("AgentWorkspaceService", () => {
     });
 
     await expect(
-      fixture.service.run_script("throw new Error()", new AbortController().signal),
+      fixture.service.run_script(
+        "async function main() { throw new Error(); }",
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ public_details: { action: "workspace_script" } });
     expect(fixture.run).toHaveBeenCalledWith(
-      { workspacePath: active_path, script: "throw new Error()" },
+      { workspacePath: active_path, script: "async function main() { throw new Error(); }" },
       expect.any(AbortSignal),
     );
     expect(fixture.active_path()).not.toBe("");
@@ -272,7 +277,7 @@ describe("AgentWorkspaceService", () => {
 
     fixture.run.mockRejectedValueOnce(new Error("host disconnected"));
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fixture.active_path()).toBe("");
     expect(fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT))).toBe(false);
@@ -286,7 +291,7 @@ describe("AgentWorkspaceService", () => {
       workspaceState: "invalidated",
     });
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fixture.active_path()).toBe("");
     expect(fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT))).toBe(false);
@@ -450,7 +455,7 @@ describe("AgentWorkspaceService", () => {
     fixture.snapshot.sectionRevisions[section] = 2;
 
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fixture.active_path()).toBe("");
   });
@@ -467,7 +472,7 @@ describe("AgentWorkspaceService", () => {
     else fixture.setting.target_language = "EN";
 
     await expect(
-      fixture.service.run_script("return null", new AbortController().signal),
+      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, new AbortController().signal),
     ).rejects.toMatchObject({ public_details: { action: "workspace_load" } });
     expect(fixture.active_path()).toBe("");
     expect(fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT))).toBe(false);

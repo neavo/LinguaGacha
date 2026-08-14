@@ -24,10 +24,35 @@ export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 /** Backend 与 Electron main 共用的对话级任务目录挂载名。 */
 export const AGENT_WORKSPACE_TASK_ROOT = "task";
 
+/** workspace_script 在首次调用前通过工具 Schema 公开的完整固定 SDK。 */
+export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
+  members: Object.freeze({
+    contract:
+      ": WorkspaceContract（当前工作区的 limits、datasets、changes、effects、guidance、apply 与 recipes 契约）",
+    readText: "(path: string): Promise<string>",
+    readJson: "(path: string): Promise<JsonValue>",
+    iterateLines: "(path: string): AsyncIterable<string>",
+    iterateJsonl: "(path: string): AsyncIterable<JsonValue>",
+    writeText: "(path: string, text: string): Promise<void>",
+    writeJson: "(path: string, value: JsonValue): Promise<void>",
+    writeJsonl:
+      "(path: string, rows: Iterable<JsonValue> | AsyncIterable<JsonValue>): Promise<void>",
+    list: "(path?: string): Promise<Array<{ name: string, type: 'file' | 'directory', size_bytes?: number }>>",
+    remove: "(path: string): Promise<void>",
+    runRecipe: "(name: string, args: object): Promise<JsonValue>",
+    matchLiterals:
+      "(args: { patterns: Array<{ key: string, text: string, case_sensitive: boolean }>; examples_per_pattern?: number }): Promise<{ scanned_item_count: number; matched_item_count: number; patterns: Array<{ key: string; matched_item_count: number; field_item_counts: { src: number; name_src: number }; example_matches: Array<{ item_id: number; field: 'src' | 'name_src'; ranges: Array<{ start: number; end: number }> }> }> }>",
+  }),
+  roots: Object.freeze({
+    task: `${AGENT_WORKSPACE_TASK_ROOT}/**`,
+    scratch: "scratch/**",
+  }),
+});
+
 /** 单个字面模式最多回传的证据条目数，主进程协议与公开 contract 共用。 */
 export const AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES = 50;
 
-/** Backend 只把当前工作区身份与已校验脚本交给受信任 Electron main。 */
+/** Backend 只把当前工作区身份与完整脚本入口交给受信任 Electron main。 */
 export type BackendRuntimeAgentWorkspaceRunRequest = Readonly<{
   workspacePath: string;
   script: string;

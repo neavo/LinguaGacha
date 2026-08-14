@@ -95,6 +95,7 @@ const agent_resource_fixture = vi.hoisted(() => {
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
+const FAKE_WORKSPACE_SCRIPT = "async function main() { return { items: [] }; }";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -288,7 +289,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       fauxToolCall(
         "workspace_script",
-        { script: "return { items: [] }" },
+        { script: FAKE_WORKSPACE_SCRIPT },
         { id: "checkpoint-query" },
       ),
       { stopReason: "toolUse" },
@@ -345,7 +346,7 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: "return { items: [] }" }, { id: "tool-only" }),
+      fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
@@ -359,7 +360,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall("workspace_script", { script: "return { items: [] }" }, { id: "tool-1" }),
+        fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-1" }),
         fauxToolCall("read_skill", { name: "glossary-audit", path: "ui.json" }, { id: "tool-2" }),
       ],
       { stopReason: "toolUse" },
@@ -951,7 +952,7 @@ describe("AgentService", () => {
           id: "tool-1",
           status: "running",
           toolName: "workspace_script",
-          input: '{"script":"return { items: [] }"}',
+          input: JSON.stringify({ script: FAKE_WORKSPACE_SCRIPT }),
           output: null,
         }),
       }),
@@ -977,7 +978,7 @@ describe("AgentService", () => {
         kind: "tool_call",
         id: "tool-1",
         toolName: "workspace_script",
-        input: '{"script":"return { items: [] }"}',
+        input: JSON.stringify({ script: FAKE_WORKSPACE_SCRIPT }),
         status: "success",
         output: expect.stringContaining('"items"'),
         createdAt: expect.any(Number),
