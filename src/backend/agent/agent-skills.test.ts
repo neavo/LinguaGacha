@@ -137,7 +137,7 @@ describe("Agent skill 加载", () => {
     );
   });
 
-  it("用户有效同名 skill 作为完整定义优先于内置 skill", async () => {
+  it("用户有效同名 skill 完整覆盖内置 skill 且不产生诊断", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
     );
@@ -153,7 +153,6 @@ describe("Agent skill 加载", () => {
       path.join(builtin_dir, "ui.json"),
       '{"order":100,"displayDescriptions":{"en-US":"Built-in skill"}}',
     );
-    write_skill(path.join(builtin_dir, "references", "guide.md"), "# 内置参考");
     write_skill(
       path.join(user_dir, "SKILL.md"),
       "---\nname: shared\ndescription: 用户能力\n---\n\n用户正文。",
@@ -162,7 +161,6 @@ describe("Agent skill 加载", () => {
       path.join(user_dir, "ui.json"),
       '{"order":200,"displayDescriptions":{"en-US":"User skill"}}',
     );
-    write_skill(path.join(user_dir, "references", "guide.md"), "# 用户参考");
     const warning = vi.fn();
 
     await expect(load_agent_skills(paths, { warning, error: vi.fn() })).resolves.toEqual([
@@ -181,17 +179,7 @@ describe("Agent skill 加载", () => {
         disableModelInvocation: false,
       },
     ]);
-    expect(warning).toHaveBeenCalledWith(
-      "Agent skill 资源加载失败 …",
-      expect.objectContaining({
-        context: expect.objectContaining({
-          code: "collision",
-          skill: "shared",
-          winner_path: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
-          loser_path: expect.stringMatching(/\/shared\/SKILL\.md$/u),
-        }),
-      }),
-    );
+    expect(warning).not.toHaveBeenCalled();
   });
 
   it.each([
