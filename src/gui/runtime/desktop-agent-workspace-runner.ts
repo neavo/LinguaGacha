@@ -136,6 +136,9 @@ export class DesktopAgentWorkspaceRunner {
         true,
       );
       signal.throwIfAborted();
+      // protocol 会把类型化宿主错误投影成 HTTP 文本；提交前必须从事务对象恢复真实故障。
+      const host_failure = files.get_host_failure();
+      if (host_failure !== null) throw host_failure;
       const serialized_text = String(serialized);
       // renderer 属于不可信执行边界；main 在解析和提交事务前必须独立复核字节门。
       if (Buffer.byteLength(serialized_text, "utf-8") > AGENT_WORKSPACE_MAX_RESULT_BYTES) {
@@ -166,6 +169,16 @@ export class DesktopAgentWorkspaceRunner {
         return failure_response(
           rollback_error,
           "transaction_failed",
+          "invalidated",
+          request.workspacePath,
+        );
+      }
+      // renderer 未捕获的 fetch 错误同样丢失宿主类型，仍以事务记录的失败为准。
+      const host_failure = files.get_host_failure();
+      if (host_failure !== null) {
+        return failure_response(
+          host_failure,
+          "workspace_invalid",
           "invalidated",
           request.workspacePath,
         );

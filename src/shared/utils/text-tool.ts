@@ -39,6 +39,25 @@ export function split_by_punctuation(text: string, split_by_space: boolean): str
     .filter(Boolean);
 }
 
+/** UTF-8 JSONL 等 LF 协议只按 U+000A 分行；CRLF 去掉 CR，其它 Unicode 分隔符保留为正文。 */
+export async function* iterate_utf8_lf_lines(
+  chunks: AsyncIterable<Uint8Array>,
+): AsyncGenerator<string> {
+  const decoder = new TextDecoder("utf-8");
+  let buffered = "";
+  for await (const chunk of chunks) {
+    buffered += decoder.decode(chunk, { stream: true });
+    let newline = buffered.indexOf("\n");
+    while (newline >= 0) {
+      yield buffered.slice(0, newline).replace(/\r$/u, "");
+      buffered = buffered.slice(newline + 1);
+      newline = buffered.indexOf("\n");
+    }
+  }
+  buffered += decoder.decode();
+  if (buffered !== "") yield buffered.replace(/\r$/u, "");
+}
+
 /**
  * 基于字符集合的 Jaccard 相似度，与历史轻量去重判断一致
  */

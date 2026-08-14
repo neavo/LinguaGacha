@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -15,6 +14,7 @@ import {
   type LiteralPattern,
   type TextRange,
 } from "../../shared/text/literal-matcher";
+import { iterate_utf8_lf_lines } from "../../shared/utils/text-tool";
 
 /** Electron main 只解析建立文件权限和正式匹配入口所需的 contract 子集。 */
 type WorkspaceContract = {
@@ -91,6 +91,7 @@ export class DesktopAgentWorkspaceFiles {
   private readonly backup_path: string; // 提交过程中暂存的原基线
   private readonly written_paths = new Set<string>(); // upper 中完成原子写入的文件
   private readonly tombstones = new Set<string>(); // 当前合并视图隐藏的 scratch 或 task 路径
+  private host_failure: AgentWorkspaceInvalidError | null = null; // 可信快照损坏不能伪装成模型脚本请求错误
   private finalized = false; // commit / rollback 只允许第一次改变事务状态
 
   /** 只允许 open 在验证根目录和 contract 后构造冻结权限视图。 */
@@ -192,6 +193,7 @@ export class DesktopAgentWorkspaceFiles {
         );
       }
     } catch (error) {
+      if (error instanceof AgentWorkspaceInvalidError) this.host_failure ??= error;
       return response_text(400, project_protocol_error(error));
     }
     return response_text(405, "Unsupported workspace operation.");
@@ -263,6 +265,11 @@ export class DesktopAgentWorkspaceFiles {
         error,
       );
     }
+  }
+
+  /** runner 在提交前读取协议内部失败，脚本即使捕获 fetch 异常也不能掩盖宿主故障。 */
+  public get_host_failure(): AgentWorkspaceInvalidError | null {
+    return this.host_failure;
   }
 
   /** 未提交执行只删除当前 upper；删除失败时不能再声称基线可安全复用。 */
@@ -440,13 +447,14 @@ export class DesktopAgentWorkspaceFiles {
     );
     let scanned_item_count = 0;
     let matched_item_count = 0;
-    const lines = readline.createInterface({
-      input: fs.createReadStream(items_file, { encoding: "utf-8" }),
-      crlfDelay: Infinity,
-    });
-    for await (const line of lines) {
+    for await (const line of iterate_utf8_lf_lines(fs.createReadStream(items_file))) {
       if (line.trim() === "") continue;
-      const item = JSON.parse(line) as unknown;
+      let item: unknown;
+      try {
+        item = JSON.parse(line) as unknown;
+      } catch (cause) {
+        throw new AgentWorkspaceInvalidError("Workspace items dataset is invalid.", { cause });
+      }
       if (!is_json_record(item)) {
         throw new AgentWorkspaceInvalidError("Workspace items dataset is invalid.");
       }
