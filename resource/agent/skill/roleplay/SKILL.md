@@ -6,11 +6,9 @@ disable-model-invocation: true
 
 # 故事角色扮演
 
-## 必读创作知识
+以 `@skill(fiction-rules)` 为必读创作知识。
 
-进行任何世界导览、开局设计、人物推演或故事正文创作前，检查当前模型上下文是否已经包含 `fiction-rules` 的完整正文。若尚未包含，确认 `<available_skills>` 中存在该名称，再以 `name=fiction-rules` 调用 `read_skill`；同一独立角色扮演任务只读取一次。
-
-若 `fiction-rules` 不存在、不可读取或正文无效，进入“无法继续”，不得从本技能、旧对话或经验重建通用创作规则。`fiction-rules` 只提供创作知识；本技能定义的玩家权限、原作事实、分支状态、交互和回合规则发生冲突时优先。
+`fiction-rules` 只提供创作知识；与本技能定义的玩家权限、原作事实、分支状态、交互和回合规则冲突时，以本技能为准。
 
 ## 核心契约
 
