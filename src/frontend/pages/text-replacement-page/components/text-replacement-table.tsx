@@ -11,7 +11,9 @@ import type {
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
+import { resolve_quality_rule_boolean_menu_state } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
+import { resolve_app_table_context_target_row_ids } from "@frontend/widgets/app-table/app-table-selection";
 import type {
   AppTableColumn,
   AppTableSelectionChange,
@@ -45,88 +47,6 @@ type TextReplacementTableProps = {
   on_search_entry_relations: (entry_id: TextReplacementEntryId) => void;
 };
 
-type TextReplacementRuleMenuState = "enabled" | "disabled" | "mixed";
-
-/**
- * 右键已选行时作用于整组选择；右键未选行时只作用于该行。
- */
-function resolve_text_replacement_context_target_entry_ids(
-  row_id: TextReplacementEntryId,
-  selected_entry_ids: TextReplacementEntryId[],
-): TextReplacementEntryId[] {
-  if (selected_entry_ids.includes(row_id)) {
-    return selected_entry_ids;
-  }
-
-  return [row_id];
-}
-
-/**
- * 汇总批量目标的布尔规则状态，供菜单呈现选中、未选中或混合态。
- */
-function resolve_text_replacement_rule_menu_state(args: {
-  entry_by_id: Map<TextReplacementEntryId, TextReplacementVisibleEntry>;
-  target_entry_ids: TextReplacementEntryId[];
-  pick_value: (entry: TextReplacementVisibleEntry) => boolean;
-}): TextReplacementRuleMenuState {
-  let has_enabled = false;
-  let has_disabled = false;
-
-  for (const entry_id of args.target_entry_ids) {
-    const target_entry = args.entry_by_id.get(entry_id);
-    if (target_entry === undefined) {
-      continue;
-    }
-
-    if (args.pick_value(target_entry)) {
-      has_enabled = true;
-    } else {
-      has_disabled = true;
-    }
-
-    if (has_enabled && has_disabled) {
-      return "mixed";
-    }
-  }
-
-  if (has_enabled) {
-    return "enabled";
-  }
-
-  if (has_disabled) {
-    return "disabled";
-  }
-
-  return "mixed";
-}
-
-/** 交互控件和滚动条不应成为框选手势的起点。 */
-function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-text-replacement-ignore-box-select="true"]',
-        '[data-app-table-ignore-box-select="true"]',
-        '[data-slot="scroll-area-scrollbar"]',
-        '[data-slot="scroll-area-thumb"]',
-        '[data-slot="scroll-area-corner"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
-/** 行内交互控件自行处理点击，不应同时改变行选择。 */
-function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-text-replacement-ignore-row-click="true"]',
-        '[data-app-table-ignore-row-click="true"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
 type TextReplacementRuleBadgeProps = {
   icon: "regex" | "case-sensitive";
   enabled: boolean;
@@ -138,7 +58,7 @@ function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Ele
     <span className="text-replacement-page__rule-badge-wrap">
       <span
         data-state={props.enabled ? "active" : "inactive"}
-        data-text-replacement-ignore-box-select="true"
+        data-app-table-ignore-box-select="true"
         className="text-replacement-page__rule-badge"
       >
         <Icon aria-hidden="true" />
@@ -340,16 +260,16 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
             props.on_open_edit(payload.row_id);
           }}
           render_row_context_menu={(payload) => {
-            const target_entry_ids = resolve_text_replacement_context_target_entry_ids(
+            const target_entry_ids = resolve_app_table_context_target_row_ids(
               payload.row_id,
               props.selected_entry_ids,
             );
-            const regex_state = resolve_text_replacement_rule_menu_state({
+            const regex_state = resolve_quality_rule_boolean_menu_state({
               entry_by_id: visible_entry_by_id,
               target_entry_ids,
               pick_value: (entry) => entry.entry.regex,
             });
-            const case_sensitive_state = resolve_text_replacement_rule_menu_state({
+            const case_sensitive_state = resolve_quality_rule_boolean_menu_state({
               entry_by_id: visible_entry_by_id,
               target_entry_ids,
               pick_value: (entry) => entry.entry.case_sensitive,
@@ -368,8 +288,6 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
               />
             );
           }}
-          ignore_row_click_target={should_ignore_row_click_target}
-          ignore_box_select_target={should_ignore_box_selection_target}
           box_selection_enabled
           table_class_name="text-replacement-page__table"
           row_class_name={() => "text-replacement-page__table-row"}

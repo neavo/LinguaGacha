@@ -217,7 +217,7 @@ export class QualityPromptService {
   /** 拒绝旧 revision 字段，强制走 section revision。 */
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
-      if (Object.prototype.hasOwnProperty.call(request, field)) {
+      if (Object.hasOwn(request, field)) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_prompt_write_field", field },
         });

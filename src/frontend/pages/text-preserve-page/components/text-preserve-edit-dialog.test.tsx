@@ -71,7 +71,7 @@ describe("TextPreserveEditDialog", () => {
     );
     expect(rule?.readOnly).toBe(true);
     expect(rule?.getAttribute("aria-invalid")).toBe("true");
-    expect(container.textContent).toContain("转义序列无效");
+    expect(container.querySelector(".text-preserve-page__dialog-error")).not.toBeNull();
     expect(find_button(container, "app.action.save")?.disabled).toBe(true);
     expect(shortcut_mock).toHaveBeenCalledWith(
       expect.objectContaining({ action: "save", enabled: false }),

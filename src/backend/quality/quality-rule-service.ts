@@ -165,7 +165,7 @@ export class QualityRuleService {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = this.session_state.require_loaded_project_path();
-    const has_entries = Object.prototype.hasOwnProperty.call(request, "entries");
+    const has_entries = Object.hasOwn(request, "entries");
     const entries = has_entries
       ? this.normalize_rule_entries(rule_type, request["entries"])
       : undefined;
@@ -387,7 +387,7 @@ export class QualityRuleService {
    */
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
-      if (Object.prototype.hasOwnProperty.call(request, field)) {
+      if (Object.hasOwn(request, field)) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_quality_write_field", field },
         });

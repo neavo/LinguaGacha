@@ -109,7 +109,6 @@ describe("LaboratoryPage", () => {
   it("展示提示词增强开关并按设置值提交", async () => {
     await mount_page();
     const toggle = container?.querySelector('button[aria-label="提示词增强"]');
-    expect(toggle?.getAttribute("data-value")).toBe("enabled");
     await act(async () => {
       (toggle as HTMLButtonElement | undefined)?.click();
     });

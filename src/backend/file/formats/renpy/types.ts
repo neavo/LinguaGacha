@@ -63,28 +63,4 @@ export interface RenpyDocument {
   blocks: RenpyTranslateBlock[];
 }
 
-/**
- * extra_field.renpy 是写回器唯一接受的定位载荷，历史形状必须先经兼容层归一。
- */
-export interface RenpyExtraPayload {
-  v: number;
-  block: {
-    lang: string;
-    label: string;
-    kind: RenpyBlockKind;
-    header_line: number;
-  };
-  pair: {
-    template_line: number;
-    target_line: number;
-  };
-  slots: RenpySlot[];
-  digest: {
-    template_raw_sha1: string;
-    template_raw_rstrip_sha1: string;
-    target_skeleton_sha1: string;
-    target_string_count: number;
-  };
-}
-
 export type RenpyAstKey = readonly [lang: string, label: string, digest: string];

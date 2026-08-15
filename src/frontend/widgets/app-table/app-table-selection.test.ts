@@ -7,6 +7,7 @@ import {
   build_app_table_keyboard_selection_change,
   build_app_table_select_all_selection_change,
   normalize_app_table_selection_state,
+  resolve_app_table_context_target_row_ids,
 } from "./app-table-selection";
 
 const ordered_row_ids = ["a", "b", "c", "d"];
@@ -65,6 +66,8 @@ describe("app table selection", () => {
   });
 
   it("上下文、框选与全选保留稳定的活动行和锚点", () => {
+    expect(resolve_app_table_context_target_row_ids("b", ["a", "b"])).toEqual(["a", "b"]);
+    expect(resolve_app_table_context_target_row_ids("c", ["a", "b"])).toEqual(["c"]);
     expect(
       build_app_table_context_selection_change({
         selection_mode: "multiple",

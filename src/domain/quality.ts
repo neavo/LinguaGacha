@@ -1,4 +1,4 @@
-import type { JsonRecord } from "./json";
+import { read_json_boolean, type JsonRecord } from "./json";
 import { AppError } from "../shared/error";
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
@@ -268,7 +268,7 @@ export class QualityRule {
    * 质量规则启用态缺字段时按槽位默认值归一，避免各运行时自行猜布尔值
    */
   public normalize_enabled(value: unknown): boolean {
-    return normalize_boolean_meta_value(value, this.default_enabled);
+    return read_json_boolean(value, this.default_enabled);
   }
 
   /**
@@ -306,7 +306,7 @@ export class QualityRule {
    */
   public normalize_meta_value(key: string, value: unknown): boolean | TextPreserveMode | unknown {
     if (key === "enabled") {
-      return normalize_boolean_meta_value(value, false);
+      return read_json_boolean(value, false);
     }
     if (key === "mode" && this.mode_meta_key !== null) {
       return normalize_text_preserve_mode(value);
@@ -368,23 +368,4 @@ function read_boolean_field(record: JsonRecord, key: string, fallback: boolean):
   if (value === undefined) return fallback;
   if (typeof value !== "boolean") throw new TypeError(`Quality rule ${key} must be a boolean.`);
   return value;
-}
-
-function normalize_boolean_meta_value(value: unknown, fallback: boolean): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "1") {
-      return true;
-    }
-    if (normalized === "false" || normalized === "0") {
-      return false;
-    }
-  }
-  return fallback;
 }

@@ -28,7 +28,6 @@ import { TaskLogReplay } from "./log-replay";
 import { is_task_skipped_item_status, type TaskType } from "../../../domain/task";
 import {
   is_json_record,
-  read_json_integer,
   read_json_record,
   type JsonValue,
   type MutableJsonRecord,
@@ -36,6 +35,12 @@ import {
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
+import {
+  build_analysis_checkpoint_status_map,
+  is_analyzable_task_item,
+  read_task_item_id,
+  read_task_item_status,
+} from "../task-item";
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
 
@@ -453,7 +458,7 @@ export class TaskEngine {
     }
     const returned_items = result.items.length > 0 ? result.items : context.items;
     const terminal_items = returned_items.filter((item) =>
-      TRANSLATION_TERMINAL_STATUSES.has(this.read_status(item)),
+      TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
     );
     const retry_plan = await this.task_planner.build_translation_retry_plan(
       context,
@@ -552,8 +557,10 @@ export class TaskEngine {
       return progress;
     }
     const items = entries.flatMap((entry) => entry.items);
-    const processed_delta = items.filter((item) => this.read_status(item) === "PROCESSED").length;
-    const error_delta = items.filter((item) => this.read_status(item) === "ERROR").length;
+    const processed_delta = items.filter(
+      (item) => read_task_item_status(item) === "PROCESSED",
+    ).length;
+    const error_delta = items.filter((item) => read_task_item_status(item) === "ERROR").length;
     let next_progress = TaskProgressSnapshotTool.with_counts(progress, {
       processed_line: progress.processed_line + processed_delta,
       error_line: progress.error_line + error_delta,
@@ -633,10 +640,12 @@ export class TaskEngine {
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
     const total_line = items.filter(
-      (item) => !is_task_skipped_item_status(this.read_status(item)),
+      (item) => !is_task_skipped_item_status(read_task_item_status(item)),
     ).length;
-    const processed_line = items.filter((item) => this.read_status(item) === "PROCESSED").length;
-    const error_line = items.filter((item) => this.read_status(item) === "ERROR").length;
+    const processed_line = items.filter(
+      (item) => read_task_item_status(item) === "PROCESSED",
+    ).length;
+    const error_line = items.filter((item) => read_task_item_status(item) === "ERROR").length;
     const previous =
       mode === "CONTINUE"
         ? TaskProgressSnapshotTool.from_record(meta["translation_extras"])
@@ -662,13 +671,13 @@ export class TaskEngine {
     checkpoints: MutableJsonRecord[],
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
-    const checkpoint_status_by_id = this.build_checkpoint_status_map(checkpoints);
-    const analyzable_items = items.filter((item) => this.is_analyzable_item(item));
+    const checkpoint_status_by_id = build_analysis_checkpoint_status_map(checkpoints);
+    const analyzable_items = items.filter(is_analyzable_task_item);
     const processed_line = analyzable_items.filter(
-      (item) => checkpoint_status_by_id.get(this.read_item_id(item)) === "PROCESSED",
+      (item) => checkpoint_status_by_id.get(read_task_item_id(item)) === "PROCESSED",
     ).length;
     const error_line = analyzable_items.filter(
-      (item) => checkpoint_status_by_id.get(this.read_item_id(item)) === "ERROR",
+      (item) => checkpoint_status_by_id.get(read_task_item_id(item)) === "ERROR",
     ).length;
     const previous =
       mode === "CONTINUE"
@@ -854,45 +863,6 @@ export class TaskEngine {
       updated_at,
       error_count: status === "ERROR" ? 1 : 0,
     }));
-  }
-
-  /**
-   * checkpoint 只接受三态状态，坏数据不会影响调度
-   */
-  private build_checkpoint_status_map(checkpoints: MutableJsonRecord[]): Map<number, string> {
-    const result = new Map<number, string>();
-    for (const checkpoint of checkpoints) {
-      const item_id = read_json_integer(checkpoint["item_id"], 0);
-      const status = String(checkpoint["status"] ?? "");
-      if (item_id > 0 && (status === "NONE" || status === "PROCESSED" || status === "ERROR")) {
-        result.set(item_id, status);
-      }
-    }
-    return result;
-  }
-
-  /**
-   * 分析跳过规则保持稳定语义
-   */
-  private is_analyzable_item(item: MutableJsonRecord): boolean {
-    return (
-      !is_task_skipped_item_status(this.read_status(item)) &&
-      String(item["src"] ?? "").trim() !== ""
-    );
-  }
-
-  /**
-   * item id 同时兼容数据库内部 id 和公开 item_id
-   */
-  private read_item_id(item: MutableJsonRecord): number {
-    return read_json_integer(item["id"] ?? item["item_id"], 0);
-  }
-
-  /**
-   * 读取 item 当前状态事实
-   */
-  private read_status(item: MutableJsonRecord): string {
-    return String(item["status"] ?? "NONE");
   }
 
   /**

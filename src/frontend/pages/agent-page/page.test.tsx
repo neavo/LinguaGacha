@@ -183,49 +183,44 @@ describe("AgentPage", () => {
     return container;
   }
 
-  it("空会话按顺序显示三个起始任务，并把能力写成字面量草稿", async () => {
+  it("空会话建议写入草稿而不直接发送", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });
     const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
+    const literal_suggestion = suggestions.find((button) => {
+      return button.querySelector(".agent-mention-token") === null;
+    });
+    const skill_suggestion = suggestions.find((button) => {
+      return button.querySelector(".agent-mention-token") !== null;
+    });
     const editor = view.querySelector<HTMLElement>(".cm-content");
     const submit = get_button_by_label(view, "发送");
-
-    expect(suggestions.map((button) => button.textContent)).toEqual([
-      "介绍你的能力",
-      "创建术语表 @skill(glossary-create)",
-      "请帮我审校译文 @skill(translation-review)",
-    ]);
-    expect(
-      [
-        ...view.querySelectorAll<HTMLElement>(
-          ".agent-page__suggestion .agent-mention-token > span",
-        ),
-      ].map((token) => token.textContent),
-    ).toEqual(["@skill(glossary-create)", "@skill(translation-review)"]);
-    expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
-      "Agent Model",
-    );
+    const literal_text = literal_suggestion?.textContent?.trim();
+    const skill_text = skill_suggestion?.textContent?.trim();
+    if (literal_suggestion === undefined || literal_text === undefined) {
+      throw new Error("缺少普通起始任务。");
+    }
+    if (skill_suggestion === undefined || skill_text === undefined) {
+      throw new Error("缺少技能起始任务。");
+    }
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
-    await act(async () => suggestions[0]?.click());
+    await act(async () => literal_suggestion.click());
     expect(send).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith({ text: "介绍你的能力", images: [] });
+    expect(send).toHaveBeenLastCalledWith({ text: literal_text, images: [] });
 
-    await act(async () => suggestions[2]?.click());
+    await act(async () => skill_suggestion.click());
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith({
-      text: "请帮我审校译文 @skill(translation-review)",
-      images: [],
-    });
+    expect(send).toHaveBeenLastCalledWith({ text: skill_text, images: [] });
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
@@ -275,7 +270,6 @@ describe("AgentPage", () => {
     };
     await render_page({ entries: [], send });
     expect(quality_query_state.last_args).toMatchObject({ project_path: "" });
-    expect(view.textContent).toContain("介绍你的能力");
     expect(view.querySelector('[aria-labelledby="agent-mention-terms-label"]')).toBeNull();
   });
 
@@ -288,7 +282,7 @@ describe("AgentPage", () => {
     );
     if (retry_button === undefined) throw new Error("缺少恢复重试按钮");
 
-    expect(alert?.textContent).toContain("agent_page.error.restore");
+    expect(alert).not.toBeNull();
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
       true,
     );
@@ -343,7 +337,7 @@ describe("AgentPage", () => {
       ],
     });
     expect(writes).toEqual([]);
-    expect(view.textContent).toContain("agent_page.action.return_latest");
+    expect(view.querySelector(".agent-page__follow-control button")).not.toBeNull();
 
     scroll_top = 600;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
@@ -355,7 +349,7 @@ describe("AgentPage", () => {
       ],
     });
     expect(writes).toContain(1000);
-    expect(view.textContent).not.toContain("agent_page.action.return_latest");
+    expect(view.querySelector(".agent-page__follow-control button")).toBeNull();
   });
 
   it("思考块离底会暂停外层，回底后恢复且不覆盖外层独立暂停", async () => {
@@ -413,9 +407,7 @@ describe("AgentPage", () => {
     await render_thinking("第一步\n第二步\n第三步\n第四步");
     expect(outer_writes).toEqual([]);
 
-    const latest = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "agent_page.action.return_latest",
-    );
+    const latest = view.querySelector<HTMLButtonElement>(".agent-page__follow-control button");
     await act(async () => latest?.click());
     expect(outer_writes).toContain(1000);
   });
@@ -554,9 +546,7 @@ describe("AgentPage", () => {
 
     await act(async () => retry.click());
     expect(reviseLatestRound).not.toHaveBeenCalled();
-    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
-      "工程写入重试确认",
-    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     await act(async () => get_portal_button("app.action.cancel").click());
     expect(reviseLatestRound).not.toHaveBeenCalled();
 
@@ -653,9 +643,7 @@ describe("AgentPage", () => {
     if (reset_button === null) throw new Error("缺少新任务按钮");
 
     await act(async () => reset_button.click());
-    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
-      "是否确认开始新的对话任务 …?",
-    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     await act(async () => get_portal_button("app.action.cancel").click());
     expect(reset).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();

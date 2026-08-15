@@ -131,8 +131,6 @@ export type AppTableProps<Row> = {
   on_reorder: (payload: AppTableReorderChange<Row>) => void | Promise<void>;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
   render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
-  ignore_row_click_target?: (target_element: HTMLElement) => boolean;
-  ignore_box_select_target?: (target_element: HTMLElement) => boolean;
   box_selection_enabled?: boolean;
   virtual_overscan?: number;
   row_height?: number;

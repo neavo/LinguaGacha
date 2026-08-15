@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/pages/basic-settings-page/basic-settings-page.css";
@@ -34,25 +35,6 @@ function replace_placeholder(template: string, value: string): string {
   return template.replace("{PATH}", value);
 }
 
-function parse_number_draft(
-  input_value: string,
-  min_value: number,
-  max_value: number,
-): number | null {
-  const trimmed_value = input_value.trim();
-  const parsed_value = Number(trimmed_value);
-
-  if (
-    trimmed_value === "" ||
-    !Number.isFinite(parsed_value) ||
-    parsed_value < min_value ||
-    parsed_value > max_value
-  ) {
-    return null;
-  }
-
-  return parsed_value;
-}
 export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -61,7 +43,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     return String(basic_settings_state.snapshot.request_timeout);
   });
   const [is_request_timeout_editing, set_is_request_timeout_editing] = useState(false);
-  const parsed_request_timeout = parse_number_draft(
+  const parsed_request_timeout = parse_bounded_setting_number_draft(
     request_timeout_draft,
     REQUEST_TIMEOUT_MIN,
     REQUEST_TIMEOUT_MAX,

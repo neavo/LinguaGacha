@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/pages/expert-settings-page/expert-settings-page.css";
 import { useExpertSettingsState } from "@frontend/pages/expert-settings-page/use-expert-settings-state";
@@ -16,25 +17,6 @@ type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
-function parse_number_draft(
-  input_value: string,
-  min_value: number,
-  max_value: number,
-): number | null {
-  const trimmed_value = input_value.trim();
-  const parsed_value = Number(trimmed_value);
-
-  if (
-    trimmed_value === "" ||
-    !Number.isFinite(parsed_value) ||
-    parsed_value < min_value ||
-    parsed_value > max_value
-  ) {
-    return null;
-  }
-
-  return parsed_value;
-}
 export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -47,7 +29,7 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   const [is_preceding_lines_threshold_editing, set_is_preceding_lines_threshold_editing] =
     useState(false);
   const write_locked = expert_settings_state.runtime_locked;
-  const parsed_preceding_lines_threshold = parse_number_draft(
+  const parsed_preceding_lines_threshold = parse_bounded_setting_number_draft(
     preceding_lines_threshold_draft,
     PRECEDING_LINES_THRESHOLD_MIN,
     PRECEDING_LINES_THRESHOLD_MAX,

@@ -544,15 +544,6 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取单个 meta 值，保持调用方不直接触碰 SQL
-   */
-  private get_meta(project_path: string, key: string, default_value: JsonValue): JsonValue {
-    const db = this.open_project(project_path);
-    const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
-    return row === undefined ? default_value : json_parse(row["value"]);
-  }
-
-  /**
    * 写入单个 meta 值，维持 meta 更新的统一序列化方式
    */
   private write_meta(project_path: string, key: string, value: JsonValue): void {
@@ -1086,7 +1077,7 @@ export class ProjectDatabase {
     if (normalized_patch.dst !== undefined) {
       patch_entries.push({ path: "$.dst", value: normalized_patch.dst, json: false });
     }
-    if (Object.prototype.hasOwnProperty.call(normalized_patch, "name_dst")) {
+    if (Object.hasOwn(normalized_patch, "name_dst")) {
       patch_entries.push({
         path: "$.name_dst",
         value: normalized_patch.name_dst as JsonValue,

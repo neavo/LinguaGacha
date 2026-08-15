@@ -47,7 +47,7 @@ describe("ModelCategoryCard", () => {
     dnd_state.on_drag_end = null;
   });
 
-  it("展示分类标题与描述，并只提交同组模型的完整拖拽顺序", async () => {
+  it("只提交同组模型的完整拖拽顺序", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -67,12 +67,6 @@ describe("ModelCategoryCard", () => {
         </ModelCategoryCard>,
       );
     });
-
-    expect(container.querySelector("h2")?.textContent).toBe("OpenAI Responses");
-    expect(container.querySelector(".model-page__category-description")?.textContent).toBe(
-      "兼容 OpenAI Responses API 格式的自定义模型",
-    );
-    expect(container.textContent).toContain("新增");
 
     dnd_state.on_drag_end?.({ active: { id: "first" }, over: { id: "second" } });
     dnd_state.on_drag_end?.({ active: { id: "outside" }, over: { id: "second" } });

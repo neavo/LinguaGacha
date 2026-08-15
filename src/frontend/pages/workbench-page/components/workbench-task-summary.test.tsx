@@ -58,13 +58,13 @@ describe("WorkbenchTaskSummary", () => {
   it("收到自动打开键后展示详情提示", async () => {
     await render_summary({ auto_open_key: "translation" });
 
-    expect(document.body.textContent).toContain("点击查看详情");
+    expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
   });
 
   it("自动打开键为空时不主动展示详情提示", async () => {
     await render_summary({ auto_open_key: null });
 
-    expect(document.body.textContent).not.toContain("点击查看详情");
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
   });
 
   it("点击胶囊时关闭提示并打开详情", async () => {
@@ -79,6 +79,6 @@ describe("WorkbenchTaskSummary", () => {
     });
 
     expect(on_open).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).not.toContain("点击查看详情");
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
   });
 });

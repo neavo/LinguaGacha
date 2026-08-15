@@ -206,7 +206,7 @@ function push_normalized_rule(result: unknown[], entry: QualityRuleFileEntry): v
 function project_external_rule_fields(entry: QualityRuleFileEntry): QualityRuleFileEntry {
   const result: QualityRuleFileEntry = {};
   for (const key of ["src", "dst", "info", "regex", "case_sensitive"] as const) {
-    if (Object.prototype.hasOwnProperty.call(entry, key)) {
+    if (Object.hasOwn(entry, key)) {
       result[key] = entry[key];
     }
   }

@@ -15,19 +15,6 @@ export type WorkbenchSnapshotEntry = {
 
 export type WorkbenchFileEntry = WorkbenchSnapshotEntry;
 
-export type WorkbenchSelectorFileRecord = {
-  rel_path: string;
-  file_type: string;
-  sort_index: number;
-};
-
-export type WorkbenchSelectorItemRecord = {
-  item_id: number;
-  file_path: string;
-  src: string;
-  status: string;
-};
-
 export type WorkbenchSnapshot = {
   file_count: number;
   total_items: number;

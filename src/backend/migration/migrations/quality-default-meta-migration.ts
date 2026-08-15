@@ -13,7 +13,7 @@ export const quality_default_meta_migration: MigrationDescriptor = {
    */
   build_project_open_writes(context: ProjectOpenMigrationContext): ProjectDatabaseWrite[] {
     const meta = context.database.get_all_meta(context.project_path) as JsonRecord;
-    if (Object.prototype.hasOwnProperty.call(meta, "glossary_enable")) {
+    if (Object.hasOwn(meta, "glossary_enable")) {
       return [];
     }
     return [(database) => database.set_meta(context.project_path, "glossary_enable", true)];

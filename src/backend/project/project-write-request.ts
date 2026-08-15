@@ -132,7 +132,7 @@ export function normalize_translation_item_patches(
     }
     seen.add(item_id);
     const patch: TranslationItemPatch["patch"] = {};
-    if (Object.prototype.hasOwnProperty.call(raw_item, "dst")) {
+    if (Object.hasOwn(raw_item, "dst")) {
       if (typeof raw_item["dst"] !== "string") {
         throw new AppErrors.AppError("runtime.internal_invariant", {
           diagnostic_context: { reason: "invalid_translation_dst", item_id },
@@ -140,13 +140,13 @@ export function normalize_translation_item_patches(
       }
       patch.dst = raw_item["dst"];
     }
-    if (Object.prototype.hasOwnProperty.call(raw_item, "name_dst")) {
+    if (Object.hasOwn(raw_item, "name_dst")) {
       patch.name_dst = Item.normalize_name_field(raw_item["name_dst"]);
     }
-    if (Object.prototype.hasOwnProperty.call(raw_item, "status")) {
+    if (Object.hasOwn(raw_item, "status")) {
       patch.status = Item.normalize_status(raw_item["status"]);
     }
-    if (Object.prototype.hasOwnProperty.call(raw_item, "retry_count")) {
+    if (Object.hasOwn(raw_item, "retry_count")) {
       patch.retry_count = read_non_negative_integer(
         raw_item["retry_count"],
         "invalid_translation_retry_count",

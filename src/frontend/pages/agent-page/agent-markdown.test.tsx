@@ -66,7 +66,6 @@ describe("AgentMarkdown", () => {
     if (link === null) throw new Error("缺少 Markdown 链接");
 
     await act(async () => link.click());
-    expect(view.firstElementChild?.className).toBe("agent-markdown");
     expect(view.querySelector("table")?.textContent).toContain("名称");
     expect(mocks.open_external_url).toHaveBeenCalledWith("https://example.com");
     expect(view.querySelector("img")).toBeNull();

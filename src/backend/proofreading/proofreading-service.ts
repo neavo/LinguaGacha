@@ -314,9 +314,9 @@ export class ProofreadingService {
           diagnostic_context: { reason: "duplicate_or_invalid_item_id", item_id },
         });
       }
-      const has_dst = Object.prototype.hasOwnProperty.call(raw_update, "dst");
-      const has_name_dst = Object.prototype.hasOwnProperty.call(raw_update, "name_dst");
-      const has_status = Object.prototype.hasOwnProperty.call(raw_update, "status");
+      const has_dst = Object.hasOwn(raw_update, "dst");
+      const has_name_dst = Object.hasOwn(raw_update, "name_dst");
+      const has_status = Object.hasOwn(raw_update, "status");
       const unknown_field = Object.keys(raw_update).find(
         (field) => !["item_id", "dst", "name_dst", "status"].includes(field),
       );

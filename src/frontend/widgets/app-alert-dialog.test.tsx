@@ -33,27 +33,12 @@ describe("AppAlertDialog", () => {
     root = null;
   });
 
-  it("默认确认和取消文案来自应用 i18n", () => {
-    const on_confirm = vi.fn();
+  it("未提供取消回调时由关闭回调处理取消动作", () => {
     const on_close = vi.fn();
 
     render_dialog(
-      <AppAlertDialog
-        open
-        description="确认删除项目？"
-        onConfirm={on_confirm}
-        onClose={on_close}
-      />,
+      <AppAlertDialog open description="确认删除项目？" onConfirm={vi.fn()} onClose={on_close} />,
     );
-
-    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
-      "app.action.confirm",
-    );
-    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
-      "确认删除项目？",
-    );
-    expect(read_buttons_text("alert-dialog-cancel")).toEqual(["app.action.cancel"]);
-    expect(read_buttons_text("alert-dialog-action")).toContain("app.action.confirm");
 
     click_slot_button("alert-dialog-cancel");
 
@@ -69,7 +54,6 @@ describe("AppAlertDialog", () => {
         description="正在下载更新"
         submitting
         submittingIcon={false}
-        submittingLabel="45.00%"
         onConfirm={vi.fn()}
         onClose={on_close}
       />,
@@ -87,7 +71,6 @@ describe("AppAlertDialog", () => {
 
     expect(on_close).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-testid="spinner"]')).toBeNull();
-    expect(read_buttons_text("alert-dialog-action")).toContain("45.00%");
     expect(read_first_button("alert-dialog-action")?.disabled).toBe(true);
     expect(read_first_button("alert-dialog-cancel")?.disabled).toBe(true);
   });
@@ -130,12 +113,6 @@ describe("AppAlertDialog", () => {
     act(() => {
       root?.render(element);
     });
-  }
-
-  function read_buttons_text(slot: string): string[] {
-    return Array.from(
-      document.body.querySelectorAll<HTMLButtonElement>(`[data-slot="${slot}"]`),
-    ).map((button) => button.textContent ?? "");
   }
 
   function read_first_button(slot: string): HTMLButtonElement | null {

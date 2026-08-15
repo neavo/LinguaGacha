@@ -414,7 +414,7 @@ export class TranslationWorkUnitRunner {
             context.mode,
           );
           item.dst = post_result.dst;
-          if (Object.prototype.hasOwnProperty.call(post_result, "name_dst")) {
+          if (Object.hasOwn(post_result, "name_dst")) {
             item.name_dst = post_result.name_dst ?? null;
           }
           item.status = "PROCESSED";

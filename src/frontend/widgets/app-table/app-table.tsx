@@ -94,13 +94,29 @@ type AppTableSortableRowProps<Row> = {
   can_drag: boolean;
   row_class_name?: string;
   render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
-  ignore_row_click_target?: (target_element: HTMLElement) => boolean;
   should_ignore_click: () => boolean;
   on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
   on_row_context: (row_id: string) => void;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
   register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
 };
+
+// 通用 data 标记由表格统一解释，页面不再复制点击与框选的排除选择器。
+const APP_TABLE_IGNORE_ROW_CLICK_SELECTOR = '[data-app-table-ignore-row-click="true"]';
+const APP_TABLE_IGNORE_BOX_SELECTION_SELECTOR = [
+  '[data-app-table-ignore-box-select="true"]',
+  '[data-slot="scroll-area-scrollbar"]',
+  '[data-slot="scroll-area-thumb"]',
+  '[data-slot="scroll-area-corner"]',
+].join(", ");
+
+function should_ignore_app_table_row_click(target_element: HTMLElement): boolean {
+  return target_element.closest(APP_TABLE_IGNORE_ROW_CLICK_SELECTOR) !== null;
+}
+
+function should_ignore_app_table_box_selection(target_element: HTMLElement): boolean {
+  return target_element.closest(APP_TABLE_IGNORE_BOX_SELECTION_SELECTOR) !== null;
+}
 
 type AppTableVisibleRange = {
   start: number;
@@ -327,14 +343,20 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
           return;
         }
 
-        if (event.target instanceof HTMLElement && props.ignore_row_click_target?.(event.target)) {
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
           return;
         }
 
         props.on_row_click(props.row_id, props.row_index, event);
       }}
       onContextMenu={(event) => {
-        if (event.target instanceof HTMLElement && props.ignore_row_click_target?.(event.target)) {
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
           return;
         }
 
@@ -345,7 +367,10 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
           return;
         }
 
-        if (event.target instanceof HTMLElement && props.ignore_row_click_target?.(event.target)) {
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
           return;
         }
 
@@ -431,8 +456,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     on_reorder,
     on_row_double_click,
     render_row_context_menu,
-    ignore_row_click_target,
-    ignore_box_select_target,
     box_selection_enabled: box_selection_enabled_prop,
     virtual_overscan,
     row_height: row_height_prop,
@@ -1236,7 +1259,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         return;
       }
 
-      if (ignore_box_select_target?.(event.target)) {
+      if (should_ignore_app_table_box_selection(event.target)) {
         return;
       }
 
@@ -1265,7 +1288,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       apply_selection_preview_state,
       box_selection_enabled,
       focus_table_scroll_host,
-      ignore_box_select_target,
       selection_state,
     ],
   );
@@ -1810,7 +1832,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                         can_drag={resolve_row_can_drag(row, virtual_row.index)}
                         row_class_name={row_class_name?.(row_event)}
                         render_row_context_menu={render_row_context_menu}
-                        ignore_row_click_target={ignore_row_click_target}
                         should_ignore_click={should_ignore_click}
                         on_row_click={handle_row_click}
                         on_row_context={handle_row_context}

@@ -40,3 +40,25 @@ export function read_json_integer(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
 }
+
+/**
+ * 兼容持久化边界中的布尔值、0/1 和对应字符串；其它值保留调用方回退。
+ */
+export function read_json_boolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+  return fallback;
+}

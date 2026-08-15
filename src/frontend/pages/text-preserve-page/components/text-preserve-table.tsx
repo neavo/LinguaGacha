@@ -40,33 +40,6 @@ type TextPreserveTableProps = {
   on_query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
 };
 
-/** 交互控件和滚动条不应成为框选手势的起点。 */
-function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-text-preserve-ignore-box-select="true"]',
-        '[data-app-table-ignore-box-select="true"]',
-        '[data-slot="scroll-area-scrollbar"]',
-        '[data-slot="scroll-area-thumb"]',
-        '[data-slot="scroll-area-corner"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
-/** 行内交互控件自行处理点击，不应同时改变行选择。 */
-function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-text-preserve-ignore-row-click="true"]',
-        '[data-app-table-ignore-row-click="true"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
 export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
   const { t } = useI18n();
 
@@ -204,8 +177,6 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
               />
             );
           }}
-          ignore_row_click_target={should_ignore_row_click_target}
-          ignore_box_select_target={should_ignore_box_selection_target}
           box_selection_enabled
           table_class_name="text-preserve-page__table"
           row_class_name={() => "text-preserve-page__table-row"}

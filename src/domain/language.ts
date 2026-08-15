@@ -215,8 +215,6 @@ const THAI_CHARACTER_PATTERN = /\p{Script=Thai}/u; // Thai Script 单字符规�
 const LATIN_CHARACTER_PATTERN = /\p{Script=Latin}/u; // Latin Script 单字符规则，拉丁语系共享粗过滤
 
 const HAN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Han}/u; // Han Script 整段命中规则，不带 g 避免 lastIndex 泄漏
-const HIRAGANA_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Hiragana}/u; // Hiragana Script 整段命中规则
-const KATAKANA_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Katakana}/u; // Katakana Script 整段命中规则
 const HANGUL_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Hangul}/u; // Hangul Script 整段命中规则
 const CYRILLIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Cyrillic}/u; // Cyrillic Script 整段命中规则
 const ARABIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Arabic}/u; // Arabic Script 整段命中规则
@@ -313,44 +311,9 @@ export function is_non_standalone_language_character(char: string): boolean {
   );
 }
 
-// 中日韩正文字符判断供文本保护等下游语义过滤复用，不暴露正则拼接细节
-export function is_cjk_language_character(char: string): boolean {
-  return is_han_character(char) || is_kana_character(char) || is_hangul_character(char);
-}
-
 // 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选
 export function has_cjk_language_character(text: string): boolean {
   return JAPANESE_TEXT_PATTERN.test(text) || HANGUL_TEXT_PATTERN.test(text);
-}
-
-// 平假名任意命中入口供旧 JA.any_hiragana 语义复用
-export function has_any_hiragana_character(text: string): boolean {
-  return HIRAGANA_TEXT_PATTERN.test(text);
-}
-
-// 平假名全量入口供旧 JA.all_hiragana 语义复用
-export function has_only_hiragana_characters(text: string): boolean {
-  return all_matching_characters(text, is_hiragana_character);
-}
-
-// 片假名任意命中入口供旧 JA.any_katakana 语义复用
-export function has_any_katakana_character(text: string): boolean {
-  return KATAKANA_TEXT_PATTERN.test(text);
-}
-
-// 片假名全量入口供旧 JA.all_katakana 语义复用
-export function has_only_katakana_characters(text: string): boolean {
-  return all_matching_characters(text, is_katakana_character);
-}
-
-// 谚文任意命中入口供旧 KO.any_hangeul 语义复用
-export function has_any_hangul_character(text: string): boolean {
-  return HANGUL_TEXT_PATTERN.test(text);
-}
-
-// 谚文全量入口供旧 KO.all_hangeul 语义复用
-export function has_only_hangul_characters(text: string): boolean {
-  return all_matching_characters(text, is_hangul_character);
 }
 
 // 日文允许汉字或假名命中，符合原文混排的常见场景

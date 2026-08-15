@@ -38,6 +38,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
+import { resolve_app_table_context_target_row_ids } from "@frontend/widgets/app-table/app-table-selection";
 import { read_optional_item_name_text } from "@shared/item-name";
 import type {
   AppTableColumn,
@@ -83,42 +84,9 @@ type ProofreadingTableProps = {
 
 type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
 
-function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-proofreading-ignore-box-select="true"]',
-        '[data-app-table-ignore-box-select="true"]',
-        '[data-slot="scroll-area-scrollbar"]',
-        '[data-slot="scroll-area-thumb"]',
-        '[data-slot="scroll-area-corner"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
-function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-proofreading-ignore-row-click="true"]',
-        '[data-app-table-ignore-row-click="true"]',
-      ].join(", "),
-    ) !== null
-  );
-}
-
 function run_after_context_menu_close(action: () => void): void {
   // Radix ContextMenu 会在 select 后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
   window.setTimeout(action, 0);
-}
-
-function resolve_context_target_row_ids(row_id: string, selected_row_ids: string[]): string[] {
-  if (selected_row_ids.includes(row_id)) {
-    return selected_row_ids;
-  }
-
-  return [row_id];
 }
 
 function resolve_status_icon(status: string): typeof AlertCircle | null {
@@ -177,7 +145,7 @@ function render_name_prefixed_text(args: { name: string | null; text: string }):
 }
 
 // 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
-export function ProofreadingStatusCell(props: {
+function ProofreadingStatusCell(props: {
   item: ProofreadingItem;
   retranslating: boolean;
 }): JSX.Element | null {
@@ -207,8 +175,8 @@ export function ProofreadingStatusCell(props: {
           <TooltipTrigger asChild>
             <span
               className="proofreading-page__status-icon"
-              data-proofreading-ignore-box-select="true"
-              data-proofreading-ignore-row-click="true"
+              data-app-table-ignore-box-select="true"
+              data-app-table-ignore-row-click="true"
             >
               <Spinner className="proofreading-page__status-spinner" />
             </span>
@@ -241,8 +209,8 @@ export function ProofreadingStatusCell(props: {
                 "proofreading-page__status-icon",
                 `proofreading-page__status-icon--${status_icon_tone}`,
               ].join(" ")}
-              data-proofreading-ignore-box-select="true"
-              data-proofreading-ignore-row-click="true"
+              data-app-table-ignore-box-select="true"
+              data-app-table-ignore-row-click="true"
             >
               <StatusIcon />
             </span>
@@ -264,8 +232,8 @@ export function ProofreadingStatusCell(props: {
           <TooltipTrigger asChild>
             <span
               className="proofreading-page__status-icon proofreading-page__status-icon--warning"
-              data-proofreading-ignore-box-select="true"
-              data-proofreading-ignore-row-click="true"
+              data-app-table-ignore-box-select="true"
+              data-app-table-ignore-row-click="true"
             >
               <TriangleAlert />
             </span>
@@ -432,7 +400,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             props.on_open_edit(payload.row_id);
           }}
           render_row_context_menu={(payload) => {
-            const target_row_ids = resolve_context_target_row_ids(
+            const target_row_ids = resolve_app_table_context_target_row_ids(
               payload.row_id,
               props.selected_row_ids,
             );
@@ -499,8 +467,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
               </AppContextMenuContent>
             );
           }}
-          ignore_row_click_target={should_ignore_row_click_target}
-          ignore_box_select_target={should_ignore_box_selection_target}
           box_selection_enabled
           table_class_name="proofreading-page__table"
           row_class_name={() => "proofreading-page__table-row"}
