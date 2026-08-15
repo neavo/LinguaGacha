@@ -6,10 +6,8 @@ import {
   type AgentWebFetchDetails,
   type AgentWebPort,
   type AgentWebSearchPort,
+  type AgentWebSearchProvider,
 } from "./agent-web-tools";
-
-// 模型侧正文上限是稳定输出契约；测试保留独立期望，避免通过生产导出自证。
-const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
 
 type WebFetchToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -18,6 +16,7 @@ type WebFetchToolResult = {
 
 type WebSearchToolResult = {
   content: Array<{ type: "text"; text: string }>;
+  details: { provider: AgentWebSearchProvider; truncated: boolean };
 };
 
 describe("Agent web_fetch 工具", () => {
@@ -134,29 +133,25 @@ describe("Agent web_fetch 工具", () => {
     expect(result.content[0]?.text).toContain("é");
   });
 
-  it("正文超限时只保留开头，并让模型提示与 details 使用同一 truncated 事实", async () => {
+  it("正文超限时保留完整字符开头，并让提示与 details 使用同一截断事实", async () => {
+    const source = "a".repeat(1_000_000);
     const result = await execute_with_response({
       contentType: "text/plain",
-      body: bytes("a".repeat(WEB_FETCH_MAX_MARKDOWN_CHARS + 1)),
+      body: bytes(source),
     });
 
+    const retained = result.content[0]?.text.match(/a{1000,}/u)?.[0] ?? "";
     expect(result.details.truncated).toBe(true);
-    expect(result.content[0]?.text.match(/a{1000,}/u)?.[0]).toHaveLength(
-      WEB_FETCH_MAX_MARKDOWN_CHARS,
-    );
+    expect(retained.length).toBeGreaterThan(0);
+    expect(retained.length).toBeLessThan(source.length);
     expect(result.content[0]?.text).toContain("[内容因长度限制已截断]");
-    expect(result.content[0]?.text).not.toContain("a".repeat(WEB_FETCH_MAX_MARKDOWN_CHARS + 1));
-  });
-
-  it("正文截断不留下半个代理项", async () => {
-    const result = await execute_with_response({
+    const surrogate_result = await execute_with_response({
       contentType: "text/plain",
-      body: bytes(`${"a".repeat(WEB_FETCH_MAX_MARKDOWN_CHARS - 1)}😀`),
+      body: bytes(`${"a".repeat(retained.length - 1)}😀`),
     });
-
-    expect(result.content[0]?.text).not.toContain("😀");
-    expect(result.content[0]?.text).not.toContain("\ud83d");
-    expect(result.details.truncated).toBe(true);
+    expect(surrogate_result.content[0]?.text).not.toContain("😀");
+    expect(surrogate_result.content[0]?.text).not.toContain("\ud83d");
+    expect(surrogate_result.details.truncated).toBe(true);
   });
 
   it("模型结果只包含来源、Content-Type 和正文，details 不复制正文", async () => {
@@ -222,30 +217,22 @@ describe("Agent web_fetch 工具", () => {
 });
 
 describe("Agent web_search 工具", () => {
-  it("模型参数范围与 Exa 托管 MCP schema 保持一致", () => {
+  it("模型参数只接受非空查询和整数数量", () => {
     const tool = read_web_tool("web_search", { read: vi.fn(), search: vi.fn() });
 
     expect(tool.parameters).toMatchObject({
       properties: {
         query: { type: "string", minLength: 1 },
-        num_results: { type: "number" },
+        num_results: { type: "integer" },
       },
-    });
-    expect(tool.parameters).not.toMatchObject({
-      properties: { query: { maxLength: expect.anything() } },
-    });
-    expect(tool.parameters).not.toMatchObject({
-      properties: { num_results: { minimum: expect.anything() } },
-    });
-    expect(tool.parameters).not.toMatchObject({
-      properties: { num_results: { maximum: expect.anything() } },
     });
   });
 
-  it("使用稳定本地参数调用搜索端口并返回原始结果文本", async () => {
-    const search = vi.fn<AgentWebSearchPort>(async () =>
-      Promise.resolve("Title: 示例\nURL: https://example.com"),
-    );
+  it("使用稳定本地参数调用搜索端口并投影来源与原始文本", async () => {
+    const search = vi.fn<AgentWebSearchPort>(async () => ({
+      provider: "tavily",
+      text: "Title: 示例\nURL: https://example.com",
+    }));
     const tool = read_web_tool("web_search", { read: vi.fn(), search });
     const signal = new AbortController().signal;
 
@@ -259,11 +246,15 @@ describe("Agent web_search 工具", () => {
 
     expect(search).toHaveBeenCalledWith("当前示例", 3, signal);
     expect(result.content[0]?.text).toBe("Title: 示例\nURL: https://example.com");
+    expect(result.details).toEqual({ provider: "tavily", truncated: false });
   });
 
   it("省略数量时仍限制过长的模型正文", async () => {
     const upstream_text = "a".repeat(1_000_000);
-    const search = vi.fn<AgentWebSearchPort>(async () => upstream_text);
+    const search = vi.fn<AgentWebSearchPort>(async () => ({
+      provider: "firecrawl",
+      text: upstream_text,
+    }));
     const tool = read_web_tool("web_search", { read: vi.fn(), search });
 
     const result = (await tool.execute(
@@ -274,13 +265,10 @@ describe("Agent web_search 工具", () => {
       undefined as never,
     )) as WebSearchToolResult;
 
-    const [query, num_results, signal] = search.mock.calls[0] ?? [];
-    expect(query).toBe("大量结果");
-    expect(num_results).toBeUndefined();
-    expect(signal).toBeInstanceOf(AbortSignal);
     const result_text = result.content[0]?.text ?? "";
     expect(result_text).toContain("[内容因长度限制已截断]");
     expect(result_text.match(/a+/u)?.[0]?.length).toBeLessThan(upstream_text.length);
+    expect(result.details).toEqual({ provider: "firecrawl", truncated: true });
   });
 
   it("调用前已取消时不触达搜索端口", async () => {

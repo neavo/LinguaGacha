@@ -1284,7 +1284,10 @@ describe("AgentService", () => {
       contentType: "text/plain",
       body: new TextEncoder().encode("正文"),
     }));
-    const web_search = vi.fn<AgentWebSearchPort>(async () => "搜索结果");
+    const web_search = vi.fn<AgentWebSearchPort>(async () => ({
+      provider: "exa",
+      text: "搜索结果",
+    }));
     const { service } = await create_service(true, { read: web_fetch, search: web_search });
 
     await service.send_message({ text: "读取网页", images: [] });
