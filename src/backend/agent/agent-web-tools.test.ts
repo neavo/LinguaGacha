@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentWebFetchPort, AgentWebFetchResponse } from "./agent-web-fetch";
-import { create_agent_web_tools, type AgentWebFetchDetails } from "./agent-web-tools";
+import {
+  create_agent_web_tools,
+  type AgentWebFetchDetails,
+  type AgentWebPort,
+  type AgentWebSearchPort,
+} from "./agent-web-tools";
 
 // 模型侧正文上限是稳定输出契约；测试保留独立期望，避免通过生产导出自证。
 const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
@@ -9,6 +14,10 @@ const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
 type WebFetchToolResult = {
   content: Array<{ type: "text"; text: string }>;
   details: AgentWebFetchDetails;
+};
+
+type WebSearchToolResult = {
+  content: Array<{ type: "text"; text: string }>;
 };
 
 describe("Agent web_fetch 工具", () => {
@@ -175,8 +184,7 @@ describe("Agent web_fetch 工具", () => {
 
   it("调用前已取消时不触达端口，执行中取消原样传播 signal", async () => {
     const port = vi.fn<AgentWebFetchPort>();
-    const tool = create_agent_web_tools(port)[0];
-    if (tool === undefined) throw new Error("缺少 web_fetch 工具");
+    const tool = read_web_tool("web_fetch", { read: port, search: vi.fn() });
     const pre_aborted = new AbortController();
     pre_aborted.abort(new Error("提前取消"));
 
@@ -213,6 +221,88 @@ describe("Agent web_fetch 工具", () => {
   });
 });
 
+describe("Agent web_search 工具", () => {
+  it("模型参数范围与 Exa 托管 MCP schema 保持一致", () => {
+    const tool = read_web_tool("web_search", { read: vi.fn(), search: vi.fn() });
+
+    expect(tool.parameters).toMatchObject({
+      properties: {
+        query: { type: "string", minLength: 1 },
+        num_results: { type: "number" },
+      },
+    });
+    expect(tool.parameters).not.toMatchObject({
+      properties: { query: { maxLength: expect.anything() } },
+    });
+    expect(tool.parameters).not.toMatchObject({
+      properties: { num_results: { minimum: expect.anything() } },
+    });
+    expect(tool.parameters).not.toMatchObject({
+      properties: { num_results: { maximum: expect.anything() } },
+    });
+  });
+
+  it("使用稳定本地参数调用搜索端口并返回原始结果文本", async () => {
+    const search = vi.fn<AgentWebSearchPort>(async () =>
+      Promise.resolve("Title: 示例\nURL: https://example.com"),
+    );
+    const tool = read_web_tool("web_search", { read: vi.fn(), search });
+    const signal = new AbortController().signal;
+
+    const result = (await tool.execute(
+      "search",
+      { query: "当前示例", num_results: 3 },
+      signal,
+      undefined,
+      undefined as never,
+    )) as WebSearchToolResult;
+
+    expect(search).toHaveBeenCalledWith("当前示例", 3, signal);
+    expect(result.content[0]?.text).toBe("Title: 示例\nURL: https://example.com");
+  });
+
+  it("省略数量时仍限制过长的模型正文", async () => {
+    const upstream_text = "a".repeat(1_000_000);
+    const search = vi.fn<AgentWebSearchPort>(async () => upstream_text);
+    const tool = read_web_tool("web_search", { read: vi.fn(), search });
+
+    const result = (await tool.execute(
+      "search",
+      { query: "大量结果" },
+      undefined,
+      undefined,
+      undefined as never,
+    )) as WebSearchToolResult;
+
+    const [query, num_results, signal] = search.mock.calls[0] ?? [];
+    expect(query).toBe("大量结果");
+    expect(num_results).toBeUndefined();
+    expect(signal).toBeInstanceOf(AbortSignal);
+    const result_text = result.content[0]?.text ?? "";
+    expect(result_text).toContain("[内容因长度限制已截断]");
+    expect(result_text.match(/a+/u)?.[0]?.length).toBeLessThan(upstream_text.length);
+  });
+
+  it("调用前已取消时不触达搜索端口", async () => {
+    const search = vi.fn<AgentWebSearchPort>();
+    const tool = read_web_tool("web_search", { read: vi.fn(), search });
+    const controller = new AbortController();
+    controller.abort(new Error("提前取消"));
+
+    await expect(
+      tool.execute(
+        "search",
+        { query: "不会搜索" },
+        controller.signal,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("提前取消");
+    expect(search).not.toHaveBeenCalled();
+  });
+});
+
+/** 通过统一工具入口投影给定下载响应。 */
 async function execute_with_response(
   overrides: Partial<AgentWebFetchResponse>,
   requested_url = "https://example.com/start",
@@ -224,8 +314,7 @@ async function execute_with_response(
     ...overrides,
   };
   const port = vi.fn<AgentWebFetchPort>().mockResolvedValue(response);
-  const tool = create_agent_web_tools(port)[0];
-  if (tool === undefined) throw new Error("缺少 web_fetch 工具");
+  const tool = read_web_tool("web_fetch", { read: port, search: vi.fn() });
   return (await tool.execute(
     "call",
     { url: requested_url },
@@ -235,6 +324,14 @@ async function execute_with_response(
   )) as WebFetchToolResult;
 }
 
+/** 按稳定工具名读取定义，避免测试依赖注册数组顺序。 */
+function read_web_tool(name: "web_search" | "web_fetch", web: AgentWebPort) {
+  const tool = create_agent_web_tools(web).find((candidate) => candidate.name === name);
+  if (tool === undefined) throw new Error(`缺少 ${name} 工具`);
+  return tool;
+}
+
+/** 生成测试响应使用的 UTF-8 原始字节。 */
 function bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }

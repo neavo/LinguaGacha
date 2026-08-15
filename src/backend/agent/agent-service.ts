@@ -51,8 +51,7 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
-import type { AgentWebFetchPort } from "./agent-web-fetch";
-import { create_agent_web_tools } from "./agent-web-tools";
+import { create_agent_web_tools, type AgentWebPort } from "./agent-web-tools";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
 import {
@@ -162,7 +161,7 @@ type AgentServiceOptions = {
   modelFetch: FetchFunction;
   sessionState: ProjectSessionState;
   runtimeGate: RuntimeOperationGate;
-  webFetch: AgentWebFetchPort | undefined;
+  web: AgentWebPort | undefined;
   workspace?: AgentWorkspacePort;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
@@ -186,7 +185,7 @@ export class AgentService {
   private readonly model_fetch: FetchFunction; // 所有 Agent provider 请求共用组合根代理边界
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
-  private readonly web_fetch: AgentWebFetchPort | undefined; // 缺失即不向模型注册 GUI 专属联网工具
+  private readonly web: AgentWebPort | undefined; // 缺失即不向模型注册 GUI 专属联网能力
   private readonly workspace: AgentWorkspacePort | undefined; // 缺失即不注册 Electron 专属磁盘工作区
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
@@ -216,7 +215,7 @@ export class AgentService {
     this.model_fetch = options.modelFetch;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
-    this.web_fetch = options.webFetch;
+    this.web = options.web;
     this.workspace = options.workspace;
     this.log_manager = options.logManager;
     this.publish = options.publish;
@@ -761,7 +760,7 @@ export class AgentService {
       customTools: [
         ...(this.workspace === undefined ? [] : create_agent_workspace_tools(this.workspace)),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
-        ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
+        ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
       ].map((tool) => wrap_agent_tool_execution(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,

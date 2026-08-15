@@ -9,7 +9,23 @@ import type { AgentWebFetchPort, AgentWebFetchResponse } from "./agent-web-fetch
 
 // 模型侧正文预算与唯一截断标记共同定义稳定输出契约。
 const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
+const WEB_SEARCH_MAX_TEXT_CHARS = 50_000;
 const TRUNCATION_NOTICE = "[内容因长度限制已截断]";
+
+const WEB_SEARCH_PARAMETERS = Type.Object(
+  {
+    query: Type.String({
+      minLength: 1,
+      description: "用自然语言描述希望找到的理想网页，而非只填写关键词。",
+    }),
+    num_results: Type.Optional(
+      Type.Number({
+        description: "返回结果数量，省略时由 Exa 默认返回 10 条。",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
 
 // 工具输入只保留业务参数；协议、地址与资源策略由下载端口统一判定。
 const WEB_FETCH_PARAMETERS = Type.Object(
@@ -30,14 +46,54 @@ export type AgentWebFetchDetails = {
   truncated: boolean; // Markdown 是否被模型侧字符上限截断
 };
 
+/** Agent 工具层使用的固定搜索端口，不向会话层泄漏 MCP 类型。 */
+export type AgentWebSearchPort = (
+  query: string,
+  num_results: number | undefined,
+  signal: AbortSignal,
+) => Promise<string>;
+
+/** GUI Agent 成组获得的完整只读 Web 能力。 */
+export type AgentWebPort = Readonly<{
+  search: AgentWebSearchPort;
+  read: AgentWebFetchPort;
+}>;
+
 type ParsedContentType = {
   mime: string;
   charset?: string;
 };
 
-/** 注册唯一的只读联网工具；下载与内容归一化均由 Backend 拥有。 */
-export function create_agent_web_tools(web_fetch: AgentWebFetchPort): ToolDefinition[] {
+/** 注册完整只读 Web 能力；搜索发现候选，抓取负责本地安全下载与正文归一化。 */
+export function create_agent_web_tools(web: AgentWebPort): ToolDefinition[] {
   return [
+    defineTool({
+      name: "web_search",
+      label: "搜索网页",
+      description: "搜索公开互联网并返回带 URL 的结果摘要；需要完整正文时再调用 web_fetch。",
+      executionMode: "sequential",
+      parameters: WEB_SEARCH_PARAMETERS,
+      execute: async (_tool_call_id, params, signal) => {
+        signal?.throwIfAborted();
+        const text = await web.search(
+          params.query,
+          params.num_results,
+          signal ?? new AbortController().signal,
+        );
+        const truncated = text.length > WEB_SEARCH_MAX_TEXT_CHARS;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: truncated
+                ? `${truncate_text(text, WEB_SEARCH_MAX_TEXT_CHARS)}\n\n${TRUNCATION_NOTICE}`
+                : text,
+            },
+          ],
+          details: { truncated },
+        };
+      },
+    }),
     defineTool({
       name: "web_fetch",
       label: "抓取网页",
@@ -46,7 +102,7 @@ export function create_agent_web_tools(web_fetch: AgentWebFetchPort): ToolDefini
       parameters: WEB_FETCH_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const response = await web_fetch(params.url, signal ?? new AbortController().signal);
+        const response = await web.read(params.url, signal ?? new AbortController().signal);
         return await project_web_fetch_result(params.url, response);
       },
     }),
@@ -63,7 +119,7 @@ async function project_web_fetch_result(requested_url: string, response: AgentWe
   const normalized = await normalize_web_content(decoded, content_type.mime, response.url);
   const truncated = normalized.markdown.length > WEB_FETCH_MAX_MARKDOWN_CHARS;
   const markdown = truncated
-    ? `${truncate_markdown(normalized.markdown)}\n\n${TRUNCATION_NOTICE}`
+    ? `${truncate_text(normalized.markdown, WEB_FETCH_MAX_MARKDOWN_CHARS)}\n\n${TRUNCATION_NOTICE}`
     : normalized.markdown;
   const details: AgentWebFetchDetails = {
     requested_url,
@@ -154,9 +210,9 @@ function normalize_text(value: string): string {
   return value.replace(/\r\n?/gu, "\n").trim();
 }
 
-/** 按模型字符上限截断，并避免切开 UTF-16 代理项。 */
-function truncate_markdown(markdown: string): string {
-  let end = WEB_FETCH_MAX_MARKDOWN_CHARS;
-  if (markdown.charCodeAt(end - 1) >= 0xd800 && markdown.charCodeAt(end - 1) <= 0xdbff) end -= 1;
-  return markdown.slice(0, end);
+/** 按调用方模型字符上限截断，并避免切开 UTF-16 代理项。 */
+function truncate_text(value: string, max_chars: number): string {
+  let end = max_chars;
+  if (value.charCodeAt(end - 1) >= 0xd800 && value.charCodeAt(end - 1) <= 0xdbff) end -= 1;
+  return value.slice(0, end);
 }

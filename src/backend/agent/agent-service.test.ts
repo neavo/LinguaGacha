@@ -18,6 +18,7 @@ import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
+import type { AgentWebPort, AgentWebSearchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 
@@ -1277,18 +1278,21 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("仅在宿主抓取端口可用时注册 web_fetch", async () => {
+  it("仅在宿主 Web 能力可用时成组注册搜索与抓取工具", async () => {
     const web_fetch = vi.fn<AgentWebFetchPort>(async (url) => ({
       url,
       contentType: "text/plain",
       body: new TextEncoder().encode("正文"),
     }));
-    const { service } = await create_service(true, web_fetch);
+    const web_search = vi.fn<AgentWebSearchPort>(async () => "搜索结果");
+    const { service } = await create_service(true, { read: web_fetch, search: web_search });
 
     await service.send_message({ text: "读取网页", images: [] });
     await wait_for_idle(service);
 
-    expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
+    expect(fake_agent_state.tool_names.at(-1)).toEqual(
+      expect.arrayContaining(["web_search", "web_fetch"]),
+    );
   });
 
   it("Electron 工作区端口随三工具注册，并区分会话与工程 reset", async () => {
@@ -1999,7 +2003,7 @@ describe("AgentService", () => {
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
   async function create_service(
     load_resources = true,
-    web_fetch?: AgentWebFetchPort,
+    web?: AgentWebPort,
     workspace?: AgentWorkspacePort | null, // undefined 使用默认 fake，null 模拟宿主没有工作区端口
   ): Promise<{
     service: AgentService;
@@ -2099,7 +2103,7 @@ describe("AgentService", () => {
       modelFetch: vi.fn(),
       sessionState: session_state,
       runtimeGate: runtime_gate,
-      webFetch: web_fetch,
+      web,
       workspace: effective_workspace,
       logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,
