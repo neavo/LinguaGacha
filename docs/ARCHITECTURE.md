@@ -21,7 +21,7 @@
 - CLI 仍在当前进程通过 `BackendBootstrap` 组装 `BackendServices`，关闭 Gateway 并直接消费类型化服务与任务快照订阅。
 - GUI Backend Runtime 在发布态固定运行于独立 `worker_thread`；work-unit、planning 和 compute 的正式执行统一注入 `worker_threads`，三者的 `in_process` 只允许测试或源码运行显式选择，不作为失败回退。
 - `BackendServices` 是 Gateway、CLI job 与任务引擎共用的组合根，运行期服务只在这里装配。
-- `BackendBootstrap` 是进程资源生命周期权威：start / stop 串行，GUI、CLI 的正常退出与首个错误退出统一等待同一 stop；关闭顺序固定为 Gateway 停止接入并排空请求 → `BackendServices` 等待任务和 worker → 系统代理 → `ProjectDatabase` → `LogManager`，单项失败不跳过后续释放。
+- `BackendBootstrap` 是进程资源生命周期权威：start / stop 串行，GUI、CLI 的正常退出与首个错误退出统一等待同一 stop；关闭顺序固定为 Gateway 停止接入并排空请求 → `BackendServices` 等待任务和 worker 并释放其网络客户端 → `ProjectDatabase` → `LogManager`，单项失败不跳过后续释放。
 
 ```mermaid
 flowchart LR

@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getGlobalDispatcher } from "undici";
 
 import { AgentService } from "../agent/agent-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
@@ -16,6 +15,7 @@ import type { BackendWorkerExecution } from "../worker/worker-execution";
 let temp_dir = ""; // 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
 let original_initial_cwd: string | undefined; // 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" }; // bootstrap 测试只验证启动编排，不启动真实 worker_threads
+const DIRECT_SYSTEM_PROXY_RESOLVER = { resolveProxy: async () => "DIRECT" };
 
 /**
  * 读取 bootstrap 测试写出的日志文本，用于确认启动链路不再记录旧 database HTTP 服务
@@ -71,6 +71,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -94,6 +95,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -148,6 +150,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -207,6 +210,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -259,6 +263,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -310,6 +315,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -346,6 +352,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -406,6 +413,7 @@ describe("BackendBootstrap", () => {
       appRoot: temp_dir,
       exposeApiGateway: true,
       logTargets: { console: false, window: false },
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -445,6 +453,7 @@ describe("BackendBootstrap", () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -477,6 +486,7 @@ describe("BackendBootstrap", () => {
       appRoot: temp_dir,
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
+      systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
@@ -490,132 +500,23 @@ describe("BackendBootstrap", () => {
     }
   });
 
-  it("启动期按当前模型 URL 抓取一次系统代理快照", async () => {
-    fs.mkdirSync(path.join(temp_dir, "userdata"), { recursive: true });
-    fs.writeFileSync(
-      path.join(temp_dir, "userdata", "config.json"),
-      JSON.stringify({
-        model_selection: {
-          translation: "openai-custom",
-          analysis: "openai-custom",
-          agent: "openai-custom",
-        },
-        models: [
-          {
-            id: "openai-custom",
-            api_format: "OpenAI",
-            api_url: "https://api.example/v1/chat/completions",
-          },
-          {
-            id: "local-sakura",
-            api_format: "SakuraLLM",
-            api_url: "http://127.0.0.1:8080",
-          },
-        ],
-      }),
-      "utf-8",
-    );
-    const resolved_urls: string[] = []; // 记录启动期 resolveProxy 调用顺序，证明不会按请求反复探测
+  it("启动不提前解析系统代理", async () => {
+    const resolve_proxy = vi.fn(async () => "DIRECT");
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
-      systemProxyResolver: {
-        resolveProxy: async (url) => {
-          resolved_urls.push(url);
-          return "DIRECT";
-        },
-      },
+      systemProxyResolver: { resolveProxy: resolve_proxy },
       openOutputFolder: noop_output_folder,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
 
     await manager.start();
     try {
-      expect(resolved_urls).toEqual([
-        "https://api.example/v1/chat/completions",
-        "https://generativelanguage.googleapis.com",
-        "https://api.openai.com/v1",
-        "https://api.anthropic.com",
-      ]);
-      expect(read_log_text(path.join(temp_dir, "log"))).not.toContain("检查到系统代理设置");
+      expect(resolve_proxy).not.toHaveBeenCalled();
     } finally {
       await manager.stop();
     }
-  });
-
-  it("系统代理解析失败不阻断 Backend 启动", async () => {
-    const manager = new BackendBootstrap({
-      appRoot: temp_dir,
-      exposeApiGateway: false,
-      logTargets: { console: false, window: false },
-      systemProxyResolver: {
-        resolveProxy: async () => {
-          throw new Error("resolve failed");
-        },
-      },
-      openOutputFolder: noop_output_folder,
-      workerExecution: IN_PROCESS_WORKER_EXECUTION,
-    });
-
-    const start_result = await manager.start();
-    try {
-      expect(start_result.systemProxyStartupNotice).toEqual({
-        detected: false,
-        proxiedOriginCount: 0,
-        proxyDisplay: null,
-      });
-      const log_text = read_log_text(path.join(temp_dir, "log"));
-      expect(log_text).toContain("LinguaGacha v9.8.7 …");
-      expect(log_text).not.toContain("检查到系统代理设置");
-    } finally {
-      await manager.stop();
-    }
-  });
-
-  it("检测到系统代理时返回启动提示摘要并写入脱敏日志", async () => {
-    fs.mkdirSync(path.join(temp_dir, "userdata"), { recursive: true });
-    fs.writeFileSync(
-      path.join(temp_dir, "userdata", "config.json"),
-      JSON.stringify({
-        models: [
-          {
-            id: "openai-custom",
-            api_format: "OpenAI",
-            api_url: "https://api.example/v1/chat/completions",
-          },
-        ],
-      }),
-      "utf-8",
-    );
-    const original_dispatcher = getGlobalDispatcher();
-    const manager = new BackendBootstrap({
-      appRoot: temp_dir,
-      exposeApiGateway: false,
-      logTargets: { console: false, window: false },
-      systemProxyResolver: {
-        resolveProxy: async () => "PROXY 127.0.0.1:7890",
-      },
-      openOutputFolder: noop_output_folder,
-      workerExecution: IN_PROCESS_WORKER_EXECUTION,
-    });
-
-    const start_result = await manager.start();
-    try {
-      expect(getGlobalDispatcher()).not.toBe(original_dispatcher);
-      expect(start_result.systemProxyStartupNotice).toEqual({
-        detected: true,
-        proxiedOriginCount: 4,
-        proxyDisplay: "http://127.0.0.1:7890",
-      });
-      const log_text = read_log_text(path.join(temp_dir, "log"));
-
-      expect(log_text).toContain("检查到系统代理设置 - http://127.0.0.1:7890");
-      expect(log_text).not.toContain("http://127.0.0.1:7890/");
-    } finally {
-      await manager.stop();
-    }
-    expect(getGlobalDispatcher()).toBe(original_dispatcher);
   });
 });
 

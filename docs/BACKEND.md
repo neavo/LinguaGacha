@@ -72,10 +72,11 @@ project, files, items, quality, prompts, analysis, proofreading
 - 每次成功 load / unload 都推进 `ProjectSessionState` 的内部会话世代；生命周期返回前，`TaskRuntime` 重置为新会话的 idle、推进 `run_revision` 并发布快照，因此旧工程迟到帧严格早于新工程事实。
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
 - `TaskRuntime` 拥有任务取消、终态和 Engine completion，并以当前 active run 派生 task snapshot 的 `busy`。`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
-- work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
+- work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 共用同一请求事实和 `pi-ai` 原生 adapter，模型列表探测直接调用供应商 REST API。`LLMClient` 独立拥有 OneShot 的总时限、取消、退化和结果语义，任务层不解析供应商异常文本。
+- `src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者，并向模型请求、模型列表和 Agent 模型注入同一个 fetch。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型族思考字段由项目共享策略生成，未收录模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
 
 ## 5. 数据库与 `.lg` 存储

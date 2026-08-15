@@ -97,19 +97,20 @@ export async function run_backend_runtime(args: {
     pending_host_requests.clear();
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
+  // 普通模型请求与 web_fetch 共用同一宿主解析端口，避免两套代理事实漂移。
+  const system_proxy_resolver = {
+    resolveProxy: async (url: string, signal?: AbortSignal) =>
+      String(await call_host({ kind: "resolve_proxy", url }, signal)),
+  };
   const bootstrap = new BackendBootstrap({
     appRoot: args.appRoot,
     exposeApiGateway: true,
-    systemProxyResolver: {
-      resolveProxy: async (url) => String(await call_host({ kind: "resolve_proxy", url })),
-    },
+    systemProxyResolver: system_proxy_resolver,
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
     // 下载与内容限制留在 Backend，仅把每跳系统代理解析反向交给 Electron main。
-    agentWebFetch: create_agent_web_fetch(async (url, signal) =>
-      String(await call_host({ kind: "resolve_proxy", url }, signal)),
-    ),
+    agentWebFetch: create_agent_web_fetch(system_proxy_resolver),
     agentWorkspaceRun: async (request, signal) =>
       (await call_host(
         { kind: "run_agent_workspace", request },
@@ -185,7 +186,6 @@ export async function run_backend_runtime(args: {
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,
       berserkerUpdateRootDir: paths.get_berserker_update_root_dir(),
-      systemProxyStartupNotice: start_result.systemProxyStartupNotice,
     };
     args.port.postMessage({ type: "ready", data: ready });
   } catch (error) {

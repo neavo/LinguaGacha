@@ -2,8 +2,6 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
-import type { DesktopSystemProxyStartupNotice } from "./bridge/bridge-types";
-import { EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE } from "./bridge/system-proxy-startup-notice";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
@@ -45,8 +43,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let win: BrowserWindow | null = null; // 主窗口是桌面宿主的唯一工作台窗口，关闭后引用必须归零，避免 IPC 误用失效窗口
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
   let backend_api_base_url: string | null = null; // Backend API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
-  let system_proxy_startup_notice: DesktopSystemProxyStartupNotice =
-    EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE; // 启动期代理提示只保存脱敏摘要，窗口重建时复用同一事实
   let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
   let agent_workspace_runner: DesktopAgentWorkspaceRunner | null = null; // 模型脚本只进入独立 Chromium 沙箱
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
@@ -118,7 +114,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     win = create_main_window({
       desktopBundleDir: desktop_bundle_dir,
       backendApiBaseUrl: require_backend_api_base_url(),
-      systemProxyStartupNotice: system_proxy_startup_notice,
       rendererDiagnostics: renderer_process_diagnostics,
       shouldBypassCloseConfirmation: () => {
         return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
@@ -205,7 +200,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       agent_workspace_runner = new DesktopAgentWorkspaceRunner();
       const backend_start_result = await backend_runtime.start();
       backend_api_base_url = backend_start_result.apiBaseUrl;
-      system_proxy_startup_notice = backend_start_result.systemProxyStartupNotice;
       desktop_update_service = new DesktopUpdateService({
         appRoot: app_root,
         updateRootDir: backend_start_result.berserkerUpdateRootDir,
@@ -218,7 +212,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       log_window_host = create_log_window_host({
         desktopBundleDir: desktop_bundle_dir,
         backendApiBaseUrl: backend_start_result.apiBaseUrl,
-        systemProxyStartupNotice: system_proxy_startup_notice,
         rendererDiagnostics: renderer_process_diagnostics,
         recordHostDiagnostic: record_host_diagnostic,
       });

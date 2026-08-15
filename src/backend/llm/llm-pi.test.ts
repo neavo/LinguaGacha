@@ -37,6 +37,7 @@ describe("pi-ai 请求适配", () => {
         snapshot,
         [{ role: "user", content: "   " }],
         new AbortController().signal,
+        globalThis.fetch,
       ),
     ).toThrow("request.validation_failed");
   });
@@ -79,6 +80,7 @@ describe("pi-ai 请求适配", () => {
       apiKey: "key",
       cacheRetention: "none",
       maxRetries: 0,
+      fetch: globalThis.fetch,
       temperature: 0.2,
       maxTokens: 4096,
       headers: { "User-Agent": TEST_USER_AGENT, "X-Test": "yes" },
@@ -337,6 +339,7 @@ function resolve_request(overrides: JsonRecord): ResolvedRequest {
       { role: "user", content: " こんにちは " },
     ],
     new AbortController().signal,
+    globalThis.fetch,
   );
 }
 

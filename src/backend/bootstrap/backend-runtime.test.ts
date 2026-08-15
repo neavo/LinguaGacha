@@ -33,9 +33,11 @@ const runtime_mocks = vi.hoisted(() => {
 vi.mock("./backend-bootstrap", () => ({ BackendBootstrap: runtime_mocks.BackendBootstrap }));
 vi.mock("../agent/agent-web-fetch", () => ({
   create_agent_web_fetch:
-    (resolve_proxy: (url: string, signal: AbortSignal) => Promise<string>): AgentWebFetchPort =>
+    (resolver: {
+      resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>;
+    }): AgentWebFetchPort =>
     async (url, signal) => {
-      await resolve_proxy(url, signal);
+      await resolver.resolveProxy(url, signal);
       return { url, contentType: "text/plain", body: new Uint8Array([111, 107]) };
     },
 }));
@@ -65,7 +67,6 @@ describe("run_backend_runtime", () => {
     runtime_mocks.start.mockResolvedValue({
       apiBaseUrl: "http://127.0.0.1:4567",
       readAppLanguage: () => "EN",
-      systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       backendServices: { logManager: runtime_mocks.log_manager },
     });
   });
@@ -83,7 +84,6 @@ describe("run_backend_runtime", () => {
       data: {
         apiBaseUrl: "http://127.0.0.1:4567",
         berserkerUpdateRootDir: "E:/userdata/berserker",
-        systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       },
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {

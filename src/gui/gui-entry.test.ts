@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => {
   const ready: BackendRuntimeReady = {
     apiBaseUrl: "http://127.0.0.1:4567",
     berserkerUpdateRootDir: "E:/userdata/berserker",
-    systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
   };
   const backend_start = vi.fn(async () => ready);
   const backend_stop = vi.fn(async () => undefined);

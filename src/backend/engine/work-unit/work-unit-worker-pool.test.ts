@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LLMClient } from "../../llm/llm-client";
 import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
 
 const cleanup_roots: string[] = []; // 记录测试创建的临时 appRoot 和 worker 文件目录
@@ -22,18 +21,21 @@ describe("WorkUnitWorkerPool", () => {
   });
 
   it("显式 in_process runner 模式仍执行完整翻译 work unit", async () => {
-    vi.spyOn(LLMClient.prototype, "request").mockResolvedValue({
-      response_think: "",
-      response_result: '{"0":"你好"}',
-      input_tokens: 1,
-      output_tokens: 2,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-    });
+    const llm_client = {
+      request: vi.fn().mockResolvedValue({
+        response_think: "",
+        response_result: '{"0":"你好"}',
+        input_tokens: 1,
+        output_tokens: 2,
+        cancelled: false,
+        timeout: false,
+        degraded: false,
+      }),
+    };
     const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
       execution: { kind: "in_process" },
+      llmClient: llm_client,
     });
 
     const result = await pool.execute_unit(
@@ -88,13 +90,46 @@ describe("WorkUnitWorkerPool", () => {
     const worker_path = path.join(app_root, "test-work-unit-worker-entry.mjs");
     await writeFile(
       worker_path,
-      `import { parentPort, workerData } from "node:worker_threads";
+      `import { parentPort } from "node:worker_threads";
+const executions = new Map();
 parentPort?.on("message", (message) => {
-  parentPort?.postMessage({ id: message.id, ok: true, data: { type: message.type, kind: message.unit?.kind, from_worker: true, systemProxySnapshot: workerData.systemProxySnapshot } });
+  if (message.type === "execute") {
+    const requestId = "llm-" + message.id;
+    executions.set(requestId, message);
+    parentPort?.postMessage({
+      type: "llm_request",
+      requestId,
+      body: {
+        run_id: message.unit.run_id,
+        work_unit_id: message.unit.unit_id,
+        model: message.unit.model,
+        config_snapshot: message.unit.config_snapshot,
+        messages: [{ role: "user", content: "test" }],
+      },
+    });
+    return;
+  }
+  if (message.type === "llm_result") {
+    const execution = executions.get(message.requestId);
+    parentPort?.postMessage({
+      type: "result",
+      id: execution.id,
+      result: { ok: true, data: { from_worker: true, llm: message.result.data } },
+    });
+  }
 });
 `,
       "utf-8",
     );
+    const llm_request = vi.fn().mockResolvedValue({
+      response_think: "",
+      response_result: "result",
+      input_tokens: 3,
+      output_tokens: 4,
+      cancelled: false,
+      timeout: false,
+      degraded: false,
+    });
     const pool = new WorkUnitWorkerPool({
       appRoot: app_root,
       execution: {
@@ -103,14 +138,7 @@ parentPort?.on("message", (message) => {
         planningWorkerEntryUrl: pathToFileURL(worker_path),
         computeWorkerEntryUrl: pathToFileURL(worker_path),
       },
-      systemProxySnapshot: {
-        routes: {
-          "https://api.example": {
-            kind: "proxy",
-            uri: "http://127.0.0.1:7890/",
-          },
-        },
-      },
+      llmClient: { request: llm_request },
       workerCount: 1,
     });
 
@@ -121,18 +149,24 @@ parentPort?.on("message", (message) => {
           new AbortController().signal,
         ),
       ).resolves.toEqual({
-        type: "execute",
-        kind: "translation",
         from_worker: true,
-        systemProxySnapshot: {
-          routes: {
-            "https://api.example": {
-              kind: "proxy",
-              uri: "http://127.0.0.1:7890/",
-            },
-          },
+        llm: {
+          response_think: "",
+          response_result: "result",
+          input_tokens: 3,
+          output_tokens: 4,
+          cancelled: false,
+          timeout: false,
+          degraded: false,
         },
       });
+      expect(llm_request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          run_id: "run-1",
+          work_unit_id: "worker-thread-unit",
+        }),
+        expect.any(AbortSignal),
+      );
     } finally {
       await pool.dispose();
     }
@@ -142,6 +176,7 @@ parentPort?.on("message", (message) => {
     const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
       execution: { kind: "in_process" },
+      llmClient: { request: vi.fn() },
     });
 
     await pool.dispose();
@@ -149,6 +184,38 @@ parentPort?.on("message", (message) => {
     await expect(
       pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
     ).rejects.toMatchObject({ code: "runtime.disposed" });
+  });
+
+  it("释放池会中止父线程中的在途 LLM 请求", async () => {
+    const request_signals: AbortSignal[] = [];
+    let resolve_request_started: () => void = () => undefined;
+    const request_started = new Promise<void>((resolve) => {
+      resolve_request_started = resolve;
+    });
+    const pool = new WorkUnitWorkerPool({
+      appRoot: await create_template_root(),
+      execution: { kind: "in_process" },
+      llmClient: {
+        request: vi.fn(async (_body, signal) => {
+          request_signals.push(signal);
+          resolve_request_started();
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
+          throw new Error("unreachable");
+        }),
+      },
+    });
+    const execution = pool.execute_unit(
+      create_translation_unit("unit-dispose-request"),
+      new AbortController().signal,
+    );
+    await request_started;
+
+    await pool.dispose();
+
+    expect(request_signals[0]?.aborted).toBe(true);
+    await expect(execution).rejects.toMatchObject({ code: "runtime.disposed" });
   });
 });
 

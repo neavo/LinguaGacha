@@ -16,7 +16,6 @@ import {
 import { resolve_backend_api_base_url_from_argv } from "../../backend/api/api-base-url";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
-import { resolve_desktop_system_proxy_startup_notice_from_argv } from "../bridge/system-proxy-startup-notice";
 import type {
   DesktopPathPickIntent,
   DesktopPathPickIpcRequest,
@@ -35,10 +34,6 @@ import type {
 const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as DesktopPlatform);
 // CORE API BASE URL 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const BACKEND_API_BASE_URL = resolve_backend_api_base_url_from_argv(process.argv);
-// SYSTEM PROXY STARTUP NOTICE 是模块级稳定契约，集中维护避免调用点散落魔术值。
-const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_from_argv(
-  process.argv,
-); // 系统代理提示来自 main 启动参数，preload 只转交脱敏摘要给 renderer
 let next_update_download_request_id = 0; // preload 本地递增，避免进度事件在多次下载之间串台
 const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround"; // Electron 43 上游修复落地后连同读写逻辑一起删除
 
@@ -46,7 +41,6 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
   backendApi: {
     baseUrl: BACKEND_API_BASE_URL,
-    systemProxyStartupNotice: SYSTEM_PROXY_STARTUP_NOTICE,
   },
   /**
    * 暴露安全文件路径查询，避免 renderer 直接访问 Node

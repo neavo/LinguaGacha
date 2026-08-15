@@ -5,12 +5,13 @@ import { Worker } from "node:worker_threads";
 import type { BackendWorkerExecution } from "../../worker/worker-execution";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
+import type { LLMClientPort } from "../../llm/llm-types";
 import { WorkUnitRunner } from "./work-unit-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import { AppError, normalize_log_error, to_log_error, type LogError } from "../../../shared/error";
-import type { SystemProxySnapshot } from "../../llm/llm-system-proxy-dispatcher";
+import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
 
 /**
  * worker 池只接收宿主已解析的执行模式和容量，不自行读取应用设置。
@@ -18,7 +19,7 @@ import type { SystemProxySnapshot } from "../../llm/llm-system-proxy-dispatcher"
 interface WorkUnitWorkerPoolOptions {
   appRoot: string; // worker 与同进程 runner 共用的资源根
   execution: BackendWorkerExecution; // 明确选择 worker_threads 或 in_process
-  systemProxySnapshot?: SystemProxySnapshot | null; // 传给新线程的启动期代理快照
+  llmClient: LLMClientPort; // 父线程真实模型请求入口
   workerCount?: number; // 只控制线程数，不是 LLM 并发上限
 }
 
@@ -28,7 +29,8 @@ interface WorkUnitWorkerPoolOptions {
 interface PendingTask {
   id: string; // 跨线程消息与 Promise 的唯一关联键
   unit: WorkUnit; // 不可变 work-unit 载荷
-  signal: AbortSignal; // 调用方取消信号
+  caller_signal: AbortSignal; // 只用于监听调用方取消并在完成后解绑
+  execution_controller: AbortController; // 同时控制 runner、父线程 LLM 与池释放
   resolve: (value: unknown) => void; // 完成原 execute_unit Promise
   reject: (error: unknown) => void; // 归一传输或生命周期失败
   abort_listener: () => void; // 完成后必须移除，避免监听器泄漏
@@ -48,7 +50,7 @@ interface WorkerSlot {
 export class WorkUnitWorkerPool implements WorkUnitExecutor {
   private readonly app_root: string; // 提供 worker_threads 和同进程 runner 读取资源模板的根目录
   private readonly execution: BackendWorkerExecution; // 由入口层显式决定，池内不做入口探测或模式回退
-  private readonly system_proxy_snapshot: SystemProxySnapshot | null; // 让 worker 线程复用主线程启动期代理快照
+  private readonly llm_client: LLMClientPort; // 正式 worker 只通过消息调用此父线程端口
   private readonly worker_count: number; // worker_threads 模式下的固定线程数
   private readonly slots: WorkerSlot[] = []; // worker_threads 模式下的固定线程集合
   private readonly in_process_runner: WorkUnitRunner | null = null; // 测试和源码执行的无跨线程路径
@@ -61,13 +63,16 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   public constructor(options: WorkUnitWorkerPoolOptions) {
     this.app_root = options.appRoot;
     this.execution = options.execution;
-    this.system_proxy_snapshot = options.systemProxySnapshot ?? null;
+    this.llm_client = options.llmClient;
     this.worker_count = resolve_default_worker_count({
       workerCount: options.workerCount,
       availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
     });
     if (this.execution.kind === "in_process") {
-      this.in_process_runner = new WorkUnitRunner({ appRoot: this.app_root });
+      this.in_process_runner = new WorkUnitRunner({
+        appRoot: this.app_root,
+        llmClient: this.llm_client,
+      });
       return;
     }
     for (let index = 0; index < this.worker_count; index += 1) {
@@ -88,12 +93,14 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   public async dispose(): Promise<void> {
     this.disposed = true;
     for (const task of this.in_process_in_flight.values()) {
-      task.signal.removeEventListener("abort", task.abort_listener);
+      task.execution_controller.abort();
+      task.caller_signal.removeEventListener("abort", task.abort_listener);
       task.reject(this.create_disposed_error());
     }
     this.in_process_in_flight.clear();
     for (const slot of this.slots) {
       for (const task of slot.in_flight.values()) {
+        task.execution_controller.abort();
         this.clear_task_listener(task);
         task.reject(this.create_disposed_error());
       }
@@ -122,10 +129,14 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       const task: PendingTask = {
         id: crypto.randomUUID(),
         unit,
-        signal,
+        caller_signal: signal,
+        execution_controller: new AbortController(),
         resolve,
         reject,
-        abort_listener: () => this.cancel_task(task),
+        abort_listener: () => {
+          task.execution_controller.abort();
+          this.cancel_task(task);
+        },
       };
       if (signal.aborted) {
         reject(this.create_cancelled_error());
@@ -151,7 +162,11 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private dispatch_worker_task(slot: WorkerSlot, task: PendingTask): void {
     slot.in_flight.set(task.id, task);
-    slot.worker.postMessage({ id: task.id, type: "execute", unit: task.unit });
+    slot.worker.postMessage({
+      id: task.id,
+      type: "execute",
+      unit: task.unit,
+    } satisfies WorkUnitWorkerCommand);
   }
 
   /**
@@ -163,7 +178,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       return;
     }
     this.in_process_in_flight.set(task.id, task);
-    const task_promise = runner.run(task.unit, task.signal);
+    const task_promise = runner.run(task.unit, task.execution_controller.signal);
     task_promise.then(
       (value) => this.finish_in_process_task(task.id, { ok: true, data: value }),
       (error: unknown) =>
@@ -182,7 +197,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       return;
     }
     const slot = this.slots.find((item) => item.in_flight.has(task.id));
-    slot?.worker.postMessage({ id: task.id, type: "cancel" });
+    slot?.worker.postMessage({ id: task.id, type: "cancel" } satisfies WorkUnitWorkerCommand);
   }
 
   /**
@@ -194,19 +209,17 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     const slot: WorkerSlot = {
       worker: new Worker(this.execution.workUnitWorkerEntryUrl, {
-        workerData: {
-          appRoot: this.app_root,
-          systemProxySnapshot: this.system_proxy_snapshot,
-        },
+        workerData: { appRoot: this.app_root },
       }),
       in_flight: new Map(),
     };
-    slot.worker.on(
-      "message",
-      (message: { id: string; ok: boolean; data?: unknown; error?: LogError }) => {
-        this.finish_slot_message(slot, message);
-      },
-    );
+    slot.worker.on("message", (message: WorkUnitWorkerEvent) => {
+      if (message.type === "llm_request") {
+        void this.handle_llm_request(slot, message);
+        return;
+      }
+      this.finish_slot_message(slot, message);
+    });
     slot.worker.on("error", (error) => {
       this.fail_slot(slot, error);
     });
@@ -235,19 +248,49 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private finish_slot_message(
     slot: WorkerSlot,
-    message: {
-      id: string;
-      ok: boolean;
-      data?: unknown;
-      error?: LogError;
-    },
+    message: Extract<WorkUnitWorkerEvent, { type: "result" }>,
   ): void {
     const task = slot.in_flight.get(message.id);
     if (task === undefined) {
       return;
     }
     this.clear_worker_task(slot, task.id);
-    this.settle_task(task, message);
+    this.settle_task(task, { id: message.id, ...message.result });
+  }
+
+  /** worker 的中性 LLM 请求由父线程真实 Client 执行，响应仍回到原 worker。 */
+  private async handle_llm_request(
+    slot: WorkerSlot,
+    message: Extract<WorkUnitWorkerEvent, { type: "llm_request" }>,
+  ): Promise<void> {
+    const task = [...slot.in_flight.values()].find(
+      ({ unit }) =>
+        unit.run_id === message.body.run_id && unit.unit_id === message.body.work_unit_id,
+    );
+    let result: Extract<WorkUnitWorkerCommand, { type: "llm_result" }>["result"];
+    if (task === undefined) {
+      result = {
+        ok: false,
+        error: to_log_error(new Error("LLM request does not belong to an active work unit.")),
+      };
+    } else {
+      try {
+        result = {
+          ok: true,
+          data: await this.llm_client.request(message.body, task.execution_controller.signal),
+        };
+      } catch (error) {
+        result = { ok: false, error: to_log_error(error, { execution: "llm_parent" }) };
+      }
+    }
+    if (!this.slots.includes(slot)) {
+      return;
+    }
+    slot.worker.postMessage({
+      type: "llm_result",
+      requestId: message.requestId,
+      result,
+    } satisfies WorkUnitWorkerCommand);
   }
 
   /**
@@ -303,7 +346,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    * 任务结束后必须移除 abort listener，避免后续 abort 触发已完成 Promise。
    */
   private clear_task_listener(task: PendingTask): void {
-    task.signal.removeEventListener("abort", task.abort_listener);
+    task.caller_signal.removeEventListener("abort", task.abort_listener);
   }
 
   /**

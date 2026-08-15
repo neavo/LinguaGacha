@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import type { FetchFunction } from "@earendil-works/pi-ai";
 
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { LLMClient } from "../llm/llm-client";
 import { list_available_models } from "../llm/llm-model-catalog";
-import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
+import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { collect_api_keys } from "../llm/llm-client-policy";
 import {
   MODEL_USAGES,
@@ -64,7 +64,8 @@ const MODEL_AGENT_PATCH_KEYS = new Set(["context_window", "max_output_tokens"]);
 export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
-  private readonly llm_user_agent: string; // 来自 AppMetadataService，模型测试不再读取 version.txt
+  private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
+  private readonly network_fetch: FetchFunction; // 模型列表探测使用同一显式代理 Fetch
   private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入只允许在统一运行态空闲时发生
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
@@ -75,14 +76,16 @@ export class ModelService {
   public constructor(
     paths: AppPathService,
     app_setting_service: AppSettingService,
-    llm_user_agent: string,
+    llm_client: LLMClientPort,
+    network_fetch: FetchFunction,
     runtime_gate: RuntimeOperationGate,
     log_manager?: Pick<LogManager, "info" | "warning">,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
-    this.llm_user_agent = llm_user_agent;
+    this.llm_client = llm_client;
+    this.network_fetch = network_fetch;
     this.runtime_gate = runtime_gate;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
@@ -276,7 +279,7 @@ export class ModelService {
   public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const models = await list_available_models(model);
+    const models = await list_available_models(model, this.network_fetch);
     return { models: models as unknown as JsonValue };
   }
 
@@ -287,7 +290,6 @@ export class ModelService {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const keys = collect_api_keys(String(model["api_key"] ?? ""));
-    const client = new LLMClient({ userAgent: this.llm_user_agent });
     const key_results: Array<JsonRecord> = [];
     const app_language = config["app_language"];
     const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
@@ -296,7 +298,7 @@ export class ModelService {
       const masked_key = this.mask_api_key(api_key);
       this.log_model_test_key_start(app_language, masked_key, messages);
       const started_at = Date.now();
-      const result = await client.request(
+      const result = await this.llm_client.request(
         {
           run_id: crypto.randomUUID(),
           work_unit_id: "model-test",

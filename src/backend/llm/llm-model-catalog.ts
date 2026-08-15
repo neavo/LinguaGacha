@@ -1,4 +1,5 @@
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import type { FetchFunction } from "@earendil-works/pi-ai";
 import { Model, type ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { get_primary_api_key } from "./llm-client-policy";
@@ -13,16 +14,19 @@ const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
 /**
  * 按供应商协议查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
  */
-export async function list_available_models(model: JsonRecord): Promise<string[]> {
+export async function list_available_models(
+  model: JsonRecord,
+  network_fetch: FetchFunction,
+): Promise<string[]> {
   try {
     const api_format = resolve_model_api_format(model);
     let models: string[];
     if (api_format === "Google") {
-      models = await fetch_google_available_models(model);
+      models = await fetch_google_available_models(model, network_fetch);
     } else if (api_format === "Anthropic") {
-      models = await fetch_anthropic_available_models(model);
+      models = await fetch_anthropic_available_models(model, network_fetch);
     } else {
-      models = await fetch_openai_available_models(model);
+      models = await fetch_openai_available_models(model, network_fetch);
     }
     return models.sort();
   } catch (error) {
@@ -35,9 +39,12 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
 /**
  * OpenAI 两种 wire 格式与 Sakura 都复用 `/models` 列表语义。
  */
-async function fetch_openai_available_models(model: JsonRecord): Promise<string[]> {
+async function fetch_openai_available_models(
+  model: JsonRecord,
+  network_fetch: FetchFunction,
+): Promise<string[]> {
   const api_url = normalize_openai_sdk_base_url(String(model["api_url"] ?? ""));
-  const data = await fetch_json(`${api_url}/models`, {
+  const data = await fetch_json(network_fetch, `${api_url}/models`, {
     Authorization: `Bearer ${get_primary_api_key(String(model["api_key"] ?? ""))}`,
     ...build_browser_headers(model),
   });
@@ -47,7 +54,10 @@ async function fetch_openai_available_models(model: JsonRecord): Promise<string[
 /**
  * Google models.list 按 nextPageToken 拉取所有页。
  */
-async function fetch_google_available_models(model: JsonRecord): Promise<string[]> {
+async function fetch_google_available_models(
+  model: JsonRecord,
+  network_fetch: FetchFunction,
+): Promise<string[]> {
   const api_url = normalize_google_api_base_url(String(model["api_url"] ?? ""));
   const headers = {
     "x-goog-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
@@ -61,7 +71,7 @@ async function fetch_google_available_models(model: JsonRecord): Promise<string[
     if (page_token !== undefined) {
       url.searchParams.set("pageToken", page_token);
     }
-    const data = await fetch_json(url.toString(), headers);
+    const data = await fetch_json(network_fetch, url.toString(), headers);
     models.push(...read_response_model_ids(data, "models", "name"));
     const next_page_token = read_json_record(data)["nextPageToken"];
     page_token =
@@ -73,12 +83,15 @@ async function fetch_google_available_models(model: JsonRecord): Promise<string[
 /**
  * Anthropic models.list 使用 `/v1/models` 与 x-api-key header。
  */
-async function fetch_anthropic_available_models(model: JsonRecord): Promise<string[]> {
+async function fetch_anthropic_available_models(
+  model: JsonRecord,
+  network_fetch: FetchFunction,
+): Promise<string[]> {
   const api_url = String(model["api_url"] ?? "")
     .trim()
     .replace(/\/+$/u, "");
   const base_url = api_url === "" ? "https://api.anthropic.com" : api_url;
-  const data = await fetch_json(`${base_url}/v1/models`, {
+  const data = await fetch_json(network_fetch, `${base_url}/v1/models`, {
     "anthropic-version": "2023-06-01",
     "x-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
     ...build_browser_headers(model),
@@ -89,8 +102,12 @@ async function fetch_anthropic_available_models(model: JsonRecord): Promise<stri
 /**
  * fetch 只负责 HTTP，并把非成功状态收窄为安全公开详情；列表字段解释留在调用点。
  */
-async function fetch_json(url: string, headers: Record<string, string>): Promise<JsonValue> {
-  const response = await fetch(url, { headers, method: "GET" });
+async function fetch_json(
+  network_fetch: FetchFunction,
+  url: string,
+  headers: Record<string, string>,
+): Promise<JsonValue> {
+  const response = await network_fetch(url, { headers, method: "GET" });
   if (!response.ok) {
     throw new AppErrors.AppError("model.provider_failed", {
       public_details: { status: response.status },

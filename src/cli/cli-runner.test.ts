@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   stop: vi.fn(),
   run_cli_job: vi.fn(),
-  write_stderr: vi.fn(),
   write_stdout: vi.fn(),
 }));
 
@@ -43,7 +42,6 @@ vi.mock("../backend/bootstrap/backend-bootstrap", () => ({
 
 vi.mock("./job/cli-job-runner", () => ({ run_cli_job: mocks.run_cli_job }));
 vi.mock("./cli-output", () => ({
-  write_stderr: mocks.write_stderr,
   write_stdout: mocks.write_stdout,
 }));
 
@@ -68,9 +66,6 @@ beforeEach(() => {
     mocks.events.push("job");
     (status_reporter as { emit_started: () => void }).emit_started();
   });
-  mocks.write_stderr.mockImplementation((_line: string) => {
-    mocks.events.push("stderr");
-  });
 });
 
 describe("run_cli_command", () => {
@@ -91,7 +86,7 @@ describe("run_cli_command", () => {
       workerExecution: { kind: "in_process" } satisfies BackendWorkerExecution,
     });
     await expect(
-      bootstrap_options?.systemProxyResolver?.resolveProxy("https://api.example/v1"),
+      bootstrap_options?.systemProxyResolver.resolveProxy("https://api.example/v1"),
     ).resolves.toBe("DIRECT");
     expect(mocks.resolve_proxy).toHaveBeenCalledWith("https://api.example/v1");
     expect(mocks.run_cli_job).toHaveBeenCalledWith(
@@ -99,25 +94,6 @@ describe("run_cli_command", () => {
       command,
       expect.any(Object),
     );
-    expect(mocks.write_stdout).toHaveBeenCalledOnce();
-    expect(JSON.parse(String(mocks.write_stdout.mock.calls[0]?.[0]))).toMatchObject({
-      type: "started",
-      command: "translate",
-    });
-  });
-
-  it("检测到系统代理时只向 stderr 输出启动提示", async () => {
-    mocks.start_result = create_start_result({
-      systemProxyStartupNotice: {
-        detected: true,
-        proxiedOriginCount: 1,
-        proxyDisplay: "http://127.0.0.1:7890",
-      },
-    });
-
-    await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
-
-    expect(mocks.write_stderr).toHaveBeenCalledWith("检查到系统代理设置 - http://127.0.0.1:7890");
     expect(mocks.write_stdout).toHaveBeenCalledOnce();
     expect(JSON.parse(String(mocks.write_stdout.mock.calls[0]?.[0]))).toMatchObject({
       type: "started",
@@ -148,11 +124,6 @@ function create_start_result(
     backendServices:
       mocks.backend_services as unknown as BackendBootstrapStartResult["backendServices"],
     readAppLanguage: () => "ZH",
-    systemProxyStartupNotice: {
-      detected: false,
-      proxiedOriginCount: 0,
-      proxyDisplay: null,
-    },
     ...overrides,
   };
 }

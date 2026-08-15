@@ -1,5 +1,6 @@
 import {
   type Model as PiModel,
+  type FetchFunction,
   type ModelThinkingLevel as PiModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -25,6 +26,7 @@ export function register_agent_model(
   model_runtime: ModelRuntime,
   config: JsonRecord,
   user_agent: string,
+  network_fetch: FetchFunction,
 ): {
   model: PiModel<AgentApi>;
   thinkingLevel: PiModelThinkingLevel;
@@ -46,6 +48,7 @@ export function register_agent_model(
   const force_request_policy = <TOptions extends object>(options?: TOptions) => ({
     ...options,
     apiKey: api_key,
+    fetch: network_fetch,
     headers: { ...request_headers },
     onPayload: (payload: unknown) => apply_agent_request_overrides(snapshot, payload),
   });

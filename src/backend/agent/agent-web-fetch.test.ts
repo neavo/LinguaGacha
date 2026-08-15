@@ -23,7 +23,15 @@ vi.mock("undici", async (import_original) => {
   };
 });
 
-import { create_agent_web_fetch } from "./agent-web-fetch";
+import { create_agent_web_fetch as create_agent_web_fetch_with_resolver } from "./agent-web-fetch";
+
+function create_agent_web_fetch(
+  resolve_proxy: (url: string, signal: AbortSignal) => Promise<string>,
+) {
+  return create_agent_web_fetch_with_resolver({
+    resolveProxy: (url, signal) => resolve_proxy(url, signal ?? new AbortController().signal),
+  });
+}
 
 describe("Agent web_fetch 下载边界", () => {
   beforeEach(() => {

@@ -6,7 +6,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 interface ModelPresetPathReader {
-  get_model_preset_dir: () => string; // 让模型服务和 Bootstrap 共用同一内置预设目录事实
+  get_model_preset_dir: () => string; // 只依赖预设目录能力，不把读取规则绑定到完整 AppPathService
 }
 
 /**
@@ -36,7 +36,7 @@ export function resolve_model_for_usage(config: JsonRecord, usage: ModelUsage): 
 }
 
 /**
- * 读取内置模型预设，供模型初始化和启动期系统代理快照共用同一资源口径。
+ * 读取内置模型预设，模型初始化只消费合法对象项。
  */
 export function read_config_model_preset_records(
   paths: ModelPresetPathReader,
