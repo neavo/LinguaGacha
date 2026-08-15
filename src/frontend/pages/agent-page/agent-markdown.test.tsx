@@ -12,7 +12,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("mermaid", () => ({
   default: { initialize: mocks.initialize, render: mocks.render },
 }));
-vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: mocks.theme.current }) }));
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: mocks.theme.current }),
+}));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   open_external_url: mocks.open_external_url,
 }));

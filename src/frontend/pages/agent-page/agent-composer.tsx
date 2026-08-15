@@ -1,5 +1,4 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useTheme } from "next-themes";
 import {
   ArrowUp,
   BookA,
@@ -43,6 +42,7 @@ import {
   type AgentMessageInput,
   type AgentSkillSnapshot,
 } from "@shared/agent";
+import { useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   ModelSelectionCategories,
@@ -181,7 +181,7 @@ const mention_token_extension: Extension = [mention_token_config_field, mention_
 /** 页面私有的纯文本消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
-  const { resolvedTheme } = useTheme();
+  const { resolved_theme } = useAppearance();
   const editing = props.input_session.editing;
   const assistant_editing = editing?.role === "assistant";
   const placeholder_text = t(
@@ -332,7 +332,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       parent: host,
       state: EditorState.create({
         extensions: [
-          theme_compartment.of(resolve_app_editor_theme_extensions(resolvedTheme, "plain")),
+          theme_compartment.of(resolve_app_editor_theme_extensions(resolved_theme, "plain")),
           read_only_compartment.of(
             resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
           ),
@@ -438,10 +438,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   useEffect(() => {
     view_ref.current?.dispatch({
       effects: theme_compartment.reconfigure(
-        resolve_app_editor_theme_extensions(resolvedTheme, "plain"),
+        resolve_app_editor_theme_extensions(resolved_theme, "plain"),
       ),
     });
-  }, [resolvedTheme]);
+  }, [resolved_theme]);
 
   useEffect(() => {
     const view = view_ref.current;

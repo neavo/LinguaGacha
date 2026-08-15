@@ -8,7 +8,7 @@ import type {
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
   DesktopUpdateLaunchResult,
-  ThemeMode,
+  ResolvedThemeMode,
 } from "./bridge-types";
 
 export const DESKTOP_BRIDGE_GLOBAL_NAME = "desktopApp"; // preload 只通过这个全局名暴露桌面能力，renderer 不直接接触 Electron 或 Node
@@ -17,7 +17,7 @@ export interface DesktopBridgeApi {
   shell: DesktopShellInfo; // 宿主壳层快照只在 preload 初始化时生成，renderer 按快照渲染标题栏安全区
   backendApi: DesktopBackendApiInfo; // Backend API 地址由 main 创建窗口时注入，renderer 不读取环境变量或猜测端口
   getPathForFile: (file: File) => string; // 文件路径解析必须留在 preload，避免 renderer 获得泛化文件系统能力
-  setTitleBarTheme: (theme_mode: ThemeMode) => void; // 标题栏主题同步只暴露明暗两态，main 负责转换成原生 overlay 配色
+  setTitleBarTheme: (theme_mode: ResolvedThemeMode) => void; // 标题栏主题同步只暴露明暗两态，main 负责转换成原生 overlay 配色
   quitApp: () => Promise<void>; // 应用退出必须回到 main 统一收尾 Backend 生命周期
   openLogWindow: () => Promise<void>; // 日志窗口单例由 main 持有，renderer 只发起显隐请求
   onWindowCloseRequest: (callback: () => void) => () => void; // 主窗口关闭确认由 renderer 展示 UI，main 只发送请求事件

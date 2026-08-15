@@ -1,5 +1,4 @@
 import { ChevronDown, ChevronUp, ListStart, Maximize2, Minimize2, ScrollText } from "lucide-react";
-import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import {
@@ -80,7 +79,6 @@ function scroll_log_table_to_top(): void {
 export function LogWindowPage(): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { resolvedTheme } = useTheme();
   const shell_info = window.desktopApp.shell;
   const [events, set_events] = useState<LogEvent[]>([]);
   const [level_filter, set_level_filter] = useState<LogLevelFilter>("all");
@@ -103,16 +101,6 @@ export function LogWindowPage(): JSX.Element {
   useEffect(() => {
     document.title = t("log_window_page.title");
   }, [t]);
-
-  useEffect(() => {
-    const theme_mode =
-      resolvedTheme === "dark" ||
-      (resolvedTheme !== "light" && document.documentElement.classList.contains("dark"))
-        ? "dark"
-        : "light";
-
-    window.desktopApp.setTitleBarTheme(theme_mode);
-  }, [resolvedTheme]);
 
   useEffect(() => {
     const log_append_buffer = new LogAppendBuffer<LogEvent>({

@@ -110,9 +110,18 @@ export const de_de_app = {
     Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.de]),
   ) as Record<keyof typeof LANGUAGE_DISPLAY_NAMES, string>,
   navigation_action: {
+    appearance: "Darstellung",
+    font: "Schriftart",
+    font_option: {
+      lg_base: "LGBase",
+      system: "Systemschriftart",
+    },
     theme: "Design",
-    switch_theme: "Design wechseln",
-    toggle_lg_base_font: "Schriftart wechseln",
+    theme_option: {
+      system: "Systemeinstellung",
+      light: "Hell",
+      dark: "Dunkel",
+    },
     language: "Sprache",
     language_option: {
       ZH: "中文",

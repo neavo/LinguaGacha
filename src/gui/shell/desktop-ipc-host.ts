@@ -22,7 +22,7 @@ import {
   type DesktopUpdateDownloadResult,
   type DesktopUpdateLaunchRequest,
   type DesktopUpdateLaunchResult,
-  type ThemeMode,
+  type ResolvedThemeMode,
 } from "../bridge/bridge-types";
 import { type LogWindowHost } from "./log-window-host";
 import { sync_title_bar_overlay } from "./desktop-window-host";
@@ -53,7 +53,7 @@ export type DesktopIpcHandlerOptions = {
  */
 export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions): void {
   // renderer 主题变化通过 preload 转发到 main，再同步给原生标题栏 Overlay
-  ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (event, theme_mode: ThemeMode) => {
+  ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (event, theme_mode: ResolvedThemeMode) => {
     sync_title_bar_overlay(BrowserWindow.fromWebContents(event.sender), theme_mode);
   });
 

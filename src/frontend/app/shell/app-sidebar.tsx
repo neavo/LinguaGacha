@@ -1,13 +1,8 @@
-import { ChevronDown, SunMoon, Type } from "lucide-react";
+import { ChevronDown, Languages, ScrollText } from "lucide-react";
 
-import type {
-  AppearanceMenuActionId,
-  BottomAction,
-  BottomActionId,
-  NavigationGroup,
-  RouteId,
-} from "@frontend/app/navigation/types";
+import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
 import { APP_LANGUAGES, is_app_language, type AppLanguage } from "@domain/app-language";
+import { AppAppearanceMenu } from "@frontend/app/shell/app-appearance-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -28,8 +23,6 @@ import { cn } from "@frontend/shadcn/classnames";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
@@ -46,20 +39,18 @@ const APP_LANGUAGE_LABEL_KEYS: Readonly<Record<AppLanguage, LocaleKey>> = Object
 
 type AppSidebarProps = {
   groups: NavigationGroup[];
-  bottom_actions: BottomAction[];
   selected_route: RouteId;
   expanded_items: ReadonlySet<RouteId>;
   disabled_route_ids: ReadonlySet<RouteId>;
-  disabled_bottom_action_ids: ReadonlySet<BottomActionId>;
-  badged_bottom_action_ids: ReadonlySet<BottomActionId>;
   app_language: AppLanguage;
+  is_language_updating: boolean;
+  show_log_badge: boolean;
   profile_label_key: LocaleKey;
   profile_tooltip_key: LocaleKey;
   is_profile_update_available: boolean;
   on_select_route: (route_id: RouteId) => void;
   on_toggle_group: (route_id: RouteId) => void;
-  on_bottom_action: (action_id: BottomActionId) => void;
-  on_appearance_menu_action: (action_id: AppearanceMenuActionId) => void;
+  on_open_logs: () => void;
   on_select_app_language: (language: AppLanguage) => void;
   on_profile_action: () => void;
 };
@@ -201,119 +192,63 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
 
       <SidebarFooter className="shell-sidebar__bottom">
         <SidebarMenu className="sidebar-bottom-actions">
-          {props.bottom_actions.map((action) => {
-            const ActionIcon = action.icon;
-            const is_action_disabled = props.disabled_bottom_action_ids.has(action.id);
-            const has_badge = props.badged_bottom_action_ids.has(action.id);
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="sidebar-bottom-button"
+              tooltip={t("app.navigation_action.logs")}
+              aria-label={t("app.navigation_action.logs")}
+              onClick={props.on_open_logs}
+            >
+              <span className="sidebar-bottom-button__icon-wrap">
+                <ScrollText size={16} className="sidebar-bottom-button__icon" />
+                {props.show_log_badge ? (
+                  <span className="sidebar-bottom-button__badge-dot" aria-hidden="true" />
+                ) : null}
+              </span>
+              <span className="sidebar-bottom-button__text">{t("app.navigation_action.logs")}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
 
-            if (action.id === "theme") {
-              return (
-                <SidebarMenuItem key={action.id}>
-                  <AppDropdownMenu>
-                    <AppDropdownMenuTrigger asChild>
-                      <SidebarMenuButton
-                        className="sidebar-bottom-button"
-                        disabled={is_action_disabled}
-                        aria-label={t(action.label_key)}
-                      >
-                        <ActionIcon size={16} className="sidebar-bottom-button__icon" />
-                        <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
-                      </SidebarMenuButton>
-                    </AppDropdownMenuTrigger>
-                    <AppDropdownMenuContent
-                      side={is_collapsed ? "right" : "top"}
-                      align="center"
-                      sideOffset={is_collapsed ? 8 : 4}
-                      matchTriggerWidth={!is_collapsed}
-                      className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
-                    >
-                      <AppDropdownMenuGroup>
-                        <AppDropdownMenuItem
-                          onSelect={() => {
-                            props.on_appearance_menu_action("font-family");
-                          }}
-                        >
-                          <Type size={16} />
-                          <span>{t("app.navigation_action.toggle_lg_base_font")}</span>
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          onSelect={() => {
-                            props.on_appearance_menu_action("theme-mode");
-                          }}
-                        >
-                          <SunMoon size={16} />
-                          <span>{t("app.navigation_action.switch_theme")}</span>
-                        </AppDropdownMenuItem>
-                      </AppDropdownMenuGroup>
-                    </AppDropdownMenuContent>
-                  </AppDropdownMenu>
-                </SidebarMenuItem>
-              );
-            }
+          <AppAppearanceMenu is_collapsed={is_collapsed} />
 
-            if (action.id === "language") {
-              return (
-                <SidebarMenuItem key={action.id}>
-                  <AppDropdownMenu>
-                    <AppDropdownMenuTrigger asChild>
-                      <SidebarMenuButton
-                        className="sidebar-bottom-button"
-                        disabled={is_action_disabled}
-                        aria-label={t(action.label_key)}
-                      >
-                        <ActionIcon size={16} className="sidebar-bottom-button__icon" />
-                        <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
-                      </SidebarMenuButton>
-                    </AppDropdownMenuTrigger>
-                    <AppDropdownMenuContent
-                      side={is_collapsed ? "right" : "top"}
-                      align="center"
-                      sideOffset={is_collapsed ? 8 : 4}
-                      matchTriggerWidth={!is_collapsed}
-                      className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
-                    >
-                      <AppDropdownMenuRadioGroup
-                        value={props.app_language}
-                        onValueChange={(language) => {
-                          if (is_app_language(language)) {
-                            props.on_select_app_language(language);
-                          }
-                        }}
-                      >
-                        {APP_LANGUAGES.map((language) => (
-                          <AppDropdownMenuRadioItem key={language} value={language}>
-                            <span>{t(APP_LANGUAGE_LABEL_KEYS[language])}</span>
-                          </AppDropdownMenuRadioItem>
-                        ))}
-                      </AppDropdownMenuRadioGroup>
-                    </AppDropdownMenuContent>
-                  </AppDropdownMenu>
-                </SidebarMenuItem>
-              );
-            }
-
-            return (
-              <SidebarMenuItem key={action.id}>
+          <SidebarMenuItem>
+            <AppDropdownMenu>
+              <AppDropdownMenuTrigger asChild>
                 <SidebarMenuButton
                   className="sidebar-bottom-button"
-                  disabled={is_action_disabled}
-                  tooltip={t(action.label_key)}
-                  aria-label={t(action.label_key)}
-                  onClick={() => {
-                    props.on_bottom_action(action.id);
+                  disabled={props.is_language_updating}
+                  aria-label={t("app.navigation_action.language")}
+                >
+                  <Languages size={16} className="sidebar-bottom-button__icon" />
+                  <span className="sidebar-bottom-button__text">
+                    {t("app.navigation_action.language")}
+                  </span>
+                </SidebarMenuButton>
+              </AppDropdownMenuTrigger>
+              <AppDropdownMenuContent
+                side={is_collapsed ? "right" : "top"}
+                align="center"
+                sideOffset={is_collapsed ? 8 : 4}
+                matchTriggerWidth={!is_collapsed}
+                className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
+              >
+                <AppDropdownMenuRadioGroup
+                  value={props.app_language}
+                  onValueChange={(language) => {
+                    if (is_app_language(language)) {
+                      props.on_select_app_language(language);
+                    }
                   }}
                 >
-                  <span className="sidebar-bottom-button__icon-wrap">
-                    <ActionIcon size={16} className="sidebar-bottom-button__icon" />
-                    {has_badge ? (
-                      <span className="sidebar-bottom-button__badge-dot" aria-hidden="true" />
-                    ) : null}
-                  </span>
-                  <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
+                  {APP_LANGUAGES.map((language) => (
+                    <AppDropdownMenuRadioItem key={language} value={language}>
+                      <span>{t(APP_LANGUAGE_LABEL_KEYS[language])}</span>
+                    </AppDropdownMenuRadioItem>
+                  ))}
+                </AppDropdownMenuRadioGroup>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          </SidebarMenuItem>
         </SidebarMenu>
 
         <SidebarMenu>

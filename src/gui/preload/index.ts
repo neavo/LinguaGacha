@@ -27,7 +27,7 @@ import type {
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
   DesktopUpdateLaunchResult,
-  ThemeMode,
+  ResolvedThemeMode,
 } from "../bridge/bridge-types";
 
 // DESKTOP SHELL INFO 是模块级稳定契约，集中维护避免调用点散落魔术值。
@@ -52,7 +52,7 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   /**
    * 同步标题栏主题，保持窗口外观由 preload 窄接口承接
    */
-  setTitleBarTheme(theme_mode: ThemeMode): void {
+  setTitleBarTheme(theme_mode: ResolvedThemeMode): void {
     if (!DESKTOP_SHELL_INFO.usesTitleBarOverlay) {
       return;
     }

@@ -75,7 +75,9 @@ vi.mock("./agent-image", () => ({
   normalize_agent_images: image_mocks.normalize_agent_images,
 }));
 
-vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
 vi.mock("@frontend/shadcn/tooltip", () => ({
   Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
   TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,

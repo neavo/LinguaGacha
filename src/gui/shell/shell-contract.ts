@@ -1,7 +1,7 @@
 import type {
   DesktopPlatform,
   DesktopShellInfo,
-  ThemeMode,
+  ResolvedThemeMode,
   TitleBarControlSide,
 } from "../bridge/bridge-types";
 
@@ -88,7 +88,7 @@ export function resolve_desktop_shell_info(platform: DesktopPlatform): DesktopSh
 
 // main 把网页明暗主题映射成 Electron 原生 overlay 可消费的稳定配色对象
 export function resolve_title_bar_overlay_theme(
-  theme_mode: ThemeMode,
+  theme_mode: ResolvedThemeMode,
 ): DesktopTitleBarOverlayTheme {
   if (theme_mode === "dark") {
     return {

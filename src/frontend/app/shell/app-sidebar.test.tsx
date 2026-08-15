@@ -4,14 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppLanguage } from "@domain/app-language";
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
-import { BOTTOM_ACTIONS } from "@frontend/app/navigation/schema";
 import { SidebarProvider } from "@frontend/shadcn/sidebar";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AppSidebar } from "./app-sidebar";
 
+vi.mock("./app-appearance-menu", () => ({ AppAppearanceMenu: () => null }));
+
 type RenderSidebarOptions = {
   app_language?: AppLanguage;
   is_language_updating?: boolean;
+  on_open_logs?: () => void;
   on_select_app_language?: (language: AppLanguage) => void;
 };
 
@@ -43,22 +45,18 @@ describe("AppSidebar", () => {
             <SidebarProvider open>
               <AppSidebar
                 groups={[]}
-                bottom_actions={BOTTOM_ACTIONS}
                 selected_route="project-home"
                 expanded_items={new Set()}
                 disabled_route_ids={new Set()}
-                disabled_bottom_action_ids={
-                  options.is_language_updating ? new Set(["language"]) : new Set()
-                }
-                badged_bottom_action_ids={new Set()}
                 app_language={options.app_language ?? "ZH"}
+                is_language_updating={options.is_language_updating ?? false}
+                show_log_badge={false}
                 profile_label_key="app.profile.status"
                 profile_tooltip_key="app.profile.status_tooltip"
                 is_profile_update_available={false}
                 on_select_route={vi.fn()}
                 on_toggle_group={vi.fn()}
-                on_bottom_action={vi.fn()}
-                on_appearance_menu_action={vi.fn()}
+                on_open_logs={options.on_open_logs ?? vi.fn()}
                 on_select_app_language={options.on_select_app_language ?? vi.fn()}
                 on_profile_action={vi.fn()}
               />
@@ -108,5 +106,17 @@ describe("AppSidebar", () => {
 
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="字字珠玑"]');
     expect(trigger?.disabled).toBe(true);
+  });
+
+  it("点击日志按钮直接打开日志窗口", async () => {
+    const on_open_logs = vi.fn();
+    await render_sidebar({ on_open_logs });
+
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="日志"]');
+    await act(async () => {
+      trigger?.click();
+    });
+
+    expect(on_open_logs).toHaveBeenCalledOnce();
   });
 });
