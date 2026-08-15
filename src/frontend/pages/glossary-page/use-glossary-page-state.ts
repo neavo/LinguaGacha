@@ -63,8 +63,12 @@ import {
   useProjectSessionTableUiState,
   type ProjectSessionTableSelectionState,
 } from "@frontend/app/session/project-session-ui-state-context";
-import { reorder_selected_quality_rule_entries } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
+  reorder_selected_quality_rule_entries,
+  resolve_quality_rule_insert_after_entry_id,
+} from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import {
+  useQualityRuleResultControls,
   useQualityRuleSelectionPruning,
   useQualityRuleTableSessionReset,
 } from "@frontend/features/quality-rule-editor/use-quality-rule-table-session";
@@ -176,6 +180,18 @@ function normalize_glossary_sort_state(sort_state: GlossarySortState): GlossaryS
     field: sort_state.field,
     direction: sort_state.direction,
   };
+}
+
+/** AppTable 的通用列排序在页面边界收窄为术语表字段。 */
+function resolve_glossary_table_sort_state(
+  sort_state: AppTableSortState | null,
+): GlossarySortState {
+  return sort_state === null
+    ? create_empty_sort_state()
+    : {
+        field: sort_state.column_id as GlossarySortField,
+        direction: sort_state.direction,
+      };
 }
 
 // 切断 session 快照引用，避免页面编辑直接修改缓存对象。
@@ -434,18 +450,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [entry_ids]);
 
   const resolve_create_insert_after_entry_id = useCallback((): GlossaryEntryId | null => {
-    if (active_entry_id !== null && entry_index_by_id.has(active_entry_id)) {
-      return active_entry_id;
-    }
-
-    for (let index = selected_entry_ids.length - 1; index >= 0; index -= 1) {
-      const selected_entry_id = selected_entry_ids[index];
-      if (selected_entry_id !== undefined && entry_index_by_id.has(selected_entry_id)) {
-        return selected_entry_id;
-      }
-    }
-
-    return null;
+    return resolve_quality_rule_insert_after_entry_id(
+      active_entry_id,
+      selected_entry_ids,
+      entry_index_by_id,
+    );
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
   const completed_hit_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
     return new Set(hit_state.entry_ids ?? []);
@@ -750,92 +759,21 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_selection_state: set_table_selection_state,
   });
 
-  const update_filter_keyword = useCallback(
-    (next_keyword: string): void => {
-      const next_filter_state = {
-        ...filter_state,
-        keyword: next_keyword,
-      };
-      // 首次快照尚未落地时，先冻结旧查询结果，再让输入防抖决定何时应用新查询。
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const update_filter_scope = useCallback(
-    (next_scope: GlossaryFilterScope): void => {
-      const next_filter_state = {
-        ...filter_state,
-        scope: next_scope,
-      };
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const update_filter_regex = useCallback(
-    (next_is_regex: boolean): void => {
-      const next_filter_state = {
-        ...filter_state,
-        is_regex: next_is_regex,
-      };
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const apply_table_sort_state = useCallback(
-    (next_sort_state: AppTableSortState | null): void => {
-      const next_glossary_sort_state =
-        next_sort_state === null
-          ? create_empty_sort_state()
-          : {
-              field: next_sort_state.column_id as GlossarySortField,
-              direction: next_sort_state.direction,
-            };
-      debounced_result_snapshot.cancel();
-      set_table_sort_state(next_glossary_sort_state);
-      set_result_snapshot(build_result_snapshot(filter_state, next_glossary_sort_state));
-    },
-    [build_result_snapshot, debounced_result_snapshot, filter_state, set_table_sort_state],
-  );
-
-  const apply_table_selection = useCallback(
-    (payload: AppTableSelectionChange): void => {
-      set_table_selection_state(payload);
-    },
-    [set_table_selection_state],
-  );
+  const {
+    update_filter_keyword,
+    update_filter_scope,
+    update_filter_regex,
+    apply_table_sort_state,
+  } = useQualityRuleResultControls({
+    filter_state,
+    sort_state,
+    build_result_snapshot,
+    set_result_snapshot,
+    set_filter_state: set_table_filter_state,
+    set_sort_state: set_table_sort_state,
+    debounced_result_snapshot,
+    resolve_sort_state: resolve_glossary_table_sort_state,
+  });
 
   const search_entry_relations_from_hit = useCallback(
     (entry_id: GlossaryEntryId): void => {
@@ -1684,7 +1622,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       update_filter_scope,
       update_filter_regex,
       apply_table_sort_state,
-      apply_table_selection,
+      apply_table_selection: set_table_selection_state,
       update_enabled,
       open_create_dialog,
       open_edit_dialog,
@@ -1719,7 +1657,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     };
   }, [
     active_entry_id,
-    apply_table_selection,
     apply_table_sort_state,
     apply_preset,
     cancel_default_preset,
@@ -1760,6 +1697,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     search_entry_relations_from_hit,
     selected_entry_ids,
     selection_anchor_entry_id,
+    set_table_selection_state,
     set_default_preset,
     sort_state,
     hit_badge_by_entry_id,

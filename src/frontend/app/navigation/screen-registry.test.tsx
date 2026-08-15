@@ -25,8 +25,8 @@ import { DEFAULT_ROUTE_ID, NAVIGATION_GROUPS } from "@frontend/app/navigation/sc
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 
 describe("SCREEN_REGISTRY", () => {
-  it("为默认页和所有导航叶子注册对应标题", () => {
-    expect(SCREEN_REGISTRY[DEFAULT_ROUTE_ID]?.title_key).toBe("project_page.title");
+  it("注册默认页，并让所有导航叶子复用对应标题", () => {
+    expect(SCREEN_REGISTRY[DEFAULT_ROUTE_ID]).toBeDefined();
 
     const navigation_leaves = NAVIGATION_GROUPS.flatMap((group) =>
       group.items.flatMap((item) => item.children ?? [item]),

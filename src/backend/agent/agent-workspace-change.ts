@@ -487,9 +487,7 @@ function assert_exact_fields(
   reason: string,
 ): void {
   const unknown = Object.keys(value).find((field) => !fields.includes(field));
-  const missing = fields.find(
-    (field) => !optional.includes(field) && !Object.prototype.hasOwnProperty.call(value, field),
-  );
+  const missing = fields.find((field) => !optional.includes(field) && !Object.hasOwn(value, field));
   if (unknown !== undefined || missing !== undefined) {
     throw new AppErrors.AppError("request.validation_failed", {
       public_details: { action: "workspace_script" },
@@ -500,7 +498,7 @@ function assert_exact_fields(
 
 /** 可选字段必须按 JSON 自有属性判断，不能把显式空值当成缺失。 */
 function has_own(value: JsonRecord, field: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, field);
+  return Object.hasOwn(value, field);
 }
 
 /** 空 change 文件不创建 reader；大文件仍逐行流式解析。 */

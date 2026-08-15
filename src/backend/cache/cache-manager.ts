@@ -46,7 +46,6 @@ export class CacheManager implements CacheReadPort {
   private epoch = 0; // 每次完整热机递增，视图缓存用它隔离旧身份。
   private freshness: CacheFreshness = "empty"; // 读取前用 freshness 判断是否需要恢复。
   private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
-  private recoverable_error: unknown = null; // 保留最近一次可恢复错误，方便未来诊断扩展。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
   public readonly quality = new ProjectDataBlockCache(() => this.recover_if_needed());
@@ -106,7 +105,6 @@ export class CacheManager implements CacheReadPort {
     this.analysis.clear();
     this.qualityAnalysis.clear();
     this.section_revisions = {};
-    this.recoverable_error = null;
   }
 
   /**
@@ -128,8 +126,8 @@ export class CacheManager implements CacheReadPort {
     }
     try {
       await this.applyChange(create_cache_change(event));
-    } catch (error) {
-      this.mark_recoverable_error(error, event);
+    } catch {
+      this.mark_recoverable_error(event);
     }
   }
 
@@ -190,7 +188,6 @@ export class CacheManager implements CacheReadPort {
     this.qualityAnalysis.clear();
     this.section_revisions = section_revisions;
     this.freshness = "fresh";
-    this.recoverable_error = null;
   }
 
   /**
@@ -209,9 +206,8 @@ export class CacheManager implements CacheReadPort {
   /**
    * 标记可恢复错误并记录触发事件，避免事件处理链路抛出后中断总线。
    */
-  private mark_recoverable_error(error: unknown, event: ProjectEvent): void {
+  private mark_recoverable_error(event: ProjectEvent): void {
     this.freshness = "recoverable_error";
-    this.recoverable_error = error;
     this.log_manager?.warning("CacheManager 缓存维护失败，后续读取将尝试恢复。", {
       source: "cache-manager",
       context: {

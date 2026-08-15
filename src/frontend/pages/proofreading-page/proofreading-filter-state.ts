@@ -1,6 +1,5 @@
 import { JsonTool } from "@shared/utils/json-tool";
 import {
-  clone_proofreading_filter_options,
   type ProofreadingFilterOptions,
   type ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
@@ -245,10 +244,4 @@ export function build_filter_signature(filters: ProofreadingFilterOptions): stri
     glossary_entry_ids: [...filters.glossary_entry_ids].sort(),
     include_without_glossary_miss: filters.include_without_glossary_miss,
   });
-}
-
-export function clone_proofreading_filters(
-  filters: ProofreadingFilterOptions,
-): ProofreadingFilterOptions {
-  return clone_proofreading_filter_options(filters);
 }

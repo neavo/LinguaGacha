@@ -14,8 +14,6 @@ export const TASK_START_MODES = ["new", "continue", "reset"] as const; // 后台
 export const TRANSLATION_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 翻译活跃态供 renderer 折叠快照使用
 export const ANALYSIS_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 分析活跃态供 renderer 折叠快照使用
 
-export const TASK_IDLE_STATUSES = ["done", "error", "idle"] as const; // 空闲状态集合用于任务启动互斥和页面按钮可用性判断
-
 export const TASK_PROGRESS_STATUSES = ["NONE", "PROCESSED", "ERROR"] as const; // 进度状态是 item 统计口径，不等同于任务生命周期状态
 
 // 这些 item 状态不会进入翻译或分析任务进度统计
@@ -29,7 +27,6 @@ export const TASK_SKIPPED_ITEM_STATUSES = [
 export type TaskType = (typeof TASK_TYPES)[number];
 export type TaskRunStatus = (typeof TASK_RUN_STATUSES)[number];
 export type TaskStartMode = (typeof TASK_START_MODES)[number];
-export type TaskIdleStatus = (typeof TASK_IDLE_STATUSES)[number];
 export type TaskProgressStatus = (typeof TASK_PROGRESS_STATUSES)[number];
 
 export type TaskProgressSnapshot = {
@@ -49,9 +46,7 @@ export type TranslationScope =
   | { kind: "items"; item_ids: number[] }; // items 表示重翻等窄域翻译，只能携带不可变 id 列表
 
 const TASK_TYPE_SET = new Set<string>(TASK_TYPES); // Set 只服务边界窄化，避免调用点重复散落 includes 判断
-const TASK_RUN_STATUS_SET = new Set<string>(TASK_RUN_STATUSES);
 const TASK_START_MODE_SET = new Set<string>(TASK_START_MODES);
-const TASK_IDLE_STATUS_SET = new Set<string>(TASK_IDLE_STATUSES);
 const TASK_PROGRESS_STATUS_SET = new Set<string>(TASK_PROGRESS_STATUSES);
 const TASK_SKIPPED_ITEM_STATUS_SET = new Set<string>(TASK_SKIPPED_ITEM_STATUSES);
 const TRANSLATION_TASK_ACTIVE_STATUS_SET = new Set<string>(TRANSLATION_TASK_ACTIVE_STATUSES);
@@ -62,19 +57,9 @@ export function is_task_type(value: unknown): value is TaskType {
   return TASK_TYPE_SET.has(String(value));
 }
 
-/** 判断 Engine 运行态状态值，所有层统一使用小写状态机 */
-export function is_task_run_status(value: unknown): value is TaskRunStatus {
-  return TASK_RUN_STATUS_SET.has(String(value));
-}
-
 /** 判断启动模式，公开请求进入核心前必须先被窄化 */
 export function is_task_start_mode(value: unknown): value is TaskStartMode {
   return TASK_START_MODE_SET.has(String(value));
-}
-
-// 空闲性判断接受公开空闲状态，供互斥检查复用
-export function is_task_idle_status(value: unknown): value is TaskIdleStatus {
-  return TASK_IDLE_STATUS_SET.has(String(value));
 }
 
 // 进度统计只接受 item 级别三态，避免生命周期状态污染统计
@@ -95,11 +80,6 @@ export function is_active_translation_task_status(value: unknown): boolean {
 // 分析活跃态统一供快照折叠使用
 export function is_active_analysis_task_status(value: unknown): boolean {
   return ANALYSIS_TASK_ACTIVE_STATUS_SET.has(String(value));
-}
-
-/** normalize_task_type 只用于读取侧兜底，不承担命令校验职责 */
-export function normalize_task_type(value: unknown, fallback: TaskType = "translation"): TaskType {
-  return is_task_type(value) ? value : fallback;
 }
 
 /** 任务进度只保留固定数值字段；坏值、负数和非有限数统一归零。 */

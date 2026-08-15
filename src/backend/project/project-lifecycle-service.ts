@@ -313,7 +313,7 @@ export class ProjectLifecycleService {
       "parsed_items",
       "file_record",
     ]) {
-      if (Object.prototype.hasOwnProperty.call(body, field)) {
+      if (Object.hasOwn(body, field)) {
         throw new AppErrors.AppError("request.validation_failed", {
           diagnostic_context: { reason: "legacy_create_commit_field", field },
         });

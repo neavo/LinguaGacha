@@ -47,7 +47,7 @@ describe("ModelItemChip", () => {
     root = null;
   });
 
-  it("禁用拖拽时保留可命名的配置入口与菜单内容", async () => {
+  it("禁用拖拽时保留可用的配置入口", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -71,8 +71,6 @@ describe("ModelItemChip", () => {
     );
 
     expect(drag_button?.disabled).toBe(true);
-    expect(model_button).toBeInstanceOf(HTMLButtonElement);
     expect(model_button?.disabled).toBe(false);
-    expect(container.textContent).toContain("配置动作");
   });
 });

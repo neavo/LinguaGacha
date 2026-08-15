@@ -126,10 +126,7 @@ function has_explicit_section_payload(
   request: ProjectWriteChangeRequest,
   section: ProjectDataSection,
 ): boolean {
-  return (
-    request.sections !== undefined &&
-    Object.prototype.hasOwnProperty.call(request.sections, section)
-  );
+  return request.sections !== undefined && Object.hasOwn(request.sections, section);
 }
 
 /** 按 payloadMode 组装公开 items 变更。 */
@@ -198,14 +195,13 @@ function build_sections_payload(
 ): { sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>> } {
   const sections: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>> = {};
   for (const section of args.updatedSections) {
-    const has_explicit_payload = Object.prototype.hasOwnProperty.call(value ?? {}, section);
+    const has_explicit_payload = Object.hasOwn(value ?? {}, section);
     if ((section === "items" || section === "files") && !has_explicit_payload) {
       continue;
     }
     const raw_payload = value?.[section];
     const payload_mode = raw_payload?.payloadMode ?? "section-invalidated";
-    const has_explicit_data =
-      raw_payload !== undefined && Object.prototype.hasOwnProperty.call(raw_payload, "data");
+    const has_explicit_data = raw_payload !== undefined && Object.hasOwn(raw_payload, "data");
     sections[section] = {
       payloadMode: payload_mode,
       ...(payload_mode !== "canonical-delta"

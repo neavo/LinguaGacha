@@ -57,8 +57,8 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           disabled={props.disabled}
           className="workbench-page__row-action"
           aria-label={t("workbench_page.table.actions")}
-          data-workbench-ignore-row-click="true"
-          data-workbench-ignore-box-select="true"
+          data-app-table-ignore-row-click="true"
+          data-app-table-ignore-box-select="true"
         >
           <CircleEllipsis data-icon="inline-start" />
         </AppButton>

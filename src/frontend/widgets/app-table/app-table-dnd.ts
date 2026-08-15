@@ -35,15 +35,9 @@ export function build_app_table_reordered_row_ids(args: {
   const insert_index = remaining_row_ids.findIndex((row_id) => {
     return row_id === args.over_row_id;
   });
-  let last_moving_index = -1;
-
-  for (let index = args.ordered_row_ids.length - 1; index >= 0; index -= 1) {
-    const row_id = args.ordered_row_ids[index];
-    if (row_id !== undefined && moving_row_id_set.has(row_id)) {
-      last_moving_index = index;
-      break;
-    }
-  }
+  const last_moving_index = args.ordered_row_ids.findLastIndex((row_id) => {
+    return moving_row_id_set.has(row_id);
+  });
 
   const should_insert_after_over_row = over_row_index > last_moving_index;
   const normalized_insert_index =

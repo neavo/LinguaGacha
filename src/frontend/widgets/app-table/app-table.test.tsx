@@ -312,6 +312,46 @@ describe("AppTable row model", () => {
     });
   });
 
+  it("行内交互标记阻止点击和框选同时改变表格选区", async () => {
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const container = await mount(
+      create_default_props({
+        columns: [
+          {
+            kind: "data",
+            id: "action",
+            title: "操作",
+            render_cell: () => (
+              <button
+                data-app-table-ignore-row-click="true"
+                data-app-table-ignore-box-select="true"
+              >
+                操作
+              </button>
+            ),
+          },
+        ],
+        on_selection_change,
+      }),
+    );
+
+    const button = container.querySelector("button");
+    act(() => {
+      button?.click();
+      button?.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 1,
+          clientY: 1,
+        }),
+      );
+    });
+
+    expect(on_selection_change).not.toHaveBeenCalled();
+    expect(container.querySelector(".app-table__selection-box")).toBeNull();
+  });
+
   it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {
     app_table_test_state.virtual_item_indices = [0];
 

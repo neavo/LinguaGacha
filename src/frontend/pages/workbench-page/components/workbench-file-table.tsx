@@ -68,29 +68,6 @@ function sort_workbench_entries(
   return sorted_entries;
 }
 
-function should_ignore_workbench_row_click(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      ['[data-workbench-ignore-row-click="true"]', '[data-app-table-ignore-row-click="true"]'].join(
-        ", ",
-      ),
-    ) !== null
-  );
-}
-
-function should_ignore_workbench_box_selection_target(target_element: HTMLElement): boolean {
-  return (
-    target_element.closest(
-      [
-        '[data-workbench-ignore-box-select="true"]',
-        '[data-app-table-ignore-box-select="true"]',
-        '[data-slot="scroll-area-scrollbar"]',
-        '[data-slot="scroll-area-thumb"]',
-        '[data-slot="scroll-area-corner"]',
-      ].join(", "),
-    ) !== null
-  );
-}
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n();
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
@@ -236,8 +213,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
               />
             );
           }}
-          ignore_row_click_target={should_ignore_workbench_row_click}
-          ignore_box_select_target={should_ignore_workbench_box_selection_target}
           box_selection_enabled
           table_class_name="workbench-page__table"
           row_class_name={() => "workbench-page__table-row"}

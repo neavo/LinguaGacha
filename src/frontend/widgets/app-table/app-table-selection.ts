@@ -8,6 +8,14 @@ function dedupe_row_ids(row_ids: string[]): string[] {
   return Array.from(new Set(row_ids));
 }
 
+/** 右键已选行时作用于整组选择；右键未选行时只作用于该行。 */
+export function resolve_app_table_context_target_row_ids<Id extends string>(
+  row_id: Id,
+  selected_row_ids: Id[],
+): Id[] {
+  return selected_row_ids.includes(row_id) ? selected_row_ids : [row_id];
+}
+
 export function are_app_table_selection_states_equal(
   left_state: AppTableSelectionState,
   right_state: AppTableSelectionState,

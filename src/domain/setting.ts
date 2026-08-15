@@ -1,4 +1,4 @@
-import type { JsonRecord, JsonValue } from "./json";
+import { read_json_boolean, type JsonRecord, type JsonValue } from "./json";
 import { normalize_app_language, type AppLanguage } from "./app-language";
 import { normalize_model_selection } from "./model";
 
@@ -258,7 +258,7 @@ export class Setting {
       return normalize_model_selection(value) as unknown as JsonValue;
     }
     if (BOOLEAN_SETTING_KEYS.has(key)) {
-      return normalize_boolean_setting(value, Boolean(DEFAULT_SETTING[key]));
+      return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
     }
     if (NUMBER_SETTING_KEYS.has(key)) {
       return normalize_number_setting(value, Number(DEFAULT_SETTING[key] ?? 0));
@@ -393,11 +393,11 @@ export function normalize_project_settings_snapshot(
       record["target_language"],
       fallback.target_language,
     ),
-    mtool_optimizer_enable: normalize_boolean_setting(
+    mtool_optimizer_enable: read_json_boolean(
       record["mtool_optimizer_enable"],
       fallback.mtool_optimizer_enable,
     ),
-    skip_duplicate_source_text_enable: normalize_boolean_setting(
+    skip_duplicate_source_text_enable: read_json_boolean(
       record["skip_duplicate_source_text_enable"],
       fallback.skip_duplicate_source_text_enable,
     ),
@@ -426,26 +426,7 @@ function read_project_string_setting(value: JsonValue | undefined, fallback: str
 }
 
 function read_boolean_setting(value: JsonValue | undefined, key: SettingKey): boolean {
-  return normalize_boolean_setting(value, Boolean(DEFAULT_SETTING[key]));
-}
-
-function normalize_boolean_setting(value: unknown, fallback: boolean): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "1") {
-      return true;
-    }
-    if (normalized === "false" || normalized === "0") {
-      return false;
-    }
-  }
-  return fallback;
+  return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
 }
 
 function read_number_setting(value: JsonValue | undefined, key: SettingKey): number {

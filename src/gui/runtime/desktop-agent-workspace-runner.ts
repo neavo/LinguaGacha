@@ -353,7 +353,7 @@ function build_workspace_program(
   const recipeSources = Object.freeze(${JSON.stringify(recipe_sources)});
   const compiledRecipes = new Map();
   const runRecipe = async (name, args) => {
-    if (typeof name !== "string" || !Object.prototype.hasOwnProperty.call(recipeSources, name)) {
+    if (typeof name !== "string" || !Object.hasOwn(recipeSources, name)) {
       throw new Error("未知 workspace recipe：" + String(name));
     }
     if (typeof args !== "object" || args === null || Array.isArray(args)) {

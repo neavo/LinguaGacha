@@ -49,28 +49,6 @@ export async function install_windows_berserker(context, run_command = child_pro
 }
 
 /**
- * Windows 发布包必须在 afterPack 内构建轻量 console launcher，确保打包入口拥有完整产物生命周期。
- */
-export async function build_windows_cli_launcher(
-  project_dir,
-  windows_arch,
-  run_command = child_process.execFileSync,
-) {
-  await build_windows_go_tool(project_dir, WINDOWS_CLI_TOOL, windows_arch, run_command);
-}
-
-/**
- * Windows 发布包必须在 afterPack 内构建外部更新器，保证 zip 自带覆盖更新能力。
- */
-export async function build_windows_berserker(
-  project_dir,
-  windows_arch,
-  run_command = child_process.execFileSync,
-) {
-  await build_windows_go_tool(project_dir, WINDOWS_BERSERKER_TOOL, windows_arch, run_command);
-}
-
-/**
  * 安装单个 Windows Go 工具，非 Windows 平台直接跳过。
  */
 async function install_windows_go_tool(context, tool, run_command) {

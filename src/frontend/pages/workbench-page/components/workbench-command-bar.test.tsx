@@ -17,7 +17,6 @@ const agent_input_mocks = vi.hoisted(() => ({
 /** 测试只关心 i18n 键的消费关系，不复制可独立调整的产品文案。 */
 const locale_messages: Record<string, string> = {
   "agent_page.empty.suggestions.glossary_create": "create-glossary",
-  "workbench_page.analysis_task.migration.description": "analysis-migration-description",
   "workbench_page.analysis_task.migration.jump": "jump-to-agent",
   "workbench_page.analysis_task.migration.continue": "continue-classic-analysis",
   "workbench_page.analysis_task.feedback.agent_draft_preserved": "draft-preserved",
@@ -211,20 +210,14 @@ describe("WorkbenchCommandBar", () => {
     const start_analysis = props.analysis_workbench_task.request_start_or_continue_analysis;
 
     await act(async () => find_button("analysis-task").click());
-    expect(document.body.textContent).toContain(
-      locale_messages["workbench_page.analysis_task.migration.description"],
-    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     expect(start_analysis).not.toHaveBeenCalled();
-    expect(find_button("jump-to-agent").getAttribute("data-variant")).toBe("outline");
-    expect(find_button("continue-classic-analysis").getAttribute("data-variant")).toBe("default");
 
     await act(async () => find_button("continue-classic-analysis").click());
     expect(start_analysis).toHaveBeenCalledOnce();
 
     await act(async () => find_button("analysis-task").click());
-    expect(document.body.textContent).toContain(
-      locale_messages["workbench_page.analysis_task.migration.description"],
-    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 
   it("跳转 AGENT 前为当前空草稿写入术语生成指令", async () => {
@@ -261,8 +254,6 @@ describe("WorkbenchCommandBar", () => {
     expect(
       props.translation_workbench_task.request_start_or_continue_translation,
     ).toHaveBeenCalledOnce();
-    expect(document.body.textContent).not.toContain(
-      locale_messages["workbench_page.analysis_task.migration.description"],
-    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 });

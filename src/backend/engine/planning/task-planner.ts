@@ -17,6 +17,12 @@ import type {
   TranslationContext,
   TranslationRetryPlan,
 } from "./task-plan-types";
+import {
+  build_analysis_checkpoint_status_map,
+  is_analyzable_task_item,
+  read_task_item_id,
+  read_task_item_status,
+} from "../task-item";
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
 const DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT = 512; // 分析 prompt 额外包含术语抽取说明，默认 token 门槛独立保留。
@@ -86,7 +92,7 @@ export class TaskPlanner {
     mark_error: (item: MutableJsonRecord) => void,
     signal: AbortSignal,
   ): Promise<TranslationRetryPlan> {
-    const pending_items = returned_items.filter((item) => this.read_status(item) === "NONE");
+    const pending_items = returned_items.filter((item) => read_task_item_status(item) === "NONE");
     if (pending_items.length === 0) {
       return { retry_contexts: [], forced_error_items: [] };
     }
@@ -138,7 +144,7 @@ export class TaskPlanner {
     model: MutableJsonRecord,
     signal: AbortSignal,
   ): Promise<AnalysisContext[]> {
-    const checkpoint_status_by_id = this.build_checkpoint_status_map(checkpoints);
+    const checkpoint_status_by_id = build_analysis_checkpoint_status_map(checkpoints);
     const pending_items = items
       .map((item) => this.build_analysis_item_context(item, checkpoint_status_by_id))
       .filter((item): item is AnalysisItemContext => item !== null)
@@ -159,7 +165,7 @@ export class TaskPlanner {
     return chunks
       .map(({ chunk_items }) => {
         const chunk_contexts = chunk_items
-          .map((item) => context_by_id.get(this.read_item_id(item)))
+          .map((item) => context_by_id.get(read_task_item_id(item)))
           .filter((item): item is AnalysisItemContext => item !== undefined);
         return {
           work_unit_id: crypto.randomUUID(),
@@ -189,11 +195,11 @@ export class TaskPlanner {
     let chunk: MutableJsonRecord[] = [];
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
-      if (this.read_status(item) !== "NONE") {
+      if (read_task_item_status(item) !== "NONE") {
         skipped_count += 1;
         continue;
       }
-      const metric = metric_by_id.get(this.read_item_id(item));
+      const metric = metric_by_id.get(read_task_item_id(item));
       if (metric === undefined) {
         skipped_count += 1;
         continue;
@@ -300,10 +306,10 @@ export class TaskPlanner {
     const seen_item_ids = new Set<number>();
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
-      if (this.read_status(item) !== "NONE") {
+      if (read_task_item_status(item) !== "NONE") {
         continue;
       }
-      const item_id = this.read_item_id(item);
+      const item_id = read_task_item_id(item);
       if (item_id <= 0 || seen_item_ids.has(item_id)) {
         continue;
       }
@@ -336,7 +342,7 @@ export class TaskPlanner {
     const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
     for (let index = start - skipped_count - chunk.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (item === undefined || is_task_skipped_item_status(this.read_status(item))) {
+      if (item === undefined || is_task_skipped_item_status(read_task_item_status(item))) {
         continue;
       }
       const src = String(item["src"] ?? "").trim();
@@ -363,10 +369,10 @@ export class TaskPlanner {
     item: MutableJsonRecord,
     checkpoint_status_by_id: Map<number, string>,
   ): AnalysisItemContext | null {
-    if (!this.is_analyzable_item(item)) {
+    if (!is_analyzable_task_item(item)) {
       return null;
     }
-    const item_id = this.read_item_id(item);
+    const item_id = read_task_item_id(item);
     if (item_id <= 0) {
       return null;
     }
@@ -391,31 +397,6 @@ export class TaskPlanner {
   }
 
   /**
-   * checkpoint 只接受三态状态，坏数据不会影响调度。
-   */
-  private build_checkpoint_status_map(checkpoints: MutableJsonRecord[]): Map<number, string> {
-    const result = new Map<number, string>();
-    for (const checkpoint of checkpoints) {
-      const item_id = read_json_integer(checkpoint["item_id"], 0);
-      const status = String(checkpoint["status"] ?? "");
-      if (item_id > 0 && (status === "NONE" || status === "PROCESSED" || status === "ERROR")) {
-        result.set(item_id, status);
-      }
-    }
-    return result;
-  }
-
-  /**
-   * 分析跳过规则保持稳定语义。
-   */
-  private is_analyzable_item(item: MutableJsonRecord): boolean {
-    return (
-      !is_task_skipped_item_status(this.read_status(item)) &&
-      String(item["src"] ?? "").trim() !== ""
-    );
-  }
-
-  /**
    * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度。
    */
   private get_split_factor(token_threshold: number): number {
@@ -428,20 +409,6 @@ export class TaskPlanner {
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
     const threshold = { ...read_json_record(model["threshold"]) };
     return Math.max(16, read_json_integer(threshold["input_token_limit"], fallback));
-  }
-
-  /**
-   * item id 同时兼容数据库内部 id 和公开 item_id。
-   */
-  private read_item_id(item: MutableJsonRecord): number {
-    return read_json_integer(item["id"] ?? item["item_id"], 0);
-  }
-
-  /**
-   * 读取 item 当前状态事实。
-   */
-  private read_status(item: MutableJsonRecord): string {
-    return String(item["status"] ?? "NONE");
   }
 
   /**

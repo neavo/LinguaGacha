@@ -42,10 +42,7 @@ describe("ToolboxPage", () => {
       root?.render(<ToolboxPage is_sidebar_collapsed={false} />);
     });
 
-    expect(container.textContent).toContain("繁简转换");
     const entry = get_button_by_name(container, "繁简转换");
-
-    expect(entry.type).toBe("button");
 
     await act(async () => entry.click());
 

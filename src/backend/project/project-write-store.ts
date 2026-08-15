@@ -1034,7 +1034,7 @@ export class ProjectWriteStore {
     }
     const meta = this.read_project_meta(project_path);
     for (const section of sections) {
-      if (!Object.prototype.hasOwnProperty.call(expected_section_revisions, section)) {
+      if (!Object.hasOwn(expected_section_revisions, section)) {
         throw new AppErrors.AppError("request.validation_failed", {
           public_details: { section },
         });

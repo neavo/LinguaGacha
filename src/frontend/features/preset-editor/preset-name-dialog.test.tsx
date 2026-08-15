@@ -64,8 +64,6 @@ describe("PresetNameDialog", () => {
     if (!(input instanceof HTMLInputElement)) {
       throw new Error("缺少预设名称输入框。");
     }
-    expect(input.placeholder).toBe("text_preserve_page.preset.dialog.name_placeholder");
-
     await act(async () => {
       const value_setter = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,

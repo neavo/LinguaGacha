@@ -65,8 +65,12 @@ import {
   create_quality_rule_duplicate_resolution_plan,
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
-import { reorder_selected_quality_rule_entries } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
+  reorder_selected_quality_rule_entries,
+  resolve_quality_rule_insert_after_entry_id,
+} from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import {
+  useQualityRuleResultControls,
   useQualityRuleSelectionPruning,
   useQualityRuleTableSessionReset,
 } from "@frontend/features/quality-rule-editor/use-quality-rule-table-session";
@@ -76,7 +80,6 @@ import type {
   TextPreserveEntry,
   TextPreserveEntryDraft,
   TextPreserveEntryId,
-  TextPreserveFilterScope,
   TextPreserveFilterState,
   TextPreserveMode,
   TextPreserveHitBadgeState,
@@ -84,10 +87,7 @@ import type {
   TextPreserveVisibleEntry,
   UseTextPreservePageStateResult,
 } from "@frontend/pages/text-preserve-page/types";
-import type {
-  AppTableSelectionChange,
-  AppTableSortState,
-} from "@frontend/widgets/app-table/app-table-types";
+import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import { normalize_text_preserve_mode } from "@domain/quality";
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/quality-rule-import";
 import { build_text_preserve_rule } from "@shared/text/text-preserve-rules";
@@ -371,18 +371,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [entry_ids]);
 
   const resolve_create_insert_after_entry_id = useCallback((): TextPreserveEntryId | null => {
-    if (active_entry_id !== null && entry_index_by_id.has(active_entry_id)) {
-      return active_entry_id;
-    }
-
-    for (let index = selected_entry_ids.length - 1; index >= 0; index -= 1) {
-      const selected_entry_id = selected_entry_ids[index];
-      if (selected_entry_id !== undefined && entry_index_by_id.has(selected_entry_id)) {
-        return selected_entry_id;
-      }
-    }
-
-    return null;
+    return resolve_quality_rule_insert_after_entry_id(
+      active_entry_id,
+      selected_entry_ids,
+      entry_index_by_id,
+    );
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
   const completed_hit_entry_id_set = useMemo<ReadonlySet<TextPreserveEntryId>>(() => {
     return new Set(hit_state.entry_ids ?? []);
@@ -658,85 +651,21 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_selection_state: set_table_selection_state,
   });
 
-  const update_filter_keyword = useCallback(
-    (next_keyword: string): void => {
-      const next_filter_state = {
-        ...filter_state,
-        keyword: next_keyword,
-      };
-      // 首次快照尚未落地时，先冻结旧查询结果，再让输入防抖决定何时应用新查询。
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const update_filter_scope = useCallback(
-    (next_scope: TextPreserveFilterScope): void => {
-      const next_filter_state = {
-        ...filter_state,
-        scope: next_scope,
-      };
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const update_filter_regex = useCallback(
-    (next_is_regex: boolean): void => {
-      const next_filter_state = {
-        ...filter_state,
-        is_regex: next_is_regex,
-      };
-      set_result_snapshot((previous_snapshot) => {
-        return previous_snapshot ?? build_result_snapshot(filter_state, sort_state);
-      });
-      set_table_filter_state(next_filter_state);
-      debounced_result_snapshot.schedule(next_filter_state, sort_state);
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      filter_state,
-      set_table_filter_state,
-      sort_state,
-    ],
-  );
-
-  const apply_table_sort_state = useCallback(
-    (next_sort_state: AppTableSortState | null): void => {
-      debounced_result_snapshot.cancel();
-      set_table_sort_state(next_sort_state);
-      set_result_snapshot(build_result_snapshot(filter_state, next_sort_state));
-    },
-    [build_result_snapshot, debounced_result_snapshot, filter_state, set_table_sort_state],
-  );
-
-  const apply_table_selection = useCallback(
-    (payload: AppTableSelectionChange): void => {
-      set_table_selection_state(payload);
-    },
-    [set_table_selection_state],
-  );
+  const {
+    update_filter_keyword,
+    update_filter_scope,
+    update_filter_regex,
+    apply_table_sort_state,
+  } = useQualityRuleResultControls({
+    filter_state,
+    sort_state,
+    build_result_snapshot,
+    set_result_snapshot,
+    set_filter_state: set_table_filter_state,
+    set_sort_state: set_table_sort_state,
+    debounced_result_snapshot,
+    resolve_sort_state: normalize_text_preserve_sort_state,
+  });
 
   const update_mode = useCallback(
     async (next_mode: TextPreserveMode): Promise<void> => {
@@ -1591,7 +1520,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     update_filter_scope,
     update_filter_regex,
     apply_table_sort_state,
-    apply_table_selection,
+    apply_table_selection: set_table_selection_state,
     update_mode,
     open_create_dialog,
     open_edit_dialog,

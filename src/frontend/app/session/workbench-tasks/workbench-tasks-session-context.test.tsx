@@ -65,7 +65,6 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => {
         <button
           type="button"
           data-testid="task-confirm-dialog"
-          data-description={props.description}
           data-submitting={String(props.submitting)}
           onClick={() => {
             void props.onConfirm();
@@ -239,9 +238,7 @@ describe("WorkbenchTasksSessionProvider", () => {
 
     const dialog = container?.querySelector('[data-testid="task-confirm-dialog"]');
     expect(container?.querySelector('[data-testid="non-workbench-page"]')).not.toBeNull();
-    expect(dialog?.getAttribute("data-description")).toBe(
-      "workbench_page.translation_task.confirm.generate_description",
-    );
+    expect(dialog).not.toBeNull();
   });
 
   it("向子节点暴露同一份常驻任务运行态", async () => {

@@ -48,7 +48,3 @@ export function resolve_translation_prompt_mode(lines: TranslationLine[]): Trans
 export function read_translation_text_srcs(lines: TranslationLine[]): string[] {
   return lines.map((line) => line.text_src);
 }
-
-export function format_translation_actor(actor: TranslationActor): string {
-  return actor === null ? "null" : actor;
-}

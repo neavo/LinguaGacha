@@ -5,7 +5,6 @@ import {
   type ProjectChangeItemsPayload,
   type ProjectChangePayloadMode,
   type ProjectDataSection,
-  type ProjectDataSectionRevisions,
 } from "@shared/project-event";
 
 // 沿用后端公开 section 词表，渲染进程不再维护额外项目阶段名。
@@ -13,12 +12,6 @@ export type ProjectStage = ProjectDataSection;
 
 // 项目刷新信号携带的可选 revision 集合。
 export type ProjectSectionRevisions = Partial<Record<ProjectStage, number>>;
-
-// 页面写入依赖的项目身份与 section revision。
-export type ProjectDataRevisionCheckpoint = {
-  projectPath: string;
-  sections: ProjectDataSectionRevisions;
-};
 
 // 只保留页面判断是否需要重新 query 的 payload mode。
 export type ProjectChangeSectionPayload = {
