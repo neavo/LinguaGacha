@@ -7,7 +7,7 @@ import type {
   DesktopUpdateDownloadResult,
   DesktopUpdateLaunchRequest,
   DesktopUpdateLaunchResult,
-  ThemeMode,
+  ResolvedThemeMode,
 } from "./bridge/bridge-types";
 
 // main、preload 与 renderer 共用这一份通道词表，避免各层以字符串重新声明协议。
@@ -54,7 +54,7 @@ export type DesktopIpcInvokeContract = {
 // send 型 IPC 只用于无返回值通知，当前由 renderer 主题同步、诊断面包屑、main 关闭请求和更新进度组成
 export type DesktopIpcSendContract = {
   [IPC_CHANNEL_TITLE_BAR_THEME]: {
-    args: [theme_mode: ThemeMode];
+    args: [theme_mode: ResolvedThemeMode];
   };
   [IPC_CHANNEL_RENDERER_DIAGNOSTICS]: {
     args: [payload: DesktopRendererDiagnosticsPayload];

@@ -1,8 +1,8 @@
 import type { RendererDiagnosticsPayload } from "../../shared/error";
 import type { WindowsReleaseZipUrls } from "../../shared/update/windows-update-target";
 
-// 桌面主题只暴露网页壳层和原生标题栏都能稳定消费的明暗两态
-export type ThemeMode = "light" | "dark";
+// 宿主只消费 renderer 已解析完成的明暗主题，不接触 system 等用户偏好
+export type ResolvedThemeMode = "light" | "dark";
 
 // 标题栏控制按钮方位来自宿主平台，renderer 只按这个结果预留安全区
 export type TitleBarControlSide = "left" | "right" | "none";

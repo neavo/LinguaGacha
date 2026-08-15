@@ -1,12 +1,13 @@
 import { isValidElement, useEffect, useId, useState, type ReactNode } from "react";
-import { useTheme } from "next-themes";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import type { MermaidConfig } from "mermaid";
+import { useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { open_external_url } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import type { ResolvedThemeMode } from "@gui/bridge-types";
 
 import "./agent-markdown.css";
 
@@ -14,8 +15,6 @@ type AgentMarkdownProps = {
   text: string;
   streaming: boolean;
 };
-
-type MermaidThemeMode = "light" | "dark";
 
 type MermaidRenderState =
   | { key: string; status: "success"; svg: string }
@@ -89,9 +88,9 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
 /** 主题或源码变化时重建图表；旧异步结果由 effect 生命周期丢弃。 */
 function AgentMermaid({ source }: { source: string }): JSX.Element {
   const { t } = useI18n();
-  const { resolvedTheme } = useTheme();
+  const { resolved_theme } = useAppearance();
   const diagram_id = `agent-mermaid-${useId().replaceAll(":", "")}`;
-  const theme_mode = resolve_mermaid_theme(resolvedTheme);
+  const theme_mode = resolved_theme;
   const render_key = `${theme_mode}\u0000${source}`;
   const [render_state, set_render_state] = useState<MermaidRenderState>(null);
 
@@ -150,19 +149,11 @@ function read_code_block(children: ReactNode): CodeBlock | null {
   };
 }
 
-/** next-themes 尚未收敛时，以根节点当前 class 作为首帧主题事实。 */
-function resolve_mermaid_theme(resolved_theme: string | undefined): MermaidThemeMode {
-  return resolved_theme === "dark" ||
-    (resolved_theme !== "light" && document.documentElement.classList.contains("dark"))
-    ? "dark"
-    : "light";
-}
-
 /** Mermaid 自带渲染队列；这里只应用当前主题，不维护第二套调度状态。 */
 async function render_mermaid(
   id: string,
   source: string,
-  theme_mode: MermaidThemeMode,
+  theme_mode: ResolvedThemeMode,
 ): Promise<string> {
   const mermaid = (await import("mermaid")).default;
   mermaid.initialize(build_mermaid_config(theme_mode));
@@ -170,7 +161,7 @@ async function render_mermaid(
 }
 
 /** 只从全局设计 token 投影安全主题，图表源码不能覆盖这些宿主约束。 */
-function build_mermaid_config(theme_mode: MermaidThemeMode): MermaidConfig {
+function build_mermaid_config(theme_mode: ResolvedThemeMode): MermaidConfig {
   const style = getComputedStyle(document.documentElement);
   const read_token = (name: string): string => style.getPropertyValue(name).trim();
   const font_family = "var(--ui-font-family-base)";

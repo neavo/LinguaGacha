@@ -31,7 +31,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     },
   }),
 }));
-vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
 
 import { AgentTimeline } from "./agent-timeline";
 import { create_agent_mention_tokens } from "./agent-mention";

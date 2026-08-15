@@ -131,7 +131,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     },
   }),
 }));
-vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
 
 import { AgentPage } from "./page";
 

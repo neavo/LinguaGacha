@@ -6,29 +6,11 @@ import {
   OctagonXIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-function resolve_toaster_theme(resolved_theme: string | undefined): ToasterProps["theme"] {
-  if (resolved_theme === "dark") {
-    return "dark";
-  } else if (
-    typeof document !== "undefined" &&
-    document.documentElement.classList.contains("dark")
-  ) {
-    return "dark";
-  } else {
-    return "light";
-  }
-}
-
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { resolvedTheme } = useTheme();
-  const theme = resolve_toaster_theme(resolvedTheme);
-
   return (
     <Sonner
-      theme={theme}
       position="top-center"
       offset={{
         top: 56,

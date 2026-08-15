@@ -10,7 +10,7 @@ import path from "node:path";
 import { build_backend_api_base_url_argument } from "../../backend/api/api-base-url";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../gui-ipc-contract";
 import { resolve_title_bar_overlay_theme, uses_title_bar_overlay } from "./shell-contract";
-import type { DesktopPlatform, ThemeMode } from "../bridge/bridge-types";
+import type { DesktopPlatform, ResolvedThemeMode } from "../bridge/bridge-types";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE, LogWindowHost } from "./log-window-host";
 import type { BackendRuntimeDiagnosticLevel } from "../../shared/backend-runtime";
 import type { LocaleKey } from "../../shared/i18n";
@@ -145,7 +145,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
  */
 export function sync_title_bar_overlay(
   target_window: BrowserWindow | null,
-  theme_mode: ThemeMode,
+  theme_mode: ResolvedThemeMode,
 ): void {
   if (target_window === null) {
     return;

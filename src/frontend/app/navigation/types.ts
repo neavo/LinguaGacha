@@ -41,16 +41,6 @@ export type NavigationGroup = {
   items: NavigationNode[];
 };
 
-export type BottomActionId = "theme" | "language" | "logs";
-
-export type AppearanceMenuActionId = "theme-mode" | "font-family";
-
-export type BottomAction = {
-  id: BottomActionId;
-  label_key: LocaleKey;
-  icon: LucideIcon;
-};
-
 export type ScreenComponentProps = {
   is_sidebar_collapsed: boolean;
 };

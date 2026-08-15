@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { useTheme } from "next-themes";
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
@@ -11,6 +10,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 
+import { useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { cn } from "@frontend/shadcn/classnames";
 import {
   app_editor_text_mark_field,
@@ -257,7 +257,7 @@ function create_editor_extensions(args: {
 
 /** 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。 */
 export function AppEditor(props: AppEditorProps): JSX.Element {
-  const { resolvedTheme } = useTheme();
+  const { resolved_theme } = useAppearance();
   const config = normalize_app_editor_props(props);
   const { indent_with_tab, read_only, syntax, variant, wrap_lines } = config;
   const value = resolve_app_editor_value(props.value, variant);
@@ -278,7 +278,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const initial_marks_ref = useRef(normalize_app_text_marks(value.length, config.marks));
   const marks_ref = useRef<readonly AppTextMark[]>(initial_marks_ref.current);
   const initial_theme_extension_ref = useRef(
-    resolve_app_editor_theme_extensions(resolvedTheme, syntax),
+    resolve_app_editor_theme_extensions(resolved_theme, syntax),
   );
 
   useEffect(() => {
@@ -358,10 +358,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     editor_view.dispatch({
       effects: editor_theme_compartment.reconfigure(
-        resolve_app_editor_theme_extensions(resolvedTheme, syntax),
+        resolve_app_editor_theme_extensions(resolved_theme, syntax),
       ),
     });
-  }, [resolvedTheme, syntax]);
+  }, [resolved_theme, syntax]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;

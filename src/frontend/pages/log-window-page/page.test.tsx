@@ -102,10 +102,10 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => {
   };
 });
 
-vi.mock("next-themes", () => {
+vi.mock("@frontend/app/appearance/appearance-provider", () => {
   return {
-    useTheme: () => ({
-      resolvedTheme: "dark",
+    useAppearance: () => ({
+      resolved_theme: "dark",
     }),
   };
 });

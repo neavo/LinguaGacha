@@ -1,20 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
-} from "react";
-import { ThemeProvider, useTheme } from "next-themes";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import {
-  DEFAULT_ROUTE_ID,
-  BOTTOM_ACTIONS,
-  NAVIGATION_GROUPS,
-} from "@frontend/app/navigation/schema";
+import { DEFAULT_ROUTE_ID, NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
+import { AppearanceProvider, useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-context";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
@@ -41,11 +28,7 @@ import {
 } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import "@frontend/app/shell/app-shell.css";
-import type {
-  AppearanceMenuActionId,
-  BottomActionId,
-  RouteId,
-} from "@frontend/app/navigation/types";
+import type { RouteId } from "@frontend/app/navigation/types";
 import { LocaleProvider, useI18n } from "@frontend/app/locale/locale-provider";
 import { SidebarInset, SidebarProvider } from "@frontend/shadcn/sidebar";
 import { Toaster } from "@frontend/shadcn/sonner";
@@ -64,11 +47,7 @@ import {
   resolve_update_confirm_label,
   type UpdateDialogState,
 } from "@frontend/app/app-shell-state";
-import type {
-  DesktopUpdateDownloadProgress,
-  DesktopUpdateDownloadResult,
-  ThemeMode,
-} from "@gui/bridge-types";
+import type { DesktopUpdateDownloadProgress, DesktopUpdateDownloadResult } from "@gui/bridge-types";
 import {
   normalize_app_language,
   resolve_app_language_from_locale_tag,
@@ -78,10 +57,6 @@ import {
 
 // SIDEBAR STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
-// THEME STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
-const THEME_STORAGE_KEY = "lg-theme-mode";
-// FONT FAMILY STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
-const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
@@ -99,44 +74,6 @@ function read_sidebar_state(): boolean {
   }
 }
 
-function read_theme_mode(): ThemeMode {
-  if (typeof window === "undefined") {
-    return "light";
-  }
-
-  const stored_theme = window.localStorage.getItem(THEME_STORAGE_KEY);
-
-  if (stored_theme === "light" || stored_theme === "dark") {
-    return stored_theme;
-  } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-    return "dark";
-  } else {
-    return "light";
-  }
-}
-
-function read_lg_base_font_enabled(): boolean {
-  if (typeof window === "undefined") {
-    return true;
-  }
-
-  const stored_font_mode = window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY);
-
-  if (stored_font_mode === "disabled") {
-    return false;
-  } else {
-    return true;
-  }
-}
-
-function serialize_lg_base_font_mode(is_enabled: boolean): "enabled" | "disabled" {
-  return is_enabled ? "enabled" : "disabled";
-}
-
-function parse_lg_base_font_mode(stored_font_mode: string | null): boolean {
-  return stored_font_mode !== "disabled";
-}
-
 function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
@@ -152,51 +89,13 @@ function format_app_titlebar_title(app_name: string, version: string | null): st
   return `${app_name} ${version_label}`;
 }
 
-function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
-  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
-    read_lg_base_font_enabled(),
-  );
-
-  useEffect(() => {
-    const font_mode = serialize_lg_base_font_mode(is_lg_base_font_enabled);
-
-    document.documentElement.dataset.lgBaseFont = font_mode;
-    if (window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY) !== font_mode) {
-      window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, font_mode);
-    }
-  }, [is_lg_base_font_enabled]);
-
-  useEffect(() => {
-    function handle_storage(event: StorageEvent): void {
-      if (event.key !== FONT_FAMILY_STORAGE_KEY) {
-        return;
-      }
-
-      set_is_lg_base_font_enabled(parse_lg_base_font_mode(event.newValue));
-    }
-
-    window.addEventListener("storage", handle_storage);
-
-    return () => {
-      window.removeEventListener("storage", handle_storage);
-    };
-  }, []);
-
-  return [is_lg_base_font_enabled, set_is_lg_base_font_enabled];
-}
-
-type AppContentProps = {
-  is_lg_base_font_enabled: boolean;
-  set_is_lg_base_font_enabled: Dispatch<SetStateAction<boolean>>;
-};
-
 type LogWindowSettingsPayload = {
   settings?: {
     app_language?: unknown;
   };
 };
 
-function AppContent(props: AppContentProps): JSX.Element {
+function AppContent(): JSX.Element {
   const {
     initial_state_ready,
     pending_target_route,
@@ -209,7 +108,6 @@ function AppContent(props: AppContentProps): JSX.Element {
   } = useDesktopState();
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
-  const { resolvedTheme, setTheme } = useTheme();
   const shell_info = window.desktopApp.shell;
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
@@ -233,13 +131,6 @@ function AppContent(props: AppContentProps): JSX.Element {
   const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
   const update_release = read_update_release(update_dialog_state);
   const update_release_url = update_release?.release_url ?? null;
-  const theme_mode: ThemeMode =
-    resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
-
-  useEffect(() => {
-    window.desktopApp.setTitleBarTheme(theme_mode);
-  }, [theme_mode]);
-
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed));
   }, [is_sidebar_collapsed]);
@@ -336,10 +227,6 @@ function AppContent(props: AppContentProps): JSX.Element {
       project_session_status,
     });
   }, [project_snapshot.loaded, project_session_status]);
-  const badged_bottom_action_ids = useMemo<ReadonlySet<BottomActionId>>(() => {
-    return log_badge_visible ? new Set<BottomActionId>(["logs"]) : new Set();
-  }, [log_badge_visible]);
-
   const visible_navigation_groups = useMemo(() => {
     return NAVIGATION_GROUPS.filter((group) => {
       return group.items.some((item) => {
@@ -430,11 +317,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
-  function handle_bottom_action(action_id: BottomActionId): void {
-    if (action_id !== "logs") {
-      return;
-    }
-
+  function handle_open_logs(): void {
     set_log_badge_visible(false);
     void window.desktopApp.openLogWindow().catch((error: unknown) => {
       push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
@@ -445,18 +328,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     void update_app_language(language).catch((error: unknown) => {
       push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     });
-  }
-
-  function handle_appearance_menu_action(action_id: AppearanceMenuActionId): void {
-    if (action_id === "theme-mode") {
-      if (theme_mode === "light") {
-        setTheme("dark");
-      } else {
-        setTheme("light");
-      }
-    } else {
-      props.set_is_lg_base_font_enabled(!props.is_lg_base_font_enabled);
-    }
   }
 
   /**
@@ -666,15 +537,12 @@ function AppContent(props: AppContentProps): JSX.Element {
           <section className="shell-body">
             <AppSidebar
               groups={visible_navigation_groups}
-              bottom_actions={BOTTOM_ACTIONS}
               selected_route={selected_route}
               expanded_items={expanded_items}
               disabled_route_ids={disabled_route_ids}
-              disabled_bottom_action_ids={
-                is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
-              }
-              badged_bottom_action_ids={badged_bottom_action_ids}
               app_language={settings_snapshot.app_language}
+              is_language_updating={is_app_language_updating}
+              show_log_badge={log_badge_visible}
               profile_label_key={
                 update_release_url === null ? "app.profile.status" : "app.profile.update_available"
               }
@@ -686,8 +554,7 @@ function AppContent(props: AppContentProps): JSX.Element {
               is_profile_update_available={update_release_url !== null}
               on_select_route={handle_select_route}
               on_toggle_group={handle_toggle_group}
-              on_bottom_action={handle_bottom_action}
-              on_appearance_menu_action={handle_appearance_menu_action}
+              on_open_logs={handle_open_logs}
               on_select_app_language={handle_select_app_language}
               on_profile_action={handle_profile_action}
             />
@@ -717,7 +584,9 @@ function AppContent(props: AppContentProps): JSX.Element {
         description={
           update_release === null
             ? ""
-            : t("app.update.confirm_description", { VERSION: update_release.latest_version })
+            : t("app.update.confirm_description", {
+                VERSION: update_release.latest_version,
+              })
         }
         submitting={is_update_dialog_submitting(update_dialog_state)}
         submittingLabel={resolve_update_confirm_label(update_dialog_state, t)}
@@ -771,21 +640,24 @@ function read_initial_log_window_app_language(): AppLanguage {
     : normalize_app_language(stored_language);
 }
 
-function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
-  // 多窗口共享的视觉壳层只承载主题、tooltip 和提示，不读取项目或任务运行态
+/** 将已解析的窗口主题交给必须位于 AppearanceProvider 内部的视觉消费者。 */
+function WindowVisualContent({ children }: { children: ReactNode }): JSX.Element {
+  const { resolved_theme } = useAppearance();
+
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme={read_theme_mode()}
-      enableSystem={false}
-      storageKey={THEME_STORAGE_KEY}
-      themes={["light", "dark"]}
-    >
-      <TooltipProvider delayDuration={120}>
-        {children}
-        <Toaster />
-      </TooltipProvider>
-    </ThemeProvider>
+    <TooltipProvider delayDuration={120}>
+      {children}
+      <Toaster theme={resolved_theme} />
+    </TooltipProvider>
+  );
+}
+
+function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
+  // 多窗口共享的视觉壳层只承载外观、tooltip 和提示，不读取项目或任务运行态
+  return (
+    <AppearanceProvider>
+      <WindowVisualContent>{children}</WindowVisualContent>
+    </AppearanceProvider>
   );
 }
 
@@ -800,16 +672,13 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   );
 }
 
-function MainWindowApp(props: AppContentProps): JSX.Element {
+function MainWindowApp(): JSX.Element {
   // 只有主窗口拥有项目、任务、设置和主事件流运行态
   return (
     <DesktopStateProvider>
       <MainWindowLocaleProvider>
         <WindowVisualProviders>
-          <AppContent
-            is_lg_base_font_enabled={props.is_lg_base_font_enabled}
-            set_is_lg_base_font_enabled={props.set_is_lg_base_font_enabled}
-          />
+          <AppContent />
           <DesktopProgressToastModalLayer />
         </WindowVisualProviders>
       </MainWindowLocaleProvider>
@@ -852,18 +721,11 @@ function LogWindowApp(): JSX.Element {
 }
 
 function App(): JSX.Element {
-  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
-
   if (is_log_window_mode()) {
     return <LogWindowApp />;
   }
 
-  return (
-    <MainWindowApp
-      is_lg_base_font_enabled={is_lg_base_font_enabled}
-      set_is_lg_base_font_enabled={set_is_lg_base_font_enabled}
-    />
-  );
+  return <MainWindowApp />;
 }
 
 export default App;

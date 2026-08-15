@@ -9,18 +9,15 @@ import {
   GraduationCap,
   Grid2x2Check,
   LayoutDashboard,
-  Palette,
-  ScrollText,
   Radar,
   ReplaceAll,
   ScanText,
-  Languages,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 
-import type { BottomAction, NavigationGroup, RouteId } from "@frontend/app/navigation/types";
+import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
 
 export const DEFAULT_ROUTE_ID: RouteId = "project-home";
 
@@ -133,23 +130,5 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         title_key: "toolbox_page.title",
       },
     ],
-  },
-];
-
-export const BOTTOM_ACTIONS: BottomAction[] = [
-  {
-    id: "logs",
-    label_key: "app.navigation_action.logs",
-    icon: ScrollText,
-  },
-  {
-    id: "theme",
-    label_key: "app.navigation_action.theme",
-    icon: Palette,
-  },
-  {
-    id: "language",
-    label_key: "app.navigation_action.language",
-    icon: Languages,
   },
 ];

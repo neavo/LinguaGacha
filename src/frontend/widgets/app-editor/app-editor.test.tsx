@@ -4,11 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 
-vi.mock("next-themes", () => {
+vi.mock("@frontend/app/appearance/appearance-provider", () => {
   return {
-    useTheme: () => {
+    useAppearance: () => {
       return {
-        resolvedTheme: "light",
+        resolved_theme: "light",
       };
     },
   };
