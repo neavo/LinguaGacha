@@ -3,6 +3,8 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { AgentService } from "../agent/agent-service";
 import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
+import { ExaWebSearchClient } from "../agent/agent-web-search";
+import type { AgentWebPort } from "../agent/agent-web-tools";
 import {
   AgentWorkspaceService,
   type AgentWorkspaceRunPort,
@@ -118,6 +120,7 @@ export class BackendServices {
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
   private readonly system_proxy_http_client: SystemProxyHttpClient; // 普通后端远端 HTTP 的唯一生命周期所有者
+  private readonly agent_web_search: ExaWebSearchClient | null; // 仅随 GUI Web 能力创建并由组合根释放
   private task_stream_unsubscribe: (() => void) | null;
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
   private started = false;
@@ -146,6 +149,13 @@ export class BackendServices {
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
     this.system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);
+    this.agent_web_search =
+      options.agentWebFetch === undefined
+        ? null
+        : new ExaWebSearchClient(
+            this.system_proxy_http_client.fetch,
+            metadata.read_version_or_default(),
+          );
     const llm_client = new LLMClient({
       userAgent: user_agent,
       fetch: this.system_proxy_http_client.fetch,
@@ -324,6 +334,11 @@ export class BackendServices {
             logManager: this.logManager,
             run: options.agentWorkspaceRun,
           });
+    // 搜索与安全抓取要么成组交给 Agent，要么整体缺失，不注册半套能力。
+    const agent_web: AgentWebPort | undefined =
+      options.agentWebFetch === undefined || this.agent_web_search === null
+        ? undefined
+        : { read: options.agentWebFetch, search: this.agent_web_search.search };
     this.agent = new AgentService({
       paths,
       settings: this.app_setting_service,
@@ -331,7 +346,7 @@ export class BackendServices {
       modelFetch: this.system_proxy_http_client.fetch,
       sessionState: session_state,
       runtimeGate: this.runtime_gate,
-      webFetch: options.agentWebFetch,
+      web: agent_web,
       workspace: agent_workspace,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
@@ -379,6 +394,11 @@ export class BackendServices {
     const errors: unknown[] = [];
     try {
       await this.agent.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await this.agent_web_search?.dispose();
     } catch (error) {
       errors.push(error);
     }

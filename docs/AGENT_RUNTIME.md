@@ -37,7 +37,7 @@
 ## 4. 产品工具与宿主能力
 
 - 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
-- 工程数据工具只保留 `workspace_load`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖；`read_skill` 与可选 `web_fetch` 保持独立。
+- 工程数据工具只保留 `workspace_load`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖。
 - `workspace_load` 无参数生成完整只读快照和空 change 文件、挂载当前对话 task，只在工具结果返回语言与数量摘要；完整 project_meta 和 contract 保留在磁盘，脚本运行时把 contract 投影为 `workspace.contract`。project_meta 保存解释快照所需的语言、数量、文件顺序及可用的 source 文本路径或容器文本根；contract 是 datasets、显式 change 操作、字段、身份、稳定写入副作用、领域提交软建议、模型结果与查询上限、recipe 参数及具名返回形状的唯一代码权威，不承载固定脚本 SDK 或运行时生命周期。`workspace_script` 的 TypeBox 工具 Schema 是固定 SDK 和完整入口语法的唯一模型可见权威，Electron runner 注入相同成员。System Prompt 规定 items 优先、sources 仅补足缺失片段或结构证据，并提供无 skill 时读取工作区事实、准备并提交 contract 声明变更的完整默认流程；skill 只补充领域判断与处理方法。
 - 工作区按业务领域相邻组织只读数据和 load 时证据；analysis 状态与候选不作为快照数据集进入工作区，warnings 与 evidence 不随程序化处理重新计算。固定 change 文件按 items / prompts 更新和每个 quality kind 的创建、更新、删除、移动分开；`scratch/**` 只属于当前快照，`task/**` 是不带内容 schema 的跨快照自由目录。具体路径、字段与 recipe 查询算法留在 contract、发布源码和行为测试。
 - JavaScript 是唯一处理编排面。`workspace.runRecipe(name, args)` 在脚本内调用 contract 声明的发布 recipe；recipe 只获得 contract、读取与列表 API，不能写 change、task、scratch 或递归调用 recipe。三个 recipe 都返回具名对象，参数、分页与输出限制以 contract 为准。
@@ -45,7 +45,8 @@
 - 每次 `workspace_script` 只接收完整的 `async function main(workspace) { ... }` 入口函数，并在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中由宿主注入 `workspace` 后调用；缺少具名入口或未显式返回 JSON 值都失败并回滚。每次调用拥有唯一磁盘事务，脚本只把 contract `changes` 区块声明的固定文件及 `task/**`、`scratch/**` 写入 overlay；最终脚本结果通过 JSON 与 `contract.limits.result_bytes` 字节硬门后才提交，未捕获失败、停止或超限只回滚本次 overlay。提交失败先恢复被替换基线，补偿或清理失败才把当前快照标为失效。私有 protocol 提供活动快照、同级可写 task 与同级只读 sources 的合并视图、流式文件访问和只读 matcher；datasets、project_meta、contract、warnings、evidence、recipes 与 sources 永远只读，固定 change 文件不能删除。路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
 - `workspace_apply` 无参数，只读取非空显式 change 文件；items 按 ID 定点读取，prompts 只读取目标 kind，quality 只为受影响 kind 构造 prospective 最终集合，不扫描或比较完整 datasets。change 校验错误与数据库事务回滚保留当前快照，stale 或 revision 冲突只清理当前快照并要求重新 load；无变化不进入项目写口、不推进 revision、不发布事件。成功只返回紧凑真实计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`；apply 成功或无变化后销毁当前快照但保留 task。数据库已提交但缓存或公开事件同步失败使用带 `committed: true` 的稳定错误，销毁当前快照且禁止重试。
 - Agent 先对完整范围执行确定性程序化处理，只把剩余开放式语义目标按模型上下文软上限组成审查组；审查组不等于提交单元。技术提交只遵循 contract 的领域软建议，后端不以审查组或建议值建立硬上限；同一规则授权可以覆盖多个技术提交，连续 apply 之间重新 load。
-- `web_fetch({ url })` 仅由 GUI Backend Runtime 创建并注册，CLI 不提供假实现。它与普通模型网络共用 Electron session 提供的当前系统代理解析，但保留独立的安全下载边界：Backend 使用 Undici 逐跳抓取 HTTP(S)，每一跳重新解析代理；直连请求在实际 socket lookup 中只交付公网地址，代理请求把用户配置的代理视为目标解析与可达范围的信任边界。每次调用限制总时长、重定向和响应字节，HTTP 失败向模型返回状态码与最终 URL，受支持文本统一归一为 Markdown。系统提示是网页正文不可信规则的唯一归宿，工具描述和结果不重复注入同一规则。
+- GUI Agent 的 Web 能力以 `web_search` 与 `web_fetch` 成组注册，宿主抓取端口缺失时不注册假实现。`web_search` 通过固定 Exa MCP 工具延迟建立并复用无凭据会话，不动态投影远端工具或回退其它供应商；本地工具拥有模型 Schema、正文上限与错误契约。组合根在 Agent 之后、普通后端远端 HTTP Client 之前释放搜索会话。
+- `web_fetch` 与普通模型网络共用 Electron session 提供的当前系统代理解析，但保留独立的安全下载边界：Backend 使用 Undici 逐跳抓取 HTTP(S)，每一跳重新解析代理；直连请求在实际 socket lookup 中只交付公网地址，代理请求把用户配置的代理视为目标解析与可达范围的信任边界。每次调用限制总时长、重定向和响应字节，HTTP 失败向模型返回状态码与最终 URL，受支持文本统一归一为 Markdown。System Prompt 是搜索摘要和网页正文不可信规则的唯一归宿，工具描述和结果不重复注入同一规则。
 
 ## 5. 前端消费
 
