@@ -30,7 +30,7 @@ vi.mock("../engine/planning/planning-worker-pool", () => {
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
 import { AgentService } from "../agent/agent-service";
-import { ExaWebSearchClient } from "../agent/agent-web-search";
+import { WebSearchService } from "../agent/agent-web-search";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -77,7 +77,7 @@ describe("BackendServices", () => {
     options.agentWebFetch = vi.fn();
     const compute_worker_dispose = vi.spyOn(ComputeWorkerClient.prototype, "dispose");
     const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
-    const web_search_dispose = vi.spyOn(ExaWebSearchClient.prototype, "dispose");
+    const web_search_dispose = vi.spyOn(WebSearchService.prototype, "dispose");
     const system_proxy_dispose = vi.spyOn(SystemProxyHttpClient.prototype, "dispose");
     const services = new BackendServices(options);
 

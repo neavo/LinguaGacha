@@ -7,11 +7,14 @@ import { decode_text_content } from "../../shared/utils/text-tool";
 import { AgentToolError } from "./agent-tool";
 import type { AgentWebFetchPort, AgentWebFetchResponse } from "./agent-web-fetch";
 
-// 模型侧正文预算与唯一截断标记共同定义稳定输出契约。
+// 模型侧正文预算、搜索数量边界与唯一截断标记共同定义稳定输出契约。
 const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
 const WEB_SEARCH_MAX_TEXT_CHARS = 50_000;
+const WEB_SEARCH_DEFAULT_RESULTS = 10;
+const WEB_SEARCH_MAX_RESULTS = 10;
 const TRUNCATION_NOTICE = "[内容因长度限制已截断]";
 
+// 搜索 Schema 只公开三家都能稳定消费的产品参数，不投影任一远端完整能力。
 const WEB_SEARCH_PARAMETERS = Type.Object(
   {
     query: Type.String({
@@ -19,8 +22,10 @@ const WEB_SEARCH_PARAMETERS = Type.Object(
       description: "用自然语言描述希望找到的理想网页，而非只填写关键词。",
     }),
     num_results: Type.Optional(
-      Type.Number({
-        description: "返回结果数量，省略时由 Exa 默认返回 10 条。",
+      Type.Integer({
+        minimum: 1,
+        maximum: WEB_SEARCH_MAX_RESULTS,
+        description: `返回结果数量，省略时返回 ${WEB_SEARCH_DEFAULT_RESULTS} 条。`,
       }),
     ),
   },
@@ -46,12 +51,21 @@ export type AgentWebFetchDetails = {
   truncated: boolean; // Markdown 是否被模型侧字符上限截断
 };
 
+/** details 与内部诊断共用的稳定供应商身份。 */
+export type AgentWebSearchProvider = "exa" | "tavily" | "firecrawl";
+
+/** 搜索端口返回模型正文及其实际来源，不泄漏 MCP 响应对象。 */
+export type AgentWebSearchResult = Readonly<{
+  provider: AgentWebSearchProvider;
+  text: string;
+}>;
+
 /** Agent 工具层使用的固定搜索端口，不向会话层泄漏 MCP 类型。 */
 export type AgentWebSearchPort = (
   query: string,
-  num_results: number | undefined,
+  num_results: number,
   signal: AbortSignal,
-) => Promise<string>;
+) => Promise<AgentWebSearchResult>;
 
 /** GUI Agent 成组获得的完整只读 Web 能力。 */
 export type AgentWebPort = Readonly<{
@@ -75,11 +89,12 @@ export function create_agent_web_tools(web: AgentWebPort): ToolDefinition[] {
       parameters: WEB_SEARCH_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const text = await web.search(
+        const result = await web.search(
           params.query,
-          params.num_results,
+          params.num_results ?? WEB_SEARCH_DEFAULT_RESULTS,
           signal ?? new AbortController().signal,
         );
+        const text = result.text;
         const truncated = text.length > WEB_SEARCH_MAX_TEXT_CHARS;
         return {
           content: [
@@ -90,7 +105,7 @@ export function create_agent_web_tools(web: AgentWebPort): ToolDefinition[] {
                 : text,
             },
           ],
-          details: { truncated },
+          details: { provider: result.provider, truncated },
         };
       },
     }),

@@ -3,7 +3,7 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { AgentService } from "../agent/agent-service";
 import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
-import { ExaWebSearchClient } from "../agent/agent-web-search";
+import { WebSearchService } from "../agent/agent-web-search";
 import type { AgentWebPort } from "../agent/agent-web-tools";
 import {
   AgentWorkspaceService,
@@ -120,7 +120,7 @@ export class BackendServices {
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
   private readonly system_proxy_http_client: SystemProxyHttpClient; // 普通后端远端 HTTP 的唯一生命周期所有者
-  private readonly agent_web_search: ExaWebSearchClient | null; // 仅随 GUI Web 能力创建并由组合根释放
+  private readonly agent_web_search: WebSearchService | null; // 应用级多源搜索状态由组合根持有
   private task_stream_unsubscribe: (() => void) | null;
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
   private started = false;
@@ -152,7 +152,7 @@ export class BackendServices {
     this.agent_web_search =
       options.agentWebFetch === undefined
         ? null
-        : new ExaWebSearchClient(
+        : new WebSearchService(
             this.system_proxy_http_client.fetch,
             metadata.read_version_or_default(),
           );

@@ -1,121 +1,221 @@
 import type { FetchFunction } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ExaWebSearchClient } from "./agent-web-search";
+import { WebSearchService } from "./agent-web-search";
+import type { AgentWebSearchProvider } from "./agent-web-tools";
 
 const TEST_CLIENT_VERSION = "1.2.3";
 
-describe("Exa Agent Web 搜索适配器", () => {
+describe("Agent Web 多源搜索服务", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("通过无凭证 MCP 会话搜索并复用连接", async () => {
-    const server = create_mcp_server();
-    const client = new ExaWebSearchClient(server.fetch, TEST_CLIENT_VERSION);
+  it("映射三家无凭据 MCP 参数，并把成功后备源晋升为首选", async () => {
+    const network = create_mcp_network({
+      exa: [{ status: 429 }, { text: "Exa 结果" }],
+      tavily: [{ text: "Tavily 结果" }, { status: 429 }],
+      firecrawl: [{ text: "Firecrawl 结果" }, { status: 429 }],
+    });
+    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const signal = new AbortController().signal;
 
-    await expect(
-      client.search("当前 TypeScript 版本", 3, new AbortController().signal),
-    ).resolves.toBe("Title: TypeScript\nURL: https://www.typescriptlang.org/");
-    await expect(
-      client.search("当前 TypeScript 版本", undefined, new AbortController().signal),
-    ).resolves.toContain("https://www.typescriptlang.org/");
-    await client.dispose();
+    await expect(service.search("第一次查询", 3, signal)).resolves.toEqual({
+      provider: "tavily",
+      text: "Tavily 结果",
+    });
+    await expect(service.search("第二次查询", 4, signal)).resolves.toEqual({
+      provider: "firecrawl",
+      text: "Firecrawl 结果",
+    });
+    await expect(service.search("第三次查询", 5, signal)).resolves.toEqual({
+      provider: "exa",
+      text: "Exa 结果",
+    });
+    await service.dispose();
 
-    expect(server.methods.filter((method) => method === "initialize")).toHaveLength(1);
-    expect(server.tool_calls).toEqual([
+    expect(network.tool_calls).toEqual([
       {
+        provider: "exa",
         name: "web_search_exa",
-        arguments: { query: "当前 TypeScript 版本", numResults: 3 },
+        arguments: { query: "第一次查询", numResults: 3 },
       },
       {
+        provider: "tavily",
+        name: "tavily_search",
+        arguments: { query: "第一次查询", max_results: 3 },
+      },
+      {
+        provider: "tavily",
+        name: "tavily_search",
+        arguments: { query: "第二次查询", max_results: 4 },
+      },
+      {
+        provider: "firecrawl",
+        name: "firecrawl_search",
+        arguments: {
+          query: "第二次查询",
+          limit: 4,
+          sources: [{ type: "web" }],
+        },
+      },
+      {
+        provider: "firecrawl",
+        name: "firecrawl_search",
+        arguments: {
+          query: "第三次查询",
+          limit: 5,
+          sources: [{ type: "web" }],
+        },
+      },
+      {
+        provider: "exa",
         name: "web_search_exa",
-        arguments: { query: "当前 TypeScript 版本" },
+        arguments: { query: "第三次查询", numResults: 5 },
       },
     ]);
-    for (const headers of server.headers) {
-      expect(headers.has("authorization")).toBe(false);
-      expect(headers.has("x-api-key")).toBe(false);
+    for (const provider of ["exa", "tavily", "firecrawl"] satisfies AgentWebSearchProvider[]) {
+      expect(
+        network.methods.filter(
+          (request) => request.provider === provider && request.method === "initialize",
+        ),
+      ).toHaveLength(1);
+      for (const headers of network.headers[provider]) {
+        expect(headers.has("authorization")).toBe(false);
+        expect(headers.has("x-api-key")).toBe(false);
+        expect(headers.get("x-tavily-access-mode")).toBe(provider === "tavily" ? "keyless" : null);
+      }
     }
   });
 
-  it.each([
-    [429, "web_search.rate_limited"],
-    [500, "web_search.unavailable"],
-  ])("把 HTTP %i 映射为稳定错误", async (status, code) => {
-    const server = create_mcp_server({ tool_statuses: [status] });
-    const client = new ExaWebSearchClient(server.fetch, TEST_CLIENT_VERSION);
-
-    await expect(client.search("失败查询", 5, new AbortController().signal)).rejects.toMatchObject({
-      details: { code },
+  it("会话失效时重建当前供应商连接并只重试一次", async () => {
+    const network = create_mcp_network({
+      exa: [{ status: 404 }, { text: "重连结果" }],
     });
-    await client.dispose();
+    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+
+    await expect(service.search("重连查询", 2, new AbortController().signal)).resolves.toEqual({
+      provider: "exa",
+      text: "重连结果",
+    });
+    await service.dispose();
+
+    expect(
+      network.methods.filter(
+        (request) => request.provider === "exa" && request.method === "initialize",
+      ),
+    ).toHaveLength(2);
+    expect(network.tool_calls.filter((request) => request.provider === "exa")).toHaveLength(2);
   });
 
-  it("把整次搜索超时映射为稳定错误", async () => {
+  it.each([
+    ["全部限流", { status: 429 }, "web_search.rate_limited"],
+    ["全部工具失败", { tool_error: true }, "web_search.upstream_failed"],
+    ["全部返回空文本", { text: "  " }, "web_search.empty_result"],
+  ] satisfies Array<[string, ProviderReply, string]>)(
+    "%s时保留明确稳定错误",
+    async (_scenario, reply, code) => {
+      const network = create_mcp_network({
+        exa: [reply],
+        tavily: [reply],
+        firecrawl: [reply],
+      });
+      const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+
+      await expect(
+        service.search("失败查询", 5, new AbortController().signal),
+      ).rejects.toMatchObject({ details: { code } });
+      await service.dispose();
+    },
+  );
+
+  it("来源失败原因不一致时统一映射为不可用", async () => {
+    const network = create_mcp_network({
+      exa: [{ tool_error: true }],
+      tavily: [{ text: " " }],
+      firecrawl: [{ status: 500 }],
+    });
+    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+
+    await expect(service.search("混合失败", 5, new AbortController().signal)).rejects.toMatchObject(
+      {
+        details: { code: "web_search.unavailable" },
+      },
+    );
+    await service.dispose();
+  });
+
+  it("三家单次预算都超时时返回整次搜索超时", async () => {
     const timeout = new AbortController();
     timeout.abort(new DOMException("超时", "TimeoutError"));
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
-    const server = create_mcp_server();
-    const client = new ExaWebSearchClient(server.fetch, TEST_CLIENT_VERSION);
+    const network = create_mcp_network();
+    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
 
-    await expect(client.search("超时查询", 5, new AbortController().signal)).rejects.toMatchObject({
-      details: { code: "web_search.timeout" },
-    });
-    await client.dispose();
-  });
-
-  it("会话失效时重建连接并只重试一次", async () => {
-    const server = create_mcp_server({ tool_statuses: [404] });
-    const client = new ExaWebSearchClient(server.fetch, TEST_CLIENT_VERSION);
-
-    await expect(client.search("重连查询", 2, new AbortController().signal)).resolves.toContain(
-      "https://www.typescriptlang.org/",
+    await expect(service.search("超时查询", 5, new AbortController().signal)).rejects.toMatchObject(
+      {
+        details: { code: "web_search.timeout" },
+      },
     );
-    await client.dispose();
-
-    expect(server.methods.filter((method) => method === "initialize")).toHaveLength(2);
-    expect(server.tool_calls).toEqual([
-      { name: "web_search_exa", arguments: { query: "重连查询", numResults: 2 } },
-    ]);
+    await service.dispose();
   });
 
-  it.each([
-    ["远端工具失败", { tool_error: true }, "web_search.upstream_failed"],
-    ["空文本结果", { tool_text: "  " }, "web_search.empty_result"],
-  ] satisfies Array<[string, McpServerOptions, string]>)(
-    "拒绝%s",
-    async (_scenario, options, code) => {
-      const server = create_mcp_server(options);
-      const client = new ExaWebSearchClient(server.fetch, TEST_CLIENT_VERSION);
+  it("调用前已取消时不触达任何供应商", async () => {
+    const network = create_mcp_network();
+    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const controller = new AbortController();
+    controller.abort(new Error("提前取消"));
 
-      await expect(
-        client.search("失败查询", 5, new AbortController().signal),
-      ).rejects.toMatchObject({ details: { code } });
-      await client.dispose();
-    },
-  );
+    await expect(service.search("不会搜索", 5, controller.signal)).rejects.toThrow("提前取消");
+    expect(network.fetch).not.toHaveBeenCalled();
+    await service.dispose();
+  });
 });
 
-type McpServerOptions = Readonly<{
-  tool_statuses?: readonly number[];
+type ProviderReply = Readonly<{
+  status?: number;
   tool_error?: boolean;
-  tool_text?: string;
+  text?: string;
 }>;
 
-/** 用真实 MCP SDK 驱动的最小假服务，只替换不可重复的外部 HTTP 边界。 */
-function create_mcp_server(options: McpServerOptions = {}) {
-  const methods: string[] = [];
-  const tool_calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-  const headers: Headers[] = [];
-  const tool_statuses = [...(options.tool_statuses ?? [])];
-  const fetch = vi.fn<FetchFunction>(async (_input, init) => {
-    headers.push(new Headers(init?.headers));
+type McpNetworkOptions = Partial<
+  Readonly<Record<AgentWebSearchProvider, readonly ProviderReply[]>>
+>;
+
+type McpRequest = Readonly<{
+  provider: AgentWebSearchProvider;
+  method: string;
+}>;
+
+type McpToolCall = Readonly<{
+  provider: AgentWebSearchProvider;
+  name: string;
+  arguments: Record<string, unknown>;
+}>;
+
+/** 用真实 MCP SDK 驱动三家最小假服务，只替换不可重复的远端 HTTP 边界。 */
+function create_mcp_network(options: McpNetworkOptions = {}) {
+  const methods: McpRequest[] = [];
+  const tool_calls: McpToolCall[] = [];
+  const headers: Record<AgentWebSearchProvider, Headers[]> = {
+    exa: [],
+    tavily: [],
+    firecrawl: [],
+  };
+  const replies: Record<AgentWebSearchProvider, ProviderReply[]> = {
+    exa: [...(options.exa ?? [])],
+    tavily: [...(options.tavily ?? [])],
+    firecrawl: [...(options.firecrawl ?? [])],
+  };
+  const fetch = vi.fn<FetchFunction>(async (input, init) => {
+    const provider = read_provider(input);
+    headers[provider].push(new Headers(init?.headers));
     if (init?.method === "GET") return new Response(null, { status: 405 });
+    if (init?.method === "DELETE") return new Response(null, { status: 200 });
     const message = JSON.parse(String(init?.body)) as {
       id?: string | number;
       method: string;
       params?: { name: string; arguments: Record<string, unknown> };
     };
-    methods.push(message.method);
+    methods.push({ provider, method: message.method });
     if (message.method === "notifications/initialized") {
       return new Response(null, { status: 202 });
     }
@@ -127,19 +227,17 @@ function create_mcp_server(options: McpServerOptions = {}) {
           result: {
             protocolVersion: "2025-03-26",
             capabilities: { tools: {} },
-            serverInfo: { name: "exa-search-server", version: "test" },
+            serverInfo: { name: `${provider}-search-server`, version: "test" },
           },
         },
-        { "mcp-session-id": "test-session" },
+        { "mcp-session-id": `${provider}-test-session` },
       );
     }
     if (message.method === "tools/call") {
-      const tool_status = tool_statuses.shift();
-      if (tool_status !== undefined) {
-        return new Response(null, { status: tool_status });
-      }
       if (message.params === undefined) throw new Error("tools/call 缺少参数");
-      tool_calls.push(message.params);
+      tool_calls.push({ provider, ...message.params });
+      const reply = replies[provider].shift() ?? {};
+      if (reply.status !== undefined) return new Response(null, { status: reply.status });
       return sse_response({
         jsonrpc: "2.0",
         id: message.id,
@@ -147,16 +245,25 @@ function create_mcp_server(options: McpServerOptions = {}) {
           content: [
             {
               type: "text",
-              text: options.tool_text ?? "Title: TypeScript\nURL: https://www.typescriptlang.org/",
+              text: reply.text ?? `${provider} 搜索结果`,
             },
           ],
-          ...(options.tool_error === true ? { isError: true } : {}),
+          ...(reply.tool_error === true ? { isError: true } : {}),
         },
       });
     }
     throw new Error(`未处理的 MCP 方法：${message.method}`);
   });
   return { fetch, headers, methods, tool_calls };
+}
+
+/** 从固定托管地址恢复供应商身份，测试不依赖请求顺序猜来源。 */
+function read_provider(input: Parameters<FetchFunction>[0]): AgentWebSearchProvider {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  if (url.hostname === "mcp.exa.ai") return "exa";
+  if (url.hostname === "mcp.tavily.com") return "tavily";
+  if (url.hostname === "mcp.firecrawl.dev") return "firecrawl";
+  throw new Error(`未知搜索供应商：${url.hostname}`);
 }
 
 /** 生成 Streamable HTTP 返回的单条 SSE JSON-RPC 响应。 */
