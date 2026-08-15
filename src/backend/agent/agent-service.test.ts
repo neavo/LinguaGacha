@@ -2181,5 +2181,7 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).not.toContain("Read the full skill file when the task matches");
   expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
   expect(prompt?.match(/Current working directory:/gu)).toHaveLength(1);
-  expect(prompt?.endsWith("Current working directory: E:/Project/LinguaGacha")).toBe(true);
+  expect(prompt?.trimEnd().endsWith("Current working directory: E:/Project/LinguaGacha")).toBe(
+    true,
+  );
 }
