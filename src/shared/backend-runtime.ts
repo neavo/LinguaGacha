@@ -6,11 +6,6 @@ import type { JsonValue } from "../domain/json";
 export type BackendRuntimeReady = {
   apiBaseUrl: string;
   berserkerUpdateRootDir: string;
-  systemProxyStartupNotice: {
-    detected: boolean;
-    proxiedOriginCount: number;
-    proxyDisplay: string | null;
-  };
 };
 
 /** 所有控制请求和宿主回调共用的成功/失败信封。 */

@@ -10,12 +10,7 @@ import path from "node:path";
 import { build_backend_api_base_url_argument } from "../../backend/api/api-base-url";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../gui-ipc-contract";
 import { resolve_title_bar_overlay_theme, uses_title_bar_overlay } from "./shell-contract";
-import type {
-  DesktopPlatform,
-  DesktopSystemProxyStartupNotice,
-  ThemeMode,
-} from "../bridge/bridge-types";
-import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
+import type { DesktopPlatform, ThemeMode } from "../bridge/bridge-types";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE, LogWindowHost } from "./log-window-host";
 import type { BackendRuntimeDiagnosticLevel } from "../../shared/backend-runtime";
 import type { LocaleKey } from "../../shared/i18n";
@@ -48,7 +43,6 @@ const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null; //
 export type MainWindowHostOptions = {
   desktopBundleDir: string;
   backendApiBaseUrl: string;
-  systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
@@ -58,7 +52,6 @@ export type MainWindowHostOptions = {
 export type LogWindowHostFactoryOptions = {
   desktopBundleDir: string;
   backendApiBaseUrl: string;
-  systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
   recordHostDiagnostic: HostDiagnosticReporter;
 };
@@ -93,11 +86,7 @@ export function configure_renderer_public_path(desktop_bundle_dir: string): void
 export function create_log_window_host(options: LogWindowHostFactoryOptions): LogWindowHost {
   return new LogWindowHost({
     createWindowOptions: () => {
-      return create_window_options(
-        options.desktopBundleDir,
-        options.backendApiBaseUrl,
-        options.systemProxyStartupNotice,
-      );
+      return create_window_options(options.desktopBundleDir, options.backendApiBaseUrl);
     },
     registerWindow: (target_window) => {
       options.rendererDiagnostics.registerWindow(target_window, "log");
@@ -122,11 +111,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
  */
 export function create_main_window(options: MainWindowHostOptions): BrowserWindow {
   const main_window = new BrowserWindow(
-    create_window_options(
-      options.desktopBundleDir,
-      options.backendApiBaseUrl,
-      options.systemProxyStartupNotice,
-    ),
+    create_window_options(options.desktopBundleDir, options.backendApiBaseUrl),
   );
   options.rendererDiagnostics.registerWindow(main_window, "main");
   register_development_devtools_shortcut(main_window);
@@ -440,7 +425,6 @@ function load_renderer_entry(
 function create_window_options(
   desktop_bundle_dir: string,
   backend_api_base_url: string,
-  system_proxy_startup_notice: DesktopSystemProxyStartupNotice,
 ): BrowserWindowConstructorOptions {
   const vite_public = process.env.VITE_PUBLIC ?? resolve_renderer_dist(desktop_bundle_dir);
   const window_options: BrowserWindowConstructorOptions = {
@@ -457,10 +441,7 @@ function create_window_options(
       preload: path.join(desktop_bundle_dir, PRELOAD_ENTRY_FILE_NAME),
       contextIsolation: true,
       nodeIntegration: false,
-      additionalArguments: [
-        build_backend_api_base_url_argument(backend_api_base_url),
-        build_desktop_system_proxy_startup_notice_argument(system_proxy_startup_notice),
-      ],
+      additionalArguments: [build_backend_api_base_url_argument(backend_api_base_url)],
       sandbox: false, // electron-vite 产出的预加载脚本默认是 ESM，关闭 sandbox 才能让 Electron 按模块语义正确执行
     },
   };

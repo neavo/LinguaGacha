@@ -1,8 +1,6 @@
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
-import { LLMClient } from "../../llm/llm-client";
-import { AppMetadataService } from "../../app/app-metadata-service";
-import { AppPathService } from "../../app/app-path-service";
+import type { LLMClientPort } from "../../llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 
@@ -11,6 +9,7 @@ import { TranslationWorkUnitRunner } from "./runners/translation-runner";
  */
 export interface WorkUnitRunnerOptions {
   appRoot: string; // 用于读取资源模板和预设，不能从 worker 当前目录反推
+  llmClient: LLMClientPort; // 正式 worker 使用父线程 RPC，in_process 直接使用同一真实端口
 }
 
 /**
@@ -21,14 +20,11 @@ export class WorkUnitRunner {
   private readonly analysis_runner: AnalysisWorkUnitRunner;
 
   /**
-   * 每个 worker 持有自己的 runner 和 LLM client，避免跨线程共享可变对象
+   * runner 只持有中性 LLM 端口，真实网络所有权留在 Backend Runtime 父线程。
    */
   public constructor(options: WorkUnitRunnerOptions) {
-    const paths = new AppPathService({ appRoot: options.appRoot }); // 让 worker 内 User-Agent 读取同一个应用根
-    const metadata = new AppMetadataService(paths); // 在 worker 内只读取只读版本元信息
-    const llm_client = new LLMClient({ userAgent: metadata.build_linguagacha_user_agent() });
-    this.translation_runner = new TranslationWorkUnitRunner(options.appRoot, llm_client);
-    this.analysis_runner = new AnalysisWorkUnitRunner(options.appRoot, llm_client);
+    this.translation_runner = new TranslationWorkUnitRunner(options.appRoot, options.llmClient);
+    this.analysis_runner = new AnalysisWorkUnitRunner(options.appRoot, options.llmClient);
   }
 
   /**

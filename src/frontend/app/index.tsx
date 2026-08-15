@@ -226,7 +226,6 @@ function AppContent(props: AppContentProps): JSX.Element {
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
   const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
-  const system_proxy_toast_shown_ref = useRef<boolean>(false); // 系统代理提示只展示一次，避免初始状态读取或语言刷新重复打扰用户
   const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
@@ -285,24 +284,6 @@ function AppContent(props: AppContentProps): JSX.Element {
       is_disposed = true;
     };
   }, [app_version]);
-
-  useEffect(() => {
-    if (!initial_state_ready || system_proxy_toast_shown_ref.current) {
-      return;
-    }
-
-    if (!window.desktopApp.backendApi.systemProxyStartupNotice.detected) {
-      return;
-    }
-
-    system_proxy_toast_shown_ref.current = true;
-    push_toast(
-      "info",
-      t("app.system_proxy.startup_notice", {
-        PROXY: window.desktopApp.backendApi.systemProxyStartupNotice.proxyDisplay ?? "",
-      }),
-    );
-  }, [initial_state_ready, push_toast, t]);
 
   useEffect(() => {
     document.title = app_title;

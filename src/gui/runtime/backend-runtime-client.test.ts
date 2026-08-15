@@ -69,7 +69,6 @@ vi.mock("node:worker_threads", () => ({
 const READY: BackendRuntimeReady = {
   apiBaseUrl: "http://127.0.0.1:4567",
   berserkerUpdateRootDir: "E:/userdata/berserker",
-  systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
 };
 const VALID_WORKSPACE_SCRIPT = "async function main() { return null; }";
 

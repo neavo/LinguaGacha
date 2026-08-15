@@ -13,6 +13,7 @@ const EXPECTED_RULE_NAMES = new Set([
   "SSE JSON 序列化边界",
   "后端 API 依赖方向",
   "后端模块所有权",
+  "后端出站网络边界",
   "模型供应商边界",
   "错误定义表边界",
 ]);
@@ -26,6 +27,10 @@ describe("backend boundary rules", () => {
       "src/backend/cache/store.ts": 'import "node:sqlite";',
       "src/backend/llm/client.ts": 'import "../model/model-service";',
       "src/backend/model/catalog.ts": 'import OpenAI from "openai";',
+      "src/backend/model/network.ts": [
+        'import { fetch } from "undici";',
+        'fetch("https://example.com");',
+      ].join("\n"),
       "src/backend/quality/service.ts": [
         'import "../api/api-routes";',
         'import "node:fs/promises";',
@@ -48,6 +53,10 @@ describe("backend boundary rules", () => {
         "src/backend/api/api-routes.ts": 'app.get("/api/health", handler);',
         "src/backend/database/store.ts": 'import "node:sqlite";',
         "src/backend/model/catalog.test.ts": 'import OpenAI from "openai";',
+        "src/backend/network/system-proxy-http-client.ts": [
+          'import { fetch as undici_fetch } from "undici";',
+          'undici_fetch("https://example.com");',
+        ].join("\n"),
         "src/native/native-fs.ts": 'import "node:fs/promises";',
         "src/shared/error/app-error.ts": [
           'export const APP_ERROR_DEFINITIONS = { ok: { status: 400, severity: "expected" } };',

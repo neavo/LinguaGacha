@@ -12,15 +12,18 @@ const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
 const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
+const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
+const AGENT_WEB_FETCH_RELATIVE_PATH = "src/backend/agent/agent-web-fetch.ts";
 
 /**
- * 后端边界规则只表达 API、存储和错误模型的静态硬门闩。
+ * 后端边界规则只表达事实所有权和不能依赖代码审查维持的静态硬门闩。
  */
 export function create_backend_boundary_rules() {
   return [
     create_api_registration_boundary_rule(),
     create_backend_api_dependency_rule(),
     create_backend_module_ownership_rule(),
+    create_backend_outbound_network_rule(),
     create_cli_dependency_rule(),
     create_model_provider_sdk_rule(),
     create_llm_model_dependency_rule(),
@@ -32,7 +35,7 @@ export function create_backend_boundary_rules() {
 }
 
 function create_backend_module_ownership_rule() {
-  const removed_modules = new Set(["analysis", "network", "toolbox", "translation", "workbench"]);
+  const removed_modules = new Set(["analysis", "toolbox", "translation", "workbench"]);
   return {
     name: "后端模块所有权",
     check: (context) => {
@@ -45,8 +48,46 @@ function create_backend_module_ownership_rule() {
         }
         errors.push({
           relative_path,
-          message: `${module_name} 不是后端事实所有者，能力必须归入 project、quality、file 或 llm`,
+          message: `${module_name} 不是后端事实所有者，能力必须归入现有领域或 network 基础边界`,
         });
+      }
+      return errors;
+    },
+  };
+}
+
+/** 远端 HTTP 只能从两个安全语义不同的正式传输所有者发出。 */
+function create_backend_outbound_network_rule() {
+  const network_owners = new Set([
+    SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH,
+    AGENT_WEB_FETCH_RELATIVE_PATH,
+  ]);
+  return {
+    name: "后端出站网络边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files.filter(is_backend_production_source)) {
+        const relative_path = context.relative_path(file_path);
+        if (network_owners.has(relative_path)) {
+          continue;
+        }
+
+        const content = context.read_file(file_path);
+        for (const import_entry of find_import_specifiers(content)) {
+          if (import_entry.specifier !== "undici") {
+            continue;
+          }
+          errors.push({
+            line: import_entry.line,
+            message: "Undici 传输只能由 system-proxy-http-client 或 agent-web-fetch 拥有",
+            relative_path,
+          });
+        }
+
+        const matches = find_pattern_errors(content, /\bfetch\s*\(/g, () => {
+          return "后端远端 HTTP 必须经显式注入的系统代理客户端或 agent-web-fetch";
+        });
+        errors.push(...matches.map((match) => ({ ...match, relative_path })));
       }
       return errors;
     },

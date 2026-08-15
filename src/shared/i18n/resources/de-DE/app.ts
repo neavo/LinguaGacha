@@ -90,9 +90,6 @@ export const de_de_app = {
     restart_confirm: "Neustarten und aktualisieren",
     launching: "Wird verarbeitet …",
   },
-  system_proxy: {
-    startup_notice: "System-Proxy-Einstellung erkannt - {PROXY}",
-  },
   drop: {
     multiple_unavailable: "Es kann nur eine Datei gleichzeitig abgelegt werden",
     unavailable:
@@ -339,7 +336,6 @@ export const de_de_app = {
     api_test_timeout: "Anfrage-Zeitüberschreitung ({SECONDS}s)",
     api_test_token_info: "Aufgabenzeit {TIME} Sekunden, Eingabe-Token {PT}, Ausgabe-Token {CT}",
     app_version: "LinguaGacha v{VERSION} …",
-    system_proxy_startup_detected: "System-Proxy-Einstellung erkannt - {PROXY}",
     default_preset_loaded: "Standard-Voreinstellungen automatisch geladen: {NAMES} …",
     engine_api_model: "API-Modell",
     engine_api_name: "API-Name",

@@ -56,7 +56,7 @@ function create_backend_services_options(): BackendServicesOptions {
       error: vi.fn(),
       info: vi.fn(),
     },
-    systemProxySnapshot: null,
+    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     openOutputFolder: vi.fn(),
     workerExecution: { kind: "in_process" },
   } as unknown as BackendServicesOptions;

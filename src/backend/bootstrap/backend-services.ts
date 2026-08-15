@@ -24,7 +24,11 @@ import {
   type OutputFolderOpener,
 } from "../file/translation-file-export-service";
 import { LogManager } from "../log/log-manager";
-import type { SystemProxySnapshot } from "../llm/llm-system-proxy-dispatcher";
+import { LLMClient } from "../llm/llm-client";
+import {
+  SystemProxyHttpClient,
+  type SystemProxyResolver,
+} from "../network/system-proxy-http-client";
 import { ModelService } from "../model/model-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { create_project_change_publisher } from "../project/project-write-event-adapter";
@@ -57,7 +61,7 @@ export interface BackendServicesOptions {
   appSettingService: AppSettingService; // 配置文件唯一读写入口
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
-  systemProxySnapshot: SystemProxySnapshot | null; // 启动期系统代理事实，传给 LLM worker 线程复用
+  systemProxyResolver: SystemProxyResolver; // 每次真实远端请求都从 Electron 读取当前系统代理
   agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 使用宿主代理解析创建 Backend 抓取入口
   agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
@@ -113,6 +117,7 @@ export class BackendServices {
   private readonly runtime_gate = new RuntimeOperationGate(); // task、Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
+  private readonly system_proxy_http_client: SystemProxyHttpClient; // 普通后端远端 HTTP 的唯一生命周期所有者
   private task_stream_unsubscribe: (() => void) | null;
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
   private started = false;
@@ -134,11 +139,17 @@ export class BackendServices {
   public constructor(options: BackendServicesOptions) {
     const paths = options.paths;
     const metadata = options.metadata;
+    const user_agent = metadata.build_linguagacha_user_agent();
     const session_state = new ProjectSessionState();
     const data_reader = new ProjectDataReader(options.database);
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
+    this.system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);
+    const llm_client = new LLMClient({
+      userAgent: user_agent,
+      fetch: this.system_proxy_http_client.fetch,
+    });
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
     });
@@ -185,7 +196,7 @@ export class BackendServices {
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: paths.get_app_root(),
       execution: options.workerExecution,
-      systemProxySnapshot: options.systemProxySnapshot,
+      llmClient: llm_client,
     });
     this.planning_worker_pool = new PlanningWorkerPool({
       execution: options.workerExecution,
@@ -288,11 +299,11 @@ export class BackendServices {
         fileExportService: translation_export,
       }),
     };
-    const user_agent = metadata.build_linguagacha_user_agent();
     this.model = new ModelService(
       paths,
       this.app_setting_service,
-      user_agent,
+      llm_client,
+      this.system_proxy_http_client.fetch,
       this.runtime_gate,
       this.logManager,
     );
@@ -317,6 +328,7 @@ export class BackendServices {
       paths,
       settings: this.app_setting_service,
       userAgent: user_agent,
+      modelFetch: this.system_proxy_http_client.fetch,
       sessionState: session_state,
       runtimeGate: this.runtime_gate,
       webFetch: options.agentWebFetch,
@@ -385,6 +397,11 @@ export class BackendServices {
       if (result.status === "rejected") {
         errors.push(result.reason);
       }
+    }
+    try {
+      await this.system_proxy_http_client.dispose();
+    } catch (error) {
+      errors.push(error);
     }
     this.started = false;
     if (errors.length > 0) {

@@ -5,8 +5,9 @@ import { Agent, fetch, ProxyAgent, Socks5ProxyAgent, type Dispatcher } from "und
 
 import {
   parse_system_proxy_route,
+  type SystemProxyResolver,
   type SystemProxyRoute,
-} from "../llm/llm-system-proxy-dispatcher";
+} from "../network/system-proxy-http-client";
 import { AgentToolError } from "./agent-tool";
 
 // 固定网络资源预算，避免单次工具调用无限占用连接、内存或模型上下文。
@@ -65,9 +66,6 @@ export type AgentWebFetchPort = (
   signal: AbortSignal,
 ) => Promise<AgentWebFetchResponse>;
 
-/** 每一跳都通过 Electron main 解析当前系统代理规则。 */
-export type AgentWebFetchProxyResolver = (url: string, signal: AbortSignal) => Promise<string>;
-
 type SocketLookup = NonNullable<TcpNetConnectOpts["lookup"]>;
 
 // Undici 限制压缩传输体，解压后的正文由 read_response_body 再限制一次。
@@ -75,9 +73,9 @@ const DISPATCHER_OPTIONS = {
   maxResponseSize: WEB_FETCH_MAX_RESPONSE_BYTES,
 } as const;
 
-/** Backend 唯一联网入口；直连在真实 socket lookup 中过滤私网，代理路径信任用户代理。 */
+/** Agent 网页下载唯一入口；直连在真实 socket lookup 中过滤私网，代理路径信任用户代理。 */
 export function create_agent_web_fetch(
-  resolve_proxy: AgentWebFetchProxyResolver,
+  system_proxy_resolver: SystemProxyResolver,
 ): AgentWebFetchPort {
   return async (requested_url, caller_signal) => {
     const signal = AbortSignal.any([caller_signal, AbortSignal.timeout(WEB_FETCH_TIMEOUT_MS)]);
@@ -86,7 +84,17 @@ export function create_agent_web_fetch(
 
     while (true) {
       signal.throwIfAborted();
-      const route = parse_system_proxy_route(await resolve_proxy(current_url.href, signal));
+      let route: SystemProxyRoute;
+      try {
+        route = parse_system_proxy_route(
+          await system_proxy_resolver.resolveProxy(current_url.href, signal),
+        );
+      } catch (error) {
+        throw new AgentToolError(
+          { code: "web_fetch.network_failed", url: current_url.href },
+          error,
+        );
+      }
       signal.throwIfAborted();
       const dispatcher = create_dispatcher(route, current_url);
       try {

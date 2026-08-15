@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import type { FetchFunction } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
@@ -10,7 +11,7 @@ import { Model, type CustomModelType } from "../../domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { LLMClient } from "../llm/llm-client";
+import type { LLMClientPort } from "../llm/llm-types";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ModelService } from "./model-service";
 
@@ -19,26 +20,16 @@ type ModelPresetFiles = {
   templates?: Partial<Record<CustomModelType, JsonRecord>>;
 };
 
-type ModelServiceFixture = {
-  app_root: string;
-  paths: AppPathService;
-  service: ModelService;
-  app_setting_service: AppSettingService;
-  runtime_gate: RuntimeOperationGate;
-};
-
 type LogEntry = {
   level: "info" | "warning";
   message: string;
   payload?: Record<string, unknown>;
 };
 
-const TEST_LLM_USER_AGENT = "LinguaGacha/v9.8.7 (https://github.com/neavo/LinguaGacha)";
 const cleanup_roots: string[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
   await Promise.all(
     cleanup_roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
   );
@@ -175,7 +166,8 @@ describe("ModelService 配置管理", () => {
     const second_service = new ModelService(
       paths,
       app_setting_service,
-      TEST_LLM_USER_AGENT,
+      { request: vi.fn() },
+      vi.fn(),
       new RuntimeOperationGate(),
     );
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
@@ -606,16 +598,13 @@ describe("ModelService 配置管理", () => {
 
 describe("ModelService 远端模型能力", () => {
   it("远端列表按 model_id 返回结果并拒绝缺失模型", async () => {
-    const { service } = await create_model_service([
+    const { service, network_fetch } = await create_model_service([
       create_model({
         api_format: "OpenAI",
         id: "openai-1",
       }),
     ]);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => json_response({ data: [{ id: "model-a" }] })),
-    );
+    network_fetch.mockResolvedValue(json_response({ data: [{ id: "model-a" }] }));
 
     await expect(service.list_available_models({ model_id: "openai-1" })).resolves.toEqual({
       models: ["model-a"],
@@ -627,7 +616,7 @@ describe("ModelService 远端模型能力", () => {
 
   it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {
     const log_entries: LogEntry[] = [];
-    const { service } = await create_model_service(
+    const { service, llm_request } = await create_model_service(
       [
         create_model({
           api_format: "OpenAI",
@@ -638,8 +627,7 @@ describe("ModelService 远端模型能力", () => {
       {},
       log_entries,
     );
-    const request_mock = vi
-      .spyOn(LLMClient.prototype, "request")
+    const request_mock = llm_request
       .mockResolvedValueOnce({
         cancelled: false,
         degraded: false,
@@ -703,11 +691,12 @@ describe("ModelService 远端模型能力", () => {
   });
 });
 
+/** 每个 fixture 自带隔离的 LLM 与 Fetch fake，不修改全局传输状态。 */
 async function create_model_service(
   models: Array<JsonRecord>,
   presets: ModelPresetFiles = {},
   log_entries?: LogEntry[],
-): Promise<ModelServiceFixture> {
+) {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
   cleanup_roots.push(app_root);
   await write_model_presets(app_root, presets);
@@ -728,18 +717,23 @@ async function create_model_service(
           },
         };
   const runtime_gate = new RuntimeOperationGate();
+  const llm_request = vi.fn<LLMClientPort["request"]>();
+  const network_fetch = vi.fn<FetchFunction>();
   return {
     app_root,
     paths,
     service: new ModelService(
       paths,
       app_setting_service,
-      TEST_LLM_USER_AGENT,
+      { request: llm_request },
+      network_fetch,
       runtime_gate,
       log_manager,
     ),
     app_setting_service,
     runtime_gate,
+    llm_request,
+    network_fetch,
   };
 }
 

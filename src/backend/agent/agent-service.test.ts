@@ -2096,6 +2096,7 @@ describe("AgentService", () => {
       },
       settings,
       userAgent: "LinguaGacha/Test",
+      modelFetch: vi.fn(),
       sessionState: session_state,
       runtimeGate: runtime_gate,
       webFetch: web_fetch,

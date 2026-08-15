@@ -45,12 +45,14 @@ vi.mock("@earendil-works/pi-ai/api/google-generative-ai.lazy", () => ({
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
+const TEST_NETWORK_FETCH = vi.fn<typeof globalThis.fetch>();
 
 beforeEach(() => {
   api_mocks.openai.mockReset();
   api_mocks.responses.mockReset();
   api_mocks.anthropic.mockReset();
   api_mocks.google.mockReset();
+  TEST_NETWORK_FETCH.mockReset();
 });
 
 afterEach(() => {
@@ -71,7 +73,7 @@ describe("LLMClient", () => {
         [" 你", "好 "],
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(create_body(), new AbortController().signal);
 
@@ -85,7 +87,11 @@ describe("LLMClient", () => {
     );
     expect(api_mocks.openai).toHaveBeenCalledTimes(1);
     const options = api_mocks.openai.mock.calls[0]?.[2];
-    expect(options).toMatchObject({ maxRetries: 0, cacheRetention: "none" });
+    expect(options).toMatchObject({
+      maxRetries: 0,
+      cacheRetention: "none",
+      fetch: TEST_NETWORK_FETCH,
+    });
     expect(options).not.toHaveProperty("timeoutMs");
   });
 
@@ -103,7 +109,7 @@ describe("LLMClient", () => {
         }),
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(
       create_body({
@@ -127,7 +133,7 @@ describe("LLMClient", () => {
         }),
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(
       create_body({ api_format: "OpenAIResponses" }),
@@ -172,7 +178,7 @@ describe("LLMClient", () => {
         }),
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(create_body({ api_format }), new AbortController().signal);
 
@@ -200,7 +206,7 @@ describe("LLMClient", () => {
         }),
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(
       create_body({ api_format: "Google", model_id: "gemini-2.5-flash" }),
@@ -222,7 +228,7 @@ describe("LLMClient", () => {
         }),
       ),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(create_body(), new AbortController().signal);
 
@@ -247,7 +253,7 @@ describe("LLMClient", () => {
     api_mocks.openai.mockImplementation((_model, _context, options) =>
       abortable_stream(options, "部分正文"),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const request = client.request(create_body(), controller.signal);
     controller.abort();
@@ -258,7 +264,7 @@ describe("LLMClient", () => {
   it("请求开始前已取消时不启动 Pi stream", async () => {
     const controller = new AbortController();
     controller.abort();
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(create_body(), controller.signal);
 
@@ -271,7 +277,7 @@ describe("LLMClient", () => {
     api_mocks.openai.mockImplementation((_model, _context, options) =>
       abortable_stream(options, "部分正文"),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const request = client.request(
       create_body({}, { request_timeout: 1 }),
@@ -287,7 +293,7 @@ describe("LLMClient", () => {
     const external = new AbortController();
     const controlled = createAssistantMessageEventStream();
     api_mocks.openai.mockReturnValue(controlled);
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const request = client.request(create_body({}, { request_timeout: 1 }), external.signal);
     external.abort();
@@ -308,7 +314,7 @@ describe("LLMClient", () => {
       stream.push({ type: "text_delta", contentIndex: 0, delta: "啊".repeat(50), partial });
       return stream;
     });
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(create_body(), new AbortController().signal);
 
@@ -319,7 +325,7 @@ describe("LLMClient", () => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(create_message({ content: [{ type: "text", text: " 第一行 \n 第二行 " }] })),
     );
-    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+    const client = create_client();
 
     const result = await client.request(
       create_body({ api_format: "SakuraLLM" }),
@@ -329,6 +335,11 @@ describe("LLMClient", () => {
     expect(result.response_result).toBe('{"0":"第一行","1":"第二行"}');
   });
 });
+
+/** 所有用例共用显式测试传输，避免全局 fetch 掩盖注入边界。 */
+function create_client(): LLMClient {
+  return new LLMClient({ userAgent: TEST_USER_AGENT, fetch: TEST_NETWORK_FETCH });
+}
 
 /** 用 Pi 公开事件流构造确定的成功或 provider-error 终态。 */
 function completed_stream(
