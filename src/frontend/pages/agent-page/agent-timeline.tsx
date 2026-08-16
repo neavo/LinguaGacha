@@ -172,7 +172,7 @@ function AgentRound(props: {
           data-mention-only={mention_only || undefined}
         >
           {user.attachments.length > 0 ? (
-            <AgentMessageAttachments attachments={user.attachments} />
+            <AgentMessageAttachments mode="sent" attachments={user.attachments} />
           ) : null}
           {user.text === "" ? null : (
             <p className="agent-message__user-text">

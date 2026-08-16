@@ -26,23 +26,25 @@ type AgentResponseAnnotationEditorProps = Omit<ComponentProps<"div">, "aria-labe
   on_remove?: () => void;
 };
 
-/** 选择浮层与 Composer 共用的唯一批注编辑器；输入外观统一交给 Textarea 基元。 */
-export function AgentResponseAnnotationEditor({
+type AgentResponseAnnotationPanelProps = Omit<ComponentProps<"div">, "aria-label"> & {
+  "aria-label": string;
+  selected_text: string;
+  on_cancel: () => void;
+};
+
+/** 批注创建、草稿编辑与已发送只读态共用同一个视觉表面。 */
+function AgentResponseAnnotationPanel({
   className,
   selected_text,
-  comment,
-  submit_label,
-  on_comment_change,
-  on_submit,
   on_cancel,
-  on_remove,
+  children,
   ...container_props
-}: AgentResponseAnnotationEditorProps): JSX.Element {
+}: AgentResponseAnnotationPanelProps): JSX.Element {
   const { t } = useI18n();
 
   return (
-    <div {...container_props} className={cn("agent-annotation-editor", className)} role="dialog">
-      <div className="agent-annotation-editor__header">
+    <div {...container_props} className={cn("agent-annotation-panel", className)} role="dialog">
+      <div className="agent-annotation-panel__header">
         <strong>{t("agent_page.annotation.selected_text")}</strong>
         <AppButton
           type="button"
@@ -55,6 +57,25 @@ export function AgentResponseAnnotationEditor({
         </AppButton>
       </div>
       <blockquote>{selected_text}</blockquote>
+      {children}
+    </div>
+  );
+}
+
+/** 选择浮层与 Composer 共用的唯一批注编辑器；输入外观统一交给 Textarea 基元。 */
+export function AgentResponseAnnotationEditor({
+  comment,
+  submit_label,
+  on_comment_change,
+  on_submit,
+  on_cancel,
+  on_remove,
+  ...panel_props
+}: AgentResponseAnnotationEditorProps): JSX.Element {
+  const { t } = useI18n();
+
+  return (
+    <AgentResponseAnnotationPanel {...panel_props} on_cancel={on_cancel}>
       <label>
         <span>{t("agent_page.annotation.user_comment")}</span>
         <Textarea
@@ -84,7 +105,30 @@ export function AgentResponseAnnotationEditor({
           {submit_label}
         </AppButton>
       </div>
-    </div>
+    </AgentResponseAnnotationPanel>
+  );
+}
+
+type AgentResponseAnnotationViewerProps = AgentResponseAnnotationPanelProps & {
+  comment: string;
+};
+
+/** 已发送批注只移除编辑动作，保留与草稿一致的内容层级和锚定表面。 */
+export function AgentResponseAnnotationViewer({
+  comment,
+  ...panel_props
+}: AgentResponseAnnotationViewerProps): JSX.Element {
+  const { t } = useI18n();
+
+  return (
+    <AgentResponseAnnotationPanel {...panel_props}>
+      {comment === "" ? null : (
+        <section className="agent-annotation-panel__comment-section">
+          <strong>{t("agent_page.annotation.user_comment")}</strong>
+          <p className="agent-annotation-panel__comment">{comment}</p>
+        </section>
+      )}
+    </AgentResponseAnnotationPanel>
   );
 }
 
@@ -193,6 +237,13 @@ export function AgentResponseAnnotationSelection(
             collisionPadding={8}
             hideWhenDetached
             updatePositionStrategy="always"
+            onPointerDownOutside={(event) => {
+              // 正文内的重新选择由 onPointerUp 统一裁决，不能再让 Popover 的延迟关闭覆盖结果。
+              const target = event.detail.originalEvent.target;
+              if (target instanceof Node && root_ref.current?.contains(target)) {
+                event.preventDefault();
+              }
+            }}
             onOpenAutoFocus={(event) => {
               event.preventDefault();
               if (selection.focus_action) requestAnimationFrame(() => action_ref.current?.focus());
@@ -240,6 +291,7 @@ export function AgentResponseAnnotationSelection(
   );
 }
 
+/** 从 Range 边界回溯其所属的可批注助手正文。 */
 function find_annotation_surface(node: Node): HTMLElement | null {
   const element = node instanceof HTMLElement ? node : node.parentElement;
   return element?.closest<HTMLElement>('[data-agent-annotation-content="true"]') ?? null;

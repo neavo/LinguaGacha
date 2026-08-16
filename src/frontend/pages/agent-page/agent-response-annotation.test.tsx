@@ -7,6 +7,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     t: (key: string) =>
       ({
         "agent_page.annotation.add": "添加批注",
+        "agent_page.annotation.title": "批注",
         "agent_page.annotation.remove": "删除",
         "agent_page.annotation.selected_text": "目标",
         "agent_page.annotation.user_comment": "批注",
@@ -19,6 +20,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 import {
   AgentResponseAnnotationEditor,
   AgentResponseAnnotationSelection,
+  AgentResponseAnnotationViewer,
 } from "./agent-response-annotation";
 
 describe("AgentResponseAnnotation", () => {
@@ -74,6 +76,31 @@ describe("AgentResponseAnnotation", () => {
     expect(on_cancel).toHaveBeenCalledOnce();
   });
 
+  it("只读视图展示评论，空评论不生成占位", async () => {
+    const view = await render_view(
+      <AgentResponseAnnotationViewer
+        aria-label="批注"
+        selected_text="旧回复"
+        comment="请更准确"
+        on_cancel={vi.fn()}
+      />,
+    );
+    expect(view.querySelector("blockquote")?.textContent).toBe("旧回复");
+    expect(view.querySelector("p")?.textContent).toBe("请更准确");
+
+    await act(async () =>
+      root?.render(
+        <AgentResponseAnnotationViewer
+          aria-label="批注"
+          selected_text="旧回复"
+          comment=""
+          on_cancel={vi.fn()}
+        />,
+      ),
+    );
+    expect(view.querySelector("p")).toBeNull();
+  });
+
   it("同一最终回复内的选区确认后成为规范批注附件", async () => {
     const on_add = vi.fn();
     const view = await render_view(
@@ -91,11 +118,11 @@ describe("AgentResponseAnnotation", () => {
         ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
     );
     const add_button = document.body.querySelector<HTMLButtonElement>(
-      '.agent-response-annotation-popover[role="toolbar"] button',
+      '[role="toolbar"][aria-label="添加批注"] button',
     );
     await act(async () => add_button?.click());
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
-      '.agent-response-annotation-popover[role="dialog"] textarea',
+      '[role="dialog"][aria-label="添加批注"] textarea',
     );
     if (textarea === null) throw new Error("缺少批注输入");
     await act(async () => set_textarea_value(textarea, "  请改写  "));
@@ -110,6 +137,43 @@ describe("AgentResponseAnnotation", () => {
       comment: "请改写",
     });
     expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+
+  it("操作条打开后允许在同一回复内重新选择文本", async () => {
+    const view = await render_view(
+      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
+        <div data-agent-annotation-content="true">最终回复</div>
+      </AgentResponseAnnotationSelection>,
+    );
+    const messages = view.querySelector<HTMLElement>(".agent-page__messages");
+    const text_node = view.querySelector("[data-agent-annotation-content]")?.firstChild;
+    if (messages === null || text_node === null || text_node === undefined) {
+      throw new Error("缺少回复文本");
+    }
+    select_range(text_node, 0, text_node, 2);
+    await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    await wait_for_radix_outside_pointer_listener();
+
+    await act(async () => {
+      messages.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+      select_range(text_node, 0, text_node, 4);
+      messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+      messages.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    });
+
+    const add_button = document.body.querySelector<HTMLButtonElement>(
+      '[role="toolbar"][aria-label="添加批注"] button',
+    );
+    await act(async () => add_button?.click());
+    expect(
+      document.body.querySelector('[role="dialog"][aria-label="添加批注"] blockquote')?.textContent,
+    ).toBe("最终回复");
+
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    });
+    expect(document.body.querySelector('[role="dialog"][aria-label="添加批注"]')).toBeNull();
   });
 
   it("跨回复正文的选区不创建批注入口", async () => {
@@ -133,9 +197,14 @@ describe("AgentResponseAnnotation", () => {
         ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
     );
 
-    expect(document.body.querySelector(".agent-response-annotation-popover")).toBeNull();
+    expect(document.body.querySelector('[role="toolbar"][aria-label="添加批注"]')).toBeNull();
   });
 });
+
+/** Radix 在下一任务注册外部指针监听；回归用例必须等到真实关闭路径已经可观察。 */
+async function wait_for_radix_outside_pointer_listener(): Promise<void> {
+  await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+}
 
 function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
