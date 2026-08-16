@@ -54,11 +54,20 @@ function normalize_agent_tool_error(cause: unknown): AgentToolError {
   return new AgentToolError({ code: "tool_failed" }, cause);
 }
 
-/** 统一保证 SSE 首帧时序，并把非预期执行异常留在应用诊断中。 */
-export function wrap_agent_tool_execution(
+/** 统一校验模型参数根、保证 SSE 首帧时序，并把非预期执行异常留在应用诊断中。 */
+export function prepare_agent_tool(
   tool: ToolDefinition,
   log_manager: Pick<LogManager, "error">,
 ): ToolDefinition {
+  const parameters = tool.parameters as unknown as JsonRecord; // TypeBox symbol 元数据不参与模型可见根结构判断
+  if (
+    parameters["type"] !== "object" ||
+    parameters["anyOf"] !== undefined ||
+    parameters["oneOf"] !== undefined ||
+    parameters["allOf"] !== undefined
+  ) {
+    throw new Error(`Agent tool "${tool.name}" parameters must use a plain object root schema`);
+  }
   return {
     ...tool,
     execute: async (...args: Parameters<ToolDefinition["execute"]>) => {

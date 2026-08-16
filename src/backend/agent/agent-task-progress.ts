@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type, type Static } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
@@ -7,6 +7,7 @@ import { AgentToolError, agent_tool_result } from "./agent-tool";
 const MAX_TASK_PROGRESS_ITEMS = 2_048; // 防止模型反复派生导致对话级内存队列无界增长
 const NEXT_ITEM_LIMIT = 20; // 工具结果只返回足够恢复执行的有限待办
 const TASK_PROGRESS_KEY_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"; // 允许稳定层级键但拒绝空白和路径语义
+const TASK_PROGRESS_ACTIONS = ["start", "advance", "read", "finish", "cancel"] as const; // 单一工具的稳定命令集合
 
 /** start 与 advance 共享同一最小工作项协议。 */
 const TASK_PROGRESS_ITEM_PARAMETERS = Type.Object(
@@ -18,43 +19,34 @@ const TASK_PROGRESS_ITEM_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** action 判别联合让 SDK 在执行前拒绝无关字段。 */
-const TASK_PROGRESS_PARAMETERS = Type.Union([
-  Type.Object(
-    {
-      action: Type.Literal("start"),
-      title: Type.String({ minLength: 1, maxLength: 200 }),
-      items: Type.Array(TASK_PROGRESS_ITEM_PARAMETERS, { minItems: 1, maxItems: 100 }),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      action: Type.Literal("advance"),
-      complete: Type.Array(
+/** 模型协议保持跨供应商稳定的普通对象根；action 字段关系在工具入口收窄。 */
+const TASK_PROGRESS_PARAMETERS = Type.Object(
+  {
+    action: StringEnum(TASK_PROGRESS_ACTIONS),
+    title: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+    items: Type.Optional(Type.Array(TASK_PROGRESS_ITEM_PARAMETERS, { minItems: 1, maxItems: 100 })),
+    complete: Type.Optional(
+      Type.Array(
         Type.String({ minLength: 1, maxLength: 128, pattern: TASK_PROGRESS_KEY_PATTERN }),
         { minItems: 1, maxItems: 100, uniqueItems: true },
       ),
-      add: Type.Optional(Type.Array(TASK_PROGRESS_ITEM_PARAMETERS, { minItems: 1, maxItems: 100 })),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object({ action: Type.Literal("read") }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("finish") }, { additionalProperties: false }),
-  Type.Object(
-    {
-      action: Type.Literal("cancel"),
-      reason: Type.String({ minLength: 1, maxLength: 300 }),
-    },
-    { additionalProperties: false },
-  ),
-]);
+    ),
+    add: Type.Optional(Type.Array(TASK_PROGRESS_ITEM_PARAMETERS, { minItems: 1, maxItems: 100 })),
+    reason: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+  },
+  { additionalProperties: false },
+);
 
-type TaskProgressItemInput = {
-  key: string;
-  phase: string;
-  label: string;
-};
+type TaskProgressItemInput = Static<typeof TASK_PROGRESS_ITEM_PARAMETERS>;
+type TaskProgressParameters = Static<typeof TASK_PROGRESS_PARAMETERS>;
+
+/** 扁平模型参数经条件字段校验后恢复为内部判别联合。 */
+type TaskProgressCommand =
+  | { action: "start"; title: string; items: TaskProgressItemInput[] }
+  | { action: "advance"; complete: string[]; add?: TaskProgressItemInput[] }
+  | { action: "read" }
+  | { action: "finish" }
+  | { action: "cancel"; reason: string };
 
 /** 队列项只增加完成状态；领域证据和派生关系仍归各自 skill 资产。 */
 type TaskProgressItem = TaskProgressItemInput & { completed: boolean };
@@ -206,21 +198,80 @@ export function create_agent_task_progress_tools(progress: AgentTaskProgress): T
       parameters: TASK_PROGRESS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        switch (params.action) {
+        const command = read_task_progress_command(params);
+        switch (command.action) {
           case "start":
-            return agent_tool_result(progress.start(params.title, params.items));
+            return agent_tool_result(progress.start(command.title, command.items));
           case "advance":
-            return agent_tool_result(progress.advance(params.complete, params.add));
+            return agent_tool_result(progress.advance(command.complete, command.add));
           case "read":
             return agent_tool_result(progress.read());
           case "finish":
             return agent_tool_result(progress.finish());
           case "cancel":
-            return agent_tool_result(progress.cancel(params.reason));
+            return agent_tool_result(progress.cancel(command.reason));
         }
       },
     }),
   ];
+}
+
+/** 普通对象 Schema 只校验字段类型；这里一次性恢复 action 的精确字段组合。 */
+function read_task_progress_command(params: TaskProgressParameters): TaskProgressCommand {
+  const invalid = (): never => {
+    throw new AgentToolError({ code: "task_progress.invalid_parameters", action: params.action });
+  };
+  switch (params.action) {
+    case "start": {
+      const { title, items } = params;
+      if (
+        title === undefined ||
+        items === undefined ||
+        has_unexpected_task_progress_fields(params, ["action", "title", "items"])
+      ) {
+        return invalid();
+      }
+      return { action: params.action, title, items };
+    }
+    case "advance": {
+      const { complete, add } = params;
+      if (
+        complete === undefined ||
+        has_unexpected_task_progress_fields(params, ["action", "complete", "add"])
+      ) {
+        return invalid();
+      }
+      return {
+        action: params.action,
+        complete,
+        ...(add === undefined ? {} : { add }),
+      };
+    }
+    case "read":
+    case "finish":
+      if (has_unexpected_task_progress_fields(params, ["action"])) return invalid();
+      return { action: params.action };
+    case "cancel": {
+      const { reason } = params;
+      if (
+        reason === undefined ||
+        has_unexpected_task_progress_fields(params, ["action", "reason"])
+      ) {
+        return invalid();
+      }
+      return { action: params.action, reason };
+    }
+  }
+}
+
+/** action 只接受声明字段，避免扁平 wire Schema 放宽原有调用协议。 */
+function has_unexpected_task_progress_fields(
+  params: TaskProgressParameters,
+  allowed_fields: readonly (keyof TaskProgressParameters)[],
+): boolean {
+  return Object.keys(params).some(
+    (field) => !allowed_fields.includes(field as keyof TaskProgressParameters),
+  );
 }
 
 /** 一次性规范化新增项并拒绝与现有或同批键冲突，供原子状态替换使用。 */

@@ -5,11 +5,15 @@ import { AgentTaskProgress, create_agent_task_progress_tools } from "./agent-tas
 import { AgentToolError } from "./agent-tool";
 
 describe("Agent task_progress 工具", () => {
-  it("以单一工具公开互斥 action schema", () => {
+  it("以普通对象根公开单一工具 Schema", () => {
     const [tool] = create_agent_task_progress_tools(new AgentTaskProgress());
 
     expect(tool?.name).toBe("task_progress");
-    expect(() => validate(tool, { action: "read", title: "多余字段" })).toThrow();
+    expect(tool?.parameters).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+    });
+    expect(tool?.parameters).not.toHaveProperty("anyOf");
     expect(() => validate(tool, { action: "start", title: "任务", items: [] })).toThrow();
     expect(() =>
       validate(tool, {
@@ -18,6 +22,35 @@ describe("Agent task_progress 工具", () => {
         items: [{ key: "seed", phase: "discover", label: "基础扫描" }],
       }),
     ).not.toThrow();
+  });
+
+  it.each([
+    ["start 缺少 items", { action: "start", title: "任务" }],
+    ["advance 缺少 complete", { action: "advance" }],
+    ["read 携带 title", { action: "read", title: "多余字段" }],
+    ["finish 携带 reason", { action: "finish", reason: "多余字段" }],
+    ["cancel 缺少 reason", { action: "cancel" }],
+  ])("工具入口拒绝 %s", async (_label, args) => {
+    const [tool] = create_agent_task_progress_tools(new AgentTaskProgress());
+
+    await expect(execute(tool, args)).rejects.toMatchObject({
+      details: { code: "task_progress.invalid_parameters", action: args.action },
+    });
+  });
+
+  it("工具入口保持五种 action 的状态机语义", async () => {
+    const progress = new AgentTaskProgress();
+    const [tool] = create_agent_task_progress_tools(progress);
+    const item = { key: "seed", phase: "discover", label: "基础扫描" };
+
+    await execute(tool, { action: "start", title: "任务", items: [item] });
+    await execute(tool, { action: "read" });
+    await execute(tool, { action: "advance", complete: [item.key] });
+    await execute(tool, { action: "finish" });
+    await execute(tool, { action: "start", title: "任务", items: [item] });
+    await execute(tool, { action: "cancel", reason: "切换任务" });
+
+    expect(progress.read()).toEqual({ status: "idle" });
   });
 
   it("原子完成当前工作并追加派生工作", () => {
@@ -127,18 +160,28 @@ describe("Agent task_progress 工具", () => {
   });
 });
 
-/** 复用 SDK 的真实参数校验，覆盖 action 联合类型边界。 */
+/** 复用 SDK 的真实参数校验，覆盖模型可见字段类型边界。 */
 function validate(
   tool: ReturnType<typeof create_agent_task_progress_tools>[number] | undefined,
   args: unknown,
-): void {
+): ReturnType<typeof validateToolArguments> {
   if (tool === undefined) throw new Error("缺少 task_progress");
-  validateToolArguments(tool, {
+  return validateToolArguments(tool, {
     type: "toolCall",
     id: "task-progress-call",
     name: tool.name,
     arguments: args,
   } as ToolCall);
+}
+
+/** 先走 SDK 字段类型校验，再观察产品工具入口的条件语义。 */
+async function execute(
+  tool: ReturnType<typeof create_agent_task_progress_tools>[number] | undefined,
+  args: unknown,
+): Promise<void> {
+  if (tool === undefined) throw new Error("缺少 task_progress");
+  const params = validate(tool, args);
+  await tool.execute("task-progress-call", params, undefined, undefined, undefined as never);
 }
 
 /** 捕获状态机的稳定业务错误，同时拒绝吞掉其它异常或缺失异常。 */
