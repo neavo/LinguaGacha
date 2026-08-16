@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ITEM_TEXT_TYPES } from "../../domain/item";
 import { read_json_record } from "../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import {
@@ -14,7 +15,6 @@ import {
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
-  AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_QUALITY_FIELDS,
   AGENT_WORKSPACE_RECIPE_PATHS,
   project_agent_workspace_item,
@@ -26,14 +26,7 @@ describe("Agent 工作区 contract", () => {
   it("contract 把只读快照与显式 change 路径分开声明", () => {
     const datasets = read_json_record(AGENT_WORKSPACE_CONTRACT["datasets"]);
     expect(new Set(Object.keys(datasets))).toEqual(
-      new Set([
-        "project_meta",
-        "items",
-        "warnings",
-        "prompts",
-        ...QUALITY_RULE_KINDS,
-        ...QUALITY_RULE_KINDS.map((kind) => `${kind}_evidence`),
-      ]),
+      new Set(["project_meta", "items", "warnings", "prompts", ...QUALITY_RULE_KINDS]),
     );
 
     const project_meta = read_json_record(datasets["project_meta"]);
@@ -62,6 +55,10 @@ describe("Agent 工作区 contract", () => {
       format: "jsonl",
     });
     expect(Object.keys(read_json_record(items["fields"]))).toEqual(AGENT_WORKSPACE_ITEM_FIELDS);
+    expect(read_json_record(read_json_record(items["fields"])["text_type"])).toMatchObject({
+      type: "enum",
+      values: [...ITEM_TEXT_TYPES],
+    });
 
     const warnings = read_json_record(datasets["warnings"]);
     expect(warnings).toMatchObject({
@@ -84,13 +81,6 @@ describe("Agent 工作区 contract", () => {
       expect(Object.keys(read_json_record(entries["fields"]))).toEqual(
         AGENT_WORKSPACE_QUALITY_FIELDS[kind],
       );
-
-      const evidence = read_json_record(datasets[`${kind}_evidence`]);
-      expect(evidence).toMatchObject({
-        path: AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind],
-        format: "json",
-      });
-      expect(Object.keys(read_json_record(evidence["fields"]))).toEqual(["by_id", "groups"]);
     }
 
     for (const dataset of Object.values(datasets).map(read_json_record)) {
@@ -99,10 +89,15 @@ describe("Agent 工作区 contract", () => {
     }
 
     const changes = read_json_record(AGENT_WORKSPACE_CONTRACT["changes"]);
-    expect(read_json_record(read_json_record(changes["items"])["updates"])).toMatchObject({
+    const item_updates = read_json_record(read_json_record(changes["items"])["updates"]);
+    expect(item_updates).toMatchObject({
       path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
       require_one_of: AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
     });
+    expect(Object.keys(read_json_record(item_updates["fields"]))).toEqual([
+      "item_id",
+      ...AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
+    ]);
     expect(read_json_record(read_json_record(changes["prompts"])["updates"])).toMatchObject({
       path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     });
@@ -120,15 +115,12 @@ describe("Agent 工作区 contract", () => {
     }
   });
 
-  it("contract 保留业务限制与 recipe 且不声明固定脚本 SDK", () => {
+  it("contract 对齐共享硬限制、保留 recipe 且不声明固定脚本 SDK", () => {
     const limits = read_json_record(AGENT_WORKSPACE_CONTRACT["limits"]);
     const recipes = read_json_record(AGENT_WORKSPACE_CONTRACT["recipes"]);
 
-    expect(limits).toEqual({
+    expect(limits).toMatchObject({
       result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
-      recipe_page_default: 20,
-      recipe_page_max: 100,
-      literal_match_examples_default: 3,
       literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
     });
     expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("script_api");
@@ -173,6 +165,7 @@ describe("Agent 工作区 contract", () => {
         name_src: null,
         name_dst: null,
         file_path: "a.txt",
+        text_type: "RENPY",
         row: 0,
         status: "NONE",
         retry_count: 0,
@@ -184,6 +177,7 @@ describe("Agent 工作区 contract", () => {
       name_src: "",
       name_dst: "",
       file_path: "a.txt",
+      text_type: "RENPY",
       row_number: 0,
       status: "NONE",
       retry_count: 0,

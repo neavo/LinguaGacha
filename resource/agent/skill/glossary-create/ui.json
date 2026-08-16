@@ -1,8 +1,0 @@
-{
-  "order": 200,
-  "displayDescriptions": {
-    "zh-CN": "基于 AI 智能自动分析当前工程数据并制作术语表",
-    "en-US": "Use AI to automatically analyze the current project's data and create a glossary",
-    "de-DE": "Daten des aktuellen Projekts mithilfe von KI automatisch analysieren und ein Glossar erstellen"
-  }
-}

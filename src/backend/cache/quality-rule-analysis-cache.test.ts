@@ -68,12 +68,9 @@ function create_worker(): AnalysisWorker & {
       examples_by_entry_id: Object.fromEntries(
         task.input.entry_ids.map((id: string) => [id, ["example"]]),
       ),
-      ...(task.input.include_relations
+      ...(task.input.include_subset_parents
         ? {
-            relations: {
-              subset_parents_by_entry_id: {},
-              groups: task.input.entry_ids.map((id: string) => [id]),
-            },
+            subset_parents_by_entry_id: {},
           }
         : {}),
     };
@@ -117,7 +114,7 @@ describe("QualityRuleAnalysisCache", () => {
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(worker.run.mock.calls[0]?.[0]).toMatchObject({
       type: "quality_rule_analysis",
-      input: { include_relations: true },
+      input: { include_subset_parents: true },
     });
   });
 
@@ -149,7 +146,7 @@ describe("QualityRuleAnalysisCache", () => {
     expect(worker.run).toHaveBeenCalledTimes(2);
   });
 
-  it("只改译文仅失效后置替换统计，并复用已有关系", async () => {
+  it("只改译文仅失效后置替换统计，并复用已有父项", async () => {
     const worker = create_worker();
     const cache = new QualityRuleAnalysisCache({
       cache: create_cache_read_port(),
@@ -164,11 +161,11 @@ describe("QualityRuleAnalysisCache", () => {
 
     expect(worker.run).toHaveBeenCalledTimes(3);
     expect(worker.run.mock.calls[2]?.[0]).toMatchObject({
-      input: { include_relations: false },
+      input: { include_subset_parents: false },
     });
   });
 
-  it("质量规则全量变化同时失效统计和关系", async () => {
+  it("质量规则全量变化同时失效统计和父项", async () => {
     const worker = create_worker();
     const cache = new QualityRuleAnalysisCache({
       cache: create_cache_read_port(),
@@ -186,6 +183,8 @@ describe("QualityRuleAnalysisCache", () => {
     await cache.read("glossary");
 
     expect(worker.run).toHaveBeenCalledTimes(2);
-    expect(worker.run.mock.calls[1]?.[0]).toMatchObject({ input: { include_relations: true } });
+    expect(worker.run.mock.calls[1]?.[0]).toMatchObject({
+      input: { include_subset_parents: true },
+    });
   });
 });

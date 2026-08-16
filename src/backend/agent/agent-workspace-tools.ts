@@ -13,7 +13,7 @@ const WORKSPACE_SCRIPT_API_DESCRIPTION = [
   ...Object.entries(AGENT_WORKSPACE_SCRIPT_API.members).map(
     ([name, declaration]) => `- ${name}${declaration}`,
   ),
-  `可自由管理目录：${Object.values(AGENT_WORKSPACE_SCRIPT_API.roots).join("、")}。`,
+  `可自由管理目录：${Object.values(AGENT_WORKSPACE_SCRIPT_API.roots).join("、")}。固定 change 文件只能整体覆盖，不能删除。`,
   "业务路径、字段、limits、changes、effects、guidance、apply、recipe 参数与返回形状从 workspace.contract 读取。",
 ].join("\n");
 /** 模型提交唯一完整入口函数，不接触工作区绝对路径。 */

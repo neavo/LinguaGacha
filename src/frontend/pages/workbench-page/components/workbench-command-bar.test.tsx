@@ -16,7 +16,7 @@ const agent_input_mocks = vi.hoisted(() => ({
 
 /** 测试只关心 i18n 键的消费关系，不复制可独立调整的产品文案。 */
 const locale_messages: Record<string, string> = {
-  "agent_page.empty.suggestions.glossary_create": "create-glossary",
+  "agent_page.empty.suggestions.quality_rule_create": "create-quality-rules",
   "workbench_page.analysis_task.migration.jump": "jump-to-agent",
   "workbench_page.analysis_task.migration.continue": "continue-classic-analysis",
   "workbench_page.analysis_task.feedback.agent_draft_preserved": "draft-preserved",
@@ -220,14 +220,14 @@ describe("WorkbenchCommandBar", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 
-  it("跳转 AGENT 前为当前空草稿写入术语生成指令", async () => {
+  it("跳转 AGENT 前为当前空草稿写入质量规则任务", async () => {
     const props = await render_command_bar();
 
     await act(async () => find_button("analysis-task").click());
     await act(async () => find_button("jump-to-agent").click());
 
     expect(agent_input_mocks.write_draft).toHaveBeenCalledWith({
-      text: "create-glossary @skill(glossary-create)",
+      text: "create-quality-rules @skill(quality-rule-create)",
       images: [],
     });
     expect(navigation_mocks.navigate_to_route).toHaveBeenCalledWith("agent");

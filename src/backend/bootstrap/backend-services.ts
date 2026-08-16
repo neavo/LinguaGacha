@@ -326,7 +326,6 @@ export class BackendServices {
             settings: this.app_setting_service,
             sessionState: session_state,
             cache: this.cache_manager,
-            qualityAnalysis: this.cache_manager.qualityAnalysis,
             proofreading: this.proofreading.query,
             database: options.database,
             runtimeGate: this.runtime_gate,

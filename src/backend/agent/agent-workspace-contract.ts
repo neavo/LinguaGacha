@@ -1,4 +1,4 @@
-import { Item, ITEM_STATUSES } from "../../domain/item";
+import { Item, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../domain/item";
 import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
@@ -26,14 +26,6 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
 /** 四类质量规则直接按领域 kind 落盘。 */
 export const AGENT_WORKSPACE_QUALITY_ENTRY_PATHS = Object.freeze(
   Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, `${kind}/entries.jsonl`])) as Record<
-    QualityRuleKind,
-    string
-  >,
-);
-
-/** 每类只读证据与对应规则相邻。 */
-export const AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS = Object.freeze(
-  Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, `${kind}/evidence.json`])) as Record<
     QualityRuleKind,
     string
   >,
@@ -79,7 +71,7 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
 export const AGENT_WORKSPACE_RECIPE_NAMES = Object.freeze([
   "query-items",
   "query-item-contexts",
-  "query-quality-rule-groups",
+  "derive-common-literal-roots",
 ] as const);
 
 /** recipe 名称与工作区只读脚本路径共享同一投影。 */
@@ -97,6 +89,7 @@ export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
   "name_src",
   "name_dst",
   "file_path",
+  "text_type",
   "row_number",
   "status",
   "retry_count",
@@ -167,6 +160,11 @@ const ITEM_FIELD_CONTRACT: JsonRecord = {
   name_src: { type: "string", purpose: "原文姓名" },
   name_dst: { type: "string", purpose: "译文姓名" },
   file_path: { type: "string", purpose: "工程相对文件身份" },
+  text_type: {
+    type: "enum",
+    purpose: "文本的实际类型；用于按格式解释规则命中分布",
+    values: [...ITEM_TEXT_TYPES],
+  },
   row_number: { type: "non_negative_integer", purpose: "从 0 开始的文件内定位" },
   status: {
     type: "enum",
@@ -255,27 +253,6 @@ const QUALITY_FIELD_CONTRACT: Record<QualityRuleKind, JsonRecord> = {
   },
 };
 
-/** quality evidence 保存命中摘要与完整互斥关系组。 */
-const QUALITY_EVIDENCE_FIELD_CONTRACT: JsonRecord = {
-  by_id: {
-    type: "record",
-    key: "quality_entry_id",
-    values: {
-      type: "object",
-      fields: {
-        hits: { type: "non_negative_integer", purpose: "命中的不同 item 数" },
-        examples: { type: "string_array", maximum_items: 2 },
-        parent_sources: { type: "string_array", purpose: "真实包含当前原文的父级原文" },
-      },
-    },
-  },
-  groups: {
-    type: "array",
-    purpose: "按规则顺序排列、互斥且包含单例的完整关系组",
-    items: { type: "string_array" },
-  },
-};
-
 /** 四类只读 quality 数据集共用路径、身份与字段投影。 */
 const quality_entry_datasets = Object.fromEntries(
   QUALITY_RULE_KINDS.map((kind) => [
@@ -286,19 +263,6 @@ const quality_entry_datasets = Object.fromEntries(
       purpose: `${kind} 规则的完整只读有序集合`,
       identity: ["id"],
       fields: QUALITY_FIELD_CONTRACT[kind],
-    },
-  ]),
-) as JsonRecord;
-
-/** 每类 evidence 与对应 quality kind 相邻但始终只读。 */
-const quality_evidence_datasets = Object.fromEntries(
-  QUALITY_RULE_KINDS.map((kind) => [
-    `${kind}_evidence`,
-    {
-      path: AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind],
-      format: "json",
-      purpose: `${kind} 加载时快照的命中、例句与关系组`,
-      fields: QUALITY_EVIDENCE_FIELD_CONTRACT,
     },
   ]),
 ) as JsonRecord;
@@ -382,7 +346,6 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
       fields: Object.fromEntries(PROMPT_KINDS.map((kind) => [kind, { type: "string" }])),
     },
     ...quality_entry_datasets,
-    ...quality_evidence_datasets,
   },
   changes: {
     items: {
@@ -451,18 +414,13 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
       },
       returns: "{ contexts, items: object[], missing_item_ids }",
     },
-    "query-quality-rule-groups": {
-      path: AGENT_WORKSPACE_RECIPE_PATHS["query-quality-rule-groups"],
-      purpose: "按完整关系组读取目标质量规则与加载时证据",
+    "derive-common-literal-roots": {
+      path: AGENT_WORKSPACE_RECIPE_PATHS["derive-common-literal-roots"],
+      purpose: "为已经确认语义相关的显式词形枚举全部公共连续字面片段",
       parameters: {
-        kind: "glossary、text_preserve、pre_replacement 或 post_replacement",
-        keywords: "可选非空字符串数组",
-        include_examples: "可选 boolean，默认 false",
-        offset: "可选非负整数，默认 0",
-        limit: "可选正整数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
+        forms: "至少两个不同的非空字符串；返回的 root 取自第一项的原始写法",
       },
-      returns:
-        "{ total_target_rule_count, total_group_count, groups: Array<{ targets: object[], evidence: object[] }>, next_offset? }",
+      returns: "{ candidates: Array<{ root, grapheme_length }> }，按 grapheme_length 升序",
     },
   },
 });
@@ -476,6 +434,7 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
     name_src: read_optional_item_name_text(item["name_src"]) ?? "",
     name_dst: read_optional_item_name_text(item["name_dst"]) ?? "",
     file_path: String(item["file_path"] ?? ""),
+    text_type: Item.normalize_text_type(item["text_type"]),
     row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
     status: Item.normalize_status(item["status"]),
     retry_count: read_json_integer(item["retry_count"], 0),

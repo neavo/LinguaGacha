@@ -221,4 +221,36 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
       },
     ]);
   });
+
+  it("候选只命中更长既有规则的相同语料时过滤冗余短项", () => {
+    const prepared_import = prepare_analysis_glossary_import_from_cache(
+      create_prepare_request({
+        quality_block: {
+          glossary: {
+            entries: [
+              {
+                entry_id: "saint-alice",
+                src: "圣女艾琳",
+                dst: "Saint Erin",
+                info: "女性角色",
+                case_sensitive: true,
+              },
+            ],
+          },
+        },
+        items: [create_test_item({ src: "圣女艾琳" })],
+      }),
+    );
+
+    expect(prepared_import?.imported_count).toBe(0);
+    expect(prepared_import?.request_body.entries).toEqual([
+      {
+        entry_id: "saint-alice",
+        src: "圣女艾琳",
+        dst: "Saint Erin",
+        info: "女性角色",
+        case_sensitive: true,
+      },
+    ]);
+  });
 });

@@ -17,7 +17,7 @@ function create_task(): ComputeWorkerTask {
         entries: [{ entry_id: "hp", src: "HP" }],
         items: [{ src: "HP + 1", dst: "" }],
       }),
-      include_relations: true,
+      include_subset_parents: true,
     },
   };
 }

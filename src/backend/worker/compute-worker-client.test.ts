@@ -58,7 +58,7 @@ function create_quality_task(pattern: string): ComputeWorkerTask {
         entries: [{ entry_id: pattern, src: pattern }],
         items: [{ src: `${pattern} appeared`, dst: "" }],
       }),
-      include_relations: true,
+      include_subset_parents: true,
     },
   };
 }

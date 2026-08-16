@@ -1,21 +1,20 @@
-import { analyze_quality_rule_relations } from "../../../shared/quality/quality-rule-relations";
+import { find_quality_rule_subset_parents } from "../../../shared/quality/quality-rule-subset-parents";
 import { run_quality_statistics_task_sync } from "../../../shared/quality/quality-statistics";
 import type { QualityStatisticsPreparedTaskInput } from "../../../shared/quality/quality-statistics-input";
-import type { QualityRuleRelations } from "../../../shared/quality/quality-rule-relations";
 import type { ItemTextGroup } from "../../../shared/item-text";
 
 export type QualityRuleAnalysisWorkerTaskInput = QualityStatisticsPreparedTaskInput & {
-  include_relations: boolean; // 规则未变化时复用后端关系缓存，避免 item 变更重复聚类
+  include_subset_parents: boolean; // 规则未变化时复用父项缓存，避免 item 变更重复计算
 };
 
 export type QualityRuleAnalysisWorkerTaskResult = {
   entry_ids: string[]; // 与输入规则顺序一致的完整结果身份
   hits_by_entry_id: Record<string, number>; // 每条规则命中的不同 item 数
   examples_by_entry_id: Record<string, string[]>; // 每条规则最多两个稳定纯文本例句
-  relations?: QualityRuleRelations; // 只有 include_relations 为 true 时返回
+  subset_parents_by_entry_id?: Record<string, string[]>; // 只有请求时返回字面包含父项
 };
 
-/** 执行一次质量规则分析；hits 与 examples 共用扫描，关系仅在缓存缺失时计算。 */
+/** 执行一次质量规则分析；hits 与 examples 共用扫描，父项仅在缓存缺失时计算。 */
 export function run_quality_rule_analysis_worker_task(
   input: QualityRuleAnalysisWorkerTaskInput,
 ): QualityRuleAnalysisWorkerTaskResult {
@@ -35,9 +34,9 @@ export function run_quality_rule_analysis_worker_task(
         }),
       ]),
     ),
-    ...(input.include_relations
+    ...(input.include_subset_parents
       ? {
-          relations: analyze_quality_rule_relations(
+          subset_parents_by_entry_id: find_quality_rule_subset_parents(
             input.rules.map((rule) => ({
               entry_id: rule.entry_id,
               src: rule.pattern,

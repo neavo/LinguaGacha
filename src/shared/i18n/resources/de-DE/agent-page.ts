@@ -11,7 +11,7 @@ export const de_de_agent_page = {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
     suggestions: {
       capabilities: "Stell deine Fähigkeiten vor",
-      glossary_create: "Bitte hilf mir, Begriffe zu extrahieren",
+      quality_rule_create: "Bitte hilf mir, Glossar- und Textschutzregeln vorzubereiten",
       translation_review: "Bitte prüfe meine Übersetzungen",
     },
   },

@@ -13,7 +13,7 @@ function create_cache(): Pick<QualityRuleAnalysisCache, "read"> {
         entry_ids: ["hp"],
         hits_by_entry_id: { hp: 1 },
         examples_by_entry_id: { hp: ["HP +10"] },
-        relations: { subset_parents_by_entry_id: {}, groups: [["hp"]] },
+        subset_parents_by_entry_id: {},
       },
     })),
   };
