@@ -1282,6 +1282,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
+      taskProgress: [],
       contextTokens: null,
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
@@ -1300,8 +1301,8 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("task_progress 跨普通回合保留并随 Agent reset 清空", async () => {
-    const { service } = await create_service(true, undefined, null);
+  it("task_progress 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
+    const { service, publish } = await create_service(true, undefined, null);
     fake_agent_state.mode = "progress_start";
 
     await service.send_message({ text: "开始长任务", images: [] });
@@ -1309,6 +1310,11 @@ describe("AgentService", () => {
     expect(read_tool_output(service, "progress-start")).toMatchObject({
       status: "active",
       pending_count: 1,
+    });
+    expect(service.get_snapshot().taskProgress).toEqual(["基础扫描"]);
+    expect(publish).toHaveBeenCalledWith("agent.session_event", {
+      type: "task_progress",
+      taskProgress: ["基础扫描"],
     });
 
     fake_agent_state.mode = "progress_read";
@@ -1320,6 +1326,7 @@ describe("AgentService", () => {
     });
 
     await service.reset();
+    expect(service.get_snapshot().taskProgress).toEqual([]);
     await service.send_message({ text: "读取进度", images: [] });
     await wait_for_idle(service);
 
@@ -1567,6 +1574,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
+      taskProgress: [],
       contextTokens: null,
     });
     await Promise.resolve();

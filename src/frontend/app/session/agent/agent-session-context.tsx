@@ -36,6 +36,7 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
   skills: [],
+  taskProgress: [],
   contextTokens: null,
 };
 
@@ -48,6 +49,7 @@ type AgentSessionStateView = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  taskProgress: string[];
   contextTokens: number | null;
   transport: AgentTransportState;
   command: AgentCommand;
@@ -278,6 +280,7 @@ function useAgentSessionState(
     state: snapshot.state,
     entries: snapshot.entries,
     skills: snapshot.skills,
+    taskProgress: snapshot.taskProgress,
     contextTokens: snapshot.contextTokens,
     transport,
     command,
@@ -424,6 +427,8 @@ function apply_agent_event(
       return normalize_snapshot(event.snapshot);
     case "session_state":
       return { ...snapshot, state: event.state };
+    case "task_progress":
+      return { ...snapshot, taskProgress: event.taskProgress };
     case "context_tokens":
       return { ...snapshot, contextTokens: event.contextTokens };
     case "entry_upsert": {
@@ -446,11 +451,12 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     ? record["entries"].flatMap(normalize_entry)
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
+  const task_progress = normalize_task_progress(record["taskProgress"]);
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
-  if (context_tokens === undefined) {
-    throw new TypeError("Agent snapshot contextTokens is invalid.");
+  if (task_progress === null || context_tokens === undefined) {
+    throw new TypeError("Agent snapshot is invalid.");
   }
-  return { state, entries, skills, contextTokens: context_tokens };
+  return { state, entries, skills, taskProgress: task_progress, contextTokens: context_tokens };
 }
 
 /** SSE 顶层判别失败时丢弃单帧，重连仍会读取权威 snapshot。 */
@@ -461,6 +467,10 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
     case "session_state":
       return { type: "session_state", state: normalize_state(record["state"]) };
+    case "task_progress": {
+      const task_progress = normalize_task_progress(record["taskProgress"]);
+      return task_progress === null ? null : { type: "task_progress", taskProgress: task_progress };
+    }
     case "context_tokens": {
       const context_tokens = normalize_context_tokens(record["contextTokens"]);
       return context_tokens === null || context_tokens === undefined
@@ -474,6 +484,12 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
     default:
       return null;
   }
+}
+
+/** 待办标签必须完整可信；空数组表示固定展示位隐藏。 */
+function normalize_task_progress(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.every((item) => typeof item === "string" && item.trim() !== "") ? [...value] : null;
 }
 
 /** null 只表示完整快照尚无运行时；undefined 表示协议字段非法。 */

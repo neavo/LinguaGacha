@@ -23,6 +23,7 @@ import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { create_agent_mention_tokens } from "./agent-mention";
+import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
 import { is_at_scroll_end } from "./agent-scroll";
 import "./agent-page.css";
@@ -367,26 +368,29 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       )}
 
-      <AgentComposer
-        ref={composer_ref}
-        skills={agent.skills}
-        terms={available_terms}
-        term_hit_counts={term_hit_counts}
-        running={is_running}
-        stop_disabled={workspace_apply_running}
-        compacting={compacting}
-        compaction_failed={compaction_failed}
-        unavailable_reason={unavailable_reason}
-        command={agent.command}
-        can_reset={!agent_restoring && agent.entries.length > 0}
-        context_tokens={agent.contextTokens}
-        model_selection={model_selection}
-        input_session={agent.input}
-        on_send={send}
-        on_image_error={() => push_toast("error", t("agent_page.error.image"))}
-        on_stop={stop}
-        on_reset={() => set_reset_dialog_open(true)}
-      />
+      <div className="agent-page__composer-stack">
+        <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
+        <AgentComposer
+          ref={composer_ref}
+          skills={agent.skills}
+          terms={available_terms}
+          term_hit_counts={term_hit_counts}
+          running={is_running}
+          stop_disabled={workspace_apply_running}
+          compacting={compacting}
+          compaction_failed={compaction_failed}
+          unavailable_reason={unavailable_reason}
+          command={agent.command}
+          can_reset={!agent_restoring && agent.entries.length > 0}
+          context_tokens={agent.contextTokens}
+          model_selection={model_selection}
+          input_session={agent.input}
+          on_send={send}
+          on_image_error={() => push_toast("error", t("agent_page.error.image"))}
+          on_stop={stop}
+          on_reset={() => set_reset_dialog_open(true)}
+        />
+      </div>
       <AppAlertDialog
         open={pending_round_revision !== null}
         description={t("agent_page.confirm.retry_after_workspace_apply")}

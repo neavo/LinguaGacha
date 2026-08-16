@@ -69,6 +69,11 @@ type TaskProgressState = {
 export class AgentTaskProgress {
   private state: TaskProgressState | null = null; // null 同时表示尚未开始或已经结束
 
+  /** 按队列顺序返回全部未完成标签，供公开 UI 投影。 */
+  public read_pending_labels(): string[] {
+    return this.state?.items.filter((item) => !item.completed).map((item) => item.label) ?? [];
+  }
+
   /** 建立唯一活动任务，并返回可供下一回合恢复的紧凑快照。 */
   public start(title: string, items: readonly TaskProgressItemInput[]): JsonRecord {
     if (this.state !== null) throw new AgentToolError({ code: "task_progress.active" });

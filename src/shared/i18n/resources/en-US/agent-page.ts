@@ -60,6 +60,7 @@ export const en_us_agent_page = {
     error: "Failed",
     stopped: "Stopped",
   },
+  task_progress: { next: "Next" },
   tool: {
     details: "{tool} tool call details",
     input: "Input",

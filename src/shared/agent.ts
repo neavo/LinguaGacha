@@ -89,6 +89,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  taskProgress: string[]; // 当前动态队列的全部待办标签；空数组不占用固定展示位
   contextTokens: number | null; // 当前模型可见历史的估算用量
 };
 
@@ -97,6 +98,7 @@ export type AgentSessionEvent = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
+    | { type: "task_progress"; taskProgress: string[] }
     | { type: "context_tokens"; contextTokens: number }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );

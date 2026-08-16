@@ -53,6 +53,7 @@ export const zh_cn_agent_page = {
       "这一轮已经修改过工程。重试或修改输入不会撤销已有变更，并可能再次修改工程，仍要继续吗？",
   },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
+  task_progress: { next: "下一步" },
   tool: {
     details: "{tool} 工具调用详情",
     input: "输入",

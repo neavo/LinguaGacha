@@ -110,6 +110,21 @@ describe("Agent task_progress 工具", () => {
     progress.reset();
     expect(progress.read()).toEqual({ status: "idle" });
   });
+
+  it("向 UI 投影全部待办标签并在队列清空后隐藏", () => {
+    const progress = new AgentTaskProgress();
+    const items = Array.from({ length: 21 }, (_, index) => ({
+      key: `item-${index.toString()}`,
+      phase: "review",
+      label: `检查 ${index.toString()}`,
+    }));
+
+    progress.start("完整检查", items);
+    expect(progress.read_pending_labels()).toEqual(items.map((item) => item.label));
+
+    progress.advance(items.map((item) => item.key));
+    expect(progress.read_pending_labels()).toEqual([]);
+  });
 });
 
 /** 复用 SDK 的真实参数校验，覆盖 action 联合类型边界。 */
