@@ -123,6 +123,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
       if (key === "agent_page.action.applying") return "正在应用工程修改，完成前不可停止";
       if (key === "agent_page.status.error") return "失败";
+      if (key === "agent_page.task_progress.next") return "下一步";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
       if (key === "agent_page.compaction.success") return "上下文压缩成功";
       if (key === "agent_page.compaction.error") return "上下文压缩失败";
@@ -295,6 +296,20 @@ describe("AgentPage", () => {
 
     expect(view.querySelector('.agent-page__connection-status[role="status"]')).not.toBeNull();
     expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
+  });
+
+  it("把当前待办固定在 Composer 上方", async () => {
+    const view = await render_page({
+      state: "running",
+      taskProgress: ["检查章节", "汇总结果"],
+    });
+    const progress = view.querySelector<HTMLElement>(".agent-task-progress");
+    const composer = view.querySelector<HTMLElement>(".agent-composer");
+    if (progress === null || composer === null) throw new Error("缺少底部任务区");
+
+    expect(progress.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
@@ -722,6 +737,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       assistant_entry("assistant-1", "**变更方案**", "success", 1),
     ],
     skills,
+    taskProgress: overrides.taskProgress ?? [],
     contextTokens: overrides.contextTokens ?? null,
     transport: "ready",
     command: null,

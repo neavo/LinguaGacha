@@ -617,10 +617,126 @@
   white-space: nowrap;
 }
 
+.agent-page__composer-stack {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 16px 14px;
+}
+
+/* Tooltip 经 Portal 脱离页面树，两个根节点共用同一基准宽度。 */
+.agent-task-progress,
+.agent-task-progress__tooltip {
+  --agent-task-progress-width: 420px;
+}
+
+.agent-task-progress {
+  /* 等宽侧轨让队首相对整条居中，余项计数消失时也不跳位。 */
+  display: grid;
+  width: min(100%, var(--agent-task-progress-width));
+  min-height: 32px;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  margin: 0 auto;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 82%, var(--muted));
+  padding: 0 12px;
+  color: var(--muted-foreground);
+  cursor: help;
+  font-size: 12px;
+  line-height: 1.4;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.agent-task-progress:hover {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--popover) 72%, var(--accent));
+}
+
+.agent-task-progress:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-task-progress__spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  border-radius: var(--ui-radius-pill);
+}
+
+.agent-task-progress__spinner[data-running="true"] {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  border-top-color: var(--primary);
+  animation: agent-task-progress-spin 900ms linear infinite;
+}
+
+.agent-task-progress__lead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+}
+
+.agent-task-progress__label {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-progress__item {
+  min-width: 0;
+  overflow: hidden;
+  justify-self: stretch;
+  color: var(--foreground);
+  font-weight: 500;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-progress__more {
+  justify-self: end;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 固定最小宽度与滚动槽，避免浮层首帧测量后收缩闪烁。 */
+.agent-task-progress__tooltip {
+  display: block;
+  width: max-content;
+  min-width: min(var(--agent-task-progress-width), calc(100vw - 32px));
+  max-width: min(720px, calc(100vw - 32px));
+  max-height: min(320px, calc(100vh - 32px));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  line-height: 1.5;
+  white-space: normal;
+  animation: none;
+}
+
+.agent-task-progress__tooltip ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .agent-composer {
   position: relative;
   flex: 0 0 auto;
-  margin: 0 16px 14px;
+  margin: 0;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
   background: var(--popover);
@@ -999,6 +1115,12 @@
   }
 }
 
+@keyframes agent-task-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-status-mark--running {
     animation: none;
@@ -1013,6 +1135,10 @@
   .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+  }
+
+  .agent-task-progress__spinner[data-running="true"] {
+    animation: none;
   }
 
   .agent-thinking-entry summary::before,

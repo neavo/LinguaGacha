@@ -163,8 +163,37 @@ describe("AgentSessionProvider", () => {
     expect(latest.contextTokens).toBe(31_488);
   });
 
+  it("用合法进度事件替换全部待办，并拒绝不完整标签", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "task_progress",
+        taskProgress: ["读取工程", "检查章节", "汇总结果"],
+      });
+    });
+    expect(latest.taskProgress).toEqual(["读取工程", "检查章节", "汇总结果"]);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "task_progress",
+        taskProgress: ["读取工程", " "],
+      });
+    });
+    expect(latest.taskProgress).toEqual(["读取工程", "检查章节", "汇总结果"]);
+  });
+
   it("缺失上下文用量的完整快照按当前协议失败", async () => {
-    desktop_api_mocks.api_get.mockResolvedValue({ state: "idle", entries: [], skills: [] });
+    desktop_api_mocks.api_get.mockResolvedValue({
+      state: "idle",
+      entries: [],
+      skills: [],
+      taskProgress: [],
+    });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -176,7 +205,13 @@ describe("AgentSessionProvider", () => {
 
   it("拒绝旧会话终态，并允许用户按当前协议重新恢复", async () => {
     desktop_api_mocks.api_get
-      .mockResolvedValueOnce({ state: "complete", entries: [], skills: [], contextTokens: null })
+      .mockResolvedValueOnce({
+        state: "complete",
+        entries: [],
+        skills: [],
+        taskProgress: [],
+        contextTokens: null,
+      })
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
       );
@@ -198,6 +233,7 @@ describe("AgentSessionProvider", () => {
     desktop_api_mocks.api_get.mockResolvedValue({
       state: "idle",
       entries: [],
+      taskProgress: [],
       contextTokens: null,
       skills: [
         TEST_SKILLS[0],
@@ -368,6 +404,7 @@ describe("AgentSessionProvider", () => {
         },
       ],
       skills: [],
+      taskProgress: [],
       contextTokens: null,
     });
     let latest!: ReturnType<typeof useAgentSession>;
@@ -943,6 +980,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     state: "idle",
     entries: [],
     skills: [],
+    taskProgress: [],
     contextTokens: null,
     ...overrides,
   };

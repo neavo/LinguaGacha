@@ -187,7 +187,7 @@ export class AgentService {
   private readonly workspace: AgentWorkspacePort | undefined; // 缺失即不注册 Electron 专属磁盘工作区
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
-  private readonly task_progress = new AgentTaskProgress(); // 对话级动态工作队列，不进入项目或公开快照
+  private readonly task_progress = new AgentTaskProgress(); // 对话级队列；只有未完成标签进入公开会话投影
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
@@ -239,6 +239,7 @@ export class AgentService {
           name,
           displayDescriptions: { ...displayDescriptions },
         })),
+      taskProgress: this.task_progress.read_pending_labels(),
       contextTokens: this.context_tokens,
     };
   }
@@ -987,6 +988,13 @@ export class AgentService {
         status: event.isError ? "error" : "success",
         output: contentText(event.result.content, ""),
       });
+      // 工具成功终帧表示原子状态已提交；失败时保留旧投影。
+      if (!event.isError && running_entry.toolName === "task_progress") {
+        this.publish_event({
+          type: "task_progress",
+          taskProgress: this.task_progress.read_pending_labels(),
+        });
+      }
     }
   }
 
