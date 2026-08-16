@@ -62,3 +62,15 @@
 .setting-card-row__action > * {
   width: inherit;
 }
+
+.setting-card-row--content-action .setting-card-row__action {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.setting-card-row--content-action .setting-card-row__action > * {
+  width: auto;
+  min-width: min(128px, 100%);
+  max-width: 100%;
+}

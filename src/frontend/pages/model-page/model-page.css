@@ -193,16 +193,6 @@
   justify-content: stretch;
 }
 
-.model-page__setting-card-row--auto-action .setting-card-row__action {
-  width: auto;
-  min-width: 0;
-}
-
-.model-page__setting-card-row--auto-action .setting-card-row__action > * {
-  width: auto;
-  max-width: 100%;
-}
-
 .model-page__inline-button-group {
   display: flex;
   flex-wrap: wrap;

@@ -9,6 +9,7 @@ type SettingCardRowProps = {
   title: string;
   description: ReactNode;
   action: ReactNode;
+  action_width?: "fixed" | "content";
   className?: string;
   title_suffix?: ReactNode;
 };
@@ -26,7 +27,13 @@ export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
       : props.description;
 
   return (
-    <Card className={cn("setting-card-row", props.className)}>
+    <Card
+      className={cn(
+        "setting-card-row",
+        props.action_width === "content" && "setting-card-row--content-action",
+        props.className,
+      )}
+    >
       <CardContent className="setting-card-row__content">
         <div className="setting-card-row__copy">
           <div className="setting-card-row__heading">

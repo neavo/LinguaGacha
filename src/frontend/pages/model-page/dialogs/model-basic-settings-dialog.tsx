@@ -86,6 +86,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
         <div className="model-page__dialog-scroll">
           <div className="model-page__setting-list">
             <SettingCardRow
+              action_width="content"
               title={t("model_page.fields.name.title")}
               description={t("model_page.fields.name.description")}
               action={
@@ -104,6 +105,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             />
 
             <SettingCardRow
+              action_width="content"
               title={t("model_page.fields.api_url.title")}
               description={t("model_page.fields.api_url.description")}
               action={
@@ -141,7 +143,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
             />
 
             <SettingCardRow
-              className="model-page__setting-card-row--auto-action"
+              action_width="content"
               title={t("model_page.fields.model_id.title")}
               description={t("model_page.fields.model_id.description").replace(
                 "{MODEL}",
@@ -190,6 +192,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
 
             {show_thinking_field ? (
               <SettingCardRow
+                action_width="content"
                 title={t("model_page.fields.thinking.title")}
                 title_suffix={
                   <SettingHelpButton

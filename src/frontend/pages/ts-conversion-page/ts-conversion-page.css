@@ -12,10 +12,6 @@
   gap: var(--ui-list-gap-dense);
 }
 
-.ts-conversion-page__select {
-  width: 128px;
-}
-
 .ts-conversion-page__command-bar {
   margin-top: auto;
 }
