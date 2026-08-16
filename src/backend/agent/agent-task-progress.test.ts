@@ -1,0 +1,138 @@
+import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
+import { describe, expect, it } from "vitest";
+
+import { AgentTaskProgress, create_agent_task_progress_tools } from "./agent-task-progress";
+import { AgentToolError } from "./agent-tool";
+
+describe("Agent task_progress 工具", () => {
+  it("以单一工具公开互斥 action schema", () => {
+    const [tool] = create_agent_task_progress_tools(new AgentTaskProgress());
+
+    expect(tool?.name).toBe("task_progress");
+    expect(() => validate(tool, { action: "read", title: "多余字段" })).toThrow();
+    expect(() => validate(tool, { action: "start", title: "任务", items: [] })).toThrow();
+    expect(() =>
+      validate(tool, {
+        action: "start",
+        title: "任务",
+        items: [{ key: "seed", phase: "discover", label: "基础扫描" }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("原子完成当前工作并追加派生工作", () => {
+    const progress = new AgentTaskProgress();
+
+    progress.start("提取质量规则", [
+      { key: "seed", phase: "discover", label: "基础扫描" },
+      { key: "residual", phase: "residual", label: "独立残差" },
+    ]);
+    const result = progress.advance(
+      ["seed"],
+      [
+        {
+          key: "derived:names",
+          phase: "discover",
+          label: "扫描同构名称槽位",
+        },
+      ],
+    );
+
+    expect(result).toEqual({
+      status: "active",
+      title: "提取质量规则",
+      item_count: 3,
+      completed_count: 1,
+      pending_count: 2,
+      phases: {
+        discover: { total: 2, completed: 1, pending: 1 },
+        residual: { total: 1, completed: 0, pending: 1 },
+      },
+      next_items: [
+        { key: "residual", phase: "residual", label: "独立残差" },
+        {
+          key: "derived:names",
+          phase: "discover",
+          label: "扫描同构名称槽位",
+        },
+      ],
+    });
+  });
+
+  it("advance 校验失败时不产生部分状态", () => {
+    const progress = new AgentTaskProgress();
+    progress.start("任务", [{ key: "seed", phase: "discover", label: "基础扫描" }]);
+
+    expect(
+      capture_tool_error(() =>
+        progress.advance(["missing"], [{ key: "derived", phase: "discover", label: "派生扫描" }]),
+      ).details,
+    ).toEqual({ code: "task_progress.item_not_found", key: "missing" });
+    expect(progress.read()).toMatchObject({
+      completed_count: 0,
+      pending_count: 1,
+      next_items: [{ key: "seed" }],
+    });
+  });
+
+  it("存在待办时拒绝结束，全部完成后释放活动任务", () => {
+    const progress = new AgentTaskProgress();
+    progress.start("任务", [{ key: "seed", phase: "discover", label: "基础扫描" }]);
+
+    expect(capture_tool_error(() => progress.finish()).details).toEqual({
+      code: "task_progress.pending_items",
+      pending_count: 1,
+      next_keys: ["seed"],
+    });
+    progress.advance(["seed"]);
+    expect(progress.finish()).toEqual({
+      status: "finished",
+      title: "任务",
+      item_count: 1,
+    });
+    expect(progress.read()).toEqual({ status: "idle" });
+  });
+
+  it("活动任务不能被覆盖，但可以显式取消或由会话 reset 清空", () => {
+    const progress = new AgentTaskProgress();
+    const items = [{ key: "seed", phase: "discover", label: "基础扫描" }];
+    progress.start("旧任务", items);
+
+    expect(capture_tool_error(() => progress.start("旧任务", items)).details).toEqual({
+      code: "task_progress.active",
+    });
+    expect(progress.cancel("用户改为处理另一项任务")).toMatchObject({
+      status: "cancelled",
+      title: "旧任务",
+      pending_count: 1,
+    });
+    progress.start("旧任务", items);
+    progress.reset();
+    expect(progress.read()).toEqual({ status: "idle" });
+  });
+});
+
+/** 复用 SDK 的真实参数校验，覆盖 action 联合类型边界。 */
+function validate(
+  tool: ReturnType<typeof create_agent_task_progress_tools>[number] | undefined,
+  args: unknown,
+): void {
+  if (tool === undefined) throw new Error("缺少 task_progress");
+  validateToolArguments(tool, {
+    type: "toolCall",
+    id: "task-progress-call",
+    name: tool.name,
+    arguments: args,
+  } as ToolCall);
+}
+
+/** 捕获状态机的稳定业务错误，同时拒绝吞掉其它异常或缺失异常。 */
+function capture_tool_error(action: () => unknown): AgentToolError {
+  try {
+    action();
+  } catch (error) {
+    if (error instanceof AgentToolError) return error;
+    throw error;
+  }
+  throw new Error("预期 task_progress 拒绝操作");
+}

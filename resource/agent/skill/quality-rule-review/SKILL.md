@@ -1,54 +1,28 @@
 ---
 name: quality-rule-review
-description: 当需要审查、校正、删除或整理当前工程中的术语或文本保护规则时使用；以程序化目标清单保证完整覆盖，模型分片核验规则事实并回放涌现信号形成最终集合。需要主动扫描全工程发现新规则时使用 quality-rule-create。替换规则不在本技能范围。
+description: 当需要审查、校正、删除或整理当前工程中的术语或文本保护规则时使用；一次执行共享两个领域的结构关系、证据前沿和最终提交。需要主动扫描全工程发现新规则时使用 quality-rule-create。
 ---
 
-# 质量规则审查
+# 质量规则审查入口
 
-先读取并遵循 `@skill(quality-rules)` 与 `@skill(quality-rule-workflow)`；本技能只补充审查现有规则的目标建立、观察与处置流程。
+读取 `@skill(quality-rule-workflow)`，以 `mode: review` 执行其唯一工作流；由该 workflow 按实际范围加载领域判据。同时审查两个领域也只加载一次工作区，并共享每一代 items 遍历和上下文片段。
 
 ## 范围
 
 - 未限定 kind：审查现有 glossary + text_preserve；限定 kind 时只处理指定类型。
-- 限定 targets：只有明确规则进入 existing targets；其它规则只作结构或语义证据。
-- 用户排除项保持原样且不进入目标、计数或变更。
-- 审查不主动全工程发现新候选；核验目标时发现的必要替代边界或缺失事实可以追加为 candidate target。需要系统发现时使用 quality-rule-create。
+- 限定 targets：只有明确规则进入 existing facts；其它规则只作结构、覆盖或语义证据。
+- 用户排除项保持原样，不进入事实、计数或变更。
+- 不主动扫描全工程发现独立新规则；核验目标时发现的必要替代边界、拆分分支或缺失事实可以成为 candidate fact。需要系统发现时使用 `quality-rule-create`。
 
-## 建立目标与观察
+初始化时按用户范围程序化枚举全部 existing facts，保持规则稳定顺序；先建立结构组，再在同一次证据编排中取得正式命中和有限语境。glossary 目标使用 `workspace.matchLiterals` 批量匹配；text_preserve 在同一次 items 遍历中累计真实命中、文件、文本类型和代表证据。
 
-1. 按用户范围程序化枚举全部 existing target，并按稳定规则顺序入账。
-2. glossary：把全部尚无观察的目标作为 patterns 一次调用 `workspace.matchLiterals`；再完整扫描 glossary entries，记录 NFKC 小写后相等或互相包含的范围内外规则 ID。结构关系只作证据。
-3. text_preserve：编译全部尚无观察的目标规则，一次流式遍历完整 items，独立累计每条规则的 item、行、片段、`text_type`、文件和有限代表证据；非法或零长度规则也形成明确观察。
-4. 把已执行的程序化观察登记为初始信号；初始化只返回目标、观察与完整性数量，以及 System Prompt 所需的范围确认信息，不返回完整集合。
+每个 existing fact 独立决定：
 
-## 分片核验
+- required：最终值相同则 keep，需要调整则 update；被其它已验证最终规则完整覆盖时可以 delete，并记录 `covered_by`。
+- not_required：delete；不能因存在已久、修改麻烦或当前没有报错而 keep。
+- 当前工程零命中且用户未要求清理预置规则：`unknown + preserved + keep`，说明当前没有证据支持修改或删除。
+- 只有直接、conditional、narrowed 或拆分全部失败时才单独 blocked；同组其它事实继续处理。
 
-按 `quality-rule-workflow` 选择处理片段并写回决策。当前片段的每个 target 必须形成一条决策：
+审查中出现 candidate replacement 时与 existing 使用同一聚类算法和发现前沿，但范围外新规则只作观察。结构组、派生匹配和 residual 只扩展目标证据或必要替代事实，不自动扩大用户允许修改的目标。
 
-- 先按 `quality-rules` 分类为需承载、无需承载或未决。
-- 再映射为 keep、update、delete 或 unresolved。
-- 需承载但由另一最终规则完整覆盖的旧项可以 delete。
-- 新边界或拆分规则先追加为 candidate target，完成正式观察后再决定 create、discard 或 unresolved。
-- 零命中不能单独推导删除；缺少身份、边界或值时列为未决。
-
-核验中涌现会影响结论的新维度（同系列一致性、变格形式、译名体系等）同样是信号：按 `quality-rule-workflow` 入账并回放其 `affects` 范围内已形成的 decision，不只在当前片段使用。
-
-## glossary 核验与集合重构
-
-- 使用正式命中和必要邻近语境核验必要性、连续边界、译文、`info` 和用户风格。
-- 结构相似不表示语义相同；别名、简称、同一实体形式和公共词根由语境确认后加入 related 事实。
-- 语义相关形式按 `quality-rule-workflow` 确定性枚举候选并选择最短安全词根；新增匹配未全部核验时相关目标保持未决。
-- 最终词根已存在时保留或更新；不存在时优先把一个被替代 existing ID 更新为词根并删除冗余分支。确需增加规则时使用 candidate create，不为保持旧边界建立补丁条目。
-- 全局风格标准在首个处理片段建立初版；任何片段可基于全局证据修正，但不按局部多数重新定义，修正即入账为信号并回放已形成的 decision。
-
-## text_preserve 核验
-
-- 每条规则只依据自己的完整扫描和代表命中判断，不用其它规则命中数替代。
-- 表达式修改后必须作为新值重新完成完整扫描，旧观察不能复用。
-- 不计算跨规则覆盖率；身份完全重复或保护边界直接冲突时可以互为证据，但仍各自形成决策。
-
-## 完成与方案
-
-按 `quality-rule-workflow` 的共享完整性、授权和提交协议收敛。方案按实际内容汇总现有规则的 keep/update/delete/unresolved、候选的 create/discard/unresolved、变更前后数量、代表证据和全部未决；新候选产生时继续处理，不得提前结束。
-
-本次产生 text_preserve 变更时，说明它们只在文本保护模式为自定义时参与翻译。
+最终从 scope 内 existing 与必要 replacement candidates 程序化生成 creates、updates 和 deletes；不自动生成 move。对外报告全部目标处置、实际 discovery 代数、残差回执、group / component 拆分、语义合并、preserved 与 blocked；共同审查组不能直接计作同一决定。

@@ -58,7 +58,7 @@ const skill_test_fixture = vi.hoisted(() => {
         order: Number.MAX_SAFE_INTEGER,
         description: "检索语料",
         content: "执行语料检索。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/quality-rules/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-rules/SKILL.md",
         disableModelInvocation: true,
       },
       {
@@ -109,6 +109,8 @@ const fake_agent_state = vi.hoisted(() => ({
     | "streaming"
     | "thinking"
     | "tool_only"
+    | "progress_start"
+    | "progress_read"
     | "invalid_tool"
     | "checkpoint"
     | "tools",
@@ -348,6 +350,26 @@ function create_fake_response(context: Context): FauxResponseStep {
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
       fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "progress_start") {
+    return fauxAssistantMessage(
+      fauxToolCall(
+        "task_progress",
+        {
+          action: "start",
+          title: "长任务",
+          items: [{ key: "seed", phase: "discover", label: "基础扫描" }],
+        },
+        { id: "progress-start" },
+      ),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "progress_read") {
+    return fauxAssistantMessage(
+      fauxToolCall("task_progress", { action: "read" }, { id: "progress-read" }),
       { stopReason: "toolUse" },
     );
   }
@@ -1271,11 +1293,37 @@ describe("AgentService", () => {
 
     await service.send_message({ text: "@skill(glossary-audit) 写入", images: [] });
     await wait_for_idle(service);
-    expect(fake_agent_state.tool_names.at(-1)).toEqual(["read_skill"]);
+    expect(fake_agent_state.tool_names.at(-1)).toEqual(["task_progress", "read_skill"]);
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
       "user_message",
       "tool_call",
     ]);
+  });
+
+  it("task_progress 跨普通回合保留并随 Agent reset 清空", async () => {
+    const { service } = await create_service(true, undefined, null);
+    fake_agent_state.mode = "progress_start";
+
+    await service.send_message({ text: "开始长任务", images: [] });
+    await wait_for_idle(service);
+    expect(read_tool_output(service, "progress-start")).toMatchObject({
+      status: "active",
+      pending_count: 1,
+    });
+
+    fake_agent_state.mode = "progress_read";
+    await service.send_message({ text: "下一回合读取进度", images: [] });
+    await wait_for_idle(service);
+    expect(read_tool_output(service, "progress-read")).toMatchObject({
+      status: "active",
+      pending_count: 1,
+    });
+
+    await service.reset();
+    await service.send_message({ text: "读取进度", images: [] });
+    await wait_for_idle(service);
+
+    expect(read_tool_output(service, "progress-read")).toEqual({ status: "idle" });
   });
 
   it("仅在宿主 Web 能力可用时成组注册搜索与抓取工具", async () => {
@@ -1314,7 +1362,13 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      ["workspace_load", "workspace_script", "workspace_apply", "read_skill"].sort(),
+      [
+        "task_progress",
+        "workspace_load",
+        "workspace_script",
+        "workspace_apply",
+        "read_skill",
+      ].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -2161,6 +2215,17 @@ async function prepare_long_tool_checkpoint(
 /** 等待公开会话终态，不依赖 SDK 内部 idle 时序。 */
 async function wait_for_idle(service: AgentService): Promise<void> {
   await vi.waitFor(() => expect(service.get_snapshot().state).toBe("idle"));
+}
+
+/** 从公开时间线读取模型实际收到的工具 JSON，验证跨回合生命周期。 */
+function read_tool_output(service: AgentService, id: string): JsonRecord {
+  const entry = service
+    .get_snapshot()
+    .entries.find((candidate) => candidate.kind === "tool_call" && candidate.id === id);
+  if (entry?.kind !== "tool_call" || entry.output === null) {
+    throw new Error(`缺少工具结果: ${id}`);
+  }
+  return JSON.parse(entry.output) as JsonRecord;
 }
 
 /** 事件数量本身是 reset/生命周期只发布一次 seed 的公开契约。 */

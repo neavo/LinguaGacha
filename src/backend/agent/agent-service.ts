@@ -50,6 +50,7 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
+import { AgentTaskProgress, create_agent_task_progress_tools } from "./agent-task-progress";
 import { create_agent_web_tools, type AgentWebPort } from "./agent-web-tools";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
@@ -186,6 +187,7 @@ export class AgentService {
   private readonly workspace: AgentWorkspacePort | undefined; // 缺失即不注册 Electron 专属磁盘工作区
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
+  private readonly task_progress = new AgentTaskProgress(); // 对话级动态工作队列，不进入项目或公开快照
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
@@ -405,6 +407,7 @@ export class AgentService {
     if (this.disposed) return;
     this.disposed = true;
     this.clear_assistant_stream();
+    this.task_progress.reset();
     this.runtime_generation += 1;
     this.unsubscribe_project_session();
     const runtime = this.runtime;
@@ -748,6 +751,7 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
+        ...create_agent_task_progress_tools(this.task_progress),
         ...(this.workspace === undefined ? [] : create_agent_workspace_tools(this.workspace)),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
@@ -1203,6 +1207,7 @@ export class AgentService {
     this.latest_round_checkpoint = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
+    this.task_progress.reset();
     const reset = Promise.all([
       acceptance?.catch(() => undefined),
       settlement?.catch(() => undefined),
