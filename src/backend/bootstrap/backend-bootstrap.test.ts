@@ -9,6 +9,7 @@ import { ApiGatewayServer } from "../api/api-gateway-server";
 import { NPM_INITIAL_CWD_ENV_NAME } from "../app/app-root-resolver";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
+import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { BackendBootstrap } from "./backend-bootstrap";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 
@@ -66,6 +67,7 @@ describe("BackendBootstrap", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
+    const http_dispose = vi.spyOn(SystemProxyHttpClient.prototype, "dispose");
     const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
     const manager = new BackendBootstrap({
@@ -79,6 +81,7 @@ describe("BackendBootstrap", () => {
     await expect(manager.start()).rejects.toMatchObject({ code: "file.io_failed" });
 
     expect(agent_dispose).toHaveBeenCalledTimes(1);
+    expect(http_dispose).toHaveBeenCalledTimes(1);
     expect(database_close).toHaveBeenCalledTimes(1);
     expect(log_shutdown).toHaveBeenCalledTimes(1);
     expect(manager.isStopped()).toBe(true);
@@ -182,6 +185,7 @@ describe("BackendBootstrap", () => {
     );
     await handler_started;
     const backend_dispose = vi.spyOn(start_result.backendServices, "dispose");
+    const http_dispose = vi.spyOn(SystemProxyHttpClient.prototype, "dispose");
 
     const stopping = manager.stop();
     try {
@@ -196,9 +200,13 @@ describe("BackendBootstrap", () => {
     }
 
     expect(backend_dispose).toHaveBeenCalledTimes(1);
+    expect(http_dispose).toHaveBeenCalledTimes(1);
     expect(database_close).toHaveBeenCalledTimes(1);
     expect(log_shutdown).toHaveBeenCalledTimes(1);
     expect(backend_dispose.mock.invocationCallOrder[0]).toBeLessThan(
+      http_dispose.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(http_dispose.mock.invocationCallOrder[0]).toBeLessThan(
       database_close.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
     expect(database_close.mock.invocationCallOrder[0]).toBeLessThan(

@@ -76,7 +76,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 共用同一请求事实和 `pi-ai` 原生 adapter，模型列表探测直接调用供应商 REST API。`LLMClient` 独立拥有 OneShot 的总时限、取消、退化和结果语义，任务层不解析供应商异常文本。
-- 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者，并向调用方注入同一个 fetch。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
+- 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendBootstrap` 在服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型族思考字段由项目共享策略生成，未收录模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
 
 ## 5. 数据库与 `.lg` 存储

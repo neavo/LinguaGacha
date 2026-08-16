@@ -1,5 +1,5 @@
 import { Type, type Model, type ProviderStreamOptions } from "@earendil-works/pi-ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { read_model_request_snapshot } from "./llm-client-policy";
@@ -26,6 +26,39 @@ describe("pi-ai 请求适配", () => {
     expect(resolved.model).toMatchObject({ provider, api, name: "Test" });
   });
 
+  it("Google adapter 使用进程 HTTP transport", async () => {
+    const original_fetch = globalThis.fetch;
+    const process_fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response(JSON.stringify({ error: { code: 500, message: "fake upstream" } }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    globalThis.fetch = process_fetch;
+    try {
+      const snapshot = read_model_request_snapshot(
+        create_model({
+          api_format: "Google",
+          api_url: "https://google.example/v1beta",
+          model_id: "gemini-2.5-flash",
+        }),
+        TEST_USER_AGENT,
+      );
+      const request = resolve_one_shot_pi_request(
+        snapshot,
+        [{ role: "user", content: "ping" }],
+        new AbortController().signal,
+      );
+
+      await request.stream(request.model, request.context, request.options).result();
+
+      expect(process_fetch).toHaveBeenCalledOnce();
+    } finally {
+      globalThis.fetch = original_fetch;
+    }
+  });
+
   it("在协议转换前拒绝空业务提示词", () => {
     const snapshot = read_model_request_snapshot(
       create_model({ api_format: "OpenAIResponses" }),
@@ -37,7 +70,6 @@ describe("pi-ai 请求适配", () => {
         snapshot,
         [{ role: "user", content: "   " }],
         new AbortController().signal,
-        globalThis.fetch,
       ),
     ).toThrow("request.validation_failed");
   });
@@ -80,7 +112,6 @@ describe("pi-ai 请求适配", () => {
       apiKey: "key",
       cacheRetention: "none",
       maxRetries: 0,
-      fetch: globalThis.fetch,
       temperature: 0.2,
       maxTokens: 4096,
       headers: { "User-Agent": TEST_USER_AGENT, "X-Test": "yes" },
@@ -339,7 +370,6 @@ function resolve_request(overrides: JsonRecord): ResolvedRequest {
       { role: "user", content: " こんにちは " },
     ],
     new AbortController().signal,
-    globalThis.fetch,
   );
 }
 

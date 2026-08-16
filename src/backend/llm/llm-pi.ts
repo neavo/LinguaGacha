@@ -1,6 +1,5 @@
 import {
   type Context,
-  type FetchFunction,
   type Model as PiModel,
   type ModelThinkingLevel as PiModelThinkingLevel,
   type ProviderStreamOptions,
@@ -81,7 +80,6 @@ export function resolve_one_shot_pi_request(
   snapshot: ModelRequestSnapshot,
   messages: LLMMessage[],
   signal: AbortSignal,
-  fetch: FetchFunction,
 ): {
   model: PiModel<PiApi>;
   context: Context;
@@ -114,7 +112,6 @@ export function resolve_one_shot_pi_request(
     headers: { ...snapshot.headers },
     maxRetries: 0,
     signal,
-    fetch,
     ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
     ...(generation.maxTokens === undefined ? {} : { maxTokens: generation.maxTokens }),
     ...(snapshot.api_format === "OpenAIResponses" &&

@@ -1,4 +1,4 @@
-import { contentText, type AssistantMessage, type FetchFunction } from "@earendil-works/pi-ai";
+import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import { JsonTool } from "../../shared/utils/json-tool";
 import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
@@ -10,30 +10,22 @@ import type { ModelRequestSnapshot } from "./policy/policy-types";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
-  fetch: FetchFunction; // 真实供应商 HTTP 由组合根显式注入，不依赖进程全局 fetch
 }
 
 /** Backend 进程内 OneShot LLM 入口，拥有总时限、取消、退化和结果归一。 */
 export class LLMClient implements LLMClientPort {
   private readonly user_agent: string; // 当前 Backend 实例的固定请求身份
-  private readonly fetch: FetchFunction; // Pi adapter 的显式传输，不读取全局 fetch
 
   /** User-Agent 由组合根注入，避免请求层读取应用资源。 */
   public constructor(options: LLMClientOptions) {
     this.user_agent = options.userAgent;
-    this.fetch = options.fetch;
   }
 
   /** 单次解析模型快照，并把取消、总时限和 Pi 流统一收敛为 LLMRequestResult。 */
   public async request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
     const snapshot = read_model_request_snapshot(body.model, this.user_agent);
     const controller = new AbortController();
-    const request = resolve_one_shot_pi_request(
-      snapshot,
-      body.messages,
-      controller.signal,
-      this.fetch,
-    );
+    const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
     // AbortController 只传递中止；三个标记保留触发原因并决定最终结果优先级。
     let timeout = false;
     let cancelled = false;

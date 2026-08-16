@@ -18,19 +18,17 @@ describe("llm-model-catalog", () => {
         data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
       }),
     );
+    vi.stubGlobal("fetch", fetch_mock);
     await expect(
-      list_available_models(
-        {
-          api_format,
-          api_url,
-          api_key: "key-a\nkey-b",
-          request: {
-            extra_headers: { "X-Trace": "trace-1" },
-            extra_headers_custom_enable: true,
-          },
+      list_available_models({
+        api_format,
+        api_url,
+        api_key: "key-a\nkey-b",
+        request: {
+          extra_headers: { "X-Trace": "trace-1" },
+          extra_headers_custom_enable: true,
         },
-        fetch_mock,
-      ),
+      }),
     ).resolves.toEqual(["model-a", "model-z"]);
 
     expect(fetch_mock).toHaveBeenCalledWith(
@@ -56,19 +54,17 @@ describe("llm-model-catalog", () => {
         }),
       )
       .mockResolvedValueOnce(Response.json({ models: [{ name: "models/gemini-a" }] }));
+    vi.stubGlobal("fetch", fetch_mock);
     await expect(
-      list_available_models(
-        {
-          api_format: "Google",
-          api_key: "google-key-a\ngoogle-key-b",
-          api_url: "https://generativelanguage.googleapis.com",
-          request: {
-            extra_headers: { "X-Trace": "trace-google" },
-            extra_headers_custom_enable: true,
-          },
+      list_available_models({
+        api_format: "Google",
+        api_key: "google-key-a\ngoogle-key-b",
+        api_url: "https://generativelanguage.googleapis.com",
+        request: {
+          extra_headers: { "X-Trace": "trace-google" },
+          extra_headers_custom_enable: true,
         },
-        fetch_mock,
-      ),
+      }),
     ).resolves.toEqual(["models/gemini-a", "models/gemini-z"]);
 
     const first_url = new URL(String(fetch_mock.mock.calls[0]?.[0]));
@@ -100,15 +96,13 @@ describe("llm-model-catalog", () => {
     const fetch_mock = vi.fn(async () =>
       Response.json({ data: [{ id: "claude-z" }, { id: "claude-a" }] }),
     );
+    vi.stubGlobal("fetch", fetch_mock);
     await expect(
-      list_available_models(
-        {
-          api_format: "Anthropic",
-          api_key: "anthropic-key",
-          api_url: "",
-        },
-        fetch_mock,
-      ),
+      list_available_models({
+        api_format: "Anthropic",
+        api_key: "anthropic-key",
+        api_url: "",
+      }),
     ).resolves.toEqual(["claude-a", "claude-z"]);
 
     expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
@@ -123,16 +117,14 @@ describe("llm-model-catalog", () => {
 
   it("远端列表非成功响应转换为模型供应商错误并保留 HTTP 状态", async () => {
     const fetch_mock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetch_mock);
 
     await expect(
-      list_available_models(
-        {
-          api_format: "OpenAI",
-          api_key: "openai-key",
-          api_url: "https://api.example/v1",
-        },
-        fetch_mock,
-      ),
+      list_available_models({
+        api_format: "OpenAI",
+        api_key: "openai-key",
+        api_url: "https://api.example/v1",
+      }),
     ).rejects.toMatchObject({
       code: "model.provider_failed",
       public_details: { status: 401 },

@@ -1,26 +1,10 @@
-import {
-  InMemoryCredentialStore,
-  type Context,
-  type FetchFunction,
-  type ProviderStreams,
-} from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, type Context, type ProviderStreams } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import type { ModelApiFormat } from "../../domain/model";
-import { register_agent_model as register_agent_model_with_fetch } from "./agent-model";
-
-const TEST_NETWORK_FETCH = vi.fn<FetchFunction>();
-
-/** 旧有模型矩阵共用同一个显式测试传输，只在策略用例断言其注入。 */
-function register_agent_model(
-  runtime: Parameters<typeof register_agent_model_with_fetch>[0],
-  config: Parameters<typeof register_agent_model_with_fetch>[1],
-  user_agent: string,
-): ReturnType<typeof register_agent_model_with_fetch> {
-  return register_agent_model_with_fetch(runtime, config, user_agent, TEST_NETWORK_FETCH);
-}
+import { register_agent_model } from "./agent-model";
 
 const api_mocks = vi.hoisted(() => ({
   streamSimple: vi.fn<ProviderStreams["streamSimple"]>(() => ({}) as never),
@@ -38,7 +22,6 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 
 beforeEach(() => {
   api_mocks.streamSimple.mockClear();
-  TEST_NETWORK_FETCH.mockReset();
 });
 
 describe("Agent 模型注册", () => {
@@ -120,7 +103,6 @@ describe("Agent 模型注册", () => {
       timeoutMs: 5_000,
       maxRetries: 3,
       maxRetryDelayMs: 6_000,
-      fetch: TEST_NETWORK_FETCH,
       apiKey: "secret-1",
       headers: {
         "User-Agent": TEST_USER_AGENT,

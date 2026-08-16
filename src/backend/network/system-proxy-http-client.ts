@@ -1,4 +1,3 @@
-import type { FetchFunction } from "@earendil-works/pi-ai";
 import { Agent, Dispatcher, ProxyAgent, Socks5ProxyAgent, fetch as undici_fetch } from "undici";
 
 export interface SystemProxyResolver {
@@ -17,6 +16,7 @@ export class SystemProxyHttpClient {
   private readonly resolver: SystemProxyResolver; // 请求时读取 Electron 当前路由，不保存启动快照
   private readonly direct_dispatcher: Dispatcher; // loopback 与显式 DIRECT 共用的自有连接池
   private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // 同一路由复用连接池
+  private previous_fetch: typeof globalThis.fetch | null = null; // 安装期保存线程原 transport，关闭时恢复
   private disposed = false; // 释放后拒绝新请求，避免重建已关闭资源
 
   /** 创建自有直连池；代理池延迟到首次命中对应路由时创建。 */
@@ -25,8 +25,8 @@ export class SystemProxyHttpClient {
     this.direct_dispatcher = new Agent();
   }
 
-  /** Pi 和模型列表共用此显式 Fetch，不修改进程全局 Dispatcher。 */
-  public readonly fetch: FetchFunction = async (input, init) => {
+  /** 普通远端 HTTP 共用此 Fetch；专用安全下载链路仍显式选择自己的 dispatcher。 */
+  public readonly fetch: typeof globalThis.fetch = async (input, init) => {
     if (this.disposed) {
       throw new Error("System proxy HTTP client is disposed.");
     }
@@ -44,10 +44,23 @@ export class SystemProxyHttpClient {
     })) as unknown as Response;
   };
 
-  /** 关闭本 Client 创建的全部直连与代理连接池。 */
+  /** Backend 线程只有一个普通 HTTP transport，第三方 SDK 也从同一全局入口取用。 */
+  public install_as_global_fetch(): void {
+    if (this.disposed || this.previous_fetch !== null) {
+      throw new Error("System proxy HTTP client cannot be installed in its current state.");
+    }
+    this.previous_fetch = globalThis.fetch;
+    globalThis.fetch = this.fetch;
+  }
+
+  /** 先恢复线程原 transport，再关闭本 Client 创建的全部连接池。 */
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.previous_fetch !== null) {
+      globalThis.fetch = this.previous_fetch;
+      this.previous_fetch = null;
+    }
     const dispatchers = [this.direct_dispatcher, ...this.proxy_dispatchers.values()];
     this.proxy_dispatchers.clear();
     const results = await Promise.allSettled(dispatchers.map((dispatcher) => dispatcher.close()));
@@ -97,8 +110,8 @@ export function parse_system_proxy_route(proxy_rules: string): SystemProxyRoute 
   throw new Error("System proxy returned no supported route.");
 }
 
-/** FetchFunction 同时接受 URL 文本、URL 和 Request，这里统一为代理解析所需的 URL。 */
-function read_request_url(input: Parameters<FetchFunction>[0]): URL {
+/** fetch 同时接受 URL 文本、URL 和 Request，这里统一为代理解析所需的 URL。 */
+function read_request_url(input: Parameters<typeof globalThis.fetch>[0]): URL {
   if (typeof input === "string" || input instanceof URL) return new URL(input);
   return new URL(input.url);
 }

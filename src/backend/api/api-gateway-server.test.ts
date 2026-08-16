@@ -245,7 +245,6 @@ describe("ApiGatewayServer", () => {
       appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
-      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       openOutputFolder: async () => undefined,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });

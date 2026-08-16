@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { FetchFunction } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
@@ -30,6 +29,7 @@ const cleanup_roots: string[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   await Promise.all(
     cleanup_roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
   );
@@ -167,7 +167,6 @@ describe("ModelService 配置管理", () => {
       paths,
       app_setting_service,
       { request: vi.fn() },
-      vi.fn(),
       new RuntimeOperationGate(),
     );
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
@@ -598,13 +597,13 @@ describe("ModelService 配置管理", () => {
 
 describe("ModelService 远端模型能力", () => {
   it("远端列表按 model_id 返回结果并拒绝缺失模型", async () => {
-    const { service, network_fetch } = await create_model_service([
+    const { service, process_fetch } = await create_model_service([
       create_model({
         api_format: "OpenAI",
         id: "openai-1",
       }),
     ]);
-    network_fetch.mockResolvedValue(json_response({ data: [{ id: "model-a" }] }));
+    process_fetch.mockResolvedValue(json_response({ data: [{ id: "model-a" }] }));
 
     await expect(service.list_available_models({ model_id: "openai-1" })).resolves.toEqual({
       models: ["model-a"],
@@ -691,7 +690,7 @@ describe("ModelService 远端模型能力", () => {
   });
 });
 
-/** 每个 fixture 自带隔离的 LLM 与 Fetch fake，不修改全局传输状态。 */
+/** 每个 fixture 自带隔离的 LLM 与进程 Fetch fake。 */
 async function create_model_service(
   models: Array<JsonRecord>,
   presets: ModelPresetFiles = {},
@@ -718,7 +717,8 @@ async function create_model_service(
         };
   const runtime_gate = new RuntimeOperationGate();
   const llm_request = vi.fn<LLMClientPort["request"]>();
-  const network_fetch = vi.fn<FetchFunction>();
+  const process_fetch = vi.fn<typeof globalThis.fetch>();
+  vi.stubGlobal("fetch", process_fetch);
   return {
     app_root,
     paths,
@@ -726,14 +726,13 @@ async function create_model_service(
       paths,
       app_setting_service,
       { request: llm_request },
-      network_fetch,
       runtime_gate,
       log_manager,
     ),
     app_setting_service,
     runtime_gate,
     llm_request,
-    network_fetch,
+    process_fetch,
   };
 }
 

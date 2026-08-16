@@ -7,7 +7,10 @@ import type { AgentWebSearchProvider } from "./agent-web-tools";
 const TEST_CLIENT_VERSION = "1.2.3";
 
 describe("Agent Web 多源搜索服务", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("映射三家无凭据 MCP 参数，并把成功后备源晋升为首选", async () => {
     const network = create_mcp_network({
@@ -15,7 +18,7 @@ describe("Agent Web 多源搜索服务", () => {
       tavily: [{ text: "Tavily 结果" }, { status: 429 }],
       firecrawl: [{ text: "Firecrawl 结果" }, { status: 429 }],
     });
-    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
     const signal = new AbortController().signal;
 
     await expect(service.search("第一次查询", 3, signal)).resolves.toEqual({
@@ -90,7 +93,7 @@ describe("Agent Web 多源搜索服务", () => {
     const network = create_mcp_network({
       exa: [{ status: 404 }, { text: "重连结果" }],
     });
-    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
 
     await expect(service.search("重连查询", 2, new AbortController().signal)).resolves.toEqual({
       provider: "exa",
@@ -113,12 +116,12 @@ describe("Agent Web 多源搜索服务", () => {
   ] satisfies Array<[string, ProviderReply, string]>)(
     "%s时保留明确稳定错误",
     async (_scenario, reply, code) => {
-      const network = create_mcp_network({
+      create_mcp_network({
         exa: [reply],
         tavily: [reply],
         firecrawl: [reply],
       });
-      const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+      const service = new WebSearchService(TEST_CLIENT_VERSION);
 
       await expect(
         service.search("失败查询", 5, new AbortController().signal),
@@ -128,12 +131,12 @@ describe("Agent Web 多源搜索服务", () => {
   );
 
   it("来源失败原因不一致时统一映射为不可用", async () => {
-    const network = create_mcp_network({
+    create_mcp_network({
       exa: [{ tool_error: true }],
       tavily: [{ text: " " }],
       firecrawl: [{ status: 500 }],
     });
-    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
 
     await expect(service.search("混合失败", 5, new AbortController().signal)).rejects.toMatchObject(
       {
@@ -147,8 +150,8 @@ describe("Agent Web 多源搜索服务", () => {
     const timeout = new AbortController();
     timeout.abort(new DOMException("超时", "TimeoutError"));
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
-    const network = create_mcp_network();
-    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    create_mcp_network();
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
 
     await expect(service.search("超时查询", 5, new AbortController().signal)).rejects.toMatchObject(
       {
@@ -160,7 +163,7 @@ describe("Agent Web 多源搜索服务", () => {
 
   it("调用前已取消时不触达任何供应商", async () => {
     const network = create_mcp_network();
-    const service = new WebSearchService(network.fetch, TEST_CLIENT_VERSION);
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
@@ -254,6 +257,7 @@ function create_mcp_network(options: McpNetworkOptions = {}) {
     }
     throw new Error(`未处理的 MCP 方法：${message.method}`);
   });
+  vi.stubGlobal("fetch", fetch);
   return { fetch, headers, methods, tool_calls };
 }
 

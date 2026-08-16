@@ -4,7 +4,6 @@ import {
   InMemoryCredentialStore,
   type AssistantMessage,
   type AssistantMessageEvent,
-  type FetchFunction,
   type ImageContent,
   uuidv7,
 } from "@earendil-works/pi-ai";
@@ -158,7 +157,6 @@ type AgentServiceOptions = {
   paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
   userAgent: string;
-  modelFetch: FetchFunction;
   sessionState: ProjectSessionState;
   runtimeGate: RuntimeOperationGate;
   web: AgentWebPort | undefined;
@@ -182,7 +180,6 @@ export class AgentService {
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
   private readonly user_agent: string;
-  private readonly model_fetch: FetchFunction; // 所有 Agent provider 请求共用组合根代理边界
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly web: AgentWebPort | undefined; // 缺失即不向模型注册 GUI 专属联网能力
@@ -212,7 +209,6 @@ export class AgentService {
     this.paths = options.paths;
     this.settings = options.settings;
     this.user_agent = options.userAgent;
-    this.model_fetch = options.modelFetch;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
     this.web = options.web;
@@ -708,7 +704,6 @@ export class AgentService {
       runtime.session.modelRuntime,
       model_settings,
       this.user_agent,
-      this.model_fetch,
     );
     await runtime.session.setModel(resolved_model.model);
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
@@ -726,12 +721,7 @@ export class AgentService {
       modelsPath: null,
       allowModelNetwork: false,
     });
-    const resolved_model = register_agent_model(
-      model_runtime,
-      model_settings,
-      this.user_agent,
-      this.model_fetch,
-    );
+    const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
     const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
       projectTrusted: false,
     });

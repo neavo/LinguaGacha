@@ -27,10 +27,6 @@ import {
 } from "../file/translation-file-export-service";
 import { LogManager } from "../log/log-manager";
 import { LLMClient } from "../llm/llm-client";
-import {
-  SystemProxyHttpClient,
-  type SystemProxyResolver,
-} from "../network/system-proxy-http-client";
 import { ModelService } from "../model/model-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { create_project_change_publisher } from "../project/project-write-event-adapter";
@@ -63,7 +59,6 @@ export interface BackendServicesOptions {
   appSettingService: AppSettingService; // 配置文件唯一读写入口
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
-  systemProxyResolver: SystemProxyResolver; // 每次真实远端请求都从 Electron 读取当前系统代理
   agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 使用宿主代理解析创建 Backend 抓取入口
   agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
@@ -119,7 +114,6 @@ export class BackendServices {
   private readonly runtime_gate = new RuntimeOperationGate(); // task、Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
-  private readonly system_proxy_http_client: SystemProxyHttpClient; // 普通后端远端 HTTP 的唯一生命周期所有者
   private readonly agent_web_search: WebSearchService | null; // 应用级多源搜索状态由组合根持有
   private task_stream_unsubscribe: (() => void) | null;
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
@@ -148,18 +142,11 @@ export class BackendServices {
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
-    this.system_proxy_http_client = new SystemProxyHttpClient(options.systemProxyResolver);
     this.agent_web_search =
       options.agentWebFetch === undefined
         ? null
-        : new WebSearchService(
-            this.system_proxy_http_client.fetch,
-            metadata.read_version_or_default(),
-          );
-    const llm_client = new LLMClient({
-      userAgent: user_agent,
-      fetch: this.system_proxy_http_client.fetch,
-    });
+        : new WebSearchService(metadata.read_version_or_default());
+    const llm_client = new LLMClient({ userAgent: user_agent });
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
     });
@@ -313,7 +300,6 @@ export class BackendServices {
       paths,
       this.app_setting_service,
       llm_client,
-      this.system_proxy_http_client.fetch,
       this.runtime_gate,
       this.logManager,
     );
@@ -342,7 +328,6 @@ export class BackendServices {
       paths,
       settings: this.app_setting_service,
       userAgent: user_agent,
-      modelFetch: this.system_proxy_http_client.fetch,
       sessionState: session_state,
       runtimeGate: this.runtime_gate,
       web: agent_web,
@@ -416,11 +401,6 @@ export class BackendServices {
       if (result.status === "rejected") {
         errors.push(result.reason);
       }
-    }
-    try {
-      await this.system_proxy_http_client.dispose();
-    } catch (error) {
-      errors.push(error);
     }
     this.started = false;
     if (errors.length > 0) {

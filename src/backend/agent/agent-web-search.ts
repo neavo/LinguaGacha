@@ -1,4 +1,3 @@
-import type { FetchFunction } from "@earendil-works/pi-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   StreamableHTTPClientTransport,
@@ -87,9 +86,8 @@ class McpSearchProvider {
   private transport: StreamableHTTPClientTransport | null = null; // 与 client 同生命周期
   private disposed = false; // 组合根释放后禁止重新建立远端会话
 
-  /** 注入共享代理 fetch、应用版本与唯一供应商描述，不自行发现远端工具。 */
+  /** 注入应用版本与唯一供应商描述，不自行发现远端工具。 */
   public constructor(
-    private readonly fetch: FetchFunction,
     private readonly client_version: string,
     private readonly spec: SearchProviderSpec,
   ) {}
@@ -160,14 +158,14 @@ class McpSearchProvider {
     return text;
   }
 
-  /** 首次搜索才连接；Header、代理 fetch 与客户端身份全部由固定边界注入。 */
+  /** 首次搜索才连接；Header 与客户端身份由固定边界注入，HTTP 使用进程 transport。 */
   private async require_client(signal: AbortSignal): Promise<Client> {
     if (this.disposed) throw new SearchProviderError(this.name, "unavailable");
     if (this.client !== null) return this.client;
-    const transport = new StreamableHTTPClientTransport(new URL(this.spec.url), {
-      fetch: this.fetch,
-      ...(this.spec.headers === undefined ? {} : { requestInit: { headers: this.spec.headers } }),
-    });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(this.spec.url),
+      this.spec.headers === undefined ? {} : { requestInit: { headers: this.spec.headers } },
+    );
     const client = new Client({ name: "LinguaGacha", version: this.client_version });
     this.client = client;
     this.transport = transport;
@@ -212,9 +210,9 @@ export class WebSearchService {
   private disposed = false; // 组合根释放后阻止重新触达任何供应商
 
   /** 创建固定三源但不建立连接，避免未使用 Web 工具产生启动网络请求。 */
-  public constructor(fetch: FetchFunction, client_version: string) {
+  public constructor(client_version: string) {
     this.providers = SEARCH_PROVIDER_SPECS.map(
-      (spec) => new McpSearchProvider(fetch, client_version, spec),
+      (spec) => new McpSearchProvider(client_version, spec),
     );
   }
 
