@@ -8,12 +8,9 @@ import {
   ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
-  MessageSquareQuote,
   Sparkles,
   Square,
-  X,
 } from "lucide-react";
-import { Popover as PopoverPrimitive } from "radix-ui";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -80,8 +77,7 @@ import {
   type AgentMentionToken,
 } from "./agent-mention";
 import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
-import { order_agent_attachment_items } from "./agent-message-attachments";
-import { AgentResponseAnnotationEditor } from "./agent-response-annotation";
+import { AgentMessageAttachments } from "./agent-message-attachments";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -241,8 +237,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   ]);
   const [image_processing, set_image_processing] = useState(false);
   const [image_drop_active, set_image_drop_active] = useState(false);
-  const [editing_annotation_index, set_editing_annotation_index] = useState<number | null>(null);
-  const [editing_annotation_comment, set_editing_annotation_comment] = useState("");
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
@@ -280,7 +274,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
     0,
   );
-  const ordered_draft_attachment_items = order_agent_attachment_items(draft_attachments);
   const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
@@ -426,7 +419,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     const draft = input_session_ref.current.read_draft();
     draft_attachments_ref.current = structuredClone(draft.attachments);
     set_draft_attachments([...draft_attachments_ref.current]);
-    set_editing_annotation_index(null);
     write_agent_message_text(view, draft.text, input_session_sync_annotations);
   }, [input_revision]);
 
@@ -558,16 +550,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   };
 
   const remove_attachment = (index: number): void => {
-    set_editing_annotation_index(null);
     write_draft_attachments(
       draft_attachments_ref.current.filter((_, attachment_index) => attachment_index !== index),
     );
   };
 
-  const save_annotation_edit = (): void => {
-    const index = editing_annotation_index;
-    const comment = editing_annotation_comment.trim();
-    if (index === null) return;
+  /** 附件组件只提交用户意图，Composer 仍在当前权威草稿中按原索引写入。 */
+  const update_annotation = (index: number, comment: string): void => {
     const current = draft_attachments_ref.current;
     const annotation = current[index];
     if (annotation?.kind !== "response_annotation") return;
@@ -576,7 +565,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         attachment_index === index ? { ...annotation, comment } : attachment,
       ),
     );
-    set_editing_annotation_index(null);
   };
 
   useImperativeHandle(
@@ -713,76 +701,15 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         </div>
       )}
       {!assistant_editing && draft_attachments.length > 0 ? (
-        <div className="agent-attachment-strip" data-has-images={image_count > 0 || undefined}>
-          {ordered_draft_attachment_items.map(({ attachment, index }) =>
-            attachment.kind === "image" ? (
-              <figure className="agent-attachment agent-attachment--image" key={index}>
-                <img src={`data:image/webp;base64,${attachment.webpBase64}`} alt="" />
-                <AppButton
-                  type="button"
-                  size="icon-xs"
-                  variant="secondary"
-                  className="agent-composer__attachment-remove"
-                  disabled={editor_read_only || image_processing}
-                  aria-label={t("app.action.close")}
-                  onClick={() => remove_attachment(index)}
-                >
-                  <X aria-hidden="true" />
-                </AppButton>
-              </figure>
-            ) : (
-              <PopoverPrimitive.Root
-                key={index}
-                open={editing_annotation_index === index}
-                onOpenChange={(open) => {
-                  if (open) {
-                    set_editing_annotation_index(index);
-                    set_editing_annotation_comment(attachment.comment);
-                  } else if (editing_annotation_index === index) {
-                    set_editing_annotation_index(null);
-                  }
-                }}
-              >
-                <PopoverPrimitive.Trigger asChild>
-                  <button
-                    type="button"
-                    className="agent-attachment agent-attachment--annotation agent-attachment__open agent-composer__annotation-open"
-                    disabled={editor_read_only}
-                    aria-label={t("agent_page.annotation.edit")}
-                  >
-                    <MessageSquareQuote aria-hidden="true" />
-                    <span>{attachment.selectedText}</span>
-                  </button>
-                </PopoverPrimitive.Trigger>
-                {editing_annotation_index === index ? (
-                  <PopoverPrimitive.Portal>
-                    <PopoverPrimitive.Content
-                      asChild
-                      side="top"
-                      align="start"
-                      sideOffset={6}
-                      collisionPadding={8}
-                      hideWhenDetached
-                      onOpenAutoFocus={(event) => event.preventDefault()}
-                    >
-                      <AgentResponseAnnotationEditor
-                        className="agent-composer__annotation-editor"
-                        aria-label={t("agent_page.annotation.edit")}
-                        selected_text={attachment.selectedText}
-                        comment={editing_annotation_comment}
-                        submit_label={t("app.action.save")}
-                        on_comment_change={set_editing_annotation_comment}
-                        on_submit={save_annotation_edit}
-                        on_cancel={() => set_editing_annotation_index(null)}
-                        on_remove={() => remove_attachment(index)}
-                      />
-                    </PopoverPrimitive.Content>
-                  </PopoverPrimitive.Portal>
-                ) : null}
-              </PopoverPrimitive.Root>
-            ),
-          )}
-        </div>
+        /* 权威草稿 revision 变化时重建局部展开态，避免旧索引指向新附件。 */
+        <AgentMessageAttachments
+          key={input_revision}
+          mode="draft"
+          attachments={draft_attachments}
+          disabled={editor_read_only || image_processing}
+          on_update_annotation={update_annotation}
+          on_remove={remove_attachment}
+        />
       ) : null}
       <div className="agent-composer__editor">
         <div ref={host_ref} className="agent-composer__input" />

@@ -439,43 +439,13 @@
   line-height: 1.4;
 }
 
-.agent-message-attachment-detail {
+.agent-image-attachment-viewer {
   display: grid;
-  gap: 20px;
-}
-
-.agent-message-attachment-detail > section {
-  display: grid;
-  gap: 8px;
-}
-
-.agent-message-attachment-detail strong {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.agent-message-attachment-detail blockquote,
-.agent-message-attachment-detail p {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-}
-
-.agent-message-attachment-detail blockquote {
-  border-radius: var(--ui-radius-button);
-  background: var(--muted);
-  padding: 12px;
-}
-
-.agent-message-attachment-detail--image {
   min-height: 0;
   place-items: center;
 }
 
-.agent-message-attachment-detail--image > img {
+.agent-image-attachment-viewer > img {
   display: block;
   max-width: 100%;
   max-height: calc(100vh - 200px);
@@ -913,23 +883,7 @@
   font-weight: 500;
 }
 
-.agent-composer__attachment-remove {
-  position: absolute;
-  inset-block-start: 3px;
-  inset-inline-end: 3px;
-  width: 18px;
-  height: 18px;
-  min-height: 18px;
-  padding: 0;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 18%, transparent);
-}
-
-.agent-composer__attachment-remove > svg {
-  width: 11px;
-  height: 11px;
-}
-
-.agent-annotation-editor {
+.agent-annotation-panel {
   display: grid;
   width: min(420px, calc(100vw - 32px));
   gap: 7px;
@@ -941,18 +895,20 @@
   box-shadow: var(--ui-shadow-overlay);
 }
 
-.agent-composer__annotation-editor {
+.agent-composer__annotation-editor,
+.agent-message__annotation-viewer {
   z-index: 80;
 }
 
-.agent-annotation-editor label > span,
-.agent-annotation-editor__header > strong {
+.agent-annotation-panel label > span,
+.agent-annotation-panel__header > strong,
+.agent-annotation-panel__comment-section > strong {
   color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 500;
 }
 
-.agent-annotation-editor blockquote {
+.agent-annotation-panel blockquote {
   max-height: 120px;
   margin: 0;
   overflow-y: auto;
@@ -964,17 +920,26 @@
   white-space: pre-wrap;
 }
 
-.agent-annotation-editor label {
+.agent-annotation-panel label,
+.agent-annotation-panel__comment-section {
   display: grid;
   gap: 4px;
 }
 
-.agent-annotation-editor .agent-annotation-editor__comment {
+.agent-annotation-panel .agent-annotation-editor__comment {
   min-height: 72px;
   resize: vertical;
   padding: 7px 8px;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.agent-annotation-panel__comment {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .agent-annotation-editor__actions {
@@ -1031,7 +996,7 @@
   color: var(--primary);
 }
 
-.agent-annotation-editor__header {
+.agent-annotation-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;

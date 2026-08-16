@@ -6,7 +6,11 @@ import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { GlossaryEntry } from "@domain/quality";
-import type { AgentMessageAttachment, AgentMessageInput } from "@shared/agent";
+import {
+  AGENT_MESSAGE_IMAGE_LIMIT,
+  type AgentMessageAttachment,
+  type AgentMessageInput,
+} from "@shared/agent";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
@@ -58,7 +62,11 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.annotation.selected_text": "目标",
   "agent_page.annotation.user_comment": "批注",
   "agent_page.annotation.comment_placeholder": "写下评论",
+  "agent_page.annotation.title": "批注",
+  "agent_page.image.title": "图片",
   "app.action.cancel": "取消",
+  "app.action.close": "关闭",
+  "app.action.delete": "删除",
   "app.action.save": "保存",
   "agent_page.editing.assistant": "正在修改模型回复",
   "agent_page.action.stop": "停止",
@@ -339,7 +347,7 @@ describe("AgentComposer", () => {
     expect(get_editor(view).state.readOnly).toBe(true);
   });
 
-  it("文件选择后允许发送纯图片并可移除缩略图", async () => {
+  it("文件选择后允许发送纯图片并从预览删除", async () => {
     const on_send = vi.fn();
     const view = await render_composer({ on_send });
     const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
@@ -354,20 +362,19 @@ describe("AgentComposer", () => {
       await Promise.resolve();
     });
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(1);
-    expect(view.querySelector<HTMLImageElement>(".agent-attachment img")?.alt).toBe("");
-    const remove_button = view.querySelector<HTMLButtonElement>(
-      ".agent-composer__attachment-remove",
-    );
-    expect(remove_button?.hasAttribute("aria-label")).toBe(true);
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({
       text: "",
       attachments: image_attachments("webp-a.png"),
     });
 
-    await act(async () => {
-      remove_button?.click();
-    });
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('button[aria-label="图片 1"]')?.click(),
+    );
+    const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "删除",
+    );
+    await act(async () => remove?.click());
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(0);
   });
 
@@ -401,9 +408,12 @@ describe("AgentComposer", () => {
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
   });
 
-  it("累计只接收前十张图片，满额后静默忽略新输入", async () => {
+  it("达到图片上限后静默忽略新输入，删除后恢复入口", async () => {
     const input_session = create_input_session();
-    const existing_images = Array.from({ length: 8 }, (_, index) => `existing-${index + 1}`);
+    const existing_images = Array.from(
+      { length: AGENT_MESSAGE_IMAGE_LIMIT - 2 },
+      (_, index) => `existing-${index + 1}`,
+    );
     input_session.write_draft({ text: "", attachments: image_attachments(...existing_images) });
     const on_image_error = vi.fn();
     const view = await render_composer({ input_session, on_image_error });
@@ -421,15 +431,16 @@ describe("AgentComposer", () => {
       await Promise.resolve();
     });
 
-    expect(input_session.read_draft()).toEqual({
+    const full_draft = {
       text: "",
       attachments: image_attachments(
         ...existing_images,
         "webp-selected-1.png",
         "webp-selected-2.png",
       ),
-    });
-    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(10);
+    };
+    expect(input_session.read_draft()).toEqual(full_draft);
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(AGENT_MESSAGE_IMAGE_LIMIT);
     expect(image_trigger.disabled).toBe(true);
 
     const paste = new Event("paste", { bubbles: true, cancelable: true });
@@ -442,10 +453,15 @@ describe("AgentComposer", () => {
     });
 
     expect(on_image_error).not.toHaveBeenCalled();
+    expect(input_session.read_draft()).toEqual(full_draft);
 
-    await act(async () => {
-      view.querySelector<HTMLButtonElement>(".agent-composer__attachment-remove")?.click();
-    });
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('button[aria-label="图片 1"]')?.click(),
+    );
+    const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "删除",
+    );
+    await act(async () => remove?.click());
     expect(image_trigger.disabled).toBe(false);
   });
 

@@ -1,16 +1,32 @@
 import { useState } from "react";
-import { MessageSquareQuote } from "lucide-react";
+import { MessageSquareQuote, Trash2 } from "lucide-react";
+import { Popover as PopoverPrimitive } from "radix-ui";
 
 import type { AgentMessageAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import { cn } from "@frontend/shadcn/classnames";
+import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import {
+  AgentResponseAnnotationEditor,
+  AgentResponseAnnotationViewer,
+} from "./agent-response-annotation";
 
-type AgentMessageAttachmentsProps = {
-  attachments: readonly AgentMessageAttachment[];
-};
+type AgentMessageAttachmentsProps =
+  | {
+      mode: "draft";
+      attachments: readonly AgentMessageAttachment[];
+      disabled: boolean; // 只锁草稿修改，图片只读预览仍可打开。
+      on_update_annotation: (index: number, comment: string) => void;
+      on_remove: (index: number) => void;
+    }
+  | {
+      mode: "sent";
+      attachments: readonly AgentMessageAttachment[];
+    };
 
 /** 两处附件条共享可见顺序，同时保留原索引供草稿编辑和详情选择使用。 */
-export function order_agent_attachment_items(
+function order_agent_attachment_items(
   attachments: readonly AgentMessageAttachment[],
 ): { attachment: AgentMessageAttachment; index: number }[] {
   return attachments
@@ -21,14 +37,46 @@ export function order_agent_attachment_items(
     });
 }
 
-/** 消息附件只负责只读预览与详情选择，原始顺序和内容始终由消息条目拥有。 */
+/** 草稿与已发送消息共用附件顺序、缩略图和展开容器，模式只决定是否提供修改动作。 */
 export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JSX.Element {
   const { t } = useI18n();
+  // 展开态始终保存协议原索引；视觉排序不能改变草稿修改和详情读取的目标。
   const [selected_index, set_selected_index] = useState<number | null>(null);
+  const [annotation_comment, set_annotation_comment] = useState("");
   const ordered_attachment_items = order_agent_attachment_items(props.attachments);
   const has_images = props.attachments.some((attachment) => attachment.kind === "image");
   const selected_attachment =
     selected_index === null ? undefined : props.attachments[selected_index];
+
+  /** 打开时同时冻结当前评论草稿，避免编辑过程追随父级附件引用变化。 */
+  const open_attachment = (index: number, attachment: AgentMessageAttachment): void => {
+    set_selected_index(index);
+    set_annotation_comment(attachment.kind === "response_annotation" ? attachment.comment : "");
+  };
+
+  const close_attachment = (): void => set_selected_index(null);
+
+  /** 修改动作始终携带原附件索引，并先关闭局部 UI 再交还权威草稿拥有者。 */
+  const remove_selected_attachment = (): void => {
+    if (props.mode !== "draft" || selected_index === null) return;
+    const index = selected_index;
+    close_attachment();
+    props.on_remove(index);
+  };
+
+  /** 保存前重新校验原索引仍指向批注，防止权威草稿替换后误写其它附件。 */
+  const save_selected_annotation = (): void => {
+    if (
+      props.mode !== "draft" ||
+      selected_index === null ||
+      selected_attachment?.kind !== "response_annotation"
+    ) {
+      return;
+    }
+    const index = selected_index;
+    close_attachment();
+    props.on_update_annotation(index, annotation_comment.trim());
+  };
 
   return (
     <>
@@ -37,13 +85,29 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
           const title = t(
             attachment.kind === "image" ? "agent_page.image.title" : "agent_page.annotation.title",
           );
-          return (
+          const trigger = (
             <button
-              type="button"
-              className={`agent-attachment agent-attachment--${attachment.kind === "image" ? "image" : "annotation"} agent-attachment__open`}
-              aria-label={`${title} ${display_index + 1}`}
               key={index}
-              onClick={() => set_selected_index(index)}
+              type="button"
+              className={cn(
+                "agent-attachment",
+                attachment.kind === "image"
+                  ? "agent-attachment--image"
+                  : "agent-attachment--annotation",
+                "agent-attachment__open",
+                attachment.kind === "response_annotation" &&
+                  props.mode === "draft" &&
+                  "agent-composer__annotation-open",
+              )}
+              aria-label={`${title} ${display_index + 1}`}
+              disabled={
+                attachment.kind === "response_annotation" &&
+                props.mode === "draft" &&
+                props.disabled
+              }
+              onClick={
+                attachment.kind === "image" ? () => open_attachment(index, attachment) : undefined
+              }
             >
               {attachment.kind === "image" ? (
                 <img
@@ -59,46 +123,93 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
               )}
             </button>
           );
+
+          if (attachment.kind === "image") return trigger;
+
+          const open = selected_index === index;
+          return (
+            <PopoverPrimitive.Root
+              key={index}
+              open={open}
+              onOpenChange={(next_open) => {
+                if (next_open) open_attachment(index, attachment);
+                else if (open) close_attachment();
+              }}
+            >
+              <PopoverPrimitive.Trigger asChild>{trigger}</PopoverPrimitive.Trigger>
+              {open ? (
+                <PopoverPrimitive.Portal>
+                  <PopoverPrimitive.Content
+                    asChild
+                    side="top"
+                    align="start"
+                    sideOffset={6}
+                    collisionPadding={8}
+                    hideWhenDetached
+                    onOpenAutoFocus={(event) => event.preventDefault()}
+                  >
+                    {props.mode === "draft" ? (
+                      <AgentResponseAnnotationEditor
+                        className="agent-composer__annotation-editor"
+                        aria-label={t("agent_page.annotation.edit")}
+                        selected_text={attachment.selectedText}
+                        comment={annotation_comment}
+                        submit_label={t("app.action.save")}
+                        on_comment_change={set_annotation_comment}
+                        on_submit={save_selected_annotation}
+                        on_cancel={close_attachment}
+                        on_remove={remove_selected_attachment}
+                      />
+                    ) : (
+                      <AgentResponseAnnotationViewer
+                        className="agent-message__annotation-viewer"
+                        aria-label={t("agent_page.annotation.title")}
+                        selected_text={attachment.selectedText}
+                        comment={attachment.comment}
+                        on_cancel={close_attachment}
+                      />
+                    )}
+                  </PopoverPrimitive.Content>
+                </PopoverPrimitive.Portal>
+              ) : null}
+            </PopoverPrimitive.Root>
+          );
         })}
       </div>
 
-      {selected_attachment === undefined ? null : (
+      {selected_attachment?.kind !== "image" ? null : (
         <AppPageDialog
           open
           size="md"
-          title={t(
-            selected_attachment.kind === "image"
-              ? "agent_page.image.title"
-              : "agent_page.annotation.title",
-          )}
-          onClose={() => set_selected_index(null)}
+          title={t("agent_page.image.title")}
+          onClose={close_attachment}
+          footer={
+            props.mode === "sent" ? undefined : (
+              <>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  disabled={props.disabled}
+                  onClick={remove_selected_attachment}
+                >
+                  <Trash2 aria-hidden="true" />
+                  {t("app.action.delete")}
+                </AppButton>
+                <AppButton type="button" size="sm" variant="outline" onClick={close_attachment}>
+                  {t("app.action.close")}
+                </AppButton>
+              </>
+            )
+          }
         >
-          {selected_attachment.kind === "image" ? (
-            <div className="agent-message-attachment-detail agent-message-attachment-detail--image">
-              <img
-                src={`data:image/webp;base64,${selected_attachment.webpBase64}`}
-                alt=""
-                decoding="async"
-              />
-            </div>
-          ) : (
-            <div className="agent-message-attachment-detail">
-              <section>
-                <strong>{t("agent_page.annotation.selected_text")}</strong>
-                <blockquote className="agent-message-attachment-detail__target">
-                  {selected_attachment.selectedText}
-                </blockquote>
-              </section>
-              {selected_attachment.comment === "" ? null : (
-                <section>
-                  <strong>{t("agent_page.annotation.user_comment")}</strong>
-                  <p className="agent-message-attachment-detail__comment">
-                    {selected_attachment.comment}
-                  </p>
-                </section>
-              )}
-            </div>
-          )}
+          <div className="agent-image-attachment-viewer">
+            <img
+              src={`data:image/webp;base64,${selected_attachment.webpBase64}`}
+              alt=""
+              decoding="async"
+            />
+          </div>
         </AppPageDialog>
       )}
     </>
