@@ -45,6 +45,7 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
     <div className="ts-conversion-page page-shell page-shell--full">
       <section className="ts-conversion-page__list" aria-label={t("ts_conversion_page.title")}>
         <SettingCardRow
+          action_width="content"
           title={t("ts_conversion_page.fields.direction.title")}
           description={t("ts_conversion_page.fields.direction.description")}
           action={
@@ -55,7 +56,7 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
                 page_state.set_direction(next_value as TsConversionDirection);
               }}
             >
-              <SelectTrigger className="ts-conversion-page__select">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

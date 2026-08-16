@@ -141,6 +141,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     <div className="basic-settings-page page-shell page-shell--full">
       <section className="basic-settings-page__list" aria-label={t("basic_settings_page.title")}>
         <SettingCardRow
+          action_width="content"
           title={t("basic_settings_page.fields.source_language.title")}
           description={t("basic_settings_page.fields.source_language.description")}
           action={
@@ -168,6 +169,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
         />
 
         <SettingCardRow
+          action_width="content"
           title={t("basic_settings_page.fields.target_language.title")}
           description={t("basic_settings_page.fields.target_language.description")}
           action={
@@ -195,6 +197,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
         />
 
         <SettingCardRow
+          action_width="content"
           title={t("basic_settings_page.fields.project_save_mode.title")}
           description={project_save_mode_description}
           action={
