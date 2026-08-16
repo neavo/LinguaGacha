@@ -16,7 +16,6 @@ import {
 import { NativeFs } from "../../native/native-fs";
 import type { CacheReadPort } from "../cache/cache-types";
 import { AGENT_WORKSPACE_TASK_ROOT } from "../../shared/backend-runtime";
-import type { QualityRuleAnalysisCacheResult } from "../cache/quality-rule-analysis-cache";
 import type { ProjectWriteStore } from "../project/project-write-store";
 import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "./agent-workspace-service";
 import {
@@ -26,7 +25,6 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-  AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_RECIPE_PATHS,
 } from "./agent-workspace-contract";
 
@@ -80,7 +78,10 @@ describe("AgentWorkspaceService", () => {
       fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
     ).toBe("源文件正文");
     expect(read_json(path.join(active_path, "contract.json"))).toEqual(AGENT_WORKSPACE_CONTRACT);
-    expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toHaveLength(2);
+    expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toEqual([
+      expect.objectContaining({ item_id: 1, text_type: expect.any(String) }),
+      expect.objectContaining({ item_id: 2, text_type: expect.any(String) }),
+    ]);
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.warnings))).toEqual([
       {
         item_id: 1,
@@ -97,9 +98,6 @@ describe("AgentWorkspaceService", () => {
       expect(
         read_jsonl(path.join(active_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind])),
       ).toHaveLength(1);
-      expect(
-        read_json(path.join(active_path, AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind])),
-      ).toMatchObject({ groups: [[`${kind}-1`]] });
     }
     for (const relative_path of all_change_paths()) {
       expect(fs.readFileSync(path.join(active_path, relative_path), "utf-8")).toBe("");
@@ -108,7 +106,6 @@ describe("AgentWorkspaceService", () => {
       [
         ...Object.values(AGENT_WORKSPACE_PATHS),
         ...Object.values(AGENT_WORKSPACE_QUALITY_ENTRY_PATHS),
-        ...Object.values(AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS),
         ...Object.values(AGENT_WORKSPACE_RECIPE_PATHS),
         ...all_change_paths(),
       ].sort(),
@@ -191,9 +188,9 @@ describe("AgentWorkspaceService", () => {
     const previous_path = fixture.active_path();
     const task_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT, "state.json");
     fs.writeFileSync(task_file, "state");
-    fixture.quality_analysis.mockRejectedValueOnce(new Error("analysis failed"));
+    fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
-    await expect(fixture.service.load_workspace()).rejects.toThrow("analysis failed");
+    await expect(fixture.service.load_workspace()).rejects.toThrow("warning query failed");
     expect(fixture.active_path()).toBe(previous_path);
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
     await expect(
@@ -433,10 +430,10 @@ describe("AgentWorkspaceService", () => {
 
   it("load 派生数据读取期间 revision 漂移时拒绝生成混合快照", async () => {
     const fixture = create_fixture(temp_dir);
-    const read_quality_analysis = fixture.quality_analysis.getMockImplementation();
-    if (read_quality_analysis === undefined) throw new Error("缺少质量分析 fixture");
-    fixture.quality_analysis.mockImplementationOnce(async (kind) => {
-      const result = await read_quality_analysis(kind);
+    const query_warnings = fixture.query_warnings.getMockImplementation();
+    if (query_warnings === undefined) throw new Error("缺少校对查询 fixture");
+    fixture.query_warnings.mockImplementationOnce(async () => {
+      const result = await query_warnings();
       fixture.snapshot.sectionRevisions.items = 2;
       return result;
     });
@@ -518,25 +515,6 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
-  const quality_analysis = vi.fn(
-    async (kind: QualityRuleKind): Promise<QualityRuleAnalysisCacheResult> => {
-      const entries = (quality[kind] as { entries: JsonRecord[] }).entries;
-      const entry_ids = entries.map((entry) => String(entry["entry_id"]));
-      return {
-        projectPath: snapshot.projectPath,
-        sectionRevisions: { ...snapshot.sectionRevisions },
-        analysis: {
-          entry_ids,
-          hits_by_entry_id: Object.fromEntries(entry_ids.map((id) => [id, 1])),
-          examples_by_entry_id: Object.fromEntries(entry_ids.map((id) => [id, ["原文"]])),
-          relations: {
-            subset_parents_by_entry_id: {},
-            groups: entry_ids.map((id) => [id]),
-          },
-        },
-      };
-    },
-  );
   const run = vi.fn<AgentWorkspaceRunPort>(async () => ({ status: "success", result: null }));
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(
     async (request) => ({
@@ -555,6 +533,32 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const warning_item = items[0] as JsonRecord;
   const setting = { ...DEFAULT_SETTING };
   const read_asset_content = vi.fn(() => Buffer.from("源文件正文", "utf-8"));
+  const query_warnings = vi.fn(async () => ({
+    projectPath: snapshot.projectPath,
+    sectionRevisions: { ...snapshot.sectionRevisions },
+    data: {
+      total_item_count: 1,
+      items: [
+        {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 0,
+          src: String(warning_item["src"]),
+          dst: "",
+          name_src: null,
+          name_dst: null,
+          status: "NONE" as const,
+          retry_count: 0,
+          row_id: "item:1",
+          compressed_src: String(warning_item["src"]),
+          compressed_dst: "",
+          warnings: ["GLOSSARY" as const],
+          warning_fragments_by_code: {},
+          glossary_applications: [],
+        },
+      ],
+    },
+  }));
   const service = new AgentWorkspaceService({
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
@@ -563,35 +567,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     settings: { read_setting: () => ({ ...setting }) },
     sessionState: { require_loaded_project_path: () => snapshot.projectPath },
     cache,
-    qualityAnalysis: { read: quality_analysis },
-    proofreading: {
-      query_warnings: async () => ({
-        projectPath: snapshot.projectPath,
-        sectionRevisions: { ...snapshot.sectionRevisions },
-        data: {
-          total_item_count: 1,
-          items: [
-            {
-              item_id: 1,
-              file_path: "script.txt",
-              row_number: 0,
-              src: String(warning_item["src"]),
-              dst: "",
-              name_src: null,
-              name_dst: null,
-              status: "NONE",
-              retry_count: 0,
-              row_id: "item:1",
-              compressed_src: String(warning_item["src"]),
-              compressed_dst: "",
-              warnings: ["GLOSSARY"],
-              warning_fragments_by_code: {},
-              glossary_applications: [],
-            },
-          ],
-        },
-      }),
-    },
+    proofreading: { query_warnings },
     database: {
       read_asset_content,
     },
@@ -607,7 +583,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     revisions,
     snapshot,
     setting,
-    quality_analysis,
+    query_warnings,
     run,
     write_store,
     read_asset_content,

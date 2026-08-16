@@ -1,8 +1,0 @@
-{
-  "order": 300,
-  "displayDescriptions": {
-    "zh-CN": "基于 AI 智能对当前工程中的术语数据进行自动化审查和校正",
-    "en-US": "Use AI to automatically review and correct terminology data in the current project",
-    "de-DE": "Terminologiedaten im aktuellen Projekt mithilfe von KI automatisch prüfen und korrigieren"
-  }
-}

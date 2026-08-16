@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { ArrowDown, BookPlus, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
+import { ArrowDown, Bot, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
@@ -30,9 +30,9 @@ import "./agent-page.css";
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
 const FEATURED_AGENT_SKILLS = [
   {
-    name: "glossary-create",
-    suggestionKey: "agent_page.empty.suggestions.glossary_create",
-    Icon: BookPlus,
+    name: "quality-rule-create",
+    suggestionKey: "agent_page.empty.suggestions.quality_rule_create",
+    Icon: ListChecks,
   },
   {
     name: "translation-review",

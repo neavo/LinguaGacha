@@ -1,5 +1,4 @@
 import type { QualityRuleKind } from "../../domain/quality";
-import type { QualityRuleRelations } from "../../shared/quality/quality-rule-relations";
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { resolve_quality_statistics_item_text_change_scope } from "../../shared/quality/quality-statistics-invalidation";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
@@ -12,8 +11,11 @@ import type { CacheReadPort } from "./cache-types";
 import { read_json_record } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
 
-export type QualityRuleAnalysis = Omit<QualityRuleAnalysisWorkerTaskResult, "relations"> & {
-  relations: QualityRuleRelations;
+export type QualityRuleAnalysis = Omit<
+  QualityRuleAnalysisWorkerTaskResult,
+  "subset_parents_by_entry_id"
+> & {
+  subset_parents_by_entry_id: Record<string, string[]>;
 };
 
 export type QualityRuleAnalysisCacheResult = {
@@ -23,7 +25,7 @@ export type QualityRuleAnalysisCacheResult = {
 };
 
 type QualityRuleAnalysisCacheEntry = {
-  relations: QualityRuleRelations | null; // item 变化时仍可复用的规则结构关系
+  subsetParents: Record<string, string[]> | null; // item 变化时仍可复用的字面包含父项
   analysis: Promise<QualityRuleAnalysis> | null; // 已完成结果与同 key 并发请求共用同一 Promise
 };
 
@@ -70,12 +72,12 @@ export class QualityRuleAnalysisCache {
     };
   }
 
-  /** 清空全部已完成结果、进行中请求引用和可复用关系。 */
+  /** 清空全部已完成结果、进行中请求引用和可复用父项。 */
   public clear(): void {
     this.values.clear();
   }
 
-  /** 规则变化同时失效统计与关系；item 变化只失效受影响规则的统计。 */
+  /** 规则变化同时失效统计与父项；item 变化只失效受影响规则的统计。 */
   public applyChange(change: CacheChange): void {
     if (change.quality.mode === "full") {
       this.clear();
@@ -107,17 +109,17 @@ export class QualityRuleAnalysisCache {
       .run(
         {
           type: "quality_rule_analysis",
-          input: { ...input, include_relations: entry.relations === null },
+          input: { ...input, include_subset_parents: entry.subsetParents === null },
         },
         new AbortController().signal,
       )
       .then((result): QualityRuleAnalysis => {
-        const relations = result.relations ?? entry.relations;
-        if (relations === null) {
-          throw new Error("Quality rule analysis is missing relation results.");
+        const subset_parents = result.subset_parents_by_entry_id ?? entry.subsetParents;
+        if (subset_parents === null) {
+          throw new Error("Quality rule analysis is missing subset parent results.");
         }
-        if (this.values.get(rule_key) === entry) entry.relations = relations;
-        return { ...result, relations };
+        if (this.values.get(rule_key) === entry) entry.subsetParents = subset_parents;
+        return { ...result, subset_parents_by_entry_id: subset_parents };
       })
       .catch((error: unknown) => {
         if (this.values.get(rule_key) === entry && entry.analysis === promise) {
@@ -129,9 +131,9 @@ export class QualityRuleAnalysisCache {
     return promise;
   }
 
-  /** 读取或建立单个规则域的统计与关系槽位。 */
+  /** 读取或建立单个规则域的统计与父项槽位。 */
   private read_entry(rule_key: QualityRuleKind): QualityRuleAnalysisCacheEntry {
-    const entry = this.values.get(rule_key) ?? { relations: null, analysis: null };
+    const entry = this.values.get(rule_key) ?? { subsetParents: null, analysis: null };
     this.values.set(rule_key, entry);
     return entry;
   }

@@ -49,7 +49,7 @@ const skill_test_fixture = vi.hoisted(() => {
         visible: true,
         description: "审校术语",
         content: "执行术语审校。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-review/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/quality-rule-review/SKILL.md",
         disableModelInvocation: false,
       },
       {
@@ -58,7 +58,7 @@ const skill_test_fixture = vi.hoisted(() => {
         order: Number.MAX_SAFE_INTEGER,
         description: "检索语料",
         content: "执行语料检索。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-rules/SKILL.md",
+        filePath: "E:/Project/LinguaGacha/resource/agent/skill/quality-rules/SKILL.md",
         disableModelInvocation: true,
       },
       {

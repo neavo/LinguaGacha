@@ -34,7 +34,7 @@ export class QualityStatisticsService {
       statistics: {
         entry_ids: result.analysis.entry_ids,
         hits_by_entry_id: result.analysis.hits_by_entry_id,
-        subset_parents_by_entry_id: result.analysis.relations.subset_parents_by_entry_id,
+        subset_parents_by_entry_id: result.analysis.subset_parents_by_entry_id,
       } as unknown as JsonValue,
     };
   }

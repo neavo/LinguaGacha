@@ -4,9 +4,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
-import { AGENT_WORKSPACE_CONTRACT } from "./agent-workspace-contract";
+import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_RECIPE_PATHS } from "./agent-workspace-contract";
 
-// 三个 recipe 共用同一只读宿主契约；集中执行真实发布源码，避免复制三份夹具。
+// 内置 recipe 共用同一只读宿主契约；集中执行真实发布源码，避免复制夹具。
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<JsonValue>;
@@ -108,94 +108,6 @@ describe("Agent 工作区内置 recipes", () => {
     ]);
   });
 
-  it("query-quality-rule-groups 在关系组内直接返回目标和范围外证据行", async () => {
-    const files = {
-      "glossary/entries.jsonl": [
-        { id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false },
-        { id: "g-2", src: "王女", dst: "殿下", info: "", case_sensitive: false },
-        { id: "g-3", src: "孤立规则", dst: "结果", info: "", case_sensitive: false },
-      ],
-      "glossary/evidence.json": {
-        by_id: {
-          "g-1": { hits: 2, examples: ["姫の例句"], parent_sources: ["姫君"] },
-          "g-2": { hits: 1, examples: ["王女の例句"], parent_sources: [] },
-          "g-3": { hits: 4, examples: [], parent_sources: [] },
-        },
-        groups: [["g-1", "g-2"], ["g-3"]],
-      },
-    } satisfies Record<string, JsonValue>;
-
-    await expect(
-      execute_recipe(
-        "query-quality-rule-groups",
-        {
-          kind: "glossary",
-          keywords: ["姫", "孤立"],
-          include_examples: true,
-          offset: 0,
-          limit: 1,
-        },
-        files,
-      ),
-    ).resolves.toEqual({
-      total_target_rule_count: 2,
-      total_group_count: 2,
-      groups: [
-        {
-          targets: [
-            {
-              id: "g-1",
-              src: "姫",
-              dst: "公主",
-              info: "",
-              case_sensitive: false,
-              hits: 2,
-              examples: ["姫の例句"],
-            },
-          ],
-          evidence: [
-            {
-              id: "g-2",
-              src: "王女",
-              dst: "殿下",
-              info: "",
-              case_sensitive: false,
-              hits: 1,
-              examples: ["王女の例句"],
-            },
-          ],
-        },
-      ],
-      next_offset: 1,
-    });
-
-    await expect(
-      execute_recipe(
-        "query-quality-rule-groups",
-        { kind: "glossary", keywords: ["姫", "孤立"], offset: 1, limit: 1 },
-        files,
-      ),
-    ).resolves.toEqual({
-      total_target_rule_count: 2,
-      total_group_count: 2,
-      groups: [
-        {
-          targets: [
-            {
-              id: "g-3",
-              src: "孤立规则",
-              dst: "结果",
-              info: "",
-              case_sensitive: false,
-              hits: 4,
-            },
-          ],
-          evidence: [],
-        },
-      ],
-    });
-  });
-
   it("query-items 拒绝空关键词", async () => {
     await expect(
       execute_recipe("query-items", { search: { keywords: [" "] } }, { "items/entries.jsonl": [] }),
@@ -216,16 +128,41 @@ describe("Agent 工作区内置 recipes", () => {
     ).resolves.toEqual({ contexts: [], items: [], missing_item_ids: item_ids });
   });
 
-  it("query-quality-rule-groups 拒绝未知类型", async () => {
+  it("derive-common-literal-roots 按可见字符长度稳定枚举全部公共连续片段", async () => {
+    const result = read_json_record(
+      await execute_recipe(
+        "derive-common-literal-roots",
+        { forms: ["ドトール家", "ドトール伯爵", "ドトール領"] },
+        {},
+      ),
+    );
+    const candidates = result["candidates"] as JsonRecord[];
+
+    expect(candidates).toContainEqual({ root: "ドトール", grapheme_length: 4 });
+    expect(candidates).toContainEqual({ root: "トール", grapheme_length: 3 });
+    expect(candidates.map((candidate) => candidate["grapheme_length"])).toEqual(
+      candidates
+        .map((candidate) => candidate["grapheme_length"])
+        .toSorted((left, right) => Number(left) - Number(right)),
+    );
+  });
+
+  it("derive-common-literal-roots 以 NFKC、大小写和 grapheme 比较并保留首项写法", async () => {
     await expect(
-      execute_recipe("query-quality-rule-groups", { kind: "unknown" }, {}),
-    ).rejects.toThrow();
+      execute_recipe("derive-common-literal-roots", { forms: ["Ａe\u0301家", "aÉ領"] }, {}),
+    ).resolves.toMatchObject({
+      candidates: expect.arrayContaining([{ root: "Ａe\u0301", grapheme_length: 2 }]),
+    });
+
+    await expect(
+      execute_recipe("derive-common-literal-roots", { forms: ["同じ", "同じ"] }, {}),
+    ).rejects.toThrow("至少两个不同词形");
   });
 });
 
 /** 用真实发布源码和最小只读工作区 API 验证 recipe 的公开结果。 */
 async function execute_recipe(
-  name: "query-items" | "query-item-contexts" | "query-quality-rule-groups",
+  name: keyof typeof AGENT_WORKSPACE_RECIPE_PATHS,
   args: JsonRecord,
   files: Record<string, JsonValue>,
 ): Promise<JsonValue> {
@@ -259,6 +196,7 @@ function item(item_id: number, overrides: JsonRecord = {}): JsonRecord {
     name_dst: "",
     status: "NONE",
     file_path: "script.txt",
+    text_type: "NONE",
     row_number: item_id,
     retry_count: 0,
     ...overrides,

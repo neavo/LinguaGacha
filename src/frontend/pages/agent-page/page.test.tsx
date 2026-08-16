@@ -107,7 +107,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.confirm.retry_after_workspace_apply") return "工程写入重试确认";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
-      if (key === "agent_page.empty.suggestions.glossary_create") return "创建术语表";
+      if (key === "agent_page.empty.suggestions.quality_rule_create") return "准备质量规则";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
       if (key === "agent_page.mention.groups.skills") return "技能";
       if (key === "agent_page.mention.groups.terms") return "术语";
@@ -683,19 +683,19 @@ describe("AgentPage", () => {
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   const skills = [
     {
-      name: "glossary-create",
+      name: "quality-rule-create",
       displayDescriptions: {
-        "zh-CN": "创建术语表",
-        "en-US": "Create glossary",
-        "de-DE": "Glossar erstellen",
+        "zh-CN": "创建质量规则",
+        "en-US": "Create quality rules",
+        "de-DE": "Qualitätsregeln erstellen",
       },
     },
     {
-      name: "glossary-review",
+      name: "quality-rule-review",
       displayDescriptions: {
-        "zh-CN": "审校术语",
-        "en-US": "Review glossary",
-        "de-DE": "Glossar prüfen",
+        "zh-CN": "审校质量规则",
+        "en-US": "Review quality rules",
+        "de-DE": "Qualitätsregeln prüfen",
       },
     },
     {

@@ -13,9 +13,9 @@ import {
   type QualityStatisticsRuleInput,
 } from "../../shared/quality/quality-statistics";
 import {
-  analyze_quality_rule_relations,
-  type QualityRuleRelationCandidate,
-} from "../../shared/quality/quality-rule-relations";
+  find_quality_rule_subset_parents,
+  type QualityRuleSubsetCandidate,
+} from "../../shared/quality/quality-rule-subset-parents";
 import { read_item_source_text_parts } from "../../shared/item-text";
 import {
   QualityRuleImportRuleTypeValue,
@@ -159,7 +159,7 @@ function filter_import_candidates(args: {
       case_sensitive: entry.case_sensitive,
     };
   });
-  const relation_candidates: QualityRuleRelationCandidate[] = merged_entries.map((entry) => {
+  const subset_candidates: QualityRuleSubsetCandidate[] = merged_entries.map((entry) => {
     return {
       entry_id: build_glossary_stat_key(entry),
       src: entry.src,
@@ -171,7 +171,7 @@ function filter_import_candidates(args: {
     rules,
     text_groups: src_text_groups,
   });
-  const relations = analyze_quality_rule_relations(relation_candidates);
+  const subset_parents_by_entry_id = find_quality_rule_subset_parents(subset_candidates);
   const key_by_src = new Map<string, string>();
   merged_entries.forEach((entry) => {
     key_by_src.set(entry.src, build_glossary_stat_key(entry));
@@ -190,7 +190,7 @@ function filter_import_candidates(args: {
       continue;
     }
 
-    for (const parent_src of relations.subset_parents_by_entry_id[entry_key] ?? []) {
+    for (const parent_src of subset_parents_by_entry_id[entry_key] ?? []) {
       const parent_key = key_by_src.get(parent_src);
       if (parent_key === undefined) {
         continue;

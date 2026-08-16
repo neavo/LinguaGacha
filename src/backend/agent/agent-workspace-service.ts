@@ -29,10 +29,6 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort, CacheSnapshot } from "../cache/cache-types";
-import type {
-  QualityRuleAnalysisCache,
-  QualityRuleAnalysisCacheResult,
-} from "../cache/quality-rule-analysis-cache";
 import type { LogManager } from "../log/log-manager";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
@@ -50,7 +46,6 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-  AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS,
   AGENT_WORKSPACE_RECIPE_NAMES,
   AGENT_WORKSPACE_RECIPE_PATHS,
   project_agent_workspace_item,
@@ -109,7 +104,6 @@ export class AgentWorkspaceService {
       settings: Pick<AppSettingService, "read_setting">;
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
-      qualityAnalysis: Pick<QualityRuleAnalysisCache, "read">;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
       database: Pick<ProjectDatabase, "read_asset_content">;
       runtimeGate: {
@@ -169,32 +163,18 @@ export class AgentWorkspaceService {
         QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
       ) as Record<QualityRuleKind, JsonRecord[]>;
       const prompts = project_workspace_prompts(this.options.cache.prompts.readBlock());
-      const [warning_result, quality_analysis_results] = await Promise.all([
-        this.options.proofreading.query_warnings({
-          warning_types: [...PROOFREADING_WARNING_CODES],
-          keywords: [],
-          scope: "all",
-          offset: 0,
-          limit: Number.MAX_SAFE_INTEGER,
-        }),
-        Promise.all(
-          QUALITY_RULE_KINDS.map(
-            async (kind) => [kind, await this.options.qualityAnalysis.read(kind)] as const,
-          ),
-        ),
-      ]);
-      const quality_evidence = Object.fromEntries(
-        quality_analysis_results.map(([kind, result]) => [
-          kind,
-          project_quality_evidence(kind, result, quality_entries[kind]),
-        ]),
-      ) as Record<QualityRuleKind, JsonRecord>;
+      const warning_result = await this.options.proofreading.query_warnings({
+        warning_types: [...PROOFREADING_WARNING_CODES],
+        keywords: [],
+        scope: "all",
+        offset: 0,
+        limit: Number.MAX_SAFE_INTEGER,
+      });
       assert_load_dependencies_fresh({
         projectPath: project_path,
         snapshot: start_snapshot,
         current: this.options.cache.snapshot(),
         warnings: warning_result,
-        qualityAnalysis: quality_analysis_results,
         languageKey: language_key,
         currentLanguageKey: JsonTool.stringifyStrict(
           read_workspace_language(this.options.settings.read_setting()),
@@ -249,7 +229,7 @@ export class AgentWorkspaceService {
             path.join(workspace_path, AGENT_WORKSPACE_PATHS.warnings),
             map_iterable(warning_result.data.items, project_agent_workspace_warning),
           ),
-          ...QUALITY_RULE_KINDS.flatMap((kind) => [
+          ...QUALITY_RULE_KINDS.map((kind) =>
             write_jsonl_file(
               this.native_fs,
               path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
@@ -257,12 +237,7 @@ export class AgentWorkspaceService {
                 project_agent_workspace_quality_entry(kind, entry),
               ),
             ),
-            write_json_file(
-              this.native_fs,
-              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_EVIDENCE_PATHS[kind]),
-              quality_evidence[kind],
-            ),
-          ]),
+          ),
           ...all_change_paths().map((relative_path) =>
             this.native_fs.write_file(path.join(workspace_path, relative_path), ""),
           ),
@@ -653,36 +628,6 @@ function project_workspace_prompts(block: JsonRecord): JsonRecord {
   );
 }
 
-/** 把共享分析缓存投影为与当前规则顺序严格同源的只读证据。 */
-function project_quality_evidence(
-  kind: QualityRuleKind,
-  result: QualityRuleAnalysisCacheResult,
-  entries: JsonRecord[],
-): JsonRecord {
-  const expected_ids = entries.map((entry) => String(entry["entry_id"]));
-  if (
-    JsonTool.stringifyStrict(result.analysis.entry_ids) !== JsonTool.stringifyStrict(expected_ids)
-  ) {
-    throw workspace_validation_error(
-      `agent_workspace_quality_analysis_order_changed_${kind}`,
-      "workspace_load",
-    );
-  }
-  return {
-    by_id: Object.fromEntries(
-      expected_ids.map((id) => [
-        id,
-        {
-          hits: result.analysis.hits_by_entry_id[id] ?? 0,
-          examples: [...(result.analysis.examples_by_entry_id[id] ?? [])],
-          parent_sources: [...(result.analysis.relations.subset_parents_by_entry_id[id] ?? [])],
-        },
-      ]),
-    ),
-    groups: result.analysis.relations.groups.map((group) => [...group]),
-  };
-}
-
 /** sessionState 与 cache 必须指向同一 loaded 工程。 */
 function assert_snapshot_project(
   snapshot: CacheSnapshot,
@@ -700,7 +645,6 @@ function assert_load_dependencies_fresh(args: {
   snapshot: CacheSnapshot;
   current: CacheSnapshot;
   warnings: { projectPath: string; sectionRevisions: ProjectDataSectionRevisions };
-  qualityAnalysis: Array<readonly [QualityRuleKind, QualityRuleAnalysisCacheResult]>;
   languageKey: string;
   currentLanguageKey: string;
 }): void {
@@ -719,20 +663,7 @@ function assert_load_dependencies_fresh(args: {
         read_json_integer(args.warnings.sectionRevisions[section], 0) ===
         read_json_integer(args.snapshot.sectionRevisions[section], 0),
     );
-  const analyses_fresh = args.qualityAnalysis.every(
-    ([, result]) =>
-      result.projectPath === args.projectPath &&
-      read_json_integer(result.sectionRevisions["items"], 0) ===
-        read_json_integer(args.snapshot.sectionRevisions["items"], 0) &&
-      read_json_integer(result.sectionRevisions["quality"], 0) ===
-        read_json_integer(args.snapshot.sectionRevisions["quality"], 0),
-  );
-  if (
-    !same_snapshot ||
-    !warnings_fresh ||
-    !analyses_fresh ||
-    args.languageKey !== args.currentLanguageKey
-  ) {
+  if (!same_snapshot || !warnings_fresh || args.languageKey !== args.currentLanguageKey) {
     throw workspace_validation_error("agent_workspace_load_dependencies_changed", "workspace_load");
   }
 }

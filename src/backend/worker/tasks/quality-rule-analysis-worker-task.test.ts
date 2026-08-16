@@ -4,7 +4,7 @@ import { prepare_quality_statistics_task_input } from "../../../shared/quality/q
 import { run_quality_rule_analysis_worker_task } from "./quality-rule-analysis-worker-task";
 
 describe("run_quality_rule_analysis_worker_task", () => {
-  it("一次扫描返回 hits、examples 和通用关系", () => {
+  it("一次扫描返回 hits、examples 和字面包含父项", () => {
     const input = prepare_quality_statistics_task_input({
       rule_key: "glossary",
       entries: [
@@ -16,7 +16,10 @@ describe("run_quality_rule_analysis_worker_task", () => {
         { src: "Max HP", name_src: "Bob" },
       ],
     });
-    const result = run_quality_rule_analysis_worker_task({ ...input, include_relations: true });
+    const result = run_quality_rule_analysis_worker_task({
+      ...input,
+      include_subset_parents: true,
+    });
 
     expect(result).toEqual({
       entry_ids: ["hp", "max-hp"],
@@ -25,14 +28,11 @@ describe("run_quality_rule_analysis_worker_task", () => {
         hp: ["【Alice】HP +10", "【Bob】Max HP"],
         "max-hp": ["【Bob】Max HP"],
       },
-      relations: {
-        subset_parents_by_entry_id: { hp: ["Max HP"] },
-        groups: [["hp", "max-hp"]],
-      },
+      subset_parents_by_entry_id: { hp: ["Max HP"] },
     });
   });
 
-  it("缓存已有关系时可跳过关系计算", () => {
+  it("缓存已有父项时可跳过父项计算", () => {
     const input = prepare_quality_statistics_task_input({
       rule_key: "text_preserve",
       entries: [{ entry_id: "tag", src: "<tag>" }],
@@ -40,7 +40,7 @@ describe("run_quality_rule_analysis_worker_task", () => {
     });
 
     expect(
-      run_quality_rule_analysis_worker_task({ ...input, include_relations: false }),
-    ).not.toHaveProperty("relations");
+      run_quality_rule_analysis_worker_task({ ...input, include_subset_parents: false }),
+    ).not.toHaveProperty("subset_parents_by_entry_id");
   });
 });
