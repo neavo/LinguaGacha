@@ -29,7 +29,7 @@ describe("backend boundary rules", () => {
       "src/backend/model/catalog.ts": 'import OpenAI from "openai";',
       "src/backend/model/network.ts": [
         'import { fetch } from "undici";',
-        'fetch("https://example.com");',
+        "globalThis.fetch = custom_fetch;",
       ].join("\n"),
       "src/backend/quality/service.ts": [
         'import "../api/api-routes";',
@@ -64,6 +64,23 @@ describe("backend boundary rules", () => {
         ].join("\n"),
       }),
     ).toEqual([]);
+  });
+
+  it("允许普通 fetch 但禁止 Backend Runtime 与 CLI 替换 transport", () => {
+    expect(
+      run_rules({
+        "src/backend/model/catalog.ts": 'fetch("https://example.com");',
+      }),
+    ).toEqual([]);
+    expect(
+      run_rules({
+        "src/cli/main.ts": "globalThis.fetch = custom_fetch;",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        relative_path: "src/cli/main.ts",
+      }),
+    ]);
   });
 });
 

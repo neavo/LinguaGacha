@@ -35,7 +35,6 @@ import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { AppError } from "../../shared/error";
 
 /** 构造不访问磁盘和真实外部服务的最小组合根依赖。 */
@@ -60,7 +59,6 @@ function create_backend_services_options(): BackendServicesOptions {
       error: vi.fn(),
       info: vi.fn(),
     },
-    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     openOutputFolder: vi.fn(),
     workerExecution: { kind: "in_process" },
   } as unknown as BackendServicesOptions;
@@ -78,7 +76,6 @@ describe("BackendServices", () => {
     const compute_worker_dispose = vi.spyOn(ComputeWorkerClient.prototype, "dispose");
     const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
     const web_search_dispose = vi.spyOn(WebSearchService.prototype, "dispose");
-    const system_proxy_dispose = vi.spyOn(SystemProxyHttpClient.prototype, "dispose");
     const services = new BackendServices(options);
 
     services.start();
@@ -92,18 +89,13 @@ describe("BackendServices", () => {
     expect(compute_worker_dispose).toHaveBeenCalledTimes(1);
     expect(agent_dispose).toHaveBeenCalledTimes(1);
     expect(web_search_dispose).toHaveBeenCalledTimes(1);
-    expect(system_proxy_dispose).toHaveBeenCalledTimes(1);
     expect(agent_dispose.mock.invocationCallOrder[0]).toBeLessThan(
       web_search_dispose.mock.invocationCallOrder[0]!,
-    );
-    expect(web_search_dispose.mock.invocationCallOrder[0]).toBeLessThan(
-      system_proxy_dispose.mock.invocationCallOrder[0]!,
     );
     expect(options.metadata.build_linguagacha_user_agent).toHaveBeenCalledTimes(1);
     compute_worker_dispose.mockRestore();
     agent_dispose.mockRestore();
     web_search_dispose.mockRestore();
-    system_proxy_dispose.mockRestore();
   });
 
   it("把任务快照按公开 SSE envelope 发布", async () => {

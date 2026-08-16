@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import type { FetchFunction } from "@earendil-works/pi-ai";
 
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
@@ -65,7 +64,6 @@ export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
-  private readonly network_fetch: FetchFunction; // 模型列表探测使用同一显式代理 Fetch
   private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入只允许在统一运行态空闲时发生
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
@@ -77,7 +75,6 @@ export class ModelService {
     paths: AppPathService,
     app_setting_service: AppSettingService,
     llm_client: LLMClientPort,
-    network_fetch: FetchFunction,
     runtime_gate: RuntimeOperationGate,
     log_manager?: Pick<LogManager, "info" | "warning">,
     native_fs: NativeFs = default_native_fs,
@@ -85,7 +82,6 @@ export class ModelService {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
     this.llm_client = llm_client;
-    this.network_fetch = network_fetch;
     this.runtime_gate = runtime_gate;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
@@ -279,7 +275,7 @@ export class ModelService {
   public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const models = await list_available_models(model, this.network_fetch);
+    const models = await list_available_models(model);
     return { models: models as unknown as JsonValue };
   }
 

@@ -45,14 +45,12 @@ vi.mock("@earendil-works/pi-ai/api/google-generative-ai.lazy", () => ({
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
-const TEST_NETWORK_FETCH = vi.fn<typeof globalThis.fetch>();
 
 beforeEach(() => {
   api_mocks.openai.mockReset();
   api_mocks.responses.mockReset();
   api_mocks.anthropic.mockReset();
   api_mocks.google.mockReset();
-  TEST_NETWORK_FETCH.mockReset();
 });
 
 afterEach(() => {
@@ -90,7 +88,6 @@ describe("LLMClient", () => {
     expect(options).toMatchObject({
       maxRetries: 0,
       cacheRetention: "none",
-      fetch: TEST_NETWORK_FETCH,
     });
     expect(options).not.toHaveProperty("timeoutMs");
   });
@@ -336,9 +333,9 @@ describe("LLMClient", () => {
   });
 });
 
-/** 所有用例共用显式测试传输，避免全局 fetch 掩盖注入边界。 */
+/** 所有用例共用固定 User-Agent，供应商 transport 由 Backend 进程统一安装。 */
 function create_client(): LLMClient {
-  return new LLMClient({ userAgent: TEST_USER_AGENT, fetch: TEST_NETWORK_FETCH });
+  return new LLMClient({ userAgent: TEST_USER_AGENT });
 }
 
 /** 用 Pi 公开事件流构造确定的成功或 provider-error 终态。 */

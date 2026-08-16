@@ -67,6 +67,20 @@ describe("system proxy route", () => {
 });
 
 describe("SystemProxyHttpClient", () => {
+  it("安装唯一线程 transport 并在释放时恢复原 fetch", async () => {
+    const original_fetch = globalThis.fetch;
+    const client = new SystemProxyHttpClient({ resolveProxy: vi.fn(async () => "DIRECT") });
+
+    client.install_as_global_fetch();
+    try {
+      expect(globalThis.fetch).toBe(client.fetch);
+      expect(() => client.install_as_global_fetch()).toThrow();
+    } finally {
+      await client.dispose();
+    }
+    expect(globalThis.fetch).toBe(original_fetch);
+  });
+
   it("每次请求按实际 URL 重新解析代理并禁止自动重定向", async () => {
     const resolve_proxy = vi
       .fn()

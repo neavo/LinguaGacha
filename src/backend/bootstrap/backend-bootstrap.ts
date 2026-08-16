@@ -6,6 +6,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
+import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { AppError } from "../../shared/error";
 import { resolve_app_root } from "../app/app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
@@ -24,6 +25,7 @@ export class BackendBootstrap {
   private readonly options: BackendBootstrapOptions; // 来自 GUI/CLI 入口层，Bootstrap 只消费宿主注入事实
   private gateway_server: ApiGatewayServer | null = null; // 只在 GUI 模式暴露 `/api/*`
   private backend_services: BackendServices | null = null; // API Gateway 与 CLI job 的共享业务组合根
+  private system_proxy_http_client: SystemProxyHttpClient | null = null; // 当前线程唯一的普通远端 HTTP transport
   private readonly database = new ProjectDatabase(); // 直接承载 `.lg` 物理 workflow，由 Bootstrap 统一关闭
   private log_manager: LogManager | null = null; // 先于服务组合创建，确保启动失败和退出阶段都有统一日志出口
   private start_promise: Promise<BackendBootstrapStartResult> | null = null; // stop 必须等待启动链发布完资源后再逆序释放
@@ -43,9 +45,7 @@ export class BackendBootstrap {
     return this.state === "idle" || this.state === "stopped" || this.state === "failed";
   }
 
-  /**
-   * 启动顺序固定为 LogManager -> ProjectDatabase -> BackendServices -> 可选 API Gateway。
-   */
+  /** 启动顺序固定为日志与迁移 -> HTTP transport -> BackendServices -> 可选 API Gateway。 */
   public async start(): Promise<BackendBootstrapStartResult> {
     const stop_in_progress = this.stop_promise !== null;
     if ((this.state !== "idle" && this.state !== "stopped") || stop_in_progress) {
@@ -102,13 +102,15 @@ export class BackendBootstrap {
       migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const app_setting_service = new AppSettingService(paths);
       set_main_log_language_reader(() => app_setting_service.read_app_language());
+      const system_proxy_http_client = new SystemProxyHttpClient(this.options.systemProxyResolver);
+      this.system_proxy_http_client = system_proxy_http_client;
+      system_proxy_http_client.install_as_global_fetch();
       const backend_services = new BackendServices({
         paths,
         metadata,
         appSettingService: app_setting_service,
         database: this.database,
         logManager: log_manager,
-        systemProxyResolver: this.options.systemProxyResolver,
         ...(this.options.agentWebFetch === undefined
           ? {}
           : { agentWebFetch: this.options.agentWebFetch }),
@@ -212,7 +214,7 @@ export class BackendBootstrap {
   }
 
   /**
-   * Gateway、BackendServices、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
+   * Gateway、BackendServices、HTTP transport、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
    */
   private async stop_services(): Promise<void> {
     if (this.state === "stopped") {
@@ -235,6 +237,10 @@ export class BackendBootstrap {
     const backend_services = this.backend_services;
     this.backend_services = null;
     await attempt(async () => await backend_services?.dispose());
+
+    const system_proxy_http_client = this.system_proxy_http_client;
+    this.system_proxy_http_client = null;
+    await attempt(async () => await system_proxy_http_client?.dispose());
 
     await attempt(() => this.database.close());
 

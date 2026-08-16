@@ -56,7 +56,7 @@ function create_backend_module_ownership_rule() {
   };
 }
 
-/** 远端 HTTP 只能从两个安全语义不同的正式传输所有者发出。 */
+/** 低层 Undici 只归正式传输所有者，Backend Runtime 与 CLI 的 fetch 只能由系统代理 Client 安装。 */
 function create_backend_outbound_network_rule() {
   const network_owners = new Set([
     SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH,
@@ -66,28 +66,30 @@ function create_backend_outbound_network_rule() {
     name: "后端出站网络边界",
     check: (context) => {
       const errors = [];
-      for (const file_path of context.files.filter(is_backend_production_source)) {
+      for (const file_path of context.files.filter(
+        (file_path) =>
+          is_backend_production_source(file_path) || is_cli_production_source(file_path),
+      )) {
         const relative_path = context.relative_path(file_path);
-        if (network_owners.has(relative_path)) {
-          continue;
-        }
-
         const content = context.read_file(file_path);
-        for (const import_entry of find_import_specifiers(content)) {
-          if (import_entry.specifier !== "undici") {
-            continue;
+        if (!network_owners.has(relative_path)) {
+          for (const import_entry of find_import_specifiers(content)) {
+            if (import_entry.specifier !== "undici") {
+              continue;
+            }
+            errors.push({
+              line: import_entry.line,
+              message: "Undici 传输只能由 system-proxy-http-client 或 agent-web-fetch 拥有",
+              relative_path,
+            });
           }
-          errors.push({
-            line: import_entry.line,
-            message: "Undici 传输只能由 system-proxy-http-client 或 agent-web-fetch 拥有",
-            relative_path,
-          });
         }
-
-        const matches = find_pattern_errors(content, /\bfetch\s*\(/g, () => {
-          return "后端远端 HTTP 必须经显式注入的系统代理客户端或 agent-web-fetch";
-        });
-        errors.push(...matches.map((match) => ({ ...match, relative_path })));
+        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
+          const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
+            return "Backend Runtime 与 CLI 的 fetch 只能由 system-proxy-http-client 安装";
+          });
+          errors.push(...matches.map((match) => ({ ...match, relative_path })));
+        }
       }
       return errors;
     },
