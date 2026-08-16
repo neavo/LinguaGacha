@@ -52,6 +52,44 @@ describe("Agent skill 模型投影", () => {
   });
 });
 
+describe("Agent 内置质量规则 skills", () => {
+  it("公开两个薄入口并隐藏共享工作流与分领域知识", async () => {
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-builtin-skills-"),
+    );
+    const skills = await load_agent_skills(
+      {
+        get_agent_builtin_skill_dir: () => path.resolve("resource", "agent", "skill"),
+        get_agent_user_skill_dir: () => temp_root.path,
+        get_app_root: () => path.resolve("."),
+      },
+      { warning: vi.fn(), error: vi.fn() },
+    );
+    const by_name = new Map(skills.map((skill) => [skill.name, skill]));
+
+    expect(by_name.get("quality-rule-create")).toMatchObject({
+      visible: true,
+      disableModelInvocation: false,
+    });
+    expect(by_name.get("quality-rule-review")).toMatchObject({
+      visible: true,
+      disableModelInvocation: false,
+    });
+    expect(by_name.get("glossary-rules")).toMatchObject({
+      visible: false,
+      disableModelInvocation: true,
+    });
+    expect(by_name.get("text-preserve-rules")).toMatchObject({
+      visible: false,
+      disableModelInvocation: true,
+    });
+    expect(by_name.get("quality-rule-workflow")).toMatchObject({
+      visible: false,
+      disableModelInvocation: true,
+    });
+  });
+});
+
 describe("Agent skill 加载", () => {
   it("内置 skill 资源可直接加载且不产生诊断", async () => {
     using temp_root = fs.mkdtempDisposableSync(

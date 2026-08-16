@@ -463,24 +463,23 @@ export class AgentWorkspaceService {
       return current.files.map((file) => ({ ...file }));
     }
     const source_path = path.join(this.root_path, "sources");
-    const staging_path = path.join(this.root_path, `.sources-${randomUUID()}`); // 完整生成后才替换旧树
-    let files: AgentWorkspaceSourceFile[];
+    this.source_session = null;
+    // reset_project 已隔离旧工作区，load、run 与 apply 由 exclusive 串行；完整生成前应用内没有 sources 读者。
+    await this.native_fs.remove_async(source_path, { recursive: true, force: true });
     try {
-      files = await write_agent_workspace_sources({
+      const files = await write_agent_workspace_sources({
         nativeFs: this.native_fs,
-        sourceRoot: staging_path,
+        sourceRoot: source_path,
         files: args.files,
         readAsset: (file_path) =>
           this.options.database.read_asset_content(args.projectPath, file_path),
       });
-      await this.native_fs.remove_async(source_path, { recursive: true, force: true });
-      this.native_fs.rename(staging_path, source_path);
+      this.source_session = { ...args, files: files.map((file) => ({ ...file })) };
+      return files;
     } catch (error) {
-      await this.native_fs.remove_async(staging_path, { recursive: true, force: true });
+      await this.remove_workspace_directory(source_path);
       throw error;
     }
-    this.source_session = { ...args, files: files.map((file) => ({ ...file })) };
-    return files;
   }
 
   /** task 只绑定对话中的工程身份与语言，普通 revision 和 apply 不改变其生命周期。 */

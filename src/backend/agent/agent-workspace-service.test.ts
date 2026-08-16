@@ -143,6 +143,20 @@ describe("AgentWorkspaceService", () => {
     expect(fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT))).toBe(false);
   });
 
+  it("目录 rename 不可用时仍能在工程加载阶段生成 sources", async () => {
+    const native_fs = new NativeFs();
+    vi.spyOn(native_fs, "rename").mockImplementation(() => {
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    });
+    const fixture = create_fixture(temp_dir, native_fs);
+    await fixture.service.initialize();
+
+    await expect(fixture.service.reset_project("test.lg")).resolves.toBeUndefined();
+    expect(
+      fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
+    ).toBe("源文件正文");
+  });
+
   it("task 跨 load、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();

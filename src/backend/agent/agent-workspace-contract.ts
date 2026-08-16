@@ -71,6 +71,7 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
 export const AGENT_WORKSPACE_RECIPE_NAMES = Object.freeze([
   "query-items",
   "query-item-contexts",
+  "query-quality-rule-groups",
   "derive-common-literal-roots",
 ] as const);
 
@@ -413,6 +414,20 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
         item_ids: "需要补充邻近文本的正整数数组",
       },
       returns: "{ contexts, items: object[], missing_item_ids }",
+    },
+    "query-quality-rule-groups": {
+      path: AGENT_WORKSPACE_RECIPE_PATHS["query-quality-rule-groups"],
+      purpose: "按等价、包含和受限公共词根为质量规则或候选生成稳定、互斥且最多 16 条的结构组",
+      parameters: {
+        kind: "glossary 或 text_preserve",
+        entries:
+          "可选候选数组；每项使用 entry_id、src，glossary 另需 case_sensitive；省略时读取 kind 的现有规则数据集",
+        target_entry_ids: "可选目标 ID 数组；返回命中目标的完整结构组",
+        offset: "可选非负组偏移，默认 0",
+        limit: "可选正整数组数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
+      },
+      returns:
+        "{ total_entry_count, total_target_entry_count, total_component_count, total_group_count, groups: Array<{ group_id, component_ids, entry_ids, target_entry_ids, relations: Array<{ reason: equivalent|contains|shared_root, entry_ids, root? }> }>, cross_group_relations: Array<{ reason, entry_ids, root?, group_ids }>, missing_target_entry_ids, next_offset? }",
     },
     "derive-common-literal-roots": {
       path: AGENT_WORKSPACE_RECIPE_PATHS["derive-common-literal-roots"],
