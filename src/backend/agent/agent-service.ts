@@ -61,7 +61,7 @@ import {
   type AgentSkillDefinition,
 } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
+import { log_agent_tool_event, prepare_agent_tool } from "./agent-tool";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -756,7 +756,7 @@ export class AgentService {
         ...(this.workspace === undefined ? [] : create_agent_workspace_tools(this.workspace)),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
-      ].map((tool) => wrap_agent_tool_execution(tool, this.log_manager)),
+      ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,
       settingsManager: settings_manager,

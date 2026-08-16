@@ -37,7 +37,7 @@
 
 ## 4. 产品工具与宿主能力
 
-- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占工具参数。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
+- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `task_progress` 始终注册，管理当前对话中至多一个内存动态工作队列；`advance` 在完整校验后原子完成既有项并追加派生项，`finish` 拒绝遗留待办，显式 `cancel` 只清理进度而不回滚其它副作用。工具只向模型返回分阶段计数和有限待办，不保存领域事实、工程证据、百分比或完成判据；公开 Agent snapshot 与 SSE 另以 `taskProgress` 投影全部待办标签，空数组表示不展示，不公开标题、键、阶段或完成统计。长流程仍由 skill 决定何时建立工作项和满足业务收敛。
 - 工程数据工具只保留 `workspace_load`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖。
 - `workspace_load` 无参数生成完整只读快照和空 change 文件、挂载当前对话 task，只在工具结果返回语言与数量摘要；完整 project_meta 和 contract 保留在磁盘，脚本运行时把 contract 投影为 `workspace.contract`。`items/entries.jsonl` 额外携带只读 `text_type`，用于按文本格式解释规则命中分布；project_meta 保存解释快照所需的语言、数量、文件顺序及可用的 source 文本路径或容器文本根，质量规则功能开关和文本处理设置不进入工作区。contract 是 datasets、显式 change 操作、字段、身份、稳定写入副作用、领域提交软建议、模型结果与查询上限、recipe 参数及具名返回形状的唯一代码权威，不承载固定脚本 SDK 或运行时生命周期。`workspace_script` 的 TypeBox 工具 Schema 是固定 SDK 和完整入口语法的唯一模型可见权威，Electron runner 注入相同成员。System Prompt 规定 items 优先、sources 仅补足缺失片段或结构证据，并提供无 skill 时读取工作区事实、准备并提交 contract 声明变更的完整默认流程；skill 只补充领域判断与处理方法。

@@ -14,7 +14,7 @@ import {
   AgentToolError,
   agent_tool_result,
   log_agent_tool_event,
-  wrap_agent_tool_execution,
+  prepare_agent_tool,
 } from "./agent-tool";
 
 describe("Agent 工具公共边界", () => {
@@ -44,7 +44,7 @@ describe("Agent 工具公共边界", () => {
     set_main_log_language_reader(() => "EN");
     const error = vi.fn();
     const execute = vi.fn();
-    const wrapped = wrap_agent_tool_execution(
+    const wrapped = prepare_agent_tool(
       defineTool({
         name: "test_tool",
         label: "测试",
@@ -105,6 +105,20 @@ describe("Agent 工具公共边界", () => {
       error: unknown,
       context: { tool_call_id: "unknown", tool_name: "test_tool" },
     });
+  });
+
+  it("统一注册边界拒绝非普通对象根 Schema", () => {
+    const invalid = defineTool({
+      name: "invalid_tool",
+      label: "非法工具",
+      description: "测试",
+      parameters: Type.Union([Type.Object({}), Type.Object({ value: Type.String() })], {
+        type: "object",
+      }),
+      execute: vi.fn(),
+    });
+
+    expect(() => prepare_agent_tool(invalid, { error: vi.fn() })).toThrow();
   });
 
   it("start/end 使用稳定 source、等级、目标与完整严格 JSON", () => {
