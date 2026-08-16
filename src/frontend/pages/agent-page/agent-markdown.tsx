@@ -14,6 +14,7 @@ import "./agent-markdown.css";
 type AgentMarkdownProps = {
   text: string;
   streaming: boolean;
+  annotatable?: boolean;
 };
 
 type MermaidRenderState =
@@ -69,7 +70,7 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   };
 
   return (
-    <div className="agent-markdown">
+    <div className="agent-markdown" data-agent-annotation-content={props.annotatable || undefined}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={

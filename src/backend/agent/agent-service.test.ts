@@ -479,16 +479,16 @@ describe("AgentService", () => {
     await expect(fixture.service.send_message({ message: "旧协议" })).rejects.toThrow(
       "request.validation_failed",
     );
-    await expect(fixture.service.send_message({ text: 1, images: [] })).rejects.toThrow(
+    await expect(fixture.service.send_message({ text: 1, attachments: [] })).rejects.toThrow(
       "request.validation_failed",
     );
     await expect(fixture.service.send_message({ text: "正文" })).rejects.toThrow(
       "request.validation_failed",
     );
-    await expect(fixture.service.send_message({ text: "正文", images: [1] })).rejects.toThrow(
+    await expect(fixture.service.send_message({ text: "正文", attachments: [1] })).rejects.toThrow(
       "request.validation_failed",
     );
-    await expect(fixture.service.send_message({ text: " \n ", images: [] })).rejects.toThrow(
+    await expect(fixture.service.send_message({ text: " \n ", attachments: [] })).rejects.toThrow(
       "request.validation_failed",
     );
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
@@ -497,13 +497,22 @@ describe("AgentService", () => {
   it("把纯图片作为 WebP 传给模型并原样写入公开时间线", async () => {
     const fixture = await create_service();
 
-    await fixture.service.send_message({ text: "", images: ["webp-a", "webp-b"] });
+    await fixture.service.send_message({
+      text: "",
+      attachments: [
+        { kind: "image", webpBase64: "webp-a" },
+        { kind: "image", webpBase64: "webp-b" },
+      ],
+    });
     await wait_for_idle(fixture.service);
 
     expect(fixture.service.get_snapshot().entries[0]).toMatchObject({
       kind: "user_message",
       text: "",
-      images: ["webp-a", "webp-b"],
+      attachments: [
+        { kind: "image", webpBase64: "webp-a" },
+        { kind: "image", webpBase64: "webp-b" },
+      ],
       status: "success",
     });
     const last_user = fake_agent_state.model_contexts
@@ -517,6 +526,42 @@ describe("AgentService", () => {
         { type: "image", data: "webp-b", mimeType: "image/webp" },
       ],
     });
+  });
+
+  it("把含空评论的回复批注写入公开时间线，并只向模型投影选文与评论", async () => {
+    const fixture = await create_service();
+
+    await fixture.service.send_message({
+      text: "请按批注修改",
+      attachments: [
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复片段",
+          comment: "这里需要更准确",
+        },
+        { kind: "response_annotation", selectedText: "另一段旧回复", comment: "" },
+      ],
+    });
+    await wait_for_idle(fixture.service);
+
+    expect(fixture.service.get_snapshot().entries[0]).toMatchObject({
+      kind: "user_message",
+      text: "请按批注修改",
+      attachments: [
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复片段",
+          comment: "这里需要更准确",
+        },
+        { kind: "response_annotation", selectedText: "另一段旧回复", comment: "" },
+      ],
+    });
+    const prompt = fake_agent_state.prompts.at(-1) ?? "";
+    expect(prompt).toContain("旧回复片段");
+    expect(prompt).toContain("这里需要更准确");
+    expect(prompt).toContain("另一段旧回复");
+    expect(prompt).not.toContain("response_annotation");
+    expect(prompt.endsWith("请按批注修改")).toBe(true);
   });
 
   it("skill 快照复制 UI 描述，不向调用方暴露内部资源引用", async () => {
@@ -559,7 +604,7 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
     expect(skill_test_fixture.loader).toHaveBeenCalledTimes(2);
 
-    await fixture.service.send_message({ text: "@skill(new-skill) 开始", images: [] });
+    await fixture.service.send_message({ text: "@skill(new-skill) 开始", attachments: [] });
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
     expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
@@ -569,7 +614,7 @@ describe("AgentService", () => {
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
     const fixture = await create_service();
 
-    await fixture.service.send_message({ text: "正文", images: [] });
+    await fixture.service.send_message({ text: "正文", attachments: [] });
     await wait_for_idle(fixture.service);
 
     const context = fake_agent_state.model_contexts[0] ?? [];
@@ -600,7 +645,7 @@ describe("AgentService", () => {
 
     await fixture.service.send_message({
       text: "先用 @skill(corpus-search)，再用 @skill(glossary-audit)。",
-      images: [],
+      attachments: [],
     });
     await wait_for_idle(fixture.service);
     const prompt = fake_agent_state.prompts.at(-1) ?? "";
@@ -618,7 +663,7 @@ describe("AgentService", () => {
     const text =
       "@skill(glossary-audit) @skill(unknown) @skill(glossary-audit) @term(Alice) @glossary-audit";
 
-    await fixture.service.send_message({ text, images: [] });
+    await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
 
     const prompt = fake_agent_state.prompts.at(-1) ?? "";
@@ -632,7 +677,7 @@ describe("AgentService", () => {
     const fixture = await create_service();
     const text = String.raw`\@skill(glossary-audit) 只讨论语法`;
 
-    await fixture.service.send_message({ text, images: [] });
+    await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
 
     const prompt = fake_agent_state.prompts.at(-1) ?? "";
@@ -644,7 +689,7 @@ describe("AgentService", () => {
     const fixture = await create_service();
     const text = "@skill(internal-guidance)";
 
-    await fixture.service.send_message({ text, images: [] });
+    await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
 
     expect(fake_agent_state.prompts.at(-1)).toBe(text);
@@ -655,7 +700,10 @@ describe("AgentService", () => {
   it("模型回合从 running 回到 idle，并由条目保存成功终态", async () => {
     const { service, publish } = await create_service();
 
-    await service.send_message({ text: "开始", images: ["webp-image"] });
+    await service.send_message({
+      text: "开始",
+      attachments: [{ kind: "image", webpBase64: "webp-image" }],
+    });
     expect(service.get_snapshot().state).toBe("running");
     expect(service.get_snapshot().entries[0]).toMatchObject({
       kind: "user_message",
@@ -670,7 +718,7 @@ describe("AgentService", () => {
         {
           kind: "user_message",
           text: "开始",
-          images: ["webp-image"],
+          attachments: [{ kind: "image", webpBase64: "webp-image" }],
           status: "success",
           endedAt: expect.any(Number),
         },
@@ -711,7 +759,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
 
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
 
@@ -791,7 +839,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     expect(service.get_snapshot().contextTokens).toBeNull();
 
-    await service.send_message({ text: "x".repeat(400), images: [] });
+    await service.send_message({ text: "x".repeat(400), attachments: [] });
     await wait_for_idle(service);
 
     const context_events = publish.mock.calls
@@ -814,12 +862,12 @@ describe("AgentService", () => {
 
   it("同一对话在下一轮完整采用最新容量设置", async () => {
     const { service } = await create_service();
-    await service.send_message({ text: "第一轮", images: [] });
+    await service.send_message({ text: "第一轮", attachments: [] });
     await wait_for_idle(service);
 
     fake_agent_state.context_window = 400_000;
     fake_agent_state.max_tokens = 50_000;
-    await service.send_message({ text: "第二轮", images: [] });
+    await service.send_message({ text: "第二轮", attachments: [] });
     await wait_for_idle(service);
     expect(fake_agent_state.request_model_limits).toEqual([
       { contextWindow: 288_000, maxTokens: 32_000 },
@@ -832,14 +880,14 @@ describe("AgentService", () => {
     for (const round of [1, 2, 3, 4]) {
       await service.send_message({
         text: `第${round.toString()}轮${"x".repeat(40_000)}`,
-        images: [],
+        attachments: [],
       });
       await wait_for_idle(service);
     }
     expect(fake_agent_state.request_kinds).not.toContain("summary");
 
     fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
-    await service.send_message({ text: "继续", images: [] });
+    await service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(service);
 
     expect(fake_agent_state.request_kinds).toContain("summary");
@@ -853,7 +901,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 10;
 
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
     const snapshot = service.get_snapshot();
@@ -891,7 +939,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "tool_only";
 
-    await service.send_message({ text: "查询", images: [] });
+    await service.send_message({ text: "查询", attachments: [] });
     await wait_for_idle(service);
 
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
@@ -903,11 +951,11 @@ describe("AgentService", () => {
   it("成功工具与 SDK Schema 失败都记录完整 start/end", async () => {
     const { service, log_append } = await create_service();
     fake_agent_state.mode = "tool_only";
-    await service.send_message({ text: "成功查询", images: [] });
+    await service.send_message({ text: "成功查询", attachments: [] });
     await wait_for_idle(service);
 
     fake_agent_state.mode = "invalid_tool";
-    await service.send_message({ text: "非法查询", images: [] });
+    await service.send_message({ text: "非法查询", attachments: [] });
     await wait_for_idle(service);
 
     const records = log_append.mock.calls.map(
@@ -951,7 +999,7 @@ describe("AgentService", () => {
       return [];
     });
 
-    await service.send_message({ text: "查询", images: [] });
+    await service.send_message({ text: "查询", attachments: [] });
     await wait_for_idle(service);
 
     expect(tool_started_before_running_turn).toBe(false);
@@ -962,7 +1010,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "tools";
 
-    await service.send_message({ text: "查询", images: [] });
+    await service.send_message({ text: "查询", attachments: [] });
     await wait_for_idle(service);
     const snapshot = service.get_snapshot();
 
@@ -985,7 +1033,7 @@ describe("AgentService", () => {
         kind: "user_message",
         id: expect.any(String),
         text: "查询",
-        images: [],
+        attachments: [],
         status: "success",
         createdAt: expect.any(Number),
         endedAt: expect.any(Number),
@@ -1079,7 +1127,10 @@ describe("AgentService", () => {
     const { service, log_error } = await create_service();
     fake_agent_state.mode = "error";
 
-    await service.send_message({ text: "开始", images: ["webp-image"] });
+    await service.send_message({
+      text: "开始",
+      attachments: [{ kind: "image", webpBase64: "webp-image" }],
+    });
     await wait_for_idle(service);
 
     expect(log_error).toHaveBeenCalledWith(
@@ -1095,7 +1146,7 @@ describe("AgentService", () => {
         {
           kind: "user_message",
           text: "开始",
-          images: ["webp-image"],
+          attachments: [{ kind: "image", webpBase64: "webp-image" }],
           status: "error",
           endedAt: expect.any(Number),
         },
@@ -1105,14 +1156,14 @@ describe("AgentService", () => {
 
   it("以相同 user 输入修订轮次时删除旧尝试并重新调用模型", async () => {
     const { service } = await create_service();
-    await service.send_message({ text: "原任务", images: [] });
+    await service.send_message({ text: "原任务", attachments: [] });
     await wait_for_idle(service);
     const user = service.get_snapshot().entries.find((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少 user 条目");
 
     await service.revise_latest_round({
       entryId: user.id,
-      message: { text: user.text, images: user.images },
+      message: { text: user.text, attachments: user.attachments },
     });
     await wait_for_idle(service);
 
@@ -1137,7 +1188,7 @@ describe("AgentService", () => {
   it("恢复失败轮次时保留公开工具历史，并以隐藏消息继续原 user", async () => {
     const { service } = await create_service(true);
     fake_agent_state.mode = "tools_error";
-    await service.send_message({ text: "原任务", images: [] });
+    await service.send_message({ text: "原任务", attachments: [] });
     await wait_for_idle(service);
     const failed_entries = service.get_snapshot().entries;
     const failed_user = failed_entries.find((entry) => entry.kind === "user_message");
@@ -1180,14 +1231,20 @@ describe("AgentService", () => {
 
   it("修改最新 user 后删除原输入并重新调用模型", async () => {
     const { service } = await create_service();
-    await service.send_message({ text: "原输入", images: ["old-image"] });
+    await service.send_message({
+      text: "原输入",
+      attachments: [{ kind: "image", webpBase64: "old-image" }],
+    });
     await wait_for_idle(service);
     const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
     if (user === undefined) throw new Error("缺少可修改 user 条目");
 
     await service.revise_latest_round({
       entryId: user.id,
-      message: { text: "新输入", images: ["new-image"] },
+      message: {
+        text: "新输入",
+        attachments: [{ kind: "image", webpBase64: "new-image" }],
+      },
     });
     await wait_for_idle(service);
 
@@ -1195,7 +1252,7 @@ describe("AgentService", () => {
     expect(entries[0]).toMatchObject({
       kind: "user_message",
       text: "新输入",
-      images: ["new-image"],
+      attachments: [{ kind: "image", webpBase64: "new-image" }],
       status: "success",
     });
     expect(entries.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
@@ -1207,7 +1264,7 @@ describe("AgentService", () => {
   it("修改最新 assistant 不调用模型，并保留此前完整工具历史", async () => {
     const { service } = await create_service(true);
     fake_agent_state.mode = "tools";
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await wait_for_idle(service);
     const assistants = service
       .get_snapshot()
@@ -1222,19 +1279,22 @@ describe("AgentService", () => {
     await expect(
       service.revise_latest_round({
         entryId: intermediate_assistant.id,
-        message: { text: "越过最终输出", images: [] },
+        message: { text: "越过最终输出", attachments: [] },
       }),
     ).rejects.toThrow("request.validation_failed");
     await expect(
       service.revise_latest_round({
         entryId: assistant.id,
-        message: { text: "", images: ["image"] },
+        message: {
+          text: "",
+          attachments: [{ kind: "image", webpBase64: "image" }],
+        },
       }),
     ).rejects.toThrow("request.validation_failed");
 
     await service.revise_latest_round({
       entryId: assistant.id,
-      message: { text: "人工修订", images: [] },
+      message: { text: "人工修订", attachments: [] },
     });
 
     expect(fake_agent_state.model_call_count).toBe(calls_before_edit);
@@ -1245,7 +1305,7 @@ describe("AgentService", () => {
     });
 
     fake_agent_state.mode = "success";
-    await service.send_message({ text: "下一轮", images: [] });
+    await service.send_message({ text: "下一轮", attachments: [] });
     await wait_for_idle(service);
     const next_context = JSON.stringify(fake_agent_state.model_contexts.at(-1));
     expect(next_context).toContain("人工修订");
@@ -1255,7 +1315,7 @@ describe("AgentService", () => {
 
   it("过期目标身份拒绝改写当前历史", async () => {
     const { service } = await create_service();
-    await service.send_message({ text: "当前任务", images: [] });
+    await service.send_message({ text: "当前任务", attachments: [] });
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
@@ -1263,7 +1323,7 @@ describe("AgentService", () => {
     await expect(
       service.revise_latest_round({
         entryId: "stale",
-        message: { text: "越权修改", images: [] },
+        message: { text: "越权修改", attachments: [] },
       }),
     ).rejects.toThrow("request.validation_failed");
 
@@ -1274,7 +1334,7 @@ describe("AgentService", () => {
   it("工程会话切换仍清空会话", async () => {
     const { service, publish, session_state } = await create_service();
 
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await wait_for_idle(service);
     await session_state.mark_loaded("next.lg");
 
@@ -1292,7 +1352,7 @@ describe("AgentService", () => {
     const { service } = await create_service(true, undefined, null);
     fake_agent_state.mode = "write";
 
-    await service.send_message({ text: "@skill(glossary-audit) 写入", images: [] });
+    await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual(["task_progress", "read_skill"]);
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
@@ -1305,7 +1365,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service(true, undefined, null);
     fake_agent_state.mode = "progress_start";
 
-    await service.send_message({ text: "开始长任务", images: [] });
+    await service.send_message({ text: "开始长任务", attachments: [] });
     await wait_for_idle(service);
     expect(read_tool_output(service, "progress-start")).toMatchObject({
       status: "active",
@@ -1318,7 +1378,7 @@ describe("AgentService", () => {
     });
 
     fake_agent_state.mode = "progress_read";
-    await service.send_message({ text: "下一回合读取进度", images: [] });
+    await service.send_message({ text: "下一回合读取进度", attachments: [] });
     await wait_for_idle(service);
     expect(read_tool_output(service, "progress-read")).toMatchObject({
       status: "active",
@@ -1327,7 +1387,7 @@ describe("AgentService", () => {
 
     await service.reset();
     expect(service.get_snapshot().taskProgress).toEqual([]);
-    await service.send_message({ text: "读取进度", images: [] });
+    await service.send_message({ text: "读取进度", attachments: [] });
     await wait_for_idle(service);
 
     expect(read_tool_output(service, "progress-read")).toEqual({ status: "idle" });
@@ -1345,7 +1405,7 @@ describe("AgentService", () => {
     }));
     const { service } = await create_service(true, { read: web_fetch, search: web_search });
 
-    await service.send_message({ text: "读取网页", images: [] });
+    await service.send_message({ text: "读取网页", attachments: [] });
     await wait_for_idle(service);
 
     expect(fake_agent_state.tool_names.at(-1)).toEqual(
@@ -1364,7 +1424,7 @@ describe("AgentService", () => {
     } satisfies AgentWorkspacePort;
     const { service, session_state } = await create_service(true, undefined, workspace);
 
-    await service.send_message({ text: "批量处理", images: [] });
+    await service.send_message({ text: "批量处理", attachments: [] });
     await wait_for_idle(service);
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
@@ -1388,7 +1448,7 @@ describe("AgentService", () => {
     vi.setSystemTime(1_000);
     const { service, log_error } = await create_service();
     fake_agent_state.mode = "pending";
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await vi.advanceTimersByTimeAsync(0);
 
     vi.setSystemTime(13_500);
@@ -1410,7 +1470,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
 
-    await service.send_message({ text: "开始", images: [] });
+    await service.send_message({ text: "开始", attachments: [] });
     await vi.advanceTimersByTimeAsync(25);
     const stopped_snapshot = service.stop();
     const stopped_assistant = stopped_snapshot.entries.find(
@@ -1464,7 +1524,7 @@ describe("AgentService", () => {
     const { service, runtime_gate } = await create_service();
     fake_agent_state.mode = "tool_only";
     fake_agent_state.hold_tool_execution = true;
-    await service.send_message({ text: "查询", images: [] });
+    await service.send_message({ text: "查询", attachments: [] });
     await vi.waitFor(() => {
       expect(service.get_snapshot().entries).toEqual(
         expect.arrayContaining([
@@ -1493,7 +1553,7 @@ describe("AgentService", () => {
     const { service, runtime_gate, log_append } = await create_service();
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
-    await service.send_message({ text: "写入", images: [] });
+    await service.send_message({ text: "写入", attachments: [] });
     await vi.waitFor(() => {
       expect(service.get_snapshot().entries).toEqual(
         expect.arrayContaining([
@@ -1525,7 +1585,7 @@ describe("AgentService", () => {
   it("SDK preflight 尚未结束时 stop 也不会迟到启动模型请求", async () => {
     const { service, log_error } = await create_service();
     fake_agent_state.hold_auth = true;
-    await service.send_message({ text: "立即停止", images: [] });
+    await service.send_message({ text: "立即停止", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
 
     expect(service.stop()).toMatchObject({ state: "idle" });
@@ -1540,7 +1600,7 @@ describe("AgentService", () => {
   it("reset 会立即隔离并等待 SDK preflight 真正 settle", async () => {
     const { service } = await create_service();
     fake_agent_state.hold_auth = true;
-    await service.send_message({ text: "立即重置", images: [] });
+    await service.send_message({ text: "立即重置", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
 
     let settled = false;
@@ -1561,7 +1621,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    await service.send_message({ text: "@skill(corpus-search) 旧任务", images: [] });
+    await service.send_message({ text: "@skill(corpus-search) 旧任务", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
 
     let settled = false;
@@ -1582,7 +1642,7 @@ describe("AgentService", () => {
 
     let resetting_error: unknown;
     try {
-      await service.send_message({ text: "过早的新任务", images: [] });
+      await service.send_message({ text: "过早的新任务", attachments: [] });
     } catch (error) {
       resetting_error = error;
     }
@@ -1599,7 +1659,7 @@ describe("AgentService", () => {
       snapshot: service.get_snapshot(),
     });
     fake_agent_state.mode = "success";
-    await service.send_message({ text: "新任务", images: [] });
+    await service.send_message({ text: "新任务", attachments: [] });
     await wait_for_idle(service);
 
     expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
@@ -1614,7 +1674,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
 
-    await service.send_message({ text: "旧任务", images: [] });
+    await service.send_message({ text: "旧任务", attachments: [] });
     await vi.advanceTimersByTimeAsync(25);
     const resetting = service.reset();
     expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
@@ -1639,7 +1699,7 @@ describe("AgentService", () => {
     fake_agent_state.stream_token_size = 1;
     fake_agent_state.stream_tokens_per_second = 40;
 
-    await service.send_message({ text: "旧任务", images: [] });
+    await service.send_message({ text: "旧任务", attachments: [] });
     await vi.advanceTimersByTimeAsync(25);
     const disposing = service.dispose();
     const publish_count = publish.mock.calls.length;
@@ -1653,7 +1713,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    await service.send_message({ text: "旧任务", images: [] });
+    await service.send_message({ text: "旧任务", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     const resetting = service.reset();
 
@@ -1673,9 +1733,9 @@ describe("AgentService", () => {
   it("skill 进入消息历史后，后续普通回合仍使用稳定基础 system prompt", async () => {
     const { service } = await create_service();
 
-    await service.send_message({ text: "@skill(glossary-audit) 审校", images: [] });
+    await service.send_message({ text: "@skill(glossary-audit) 审校", attachments: [] });
     await wait_for_idle(service);
-    await service.send_message({ text: "普通对话", images: [] });
+    await service.send_message({ text: "普通对话", attachments: [] });
     await wait_for_idle(service);
 
     expect(fake_agent_state.system_prompts.at(-1)).toBe(fake_agent_state.system_prompts.at(-2));
@@ -1687,10 +1747,10 @@ describe("AgentService", () => {
   it("空闲回合之间重绑定 Agent 模型并保留历史", async () => {
     const { service, select_agent_model } = await create_service();
 
-    await service.send_message({ text: "第一轮", images: [] });
+    await service.send_message({ text: "第一轮", attachments: [] });
     await wait_for_idle(service);
     select_agent_model("next");
-    await service.send_message({ text: "第二轮", images: [] });
+    await service.send_message({ text: "第二轮", attachments: [] });
     await wait_for_idle(service);
 
     expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model"]);
@@ -1706,7 +1766,7 @@ describe("AgentService", () => {
     });
     const before = service.get_snapshot();
 
-    await expect(service.send_message({ text: "不会受理", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "不会受理", attachments: [] })).rejects.toThrow(
       "模型解析失败",
     );
 
@@ -1717,13 +1777,13 @@ describe("AgentService", () => {
 
   it("换模鉴权失败时保留原公开快照", async () => {
     const { service, select_agent_model } = await create_service();
-    await service.send_message({ text: "第一轮", images: [] });
+    await service.send_message({ text: "第一轮", attachments: [] });
     await wait_for_idle(service);
     const before = service.get_snapshot();
     select_agent_model("next");
     fake_agent_state.auth_configured = false;
 
-    await expect(service.send_message({ text: "不会追加", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "不会追加", attachments: [] })).rejects.toThrow(
       "No API key",
     );
 
@@ -1733,7 +1793,7 @@ describe("AgentService", () => {
 
   it("消息修改预检失败时不裁剪公开时间线或模型历史", async () => {
     const { service } = await create_service();
-    await service.send_message({ text: "第一轮", images: [] });
+    await service.send_message({ text: "第一轮", attachments: [] });
     await wait_for_idle(service);
     const before = service.get_snapshot();
     const assistant = before.entries.findLast((entry) => entry.kind === "assistant_message");
@@ -1743,7 +1803,7 @@ describe("AgentService", () => {
     await expect(
       service.revise_latest_round({
         entryId: assistant.id,
-        message: { text: "不会提交", images: [] },
+        message: { text: "不会提交", attachments: [] },
       }),
     ).rejects.toThrow("No API key");
 
@@ -1754,7 +1814,7 @@ describe("AgentService", () => {
   it("创建运行时期间 stop 会令候选失效且不产生公开受理事实", async () => {
     const { service } = await create_service();
 
-    const sending = service.send_message({ text: "不会启动", images: [] });
+    const sending = service.send_message({ text: "不会启动", attachments: [] });
     expect(service.stop()).toMatchObject({ state: "idle", entries: [] });
 
     await expect(sending).rejects.toMatchObject({
@@ -1766,13 +1826,13 @@ describe("AgentService", () => {
 
   it("换模期间 stop 会关闭候选运行时并保留既有公开历史", async () => {
     const { service, select_agent_model } = await create_service();
-    await service.send_message({ text: "既有历史", images: [] });
+    await service.send_message({ text: "既有历史", attachments: [] });
     await wait_for_idle(service);
     const entries_before = service.get_snapshot().entries;
     select_agent_model("next");
     fake_agent_state.hold_auth = true;
 
-    const switching = service.send_message({ text: "不会受理", images: [] });
+    const switching = service.send_message({ text: "不会受理", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
     expect(service.stop()).toMatchObject({ state: "idle", entries: entries_before });
     fake_agent_state.release_auth?.();
@@ -1790,7 +1850,7 @@ describe("AgentService", () => {
     fake_agent_state.mode = "retry";
     fake_agent_state.retry_failures_remaining = 1;
 
-    await service.send_message({ text: "重试", images: [] });
+    await service.send_message({ text: "重试", attachments: [] });
     await vi.runAllTimersAsync();
     await wait_for_idle(service);
 
@@ -1808,7 +1868,7 @@ describe("AgentService", () => {
     const { service, log_error } = await create_service();
     fake_agent_state.mode = "retry";
     fake_agent_state.retry_failures_remaining = 1;
-    await service.send_message({ text: "取消重试", images: [] });
+    await service.send_message({ text: "取消重试", attachments: [] });
     await vi.advanceTimersByTimeAsync(0);
     expect(fake_agent_state.model_call_count).toBe(1);
 
@@ -1825,7 +1885,7 @@ describe("AgentService", () => {
     for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         text: `第${round.toString()}轮${"x".repeat(40_000)}`,
-        images: [],
+        attachments: [],
       });
       await wait_for_idle(service);
     }
@@ -1844,7 +1904,7 @@ describe("AgentService", () => {
       ]),
     );
 
-    await service.send_message({ text: "继续", images: [] });
+    await service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(service);
     const next_context = fake_agent_state.model_contexts.at(-1);
     expect(JSON.stringify(next_context?.[0])).toContain("压缩摘要");
@@ -1864,7 +1924,7 @@ describe("AgentService", () => {
     const requests_before_checkpoint = fake_agent_state.request_kinds.length;
     fake_agent_state.mode = "checkpoint";
 
-    await service.send_message({ text: "检查长条目", images: [] });
+    await service.send_message({ text: "检查长条目", attachments: [] });
     await wait_for_idle(service);
 
     const checkpoint_requests = fake_agent_state.request_kinds.slice(requests_before_checkpoint);
@@ -1909,7 +1969,7 @@ describe("AgentService", () => {
     for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         text: `第${round.toString()}轮${"x".repeat(40_000)}`,
-        images: [],
+        attachments: [],
       });
       await wait_for_idle(service);
       if (
@@ -1979,7 +2039,7 @@ describe("AgentService", () => {
     fake_agent_state.summary_failures_remaining = 100;
     const calls_before_checkpoint = fake_agent_state.model_call_count;
 
-    await service.send_message({ text: "检查长条目", images: [] });
+    await service.send_message({ text: "检查长条目", attachments: [] });
     await wait_for_idle(service);
 
     const failed_compaction = service
@@ -1990,7 +2050,7 @@ describe("AgentService", () => {
     ).toMatchObject({ text: "检查长条目", status: "error" });
     expect(failed_compaction).toMatchObject({ status: "error" });
     expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(1);
-    await expect(service.send_message({ text: "绕过恢复", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "绕过恢复", attachments: [] })).rejects.toThrow(
       "request.validation_failed",
     );
 
@@ -2023,8 +2083,8 @@ describe("AgentService", () => {
     const { service, read_setting_count } = await create_service();
     fake_agent_state.mode = "pending";
 
-    const first = service.send_message({ text: "第一轮", images: [] });
-    const second = service.send_message({ text: "第二轮", images: [] });
+    const first = service.send_message({ text: "第一轮", attachments: [] });
+    const second = service.send_message({ text: "第二轮", attachments: [] });
 
     await expect(second).rejects.toThrow("runtime.busy");
     await expect(first).resolves.toMatchObject({ state: "running" });
@@ -2037,9 +2097,9 @@ describe("AgentService", () => {
   it("运行中重复消息在读取新模型前被拒绝", async () => {
     const { service, read_setting_count } = await create_service();
     fake_agent_state.mode = "pending";
-    await service.send_message({ text: "第一轮", images: [] });
+    await service.send_message({ text: "第一轮", attachments: [] });
 
-    await expect(service.send_message({ text: "第二轮", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "第二轮", attachments: [] })).rejects.toThrow(
       "runtime.busy",
     );
     expect(read_setting_count()).toBe(1);
@@ -2050,7 +2110,7 @@ describe("AgentService", () => {
   it("资源未加载时拒绝启动模型回合", async () => {
     const { service } = await create_service(false);
 
-    await expect(service.send_message({ text: "开始", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
       "runtime.internal_invariant",
     );
   });
@@ -2059,7 +2119,7 @@ describe("AgentService", () => {
     const { service, runtime_gate } = await create_service();
     const lease = runtime_gate.begin_runtime("task");
 
-    await expect(service.send_message({ text: "开始", images: [] })).rejects.toThrow(
+    await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
       "runtime.busy",
     );
     runtime_gate.finish_runtime(lease);
@@ -2214,7 +2274,7 @@ async function prepare_long_tool_checkpoint(
   for (const round of [1, 2, 3]) {
     await service.send_message({
       text: `历史${round.toString()}${"x".repeat(40_000)}`,
-      images: [],
+      attachments: [],
     });
     await wait_for_idle(service);
   }

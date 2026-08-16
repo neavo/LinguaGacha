@@ -23,6 +23,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.continue") return "继续";
       if (key === "agent_page.action.edit") return "修改";
       if (key === "agent_page.action.edit_and_retry") return "修改并重试";
+      if (key === "agent_page.annotation.title") return "批注";
+      if (key === "agent_page.annotation.add") return "添加批注";
+      if (key === "agent_page.annotation.selected_text") return "目标";
+      if (key === "agent_page.annotation.user_comment") return "批注";
+      if (key === "agent_page.annotation.comment_placeholder") return "写下评论";
+      if (key === "agent_page.image.title") return "图片";
+      if (key === "app.action.close") return "关闭";
       if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
       if (key === "agent_page.compaction.success") return "上下文压缩成功";
       if (key === "agent_page.compaction.error") return "上下文压缩失败";
@@ -55,6 +62,7 @@ describe("AgentTimeline", () => {
   const on_retry = vi.fn();
   const on_edit = vi.fn();
   const on_continue = vi.fn();
+  const on_add_annotation = vi.fn();
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
@@ -66,6 +74,7 @@ describe("AgentTimeline", () => {
     on_retry.mockReset();
     on_edit.mockReset();
     on_continue.mockReset();
+    on_add_annotation.mockReset();
   });
 
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
@@ -89,8 +98,10 @@ describe("AgentTimeline", () => {
             on_retry={on_retry}
             on_continue={on_continue}
             on_edit={on_edit}
+            on_add_annotation={on_add_annotation}
             revision_disabled={false}
             continue_disabled={false}
+            annotation_disabled={false}
           />
         </TooltipProvider>,
       ),
@@ -106,13 +117,27 @@ describe("AgentTimeline", () => {
     return JSON.parse(get_tool_dialog_text() ?? "");
   }
 
-  it("消息图片使用空 alt 且不生成空文本段落", async () => {
+  it("附件画廊与消息文本是相邻的独立区域", async () => {
     const view = await render_timeline([
-      user_entry("user-images", "", "success", 0, 1_000, ["webp-a"]),
+      user_entry("user-mixed", "请检查这些内容", "success", 0, 1_000, ["webp-a"]),
     ]);
 
-    expect(view.querySelector<HTMLImageElement>(".agent-message__user-images img")?.alt).toBe("");
-    expect(view.querySelector(".agent-message__user-text")).toBeNull();
+    const message = view.querySelector(".agent-message--user");
+    expect(message?.children[0]?.classList.contains("agent-attachment-strip")).toBe(true);
+    expect(message?.children[1]?.classList.contains("agent-message__user-text")).toBe(true);
+    expect(message?.querySelector(".agent-attachment-strip .agent-message__user-text")).toBeNull();
+  });
+
+  it("只让成功轮次的最终助手正文进入可批注边界", async () => {
+    const view = await render_timeline([
+      user_entry("user-1", "开始", "success", 0, 4_000),
+      assistant_entry("assistant-intermediate", "准备工作", "success", 1_000),
+      tool_entry("tool-1", "workspace_load", "success", "{}", 2_000),
+      assistant_entry("assistant-final", "最终结果", "success", 3_000),
+    ]);
+    const surfaces = view.querySelectorAll<HTMLElement>(".agent-markdown");
+    expect(surfaces[0]?.hasAttribute("data-agent-annotation-content")).toBe(false);
+    expect(surfaces[1]?.getAttribute("data-agent-annotation-content")).toBe("true");
   });
 
   it("最新失败轮次可分别修改输入与输出，且只保留一处继续入口", async () => {
@@ -543,7 +568,7 @@ function user_entry(
     kind: "user_message" as const,
     id,
     text,
-    images,
+    attachments: images.map((webpBase64) => ({ kind: "image" as const, webpBase64 })),
     status,
     createdAt,
     endedAt,

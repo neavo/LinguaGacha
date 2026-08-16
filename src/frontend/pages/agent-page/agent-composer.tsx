@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   ArrowUp,
   BookA,
@@ -8,10 +8,12 @@ import {
   ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
+  MessageSquareQuote,
   Sparkles,
   Square,
   X,
 } from "lucide-react";
+import { Popover as PopoverPrimitive } from "radix-ui";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -39,7 +41,9 @@ import type { GlossaryEntry } from "@domain/quality";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import {
   AGENT_MESSAGE_IMAGE_LIMIT,
+  type AgentMessageAttachment,
   type AgentMessageInput,
+  type AgentResponseAnnotationAttachment,
   type AgentSkillSnapshot,
 } from "@shared/agent";
 import { useAppearance } from "@frontend/app/appearance/appearance-provider";
@@ -76,6 +80,8 @@ import {
   type AgentMentionToken,
 } from "./agent-mention";
 import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
+import { order_agent_attachment_items } from "./agent-message-attachments";
+import { AgentResponseAnnotationEditor } from "./agent-response-annotation";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -93,6 +99,7 @@ type EditorSnapshot = {
 /** 页面只能写入草稿并请求聚焦，正文与光标所有权仍留在 CodeMirror。 */
 export type AgentComposerHandle = {
   write_draft: (text: string) => void;
+  add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
   focus: () => void;
 };
 
@@ -222,14 +229,20 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const input_session_ref = useRef(props.input_session);
   const editing_ref = useRef(editing);
   const input_history_index_ref = useRef<number | null>(null);
-  // 图片 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
-  const draft_images_ref = useRef(props.input_session.read_draft().images);
+  // 附件 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
+  const draft_attachments_ref = useRef(
+    structuredClone(props.input_session.read_draft().attachments),
+  );
   const image_processing_ref = useRef(false);
   const image_drag_depth_ref = useRef(0);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
-  const [draft_images, set_draft_images] = useState<string[]>(() => [...draft_images_ref.current]);
+  const [draft_attachments, set_draft_attachments] = useState<AgentMessageAttachment[]>(() => [
+    ...draft_attachments_ref.current,
+  ]);
   const [image_processing, set_image_processing] = useState(false);
   const [image_drop_active, set_image_drop_active] = useState(false);
+  const [editing_annotation_index, set_editing_annotation_index] = useState<number | null>(null);
+  const [editing_annotation_comment, set_editing_annotation_comment] = useState("");
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
@@ -262,8 +275,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.command === null &&
     !props.model_selection.updating &&
     !image_processing &&
-    (snapshot.text !== "" || (!assistant_editing && draft_images.length > 0));
-  const image_limit_reached = draft_images.length >= AGENT_MESSAGE_IMAGE_LIMIT;
+    (snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0));
+  const image_count = draft_attachments.reduce(
+    (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
+    0,
+  );
+  const ordered_draft_attachment_items = order_agent_attachment_items(draft_attachments);
+  const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
     props.running || compacting || props.unavailable_reason !== null || props.command !== null;
@@ -288,23 +306,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
-
-  useImperativeHandle(
-    props.ref,
-    () => ({
-      write_draft(text) {
-        const view = view_ref.current;
-        if (view === null || editor_read_only) return;
-        input_history_index_ref.current = null;
-        write_agent_message_text(view, text);
-        view.focus();
-      },
-      focus() {
-        view_ref.current?.focus();
-      },
-    }),
-    [editor_read_only],
-  );
 
   menu_open_ref.current = menu_open;
   matching_candidates_ref.current = matching_candidates;
@@ -398,7 +399,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 input_history_index_ref.current = null;
                 input_session_ref.current.write_draft({
                   text: update.state.doc.toString(),
-                  images: draft_images_ref.current,
+                  attachments: draft_attachments_ref.current,
                 });
               }
               emit_snapshot(update.state);
@@ -423,8 +424,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     if (view === null) return;
     input_history_index_ref.current = null;
     const draft = input_session_ref.current.read_draft();
-    draft_images_ref.current = draft.images;
-    set_draft_images([...draft.images]);
+    draft_attachments_ref.current = structuredClone(draft.attachments);
+    set_draft_attachments([...draft_attachments_ref.current]);
+    set_editing_annotation_index(null);
     write_agent_message_text(view, draft.text, input_session_sync_annotations);
   }, [input_revision]);
 
@@ -507,29 +509,39 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   };
   select_candidate_ref.current = select_candidate;
 
-  /** 同步更新异步判定、可见附件与跨路由草稿，避免形成三套可写图片状态。 */
-  const write_draft_images = (images: string[]): void => {
-    draft_images_ref.current = images;
-    set_draft_images(images);
+  /** 同步更新异步判定、可见附件与跨路由草稿，唯一数组同时拥有混排顺序。 */
+  const write_draft_attachments = useCallback((attachments: AgentMessageAttachment[]): void => {
+    draft_attachments_ref.current = attachments;
+    set_draft_attachments(attachments);
     input_session_ref.current.write_draft({
       text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.read_draft().text,
-      images,
+      attachments,
     });
-  };
+  }, []);
 
   /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
   const append_image_files = async (files: Iterable<File>): Promise<void> => {
     if (assistant_editing || image_processing_ref.current) return;
-    const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - draft_images_ref.current.length;
+    const current_image_count = draft_attachments_ref.current.filter(
+      (attachment) => attachment.kind === "image",
+    ).length;
+    const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - current_image_count;
     if (remaining_slots <= 0) return;
     const input_files = Array.from(files).slice(0, remaining_slots);
     if (input_files.length === 0) return;
     image_processing_ref.current = true;
     set_image_processing(true);
     try {
-      write_draft_images([
-        ...draft_images_ref.current,
-        ...(await normalize_agent_images(input_files)),
+      const images = await normalize_agent_images(input_files);
+      const current = draft_attachments_ref.current;
+      const available_slots =
+        AGENT_MESSAGE_IMAGE_LIMIT -
+        current.filter((attachment) => attachment.kind === "image").length;
+      write_draft_attachments([
+        ...current,
+        ...images
+          .slice(0, available_slots)
+          .map<AgentMessageAttachment>((webpBase64) => ({ kind: "image", webpBase64 })),
       ]);
     } catch {
       props.on_image_error();
@@ -545,12 +557,56 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     set_image_drop_active(false);
   };
 
+  const remove_attachment = (index: number): void => {
+    set_editing_annotation_index(null);
+    write_draft_attachments(
+      draft_attachments_ref.current.filter((_, attachment_index) => attachment_index !== index),
+    );
+  };
+
+  const save_annotation_edit = (): void => {
+    const index = editing_annotation_index;
+    const comment = editing_annotation_comment.trim();
+    if (index === null) return;
+    const current = draft_attachments_ref.current;
+    const annotation = current[index];
+    if (annotation?.kind !== "response_annotation") return;
+    write_draft_attachments(
+      current.map((attachment, attachment_index) =>
+        attachment_index === index ? { ...annotation, comment } : attachment,
+      ),
+    );
+    set_editing_annotation_index(null);
+  };
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      write_draft(text) {
+        const view = view_ref.current;
+        if (view === null || editor_read_only) return;
+        input_history_index_ref.current = null;
+        write_agent_message_text(view, text);
+        view.focus();
+      },
+      add_response_annotation(annotation) {
+        if (editor_read_only || assistant_editing) return;
+        write_draft_attachments([...draft_attachments_ref.current, structuredClone(annotation)]);
+        view_ref.current?.focus();
+      },
+      focus() {
+        view_ref.current?.focus();
+      },
+    }),
+    [assistant_editing, editor_read_only, write_draft_attachments],
+  );
+
   /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !can_send) return;
     const text = view.state.doc.toString().trim();
-    props.on_send({ text, images: [...draft_images_ref.current] });
+    props.on_send({ text, attachments: structuredClone(draft_attachments_ref.current) });
   };
   submit_ref.current = submit;
 
@@ -656,26 +712,76 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           )}
         </div>
       )}
-      {!assistant_editing && draft_images.length > 0 ? (
-        <div className="agent-composer__attachments">
-          {draft_images.map((image, index) => (
-            <figure className="agent-composer__attachment" key={index}>
-              <img src={`data:image/webp;base64,${image}`} alt="" />
-              <AppButton
-                type="button"
-                size="icon-xs"
-                variant="secondary"
-                className="agent-composer__attachment-remove"
-                disabled={editor_read_only || image_processing}
-                aria-label={t("app.action.close")}
-                onClick={() => {
-                  write_draft_images(draft_images.filter((_, item_index) => item_index !== index));
+      {!assistant_editing && draft_attachments.length > 0 ? (
+        <div className="agent-attachment-strip" data-has-images={image_count > 0 || undefined}>
+          {ordered_draft_attachment_items.map(({ attachment, index }) =>
+            attachment.kind === "image" ? (
+              <figure className="agent-attachment agent-attachment--image" key={index}>
+                <img src={`data:image/webp;base64,${attachment.webpBase64}`} alt="" />
+                <AppButton
+                  type="button"
+                  size="icon-xs"
+                  variant="secondary"
+                  className="agent-composer__attachment-remove"
+                  disabled={editor_read_only || image_processing}
+                  aria-label={t("app.action.close")}
+                  onClick={() => remove_attachment(index)}
+                >
+                  <X aria-hidden="true" />
+                </AppButton>
+              </figure>
+            ) : (
+              <PopoverPrimitive.Root
+                key={index}
+                open={editing_annotation_index === index}
+                onOpenChange={(open) => {
+                  if (open) {
+                    set_editing_annotation_index(index);
+                    set_editing_annotation_comment(attachment.comment);
+                  } else if (editing_annotation_index === index) {
+                    set_editing_annotation_index(null);
+                  }
                 }}
               >
-                <X aria-hidden="true" />
-              </AppButton>
-            </figure>
-          ))}
+                <PopoverPrimitive.Trigger asChild>
+                  <button
+                    type="button"
+                    className="agent-attachment agent-attachment--annotation agent-attachment__open agent-composer__annotation-open"
+                    disabled={editor_read_only}
+                    aria-label={t("agent_page.annotation.edit")}
+                  >
+                    <MessageSquareQuote aria-hidden="true" />
+                    <span>{attachment.selectedText}</span>
+                  </button>
+                </PopoverPrimitive.Trigger>
+                {editing_annotation_index === index ? (
+                  <PopoverPrimitive.Portal>
+                    <PopoverPrimitive.Content
+                      asChild
+                      side="top"
+                      align="start"
+                      sideOffset={6}
+                      collisionPadding={8}
+                      hideWhenDetached
+                      onOpenAutoFocus={(event) => event.preventDefault()}
+                    >
+                      <AgentResponseAnnotationEditor
+                        className="agent-composer__annotation-editor"
+                        aria-label={t("agent_page.annotation.edit")}
+                        selected_text={attachment.selectedText}
+                        comment={editing_annotation_comment}
+                        submit_label={t("app.action.save")}
+                        on_comment_change={set_editing_annotation_comment}
+                        on_submit={save_annotation_edit}
+                        on_cancel={() => set_editing_annotation_index(null)}
+                        on_remove={() => remove_attachment(index)}
+                      />
+                    </PopoverPrimitive.Content>
+                  </PopoverPrimitive.Portal>
+                ) : null}
+              </PopoverPrimitive.Root>
+            ),
+          )}
         </div>
       ) : null}
       <div className="agent-composer__editor">

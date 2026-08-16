@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_SESSION_EVENT_TOPIC,
   type AgentEntryStatus,
+  type AgentMessageAttachment,
   type AgentSessionSnapshot,
 } from "@shared/agent";
 import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
@@ -221,7 +222,7 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("restore_failed"));
     expect(latest.entries).toEqual([]);
-    await latest.send({ text: "不可发送", images: [] });
+    await latest.send({ text: "不可发送", attachments: [] });
     expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
 
     await act(async () => latest.reconnect());
@@ -359,7 +360,10 @@ describe("AgentSessionProvider", () => {
           kind: "user_message",
           id: "user-new",
           text: "@skill(glossary-audit) 审校",
-          images: ["webp-image"],
+          attachments: [
+            ...image_attachments("webp-image"),
+            { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
+          ],
           status: "success",
           createdAt: 10,
           endedAt: 12,
@@ -368,7 +372,7 @@ describe("AgentSessionProvider", () => {
           kind: "user_message",
           id: "user-missing-ended-at",
           text: "缺少结束时间",
-          images: [],
+          attachments: [],
           status: "success",
           createdAt: 11,
         },
@@ -376,7 +380,7 @@ describe("AgentSessionProvider", () => {
           kind: "user_message",
           id: "user-invalid-ended-at",
           text: "非法结束时间",
-          images: [],
+          attachments: [],
           status: "success",
           createdAt: 12,
           endedAt: "13",
@@ -385,7 +389,7 @@ describe("AgentSessionProvider", () => {
           kind: "user_message",
           id: "user-float-ended-at",
           text: "浮点结束时间",
-          images: [],
+          attachments: [],
           status: "success",
           createdAt: 13,
           endedAt: 13.5,
@@ -455,7 +459,10 @@ describe("AgentSessionProvider", () => {
         kind: "user_message",
         id: "user-new",
         text: "@skill(glossary-audit) 审校",
-        images: ["webp-image"],
+        attachments: [
+          ...image_attachments("webp-image"),
+          { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
+        ],
         status: "success",
         createdAt: 10,
         endedAt: 12,
@@ -554,17 +561,17 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "  请处理 @skill(corpus-search)  ", images: [] });
+    latest.input.write_draft({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
 
     await act(async () => {
-      await latest.send({ text: "  请处理 @skill(corpus-search)  ", images: [] });
+      await latest.send({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
       text: "请处理 @skill(corpus-search)",
-      images: [],
+      attachments: [],
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", images: [] });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
     expect(latest.input.read_history()).toEqual(["请处理 @skill(corpus-search)"]);
     expect(
       JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
@@ -579,17 +586,17 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "", images: ["webp-image"] });
+    latest.input.write_draft({ text: "", attachments: image_attachments("webp-image") });
 
     await act(async () => {
-      await latest.send({ text: "", images: ["webp-image"] });
+      await latest.send({ text: "", attachments: image_attachments("webp-image") });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
       text: "",
-      images: ["webp-image"],
+      attachments: image_attachments("webp-image"),
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", images: [] });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
   });
 
@@ -601,19 +608,22 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "正在编辑的新任务", images: ["webp-draft"] });
+    latest.input.write_draft({
+      text: "正在编辑的新任务",
+      attachments: image_attachments("webp-draft"),
+    });
 
     await act(async () => {
-      await latest.reviseLatestRound("user-1", { text: "历史消息", images: [] });
+      await latest.reviseLatestRound("user-1", { text: "历史消息", attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
       entryId: "user-1",
-      message: { text: "历史消息", images: [] },
+      message: { text: "历史消息", attachments: [] },
     });
     expect(latest.input.read_draft()).toEqual({
       text: "正在编辑的新任务",
-      images: ["webp-draft"],
+      attachments: image_attachments("webp-draft"),
     });
     expect(latest.input.read_history()).toEqual(["历史消息"]);
     expect(latest.input.revision).toBe(0);
@@ -631,22 +641,28 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "普通草稿", images: ["draft-image"] });
+    latest.input.write_draft({ text: "普通草稿", attachments: image_attachments("draft-image") });
 
     act(() => latest.input.start_edit(user_entry("user-1", "旧消息", ["old-image"])));
     expect(latest.input.editing).toEqual({ entryId: "user-1", role: "user" });
-    expect(latest.input.read_draft()).toEqual({ text: "旧消息", images: ["old-image"] });
+    expect(latest.input.read_draft()).toEqual({
+      text: "旧消息",
+      attachments: image_attachments("old-image"),
+    });
 
     await act(async () => {
-      await latest.reviseLatestRound("user-1", { text: "新消息", images: [] });
+      await latest.reviseLatestRound("user-1", { text: "新消息", attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
       entryId: "user-1",
-      message: { text: "新消息", images: [] },
+      message: { text: "新消息", attachments: [] },
     });
     expect(latest.input.editing).toBeNull();
-    expect(latest.input.read_draft()).toEqual({ text: "普通草稿", images: ["draft-image"] });
+    expect(latest.input.read_draft()).toEqual({
+      text: "普通草稿",
+      attachments: image_attachments("draft-image"),
+    });
     expect(latest.input.read_history()).toEqual(["新消息"]);
   });
 
@@ -667,7 +683,17 @@ describe("AgentSessionProvider", () => {
 
     await render_visible(true);
     await wait_for(() => expect(latest?.transport).toBe("ready"));
-    latest!.input.write_draft({ text: "检查 @skill(glossary-audit)", images: ["webp-image"] });
+    latest!.input.write_draft({
+      text: "检查 @skill(glossary-audit)",
+      attachments: [
+        ...image_attachments("webp-image"),
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复",
+          comment: "跨页面保留",
+        },
+      ],
+    });
 
     await render_visible(false);
     latest = null;
@@ -676,7 +702,14 @@ describe("AgentSessionProvider", () => {
     const restored_session = latest as ReturnType<typeof useAgentSession> | null;
     expect(restored_session?.input.read_draft()).toEqual({
       text: "检查 @skill(glossary-audit)",
-      images: ["webp-image"],
+      attachments: [
+        ...image_attachments("webp-image"),
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复",
+          comment: "跨页面保留",
+        },
+      ],
     });
   });
 
@@ -696,7 +729,7 @@ describe("AgentSessionProvider", () => {
 
     let result!: Promise<void>;
     await act(async () => {
-      result = latest.send({ text: "继续", images: [] });
+      result = latest.send({ text: "继续", attachments: [] });
       await Promise.resolve();
     });
     await act(async () => {
@@ -738,7 +771,7 @@ describe("AgentSessionProvider", () => {
 
     let first!: Promise<void>;
     await act(async () => {
-      first = latest.send({ text: "继续", images: [] });
+      first = latest.send({ text: "继续", attachments: [] });
       await Promise.resolve();
     });
     await act(async () => {
@@ -754,7 +787,7 @@ describe("AgentSessionProvider", () => {
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
     await act(async () => {
-      await latest.send({ text: "再次继续", images: [] });
+      await latest.send({ text: "再次继续", attachments: [] });
     });
   });
 
@@ -775,8 +808,8 @@ describe("AgentSessionProvider", () => {
     let first!: Promise<void>;
     let second!: Promise<void>;
     await act(async () => {
-      first = latest.send({ text: "第一次", images: [] });
-      second = latest.send({ text: "第二次", images: [] });
+      first = latest.send({ text: "第一次", attachments: [] });
+      second = latest.send({ text: "第二次", attachments: [] });
       await Promise.resolve();
     });
 
@@ -797,12 +830,12 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "重试草稿", images: [] });
+    latest.input.write_draft({ text: "重试草稿", attachments: [] });
 
     await act(async () => {
-      await expect(latest.send({ text: "重试", images: [] })).rejects.toBe(offline);
+      await expect(latest.send({ text: "重试", attachments: [] })).rejects.toBe(offline);
     });
-    expect(latest.input.read_draft()).toEqual({ text: "重试草稿", images: [] });
+    expect(latest.input.read_draft()).toEqual({ text: "重试草稿", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
     expect(latest.input.revision).toBe(0);
   });
@@ -968,11 +1001,15 @@ function user_entry(id: string, text: string, images: string[] = []) {
     kind: "user_message" as const,
     id,
     text,
-    images,
+    attachments: image_attachments(...images),
     status: "success" as const,
     createdAt: 1,
     endedAt: 2,
   };
+}
+
+function image_attachments(...images: string[]): AgentMessageAttachment[] {
+  return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
 }
 
 function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {

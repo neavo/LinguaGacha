@@ -5,7 +5,7 @@ export const de_de_agent_page = {
   diagram: {
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
   },
-  image: { omitted: "Bild ausgelassen" },
+  image: { title: "Bild", omitted: "Bild ausgelassen" },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
@@ -25,6 +25,15 @@ export const de_de_agent_page = {
     groups: { skills: "Skills", terms: "Begriffe" },
     no_matches: "Keine passenden Einträge …",
     term_hits: "{count} Treffer",
+  },
+  annotation: {
+    title: "Anmerkung",
+    add: "Anmerkung hinzufügen",
+    edit: "Anmerkung bearbeiten",
+    remove: "Löschen",
+    selected_text: "Text",
+    user_comment: "Anmerkung",
+    comment_placeholder: "Ausgewählten Text kommentieren …",
   },
   context_usage_warning: "Kontext wird bald automatisch komprimiert",
   compaction: {

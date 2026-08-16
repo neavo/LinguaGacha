@@ -143,10 +143,10 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   /** 跳转前只填充空草稿，避免覆盖 Agent 跨路由保留的用户输入。 */
   function jump_to_agent(): void {
     const draft = agent.input.read_draft();
-    if (draft.text.trim() === "" && draft.images.length === 0) {
+    if (draft.text.trim() === "" && draft.attachments.length === 0) {
       agent.input.write_draft({
         text: `${t("agent_page.empty.suggestions.quality_rule_create")} ${format_agent_skill_reference(QUALITY_RULE_CREATE_SKILL_NAME)}`,
-        images: [],
+        attachments: [],
       });
     } else {
       push_toast("info", t("workbench_page.analysis_task.feedback.agent_draft_preserved"));

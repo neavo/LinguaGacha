@@ -1,7 +1,12 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronsDownUp, CircleAlert, Pencil, RefreshCw } from "lucide-react";
 
-import type { AgentEntry, AgentEntryStatus, AgentToolEntry } from "@shared/agent";
+import type {
+  AgentEntry,
+  AgentEntryStatus,
+  AgentResponseAnnotationAttachment,
+  AgentToolEntry,
+} from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   find_agent_mention_ranges,
@@ -9,9 +14,11 @@ import {
   type AgentMentionToken,
 } from "./agent-mention";
 import { AgentMarkdown } from "./agent-markdown";
+import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
 import { is_at_scroll_end } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
+import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
@@ -46,8 +53,10 @@ type AgentTimelineProps = {
   on_retry: (user: UserEntry) => void;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
+  on_add_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
   revision_disabled: boolean;
   continue_disabled: boolean;
+  annotation_disabled: boolean;
 };
 
 /** 时间线独立拥有条目次序、详情状态与运行指示，页面只负责滚动和命令入口。 */
@@ -66,7 +75,10 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
     ) ?? null;
   return (
     <>
-      <div className="agent-page__messages">
+      <AgentResponseAnnotationSelection
+        disabled={props.annotation_disabled}
+        on_add={props.on_add_annotation}
+      >
         {rounds.map((round, index) => (
           <AgentRound
             key={round.user.id}
@@ -84,7 +96,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             on_open_tool={set_selected_tool_id}
           />
         ))}
-      </div>
+      </AgentResponseAnnotationSelection>
       {selected_tool === null ? null : (
         <AgentToolDetailDialog entry={selected_tool} on_close={() => set_selected_tool_id(null)} />
       )}
@@ -159,12 +171,8 @@ function AgentRound(props: {
           className="agent-message agent-message--user"
           data-mention-only={mention_only || undefined}
         >
-          {user.images.length > 0 ? (
-            <div className="agent-message__user-images">
-              {user.images.map((image, index) => (
-                <img key={index} src={`data:image/webp;base64,${image}`} alt="" decoding="async" />
-              ))}
-            </div>
+          {user.attachments.length > 0 ? (
+            <AgentMessageAttachments attachments={user.attachments} />
           ) : null}
           {user.text === "" ? null : (
             <p className="agent-message__user-text">
@@ -174,6 +182,11 @@ function AgentRound(props: {
         </article>
       </AgentMessageFrame>
       {entries.map((entry) => {
+        const annotatable =
+          user.status === "success" &&
+          entry.kind === "assistant_message" &&
+          entry.status === "success" &&
+          entry.id === latest_output?.id;
         const view = (
           <AgentEntryView
             key={entry.id}
@@ -184,6 +197,7 @@ function AgentRound(props: {
             on_continue={props.on_continue}
             continue_disabled={props.continue_disabled}
             on_open_tool={props.on_open_tool}
+            annotatable={annotatable}
           />
         );
         if (entry.kind !== "assistant_message") return view;
@@ -297,6 +311,7 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   on_continue: () => void;
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
+  annotatable: boolean;
 }): ReactNode {
   const entry = props.entry;
   if (entry.kind === "context_compaction") {
@@ -318,7 +333,13 @@ const AgentEntryView = memo(function AgentEntryView(props: {
       />
     );
   }
-  return render_assistant_entry(entry, props.t, props.resume_revision, props.on_follow_hold_change);
+  return render_assistant_entry(
+    entry,
+    props.t,
+    props.resume_revision,
+    props.on_follow_hold_change,
+    props.annotatable,
+  );
 });
 
 /** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
@@ -374,6 +395,7 @@ function render_assistant_entry(
   t: Translate,
   resume_revision: number,
   on_follow_hold_change: (id: string, paused: boolean) => void,
+  annotatable: boolean,
 ): ReactNode {
   if (entry.parts.length === 0) return null;
   return (
@@ -396,7 +418,14 @@ function render_assistant_entry(
             />
           );
         }
-        return <AgentMarkdown key={key} text={part.text} streaming={entry.status === "running"} />;
+        return (
+          <AgentMarkdown
+            key={key}
+            text={part.text}
+            streaming={entry.status === "running"}
+            annotatable={annotatable}
+          />
+        );
       })}
     </article>
   );

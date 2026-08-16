@@ -5,7 +5,7 @@ export const en_us_agent_page = {
   diagram: {
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
   },
-  image: { omitted: "Image omitted" },
+  image: { title: "Image", omitted: "Image omitted" },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
@@ -25,6 +25,15 @@ export const en_us_agent_page = {
     groups: { skills: "Skills", terms: "Terms" },
     no_matches: "No matching items …",
     term_hits: "{count} Hits",
+  },
+  annotation: {
+    title: "Annotation",
+    add: "Add annotation",
+    edit: "Edit annotation",
+    remove: "Delete",
+    selected_text: "Text",
+    user_comment: "Annotation",
+    comment_placeholder: "Comment on the selected text …",
   },
   context_usage_warning: "Context will be compacted soon",
   compaction: {

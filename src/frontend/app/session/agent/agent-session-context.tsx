@@ -296,7 +296,7 @@ function useAgentSessionState(
 /** 常驻拥有 Agent 传输镜像、命令和 renderer 私有输入会话，页面切换只替换消费者。 */
 export function AgentSessionProvider(props: { children: ReactNode }): JSX.Element {
   // 草稿和历史用 ref 避免每次编辑重渲染整棵应用；revision 只通知受理后的原子清空。
-  const draft_ref = useRef<AgentMessageInput>({ text: "", images: [] });
+  const draft_ref = useRef<AgentMessageInput>({ text: "", attachments: [] });
   const input_history_ref = useRef<string[] | null>(null);
   if (input_history_ref.current === null) {
     input_history_ref.current = read_agent_input_history(window.localStorage);
@@ -328,7 +328,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
     const role = entry.kind === "user_message" ? "user" : "assistant";
     if (entry.kind === "user_message") {
       edited_user_text_ref.current = entry.text;
-      draft_ref.current = { text: entry.text, images: [...entry.images] };
+      draft_ref.current = { text: entry.text, attachments: structuredClone(entry.attachments) };
     } else {
       edited_user_text_ref.current = null;
       draft_ref.current = {
@@ -336,7 +336,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
           .filter((part) => part.kind === "text")
           .map((part) => part.text)
           .join(""),
-        images: [],
+        attachments: [],
       };
     }
     set_editing({ entryId: entry.id, role });
@@ -352,7 +352,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
         message.text,
       );
     }
-    draft_ref.current = { text: "", images: [] };
+    draft_ref.current = { text: "", attachments: [] };
     set_input_revision((current) => current + 1);
   }, []);
 
@@ -525,7 +525,7 @@ function normalize_entry(value: unknown): AgentEntry[] {
         kind: "user_message",
         id: value["id"],
         text: message.text,
-        images: message.images,
+        attachments: message.attachments,
         status,
         createdAt: value["createdAt"],
         endedAt: ended_at,

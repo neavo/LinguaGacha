@@ -215,7 +215,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const retry_latest_round = (user: Extract<AgentEntry, { kind: "user_message" }>): void => {
     const revision: RoundRevision = {
       entryId: user.id,
-      message: { text: user.text, images: [...user.images] },
+      message: { text: user.text, attachments: structuredClone(user.attachments) },
       intent: "retry",
     };
     if (latest_round_applied_workspace) {
@@ -339,6 +339,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             on_retry={retry_latest_round}
             on_continue={continue_latest_round}
             on_edit={start_edit}
+            on_add_annotation={(annotation) =>
+              composer_ref.current?.add_response_annotation(annotation)
+            }
             revision_disabled={
               agent.command !== null ||
               agent.input.editing !== null ||
@@ -349,6 +352,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             }
             continue_disabled={
               agent.command !== null || is_running || compacting || unavailable_reason !== null
+            }
+            annotation_disabled={
+              agent.command !== null || agent.input.editing !== null || unavailable_reason !== null
             }
           />
         )}

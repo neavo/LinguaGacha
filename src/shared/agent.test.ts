@@ -17,37 +17,72 @@ describe("Agent 用户消息协议", () => {
     expect(normalize_agent_user_message_text(" \n 先  用 \n处理 \t")).toBe("先  用 \n处理");
   });
 
-  it("规范文本与 WebP 图片，并允许纯图片消息", () => {
-    expect(normalize_agent_message_input({ text: "  处理图片  ", images: [" image-a "] })).toEqual({
-      text: "处理图片",
-      images: ["image-a"],
+  it("规范文本与有序附件，并允许纯附件消息", () => {
+    expect(
+      normalize_agent_message_input({
+        text: "  处理附件  ",
+        attachments: [
+          { kind: "image", webpBase64: " image-a " },
+          { kind: "response_annotation", selectedText: " 旧回复 ", comment: " 改写 " },
+        ],
+      }),
+    ).toEqual({
+      text: "处理附件",
+      attachments: [
+        { kind: "image", webpBase64: "image-a" },
+        { kind: "response_annotation", selectedText: "旧回复", comment: "改写" },
+      ],
     });
-    expect(normalize_agent_message_input({ text: "", images: ["image-a", "image-b"] })).toEqual({
+    expect(
+      normalize_agent_message_input({
+        text: "",
+        attachments: [{ kind: "response_annotation", selectedText: "旧回复", comment: " \n " }],
+      }),
+    ).toEqual({
       text: "",
-      images: ["image-a", "image-b"],
+      attachments: [{ kind: "response_annotation", selectedText: "旧回复", comment: "" }],
     });
-    expect(normalize_agent_message_input({ text: "", images: [] })).toBeNull();
+    expect(normalize_agent_message_input({ text: "", attachments: [] })).toBeNull();
     expect(normalize_agent_message_input({ text: "正文" })).toBeNull();
-    expect(normalize_agent_message_input({ text: "正文", images: [1] })).toBeNull();
+    expect(normalize_agent_message_input({ text: "正文", attachments: [1] })).toBeNull();
+    expect(
+      normalize_agent_message_input({
+        text: "",
+        attachments: [{ kind: "response_annotation", selectedText: " ", comment: "评论" }],
+      }),
+    ).toBeNull();
   });
 
   it("按输入顺序只保留前十张图片并忽略溢出项", () => {
     const accepted_images = Array.from({ length: 10 }, (_, index) => `image-${index + 1}`);
 
     expect(
-      normalize_agent_message_input({ text: "", images: [...accepted_images, 1, "image-12"] }),
-    ).toEqual({ text: "", images: accepted_images });
+      normalize_agent_message_input({
+        text: "",
+        attachments: [
+          ...accepted_images.map((webpBase64) => ({ kind: "image", webpBase64 })),
+          { kind: "image", webpBase64: 1 },
+          { kind: "response_annotation", selectedText: "旧回复", comment: "保留" },
+        ],
+      }),
+    ).toEqual({
+      text: "",
+      attachments: [
+        ...accepted_images.map((webpBase64) => ({ kind: "image", webpBase64 })),
+        { kind: "response_annotation", selectedText: "旧回复", comment: "保留" },
+      ],
+    });
   });
 
   it("规范轮次修订的目标身份与替换消息", () => {
     expect(
       normalize_agent_revision_request({
         entryId: "assistant-1",
-        message: { text: " 修订 ", images: [] },
+        message: { text: " 修订 ", attachments: [] },
       }),
-    ).toEqual({ entryId: "assistant-1", message: { text: "修订", images: [] } });
+    ).toEqual({ entryId: "assistant-1", message: { text: "修订", attachments: [] } });
     expect(
-      normalize_agent_revision_request({ entryId: "", message: { text: "修订", images: [] } }),
+      normalize_agent_revision_request({ entryId: "", message: { text: "修订", attachments: [] } }),
     ).toBeNull();
     expect(normalize_agent_revision_request({ entryId: "assistant-1" })).toBeNull();
   });

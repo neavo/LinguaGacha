@@ -25,11 +25,22 @@ export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
 /** 单条用户消息按输入顺序最多保留的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
+/** 用户消息附件只有 renderer 归一的 WebP 与已确认的回复批注两种公开形状。 */
+export type AgentMessageAttachment = JsonRecord &
+  (
+    | { kind: "image"; webpBase64: string }
+    | { kind: "response_annotation"; selectedText: string; comment: string }
+  );
 
-/** Renderer 与公开 message API 共用的完整用户消息。图片固定为 WebP 原始 base64。 */
+export type AgentResponseAnnotationAttachment = Extract<
+  AgentMessageAttachment,
+  { kind: "response_annotation" }
+>;
+
+/** Renderer 与公开 message API 共用的完整用户消息；附件数组同时拥有展示顺序。 */
 export type AgentMessageInput = JsonRecord & {
   text: string;
-  images: string[];
+  attachments: AgentMessageAttachment[];
 };
 
 /** 最新轮次修订同时携带目标身份与完整替换内容。 */
@@ -64,15 +75,13 @@ export type AgentContextCompactionEntry = JsonRecord & {
 /** 后端按真实事件顺序追加，renderer 直接按数组渲染的单一时间线条目。 */
 export type AgentEntry = JsonRecord &
   (
-    | {
+    | (AgentMessageInput & {
         kind: "user_message";
         id: string;
-        text: string;
-        images: string[];
         status: AgentEntryStatus;
         createdAt: number;
         endedAt: number | null;
-      }
+      })
     | {
         kind: "assistant_message";
         id: string;
@@ -117,17 +126,44 @@ export function normalize_agent_user_message_text(value: unknown): string | null
   return text === "" ? null : text;
 }
 
-/** 完整消息允许纯图片，但文本与图片不能同时为空；超出数量上限的图片按顺序静默忽略。 */
+/** 完整消息允许纯附件；按顺序规范两种附件，并忽略图片上限之外的图片。 */
 export function normalize_agent_message_input(value: unknown): AgentMessageInput | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (typeof record["text"] !== "string" || !Array.isArray(record["images"])) return null;
+  if (typeof record["text"] !== "string" || !Array.isArray(record["attachments"])) return null;
   const text = record["text"].trim();
-  const images = record["images"]
-    .slice(0, AGENT_MESSAGE_IMAGE_LIMIT)
-    .map((image) => (typeof image === "string" ? image.trim() : ""));
-  if (images.some((image) => image === "") || (text === "" && images.length === 0)) return null;
-  return { text, images };
+  const attachments: AgentMessageAttachment[] = [];
+  let image_count = 0;
+  for (const attachment of record["attachments"]) {
+    if (typeof attachment !== "object" || attachment === null || Array.isArray(attachment)) {
+      return null;
+    }
+    const attachment_record = attachment as Record<string, unknown>;
+    if (attachment_record["kind"] === "image") {
+      if (image_count >= AGENT_MESSAGE_IMAGE_LIMIT) continue;
+      if (typeof attachment_record["webpBase64"] !== "string") return null;
+      const webp_base64 = attachment_record["webpBase64"].trim();
+      if (webp_base64 === "") return null;
+      attachments.push({ kind: "image", webpBase64: webp_base64 });
+      image_count += 1;
+      continue;
+    }
+    if (attachment_record["kind"] === "response_annotation") {
+      if (
+        typeof attachment_record["selectedText"] !== "string" ||
+        typeof attachment_record["comment"] !== "string"
+      ) {
+        return null;
+      }
+      const selected_text = attachment_record["selectedText"].trim();
+      const comment = attachment_record["comment"].trim();
+      if (selected_text === "") return null;
+      attachments.push({ kind: "response_annotation", selectedText: selected_text, comment });
+      continue;
+    }
+    return null;
+  }
+  return text === "" && attachments.length === 0 ? null : { text, attachments };
 }
 
 /** 修订请求复用完整消息边界，assistant 的纯文本限制由拥有角色事实的后端校验。 */

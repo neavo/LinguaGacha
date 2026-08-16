@@ -134,7 +134,7 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
-    const revision = { entryId: "assistant-1", message: { text: "修订", images: [] } };
+    const revision = { entryId: "assistant-1", message: { text: "修订", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
     ).resolves.toEqual({ state: "idle" });

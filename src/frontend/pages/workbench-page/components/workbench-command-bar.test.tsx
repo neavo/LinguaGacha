@@ -2,6 +2,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AgentMessageInput } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
 
@@ -9,7 +10,7 @@ import { WorkbenchCommandBar } from "./workbench-command-bar";
 const navigation_mocks = vi.hoisted(() => ({ navigate_to_route: vi.fn() }));
 const toast_mocks = vi.hoisted(() => ({ push_toast: vi.fn() }));
 const agent_input_mocks = vi.hoisted(() => ({
-  draft: { text: "", images: [] as string[] },
+  draft: { text: "", attachments: [] } as AgentMessageInput,
   read_draft: vi.fn(),
   write_draft: vi.fn(),
 }));
@@ -158,7 +159,7 @@ describe("WorkbenchCommandBar", () => {
   beforeEach(() => {
     navigation_mocks.navigate_to_route.mockReset();
     toast_mocks.push_toast.mockReset();
-    agent_input_mocks.draft = { text: "", images: [] };
+    agent_input_mocks.draft = { text: "", attachments: [] };
     agent_input_mocks.read_draft.mockReset();
     agent_input_mocks.read_draft.mockImplementation(() => agent_input_mocks.draft);
     agent_input_mocks.write_draft.mockReset();
@@ -228,14 +229,17 @@ describe("WorkbenchCommandBar", () => {
 
     expect(agent_input_mocks.write_draft).toHaveBeenCalledWith({
       text: "create-quality-rules @skill(quality-rule-create)",
-      images: [],
+      attachments: [],
     });
     expect(navigation_mocks.navigate_to_route).toHaveBeenCalledWith("agent");
     expect(props.analysis_workbench_task.request_start_or_continue_analysis).not.toHaveBeenCalled();
   });
 
   it("已有 AGENT 草稿时保留原内容并提示后跳转", async () => {
-    agent_input_mocks.draft = { text: "已有任务", images: ["webp-image"] };
+    agent_input_mocks.draft = {
+      text: "已有任务",
+      attachments: [{ kind: "image", webpBase64: "webp-image" }],
+    };
     await render_command_bar();
 
     await act(async () => find_button("analysis-task").click());

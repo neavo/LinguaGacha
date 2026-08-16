@@ -161,10 +161,10 @@
 }
 
 .agent-message--user {
+  display: grid;
   max-width: 100%;
-  border-radius: var(--radius-xl) var(--radius-xl) var(--ui-radius-button) var(--radius-xl);
-  background: var(--muted);
-  padding: 8px 12px;
+  justify-items: end;
+  gap: 8px;
 }
 
 .agent-message--assistant {
@@ -306,12 +306,18 @@
   height: 14px;
 }
 
-.dark .agent-message--user {
+.dark .agent-message__user-text {
   background: color-mix(in srgb, var(--primary) 22%, var(--card));
 }
 
 .agent-message__user-text {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) var(--ui-radius-button) var(--radius-xl);
+  background: var(--muted);
+  padding: 8px 12px;
   color: var(--foreground);
   font-size: 13px;
   line-height: 1.65;
@@ -322,27 +328,159 @@
   white-space: pre-wrap;
 }
 
-.agent-message__user-images {
+.agent-attachment-strip {
+  /* 两行批注与中间间距共同定义图片方块，所有附件尺寸只从这一关系派生。 */
+  --agent-annotation-height: 33px;
+  --agent-attachment-gap: 6px;
+  --agent-attachment-size: calc(
+    var(--agent-annotation-height) + var(--agent-attachment-gap) + var(--agent-annotation-height)
+  );
+  --agent-annotation-width: calc(
+    var(--agent-attachment-size) + var(--agent-attachment-gap) + var(--agent-attachment-size)
+  );
+
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 180px));
-  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  grid-auto-columns: max-content;
+  grid-auto-flow: column;
+  grid-template-rows: var(--agent-annotation-height);
+  gap: var(--agent-attachment-gap);
+  overflow-x: auto;
+  padding: 4px 2px 2px;
 }
 
-.agent-message__user-images + .agent-message__user-text {
-  margin-top: 7px;
+.agent-attachment-strip[data-has-images="true"] {
+  grid-template-rows: repeat(2, var(--agent-annotation-height));
 }
 
-.agent-message__user-images img {
+.agent-attachment {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+}
+
+.agent-attachment--image {
+  width: var(--agent-attachment-size);
+  height: var(--agent-attachment-size);
+  grid-row: 1 / -1;
+  margin: 0;
+}
+
+.agent-attachment--image > img {
   display: block;
   width: 100%;
-  max-height: 260px;
-  border-radius: var(--ui-radius-button);
+  height: 100%;
   object-fit: contain;
 }
 
-.agent-message__user-images img:only-child {
-  grid-column: 1 / -1;
-  max-width: 360px;
+.agent-attachment--annotation {
+  width: var(--agent-annotation-width);
+  height: var(--agent-annotation-height);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, var(--popover));
+}
+
+.agent-attachment__open {
+  padding: 0;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.agent-attachment__open.agent-attachment--image {
+  border: 0;
+}
+
+.agent-attachment__open.agent-attachment--annotation {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.agent-attachment__open:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.agent-attachment__open.agent-attachment--image:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.agent-attachment__open:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-attachment__open:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.agent-attachment__open > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.agent-attachment__open > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-message-attachment-detail {
+  display: grid;
+  gap: 20px;
+}
+
+.agent-message-attachment-detail > section {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-message-attachment-detail strong {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-message-attachment-detail blockquote,
+.agent-message-attachment-detail p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.agent-message-attachment-detail blockquote {
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+  padding: 12px;
+}
+
+.agent-message-attachment-detail--image {
+  min-height: 0;
+  place-items: center;
+}
+
+.agent-message-attachment-detail--image > img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 200px);
+  border-radius: var(--ui-radius-button);
+  object-fit: contain;
 }
 
 .agent-tool-entry,
@@ -625,16 +763,10 @@
   margin: 0 16px 14px;
 }
 
-/* Tooltip 经 Portal 脱离页面树，两个根节点共用同一基准宽度。 */
-.agent-task-progress,
-.agent-task-progress__tooltip {
-  --agent-task-progress-width: 420px;
-}
-
 .agent-task-progress {
   /* 等宽侧轨让队首相对整条居中，余项计数消失时也不跳位。 */
   display: grid;
-  width: min(100%, var(--agent-task-progress-width));
+  width: min(100%, 420px);
   min-height: 32px;
   flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
@@ -711,13 +843,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 固定最小宽度与滚动槽，避免浮层首帧测量后收缩闪烁。 */
+/* 浮层跟随真实触发器宽度，长队列只在可用空间内换行与滚动。 */
 .agent-task-progress__tooltip {
   display: block;
-  width: max-content;
-  min-width: min(var(--agent-task-progress-width), calc(100vw - 32px));
-  max-width: min(720px, calc(100vw - 32px));
-  max-height: min(320px, calc(100vh - 32px));
+  width: var(--radix-tooltip-trigger-width);
+  max-width: var(--radix-tooltip-content-available-width);
+  max-height: min(320px, var(--radix-tooltip-content-available-height));
   overflow-y: auto;
   scrollbar-gutter: stable;
   line-height: 1.5;
@@ -729,8 +860,12 @@
   display: grid;
   gap: 4px;
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding-inline-start: 16px;
+  list-style: disc outside;
+}
+
+.agent-task-progress__tooltip li {
+  overflow-wrap: anywhere;
 }
 
 .agent-composer {
@@ -778,32 +913,6 @@
   font-weight: 500;
 }
 
-.agent-composer__attachments {
-  display: flex;
-  min-width: 0;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 4px 2px 2px;
-}
-
-.agent-composer__attachment {
-  position: relative;
-  width: 72px;
-  height: 72px;
-  margin: 0;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border-radius: var(--ui-radius-button);
-  background: var(--muted);
-}
-
-.agent-composer__attachment > img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 .agent-composer__attachment-remove {
   position: absolute;
   inset-block-start: 3px;
@@ -818,6 +927,115 @@
 .agent-composer__attachment-remove > svg {
   width: 11px;
   height: 11px;
+}
+
+.agent-annotation-editor {
+  display: grid;
+  width: min(420px, calc(100vw - 32px));
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--popover);
+  color: var(--foreground);
+  padding: 10px;
+  box-shadow: var(--ui-shadow-overlay);
+}
+
+.agent-composer__annotation-editor {
+  z-index: 80;
+}
+
+.agent-annotation-editor label > span,
+.agent-annotation-editor__header > strong {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-annotation-editor blockquote {
+  max-height: 120px;
+  margin: 0;
+  overflow-y: auto;
+  border-radius: var(--ui-radius-button);
+  background: var(--muted);
+  padding: 7px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.agent-annotation-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-annotation-editor .agent-annotation-editor__comment {
+  min-height: 72px;
+  resize: vertical;
+  padding: 7px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-annotation-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.agent-annotation-editor__actions > button:last-child {
+  margin-left: auto;
+}
+
+.agent-response-annotation-popover {
+  z-index: 80;
+}
+
+.agent-response-annotation-popover[role="toolbar"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--popover);
+  color: var(--foreground);
+  box-shadow: var(--ui-shadow-overlay);
+}
+
+.agent-response-annotation-popover[role="toolbar"] > button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  padding: 0 10px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.agent-response-annotation-popover[role="toolbar"] > button:hover {
+  background: var(--accent);
+}
+
+.agent-response-annotation-popover[role="toolbar"] > button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.agent-response-annotation-popover[role="toolbar"] svg {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.agent-annotation-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .agent-composer__file-input {
@@ -996,7 +1214,7 @@
   white-space: nowrap;
 }
 
-.agent-message--user[data-mention-only="true"] {
+.agent-message--user[data-mention-only="true"] .agent-message__user-text {
   background: transparent;
   padding: 0;
 }
