@@ -3,7 +3,7 @@ export const zh_cn_agent_page = {
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: { render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
-  image: { omitted: "图片已省略" },
+  image: { title: "图片", omitted: "图片已省略" },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
@@ -23,6 +23,15 @@ export const zh_cn_agent_page = {
     groups: { skills: "技能", terms: "术语" },
     no_matches: "没有匹配的项目 …",
     term_hits: "{count} 次",
+  },
+  annotation: {
+    title: "批注",
+    add: "添加批注",
+    edit: "修改批注",
+    remove: "删除",
+    selected_text: "文本",
+    user_comment: "批注",
+    comment_placeholder: "写下针对所选文本的评论 …",
   },
   context_usage_warning: "即将自动压缩上下文",
   compaction: {

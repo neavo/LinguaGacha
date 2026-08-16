@@ -4,7 +4,7 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、最新轮次 revise、resume、stop 与 reset；message 请求和公开 user 条目携带规范化后的 `text` 与 WebP base64 图片数组，允许纯图片与多图片消息但不允许二者同时为空。revise 目标为最新 user 时删除整轮旧尝试并以替换输入重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。resume 是产品“继续”操作，只恢复唯一未解决的尾部失败：必要时先原位恢复压缩，再以隐藏“继续”消息续跑原 user 轮次；已完成轮次的压缩失败只恢复模型历史。两种操作都要求会话空闲，revision 另校验最新轮次输入或最终输出身份；更早轮次和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态，上下文压缩条目只使用 `running | success | error`，不承载可停止语义。
+- Agent 公开入口提供 snapshot、message、最新轮次 revise、resume、stop 与 reset；message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。revise 目标为最新 user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。resume 是产品“继续”操作，只恢复唯一未解决的尾部失败：必要时先原位恢复压缩，再以隐藏“继续”消息续跑原 user 轮次；已完成轮次的压缩失败只恢复模型历史。两种操作都要求会话空闲，revision 另校验最新轮次输入或最终输出身份；更早轮次和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态，上下文压缩条目只使用 `running | success | error`，不承载可停止语义。
 - 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史；未解决的上下文压缩在自动再试与“继续”时复用原 entry。公开快照只携带模型可见历史的估算 token；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开工具条目冻结规范化后的完整输入，并只在 SDK 工具终帧后携带模型实际收到的文本输出；公开协议不承载 SDK 原始参数引用、结构化 details、压缩诊断、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -26,7 +26,7 @@
 ## 3. 模型、资源与 skill
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的模型请求边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动；每次 Agent 模型操作前按 `model_id` 解析领域规则或稳定兜底，并把生效容量与思考等级同步到既有 `AgentSession`。Agent 固定保留 32K 上下文用于自动压缩；最大输出超过 `context_window - 32K` 时由统一模型边界自动调小，格式损坏或无法容纳固定预留时整组恢复为 `0/0` 自动配置，模型页同步回写规范值并显示同一条调整警告。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
-- Agent 模型在 Pi 请求边界固定声明 text / image 输入并把规范 WebP 直接交给当前供应商；OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
+- Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注先进入 text prompt，规范 WebP 则直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
 - 模型可见上下文超过 `context_window - 32K` 时，自然结束由 `AgentSession` 自动压缩，完整工具批次后由 `AgentService` 在包含工具结果的历史上补足检查。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；压缩成功后 token 仪表直接采用 SDK 对新模型历史的估算，失败保留原用量。
 - 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时从用户、内置目录依次加载 skill，以首个有效同名定义获胜，坏 skill 只记录诊断；形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述，显式注入块只公开名称与正文；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
@@ -53,8 +53,8 @@
 ## 5. 前端消费
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
-- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、`taskProgress` 待办标签、完整消息草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。草稿图片不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线与模型历史中的图片随内存会话在 reset、工程切换或 dispose 时清理。
+- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、`taskProgress` 待办标签、完整消息草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。草稿附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；命令受理失败由页面解析为安全 Toast，不写入共享会话状态。合法 message ack 把非空文本更新到输入历史并原子清空完整草稿；未进入修改态的重试不改写输入历史或草稿，user 修改成功后替换旧历史文本，assistant 修改不改写输入历史。
-- 页面持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；这些页面局部事实不进入 Agent snapshot、历史或发送协议。`task_progress` 工具调用不渲染为时间线条目，页面在 Composer 上方固定展示 `taskProgress` 队首标签，完整队列由提示承载，空数组不占位。修改态复用唯一 Composer，暂存普通草稿，取消或成功后恢复，失败时保留编辑内容；assistant 修改隐藏图片与 marker 能力。最新轮次已成功执行 `workspace_apply` 时，重试或提交输入修改必须确认既有工程副作用不会回滚，输出修改与“继续”不确认。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
+- 页面持有滚动、弹窗、尚未确认的回复选区，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；这些页面局部事实不进入 Agent snapshot、历史或发送协议。每轮最后一个成功 assistant 正文允许把单一原生选区和可选评论确认到当前消息草稿，不建立来源定位或第二套批注状态。`task_progress` 工具调用不渲染为时间线条目，页面在 Composer 上方固定展示 `taskProgress` 队首标签，完整队列由提示承载，空数组不占位。修改态复用唯一 Composer，暂存普通草稿，取消或成功后恢复，失败时保留编辑内容；assistant 修改隐藏附件与 marker 能力。最新轮次已成功执行 `workspace_apply` 时，重试或提交输入修改必须确认既有工程副作用不会回滚，输出修改与“继续”不确认。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent 回合运行态与 stop 命令不锁定草稿编辑，send / revise / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset、消息修订与模型选择 / 思考档位控制。压缩和 `workspace_apply` 期间保留草稿编辑但禁用 stop；压缩还禁用发送、reset 与模型控制，失败后允许更换模型或开始新任务。失败恢复由后端完整拥有，renderer 不监听终态补发命令。

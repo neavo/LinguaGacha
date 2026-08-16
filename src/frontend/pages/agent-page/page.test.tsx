@@ -213,7 +213,7 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith({ text: literal_text, images: [] });
+    expect(send).toHaveBeenLastCalledWith({ text: literal_text, attachments: [] });
 
     await act(async () => skill_suggestion.click());
     expect(document.activeElement).toBe(editor);
@@ -221,7 +221,7 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith({ text: skill_text, images: [] });
+    expect(send).toHaveBeenLastCalledWith({ text: skill_text, attachments: [] });
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
@@ -569,7 +569,7 @@ describe("AgentPage", () => {
     await act(async () => get_portal_button("app.action.confirm").click());
     expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
       text: "修改工程",
-      images: [],
+      attachments: [],
     });
   });
 
@@ -587,7 +587,7 @@ describe("AgentPage", () => {
       input: {
         ...input,
         editing: { entryId: "user-write", role: "user" },
-        read_draft: () => ({ text: "新输入", images: [] }),
+        read_draft: () => ({ text: "新输入", attachments: [] }),
       },
     });
 
@@ -600,7 +600,7 @@ describe("AgentPage", () => {
     await act(async () => get_portal_button("app.action.confirm").click());
     expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
       text: "新输入",
-      images: [],
+      attachments: [],
     });
 
     reviseLatestRound.mockClear();
@@ -611,13 +611,13 @@ describe("AgentPage", () => {
         ...input,
         revision: input.revision + 1,
         editing: { entryId: "assistant-write", role: "assistant" },
-        read_draft: () => ({ text: "新输出", images: [] }),
+        read_draft: () => ({ text: "新输出", attachments: [] }),
       },
     });
     await act(async () => get_button_by_label(view, "agent_page.action.save_edit").click());
     expect(reviseLatestRound).toHaveBeenCalledWith("assistant-write", {
       text: "新输出",
-      images: [],
+      attachments: [],
     });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
@@ -631,7 +631,7 @@ describe("AgentPage", () => {
       input: {
         ...input,
         editing: { entryId: "user-1", role: "user" },
-        read_draft: () => ({ text: "新输入", images: [] }),
+        read_draft: () => ({ text: "新输入", attachments: [] }),
       },
     });
 
@@ -744,7 +744,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     input: {
       revision: 0,
       editing: null,
-      read_draft: () => ({ text: "", images: [] }),
+      read_draft: () => ({ text: "", attachments: [] }),
       write_draft: vi.fn(),
       read_history: () => [],
       start_edit: vi.fn(),
@@ -767,7 +767,7 @@ function user_entry(
   createdAt: number,
   endedAt: number | null,
 ) {
-  return { kind: "user_message" as const, id, text, images: [], status, createdAt, endedAt };
+  return { kind: "user_message" as const, id, text, attachments: [], status, createdAt, endedAt };
 }
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {

@@ -6,6 +6,7 @@ import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { GlossaryEntry } from "@domain/quality";
+import type { AgentMessageAttachment, AgentMessageInput } from "@shared/agent";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
@@ -52,6 +53,13 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.compaction.running": "正在压缩上下文 …",
   "agent_page.action.send": "发送",
   "agent_page.action.save_edit": "保存修改",
+  "agent_page.annotation.edit": "修改批注",
+  "agent_page.annotation.remove": "删除",
+  "agent_page.annotation.selected_text": "目标",
+  "agent_page.annotation.user_comment": "批注",
+  "agent_page.annotation.comment_placeholder": "写下评论",
+  "app.action.cancel": "取消",
+  "app.action.save": "保存",
   "agent_page.editing.assistant": "正在修改模型回复",
   "agent_page.action.stop": "停止",
   "agent_page.action.applying": "正在应用工程修改，完成前不可停止",
@@ -168,7 +176,7 @@ describe("AgentComposer", () => {
     await act(async () => option.click());
     expect(editor.state.doc.toString()).toBe("@term(Bob) ");
     await click_send(view);
-    expect(on_send).toHaveBeenCalledWith({ text: "@term(Bob)", images: [] });
+    expect(on_send).toHaveBeenCalledWith({ text: "@term(Bob)", attachments: [] });
   });
 
   it("方向键导航到深层候选时把活动项滚入菜单可视区域", async () => {
@@ -224,7 +232,7 @@ describe("AgentComposer", () => {
     await dispatch_key(editor.contentDOM, "ArrowDown");
     expect(editor.state.doc.toString()).toBe("@missing");
     await dispatch_key(editor.contentDOM, "Enter");
-    expect(on_send).toHaveBeenCalledWith({ text: "@missing", images: [] });
+    expect(on_send).toHaveBeenCalledWith({ text: "@missing", attachments: [] });
   });
 
   it("Escape 关闭当前菜单，查询变化后重新打开", async () => {
@@ -306,7 +314,7 @@ describe("AgentComposer", () => {
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({
       text: "检查 @skill(glossary-audit)",
-      images: [],
+      attachments: [],
     });
     input_session.accept_message();
     await render_composer({ composer_ref, input_session, on_send });
@@ -316,7 +324,7 @@ describe("AgentComposer", () => {
   it("修改 assistant 时隐藏 user 专属能力并使用保存修改动作", async () => {
     const input_session = create_input_session();
     input_session.editing = { entryId: "assistant-1", role: "assistant" };
-    input_session.write_draft({ text: "人工回复", images: [] });
+    input_session.write_draft({ text: "人工回复", attachments: [] });
     const view = await render_composer({ input_session });
 
     expect(view.querySelector(".agent-composer__edit-bar")).not.toBeNull();
@@ -345,19 +353,22 @@ describe("AgentComposer", () => {
       input.dispatchEvent(new Event("change", { bubbles: true }));
       await Promise.resolve();
     });
-    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(1);
-    expect(view.querySelector<HTMLImageElement>(".agent-composer__attachment img")?.alt).toBe("");
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(1);
+    expect(view.querySelector<HTMLImageElement>(".agent-attachment img")?.alt).toBe("");
     const remove_button = view.querySelector<HTMLButtonElement>(
       ".agent-composer__attachment-remove",
     );
     expect(remove_button?.hasAttribute("aria-label")).toBe(true);
     await click_send(view);
-    expect(on_send).toHaveBeenCalledWith({ text: "", images: ["webp-a.png"] });
+    expect(on_send).toHaveBeenCalledWith({
+      text: "",
+      attachments: image_attachments("webp-a.png"),
+    });
 
     await act(async () => {
       remove_button?.click();
     });
-    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(0);
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(0);
   });
 
   it("拖入与粘贴图片均按顺序追加到草稿", async () => {
@@ -385,15 +396,15 @@ describe("AgentComposer", () => {
 
     expect(input_session.read_draft()).toEqual({
       text: "",
-      images: ["webp-drop.webp", "webp-paste.png"],
+      attachments: image_attachments("webp-drop.webp", "webp-paste.png"),
     });
-    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(2);
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
   });
 
   it("累计只接收前十张图片，满额后静默忽略新输入", async () => {
     const input_session = create_input_session();
     const existing_images = Array.from({ length: 8 }, (_, index) => `existing-${index + 1}`);
-    input_session.write_draft({ text: "", images: existing_images });
+    input_session.write_draft({ text: "", attachments: image_attachments(...existing_images) });
     const on_image_error = vi.fn();
     const view = await render_composer({ input_session, on_image_error });
     const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
@@ -412,9 +423,13 @@ describe("AgentComposer", () => {
 
     expect(input_session.read_draft()).toEqual({
       text: "",
-      images: [...existing_images, "webp-selected-1.png", "webp-selected-2.png"],
+      attachments: image_attachments(
+        ...existing_images,
+        "webp-selected-1.png",
+        "webp-selected-2.png",
+      ),
     });
-    expect(view.querySelectorAll(".agent-composer__attachment")).toHaveLength(10);
+    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(10);
     expect(image_trigger.disabled).toBe(true);
 
     const paste = new Event("paste", { bubbles: true, cancelable: true });
@@ -432,6 +447,76 @@ describe("AgentComposer", () => {
       view.querySelector<HTMLButtonElement>(".agent-composer__attachment-remove")?.click();
     });
     expect(image_trigger.disabled).toBe(false);
+  });
+
+  it("新增批注在修改后随完整消息提交", async () => {
+    const composer_ref = createRef<AgentComposerHandle>();
+    const input_session = create_input_session();
+    const on_send = vi.fn();
+    const view = await render_composer({ composer_ref, input_session, on_send });
+
+    await act(async () =>
+      composer_ref.current?.add_response_annotation({
+        kind: "response_annotation",
+        selectedText: "旧回复",
+        comment: "原评论",
+      }),
+    );
+    expect(input_session.read_draft().attachments).toEqual([
+      { kind: "response_annotation", selectedText: "旧回复", comment: "原评论" },
+    ]);
+
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__annotation-open")?.click(),
+    );
+    const textarea = document.body.querySelector<HTMLTextAreaElement>(
+      ".agent-composer__annotation-editor textarea",
+    );
+    if (textarea === null) throw new Error("缺少批注编辑器");
+    await act(async () => {
+      set_textarea_value(textarea, "   ");
+    });
+    const save = [
+      ...document.body.querySelectorAll<HTMLButtonElement>(
+        ".agent-composer__annotation-editor button",
+      ),
+    ].find((button) => button.textContent?.includes("保存"));
+    await act(async () => save?.click());
+    await click_send(view);
+
+    expect(on_send).toHaveBeenCalledWith({
+      text: "",
+      attachments: [{ kind: "response_annotation", selectedText: "旧回复", comment: "" }],
+    });
+  });
+
+  it("混合附件按原索引编辑而不改写草稿顺序", async () => {
+    const input_session = create_input_session();
+    input_session.write_draft({
+      text: "",
+      attachments: [
+        { kind: "response_annotation", selectedText: "被引用的旧回复", comment: "内部评论" },
+        { kind: "image", webpBase64: "webp-a" },
+      ],
+    });
+
+    const view = await render_composer({ input_session });
+    expect(input_session.read_draft().attachments.map((attachment) => attachment.kind)).toEqual([
+      "response_annotation",
+      "image",
+    ]);
+    const annotation = view.querySelector<HTMLButtonElement>(".agent-composer__annotation-open");
+    await act(async () => annotation?.click());
+    const remove = [
+      ...document.body.querySelectorAll<HTMLButtonElement>(
+        ".agent-composer__annotation-editor button",
+      ),
+    ].find((button) => button.textContent?.includes("删除"));
+    if (remove === undefined) throw new Error("缺少批注删除动作");
+    await act(async () => remove.click());
+    expect(input_session.read_draft().attachments.map((attachment) => attachment.kind)).toEqual([
+      "image",
+    ]);
   });
 
   it("图片转换失败时保留原草稿并交给页面提示", async () => {
@@ -452,8 +537,8 @@ describe("AgentComposer", () => {
     });
 
     expect(on_image_error).toHaveBeenCalledOnce();
-    expect(input_session.read_draft()).toEqual({ text: "", images: [] });
-    expect(view.querySelector(".agent-composer__attachment")).toBeNull();
+    expect(input_session.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(view.querySelector(".agent-attachment")).toBeNull();
   });
 
   it("运行态仍可编辑，只由按钮停止当前任务", async () => {
@@ -568,7 +653,7 @@ function get_editor(container: HTMLElement): EditorView {
 
 /** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
 function create_input_session(history: readonly string[] = []): TestAgentInputSession {
-  let draft = { text: "", images: [] as string[] };
+  let draft: AgentMessageInput = { text: "", attachments: [] };
   const session: TestAgentInputSession = {
     revision: 0,
     editing: null,
@@ -580,11 +665,23 @@ function create_input_session(history: readonly string[] = []): TestAgentInputSe
     start_edit: vi.fn(),
     cancel_edit: vi.fn(),
     accept_message: () => {
-      draft = { text: "", images: [] };
+      draft = { text: "", attachments: [] };
       session.revision += 1;
     },
   };
   return session;
+}
+
+function image_attachments(...images: string[]): AgentMessageAttachment[] {
+  return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
+}
+
+function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+    textarea,
+    value,
+  );
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 async function set_document(editor: EditorView, text: string, head: number): Promise<void> {
