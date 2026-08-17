@@ -113,6 +113,7 @@ type AgentComposerProps = {
   compaction_failed: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
+  can_continue_queue: boolean;
   can_reset: boolean;
   context_tokens: number | null;
   model_selection: ModelSelectionController;
@@ -186,31 +187,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolved_theme } = useAppearance();
   const editing = props.input_session.editing;
-  const assistant_editing = editing?.role === "assistant";
+  const assistant_editing = editing?.kind === "entry" && editing.role === "assistant";
   const placeholder_text = t(
     assistant_editing
       ? "agent_page.input.edit_assistant_placeholder"
       : "agent_page.input.placeholder",
   );
   const compacting = props.compacting;
-  let submit_label_key: LocaleKey = "agent_page.action.send";
-  if (compacting) submit_label_key = "agent_page.compaction.running";
-  else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
-  else if (props.command === "send") submit_label_key = "agent_page.action.sending";
-  else if (props.command === "revise") {
-    submit_label_key =
-      editing?.role === "user" ? "agent_page.action.save_and_retry" : "agent_page.action.save_edit";
-  } else if (props.command === "stop") submit_label_key = "agent_page.action.stopping";
-  else if (props.running) submit_label_key = "agent_page.action.stop";
-  else if (editing?.role === "user") submit_label_key = "agent_page.action.save_and_retry";
-  else if (editing?.role === "assistant") submit_label_key = "agent_page.action.save_edit";
-  const submit_label = t(submit_label_key);
   const submit_command_active =
-    props.command === "send" || props.command === "revise" || props.command === "stop";
-  const submit_tooltip =
-    submit_command_active || props.unavailable_reason === null
-      ? submit_label
-      : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason]);
+    props.command === "send" ||
+    props.command === "continue" ||
+    props.command === "revise" ||
+    props.command === "queue_update" ||
+    props.command === "stop";
   const host_ref = useRef<HTMLDivElement | null>(null);
   const file_input_ref = useRef<HTMLInputElement | null>(null);
   const menu_ref = useRef<HTMLDivElement | null>(null);
@@ -257,19 +246,38 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_terms = candidate_groups.terms;
   const matching_candidates = [...matching_skills, ...matching_terms];
   const editor_read_only =
-    props.command === "send" || props.command === "revise" || props.command === "reset";
+    props.command === "send" ||
+    props.command === "continue" ||
+    props.command === "revise" ||
+    props.command === "queue_update" ||
+    props.command === "reset";
   const menu_open =
     !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
-  const can_send =
-    !props.running &&
-    !compacting &&
-    !props.compaction_failed &&
+  const has_sendable_content =
+    snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
+  const continuing_queue = props.can_continue_queue && !props.running && editing === null;
+  // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
+  const stopping = props.running && !has_sendable_content && editing === null;
+  let submit_label_key: LocaleKey = "agent_page.action.send";
+  const can_submit =
     props.unavailable_reason === null &&
     props.command === null &&
     !props.model_selection.updating &&
     !image_processing &&
-    (snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0));
+    (has_sendable_content || continuing_queue) &&
+    (!props.compaction_failed || continuing_queue);
+  if (continuing_queue) submit_label_key = "agent_page.action.continue";
+  else if (props.running && has_sendable_content && editing === null)
+    submit_label_key = "agent_page.action.send";
+  else if (compacting) submit_label_key = "agent_page.compaction.running";
+  else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
+  else if (editing?.kind === "queue") submit_label_key = "agent_page.action.save_queue";
+  else if (editing?.kind === "entry") {
+    submit_label_key =
+      editing.role === "user" ? "agent_page.action.save_and_retry" : "agent_page.action.save_edit";
+  } else if (stopping) submit_label_key = "agent_page.action.stop";
+  const contextual_submit_label = t(submit_label_key);
   const image_count = draft_attachments.reduce(
     (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
     0,
@@ -592,7 +600,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
   const submit = (): void => {
     const view = view_ref.current;
-    if (view === null || !can_send) return;
+    if (view === null || !can_submit) return;
     const text = view.state.doc.toString().trim();
     props.on_send({ text, attachments: structuredClone(draft_attachments_ref.current) });
   };
@@ -653,7 +661,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         <div className="agent-composer__edit-bar">
           <span>
             {t(
-              editing.role === "user" ? "agent_page.editing.user" : "agent_page.editing.assistant",
+              editing.kind === "queue"
+                ? "agent_page.editing.queue"
+                : editing.role === "user"
+                  ? "agent_page.editing.user"
+                  : "agent_page.editing.assistant",
             )}
           </span>
           <AppButton
@@ -868,26 +880,22 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <span className="agent-composer__submit-shell">
                 <AppButton
                   className="agent-composer__submit"
-                  type={
-                    props.running || compacting || props.command === "stop" ? "button" : "submit"
-                  }
+                  type={stopping ? "button" : "submit"}
                   size="icon-xs"
                   onClick={
-                    props.running && !props.stop_disabled && !compacting && props.command === null
+                    stopping && !props.stop_disabled && !compacting && props.command === null
                       ? () => void props.on_stop()
                       : undefined
                   }
                   disabled={
-                    props.stop_disabled ||
-                    compacting ||
                     props.command !== null ||
-                    (!props.running && !can_send)
+                    (stopping ? props.stop_disabled || compacting : !can_submit)
                   }
-                  aria-label={submit_label}
+                  aria-label={contextual_submit_label}
                 >
-                  {compacting || submit_command_active ? (
+                  {(compacting && stopping) || submit_command_active ? (
                     <LoaderCircle className="animate-spin" aria-hidden="true" />
-                  ) : props.running ? (
+                  ) : stopping ? (
                     <Square aria-hidden="true" />
                   ) : (
                     <ArrowUp aria-hidden="true" />
@@ -895,9 +903,15 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 </AppButton>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={8}>
-              <p>{submit_tooltip}</p>
-            </TooltipContent>
+            {submit_command_active ? null : (
+              <TooltipContent side="top" sideOffset={8}>
+                <p>
+                  {props.unavailable_reason === null
+                    ? contextual_submit_label
+                    : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}
+                </p>
+              </TooltipContent>
+            )}
           </Tooltip>
         </div>
       </div>

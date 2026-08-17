@@ -726,6 +726,7 @@
 }
 
 .agent-page__composer-stack {
+  container-type: inline-size;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
@@ -836,6 +837,100 @@
 
 .agent-task-progress__tooltip li {
   overflow-wrap: anywhere;
+}
+
+.agent-input-queue {
+  display: grid;
+  max-height: min(248px, 32vh);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 94%, var(--muted));
+}
+
+.agent-input-queue__items {
+  min-width: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.agent-input-queue__item {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: 24px minmax(80px, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  padding: 3px 6px;
+  background: var(--popover);
+}
+
+.agent-input-queue__item:last-child {
+  border-bottom: 0;
+}
+
+.agent-input-queue__drag {
+  display: inline-flex;
+  width: 24px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: grab;
+}
+
+.agent-input-queue__drag:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.agent-input-queue__drag:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.agent-input-queue__drag svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agent-input-queue__preview {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-input-queue__attachments {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.agent-input-queue__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@container (max-width: 520px) {
+  .agent-input-queue__item {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+
+  .agent-input-queue__attachments {
+    display: none;
+  }
 }
 
 .agent-composer {

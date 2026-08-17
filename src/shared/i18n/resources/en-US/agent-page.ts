@@ -43,9 +43,8 @@ export const en_us_agent_page = {
   },
   action: {
     send: "Send",
-    sending: "Sending",
+    save_queue: "Save queued message",
     stop: "Stop",
-    stopping: "Stopping",
     applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
     add_image: "Add images",
@@ -57,7 +56,19 @@ export const en_us_agent_page = {
     save_edit: "Save edit",
     return_latest: "Return to latest",
   },
-  editing: { user: "Editing your message", assistant: "Editing the model response" },
+  editing: {
+    user: "Editing your message",
+    assistant: "Editing the model response",
+    queue: "Editing queued message",
+  },
+  queue: {
+    no_message_text: "No message text",
+    attachments: "{count} attachments",
+    reorder: "Drag to reorder",
+    send_now: "Send now",
+    sending: "Sending",
+    delete: "Delete message",
+  },
   confirm: {
     new_task: "Confirm starting a new conversation task …?",
     retry_after_workspace_apply:
@@ -90,6 +101,10 @@ export const en_us_agent_page = {
     retry: "The round could not be retried. Try again.",
     continue: "The task could not continue. Try again.",
     edit: "The message could not be edited. Your changes were preserved.",
+    queue_update: "The queued message could not be edited. Your changes were preserved.",
+    queue_delete: "The queued message could not be deleted. Try again.",
+    queue_reorder: "The queue could not be reordered. Try again.",
+    queue_send: "The message could not be sent now. It remains queued.",
     image: "The image could not be read. Use PNG, JPG, BMP, WebP, or AVIF.",
     stop: "The task could not be stopped. Try again.",
     reset: "A new task could not be created. Try again.",

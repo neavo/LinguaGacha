@@ -13,7 +13,9 @@ import type {
   AgentAssistantMessagePart,
   AgentEntry,
   AgentEntryStatus,
+  AgentInputQueueSnapshot,
   AgentMessageInput,
+  AgentQueuedInput,
   AgentSessionEvent,
   AgentSessionSnapshot,
   AgentSessionState,
@@ -36,12 +38,23 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
   skills: [],
+  inputQueue: { paused: false, canSendNow: false, items: [] },
   taskProgress: [],
   contextTokens: null,
 };
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
-export type AgentCommand = "send" | "revise" | "resume" | "stop" | "reset" | null;
+export type AgentCommand =
+  | "send"
+  | "revise"
+  | "continue"
+  | "stop"
+  | "reset"
+  | "queue_update"
+  | "queue_delete"
+  | "queue_reorder"
+  | "queue_send"
+  | null;
 /** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
@@ -49,13 +62,18 @@ type AgentSessionStateView = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  inputQueue: AgentInputQueueSnapshot;
   taskProgress: string[];
   contextTokens: number | null;
   transport: AgentTransportState;
   command: AgentCommand;
   send: (message: AgentMessageInput) => Promise<void>;
   reviseLatestRound: (entryId: string, message: AgentMessageInput) => Promise<void>;
-  resume: () => Promise<void>;
+  updateQueuedMessage: (id: string, message: AgentMessageInput) => Promise<void>;
+  deleteQueuedMessage: (id: string) => Promise<void>;
+  reorderQueuedMessages: (ids: readonly string[]) => Promise<void>;
+  sendQueuedMessage: (id: string) => Promise<void>;
+  continue: (message?: AgentMessageInput) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<void>;
   reconnect: () => void;
@@ -64,11 +82,15 @@ type AgentSessionStateView = {
 /** 跨路由保留完整输入事实；光标、菜单与历史索引仍由当前 Composer 持有。 */
 export type AgentInputSession = {
   revision: number;
-  editing: { entryId: string; role: "user" | "assistant" } | null;
+  editing:
+    | { kind: "entry"; entryId: string; role: "user" | "assistant" }
+    | { kind: "queue"; itemId: string }
+    | null;
   read_draft: () => AgentMessageInput;
   write_draft: (draft: AgentMessageInput) => void;
   read_history: () => readonly string[];
   start_edit: (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => void;
+  start_queue_edit: (item: AgentQueuedInput) => void;
   cancel_edit: () => void;
 };
 
@@ -85,7 +107,7 @@ const AgentSessionContext = createContext<AgentSessionController | null>(null);
  */
 function useAgentSessionState(
   on_message_accepted: (message: AgentMessageInput) => void,
-  on_revision_accepted: (message: AgentMessageInput) => void,
+  on_edit_accepted: (message: AgentMessageInput) => void,
 ): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [transport, set_transport] = useState<AgentTransportState>("restoring");
@@ -218,7 +240,7 @@ function useAgentSessionState(
 
   /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
   const send = async (message: AgentMessageInput): Promise<void> => {
-    if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
+    if (transport === "restoring" || !loaded_once_ref.current) {
       return;
     }
     const normalized_message = normalize_agent_message_input(message);
@@ -227,6 +249,42 @@ function useAgentSessionState(
       "send",
       () => api_fetch<AgentSessionSnapshot>("/api/agent/message", normalized_message),
       () => on_message_accepted(normalized_message),
+    );
+  };
+
+  /** 队列修改复用消息规范化与统一命令回放，成功后退出共享编辑态。 */
+  const update_queued_message = async (id: string, message: AgentMessageInput): Promise<void> => {
+    const normalized_message = normalize_agent_message_input(message);
+    if (normalized_message === null) return;
+    await execute_command(
+      "queue_update",
+      () =>
+        api_fetch<AgentSessionSnapshot>("/api/agent/queue/update", {
+          id,
+          message: normalized_message,
+        }),
+      () => on_edit_accepted(normalized_message),
+    );
+  };
+
+  /** 删除命令只提交稳定身份，权威队列由 ack 与 SSE 决定。 */
+  const delete_queued_message = async (id: string): Promise<void> => {
+    await execute_command("queue_delete", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/queue/delete", { id }),
+    );
+  };
+
+  /** renderer 只提交完整身份排列，不在本地乐观改写顺序。 */
+  const reorder_queued_messages = async (ids: readonly string[]): Promise<void> => {
+    await execute_command("queue_reorder", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/queue/reorder", { ids: [...ids] }),
+    );
+  };
+
+  /** 立即发送由后端判断走空闲 round 还是运行中 Pi steer。 */
+  const send_queued_message = async (id: string): Promise<void> => {
+    await execute_command("queue_send", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/queue/send", { id }),
     );
   };
 
@@ -247,16 +305,30 @@ function useAgentSessionState(
           entryId: entry_id,
           message: normalized_message,
         }),
-      () => on_revision_accepted(normalized_message),
+      () => on_edit_accepted(normalized_message),
     );
   };
 
-  /** 唯一恢复命令由后端根据尾部失败决定先修复压缩还是直接续跑。 */
-  const resume = async (): Promise<void> => {
+  /** 空 continue 不制造消息；可选消息由后端原子追加队尾后再恢复。 */
+  const continue_session = async (message?: AgentMessageInput): Promise<void> => {
     if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
       return;
     }
-    await execute_command("resume", () => api_fetch<AgentSessionSnapshot>("/api/agent/resume"));
+    let normalized_message: AgentMessageInput | undefined;
+    if (message !== undefined) {
+      const candidate = normalize_agent_message_input(message);
+      if (candidate === null) return;
+      normalized_message = candidate;
+    }
+    await execute_command(
+      "continue",
+      () =>
+        api_fetch<AgentSessionSnapshot>(
+          "/api/agent/continue",
+          normalized_message === undefined ? {} : { message: normalized_message },
+        ),
+      normalized_message === undefined ? undefined : () => on_message_accepted(normalized_message),
+    );
   };
 
   /** stop 失败保留仍在运行的权威快照，让用户可以继续尝试停止。 */
@@ -280,13 +352,18 @@ function useAgentSessionState(
     state: snapshot.state,
     entries: snapshot.entries,
     skills: snapshot.skills,
+    inputQueue: snapshot.inputQueue,
     taskProgress: snapshot.taskProgress,
     contextTokens: snapshot.contextTokens,
     transport,
     command,
     send,
     reviseLatestRound: revise_latest_round,
-    resume,
+    updateQueuedMessage: update_queued_message,
+    deleteQueuedMessage: delete_queued_message,
+    reorderQueuedMessages: reorder_queued_messages,
+    sendQueuedMessage: send_queued_message,
+    continue: continue_session,
     stop,
     reset,
     reconnect,
@@ -304,7 +381,7 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
   const [input_revision, set_input_revision] = useState(0);
   const [editing, set_editing] = useState<AgentInputSession["editing"]>(null);
   const saved_draft_ref = useRef<AgentMessageInput | null>(null); // 编辑期间只保存一次普通草稿
-  const edited_user_text_ref = useRef<string | null>(null); // 仅 user 修改需要替换输入历史
+  const edited_user_text_ref = useRef<string | null>(null); // user 与队列消息修改需要替换输入历史
 
   const read_draft = useCallback((): AgentMessageInput => draft_ref.current, []);
   const write_draft = useCallback((draft: AgentMessageInput): void => {
@@ -339,7 +416,16 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
         attachments: [],
       };
     }
-    set_editing({ entryId: entry.id, role });
+    set_editing({ kind: "entry", entryId: entry.id, role });
+    set_input_revision((current) => current + 1);
+  }, []);
+  /** 队列项复用唯一 Composer，并保留进入编辑前的普通草稿。 */
+  const start_queue_edit = useCallback<AgentInputSession["start_queue_edit"]>((item) => {
+    if (saved_draft_ref.current === null)
+      saved_draft_ref.current = structuredClone(draft_ref.current);
+    edited_user_text_ref.current = item.text;
+    draft_ref.current = { text: item.text, attachments: structuredClone(item.attachments) };
+    set_editing({ kind: "queue", itemId: item.id });
     set_input_revision((current) => current + 1);
   }, []);
   const cancel_edit = useCallback((): void => restore_saved_draft(), [restore_saved_draft]);
@@ -356,8 +442,8 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
     set_input_revision((current) => current + 1);
   }, []);
 
-  /** 只有 user 修改替换输入历史；两种角色成功后都退出修改态。 */
-  const accept_revision = useCallback(
+  /** user 与队列消息修改替换输入历史；assistant 只退出共享编辑态。 */
+  const accept_edit = useCallback(
     (message: AgentMessageInput): void => {
       const previous = edited_user_text_ref.current;
       if (previous !== null) {
@@ -373,13 +459,19 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
     [restore_saved_draft],
   );
 
-  const session = useAgentSessionState(accept_message, accept_revision);
+  const session = useAgentSessionState(accept_message, accept_edit);
   // 后端替换活动历史后，旧目标消失即代表修改已被其它入口受理或会话已重置。
   useEffect(() => {
-    if (editing !== null && !session.entries.some((entry) => entry.id === editing.entryId)) {
+    const target_exists =
+      editing?.kind === "queue"
+        ? session.inputQueue.items.some((item) => item.id === editing.itemId)
+        : editing?.kind === "entry"
+          ? session.entries.some((entry) => entry.id === editing.entryId)
+          : true;
+    if (!target_exists) {
       restore_saved_draft();
     }
-  }, [editing, restore_saved_draft, session.entries]);
+  }, [editing, restore_saved_draft, session.entries, session.inputQueue.items]);
   const input = useMemo<AgentInputSession>(
     () => ({
       revision: input_revision,
@@ -388,9 +480,19 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
       write_draft,
       read_history,
       start_edit,
+      start_queue_edit,
       cancel_edit,
     }),
-    [cancel_edit, editing, input_revision, read_draft, read_history, start_edit, write_draft],
+    [
+      cancel_edit,
+      editing,
+      input_revision,
+      read_draft,
+      read_history,
+      start_edit,
+      start_queue_edit,
+      write_draft,
+    ],
   );
 
   return (
@@ -427,6 +529,8 @@ function apply_agent_event(
       return normalize_snapshot(event.snapshot);
     case "session_state":
       return { ...snapshot, state: event.state };
+    case "input_queue":
+      return { ...snapshot, inputQueue: event.inputQueue };
     case "task_progress":
       return { ...snapshot, taskProgress: event.taskProgress };
     case "context_tokens":
@@ -451,12 +555,20 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     ? record["entries"].flatMap(normalize_entry)
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
+  const input_queue = normalize_input_queue(record["inputQueue"]);
   const task_progress = normalize_task_progress(record["taskProgress"]);
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
-  if (task_progress === null || context_tokens === undefined) {
+  if (input_queue === null || task_progress === null || context_tokens === undefined) {
     throw new TypeError("Agent snapshot is invalid.");
   }
-  return { state, entries, skills, taskProgress: task_progress, contextTokens: context_tokens };
+  return {
+    state,
+    entries,
+    skills,
+    inputQueue: input_queue,
+    taskProgress: task_progress,
+    contextTokens: context_tokens,
+  };
 }
 
 /** SSE 顶层判别失败时丢弃单帧，重连仍会读取权威 snapshot。 */
@@ -467,6 +579,10 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
     case "session_state":
       return { type: "session_state", state: normalize_state(record["state"]) };
+    case "input_queue": {
+      const input_queue = normalize_input_queue(record["inputQueue"]);
+      return input_queue === null ? null : { type: "input_queue", inputQueue: input_queue };
+    }
     case "task_progress": {
       const task_progress = normalize_task_progress(record["taskProgress"]);
       return task_progress === null ? null : { type: "task_progress", taskProgress: task_progress };
@@ -492,6 +608,40 @@ function normalize_task_progress(value: unknown): string[] | null {
   return value.every((item) => typeof item === "string" && item.trim() !== "") ? [...value] : null;
 }
 
+/** 队列快照整体替换；任何非法项都会拒绝该快照，避免局部重排破坏身份。 */
+function normalize_input_queue(value: unknown): AgentInputQueueSnapshot | null {
+  if (
+    !is_json_record(value) ||
+    typeof value["paused"] !== "boolean" ||
+    typeof value["canSendNow"] !== "boolean" ||
+    !Array.isArray(value["items"])
+  ) {
+    return null;
+  }
+  const items: AgentQueuedInput[] = [];
+  for (const candidate of value["items"]) {
+    if (
+      !is_json_record(candidate) ||
+      typeof candidate["id"] !== "string" ||
+      (candidate["status"] !== "queued" && candidate["status"] !== "sending") ||
+      typeof candidate["createdAt"] !== "number" ||
+      !Number.isInteger(candidate["createdAt"])
+    ) {
+      return null;
+    }
+    const message = normalize_agent_message_input(candidate);
+    if (message === null) return null;
+    items.push({
+      ...message,
+      id: candidate["id"],
+      status: candidate["status"],
+      createdAt: candidate["createdAt"],
+    });
+  }
+  if (new Set(items.map((item) => item.id)).size !== items.length) return null;
+  return { paused: value["paused"], canSendNow: value["canSendNow"], items };
+}
+
 /** null 只表示完整快照尚无运行时；undefined 表示协议字段非法。 */
 function normalize_context_tokens(value: unknown): number | null | undefined {
   if (value === null) return null;
@@ -511,26 +661,29 @@ function normalize_entry(value: unknown): AgentEntry[] {
   if (value["kind"] === "user_message") {
     const status = normalize_entry_status(value["status"]);
     const ended_at = value["endedAt"];
+    const message = normalize_agent_message_input(value);
+    if (status === null || message === null) return [];
+    const base = {
+      kind: "user_message" as const,
+      id: value["id"],
+      text: message.text,
+      attachments: message.attachments,
+      createdAt: value["createdAt"],
+    };
+    if (value["delivery"] === "steer") {
+      if (status !== "success" || typeof ended_at !== "number" || !Number.isInteger(ended_at)) {
+        return [];
+      }
+      return [{ ...base, delivery: "steer", status: "success", endedAt: ended_at }];
+    }
     if (
-      status === null ||
+      value["delivery"] !== "round" ||
       (ended_at !== null && (typeof ended_at !== "number" || !Number.isInteger(ended_at))) ||
       (status === "running") !== (ended_at === null)
     ) {
       return [];
     }
-    const message = normalize_agent_message_input(value);
-    if (message === null) return [];
-    return [
-      {
-        kind: "user_message",
-        id: value["id"],
-        text: message.text,
-        attachments: message.attachments,
-        status,
-        createdAt: value["createdAt"],
-        endedAt: ended_at,
-      },
-    ];
+    return [{ ...base, delivery: "round", status, endedAt: ended_at }];
   }
   if (value["kind"] === "assistant_message") {
     const status = normalize_entry_status(value["status"]);

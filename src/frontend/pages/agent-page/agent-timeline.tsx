@@ -24,7 +24,7 @@ type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
 type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
-type AgentRoundEntry = AssistantEntry | AgentToolEntry | ContextCompactionEntry;
+type AgentRoundEntry = UserEntry | AssistantEntry | AgentToolEntry | ContextCompactionEntry;
 type AgentRoundEntries = {
   user: UserEntry;
   entries: AgentRoundEntry[];
@@ -108,7 +108,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[] {
   const rounds: AgentRoundEntries[] = [];
   for (const entry of entries) {
-    if (entry.kind === "user_message") {
+    if (entry.kind === "user_message" && entry.delivery === "round") {
       rounds.push({ user: entry, entries: [] });
       continue;
     }
@@ -182,6 +182,23 @@ function AgentRound(props: {
         </article>
       </AgentMessageFrame>
       {entries.map((entry) => {
+        if (entry.kind === "user_message") {
+          const ranges = find_agent_mention_ranges(entry.text, props.mention_tokens);
+          return (
+            <AgentMessageFrame key={entry.id} role="user" actions={null}>
+              <article className="agent-message agent-message--user">
+                {entry.attachments.length > 0 ? (
+                  <AgentMessageAttachments mode="sent" attachments={entry.attachments} />
+                ) : null}
+                {entry.text === "" ? null : (
+                  <p className="agent-message__user-text">
+                    {render_agent_mention_text(entry.text, ranges)}
+                  </p>
+                )}
+              </article>
+            </AgentMessageFrame>
+          );
+        }
         const annotatable =
           user.status === "success" &&
           entry.kind === "assistant_message" &&
@@ -304,7 +321,7 @@ function AgentContinueEntry(props: {
 
 /** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
 const AgentEntryView = memo(function AgentEntryView(props: {
-  entry: AgentRoundEntry;
+  entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;

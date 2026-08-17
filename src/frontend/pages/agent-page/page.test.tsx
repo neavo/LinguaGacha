@@ -460,7 +460,7 @@ describe("AgentPage", () => {
   });
 
   it("压缩失败只显示原位继续入口并调用统一命令", async () => {
-    const resume = vi.fn(async () => undefined);
+    const continue_session = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [
         user_entry("user-1", "初次检查", "success", 0, 1_000),
@@ -473,7 +473,7 @@ describe("AgentPage", () => {
         user_entry("user-2", "继续检查", "error", 2_000, 3_000),
         assistant_entry("assistant-1", "部分结果", "error", 2_500),
       ],
-      resume,
+      continue: continue_session,
     });
     const continue_entries = [...view.querySelectorAll<HTMLButtonElement>(".agent-continue-entry")];
     const compaction_continue = continue_entries.find((button) =>
@@ -489,7 +489,7 @@ describe("AgentPage", () => {
 
     await act(async () => compaction_continue?.click());
 
-    expect(resume).toHaveBeenCalledOnce();
+    expect(continue_session).toHaveBeenCalledOnce();
   });
 
   it("停止命令失败时保留运行态并显示错误 Toast", async () => {
@@ -521,13 +521,43 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
+  it("暂停队列通过 Composer 空继续或追加消息后继续", async () => {
+    const continue_session = vi.fn(async () => undefined);
+    const view = await render_page({
+      continue: continue_session,
+      inputQueue: {
+        paused: true,
+        canSendNow: true,
+        items: [
+          {
+            id: "queue-1",
+            text: "已有消息",
+            attachments: [],
+            status: "queued",
+            createdAt: 1,
+          },
+        ],
+      },
+    });
+
+    await act(async () => get_button_by_label(view, "继续").click());
+    expect(continue_session).toHaveBeenLastCalledWith(undefined);
+
+    await act(async () => {
+      get_editor(view).dispatch({ changes: { from: 0, insert: "追加消息" } });
+    });
+    await vi.waitFor(() => expect(get_button_by_label(view, "继续")).toBeDefined());
+    await act(async () => get_button_by_label(view, "继续").click());
+    expect(continue_session).toHaveBeenLastCalledWith({ text: "追加消息", attachments: [] });
+  });
+
   it("失败轮次通过继续入口续跑并保留当前草稿", async () => {
     const send = vi.fn(async () => undefined);
-    const resume = vi.fn(async () => undefined);
+    const continue_session = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
-      resume,
+      continue: continue_session,
     });
     const editor = get_editor(view);
     await act(async () => {
@@ -537,7 +567,7 @@ describe("AgentPage", () => {
     if (continue_button === null) throw new Error("缺少轮次继续按钮");
     await act(async () => continue_button.click());
 
-    expect(resume).toHaveBeenCalledOnce();
+    expect(continue_session).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
     expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
   });
@@ -586,7 +616,7 @@ describe("AgentPage", () => {
       reviseLatestRound,
       input: {
         ...input,
-        editing: { entryId: "user-write", role: "user" },
+        editing: { kind: "entry", entryId: "user-write", role: "user" },
         read_draft: () => ({ text: "新输入", attachments: [] }),
       },
     });
@@ -610,7 +640,7 @@ describe("AgentPage", () => {
       input: {
         ...input,
         revision: input.revision + 1,
-        editing: { entryId: "assistant-write", role: "assistant" },
+        editing: { kind: "entry", entryId: "assistant-write", role: "assistant" },
         read_draft: () => ({ text: "新输出", attachments: [] }),
       },
     });
@@ -630,7 +660,7 @@ describe("AgentPage", () => {
       reviseLatestRound,
       input: {
         ...input,
-        editing: { entryId: "user-1", role: "user" },
+        editing: { kind: "entry", entryId: "user-1", role: "user" },
         read_draft: () => ({ text: "新输入", attachments: [] }),
       },
     });
@@ -643,6 +673,34 @@ describe("AgentPage", () => {
     });
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
+  });
+
+  it("队列项复用 Composer 修改并调用队列更新入口", async () => {
+    const updateQueuedMessage = vi.fn(async () => undefined);
+    const input = build_state().input;
+    const queued = {
+      id: "queue-1",
+      text: "原排队消息",
+      attachments: [],
+      status: "queued" as const,
+      createdAt: 1,
+    };
+    const view = await render_page({
+      inputQueue: { paused: false, canSendNow: true, items: [queued] },
+      updateQueuedMessage,
+      input: {
+        ...input,
+        editing: { kind: "queue", itemId: queued.id },
+        read_draft: () => ({ text: "新排队消息", attachments: [] }),
+      },
+    });
+
+    await act(async () => get_button_by_label(view, "agent_page.action.save_queue").click());
+
+    expect(updateQueuedMessage).toHaveBeenCalledWith("queue-1", {
+      text: "新排队消息",
+      attachments: [],
+    });
   });
 
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
@@ -737,6 +795,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       assistant_entry("assistant-1", "**变更方案**", "success", 1),
     ],
     skills,
+    inputQueue: { paused: false, canSendNow: false, items: [] },
     taskProgress: overrides.taskProgress ?? [],
     contextTokens: overrides.contextTokens ?? null,
     transport: "ready",
@@ -748,11 +807,16 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       write_draft: vi.fn(),
       read_history: () => [],
       start_edit: vi.fn(),
+      start_queue_edit: vi.fn(),
       cancel_edit: vi.fn(),
     },
     send: vi.fn(async () => undefined),
     reviseLatestRound: vi.fn(async () => undefined),
-    resume: vi.fn(async () => undefined),
+    updateQueuedMessage: vi.fn(async () => undefined),
+    deleteQueuedMessage: vi.fn(async () => undefined),
+    reorderQueuedMessages: vi.fn(async () => undefined),
+    sendQueuedMessage: vi.fn(async () => undefined),
+    continue: vi.fn(async () => undefined),
     stop: vi.fn(),
     reset: vi.fn(async () => undefined),
     reconnect: vi.fn(),
@@ -767,7 +831,16 @@ function user_entry(
   createdAt: number,
   endedAt: number | null,
 ) {
-  return { kind: "user_message" as const, id, text, attachments: [], status, createdAt, endedAt };
+  return {
+    kind: "user_message" as const,
+    id,
+    delivery: "round" as const,
+    text,
+    attachments: [],
+    status,
+    createdAt,
+    endedAt,
+  };
 }
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {

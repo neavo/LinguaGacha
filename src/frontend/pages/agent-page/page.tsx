@@ -22,6 +22,7 @@ import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
+import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
@@ -115,8 +116,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
   const compaction_failed = last_compaction?.status === "error";
+  // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
+  const can_continue_queue =
+    !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
   // 副作用确认只检查最新轮次；更早轮次不会被当前重试或输入修改再次执行。
-  const latest_user_index = agent.entries.findLastIndex((entry) => entry.kind === "user_message");
+  const latest_user_index = agent.entries.findLastIndex(
+    (entry) => entry.kind === "user_message" && entry.delivery === "round",
+  );
   const latest_round_applied_workspace = agent.entries.some(
     (entry, index) =>
       index > latest_user_index &&
@@ -184,12 +190,26 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   };
 
   /** 普通发送与当前编辑共用唯一 Composer；失败时共享输入会话保留编辑缓冲。 */
-  const send = (message: AgentMessageInput): void => {
+  const submit_message = (message: AgentMessageInput): void => {
     const editing = agent.input.editing;
     if (editing === null) {
       follow_latest();
-      void agent.send(message).catch((error: unknown) => {
-        show_command_error(error, "agent_page.error.send");
+      const request = can_continue_queue
+        ? agent.continue(
+            message.text === "" && message.attachments.length === 0 ? undefined : message,
+          )
+        : agent.send(message);
+      void request.catch((error: unknown) => {
+        show_command_error(
+          error,
+          can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
+        );
+      });
+      return;
+    }
+    if (editing.kind === "queue") {
+      void agent.updateQueuedMessage(editing.itemId, message).catch((error: unknown) => {
+        show_command_error(error, "agent_page.error.queue_update");
       });
       return;
     }
@@ -233,6 +253,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     composer_ref.current?.focus();
   };
 
+  /** 队列窄命令共享页面 Toast 映射，不污染会话状态。 */
+  const run_queue_command = (command: () => Promise<void>, fallback_key: LocaleKey): void => {
+    void command().catch((error: unknown) => show_command_error(error, fallback_key));
+  };
+
   /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
   const stop = async (): Promise<void> => {
     try {
@@ -245,7 +270,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
   const continue_latest_round = (): void => {
     follow_latest();
-    void agent.resume().catch((error: unknown) => {
+    void agent.continue().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.continue");
     });
   };
@@ -376,6 +401,28 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
       <div className="agent-page__composer-stack">
         <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
+        <AgentInputQueue
+          queue={agent.inputQueue}
+          disabled={
+            agent.command !== null || unavailable_reason !== null || compacting || compaction_failed
+          }
+          on_edit={(item) => {
+            agent.input.start_queue_edit(item);
+            composer_ref.current?.focus();
+          }}
+          on_delete={(id) =>
+            run_queue_command(() => agent.deleteQueuedMessage(id), "agent_page.error.queue_delete")
+          }
+          on_reorder={(ids) =>
+            run_queue_command(
+              () => agent.reorderQueuedMessages(ids),
+              "agent_page.error.queue_reorder",
+            )
+          }
+          on_send_now={(id) =>
+            run_queue_command(() => agent.sendQueuedMessage(id), "agent_page.error.queue_send")
+          }
+        />
         <AgentComposer
           ref={composer_ref}
           skills={agent.skills}
@@ -387,11 +434,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           compaction_failed={compaction_failed}
           unavailable_reason={unavailable_reason}
           command={agent.command}
+          can_continue_queue={can_continue_queue}
           can_reset={!agent_restoring && agent.entries.length > 0}
           context_tokens={agent.contextTokens}
           model_selection={model_selection}
           input_session={agent.input}
-          on_send={send}
+          on_send={submit_message}
           on_image_error={() => push_toast("error", t("agent_page.error.image"))}
           on_stop={stop}
           on_reset={() => set_reset_dialog_open(true)}

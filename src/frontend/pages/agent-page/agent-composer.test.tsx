@@ -20,6 +20,7 @@ type RenderComposerOptions = Partial<
   Pick<
     AgentComposerTestProps,
     | "can_reset"
+    | "can_continue_queue"
     | "command"
     | "compacting"
     | "compaction_failed"
@@ -331,7 +332,7 @@ describe("AgentComposer", () => {
 
   it("修改 assistant 时隐藏 user 专属能力并使用保存修改动作", async () => {
     const input_session = create_input_session();
-    input_session.editing = { entryId: "assistant-1", role: "assistant" };
+    input_session.editing = { kind: "entry", entryId: "assistant-1", role: "assistant" };
     input_session.write_draft({ text: "人工回复", attachments: [] });
     const view = await render_composer({ input_session });
 
@@ -557,7 +558,7 @@ describe("AgentComposer", () => {
     expect(view.querySelector(".agent-attachment")).toBeNull();
   });
 
-  it("运行态仍可编辑，只由按钮停止当前任务", async () => {
+  it("运行态有内容时发送进入队列", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
     const view = await render_composer({ running: true, on_send, on_stop });
@@ -565,8 +566,42 @@ describe("AgentComposer", () => {
     await set_document(editor, "继续补充", 4);
     expect(editor.state.readOnly).toBe(false);
     await click_send(view);
+    expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
+    expect(on_stop).not.toHaveBeenCalled();
+  });
+
+  it("运行态无内容时主按钮停止当前任务", async () => {
+    const on_send = vi.fn();
+    const on_stop = vi.fn(async () => undefined);
+    const view = await render_composer({ running: true, on_send, on_stop });
+
+    await click_send(view);
+
     expect(on_stop).toHaveBeenCalledOnce();
     expect(on_send).not.toHaveBeenCalled();
+  });
+
+  it("暂停队列有无草稿都使用继续动作", async () => {
+    const on_send = vi.fn();
+    const view = await render_composer({ can_continue_queue: true, on_send });
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    expect(submit?.disabled).toBe(false);
+    expect(submit?.getAttribute("aria-label")).toBe("agent_page.action.continue");
+    await click_send(view);
+    expect(on_send).toHaveBeenLastCalledWith({ text: "", attachments: [] });
+
+    await set_document(get_editor(view), "追加消息", 4);
+    expect(submit?.getAttribute("aria-label")).toBe("agent_page.action.continue");
+    await click_send(view);
+    expect(on_send).toHaveBeenLastCalledWith({ text: "追加消息", attachments: [] });
+  });
+
+  it("命令进行时保留稳定动作名称但不渲染鼠标提示", async () => {
+    const view = await render_composer({ can_continue_queue: true, command: "continue" });
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+
+    expect(submit?.getAttribute("aria-label")).toBe("agent_page.action.continue");
+    expect(view.querySelector(".agent-composer__footer-end [role=tooltip]")).toBeNull();
   });
 
   it("apply 运行期间禁用停止", async () => {
@@ -580,7 +615,7 @@ describe("AgentComposer", () => {
     expect(on_stop).not.toHaveBeenCalled();
   });
 
-  it("压缩期间保留草稿编辑但禁用停止，失败后阻止发送并允许切换模型", async () => {
+  it("压缩期间允许有效草稿排队但禁用空草稿停止，失败后阻止发送", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
     const view = await render_composer({ running: true, compacting: true, on_send, on_stop });
@@ -588,10 +623,11 @@ describe("AgentComposer", () => {
     await set_document(editor, "继续补充", 4);
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
     expect(editor.state.readOnly).toBe(false);
-    expect(submit?.disabled).toBe(true);
+    expect(submit?.disabled).toBe(false);
     expect(submit?.hasAttribute("aria-label")).toBe(true);
     await act(async () => submit?.click());
     expect(on_stop).not.toHaveBeenCalled();
+    expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
 
     await render_composer({
       running: false,
@@ -626,6 +662,7 @@ describe("AgentComposer", () => {
           compaction_failed={options.compaction_failed ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}
+          can_continue_queue={options.can_continue_queue ?? false}
           can_reset={options.can_reset ?? true}
           context_tokens={options.context_tokens ?? null}
           model_selection={{
@@ -679,6 +716,7 @@ function create_input_session(history: readonly string[] = []): TestAgentInputSe
     },
     read_history: () => history,
     start_edit: vi.fn(),
+    start_queue_edit: vi.fn(),
     cancel_edit: vi.fn(),
     accept_message: () => {
       draft = { text: "", attachments: [] };

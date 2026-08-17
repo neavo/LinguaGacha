@@ -43,6 +43,20 @@ export type AgentMessageInput = JsonRecord & {
   attachments: AgentMessageAttachment[];
 };
 
+/** 产品输入队列完全驻留于当前会话内存；sending 表示已交给 Pi、尚未确认消费。 */
+export type AgentQueuedInput = AgentMessageInput & {
+  id: string;
+  status: "queued" | "sending";
+  createdAt: number;
+};
+
+/** paused 只阻止自动续取；canSendNow 表示当前运行时已经到达 Pi 可 steer 的阶段。 */
+export type AgentInputQueueSnapshot = JsonRecord & {
+  paused: boolean;
+  canSendNow: boolean;
+  items: AgentQueuedInput[];
+};
+
 /** 最新轮次修订同时携带目标身份与完整替换内容。 */
 export type AgentRevisionRequest = JsonRecord & {
   entryId: string;
@@ -72,16 +86,21 @@ export type AgentContextCompactionEntry = JsonRecord & {
   createdAt: number;
 };
 
+/** round 与 steer 共用的不可变用户消息字段。 */
+type AgentUserEntryBase = AgentMessageInput & {
+  kind: "user_message";
+  id: string;
+  createdAt: number;
+};
+
 /** 后端按真实事件顺序追加，renderer 直接按数组渲染的单一时间线条目。 */
 export type AgentEntry = JsonRecord &
   (
-    | (AgentMessageInput & {
-        kind: "user_message";
-        id: string;
-        status: AgentEntryStatus;
-        createdAt: number;
-        endedAt: number | null;
-      })
+    | (AgentUserEntryBase &
+        (
+          | { delivery: "round"; status: AgentEntryStatus; endedAt: number | null }
+          | { delivery: "steer"; status: "success"; endedAt: number }
+        ))
     | {
         kind: "assistant_message";
         id: string;
@@ -98,6 +117,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  inputQueue: AgentInputQueueSnapshot;
   taskProgress: string[]; // 当前动态队列的全部待办标签；空数组不占用固定展示位
   contextTokens: number | null; // 当前模型可见历史的估算用量
 };
@@ -107,6 +127,7 @@ export type AgentSessionEvent = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
+    | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "task_progress"; taskProgress: string[] }
     | { type: "context_tokens"; contextTokens: number }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }

@@ -60,8 +60,14 @@ export function register_api_routes(context: ApiRouteContext): void {
     hono_context.json(ok(services.agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
+  context.postJson("/api/agent/queue/update", (body) => services.agent.update_queued_message(body));
+  context.postJson("/api/agent/queue/delete", (body) => services.agent.delete_queued_message(body));
+  context.postJson("/api/agent/queue/reorder", (body) =>
+    services.agent.reorder_queued_messages(body),
+  );
+  context.postJson("/api/agent/queue/send", (body) => services.agent.send_queued_message(body));
   context.postJson("/api/agent/round/revise", (body) => services.agent.revise_latest_round(body));
-  context.postJson("/api/agent/resume", () => services.agent.resume());
+  context.postJson("/api/agent/continue", (body) => services.agent.continue_session(body));
   context.postJson("/api/agent/stop", () => services.agent.stop());
   context.postJson("/api/agent/reset", () => services.agent.reset());
 

@@ -128,6 +128,33 @@ describe("AgentTimeline", () => {
     expect(message?.querySelector(".agent-attachment-strip .agent-message__user-text")).toBeNull();
   });
 
+  it("steer user 显示在当前轮次中但不建立轮次操作或尾标", async () => {
+    const steer: AgentEntry = {
+      kind: "user_message",
+      id: "user-steer",
+      delivery: "steer",
+      text: "立即补充",
+      attachments: [],
+      status: "success",
+      createdAt: 2_000,
+      endedAt: 2_000,
+    };
+    const view = await render_timeline([
+      user_entry("user-round", "开始", "success", 0, 4_000),
+      assistant_entry("assistant-first", "处理中", "success", 1_000),
+      steer,
+      assistant_entry("assistant-final", "完成", "success", 3_000),
+    ]);
+
+    const steer_message = [...view.querySelectorAll<HTMLElement>(".agent-message--user")].find(
+      (message) => message.textContent === "立即补充",
+    );
+    const steer_frame = steer_message?.closest(".agent-message-frame");
+    expect(steer_message).toBeDefined();
+    expect(steer_frame?.querySelector(".agent-message-actions")).toBeNull();
+    expect(view.querySelectorAll(".agent-round-footer")).toHaveLength(1);
+  });
+
   it("只让成功轮次的最终助手正文进入可批注边界", async () => {
     const view = await render_timeline([
       user_entry("user-1", "开始", "success", 0, 4_000),
@@ -567,6 +594,7 @@ function user_entry(
   return {
     kind: "user_message" as const,
     id,
+    delivery: "round" as const,
     text,
     attachments: images.map((webpBase64) => ({ kind: "image" as const, webpBase64 })),
     status,

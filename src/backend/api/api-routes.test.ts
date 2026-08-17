@@ -20,8 +20,12 @@ const POST_PATHS = new Set([
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
+  "/api/agent/queue/update",
+  "/api/agent/queue/delete",
+  "/api/agent/queue/reorder",
+  "/api/agent/queue/send",
   "/api/agent/round/revise",
-  "/api/agent/resume",
+  "/api/agent/continue",
   "/api/agent/stop",
   "/api/agent/reset",
   "/api/session/project/manifest",
@@ -134,15 +138,39 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
+    const queued = { id: "queue-1" };
+    expect(read_post_handler(fixture.post_json, "/api/agent/queue/delete")(queued)).toEqual({
+      state: "running",
+    });
+    expect(fixture.delete_queued_message).toHaveBeenCalledWith(queued);
+    const update = { id: "queue-1", message: { text: "修改", attachments: [] } };
+    expect(read_post_handler(fixture.post_json, "/api/agent/queue/update")(update)).toEqual({
+      state: "running",
+    });
+    expect(fixture.update_queued_message).toHaveBeenCalledWith(update);
+    const reorder = { ids: ["queue-2", "queue-1"] };
+    expect(read_post_handler(fixture.post_json, "/api/agent/queue/reorder")(reorder)).toEqual({
+      state: "running",
+    });
+    expect(fixture.reorder_queued_messages).toHaveBeenCalledWith(reorder);
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/queue/send")(queued),
+    ).resolves.toEqual({
+      state: "running",
+    });
+    expect(fixture.send_queued_message).toHaveBeenCalledWith(queued);
+    const continuation = { message: { text: "继续后追加", attachments: [] } };
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/continue")(continuation),
+    ).resolves.toEqual({
+      state: "running",
+    });
+    expect(fixture.continue_session).toHaveBeenCalledWith(continuation);
     const revision = { entryId: "assistant-1", message: { text: "修订", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
     ).resolves.toEqual({ state: "idle" });
     expect(fixture.revise_latest_round).toHaveBeenCalledWith(revision);
-    await expect(read_post_handler(fixture.post_json, "/api/agent/resume")({})).resolves.toEqual({
-      state: "running",
-    });
-    expect(fixture.resume).toHaveBeenCalledOnce();
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
       state: "idle",
     });
@@ -201,7 +229,11 @@ function create_route_fixture() {
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(async () => ({ state: "running" }));
   const revise_latest_round = vi.fn(async () => ({ state: "idle" }));
-  const resume = vi.fn(async () => ({ state: "running" }));
+  const update_queued_message = vi.fn(() => ({ state: "running" }));
+  const delete_queued_message = vi.fn(() => ({ state: "running" }));
+  const reorder_queued_messages = vi.fn(() => ({ state: "running" }));
+  const send_queued_message = vi.fn(async () => ({ state: "running" }));
+  const continue_session = vi.fn(async () => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
   const reset = vi.fn(async () => ({
     state: "idle",
@@ -243,8 +275,12 @@ function create_route_fixture() {
         contextTokens: null,
       })),
       send_message,
+      update_queued_message,
+      delete_queued_message,
+      reorder_queued_messages,
+      send_queued_message,
+      continue_session,
       revise_latest_round,
-      resume,
       stop,
       reset,
     },
@@ -266,10 +302,14 @@ function create_route_fixture() {
   return {
     get,
     post_json,
+    continue_session,
+    delete_queued_message,
     revise_latest_round,
-    resume,
     reset,
     send_message,
+    send_queued_message,
+    reorder_queued_messages,
+    update_queued_message,
     source_file_summary,
     summarize_source_files,
     start_task,
