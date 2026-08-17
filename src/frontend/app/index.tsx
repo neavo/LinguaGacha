@@ -26,6 +26,7 @@ import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
 } from "@frontend/app/feedback/desktop-toast";
+import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import "@frontend/app/shell/app-shell.css";
 import type { RouteId } from "@frontend/app/navigation/types";
@@ -565,6 +566,7 @@ function AppContent(): JSX.Element {
                 navigate_to_route={handle_select_route}
               >
                 <AgentSessionProvider>
+                  <AgentCompletionAttention />
                   <ProjectSessionUiStateProvider>
                     <WorkbenchTasksSessionProvider>
                       <QualityRuleStatisticsProvider>

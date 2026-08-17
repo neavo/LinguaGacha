@@ -6,6 +6,7 @@ import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_REQUEST_USER_ATTENTION,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
@@ -30,6 +31,7 @@ const electron_mock = vi.hoisted(() => {
     show_open_dialog: vi.fn(),
     show_save_dialog: vi.fn(),
     open_external: vi.fn(),
+    shell_beep: vi.fn(),
     reset: () => {
       send_handlers.clear();
       invoke_handlers.clear();
@@ -69,6 +71,7 @@ vi.mock("electron", () => {
     },
     shell: {
       openExternal: electron_mock.open_external,
+      beep: electron_mock.shell_beep,
     },
   };
 });
@@ -106,6 +109,45 @@ describe("桌面 IPC 宿主", () => {
     expect(electron_mock.app_quit).toHaveBeenCalledTimes(1);
     expect(log_window_host.toggle).toHaveBeenCalledTimes(1);
     expect(electron_mock.open_external).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
+  it("窗口未聚焦时请求一次系统提示并闪烁窗口，聚焦时保持安静", async () => {
+    const target_window = {
+      isDestroyed: vi.fn(() => false),
+      isFocused: vi.fn(() => false),
+      flashFrame: vi.fn(),
+    };
+    const renderer_contents = { id: "renderer-contents" };
+    electron_mock.browser_window_from_web_contents.mockReturnValue(target_window);
+    await register_handlers();
+
+    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: renderer_contents });
+
+    expect(electron_mock.shell_beep).toHaveBeenCalledTimes(1);
+    expect(target_window.flashFrame).toHaveBeenCalledWith(true);
+
+    target_window.isFocused.mockReturnValue(true);
+    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: renderer_contents });
+
+    expect(electron_mock.shell_beep).toHaveBeenCalledTimes(1);
+    expect(target_window.flashFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it("窗口已销毁或 IPC sender 已失联时忽略提醒", async () => {
+    const destroyed_window = {
+      isDestroyed: vi.fn(() => true),
+      isFocused: vi.fn(() => false),
+      flashFrame: vi.fn(),
+    };
+    await register_handlers();
+
+    electron_mock.browser_window_from_web_contents.mockReturnValueOnce(null);
+    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: { id: "orphan" } });
+    electron_mock.browser_window_from_web_contents.mockReturnValueOnce(destroyed_window);
+    emit_send(IPC_CHANNEL_REQUEST_USER_ATTENTION, { sender: { id: "destroyed" } });
+
+    expect(electron_mock.shell_beep).not.toHaveBeenCalled();
+    expect(destroyed_window.flashFrame).not.toHaveBeenCalled();
   });
 
   it("更新下载 IPC 通过更新服务执行并向当前 renderer 推送进度", async () => {

@@ -320,6 +320,11 @@ function register_window_events(
 ): void {
   register_text_context_menu(target_window);
 
+  target_window.on("focus", () => {
+    // requestUserAttention 只负责开始闪烁，窗口回到前台时由宿主统一停止
+    target_window.flashFrame(false);
+  });
+
   target_window.on("close", (event) => {
     // 日志窗口和退出中的应用不能进入主窗口的网页关闭确认流程
     if (!options.confirmOnClose) {

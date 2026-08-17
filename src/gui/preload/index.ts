@@ -12,6 +12,7 @@ import {
   IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
   IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
+  IPC_CHANNEL_REQUEST_USER_ATTENTION,
 } from "../gui-ipc-contract";
 import { resolve_backend_api_base_url_from_argv } from "../../backend/api/api-base-url";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
@@ -58,6 +59,12 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
     }
 
     ipcRenderer.send(IPC_CHANNEL_TITLE_BAR_THEME, theme_mode);
+  },
+  /**
+   * 请求 main 在窗口未聚焦时播放一次系统提示并吸引任务栏注意力
+   */
+  requestUserAttention(): void {
+    ipcRenderer.send(IPC_CHANNEL_REQUEST_USER_ATTENTION);
   },
   /**
    * 请求主进程退出应用，避免 renderer 直接触碰 Electron
