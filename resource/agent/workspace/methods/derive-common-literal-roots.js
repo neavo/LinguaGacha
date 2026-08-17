@@ -2,7 +2,7 @@
 const MIN_FORM_COUNT = 2;
 
 // 只为已经确认语义相关的显式词形枚举候选，不推断关系或选择最终词根。
-async function runRecipe(_workspace, args) {
+async function runWorkspaceMethod(_workspace, args) {
   if (
     !Array.isArray(args.forms) ||
     args.forms.length < MIN_FORM_COUNT ||
@@ -71,4 +71,4 @@ async function runRecipe(_workspace, args) {
 }
 
 // runner 在同一函数体末尾追加真实调用；这里让独立资源的静态检查看到消费者。
-void runRecipe;
+void runWorkspaceMethod;

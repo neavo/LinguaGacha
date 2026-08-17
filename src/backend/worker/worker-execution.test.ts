@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  build_agent_related_item_search_worker_entry_url_from_desktop_bundle_dir,
   build_backend_runtime_worker_entry_url_from_desktop_bundle_dir,
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
@@ -39,5 +40,8 @@ describe("worker-execution", () => {
     expect(build_backend_runtime_worker_entry_url_from_desktop_bundle_dir(bundle_root)).toEqual(
       pathToFileURL(path.join(bundle_root, "backend-runtime-worker-entry.js")),
     );
+    expect(
+      build_agent_related_item_search_worker_entry_url_from_desktop_bundle_dir(bundle_root),
+    ).toEqual(pathToFileURL(path.join(bundle_root, "agent-related-item-search-worker-entry.js")));
   });
 });

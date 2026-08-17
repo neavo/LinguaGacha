@@ -1,5 +1,5 @@
 // 固定读取目标在同文件自然顺序中的前后各两条非空原文，保持与产品上下文口径一致。
-async function runRecipe(workspace, args) {
+async function runWorkspaceMethod(workspace, args) {
   const contract = workspace.contract;
   if (!Array.isArray(args.item_ids)) throw new Error("item_ids 必须是数组");
   const targetIds = new Set(args.item_ids);
@@ -64,4 +64,4 @@ async function runRecipe(workspace, args) {
 }
 
 // runner 在同一函数体末尾追加真实调用；这里让独立资源的静态检查看到消费者。
-void runRecipe;
+void runWorkspaceMethod;

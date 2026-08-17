@@ -78,14 +78,14 @@ finalize:changes   生成方案、完成授权路径并核对结果
 
 ## 确定性结构聚类
 
-事实入账后、模型逐项判断前，按 kind 调用 `workspace.runRecipe("query-quality-rule-groups", ...)`：
+事实入账后、模型逐项判断前，按 kind 调用 `workspace.groupQualityRuleEntries(...)`：
 
 - review 既有规则时可以省略 `entries` 并用 `target_entry_ids` 限定目标；范围外成员只作共同审查证据。
 - create 或出现 candidate 时，把相关 existing 与 candidate facts 程序化投影为同一 `{ entry_id, src, case_sensitive? }` 数组；两类条目必须使用同一算法。
-- recipe 返回稳定、互斥、最多 16 条的 group。超大强 component 保留共同 `component_ids` 并分组，通过 `cross_group_relations` 返回被切开的直接边。
+- 方法返回稳定、互斥、最多 16 条的 group。超大强 component 保留共同 `component_ids` 并分组，通过 `cross_group_relations` 返回被切开的直接边。
 - `equivalent`、`contains` 和 `shared_root` 只说明共同审查原因，不证明同义、必要或可合并。弱关系不传递；每个 fact 独立决定，单项失败或 blocked 不得沿 group、component 或跨组关系传播。
 
-glossary 组内确认一个明确子集语义相关后，才调用 `derive-common-literal-roots` 枚举合并候选，再用 `workspace.matchLiterals` 验证真实覆盖。结构组的机械 shared root 不能直接成为最终规则。text_preserve 的正则源码不参与包含或公共字符关系，只把完全相同的源码作为 equivalent 共同审查。
+glossary 组内确认一个明确子集语义相关后，才调用 `workspace.deriveCommonLiteralRoots({ forms })` 枚举合并候选，再用 `workspace.matchLiterals` 验证真实覆盖。结构组的机械 shared root 不能直接成为最终规则。text_preserve 的正则源码不参与包含或公共字符关系，只把完全相同的源码作为 equivalent 共同审查。
 
 ## 动态发现闭环
 
@@ -112,6 +112,7 @@ glossary 组内确认一个明确子集语义相关后，才调用 `derive-commo
 对不能直接决定的 fact 依次执行：
 
 1. 围绕缺失维度批量取得完整匹配与有限代表语境；
+   需要身份、别名、定义或远距离关系语境时，可以批量调用 `workspace.findRelatedItems` 补充候选位置，再按 item id 读取权威事实。相关排序只产生 observation 或可执行 derived probe，不能让 probe 标记 exhausted，也不能用于证明 residual 完整或事实不存在。
 2. 合理未知取值不改变最终字段时采用稳健直接值；
 3. glossary 的适用条件能由翻译输入判断时，以 `info` 形成 conditional；
 4. 缩小连续字面边界或正则，或拆出行为确定的独立事实；

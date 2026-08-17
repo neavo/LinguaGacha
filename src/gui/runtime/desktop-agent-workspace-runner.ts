@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { BrowserWindow, protocol, session, type Session } from "electron";
 
 import type { JsonValue } from "../../domain/json";
@@ -11,6 +13,7 @@ import {
   AgentWorkspaceTransactionError,
   DesktopAgentWorkspaceFiles,
 } from "./desktop-agent-workspace-files";
+import { DesktopAgentRelatedItemSearch } from "./desktop-agent-related-item-search";
 
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
@@ -41,10 +44,15 @@ export class DesktopAgentWorkspaceRunner {
   private readonly runner_session: Session; // 不复用默认 session 的 cookie、代理状态或权限
   private active_files: DesktopAgentWorkspaceFiles | null = null; // protocol 只映射当前合并视图
   private active_window: BrowserWindow | null = null; // abort / dispose 共享的唯一 renderer 句柄
+  private readonly related_item_search: DesktopAgentRelatedItemSearch | null;
   private running = false; // 在首个 await 前占位，阻止并发请求同时通过空闲检查
 
   /** 注册私有文件协议，并在 session 层关闭网络、权限与下载。 */
-  public constructor() {
+  public constructor(options: { relatedItemSearchWorkerEntryUrl?: URL } = {}) {
+    this.related_item_search =
+      options.relatedItemSearchWorkerEntryUrl === undefined
+        ? null
+        : new DesktopAgentRelatedItemSearch(options.relatedItemSearchWorkerEntryUrl);
     this.runner_session = session.fromPartition(AGENT_WORKSPACE_PARTITION, { cache: false });
     this.runner_session.protocol.handle(AGENT_WORKSPACE_SCHEME, (request) =>
       this.handle_protocol_request(request),
@@ -81,14 +89,31 @@ export class DesktopAgentWorkspaceRunner {
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
     let files: DesktopAgentWorkspaceFiles;
     try {
-      files = await DesktopAgentWorkspaceFiles.open(request.workspacePath);
+      files = await DesktopAgentWorkspaceFiles.open(
+        request.workspacePath,
+        this.related_item_search === null
+          ? null
+          : async (workspace_path, search_request, search_signal) =>
+              await this.related_item_search!.search(
+                {
+                  workspacePath: workspace_path,
+                  indexPath: path.join(
+                    path.dirname(workspace_path),
+                    "related-item-search",
+                    "index.sqlite",
+                  ),
+                  request: search_request,
+                },
+                search_signal,
+              ),
+      );
     } catch (error) {
       return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
 
-    let recipe_sources: Record<string, string>;
+    let method_sources: Record<string, string>;
     try {
-      recipe_sources = await files.read_recipe_sources();
+      method_sources = await files.read_method_sources();
     } catch (error) {
       await files.rollback();
       return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
@@ -135,7 +160,7 @@ export class DesktopAgentWorkspaceRunner {
       await target_window.loadURL(AGENT_WORKSPACE_URL);
       signal.throwIfAborted();
       const serialized = await target_window.webContents.executeJavaScript(
-        build_workspace_program(request.script, recipe_sources),
+        build_workspace_program(request.script, method_sources),
         true,
       );
       signal.throwIfAborted();
@@ -211,6 +236,7 @@ export class DesktopAgentWorkspaceRunner {
     this.active_window?.destroy();
     this.active_window = null;
     this.active_files = null;
+    this.related_item_search?.dispose();
     this.runner_session.protocol.unhandle(AGENT_WORKSPACE_SCHEME);
   }
 
@@ -273,7 +299,7 @@ function response_text(status: number, text: string): Response {
 /** 模型提供完整 main 入口；单次调用不落盘、不建立长期 REPL。 */
 function build_workspace_program(
   script: string,
-  recipe_sources: Readonly<Record<string, string>>,
+  method_sources: Readonly<Record<string, string>>,
 ): string {
   return `
 (async () => {
@@ -311,9 +337,9 @@ function build_workspace_program(
   async function* iterateJsonl(filePath) {
     for await (const line of iterateLines(filePath)) if (line.trim() !== "") yield JSON.parse(line);
   }
-  // contract 从当前磁盘快照读取；recipe 与自由脚本不会各自维护第二份声明。
+  // contract 从当前磁盘快照读取；发布方法与自由脚本不会各自维护第二份业务声明。
   const contract = await readJson("contract.json");
-  // recipe 只获得冻结的读取面，自由脚本在同一基础上追加事务写方法。
+  // 发布方法只获得冻结的读取面，自由脚本在同一基础上追加事务写方法。
   const readonlyWorkspace = Object.freeze({
     contract,
     readText,
@@ -349,24 +375,24 @@ function build_workspace_program(
     await request("/files/" + encodePath(filePath), { method: "DELETE" });
   };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  // 发布 recipe 只获得只读 facade；同一脚本内按名称首次调用时编译并复用。
-  const recipeSources = Object.freeze(${JSON.stringify(recipe_sources)});
-  const compiledRecipes = new Map();
-  const runRecipe = async (name, args) => {
-    if (typeof name !== "string" || !Object.hasOwn(recipeSources, name)) {
-      throw new Error("未知 workspace recipe：" + String(name));
-    }
+  // 发布方法只获得只读 facade；同一脚本内按名称首次调用时编译并复用。
+  const methodSources = Object.freeze(${JSON.stringify(method_sources)});
+  const compiledMethods = new Map();
+  const callPublishedMethod = async (name, args) => {
     if (typeof args !== "object" || args === null || Array.isArray(args)) {
-      throw new TypeError("recipe args 必须是对象。");
+      throw new TypeError(name + " args 必须是对象。");
     }
-    let recipe = compiledRecipes.get(name);
-    if (recipe === undefined) {
-      const source = recipeSources[name] + "\\nreturn await runRecipe(workspace, args);";
-      recipe = new AsyncFunction("workspace", "args", source);
-      compiledRecipes.set(name, recipe);
+    let method = compiledMethods.get(name);
+    if (method === undefined) {
+      const source = methodSources[name] + "\\nreturn await runWorkspaceMethod(workspace, args);";
+      method = new AsyncFunction("workspace", "args", source);
+      compiledMethods.set(name, method);
     }
-    return await recipe(readonlyWorkspace, args);
+    return await method(readonlyWorkspace, args);
   };
+  const publishedMethods = Object.fromEntries(
+    Object.keys(methodSources).map((name) => [name, async (args) => callPublishedMethod(name, args)]),
+  );
   // 正式匹配留在 Electron main，renderer 只补默认值并转发结构化参数。
   const matchLiterals = async (args) => {
     const response = await request("/__match_literals__", {
@@ -380,14 +406,29 @@ function build_workspace_program(
     });
     return await response.json();
   };
+  const findRelatedItems = async (args) => {
+    const response = await request("/__find_related_items__", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...args,
+        file_paths: args?.file_paths ?? [],
+        limit: args?.limit ?? contract.limits.related_item_search.results_default,
+        context_items:
+          args?.context_items ?? contract.limits.related_item_search.context_items_default,
+      }),
+    });
+    return await response.json();
+  };
   const workspace = Object.freeze({
     ...readonlyWorkspace,
     writeText,
     writeJson,
     writeJsonl,
     remove,
-    runRecipe,
+    ...publishedMethods,
     matchLiterals,
+    findRelatedItems,
   });
   // 括号把输入限制为单一函数表达式；解析失败统一返回可修复的公开入口错误。
   let entrypoint;

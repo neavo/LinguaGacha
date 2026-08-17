@@ -16,7 +16,6 @@ import {
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_FIELDS,
-  AGENT_WORKSPACE_RECIPE_PATHS,
   project_agent_workspace_item,
   project_agent_workspace_quality_entry,
   project_agent_workspace_warning,
@@ -115,23 +114,15 @@ describe("Agent 工作区 contract", () => {
     }
   });
 
-  it("contract 对齐共享硬限制、保留 recipe 且不声明固定脚本 SDK", () => {
+  it("contract 对齐共享硬限制且不重复声明固定脚本 SDK", () => {
     const limits = read_json_record(AGENT_WORKSPACE_CONTRACT["limits"]);
-    const recipes = read_json_record(AGENT_WORKSPACE_CONTRACT["recipes"]);
 
     expect(limits).toMatchObject({
       result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
       literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
     });
     expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("script_api");
-    for (const [name, recipe_path] of Object.entries(AGENT_WORKSPACE_RECIPE_PATHS)) {
-      expect(read_json_record(recipes[name])).toMatchObject({
-        path: recipe_path,
-        purpose: expect.any(String),
-        parameters: expect.any(Object),
-        returns: expect.any(String),
-      });
-    }
+    expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("recipes");
   });
 
   it("contract 为无 skill 写入声明 item 副作用与领域提交软建议", () => {

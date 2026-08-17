@@ -19,11 +19,59 @@ export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 /** Backend 与 Electron main 共用的对话级任务目录挂载名。 */
 export const AGENT_WORKSPACE_TASK_ROOT = "task";
 
+/** 随应用发布的脚本方法实现；路径只供 Backend 与 Electron 宿主装配。 */
+export const AGENT_WORKSPACE_METHOD_RESOURCE_PATHS = Object.freeze({
+  queryItems: "methods/query-items.js",
+  queryItemContexts: "methods/query-item-contexts.js",
+  groupQualityRuleEntries: "methods/query-quality-rule-groups.js",
+  deriveCommonLiteralRoots: "methods/derive-common-literal-roots.js",
+} as const);
+
+/** 沙箱协议、索引 worker 与模型 SDK 共用的输入输出硬门。 */
+export const AGENT_RELATED_ITEM_SEARCH_LIMITS = Object.freeze({
+  queriesMax: 8,
+  queryCharactersMax: 500,
+  filePathsMax: 100,
+  resultsDefault: 10,
+  resultsMax: 20,
+  contextItemsDefault: 2,
+  contextItemsMax: 2,
+  excerptCharactersMax: 600,
+} as const);
+
+/** Electron main 校验后交给相关搜索 worker 的完整请求。 */
+export type AgentRelatedItemSearchRequest = Readonly<{
+  queries: ReadonlyArray<Readonly<{ key: string; text: string }>>;
+  file_paths: readonly string[];
+  limit: number;
+  context_items: number;
+}>;
+
+/** 相关排序只返回可继续读取的 item 锚点，不声明完整召回语义。 */
+export type AgentRelatedItemSearchResult = Readonly<{
+  indexed_item_count: number;
+  queries: ReadonlyArray<
+    Readonly<{
+      key: string;
+      results: ReadonlyArray<
+        Readonly<{
+          rank: number;
+          anchor_item_id: number;
+          file_path: string;
+          matched_query_terms: readonly string[];
+          source_excerpt: string;
+          context_item_ids: readonly number[];
+        }>
+      >;
+    }>
+  >;
+}>;
+
 /** workspace_script 在首次调用前通过工具 Schema 公开的完整固定 SDK。 */
 export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
   members: Object.freeze({
     contract:
-      ": WorkspaceContract（当前工作区的 limits、datasets、changes、effects、guidance、apply 与 recipes 契约）",
+      ": WorkspaceContract（当前工作区的 limits、datasets、changes、effects、guidance 与 apply 契约）",
     readText: "(path: string): Promise<string>",
     readJson: "(path: string): Promise<JsonValue>",
     iterateLines: "(path: string): AsyncIterable<string>",
@@ -34,7 +82,16 @@ export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
       "(path: string, rows: Iterable<JsonValue> | AsyncIterable<JsonValue>): Promise<void>",
     list: "(path?: string): Promise<Array<{ name: string, type: 'file' | 'directory', size_bytes?: number }>>",
     remove: "(path: string): Promise<void>",
-    runRecipe: "(name: string, args: object): Promise<JsonValue>",
+    queryItems:
+      "(args: { filters?: { item_ids?: number[], statuses?: string[], file_paths?: string[], warning_types?: string[] }, search?: { keywords?: string[], scope?: 'src' | 'dst' | 'all' }, include_warnings?: boolean, offset?: number, limit?: number }): Promise<{ total_item_count: number, items: object[], next_offset?: number }>",
+    queryItemContexts:
+      "(args: { item_ids: number[] }): Promise<{ contexts: object[], items: object[], missing_item_ids: number[] }>",
+    groupQualityRuleEntries:
+      "(args: { kind: 'glossary' | 'text_preserve', entries?: object[], target_entry_ids?: string[], offset?: number, limit?: number }): Promise<JsonValue>",
+    deriveCommonLiteralRoots:
+      "(args: { forms: string[] }): Promise<{ candidates: Array<{ root: string, grapheme_length: number }> }>",
+    findRelatedItems:
+      "(args: { queries: Array<{ key: string, text: string }>, file_paths?: string[], limit?: number, context_items?: 0 | 1 | 2 }): Promise<{ indexed_item_count: number, queries: Array<{ key: string, results: Array<{ rank: number, anchor_item_id: number, file_path: string, matched_query_terms: string[], source_excerpt: string, context_item_ids: number[] }> }> }>；有界启发式相关性排序，可能漏召回；精确完整匹配使用 matchLiterals",
     matchLiterals:
       "(args: { patterns: Array<{ key: string, text: string, case_sensitive: boolean }>; examples_per_pattern?: number }): Promise<{ scanned_item_count: number; matched_item_count: number; patterns: Array<{ key: string; matched_item_count: number; field_item_counts: { src: number; name_src: number }; example_matches: Array<{ item_id: number; field: 'src' | 'name_src'; ranges: Array<{ start: number; end: number }> }> }> }>",
   }),

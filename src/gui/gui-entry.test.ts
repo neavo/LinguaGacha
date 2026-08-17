@@ -4,6 +4,8 @@ import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
 import { run_gui_entry } from "./gui-entry";
 
+const RELATED_ITEM_SEARCH_WORKER_URL = new URL("file:///related-item-search-worker.js");
+
 const mocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
   const app_listeners = new Map<string, Listener>();
@@ -46,7 +48,12 @@ const mocks = vi.hoisted(() => {
   const register_agent_workspace_scheme = vi.fn();
   const agent_workspace_execute = vi.fn(async () => ({ status: "success", result: null }));
   const agent_workspace_dispose = vi.fn();
+  const agent_workspace_options: Record<string, unknown>[] = [];
   class DesktopAgentWorkspaceRunner {
+    constructor(options: Record<string, unknown>) {
+      agent_workspace_options.push(options);
+    }
+
     run = agent_workspace_execute;
     dispose = agent_workspace_dispose;
   }
@@ -70,6 +77,7 @@ const mocks = vi.hoisted(() => {
     DesktopAgentWorkspaceRunner,
     agent_workspace_execute,
     agent_workspace_dispose,
+    agent_workspace_options,
     app_exit: vi.fn(),
     app_quit: vi.fn(),
     resolve_proxy: vi.fn(async () => "DIRECT"),
@@ -139,6 +147,7 @@ describe("run_gui_entry", () => {
     mocks.app_listeners.clear();
     mocks.backend_instances.length = 0;
     mocks.update_options.length = 0;
+    mocks.agent_workspace_options.length = 0;
     mocks.reset_backend_stopped();
     vi.clearAllMocks();
     mocks.backend_start.mockResolvedValue(mocks.ready);
@@ -149,6 +158,7 @@ describe("run_gui_entry", () => {
 
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
+      agentRelatedItemSearchWorkerEntryUrl: RELATED_ITEM_SEARCH_WORKER_URL,
       backendRuntimeWorkerEntryUrl: worker_url,
     });
     await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
@@ -159,6 +169,11 @@ describe("run_gui_entry", () => {
       runAgentWorkspace: expect.any(Function),
     });
     expect(mocks.register_agent_workspace_scheme).toHaveBeenCalledOnce();
+    expect(mocks.agent_workspace_options).toEqual([
+      {
+        relatedItemSearchWorkerEntryUrl: RELATED_ITEM_SEARCH_WORKER_URL,
+      },
+    ]);
     expect(mocks.update_options).toEqual([
       {
         appRoot: process.cwd(),
@@ -198,6 +213,7 @@ describe("run_gui_entry", () => {
 
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
+      agentRelatedItemSearchWorkerEntryUrl: RELATED_ITEM_SEARCH_WORKER_URL,
       backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
     });
     await vi.waitFor(() => expect(mocks.backend_start).toHaveBeenCalledOnce());
@@ -212,6 +228,7 @@ describe("run_gui_entry", () => {
   it("before-quit 先阻止原生退出，等待 Backend 停止后再退出", async () => {
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
+      agentRelatedItemSearchWorkerEntryUrl: RELATED_ITEM_SEARCH_WORKER_URL,
       backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
     });
     await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
@@ -233,6 +250,7 @@ describe("run_gui_entry", () => {
   it("Backend 意外退出时显示原生错误并走故障退出码", async () => {
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
+      agentRelatedItemSearchWorkerEntryUrl: RELATED_ITEM_SEARCH_WORKER_URL,
       backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
     });
     await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());

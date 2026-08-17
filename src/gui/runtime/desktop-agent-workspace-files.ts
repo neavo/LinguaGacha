@@ -6,8 +6,12 @@ import { pipeline } from "node:stream/promises";
 
 import { is_json_record } from "../../domain/json";
 import {
+  AGENT_RELATED_ITEM_SEARCH_LIMITS,
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_METHOD_RESOURCE_PATHS,
   AGENT_WORKSPACE_TASK_ROOT,
+  type AgentRelatedItemSearchRequest,
+  type AgentRelatedItemSearchResult,
 } from "../../shared/backend-runtime";
 import {
   compile_literal_patterns,
@@ -19,7 +23,6 @@ import { iterate_utf8_lf_lines } from "../../shared/utils/text-tool";
 /** Electron main 只解析建立文件权限和正式匹配入口所需的 contract 子集。 */
 type WorkspaceContract = {
   changes?: Record<string, Record<string, { path?: unknown }>>; // Backend 声明的固定 change 文件
-  recipes?: Record<string, { path?: unknown }>; // Backend 声明的发布 recipe
   datasets?: { items?: { path?: unknown } }; // 正式字面匹配只扫描固定 items 快照
 };
 
@@ -47,6 +50,13 @@ type LiteralMatchResult = {
   matched_item_count: number;
   patterns: LiteralMatchPatternResult[];
 };
+
+/** 文件协议只依赖相关搜索结果，不感知 Worker 或 SQLite 生命周期。 */
+export type DesktopAgentRelatedItemSearchPort = (
+  workspace_path: string,
+  request: AgentRelatedItemSearchRequest,
+  signal: AbortSignal,
+) => Promise<AgentRelatedItemSearchResult>;
 
 type CommitRecord = {
   root: string; // 本次替换的最上层非重叠相对路径
@@ -83,7 +93,7 @@ export class AgentWorkspaceTransactionError extends Error {
  */
 export class DesktopAgentWorkspaceFiles {
   private readonly change_paths: ReadonlySet<string>; // open 时冻结的固定 change 文件白名单
-  private readonly recipes: ReadonlyMap<string, string>; // open 时冻结的只读 recipe 路径
+  private readonly method_paths = AGENT_WORKSPACE_METHOD_RESOURCE_PATHS;
   private readonly items_path: string; // open 时冻结的完整 items 数据集路径
   private readonly source_path: string; // Backend 在活动 UUID 旁维护的工程源文件纯文本投影
   private readonly task_path: string; // Backend 在活动 UUID 旁维护的跨快照自由任务目录
@@ -99,6 +109,7 @@ export class DesktopAgentWorkspaceFiles {
     private readonly workspace_path: string,
     contract: WorkspaceContract,
     private readonly transaction_path: string,
+    private readonly related_item_search: DesktopAgentRelatedItemSearchPort | null,
   ) {
     this.change_paths = new Set(
       Object.values(contract.changes ?? {}).flatMap((operations) =>
@@ -106,18 +117,6 @@ export class DesktopAgentWorkspaceFiles {
           typeof operation.path === "string" ? [normalize_workspace_path(operation.path)] : [],
         ),
       ),
-    );
-    this.recipes = new Map(
-      Object.entries(contract.recipes ?? {}).map(([name, recipe]) => {
-        if (typeof recipe.path !== "string") {
-          throw new AgentWorkspaceInvalidError("Workspace recipe contract is invalid.");
-        }
-        const recipe_path = normalize_workspace_path(recipe.path);
-        if (!recipe_path.startsWith("recipes/")) {
-          throw new AgentWorkspaceInvalidError("Workspace recipe contract is invalid.");
-        }
-        return [name, recipe_path] as const;
-      }),
     );
     const items_path = contract.datasets?.items?.path;
     if (typeof items_path !== "string") {
@@ -131,7 +130,10 @@ export class DesktopAgentWorkspaceFiles {
   }
 
   /** 打开时缓存 contract 白名单；脚本不能通过改写 contract 扩大当前运行权限。 */
-  public static async open(workspace_path: string): Promise<DesktopAgentWorkspaceFiles> {
+  public static async open(
+    workspace_path: string,
+    related_item_search: DesktopAgentRelatedItemSearchPort | null = null,
+  ): Promise<DesktopAgentWorkspaceFiles> {
     const root = path.resolve(workspace_path);
     try {
       const root_stat = await fs.promises.lstat(root);
@@ -143,7 +145,12 @@ export class DesktopAgentWorkspaceFiles {
       const contract_text = await fs.promises.readFile(path.join(root, "contract.json"), "utf-8");
       const contract = read_workspace_contract(JSON.parse(contract_text));
       const transaction_path = path.join(root, ".transactions", randomUUID());
-      const files = new DesktopAgentWorkspaceFiles(root, contract, transaction_path);
+      const files = new DesktopAgentWorkspaceFiles(
+        root,
+        contract,
+        transaction_path,
+        related_item_search,
+      );
       await assert_path_has_no_symlink(root, ".transactions");
       await Promise.all([
         fs.promises.mkdir(path.join(transaction_path, "upper"), { recursive: true }),
@@ -158,17 +165,22 @@ export class DesktopAgentWorkspaceFiles {
     }
   }
 
-  /** 一次读取 contract 声明的全部 recipe，且脚本文件始终按基线只读。 */
-  public async read_recipe_sources(): Promise<Record<string, string>> {
+  /** 一次读取随应用发布的全部方法实现，且脚本文件始终按基线只读。 */
+  public async read_method_sources(): Promise<Record<string, string>> {
     const sources: Record<string, string> = {};
-    for (const [name, recipe_path] of this.recipes) {
-      await assert_path_has_no_symlink(this.workspace_path, recipe_path);
-      const source_path = resolve_workspace_path(this.workspace_path, recipe_path);
-      const stat = await fs.promises.lstat(source_path);
-      if (!stat.isFile() || stat.isSymbolicLink()) {
-        throw new AgentWorkspaceInvalidError("Workspace recipe file is invalid.");
+    try {
+      for (const [name, method_path] of Object.entries(this.method_paths)) {
+        await assert_path_has_no_symlink(this.workspace_path, method_path);
+        const source_path = resolve_workspace_path(this.workspace_path, method_path);
+        const stat = await fs.promises.lstat(source_path);
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+          throw new AgentWorkspaceInvalidError("Workspace method file is invalid.");
+        }
+        sources[name] = await fs.promises.readFile(source_path, "utf-8");
       }
-      sources[name] = await fs.promises.readFile(source_path, "utf-8");
+    } catch (error) {
+      if (error instanceof AgentWorkspaceInvalidError) throw error;
+      throw new AgentWorkspaceInvalidError("Workspace method file is invalid.", { cause: error });
     }
     return sources;
   }
@@ -190,6 +202,18 @@ export class DesktopAgentWorkspaceFiles {
       if (url.pathname === "/__match_literals__" && request.method === "POST") {
         return Response.json(
           await this.match_literals(read_literal_match_request(await request.json())),
+        );
+      }
+      if (url.pathname === "/__find_related_items__" && request.method === "POST") {
+        if (this.related_item_search === null) {
+          throw new WorkspaceProtocolError("Related item search is unavailable.");
+        }
+        return Response.json(
+          await this.related_item_search(
+            this.workspace_path,
+            read_related_item_search_request(await request.json()),
+            request.signal,
+          ),
         );
       }
     } catch (error) {
@@ -505,7 +529,7 @@ function read_workspace_contract(value: unknown): WorkspaceContract {
     throw new AgentWorkspaceInvalidError("Workspace contract.json root is invalid.");
   }
   const contract = value as WorkspaceContract;
-  for (const section of [contract.changes, contract.recipes, contract.datasets]) {
+  for (const section of [contract.changes, contract.datasets]) {
     if (typeof section !== "object" || section === null || Array.isArray(section)) {
       throw new AgentWorkspaceInvalidError("Workspace contract.json structure is invalid.");
     }
@@ -557,6 +581,69 @@ function read_literal_match_request(value: unknown): LiteralMatchRequest {
     );
   }
   return { patterns, examples_per_pattern: examples };
+}
+
+/** 沙箱只能提交有界批量查询；key 唯一性保证调用方可以稳定关联结果。 */
+function read_related_item_search_request(value: unknown): AgentRelatedItemSearchRequest {
+  if (!is_json_record(value) || !Array.isArray(value["queries"])) {
+    throw new WorkspaceProtocolError("Related item search arguments must include queries.");
+  }
+  if (
+    value["queries"].length < 1 ||
+    value["queries"].length > AGENT_RELATED_ITEM_SEARCH_LIMITS.queriesMax
+  ) {
+    throw new WorkspaceProtocolError("Related item search query count is out of range.");
+  }
+  const keys = new Set<string>();
+  const queries = value["queries"].map((query) => {
+    if (!is_json_record(query) || typeof query["key"] !== "string" || query["key"] === "") {
+      throw new WorkspaceProtocolError("Related item search keys must be non-empty strings.");
+    }
+    if (keys.has(query["key"])) {
+      throw new WorkspaceProtocolError("Related item search keys must be unique.");
+    }
+    keys.add(query["key"]);
+    if (
+      typeof query["text"] !== "string" ||
+      query["text"].trim() === "" ||
+      query["text"].length > AGENT_RELATED_ITEM_SEARCH_LIMITS.queryCharactersMax
+    ) {
+      throw new WorkspaceProtocolError("Related item search text is invalid.");
+    }
+    return { key: query["key"], text: query["text"] };
+  });
+  const file_paths = value["file_paths"];
+  if (
+    !Array.isArray(file_paths) ||
+    file_paths.length > AGENT_RELATED_ITEM_SEARCH_LIMITS.filePathsMax ||
+    file_paths.some((file_path) => typeof file_path !== "string" || file_path === "")
+  ) {
+    throw new WorkspaceProtocolError("Related item search file_paths are invalid.");
+  }
+  const limit = value["limit"];
+  if (
+    typeof limit !== "number" ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > AGENT_RELATED_ITEM_SEARCH_LIMITS.resultsMax
+  ) {
+    throw new WorkspaceProtocolError("Related item search limit is out of range.");
+  }
+  const context_items = value["context_items"];
+  if (
+    typeof context_items !== "number" ||
+    !Number.isInteger(context_items) ||
+    context_items < 0 ||
+    context_items > AGENT_RELATED_ITEM_SEARCH_LIMITS.contextItemsMax
+  ) {
+    throw new WorkspaceProtocolError("Related item search context_items is out of range.");
+  }
+  return {
+    queries,
+    file_paths: file_paths.map((file_path) => String(file_path)),
+    limit,
+    context_items,
+  };
 }
 
 /** 路径只接受正斜线相对路径，并拒绝访问宿主事务实现目录。 */
