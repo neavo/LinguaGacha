@@ -26,6 +26,7 @@ import {
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
   backendRuntimeWorkerEntryUrl: URL;
+  agentRelatedItemSearchWorkerEntryUrl: URL; // Electron main 拥有的相关搜索 worker 入口
 }
 
 /**
@@ -197,7 +198,9 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
-      agent_workspace_runner = new DesktopAgentWorkspaceRunner();
+      agent_workspace_runner = new DesktopAgentWorkspaceRunner({
+        relatedItemSearchWorkerEntryUrl: options.agentRelatedItemSearchWorkerEntryUrl,
+      });
       const backend_start_result = await backend_runtime.start();
       backend_api_base_url = backend_start_result.apiBaseUrl;
       desktop_update_service = new DesktopUpdateService({

@@ -142,9 +142,9 @@ export class AppPathService {
     return this.get_user_data_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME);
   }
 
-  /** 返回随应用发布的只读 Agent 工作区 recipe 资源目录。 */
-  public get_agent_workspace_recipe_dir(): string {
-    return this.get_resource_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME, "recipes");
+  /** 返回随应用发布的只读 Agent 工作区方法资源目录。 */
+  public get_agent_workspace_method_dir(): string {
+    return this.get_resource_path(AGENT_DIR_NAME, AGENT_WORKSPACE_DIR_NAME, "methods");
   }
 
   /**

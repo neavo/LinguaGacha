@@ -3,6 +3,7 @@ import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import {
+  AGENT_RELATED_ITEM_SEARCH_LIMITS,
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
 } from "../../shared/backend-runtime";
@@ -66,21 +67,6 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
   prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),
   ...AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
 });
-
-/** 随应用发布且允许模型调用的只读 recipe 白名单。 */
-export const AGENT_WORKSPACE_RECIPE_NAMES = Object.freeze([
-  "query-items",
-  "query-item-contexts",
-  "query-quality-rule-groups",
-  "derive-common-literal-roots",
-] as const);
-
-/** recipe 名称与工作区只读脚本路径共享同一投影。 */
-export const AGENT_WORKSPACE_RECIPE_PATHS = Object.freeze(
-  Object.fromEntries(
-    AGENT_WORKSPACE_RECIPE_NAMES.map((name) => [name, `recipes/${name}.js`]),
-  ) as Record<(typeof AGENT_WORKSPACE_RECIPE_NAMES)[number], string>,
-);
 
 /** items/entries.jsonl 的完整固定字段和顺序。 */
 export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
@@ -307,14 +293,20 @@ const quality_changes = Object.fromEntries(
   }),
 ) as JsonRecord;
 
-/** 工作区结构、字段、显式 change、写入语义和 recipe 的唯一代码权威。 */
+/** 工作区结构、字段、显式 change 与写入语义的唯一代码权威。 */
 export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
-    recipe_page_default: 20,
-    recipe_page_max: 100,
+    query_page_default: 20,
+    query_page_max: 100,
     literal_match_examples_default: 3,
     literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+    related_item_search: {
+      results_default: AGENT_RELATED_ITEM_SEARCH_LIMITS.resultsDefault,
+      results_max: AGENT_RELATED_ITEM_SEARCH_LIMITS.resultsMax,
+      context_items_default: AGENT_RELATED_ITEM_SEARCH_LIMITS.contextItemsDefault,
+      context_items_max: AGENT_RELATED_ITEM_SEARCH_LIMITS.contextItemsMax,
+    },
   },
   datasets: {
     project_meta: {
@@ -392,51 +384,6 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     quality_operation_order: [...AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS],
     freshness: "工程身份、语言、epoch 与全部 section revision 必须仍等于加载快照",
     transaction: "全部真实 change 在一个数据库事务中提交",
-  },
-  recipes: {
-    "query-items": {
-      path: AGENT_WORKSPACE_RECIPE_PATHS["query-items"],
-      purpose: "筛选目标条目并按需联结警告证据",
-      parameters: {
-        filters: "可选 item_ids、statuses、file_paths、warning_types",
-        search:
-          "可选 keywords 与 scope(src、dst、all)；仅用于通用 NFKC 小写 includes 检索，不代表产品正式匹配语义",
-        include_warnings: "可选 boolean，默认 false",
-        offset: "可选非负整数，默认 0",
-        limit: "可选正整数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
-      },
-      returns: "{ total_item_count, items: object[], next_offset? }",
-    },
-    "query-item-contexts": {
-      path: AGENT_WORKSPACE_RECIPE_PATHS["query-item-contexts"],
-      purpose: "读取目标条目在同文件自然顺序中的邻近文本",
-      parameters: {
-        item_ids: "需要补充邻近文本的正整数数组",
-      },
-      returns: "{ contexts, items: object[], missing_item_ids }",
-    },
-    "query-quality-rule-groups": {
-      path: AGENT_WORKSPACE_RECIPE_PATHS["query-quality-rule-groups"],
-      purpose: "按等价、包含和受限公共词根为质量规则或候选生成稳定、互斥且最多 16 条的结构组",
-      parameters: {
-        kind: "glossary 或 text_preserve",
-        entries:
-          "可选候选数组；每项使用 entry_id、src，glossary 另需 case_sensitive；省略时读取 kind 的现有规则数据集",
-        target_entry_ids: "可选目标 ID 数组；返回命中目标的完整结构组",
-        offset: "可选非负组偏移，默认 0",
-        limit: "可选正整数组数，默认 limits.recipe_page_default 且不超过 limits.recipe_page_max",
-      },
-      returns:
-        "{ total_entry_count, total_target_entry_count, total_component_count, total_group_count, groups: Array<{ group_id, component_ids, entry_ids, target_entry_ids, relations: Array<{ reason: equivalent|contains|shared_root, entry_ids, root? }> }>, cross_group_relations: Array<{ reason, entry_ids, root?, group_ids }>, missing_target_entry_ids, next_offset? }",
-    },
-    "derive-common-literal-roots": {
-      path: AGENT_WORKSPACE_RECIPE_PATHS["derive-common-literal-roots"],
-      purpose: "为已经确认语义相关的显式词形枚举全部公共连续字面片段",
-      parameters: {
-        forms: "至少两个不同的非空字符串；返回的 root 取自第一项的原始写法",
-      },
-      returns: "{ candidates: Array<{ root, grapheme_length }> }，按 grapheme_length 升序",
-    },
   },
 });
 

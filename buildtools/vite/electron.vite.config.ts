@@ -17,6 +17,9 @@ export default defineConfig({
             "src/backend/bootstrap/backend-runtime-worker-entry.ts",
           ),
           "compute-worker-entry": project_path("src/backend/worker/compute-worker-entry.ts"),
+          "agent-related-item-search-worker-entry": project_path(
+            "src/gui/runtime/desktop-agent-related-item-search-worker-entry.ts",
+          ),
           "planning-worker-entry": project_path(
             "src/backend/engine/planning/planning-worker-entry.ts",
           ),

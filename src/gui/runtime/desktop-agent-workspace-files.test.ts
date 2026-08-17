@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES } from "../../shared/backend-runtime";
+import {
+  AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_METHOD_RESOURCE_PATHS,
+} from "../../shared/backend-runtime";
 import {
   AgentWorkspaceInvalidError,
   DesktopAgentWorkspaceFiles,
@@ -20,7 +23,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "glossary"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "methods"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "scratch"), { recursive: true });
   fs.mkdirSync(path.join(session_root, "task"), { recursive: true });
   fs.mkdirSync(path.join(session_root, "sources", "book.epub", "OPS"), { recursive: true });
@@ -33,9 +36,6 @@ beforeEach(() => {
     JSON.stringify({
       changes: {
         items: { updates: { path: "changes/items/updates.jsonl" } },
-      },
-      recipes: {
-        "query-items": { path: "recipes/query-items.js" },
       },
       datasets: { items: { path: "items/entries.jsonl" } },
     }),
@@ -52,7 +52,12 @@ beforeEach(() => {
   );
   fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "original");
   fs.writeFileSync(path.join(workspace_path, "project_meta.json"), "metadata");
-  fs.writeFileSync(path.join(workspace_path, "recipes", "query-items.js"), "return args;");
+  for (const method_path of Object.values(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS)) {
+    fs.writeFileSync(
+      path.join(workspace_path, method_path),
+      `return ${JSON.stringify(method_path)};`,
+    );
+  }
 });
 
 afterEach(() => {
@@ -147,12 +152,17 @@ describe("DesktopAgentWorkspaceFiles", () => {
     );
   });
 
-  it("读取 contract 声明的全部 recipe 源码", async () => {
+  it("读取全部固定方法源码", async () => {
     const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
 
-    await expect(files.read_recipe_sources()).resolves.toEqual({
-      "query-items": "return args;",
-    });
+    await expect(files.read_method_sources()).resolves.toEqual(
+      Object.fromEntries(
+        Object.entries(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS).map(([name, method_path]) => [
+          name,
+          `return ${JSON.stringify(method_path)};`,
+        ]),
+      ),
+    );
     await files.rollback();
   });
 
@@ -217,6 +227,67 @@ describe("DesktopAgentWorkspaceFiles", () => {
         },
       ],
     });
+    await files.rollback();
+  });
+
+  it("模糊相关搜索校验参数并委托当前工作区", async () => {
+    const related_search = vi.fn(async () => ({
+      indexed_item_count: 3,
+      queries: [{ key: "forest", results: [] }],
+    }));
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, related_search);
+    const response = await files.handle(
+      new Request("lg-agent-workspace://workspace/__find_related_items__", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          queries: [{ key: "forest", text: "森の騎士" }],
+          file_paths: ["book.txt"],
+          limit: 5,
+          context_items: 2,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      indexed_item_count: 3,
+      queries: [{ key: "forest", results: [] }],
+    });
+    expect(related_search).toHaveBeenCalledWith(
+      workspace_path,
+      {
+        queries: [{ key: "forest", text: "森の騎士" }],
+        file_paths: ["book.txt"],
+        limit: 5,
+        context_items: 2,
+      },
+      expect.any(AbortSignal),
+    );
+    await files.rollback();
+  });
+
+  it("模糊相关搜索拒绝重复 key", async () => {
+    const related_search = vi.fn();
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path, related_search);
+    const response = await files.handle(
+      new Request("lg-agent-workspace://workspace/__find_related_items__", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          queries: [
+            { key: "same", text: "森" },
+            { key: "same", text: "騎士" },
+          ],
+          file_paths: [],
+          limit: 5,
+          context_items: 0,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(related_search).not.toHaveBeenCalled();
     await files.rollback();
   });
 
@@ -300,16 +371,12 @@ describe("DesktopAgentWorkspaceFiles", () => {
     );
   });
 
-  it("contract 中存在无效 recipe 路径时拒绝建立文件会话", async () => {
-    const contract = JSON.parse(
-      fs.readFileSync(path.join(workspace_path, "contract.json"), "utf-8"),
-    ) as Record<string, unknown>;
-    contract["recipes"] = { "query-items": {} };
-    fs.writeFileSync(path.join(workspace_path, "contract.json"), JSON.stringify(contract));
+  it("固定方法资源缺失时拒绝建立文件会话", async () => {
+    fs.rmSync(path.join(workspace_path, AGENT_WORKSPACE_METHOD_RESOURCE_PATHS.queryItems));
 
-    await expect(DesktopAgentWorkspaceFiles.open(workspace_path)).rejects.toBeInstanceOf(
-      AgentWorkspaceInvalidError,
-    );
+    const files = await DesktopAgentWorkspaceFiles.open(workspace_path);
+    await expect(files.read_method_sources()).rejects.toBeInstanceOf(AgentWorkspaceInvalidError);
+    await files.rollback();
   });
 
   it("提交安装失败会恢复基线并报告 preserved", async () => {

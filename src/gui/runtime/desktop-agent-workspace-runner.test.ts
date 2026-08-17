@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AGENT_WORKSPACE_METHOD_RESOURCE_PATHS,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
   AGENT_WORKSPACE_SCRIPT_API,
 } from "../../shared/backend-runtime";
@@ -88,26 +89,23 @@ beforeEach(() => {
   fs.mkdirSync(path.join(session_root, "task"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "recipes"), { recursive: true });
+  fs.mkdirSync(path.join(workspace_path, "methods"), { recursive: true });
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
       limits: { literal_match_examples_default: 3 },
       datasets: { items: { path: "items/entries.jsonl" } },
       changes: { items: { updates: { path: "changes/items/updates.jsonl" } } },
-      recipes: {
-        "query-items": {
-          path: "recipes/query-items.js",
-        },
-      },
     }),
   );
   fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), ORIGINAL_ITEMS);
   fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "");
-  fs.writeFileSync(
-    path.join(workspace_path, "recipes", "query-items.js"),
-    "async function runRecipe(_workspace, args) { return { marker: args.limit }; }\nvoid runRecipe;",
-  );
+  for (const method_path of Object.values(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS)) {
+    fs.writeFileSync(
+      path.join(workspace_path, method_path),
+      "async function runWorkspaceMethod(_workspace, args) { return { marker: args.limit }; }\nvoid runWorkspaceMethod;",
+    );
+  }
 });
 
 afterEach(() => {
@@ -313,11 +311,11 @@ describe("DesktopAgentWorkspaceRunner", () => {
     runner.dispose();
   });
 
-  it("脚本可组合 recipe 与正式字面匹配，recipe 只接收只读 workspace", async () => {
+  it("脚本可组合具名只读方法与正式字面匹配", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
     fs.writeFileSync(
-      path.join(workspace_path, "recipes", "query-items.js"),
-      "async function runRecipe(workspace, args) { return { marker: args.limit, path: workspace.contract.datasets.items.path, api: Object.keys(workspace).sort() }; }\nvoid runRecipe;",
+      path.join(workspace_path, AGENT_WORKSPACE_METHOD_RESOURCE_PATHS.queryItems),
+      "async function runWorkspaceMethod(workspace, args) { return { marker: args.limit, path: workspace.contract.datasets.items.path, api: Object.keys(workspace).sort() }; }\nvoid runWorkspaceMethod;",
     );
     fs.writeFileSync(
       path.join(workspace_path, "items", "entries.jsonl"),
@@ -329,7 +327,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
       {
         workspacePath: workspace_path,
         script:
-          'async function main(workspace) { const recipe = await workspace.runRecipe("query-items", { limit: 7 }); const matches = await workspace.matchLiterals({ patterns: [{ key: "road", text: "STRASSE", case_sensitive: false }] }); return { recipe, matches }; }',
+          'async function main(workspace) { const query = await workspace.queryItems({ limit: 7 }); const matches = await workspace.matchLiterals({ patterns: [{ key: "road", text: "STRASSE", case_sensitive: false }] }); return { query, matches }; }',
       },
       new AbortController().signal,
     );
@@ -337,7 +335,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
     expect(result).toMatchObject({
       status: "success",
       result: {
-        recipe: {
+        query: {
           marker: 7,
           path: "items/entries.jsonl",
           api: ["contract", "iterateJsonl", "iterateLines", "list", "readJson", "readText"],
@@ -358,7 +356,7 @@ describe("DesktopAgentWorkspaceRunner", () => {
     expect(fs.readdirSync(path.join(workspace_path, ".transactions"))).toEqual([]);
   });
 
-  it("脚本可以捕获未知 recipe 异常并继续提交当前事务", async () => {
+  it("脚本可以捕获只读方法参数异常并继续提交当前事务", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
     prepare_program_execution();
 
@@ -366,14 +364,14 @@ describe("DesktopAgentWorkspaceRunner", () => {
       {
         workspacePath: workspace_path,
         script:
-          'async function main(workspace) { let message = ""; try { await workspace.runRecipe("missing", {}); } catch (error) { message = error.message; } await workspace.writeText(workspace.contract.changes.items.updates.path, "recovered"); return { message }; }',
+          'async function main(workspace) { let message = ""; try { await workspace.queryItems([]); } catch (error) { message = error.message; } await workspace.writeText(workspace.contract.changes.items.updates.path, "recovered"); return { message }; }',
       },
       new AbortController().signal,
     );
 
     expect(result).toEqual({
       status: "success",
-      result: { message: expect.stringContaining("missing") },
+      result: { message: expect.stringContaining("queryItems") },
     });
     expect(
       fs.readFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "utf-8"),

@@ -1,14 +1,14 @@
 // 仅用于通用筛选，不代表产品正式字面匹配语义。
-async function runRecipe(workspace, args) {
+async function runWorkspaceMethod(workspace, args) {
   const filters = args.filters ?? {};
   const search = args.search ?? {};
   const includeWarnings = args.include_warnings ?? false;
   const contract = workspace.contract;
   const offset = args.offset ?? 0;
-  const limit = args.limit ?? contract.limits.recipe_page_default;
+  const limit = args.limit ?? contract.limits.query_page_default;
   if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
-  if (!Number.isInteger(limit) || limit < 1 || limit > contract.limits.recipe_page_max) {
-    throw new Error(`limit 必须是 1..${contract.limits.recipe_page_max} 的整数`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > contract.limits.query_page_max) {
+    throw new Error(`limit 必须是 1..${contract.limits.query_page_max} 的整数`);
   }
 
   const itemIds = new Set(filters.item_ids ?? []);
@@ -77,4 +77,4 @@ async function runRecipe(workspace, args) {
 }
 
 // runner 在同一函数体末尾追加真实调用；这里让独立资源的静态检查看到消费者。
-void runRecipe;
+void runWorkspaceMethod;

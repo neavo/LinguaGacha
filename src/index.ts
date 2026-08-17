@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  build_agent_related_item_search_worker_entry_url_from_desktop_bundle_dir,
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
   build_backend_runtime_worker_entry_url_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
@@ -29,6 +30,8 @@ async function run_product_entry(): Promise<void> {
   const { run_gui_entry } = await import("./gui/gui-entry");
   run_gui_entry({
     desktopBundleDir: desktop_bundle_dir,
+    agentRelatedItemSearchWorkerEntryUrl:
+      build_agent_related_item_search_worker_entry_url_from_desktop_bundle_dir(desktop_bundle_dir),
     backendRuntimeWorkerEntryUrl:
       build_backend_runtime_worker_entry_url_from_desktop_bundle_dir(desktop_bundle_dir),
   });

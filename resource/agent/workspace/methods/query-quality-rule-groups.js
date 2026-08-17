@@ -8,15 +8,15 @@ const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "graphem
  * 按需为现有规则或调用方提供的候选生成结构审查组。
  * 关系只负责共同审查，不证明语义相同、规则必要或可以合并。
  */
-async function runRecipe(workspace, args) {
+async function runWorkspaceMethod(workspace, args) {
   const kind = readKind(args.kind);
   const entries = await readEntries(workspace, args.entries, kind);
   const targetEntryIds = readTargetEntryIds(args.target_entry_ids, entries);
   const offset = args.offset ?? 0;
-  const limit = args.limit ?? workspace.contract.limits.recipe_page_default;
+  const limit = args.limit ?? workspace.contract.limits.query_page_default;
   if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
-  if (!Number.isInteger(limit) || limit < 1 || limit > workspace.contract.limits.recipe_page_max) {
-    throw new Error(`limit 必须是 1..${workspace.contract.limits.recipe_page_max} 的整数`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > workspace.contract.limits.query_page_max) {
+    throw new Error(`limit 必须是 1..${workspace.contract.limits.query_page_max} 的整数`);
   }
 
   const analysis = analyzeRelations(entries, kind);
@@ -443,7 +443,7 @@ function distributeRelation(
   if (groupIds.length > 1) crossGroupRelations.push({ ...relation, group_ids: groupIds });
 }
 
-/** 把内部索引边转换成 recipe 的稳定业务 ID 结果。 */
+/** 把内部索引边转换成方法的稳定业务 ID 结果。 */
 function relationFromStrongEdge(edge, entries) {
   return {
     reason: edge.reason,
@@ -557,7 +557,7 @@ function stableId(prefix, index) {
   return `${prefix}-${(index + 1).toString().padStart(4, "0")}`;
 }
 
-/** 避免 locale 环境影响 recipe 的稳定顺序。 */
+/** 避免 locale 环境影响方法的稳定顺序。 */
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -578,7 +578,7 @@ function readRecord(value, name) {
   return value;
 }
 
-/** 统一校验 recipe 身份和源码字段，但保留原始字符串内容。 */
+/** 统一校验方法输入的身份和源码字段，但保留原始字符串内容。 */
 function readNonEmptyString(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`${name} 必须是非空字符串`);
@@ -587,4 +587,4 @@ function readNonEmptyString(value, name) {
 }
 
 // runner 在同一函数体末尾追加真实调用；这里让独立资源的静态检查看到消费者。
-void runRecipe;
+void runWorkspaceMethod;
