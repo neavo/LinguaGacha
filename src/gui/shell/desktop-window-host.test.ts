@@ -146,6 +146,7 @@ const electron_mock = vi.hoisted(() => {
     visible = false;
     focused = false;
     title_bar_overlays: unknown[] = [];
+    flash_frames: boolean[] = [];
     listeners = new Map<string, Listener[]>();
     once_listeners = new Map<string, Listener[]>();
     load_file_calls: Array<{ file_path: string; options?: { query?: Record<string, string> } }> =
@@ -217,6 +218,14 @@ const electron_mock = vi.hoisted(() => {
      */
     focus(): void {
       this.focused = true;
+    }
+
+    // flashFrame 模拟测试场景中的对应运行时方法，保持断言聚焦窗口注意力行为。
+    /**
+     * 写入当前窗口的任务栏闪烁状态。
+     */
+    flashFrame(flag: boolean): void {
+      this.flash_frames.push(flag);
     }
 
     // loadFile 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
@@ -321,6 +330,9 @@ describe("桌面窗口宿主", () => {
     expect(close_event.preventDefault).toHaveBeenCalledTimes(1);
     expect(main_window.webContents.sent_channels).toEqual([IPC_CHANNEL_WINDOW_CLOSE_REQUEST]);
     expect(main_window.webContents.listeners.has("context-menu")).toBe(true);
+    main_window.flashFrame(true);
+    main_window.emit("focus");
+    expect(main_window.flash_frames).toEqual([true, false]);
     expect(main_window.visible).toBe(true);
     expect(main_window.focused).toBe(true);
     expect(on_closed).toHaveBeenCalledTimes(1);

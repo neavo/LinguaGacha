@@ -6,6 +6,7 @@ import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_REQUEST_USER_ATTENTION,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
@@ -65,6 +66,11 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     },
   );
 
+  // 长任务结束时只由 main 按窗口焦点决定是否播放提示并闪烁任务栏
+  ipcMain.on(IPC_CHANNEL_REQUEST_USER_ATTENTION, (event) => {
+    request_user_attention(BrowserWindow.fromWebContents(event.sender));
+  });
+
   // renderer 已完成自己的关闭确认后，主窗口 close 事件不再二次拦截
   ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {
     options.markRendererConfirmedAppQuit();
@@ -104,6 +110,18 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
   ipcMain.handle(IPC_CHANNEL_PICK_PATH, async (_event, request: DesktopPathPickIpcRequest) => {
     return pick_path(options, request);
   });
+}
+
+/**
+ * 未聚焦窗口才需要打扰用户；闪烁停止由窗口统一 focus 事件负责。
+ */
+function request_user_attention(target_window: BrowserWindow | null): void {
+  if (target_window === null || target_window.isDestroyed() || target_window.isFocused()) {
+    return;
+  }
+
+  shell.beep();
+  target_window.flashFrame(true);
 }
 
 /**

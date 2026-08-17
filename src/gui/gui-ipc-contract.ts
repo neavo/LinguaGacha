@@ -1,5 +1,6 @@
 // main、preload 与 renderer 共用这一份通道词表，避免各层以字符串重新声明协议。
 export const IPC_CHANNEL_TITLE_BAR_THEME = "window:set-title-bar-theme";
+export const IPC_CHANNEL_REQUEST_USER_ATTENTION = "window:request-user-attention";
 export const IPC_CHANNEL_RENDERER_DIAGNOSTICS = "renderer:diagnostics";
 export const IPC_CHANNEL_QUIT_APP = "window:quit-app";
 export const IPC_CHANNEL_WINDOW_CLOSE_REQUEST = "window:close-request";

@@ -18,6 +18,7 @@ export interface DesktopBridgeApi {
   backendApi: DesktopBackendApiInfo; // Backend API 地址由 main 创建窗口时注入，renderer 不读取环境变量或猜测端口
   getPathForFile: (file: File) => string; // 文件路径解析必须留在 preload，避免 renderer 获得泛化文件系统能力
   setTitleBarTheme: (theme_mode: ResolvedThemeMode) => void; // 标题栏主题同步只暴露明暗两态，main 负责转换成原生 overlay 配色
+  requestUserAttention: () => void; // 长任务结束时请求宿主提醒，是否真正打扰用户由 main 按窗口焦点决定
   quitApp: () => Promise<void>; // 应用退出必须回到 main 统一收尾 Backend 生命周期
   openLogWindow: () => Promise<void>; // 日志窗口单例由 main 持有，renderer 只发起显隐请求
   onWindowCloseRequest: (callback: () => void) => () => void; // 主窗口关闭确认由 renderer 展示 UI，main 只发送请求事件

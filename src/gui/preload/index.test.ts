@@ -4,6 +4,7 @@ import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_REQUEST_USER_ATTENTION,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
@@ -78,6 +79,7 @@ describe("preload desktop bridge", () => {
     expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:7788");
     expect(bridge.getPathForFile({} as File)).toBe("E:/demo/source.txt");
     bridge.setTitleBarTheme("dark");
+    bridge.requestUserAttention();
     await bridge.quitApp();
     await bridge.openLogWindow();
     bridge.reportRendererDiagnostics({ route: "workbench" });
@@ -97,6 +99,7 @@ describe("preload desktop bridge", () => {
 
     expect(electron_mock.get_path_for_file).toHaveBeenCalledTimes(1);
     expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_TITLE_BAR_THEME, "dark");
+    expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_REQUEST_USER_ATTENTION);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_QUIT_APP);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_OPEN_LOG_WINDOW);
     expect(electron_mock.invoke).toHaveBeenCalledWith(

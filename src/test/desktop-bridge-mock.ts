@@ -28,6 +28,7 @@ export function create_desktop_bridge_api_mock(
     backendApi,
     getPathForFile: () => "",
     setTitleBarTheme: () => {},
+    requestUserAttention: () => {},
     quitApp: async () => {},
     openLogWindow: async () => {},
     onWindowCloseRequest: () => {
