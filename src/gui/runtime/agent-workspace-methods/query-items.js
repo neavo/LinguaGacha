@@ -1,4 +1,4 @@
-// 仅用于通用筛选，不代表产品正式字面匹配语义。
+// 作为 Electron bundle 内置沙箱方法，仅用于通用筛选，不代表产品正式字面匹配语义。
 async function runWorkspaceMethod(workspace, args) {
   const filters = args.filters ?? {};
   const search = args.search ?? {};
@@ -6,9 +6,10 @@ async function runWorkspaceMethod(workspace, args) {
   const contract = workspace.contract;
   const offset = args.offset ?? 0;
   const limit = args.limit ?? contract.limits.query_page_default;
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
+  if (!Number.isInteger(offset) || offset < 0)
+    throw new Error("offset must be a non-negative integer");
   if (!Number.isInteger(limit) || limit < 1 || limit > contract.limits.query_page_max) {
-    throw new Error(`limit 必须是 1..${contract.limits.query_page_max} 的整数`);
+    throw new Error(`limit must be an integer from 1 to ${contract.limits.query_page_max}`);
   }
 
   const itemIds = new Set(filters.item_ids ?? []);
@@ -17,7 +18,9 @@ async function runWorkspaceMethod(workspace, args) {
   const warningTypes = new Set(filters.warning_types ?? []);
   const keywordByNormalized = new Map();
   for (const raw of search.keywords ?? []) {
-    if (typeof raw !== "string" || raw.trim() === "") throw new Error("keywords 不能包含空白值");
+    if (typeof raw !== "string" || raw.trim() === "") {
+      throw new Error("keywords must not contain blank values");
+    }
     const normalized = raw.trim().normalize("NFKC").toLowerCase();
     if (!keywordByNormalized.has(normalized)) {
       keywordByNormalized.set(normalized, { raw, normalized });

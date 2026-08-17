@@ -26,7 +26,6 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./agent-workspace-contract";
-import { AGENT_WORKSPACE_METHOD_RESOURCE_PATHS } from "../../shared/backend-runtime";
 
 const VALID_WORKSPACE_SCRIPT = "async function main() { return null; }";
 
@@ -106,7 +105,6 @@ describe("AgentWorkspaceService", () => {
       [
         ...Object.values(AGENT_WORKSPACE_PATHS),
         ...Object.values(AGENT_WORKSPACE_QUALITY_ENTRY_PATHS),
-        ...Object.values(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS),
         ...all_change_paths(),
       ].sort(),
     );
@@ -576,7 +574,6 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const service = new AgentWorkspaceService({
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
-      get_agent_workspace_method_dir: () => path.resolve("resource/agent/workspace/methods"),
     },
     settings: { read_setting: () => ({ ...setting }) },
     sessionState: { require_loaded_project_path: () => snapshot.projectPath },

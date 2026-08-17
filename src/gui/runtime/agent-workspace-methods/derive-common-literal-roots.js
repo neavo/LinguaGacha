@@ -1,4 +1,4 @@
-/** 公共片段至少需要两个不同词形才有业务意义。 */
+/** Electron bundle 内置的沙箱方法；公共片段至少需要两个不同词形才有业务意义。 */
 const MIN_FORM_COUNT = 2;
 
 // 只为已经确认语义相关的显式词形枚举候选，不推断关系或选择最终词根。
@@ -8,7 +8,7 @@ async function runWorkspaceMethod(_workspace, args) {
     args.forms.length < MIN_FORM_COUNT ||
     args.forms.some((form) => typeof form !== "string" || form.trim() === "")
   ) {
-    throw new Error("forms 必须包含至少两个非空字符串");
+    throw new Error("forms must contain at least two non-empty strings");
   }
 
   // 与正式字面 matcher 的不区分大小写规范化保持同义。
@@ -21,7 +21,7 @@ async function runWorkspaceMethod(_workspace, args) {
       .replaceAll("ς", "σ");
   const normalizedForms = args.forms.map(normalize);
   if (new Set(normalizedForms).size < MIN_FORM_COUNT) {
-    throw new Error("forms 必须包含至少两个不同词形");
+    throw new Error("forms must contain at least two distinct forms");
   }
 
   const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });

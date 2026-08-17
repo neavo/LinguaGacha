@@ -1,3 +1,4 @@
+// Electron bundle 内置的沙箱方法；只依赖 runner 提供的只读 workspace facade。
 const QUALITY_RULE_KINDS = Object.freeze(["glossary", "text_preserve"]); // 与 workspace contract 的质量规则种类一致
 const MAX_GROUP_ENTRIES = 16; // 统一限制强组拆分和弱组聚合后的模型审查规模
 const MIN_SHARED_ROOT_GRAPHEMES = 2; // 单字符重合噪声过大，不形成弱关系
@@ -14,9 +15,12 @@ async function runWorkspaceMethod(workspace, args) {
   const targetEntryIds = readTargetEntryIds(args.target_entry_ids, entries);
   const offset = args.offset ?? 0;
   const limit = args.limit ?? workspace.contract.limits.query_page_default;
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("offset 必须是非负整数");
+  if (!Number.isInteger(offset) || offset < 0)
+    throw new Error("offset must be a non-negative integer");
   if (!Number.isInteger(limit) || limit < 1 || limit > workspace.contract.limits.query_page_max) {
-    throw new Error(`limit 必须是 1..${workspace.contract.limits.query_page_max} 的整数`);
+    throw new Error(
+      `limit must be an integer from 1 to ${workspace.contract.limits.query_page_max}`,
+    );
   }
 
   const analysis = analyzeRelations(entries, kind);
@@ -53,11 +57,11 @@ async function runWorkspaceMethod(workspace, args) {
 async function readEntries(workspace, suppliedEntries, kind) {
   const values = [];
   if (suppliedEntries !== undefined) {
-    if (!Array.isArray(suppliedEntries)) throw new Error("entries 必须是数组");
+    if (!Array.isArray(suppliedEntries)) throw new Error("entries must be an array");
     values.push(...suppliedEntries);
   } else {
     const dataset = workspace.contract.datasets[kind];
-    if (dataset === undefined) throw new Error(`未知 quality kind: ${kind}`);
+    if (dataset === undefined) throw new Error(`Unknown quality kind: ${kind}`);
     for await (const entry of workspace.iterateJsonl(dataset.path)) values.push(entry);
   }
 
@@ -68,13 +72,13 @@ async function readEntries(workspace, suppliedEntries, kind) {
       record.entry_id ?? record.id,
       `entries[${index.toString()}].entry_id`,
     );
-    if (entryIds.has(entryId)) throw new Error(`entry_id 重复: ${entryId}`);
+    if (entryIds.has(entryId)) throw new Error(`Duplicate entry_id: ${entryId}`);
     entryIds.add(entryId);
     const src = readNonEmptyString(record.src, `entries[${index.toString()}].src`);
     let caseSensitive = false;
     if (kind === "glossary") {
       if (typeof record.case_sensitive !== "boolean") {
-        throw new Error(`entries[${index.toString()}].case_sensitive 必须是 boolean`);
+        throw new Error(`entries[${index.toString()}].case_sensitive must be a boolean`);
       }
       caseSensitive = record.case_sensitive;
     }
@@ -90,7 +94,7 @@ function readTargetEntryIds(value, entries) {
     new Set(value).size !== value.length ||
     value.some((entryId) => typeof entryId !== "string" || entryId.trim() === "")
   ) {
-    throw new Error("target_entry_ids 必须是无重复非空字符串数组");
+    throw new Error("target_entry_ids must be an array of unique non-empty strings");
   }
   const inputOrder = new Map(entries.map((entry, index) => [entry.entry_id, index]));
   return [...value].toSorted((left, right) => {
@@ -565,7 +569,7 @@ function compareText(left, right) {
 /** 将外部 kind 收窄到 contract 支持的质量规则种类。 */
 function readKind(value) {
   if (!QUALITY_RULE_KINDS.includes(value)) {
-    throw new Error("kind 必须是 glossary 或 text_preserve");
+    throw new Error("kind must be glossary or text_preserve");
   }
   return value;
 }
@@ -573,7 +577,7 @@ function readKind(value) {
 /** 统一拒绝 null、数组和非对象输入。 */
 function readRecord(value, name) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} 必须是 object`);
+    throw new Error(`${name} must be an object`);
   }
   return value;
 }
@@ -581,7 +585,7 @@ function readRecord(value, name) {
 /** 统一校验方法输入的身份和源码字段，但保留原始字符串内容。 */
 function readNonEmptyString(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${name} 必须是非空字符串`);
+    throw new Error(`${name} must be a non-empty string`);
   }
   return value;
 }

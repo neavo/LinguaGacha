@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
 import {
   execute_workspace_method,
   workspace_item,
   WORKSPACE_QUERY_PAGE_MAX,
-} from "../../test/agent-workspace-method-support";
+} from "../../../test/agent-workspace-methods/test-support";
 
 describe("workspace.queryItems 发布方法", () => {
   it("组合过滤、NFKC 搜索、分页并返回具名对象", async () => {
@@ -27,14 +27,14 @@ describe("workspace.queryItems 发布方法", () => {
       limit: 1,
     };
 
-    const result = read_json_record(await execute_workspace_method("query-items", args, files));
+    const result = read_json_record(await execute_workspace_method("queryItems", args, files));
     expect(result).toMatchObject({ total_item_count: 2, next_offset: 1 });
     expect(result["items"]).toEqual([
       expect.objectContaining({ item_id: 1, matched_keywords: [" ＡＬＩＣＥ "] }),
     ]);
 
     const with_warnings = read_json_record(
-      await execute_workspace_method("query-items", { ...args, include_warnings: true }, files),
+      await execute_workspace_method("queryItems", { ...args, include_warnings: true }, files),
     );
     expect(with_warnings["items"]).toEqual([
       expect.objectContaining({
@@ -48,14 +48,14 @@ describe("workspace.queryItems 发布方法", () => {
     const files = {
       "items/entries.jsonl": [workspace_item(1)],
     } satisfies Record<string, JsonValue>;
-    const result = read_json_record(await execute_workspace_method("query-items", {}, files));
+    const result = read_json_record(await execute_workspace_method("queryItems", {}, files));
 
     expect(result).toMatchObject({ total_item_count: 1 });
     expect(result["items"]).toHaveLength(1);
 
     const with_warnings = read_json_record(
       await execute_workspace_method(
-        "query-items",
+        "queryItems",
         { include_warnings: true, limit: 1 },
         { ...files, "items/warnings.jsonl": [] },
       ),
@@ -69,7 +69,7 @@ describe("workspace.queryItems 发布方法", () => {
   it("拒绝空关键词", async () => {
     await expect(
       execute_workspace_method(
-        "query-items",
+        "queryItems",
         { search: { keywords: [" "] } },
         { "items/entries.jsonl": [] },
       ),
@@ -79,7 +79,7 @@ describe("workspace.queryItems 发布方法", () => {
   it("拒绝越界分页", async () => {
     await expect(
       execute_workspace_method(
-        "query-items",
+        "queryItems",
         { limit: WORKSPACE_QUERY_PAGE_MAX + 1 },
         { "items/entries.jsonl": [] },
       ),

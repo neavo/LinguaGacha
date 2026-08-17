@@ -6,8 +6,6 @@ const WORK_UNIT_WORKER_ENTRY_FILE_NAME = "work-unit-worker-entry.js"; // work un
 const PLANNING_WORKER_ENTRY_FILE_NAME = "planning-worker-entry.js"; // planning worker 入口产物名必须与 Vite main input 保持一致
 const COMPUTE_WORKER_ENTRY_FILE_NAME = "compute-worker-entry.js"; // 非 engine Compute worker 入口产物名必须与 Vite main input 保持一致
 const BACKEND_RUNTIME_WORKER_ENTRY_FILE_NAME = "backend-runtime-worker-entry.js"; // GUI Backend Runtime 入口产物名必须与 Vite main input 保持一致
-const AGENT_RELATED_ITEM_SEARCH_WORKER_ENTRY_FILE_NAME =
-  "agent-related-item-search-worker-entry.js"; // Agent 模糊检索独立于一次性 renderer 运行
 
 // 由产品入口显式注入，避免运行时在底层自行猜测构建产物位置或执行模式。
 export type BackendWorkerExecution =
@@ -59,13 +57,4 @@ export function build_backend_runtime_worker_entry_url_from_desktop_bundle_dir(
   desktop_bundle_dir: string,
 ): URL {
   return pathToFileURL(path.join(desktop_bundle_dir, BACKEND_RUNTIME_WORKER_ENTRY_FILE_NAME));
-}
-
-/** 解析 Electron 宿主拥有的 Agent 模糊检索 worker 入口。 */
-export function build_agent_related_item_search_worker_entry_url_from_desktop_bundle_dir(
-  desktop_bundle_dir: string,
-): URL {
-  return pathToFileURL(
-    path.join(desktop_bundle_dir, AGENT_RELATED_ITEM_SEARCH_WORKER_ENTRY_FILE_NAME),
-  );
 }

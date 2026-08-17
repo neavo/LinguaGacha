@@ -20,7 +20,6 @@
 - GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议：ready、stop、语言读取、宿主诊断，以及代理解析、打开输出目录、受控网页抓取和 Agent 工作区执行四项宿主回调。宿主操作以 requestId 隔离并发；worker 取消会中止 main 中对应操作，但已发出的工作区请求必须等待宿主完成清理，已提交成功或工作区失效结果继续交给状态拥有者，其余操作才以原始取消原因结算；runtime 关闭强制拒绝全部待处理请求。worker 意外退出直接结束应用，不回退同进程、不自动重启。
 - CLI 仍在当前进程通过 `BackendBootstrap` 组装 `BackendServices`，关闭 Gateway 并直接消费类型化服务与任务快照订阅。
 - GUI Backend Runtime 在发布态固定运行于独立 `worker_thread`；work-unit、planning 和 compute 的正式执行统一注入 `worker_threads`，三者的 `in_process` 只允许测试或源码运行显式选择，不作为失败回退。
-- Electron main 为 Agent 模糊相关搜索持有独立 `worker_thread`；一次性 workspace renderer 只转发受控查询，worker 负责 SQLite FTS sidecar 的懒构建、复用和查询，索引不进入 Backend 项目数据库或 `.lg`。
 - `BackendServices` 是 Gateway、CLI job 与任务引擎共用的组合根，运行期服务只在这里装配。
 - `BackendBootstrap` 是进程资源生命周期权威：start / stop 串行，GUI、CLI 的正常退出与首个错误退出统一等待同一 stop；启动顺序固定为日志与迁移 → 普通 HTTP transport → `BackendServices` → 可选 Gateway，关闭时严格逆序，单项失败不跳过后续释放。transport 的网络语义归 [`BACKEND.md`](BACKEND.md)。
 
@@ -37,7 +36,6 @@ flowchart LR
     E --> W["worker_threads"]
     BG -->|"HTTP / SSE"| R["preload / renderer"]
     M --> R
-    M --> AS["Agent 相关搜索 worker\n派生 SQLite FTS"]
 ```
 
 ## 3. 跨层依赖

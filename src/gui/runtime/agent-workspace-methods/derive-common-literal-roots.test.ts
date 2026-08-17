@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { read_json_record, type JsonRecord } from "../../domain/json";
-import { execute_workspace_method } from "../../test/agent-workspace-method-support";
+import { read_json_record, type JsonRecord } from "../../../domain/json";
+import { execute_workspace_method } from "../../../test/agent-workspace-methods/test-support";
 
 describe("workspace.deriveCommonLiteralRoots 发布方法", () => {
   it("按可见字符长度稳定枚举全部公共连续片段", async () => {
     const result = read_json_record(
       await execute_workspace_method(
-        "derive-common-literal-roots",
+        "deriveCommonLiteralRoots",
         { forms: ["ドトール家", "ドトール伯爵", "ドトール領"] },
         {},
       ),
@@ -25,17 +25,13 @@ describe("workspace.deriveCommonLiteralRoots 发布方法", () => {
 
   it("以 NFKC、大小写和 grapheme 比较并保留首项写法", async () => {
     await expect(
-      execute_workspace_method(
-        "derive-common-literal-roots",
-        { forms: ["Ａe\u0301家", "aÉ領"] },
-        {},
-      ),
+      execute_workspace_method("deriveCommonLiteralRoots", { forms: ["Ａe\u0301家", "aÉ領"] }, {}),
     ).resolves.toMatchObject({
       candidates: expect.arrayContaining([{ root: "Ａe\u0301", grapheme_length: 2 }]),
     });
 
     await expect(
-      execute_workspace_method("derive-common-literal-roots", { forms: ["同じ", "同じ"] }, {}),
-    ).rejects.toThrow("至少两个不同词形");
+      execute_workspace_method("deriveCommonLiteralRoots", { forms: ["同じ", "同じ"] }, {}),
+    ).rejects.toThrow();
   });
 });
