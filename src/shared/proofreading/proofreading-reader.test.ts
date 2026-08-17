@@ -303,6 +303,35 @@ describe("proofreading-reader", () => {
     ]);
   });
 
+  it("列表锚点直接返回目标附近窗口", () => {
+    const service = createProofreadingReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 3,
+      processingConfig: create_processing_config(),
+      quality: create_quality(),
+      upsertItems: [
+        create_item({ item_id: 1, dst: "译文 1" }),
+        create_item({ item_id: 2, dst: "译文 2" }),
+        create_item({ item_id: 3, dst: "译文 3" }),
+      ],
+    });
+
+    const view = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+      window_count: 2,
+      window_anchor: { row_id: "3", offset: 1 },
+    });
+
+    expect(view.window_start).toBe(1);
+    expect(view.window_rows.map((row) => row.row_id)).toEqual(["2", "3"]);
+  });
+
   it("上下文跳过空行并按同文件自然顺序读取前后各两条且不替换当前列表视图", () => {
     const service = createProofreadingReader();
     const items = [

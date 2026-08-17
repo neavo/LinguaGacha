@@ -37,13 +37,10 @@ type UseProofreadingTableActionsOptions = {
   visible_row_index_by_id: Map<string, number>;
   filter_dialog_filters_ref: MutableRefObject<ProofreadingFilterOptions>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
-  preferred_row_id_ref: MutableRefObject<string | null>;
   proofreading_runtime_client_ref: MutableRefObject<ProofreadingApiClient>;
-  should_select_first_visible_ref: MutableRefObject<boolean>;
+  selected_row_ids_ref: MutableRefObject<string[]>;
   sync_state_ref: MutableRefObject<ProofreadingSyncState | null>;
   visible_range_ref: MutableRefObject<{ start: number; count: number } | null>;
-  cancel_pending_list_view_query: () => void;
-  clear_table_selection: () => void;
   filter_panel_query_scheduler: QueryScheduler<ProofreadingFilterOptions>;
   read_current_view_row_ids: (start: number, count: number) => Promise<string[]>;
   read_list_window: (range: { start: number; count: number }) => Promise<unknown>;
@@ -53,8 +50,11 @@ type UseProofreadingTableActionsOptions = {
     filters: ProofreadingFilterOptions,
     options?: { force?: boolean; mark_loading?: boolean },
   ) => Promise<ProofreadingFilterPanelState | null>;
-  run_list_view_query: (options?: { rebuild?: boolean }) => Promise<ProofreadingListView | null>;
-  schedule_search_list_view_query: () => void;
+  run_list_query_change: (change: {
+    target_row_id: string | null;
+    rebuild?: boolean;
+  }) => Promise<void>;
+  schedule_list_query_change: (change: { target_row_id: string | null }) => void;
   set_filter_dialog_filters: (filters: ProofreadingFilterOptions) => void;
   set_filter_dialog_open: (open: boolean) => void;
   set_replace_text: (text: string) => void;
@@ -97,15 +97,17 @@ type UseProofreadingTableActionsResult = {
 export function useProofreadingTableActions(
   options: UseProofreadingTableActionsOptions,
 ): UseProofreadingTableActionsResult {
+  // 多选只以第一条作为新视图的稳定候选，其余选择不跨查询延续。
+  const read_query_target_row_id = useCallback((): string | null => {
+    return options.selected_row_ids_ref.current[0] ?? null;
+  }, [options]);
+
   const update_search_keyword = useCallback(
     (next_keyword: string): void => {
-      options.should_select_first_visible_ref.current = false;
-      options.visible_range_ref.current = null;
       options.set_table_filter_state({ search_keyword: next_keyword });
-      options.clear_table_selection();
-      options.schedule_search_list_view_query();
+      options.schedule_list_query_change({ target_row_id: read_query_target_row_id() });
     },
-    [options],
+    [options, read_query_target_row_id],
   );
 
   const update_replace_text = useCallback(
@@ -117,40 +119,26 @@ export function useProofreadingTableActions(
 
   const update_search_scope = useCallback(
     (next_scope: ProofreadingSearchScope): void => {
-      options.cancel_pending_list_view_query();
-      options.should_select_first_visible_ref.current = false;
-      options.visible_range_ref.current = null;
       options.set_table_filter_state({
         search_scope: next_scope,
       });
-      options.clear_table_selection();
-      void options.run_list_view_query().catch((error) => {
-        options.report_proofreading_list_error(
-          error,
-          options.t("proofreading_page.feedback.refresh_failed"),
-        );
+      void options.run_list_query_change({
+        target_row_id: read_query_target_row_id(),
       });
     },
-    [options],
+    [options, read_query_target_row_id],
   );
 
   const update_regex = useCallback(
     (next_is_regex: boolean): void => {
-      options.cancel_pending_list_view_query();
-      options.should_select_first_visible_ref.current = false;
-      options.visible_range_ref.current = null;
       options.set_table_filter_state({
         is_regex: next_is_regex,
       });
-      options.clear_table_selection();
-      void options.run_list_view_query().catch((error) => {
-        options.report_proofreading_list_error(
-          error,
-          options.t("proofreading_page.feedback.refresh_failed"),
-        );
+      void options.run_list_query_change({
+        target_row_id: read_query_target_row_id(),
       });
     },
-    [options],
+    [options, read_query_target_row_id],
   );
 
   const apply_table_selection = useCallback(
@@ -166,18 +154,12 @@ export function useProofreadingTableActions(
 
   const apply_table_sort_state = useCallback(
     (next_sort_state: AppTableSortState | null): void => {
-      options.cancel_pending_list_view_query();
-      options.visible_range_ref.current = null;
       options.set_table_sort_state(next_sort_state);
-      options.clear_table_selection();
-      void options.run_list_view_query().catch((error) => {
-        options.report_proofreading_list_error(
-          error,
-          options.t("proofreading_page.feedback.refresh_failed"),
-        );
+      void options.run_list_query_change({
+        target_row_id: read_query_target_row_id(),
       });
     },
-    [options],
+    [options, read_query_target_row_id],
   );
 
   const get_visible_row_at_index = useCallback(
@@ -328,22 +310,20 @@ export function useProofreadingTableActions(
       filters: normalized_filters,
       default_filters: sync_state.defaultFilters,
     });
-    options.preferred_row_id_ref.current = null;
-    options.should_select_first_visible_ref.current = false;
-    options.visible_range_ref.current = null;
-    options.cancel_pending_list_view_query();
     options.filter_panel_query_scheduler.cancel();
     options.set_table_filter_state({
       selection: next_filter_selection,
     });
-    options.clear_table_selection();
     options.set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
     options.filter_dialog_filters_ref.current =
       clone_proofreading_filter_options(normalized_filters);
 
     try {
       await Promise.all([
-        options.run_list_view_query({ rebuild: true }),
+        options.run_list_query_change({
+          target_row_id: read_query_target_row_id(),
+          rebuild: true,
+        }),
         options.run_filter_panel_query(normalized_filters, {
           force: true,
           mark_loading: false,
@@ -358,7 +338,7 @@ export function useProofreadingTableActions(
       options.set_filter_dialog_open(false);
       options.filter_dialog_open_ref.current = false;
     }
-  }, [options]);
+  }, [options, read_query_target_row_id]);
 
   return {
     update_search_keyword,

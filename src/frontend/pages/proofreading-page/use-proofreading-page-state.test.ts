@@ -20,6 +20,7 @@ import {
   type ProofreadingFilterOptions,
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
+import { resolve_prefetched_list_window_bounds } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
 
 // 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
 type RuntimeFixture = {
@@ -909,9 +910,6 @@ describe("useProofreadingPageState", () => {
       1,
     );
     expect(
-      proofreading_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenLastCalledWith(expect.objectContaining({ window_start: 0, window_count: 128 }));
-    expect(
       proofreading_client_fixture.current.build_proofreading_filter_panel,
     ).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
@@ -932,11 +930,7 @@ describe("useProofreadingPageState", () => {
     );
     expect(
       proofreading_client_fixture.current.read_proofreading_list_window,
-    ).toHaveBeenLastCalledWith({
-      view_id: "view-1",
-      start: 0,
-      count: 128,
-    });
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ view_id: "view-1" }));
     expect(latest_state?.preserve_scroll_anchor.row_id).toBe("1");
     expect(latest_state?.preserve_scroll_anchor.revision).toBeGreaterThan(0);
     expect(latest_state?.cache_status).toBe("ready");
@@ -1035,11 +1029,7 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
     expect(
       proofreading_client_fixture.current.read_proofreading_list_window,
-    ).toHaveBeenLastCalledWith({
-      view_id: "view-1",
-      start: 0,
-      count: 128,
-    });
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ view_id: "view-1" }));
     expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["1", "2"]);
     expect(latest_state?.visible_items.map((item) => item.item.dst)).toEqual(["", ""]);
     expect(latest_state?.selected_row_ids).toEqual(["1", "2"]);
@@ -1240,9 +1230,135 @@ describe("useProofreadingPageState", () => {
     );
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenLastCalledWith(
-      expect.objectContaining({ keyword: "needle", window_start: 0, window_count: 128 }),
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: "needle" }));
+  });
+
+  it("清空搜索时收敛到首个选中条目并一次查询其预取窗口", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("needle");
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+    });
+    await flush_async_updates();
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+      latest_state?.update_search_keyword("");
+    });
+
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
     );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        keyword: "",
+        window_anchor: expect.objectContaining({ row_id: "1" }),
+      }),
+    );
+    expect(latest_state?.scroll_to_row).toEqual({
+      row_id: "1",
+      revision: expect.any(Number),
+    });
+  });
+
+  it("搜索范围和正则连续切换时只接纳最新查询并保留首个选中条目", async () => {
+    await render_hook();
+    const stale_query = create_deferred<ReturnType<typeof create_list_view>>();
+    const current_query = create_deferred<ReturnType<typeof create_list_view>>();
+    const create_query_view = (view_id: string, compressed_src: string) => ({
+      ...create_list_view(),
+      view_id,
+      window_rows: [{ ...create_list_view().window_rows[0], compressed_src }],
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view = vi
+      .fn()
+      .mockReturnValueOnce(stale_query.promise)
+      .mockReturnValueOnce(current_query.promise);
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+      latest_state?.update_search_scope("src");
+      latest_state?.update_regex(true);
+    });
+
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        scope: "src",
+        is_regex: false,
+        window_anchor: expect.objectContaining({ row_id: "1" }),
+      }),
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        scope: "src",
+        is_regex: true,
+        window_anchor: expect.objectContaining({ row_id: "1" }),
+      }),
+    );
+
+    await act(async () => {
+      current_query.resolve(create_query_view("current-query-view", "current-query-row"));
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.visible_items[0]?.compressed_src).toBe("current-query-row");
+
+    await act(async () => {
+      stale_query.resolve(create_query_view("stale-query-view", "stale-query-row"));
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.visible_items[0]?.compressed_src).toBe("current-query-row");
+  });
+
+  it("用户查询失败时保留旧视图和旧选区", async () => {
+    await render_hook();
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      throw new Error("query_failed");
+    });
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+      latest_state?.update_search_scope("src");
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.visible_items[0]?.compressed_src).toBe("foo");
   });
 
   it("筛选面板统计会跟随弹窗筛选输入统一 250ms 防抖", async () => {
@@ -1350,6 +1466,37 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.filter_dialog_open).toBe(false);
+  });
+
+  it("确认筛选后首个选中条目被排除时会清空选区", async () => {
+    await render_hook();
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => ({
+      ...create_list_view(),
+      view_id: "view-without-target",
+    }));
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["2", "3"],
+        active_row_id: "3",
+        anchor_row_id: "2",
+      });
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      await latest_state?.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.selected_row_ids).toEqual([]);
+    expect(latest_state?.scroll_to_row).toBeNull();
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({ window_anchor: expect.objectContaining({ row_id: "2" }) }),
+    );
   });
 
   it("缓存刷新开始后会取消筛选面板尚未发布的防抖查询", async () => {
@@ -1579,10 +1726,16 @@ describe("useProofreadingPageState", () => {
   });
 
   it("项目刷新读到失效旧窗口时会按当前窗口重建列表", async () => {
+    const row_count = 1000;
+    const visible_range = { start: 300, count: 10 };
+    const expected_window = resolve_prefetched_list_window_bounds({
+      range: visible_range,
+      row_count,
+    });
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async (query) => {
       return {
         ...create_list_view(),
-        row_count: 1000,
+        row_count,
         window_start: query.window_start,
         window_rows: [],
       };
@@ -1592,7 +1745,7 @@ describe("useProofreadingPageState", () => {
         return {
           view_id: query.view_id,
           start: query.start,
-          row_count: 1000,
+          row_count,
           rows: [],
         };
       },
@@ -1600,10 +1753,7 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     await act(async () => {
-      latest_state?.read_visible_range({
-        start: 300,
-        count: 10,
-      });
+      latest_state?.read_visible_range(visible_range);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -1633,8 +1783,7 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.read_proofreading_list_window,
     ).toHaveBeenLastCalledWith({
       view_id: "view-1",
-      start: 44,
-      count: 522,
+      ...expected_window,
     });
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
@@ -1643,11 +1792,11 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        window_start: 44,
-        window_count: 522,
+        window_start: expected_window.start,
+        window_count: expected_window.count,
       }),
     );
-    expect(latest_state?.visible_row_count).toBe(1000);
+    expect(latest_state?.visible_row_count).toBe(row_count);
   });
 
   it("切换可见窗口不会裁剪窗口外选区", async () => {
@@ -1902,7 +2051,7 @@ describe("useProofreadingPageState", () => {
     },
   );
 
-  it("排序语义变化会清空表格选区", async () => {
+  it("排序语义变化会收敛到首个选中条目并定位其新位置", async () => {
     await render_hook();
 
     runtime_fixture.current = {
@@ -1917,8 +2066,8 @@ describe("useProofreadingPageState", () => {
 
     await act(async () => {
       latest_state?.apply_table_selection({
-        selected_row_ids: ["1"],
-        active_row_id: "1",
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
         anchor_row_id: "1",
       });
     });
@@ -1929,10 +2078,10 @@ describe("useProofreadingPageState", () => {
         direction: "ascending",
       });
     });
+    await flush_async_updates();
 
-    expect(latest_state?.selected_row_ids).toEqual([]);
-    expect(latest_state?.active_row_id).toBeNull();
-    expect(latest_state?.anchor_row_id).toBeNull();
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.scroll_to_row?.row_id).toBe("1");
   });
 
   it("只保存选区后重新进入会用新的术语缺失默认筛选", async () => {
@@ -2232,17 +2381,18 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     await act(async () => {
-      latest_state?.update_search_keyword("foo");
-      latest_state?.apply_table_sort_state({
-        column_id: "src",
-        direction: "descending",
-      });
       latest_state?.apply_table_selection({
         selected_row_ids: ["1", "3"],
         active_row_id: "3",
         anchor_row_id: "1",
       });
+      latest_state?.update_search_keyword("foo");
+      latest_state?.apply_table_sort_state({
+        column_id: "src",
+        direction: "descending",
+      });
     });
+    await flush_async_updates();
 
     await unmount_page();
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
@@ -2255,19 +2405,19 @@ describe("useProofreadingPageState", () => {
       column_id: "src",
       direction: "descending",
     });
-    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
-    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.active_row_id).toBe("1");
     expect(latest_state?.anchor_row_id).toBe("1");
-    expect(latest_state?.restore_scroll_row_id).toBe("1");
+    expect(latest_state?.scroll_to_row?.row_id).toBe("1");
 
     await act(async () => {
       latest_state?.update_search_keyword("bar");
     });
 
-    expect(latest_state?.selected_row_ids).toEqual([]);
-    expect(latest_state?.active_row_id).toBeNull();
-    expect(latest_state?.anchor_row_id).toBeNull();
-    expect(latest_state?.restore_scroll_row_id).toBeNull();
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.active_row_id).toBe("1");
+    expect(latest_state?.anchor_row_id).toBe("1");
+    expect(latest_state?.scroll_to_row?.row_id).toBe("1");
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.objectContaining({
         keyword: "foo",

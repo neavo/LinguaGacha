@@ -44,6 +44,7 @@ import type {
   AppTableColumn,
   AppTableRowModel,
   AppTableScrollAnchor,
+  AppTableScrollTarget,
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
@@ -64,7 +65,7 @@ type ProofreadingTableProps = {
   resolve_row_index_async: (row_id: string) => Promise<number | undefined>;
   resolve_row_ids_range: (range: { start: number; count: number }) => Promise<string[]>;
   on_visible_range_change: (range: { start: number; count: number }) => void;
-  restore_scroll_row_id: string | null;
+  scroll_to_row: AppTableScrollTarget | null;
   preserve_scroll_anchor: AppTableScrollAnchor;
   on_sort_change: (next_sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
@@ -390,7 +391,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           drag_enabled={false}
           get_row_id={(item) => item.row_id}
           row_model={row_model}
-          restore_scroll_row_id={props.restore_scroll_row_id}
+          scroll_to_row={props.scroll_to_row ?? undefined}
           preserve_scroll_anchor={props.preserve_scroll_anchor}
           on_selection_change={props.on_selection_change}
           on_selection_error={props.on_selection_error}

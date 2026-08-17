@@ -374,7 +374,7 @@ describe("AppTable row model", () => {
         selected_row_ids: ["c"],
         active_row_id: "c",
         anchor_row_id: "c",
-        restore_scroll_row_id: "c",
+        scroll_to_row: { row_id: "c", revision: 0 },
       }),
     );
 
@@ -414,7 +414,7 @@ describe("AppTable row model", () => {
         selected_row_ids: ["c"],
         active_row_id: "c",
         anchor_row_id: "c",
-        restore_scroll_row_id: "c",
+        scroll_to_row: { row_id: "c", revision: 0 },
       }),
     );
     await flush_promises();
@@ -456,7 +456,7 @@ describe("AppTable row model", () => {
         selected_row_ids: ["c"],
         active_row_id: "c",
         anchor_row_id: "c",
-        restore_scroll_row_id: "c",
+        scroll_to_row: { row_id: "c", revision: 0 },
       }),
     );
     mounted_roots.push(rendered.root);
@@ -473,7 +473,7 @@ describe("AppTable row model", () => {
           selected_row_ids: ["c"],
           active_row_id: "c",
           anchor_row_id: "c",
-          restore_scroll_row_id: "c",
+          scroll_to_row: { row_id: "c", revision: 1 },
         }),
       );
       await Promise.resolve();
@@ -489,6 +489,46 @@ describe("AppTable row model", () => {
     expect(app_table_test_state.scrollToIndex).not.toHaveBeenCalledWith(2, {
       align: "start",
     });
+  });
+
+  it("目标行或滚动版本变化时都会重新定位", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const rows = create_rows(3);
+    const rendered = await render_app_table(
+      create_default_props({
+        rows,
+        scroll_to_row: { row_id: "row-2", revision: 1 },
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows,
+          scroll_to_row: { row_id: "row-1", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledTimes(2);
+    expect(app_table_test_state.scrollToIndex).toHaveBeenLastCalledWith(1, { align: "start" });
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows,
+          scroll_to_row: { row_id: "row-1", revision: 2 },
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledTimes(3);
   });
 
   it("刷新锚点会捕获已挂载行偏移并在数据更新后恢复", async () => {

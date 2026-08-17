@@ -125,7 +125,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           resolve_row_index_async={proofreading_page_state.resolve_visible_row_index_async}
           resolve_row_ids_range={proofreading_page_state.resolve_visible_row_ids_range}
           on_visible_range_change={proofreading_page_state.read_visible_range}
-          restore_scroll_row_id={proofreading_page_state.restore_scroll_row_id}
+          scroll_to_row={proofreading_page_state.scroll_to_row}
           preserve_scroll_anchor={proofreading_page_state.preserve_scroll_anchor}
           on_sort_change={proofreading_page_state.apply_table_sort_state}
           on_selection_change={proofreading_page_state.apply_table_selection}

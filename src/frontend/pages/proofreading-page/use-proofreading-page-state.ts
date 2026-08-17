@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
@@ -54,6 +54,7 @@ import {
 import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
   AppTableScrollAnchor,
+  AppTableScrollTarget,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 
@@ -69,6 +70,12 @@ import {
 
 // 校对页所有保存动作共享同一业务 operation，具体 item 范围留在写入 context。
 const PROOFREADING_WRITE: ProjectWriteOperation = "proofreading.write";
+
+// 用户查询变化只携带稳定候选行与是否重建，不复制筛选或排序状态。
+type ListQueryChange = {
+  target_row_id: string | null;
+  rebuild?: boolean;
+};
 
 /**
  * 聚合校对页 session 状态、后端 query、写入动作与生命周期，向页面暴露单一公开状态。
@@ -111,12 +118,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const set_table_filter_state = table_ui_state.set_filter_state;
   const set_table_sort_state = table_ui_state.set_sort_state;
   const set_table_selection_state = table_ui_state.set_selection_state;
-  const clear_table_selection_state = table_ui_state.clear_selection_state;
   const reset_table_state = table_ui_state.reset_table_state;
   const [list_snapshot, set_list_snapshot] = useState<ProofreadingListSnapshot>(() => {
     return {
       query_intent_key: "",
       view: create_empty_proofreading_list_view(),
+      scroll_to_row: null,
     };
   });
   const list_view = list_snapshot.view;
@@ -159,8 +166,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     start: 0,
     count: PROOFREADING_INITIAL_WINDOW_ROWS,
   });
-  const preferred_row_id_ref = useRef<string | null>(null);
-  const should_select_first_visible_ref = useRef(false);
+  const pending_write_focus_row_id_ref = useRef<string | null>(null);
+  // 缓存失效回调声明早于查询调度器，用 ref 连接两者并避免引入第二套状态机。
+  const cancel_pending_list_query_change_ref = useRef<() => void>(() => undefined);
   const replace_cursor_ref = useRef(0);
   const pending_replace_cursor_ref = useRef<number | null>(null);
   const filter_dialog_open_ref = useRef(filter_dialog_open);
@@ -192,9 +200,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const reset_dialog_ref = useRef<() => void>(() => undefined);
 
   const visible_items = list_view.window_rows;
-  const visible_row_ids = useMemo(() => {
-    return visible_items.map((item) => item.row_id);
-  }, [visible_items]);
   const visible_row_index_by_id = useMemo(() => {
     return new Map(
       visible_items.map((item, index) => {
@@ -233,6 +238,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       sort_state,
     });
   }, [sort_state, table_ui_state.filter_state]);
+  const scroll_to_row: AppTableScrollTarget | null =
+    list_snapshot.scroll_to_row ??
+    (restore_scroll_row_id === null ? null : { row_id: restore_scroll_row_id, revision: 0 });
 
   const handle_api_error = useCallback(
     (error: unknown, fallback_message: string): void => {
@@ -329,7 +337,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     });
   }, []);
 
-  const apply_preferred_row_focus = useCallback(
+  const apply_pending_write_focus = useCallback(
     (preferred_row_id: string): void => {
       const current_selected_row_ids = selected_row_ids_ref.current;
       if (
@@ -385,7 +393,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       if (args.pending_replace_cursor !== undefined) {
         pending_replace_cursor_ref.current = args.pending_replace_cursor;
       }
-      preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
+      pending_write_focus_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
 
       set_is_writing(true);
 
@@ -428,7 +436,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
 
   const remember_preferred_row_id = useCallback((preferred_row_id: string | null): void => {
-    preferred_row_id_ref.current = preferred_row_id;
+    pending_write_focus_row_id_ref.current = preferred_row_id;
   }, []);
 
   const read_items_by_row_ids_ref = useRef(
@@ -496,13 +504,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     t,
   });
 
-  // 主搜索和筛选面板共用输入防抖；确认、刷新等显式路径会 cancel 后即时查询。
-  const search_list_view_query_scheduler = useDebouncedCallback((): void => {
-    void run_list_view_query().catch((error) => {
-      report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
-    });
-  }, INPUT_QUERY_DEBOUNCE_MS);
-
   const filter_panel_query_scheduler = useDebouncedCallback(
     (filters: ProofreadingFilterOptions): void => {
       void run_filter_panel_query(filters, {
@@ -515,17 +516,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
 
   const cancel_pending_list_view_query = useCallback((): void => {
-    search_list_view_query_scheduler.cancel();
-  }, [search_list_view_query_scheduler]);
-
-  const schedule_search_list_view_query = useCallback((): void => {
-    search_list_view_query_scheduler.schedule();
-  }, [search_list_view_query_scheduler]);
+    cancel_pending_list_query_change_ref.current();
+  }, []);
 
   const cancel_pending_cache_bound_queries = useCallback((): void => {
-    search_list_view_query_scheduler.cancel();
+    cancel_pending_list_view_query();
     filter_panel_query_scheduler.cancel();
-  }, [filter_panel_query_scheduler, search_list_view_query_scheduler]);
+  }, [cancel_pending_list_view_query, filter_panel_query_scheduler]);
 
   const invalidate_list_view_requests = useCallback((): void => {
     list_view_request_id_ref.current += 1;
@@ -549,10 +546,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     invalidate_list_view_requests,
   ]);
 
-  const clear_table_selection = useCallback((): void => {
-    clear_table_selection_state();
-  }, [clear_table_selection_state]);
-
   const clear_transient_state_for_new_project = useCallback((): void => {
     clear_pending_confirmation();
     const empty_dialog_filters = create_empty_filter_options();
@@ -569,8 +562,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     reset_dialog();
     replace_cursor_ref.current = 0;
     pending_replace_cursor_ref.current = null;
-    preferred_row_id_ref.current = null;
-    should_select_first_visible_ref.current = false;
+    pending_write_focus_row_id_ref.current = null;
     clear_refresh_scroll_anchor();
     pending_reset_filters_ref.current = false;
   }, [clear_pending_confirmation, clear_refresh_scroll_anchor, reset_dialog, reset_table_state]);
@@ -590,6 +582,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     const empty_list_snapshot: ProofreadingListSnapshot = {
       query_intent_key: "",
       view: create_empty_proofreading_list_view(),
+      scroll_to_row: null,
     };
     set_list_snapshot(empty_list_snapshot);
     list_snapshot_ref.current = empty_list_snapshot;
@@ -603,7 +596,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const {
     refresh_snapshot,
-    run_list_view_query,
+    query_list_view,
+    publish_list_snapshot,
     run_filter_panel_query,
     read_list_window,
     read_items_by_row_ids,
@@ -655,6 +649,67 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   });
   read_items_by_row_ids_ref.current = read_items_by_row_ids;
 
+  // 用户查询只在新视图接纳候选行后提交单选，否则提交空选区。
+  const execute_list_query_change = useCallback(
+    async (change: ListQueryChange): Promise<void> => {
+      try {
+        const snapshot = await query_list_view({
+          rebuild: change.rebuild,
+          scroll_to_row_id: change.target_row_id,
+        });
+        if (snapshot === null) {
+          return;
+        }
+
+        const resolved_row_id = snapshot.scroll_to_row?.row_id ?? null;
+        startTransition(() => {
+          publish_list_snapshot(snapshot);
+          set_table_selection_state({
+            selected_row_ids: resolved_row_id === null ? [] : [resolved_row_id],
+            active_row_id: resolved_row_id,
+            anchor_row_id: resolved_row_id,
+          });
+        });
+      } catch (error) {
+        report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
+      }
+    },
+    [
+      publish_list_snapshot,
+      query_list_view,
+      report_proofreading_list_error,
+      set_table_selection_state,
+      t,
+    ],
+  );
+
+  const list_query_change_scheduler = useDebouncedCallback((change: ListQueryChange): void => {
+    void execute_list_query_change(change);
+  }, INPUT_QUERY_DEBOUNCE_MS);
+
+  const prepare_list_query_change = useCallback((): void => {
+    pending_write_focus_row_id_ref.current = null;
+    visible_range_ref.current = null;
+  }, []);
+
+  const run_list_query_change = useCallback(
+    (change: ListQueryChange): Promise<void> => {
+      list_query_change_scheduler.cancel();
+      prepare_list_query_change();
+      return execute_list_query_change(change);
+    },
+    [execute_list_query_change, list_query_change_scheduler, prepare_list_query_change],
+  );
+
+  const schedule_list_query_change = useCallback(
+    (change: ListQueryChange): void => {
+      prepare_list_query_change();
+      list_query_change_scheduler.schedule(change);
+    },
+    [list_query_change_scheduler, prepare_list_query_change],
+  );
+  cancel_pending_list_query_change_ref.current = list_query_change_scheduler.cancel;
+
   const warm_filter_panel_query = useCallback(
     (filters: ProofreadingFilterOptions): void => {
       void run_filter_panel_query(filters, {
@@ -696,21 +751,18 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     visible_row_index_by_id,
     filter_dialog_filters_ref,
     filter_dialog_open_ref,
-    preferred_row_id_ref,
     proofreading_runtime_client_ref,
-    should_select_first_visible_ref,
+    selected_row_ids_ref,
     sync_state_ref,
     visible_range_ref,
-    cancel_pending_list_view_query,
-    clear_table_selection,
     filter_panel_query_scheduler,
     read_current_view_row_ids,
     read_list_window,
     report_proofreading_list_error,
     materialize_active_filters,
     run_filter_panel_query,
-    run_list_view_query,
-    schedule_search_list_view_query,
+    run_list_query_change,
+    schedule_list_query_change,
     set_filter_dialog_filters,
     set_filter_dialog_open,
     set_replace_text,
@@ -751,7 +803,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_path: project_snapshot.path,
     proofreading_change_signal,
     proofreading_lookup_intent,
-    visible_row_ids,
     filter_dialog_filters_ref,
     filter_dialog_open_ref,
     filter_panel_request_id_ref,
@@ -762,27 +813,21 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     loading_toast_id_ref,
     pending_replace_cursor_ref,
     pending_reset_filters_ref,
-    preferred_row_id_ref,
+    pending_write_focus_row_id_ref,
     previous_project_loaded_ref,
     previous_project_path_ref,
     previous_proofreading_change_seq_ref,
     replace_cursor_ref,
     restored_ui_state_ref,
-    should_select_first_visible_ref,
-    visible_range_ref,
-    apply_preferred_row_focus,
-    cancel_pending_list_view_query,
+    apply_pending_write_focus,
     clear_cache_state,
     clear_proofreading_lookup_intent,
-    clear_table_selection,
     clear_transient_state_for_new_project,
     dismiss_toast,
     push_progress_toast,
     refresh_snapshot,
-    report_proofreading_list_error,
-    run_list_view_query,
+    run_list_query_change,
     set_cache_status,
-    set_table_selection_state,
     update_table_filter_state,
     t,
   });
@@ -810,7 +855,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       selected_row_ids,
       active_row_id,
       anchor_row_id,
-      restore_scroll_row_id,
+      scroll_to_row,
       preserve_scroll_anchor,
       retranslating_row_ids,
       filter_dialog_open,
@@ -893,7 +938,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     request_retranslate_row_ids,
     request_set_translation_status_row_ids,
     resolve_visible_row_index,
-    restore_scroll_row_id,
+    scroll_to_row,
     save_dialog_entry,
     search_keyword,
     search_scope,

@@ -103,6 +103,12 @@ export type AppTableDataColumn<Row> = AppTableColumnBase & {
 
 export type AppTableColumn<Row> = AppTableDragColumn<Row> | AppTableDataColumn<Row>;
 
+// 用 revision 区分同一行的多次主动定位请求。
+export type AppTableScrollTarget = {
+  row_id: string;
+  revision: number;
+};
+
 // 用 revision 区分每次刷新，row_id 为空时表示显式取消保持滚动。
 export type AppTableScrollAnchor = {
   row_id: string | null;
@@ -120,8 +126,8 @@ export type AppTableProps<Row> = {
   drag_enabled: boolean;
   get_row_id: (row: Row, index: number) => string;
   row_model?: AppTableRowModel<Row>;
-  // restore_scroll_row_id 是外部 session 恢复滚动的目标行，不改变表格选区。
-  restore_scroll_row_id?: string | null;
+  // scroll_to_row 主动把目标行滚入视口，不改变表格选区或键盘焦点。
+  scroll_to_row?: AppTableScrollTarget;
   // preserve_scroll_anchor 是数据刷新期间保持视觉偏移的滚动锚点。
   preserve_scroll_anchor?: AppTableScrollAnchor;
   get_row_can_drag?: (row: Row, index: number) => boolean;

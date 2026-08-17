@@ -99,7 +99,14 @@ describe("ProofreadingQueryService", () => {
     const cache = create_cache();
     const service = new ProofreadingQueryService({ sessionState: session_state, cache });
 
-    const view = await service.query({ action: "list", query: { keyword: "原文" } });
+    const view = await service.query({
+      action: "list",
+      query: {
+        keyword: "原文",
+        window_anchor: { row_id: "17", offset: 7 },
+        window_count: 11,
+      },
+    });
     const rows = await service.query({ action: "items_by_row_ids", row_ids: ["1"] });
     const context = await service.query({ action: "context", row_id: "1" });
 
@@ -116,6 +123,12 @@ describe("ProofreadingQueryService", () => {
       rows: [{ row_id: "1", row_number: 1, src: "原文", dst: "译文" }],
     });
     expect(cache.context).toHaveBeenCalledWith({ row_id: "1" });
+    expect(cache.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        window_anchor: { row_id: "17", offset: 7 },
+        window_count: 11,
+      }),
+    );
   });
 
   it("类型化 warning 查询保留 loaded-project 守卫且不扩张公开 action", async () => {

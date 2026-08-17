@@ -5,6 +5,7 @@ import type {
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import type {
   AppTableScrollAnchor,
+  AppTableScrollTarget,
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
@@ -74,7 +75,7 @@ export type UseProofreadingPageStateResult = {
   selected_row_ids: string[];
   active_row_id: string | null;
   anchor_row_id: string | null;
-  restore_scroll_row_id: string | null;
+  scroll_to_row: AppTableScrollTarget | null;
   preserve_scroll_anchor: AppTableScrollAnchor;
   retranslating_row_ids: string[];
   filter_dialog_open: boolean;

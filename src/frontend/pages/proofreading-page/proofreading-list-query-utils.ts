@@ -8,7 +8,10 @@ import type {
   ProofreadingListWindow,
   ProofreadingSyncState,
 } from "@shared/proofreading/proofreading-reader";
-import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
+import type {
+  AppTableScrollTarget,
+  AppTableSortState,
+} from "@frontend/widgets/app-table/app-table-types";
 import {
   build_filter_signature,
   type ProofreadingViewFilterState,
@@ -30,6 +33,7 @@ export type ProofreadingResolvedListQuery = {
 export type ProofreadingListSnapshot = {
   query_intent_key: string; // 创建当前 view 时使用的用户查询意图
   view: ProofreadingListView; // 与意图原子发布，避免异步刷新拼接平行 state/ref
+  scroll_to_row: AppTableScrollTarget | null; // 与新 view 同批提交的主动定位请求
 };
 
 export type ProofreadingRefreshSignal = {
@@ -68,6 +72,19 @@ export function resolve_list_view_window_bounds(
     start: list_view.window_start,
     count: Math.max(PROOFREADING_INITIAL_WINDOW_ROWS, list_view.window_rows.length),
   };
+}
+
+/** 已加载窗口完整覆盖目标范围时直接复用，避免虚拟表格首报触发重复请求。 */
+export function is_proofreading_list_window_covered(args: {
+  list_view: ProofreadingListView;
+  window_bounds: ProofreadingListWindowBounds;
+}): boolean {
+  const requested_end = Math.min(
+    args.list_view.row_count,
+    args.window_bounds.start + args.window_bounds.count,
+  );
+  const loaded_end = args.list_view.window_start + args.list_view.window_rows.length;
+  return args.window_bounds.start >= args.list_view.window_start && requested_end <= loaded_end;
 }
 
 /**
