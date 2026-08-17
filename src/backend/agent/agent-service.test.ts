@@ -1032,6 +1032,7 @@ describe("AgentService", () => {
       {
         kind: "user_message",
         id: expect.any(String),
+        delivery: "round",
         text: "查询",
         attachments: [],
         status: "success",
@@ -1207,7 +1208,7 @@ describe("AgentService", () => {
     }
 
     fake_agent_state.mode = "success";
-    await expect(service.resume()).resolves.toMatchObject({ state: "running" });
+    await expect(service.continue_session({})).resolves.toMatchObject({ state: "running" });
     await wait_for_idle(service);
 
     const snapshot = service.get_snapshot();
@@ -1319,7 +1320,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     const before = service.get_snapshot();
 
-    await expect(service.resume()).rejects.toThrow("request.validation_failed");
+    await expect(service.continue_session({})).rejects.toThrow("request.validation_failed");
     await expect(
       service.revise_latest_round({
         entryId: "stale",
@@ -1342,6 +1343,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
+      inputQueue: { paused: false, canSendNow: false, items: [] },
       taskProgress: [],
       contextTokens: null,
     });
@@ -1634,6 +1636,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
+      inputQueue: { paused: false, canSendNow: false, items: [] },
       taskProgress: [],
       contextTokens: null,
     });
@@ -1962,6 +1965,37 @@ describe("AgentService", () => {
     expect(result_index).toBeGreaterThan(call_index);
   });
 
+  it("checkpoint 抢先时在压缩后优先消费待发送 steer", async () => {
+    const { service, read_items } = await create_service();
+    await prepare_long_tool_checkpoint(service, read_items);
+    const prompts_before = fake_agent_state.prompts.length;
+    fake_agent_state.mode = "checkpoint";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "检查长条目", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    const queued = await service.send_message({ text: "插队优先", attachments: [] });
+    await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
+    await service.send_queued_message({ id: queued.inputQueue.items[0]!.id });
+
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+
+    const prompts = fake_agent_state.prompts.slice(prompts_before);
+    expect(prompts).toContain("插队优先");
+    expect(prompts).not.toContain("继续");
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "context_compaction", status: "success" }),
+        expect.objectContaining({
+          kind: "user_message",
+          delivery: "steer",
+          text: "插队优先",
+        }),
+      ]),
+    );
+  });
+
   it("已完成回答的压缩失败由统一恢复原位处理，且不会续跑模型", async () => {
     const { service, log_error, log_warning } = await create_service();
     fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
@@ -2003,7 +2037,7 @@ describe("AgentService", () => {
     const model_call_count_before_resume = fake_agent_state.model_call_count;
     fake_agent_state.summary_failures_remaining = 0;
     fake_agent_state.hold_summary = true;
-    await expect(service.resume()).resolves.toMatchObject({
+    await expect(service.continue_session({})).resolves.toMatchObject({
       state: "running",
       entries: expect.arrayContaining([
         expect.objectContaining({
@@ -2029,7 +2063,7 @@ describe("AgentService", () => {
       }),
     );
     expect(fake_agent_state.model_call_count).toBe(model_call_count_before_resume);
-    await expect(service.resume()).rejects.toThrow("request.validation_failed");
+    await expect(service.continue_session({})).rejects.toThrow("request.validation_failed");
   });
 
   it("中途压缩失败阻断模型与消息旁路，继续后不新增公开 user", async () => {
@@ -2055,7 +2089,7 @@ describe("AgentService", () => {
     );
 
     fake_agent_state.summary_failures_remaining = 0;
-    await expect(service.resume()).resolves.toMatchObject({ state: "running" });
+    await expect(service.continue_session({})).resolves.toMatchObject({ state: "running" });
 
     await vi.waitFor(() =>
       expect(
@@ -2094,17 +2128,138 @@ describe("AgentService", () => {
     service.stop();
   });
 
-  it("运行中重复消息在读取新模型前被拒绝", async () => {
+  it("运行中消息按 FIFO 排队并在同一 lease 内自动续轮", async () => {
     const { service, read_setting_count } = await create_service();
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "第一轮", attachments: [] });
 
-    await expect(service.send_message({ text: "第二轮", attachments: [] })).rejects.toThrow(
-      "runtime.busy",
-    );
+    await service.send_message({ text: "第二轮", attachments: [] });
+    await service.send_message({ text: "第三轮", attachments: [] });
     expect(read_setting_count()).toBe(1);
+    expect(service.get_snapshot().inputQueue.items.map((item) => item.text)).toEqual([
+      "第二轮",
+      "第三轮",
+    ]);
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+
+    expect(fake_agent_state.prompts.slice(-3)).toEqual(["第一轮", "第二轮", "第三轮"]);
+    expect(service.get_snapshot().inputQueue.items).toEqual([]);
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message")
+        .map((entry) => entry.text),
+    ).toEqual(["第一轮", "第二轮", "第三轮"]);
+  });
+
+  it("停止会保留并暂停队列", async () => {
+    const { service, runtime_gate } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await service.send_message({ text: "第二轮", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+
+    const snapshot = service.stop();
+
+    expect(snapshot.state).toBe("idle");
+    expect(snapshot.inputQueue).toMatchObject({ paused: true, items: [{ text: "第二轮" }] });
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
+    const task_lease = runtime_gate.begin_runtime("task");
+    await expect(service.continue_session({})).rejects.toThrow("runtime.busy");
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ text: "第二轮" }],
+    });
+    runtime_gate.finish_runtime(task_lease);
+    await expect(service.send_message({ text: "不得越过队首", attachments: [] })).rejects.toThrow(
+      "request.validation_failed",
+    );
+
+    fake_agent_state.mode = "success";
+    await service.continue_session({
+      message: { text: "第三轮", attachments: [] },
+    });
+    await wait_for_idle(service);
+    expect(fake_agent_state.prompts.slice(-2)).toEqual(["第二轮", "第三轮"]);
+    expect(service.get_snapshot().inputQueue.items).toEqual([]);
+  });
+
+  it("暂停队列允许空 continue 且不制造公开空 user", async () => {
+    const { service, runtime_gate } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await service.send_message({ text: "第二轮", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+
+    fake_agent_state.mode = "success";
+    await service.continue_session({});
+    await wait_for_idle(service);
+
+    expect(service.get_snapshot().inputQueue.items).toEqual([]);
+    expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
+      [
+        expect.objectContaining({ text: "第一轮", status: "stopped" }),
+        expect.objectContaining({ text: "第二轮", status: "success" }),
+      ],
+    );
+  });
+
+  it("失败轮次 continue 成功后自动消费暂停队列", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "tools_error";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    await service.send_message({ text: "第二轮", attachments: [] });
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ text: "第二轮" }],
+    });
+
+    fake_agent_state.mode = "success";
+    await service.continue_session({});
+    await wait_for_idle(service);
+
+    expect(service.get_snapshot().inputQueue.items).toEqual([]);
+    expect(
+      service
+        .get_snapshot()
+        .entries.filter((entry) => entry.kind === "user_message")
+        .map((entry) => entry.text),
+    ).toEqual(["第一轮", "第二轮"]);
+    expect(fake_agent_state.prompts.slice(-2)).toEqual(["继续", "第二轮"]);
+  });
+
+  it("立即发送由 Pi 消费后才从队列提交为 steer 消息", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    const queued = await service.send_message({ text: "插队消息", attachments: [] });
+    const item_id = queued.inputQueue.items[0]?.id;
+    expect(item_id).toBeDefined();
+    await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
+
+    await service.send_queued_message({ id: item_id! });
+    expect(service.get_snapshot().inputQueue.items[0]?.status).toBe("sending");
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+
+    expect(service.get_snapshot().inputQueue.items).toEqual([]);
+    expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
+      [
+        expect.objectContaining({ text: "第一轮", delivery: "round" }),
+        expect.objectContaining({ text: "插队消息", delivery: "steer" }),
+      ],
+    );
   });
 
   it("资源未加载时拒绝启动模型回合", async () => {

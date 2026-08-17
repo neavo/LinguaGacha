@@ -43,9 +43,8 @@ export const de_de_agent_page = {
   },
   action: {
     send: "Senden",
-    sending: "Wird gesendet",
+    save_queue: "Vorgemerkte Nachricht speichern",
     stop: "Stoppen",
-    stopping: "Wird gestoppt",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
@@ -57,7 +56,19 @@ export const de_de_agent_page = {
     save_edit: "Änderung speichern",
     return_latest: "Zum neuesten Stand",
   },
-  editing: { user: "Deine Nachricht wird bearbeitet", assistant: "Modellantwort wird bearbeitet" },
+  editing: {
+    user: "Deine Nachricht wird bearbeitet",
+    assistant: "Modellantwort wird bearbeitet",
+    queue: "Vorgemerkte Nachricht wird bearbeitet",
+  },
+  queue: {
+    no_message_text: "Kein Nachrichtentext",
+    attachments: "{count} Anhänge",
+    reorder: "Zum Sortieren ziehen",
+    send_now: "Jetzt senden",
+    sending: "Wird gesendet",
+    delete: "Nachricht löschen",
+  },
   confirm: {
     new_task: "Wirklich eine neue Unterhaltung starten …?",
     retry_after_workspace_apply:
@@ -90,6 +101,11 @@ export const de_de_agent_page = {
     retry: "Die Runde konnte nicht wiederholt werden. Bitte erneut versuchen.",
     continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen.",
     edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
+    queue_update:
+      "Die vorgemerkte Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
+    queue_delete: "Die vorgemerkte Nachricht konnte nicht gelöscht werden. Bitte erneut versuchen.",
+    queue_reorder: "Die Warteschlange konnte nicht sortiert werden. Bitte erneut versuchen.",
+    queue_send: "Die Nachricht konnte nicht sofort gesendet werden. Sie bleibt vorgemerkt.",
     image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",

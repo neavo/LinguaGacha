@@ -41,9 +41,8 @@ export const zh_cn_agent_page = {
   },
   action: {
     send: "发送",
-    sending: "正在发送",
+    save_queue: "保存排队消息",
     stop: "停止",
-    stopping: "正在停止",
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
     add_image: "添加图片",
@@ -55,7 +54,15 @@ export const zh_cn_agent_page = {
     save_edit: "保存修改",
     return_latest: "回到最新",
   },
-  editing: { user: "正在修改你的消息", assistant: "正在修改模型回复" },
+  editing: { user: "正在修改你的消息", assistant: "正在修改模型回复", queue: "正在修改排队消息" },
+  queue: {
+    no_message_text: "无消息正文",
+    attachments: "{count} 个附件",
+    reorder: "拖动排序",
+    send_now: "立即发送",
+    sending: "正在发送",
+    delete: "删除消息",
+  },
   confirm: {
     new_task: "是否确认开始新的对话任务 …?",
     retry_after_workspace_apply:
@@ -83,6 +90,10 @@ export const zh_cn_agent_page = {
     retry: "重试失败，请再次尝试。",
     continue: "继续失败，请再次尝试。",
     edit: "消息修改失败，编辑内容已保留。",
+    queue_update: "排队消息修改失败，编辑内容已保留。",
+    queue_delete: "排队消息删除失败，请重试。",
+    queue_reorder: "队列顺序更新失败，请重试。",
+    queue_send: "消息无法立即发送，仍保留在队列中。",
     image: "图片读取失败，仅支持 PNG、JPG、BMP、WebP 和 AVIF。",
     stop: "停止失败，请重试。",
     reset: "新任务创建失败，请重试。",

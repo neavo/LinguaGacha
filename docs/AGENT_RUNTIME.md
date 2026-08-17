@@ -4,7 +4,9 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、最新轮次 revise、resume、stop 与 reset；message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。revise 目标为最新 user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。resume 是产品“继续”操作，只恢复唯一未解决的尾部失败：必要时先原位恢复压缩，再以隐藏“继续”消息续跑原 user 轮次；已完成轮次的压缩失败只恢复模型历史。两种操作都要求会话空闲，revision 另校验最新轮次输入或最终输出身份；更早轮次和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态，上下文压缩条目只使用 `running | success | error`，不承载可停止语义。
+- Agent 公开入口提供 snapshot、message、continue、输入队列 update / delete / reorder / send、最新轮次 revise、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
+- 空闲且没有暂停队列时，message 建立新的公开轮次；运行时 message 进入当前会话的有界内存输入队列。正常轮次成功后在同一运行 lease 内按 FIFO 续取，stop 或模型失败保留并暂停剩余队列。continue 原子追加可选消息、解除暂停，并按需恢复压缩、失败 round 或队首；空 continue 只表达继续意图。立即发送在空闲时启动选中 round，在运行时经 Pi `steer` 发送，并仅在对应 user `message_start` 后从 `sending` 提交为成功的 `delivery: steer` 条目；提交前失败、停止或取消恢复为 `queued`。普通 user 使用 `delivery: round`；只有 round 建立 SDK history checkpoint 和轮次终态，因而可作为 revise、retry 与失败 continue 的目标。
+- revise 目标为最新 round user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。continue 必要时先原位恢复压缩，再以隐藏“继续”消息续跑原 user 轮次；已完成轮次的压缩失败只恢复模型历史。两种操作都要求会话空闲，revision 另校验最新 round 输入或最终输出身份；更早轮次、steer 输入和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；round user、assistant 与 tool 条目携带 `running | success | error | stopped` 状态，steer user 只在成功提交后公开，上下文压缩条目只使用 `running | success | error`。
 - 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史；未解决的上下文压缩在自动再试与“继续”时复用原 entry。公开快照只携带模型可见历史的估算 token；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开工具条目冻结规范化后的完整输入，并只在 SDK 工具终帧后携带模型实际收到的文本输出；公开协议不承载 SDK 原始参数引用、结构化 details、压缩诊断、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -14,11 +16,12 @@
 | -------------------------------------------------- | ----------------------- | ------------------------------------------------------- |
 | 公开状态、完整 UI 时间线、会话生命周期与启动期资源 | `AgentService`          | Agent API、`agent.session_event`                        |
 | 模型可见历史、工具循环、上下文压缩、中断与 settle  | 内存 `AgentSession`     | `AgentService` 调用 SDK 的 prompt、模型切换与关闭 API   |
-| 对话级动态工作队列                                 | `AgentService`          | `task_progress`                                        |
+| 用户输入队列与暂停 / 发送状态                      | `AgentService`          | Agent message、continue 与 queue API                   |
+| 模型对话级动态工作队列                             | `AgentService`          | `task_progress`                                        |
 | 当前对话 task、数据快照与显式 change 准备          | `AgentWorkspaceService` | `workspace_load`、`workspace_script`、`workspace_apply` |
 
-- Agent 运行时完全内存化。消息受理到整个用户任务最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的运行 lease；一个任务可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次执行。中途压缩失败会结束本轮，并阻断新消息直至 resume。对话级动态工作队列跨普通模型回合、stop、resume 与压缩保留，reset、工程切换和 dispose 清理；user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径，保留切点之前的完整工具配对、压缩摘要与供应商连续性数据。裁剪只改写对话和模型历史，不回滚已发生的工程、文件、网络或进度工具副作用。
-- resume 从受理到压缩和条件续跑全部持有同一运行 lease；失败 user 原位恢复为 `running`，保留失败前的公开条目、工具结果与模型历史，不追加公开“继续”user。普通模型回合的 stop 同步封口仍运行的子条目和 user 条目、将公开会话切回 `idle`，再异步取消 SDK，lease 仍到最终 settle 才释放。压缩和 `workspace_apply` 都是不可 stop 的原子阶段，前后端在对应 running 条目结束前拒绝 stop；reset、工程切换和 dispose 仍通过运行时关闭屏障隔离旧会话。
+- Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease；单个 round 可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次。Pi `agent_start / agent_end` 与压缩事件共同决定公开 `canSendNow`，避免在异步预检、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
+- continue 从受理到压缩、失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
 - GUI Agent 在应用 userdata 中持有活动 UUID 数据快照及其同级 `task`、`sources`。task 在当前 Agent 对话、工程 epoch 与权威语言内跨 load、普通 section revision、apply、stale 和 revision 冲突保留；内容结构及使用方式完全由模型决定，不自动进入模型上下文或项目事实。
 - 工程加载时从 `.lg` 原始资产生成 sources，同一工程 epoch 与 files revision 内复用，files revision 变化后由下一次 load 替换；普通文本保留为单文件，EPUB / XLSX 保留容器内部路径并只展开文本成员。新 load 全部成功后才替换旧快照；成功 `workspace_script` 将 change、task 和 scratch 作为同一文件事务提交，脚本失败、取消或结果无效只回滚本次运行。普通 revision、apply 和 stale 只清理快照；reset、工程身份、epoch 或语言变化、无法补偿的文件事务、未知宿主失败、dispose 和下次启动同时清理 task。change 校验与数据库回滚保留快照，sources 生成失败不回滚工程加载。目录清理失败只留诊断，不改变项目提交事实；task、快照与 sources 都不进入 Agent snapshot、模型历史或项目事实。
@@ -53,8 +56,8 @@
 ## 5. 前端消费
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
-- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、`taskProgress` 待办标签、完整消息草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。草稿附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
+- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、模型可见历史 token、`taskProgress` 待办标签、完整消息草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
-- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；命令受理失败由页面解析为安全 Toast，不写入共享会话状态。合法 message ack 把非空文本更新到输入历史并原子清空完整草稿；未进入修改态的重试不改写输入历史或草稿，user 修改成功后替换旧历史文本，assistant 修改不改写输入历史。
+- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有队列命令复用既有 HTTP ack 与命令期 SSE 重放，受理失败由页面解析为安全 Toast，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空完整草稿，空 continue 不改写草稿或历史；队列项与时间线条目共用唯一 Composer 修改态，成功后替换旧历史文本并恢复此前普通草稿。未进入修改态的重试不改写输入历史或草稿，round user 修改成功后替换旧历史文本，assistant 修改不改写输入历史。
 - 页面持有滚动、弹窗、尚未确认的回复选区，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；这些页面局部事实不进入 Agent snapshot、历史或发送协议。每轮最后一个成功 assistant 正文允许把单一原生选区和可选评论确认到当前消息草稿，不建立来源定位或第二套批注状态。`task_progress` 工具调用不渲染为时间线条目，页面在 Composer 上方固定展示 `taskProgress` 队首标签，完整队列由提示承载，空数组不占位。修改态复用唯一 Composer，暂存普通草稿，取消或成功后恢复，失败时保留编辑内容；assistant 修改隐藏附件与 marker 能力。最新轮次已成功执行 `workspace_apply` 时，重试或提交输入修改必须确认既有工程副作用不会回滚，输出修改与“继续”不确认。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
-- Agent 回合运行态与 stop 命令不锁定草稿编辑，send / revise / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset、消息修订与模型选择 / 思考档位控制。压缩和 `workspace_apply` 期间保留草稿编辑但禁用 stop；压缩还禁用发送、reset 与模型控制，失败后允许更换模型或开始新任务。失败恢复由后端完整拥有，renderer 不监听终态补发命令。
+- Agent round 运行态与 stop 命令不锁定草稿编辑；send、continue、revise、queue update 与 reset 受理期间编辑器只读。运行中有效草稿通过 message 入队，空草稿执行 stop；空闲且队列暂停时 Composer 统一执行 continue，可选草稿随请求追加队尾。压缩和 `workspace_apply` 期间仍允许有效草稿排队，但不可 stop。队列组件只消费后端顺序与能力快照，修改、删除、重排和立即发送均经 `AgentSessionProvider` 命令入口；steer user 不开放 round 的修改或重试操作。失败恢复仍由后端拥有，renderer 不监听终态补发命令。

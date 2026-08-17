@@ -188,20 +188,141 @@ describe("AgentSessionProvider", () => {
     expect(latest.taskProgress).toEqual(["读取工程", "检查章节", "汇总结果"]);
   });
 
-  it("缺失上下文用量的完整快照按当前协议失败", async () => {
-    desktop_api_mocks.api_get.mockResolvedValue({
-      state: "idle",
-      entries: [],
-      skills: [],
-      taskProgress: [],
+  it("用完整队列事件替换投影，并转发队列协议命令", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
     });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const item = {
+      id: "queue-1",
+      text: "稍后处理",
+      attachments: [],
+      status: "queued" as const,
+      createdAt: 1,
+    };
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "input_queue",
+        inputQueue: { paused: true, canSendNow: true, items: [item] },
+      });
+    });
+    expect(latest.inputQueue).toEqual({ paused: true, canSendNow: true, items: [item] });
+    latest.input.write_draft({ text: "普通草稿", attachments: [] });
+    act(() => latest.input.start_queue_edit(item));
+
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({ inputQueue: { paused: false, canSendNow: false, items: [] } }),
+    );
+    await act(async () => {
+      await latest.updateQueuedMessage(item.id, { text: "修改后", attachments: [] });
+      await latest.deleteQueuedMessage(item.id);
+      await latest.reorderQueuedMessages([item.id]);
+      await latest.sendQueuedMessage(item.id);
+    });
+    expect(desktop_api_mocks.api_fetch.mock.calls).toEqual([
+      ["/api/agent/queue/update", { id: item.id, message: { text: "修改后", attachments: [] } }],
+      ["/api/agent/queue/delete", { id: item.id }],
+      ["/api/agent/queue/reorder", { ids: [item.id] }],
+      ["/api/agent/queue/send", { id: item.id }],
+    ]);
+    expect(latest.input.read_draft()).toEqual({ text: "普通草稿", attachments: [] });
+    expect(latest.input.read_history()).toEqual(["修改后"]);
+  });
+
+  it("运行中仍受理普通发送并在 ack 后清空草稿", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ state: "running" }));
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({
+        state: "running",
+        inputQueue: {
+          paused: false,
+          canSendNow: false,
+          items: [
+            {
+              id: "queue-1",
+              text: "排队",
+              attachments: [],
+              status: "queued",
+              createdAt: 1,
+            },
+          ],
+        },
+      }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "排队", attachments: [] });
+
+    await act(async () => latest.send({ text: "排队", attachments: [] }));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      text: "排队",
+      attachments: [],
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+  });
+
+  it("携带消息 continue 通过唯一入口受理并清空草稿", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({
+        inputQueue: {
+          paused: true,
+          canSendNow: true,
+          items: [
+            {
+              id: "queue-1",
+              text: "已有消息",
+              attachments: [],
+              status: "queued",
+              createdAt: 1,
+            },
+          ],
+        },
+      }),
+    );
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "追加消息", attachments: [] });
+
+    await act(async () => latest.continue({ text: "追加消息", attachments: [] }));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {
+      message: { text: "追加消息", attachments: [] },
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.read_history()).toEqual(["追加消息"]);
+  });
+
+  it.each([
+    [
+      "inputQueue",
+      { state: "idle", entries: [], skills: [], taskProgress: [], contextTokens: null },
+    ],
+    [
+      "contextTokens",
+      {
+        state: "idle",
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
+      },
+    ],
+  ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
+    desktop_api_mocks.api_get.mockResolvedValue(snapshot);
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("restore_failed"));
-
-    expect(latest.contextTokens).toBeNull();
   });
 
   it("拒绝旧会话终态，并允许用户按当前协议重新恢复", async () => {
@@ -210,6 +331,7 @@ describe("AgentSessionProvider", () => {
         state: "complete",
         entries: [],
         skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
         taskProgress: [],
         contextTokens: null,
       })
@@ -234,6 +356,7 @@ describe("AgentSessionProvider", () => {
     desktop_api_mocks.api_get.mockResolvedValue({
       state: "idle",
       entries: [],
+      inputQueue: { paused: false, canSendNow: true, items: [] },
       taskProgress: [],
       contextTokens: null,
       skills: [
@@ -359,6 +482,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "user_message",
           id: "user-new",
+          delivery: "round",
           text: "@skill(glossary-audit) 审校",
           attachments: [
             ...image_attachments("webp-image"),
@@ -370,7 +494,28 @@ describe("AgentSessionProvider", () => {
         },
         {
           kind: "user_message",
+          id: "user-steer",
+          delivery: "steer",
+          text: "立即补充",
+          attachments: [],
+          status: "success",
+          createdAt: 11,
+          endedAt: 11,
+        },
+        {
+          kind: "user_message",
+          id: "user-invalid-steer",
+          delivery: "steer",
+          text: "尚未提交",
+          attachments: [],
+          status: "running",
+          createdAt: 11,
+          endedAt: null,
+        },
+        {
+          kind: "user_message",
           id: "user-missing-ended-at",
+          delivery: "round",
           text: "缺少结束时间",
           attachments: [],
           status: "success",
@@ -379,6 +524,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "user_message",
           id: "user-invalid-ended-at",
+          delivery: "round",
           text: "非法结束时间",
           attachments: [],
           status: "success",
@@ -388,6 +534,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "user_message",
           id: "user-float-ended-at",
+          delivery: "round",
           text: "浮点结束时间",
           attachments: [],
           status: "success",
@@ -408,6 +555,7 @@ describe("AgentSessionProvider", () => {
         },
       ],
       skills: [],
+      inputQueue: { paused: false, canSendNow: true, items: [] },
       taskProgress: [],
       contextTokens: null,
     });
@@ -458,6 +606,7 @@ describe("AgentSessionProvider", () => {
       {
         kind: "user_message",
         id: "user-new",
+        delivery: "round",
         text: "@skill(glossary-audit) 审校",
         attachments: [
           ...image_attachments("webp-image"),
@@ -466,6 +615,16 @@ describe("AgentSessionProvider", () => {
         status: "success",
         createdAt: 10,
         endedAt: 12,
+      },
+      {
+        kind: "user_message",
+        id: "user-steer",
+        delivery: "steer",
+        text: "立即补充",
+        attachments: [],
+        status: "success",
+        createdAt: 11,
+        endedAt: 11,
       },
       {
         kind: "context_compaction",
@@ -644,7 +803,7 @@ describe("AgentSessionProvider", () => {
     latest.input.write_draft({ text: "普通草稿", attachments: image_attachments("draft-image") });
 
     act(() => latest.input.start_edit(user_entry("user-1", "旧消息", ["old-image"])));
-    expect(latest.input.editing).toEqual({ entryId: "user-1", role: "user" });
+    expect(latest.input.editing).toEqual({ kind: "entry", entryId: "user-1", role: "user" });
     expect(latest.input.read_draft()).toEqual({
       text: "旧消息",
       attachments: image_attachments("old-image"),
@@ -892,7 +1051,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.entries).toEqual(previous_entries);
   });
 
-  it("统一恢复命令应用后端决定的压缩运行条目", async () => {
+  it("统一 continue 命令应用后端决定的压缩运行条目", async () => {
     const failed_compaction = {
       kind: "context_compaction" as const,
       id: "compaction-1",
@@ -909,9 +1068,9 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
-    await act(async () => latest.resume());
+    await act(async () => latest.continue());
 
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/resume");
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {});
     expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
     expect(latest.command).toBeNull();
   });
@@ -1000,6 +1159,7 @@ function user_entry(id: string, text: string, images: string[] = []) {
   return {
     kind: "user_message" as const,
     id,
+    delivery: "round" as const,
     text,
     attachments: image_attachments(...images),
     status: "success" as const,
@@ -1017,6 +1177,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     state: "idle",
     entries: [],
     skills: [],
+    inputQueue: { paused: false, canSendNow: false, items: [] },
     taskProgress: [],
     contextTokens: null,
     ...overrides,
