@@ -112,7 +112,6 @@ glossary 组内确认一个明确子集语义相关后，才调用 `workspace.de
 对不能直接决定的 fact 依次执行：
 
 1. 围绕缺失维度批量取得完整匹配与有限代表语境；
-   需要身份、别名、定义或远距离关系语境时，可以批量调用 `workspace.findRelatedItems` 补充候选位置，再按 item id 读取权威事实。相关排序只产生 observation 或可执行 derived probe，不能让 probe 标记 exhausted，也不能用于证明 residual 完整或事实不存在。
 2. 合理未知取值不改变最终字段时采用稳健直接值；
 3. glossary 的适用条件能由翻译输入判断时，以 `info` 形成 conditional；
 4. 缩小连续字面边界或正则，或拆出行为确定的独立事实；

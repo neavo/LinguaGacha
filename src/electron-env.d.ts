@@ -1,4 +1,5 @@
 /// <reference types="electron-vite/node" />
+/// <reference types="vite/client" />
 
 import type { DesktopBridgeApi } from "./gui/bridge/bridge-api";
 

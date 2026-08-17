@@ -3,7 +3,6 @@ import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import {
-  AGENT_RELATED_ITEM_SEARCH_LIMITS,
   AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
 } from "../../shared/backend-runtime";
@@ -301,12 +300,6 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
     query_page_max: 100,
     literal_match_examples_default: 3,
     literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
-    related_item_search: {
-      results_default: AGENT_RELATED_ITEM_SEARCH_LIMITS.resultsDefault,
-      results_max: AGENT_RELATED_ITEM_SEARCH_LIMITS.resultsMax,
-      context_items_default: AGENT_RELATED_ITEM_SEARCH_LIMITS.contextItemsDefault,
-      context_items_max: AGENT_RELATED_ITEM_SEARCH_LIMITS.contextItemsMax,
-    },
   },
   datasets: {
     project_meta: {

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { read_json_record, type JsonRecord } from "../../domain/json";
+import { read_json_record, type JsonRecord } from "../../../domain/json";
 import {
   execute_workspace_method,
   workspace_item,
   WORKSPACE_QUERY_PAGE_MAX,
-} from "../../test/agent-workspace-method-support";
+} from "../../../test/agent-workspace-methods/test-support";
 
 describe("workspace.queryItemContexts 发布方法", () => {
   it("保留具名关系并合并重复证据对象", async () => {
     const result = read_json_record(
       await execute_workspace_method(
-        "query-item-contexts",
+        "queryItemContexts",
         { item_ids: [12, 14, 999] },
         {
           "items/entries.jsonl": [
@@ -45,7 +45,7 @@ describe("workspace.queryItemContexts 发布方法", () => {
     const item_ids = Array.from({ length: WORKSPACE_QUERY_PAGE_MAX + 1 }, (_, index) => index + 1);
 
     await expect(
-      execute_workspace_method("query-item-contexts", { item_ids }, { "items/entries.jsonl": [] }),
+      execute_workspace_method("queryItemContexts", { item_ids }, { "items/entries.jsonl": [] }),
     ).resolves.toEqual({ contexts: [], items: [], missing_item_ids: item_ids });
   });
 });

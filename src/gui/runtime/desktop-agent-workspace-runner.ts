@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { BrowserWindow, protocol, session, type Session } from "electron";
 
 import type { JsonValue } from "../../domain/json";
@@ -13,7 +11,7 @@ import {
   AgentWorkspaceTransactionError,
   DesktopAgentWorkspaceFiles,
 } from "./desktop-agent-workspace-files";
-import { DesktopAgentRelatedItemSearch } from "./desktop-agent-related-item-search";
+import { AGENT_WORKSPACE_METHOD_SOURCES } from "./desktop-agent-workspace-method-sources";
 
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
@@ -44,15 +42,10 @@ export class DesktopAgentWorkspaceRunner {
   private readonly runner_session: Session; // 不复用默认 session 的 cookie、代理状态或权限
   private active_files: DesktopAgentWorkspaceFiles | null = null; // protocol 只映射当前合并视图
   private active_window: BrowserWindow | null = null; // abort / dispose 共享的唯一 renderer 句柄
-  private readonly related_item_search: DesktopAgentRelatedItemSearch | null;
   private running = false; // 在首个 await 前占位，阻止并发请求同时通过空闲检查
 
   /** 注册私有文件协议，并在 session 层关闭网络、权限与下载。 */
-  public constructor(options: { relatedItemSearchWorkerEntryUrl?: URL } = {}) {
-    this.related_item_search =
-      options.relatedItemSearchWorkerEntryUrl === undefined
-        ? null
-        : new DesktopAgentRelatedItemSearch(options.relatedItemSearchWorkerEntryUrl);
+  public constructor() {
     this.runner_session = session.fromPartition(AGENT_WORKSPACE_PARTITION, { cache: false });
     this.runner_session.protocol.handle(AGENT_WORKSPACE_SCHEME, (request) =>
       this.handle_protocol_request(request),
@@ -89,33 +82,8 @@ export class DesktopAgentWorkspaceRunner {
   ): Promise<BackendRuntimeAgentWorkspaceRunResponse> {
     let files: DesktopAgentWorkspaceFiles;
     try {
-      files = await DesktopAgentWorkspaceFiles.open(
-        request.workspacePath,
-        this.related_item_search === null
-          ? null
-          : async (workspace_path, search_request, search_signal) =>
-              await this.related_item_search!.search(
-                {
-                  workspacePath: workspace_path,
-                  indexPath: path.join(
-                    path.dirname(workspace_path),
-                    "related-item-search",
-                    "index.sqlite",
-                  ),
-                  request: search_request,
-                },
-                search_signal,
-              ),
-      );
+      files = await DesktopAgentWorkspaceFiles.open(request.workspacePath);
     } catch (error) {
-      return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
-    }
-
-    let method_sources: Record<string, string>;
-    try {
-      method_sources = await files.read_method_sources();
-    } catch (error) {
-      await files.rollback();
       return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
 
@@ -160,7 +128,7 @@ export class DesktopAgentWorkspaceRunner {
       await target_window.loadURL(AGENT_WORKSPACE_URL);
       signal.throwIfAborted();
       const serialized = await target_window.webContents.executeJavaScript(
-        build_workspace_program(request.script, method_sources),
+        build_workspace_program(request.script, AGENT_WORKSPACE_METHOD_SOURCES),
         true,
       );
       signal.throwIfAborted();
@@ -236,7 +204,6 @@ export class DesktopAgentWorkspaceRunner {
     this.active_window?.destroy();
     this.active_window = null;
     this.active_files = null;
-    this.related_item_search?.dispose();
     this.runner_session.protocol.unhandle(AGENT_WORKSPACE_SCHEME);
   }
 
@@ -406,20 +373,6 @@ function build_workspace_program(
     });
     return await response.json();
   };
-  const findRelatedItems = async (args) => {
-    const response = await request("/__find_related_items__", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        ...args,
-        file_paths: args?.file_paths ?? [],
-        limit: args?.limit ?? contract.limits.related_item_search.results_default,
-        context_items:
-          args?.context_items ?? contract.limits.related_item_search.context_items_default,
-      }),
-    });
-    return await response.json();
-  };
   const workspace = Object.freeze({
     ...readonlyWorkspace,
     writeText,
@@ -428,7 +381,6 @@ function build_workspace_program(
     remove,
     ...publishedMethods,
     matchLiterals,
-    findRelatedItems,
   });
   // 括号把输入限制为单一函数表达式；解析失败统一返回可修复的公开入口错误。
   let entrypoint;

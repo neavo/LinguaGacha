@@ -1,18 +1,14 @@
-import fs from "node:fs";
-import path from "node:path";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { AGENT_WORKSPACE_CONTRACT } from "../../backend/agent/agent-workspace-contract";
+import { AGENT_WORKSPACE_METHOD_SOURCES } from "../../gui/runtime/desktop-agent-workspace-method-sources";
 
-import { read_json_record, type JsonRecord, type JsonValue } from "../domain/json";
-import { AGENT_WORKSPACE_CONTRACT } from "../backend/agent/agent-workspace-contract";
-
+// 用与 workspace runner 相同的动态入口执行 bundle 源码，避免测试复制另一份实现。
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<JsonValue>;
 
-export type WorkspaceMethodResourceName =
-  | "query-items"
-  | "query-item-contexts"
-  | "query-quality-rule-groups"
-  | "derive-common-literal-roots";
+/** 发布方法名称直接取自实际 bundle source map，避免测试与实现漂移。 */
+export type WorkspaceMethodName = keyof typeof AGENT_WORKSPACE_METHOD_SOURCES;
 
 /** 测试验证方法遵循 contract 上限，而不复制当前可调数值。 */
 export const WORKSPACE_QUERY_PAGE_MAX = Number(
@@ -21,14 +17,11 @@ export const WORKSPACE_QUERY_PAGE_MAX = Number(
 
 /** 用真实发布源码和最小只读工作区 API 验证方法的公开结果。 */
 export async function execute_workspace_method(
-  name: WorkspaceMethodResourceName,
+  name: WorkspaceMethodName,
   args: JsonRecord,
   files: Record<string, JsonValue>,
 ): Promise<JsonValue> {
-  const source = fs.readFileSync(
-    path.resolve("resource", "agent", "workspace", "methods", `${name}.js`),
-    "utf-8",
-  );
+  const source = AGENT_WORKSPACE_METHOD_SOURCES[name];
   const workspace = {
     contract: AGENT_WORKSPACE_CONTRACT,
     readJson: async (file_path: string) => files[file_path],

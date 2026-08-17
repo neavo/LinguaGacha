@@ -19,7 +19,6 @@ type CLIEntryCall = {
 type GuiEntryCall = {
   desktopBundleDir: string;
   backendRuntimeWorkerEntryUrl: URL;
-  agentRelatedItemSearchWorkerEntryUrl: URL;
 };
 
 beforeEach(() => {
@@ -101,9 +100,6 @@ describe("产品统一入口", () => {
     });
     expect(String(calls.gui[0]?.backendRuntimeWorkerEntryUrl)).toMatch(
       /\/backend-runtime-worker-entry\.js$/u,
-    );
-    expect(String(calls.gui[0]?.agentRelatedItemSearchWorkerEntryUrl)).toMatch(
-      /\/agent-related-item-search-worker-entry\.js$/u,
     );
     expect(exit_codes).toEqual([]);
   });

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { read_json_record, type JsonRecord } from "../../domain/json";
+import { read_json_record, type JsonRecord } from "../../../domain/json";
 import {
   execute_workspace_method,
   glossary_entry,
   relation_candidate,
-} from "../../test/agent-workspace-method-support";
+} from "../../../test/agent-workspace-methods/test-support";
 
 describe("workspace.groupQualityRuleEntries 发布方法", () => {
   it("为既有术语生成互斥结构组并返回关系原因", async () => {
     const result = read_json_record(
       await execute_workspace_method(
-        "query-quality-rule-groups",
+        "groupQualityRuleEntries",
         { kind: "glossary", target_entry_ids: ["erin", "dotour-house"] },
         {
           "glossary/entries.jsonl": [
@@ -63,7 +63,7 @@ describe("workspace.groupQualityRuleEntries 发布方法", () => {
   it("对候选使用同一算法且弱关系不传递", async () => {
     const result = read_json_record(
       await execute_workspace_method(
-        "query-quality-rule-groups",
+        "groupQualityRuleEntries",
         {
           kind: "glossary",
           entries: [
@@ -108,7 +108,7 @@ describe("workspace.groupQualityRuleEntries 发布方法", () => {
       .map((suffix, index) => relation_candidate(`entry-${index.toString()}`, `共同${suffix}`));
     const result = read_json_record(
       await execute_workspace_method(
-        "query-quality-rule-groups",
+        "groupQualityRuleEntries",
         {
           kind: "glossary",
           entries: [
@@ -146,11 +146,7 @@ describe("workspace.groupQualityRuleEntries 发布方法", () => {
         .map((suffix, index) => relation_candidate(`branch-${index.toString()}`, `星海${suffix}`)),
     ];
     const result = read_json_record(
-      await execute_workspace_method(
-        "query-quality-rule-groups",
-        { kind: "glossary", entries },
-        {},
-      ),
+      await execute_workspace_method("groupQualityRuleEntries", { kind: "glossary", entries }, {}),
     );
     const groups = result["groups"] as JsonRecord[];
 
@@ -175,7 +171,7 @@ describe("workspace.groupQualityRuleEntries 发布方法", () => {
   it("对 text_preserve 只合并完全相同的正则", async () => {
     const result = read_json_record(
       await execute_workspace_method(
-        "query-quality-rule-groups",
+        "groupQualityRuleEntries",
         {
           kind: "text_preserve",
           entries: [

@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  AGENT_WORKSPACE_METHOD_RESOURCE_PATHS,
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
   AGENT_WORKSPACE_SCRIPT_API,
 } from "../../shared/backend-runtime";
@@ -89,23 +88,20 @@ beforeEach(() => {
   fs.mkdirSync(path.join(session_root, "task"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "items"), { recursive: true });
   fs.mkdirSync(path.join(workspace_path, "changes", "items"), { recursive: true });
-  fs.mkdirSync(path.join(workspace_path, "methods"), { recursive: true });
   fs.writeFileSync(
     path.join(workspace_path, "contract.json"),
     JSON.stringify({
-      limits: { literal_match_examples_default: 3 },
+      limits: {
+        query_page_default: 20,
+        query_page_max: 100,
+        literal_match_examples_default: 3,
+      },
       datasets: { items: { path: "items/entries.jsonl" } },
       changes: { items: { updates: { path: "changes/items/updates.jsonl" } } },
     }),
   );
   fs.writeFileSync(path.join(workspace_path, "items", "entries.jsonl"), ORIGINAL_ITEMS);
   fs.writeFileSync(path.join(workspace_path, "changes", "items", "updates.jsonl"), "");
-  for (const method_path of Object.values(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS)) {
-    fs.writeFileSync(
-      path.join(workspace_path, method_path),
-      "async function runWorkspaceMethod(_workspace, args) { return { marker: args.limit }; }\nvoid runWorkspaceMethod;",
-    );
-  }
 });
 
 afterEach(() => {
@@ -311,12 +307,8 @@ describe("DesktopAgentWorkspaceRunner", () => {
     runner.dispose();
   });
 
-  it("脚本可组合具名只读方法与正式字面匹配", async () => {
+  it("脚本可组合 bundle 内置只读方法与正式字面匹配", async () => {
     const runner = new DesktopAgentWorkspaceRunner();
-    fs.writeFileSync(
-      path.join(workspace_path, AGENT_WORKSPACE_METHOD_RESOURCE_PATHS.queryItems),
-      "async function runWorkspaceMethod(workspace, args) { return { marker: args.limit, path: workspace.contract.datasets.items.path, api: Object.keys(workspace).sort() }; }\nvoid runWorkspaceMethod;",
-    );
     fs.writeFileSync(
       path.join(workspace_path, "items", "entries.jsonl"),
       `${JSON.stringify({ item_id: 1, src: "Straße", name_src: "" })}\n`,
@@ -336,9 +328,8 @@ describe("DesktopAgentWorkspaceRunner", () => {
       status: "success",
       result: {
         query: {
-          marker: 7,
-          path: "items/entries.jsonl",
-          api: ["contract", "iterateJsonl", "iterateLines", "list", "readJson", "readText"],
+          total_item_count: 1,
+          items: [{ item_id: 1, src: "Straße", name_src: "" }],
         },
         matches: {
           scanned_item_count: 1,

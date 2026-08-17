@@ -13,7 +13,6 @@ import { Prompt } from "../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import {
-  AGENT_WORKSPACE_METHOD_RESOURCE_PATHS,
   AGENT_WORKSPACE_TASK_ROOT,
   type BackendRuntimeAgentWorkspaceRunRequest,
   type BackendRuntimeAgentWorkspaceRunResponse,
@@ -96,10 +95,7 @@ export class AgentWorkspaceService {
   /** 注入当前工程读侧、唯一写入口与 Electron 脚本端口。 */
   public constructor(
     private readonly options: {
-      paths: Pick<
-        AppPathService,
-        "get_agent_workspace_root_dir" | "get_agent_workspace_method_dir"
-      >;
+      paths: Pick<AppPathService, "get_agent_workspace_root_dir">;
       settings: Pick<AppSettingService, "read_setting">;
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
@@ -200,7 +196,6 @@ export class AgentWorkspaceService {
       };
       const workspace_path = path.join(this.root_path, randomUUID());
       try {
-        const method_root = this.options.paths.get_agent_workspace_method_dir();
         // 所有并行写入必须结算后再清理；否则迟到写入会在失败目录删除后复活半成品。
         const write_results = await Promise.allSettled([
           write_json_file(
@@ -240,12 +235,6 @@ export class AgentWorkspaceService {
           ...all_change_paths().map((relative_path) =>
             this.native_fs.write_file(path.join(workspace_path, relative_path), ""),
           ),
-          ...Object.values(AGENT_WORKSPACE_METHOD_RESOURCE_PATHS).map(async (relative_path) => {
-            await this.native_fs.write_file(
-              path.join(workspace_path, relative_path),
-              this.native_fs.read_file(path.join(method_root, path.basename(relative_path))),
-            );
-          }),
           this.native_fs.make_dir_async(path.join(workspace_path, "scratch")),
         ]);
         const write_failure = write_results.find(
