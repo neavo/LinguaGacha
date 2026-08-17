@@ -47,6 +47,13 @@ export type ProofreadingCacheKey = {
   cacheVersion: number;
 };
 
+// 热查询只传递轻量身份，完整同步输入在身份未命中后再构造。
+type ProofreadingCacheIdentity = {
+  key: ProofreadingCacheKey;
+  keyString: string;
+  sectionRevisions: ProjectDataSectionRevisions;
+};
+
 export type ProofreadingCacheResult<TData> = {
   projectPath: string;
   sectionRevisions: ProjectDataSectionRevisions;
@@ -265,10 +272,7 @@ export class ProofreadingCache {
   /**
    * 同一身份复用进行中的 Promise；未命中时经 worker 和列表读取器完整重建。
    */
-  private async ensure_synced(identity: {
-    keyString: string;
-    input: ProofreadingSyncInput;
-  }): Promise<ProofreadingSyncState> {
+  private async ensure_synced(identity: ProofreadingCacheIdentity): Promise<ProofreadingSyncState> {
     if (this.synced_key === identity.keyString) {
       if (this.synced_state !== null) {
         return this.synced_state;
@@ -278,18 +282,19 @@ export class ProofreadingCache {
     if (pending !== undefined) {
       return pending;
     }
+    const sync_input = this.build_sync_input(identity);
     const promise = this.worker_client
       .run(
         {
           type: "proofreading_sync",
-          input: identity.input,
+          input: sync_input,
         },
         new AbortController().signal,
       )
       .then((result) => {
         const sync_state = this.reader.sync_evaluated_full({
           ...result,
-          quality: identity.input.quality,
+          quality: sync_input.quality,
         });
         this.synced_key = identity.keyString;
         this.synced_state = sync_state;
@@ -303,15 +308,11 @@ export class ProofreadingCache {
     }
   }
 
-  /**
-   * 用会话身份、依赖 revision、文本处理配置和版本构造同步 key 与完整 worker 输入。
-   */
-  private build_identity(input: { sourceLanguage?: JsonValue; targetLanguage?: JsonValue }): {
-    key: ProofreadingCacheKey;
-    keyString: string;
-    sectionRevisions: ProjectDataSectionRevisions;
-    input: ProofreadingSyncInput;
-  } {
+  /** 用会话身份、依赖 revision、文本处理配置和版本构造轻量同步 key。 */
+  private build_identity(input: {
+    sourceLanguage?: JsonValue;
+    targetLanguage?: JsonValue;
+  }): ProofreadingCacheIdentity {
     const sectionRevisions = this.cache.readSectionRevisions();
     const snapshot = this.cache.snapshot();
     if (snapshot.projectPath === "") {
@@ -337,19 +338,23 @@ export class ProofreadingCache {
       processingConfig,
       cacheVersion: PROOFREADING_CACHE_VERSION,
     };
-    const items = this.build_items();
     return {
       key,
       keyString: JSON.stringify(key),
       sectionRevisions,
-      input: {
-        projectId: snapshot.projectPath,
-        revisions,
-        total_item_count: items.length,
-        upsertItems: items,
-        quality: this.normalize_quality_state(this.cache.quality.readBlock()),
-        processingConfig,
-      },
+    };
+  }
+
+  /** 缓存身份未命中时才复制完整条目与质量配置，热查询不承担 O(N) 输入构造。 */
+  private build_sync_input(identity: ProofreadingCacheIdentity): ProofreadingSyncInput {
+    const items = this.build_items();
+    return {
+      projectId: identity.key.projectPath,
+      revisions: identity.key.revisions,
+      total_item_count: items.length,
+      upsertItems: items,
+      quality: this.normalize_quality_state(this.cache.quality.readBlock()),
+      processingConfig: identity.key.processingConfig,
     };
   }
 

@@ -193,6 +193,31 @@ describe("ProofreadingCache", () => {
     });
   });
 
+  it("已同步身份的列表和窗口查询不会重复读取全量 items", async () => {
+    const worker = create_worker();
+    const cache_port = create_cache_read_port({});
+    const read_items = vi.spyOn(cache_port.items, "readItems");
+    const cache = new ProofreadingCache({
+      cache: cache_port,
+      appSettingService: create_settings(),
+      workerClient: worker,
+      reader: createProofreadingReader(),
+    });
+
+    const sync = await cache.sync({});
+    const view = await cache.list({
+      filters: sync.data.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    await cache.rowIndex({ view_id: view.data.view_id, row_id: "1" });
+    await cache.window({ view_id: view.data.view_id, start: 0, count: 10 });
+
+    expect(read_items).toHaveBeenCalledTimes(1);
+  });
+
   it("按 row id 查询时只从热缓存补 TRANS 内部路径", async () => {
     const worker = create_worker();
     const items = [

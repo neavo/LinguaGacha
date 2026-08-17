@@ -27,8 +27,10 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
+  PROOFREADING_WINDOW_PREFETCH_ROWS,
   build_filter_panel_signature,
   build_refreshed_proofreading_list_view,
+  is_proofreading_list_window_covered,
   is_missing_refreshed_list_window,
   resolve_list_view_window_bounds,
   resolve_prefetched_list_window_bounds,
@@ -92,10 +94,12 @@ type UseProofreadingCacheActionsOptions = {
 
 type UseProofreadingCacheActionsResult = {
   refresh_snapshot: () => Promise<void>;
-  run_list_view_query: (options?: {
+  query_list_view: (options?: {
     rebuild?: boolean;
     window_bounds?: ProofreadingListWindowBounds;
-  }) => Promise<ProofreadingListView | null>;
+    scroll_to_row_id?: string | null;
+  }) => Promise<ProofreadingListSnapshot | null>;
+  publish_list_snapshot: (snapshot: ProofreadingListSnapshot) => void;
   run_filter_panel_query: (
     filters: ProofreadingFilterOptions,
     options?: {
@@ -118,8 +122,12 @@ export function useProofreadingCacheActions(
   options: UseProofreadingCacheActionsOptions,
 ): UseProofreadingCacheActionsResult {
   // 唯一列表构建出口：执行时读取最新意图，并以 request id 阻止过期查询发布。
-  const run_list_view_query = useCallback(
-    async (query_options?: { rebuild?: boolean; window_bounds?: ProofreadingListWindowBounds }) => {
+  const query_list_view = useCallback(
+    async (query_options?: {
+      rebuild?: boolean;
+      window_bounds?: ProofreadingListWindowBounds;
+      scroll_to_row_id?: string | null;
+    }) => {
       const sync_state = options.sync_state_ref.current;
       if (sync_state === null) {
         return null;
@@ -130,20 +138,34 @@ export function useProofreadingCacheActions(
       // 相同意图直接复用稳定视图；显式 rebuild 用于用户确认筛选和刷新兜底。
       if (
         !query_options?.rebuild &&
+        query_options?.scroll_to_row_id === undefined &&
         current_snapshot.view.view_id !== "" &&
         resolved_query.query_intent_key === current_snapshot.query_intent_key
       ) {
-        return current_snapshot.view;
+        return current_snapshot;
       }
 
       options.list_view_request_id_ref.current += 1;
       const request_id = options.list_view_request_id_ref.current;
       let next_list_view: ProofreadingListView;
       try {
+        const scroll_to_row_id = query_options?.scroll_to_row_id ?? null;
         const list_view_query = {
           ...resolved_query.query,
           window_start: query_options?.window_bounds?.start ?? 0,
-          window_count: query_options?.window_bounds?.count ?? PROOFREADING_INITIAL_WINDOW_ROWS,
+          window_count:
+            query_options?.window_bounds?.count ??
+            (scroll_to_row_id === null
+              ? PROOFREADING_INITIAL_WINDOW_ROWS
+              : PROOFREADING_INITIAL_WINDOW_ROWS + PROOFREADING_WINDOW_PREFETCH_ROWS * 2),
+          ...(scroll_to_row_id === null
+            ? {}
+            : {
+                window_anchor: {
+                  row_id: scroll_to_row_id,
+                  offset: PROOFREADING_WINDOW_PREFETCH_ROWS,
+                },
+              }),
         };
         next_list_view =
           await options.proofreading_runtime_client_ref.current.build_proofreading_list_view(
@@ -163,15 +185,46 @@ export function useProofreadingCacheActions(
       const next_snapshot: ProofreadingListSnapshot = {
         query_intent_key: resolved_query.query_intent_key,
         view: next_list_view,
+        scroll_to_row:
+          query_options?.scroll_to_row_id !== undefined &&
+          query_options.scroll_to_row_id !== null &&
+          next_list_view.window_rows.some((row) => {
+            return row.row_id === query_options.scroll_to_row_id;
+          })
+            ? { row_id: query_options.scroll_to_row_id, revision: request_id }
+            : null,
       };
-      options.list_snapshot_ref.current = next_snapshot;
-      options.list_window_bounds_ref.current = resolve_list_view_window_bounds(next_list_view);
-      startTransition(() => {
-        options.set_list_snapshot(next_snapshot);
-      });
-      return next_list_view;
+      return next_snapshot;
     },
     [options],
+  );
+
+  // 发布函数只同步 ref 与 state，调用方决定是否和选区一起放进 transition。
+  const publish_list_snapshot = useCallback(
+    (snapshot: ProofreadingListSnapshot): void => {
+      options.list_snapshot_ref.current = snapshot;
+      options.list_window_bounds_ref.current = resolve_list_view_window_bounds(snapshot.view);
+      options.set_list_snapshot(snapshot);
+    },
+    [options],
+  );
+
+  // 后端刷新只替换视图，不参与用户查询变化的选区连续性规则。
+  const run_refresh_list_view_query = useCallback(
+    async (query_options?: {
+      rebuild?: boolean;
+      window_bounds?: ProofreadingListWindowBounds;
+    }): Promise<ProofreadingListView | null> => {
+      const snapshot = await query_list_view(query_options);
+      if (snapshot === null) {
+        return null;
+      }
+      startTransition(() => {
+        publish_list_snapshot(snapshot);
+      });
+      return snapshot.view;
+    },
+    [publish_list_snapshot, query_list_view],
   );
 
   // 面板统计与列表视图分离缓存，避免滚动或 delta 内容刷新重复计算筛选计数。
@@ -249,6 +302,14 @@ export function useProofreadingCacheActions(
         range,
         row_count: current_view.row_count,
       });
+      if (
+        is_proofreading_list_window_covered({
+          list_view: current_view,
+          window_bounds,
+        })
+      ) {
+        return null;
+      }
       const range_signature = `${current_view.view_id}:${window_bounds.start}:${window_bounds.count}`;
       if (range_signature === options.last_visible_range_signature_ref.current) {
         return null;
@@ -284,6 +345,7 @@ export function useProofreadingCacheActions(
 
       const next_snapshot: ProofreadingListSnapshot = {
         query_intent_key: latest_snapshot.query_intent_key,
+        scroll_to_row: latest_snapshot.scroll_to_row,
         view: {
           ...latest_snapshot.view,
           row_count: next_window.row_count,
@@ -504,6 +566,7 @@ export function useProofreadingCacheActions(
           const next_list_snapshot: ProofreadingListSnapshot = {
             query_intent_key: previous_list_snapshot.query_intent_key,
             view: next_list_view,
+            scroll_to_row: previous_list_snapshot.scroll_to_row,
           };
           options.list_snapshot_ref.current = next_list_snapshot;
           options.list_window_bounds_ref.current = {
@@ -524,7 +587,7 @@ export function useProofreadingCacheActions(
       }
       if (should_build_list_view) {
         // 意图变化或旧窗口失效时统一走 list query，避免在刷新路径复制成员重算规则。
-        next_list_view = await run_list_view_query({
+        next_list_view = await run_refresh_list_view_query({
           rebuild: true,
           window_bounds: can_reuse_current_view ? refresh_window_bounds : undefined,
         });
@@ -564,11 +627,12 @@ export function useProofreadingCacheActions(
         options.set_is_refreshing(false);
       }
     }
-  }, [options, run_list_view_query]);
+  }, [options, run_refresh_list_view_query]);
 
   return {
     refresh_snapshot,
-    run_list_view_query,
+    query_list_view,
+    publish_list_snapshot,
     run_filter_panel_query,
     read_list_window,
     read_items_by_row_ids,

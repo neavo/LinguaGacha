@@ -13,6 +13,7 @@ import type {
   AppTableDragCellPayload,
   AppTableProps,
   AppTableScrollAnchor,
+  AppTableScrollTarget,
 } from "@frontend/widgets/app-table/app-table-types";
 
 type CapturedAppTableProps = AppTableProps<ProofreadingVisibleItem>;
@@ -36,7 +37,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
           data-testid="app-table"
           data-row-count={row_model?.row_count}
           data-loaded-row-ids={row_model?.loaded_row_ids.join(",")}
-          data-restore-scroll-row-id={props.restore_scroll_row_id ?? ""}
+          data-scroll-to-row-id={props.scroll_to_row?.row_id ?? ""}
           data-preserve-scroll-row-id={props.preserve_scroll_anchor?.row_id ?? ""}
           data-preserve-scroll-revision={props.preserve_scroll_anchor?.revision}
         >
@@ -145,7 +146,7 @@ describe("ProofreadingTable", () => {
     options: {
       visible_row_count?: number;
       on_visible_range_change?: (range: { start: number; count: number }) => void;
-      restore_scroll_row_id?: string | null;
+      scroll_to_row?: AppTableScrollTarget | null;
       preserve_scroll_anchor?: AppTableScrollAnchor;
     } = {},
   ): Promise<void> {
@@ -171,7 +172,7 @@ describe("ProofreadingTable", () => {
             resolve_row_index_async={async () => undefined}
             resolve_row_ids_range={async () => []}
             on_visible_range_change={options.on_visible_range_change ?? (() => {})}
-            restore_scroll_row_id={options.restore_scroll_row_id ?? "1"}
+            scroll_to_row={options.scroll_to_row ?? { row_id: "1", revision: 2 }}
             preserve_scroll_anchor={options.preserve_scroll_anchor ?? { row_id: "1", revision: 3 }}
             on_sort_change={() => {}}
             on_selection_change={() => {}}
@@ -191,14 +192,14 @@ describe("ProofreadingTable", () => {
     await render_table(create_visible_item(1), {
       visible_row_count: 10,
       on_visible_range_change,
-      restore_scroll_row_id: "8",
+      scroll_to_row: { row_id: "8", revision: 5 },
       preserve_scroll_anchor: { row_id: "7", revision: 4 },
     });
 
     const table = container?.querySelector('[data-testid="app-table"]');
     expect(table?.getAttribute("data-row-count")).toBe("10");
     expect(table?.getAttribute("data-loaded-row-ids")).toBe("1");
-    expect(table?.getAttribute("data-restore-scroll-row-id")).toBe("8");
+    expect(table?.getAttribute("data-scroll-to-row-id")).toBe("8");
     expect(table?.getAttribute("data-preserve-scroll-row-id")).toBe("7");
     expect(table?.getAttribute("data-preserve-scroll-revision")).toBe("4");
 

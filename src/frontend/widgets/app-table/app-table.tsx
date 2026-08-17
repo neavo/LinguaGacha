@@ -62,6 +62,7 @@ import type {
   AppTableProps,
   AppTableRowModel,
   AppTableRowEvent,
+  AppTableScrollTarget,
   AppTableSelectionState,
 } from "@frontend/widgets/app-table/app-table-types";
 import {
@@ -447,7 +448,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     drag_enabled: drag_enabled_prop,
     get_row_id,
     row_model: row_model_prop,
-    restore_scroll_row_id,
+    scroll_to_row,
     preserve_scroll_anchor,
     get_row_can_drag,
     on_selection_change,
@@ -478,10 +479,10 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const active_row_index_ref = useRef<number | null>(null);
   const anchor_row_index_ref = useRef<number | null>(null);
   const selection_request_epoch_ref = useRef(0);
-  // 让迟到的异步 row index 结果不能覆盖更新后的恢复目标。
-  const restore_scroll_request_epoch_ref = useRef(0);
-  // 记录已处理目标，避免同一个恢复目标在重渲染时重复滚动。
-  const restored_scroll_row_id_ref = useRef<string | null>(null);
+  // 让迟到的异步 row index 结果不能覆盖更新后的定位目标。
+  const scroll_to_row_request_epoch_ref = useRef(0);
+  // 目标行和版本共同标识请求：异行同版本与同行新版本都必须重新定位。
+  const consumed_scroll_to_row_ref = useRef<AppTableScrollTarget | null>(null);
   // 记录已捕获的刷新锚点版本，避免重复捕获同一轮刷新。
   const preserve_scroll_capture_revision_ref = useRef(0);
   // 让迟到的异步锚点解析不能覆盖更新后的刷新锚点。
@@ -944,59 +945,71 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [viewport_element, virtualizer],
   );
 
+  const scroll_to_row_id = scroll_to_row?.row_id;
+  const scroll_to_row_revision = scroll_to_row?.revision;
+
   useLayoutEffect(() => {
-    // session 恢复滚动只负责把外部保存的目标行带回视口，不参与选区状态写入。
-    const request_epoch = restore_scroll_request_epoch_ref.current + 1;
-    restore_scroll_request_epoch_ref.current = request_epoch;
+    // 外部定位只负责把目标行带回视口，不参与选区状态或键盘焦点写入。
+    const request_epoch = scroll_to_row_request_epoch_ref.current + 1;
+    scroll_to_row_request_epoch_ref.current = request_epoch;
     let request_active = true;
     const is_current_request = (): boolean => {
-      return request_active && restore_scroll_request_epoch_ref.current === request_epoch;
+      return request_active && scroll_to_row_request_epoch_ref.current === request_epoch;
     };
 
-    if (restore_scroll_row_id === undefined || restore_scroll_row_id === null) {
-      restored_scroll_row_id_ref.current = null;
+    if (scroll_to_row_revision === undefined || scroll_to_row_id === undefined) {
       return () => {
         request_active = false;
-        restore_scroll_request_epoch_ref.current += 1;
+        scroll_to_row_request_epoch_ref.current += 1;
       };
     }
 
-    if (restored_scroll_row_id_ref.current === restore_scroll_row_id) {
+    const consumed_target = consumed_scroll_to_row_ref.current;
+    if (
+      consumed_target?.row_id === scroll_to_row_id &&
+      consumed_target.revision === scroll_to_row_revision
+    ) {
       return () => {
         request_active = false;
-        restore_scroll_request_epoch_ref.current += 1;
+        scroll_to_row_request_epoch_ref.current += 1;
       };
     }
 
-    const resolved_row_index = row_model.resolve_row_index(restore_scroll_row_id);
+    const resolved_row_index = row_model.resolve_row_index(scroll_to_row_id);
     if (resolved_row_index !== undefined) {
       if (
         is_current_request() &&
-        scroll_row_index_into_view(resolved_row_index, restore_scroll_row_id, "start")
+        scroll_row_index_into_view(resolved_row_index, scroll_to_row_id, "start")
       ) {
-        restored_scroll_row_id_ref.current = restore_scroll_row_id;
+        consumed_scroll_to_row_ref.current = {
+          row_id: scroll_to_row_id,
+          revision: scroll_to_row_revision,
+        };
       }
       return () => {
         request_active = false;
-        restore_scroll_request_epoch_ref.current += 1;
+        scroll_to_row_request_epoch_ref.current += 1;
       };
     }
 
     if (row_model.resolve_row_index_async === undefined) {
       return () => {
         request_active = false;
-        restore_scroll_request_epoch_ref.current += 1;
+        scroll_to_row_request_epoch_ref.current += 1;
       };
     }
 
-    void Promise.resolve(row_model.resolve_row_index_async(restore_scroll_row_id))
+    void Promise.resolve(row_model.resolve_row_index_async(scroll_to_row_id))
       .then((async_row_index) => {
         if (!is_current_request() || async_row_index === undefined) {
           return;
         }
 
-        if (scroll_row_index_into_view(async_row_index, restore_scroll_row_id, "start")) {
-          restored_scroll_row_id_ref.current = restore_scroll_row_id;
+        if (scroll_row_index_into_view(async_row_index, scroll_to_row_id, "start")) {
+          consumed_scroll_to_row_ref.current = {
+            row_id: scroll_to_row_id,
+            revision: scroll_to_row_revision,
+          };
         }
       })
       .catch((error: unknown) => {
@@ -1004,14 +1017,24 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
           return;
         }
 
+        consumed_scroll_to_row_ref.current = {
+          row_id: scroll_to_row_id,
+          revision: scroll_to_row_revision,
+        };
         on_selection_error?.(error);
       });
 
     return () => {
       request_active = false;
-      restore_scroll_request_epoch_ref.current += 1;
+      scroll_to_row_request_epoch_ref.current += 1;
     };
-  }, [on_selection_error, restore_scroll_row_id, row_model, scroll_row_index_into_view]);
+  }, [
+    on_selection_error,
+    row_model,
+    scroll_row_index_into_view,
+    scroll_to_row_id,
+    scroll_to_row_revision,
+  ]);
 
   const resolve_row_ids_range = useCallback(
     async (range: { start: number; count: number }): Promise<string[]> => {

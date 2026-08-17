@@ -93,7 +93,7 @@ type ProofreadingDeltaInput = {
   deleteItemIds: number[];
 };
 
-// 列表视图查询把筛选、搜索、排序和虚拟窗口边界集中传入运行态
+// 列表视图查询把筛选、搜索、排序和虚拟窗口边界集中传入运行态。
 export type ProofreadingListViewQuery = {
   filters: ProofreadingFilterOptions;
   keyword: string;
@@ -102,6 +102,11 @@ export type ProofreadingListViewQuery = {
   sort_state: ProofreadingSortState | null;
   window_start?: number;
   window_count?: number;
+  // 稳定行锚点优先于 window_start，让新视图一次返回目标附近窗口。
+  window_anchor?: {
+    row_id: string;
+    offset: number;
+  };
 };
 
 // Agent warning 查询只读取真实警告，并使用自然顺序的偏移分页。
@@ -1166,8 +1171,13 @@ export function createProofreadingReader() {
         projectId: state.projectId,
         ordered_item_ids,
       });
+      const anchor_offset = query.window_anchor?.offset ?? 0;
+      const anchor_index =
+        query.window_anchor === undefined
+          ? undefined
+          : list_view_cache.row_index_by_id.get(query.window_anchor.row_id);
       const window_bounds = normalize_window_bounds({
-        start: query.window_start,
+        start: anchor_index === undefined ? query.window_start : anchor_index - anchor_offset,
         count: query.window_count,
         row_count: ordered_item_ids.length,
       });

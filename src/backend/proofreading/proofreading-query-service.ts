@@ -126,6 +126,8 @@ export class ProofreadingQueryService {
    */
   private read_list_query(value: JsonValue | undefined): ProofreadingListViewQuery {
     const record = read_json_record(value);
+    const window_anchor_record = read_json_record(record["window_anchor"]);
+    const window_anchor_row_id = String(window_anchor_record["row_id"] ?? "");
     return {
       filters: this.read_filters(record["filters"] as JsonValue | undefined),
       keyword: String(record["keyword"] ?? ""),
@@ -134,6 +136,14 @@ export class ProofreadingQueryService {
       sort_state: this.read_sort_state(record["sort_state"]),
       window_start: this.read_number(record["window_start"], 0),
       window_count: this.read_number(record["window_count"], 160),
+      ...(window_anchor_row_id === ""
+        ? {}
+        : {
+            window_anchor: {
+              row_id: window_anchor_row_id,
+              offset: this.read_number(window_anchor_record["offset"], 0),
+            },
+          }),
     };
   }
 

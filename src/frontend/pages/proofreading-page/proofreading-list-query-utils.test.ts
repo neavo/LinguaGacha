@@ -9,9 +9,11 @@ import {
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
+  PROOFREADING_WINDOW_PREFETCH_ROWS,
   build_filter_panel_signature,
   build_proofreading_list_query_intent_key,
   build_refreshed_proofreading_list_view,
+  is_proofreading_list_window_covered,
   is_missing_refreshed_list_window,
   resolve_list_view_window_bounds,
   resolve_prefetched_list_window_bounds,
@@ -54,24 +56,64 @@ function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): Proofre
 
 describe("proofreading-list-query-utils", () => {
   it("可见范围会扩成预取窗口并限制在稳定视图行数内", () => {
+    const row_count = 1000;
+    const visible_count = 10;
+    const middle_start = PROOFREADING_WINDOW_PREFETCH_ROWS + 44;
     expect(
       resolve_prefetched_list_window_bounds({
-        range: { start: 300, count: 10 },
-        row_count: 1000,
+        range: { start: middle_start, count: visible_count },
+        row_count,
       }),
     ).toEqual({
-      start: 44,
-      count: 522,
+      start: middle_start - PROOFREADING_WINDOW_PREFETCH_ROWS,
+      count: Math.max(
+        PROOFREADING_INITIAL_WINDOW_ROWS,
+        visible_count + PROOFREADING_WINDOW_PREFETCH_ROWS * 2,
+      ),
     });
+    const end_start = row_count - visible_count;
+    const prefetched_end_start = end_start - PROOFREADING_WINDOW_PREFETCH_ROWS;
     expect(
       resolve_prefetched_list_window_bounds({
-        range: { start: 990, count: 10 },
-        row_count: 1000,
+        range: { start: end_start, count: visible_count },
+        row_count,
       }),
     ).toEqual({
-      start: 734,
-      count: 266,
+      start: prefetched_end_start,
+      count: row_count - prefetched_end_start,
     });
+  });
+
+  it("目标范围已被当前窗口覆盖时复用现有行", () => {
+    const list_view = {
+      ...create_list_view(5),
+      window_start: 1,
+      window_rows: Array.from({ length: 3 }, (_, index) => ({
+        row_id: (1 + index).toString(),
+        item: {} as never,
+        compressed_src: "",
+        compressed_dst: "",
+      })),
+    };
+
+    expect(
+      is_proofreading_list_window_covered({
+        list_view,
+        window_bounds: { start: 1, count: 3 },
+      }),
+    ).toBe(true);
+    expect(
+      is_proofreading_list_window_covered({
+        list_view,
+        window_bounds: { start: 0, count: 3 },
+      }),
+    ).toBe(false);
+    expect(
+      is_proofreading_list_window_covered({
+        list_view,
+        window_bounds: { start: 2, count: 3 },
+      }),
+    ).toBe(false);
   });
 
   it("delta 窗口会更新旧视图内容和 revision 并保留 view_id", () => {
