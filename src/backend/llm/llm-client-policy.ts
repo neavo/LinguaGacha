@@ -103,9 +103,7 @@ export function resolve_one_shot_generation_options(snapshot: ModelRequestSnapsh
   ) {
     result.temperature = temperature;
   }
-  const max_tokens = resolve_max_tokens_for_request(snapshot, {
-    auto_value: snapshot.api_format === "Anthropic" ? 8192 : null,
-  });
+  const max_tokens = resolve_max_tokens_for_request(snapshot);
   if (max_tokens !== null) {
     result.maxTokens = max_tokens;
   }

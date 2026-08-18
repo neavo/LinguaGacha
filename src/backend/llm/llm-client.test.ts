@@ -196,7 +196,7 @@ describe("LLMClient", () => {
     });
   });
 
-  it("保持 Google 不解释供应商 finish reason 的语义", async () => {
+  it("把 Google 长度截断保持为当前请求错误", async () => {
     api_mocks.streamSimple.mockImplementation(() =>
       completed_stream(
         create_message({
@@ -215,8 +215,36 @@ describe("LLMClient", () => {
       new AbortController().signal,
     );
 
-    expect(result.response_result).toBe("部分正文");
-    expect(result).not.toHaveProperty("request_error");
+    expect(result).toMatchObject({
+      response_result: "",
+      request_error: {
+        message: "供应商返回长度截断。",
+        context: { finish_reason: "MAX_TOKENS" },
+      },
+    });
+  });
+
+  it("正常终止但没有正文时返回当前请求错误", async () => {
+    api_mocks.openai.mockImplementation(() =>
+      completed_stream(
+        create_message({
+          rawStopReason: "stop",
+          usage: create_usage({ input: 4 }),
+        }),
+      ),
+    );
+    const client = create_client();
+
+    const result = await client.request(create_body(), new AbortController().signal);
+
+    expect(result).toMatchObject({
+      response_result: "",
+      input_tokens: 4,
+      request_error: {
+        message: "供应商未返回正文。",
+        context: { finish_reason: "stop" },
+      },
+    });
   });
 
   it("Pi provider error 返回完整诊断并丢弃部分结果", async () => {

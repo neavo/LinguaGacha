@@ -1,4 +1,5 @@
 import { Type, type Model, type ProviderStreamOptions } from "@earendil-works/pi-ai";
+import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.models";
 import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
@@ -319,18 +320,23 @@ describe("pi-ai 请求适配", () => {
       cacheRetention: "none",
       interleavedThinking: false,
       maxRetries: 0,
-      maxTokens: 8192,
       reasoning: "high",
     });
+    expect(request.options).not.toHaveProperty("maxTokens");
     expect(request.options).not.toHaveProperty("temperature");
+    expect(request.model.maxTokens).toBe(ANTHROPIC_MODELS["claude-sonnet-4-5"]?.maxTokens);
     expect(payload).toMatchObject({
       model: "claude-sonnet-4-5",
       system: [{ type: "text", text: "系统约束" }],
       messages: [{ role: "user", content: "こんにちは" }],
       stream: true,
-      max_tokens: 8192,
-      thinking: { type: "enabled", budget_tokens: 7168, display: "summarized" },
+      max_tokens: request.model.maxTokens,
+      thinking: { type: "enabled", display: "summarized" },
     });
+    const thinking = payload["thinking"];
+    if (!is_json_record(thinking)) throw new Error("Anthropic 测试缺少 thinking");
+    expect(Number(thinking["budget_tokens"])).toBeGreaterThan(0);
+    expect(Number(thinking["budget_tokens"])).toBeLessThan(request.model.maxTokens);
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
   });
@@ -341,6 +347,7 @@ describe("pi-ai 请求适配", () => {
       api_url: "https://anthropic-proxy.example/root",
       model_id: "vendor/claude-opus-4-8:fast",
       thinking: { level: "MAX" },
+      threshold: { output_token_limit: 0 },
     });
     const payload = await capture_payload(request);
 
@@ -351,11 +358,27 @@ describe("pi-ai 请求适配", () => {
       compat: { forceAdaptiveThinking: true, supportsTemperature: false },
     });
     expect(request.options).toMatchObject({ reasoning: "max" });
+    expect(request.options).not.toHaveProperty("maxTokens");
+    expect(request.model.maxTokens).toBe(ANTHROPIC_MODELS["claude-opus-4-8"]?.maxTokens);
     expect(payload).toMatchObject({
       model: "vendor/claude-opus-4-8:fast",
+      max_tokens: request.model.maxTokens,
       thinking: { type: "adaptive", display: "summarized" },
       output_config: { effort: "max" },
     });
+  });
+
+  it("Anthropic 自动上限未命中 catalog 时回退 64000", async () => {
+    const request = resolve_request({
+      api_format: "Anthropic",
+      model_id: "provider-defined-claude",
+      threshold: { output_token_limit: 0 },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.options).not.toHaveProperty("maxTokens");
+    expect(request.model.maxTokens).toBe(64_000);
+    expect(payload).toHaveProperty("max_tokens", request.model.maxTokens);
   });
 
   it("让 Pi 构造 Google contents，并在 extra_body 后强制内部取消信号", async () => {
@@ -394,6 +417,20 @@ describe("pi-ai 请求适配", () => {
       thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
     });
     expect(config["safetySettings"]).toHaveLength(4);
+  });
+
+  it("Google 自动输出上限不进入最终 payload", async () => {
+    const request = resolve_request({
+      api_format: "Google",
+      model_id: "models/gemini-3.7-flash",
+      threshold: { output_token_limit: 0 },
+      thinking: { level: "LOW" },
+    });
+    const payload = await capture_payload(request);
+    const config = payload["config"];
+    if (!is_json_record(config)) throw new Error("Google 测试缺少 config");
+
+    expect(config).not.toHaveProperty("maxOutputTokens");
   });
 
   it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID并应用向下降档", async () => {

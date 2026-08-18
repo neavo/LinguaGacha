@@ -93,7 +93,7 @@ function normalize_pi_result(
     .join("")
     .trim();
   const usage = normalize_usage(message);
-  const finish_error = read_finish_error(snapshot, message);
+  const finish_error = read_finish_error(snapshot, message, response_result);
   const normalized_result =
     snapshot.api_format === "SakuraLLM" && response_result !== "" && finish_error === undefined
       ? convert_sakura_response(response_result)
@@ -125,12 +125,12 @@ function normalize_usage(
   };
 }
 
-/** 只保留任务层已定义的长度截断与工具调用错误；Google 延续原有正文语义。 */
+/** 统一拒绝长度截断、工具调用和空正文，调用方只消费完整文本结果。 */
 function read_finish_error(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
+  response_result: string,
 ): LogError | undefined {
-  if (snapshot.api_format === "Google") return undefined;
   const reason_key =
     snapshot.api_format === "Anthropic"
       ? "stop_reason"
@@ -145,6 +145,11 @@ function read_finish_error(
   }
   if (message.stopReason === "toolUse") {
     return log_error_from_message("供应商返回工具调用，当前任务不支持。", {
+      [reason_key]: raw_reason,
+    });
+  }
+  if (response_result === "") {
+    return log_error_from_message("供应商未返回正文。", {
       [reason_key]: raw_reason,
     });
   }
