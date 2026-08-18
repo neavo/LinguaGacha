@@ -4,7 +4,7 @@
   "api_format": "Anthropic",
   "api_url": "https://api.anthropic.com",
   "api_key": "no_key_required",
-  "model_id": "claude-3-5-haiku",
+  "model_id": "claude-sonnet-5",
   "request": {
     "extra_headers": {},
     "extra_body": {},
