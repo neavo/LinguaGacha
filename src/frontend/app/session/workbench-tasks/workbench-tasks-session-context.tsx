@@ -11,8 +11,7 @@ import {
 } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 import type { AnalysisTaskConfirmState } from "@shared/workbench/analysis-task";
 import type { TranslationTaskConfirmState } from "@shared/workbench/translation-task";
-import type { WorkbenchTaskConfirmDialogDisplay } from "@frontend/pages/workbench-page/types";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 
 type WorkbenchTasksSessionContextValue = {
@@ -23,96 +22,66 @@ type WorkbenchTasksSessionContextValue = {
 // 保留工作台任务 follow-up 的跨页面运行态。
 const WorkbenchTasksSessionContext = createContext<WorkbenchTasksSessionContextValue | null>(null);
 
-function build_translation_task_confirm_dialog_display(
+/** 将翻译任务动作收口为确认框可见文案。 */
+function resolve_translation_task_confirm_description(
   state: TranslationTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogDisplay | null {
+): string {
   if (state === null) {
-    return null;
+    return "";
   }
 
   if (state.kind === "reset-all") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.reset_all_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.translation_task.confirm.reset_all_description");
   }
 
   if (state.kind === "reset-failed") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.reset_failed_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.translation_task.confirm.reset_failed_description");
   }
 
   if (state.kind === "generate-translation") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.generate_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.translation_task.confirm.generate_description");
   }
 
-  return {
-    open: state.open,
-    description: t("workbench_page.translation_task.confirm.stop_description"),
-    submitting: state.submitting,
-  };
+  return t("workbench_page.translation_task.confirm.stop_description");
 }
 
-function build_analysis_task_confirm_dialog_display(
+/** 将分析任务动作收口为确认框可见文案。 */
+function resolve_analysis_task_confirm_description(
   state: AnalysisTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogDisplay | null {
+): string {
   if (state === null) {
-    return null;
+    return "";
   }
 
   if (state.kind === "reset-all") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.reset_all_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.analysis_task.confirm.reset_all_description");
   }
 
   if (state.kind === "reset-failed") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.reset_failed_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.analysis_task.confirm.reset_failed_description");
   }
 
   if (state.kind === "import-glossary") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.import_glossary_description"),
-      submitting: state.submitting,
-    };
+    return t("workbench_page.analysis_task.confirm.import_glossary_description");
   }
 
-  return {
-    open: state.open,
-    description: t("workbench_page.analysis_task.confirm.stop_description"),
-    submitting: state.submitting,
-  };
+  return t("workbench_page.analysis_task.confirm.stop_description");
 }
 
 // 常驻渲染任务完成后的用户确认，不依赖工作台页面是否挂载。
 function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
   const { t } = useI18n();
   const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();
-  const translation_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogDisplay | null>(() => {
-    return build_translation_task_confirm_dialog_display(
+  const translation_confirm_description = useMemo(() => {
+    return resolve_translation_task_confirm_description(
       translation_workbench_task.task_confirm_state,
       t,
     );
   }, [t, translation_workbench_task.task_confirm_state]);
-  const analysis_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogDisplay | null>(() => {
-    return build_analysis_task_confirm_dialog_display(
+  const analysis_confirm_description = useMemo(() => {
+    return resolve_analysis_task_confirm_description(
       analysis_workbench_task.analysis_confirm_state,
       t,
     );
@@ -120,17 +89,17 @@ function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
 
   return (
     <>
-      <AppAlertDialog
-        open={translation_task_confirm_dialog?.open ?? false}
-        description={translation_task_confirm_dialog?.description ?? ""}
-        submitting={translation_task_confirm_dialog?.submitting ?? false}
+      <AppConfirmDialog
+        open={translation_workbench_task.task_confirm_state?.open ?? false}
+        description={translation_confirm_description}
+        submitting={translation_workbench_task.task_confirm_state?.submitting ?? false}
         onConfirm={translation_workbench_task.confirm_task_action}
         onClose={translation_workbench_task.close_task_action_confirmation}
       />
-      <AppAlertDialog
-        open={analysis_task_confirm_dialog?.open ?? false}
-        description={analysis_task_confirm_dialog?.description ?? ""}
-        submitting={analysis_task_confirm_dialog?.submitting ?? false}
+      <AppConfirmDialog
+        open={analysis_workbench_task.analysis_confirm_state?.open ?? false}
+        description={analysis_confirm_description}
+        submitting={analysis_workbench_task.analysis_confirm_state?.submitting ?? false}
         onConfirm={analysis_workbench_task.confirm_analysis_task_action}
         onClose={analysis_workbench_task.close_analysis_task_action_confirmation}
       />

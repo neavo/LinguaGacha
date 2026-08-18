@@ -74,15 +74,6 @@ export type WorkbenchTaskDetailDisplay = {
   waveform_history: number[];
 };
 
-/**
- * WorkbenchTaskConfirmDialogDisplay 描述停止任务确认弹窗的展示状态。
- */
-export type WorkbenchTaskConfirmDialogDisplay = {
-  open: boolean;
-  description: string;
-  submitting: boolean;
-};
-
 export type WorkbenchStats = {
   total_items: number;
   completed_count: number;

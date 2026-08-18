@@ -50,7 +50,7 @@ vi.mock("@frontend/app/session/workbench-tasks/use-analysis-workbench-task", () 
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
   return {
-    AppAlertDialog: (props: {
+    AppConfirmDialog: (props: {
       open: boolean;
       description: string;
       submitting: boolean;

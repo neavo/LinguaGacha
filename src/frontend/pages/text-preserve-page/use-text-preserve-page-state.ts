@@ -51,6 +51,10 @@ import {
 } from "@frontend/pages/text-preserve-page/filtering";
 import { has_active_quality_rule_filters } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
+  create_empty_quality_rule_confirm_state,
+  type QualityRuleConfirmState,
+} from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
+import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
   create_result_snapshot,
@@ -75,7 +79,6 @@ import {
   useQualityRuleTableSessionReset,
 } from "@frontend/features/quality-rule-editor/use-quality-rule-table-session";
 import type {
-  TextPreserveConfirmState,
   TextPreserveDialogState,
   TextPreserveEntry,
   TextPreserveEntryDraft,
@@ -228,19 +231,6 @@ function create_empty_dialog_state(): TextPreserveDialogState {
   };
 }
 
-/** 统一清空删除、预设和导入确认共用的提交状态。 */
-function create_empty_confirm_state(): TextPreserveConfirmState {
-  return {
-    open: false,
-    kind: null,
-    selection_count: 0,
-    preset_name: "",
-    preset_input_value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
 /** 把命中数投影为文本保护徽章说明。 */
 function build_hit_badge_tooltip(t: (key: LocaleKey) => string, hits: number): string {
   return t("text_preserve_page.hit.hit_count").replace("{COUNT}", hits.toString());
@@ -332,8 +322,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const [dialog_state, set_dialog_state] = useState<TextPreserveDialogState>(() => {
     return create_empty_dialog_state();
   });
-  const [confirm_state, set_confirm_state] = useState<TextPreserveConfirmState>(() => {
-    return create_empty_confirm_state();
+  const [confirm_state, set_confirm_state] = useState<QualityRuleConfirmState>(() => {
+    return create_empty_quality_rule_confirm_state();
   });
   const [preset_input_state, set_preset_input_state] = useState<TextPreservePresetInputState>(
     () => {
@@ -1320,7 +1310,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, []);
 
   const close_confirm_dialog = useCallback((): void => {
-    set_confirm_state(create_empty_confirm_state());
+    set_confirm_state(create_empty_quality_rule_confirm_state());
   }, []);
 
   const close_preset_input_dialog = useCallback((): void => {
@@ -1469,7 +1459,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     if (succeeded) {
-      set_confirm_state(create_empty_confirm_state());
+      set_confirm_state(create_empty_quality_rule_confirm_state());
     } else {
       set_confirm_state((previous_state) => {
         return {

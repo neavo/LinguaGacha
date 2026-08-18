@@ -1,5 +1,6 @@
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
+import type { QualityRuleConfirmState } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type {
@@ -57,26 +58,6 @@ export type TextPreserveVisibleEntry = {
   source_index: number;
 };
 
-export type TextPreserveConfirmState =
-  | {
-      open: false;
-      kind: null;
-      selection_count: number;
-      preset_name: string;
-      preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    }
-  | {
-      open: true;
-      kind: "delete-selection" | "delete-preset" | "reset" | "overwrite-preset";
-      selection_count: number;
-      preset_name: string;
-      preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    };
-
 type TextPreserveSortState = AppTableSortState | null;
 
 export type UseTextPreservePageStateResult = {
@@ -99,7 +80,7 @@ export type UseTextPreservePageStateResult = {
   restore_scroll_entry_id: TextPreserveEntryId | null;
   preset_menu_open: boolean;
   dialog_state: TextPreserveDialogState;
-  confirm_state: TextPreserveConfirmState;
+  confirm_state: QualityRuleConfirmState;
   import_confirm_state: QualityRuleImportConfirmState;
   preset_input_state: PresetInputState;
   update_filter_keyword: (next_keyword: string) => void;

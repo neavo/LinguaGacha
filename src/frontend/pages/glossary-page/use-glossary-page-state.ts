@@ -42,6 +42,10 @@ import {
   has_active_quality_rule_filters,
   resolve_quality_rule_hit_badge_kind,
 } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
+import {
+  create_empty_quality_rule_confirm_state,
+  type QualityRuleConfirmState,
+} from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
 import { build_glossary_filter_result } from "@frontend/pages/glossary-page/filtering";
 import {
   PRESERVE_RESULT_REFRESH,
@@ -77,7 +81,6 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 import type {
-  GlossaryConfirmState,
   GlossaryDialogState,
   GlossaryEntry,
   GlossaryEntryDraft,
@@ -216,19 +219,6 @@ function create_empty_dialog_state(): GlossaryDialogState {
   };
 }
 
-/** 统一清空删除、预设和导入确认共用的提交状态。 */
-function create_empty_confirm_state(): GlossaryConfirmState {
-  return {
-    open: false,
-    kind: null,
-    selection_count: 0,
-    preset_name: "",
-    preset_input_value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
 /**
  * 在保存边界按术语字段白名单投影并裁掉文本两端空白，同时保留稳定条目 ID。
  */
@@ -315,7 +305,7 @@ type UseGlossaryPageStateResult = {
   restore_scroll_entry_id: GlossaryEntryId | null;
   preset_menu_open: boolean;
   dialog_state: GlossaryDialogState;
-  confirm_state: GlossaryConfirmState;
+  confirm_state: QualityRuleConfirmState;
   import_confirm_state: QualityRuleImportConfirmState;
   preset_input_state: GlossaryPresetInputState;
   update_filter_keyword: (next_keyword: string) => void;
@@ -419,8 +409,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [dialog_state, set_dialog_state] = useState<GlossaryDialogState>(() => {
     return create_empty_dialog_state();
   });
-  const [confirm_state, set_confirm_state] = useState<GlossaryConfirmState>(() => {
-    return create_empty_confirm_state();
+  const [confirm_state, set_confirm_state] = useState<QualityRuleConfirmState>(() => {
+    return create_empty_quality_rule_confirm_state();
   });
   const [preset_input_state, set_preset_input_state] = useState<GlossaryPresetInputState>(() => {
     return create_empty_preset_input_state();
@@ -1420,7 +1410,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_settings_snapshot, push_toast, readonly, refresh_preset_menu, t]);
 
   const close_confirm_dialog = useCallback((): void => {
-    set_confirm_state(create_empty_confirm_state());
+    set_confirm_state(create_empty_quality_rule_confirm_state());
   }, []);
 
   const close_preset_input_dialog = useCallback((): void => {
@@ -1574,7 +1564,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     if (succeeded) {
-      set_confirm_state(create_empty_confirm_state());
+      set_confirm_state(create_empty_quality_rule_confirm_state());
     } else {
       set_confirm_state((previous_state) => {
         return {

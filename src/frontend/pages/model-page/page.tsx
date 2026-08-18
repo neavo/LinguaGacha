@@ -17,7 +17,7 @@ import {
   AppDropdownMenuItem,
   AppDropdownMenuSeparator,
 } from "@frontend/widgets/app-dropdown-menu";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 
 type ModelPageProps = {
   is_sidebar_collapsed: boolean;
@@ -35,7 +35,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
 
   return (
     <>
-      <AppAlertDialog
+      <AppConfirmDialog
         open={model_page_state.confirm_state.kind !== null}
         description={
           model_page_state.confirm_state.kind === "delete"

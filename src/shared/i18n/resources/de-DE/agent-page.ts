@@ -49,9 +49,10 @@ export const de_de_agent_page = {
     new_task: "Neue Aufgabe",
     add_image: "Bilder hinzufügen",
     continue: "Fortsetzen",
-    retry: "Wiederholen",
     edit: "Bearbeiten",
-    edit_and_retry: "Bearbeiten und wiederholen",
+    copy: "Kopieren",
+    copied: "Kopiert",
+    copy_failed: "Kopieren fehlgeschlagen",
     save_and_retry: "Speichern und wiederholen",
     save_edit: "Änderung speichern",
     return_latest: "Zum neuesten Stand",
@@ -71,8 +72,6 @@ export const de_de_agent_page = {
   },
   confirm: {
     new_task: "Wirklich eine neue Unterhaltung starten …?",
-    retry_after_workspace_apply:
-      "Diese Runde hat das Projekt bereits geändert. Wiederholen oder Bearbeiten der Eingabe macht diese Änderungen nicht rückgängig und kann das Projekt erneut ändern. Fortfahren?",
   },
   status: {
     running: "Wird verarbeitet",
@@ -98,7 +97,6 @@ export const de_de_agent_page = {
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
-    retry: "Die Runde konnte nicht wiederholt werden. Bitte erneut versuchen.",
     continue: "Die Aufgabe konnte nicht fortgesetzt werden. Bitte erneut versuchen.",
     edit: "Die Nachricht konnte nicht bearbeitet werden. Die Änderungen wurden beibehalten.",
     queue_update:

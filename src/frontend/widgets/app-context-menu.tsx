@@ -4,6 +4,9 @@ import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 
 import { cn } from "@frontend/shadcn/classnames";
 
+/** Radix 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
+const MENU_VIEWPORT_PADDING = 8;
+
 // 本文件只为 Radix 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
 function AppContextMenu(props: ComponentProps<typeof ContextMenuPrimitive.Root>): JSX.Element {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
@@ -46,6 +49,7 @@ function AppContextMenuRadioGroup(
 
 function AppContextMenuContent({
   className,
+  collisionPadding = MENU_VIEWPORT_PADDING,
   ...props
 }: ComponentProps<typeof ContextMenuPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
@@ -54,6 +58,7 @@ function AppContextMenuContent({
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
+        collisionPadding={collisionPadding}
         className={cn(
           "z-50 max-h-(--radix-context-menu-content-available-height) min-w-36 origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           "w-max min-w-36 text-[13px]",
@@ -116,11 +121,13 @@ function AppContextMenuSubTrigger({
 
 function AppContextMenuSubContent({
   className,
+  collisionPadding = MENU_VIEWPORT_PADDING,
   ...props
 }: ComponentProps<typeof ContextMenuPrimitive.SubContent>): JSX.Element {
   return (
     <ContextMenuPrimitive.SubContent
       data-slot="context-menu-sub-content"
+      collisionPadding={collisionPadding}
       className={cn(
         "z-50 min-w-32 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
         "text-[13px] ring-1 ring-foreground/10",

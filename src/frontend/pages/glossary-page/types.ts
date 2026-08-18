@@ -60,23 +60,3 @@ export type GlossaryVisibleEntry = {
   entry_id: GlossaryEntryId;
   source_index: number;
 };
-
-export type GlossaryConfirmState =
-  | {
-      open: false;
-      kind: null;
-      selection_count: number;
-      preset_name: string;
-      preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    }
-  | {
-      open: true;
-      kind: "delete-selection" | "delete-preset" | "reset" | "overwrite-preset";
-      selection_count: number;
-      preset_name: string;
-      preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    };

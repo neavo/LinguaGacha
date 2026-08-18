@@ -1,78 +1,74 @@
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
   on_confirm: () => void;
   on_secondary: () => void;
-  on_cancel: () => void;
   on_close: () => void;
 };
 
-type DialogCopy = {
-  description_key: LocaleKey;
-  confirm_key?: LocaleKey;
-  cancel_key?: LocaleKey;
-  secondary_key?: LocaleKey;
-};
+const CONFIRM_DESCRIPTION_KEY_BY_KIND = {
+  "reset-file": "workbench_page.dialog.reset.description",
+  "delete-file": "workbench_page.dialog.delete.description",
+  "generate-translation": "workbench_page.translation_task.confirm.generate_description",
+  "close-project": "workbench_page.dialog.close_project.description",
+} as const satisfies Partial<Record<NonNullable<WorkbenchDialogState["kind"]>, LocaleKey>>;
 
-const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, DialogCopy> = {
-  "confirm-import-files": {
-    description_key: "workbench_page.dialog.import_conflict.description",
-    confirm_key: "app.action.replace",
-    secondary_key: "app.action.skip",
-  },
-  "inherit-import-files": {
-    description_key: "workbench_page.dialog.inherit_import.description",
-    confirm_key: "workbench_page.dialog.inherit_import.confirm",
-    cancel_key: "workbench_page.dialog.inherit_import.cancel",
-  },
-  "reset-file": {
-    description_key: "workbench_page.dialog.reset.description",
-  },
-  "delete-file": {
-    description_key: "workbench_page.dialog.delete.description",
-  },
-  "generate-translation": {
-    description_key: "workbench_page.translation_task.confirm.generate_description",
-  },
-  "close-project": {
-    description_key: "workbench_page.dialog.close_project.description",
-  },
-};
-
-function resolve_dialog_copy(dialog_state: WorkbenchDialogState): DialogCopy | null {
-  if (dialog_state.kind === null) {
-    return null;
-  } else {
-    return DIALOG_COPY_BY_KIND[dialog_state.kind];
-  }
-}
 export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
   const { t } = useI18n();
-  const dialog_copy = resolve_dialog_copy(props.dialog_state);
-  const description =
-    dialog_copy === null
-      ? ""
-      : t(dialog_copy.description_key).replace(
+  const kind = props.dialog_state.kind;
+  const count = props.dialog_state.target_rel_paths.length.toString();
+
+  if (kind === "confirm-import-files") {
+    return (
+      <AppActionDialog
+        open
+        description={t("workbench_page.dialog.import_conflict.description").replace(
           "{COUNT}",
-          props.dialog_state.target_rel_paths.length.toString(),
-        );
+          count,
+        )}
+        submitting={props.dialog_state.submitting}
+        primaryAction={{
+          label: t("app.action.replace"),
+          onSelect: props.on_confirm,
+          variant: "destructive",
+        }}
+        secondaryAction={{ label: t("app.action.skip"), onSelect: props.on_secondary }}
+        onClose={props.on_close}
+      />
+    );
+  }
+
+  if (kind === "inherit-import-files") {
+    return (
+      <AppActionDialog
+        open
+        description={t("workbench_page.dialog.inherit_import.description")}
+        submitting={props.dialog_state.submitting}
+        primaryAction={{
+          label: t("workbench_page.dialog.inherit_import.fill"),
+          onSelect: props.on_confirm,
+        }}
+        secondaryAction={{
+          label: t("workbench_page.dialog.inherit_import.do_not_fill"),
+          onSelect: props.on_secondary,
+        }}
+        dismissAction={null}
+        onClose={props.on_close}
+      />
+    );
+  }
+
+  const description_key = kind === null ? null : CONFIRM_DESCRIPTION_KEY_BY_KIND[kind];
   return (
-    <AppAlertDialog
-      open={dialog_copy !== null}
-      description={description}
+    <AppConfirmDialog
+      open={description_key !== null && description_key !== undefined}
+      description={description_key === null ? "" : t(description_key).replace("{COUNT}", count)}
       submitting={props.dialog_state.submitting}
       onConfirm={props.on_confirm}
-      onCancel={props.on_cancel}
       onClose={props.on_close}
-      confirmLabel={dialog_copy?.confirm_key === undefined ? undefined : t(dialog_copy.confirm_key)}
-      cancelLabel={dialog_copy?.cancel_key === undefined ? undefined : t(dialog_copy.cancel_key)}
-      secondaryLabel={
-        dialog_copy?.secondary_key === undefined ? undefined : t(dialog_copy.secondary_key)
-      }
-      onSecondary={dialog_copy?.secondary_key === undefined ? undefined : props.on_secondary}
     />
   );
 }

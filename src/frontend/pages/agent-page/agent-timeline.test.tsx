@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentAssistantMessagePart,
@@ -19,10 +19,11 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.success") return "已完成";
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.status.stopped") return "已停止";
-      if (key === "agent_page.action.retry") return "重试";
       if (key === "agent_page.action.continue") return "继续";
       if (key === "agent_page.action.edit") return "修改";
-      if (key === "agent_page.action.edit_and_retry") return "修改并重试";
+      if (key === "agent_page.action.copy") return "复制";
+      if (key === "agent_page.action.copied") return "已复制";
+      if (key === "agent_page.action.copy_failed") return "复制失败";
       if (key === "agent_page.annotation.title") return "批注";
       if (key === "agent_page.annotation.add") return "添加批注";
       if (key === "agent_page.annotation.selected_text") return "目标";
@@ -58,29 +59,40 @@ const MENTION_TOKENS = create_agent_mention_tokens(
 describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  const on_follow_hold_change = vi.fn();
-  const on_retry = vi.fn();
+  const on_thinking_follow_change = vi.fn();
   const on_edit = vi.fn();
   const on_continue = vi.fn();
   const on_add_annotation = vi.fn();
+  const write_clipboard = vi.fn(async (_text: string) => undefined);
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: write_clipboard },
+    });
+  });
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     vi.useRealTimers();
     container?.remove();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
     root = null;
     container = null;
-    on_follow_hold_change.mockReset();
-    on_retry.mockReset();
+    on_thinking_follow_change.mockReset();
     on_edit.mockReset();
     on_continue.mockReset();
     on_add_annotation.mockReset();
+    write_clipboard.mockReset();
   });
 
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
   async function render_timeline(
     entries: readonly AgentEntry[],
-    resume_revision = 0,
+    return_latest_revision = 0,
   ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -93,9 +105,8 @@ describe("AgentTimeline", () => {
           <AgentTimeline
             entries={entries}
             mention_tokens={MENTION_TOKENS}
-            resume_revision={resume_revision}
-            on_follow_hold_change={on_follow_hold_change}
-            on_retry={on_retry}
+            return_latest_revision={return_latest_revision}
+            on_thinking_follow_change={on_thinking_follow_change}
             on_continue={on_continue}
             on_edit={on_edit}
             on_add_annotation={on_add_annotation}
@@ -195,9 +206,10 @@ describe("AgentTimeline", () => {
     expect(error.textContent).toContain("继续");
     await act(async () => error.click());
     expect(on_continue).toHaveBeenCalledOnce();
-    const edits = [...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button")];
+    const edits = [
+      ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
+    ].filter((button) => button.textContent === "修改");
     expect(edits).toHaveLength(2);
-    expect(edits.map((button) => button.textContent)).toEqual(["修改并重试", "修改"]);
     expect(latest_footer.querySelector("button")).toBeNull();
     await act(async () => edits[0]?.click());
     expect(on_edit).toHaveBeenNthCalledWith(
@@ -211,7 +223,7 @@ describe("AgentTimeline", () => {
     );
   });
 
-  it("成功轮次只允许修改最终 assistant，并把唯一重试放在最终输出下方", async () => {
+  it("成功轮次只允许修改最终 assistant，状态行不提供回合重试", async () => {
     const view = await render_timeline([
       user_entry("user-1", "开始", "success", 0, 4_000),
       assistant_entry("assistant-intermediate", "准备调用工具", "success", 1_000),
@@ -225,28 +237,54 @@ describe("AgentTimeline", () => {
       ".agent-message-frame--assistant .agent-message-actions button",
     );
 
-    expect([...user_actions].map((button) => button.textContent)).toEqual(["修改并重试"]);
-    expect([...output_actions].map((button) => button.textContent)).toEqual(["修改", "重试"]);
-    await act(async () => output_actions[0]?.click());
+    expect([...user_actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
+    expect([...output_actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
+    await act(async () =>
+      [...output_actions].find((button) => button.textContent === "修改")?.click(),
+    );
     expect(on_edit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
     );
     expect(view.querySelector(".agent-continue-entry")).toBeNull();
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
-    await act(async () => output_actions[1]?.click());
-    expect(on_retry).toHaveBeenCalledWith(expect.objectContaining({ id: "user-1" }));
   });
 
-  it("成功轮次没有输出时把唯一重试回落到输入下方", async () => {
+  it("流式输出不显示复制或修改操作", async () => {
+    const view = await render_timeline([
+      user_entry("user-running", "处理中", "running", 0, null),
+      assistant_entry("assistant-running", "部分输出", "running", 1_000),
+    ]);
+
+    expect(view.querySelectorAll(".agent-message-actions")).toHaveLength(0);
+  });
+
+  it("成功轮次没有输出时仍只提供输入复制与修改", async () => {
     const view = await render_timeline([user_entry("user-only", "开始", "success", 0, 1_000)]);
     const actions = view.querySelectorAll<HTMLButtonElement>(
       ".agent-message-frame--user .agent-message-actions button",
     );
 
-    expect([...actions].map((button) => button.textContent)).toEqual(["修改并重试", "重试"]);
+    expect([...actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
-    await act(async () => actions[1]?.click());
-    expect(on_retry).toHaveBeenCalledWith(expect.objectContaining({ id: "user-only" }));
+  });
+
+  it("输入与输出正文都可复制并显示完成反馈", async () => {
+    const view = await render_timeline([
+      user_entry("user-copy", "输入正文", "success", 0, 2_000),
+      assistant_entry("assistant-copy", "输出正文", "success", 1_000),
+    ]);
+    const copy_buttons = [
+      ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
+    ].filter((button) => button.textContent === "复制");
+    expect(copy_buttons).toHaveLength(2);
+
+    await act(async () => copy_buttons[0]?.click());
+    await vi.waitFor(() => expect(copy_buttons[0]?.textContent).toBe("已复制"));
+    expect(write_clipboard).toHaveBeenCalledWith("输入正文");
+
+    await act(async () => copy_buttons[1]?.click());
+    await vi.waitFor(() => expect(copy_buttons[1]?.textContent).toBe("已复制"));
+    expect(write_clipboard).toHaveBeenLastCalledWith("输出正文");
   });
 
   it("压缩三态原位覆盖，失败时只开放统一恢复", async () => {
@@ -318,7 +356,7 @@ describe("AgentTimeline", () => {
     );
     expect(get_tool_dialog_json()).toEqual({ scope: "output" });
     expect(view.querySelector(".agent-tool-entry .agent-status-mark--success")).not.toBeNull();
-    expect(on_follow_hold_change).not.toHaveBeenCalled();
+    expect(on_thinking_follow_change).not.toHaveBeenCalled();
   });
 
   it("并行工具复用无图标状态灯并保留独立状态语义", async () => {
@@ -380,19 +418,19 @@ describe("AgentTimeline", () => {
     expect(view.querySelector("pre")).toBe(content);
     expect(content.textContent).toBe("检查术语\n逐项核对完成");
     expect(thinking.open).toBe(true);
-    expect(on_follow_hold_change).not.toHaveBeenCalledWith("thinking:assistant-1-0", true);
+    expect(on_thinking_follow_change).not.toHaveBeenCalledWith("thinking:assistant-1-0", true);
     expect(content.scrollTop).toBe(320);
 
     content.scrollTop = 80;
     await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
-    expect(on_follow_hold_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", true);
+    expect(on_thinking_follow_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", true);
     scroll_height = 640;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境");
     expect(content.scrollTop).toBe(80);
 
     content.scrollTop = 400;
     await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
-    expect(on_follow_hold_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", false);
+    expect(on_thinking_follow_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", false);
     scroll_height = 720;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n确认结果");
     expect(content.scrollTop).toBe(480);

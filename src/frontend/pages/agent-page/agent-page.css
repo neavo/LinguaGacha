@@ -17,7 +17,17 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
+  /* 归底由页面 ResizeObserver 唯一负责，避免原生锚点与手动滚动竞争。 */
+  overflow-anchor: none;
   scrollbar-gutter: stable;
+}
+
+.agent-page__conversation-content {
+  /* 单一内容盒让 ResizeObserver 覆盖连接状态、时间线和详情高度变化。 */
+  display: flex;
+  min-height: 100%;
+  flex: 0 0 auto;
+  flex-direction: column;
 }
 
 .agent-page__connection-status {
@@ -40,21 +50,6 @@
   height: 16px;
   flex: 0 0 auto;
   color: var(--ui-warning);
-}
-
-/* 只允许末尾哨兵成为原生锚点；用户回看时 data-enabled 会撤销该资格。 */
-.agent-page__conversation > :not(.agent-page__scroll-anchor) {
-  overflow-anchor: none;
-}
-
-.agent-page__scroll-anchor {
-  height: 1px;
-  flex: 0 0 1px;
-  overflow-anchor: auto;
-}
-
-.agent-page__scroll-anchor[data-enabled="false"] {
-  overflow-anchor: none;
 }
 
 .agent-page__empty {
@@ -154,6 +149,13 @@
   max-width: 75%;
   align-self: flex-end;
   align-items: flex-end;
+}
+
+.agent-message-frame--user:has(.agent-inline-editor) {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  align-items: stretch;
 }
 
 .agent-message-frame--assistant {
@@ -329,14 +331,16 @@
 }
 
 .agent-attachment-strip {
-  /* 两行批注与中间间距共同定义图片方块，所有附件尺寸只从这一关系派生。 */
-  --agent-annotation-height: 33px;
+  /* 一个紧凑行是附件拼图的最小单元，其余尺寸只从这一关系派生。 */
+  --agent-attachment-row-height: 33px;
   --agent-attachment-gap: 6px;
-  --agent-attachment-size: calc(
-    var(--agent-annotation-height) + var(--agent-attachment-gap) + var(--agent-annotation-height)
+  --agent-attachment-square-size: calc(
+    var(--agent-attachment-row-height) + var(--agent-attachment-gap) +
+      var(--agent-attachment-row-height)
   );
-  --agent-annotation-width: calc(
-    var(--agent-attachment-size) + var(--agent-attachment-gap) + var(--agent-attachment-size)
+  --agent-attachment-wide-width: calc(
+    var(--agent-attachment-square-size) + var(--agent-attachment-gap) +
+      var(--agent-attachment-square-size)
   );
 
   display: grid;
@@ -345,26 +349,36 @@
   min-width: 0;
   grid-auto-columns: max-content;
   grid-auto-flow: column;
-  grid-template-rows: var(--agent-annotation-height);
+  grid-template-rows: var(--agent-attachment-row-height);
   gap: var(--agent-attachment-gap);
   overflow-x: auto;
   padding: 4px 2px 2px;
 }
 
 .agent-attachment-strip[data-has-images="true"] {
-  grid-template-rows: repeat(2, var(--agent-annotation-height));
+  grid-template-rows: repeat(2, var(--agent-attachment-row-height));
 }
 
 .agent-attachment {
   position: relative;
   overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: var(--ui-radius-button);
   background: var(--muted);
+  padding: 0;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 
+/* 类型变体只改变几何与内容排版，共享边界和交互状态由附件外壳承接。 */
 .agent-attachment--image {
-  width: var(--agent-attachment-size);
-  height: var(--agent-attachment-size);
+  width: var(--agent-attachment-square-size);
+  height: var(--agent-attachment-square-size);
   grid-row: 1 / -1;
   margin: 0;
 }
@@ -377,28 +391,8 @@
 }
 
 .agent-attachment--annotation {
-  width: var(--agent-annotation-width);
-  height: var(--agent-annotation-height);
-  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
-  background: color-mix(in srgb, var(--primary) 5%, var(--popover));
-}
-
-.agent-attachment__open {
-  padding: 0;
-  color: var(--foreground);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color 120ms ease,
-    opacity 120ms ease;
-}
-
-.agent-attachment__open.agent-attachment--image {
-  border: 0;
-}
-
-.agent-attachment__open.agent-attachment--annotation {
+  width: var(--agent-attachment-wide-width);
+  height: var(--agent-attachment-row-height);
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
@@ -406,31 +400,28 @@
   padding: 0 8px;
 }
 
-.agent-attachment__open:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 7%, transparent);
+.agent-attachment:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: var(--accent);
 }
 
-.agent-attachment__open.agent-attachment--image:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.agent-attachment__open:focus-visible {
+.agent-attachment:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.agent-attachment__open:disabled {
+.agent-attachment:disabled {
   cursor: default;
   opacity: 0.58;
 }
 
-.agent-attachment__open > svg {
+.agent-attachment > svg {
   width: 14px;
   height: 14px;
   color: var(--primary);
 }
 
-.agent-attachment__open > span {
+.agent-attachment > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -570,6 +561,8 @@
   max-height: 240px;
   margin: 0;
   overflow: auto;
+  /* 思考块暂停时保留用户阅读位置，不让内容增长触发原生锚定。 */
+  overflow-anchor: none;
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--popover) 60%, transparent);
   padding: 8px 12px 10px 28px;
@@ -690,8 +683,8 @@
 }
 
 .agent-round-footer__result {
-  display: grid;
-  grid-template-columns: minmax(24px, 1fr) auto;
+  display: flex;
+  align-items: center;
   gap: 10px;
   opacity: 1;
   transition: opacity 220ms ease-out 40ms;
@@ -715,6 +708,7 @@
 }
 
 .agent-round-footer__line {
+  flex: 1 1 auto;
   height: 1px;
   background: var(--border);
 }
@@ -869,6 +863,11 @@
   background: var(--popover);
 }
 
+.agent-input-queue__item--editing {
+  display: block;
+  padding: 8px;
+}
+
 .agent-input-queue__item:last-child {
   border-bottom: 0;
 }
@@ -944,6 +943,39 @@
   transition: border-color 160ms ease;
 }
 
+.agent-inline-editor {
+  width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.agent-inline-editor__title {
+  margin-bottom: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-inline-editor__error {
+  margin: 6px 0 0;
+  color: var(--ui-failure);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-composer--inline {
+  width: 100%;
+  margin: 0;
+}
+
+.agent-composer--inline .agent-composer__footer-end {
+  gap: 4px;
+}
+
+.agent-composer--inline .agent-composer__inline-submit {
+  min-width: 0;
+}
+
 /* 控件占零高度叠在输入框上方，不挤压信息流或改变滚动高度。 */
 .agent-page__follow-control {
   position: relative;
@@ -962,20 +994,6 @@
 
 .agent-composer:focus-within {
   border-color: var(--primary);
-}
-
-.agent-composer__edit-bar {
-  display: flex;
-  min-width: 0;
-  min-height: 28px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 2px 5px;
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .agent-annotation-panel {

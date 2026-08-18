@@ -4,7 +4,7 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { TextReplacementVariant } from "@frontend/pages/text-replacement-page/config";
 import { TextReplacementCommandBar } from "@frontend/pages/text-replacement-page/components/text-replacement-command-bar";
-import { TextReplacementConfirmDialog } from "@frontend/pages/text-replacement-page/components/text-replacement-confirm-dialog";
+import { QualityRuleConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-confirm-dialog";
 import { TextReplacementEditDialog } from "@frontend/pages/text-replacement-page/components/text-replacement-edit-dialog";
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import type { TextReplacementFilterScope } from "@frontend/pages/text-replacement-page/types";
@@ -149,7 +149,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
         on_save={page_state.save_dialog_entry}
         on_close={page_state.request_close_dialog}
       />
-      <TextReplacementConfirmDialog
+      <QualityRuleConfirmDialog
         state={page_state.confirm_state}
         on_confirm={() => {
           void page_state.confirm_pending_action();

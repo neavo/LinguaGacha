@@ -104,6 +104,12 @@ type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
 
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
+  /** 原位编辑复用编辑能力，但不携带普通 Composer 的模型、重置和队列操作。 */
+  presentation?: "composer" | "inline";
+  inline_role?: "user" | "assistant";
+  inline_kind?: "entry" | "queue";
+  on_cancel_edit?: () => void;
+  locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
   terms: readonly GlossaryEntry[];
   term_hit_counts: Readonly<Record<string, number>>;
@@ -186,8 +192,10 @@ const mention_token_extension: Extension = [mention_token_config_field, mention_
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolved_theme } = useAppearance();
-  const editing = props.input_session.editing;
-  const assistant_editing = editing?.kind === "entry" && editing.role === "assistant";
+  // inline 由页面拥有目标草稿；locked 只冻结当前 Composer，不改变共享会话事实。
+  const inline = props.presentation === "inline";
+  const locked = props.locked === true;
+  const assistant_editing = inline && props.inline_role === "assistant";
   const placeholder_text = t(
     assistant_editing
       ? "agent_page.input.edit_assistant_placeholder"
@@ -212,7 +220,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const last_query_key_ref = useRef("");
   // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
   const input_session_ref = useRef(props.input_session);
-  const editing_ref = useRef(editing);
   const input_history_index_ref = useRef<number | null>(null);
   // 附件 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
   const draft_attachments_ref = useRef(
@@ -246,6 +253,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_terms = candidate_groups.terms;
   const matching_candidates = [...matching_skills, ...matching_terms];
   const editor_read_only =
+    locked ||
     props.command === "send" ||
     props.command === "continue" ||
     props.command === "revise" ||
@@ -256,11 +264,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const has_sendable_content =
     snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
-  const continuing_queue = props.can_continue_queue && !props.running && editing === null;
+  const continuing_queue = props.can_continue_queue && !props.running && !inline && !locked;
   // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
-  const stopping = props.running && !has_sendable_content && editing === null;
+  const stopping = props.running && !has_sendable_content && !inline && !locked;
   let submit_label_key: LocaleKey = "agent_page.action.send";
   const can_submit =
+    !locked &&
     props.unavailable_reason === null &&
     props.command === null &&
     !props.model_selection.updating &&
@@ -268,14 +277,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     (has_sendable_content || continuing_queue) &&
     (!props.compaction_failed || continuing_queue);
   if (continuing_queue) submit_label_key = "agent_page.action.continue";
-  else if (props.running && has_sendable_content && editing === null)
+  else if (props.running && has_sendable_content && !inline)
     submit_label_key = "agent_page.action.send";
   else if (compacting) submit_label_key = "agent_page.compaction.running";
   else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
-  else if (editing?.kind === "queue") submit_label_key = "agent_page.action.save_queue";
-  else if (editing?.kind === "entry") {
+  else if (inline && props.inline_kind === "queue")
+    submit_label_key = "agent_page.action.save_queue";
+  else if (inline) {
     submit_label_key =
-      editing.role === "user" ? "agent_page.action.save_and_retry" : "agent_page.action.save_edit";
+      props.inline_role === "user"
+        ? "agent_page.action.save_and_retry"
+        : "agent_page.action.save_edit";
   } else if (stopping) submit_label_key = "agent_page.action.stop";
   const contextual_submit_label = t(submit_label_key);
   const image_count = draft_attachments.reduce(
@@ -285,7 +297,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
-    props.running || compacting || props.unavailable_reason !== null || props.command !== null;
+    locked ||
+    props.running ||
+    compacting ||
+    props.unavailable_reason !== null ||
+    props.command !== null;
   const model_controls_disabled =
     model_commands_disabled || props.model_selection.loading || props.model_selection.updating;
   const selected_model = read_selected_model(props.model_selection, "agent");
@@ -312,7 +328,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
   input_session_ref.current = props.input_session;
-  editing_ref.current = editing;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -351,7 +366,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             {
               key: "ArrowDown",
               run: (view) =>
-                editing_ref.current !== null
+                inline
                   ? false
                   : menu_open_ref.current
                     ? navigate_mention_menu(1)
@@ -360,7 +375,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             {
               key: "ArrowUp",
               run: (view) =>
-                editing_ref.current !== null
+                inline
                   ? false
                   : menu_open_ref.current
                     ? navigate_mention_menu(-1)
@@ -608,7 +623,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   return (
     <form
-      className="agent-composer"
+      className={`agent-composer${inline ? " agent-composer--inline" : ""}`}
       data-image-drop-active={image_drop_active ? "true" : undefined}
       onSubmit={(event) => {
         event.preventDefault();
@@ -657,28 +672,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           void append_image_files(event.dataTransfer.files);
       }}
     >
-      {editing !== null ? (
-        <div className="agent-composer__edit-bar">
-          <span>
-            {t(
-              editing.kind === "queue"
-                ? "agent_page.editing.queue"
-                : editing.role === "user"
-                  ? "agent_page.editing.user"
-                  : "agent_page.editing.assistant",
-            )}
-          </span>
-          <AppButton
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={props.command !== null}
-            onClick={props.input_session.cancel_edit}
-          >
-            {t("app.action.cancel")}
-          </AppButton>
-        </div>
-      ) : null}
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {matching_skills.length > 0 && (
@@ -767,7 +760,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </TooltipContent>
             </Tooltip>
           ) : null}
-          {editing === null ? (
+          {!inline ? (
             <AppButton
               type="button"
               size="xs"
@@ -775,6 +768,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               className="agent-composer__reset"
               disabled={
                 !props.can_reset ||
+                locked ||
                 props.running ||
                 compacting ||
                 props.unavailable_reason !== null ||
@@ -786,7 +780,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <span>{t("agent_page.action.new_task")}</span>
             </AppButton>
           ) : null}
-          {editing === null ? (
+          {!inline ? (
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -818,7 +812,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           ) : null}
-          {editing === null && selected_thinking_label !== null && (
+          {!inline && selected_thinking_label !== null && (
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -850,7 +844,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           )}
-          {editing === null && context_usage !== null && (
+          {!inline && context_usage !== null && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
@@ -871,48 +865,76 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </TooltipContent>
             </Tooltip>
           )}
-          <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
+          {!inline ? (
+            <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
+          ) : null}
         </div>
         <div className="agent-composer__footer-end">
-          <Tooltip>
-            {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
-            <TooltipTrigger asChild>
-              <span className="agent-composer__submit-shell">
-                <AppButton
-                  className="agent-composer__submit"
-                  type={stopping ? "button" : "submit"}
-                  size="icon-xs"
-                  onClick={
-                    stopping && !props.stop_disabled && !compacting && props.command === null
-                      ? () => void props.on_stop()
-                      : undefined
-                  }
-                  disabled={
-                    props.command !== null ||
-                    (stopping ? props.stop_disabled || compacting : !can_submit)
-                  }
-                  aria-label={contextual_submit_label}
-                >
-                  {(compacting && stopping) || submit_command_active ? (
-                    <LoaderCircle className="animate-spin" aria-hidden="true" />
-                  ) : stopping ? (
-                    <Square aria-hidden="true" />
-                  ) : (
-                    <ArrowUp aria-hidden="true" />
-                  )}
-                </AppButton>
-              </span>
-            </TooltipTrigger>
-            {submit_command_active ? null : (
-              <TooltipContent side="top" sideOffset={8}>
-                <p>
-                  {props.unavailable_reason === null
-                    ? contextual_submit_label
-                    : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}
-                </p>
-              </TooltipContent>
-            )}
-          </Tooltip>
+          {inline ? (
+            <>
+              <AppButton
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={locked || props.command !== null}
+                onClick={props.on_cancel_edit}
+              >
+                {t("app.action.cancel")}
+              </AppButton>
+              <AppButton
+                className="agent-composer__inline-submit"
+                type="submit"
+                size="xs"
+                disabled={props.command !== null || !can_submit}
+                aria-label={contextual_submit_label}
+              >
+                {submit_command_active ? (
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                ) : null}
+                <span>{contextual_submit_label}</span>
+              </AppButton>
+            </>
+          ) : (
+            <Tooltip>
+              {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
+              <TooltipTrigger asChild>
+                <span className="agent-composer__submit-shell">
+                  <AppButton
+                    className="agent-composer__submit"
+                    type={stopping ? "button" : "submit"}
+                    size="icon-xs"
+                    onClick={
+                      stopping && !props.stop_disabled && !compacting && props.command === null
+                        ? () => void props.on_stop()
+                        : undefined
+                    }
+                    disabled={
+                      props.command !== null ||
+                      (stopping ? props.stop_disabled || compacting : !can_submit)
+                    }
+                    aria-label={contextual_submit_label}
+                  >
+                    {(compacting && stopping) || submit_command_active ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : stopping ? (
+                      <Square aria-hidden="true" />
+                    ) : (
+                      <ArrowUp aria-hidden="true" />
+                    )}
+                  </AppButton>
+                </span>
+              </TooltipTrigger>
+              {submit_command_active ? null : (
+                <TooltipContent side="top" sideOffset={8}>
+                  <p>
+                    {props.unavailable_reason === null
+                      ? contextual_submit_label
+                      : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}
+                  </p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          )}
         </div>
       </div>
     </form>

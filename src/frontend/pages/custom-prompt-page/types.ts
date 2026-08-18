@@ -24,10 +24,6 @@ export type CustomPromptConfirmState =
       kind: "overwrite-preset";
       preset_input_value: string;
       submitting: boolean;
-    }
-  | {
-      kind: "enable-after-import";
-      submitting: boolean;
     };
 
 export type UseCustomPromptPageStateResult = {

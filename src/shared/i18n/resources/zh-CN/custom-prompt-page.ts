@@ -7,9 +7,6 @@ export const zh_cn_custom_prompt_page = {
   },
 
   confirm: {
-    enable_after_import: {
-      description: "是否启用自定义提示词功能 …?",
-    },
     reset: {
       description: "是否确认重置数据 …?",
     },

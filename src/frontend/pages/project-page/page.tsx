@@ -60,7 +60,7 @@ import {
   type ProjectSettingsAlignmentChangedFields,
   type ProjectSettingsAlignmentSettings,
 } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import {
   PROJECT_SOURCE_FORMATS,
   type ProjectSourceFormatHitCounts,
@@ -1527,7 +1527,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
   return (
     <>
-      <AppAlertDialog
+      <AppConfirmDialog
         open={missing_recent_project !== null}
         description={missing_recent_project_description}
         onConfirm={() => {

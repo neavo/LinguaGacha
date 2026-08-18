@@ -55,7 +55,6 @@ export type WorkbenchImportFilesFlow = {
   request_add_file_from_path: (source_path: string) => Promise<void>;
   confirm_dialog: () => Promise<boolean>;
   secondary_dialog: () => Promise<boolean>;
-  cancel_dialog: () => Promise<boolean>;
   close_dialog: () => boolean;
 };
 
@@ -396,39 +395,8 @@ export function useWorkbenchImportFilesFlow(
     pending_import_files_request,
   ]);
 
-  /**
-   * 处理导入冲突对话的次按钮；当前语义为跳过同名文件。
-   */
+  /** 处理导入冲突的跳过动作，或继承询问中的不填充动作。 */
   const secondary_dialog = useCallback(async (): Promise<boolean> => {
-    const current_dialog_state = options.dialog_state;
-    if (current_dialog_state.kind !== "confirm-import-files") {
-      return false;
-    }
-    if (current_dialog_state.submitting) {
-      return true;
-    }
-
-    options.set_dialog_submitting(true);
-    try {
-      await accept_import_conflict_action("skip");
-    } catch (error) {
-      options.push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          options.t,
-          options.t("workbench_page.feedback.file_action_failed"),
-        ),
-      );
-      options.set_dialog_submitting(false);
-    }
-    return true;
-  }, [accept_import_conflict_action, options]);
-
-  /**
-   * 处理导入相关取消按钮；继承确认的取消表示不继承但继续导入。
-   */
-  const cancel_dialog = useCallback(async (): Promise<boolean> => {
     const current_dialog_state = options.dialog_state;
     if (
       current_dialog_state.kind !== "confirm-import-files" &&
@@ -441,8 +409,20 @@ export function useWorkbenchImportFilesFlow(
     }
 
     if (current_dialog_state.kind === "confirm-import-files") {
-      set_pending_import_files_request(null);
-      options.set_dialog_state(close_dialog_state());
+      options.set_dialog_submitting(true);
+      try {
+        await accept_import_conflict_action("skip");
+      } catch (error) {
+        options.push_toast(
+          "error",
+          resolve_visible_error_message(
+            error,
+            options.t,
+            options.t("workbench_page.feedback.file_action_failed"),
+          ),
+        );
+        options.set_dialog_submitting(false);
+      }
       return true;
     }
 
@@ -475,7 +455,12 @@ export function useWorkbenchImportFilesFlow(
       options.set_dialog_submitting(false);
     }
     return true;
-  }, [execute_import_files_request, options, pending_import_files_request]);
+  }, [
+    accept_import_conflict_action,
+    execute_import_files_request,
+    options,
+    pending_import_files_request,
+  ]);
 
   /**
    * 关闭导入相关对话并丢弃待提交请求，提交中则只消费关闭事件。
@@ -501,7 +486,6 @@ export function useWorkbenchImportFilesFlow(
     request_add_file_from_path,
     confirm_dialog,
     secondary_dialog,
-    cancel_dialog,
     close_dialog,
   };
 }

@@ -651,7 +651,6 @@ export type UseWorkbenchPageStateResult = {
   request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>;
   confirm_dialog: () => Promise<void>;
   secondary_dialog: () => Promise<void>;
-  cancel_dialog: () => Promise<void>;
   close_dialog: () => void;
 };
 
@@ -1410,19 +1409,6 @@ export function useWorkbenchPageState(
     await import_files_flow.secondary_dialog();
   }
 
-  async function cancel_dialog(): Promise<void> {
-    const current_dialog_state = dialog_state;
-    if (await import_files_flow.cancel_dialog()) {
-      return;
-    }
-
-    if (current_dialog_state.submitting) {
-      return;
-    }
-
-    set_dialog_state(close_dialog_state());
-  }
-
   function close_dialog(): void {
     if (import_files_flow.close_dialog()) {
       return;
@@ -1496,7 +1482,6 @@ export function useWorkbenchPageState(
     request_reorder_entries,
     confirm_dialog,
     secondary_dialog,
-    cancel_dialog,
     close_dialog,
   };
 }

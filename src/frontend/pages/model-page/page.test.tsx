@@ -52,7 +52,7 @@ vi.mock("@frontend/pages/model-page/dialogs/model-task-settings-dialog", () => (
 }));
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => ({
-  AppAlertDialog: () => null,
+  AppConfirmDialog: () => null,
 }));
 
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({

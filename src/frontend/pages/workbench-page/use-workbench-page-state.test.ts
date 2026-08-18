@@ -1112,7 +1112,7 @@ describe("useWorkbenchPageState", () => {
     });
     await render_hook();
     await act(async () => {
-      await latest_state?.cancel_dialog();
+      await latest_state?.secondary_dialog();
     });
 
     expect(api_fetch).toHaveBeenCalledWith(

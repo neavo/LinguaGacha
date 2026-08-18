@@ -17,7 +17,7 @@ import {
 } from "@frontend/shadcn/select";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { CommandBar, CommandBarGroup } from "@frontend/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
@@ -147,7 +147,7 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
         }
       />
 
-      <AppAlertDialog
+      <AppConfirmDialog
         open={page_state.confirm_state.open}
         description={t("ts_conversion_page.confirm.description")}
         onConfirm={page_state.confirm_conversion}

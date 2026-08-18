@@ -81,9 +81,6 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         on_secondary={() => {
           void workbench_state.secondary_dialog();
         }}
-        on_cancel={() => {
-          void workbench_state.cancel_dialog();
-        }}
         on_close={workbench_state.close_dialog}
       />
       {workbench_state.active_workbench_task_view.task_kind === "analysis" &&

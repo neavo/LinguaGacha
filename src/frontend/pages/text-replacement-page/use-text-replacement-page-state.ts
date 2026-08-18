@@ -57,6 +57,10 @@ import {
   resolve_quality_rule_hit_badge_kind,
 } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
+  create_empty_quality_rule_confirm_state,
+  type QualityRuleConfirmState,
+} from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
+import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
   create_result_snapshot,
@@ -81,7 +85,6 @@ import {
   useQualityRuleTableSessionReset,
 } from "@frontend/features/quality-rule-editor/use-quality-rule-table-session";
 import type {
-  TextReplacementConfirmState,
   TextReplacementDialogState,
   TextReplacementEntry,
   TextReplacementEntryDraft,
@@ -231,19 +234,6 @@ function create_empty_dialog_state(): TextReplacementDialogState {
     draft_entry: clone_entry(EMPTY_ENTRY),
     saving: false,
     validation_message: null,
-  };
-}
-
-/** 统一清空删除、预设和导入确认共用的提交状态。 */
-function create_empty_confirm_state(): TextReplacementConfirmState {
-  return {
-    open: false,
-    kind: null,
-    selection_count: 0,
-    preset_name: "",
-    preset_input_value: "",
-    submitting: false,
-    target_virtual_id: null,
   };
 }
 
@@ -398,8 +388,8 @@ export function useTextReplacementPageState(
   const [dialog_state, set_dialog_state] = useState<TextReplacementDialogState>(() => {
     return create_empty_dialog_state();
   });
-  const [confirm_state, set_confirm_state] = useState<TextReplacementConfirmState>(() => {
-    return create_empty_confirm_state();
+  const [confirm_state, set_confirm_state] = useState<QualityRuleConfirmState>(() => {
+    return create_empty_quality_rule_confirm_state();
   });
   const [preset_input_state, set_preset_input_state] = useState<TextReplacementPresetInputState>(
     () => {
@@ -1483,7 +1473,7 @@ export function useTextReplacementPageState(
   }, []);
 
   const close_confirm_dialog = useCallback((): void => {
-    set_confirm_state(create_empty_confirm_state());
+    set_confirm_state(create_empty_quality_rule_confirm_state());
   }, []);
 
   const close_preset_input_dialog = useCallback((): void => {
@@ -1639,7 +1629,7 @@ export function useTextReplacementPageState(
     }
 
     if (succeeded) {
-      set_confirm_state(create_empty_confirm_state());
+      set_confirm_state(create_empty_quality_rule_confirm_state());
     } else {
       set_confirm_state((previous_state) => {
         return {
