@@ -87,15 +87,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260816 v0.115.2
-  - 调整与改进 [#767](https://github.com/neavo/LinguaGacha/issues/767) [#768](https://github.com/neavo/LinguaGacha/issues/768)
-
-- 20260816 v0.115.1
-  - 调整与改进 [#761](https://github.com/neavo/LinguaGacha/issues/761) [#763](https://github.com/neavo/LinguaGacha/issues/763) [#765](https://github.com/neavo/LinguaGacha/issues/765)
-
-- 20260815 v0.115.0
-  - `AGENT` - `网络搜索` 能力 [#759](https://github.com/neavo/LinguaGacha/issues/759)
-  - 调整与改进 [#756](https://github.com/neavo/LinguaGacha/issues/756) [#757](https://github.com/neavo/LinguaGacha/issues/757) [#758](https://github.com/neavo/LinguaGacha/issues/758)
+- 20260818 v0.116.0
+  - `AGENT` 交互优化
+    - 消息队列 [#772](https://github.com/neavo/LinguaGacha/issues/772)
+    - 引用与批注 [#770](https://github.com/neavo/LinguaGacha/issues/770)
+    - 任务完成提醒 [#776](https://github.com/neavo/LinguaGacha/issues/776)
+  - 调整与改进 [#774](https://github.com/neavo/LinguaGacha/issues/774) [#775](https://github.com/neavo/LinguaGacha/issues/775) [#777](https://github.com/neavo/LinguaGacha/issues/777) [#778](https://github.com/neavo/LinguaGacha/issues/778) [#780](https://github.com/neavo/LinguaGacha/issues/780)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
