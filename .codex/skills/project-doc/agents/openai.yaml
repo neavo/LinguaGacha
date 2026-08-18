@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Docs"
   short_description: "项目文档规范"
-  default_prompt: "使用 $project-doc 整理并更新当前项目的长期工程文档，消除重复和错位内容并验证引用。"
+  default_prompt: "使用 $project-doc 整理项目声明的长期工程文档，消除重复与错位事实并验证受影响的入口引用。"
