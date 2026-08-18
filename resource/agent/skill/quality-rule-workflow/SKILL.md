@@ -60,7 +60,19 @@ fact 是需要独立决定的业务事实：
 - `decision` 分别保存 `necessity: required | not_required | unknown`、`resolution: direct | conditional | narrowed | preserved | blocked`、`action`，以及需要的完整 `value`、`preserve_reason`、`covered_by` 或 `blocker`。
 - candidate action 为 `create | discard | blocked`；existing action 为 `keep | update | delete | blocked`。`preserved` 只用于当前工程缺少评价证据的 existing；blocked 只在直接、条件化和收窄或拆分都失败后使用，并说明缺失事实、已执行下钻、失败原因与处理建议。
 
-上述 JSONL 是领域任务资产，不是另一套公开协议。不要为它建立严格字段 validator；脚本按实际结果生成和更新记录，最终 change 仍以 workspace contract 与 `workspace_apply` 校验为准。
+上述 JSONL 是领域任务资产，不是另一套公开协议。这里定义的文件名、字段、枚举、代数和分组名称只用于内部执行与恢复，不得出现在面向用户的阶段更新、授权请求或结果报告中。不要为它建立严格字段 validator；脚本按实际结果生成和更新记录，最终 change 仍以 workspace contract 与 `workspace_apply` 校验为准。
+
+## 领域接口
+
+领域技能只负责为具体对象提供业务判据，不理解 JSONL、代数、队列或收敛实现。应用领域判据后，本工作流必须取得：
+
+- 对象是否应由当前领域处理，证据不足时缺少哪个决定维度；
+- 能否直接形成最终规则，或是否需要按输入语境处理、缩小边界、拆分对象；
+- 判断过程中实际暴露的新身份、结构形态、匹配或边界反例；
+- 围绕缺失维度可以完整执行的补充调查范围与方法；
+- 最终规则对已确认对象的覆盖关系，无法覆盖时需要补充的事实和建议。
+
+本工作流把每个有效唯一对象登记为 fact，把每项可以完整执行的发现或补证工作登记为 probe。领域技能提出的新对象或补查不能只用于接受或拒绝当前方案；必须反馈到对应 fact 或 probe 后再继续闭环。
 
 ## 任务进度
 
@@ -129,6 +141,6 @@ glossary 组内确认一个明确子集语义相关后，才调用 `workspace.de
 - 每个 required fact 由直接、条件化或收窄后的最终规则覆盖，或在穷尽降级路径后单独 blocked；
 - glossary 最小充分集合与 text_preserve 独立安全集合已经分别重构。
 
-从 facts 程序化生成当前 scope 的完整 changes；未选 kind、范围外规则和替换规则 change 文件保持为空，不自动生成 move。脚本先返回遗漏 decision、action 计数和拟写 change 数；存在遗漏时不写 change。没有真实 change 时不 apply；已有授权时默认一次 `workspace_apply` 原子提交完整方案并核对回执，然后完成 `task_progress`。
+最终化脚本先程序化检查 pending probe、未闭合 fact、required fact 的覆盖缺口、residual 完成状态、最近完整发现代的增量和拟写 action 数。任一项不满足时只返回缺口计数与变化 key，不写 change；只有全部通过后，才从 facts 生成当前 scope 的完整 changes。未选 kind、范围外规则和替换规则 change 文件保持为空，不自动生成 move。没有真实 change 时不 apply；已有授权时默认一次 `workspace_apply` 原子提交完整方案并核对回执，然后完成 `task_progress`。
 
-对外报告实际范围、probe 代数与覆盖回执、各 kind 的 group / component 与拆分数量、necessity / resolution / action 计数、变更前后数量、最少代表证据、全部 blocked 及处理建议和范围外观察。结构组数与 shared root 数不得冒充语义合并数；完成只证明声明的 probes、facts 与 residual 已收敛，不宣称穷尽所有理论规则。
+对外只使用当前用户语言下的业务表达，报告实际范围与完整性、候选或目标总量、创建 / 保留 / 修改 / 删除 / 无需处理 / 需要补充信息的数量、基础发现与关联补查及独立漏项检查是否完成、变更前后数量、最少代表证据、处理建议和范围外观察。不得展示内部文件名、字段名、枚举、代数、组标识或状态计数；结构组数与 shared root 数也不得冒充语义合并数。完成只证明声明的发现方向、待判断对象与独立漏项检查已经收敛，不宣称穷尽所有理论规则。
