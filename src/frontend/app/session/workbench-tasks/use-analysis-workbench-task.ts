@@ -278,6 +278,7 @@ export function useAnalysisWorkbenchTask(
           error_line: next_snapshot.error_line,
           total_tokens: next_snapshot.total_tokens,
           total_output_tokens: next_snapshot.total_output_tokens,
+          total_reasoning_tokens: next_snapshot.total_reasoning_tokens,
           total_input_tokens: next_snapshot.total_input_tokens,
           time: next_snapshot.time,
           start_time: next_snapshot.start_time,

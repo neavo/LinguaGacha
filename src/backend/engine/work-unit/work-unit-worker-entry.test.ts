@@ -97,6 +97,7 @@ describe("work-unit-worker-entry", () => {
           response_think: "",
           response_result: "ok",
           input_tokens: 1,
+          reasoning_tokens: 0,
           output_tokens: 2,
           cancelled: false,
           timeout: false,

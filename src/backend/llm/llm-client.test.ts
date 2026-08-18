@@ -51,6 +51,7 @@ beforeEach(() => {
   api_mocks.responses.mockReset();
   api_mocks.anthropic.mockReset();
   api_mocks.google.mockReset();
+  api_mocks.streamSimple.mockReset();
 });
 
 afterEach(() => {
@@ -93,10 +94,10 @@ describe("LLMClient", () => {
   });
 
   it.each([
-    ["Anthropic", "anthropic", 10, 7],
-    ["Google", "google", 12, 5],
-  ] as const)("保持 %s token 统计口径", async (api_format, mock_name, input, output) => {
-    api_mocks[mock_name].mockImplementation(() =>
+    ["Anthropic", "anthropic"],
+    ["Google", "google"],
+  ] as const)("统一拆分 %s 的输入、思考和输出 token", async (api_format, mock_name) => {
+    api_mocks.streamSimple.mockImplementation(() =>
       completed_stream(
         create_message({
           provider: mock_name,
@@ -116,7 +117,11 @@ describe("LLMClient", () => {
       new AbortController().signal,
     );
 
-    expect(result).toMatchObject({ input_tokens: input, output_tokens: output });
+    expect(result).toMatchObject({
+      input_tokens: 12,
+      reasoning_tokens: 2,
+      output_tokens: 5,
+    });
   });
 
   it("Responses completed 返回正文与 OpenAI token 口径", async () => {
@@ -149,7 +154,7 @@ describe("LLMClient", () => {
   ] as const)("把 %s/%s 保持为当前请求错误", async (api_format, raw_reason, field) => {
     const mock =
       api_format === "Anthropic"
-        ? api_mocks.anthropic
+        ? api_mocks.streamSimple
         : api_format === "OpenAIResponses"
           ? api_mocks.responses
           : api_mocks.openai;
@@ -192,7 +197,7 @@ describe("LLMClient", () => {
   });
 
   it("保持 Google 不解释供应商 finish reason 的语义", async () => {
-    api_mocks.google.mockImplementation(() =>
+    api_mocks.streamSimple.mockImplementation(() =>
       completed_stream(
         create_message({
           api: "google-generative-ai",
@@ -445,6 +450,7 @@ function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestRes
     response_think: "",
     response_result: "",
     input_tokens: 0,
+    reasoning_tokens: 0,
     output_tokens: 0,
     cancelled: false,
     timeout: false,

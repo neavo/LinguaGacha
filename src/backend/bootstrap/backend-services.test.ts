@@ -124,6 +124,7 @@ describe("BackendServices", () => {
         error_line: 0,
         total_tokens: 10,
         total_output_tokens: 4,
+        total_reasoning_tokens: 0,
         total_input_tokens: 6,
         time: 1,
         start_time: 2,

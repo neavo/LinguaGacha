@@ -1,4 +1,3 @@
-import { resolve_model_thinking } from "./model-thinking-policy";
 import { patch_top_p } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
@@ -17,7 +16,7 @@ export function normalize_google_api_base_url(url: string): string {
   return `${normalized}/v1beta`;
 }
 
-/** Google OneShot 在 Pi config 上补齐项目生成、安全和思考规则。 */
+/** Google OneShot 在 Pi config 上补齐项目生成与安全规则。 */
 export function apply_google_one_shot_request_overrides(
   config: Record<string, unknown>,
   snapshot: ModelRequestSnapshot,
@@ -34,30 +33,16 @@ export function apply_google_one_shot_request_overrides(
   return { ...apply_google_request_overrides(result, snapshot), abortSignal: signal };
 }
 
-/**
- * 统一覆盖 OneShot 与 Pi 的 Google config，extra_body 保持最终优先级。
- */
+/** 合并扩展字段；Pi 已生成的思考配置始终由结构化挡位拥有。 */
 export function apply_google_request_overrides(
   config: Record<string, unknown>,
   snapshot: ModelRequestSnapshot,
 ): Record<string, unknown> {
   const result = { ...config };
-  delete result["thinkingConfig"];
-  const thinking_config = build_google_thinking_config(snapshot);
-  if (thinking_config !== null) {
-    result["thinkingConfig"] = thinking_config;
+  const native_thinking_config = result["thinkingConfig"];
+  Object.assign(result, snapshot.extra_body);
+  if (native_thinking_config !== undefined) {
+    result["thinkingConfig"] = native_thinking_config;
   }
-  return Object.assign(result, snapshot.extra_body);
-}
-
-/**
- * 使用统一模型思考策略生成 thinkingConfig；未收录代际只接受显式 extra_body。
- */
-export function build_google_thinking_config(
-  snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,
-): Record<string, unknown> | null {
-  const resolved = resolve_model_thinking("Google", snapshot.model_id, snapshot.thinking_level);
-  return resolved?.payload_kind === "google_thinking_level"
-    ? { thinkingLevel: resolved.wire_level }
-    : null;
+  return result;
 }

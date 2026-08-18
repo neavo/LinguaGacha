@@ -69,6 +69,7 @@ interface TranslationWorkUnitResult {
   items: TextTaskItemRecord[]; // 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交
   row_count: number; // 按日志口径表示本次成功覆盖的输入行数
   input_tokens: number; // 请求输入 token，向任务统计累加
+  reasoning_tokens: number; // 请求思考 token，与输出分开累计
   output_tokens: number; // 请求输出 token，不参与成功分支判断
   stopped: boolean; // 主动取消或 adapter 取消，区别于可重试错误
   logs?: WorkUnitLogEntry[]; // 由主线程统一提交，worker 不直接写日志目标
@@ -151,6 +152,7 @@ export class TranslationWorkUnitRunner {
       outcome: result.stopped ? "stopped" : result.row_count > 0 ? "success" : "failed",
       metrics: {
         input_tokens: result.input_tokens,
+        reasoning_tokens: result.reasoning_tokens,
         output_tokens: result.output_tokens,
       },
       output: {
@@ -276,6 +278,7 @@ export class TranslationWorkUnitRunner {
           items,
           row_count: items.length,
           input_tokens: 0,
+          reasoning_tokens: 0,
           output_tokens: 0,
           stopped: false,
         },
@@ -371,6 +374,7 @@ export class TranslationWorkUnitRunner {
       checks: decision.checks,
       start_time: context.start_time,
       input_tokens: response.input_tokens,
+      reasoning_tokens: response.reasoning_tokens,
       output_tokens: response.output_tokens,
       lines: context.lines,
       dsts: decision.dsts,
@@ -436,6 +440,7 @@ export class TranslationWorkUnitRunner {
       items: context.items,
       row_count: updated_count,
       input_tokens: response.input_tokens,
+      reasoning_tokens: response.reasoning_tokens,
       output_tokens: response.output_tokens,
       stopped: false,
       logs,
@@ -633,6 +638,7 @@ export class TranslationWorkUnitRunner {
     checks: string[];
     start_time: number;
     input_tokens: number;
+    reasoning_tokens: number;
     output_tokens: number;
     lines: TranslationLine[];
     dsts: string[];
@@ -652,6 +658,7 @@ export class TranslationWorkUnitRunner {
       CT: context.output_tokens.toString(),
       LINES: srcs.length.toString(),
       PT: context.input_tokens.toString(),
+      RT: context.reasoning_tokens.toString(),
       TIME: elapsed_seconds,
     });
     const log_decision = this.resolve_translation_log_decision(context.checks, app_language);
@@ -859,6 +866,7 @@ export class TranslationWorkUnitRunner {
       items: [],
       row_count: 0,
       input_tokens: 0,
+      reasoning_tokens: 0,
       output_tokens: 0,
       stopped: false,
     };

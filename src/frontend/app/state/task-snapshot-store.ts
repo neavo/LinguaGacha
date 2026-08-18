@@ -21,6 +21,7 @@ export type TaskProgressSnapshot = {
   error_line: number;
   total_tokens: number;
   total_output_tokens: number;
+  total_reasoning_tokens: number;
   total_input_tokens: number;
   time: number;
   start_time: number;
@@ -52,6 +53,7 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
     error_line: 0,
     total_tokens: 0,
     total_output_tokens: 0,
+    total_reasoning_tokens: 0,
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
@@ -79,6 +81,7 @@ export function normalize_task_snapshot(payload: { task?: Partial<TaskSnapshot> 
       error_line: Number(raw_progress["error_line"] ?? 0),
       total_tokens: Number(raw_progress["total_tokens"] ?? 0),
       total_output_tokens: Number(raw_progress["total_output_tokens"] ?? 0),
+      total_reasoning_tokens: Number(raw_progress["total_reasoning_tokens"] ?? 0),
       total_input_tokens: Number(raw_progress["total_input_tokens"] ?? 0),
       time: Number(raw_progress["time"] ?? 0),
       start_time: Number(raw_progress["start_time"] ?? 0),

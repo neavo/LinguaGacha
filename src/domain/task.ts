@@ -36,8 +36,9 @@ export type TaskProgressSnapshot = {
   line: number; // 已成功与最终失败行数之和
   processed_line: number; // 已成功提交的行数
   error_line: number; // 最终失败的行数
-  total_tokens: number; // 输入与输出 token 总量
+  total_tokens: number; // 输入、思考与输出 token 总量
   total_input_tokens: number; // work unit 汇总的输入 token
+  total_reasoning_tokens: number; // work unit 汇总的思考 token
   total_output_tokens: number; // work unit 汇总的输出 token
 };
 
@@ -97,6 +98,7 @@ export function normalize_task_progress_snapshot(value: unknown): TaskProgressSn
     error_line: read_non_negative_integer(record["error_line"]),
     total_tokens: read_non_negative_integer(record["total_tokens"]),
     total_input_tokens: read_non_negative_integer(record["total_input_tokens"]),
+    total_reasoning_tokens: read_non_negative_integer(record["total_reasoning_tokens"]),
     total_output_tokens: read_non_negative_integer(record["total_output_tokens"]),
   };
 }

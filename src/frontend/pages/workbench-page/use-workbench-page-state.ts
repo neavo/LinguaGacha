@@ -418,6 +418,11 @@ function build_translation_task_metric_entries(
       ...format_compact_metric_value(metrics.input_tokens, "T"),
     },
     {
+      key: "reasoning-tokens",
+      label: t("workbench_page.task.detail.reasoning_tokens"),
+      ...format_compact_metric_value(metrics.reasoning_tokens, "T"),
+    },
+    {
       key: "output-tokens",
       label: t("workbench_page.task.detail.output_tokens"),
       ...format_compact_metric_value(metrics.output_tokens, "T"),
@@ -457,6 +462,11 @@ function build_analysis_task_metric_entries(
       key: "input-tokens",
       label: t("workbench_page.task.detail.input_tokens"),
       ...format_compact_metric_value(metrics.input_tokens, "T"),
+    },
+    {
+      key: "reasoning-tokens",
+      label: t("workbench_page.task.detail.reasoning_tokens"),
+      ...format_compact_metric_value(metrics.reasoning_tokens, "T"),
     },
     {
       key: "output-tokens",

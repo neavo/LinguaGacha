@@ -379,6 +379,7 @@ describe("ProjectWriteStore", () => {
         error_line: 0,
         total_tokens: 0,
         total_input_tokens: 0,
+        total_reasoning_tokens: 0,
         total_output_tokens: 0,
       },
     });

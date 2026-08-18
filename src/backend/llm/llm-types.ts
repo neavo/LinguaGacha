@@ -27,7 +27,8 @@ export interface LLMRequestResult {
   response_think: string; // 只用于日志展示和分析，不参与译文解析
   response_result: string; // 调用方后处理的唯一模型正文输入
   input_tokens: number; // token 计数用于任务统计，缺失时由客户端归零
-  output_tokens: number;
+  reasoning_tokens: number; // 供应商报告的思考 token 子集，缺失时归零
+  output_tokens: number; // 只表示扣除思考后的输出 token
   cancelled: boolean; // 以下布尔标记保留请求事实，TaskEngine 决定如何重试或降级
   timeout: boolean;
   degraded: boolean;

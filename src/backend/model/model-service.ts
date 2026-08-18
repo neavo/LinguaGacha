@@ -315,6 +315,7 @@ export class ModelService {
         masked_key,
         success: failure === null,
         input_tokens: result.input_tokens,
+        reasoning_tokens: result.reasoning_tokens,
         output_tokens: result.output_tokens,
         response_time_ms,
         error_reason: failure?.reason ?? "",
@@ -454,6 +455,7 @@ export class ModelService {
       this.t(app_language, "app.log.api_test_token_info", {
         CT: result.output_tokens.toString(),
         PT: result.input_tokens.toString(),
+        RT: result.reasoning_tokens.toString(),
         TIME: (response_time_ms / 1000).toFixed(2),
       }),
       { source: "model" },

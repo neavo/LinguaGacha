@@ -72,6 +72,7 @@ describe("TranslationWorkUnitRunner", () => {
       outcome: "failed",
       metrics: {
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
       },
       output: {
@@ -93,6 +94,7 @@ describe("TranslationWorkUnitRunner", () => {
           response_think: "",
           response_result: '{"0":"你好"}',
           input_tokens: 1,
+          reasoning_tokens: 0,
           output_tokens: 1,
           cancelled: false,
           timeout: false,
@@ -160,6 +162,7 @@ describe("TranslationWorkUnitRunner", () => {
           response_result:
             '{"0":{"actor":"虎铁","text":"你好"}}\n{"1":{"actor":null,"text":"旁白译文"}}',
           input_tokens: 4,
+          reasoning_tokens: 2,
           output_tokens: 5,
         },
         captured_requests,
@@ -200,6 +203,11 @@ describe("TranslationWorkUnitRunner", () => {
         { id: 1, dst: "你好", name_dst: "虎铁", status: "PROCESSED" },
         { id: 2, dst: "旁白译文", name_dst: "既有译名", status: "PROCESSED" },
       ],
+    });
+    expect(result.metrics).toMatchObject({
+      input_tokens: 4,
+      reasoning_tokens: 2,
+      output_tokens: 5,
     });
     expect(read_translation_log(result.logs[0]).pairs).toEqual([
       { src: "こんにちは", dst: "你好", actor_src: "虎鉄", actor_dst: "虎铁" },
@@ -303,6 +311,7 @@ describe("TranslationWorkUnitRunner", () => {
           response_think: "",
           response_result: '{"0":"你好"}',
           input_tokens: 4,
+          reasoning_tokens: 0,
           output_tokens: 5,
           cancelled: false,
           timeout: false,
@@ -317,7 +326,7 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(read_log_summary(result.logs[0])).toContain(
-      "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，输出消耗 5 Tokens",
+      "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，思考消耗 0 Tokens，输出消耗 5 Tokens",
     );
   });
 
@@ -640,6 +649,7 @@ function create_llm_client(
         response_think: "",
         response_result: "",
         input_tokens: 1,
+        reasoning_tokens: 0,
         output_tokens: 1,
         cancelled: false,
         timeout: false,

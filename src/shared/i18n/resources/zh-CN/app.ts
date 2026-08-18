@@ -329,7 +329,8 @@ export const zh_cn_app = {
     api_test_result_failure: "失败的密钥：",
     api_test_response_result: "模型回复内容：",
     api_test_timeout: "请求超时（{SECONDS} 秒）",
-    api_test_token_info: "任务耗时 {TIME} 秒，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
+    api_test_token_info:
+      "任务耗时 {TIME} 秒，输入消耗 {PT} Tokens，思考消耗 {RT} Tokens，输出消耗 {CT} Tokens",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     engine_api_model: "接口模型",
@@ -342,7 +343,7 @@ export const zh_cn_app = {
     engine_task_thinking_process: "思考过程：",
     engine_task_stop: "任务已停止 …",
     engine_task_success:
-      "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
+      "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，思考消耗 {RT} Tokens，输出消耗 {CT} Tokens",
     generate_translation_done: "译文已保存至 {PATH} …",
     generate_translation_start: "生成译文中 …",
     response_checker_fail_data: "数据结构错误",

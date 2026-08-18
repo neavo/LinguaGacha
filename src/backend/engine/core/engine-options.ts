@@ -57,6 +57,7 @@ export interface TranslationWorkUnitResult {
   items: MutableJsonRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
   row_count: number; // 对齐旧日志口径，表示本 work unit 覆盖行数
   input_tokens: number; // 请求输入 token，用于任务统计
+  reasoning_tokens: number; // 请求思考 token，与输出分开累计
   output_tokens: number; // 请求输出 token，不作为成功与否依据
   stopped: boolean; // 主动取消，区别于失败后可重试
   logs?: WorkUnitLogEntry[]; // 统一回放到 LogManager，worker 不直接写日志
@@ -69,6 +70,7 @@ export interface AnalysisWorkUnitResult {
   success: boolean; // 分析结果可进入 checkpoint 提交流程
   stopped: boolean; // 主动取消，不计为分析失败
   input_tokens: number; // 请求输入 token，与翻译共享统计口径
+  reasoning_tokens: number; // 请求思考 token，与输出分开累计
   output_tokens: number; // 请求输出 token，与输入量分别累计
   glossary_entries: MutableJsonRecord[]; // 候选快照，去重和 checkpoint 归属由 TaskEngine 处理
   logs?: WorkUnitLogEntry[]; // 只承载结构化诊断文本，不携带数据库对象

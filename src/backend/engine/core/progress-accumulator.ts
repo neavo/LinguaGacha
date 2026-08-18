@@ -13,6 +13,7 @@ const EMPTY_PROGRESS: TaskProgressSnapshot = {
   error_line: 0,
   total_tokens: 0,
   total_input_tokens: 0,
+  total_reasoning_tokens: 0,
   total_output_tokens: 0,
 };
 
@@ -48,20 +49,23 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 累计 token 并同步 total_tokens，保持输入输出字段是唯一来源
+   * 累计三段 token 并同步 total_tokens，保持分项字段是唯一来源
    */
   public static add_tokens(
     snapshot: TaskProgressSnapshot,
     input_tokens: number,
+    reasoning_tokens: number,
     output_tokens: number,
   ): TaskProgressSnapshot {
     const total_input_tokens = snapshot.total_input_tokens + Math.trunc(input_tokens);
+    const total_reasoning_tokens = snapshot.total_reasoning_tokens + Math.trunc(reasoning_tokens);
     const total_output_tokens = snapshot.total_output_tokens + Math.trunc(output_tokens);
     return {
       ...snapshot,
       total_input_tokens,
+      total_reasoning_tokens,
       total_output_tokens,
-      total_tokens: total_input_tokens + total_output_tokens,
+      total_tokens: total_input_tokens + total_reasoning_tokens + total_output_tokens,
     };
   }
 

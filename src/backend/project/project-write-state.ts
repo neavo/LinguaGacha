@@ -6,6 +6,7 @@ import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/js
 import {
   is_task_skipped_item_status,
   normalize_task_progress_snapshot,
+  type TaskProgressSnapshot,
   TASK_PROGRESS_STATUSES,
 } from "../../domain/task";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
@@ -144,22 +145,24 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
  * 构造空闲翻译任务快照，供 reset 或无历史进度时作为统计基底。
  */
 export function create_empty_translation_task_snapshot(): Record<string, unknown> {
+  const progress: TaskProgressSnapshot = {
+    line: 0,
+    total_line: 0,
+    processed_line: 0,
+    error_line: 0,
+    total_tokens: 0,
+    total_input_tokens: 0,
+    total_reasoning_tokens: 0,
+    total_output_tokens: 0,
+    time: 0,
+    start_time: 0,
+  };
   return {
     task_type: "translation",
     status: "idle",
     busy: false,
     request_in_flight_count: 0,
-    progress: {
-      line: 0,
-      total_line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-    },
+    progress,
     extras: { kind: "translation", scope: { kind: "all" } },
   };
 }
@@ -225,7 +228,7 @@ export function build_analysis_progress_snapshot(args: {
   extras: Record<string, unknown>;
   status_summary: Record<string, unknown>;
 }): Record<string, unknown> {
-  const snapshot: Record<string, unknown> = {
+  const snapshot: TaskProgressSnapshot = {
     start_time: 0.0,
     time: 0.0,
     total_line: 0,
@@ -234,6 +237,7 @@ export function build_analysis_progress_snapshot(args: {
     error_line: 0,
     total_tokens: 0,
     total_input_tokens: 0,
+    total_reasoning_tokens: 0,
     total_output_tokens: 0,
   };
   Object.assign(snapshot, args.extras);

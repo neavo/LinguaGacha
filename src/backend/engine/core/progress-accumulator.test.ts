@@ -31,6 +31,7 @@ describe("TaskProgressSnapshotTool", () => {
       error_line: 1,
       total_tokens: 0,
       total_input_tokens: 4,
+      total_reasoning_tokens: 0,
       total_output_tokens: 6,
     });
 
@@ -43,26 +44,30 @@ describe("TaskProgressSnapshotTool", () => {
       error_line: 0,
       total_tokens: 0,
       total_input_tokens: 0,
+      total_reasoning_tokens: 0,
       total_output_tokens: 0,
     });
   });
 
-  it("累计 token 时以输入输出字段重建总数", () => {
+  it("累计 token 时以输入、思考和输出字段重建总数", () => {
     const snapshot = TaskProgressSnapshotTool.add_tokens(
       {
         ...TaskProgressSnapshotTool.empty(5, 100),
         total_tokens: 999,
         total_input_tokens: 1,
+        total_reasoning_tokens: 2,
         total_output_tokens: 2,
       },
       2.9,
       3.1,
+      4.1,
     );
 
     expect(snapshot).toMatchObject({
       total_input_tokens: 3,
-      total_output_tokens: 5,
-      total_tokens: 8,
+      total_reasoning_tokens: 5,
+      total_output_tokens: 6,
+      total_tokens: 14,
     });
   });
 

@@ -1142,6 +1142,7 @@ export class ProjectContentService {
       time: extras.time ?? 0.0,
       total_tokens: extras.total_tokens ?? 0,
       total_input_tokens: extras.total_input_tokens ?? 0,
+      total_reasoning_tokens: extras.total_reasoning_tokens ?? 0,
       total_output_tokens: extras.total_output_tokens ?? 0,
     };
   }

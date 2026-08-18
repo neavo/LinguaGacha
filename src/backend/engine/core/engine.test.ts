@@ -581,7 +581,7 @@ describe("TaskEngine", () => {
       unit_id: "unit-1",
       kind: "translation",
       outcome: row_count > 0 ? "success" : "failed",
-      metrics: { input_tokens, output_tokens },
+      metrics: { input_tokens, reasoning_tokens: 0, output_tokens },
       output: {
         kind: "translation",
         items,
@@ -596,7 +596,7 @@ describe("TaskEngine", () => {
       unit_id: "analysis-unit-1",
       kind: "analysis",
       outcome: success ? "success" : "failed",
-      metrics: { input_tokens: 1, output_tokens: 1 },
+      metrics: { input_tokens: 1, reasoning_tokens: 0, output_tokens: 1 },
       output: {
         kind: "analysis",
         glossary_entries: [],

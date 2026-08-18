@@ -631,6 +631,7 @@ describe("ModelService 远端模型能力", () => {
         cancelled: false,
         degraded: false,
         input_tokens: 2,
+        reasoning_tokens: 1,
         output_tokens: 3,
         response_result: '{"0":"成功"}',
         response_think: "",
@@ -640,6 +641,7 @@ describe("ModelService 远端模型能力", () => {
         cancelled: false,
         degraded: false,
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
         response_result: "",
         response_think: "",
@@ -663,6 +665,7 @@ describe("ModelService 远端模型能力", () => {
     expect(result["key_results"]).toEqual([
       expect.objectContaining({
         input_tokens: 2,
+        reasoning_tokens: 1,
         masked_key: "12345678***bcdefXYZ",
         output_tokens: 3,
         success: true,
@@ -676,6 +679,7 @@ describe("ModelService 远端模型能力", () => {
     expect(log_entries.map((entry) => [entry.level, entry.message])).toEqual(
       expect.arrayContaining([
         ["info", "正在测试密钥：\n12345678***bcdefXYZ"],
+        ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，思考消耗 1 Tokens，输出消耗 3 Tokens"],
         ["warning", "接口测试失败 …"],
         ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
         ["warning", "失败的密钥：\n*******"],

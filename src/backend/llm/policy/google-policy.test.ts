@@ -49,7 +49,7 @@ describe("Google 请求规则", () => {
     ).toBe(true);
   });
 
-  it("共享覆盖只替换 config thinking 并保留 Pi 结构字段", () => {
+  it("共享覆盖保留 Pi thinking 并合并其它扩展字段", () => {
     const source = {
       systemInstruction: { parts: [{ text: "系统" }] },
       tools: [{ functionDeclarations: [{ name: "search" }] }],
@@ -69,16 +69,10 @@ describe("Google 请求规则", () => {
       systemInstruction: source.systemInstruction,
       tools: source.tools,
       toolConfig: source.toolConfig,
-      thinkingConfig: { thinkingBudget: 777 },
+      thinkingConfig: { thinkingLevel: "HIGH" },
       customFlag: true,
     });
     expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
-  });
-
-  it("最高档降为 Gemini 支持的 high", () => {
-    expect(apply_google_request_overrides({}, create_snapshot({ thinking_level: "MAX" }))).toEqual({
-      thinkingConfig: { thinkingLevel: "high" },
-    });
   });
 });
 

@@ -26,6 +26,7 @@ describe("任务进度快照", () => {
       error_line: 1,
       total_tokens: 7,
       total_input_tokens: 3,
+      total_reasoning_tokens: 0,
       total_output_tokens: 4,
     });
   });
