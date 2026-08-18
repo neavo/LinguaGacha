@@ -334,7 +334,8 @@ export const en_us_app = {
     api_test_result_failure: "Failed Keys:",
     api_test_response_result: "Model Response:",
     api_test_timeout: "Request timed out ({SECONDS}s)",
-    api_test_token_info: "Task time {TIME} seconds, input tokens {PT}, output tokens {CT}",
+    api_test_token_info:
+      "Task time {TIME} seconds, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Default presets loaded automatically: {NAMES} …",
     engine_api_model: "API Model",
@@ -348,7 +349,7 @@ export const en_us_app = {
     engine_task_thinking_process: "Thinking Process:",
     engine_task_stop: "Task stopped …",
     engine_task_success:
-      "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}",
+      "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, reasoning tokens {RT}, output tokens {CT}",
     generate_translation_done: "Translation files saved to {PATH} …",
     generate_translation_start: "Generating translation files …",
     response_checker_fail_data: "Data Structure Error",

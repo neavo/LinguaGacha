@@ -10,6 +10,7 @@ export type WorkbenchTaskSnapshot = {
   error_line: number;
   total_tokens: number;
   total_output_tokens: number;
+  total_reasoning_tokens: number; // 后端累计思考 token
   total_input_tokens: number;
   time: number;
   start_time: number;
@@ -29,7 +30,8 @@ export type WorkbenchTaskMetrics = {
   remaining_seconds: number;
   average_output_speed: number;
   input_tokens: number;
-  output_tokens: number;
+  reasoning_tokens: number; // 详情展示的累计思考 token
+  output_tokens: number; // 详情展示的累计输出 token
   request_in_flight_count: number;
 };
 
@@ -49,6 +51,7 @@ export function create_empty_workbench_task_snapshot(task_type: string): Workben
     error_line: 0,
     total_tokens: 0,
     total_output_tokens: 0,
+    total_reasoning_tokens: 0,
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
@@ -75,6 +78,7 @@ export function normalize_workbench_task_snapshot_payload(
     error_line: Number(progress.error_line ?? 0),
     total_tokens: Number(progress.total_tokens ?? 0),
     total_output_tokens: Number(progress.total_output_tokens ?? 0),
+    total_reasoning_tokens: Number(progress.total_reasoning_tokens ?? 0),
     total_input_tokens: Number(progress.total_input_tokens ?? 0),
     time: Number(progress.time ?? 0),
     start_time: Number(progress.start_time ?? 0),
@@ -93,6 +97,7 @@ export function has_workbench_task_progress(snapshot: WorkbenchTaskSnapshot | nu
     snapshot.processed_line > 0 ||
     snapshot.error_line > 0 ||
     snapshot.total_output_tokens > 0 ||
+    snapshot.total_reasoning_tokens > 0 ||
     snapshot.total_input_tokens > 0 ||
     snapshot.total_tokens > 0
   );
@@ -139,6 +144,7 @@ export function resolve_workbench_task_metrics(args: {
       remaining_seconds: 0,
       average_output_speed: 0,
       input_tokens: 0,
+      reasoning_tokens: 0,
       output_tokens: 0,
       request_in_flight_count: 0,
     };
@@ -172,7 +178,11 @@ export function resolve_workbench_task_metrics(args: {
     input_tokens:
       snapshot.total_input_tokens > 0
         ? snapshot.total_input_tokens
-        : Math.max(0, snapshot.total_tokens - snapshot.total_output_tokens),
+        : Math.max(
+            0,
+            snapshot.total_tokens - snapshot.total_reasoning_tokens - snapshot.total_output_tokens,
+          ),
+    reasoning_tokens: Math.max(0, snapshot.total_reasoning_tokens),
     output_tokens,
     request_in_flight_count: Math.max(0, snapshot.request_in_flight_count),
   };

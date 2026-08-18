@@ -3,11 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { read_model_request_snapshot } from "./llm-client-policy";
-import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
+import { match_pi_catalog_model, resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 
 describe("pi-ai 请求适配", () => {
+  it("catalog 匹配优先精确项，否则选择最长且唯一的包含项", () => {
+    const catalog = [
+      create_catalog_model("gemini-3"),
+      create_catalog_model("gemini-3.6-flash"),
+      create_catalog_model("model-alpha"),
+      create_catalog_model("model-bravo"),
+    ];
+
+    expect(match_pi_catalog_model("GEMINI-3", catalog)?.id).toBe("gemini-3");
+    expect(match_pi_catalog_model("vendor/gemini-3.6-flash:free", catalog)?.id).toBe(
+      "gemini-3.6-flash",
+    );
+    expect(match_pi_catalog_model("model-alpha+model-bravo", catalog)).toBeNull();
+    expect(match_pi_catalog_model("provider-defined-model", catalog)).toBeNull();
+  });
+
   it.each([
     ["OpenAI", "openai", "openai-completions"],
     ["OpenAIResponses", "openai", "openai-responses"],
@@ -283,7 +299,7 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
-  it("让 Pi 构造 Anthropic system/messages，并保持 thinking 采样互斥", async () => {
+  it("让 Pi 按 catalog 为 Anthropic legacy 模型构造 budget thinking", async () => {
     const request = resolve_request({
       api_format: "Anthropic",
       api_url: "https://anthropic.example/",
@@ -304,19 +320,42 @@ describe("pi-ai 请求适配", () => {
       interleavedThinking: false,
       maxRetries: 0,
       maxTokens: 8192,
+      reasoning: "high",
     });
     expect(request.options).not.toHaveProperty("temperature");
     expect(payload).toMatchObject({
       model: "claude-sonnet-4-5",
-      system: "系统约束",
+      system: [{ type: "text", text: "系统约束" }],
       messages: [{ role: "user", content: "こんにちは" }],
       stream: true,
       max_tokens: 8192,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
+      thinking: { type: "enabled", budget_tokens: 7168, display: "summarized" },
     });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
+  });
+
+  it("让 Pi catalog 为带前后缀的 Anthropic 模型保留原始 ID并启用 adaptive", async () => {
+    const request = resolve_request({
+      api_format: "Anthropic",
+      api_url: "https://anthropic-proxy.example/root",
+      model_id: "vendor/claude-opus-4-8:fast",
+      thinking: { level: "MAX" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model).toMatchObject({
+      id: "vendor/claude-opus-4-8:fast",
+      baseUrl: "https://anthropic-proxy.example/root",
+      reasoning: true,
+      compat: { forceAdaptiveThinking: true, supportsTemperature: false },
+    });
+    expect(request.options).toMatchObject({ reasoning: "max" });
+    expect(payload).toMatchObject({
+      model: "vendor/claude-opus-4-8:fast",
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: "max" },
+    });
   });
 
   it("让 Pi 构造 Google contents，并在 extra_body 后强制内部取消信号", async () => {
@@ -352,9 +391,30 @@ describe("pi-ai 请求适配", () => {
       topP: 0.9,
       responseMimeType: "application/json",
       abortSignal: request.options.signal,
+      thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
     });
-    expect(config).not.toHaveProperty("thinkingConfig");
     expect(config["safetySettings"]).toHaveLength(4);
+  });
+
+  it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID并应用向下降档", async () => {
+    const request = resolve_request({
+      api_format: "Google",
+      api_url: "https://google-proxy.example/api",
+      model_id: "vendor/models/gemini-3.6-flash:free",
+      thinking: { level: "MAX" },
+    });
+    const payload = await capture_payload(request);
+    const config = payload["config"];
+    if (!is_json_record(config)) throw new Error("Google 测试缺少 config");
+
+    expect(request.model).toMatchObject({
+      id: "vendor/models/gemini-3.6-flash:free",
+      baseUrl: "https://google-proxy.example/api/v1beta",
+      reasoning: true,
+    });
+    expect(request.options).toMatchObject({ reasoning: "high" });
+    expect(payload["model"]).toBe("vendor/models/gemini-3.6-flash:free");
+    expect(config["thinkingConfig"]).toEqual({ includeThoughts: true, thinkingLevel: "HIGH" });
   });
 });
 
@@ -404,5 +464,20 @@ function create_model(overrides: JsonRecord = {}): JsonRecord {
     thinking: { level: "OFF" },
     threshold: { output_token_limit: 4096 },
     ...overrides,
+  };
+}
+
+function create_catalog_model(id: string): Model<"google-generative-ai"> {
+  return {
+    id,
+    name: id,
+    api: "google-generative-ai",
+    provider: "google",
+    baseUrl: "https://example.com/v1beta",
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 0,
+    maxTokens: 0,
   };
 }

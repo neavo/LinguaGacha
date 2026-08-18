@@ -7,12 +7,14 @@ import {
 } from "./anthropic-policy";
 
 describe("Anthropic 请求规则", () => {
-  it("thinking 开启时使用 adaptive 与 effort 档位并删除采样字段", () => {
+  it("thinking 开启时保留 Pi adaptive 与 effort 并删除采样字段", () => {
     const payload = apply_anthropic_one_shot_request_overrides(
       {
         messages: [],
         temperature: 0.4,
         top_p: 0.7,
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "high" },
       },
       create_snapshot({
         thinking_level: "HIGH",
@@ -20,14 +22,14 @@ describe("Anthropic 请求规则", () => {
       }),
     );
 
-    expect(payload["thinking"]).toEqual({ type: "adaptive" });
+    expect(payload["thinking"]).toEqual({ type: "adaptive", display: "summarized" });
     expect(payload["output_config"]).toEqual({ effort: "high" });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
     expect(payload).not.toHaveProperty("thinking.budget_tokens");
   });
 
-  it("共享覆盖用项目档位替换 Pi thinking 并保留 output_config 其它字段", () => {
+  it("共享覆盖保留 Pi thinking 与 effort 并合并 output_config 其它字段", () => {
     const source = {
       messages: [{ role: "user", content: "こんにちは" }],
       thinking: { type: "adaptive" },
@@ -49,7 +51,7 @@ describe("Anthropic 请求规则", () => {
     expect(payload).toMatchObject({
       messages: source.messages,
       thinking: { type: "adaptive" },
-      output_config: { effort: "medium", format: { type: "json_schema" } },
+      output_config: { effort: "high", format: { type: "json_schema" } },
     });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
@@ -57,24 +59,27 @@ describe("Anthropic 请求规则", () => {
     expect(source).toHaveProperty("output_config.effort", "high");
   });
 
-  it("未知 Claude 能力使用通用高档上限", () => {
+  it("Pi 未生成 thinking 时允许 extra_body 自行接管", () => {
     const payload = apply_anthropic_request_overrides(
       {},
       create_snapshot({
         model_id: "provider-defined-model",
-        thinking_level: "XHIGH",
+        extra_body: {
+          thinking: { type: "adaptive" },
+          output_config: { effort: "xhigh" },
+        },
       }),
     );
 
     expect(payload).toEqual({
       thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
+      output_config: { effort: "xhigh" },
     });
   });
 
-  it("OFF 显式关闭 thinking 并移除用户扩展中的 effort", () => {
+  it("Pi 显式关闭 thinking 时移除用户扩展中的 effort", () => {
     const payload = apply_anthropic_request_overrides(
-      {},
+      { thinking: { type: "disabled" } },
       create_snapshot({
         thinking_level: "OFF",
         extra_body: {

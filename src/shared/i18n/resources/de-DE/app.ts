@@ -343,7 +343,8 @@ export const de_de_app = {
     api_test_result_failure: "Fehlgeschlagene Schlüssel:",
     api_test_response_result: "Modellantwort:",
     api_test_timeout: "Anfrage-Zeitüberschreitung ({SECONDS}s)",
-    api_test_token_info: "Aufgabenzeit {TIME} Sekunden, Eingabe-Token {PT}, Ausgabe-Token {CT}",
+    api_test_token_info:
+      "Aufgabenzeit {TIME} Sekunden, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
     app_version: "LinguaGacha v{VERSION} …",
     default_preset_loaded: "Standard-Voreinstellungen automatisch geladen: {NAMES} …",
     engine_api_model: "API-Modell",
@@ -357,7 +358,7 @@ export const de_de_app = {
     engine_task_thinking_process: "Denkprozess:",
     engine_task_stop: "Aufgabe gestoppt …",
     engine_task_success:
-      "Aufgabenzeit {TIME} Sekunden, {LINES} Textzeilen, Eingabe-Token {PT}, Ausgabe-Token {CT}",
+      "Aufgabenzeit {TIME} Sekunden, {LINES} Textzeilen, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
     generate_translation_done: "Übersetzungsdateien gespeichert unter {PATH} …",
     generate_translation_start: "Übersetzungsdateien werden erstellt …",
     response_checker_fail_data: "Datenstrukturfehler",

@@ -19,7 +19,8 @@ export interface TranslationContext {
 export interface TranslationCommitEntry {
   items: MutableJsonRecord[];
   input_tokens: number;
-  output_tokens: number;
+  reasoning_tokens: number; // 请求思考 token，不计入输出 token
+  output_tokens: number; // 已扣除思考 token 的模型输出
 }
 
 /**
@@ -58,7 +59,8 @@ export interface AnalysisCommitEntry {
   error_checkpoints: MutableJsonRecord[];
   glossary_entries: MutableJsonRecord[];
   input_tokens: number;
-  output_tokens: number;
+  reasoning_tokens: number; // 请求思考 token，不计入输出 token
+  output_tokens: number; // 已扣除思考 token 的模型输出
   processed_delta: number;
   error_delta: number;
 }

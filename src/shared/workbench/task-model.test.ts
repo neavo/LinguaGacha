@@ -20,6 +20,7 @@ describe("workbench task model", () => {
             line: 3,
             total_line: 4,
             total_output_tokens: 20,
+            total_reasoning_tokens: 5,
           },
         },
         "analysis",
@@ -32,6 +33,7 @@ describe("workbench task model", () => {
       line: 3,
       total_line: 4,
       total_output_tokens: 20,
+      total_reasoning_tokens: 5,
     });
   });
 
@@ -66,6 +68,9 @@ describe("workbench task model", () => {
         line: 3,
         total_line: 4,
         processed_line: 2,
+        total_tokens: 90,
+        total_input_tokens: 40,
+        total_reasoning_tokens: 20,
         total_output_tokens: 30,
         start_time: 2,
       },
@@ -80,6 +85,8 @@ describe("workbench task model", () => {
       elapsed_seconds: 6,
       remaining_seconds: 2,
       average_output_speed: 5,
+      input_tokens: 40,
+      reasoning_tokens: 20,
       output_tokens: 30,
     });
   });

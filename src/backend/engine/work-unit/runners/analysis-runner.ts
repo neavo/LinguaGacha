@@ -38,6 +38,7 @@ interface AnalysisWorkUnitResult {
   success: boolean; // 分析解码出了可提交候选或合法空结果
   stopped: boolean; // 主动取消，TaskEngine 不应把它当作失败重试
   input_tokens: number; // 请求输入 token，用于任务统计
+  reasoning_tokens: number; // 请求思考 token，与输出分开累计
   output_tokens: number; // 请求输出 token，与输入量分别累计
   glossary_entries: Array<JsonRecord>; // 已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
   logs?: WorkUnitLogEntry[]; // 只承载诊断文本，不包含可变业务对象
@@ -87,6 +88,7 @@ export class AnalysisWorkUnitRunner {
       outcome: result.stopped ? "stopped" : result.success ? "success" : "failed",
       metrics: {
         input_tokens: result.input_tokens,
+        reasoning_tokens: result.reasoning_tokens,
         output_tokens: result.output_tokens,
       },
       output: {
@@ -113,6 +115,7 @@ export class AnalysisWorkUnitRunner {
         success: true,
         stopped: false,
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
         glossary_entries: [],
       };
@@ -140,6 +143,7 @@ export class AnalysisWorkUnitRunner {
         success: false,
         stopped: true,
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
         glossary_entries: [],
       };
@@ -155,11 +159,13 @@ export class AnalysisWorkUnitRunner {
         success: false,
         stopped: false,
         input_tokens: llm_result.input_tokens,
+        reasoning_tokens: llm_result.reasoning_tokens,
         output_tokens: llm_result.output_tokens,
         glossary_entries: [],
         logs: this.build_analysis_logs({
           start_time,
           input_tokens: llm_result.input_tokens,
+          reasoning_tokens: llm_result.reasoning_tokens,
           output_tokens: llm_result.output_tokens,
           srcs: prepared.prompt_srcs,
           glossary_entries: [],
@@ -192,11 +198,13 @@ export class AnalysisWorkUnitRunner {
         success: false,
         stopped: false,
         input_tokens: llm_result.input_tokens,
+        reasoning_tokens: llm_result.reasoning_tokens,
         output_tokens: llm_result.output_tokens,
         glossary_entries: [],
         logs: this.build_analysis_logs({
           start_time,
           input_tokens: llm_result.input_tokens,
+          reasoning_tokens: llm_result.reasoning_tokens,
           output_tokens: llm_result.output_tokens,
           srcs: prepared.prompt_srcs,
           glossary_entries: [],
@@ -215,11 +223,13 @@ export class AnalysisWorkUnitRunner {
       success: true,
       stopped: false,
       input_tokens: llm_result.input_tokens,
+      reasoning_tokens: llm_result.reasoning_tokens,
       output_tokens: llm_result.output_tokens,
       glossary_entries: normalized_entries as Array<JsonRecord>,
       logs: this.build_analysis_logs({
         start_time,
         input_tokens: llm_result.input_tokens,
+        reasoning_tokens: llm_result.reasoning_tokens,
         output_tokens: llm_result.output_tokens,
         srcs: prepared.prompt_srcs,
         glossary_entries: normalized_entries,
@@ -238,6 +248,7 @@ export class AnalysisWorkUnitRunner {
   private build_analysis_logs(context: {
     start_time: number;
     input_tokens: number;
+    reasoning_tokens: number;
     output_tokens: number;
     srcs: string[];
     glossary_entries: Array<JsonRecord>;
@@ -254,6 +265,7 @@ export class AnalysisWorkUnitRunner {
         CT: context.output_tokens.toString(),
         LINES: context.srcs.length.toString(),
         PT: context.input_tokens.toString(),
+        RT: context.reasoning_tokens.toString(),
         TIME: elapsed_seconds,
       }),
     ];

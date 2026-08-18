@@ -33,9 +33,7 @@ type ModelThinkingPayloadKind =
   | "openai_thinking_effort"
   | "openai_thinking_toggle"
   | "responses_reasoning"
-  | "responses_reasoning_summary"
-  | "anthropic_adaptive"
-  | "google_thinking_level";
+  | "responses_reasoning_summary";
 
 type ModelThinkingPolicy = Readonly<{
   payload_kind: ModelThinkingPayloadKind;
@@ -176,27 +174,6 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     payload_kind: "responses_reasoning",
     level_map: define_level_map(["off", "low", "medium", "high"], { off: "none" }),
   },
-  // https://platform.claude.com/docs/en/build-with-claude/effort
-  {
-    api_format: "Anthropic",
-    model_pattern: /.*/u,
-    payload_kind: "anthropic_adaptive",
-    level_map: define_level_map(["off", "low", "medium", "high"], { off: "disabled" }),
-  },
-  // https://ai.google.dev/gemini-api/docs/thinking
-  {
-    api_format: "Google",
-    model_pattern: /gemini-3\.1-pro/iu,
-    payload_kind: "google_thinking_level",
-    level_map: define_level_map(["low", "medium", "high"]),
-  },
-  // https://ai.google.dev/gemini-api/docs/thinking
-  {
-    api_format: "Google",
-    model_pattern: /gemini-3(?!-pro)/iu,
-    payload_kind: "google_thinking_level",
-    level_map: define_level_map(["minimal", "low", "medium", "high"]),
-  },
 ]);
 
 /**
@@ -209,11 +186,11 @@ export function resolve_model_thinking(
 ): ResolvedModelThinking | null {
   const policy = resolve_model_thinking_policy(api_format, model_id);
   if (policy === null) return null;
-  const effective_level = resolve_effective_level(
+  const effective_level = resolve_effective_model_thinking_level(
+    true,
     policy.level_map,
-    PRODUCT_TO_PI_LEVEL[requested_level],
+    requested_level,
   );
-  if (effective_level === null) return null;
   const wire_level = policy.level_map[effective_level];
   if (wire_level === null) return null;
   return {
@@ -224,20 +201,30 @@ export function resolve_model_thinking(
   };
 }
 
-/** 优先向下回退；没有更低非关闭挡位时采用模型最低可用挡位。 */
-function resolve_effective_level(
-  level_map: CompleteThinkingLevelMap,
-  requested_level: PiModelThinkingLevel,
-): PiModelThinkingLevel | null {
-  if (level_map[requested_level] !== null) return requested_level;
-  const requested_index = PI_THINKING_LEVELS.indexOf(requested_level);
-  if (requested_level !== "off") {
+/**
+ * 从 Pi 模型能力应用产品的向下降档规则；xhigh/max 只有显式映射才视为支持。
+ */
+export function resolve_effective_model_thinking_level(
+  reasoning: boolean,
+  level_map: ThinkingLevelMap | undefined,
+  requested_level: ModelThinkingLevel,
+): PiModelThinkingLevel {
+  if (!reasoning) return "off";
+  const supports = (level: PiModelThinkingLevel): boolean => {
+    const mapped = level_map?.[level];
+    if (mapped === null) return false;
+    return level === "xhigh" || level === "max" ? mapped !== undefined : true;
+  };
+  const requested_pi_level = PRODUCT_TO_PI_LEVEL[requested_level];
+  if (supports(requested_pi_level)) return requested_pi_level;
+  const requested_index = PI_THINKING_LEVELS.indexOf(requested_pi_level);
+  if (requested_pi_level !== "off") {
     for (let index = requested_index - 1; index > 0; index -= 1) {
       const candidate = PI_THINKING_LEVELS[index];
-      if (candidate !== undefined && level_map[candidate] !== null) return candidate;
+      if (candidate !== undefined && supports(candidate)) return candidate;
     }
   }
-  return PI_THINKING_LEVELS.slice(1).find((level) => level_map[level] !== null) ?? null;
+  return PI_THINKING_LEVELS.slice(1).find(supports) ?? "off";
 }
 
 /** 规则按声明顺序首个命中，协议边界阻止同名模型跨 adapter 串用策略。 */

@@ -49,6 +49,7 @@ export const zh_cn_workbench_page = {
       remaining_time: "剩余时间",
       average_speed: "平均速度",
       input_tokens: "输入 Token",
+      reasoning_tokens: "思考 Token",
       output_tokens: "输出 Token",
     },
     feedback: {

@@ -92,7 +92,7 @@ function normalize_pi_result(
     .map((block) => block.thinking)
     .join("")
     .trim();
-  const usage = normalize_usage(snapshot, message);
+  const usage = normalize_usage(message);
   const finish_error = read_finish_error(snapshot, message);
   const normalized_result =
     snapshot.api_format === "SakuraLLM" && response_result !== "" && finish_error === undefined
@@ -109,23 +109,19 @@ function normalize_pi_result(
   };
 }
 
-/** 把 Pi 的缓存与思考拆分计数还原为项目既有的供应商统计口径。 */
+/** 统一把 Pi usage 归一为输入、思考和输出三个互斥口径。 */
 function normalize_usage(
-  snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
-): Pick<LLMRequestResult, "input_tokens" | "output_tokens"> {
-  if (snapshot.api_format === "Google") {
-    return {
-      input_tokens: message.usage.input + message.usage.cacheRead,
-      output_tokens: Math.max(0, message.usage.output - (message.usage.reasoning ?? 0)),
-    };
-  }
-  if (snapshot.api_format === "Anthropic") {
-    return { input_tokens: message.usage.input, output_tokens: message.usage.output };
-  }
+): Pick<LLMRequestResult, "input_tokens" | "reasoning_tokens" | "output_tokens"> {
+  const provider_output_tokens = Math.max(0, message.usage.output);
+  const reasoning_tokens = Math.min(
+    provider_output_tokens,
+    Math.max(0, message.usage.reasoning ?? 0),
+  );
   return {
     input_tokens: message.usage.input + message.usage.cacheRead + message.usage.cacheWrite,
-    output_tokens: message.usage.output,
+    reasoning_tokens,
+    output_tokens: provider_output_tokens - reasoning_tokens,
   };
 }
 
@@ -184,6 +180,7 @@ function empty_llm_result(overrides: Partial<LLMRequestResult> = {}): LLMRequest
     response_think: "",
     response_result: "",
     input_tokens: 0,
+    reasoning_tokens: 0,
     output_tokens: 0,
     cancelled: false,
     timeout: false,

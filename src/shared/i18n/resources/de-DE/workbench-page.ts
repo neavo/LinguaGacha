@@ -54,6 +54,7 @@ export const de_de_workbench_page = {
       remaining_time: "Verbleibende Zeit",
       average_speed: "Durchschnittsgeschwindigkeit",
       input_tokens: "Eingabe-Token",
+      reasoning_tokens: "Denk-Token",
       output_tokens: "Ausgabe-Token",
     },
     feedback: {

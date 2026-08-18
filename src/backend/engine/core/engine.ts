@@ -372,6 +372,7 @@ export class TaskEngine {
         items: context.items,
         row_count: 0,
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
         stopped: false,
       };
@@ -416,6 +417,7 @@ export class TaskEngine {
       items: this.normalize_record_list(result.output.items),
       row_count: result.output.row_count,
       input_tokens: result.metrics.input_tokens,
+      reasoning_tokens: result.metrics.reasoning_tokens,
       output_tokens: result.metrics.output_tokens,
       stopped: result.outcome === "stopped",
       logs: result.logs,
@@ -439,6 +441,7 @@ export class TaskEngine {
       success: result.outcome === "success",
       stopped: result.outcome === "stopped",
       input_tokens: result.metrics.input_tokens,
+      reasoning_tokens: result.metrics.reasoning_tokens,
       output_tokens: result.metrics.output_tokens,
       glossary_entries: this.normalize_record_list(result.output.glossary_entries),
       logs: result.logs,
@@ -475,6 +478,7 @@ export class TaskEngine {
               {
                 items: commit_items,
                 input_tokens: result.input_tokens,
+                reasoning_tokens: result.reasoning_tokens,
                 output_tokens: result.output_tokens,
               },
             ]
@@ -498,6 +502,7 @@ export class TaskEngine {
             error_checkpoints: [],
             glossary_entries: result.glossary_entries,
             input_tokens: result.input_tokens,
+            reasoning_tokens: result.reasoning_tokens,
             output_tokens: result.output_tokens,
             processed_delta: context.items.length,
             error_delta: 0,
@@ -514,6 +519,7 @@ export class TaskEngine {
             error_checkpoints: [],
             glossary_entries: [],
             input_tokens: result.input_tokens,
+            reasoning_tokens: result.reasoning_tokens,
             output_tokens: result.output_tokens,
             processed_delta: 0,
             error_delta: 0,
@@ -535,6 +541,7 @@ export class TaskEngine {
           error_checkpoints: this.build_analysis_checkpoints(context, "ERROR"),
           glossary_entries: [],
           input_tokens: result.input_tokens,
+          reasoning_tokens: result.reasoning_tokens,
           output_tokens: result.output_tokens,
           processed_delta: 0,
           error_delta: context.items.length,
@@ -569,6 +576,7 @@ export class TaskEngine {
       next_progress = TaskProgressSnapshotTool.add_tokens(
         next_progress,
         entry.input_tokens,
+        entry.reasoning_tokens,
         entry.output_tokens,
       );
     }
@@ -598,6 +606,7 @@ export class TaskEngine {
       next_progress = TaskProgressSnapshotTool.add_tokens(
         next_progress,
         entry.input_tokens,
+        entry.reasoning_tokens,
         entry.output_tokens,
       );
       next_progress = TaskProgressSnapshotTool.with_counts(next_progress, {

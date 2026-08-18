@@ -421,6 +421,7 @@ describe("TaskProjectStore", () => {
       error_line: 0,
       total_tokens: 3,
       total_input_tokens: 1,
+      total_reasoning_tokens: 0,
       total_output_tokens: 2,
       ...overrides,
     };

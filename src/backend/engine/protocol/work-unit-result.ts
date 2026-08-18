@@ -22,7 +22,8 @@ export type WorkUnitExecutionResult = {
   outcome: "success" | "failed" | "stopped"; // 驱动 Engine 重试、停止和结果提交分支
   metrics: {
     input_tokens: number;
-    output_tokens: number;
+    reasoning_tokens: number; // 思考 token 子集
+    output_tokens: number; // 已扣除思考 token 的输出
   };
   output: TranslationWorkUnitOutput | AnalysisWorkUnitOutput;
   logs: WorkUnitLogEntry[];

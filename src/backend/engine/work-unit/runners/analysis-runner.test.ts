@@ -52,6 +52,7 @@ describe("AnalysisWorkUnitRunner", () => {
       outcome: "success",
       metrics: {
         input_tokens: 0,
+        reasoning_tokens: 0,
         output_tokens: 0,
       },
       output: {
@@ -74,6 +75,7 @@ describe("AnalysisWorkUnitRunner", () => {
           response_result:
             '<why>[难点处理]：Alice -> 女性人名</why>\n{"src":"Alice","dst":"爱丽丝","type":"女性人名"}',
           input_tokens: 2,
+          reasoning_tokens: 4,
           output_tokens: 3,
           cancelled: false,
           timeout: false,
@@ -106,7 +108,7 @@ describe("AnalysisWorkUnitRunner", () => {
 
     expect(result).toMatchObject({
       outcome: "success",
-      metrics: { input_tokens: 2, output_tokens: 3 },
+      metrics: { input_tokens: 2, reasoning_tokens: 4, output_tokens: 3 },
       output: {
         kind: "analysis",
         glossary_entries: [

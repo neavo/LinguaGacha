@@ -27,6 +27,7 @@ function create_task_snapshot(): TaskSnapshot {
       error_line: 1,
       total_tokens: 100,
       total_output_tokens: 40,
+      total_reasoning_tokens: 0,
       total_input_tokens: 60,
       time: 12,
       start_time: 3,
