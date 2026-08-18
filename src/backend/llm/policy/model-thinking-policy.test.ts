@@ -4,6 +4,44 @@ import type { ModelApiFormat, ModelThinkingLevel } from "../../../domain/model";
 import { resolve_model_thinking } from "./model-thinking-policy";
 
 describe("模型思考策略", () => {
+  it("GLM-5.2 只登记 minimal、high、max 并复用统一向下降挡", () => {
+    const resolved = resolve_model_thinking("OpenAI", "vendor/GLM-5.2", "HIGH");
+
+    expect(resolved).toMatchObject({
+      payload_kind: "openai_effort",
+      effective_level: "high",
+      wire_level: "high",
+      thinking_level_map: {
+        off: null,
+        minimal: "minimal",
+        low: null,
+        medium: null,
+        high: "high",
+        xhigh: null,
+        max: "max",
+      },
+    });
+  });
+
+  it("GLM-5.3 只登记 low、high、max 并复用统一向下降挡", () => {
+    const resolved = resolve_model_thinking("OpenAI", "vendor/GLM-5.3", "XHIGH");
+
+    expect(resolved).toMatchObject({
+      payload_kind: "openai_effort",
+      effective_level: "high",
+      wire_level: "high",
+      thinking_level_map: {
+        off: null,
+        minimal: null,
+        low: "low",
+        medium: null,
+        high: "high",
+        xhigh: null,
+        max: "max",
+      },
+    });
+  });
+
   it.each([
     ["OpenAI", "unknown-model", "HIGH"],
     ["OpenAI", "deepseek-v3", "HIGH"],
