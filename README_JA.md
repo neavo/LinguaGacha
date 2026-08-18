@@ -87,6 +87,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260819 v0.116.1
+  - Gemini シリーズの互換性問題を修正
+
 - 20260818 v0.116.0
   - `AGENT` インタラクション改善
     - メッセージキュー [#772](https://github.com/neavo/LinguaGacha/issues/772)

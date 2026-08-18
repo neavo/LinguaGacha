@@ -88,8 +88,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260819 v0.116.1
+  - Fix Gemini series compatibility issues
+
 - 20260818 v0.116.0
-  - `AGENT` ui improvements
+  - `AGENT` UI improvements
     - Message queue [#772](https://github.com/neavo/LinguaGacha/issues/772)
     - Quotes and annotations [#770](https://github.com/neavo/LinguaGacha/issues/770)
     - Task completion reminders [#776](https://github.com/neavo/LinguaGacha/issues/776)
