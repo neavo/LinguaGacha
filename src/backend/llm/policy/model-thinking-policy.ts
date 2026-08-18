@@ -101,6 +101,20 @@ const MODEL_THINKING_RULES: readonly ModelThinkingRule[] = Object.freeze([
     payload_kind: "openai_effort",
     level_map: define_level_map(["minimal", "low", "medium", "high"]),
   },
+  // 智谱 GLM-5.2：只保留三个实际挡位，其余产品挡位复用统一向下降挡。
+  {
+    api_format: "OpenAI",
+    model_pattern: /glm-5\.2(?!\d)/iu,
+    payload_kind: "openai_effort",
+    level_map: define_level_map(["minimal", "high", "max"]),
+  },
+  // 智谱 GLM-5.3：只接受 low、high、max，其余产品挡位复用统一向下降挡。
+  {
+    api_format: "OpenAI",
+    model_pattern: /glm-5\.3(?!\d)/iu,
+    payload_kind: "openai_effort",
+    level_map: define_level_map(["low", "high", "max"]),
+  },
   // Kimi K3：https://platform.kimi.com/docs/guide/use-thinking-models
   {
     api_format: "OpenAI",

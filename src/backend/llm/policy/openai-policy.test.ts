@@ -155,6 +155,12 @@ describe("OpenAI 请求规则", () => {
     ["OpenAI", "vendor/GROK-preview", "XHIGH", { reasoning_effort: "xhigh" }],
     ["OpenAIResponses", "vendor/GROK-preview", "XHIGH", { reasoning: { effort: "xhigh" } }],
     ["OpenAI", "glm-5.1", "MAX", { thinking: { type: "enabled" } }],
+    ["OpenAI", "glm-5.2", "OFF", { reasoning_effort: "minimal" }],
+    ["OpenAI", "glm-5.2", "LOW", { reasoning_effort: "minimal" }],
+    ["OpenAI", "glm-5.2", "XHIGH", { reasoning_effort: "high" }],
+    ["OpenAI", "glm-5.3", "MEDIUM", { reasoning_effort: "low" }],
+    ["OpenAI", "glm-5.3", "XHIGH", { reasoning_effort: "high" }],
+    ["OpenAI", "glm-5.3", "MAX", { reasoning_effort: "max" }],
     ["OpenAI", "deepseek-v4-flash", "OFF", { thinking: { type: "disabled" } }],
     [
       "OpenAI",
