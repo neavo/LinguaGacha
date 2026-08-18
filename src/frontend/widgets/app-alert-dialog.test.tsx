@@ -1,8 +1,8 @@
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
 
-import { AppAlertDialog } from "./app-alert-dialog";
+import { AppActionDialog, AppConfirmDialog } from "./app-alert-dialog";
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -18,7 +18,7 @@ vi.mock("@frontend/shadcn/spinner", () => {
   };
 });
 
-describe("AppAlertDialog", () => {
+describe("应用模态窗", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -33,105 +33,100 @@ describe("AppAlertDialog", () => {
     root = null;
   });
 
-  it("未提供取消回调时由关闭回调处理取消动作", () => {
+  it("普通确认固定使用取消、确认和主题色", () => {
+    const on_confirm = vi.fn();
     const on_close = vi.fn();
-
     render_dialog(
-      <AppAlertDialog open description="确认删除项目？" onConfirm={vi.fn()} onClose={on_close} />,
+      <AppConfirmDialog
+        open
+        description="是否确认执行？"
+        onConfirm={on_confirm}
+        onClose={on_close}
+      />,
     );
 
-    click_slot_button("alert-dialog-cancel");
+    expect(read_button("app.action.cancel")?.dataset.variant).toBe("outline");
+    expect(read_button("app.action.confirm")?.dataset.variant).toBe("default");
 
+    click_button("app.action.confirm");
+    click_button("app.action.cancel");
+    expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_close).toHaveBeenCalledTimes(1);
   });
 
-  it("提交中会锁定关闭和按钮，并按配置隐藏加载图标", () => {
-    const on_close = vi.fn();
-
+  it("动作模态窗把显式选择交回业务层", () => {
+    const on_primary = vi.fn();
+    const on_secondary = vi.fn();
+    const on_dismiss = vi.fn();
     render_dialog(
-      <AppAlertDialog
+      <AppActionDialog
         open
-        description="正在下载更新"
+        description="请选择处理方式"
+        primaryAction={{ label: "覆盖", onSelect: on_primary, variant: "destructive" }}
+        secondaryAction={{ label: "跳过", onSelect: on_secondary }}
+        dismissAction={{ label: "取消", onSelect: on_dismiss }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
+      "app.action.confirm",
+    );
+    expect(read_button("覆盖")?.dataset.variant).toBe("destructive");
+    click_button("覆盖");
+    click_button("跳过");
+    click_button("取消");
+    expect(on_primary).toHaveBeenCalledTimes(1);
+    expect(on_secondary).toHaveBeenCalledTimes(1);
+    expect(on_dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("提交中锁定关闭与动作，并支持无图标进度文案", () => {
+    const on_close = vi.fn();
+    render_dialog(
+      <AppActionDialog
+        open
+        description="正在下载"
         submitting
+        submittingLabel="50%"
         submittingIcon={false}
-        onConfirm={vi.fn()}
+        primaryAction={{ label: "确认", onSelect: vi.fn() }}
         onClose={on_close}
       />,
     );
 
     act(() => {
       document.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          code: "Escape",
-          bubbles: true,
-        }),
+        new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }),
       );
     });
 
     expect(on_close).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-testid="spinner"]')).toBeNull();
-    expect(read_first_button("alert-dialog-action")?.disabled).toBe(true);
-    expect(read_first_button("alert-dialog-cancel")?.disabled).toBe(true);
-  });
-
-  it("确认、取消和次要动作都通过公开回调返回业务层", () => {
-    const on_confirm = vi.fn();
-    const on_cancel = vi.fn();
-    const on_secondary = vi.fn();
-    const on_close = vi.fn();
-
-    render_dialog(
-      <AppAlertDialog
-        open
-        description="准备更新"
-        confirmLabel="更新"
-        cancelLabel="稍后"
-        secondaryLabel="查看发布页"
-        onConfirm={on_confirm}
-        onCancel={on_cancel}
-        onSecondary={on_secondary}
-        onClose={on_close}
-      />,
-    );
-
-    click_button_by_text("更新");
-    click_button_by_text("稍后");
-    click_button_by_text("查看发布页");
-
-    expect(on_confirm).toHaveBeenCalledTimes(1);
-    expect(on_cancel).toHaveBeenCalledTimes(1);
-    expect(on_secondary).toHaveBeenCalledTimes(1);
-    expect(on_close).not.toHaveBeenCalled();
+    expect(read_button("50%")?.disabled).toBe(true);
+    expect(read_button("app.action.cancel")?.disabled).toBe(true);
   });
 
   function render_dialog(element: JSX.Element): void {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-
     act(() => {
       root?.render(element);
     });
   }
 
-  function read_first_button(slot: string): HTMLButtonElement | null {
-    return document.body.querySelector<HTMLButtonElement>(`[data-slot="${slot}"]`);
-  }
-
-  function click_slot_button(slot: string): void {
-    act(() => {
-      read_first_button(slot)?.click();
-    });
-  }
-
-  function click_button_by_text(text: string): void {
-    const button =
+  function read_button(text: string): HTMLButtonElement | null {
+    return (
       Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
         (candidate) => candidate.textContent === text,
-      ) ?? null;
+      ) ?? null
+    );
+  }
+
+  function click_button(text: string): void {
     act(() => {
-      button?.click();
+      read_button(text)?.click();
     });
   }
 });

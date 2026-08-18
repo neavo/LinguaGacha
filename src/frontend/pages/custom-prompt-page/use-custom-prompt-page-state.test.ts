@@ -339,70 +339,27 @@ describe("useCustomPromptPageState", () => {
     },
   );
 
-  it.each(["file", "preset"] as const)(
-    "%s 导入前未启用时先按禁用保存，确认后以相同正文启用",
-    async (source) => {
-      install_prompt_api();
-      await render_hook();
+  it.each(["file", "preset"] as const)("%s 导入前未启用时保持禁用且不打开确认", async (source) => {
+    install_prompt_api();
+    await render_hook();
 
-      await trigger_import(source);
+    await trigger_import(source);
 
-      expect(get_save_payloads()).toEqual([
-        expect.objectContaining({
-          text: "导入提示词",
-          enabled: false,
-        }),
-      ]);
-      expect(latest_state?.confirm_state).toEqual({
-        kind: "enable-after-import",
-        submitting: false,
-      });
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({
+        text: "导入提示词",
+        enabled: false,
+      }),
+    ]);
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.prompt_text).toBe("导入提示词");
+    expect(latest_state?.enabled).toBe(false);
+    if (source === "preset") {
+      expect(latest_state?.preset_menu_open).toBe(false);
+    }
+  });
 
-      await act(async () => {
-        await latest_state?.confirm_pending_action();
-      });
-
-      expect(get_save_payloads()).toEqual([
-        expect.objectContaining({
-          text: "导入提示词",
-          enabled: false,
-        }),
-        expect.objectContaining({
-          text: "导入提示词",
-          enabled: true,
-        }),
-      ]);
-      expect(latest_state?.confirm_state).toEqual({ kind: null });
-      expect(latest_state?.prompt_text).toBe("导入提示词");
-      expect(latest_state?.enabled).toBe(true);
-      if (source === "preset") {
-        expect(latest_state?.preset_menu_open).toBe(false);
-      }
-    },
-  );
-
-  it.each(["file", "preset"] as const)(
-    "%s 导入后的启用确认取消时保留禁用正文且不再次保存",
-    async (source) => {
-      install_prompt_api();
-      await render_hook();
-
-      await trigger_import(source);
-      await act(async () => {
-        latest_state?.close_confirm_dialog();
-      });
-
-      expect(get_save_payloads()).toHaveLength(1);
-      expect(latest_state?.confirm_state).toEqual({ kind: null });
-      expect(latest_state?.prompt_text).toBe("导入提示词");
-      expect(latest_state?.enabled).toBe(false);
-      if (source === "preset") {
-        expect(latest_state?.preset_menu_open).toBe(false);
-      }
-    },
-  );
-
-  it.each(["file", "preset"] as const)("%s 读取失败时不保存且不打开启用确认", async (source) => {
+  it.each(["file", "preset"] as const)("%s 读取失败时不保存", async (source) => {
     install_prompt_api({ read_failure_source: source });
     await render_hook();
 
@@ -417,7 +374,7 @@ describe("useCustomPromptPageState", () => {
     }
   });
 
-  it.each(["file", "preset"] as const)("%s 第一次保存失败时不打开启用确认", async (source) => {
+  it.each(["file", "preset"] as const)("%s 保存失败时保留原状态", async (source) => {
     install_prompt_api({
       save_handler: () => {
         throw new Error("保存失败");
@@ -464,41 +421,6 @@ describe("useCustomPromptPageState", () => {
 
     expect(get_save_payloads()).toHaveLength(1);
     expect(api_fetch).not.toHaveBeenCalledWith("/api/quality/prompts/export", expect.anything());
-  });
-
-  it("启用失败时保留确认框并允许重试", async () => {
-    install_prompt_api({
-      save_handler: (_body, save_index) => {
-        if (save_index === 2) {
-          throw new Error("启用失败");
-        }
-        return {};
-      },
-    });
-    await render_hook();
-    await trigger_import("file");
-
-    await act(async () => {
-      await latest_state?.confirm_pending_action();
-    });
-
-    expect(latest_state?.confirm_state).toEqual({
-      kind: "enable-after-import",
-      submitting: false,
-    });
-    expect(latest_state?.enabled).toBe(false);
-
-    await act(async () => {
-      await latest_state?.confirm_pending_action();
-    });
-
-    expect(get_save_payloads()).toEqual([
-      expect.objectContaining({ text: "导入提示词", enabled: false }),
-      expect.objectContaining({ text: "导入提示词", enabled: true }),
-      expect.objectContaining({ text: "导入提示词", enabled: true }),
-    ]);
-    expect(latest_state?.confirm_state).toEqual({ kind: null });
-    expect(latest_state?.enabled).toBe(true);
   });
 
   it("重置确认保留当前启用态并在成功后关闭预设菜单", async () => {

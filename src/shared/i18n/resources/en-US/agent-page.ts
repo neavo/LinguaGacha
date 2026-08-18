@@ -49,9 +49,10 @@ export const en_us_agent_page = {
     new_task: "New Task",
     add_image: "Add images",
     continue: "Continue",
-    retry: "Retry",
     edit: "Edit",
-    edit_and_retry: "Edit and retry",
+    copy: "Copy",
+    copied: "Copied",
+    copy_failed: "Copy failed",
     save_and_retry: "Save and retry",
     save_edit: "Save edit",
     return_latest: "Return to latest",
@@ -71,8 +72,6 @@ export const en_us_agent_page = {
   },
   confirm: {
     new_task: "Confirm starting a new conversation task …?",
-    retry_after_workspace_apply:
-      "This round already changed the project. Retrying or editing the input will not undo those changes and may change the project again. Continue?",
   },
   status: {
     running: "Processing",
@@ -98,7 +97,6 @@ export const en_us_agent_page = {
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",
-    retry: "The round could not be retried. Try again.",
     continue: "The task could not continue. Try again.",
     edit: "The message could not be edited. Your changes were preserved.",
     queue_update: "The queued message could not be edited. Your changes were preserved.",

@@ -1,6 +1,6 @@
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { type ProofreadingPendingConfirmation } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 
 type ProofreadingConfirmDialogProps = {
   state: ProofreadingPendingConfirmation | null;
@@ -25,7 +25,7 @@ export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps)
   }
 
   return (
-    <AppAlertDialog
+    <AppConfirmDialog
       open={props.state !== null}
       description={description}
       submitting={props.state?.submitting ?? false}

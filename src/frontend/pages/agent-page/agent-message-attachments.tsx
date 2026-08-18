@@ -4,7 +4,6 @@ import { Popover as PopoverPrimitive } from "radix-ui";
 
 import type { AgentMessageAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import {
@@ -89,16 +88,9 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             <button
               key={index}
               type="button"
-              className={cn(
-                "agent-attachment",
-                attachment.kind === "image"
-                  ? "agent-attachment--image"
-                  : "agent-attachment--annotation",
-                "agent-attachment__open",
-                attachment.kind === "response_annotation" &&
-                  props.mode === "draft" &&
-                  "agent-composer__annotation-open",
-              )}
+              className={`agent-attachment agent-attachment--${
+                attachment.kind === "image" ? "image" : "annotation"
+              }`}
               aria-label={`${title} ${display_index + 1}`}
               disabled={
                 attachment.kind === "response_annotation" &&
@@ -180,7 +172,7 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
       {selected_attachment?.kind !== "image" ? null : (
         <AppPageDialog
           open
-          size="md"
+          size="lg"
           title={t("agent_page.image.title")}
           onClose={close_attachment}
           footer={

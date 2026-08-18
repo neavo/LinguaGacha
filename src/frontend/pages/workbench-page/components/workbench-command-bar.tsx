@@ -19,7 +19,7 @@ import type {
 import { WorkbenchTaskMenu } from "@frontend/pages/workbench-page/components/workbench-task-menu";
 import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/workbench-task-summary";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
@@ -221,14 +221,18 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               </div>
             );
           })}
-          {/* 继续经典任务使用主色确认位，跳转 AGENT 使用描边取消位。 */}
-          <AppAlertDialog
+          <AppActionDialog
             open={analysis_migration_dialog_open}
             description={t("workbench_page.analysis_task.migration.description")}
-            confirmLabel={t("workbench_page.analysis_task.migration.continue")}
-            cancelLabel={t("workbench_page.analysis_task.migration.jump")}
-            onConfirm={continue_classic_analysis}
-            onCancel={jump_to_agent}
+            primaryAction={{
+              label: t("workbench_page.analysis_task.migration.continue"),
+              onSelect: continue_classic_analysis,
+            }}
+            secondaryAction={{
+              label: t("workbench_page.analysis_task.migration.jump"),
+              onSelect: jump_to_agent,
+            }}
+            dismissAction={null}
             onClose={() => set_analysis_migration_dialog_open(false)}
           />
         </>

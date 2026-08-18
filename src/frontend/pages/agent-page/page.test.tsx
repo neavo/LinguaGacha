@@ -37,6 +37,54 @@ const model_agent_limits = vi.hoisted(() => ({
   context_window: 288_000,
   max_output_tokens: 32_000,
 }));
+const resize_observers = new Set<TestResizeObserver>();
+
+/** happy-dom 不主动分发内容尺寸变化，测试显式触发真实观察回调。 */
+class TestResizeObserver implements ResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    resize_observers.add(this);
+  }
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    resize_observers.delete(this);
+  }
+  takeRecords(): ResizeObserverEntry[] {
+    return [];
+  }
+  notify(): void {
+    this.callback([], this);
+  }
+}
+
+function notify_resize_observers(): void {
+  for (const observer of resize_observers) observer.notify();
+}
+
+type ScrollMetrics = {
+  top: number;
+  height: number;
+  viewport: number;
+};
+
+/** 用可变布局数据模拟浏览器的滚动范围与 scrollTop 夹取。 */
+function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): void {
+  Object.defineProperties(target, {
+    scrollHeight: { configurable: true, get: () => metrics.height },
+    clientHeight: { configurable: true, get: () => metrics.viewport },
+    scrollTop: {
+      configurable: true,
+      get: () => metrics.top,
+      set: (value: number) => {
+        metrics.top = Math.max(0, Math.min(value, metrics.height - metrics.viewport));
+      },
+    },
+  });
+}
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSession: () => page_state.current,
@@ -102,10 +150,18 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
       if (key === "app.action.retry") return "重试";
-      if (key === "agent_page.action.retry") return "重试";
       if (key === "agent_page.action.continue") return "继续";
+      if (key === "agent_page.action.edit") return "编辑";
+      if (key === "agent_page.action.copy") return "复制";
+      if (key === "agent_page.action.copied") return "已复制";
+      if (key === "agent_page.action.copy_failed") return "复制失败";
+      if (key === "agent_page.action.save_and_retry") return "保存并重试";
+      if (key === "agent_page.action.save_edit") return "保存修改";
+      if (key === "agent_page.action.save_queue") return "保存队列消息";
+      if (key === "agent_page.editing.user") return "正在编辑用户消息";
+      if (key === "agent_page.editing.assistant") return "正在编辑模型回复";
+      if (key === "agent_page.editing.queue") return "正在编辑排队消息";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
-      if (key === "agent_page.confirm.retry_after_workspace_apply") return "工程写入重试确认";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.quality_rule_create") return "准备质量规则";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
@@ -115,7 +171,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
       if (key === "agent_page.error.terms_load") return "术语加载失败";
       if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
-      if (key === "agent_page.error.retry") return "重试失败，请再次尝试。";
       if (key === "agent_page.error.continue") return "继续失败，请再次尝试。";
       if (key === "agent_page.error.edit") return "消息修改失败，编辑内容已保留。";
       if (key === "agent_page.error.stop") return "停止失败，请重试。";
@@ -143,6 +198,8 @@ describe("AgentPage", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     desktop_state.current = {
       project_snapshot: { loaded: true, path: "E:/demo/demo.lg" },
@@ -164,6 +221,8 @@ describe("AgentPage", () => {
     container?.remove();
     root = null;
     container = null;
+    resize_observers.clear();
+    vi.unstubAllGlobals();
   });
 
   /** 只替换页面拥有者的公开快照，并复用 root 验证真实状态迁移。 */
@@ -291,25 +350,11 @@ describe("AgentPage", () => {
     expect(reconnect).toHaveBeenCalledOnce();
   });
 
-  it("删除通用 live region 时保留断线状态", async () => {
+  it("断线状态只在连接提示中公开", async () => {
     const view = await render_page({ transport: "disconnected" });
 
     expect(view.querySelector('.agent-page__connection-status[role="status"]')).not.toBeNull();
     expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
-  });
-
-  it("把当前待办固定在 Composer 上方", async () => {
-    const view = await render_page({
-      state: "running",
-      taskProgress: ["检查章节", "汇总结果"],
-    });
-    const progress = view.querySelector<HTMLElement>(".agent-task-progress");
-    const composer = view.querySelector<HTMLElement>(".agent-composer");
-    if (progress === null || composer === null) throw new Error("缺少底部任务区");
-
-    expect(progress.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
@@ -323,108 +368,93 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("外层只按自身真实位置暂停，回到底端后恢复追随", async () => {
+  it("外层接管同步阻断同一批尺寸变化，回到底端后恢复追随", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
-    let scroll_top = 600;
-    const writes: number[] = [];
-    Object.defineProperties(conversation, {
-      scrollHeight: { configurable: true, value: 1000 },
-      clientHeight: { configurable: true, value: 400 },
-      scrollTop: {
-        configurable: true,
-        get: () => scroll_top,
-        set: (value: number) => {
-          scroll_top = Math.min(value, 600);
-          writes.push(value);
-        },
-      },
-    });
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
 
-    scroll_top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    writes.length = 0;
-    await render_page({
-      entries: [
-        ...page_state.current.entries,
-        assistant_entry("assistant-2", "增量", "running", 2),
-      ],
+    scroll.height = 1_100;
+    await act(async () => notify_resize_observers());
+    expect(scroll.top).toBe(700);
+
+    scroll.top = 100;
+    scroll.height = 1_200;
+    await act(async () => {
+      conversation.dispatchEvent(new Event("scroll"));
+      notify_resize_observers();
     });
-    expect(writes).toEqual([]);
+    expect(scroll.top).toBe(100);
     expect(view.querySelector(".agent-page__follow-control button")).not.toBeNull();
 
-    scroll_top = 600;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    writes.length = 0;
-    await render_page({
-      entries: [
-        ...page_state.current.entries,
-        assistant_entry("assistant-3", "继续", "running", 3),
-      ],
+    scroll.top = 800;
+    await act(async () => {
+      conversation.dispatchEvent(new Event("scroll"));
+      scroll.height = 1_300;
+      notify_resize_observers();
     });
-    expect(writes).toContain(1000);
+    expect(scroll.top).toBe(900);
     expect(view.querySelector(".agent-page__follow-control button")).toBeNull();
   });
 
-  it("思考块离底会暂停外层，回底后恢复且不覆盖外层独立暂停", async () => {
-    const render_thinking = (text: string) =>
+  it("思考块独立暂停但保留外层追随，回到最新会同时恢复所有容器", async () => {
+    const render_thinking = (first: string, second: string) =>
       render_page({
         state: "running",
         entries: [
           user_entry("user-thinking", "开始检查", "running", 0, null),
-          assistant_parts_entry("assistant-thinking", [{ kind: "thinking", text }], "running", 1),
+          assistant_parts_entry(
+            "assistant-thinking-1",
+            [{ kind: "thinking", text: first }],
+            "running",
+            1,
+          ),
+          assistant_parts_entry(
+            "assistant-thinking-2",
+            [{ kind: "thinking", text: second }],
+            "running",
+            2,
+          ),
         ],
       });
-    const view = await render_thinking("第一步\n第二步");
+    const view = await render_thinking("第一步\n第二步", "甲\n乙");
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    const thinking = view.querySelector<HTMLPreElement>(".agent-thinking-entry pre");
-    if (conversation === null || thinking === null) throw new Error("缺少嵌套滚动容器");
-    let outer_top = 600;
-    let inner_top = 240;
-    const outer_writes: number[] = [];
-    Object.defineProperties(conversation, {
-      scrollHeight: { configurable: true, value: 1000 },
-      clientHeight: { configurable: true, value: 400 },
-      scrollTop: {
-        configurable: true,
-        get: () => outer_top,
-        set: (value: number) => {
-          outer_top = Math.min(value, 600);
-          outer_writes.push(value);
-        },
-      },
-    });
-    Object.defineProperties(thinking, {
-      scrollHeight: { configurable: true, value: 480 },
-      clientHeight: { configurable: true, value: 240 },
-      scrollTop: {
-        configurable: true,
-        get: () => inner_top,
-        set: (value: number) => {
-          inner_top = Math.min(value, 240);
-        },
-      },
+    const thinking = [...view.querySelectorAll<HTMLPreElement>(".agent-thinking-entry pre")];
+    if (conversation === null || thinking.length !== 2) throw new Error("缺少嵌套滚动容器");
+    const outer_scroll = { top: 600, height: 1_000, viewport: 400 };
+    const thinking_scrolls: [ScrollMetrics, ScrollMetrics] = [
+      { top: 240, height: 480, viewport: 240 },
+      { top: 240, height: 480, viewport: 240 },
+    ];
+    install_scroll_metrics(conversation, outer_scroll);
+    thinking.forEach((content, index) => {
+      const metrics = thinking_scrolls[index];
+      if (metrics !== undefined) install_scroll_metrics(content, metrics);
     });
 
-    inner_top = 80;
-    await act(async () => thinking.dispatchEvent(new Event("scroll")));
-    outer_writes.length = 0;
-    await render_thinking("第一步\n第二步\n第三步");
-    expect(inner_top).toBe(80);
-    expect(outer_writes).toEqual([]);
+    thinking_scrolls[0].top = 80;
+    thinking_scrolls[1].top = 120;
+    await act(async () => {
+      thinking[0]?.dispatchEvent(new Event("scroll"));
+      thinking[1]?.dispatchEvent(new Event("scroll"));
+    });
+    expect(view.querySelector(".agent-page__follow-control button")).not.toBeNull();
 
-    outer_top = 100;
+    await render_thinking("第一步\n第二步\n第三步", "甲\n乙\n丙");
+    outer_scroll.height = 1_100;
+    await act(async () => notify_resize_observers());
+    expect(thinking_scrolls.map(({ top }) => top)).toEqual([80, 120]);
+    expect(outer_scroll.top).toBe(700);
+
+    outer_scroll.top = 100;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    inner_top = 240;
-    await act(async () => thinking.dispatchEvent(new Event("scroll")));
-    outer_writes.length = 0;
-    await render_thinking("第一步\n第二步\n第三步\n第四步");
-    expect(outer_writes).toEqual([]);
 
     const latest = view.querySelector<HTMLButtonElement>(".agent-page__follow-control button");
     await act(async () => latest?.click());
-    expect(outer_writes).toContain(1000);
+    expect(outer_scroll.top).toBe(700);
+    expect(thinking_scrolls.map(({ top }) => top)).toEqual([240, 240]);
+    expect(view.querySelector(".agent-page__follow-control button")).toBeNull();
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
@@ -572,79 +602,90 @@ describe("AgentPage", () => {
     expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
   });
 
-  it("已成功写入工程的重试必须确认，确认后以原输入修订轮次", async () => {
-    const reviseLatestRound = vi.fn(async () => undefined);
+  it("成功轮次不显示回合重试，输入编辑器承接重新运行", async () => {
     const view = await render_page({
       entries: [
         user_entry("user-write", "修改工程", "success", 0, 3),
         workspace_apply_entry("apply-1"),
         assistant_entry("assistant-write", "修改完成", "success", 2),
       ],
-      reviseLatestRound,
     });
-    const retry = [
-      ...view.querySelectorAll<HTMLButtonElement>(
-        ".agent-message-frame--assistant .agent-message-actions button",
-      ),
-    ].find((button) => button.textContent === "重试");
-    if (retry === undefined) throw new Error("缺少轮次重试按钮");
 
-    await act(async () => retry.click());
-    expect(reviseLatestRound).not.toHaveBeenCalled();
-    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
-    await act(async () => get_portal_button("app.action.cancel").click());
-    expect(reviseLatestRound).not.toHaveBeenCalled();
-
-    await act(async () => retry.click());
-    await act(async () => get_portal_button("app.action.confirm").click());
-    expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
-      text: "修改工程",
-      attachments: [],
-    });
+    expect(view.querySelector(".agent-round-footer button")).toBeNull();
+    expect(view.querySelector(".agent-composer--inline")).toBeNull();
   });
 
-  it("已写入工程时修改输入需要确认并保留编辑，修改输出则直接保存", async () => {
+  it("历史消息原位编辑直接保存输入与输出", async () => {
     const reviseLatestRound = vi.fn(async () => undefined);
     const entries = [
       user_entry("user-write", "原输入", "success", 0, 3),
       workspace_apply_entry("apply-1"),
       assistant_entry("assistant-write", "原输出", "success", 2),
     ];
-    const input = build_state().input;
+    const ordinary_input = build_state().input;
+    ordinary_input.read_draft = () => ({ text: "普通草稿", attachments: [] });
     const view = await render_page({
       entries,
       reviseLatestRound,
-      input: {
-        ...input,
-        editing: { kind: "entry", entryId: "user-write", role: "user" },
-        read_draft: () => ({ text: "新输入", attachments: [] }),
-      },
+      input: ordinary_input,
     });
 
-    await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
-    expect(reviseLatestRound).not.toHaveBeenCalled();
-    await act(async () => get_portal_button("app.action.cancel").click());
-    expect(get_editor(view).state.doc.toString()).toBe("新输入");
-
-    await act(async () => get_button_by_label(view, "agent_page.action.save_and_retry").click());
-    await act(async () => get_portal_button("app.action.confirm").click());
+    const user_edit = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--user .agent-message-actions button",
+      ),
+    ].find((button) => button.textContent === "编辑");
+    if (user_edit === undefined) throw new Error("缺少 user 编辑按钮");
+    await act(async () => user_edit.click());
+    const user_editor = get_editor(view);
+    const bottom_content = view.querySelector<HTMLElement>(
+      ".agent-composer:not(.agent-composer--inline) .cm-content",
+    );
+    if (bottom_content === null) throw new Error("缺少普通 Composer");
+    expect(EditorView.findFromDOM(bottom_content)?.state.doc.toString()).toBe("普通草稿");
+    await act(async () =>
+      user_editor.dispatch({
+        changes: { from: 0, to: user_editor.state.doc.length, insert: "新输入" },
+      }),
+    );
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
+        ?.click(),
+    );
     expect(reviseLatestRound).toHaveBeenCalledWith("user-write", {
       text: "新输入",
       attachments: [],
     });
+    expect(ordinary_input.replace_history).toHaveBeenCalledWith("原输入", "新输入");
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
 
     reviseLatestRound.mockClear();
-    await render_page({
-      entries,
-      reviseLatestRound,
-      input: {
-        ...input,
-        revision: input.revision + 1,
-        editing: { kind: "entry", entryId: "assistant-write", role: "assistant" },
-        read_draft: () => ({ text: "新输出", attachments: [] }),
-      },
-    });
-    await act(async () => get_button_by_label(view, "agent_page.action.save_edit").click());
+    const assistant_edit = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--assistant .agent-message-actions button",
+      ),
+    ].find((button) => button.textContent === "编辑");
+    if (assistant_edit === undefined) throw new Error("缺少 assistant 编辑按钮");
+    await act(async () => assistant_edit.click());
+    const assistant_editor = get_editor(view);
+    expect(view.querySelector(".agent-composer--inline .agent-composer__image-trigger")).toBeNull();
+    expect(view.querySelector(".agent-composer--inline .agent-composer__model-trigger")).toBeNull();
+    expect(
+      view.querySelector<HTMLButtonElement>(
+        ".agent-composer--inline .agent-composer__inline-submit",
+      )?.textContent,
+    ).toContain("保存修改");
+    await act(async () =>
+      assistant_editor.dispatch({
+        changes: { from: 0, to: assistant_editor.state.doc.length, insert: "新输出" },
+      }),
+    );
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
+        ?.click(),
+    );
     expect(reviseLatestRound).toHaveBeenCalledWith("assistant-write", {
       text: "新输出",
       attachments: [],
@@ -652,32 +693,43 @@ describe("AgentPage", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
-  it("输入修改受理失败时保留编辑内容并显示修改错误", async () => {
+  it("原位输入修改受理失败时保留编辑内容并显示修改错误", async () => {
     const reviseLatestRound = vi.fn(() => Promise.reject(new Error("offline")));
-    const input = build_state().input;
     const view = await render_page({
       entries: [user_entry("user-1", "原输入", "success", 0, 1)],
       reviseLatestRound,
-      input: {
-        ...input,
-        editing: { kind: "entry", entryId: "user-1", role: "user" },
-        read_draft: () => ({ text: "新输入", attachments: [] }),
-      },
     });
 
+    const edit = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--user .agent-message-actions button",
+      ),
+    ].find((button) => button.textContent === "编辑");
+    if (edit === undefined) throw new Error("缺少 user 编辑按钮");
+    await act(async () => edit.click());
+    const editor = get_editor(view);
     await act(async () => {
-      get_button_by_label(view, "agent_page.action.save_and_retry").click();
-      await vi.waitFor(() =>
-        expect(push_toast).toHaveBeenCalledWith("error", "消息修改失败，编辑内容已保留。"),
-      );
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: "新输入" },
+      });
     });
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
+        ?.click(),
+    );
+    await vi.waitFor(() =>
+      expect(view.querySelector(".agent-inline-editor__error")).not.toBeNull(),
+    );
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
+    expect(view.querySelector(".agent-inline-editor__error")?.textContent).toContain(
+      "消息修改失败",
+    );
   });
 
-  it("队列项复用 Composer 修改并调用队列更新入口", async () => {
+  it("队列项原位修改并调用队列更新入口", async () => {
     const updateQueuedMessage = vi.fn(async () => undefined);
-    const input = build_state().input;
     const queued = {
       id: "queue-1",
       text: "原排队消息",
@@ -688,14 +740,22 @@ describe("AgentPage", () => {
     const view = await render_page({
       inputQueue: { paused: false, canSendNow: true, items: [queued] },
       updateQueuedMessage,
-      input: {
-        ...input,
-        editing: { kind: "queue", itemId: queued.id },
-        read_draft: () => ({ text: "新排队消息", attachments: [] }),
-      },
     });
 
-    await act(async () => get_button_by_label(view, "agent_page.action.save_queue").click());
+    const edit = view.querySelector<HTMLButtonElement>('button[aria-label="编辑"]');
+    if (edit === null) throw new Error("缺少队列编辑按钮");
+    await act(async () => edit.click());
+    const editor = get_editor(view);
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: "新排队消息" },
+      }),
+    );
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>(".agent-composer--inline .agent-composer__inline-submit")
+        ?.click(),
+    );
 
     expect(updateQueuedMessage).toHaveBeenCalledWith("queue-1", {
       text: "新排队消息",
@@ -717,12 +777,12 @@ describe("AgentPage", () => {
 
     await act(async () => reset_button.click());
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
-    await act(async () => get_portal_button("app.action.cancel").click());
+    await act(async () => get_portal_cancel_button().click());
     expect(reset).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
 
     await act(async () => reset_button.click());
-    const confirm = get_portal_button("app.action.confirm");
+    const confirm = get_portal_action_button();
     await act(async () => {
       confirm.click();
       await Promise.resolve();
@@ -730,7 +790,7 @@ describe("AgentPage", () => {
     expect(reset).toHaveBeenCalledOnce();
     await render_page({ reset, command: "reset" });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
-    expect(get_portal_button("app.action.cancel").disabled).toBe(true);
+    expect(get_portal_cancel_button().disabled).toBe(true);
 
     await act(async () => resolve_reset());
     await act(async () =>
@@ -746,7 +806,7 @@ describe("AgentPage", () => {
     const reset_button = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
     if (reset_button === null) throw new Error("缺少新任务按钮");
     await act(async () => reset_button.click());
-    await act(async () => get_portal_button("app.action.confirm").click());
+    await act(async () => get_portal_action_button().click());
     expect(reset).toHaveBeenCalledOnce();
     expect(push_toast).toHaveBeenCalledWith("error", "新任务创建失败，请重试。");
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
@@ -802,13 +862,10 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     command: null,
     input: {
       revision: 0,
-      editing: null,
       read_draft: () => ({ text: "", attachments: [] }),
       write_draft: vi.fn(),
       read_history: () => [],
-      start_edit: vi.fn(),
-      start_queue_edit: vi.fn(),
-      cancel_edit: vi.fn(),
+      replace_history: vi.fn(),
     },
     send: vi.fn(async () => undefined),
     reviseLatestRound: vi.fn(async () => undefined),
@@ -847,7 +904,7 @@ function assistant_entry(id: string, text: string, status: AgentEntryStatus, cre
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
 }
 
-/** 构造足以触发副作用确认语义的成功 apply 条目。 */
+/** 构造最新轮次内已经成功落盘的 apply 条目。 */
 function workspace_apply_entry(id: string) {
   return {
     kind: "tool_call" as const,
@@ -888,11 +945,18 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-function get_portal_button(label: string): HTMLButtonElement {
+function get_portal_action_button(): HTMLButtonElement {
   const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
-  const button = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-    (candidate) => candidate.textContent === label,
+  const button = dialog?.querySelector<HTMLButtonElement>(
+    '[data-slot="alert-dialog-primary-action"]',
   );
-  if (button === undefined) throw new Error(`缺少弹窗按钮：${label}`);
+  if (button === null || button === undefined) throw new Error("缺少弹窗确认按钮");
+  return button;
+}
+
+function get_portal_cancel_button(): HTMLButtonElement {
+  const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
+  const button = dialog?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]');
+  if (button === null || button === undefined) throw new Error("缺少弹窗取消按钮");
   return button;
 }

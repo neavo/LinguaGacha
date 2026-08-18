@@ -10,9 +10,6 @@ export const de_de_custom_prompt_page = {
   },
 
   confirm: {
-    enable_after_import: {
-      description: "Eigene Prompts aktivieren …?",
-    },
     reset: {
       description: "Daten wirklich zurücksetzen …?",
     },

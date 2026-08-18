@@ -1,4 +1,12 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
 import { ArrowDown, Bot, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
@@ -6,6 +14,7 @@ import {
   format_agent_skill_reference,
   type AgentEntry,
   type AgentMessageInput,
+  type AgentQueuedInput,
 } from "@shared/agent";
 import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -18,10 +27,11 @@ import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-
 import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { Card } from "@frontend/shadcn/card";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
+import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
@@ -42,16 +52,8 @@ const FEATURED_AGENT_SKILLS = [
     Icon: ScanText,
   },
 ] as const;
-/** 外层会话滚动与详情滚动共用暂停集合，此固定键代表外层容器。 */
-const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
 /** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
 const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
-/** 页面只保留决定失败反馈与副作用确认所需的修订意图。 */
-type RoundRevision = {
-  entryId: string;
-  message: AgentMessageInput;
-  intent: "retry" | "edit";
-};
 
 /** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
 function normalize_agent_terms(
@@ -72,11 +74,19 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const conversation_ref = useRef<HTMLElement | null>(null);
+  const conversation_content_ref = useRef<HTMLDivElement | null>(null);
+  const conversation_follow_paused_ref = useRef(false); // 用户接管必须先于 React state 提交阻断布局归底
   const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const [follow_holds, set_follow_holds] = useState<ReadonlySet<string>>(() => new Set());
-  const [resume_revision, set_resume_revision] = useState(0); // 统一通知所有展开详情回到各自底端
+  const [conversation_follow_paused, set_conversation_follow_paused] = useState(false);
+  // 这里只聚合全局归底入口，不允许思考块暂停反向控制外层跟随。
+  const [paused_thinking_ids, set_paused_thinking_ids] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // 单调修订只广播一次性用户命令，不承载任何滚动容器的持续状态。
+  const [return_latest_revision, set_return_latest_revision] = useState(0);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
-  const [pending_round_revision, set_pending_round_revision] = useState<RoundRevision | null>(null);
+  /** 页面只允许一个历史或队列目标进入原位编辑，普通 Composer 始终保持独立草稿。 */
+  const [active_inline_edit, set_active_inline_edit] = useState<AgentInlineEditTarget | null>(null);
   const handle_terms_load_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.terms_load"));
   }, [push_toast, t]);
@@ -119,18 +129,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue =
     !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
-  // 副作用确认只检查最新轮次；更早轮次不会被当前重试或输入修改再次执行。
-  const latest_user_index = agent.entries.findLastIndex(
-    (entry) => entry.kind === "user_message" && entry.delivery === "round",
-  );
-  const latest_round_applied_workspace = agent.entries.some(
-    (entry, index) =>
-      index > latest_user_index &&
-      entry.kind === "tool_call" &&
-      entry.toolName === "workspace_apply" &&
-      entry.status === "success",
-  );
-  const follow_paused = follow_holds.size > 0;
+  const return_latest_available = conversation_follow_paused || paused_thinking_ids.size > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
@@ -142,9 +141,19 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           ? "runtime_busy"
           : null;
 
-  /** 每个滚动容器只维护自己的暂停原因；任一原因存在时外层都不得抢回底端。 */
-  const set_follow_hold = useCallback((id: string, paused: boolean): void => {
-    set_follow_holds((current) => {
+  // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
+  useEffect(() => {
+    if (active_inline_edit === null) return;
+    const target_exists =
+      active_inline_edit.kind === "queue"
+        ? agent.inputQueue.items.some((item) => item.id === active_inline_edit.itemId)
+        : agent.entries.some((entry) => entry.id === active_inline_edit.entryId);
+    if (!target_exists) set_active_inline_edit(null);
+  }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
+
+  /** 思考块暂停只决定全局归底入口是否可用，不参与外层跟随裁决。 */
+  const set_thinking_follow_pause = useCallback((id: string, paused: boolean): void => {
+    set_paused_thinking_ids((current) => {
       if (current.has(id) === paused) return current;
       const next = new Set(current);
       if (paused) next.add(id);
@@ -153,18 +162,29 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   }, []);
 
-  /** 显式回到底端会清除外层与所有详情暂停，并触发详情自身归底。 */
-  const follow_latest = useCallback((): void => {
-    set_follow_holds(new Set());
-    set_resume_revision((current) => current + 1);
+  /** 显式归底同步恢复外层，并广播所有思考详情清除各自阅读暂停。 */
+  const return_to_latest = useCallback((): void => {
+    conversation_follow_paused_ref.current = false;
+    set_conversation_follow_paused(false);
+    set_paused_thinking_ids(new Set());
+    set_return_latest_revision((current) => current + 1);
+    const conversation = conversation_ref.current;
+    if (conversation !== null) conversation.scrollTop = conversation.scrollHeight;
   }, []);
 
-  // 新条目与详情高度变化只在没有阅读暂停时即时归底；CSS 锚点继续承接异步布局变化。
+  // 内容尺寸变化统一由 JS 归底；关闭原生锚定后不会再有第二个滚动写入者。
   useLayoutEffect(() => {
+    const content = conversation_content_ref.current;
     const conversation = conversation_ref.current;
-    if (conversation === null || follow_paused) return;
-    conversation.scrollTop = conversation.scrollHeight;
-  }, [agent.entries, agent.state, follow_paused, resume_revision]);
+    if (content === null || conversation === null) return;
+    const observer = new ResizeObserver(() => {
+      if (!conversation_follow_paused_ref.current) {
+        conversation.scrollTop = conversation.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
 
   /** 命令失败只投影为页面 Toast，不写回共享会话状态。 */
   const show_command_error = useCallback(
@@ -174,84 +194,151 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [push_toast, t],
   );
 
-  /** 真正执行会重试模型的轮次操作；确认弹窗只决定何时进入这个唯一入口。 */
-  const execute_round_revision = async (revision: RoundRevision): Promise<void> => {
-    follow_latest();
-    try {
-      await agent.reviseLatestRound(revision.entryId, revision.message);
-    } catch (error) {
+  /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
+  const submit_message = (message: AgentMessageInput): void => {
+    if (active_inline_edit !== null) return;
+    return_to_latest();
+    const request = can_continue_queue
+      ? agent.continue(
+          message.text === "" && message.attachments.length === 0 ? undefined : message,
+        )
+      : agent.send(message);
+    void request.catch((error: unknown) => {
       show_command_error(
         error,
-        revision.intent === "retry" ? "agent_page.error.retry" : "agent_page.error.edit",
+        can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
       );
-    } finally {
-      set_pending_round_revision(null);
-    }
-  };
-
-  /** 普通发送与当前编辑共用唯一 Composer；失败时共享输入会话保留编辑缓冲。 */
-  const submit_message = (message: AgentMessageInput): void => {
-    const editing = agent.input.editing;
-    if (editing === null) {
-      follow_latest();
-      const request = can_continue_queue
-        ? agent.continue(
-            message.text === "" && message.attachments.length === 0 ? undefined : message,
-          )
-        : agent.send(message);
-      void request.catch((error: unknown) => {
-        show_command_error(
-          error,
-          can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
-        );
-      });
-      return;
-    }
-    if (editing.kind === "queue") {
-      void agent.updateQueuedMessage(editing.itemId, message).catch((error: unknown) => {
-        show_command_error(error, "agent_page.error.queue_update");
-      });
-      return;
-    }
-    if (editing.role === "user" && latest_round_applied_workspace) {
-      set_pending_round_revision({
-        entryId: editing.entryId,
-        message: structuredClone(message),
-        intent: "edit",
-      });
-      return;
-    }
-    if (editing.role === "user") {
-      void execute_round_revision({ entryId: editing.entryId, message, intent: "edit" });
-      return;
-    }
-    follow_latest();
-    void agent.reviseLatestRound(editing.entryId, message).catch((error: unknown) => {
-      show_command_error(error, "agent_page.error.edit");
     });
   };
 
-  /** 重试只是把原输入作为修订提交，不再维护独立 retry 协议。 */
-  const retry_latest_round = (user: Extract<AgentEntry, { kind: "user_message" }>): void => {
-    const revision: RoundRevision = {
-      entryId: user.id,
-      message: { text: user.text, attachments: structuredClone(user.attachments) },
-      intent: "retry",
-    };
-    if (latest_round_applied_workspace) {
-      set_pending_round_revision(revision);
-      return;
-    }
-    void execute_round_revision(revision);
-  };
-
-  /** 修改入口只切换共享输入会话，再把焦点交还唯一 Composer。 */
+  /** 历史消息编辑只建立独立原位目标，不改写普通 Composer 草稿。 */
   const start_edit = (
     entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>,
   ): void => {
-    agent.input.start_edit(entry);
-    composer_ref.current?.focus();
+    set_active_inline_edit(
+      entry.kind === "user_message"
+        ? {
+            kind: "entry",
+            entryId: entry.id,
+            role: "user",
+            message: {
+              text: entry.text,
+              attachments: structuredClone(entry.attachments),
+            },
+          }
+        : {
+            kind: "entry",
+            entryId: entry.id,
+            role: "assistant",
+            message: {
+              text: entry.parts
+                .filter((part) => part.kind === "text")
+                .map((part) => part.text)
+                .join(""),
+              attachments: [],
+            },
+          },
+    );
   };
+
+  /** 原位修订统一走现有后端命令；成功后由编辑器关闭自身。 */
+  const save_inline_edit = useCallback(
+    async (message: AgentMessageInput): Promise<void> => {
+      const target = active_inline_edit;
+      if (target === null) return;
+      if (target.kind === "queue") {
+        await agent.updateQueuedMessage(target.itemId, message);
+        agent.input.replace_history(target.message.text, message.text);
+        return;
+      }
+      return_to_latest();
+      await agent.reviseLatestRound(target.entryId, message);
+      if (target.role === "user") {
+        agent.input.replace_history(target.message.text, message.text);
+      }
+    },
+    [active_inline_edit, agent, return_to_latest],
+  );
+
+  const cancel_inline_edit = useCallback((): void => {
+    set_active_inline_edit(null);
+  }, []);
+
+  /** 后端受理成功后关闭原位编辑器；失败路径由编辑器自行保留草稿。 */
+  const complete_inline_edit = useCallback(
+    (_message: AgentMessageInput): void => cancel_inline_edit(),
+    [cancel_inline_edit],
+  );
+
+  const handle_inline_image_error = useCallback((): void => {
+    push_toast("error", t("agent_page.error.image"));
+  }, [push_toast, t]);
+
+  /** 时间线与队列只决定编辑目标，共享同一套编辑器装配。 */
+  const render_inline_editor = useCallback(
+    (target: AgentInlineEditTarget): JSX.Element => {
+      return (
+        <AgentInlineEditor
+          target={target}
+          skills={agent.skills}
+          terms={available_terms}
+          term_hit_counts={term_hit_counts}
+          command={agent.command}
+          model_selection={model_selection}
+          unavailable_reason={unavailable_reason}
+          on_save={save_inline_edit}
+          on_saved={complete_inline_edit}
+          on_cancel={cancel_inline_edit}
+          on_image_error={handle_inline_image_error}
+        />
+      );
+    },
+    [
+      agent.command,
+      agent.skills,
+      available_terms,
+      cancel_inline_edit,
+      complete_inline_edit,
+      handle_inline_image_error,
+      model_selection,
+      save_inline_edit,
+      term_hit_counts,
+      unavailable_reason,
+    ],
+  );
+
+  const render_entry_editor = useCallback(
+    (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => {
+      if (
+        active_inline_edit?.kind !== "entry" ||
+        active_inline_edit.entryId !== entry.id ||
+        active_inline_edit.role !== (entry.kind === "user_message" ? "user" : "assistant")
+      ) {
+        return null;
+      }
+      return render_inline_editor(active_inline_edit);
+    },
+    [active_inline_edit, render_inline_editor],
+  );
+
+  /** 队列目标复用同一原位编辑器。 */
+  const start_queue_edit = (item: AgentQueuedInput): void => {
+    set_active_inline_edit({
+      kind: "queue",
+      itemId: item.id,
+      message: { text: item.text, attachments: structuredClone(item.attachments) },
+    });
+  };
+
+  const render_queue_editor = useCallback(
+    (item: AgentQueuedInput) => {
+      if (active_inline_edit?.kind !== "queue" || active_inline_edit.itemId !== item.id) {
+        return null;
+      }
+      return render_inline_editor(active_inline_edit);
+    },
+    [active_inline_edit, render_inline_editor],
+  );
 
   /** 队列窄命令共享页面 Toast 映射，不污染会话状态。 */
   const run_queue_command = (command: () => Promise<void>, fallback_key: LocaleKey): void => {
@@ -269,7 +356,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
   /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
   const continue_latest_round = (): void => {
-    follow_latest();
+    return_to_latest();
     void agent.continue().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.continue");
     });
@@ -282,117 +369,118 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
         onScroll={(event: UIEvent<HTMLElement>) => {
-          set_follow_hold(AGENT_CONVERSATION_FOLLOW_HOLD, !is_at_scroll_end(event.currentTarget));
+          const paused = !is_at_scroll_end(event.currentTarget);
+          conversation_follow_paused_ref.current = paused;
+          set_conversation_follow_paused(paused);
         }}
       >
-        {agent.transport === "disconnected" && (
-          <div className="agent-page__connection-status" role="status">
-            <WifiOff aria-hidden="true" />
-            <span>{t("agent_page.error.connection")}</span>
-          </div>
-        )}
-        {agent.transport === "restore_failed" ? (
-          <div className="agent-page__empty" role="alert">
-            <div className="agent-page__empty-intro">
-              <Bot className="agent-page__empty-icon" aria-hidden="true" />
-              <p>{t("agent_page.error.restore")}</p>
-              <AppButton type="button" size="sm" variant="outline" onClick={agent.reconnect}>
-                {t("app.action.retry")}
-              </AppButton>
+        <div ref={conversation_content_ref} className="agent-page__conversation-content">
+          {agent.transport === "disconnected" && (
+            <div className="agent-page__connection-status" role="status">
+              <WifiOff aria-hidden="true" />
+              <span>{t("agent_page.error.connection")}</span>
             </div>
-          </div>
-        ) : agent_restoring ? (
-          <div className="agent-page__empty" role="status">
-            <div className="agent-page__empty-intro">
-              <Bot className="agent-page__empty-icon" aria-hidden="true" />
-              <p>{t("agent_page.loading")}</p>
+          )}
+          {agent.transport === "restore_failed" ? (
+            <div className="agent-page__empty" role="alert">
+              <div className="agent-page__empty-intro">
+                <Bot className="agent-page__empty-icon" aria-hidden="true" />
+                <p>{t("agent_page.error.restore")}</p>
+                <AppButton type="button" size="sm" variant="outline" onClick={agent.reconnect}>
+                  {t("app.action.retry")}
+                </AppButton>
+              </div>
             </div>
-          </div>
-        ) : agent.entries.length === 0 ? (
-          <div className="agent-page__empty">
-            <div className="agent-page__empty-intro">
-              <Bot className="agent-page__empty-icon" aria-hidden="true" />
-              <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
+          ) : agent_restoring ? (
+            <div className="agent-page__empty" role="status">
+              <div className="agent-page__empty-intro">
+                <Bot className="agent-page__empty-icon" aria-hidden="true" />
+                <p>{t("agent_page.loading")}</p>
+              </div>
             </div>
-            <div className="agent-page__suggestions">
-              <Card
-                asChild
-                className="agent-page__suggestion"
-                onClick={() =>
-                  composer_ref.current?.write_draft(t("agent_page.empty.suggestions.capabilities"))
-                }
-              >
-                <button type="button">
-                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
-                  <span className="agent-page__suggestion-label">
-                    {t("agent_page.empty.suggestions.capabilities")}
-                  </span>
-                </button>
-              </Card>
-              {FEATURED_AGENT_SKILLS.filter((featured) =>
-                agent.skills.some((skill) => skill.name === featured.name),
-              ).map(({ name, suggestionKey, Icon }) => (
+          ) : agent.entries.length === 0 ? (
+            <div className="agent-page__empty">
+              <div className="agent-page__empty-intro">
+                <Bot className="agent-page__empty-icon" aria-hidden="true" />
+                <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
+              </div>
+              <div className="agent-page__suggestions">
                 <Card
-                  key={name}
                   asChild
                   className="agent-page__suggestion"
                   onClick={() =>
                     composer_ref.current?.write_draft(
-                      `${t(suggestionKey)} ${format_agent_skill_reference(name)}`,
+                      t("agent_page.empty.suggestions.capabilities"),
                     )
                   }
                 >
                   <button type="button">
-                    <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
+                    <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
                     <span className="agent-page__suggestion-label">
-                      {t(suggestionKey)}{" "}
-                      <span className="agent-mention-token">
-                        <span>{format_agent_skill_reference(name)}</span>
-                      </span>
+                      {t("agent_page.empty.suggestions.capabilities")}
                     </span>
                   </button>
                 </Card>
-              ))}
+                {FEATURED_AGENT_SKILLS.filter((featured) =>
+                  agent.skills.some((skill) => skill.name === featured.name),
+                ).map(({ name, suggestionKey, Icon }) => (
+                  <Card
+                    key={name}
+                    asChild
+                    className="agent-page__suggestion"
+                    onClick={() =>
+                      composer_ref.current?.write_draft(
+                        `${t(suggestionKey)} ${format_agent_skill_reference(name)}`,
+                      )
+                    }
+                  >
+                    <button type="button">
+                      <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
+                      <span className="agent-page__suggestion-label">
+                        {t(suggestionKey)}{" "}
+                        <span className="agent-mention-token">
+                          <span>{format_agent_skill_reference(name)}</span>
+                        </span>
+                      </span>
+                    </button>
+                  </Card>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <AgentTimeline
-            entries={agent.entries}
-            mention_tokens={mention_tokens}
-            resume_revision={resume_revision}
-            on_follow_hold_change={set_follow_hold}
-            on_retry={retry_latest_round}
-            on_continue={continue_latest_round}
-            on_edit={start_edit}
-            on_add_annotation={(annotation) =>
-              composer_ref.current?.add_response_annotation(annotation)
-            }
-            revision_disabled={
-              agent.command !== null ||
-              agent.input.editing !== null ||
-              is_running ||
-              compacting ||
-              compaction_failed ||
-              unavailable_reason !== null
-            }
-            continue_disabled={
-              agent.command !== null || is_running || compacting || unavailable_reason !== null
-            }
-            annotation_disabled={
-              agent.command !== null || agent.input.editing !== null || unavailable_reason !== null
-            }
-          />
-        )}
-        <div
-          className="agent-page__scroll-anchor"
-          data-enabled={!follow_paused}
-          aria-hidden="true"
-        />
+          ) : (
+            <AgentTimeline
+              entries={agent.entries}
+              mention_tokens={mention_tokens}
+              return_latest_revision={return_latest_revision}
+              on_thinking_follow_change={set_thinking_follow_pause}
+              on_continue={continue_latest_round}
+              on_edit={start_edit}
+              render_entry_editor={render_entry_editor}
+              on_add_annotation={(annotation) =>
+                composer_ref.current?.add_response_annotation(annotation)
+              }
+              revision_disabled={
+                agent.command !== null ||
+                active_inline_edit !== null ||
+                is_running ||
+                compacting ||
+                compaction_failed ||
+                unavailable_reason !== null
+              }
+              continue_disabled={
+                agent.command !== null || is_running || compacting || unavailable_reason !== null
+              }
+              annotation_disabled={
+                agent.command !== null || active_inline_edit !== null || unavailable_reason !== null
+              }
+            />
+          )}
+        </div>
       </section>
 
-      {follow_paused && (
+      {return_latest_available && (
         <div className="agent-page__follow-control">
-          <AppButton type="button" size="xs" variant="secondary" onClick={follow_latest}>
+          <AppButton type="button" size="xs" variant="secondary" onClick={return_to_latest}>
             <ArrowDown aria-hidden="true" />
             {t("agent_page.action.return_latest")}
           </AppButton>
@@ -404,12 +492,17 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         <AgentInputQueue
           queue={agent.inputQueue}
           disabled={
-            agent.command !== null || unavailable_reason !== null || compacting || compaction_failed
+            agent.command !== null ||
+            active_inline_edit !== null ||
+            unavailable_reason !== null ||
+            compacting ||
+            compaction_failed
           }
-          on_edit={(item) => {
-            agent.input.start_queue_edit(item);
-            composer_ref.current?.focus();
-          }}
+          active_edit_item_id={
+            active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
+          }
+          render_item_editor={render_queue_editor}
+          on_edit={start_queue_edit}
           on_delete={(id) =>
             run_queue_command(() => agent.deleteQueuedMessage(id), "agent_page.error.queue_delete")
           }
@@ -425,6 +518,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         />
         <AgentComposer
           ref={composer_ref}
+          locked={active_inline_edit !== null}
           skills={agent.skills}
           terms={available_terms}
           term_hit_counts={term_hit_counts}
@@ -445,18 +539,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           on_reset={() => set_reset_dialog_open(true)}
         />
       </div>
-      <AppAlertDialog
-        open={pending_round_revision !== null}
-        description={t("agent_page.confirm.retry_after_workspace_apply")}
-        submitting={agent.command === "revise"}
-        onConfirm={async () => {
-          if (pending_round_revision !== null) {
-            await execute_round_revision(pending_round_revision);
-          }
-        }}
-        onClose={() => set_pending_round_revision(null)}
-      />
-      <AppAlertDialog
+      <AppConfirmDialog
         open={reset_dialog_open}
         description={t("agent_page.confirm.new_task")}
         submitting={agent.command === "reset"}

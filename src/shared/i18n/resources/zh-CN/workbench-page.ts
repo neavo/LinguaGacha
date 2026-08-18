@@ -136,8 +136,8 @@ export const zh_cn_workbench_page = {
     },
     inherit_import: {
       description: "是否使用当前项目中已完成的翻译文本填充新文件 …?",
-      confirm: "填充",
-      cancel: "不填充",
+      fill: "填充",
+      do_not_fill: "不填充",
     },
     reset: {
       description: "是否确认重置该文件的翻译状态 …?",

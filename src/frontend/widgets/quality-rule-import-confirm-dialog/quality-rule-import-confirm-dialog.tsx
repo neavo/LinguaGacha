@@ -1,6 +1,6 @@
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppActionDialog } from "@frontend/widgets/app-alert-dialog";
 
 type QualityRuleImportConfirmDialogProps = {
   state: QualityRuleImportConfirmState;
@@ -19,15 +19,16 @@ export function QualityRuleImportConfirmDialog(
   );
 
   return (
-    <AppAlertDialog
+    <AppActionDialog
       open={props.state.open}
       description={description}
       submitting={props.state.submitting}
-      cancelLabel={t("app.action.cancel")}
-      secondaryLabel={t("app.action.skip")}
-      confirmLabel={t("app.action.overwrite")}
-      onSecondary={props.on_skip}
-      onConfirm={props.on_overwrite}
+      primaryAction={{
+        label: t("app.action.overwrite"),
+        onSelect: props.on_overwrite,
+        variant: "destructive",
+      }}
+      secondaryAction={{ label: t("app.action.skip"), onSelect: props.on_skip }}
       onClose={props.on_close}
     />
   );

@@ -3,7 +3,7 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { TextPreserveCommandBar } from "@frontend/pages/text-preserve-page/components/text-preserve-command-bar";
-import { TextPreserveConfirmDialog } from "@frontend/pages/text-preserve-page/components/text-preserve-confirm-dialog";
+import { QualityRuleConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-confirm-dialog";
 import { TextPreserveEditDialog } from "@frontend/pages/text-preserve-page/components/text-preserve-edit-dialog";
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import { TextPreserveTable } from "@frontend/pages/text-preserve-page/components/text-preserve-table";
@@ -142,7 +142,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         on_save={page_state.save_dialog_entry}
         on_close={page_state.request_close_dialog}
       />
-      <TextPreserveConfirmDialog
+      <QualityRuleConfirmDialog
         state={page_state.confirm_state}
         on_confirm={() => {
           void page_state.confirm_pending_action();

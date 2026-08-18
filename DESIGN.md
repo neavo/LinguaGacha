@@ -119,6 +119,13 @@ components:
     rounded: "{rounded.button}"
     height: "{spacing.control-height}"
     padding: "0 10px"
+  button-destructive:
+    backgroundColor: "color-mix(in srgb, {colors.failure} 10%, transparent)"
+    textColor: "{colors.failure}"
+    borderColor: "color-mix(in srgb, {colors.failure} 30%, transparent)"
+    rounded: "{rounded.button}"
+    height: "{spacing.control-height}"
+    padding: "0 10px"
   button-toolbar:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
@@ -320,7 +327,7 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ## Elevation & Depth
 
-LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻壳层先靠背景、边框与分割线建立深度，卡片只获得环境式轻抬；Agent 工具、思考、上下文压缩和重试等行内过程依靠弱色面、细边界与状态标记分层，不额外浮起。明显阴影与模糊只属于弹层、拖放和模态反馈。暗色主题使用更深、更集中于黑色的阴影，但不改变层级语义。
+LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻壳层先靠背景、边框与分割线建立深度，卡片只获得环境式轻抬；Agent 工具、思考、上下文压缩和失败恢复等行内过程依靠弱色面、细边界与状态标记分层，不额外浮起。明显阴影与模糊只属于弹层、拖放和模态反馈。暗色主题使用更深、更集中于黑色的阴影，但不改变层级语义。
 
 ### Shadow Vocabulary
 
@@ -359,7 +366,13 @@ LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻�
 - **Shape:** 应用按钮默认高 32px、4px 圆角、13px 字号和 10px 水平内边距；标题栏按钮为 32px，工具栏按钮为 36px、12px 字号和 8px 水平内边距。
 - **Primary:** 暖橙背景配暖米文字，只用于主操作。
 - **Hover / Focus:** hover 轻微改变当前语义面；focus-visible 使用 ring 边框和 3px 半透明焦点环；非弹出型按钮 active 下压 1px。
-- **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底和失败红文字，不做满屏警报式高饱和填充。
+- **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
+
+### Dialogs
+
+- **Confirmation:** 正文使用“是否确认……”时固定显示“取消 / 确认”，确认按钮使用主题色，不按操作对象改写文案或颜色。
+- **Decision:** 只有存在多个真实处理路径时才使用动作模态窗；标题默认沿用“确认”，只有确有独立标题时才显式提供，按钮直接命名“跳过、覆盖、填充、跳转”等结果，破坏性选项可以使用 failure 语义。
+- **Necessity:** 不能提供恢复、替代或其它有效选择的风险提示不得阻断用户，交由当前工作流直接处理并使用既有错误反馈。
 
 ### Chips
 
@@ -417,13 +430,13 @@ LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻�
 - **Frame:** 对话页填满工作区并使用 4px 圆角、1px 边界和 card/background 混合底面；时间线在内部滚动，消息列最大宽 880px，水平内边距 24px。
 - **Message Roles:** 用户消息右对齐、最大宽 75%，使用紧凑 muted 气泡；暗色主题可混入 22% 主色。助手回答保持无外框的开放 Markdown，不配头像列或对称气泡。
 - **Markdown:** 正文使用 13px / 1.65 并填满 880px 消息列，不对子元素二次限宽；一级、二级标题复用 16px Headline 与 14px Title，三级到六级标题使用紧凑 13px Body；代码、表格和 Mermaid 图使用 popover 面与 1px 边界承载。带显式语言标记的普通代码块在顶边显示原始标记的弱层级语言标签，不推断或维护别名映射；完整消息使用作用域化语法高亮，流式、无语言、未知语言和 Mermaid 围栏保持可复制的纯文本回退。
-- **Process Entries:** 普通工具、思考、上下文压缩与重试行保持紧凑、可扫描的状态语义。动态任务进度不作为普通工具进入历史信息流，只在输入器上方的紧凑状态条展示队首；进度标签左对齐、队首居中并允许截断、余项计数右对齐，整条触发的 Tooltip 完整承载全部待办。运行态使用暖橙弧段圆环，减少动态效果时保留弧段但停止旋转。
+- **Process Entries:** 普通工具、思考、上下文压缩与失败恢复行保持紧凑、可扫描的状态语义。动态任务进度不作为普通工具进入历史信息流，只在输入器上方的紧凑状态条展示队首；进度标签左对齐、队首居中并允许截断、余项计数右对齐，整条触发的 Tooltip 完整承载全部待办。运行态使用暖橙弧段圆环，减少动态效果时保留弧段但停止旋转。
 
 ### Agent Composer
 
 - **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，沿用输入器的既有外边距并保持密集间距，状态条空时不占位；输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距。
 - **Editor:** CodeMirror 输入区最小高 64px、最大高 140px、13px / 1.5，超出后内部滚动；页脚最小高 24px，承接附件、模型、思考等级、上下文用量和发送操作。
-- **References / Attachments:** 技能与术语引用使用低透明暖橙 token，不退化为裸文本；图片附件为 72px 方形缩略图，移除按钮覆盖在右上角。
+- **References / Attachments:** 技能与术语引用使用低透明暖橙 token，不退化为裸文本；图片与响应批注附件共享中性外壳，分别使用方形缩略图和紧凑行。
 - **Focus / Menus:** focus-within 只把边界切换为主色；引用候选菜单使用 popover、覆盖层阴影和高亮行，图片拖入只在输入器内部显示虚线临时覆盖层。
 
 ### Command Bar
@@ -447,7 +460,7 @@ LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻�
 - **Do** 用暖橙表达主操作、选择轨、焦点、进度和关键状态线索。
 - **Do** 只在长内容阅读组件内部使用 880px 窄栏，表格、编辑器和页面壳层继续占满工作面。
 - **Do** 让日志、校对上下文、对话内容和工具载荷可选取，并把滚动约束在对应生产组件内部。
-- **Do** 让 Agent 的运行、成功、失败、压缩与重试同时拥有文字、结构和颜色证据。
+- **Do** 让 Agent 的运行、成功、失败、压缩与失败恢复同时拥有文字、结构和颜色证据。
 - **Do** 在新增页面样式时遵守 px-first：尺寸字面量用 px，line-height 用无单位数值，letter-spacing 用 em。
 - **Do** 为新增动效保留键盘可达性，并尊重系统减少动态效果偏好。
 - **Do** 运行 `npm run check` 检查页面层是否越权重定义全局 token 或使用 rem 尺寸字面量。

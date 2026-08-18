@@ -36,7 +36,7 @@ import { Toaster } from "@frontend/shadcn/sonner";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AppSidebar } from "@frontend/app/shell/app-sidebar";
 import { AppTitlebar } from "@frontend/app/shell/app-titlebar";
-import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
+import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { LogWindowPage } from "@frontend/pages/log-window-page/page";
 import {
   is_update_dialog_open,
@@ -581,7 +581,7 @@ function AppContent(): JSX.Element {
         </main>
       </SidebarProvider>
 
-      <AppAlertDialog
+      <AppActionDialog
         open={is_update_dialog_open(update_dialog_state)}
         description={
           update_release === null
@@ -593,13 +593,14 @@ function AppContent(): JSX.Element {
         submitting={is_update_dialog_submitting(update_dialog_state)}
         submittingLabel={resolve_update_confirm_label(update_dialog_state, t)}
         submittingIcon={update_dialog_state.phase === "launching"}
-        confirmLabel={resolve_update_confirm_label(update_dialog_state, t)}
-        cancelLabel={t("app.action.cancel")}
-        onConfirm={handle_confirm_update_dialog}
+        primaryAction={{
+          label: resolve_update_confirm_label(update_dialog_state, t),
+          onSelect: handle_confirm_update_dialog,
+        }}
         onClose={close_update_dialog}
       />
 
-      <AppAlertDialog
+      <AppConfirmDialog
         open={close_confirm_open}
         description={t("app.close_confirm.description")}
         submitting={close_confirm_submitting}

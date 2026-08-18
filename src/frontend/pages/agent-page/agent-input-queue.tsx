@@ -26,6 +26,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 type AgentInputQueueProps = {
   queue: AgentInputQueueSnapshot;
   disabled: boolean;
+  active_edit_item_id?: string | null;
+  render_item_editor?: (item: AgentQueuedInput) => ReactNode | null;
   on_edit: (item: AgentQueuedInput) => void;
   on_delete: (id: string) => void;
   on_reorder: (ids: readonly string[]) => void;
@@ -61,8 +63,13 @@ export function AgentInputQueue(props: AgentInputQueueProps): JSX.Element | null
               <AgentInputQueueItem
                 key={item.id}
                 item={item}
-                disabled={props.disabled}
+                disabled={
+                  props.disabled ||
+                  (props.active_edit_item_id !== undefined && props.active_edit_item_id !== null)
+                }
                 can_send_now={props.queue.canSendNow}
+                editing={props.active_edit_item_id === item.id}
+                render_editor={props.render_item_editor}
                 on_edit={props.on_edit}
                 on_delete={props.on_delete}
                 on_send_now={props.on_send_now}
@@ -80,6 +87,8 @@ function AgentInputQueueItem(props: {
   item: AgentQueuedInput;
   disabled: boolean;
   can_send_now: boolean;
+  editing: boolean;
+  render_editor?: (item: AgentQueuedInput) => ReactNode | null;
   on_edit: (item: AgentQueuedInput) => void;
   on_delete: (id: string) => void;
   on_send_now: (id: string) => void;
@@ -87,11 +96,27 @@ function AgentInputQueueItem(props: {
   const { t } = useI18n();
   // sending 只替换主操作内容；所有可变操作共用同一禁用事实。
   const sending = props.item.status === "sending";
-  const item_actions_disabled = props.disabled || sending;
+  // 编辑目标原位替换整行，避免第二个 Composer 继续占用队列操作位。
+  const editor = props.editing ? (props.render_editor?.(props.item) ?? null) : null;
+  const item_actions_disabled = props.disabled || sending || editor !== null;
   const sortable = useSortable({
     id: props.item.id,
     disabled: item_actions_disabled,
   });
+  if (editor !== null) {
+    return (
+      <li
+        ref={sortable.setNodeRef}
+        className="agent-input-queue__item agent-input-queue__item--editing"
+        style={{
+          transform: CSS.Transform.toString(sortable.transform),
+          transition: sortable.transition,
+        }}
+      >
+        {editor}
+      </li>
+    );
+  }
   const attachment_count = props.item.attachments.length;
   const preview = props.item.text || t("agent_page.queue.no_message_text");
   return (

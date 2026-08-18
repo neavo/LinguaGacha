@@ -172,6 +172,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     {t("preset_editor.action.rename")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
+                    variant="destructive"
                     disabled={props.readonly}
                     onSelect={() => {
                       props.on_request_delete(item);

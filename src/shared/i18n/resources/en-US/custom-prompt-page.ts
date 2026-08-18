@@ -10,9 +10,6 @@ export const en_us_custom_prompt_page = {
   },
 
   confirm: {
-    enable_after_import: {
-      description: "Enable custom prompts …?",
-    },
     reset: {
       description: "Confirm resetting data …?",
     },

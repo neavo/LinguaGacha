@@ -133,17 +133,9 @@ export function useCustomPromptPageState(
 
   const import_prompt_text = useCallback(
     async (next_text: string): Promise<boolean> => {
-      const previous_enabled = enabled;
-      const succeeded = await commit_prompt_text(next_text, "app.feedback.import_success");
-      if (succeeded && !previous_enabled) {
-        set_confirm_state({
-          kind: "enable-after-import",
-          submitting: false,
-        });
-      }
-      return succeeded;
+      return await commit_prompt_text(next_text, "app.feedback.import_success");
     },
-    [commit_prompt_text, enabled],
+    [commit_prompt_text],
   );
 
   const import_prompt_from_picker = useCallback(async (): Promise<void> => {
@@ -553,10 +545,6 @@ export function useCustomPromptPageState(
         }
         break;
       }
-      case "enable-after-import": {
-        succeeded = await update_enabled(true);
-        break;
-      }
     }
 
     if (succeeded) {
@@ -579,7 +567,6 @@ export function useCustomPromptPageState(
     readonly,
     save_preset,
     template.default_text,
-    update_enabled,
   ]);
 
   return {

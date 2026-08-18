@@ -3,7 +3,7 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { GlossaryCommandBar } from "@frontend/pages/glossary-page/components/glossary-command-bar";
-import { GlossaryConfirmDialog } from "@frontend/pages/glossary-page/components/glossary-confirm-dialog";
+import { QualityRuleConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-confirm-dialog";
 import { GlossaryEditDialog } from "@frontend/pages/glossary-page/components/glossary-edit-dialog";
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import type { GlossaryFilterScope } from "@frontend/pages/glossary-page/types";
@@ -140,7 +140,7 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
         on_save={glossary_page_state.save_dialog_entry}
         on_close={glossary_page_state.request_close_dialog}
       />
-      <GlossaryConfirmDialog
+      <QualityRuleConfirmDialog
         state={glossary_page_state.confirm_state}
         on_confirm={() => {
           void glossary_page_state.confirm_pending_action();

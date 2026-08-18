@@ -141,8 +141,8 @@ export const en_us_workbench_page = {
     },
     inherit_import: {
       description: "Use completed translations from the current project to fill the new files …?",
-      confirm: "Fill",
-      cancel: "Do Not Fill",
+      fill: "Fill",
+      do_not_fill: "Do Not Fill",
     },
     reset: {
       description: "Confirm resetting this file's translation status …?",

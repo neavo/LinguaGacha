@@ -8,6 +8,9 @@ type AppDropdownMenuContentProps = ComponentProps<typeof DropdownMenuPrimitive.C
   matchTriggerWidth?: boolean;
 };
 
+/** Radix 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
+const MENU_VIEWPORT_PADDING = 8;
+
 // 本文件只为 Radix 菜单原语补充应用级 data-slot、尺寸和视觉约定，不持有业务状态。
 function AppDropdownMenu(props: ComponentProps<typeof DropdownMenuPrimitive.Root>): JSX.Element {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -28,6 +31,7 @@ function AppDropdownMenuTrigger(
 function AppDropdownMenuContent({
   align = "center",
   className,
+  collisionPadding = MENU_VIEWPORT_PADDING,
   matchTriggerWidth = true,
   sideOffset = 4,
   ...props
@@ -36,6 +40,7 @@ function AppDropdownMenuContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
+        collisionPadding={collisionPadding}
         sideOffset={sideOffset}
         align={align}
         className={cn(
@@ -233,12 +238,14 @@ function AppDropdownMenuSubTrigger({
 
 function AppDropdownMenuSubContent({
   className,
+  collisionPadding = MENU_VIEWPORT_PADDING,
   sideOffset = 8,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.SubContent>): JSX.Element {
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
+      collisionPadding={collisionPadding}
       sideOffset={sideOffset}
       className={cn(
         "z-50 min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",

@@ -30,9 +30,15 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenuItem: (props: {
     children: ReactNode;
     disabled?: boolean;
+    variant?: string;
     onSelect?: () => void;
   }) => (
-    <button type="button" disabled={props.disabled} onClick={props.onSelect}>
+    <button
+      type="button"
+      data-variant={props.variant ?? "default"}
+      disabled={props.disabled}
+      onClick={props.onSelect}
+    >
       {props.children}
     </button>
   ),
@@ -105,7 +111,9 @@ describe("PresetMenu", () => {
       }
       find_button("preset_editor.action.set_default").click();
       find_button("preset_editor.action.rename").click();
-      find_button("preset_editor.action.delete").click();
+      const delete_button = find_button("preset_editor.action.delete");
+      expect(delete_button.dataset.variant).toBe("destructive");
+      delete_button.click();
       find_button("preset_editor.action.cancel_default").click();
     });
 

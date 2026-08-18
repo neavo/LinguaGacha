@@ -79,19 +79,13 @@ type AgentSessionStateView = {
   reconnect: () => void;
 };
 
-/** 跨路由保留完整输入事实；光标、菜单与历史索引仍由当前 Composer 持有。 */
+/** 跨路由保留普通 Composer 草稿与输入历史；行内修订草稿由目标组件短暂拥有。 */
 export type AgentInputSession = {
   revision: number;
-  editing:
-    | { kind: "entry"; entryId: string; role: "user" | "assistant" }
-    | { kind: "queue"; itemId: string }
-    | null;
   read_draft: () => AgentMessageInput;
   write_draft: (draft: AgentMessageInput) => void;
   read_history: () => readonly string[];
-  start_edit: (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => void;
-  start_queue_edit: (item: AgentQueuedInput) => void;
-  cancel_edit: () => void;
+  replace_history: (previous_text: string, next_text: string) => void;
 };
 
 /** 页面消费的完整 Agent 会话入口，输入事实与后端会话镜像共享同一生命周期。 */
@@ -107,7 +101,6 @@ const AgentSessionContext = createContext<AgentSessionController | null>(null);
  */
 function useAgentSessionState(
   on_message_accepted: (message: AgentMessageInput) => void,
-  on_edit_accepted: (message: AgentMessageInput) => void,
 ): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [transport, set_transport] = useState<AgentTransportState>("restoring");
@@ -252,18 +245,15 @@ function useAgentSessionState(
     );
   };
 
-  /** 队列修改复用消息规范化与统一命令回放，成功后退出共享编辑态。 */
+  /** 队列修改复用消息规范化与统一命令回放。 */
   const update_queued_message = async (id: string, message: AgentMessageInput): Promise<void> => {
     const normalized_message = normalize_agent_message_input(message);
     if (normalized_message === null) return;
-    await execute_command(
-      "queue_update",
-      () =>
-        api_fetch<AgentSessionSnapshot>("/api/agent/queue/update", {
-          id,
-          message: normalized_message,
-        }),
-      () => on_edit_accepted(normalized_message),
+    await execute_command("queue_update", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/queue/update", {
+        id,
+        message: normalized_message,
+      }),
     );
   };
 
@@ -298,14 +288,11 @@ function useAgentSessionState(
     }
     const normalized_message = normalize_agent_message_input(message);
     if (normalized_message === null) return;
-    await execute_command(
-      "revise",
-      () =>
-        api_fetch<AgentSessionSnapshot>("/api/agent/round/revise", {
-          entryId: entry_id,
-          message: normalized_message,
-        }),
-      () => on_edit_accepted(normalized_message),
+    await execute_command("revise", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/round/revise", {
+        entryId: entry_id,
+        message: normalized_message,
+      }),
     );
   };
 
@@ -372,63 +359,28 @@ function useAgentSessionState(
 
 /** 常驻拥有 Agent 传输镜像、命令和 renderer 私有输入会话，页面切换只替换消费者。 */
 export function AgentSessionProvider(props: { children: ReactNode }): JSX.Element {
-  // 草稿和历史用 ref 避免每次编辑重渲染整棵应用；revision 只通知受理后的原子清空。
+  // 普通草稿和输入历史跨路由保留；历史/队列修订拥有各自的行内草稿，不再占用这里的值。
   const draft_ref = useRef<AgentMessageInput>({ text: "", attachments: [] });
   const input_history_ref = useRef<string[] | null>(null);
   if (input_history_ref.current === null) {
     input_history_ref.current = read_agent_input_history(window.localStorage);
   }
   const [input_revision, set_input_revision] = useState(0);
-  const [editing, set_editing] = useState<AgentInputSession["editing"]>(null);
-  const saved_draft_ref = useRef<AgentMessageInput | null>(null); // 编辑期间只保存一次普通草稿
-  const edited_user_text_ref = useRef<string | null>(null); // user 与队列消息修改需要替换输入历史
 
   const read_draft = useCallback((): AgentMessageInput => draft_ref.current, []);
   const write_draft = useCallback((draft: AgentMessageInput): void => {
     draft_ref.current = draft;
   }, []);
   const read_history = useCallback((): readonly string[] => input_history_ref.current ?? [], []);
-  /** 结束编辑时原子恢复普通草稿；没有编辑会话时保持当前草稿不变。 */
-  const restore_saved_draft = useCallback((): void => {
-    const saved_draft = saved_draft_ref.current;
-    if (saved_draft === null) return;
-    draft_ref.current = saved_draft;
-    saved_draft_ref.current = null;
-    edited_user_text_ref.current = null;
-    set_editing(null);
-    set_input_revision((current) => current + 1);
+  /** 页面原位编辑成功后显式替换对应 user / 队列文本，不改变普通 Composer 草稿。 */
+  const replace_history = useCallback((previous_text: string, next_text: string): void => {
+    input_history_ref.current = replace_agent_input_history(
+      window.localStorage,
+      input_history_ref.current ?? [],
+      previous_text,
+      next_text,
+    );
   }, []);
-  /** 切换修改目标仍复用进入修改态前保存的同一份普通草稿。 */
-  const start_edit = useCallback<AgentInputSession["start_edit"]>((entry) => {
-    if (saved_draft_ref.current === null)
-      saved_draft_ref.current = structuredClone(draft_ref.current);
-    const role = entry.kind === "user_message" ? "user" : "assistant";
-    if (entry.kind === "user_message") {
-      edited_user_text_ref.current = entry.text;
-      draft_ref.current = { text: entry.text, attachments: structuredClone(entry.attachments) };
-    } else {
-      edited_user_text_ref.current = null;
-      draft_ref.current = {
-        text: entry.parts
-          .filter((part) => part.kind === "text")
-          .map((part) => part.text)
-          .join(""),
-        attachments: [],
-      };
-    }
-    set_editing({ kind: "entry", entryId: entry.id, role });
-    set_input_revision((current) => current + 1);
-  }, []);
-  /** 队列项复用唯一 Composer，并保留进入编辑前的普通草稿。 */
-  const start_queue_edit = useCallback<AgentInputSession["start_queue_edit"]>((item) => {
-    if (saved_draft_ref.current === null)
-      saved_draft_ref.current = structuredClone(draft_ref.current);
-    edited_user_text_ref.current = item.text;
-    draft_ref.current = { text: item.text, attachments: structuredClone(item.attachments) };
-    set_editing({ kind: "queue", itemId: item.id });
-    set_input_revision((current) => current + 1);
-  }, []);
-  const cancel_edit = useCallback((): void => restore_saved_draft(), [restore_saved_draft]);
   /** 普通消息受理后更新辅助历史并清空唯一草稿。 */
   const accept_message = useCallback((message: AgentMessageInput): void => {
     if (message.text !== "") {
@@ -442,57 +394,17 @@ export function AgentSessionProvider(props: { children: ReactNode }): JSX.Elemen
     set_input_revision((current) => current + 1);
   }, []);
 
-  /** user 与队列消息修改替换输入历史；assistant 只退出共享编辑态。 */
-  const accept_edit = useCallback(
-    (message: AgentMessageInput): void => {
-      const previous = edited_user_text_ref.current;
-      if (previous !== null) {
-        input_history_ref.current = replace_agent_input_history(
-          window.localStorage,
-          input_history_ref.current ?? [],
-          previous,
-          message.text,
-        );
-      }
-      restore_saved_draft();
-    },
-    [restore_saved_draft],
-  );
-
-  const session = useAgentSessionState(accept_message, accept_edit);
-  // 后端替换活动历史后，旧目标消失即代表修改已被其它入口受理或会话已重置。
-  useEffect(() => {
-    const target_exists =
-      editing?.kind === "queue"
-        ? session.inputQueue.items.some((item) => item.id === editing.itemId)
-        : editing?.kind === "entry"
-          ? session.entries.some((entry) => entry.id === editing.entryId)
-          : true;
-    if (!target_exists) {
-      restore_saved_draft();
-    }
-  }, [editing, restore_saved_draft, session.entries, session.inputQueue.items]);
+  /** 后端会话镜像与跨路由普通草稿共享生命周期；历史修订草稿由行内编辑器拥有。 */
+  const session = useAgentSessionState(accept_message);
   const input = useMemo<AgentInputSession>(
     () => ({
       revision: input_revision,
-      editing,
       read_draft,
       write_draft,
       read_history,
-      start_edit,
-      start_queue_edit,
-      cancel_edit,
+      replace_history,
     }),
-    [
-      cancel_edit,
-      editing,
-      input_revision,
-      read_draft,
-      read_history,
-      start_edit,
-      start_queue_edit,
-      write_draft,
-    ],
+    [input_revision, read_draft, read_history, replace_history, write_draft],
   );
 
   return (

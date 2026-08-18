@@ -209,7 +209,6 @@ describe("AgentSessionProvider", () => {
     });
     expect(latest.inputQueue).toEqual({ paused: true, canSendNow: true, items: [item] });
     latest.input.write_draft({ text: "普通草稿", attachments: [] });
-    act(() => latest.input.start_queue_edit(item));
 
     desktop_api_mocks.api_fetch.mockResolvedValue(
       agent_snapshot({ inputQueue: { paused: false, canSendNow: false, items: [] } }),
@@ -227,7 +226,7 @@ describe("AgentSessionProvider", () => {
       ["/api/agent/queue/send", { id: item.id }],
     ]);
     expect(latest.input.read_draft()).toEqual({ text: "普通草稿", attachments: [] });
-    expect(latest.input.read_history()).toEqual(["修改后"]);
+    expect(latest.input.read_history()).toEqual([]);
   });
 
   it("运行中仍受理普通发送并在 ack 后清空草稿", async () => {
@@ -789,7 +788,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.command).toBeNull();
   });
 
-  it("user 修改成功后替换输入历史并恢复此前普通草稿", async () => {
+  it("历史修订不占用普通草稿，输入历史由编辑器成功回写", async () => {
     window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["旧消息"]));
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({ entries: [user_entry("user-1", "旧消息", ["old-image"])] }),
@@ -802,13 +801,6 @@ describe("AgentSessionProvider", () => {
     await wait_for(() => expect(latest.transport).toBe("ready"));
     latest.input.write_draft({ text: "普通草稿", attachments: image_attachments("draft-image") });
 
-    act(() => latest.input.start_edit(user_entry("user-1", "旧消息", ["old-image"])));
-    expect(latest.input.editing).toEqual({ kind: "entry", entryId: "user-1", role: "user" });
-    expect(latest.input.read_draft()).toEqual({
-      text: "旧消息",
-      attachments: image_attachments("old-image"),
-    });
-
     await act(async () => {
       await latest.reviseLatestRound("user-1", { text: "新消息", attachments: [] });
     });
@@ -817,11 +809,12 @@ describe("AgentSessionProvider", () => {
       entryId: "user-1",
       message: { text: "新消息", attachments: [] },
     });
-    expect(latest.input.editing).toBeNull();
     expect(latest.input.read_draft()).toEqual({
       text: "普通草稿",
       attachments: image_attachments("draft-image"),
     });
+    expect(latest.input.read_history()).toEqual(["旧消息"]);
+    act(() => latest.input.replace_history("旧消息", "新消息"));
     expect(latest.input.read_history()).toEqual(["新消息"]);
   });
 

@@ -78,7 +78,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
 
     await act(async () => {
-      await latest_snapshot(snapshots).flow.cancel_dialog();
+      await latest_snapshot(snapshots).flow.secondary_dialog();
     });
 
     expect(write_payloads).toEqual([
@@ -202,7 +202,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
 
     await act(async () => {
-      await latest_snapshot(snapshots).flow.cancel_dialog();
+      await latest_snapshot(snapshots).flow.secondary_dialog();
     });
 
     expect(write_payloads[0]).toMatchObject({
@@ -222,7 +222,7 @@ describe("useWorkbenchImportFilesFlow", () => {
       await latest_snapshot(snapshots).flow.request_add_file_from_path("C:/source/old-copy.txt");
     });
     await act(async () => {
-      await latest_snapshot(snapshots).flow.cancel_dialog();
+      latest_snapshot(snapshots).flow.close_dialog();
     });
 
     expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();

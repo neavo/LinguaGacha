@@ -120,7 +120,7 @@ vi.mock("@frontend/shadcn/tooltip", () => {
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
   return {
-    AppAlertDialog: () => null,
+    AppConfirmDialog: () => null,
   };
 });
 
