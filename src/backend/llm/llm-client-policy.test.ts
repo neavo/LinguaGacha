@@ -82,12 +82,21 @@ describe("LLM 请求策略", () => {
       TEST_USER_AGENT,
     );
     const anthropic = read_model_request_snapshot(
-      create_model({ api_format: "Anthropic", thinking: { level: "HIGH" } }),
+      create_model({
+        api_format: "Anthropic",
+        thinking: { level: "HIGH" },
+        threshold: { output_token_limit: 0 },
+      }),
+      TEST_USER_AGENT,
+    );
+    const anthropic_explicit = read_model_request_snapshot(
+      create_model({ api_format: "Anthropic" }),
       TEST_USER_AGENT,
     );
 
     expect(resolve_one_shot_generation_options(openai)).toEqual({ temperature: 0.3 });
-    expect(resolve_one_shot_generation_options(anthropic)).toEqual({ maxTokens: 4096 });
+    expect(resolve_one_shot_generation_options(anthropic)).toEqual({});
+    expect(resolve_one_shot_generation_options(anthropic_explicit)).toEqual({ maxTokens: 4096 });
   });
 
   it("拒绝不符合 Pi adapter 契约的 Agent payload", () => {

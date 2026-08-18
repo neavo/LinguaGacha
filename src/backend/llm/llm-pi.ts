@@ -33,6 +33,7 @@ type PiApi =
   | "anthropic-messages"
   | "google-generative-ai";
 type PiProvider = "openai" | "openai-compatible" | "anthropic" | "google";
+const ANTHROPIC_FALLBACK_MAX_TOKENS = 64_000; // 未命中 catalog 时仍满足 Messages API 必填上限
 
 /** 统一 OneShot 调用形状，A/G 通过它转接 Pi 的 streamSimple。 */
 type OneShotStream = (
@@ -41,11 +42,12 @@ type OneShotStream = (
   options?: ProviderStreamOptions,
 ) => AssistantMessageEventStream;
 
-/** 调用方拥有显示身份与容量，协议字段统一由本模块补齐。 */
+/** 调用方可覆盖显示身份与容量，缺省容量沿用 catalog，协议字段由本模块补齐。 */
 type PiModelSettings = Readonly<{
   name: string;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow?: number;
+  maxTokens?: number;
+  fallbackMaxTokens?: number; // 只在调用方和 catalog 均未提供容量时使用
   input: PiModel<PiApi>["input"];
 }>;
 
@@ -90,8 +92,8 @@ export function resolve_pi_model(
     ...(thinking_level_map === undefined ? {} : { thinkingLevelMap: { ...thinking_level_map } }),
     input: settings.input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: settings.contextWindow,
-    maxTokens: settings.maxTokens,
+    contextWindow: settings.contextWindow ?? catalog_model?.contextWindow ?? 0,
+    maxTokens: settings.maxTokens ?? catalog_model?.maxTokens ?? settings.fallbackMaxTokens ?? 0,
     headers: { ...snapshot.headers },
     ...(Object.keys(compat).length === 0 ? {} : { compat }),
   };
@@ -117,8 +119,12 @@ export function resolve_one_shot_pi_request(
   const generation = resolve_one_shot_generation_options(snapshot);
   const resolved = resolve_pi_model(snapshot, {
     name: snapshot.model_id,
-    contextWindow: 0,
-    maxTokens: generation.maxTokens ?? 0,
+    // Anthropic 要求 max_tokens：显式值冻结总 ceiling，自动值使用 catalog 或未知模型回退。
+    ...(snapshot.api_format !== "Anthropic"
+      ? {}
+      : generation.maxTokens === undefined
+        ? { fallbackMaxTokens: ANTHROPIC_FALLBACK_MAX_TOKENS }
+        : { maxTokens: generation.maxTokens }),
     input: ["text"],
   });
   // Chat Completions 保持既有 payload；Responses 直接使用 Pi 的原生 Items 与 store:false 契约。

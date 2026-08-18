@@ -1,4 +1,4 @@
-import { patch_top_p } from "./policy-shared";
+import { patch_top_p, resolve_max_tokens_for_request } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 const GOOGLE_DEFAULT_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -24,6 +24,12 @@ export function apply_google_one_shot_request_overrides(
 ): Record<string, unknown> {
   const result = { ...config };
   patch_top_p(result, snapshot.generation, "topP");
+  const max_tokens = resolve_max_tokens_for_request(snapshot);
+  if (max_tokens === null) {
+    delete result["maxOutputTokens"];
+  } else {
+    result["maxOutputTokens"] = max_tokens;
+  }
   result["safetySettings"] = [
     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
