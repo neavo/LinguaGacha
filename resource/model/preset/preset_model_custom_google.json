@@ -4,7 +4,7 @@
   "api_format": "Google",
   "api_url": "https://generativelanguage.googleapis.com",
   "api_key": "no_key_required",
-  "model_id": "gemini-2.0-flash",
+  "model_id": "gemini-3.7-flash",
   "request": {
     "extra_headers": {},
     "extra_body": {},

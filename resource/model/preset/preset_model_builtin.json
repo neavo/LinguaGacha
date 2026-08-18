@@ -36,7 +36,7 @@
     "api_format": "Google",
     "api_url": "https://generativelanguage.googleapis.com",
     "api_key": "no_key_required",
-    "model_id": "gemini-3.1-flash-lite",
+    "model_id": "gemini-3.7-flash",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -126,7 +126,7 @@
     "api_format": "Anthropic",
     "api_url": "https://api.anthropic.com",
     "api_key": "no_key_required",
-    "model_id": "claude-haiku-4-5",
+    "model_id": "claude-sonnet-5",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -156,7 +156,7 @@
     "api_format": "OpenAI",
     "api_url": "https://open.bigmodel.cn/api/paas/v4",
     "api_key": "no_key_required",
-    "model_id": "glm-5.1",
+    "model_id": "glm-5.3",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -216,7 +216,7 @@
     "api_format": "OpenAI",
     "api_url": "https://api.moonshot.cn/v1",
     "api_key": "no_key_required",
-    "model_id": "kimi-k2.6",
+    "model_id": "kimi-k3",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -273,10 +273,10 @@
     "id": "preset-volcengine",
     "type": "PRESET",
     "name": "火山引擎",
-    "api_format": "OpenAI",
+    "api_format": "OpenAIResponses",
     "api_url": "https://ark.cn-beijing.volces.com/api/v3",
     "api_key": "no_key_required",
-    "model_id": "doubao-seed-2-0-lite-260428",
+    "model_id": "doubao-seed-evolving",
     "request": {
       "extra_headers": {},
       "extra_body": {},
