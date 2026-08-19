@@ -17,6 +17,12 @@ export type AgentSkillSnapshot = JsonRecord & {
 export type AgentAssistantMessagePart = JsonRecord &
   ({ kind: "text"; text: string } | { kind: "thinking"; text: string });
 
+/** 公开 assistant 条目使用非空元组；内容可见性由共享归一化入口保证。 */
+export type AgentAssistantMessageParts = [
+  AgentAssistantMessagePart,
+  ...AgentAssistantMessagePart[],
+];
+
 /** 会话只表达当前是否占用运行时；每轮与每个条目的结果由自身 status 持有。 */
 export type AgentSessionState = "idle" | "running";
 
@@ -104,7 +110,7 @@ export type AgentEntry = JsonRecord &
     | {
         kind: "assistant_message";
         id: string;
-        parts: AgentAssistantMessagePart[];
+        parts: AgentAssistantMessageParts;
         status: AgentEntryStatus;
         createdAt: number;
       }
@@ -139,6 +145,29 @@ export type AgentReferenceRange = Readonly<{
   to: number;
   marker: string;
 }>;
+
+/** 校验公开 assistant parts，删除纯空白并合并相邻同类，同时保留可见正文原值。 */
+export function normalize_agent_assistant_message_parts(
+  value: unknown,
+): AgentAssistantMessageParts | null {
+  if (!Array.isArray(value)) return null;
+  const parts: AgentAssistantMessagePart[] = [];
+  for (const value_part of value) {
+    if (typeof value_part !== "object" || value_part === null || Array.isArray(value_part)) {
+      return null;
+    }
+    const record = value_part as Record<string, unknown>;
+    const kind = record["kind"];
+    const text = record["text"];
+    if ((kind !== "text" && kind !== "thinking") || typeof text !== "string") return null;
+    if (text.trim() === "") continue;
+    const previous = parts.at(-1);
+    if (previous?.kind === kind) previous.text += text;
+    else parts.push({ kind, text });
+  }
+  const [first, ...rest] = parts;
+  return first === undefined ? null : [first, ...rest];
+}
 
 /** API、SSE 与 renderer 存储共用的用户正文边界，只裁剪整条消息外缘。 */
 export function normalize_agent_user_message_text(value: unknown): string | null {

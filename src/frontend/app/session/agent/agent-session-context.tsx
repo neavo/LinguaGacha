@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import type {
-  AgentAssistantMessagePart,
   AgentEntry,
   AgentEntryStatus,
   AgentInputQueueSnapshot,
@@ -23,7 +22,11 @@ import type {
   AgentSkillSnapshot,
   AgentToolEntry,
 } from "@shared/agent";
-import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_message_input } from "@shared/agent";
+import {
+  AGENT_SESSION_EVENT_TOPIC,
+  normalize_agent_assistant_message_parts,
+  normalize_agent_message_input,
+} from "@shared/agent";
 import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -599,7 +602,7 @@ function normalize_entry(value: unknown): AgentEntry[] {
   }
   if (value["kind"] === "assistant_message") {
     const status = normalize_entry_status(value["status"]);
-    const parts = normalize_assistant_message_parts(value["parts"]);
+    const parts = normalize_agent_assistant_message_parts(value["parts"]);
     if (parts === null || status === null) return [];
     return [
       {
@@ -625,35 +628,6 @@ function normalize_entry(value: unknown): AgentEntry[] {
   }
   if (value["kind"] === "tool_call") return normalize_tool_entry(value);
   return [];
-}
-
-/** Assistant parts 去空并合并相邻同类块，维持与后端相同的规范形状。 */
-function normalize_assistant_message_parts(value: unknown): AgentAssistantMessagePart[] | null {
-  if (!Array.isArray(value)) return null;
-  const parts: AgentAssistantMessagePart[] = [];
-  for (const value_part of value) {
-    if (
-      !is_json_record(value_part) ||
-      (value_part["kind"] !== "text" && value_part["kind"] !== "thinking") ||
-      typeof value_part["text"] !== "string"
-    ) {
-      return null;
-    }
-    if (
-      value_part["text"] === "" ||
-      (value_part["kind"] === "thinking" && value_part["text"].trim() === "")
-    ) {
-      continue;
-    }
-    const part: AgentAssistantMessagePart =
-      value_part["kind"] === "text"
-        ? { kind: "text", text: value_part["text"] }
-        : { kind: "thinking", text: value_part["text"] };
-    const previous = parts.at(-1);
-    if (previous?.kind === part.kind) previous.text += part.text;
-    else parts.push(part);
-  }
-  return parts;
 }
 
 /** 工具条目只接纳公开状态和值域，不兼容旧 detail 载荷。 */
