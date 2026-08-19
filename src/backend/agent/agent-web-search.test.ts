@@ -12,24 +12,34 @@ describe("Agent Web 多源搜索服务", () => {
     vi.unstubAllGlobals();
   });
 
-  it("映射三家无凭据 MCP 参数，并把成功后备源晋升为首选", async () => {
+  it("映射五家无凭据 MCP 参数，并把成功来源晋升为首选", async () => {
     const network = create_mcp_network({
       exa: [{ status: 429 }, { text: "Exa 结果" }],
       tavily: [{ text: "Tavily 结果" }, { status: 429 }],
       firecrawl: [{ text: "Firecrawl 结果" }, { status: 429 }],
+      anysearch: [{ text: "AnySearch 结果" }, { status: 429 }],
+      keenable: [{ text: "Keenable 结果" }, { status: 429 }],
     });
     const service = new WebSearchService(TEST_CLIENT_VERSION);
     const signal = new AbortController().signal;
 
-    await expect(service.search("第一次查询", 3, signal)).resolves.toEqual({
+    await expect(service.search("第一次查询", signal)).resolves.toEqual({
       provider: "tavily",
       text: "Tavily 结果",
     });
-    await expect(service.search("第二次查询", 4, signal)).resolves.toEqual({
+    await expect(service.search("第二次查询", signal)).resolves.toEqual({
       provider: "firecrawl",
       text: "Firecrawl 结果",
     });
-    await expect(service.search("第三次查询", 5, signal)).resolves.toEqual({
+    await expect(service.search("第三次查询", signal)).resolves.toEqual({
+      provider: "anysearch",
+      text: "AnySearch 结果",
+    });
+    await expect(service.search("第四次查询", signal)).resolves.toEqual({
+      provider: "keenable",
+      text: "Keenable 结果",
+    });
+    await expect(service.search("第五次查询", signal)).resolves.toEqual({
       provider: "exa",
       text: "Exa 结果",
     });
@@ -39,24 +49,24 @@ describe("Agent Web 多源搜索服务", () => {
       {
         provider: "exa",
         name: "web_search_exa",
-        arguments: { query: "第一次查询", numResults: 3 },
+        arguments: { query: "第一次查询", numResults: expect.any(Number) },
       },
       {
         provider: "tavily",
         name: "tavily_search",
-        arguments: { query: "第一次查询", max_results: 3 },
+        arguments: { query: "第一次查询", max_results: expect.any(Number) },
       },
       {
         provider: "tavily",
         name: "tavily_search",
-        arguments: { query: "第二次查询", max_results: 4 },
+        arguments: { query: "第二次查询", max_results: expect.any(Number) },
       },
       {
         provider: "firecrawl",
         name: "firecrawl_search",
         arguments: {
           query: "第二次查询",
-          limit: 4,
+          limit: expect.any(Number),
           sources: [{ type: "web" }],
         },
       },
@@ -65,17 +75,43 @@ describe("Agent Web 多源搜索服务", () => {
         name: "firecrawl_search",
         arguments: {
           query: "第三次查询",
-          limit: 5,
+          limit: expect.any(Number),
           sources: [{ type: "web" }],
         },
       },
       {
+        provider: "anysearch",
+        name: "search",
+        arguments: { query: "第三次查询", max_results: expect.any(Number) },
+      },
+      {
+        provider: "anysearch",
+        name: "search",
+        arguments: { query: "第四次查询", max_results: expect.any(Number) },
+      },
+      {
+        provider: "keenable",
+        name: "search_web_pages",
+        arguments: { query: "第四次查询" },
+      },
+      {
+        provider: "keenable",
+        name: "search_web_pages",
+        arguments: { query: "第五次查询" },
+      },
+      {
         provider: "exa",
         name: "web_search_exa",
-        arguments: { query: "第三次查询", numResults: 5 },
+        arguments: { query: "第五次查询", numResults: expect.any(Number) },
       },
     ]);
-    for (const provider of ["exa", "tavily", "firecrawl"] satisfies AgentWebSearchProvider[]) {
+    for (const provider of [
+      "exa",
+      "tavily",
+      "firecrawl",
+      "anysearch",
+      "keenable",
+    ] satisfies AgentWebSearchProvider[]) {
       expect(
         network.methods.filter(
           (request) => request.provider === provider && request.method === "initialize",
@@ -95,7 +131,7 @@ describe("Agent Web 多源搜索服务", () => {
     });
     const service = new WebSearchService(TEST_CLIENT_VERSION);
 
-    await expect(service.search("重连查询", 2, new AbortController().signal)).resolves.toEqual({
+    await expect(service.search("重连查询", new AbortController().signal)).resolves.toEqual({
       provider: "exa",
       text: "重连结果",
     });
@@ -109,6 +145,32 @@ describe("Agent Web 多源搜索服务", () => {
     expect(network.tool_calls.filter((request) => request.provider === "exa")).toHaveLength(2);
   });
 
+  it("Tavily 以成功正文返回额度错误时继续尝试下一来源", async () => {
+    const network = create_mcp_network({
+      exa: [{ status: 429 }],
+      tavily: [
+        {
+          text: JSON.stringify({
+            code: "monthly_cap_reached_bonus_eligible",
+          }),
+        },
+      ],
+      firecrawl: [{ text: "Firecrawl 结果" }],
+    });
+    const service = new WebSearchService(TEST_CLIENT_VERSION);
+
+    await expect(service.search("额度回退", new AbortController().signal)).resolves.toEqual({
+      provider: "firecrawl",
+      text: "Firecrawl 结果",
+    });
+    expect(network.tool_calls.map((request) => request.provider)).toEqual([
+      "exa",
+      "tavily",
+      "firecrawl",
+    ]);
+    await service.dispose();
+  });
+
   it.each([
     ["全部限流", { status: 429 }, "web_search.rate_limited"],
     ["全部工具失败", { tool_error: true }, "web_search.upstream_failed"],
@@ -120,12 +182,14 @@ describe("Agent Web 多源搜索服务", () => {
         exa: [reply],
         tavily: [reply],
         firecrawl: [reply],
+        anysearch: [reply],
+        keenable: [reply],
       });
       const service = new WebSearchService(TEST_CLIENT_VERSION);
 
-      await expect(
-        service.search("失败查询", 5, new AbortController().signal),
-      ).rejects.toMatchObject({ details: { code } });
+      await expect(service.search("失败查询", new AbortController().signal)).rejects.toMatchObject({
+        details: { code },
+      });
       await service.dispose();
     },
   );
@@ -135,29 +199,27 @@ describe("Agent Web 多源搜索服务", () => {
       exa: [{ tool_error: true }],
       tavily: [{ text: " " }],
       firecrawl: [{ status: 500 }],
+      anysearch: [{ status: 500 }],
+      keenable: [{ status: 500 }],
     });
     const service = new WebSearchService(TEST_CLIENT_VERSION);
 
-    await expect(service.search("混合失败", 5, new AbortController().signal)).rejects.toMatchObject(
-      {
-        details: { code: "web_search.unavailable" },
-      },
-    );
+    await expect(service.search("混合失败", new AbortController().signal)).rejects.toMatchObject({
+      details: { code: "web_search.unavailable" },
+    });
     await service.dispose();
   });
 
-  it("三家单次预算都超时时返回整次搜索超时", async () => {
+  it("全部来源单次预算都超时时返回整次搜索超时", async () => {
     const timeout = new AbortController();
     timeout.abort(new DOMException("超时", "TimeoutError"));
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
     create_mcp_network();
     const service = new WebSearchService(TEST_CLIENT_VERSION);
 
-    await expect(service.search("超时查询", 5, new AbortController().signal)).rejects.toMatchObject(
-      {
-        details: { code: "web_search.timeout" },
-      },
-    );
+    await expect(service.search("超时查询", new AbortController().signal)).rejects.toMatchObject({
+      details: { code: "web_search.timeout" },
+    });
     await service.dispose();
   });
 
@@ -167,7 +229,7 @@ describe("Agent Web 多源搜索服务", () => {
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
-    await expect(service.search("不会搜索", 5, controller.signal)).rejects.toThrow("提前取消");
+    await expect(service.search("不会搜索", controller.signal)).rejects.toThrow("提前取消");
     expect(network.fetch).not.toHaveBeenCalled();
     await service.dispose();
   });
@@ -194,7 +256,7 @@ type McpToolCall = Readonly<{
   arguments: Record<string, unknown>;
 }>;
 
-/** 用真实 MCP SDK 驱动三家最小假服务，只替换不可重复的远端 HTTP 边界。 */
+/** 用真实 MCP SDK 驱动多源最小假服务，只替换不可重复的远端 HTTP 边界。 */
 function create_mcp_network(options: McpNetworkOptions = {}) {
   const methods: McpRequest[] = [];
   const tool_calls: McpToolCall[] = [];
@@ -202,11 +264,15 @@ function create_mcp_network(options: McpNetworkOptions = {}) {
     exa: [],
     tavily: [],
     firecrawl: [],
+    anysearch: [],
+    keenable: [],
   };
   const replies: Record<AgentWebSearchProvider, ProviderReply[]> = {
     exa: [...(options.exa ?? [])],
     tavily: [...(options.tavily ?? [])],
     firecrawl: [...(options.firecrawl ?? [])],
+    anysearch: [...(options.anysearch ?? [])],
+    keenable: [...(options.keenable ?? [])],
   };
   const fetch = vi.fn<FetchFunction>(async (input, init) => {
     const provider = read_provider(input);
@@ -267,6 +333,8 @@ function read_provider(input: Parameters<FetchFunction>[0]): AgentWebSearchProvi
   if (url.hostname === "mcp.exa.ai") return "exa";
   if (url.hostname === "mcp.tavily.com") return "tavily";
   if (url.hostname === "mcp.firecrawl.dev") return "firecrawl";
+  if (url.hostname === "api.anysearch.com") return "anysearch";
+  if (url.hostname === "api.keenable.ai") return "keenable";
   throw new Error(`未知搜索供应商：${url.hostname}`);
 }
 

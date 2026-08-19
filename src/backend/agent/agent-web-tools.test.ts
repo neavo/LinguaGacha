@@ -217,15 +217,16 @@ describe("Agent web_fetch 工具", () => {
 });
 
 describe("Agent web_search 工具", () => {
-  it("模型参数只接受非空查询和整数数量", () => {
+  it("模型参数只接受非空查询", () => {
     const tool = read_web_tool("web_search", { read: vi.fn(), search: vi.fn() });
 
     expect(tool.parameters).toMatchObject({
       properties: {
         query: { type: "string", minLength: 1 },
-        num_results: { type: "integer" },
       },
+      additionalProperties: false,
     });
+    expect(tool.parameters).not.toHaveProperty("properties.num_results");
   });
 
   it("使用稳定本地参数调用搜索端口并投影来源与原始文本", async () => {
@@ -238,18 +239,18 @@ describe("Agent web_search 工具", () => {
 
     const result = (await tool.execute(
       "search",
-      { query: "当前示例", num_results: 3 },
+      { query: "当前示例" },
       signal,
       undefined,
       undefined as never,
     )) as WebSearchToolResult;
 
-    expect(search).toHaveBeenCalledWith("当前示例", 3, signal);
+    expect(search).toHaveBeenCalledWith("当前示例", signal);
     expect(result.content[0]?.text).toBe("Title: 示例\nURL: https://example.com");
     expect(result.details).toEqual({ provider: "tavily", truncated: false });
   });
 
-  it("省略数量时仍限制过长的模型正文", async () => {
+  it("限制过长的模型正文", async () => {
     const upstream_text = "a".repeat(1_000_000);
     const search = vi.fn<AgentWebSearchPort>(async () => ({
       provider: "firecrawl",
