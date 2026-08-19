@@ -134,12 +134,12 @@
   text-align: start;
   cursor: pointer;
   transition:
-    background-color 180ms ease,
-    color 180ms ease;
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .agent-page__suggestion:hover {
-  background: color-mix(in srgb, var(--accent) 72%, transparent);
+  background: var(--accent);
   color: var(--foreground);
 }
 
@@ -167,7 +167,7 @@
   height: 14px;
   color: var(--muted-foreground);
   stroke-width: 1.7;
-  transition: color 180ms ease;
+  transition: color 120ms ease;
 }
 
 .agent-page__suggestion-label {
@@ -310,42 +310,6 @@
 
 .agent-message-frame--assistant .agent-message-actions {
   justify-content: flex-start;
-}
-
-.agent-message-actions button {
-  display: inline-flex;
-  min-height: 24px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  border: 0;
-  border-radius: var(--ui-radius-button);
-  background: transparent;
-  padding: 3px 6px;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.agent-message-actions button:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--foreground);
-}
-
-.agent-message-actions button:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.agent-message-actions button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.agent-message-actions svg {
-  width: 12px;
-  height: 12px;
 }
 
 .agent-context-compaction {
@@ -536,7 +500,7 @@
 
 .agent-tool-entry:hover,
 .agent-tool-entry:focus-visible {
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent);
   color: var(--foreground);
 }
 
@@ -589,6 +553,9 @@
   padding: 6px 8px;
   cursor: pointer;
   list-style: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .agent-thinking-entry summary::-webkit-details-marker {
@@ -650,14 +617,9 @@
   /* 思考块暂停时保留用户阅读位置，不让内容增长触发原生锚定。 */
   overflow-anchor: none;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--popover) 60%, transparent);
   padding: 8px 12px 10px 28px;
   color: var(--foreground);
   line-height: 1.55;
-  white-space: pre;
-}
-
-.agent-thinking-entry pre {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -803,7 +765,6 @@
 .agent-page__composer-stack {
   --agent-composer-accessory-row-height: 32px;
   --agent-composer-accessory-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  --agent-composer-accessory-hover: color-mix(in srgb, var(--accent) 52%, transparent);
 
   position: relative;
   container-type: inline-size;
@@ -829,9 +790,10 @@
 }
 
 .agent-task-progress:hover,
+.agent-task-progress:focus-visible,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):hover,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):focus-within {
-  background: var(--agent-composer-accessory-hover);
+  background: var(--accent);
 }
 
 .agent-task-progress {
@@ -1180,37 +1142,6 @@
   box-shadow: var(--ui-shadow-overlay);
 }
 
-.agent-response-annotation-popover[role="toolbar"] > button {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  padding: 0 10px;
-  color: var(--foreground);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.agent-response-annotation-popover[role="toolbar"] > button:hover {
-  background: var(--accent);
-}
-
-.agent-response-annotation-popover[role="toolbar"] > button:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.agent-response-annotation-popover[role="toolbar"] svg {
-  width: 14px;
-  height: 14px;
-  color: var(--primary);
-}
-
 .agent-annotation-panel__header {
   display: flex;
   align-items: center;
@@ -1540,6 +1471,7 @@
   }
 
   .agent-thinking-entry summary::before,
+  .agent-thinking-entry summary,
   .agent-thinking-entry::details-content,
   .agent-tool-entry,
   .agent-composer__drop-overlay,
