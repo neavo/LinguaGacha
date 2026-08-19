@@ -826,6 +826,14 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
       },
     },
     {
+      name: "translation-plan",
+      displayDescriptions: {
+        "zh-CN": "生成翻译计划",
+        "en-US": "Create a translation plan",
+        "de-DE": "Übersetzungsplan erstellen",
+      },
+    },
+    {
       name: "translation-review",
       displayDescriptions: {
         "zh-CN": "审查译文",

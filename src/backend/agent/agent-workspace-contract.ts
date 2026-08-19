@@ -1,4 +1,4 @@
-import { Item, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../domain/item";
+import { Item, ITEM_FILE_TYPES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../domain/item";
 import { read_json_integer, type JsonRecord } from "../../domain/json";
 import { PROMPT_KINDS } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
@@ -74,6 +74,9 @@ export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
   "dst",
   "name_src",
   "name_dst",
+  "extra_field",
+  "tag",
+  "file_type",
   "file_path",
   "text_type",
   "row_number",
@@ -145,6 +148,13 @@ const ITEM_FIELD_CONTRACT: JsonRecord = {
   dst: { type: "string", purpose: "译文正文" },
   name_src: { type: "string", purpose: "原文姓名" },
   name_dst: { type: "string", purpose: "译文姓名" },
+  extra_field: { type: "json", purpose: "格式处理器保留的只读结构事实" },
+  tag: { type: "string", purpose: "格式处理器保留的只读标签" },
+  file_type: {
+    type: "enum",
+    purpose: "条目的来源文件格式",
+    values: [...ITEM_FILE_TYPES],
+  },
   file_path: { type: "string", purpose: "工程相对文件身份" },
   text_type: {
     type: "enum",
@@ -388,6 +398,9 @@ export function project_agent_workspace_item(item: JsonRecord): JsonRecord {
     dst: String(item["dst"] ?? ""),
     name_src: read_optional_item_name_text(item["name_src"]) ?? "",
     name_dst: read_optional_item_name_text(item["name_dst"]) ?? "",
+    extra_field: structuredClone(item["extra_field"] ?? null),
+    tag: String(item["tag"] ?? ""),
+    file_type: Item.normalize_file_type(item["file_type"]),
     file_path: String(item["file_path"] ?? ""),
     text_type: Item.normalize_text_type(item["text_type"]),
     row_number: read_json_integer(item["row_number"] ?? item["row"], 0),

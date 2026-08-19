@@ -52,14 +52,15 @@ describe("Agent skill 模型投影", () => {
   });
 });
 
-describe("Agent 内置质量规则 skills", () => {
-  it("公开两个薄入口并隐藏共享工作流与分领域知识", async () => {
+describe("Agent 内置工作流 skills", () => {
+  it("公开翻译与质量规则入口并隐藏共享工作流与分领域知识", async () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-builtin-skills-"),
     );
+    const builtin_dir = path.resolve("resource", "agent", "skill");
     const skills = await load_agent_skills(
       {
-        get_agent_builtin_skill_dir: () => path.resolve("resource", "agent", "skill"),
+        get_agent_builtin_skill_dir: () => builtin_dir,
         get_agent_user_skill_dir: () => temp_root.path,
         get_app_root: () => path.resolve("."),
       },
@@ -75,6 +76,14 @@ describe("Agent 内置质量规则 skills", () => {
       visible: true,
       disableModelInvocation: false,
     });
+    expect(by_name.get("translation-plan")).toMatchObject({
+      visible: true,
+      order: 400,
+      disableModelInvocation: false,
+    });
+    expect(
+      fs.existsSync(path.join(builtin_dir, "translation-plan", "references", "rules.md")),
+    ).toBe(true);
     expect(by_name.get("glossary-rules")).toMatchObject({
       visible: false,
       disableModelInvocation: true,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ITEM_TEXT_TYPES } from "../../domain/item";
+import { ITEM_FILE_TYPES, ITEM_TEXT_TYPES } from "../../domain/item";
 import { read_json_record } from "../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import {
@@ -54,6 +54,10 @@ describe("Agent 工作区 contract", () => {
       format: "jsonl",
     });
     expect(Object.keys(read_json_record(items["fields"]))).toEqual(AGENT_WORKSPACE_ITEM_FIELDS);
+    expect(read_json_record(read_json_record(items["fields"])["file_type"])).toMatchObject({
+      type: "enum",
+      values: [...ITEM_FILE_TYPES],
+    });
     expect(read_json_record(read_json_record(items["fields"])["text_type"])).toMatchObject({
       type: "enum",
       values: [...ITEM_TEXT_TYPES],
@@ -155,6 +159,9 @@ describe("Agent 工作区 contract", () => {
         dst: "",
         name_src: null,
         name_dst: null,
+        extra_field: { tag: ["aqua"], context: ["common/1/Message/stringArgs/0"] },
+        tag: "内部文件键",
+        file_type: "TRANS",
         file_path: "a.txt",
         text_type: "RENPY",
         row: 0,
@@ -167,6 +174,9 @@ describe("Agent 工作区 contract", () => {
       dst: "",
       name_src: "",
       name_dst: "",
+      extra_field: { tag: ["aqua"], context: ["common/1/Message/stringArgs/0"] },
+      tag: "内部文件键",
+      file_type: "TRANS",
       file_path: "a.txt",
       text_type: "RENPY",
       row_number: 0,

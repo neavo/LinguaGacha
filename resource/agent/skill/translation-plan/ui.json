@@ -1,0 +1,8 @@
+{
+  "order": 400,
+  "displayDescriptions": {
+    "zh-CN": "基于 AI 重新分析当前工程并生成完整翻译计划",
+    "en-US": "Use AI to reanalyze the current project and generate a complete translation plan",
+    "de-DE": "Das aktuelle Projekt mit KI neu analysieren und einen vollständigen Übersetzungsplan erstellen"
+  }
+}
