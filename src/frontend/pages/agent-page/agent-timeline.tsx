@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil } from "lucide-react";
+import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide-react";
 
 import type {
   AgentEntry,
@@ -492,9 +492,11 @@ function AgentToolEntryButton(props: {
     <button
       type="button"
       className="agent-tool-entry"
+      data-status={props.entry.status}
       aria-haspopup="dialog"
       onClick={props.on_open}
     >
+      <Wrench className="agent-tool-entry__icon" aria-hidden="true" />
       <span className="agent-tool-entry__label">
         {props.entry.toolName}
         {active ? (

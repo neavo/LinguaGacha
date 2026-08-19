@@ -7,7 +7,7 @@ import {
   useState,
   type UIEvent,
 } from "react";
-import { ArrowDown, Bot, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
+import { ArrowDown, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
@@ -26,7 +26,6 @@ import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-des
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
-import { Card } from "@frontend/shadcn/card";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
@@ -41,6 +40,11 @@ import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
 const FEATURED_AGENT_SKILLS = [
+  {
+    name: "roleplay",
+    suggestionKey: "agent_page.empty.suggestions.roleplay",
+    Icon: Drama,
+  },
   {
     name: "quality-rule-create",
     suggestionKey: "agent_page.empty.suggestions.quality_rule_create",
@@ -405,8 +409,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
               </div>
               <div className="agent-page__suggestions">
-                <Card
-                  asChild
+                <button
+                  type="button"
                   className="agent-page__suggestion"
                   onClick={() =>
                     composer_ref.current?.write_draft(
@@ -414,19 +418,17 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     )
                   }
                 >
-                  <button type="button">
-                    <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
-                    <span className="agent-page__suggestion-label">
-                      {t("agent_page.empty.suggestions.capabilities")}
-                    </span>
-                  </button>
-                </Card>
+                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
+                  <span className="agent-page__suggestion-label">
+                    {t("agent_page.empty.suggestions.capabilities")}
+                  </span>
+                </button>
                 {FEATURED_AGENT_SKILLS.filter((featured) =>
                   agent.skills.some((skill) => skill.name === featured.name),
                 ).map(({ name, suggestionKey, Icon }) => (
-                  <Card
+                  <button
                     key={name}
-                    asChild
+                    type="button"
                     className="agent-page__suggestion"
                     onClick={() =>
                       composer_ref.current?.write_draft(
@@ -434,16 +436,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                       )
                     }
                   >
-                    <button type="button">
-                      <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
-                      <span className="agent-page__suggestion-label">
-                        {t(suggestionKey)}{" "}
-                        <span className="agent-mention-token">
-                          <span>{format_agent_skill_reference(name)}</span>
-                        </span>
+                    <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
+                    <span className="agent-page__suggestion-label">
+                      {t(suggestionKey)}{" "}
+                      <span className="agent-mention-token">
+                        <span>{format_agent_skill_reference(name)}</span>
                       </span>
-                    </button>
-                  </Card>
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -478,16 +478,19 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      {return_latest_available && (
-        <div className="agent-page__follow-control">
-          <AppButton type="button" size="xs" variant="secondary" onClick={return_to_latest}>
+      <div className="agent-page__composer-stack">
+        {return_latest_available && (
+          <AppButton
+            type="button"
+            className="agent-page__follow-control"
+            size="xs"
+            variant="secondary"
+            onClick={return_to_latest}
+          >
             <ArrowDown aria-hidden="true" />
             {t("agent_page.action.return_latest")}
           </AppButton>
-        </div>
-      )}
-
-      <div className="agent-page__composer-stack">
+        )}
         <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
         <AgentInputQueue
           queue={agent.inputQueue}
