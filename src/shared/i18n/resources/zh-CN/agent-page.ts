@@ -1,5 +1,6 @@
 export const zh_cn_agent_page = {
   title: "AGENT",
+  shortcut_hint: "{action} · {shortcut}",
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: { render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
@@ -18,6 +19,7 @@ export const zh_cn_agent_page = {
     placeholder: "描述任务，或输入 @ 选择技能或术语 …",
     edit_assistant_placeholder: "修改模型回复 …",
     hint: "Enter 发送 · Shift + Enter 换行",
+    newline: "换行",
     drop_images: "松开以添加图片",
   },
   mention: {
@@ -42,7 +44,6 @@ export const zh_cn_agent_page = {
   },
   action: {
     send: "发送",
-    save_queue: "保存排队消息",
     stop: "停止",
     applying: "正在应用工程修改，完成前不可停止",
     new_task: "新任务",
@@ -52,8 +53,6 @@ export const zh_cn_agent_page = {
     copy: "复制",
     copied: "已复制",
     copy_failed: "复制失败",
-    save_and_retry: "保存并重试",
-    save_edit: "保存修改",
     return_latest: "回到最新",
   },
   editing: { user: "正在修改你的消息", assistant: "正在修改模型回复", queue: "正在修改排队消息" },

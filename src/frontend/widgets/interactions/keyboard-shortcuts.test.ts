@@ -77,6 +77,13 @@ describe("keyboard shortcuts", () => {
       ).toBe(true);
       expect(
         should_ignore_action_shortcut_event(
+          create_shortcut_event({ key: "n", target: editor_child }),
+          "create",
+          true,
+        ),
+      ).toBe(false);
+      expect(
+        should_ignore_action_shortcut_event(
           create_shortcut_event({ key: "s", target: input }),
           "save",
         ),

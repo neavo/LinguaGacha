@@ -126,6 +126,12 @@
     0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
     0 18px 32px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
   --ui-shadow-overlay: 0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent);
+  /* Portal 只消费语义层；阻断式反馈固定高于普通浮层。 */
+  --ui-layer-overlay: 50;
+  --ui-layer-popover: 60;
+  --ui-layer-tooltip: 70;
+  --ui-layer-blocking-overlay: 9998;
+  --ui-layer-blocking-feedback: 9999;
   --ui-space-card-x: 16px;
   --ui-space-card-y: 16px;
   --ui-space-panel-x: 24px;
@@ -611,7 +617,7 @@ a,
   .cn-progress-toast-modal-layer {
     position: fixed;
     inset: 0;
-    z-index: 9998;
+    z-index: var(--ui-layer-blocking-overlay);
     background: rgb(0 0 0 / 0.1);
     backdrop-filter: blur(4px);
     cursor: wait;
@@ -619,7 +625,7 @@ a,
   }
 
   .cn-toast--progress-modal {
-    z-index: 9999;
+    z-index: var(--ui-layer-blocking-feedback);
   }
 
   [data-sonner-toaster][data-sonner-theme="dark"] .cn-toast__description {

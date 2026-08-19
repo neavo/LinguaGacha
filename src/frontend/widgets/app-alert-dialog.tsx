@@ -96,11 +96,11 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
       <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal">
         <AlertDialogPrimitive.Overlay
           data-slot="alert-dialog-overlay"
-          className="fixed inset-0 z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+          className="fixed inset-0 z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
         <AlertDialogPrimitive.Content
           data-slot="alert-dialog-content"
-          className="fixed top-1/2 left-1/2 z-50 grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+          className="fixed top-1/2 left-1/2 z-(--ui-layer-overlay) grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
           onEscapeKeyDown={submitting ? preventDialogClose : undefined}
         >
           <div data-slot="alert-dialog-header" className="grid place-items-start gap-1.5 text-left">

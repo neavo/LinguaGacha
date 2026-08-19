@@ -367,7 +367,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   };
 
   return (
-    <div className="agent-page page-shell page-shell--full">
+    <div className="agent-page">
       <section
         ref={conversation_ref}
         className="agent-page__conversation"

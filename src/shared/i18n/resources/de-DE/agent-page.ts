@@ -1,5 +1,6 @@
 export const de_de_agent_page = {
   title: "AGENT",
+  shortcut_hint: "{action} · {shortcut}",
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
@@ -20,6 +21,7 @@ export const de_de_agent_page = {
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
+    newline: "Neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
   mention: {
@@ -44,7 +46,6 @@ export const de_de_agent_page = {
   },
   action: {
     send: "Senden",
-    save_queue: "Vorgemerkte Nachricht speichern",
     stop: "Stoppen",
     applying: "Projektänderungen werden angewendet; der Vorgang kann nicht gestoppt werden",
     new_task: "Neue Aufgabe",
@@ -54,8 +55,6 @@ export const de_de_agent_page = {
     copy: "Kopieren",
     copied: "Kopiert",
     copy_failed: "Kopieren fehlgeschlagen",
-    save_and_retry: "Speichern und wiederholen",
-    save_edit: "Änderung speichern",
     return_latest: "Zum neuesten Stand",
   },
   editing: {

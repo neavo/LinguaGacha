@@ -1,4 +1,4 @@
-import { act, createRef, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { act, createElement, createRef, type ComponentProps, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,7 @@ import {
   type AgentMessageInput,
 } from "@shared/agent";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 
@@ -25,10 +26,13 @@ type RenderComposerOptions = Partial<
     | "compacting"
     | "compaction_failed"
     | "context_tokens"
+    | "inline_role"
+    | "on_cancel_edit"
     | "on_image_error"
     | "on_reset"
     | "on_send"
     | "on_stop"
+    | "presentation"
     | "running"
     | "stop_disabled"
     | "term_hit_counts"
@@ -92,18 +96,13 @@ vi.mock("./agent-image", () => ({
 vi.mock("@frontend/app/appearance/appearance-provider", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
-}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: "zh-CN",
-    t: (key: string, params?: Record<string, string>) =>
-      key === "agent_page.mention.term_hits"
-        ? `${params?.["count"]} 次`
-        : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
+    t: (key: string, params?: Record<string, string>) => {
+      if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
+      return TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key;
+    },
   }),
 }));
 
@@ -270,6 +269,55 @@ describe("AgentComposer", () => {
     await dispatch_key(editor.contentDOM, "Enter", false, true);
     expect(editor.state.doc.toString()).toBe("@glo");
     expect(on_send).not.toHaveBeenCalled();
+  });
+
+  it("原位编辑先关闭候选，再由 Escape 取消", async () => {
+    const on_cancel_edit = vi.fn();
+    const view = await render_composer({
+      presentation: "inline",
+      inline_role: "user",
+      on_cancel_edit,
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "@g", 2);
+    await wait_for_element(view, '[role="listbox"]');
+
+    await dispatch_key(editor.contentDOM, "Escape");
+    expect(view.querySelector('[role="listbox"]')).toBeNull();
+    expect(on_cancel_edit).not.toHaveBeenCalled();
+    await dispatch_key(editor.contentDOM, "Escape");
+
+    expect(on_cancel_edit).toHaveBeenCalledOnce();
+  });
+
+  it("新任务快捷键复用按钮可用性并允许从主输入器触发", async () => {
+    const on_reset = vi.fn();
+    const view = await render_composer({ on_reset });
+    const editor = get_editor(view);
+    const trigger = (): KeyboardEvent => {
+      const event = new KeyboardEvent("keydown", {
+        key: "n",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      editor.contentDOM.dispatchEvent(event);
+      return event;
+    };
+
+    let event: KeyboardEvent | undefined;
+    await act(async () => {
+      event = trigger();
+    });
+    expect(event?.defaultPrevented).toBe(true);
+    expect(on_reset).toHaveBeenCalledOnce();
+
+    await render_composer({ can_reset: false, on_reset });
+    await act(async () => {
+      event = trigger();
+    });
+    expect(event?.defaultPrevented).toBe(false);
+    expect(on_reset).toHaveBeenCalledOnce();
   });
 
   it("用纯文本历史双向浏览并恢复当前草稿", async () => {
@@ -630,46 +678,53 @@ describe("AgentComposer", () => {
     await act(async () => {
       default_input_session ??= create_input_session();
       root?.render(
-        <AgentComposer
-          ref={options.composer_ref}
-          skills={skills}
-          terms={options.terms ?? terms}
-          term_hit_counts={options.term_hit_counts ?? term_hit_counts}
-          running={options.running ?? false}
-          stop_disabled={options.stop_disabled ?? false}
-          compacting={options.compacting ?? false}
-          compaction_failed={options.compaction_failed ?? false}
-          unavailable_reason={options.unavailable_reason ?? null}
-          command={options.command ?? null}
-          can_continue_queue={options.can_continue_queue ?? false}
-          can_reset={options.can_reset ?? true}
-          context_tokens={options.context_tokens ?? null}
-          model_selection={{
-            snapshot: {
-              model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
-              models: [
-                {
-                  id: "agent",
-                  type: "CUSTOM_OPENAI",
-                  name: "Agent Model",
-                  agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
-                  thinking_level: "MEDIUM",
-                  thinking_configurable: true,
-                },
-              ],
-            },
-            loading: false,
-            updating: false,
-            select_model: vi.fn(async () => undefined),
-            update_thinking_level: vi.fn(async () => undefined),
-            ...options.model_selection,
-          }}
-          input_session={options.input_session ?? default_input_session}
-          on_send={options.on_send ?? vi.fn()}
-          on_image_error={options.on_image_error ?? vi.fn()}
-          on_stop={options.on_stop ?? vi.fn(async () => undefined)}
-          on_reset={options.on_reset ?? vi.fn()}
-        />,
+        createElement(
+          TooltipProvider,
+          null,
+          <AgentComposer
+            ref={options.composer_ref}
+            presentation={options.presentation}
+            inline_role={options.inline_role}
+            on_cancel_edit={options.on_cancel_edit}
+            skills={skills}
+            terms={options.terms ?? terms}
+            term_hit_counts={options.term_hit_counts ?? term_hit_counts}
+            running={options.running ?? false}
+            stop_disabled={options.stop_disabled ?? false}
+            compacting={options.compacting ?? false}
+            compaction_failed={options.compaction_failed ?? false}
+            unavailable_reason={options.unavailable_reason ?? null}
+            command={options.command ?? null}
+            can_continue_queue={options.can_continue_queue ?? false}
+            can_reset={options.can_reset ?? true}
+            context_tokens={options.context_tokens ?? null}
+            model_selection={{
+              snapshot: {
+                model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+                models: [
+                  {
+                    id: "agent",
+                    type: "CUSTOM_OPENAI",
+                    name: "Agent Model",
+                    agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
+                    thinking_level: "MEDIUM",
+                    thinking_configurable: true,
+                  },
+                ],
+              },
+              loading: false,
+              updating: false,
+              select_model: vi.fn(async () => undefined),
+              update_thinking_level: vi.fn(async () => undefined),
+              ...options.model_selection,
+            }}
+            input_session={options.input_session ?? default_input_session}
+            on_send={options.on_send ?? vi.fn()}
+            on_image_error={options.on_image_error ?? vi.fn()}
+            on_stop={options.on_stop ?? vi.fn(async () => undefined)}
+            on_reset={options.on_reset ?? vi.fn()}
+          />,
+        ),
       );
     });
     return container;
