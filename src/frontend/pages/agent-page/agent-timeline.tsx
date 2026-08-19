@@ -9,6 +9,7 @@ import type {
   AgentToolEntry,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { AppButton } from "@frontend/widgets/app-button";
 import {
   find_agent_mention_ranges,
   type AgentMentionRange,
@@ -306,15 +307,28 @@ function AgentMessageActions(props: {
   return (
     <div className="agent-message-actions">
       {can_copy ? (
-        <button type="button" onClick={copy}>
+        <AppButton
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="text-muted-foreground"
+          onClick={copy}
+        >
           <CopyIcon aria-hidden="true" />
           <span aria-live="polite">{props.t(copy_label_key)}</span>
-        </button>
+        </AppButton>
       ) : null}
-      <button type="button" disabled={props.disabled} onClick={() => props.on_edit(props.entry)}>
+      <AppButton
+        type="button"
+        size="xs"
+        variant="ghost"
+        className="text-muted-foreground"
+        disabled={props.disabled}
+        onClick={() => props.on_edit(props.entry)}
+      >
         <Pencil aria-hidden="true" />
         <span>{props.t("agent_page.action.edit")}</span>
-      </button>
+      </AppButton>
     </div>
   );
 }
