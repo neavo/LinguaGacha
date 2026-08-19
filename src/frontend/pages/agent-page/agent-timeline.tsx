@@ -445,8 +445,7 @@ function render_assistant_entry(
   return_latest_revision: number,
   on_thinking_follow_change: (id: string, paused: boolean) => void,
   annotatable: boolean,
-): ReactNode {
-  if (entry.parts.length === 0) return null;
+): JSX.Element {
   return (
     <article className="agent-message agent-message--assistant" key={entry.id}>
       {entry.parts.map((part, part_index) => {

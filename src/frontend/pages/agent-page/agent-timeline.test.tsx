@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  AgentAssistantMessagePart,
+  AgentAssistantMessageParts,
   AgentContextCompactionEntry,
   AgentEntry,
   AgentEntryStatus,
@@ -647,7 +647,7 @@ function assistant_entry(id: string, text: string, status: AgentEntryStatus, cre
 
 function assistant_parts_entry(
   id: string,
-  parts: AgentAssistantMessagePart[],
+  parts: AgentAssistantMessageParts,
   status: AgentEntryStatus,
   createdAt: number,
 ) {
