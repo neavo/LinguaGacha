@@ -1,6 +1,8 @@
-import { act, type ComponentProps } from "react";
+import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -39,7 +41,9 @@ describe("AgentMessageAttachments", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () => root?.render(<AgentMessageAttachments {...props} />));
+    await act(async () =>
+      root?.render(createElement(TooltipProvider, null, <AgentMessageAttachments {...props} />)),
+    );
     return container;
   }
 
@@ -112,9 +116,7 @@ describe("AgentMessageAttachments", () => {
     );
     if (textarea === null) throw new Error("缺少批注编辑器");
     await act(async () => set_textarea_value(textarea, "  新评论  "));
-    const save = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "保存",
-    );
+    const save = document.body.querySelector<HTMLButtonElement>('button[aria-label="保存"]');
     await act(async () => save?.click());
     expect(on_update_annotation).toHaveBeenCalledWith(0, "新评论");
 

@@ -319,7 +319,7 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ### Named Rules
 
-**The Fixed Shell Rule.** 标题栏、侧栏和工作区边界必须稳定；页面不得自行发明新的全页导航壳或浏览器式长页。
+**The Fixed Shell Rule.** 标题栏、侧栏和工作区边界必须稳定；工作区已提供边界时，填满工作区的页面根节点不得重复形成卡片外框，也不得自行发明新的全页导航壳或浏览器式长页。
 
 **The Dense Rhythm Rule.** 页面以 16px 为主节奏，生产组件内部按 12px、8px、4px 递减；大留白必须有明确的工作流理由。
 
@@ -328,6 +328,8 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 ## Elevation & Depth
 
 LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻壳层先靠背景、边框与分割线建立深度，卡片只获得环境式轻抬；Agent 工具、思考、上下文压缩和失败恢复等行内过程依靠弱色面、细边界与状态标记分层，不额外浮起。明显阴影与模糊只属于弹层、拖放和模态反馈。暗色主题使用更深、更集中于黑色的阴影，但不改变层级语义。
+
+Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay`，Select、Dropdown、Context Menu 与 Popover 使用 `--ui-layer-popover`，通用及编辑器 Tooltip 使用 `--ui-layer-tooltip`，阻断式进度遮罩与反馈使用 `--ui-layer-blocking-overlay` / `--ui-layer-blocking-feedback`。层级关系固定为 `overlay < popover < tooltip < blocking`；页面不得复制高层级数字，子元素的局部 `z-index` 也不承担跨 Portal 排序。
 
 ### Shadow Vocabulary
 
@@ -367,6 +369,7 @@ LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻�
 - **Primary:** 暖橙背景配暖米文字，只用于主操作。
 - **Hover / Focus:** hover 轻微改变当前语义面；focus-visible 使用 ring 边框和 3px 半透明焦点环；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
+- **Shortcuts:** 常驻按钮把快捷键显示为紧随行为文案的键帽；Tooltip 不嵌套键帽，只使用完整的本地化纯文本“行为 · 快捷键”。
 
 ### Dialogs
 
@@ -427,7 +430,7 @@ LinguaGacha 使用低阴影、1px 描边和色面分层的混合层级。常驻�
 
 ### Agent Conversation
 
-- **Frame:** 对话页填满工作区并使用 4px 圆角、1px 边界和 card/background 混合底面；时间线在内部滚动，消息列最大宽 880px，水平内边距 24px。
+- **Frame:** 工作区壳层拥有页面外边界；对话页根节点填满工作区，只承接布局与滚动，不形成第二层卡片。时间线在内部滚动，消息列最大宽 880px，水平内边距 24px；输入器作为独立操作表面保留边界。
 - **Message Roles:** 用户消息右对齐、最大宽 75%，使用紧凑 muted 气泡；暗色主题可混入 22% 主色。助手回答保持无外框的开放 Markdown，不配头像列或对称气泡。
 - **Markdown:** 正文使用 13px / 1.65 并填满 880px 消息列，不对子元素二次限宽；一级、二级标题复用 16px Headline 与 14px Title，三级到六级标题使用紧凑 13px Body；代码、表格和 Mermaid 图使用 popover 面与 1px 边界承载。带显式语言标记的普通代码块在顶边显示原始标记的弱层级语言标签，不推断或维护别名映射；完整消息使用作用域化语法高亮，流式、无语言、未知语言和 Mermaid 围栏保持可复制的纯文本回退。
 - **Process Entries:** 普通工具、思考、上下文压缩与失败恢复行保持紧凑、可扫描的状态语义。动态任务进度不作为普通工具进入历史信息流，只在输入器上方的紧凑状态条展示队首；进度标签左对齐、队首居中并允许截断、余项计数右对齐，整条触发的 Tooltip 完整承载全部待办。运行态使用暖橙弧段圆环，减少动态效果时保留弧段但停止旋转。

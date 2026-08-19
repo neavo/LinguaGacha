@@ -120,7 +120,6 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         ref={composer_ref}
         presentation="inline"
         inline_role={props.target.kind === "queue" ? "user" : props.target.role}
-        inline_kind={props.target.kind}
         on_cancel_edit={cancel_edit}
         locked={status !== "idle"}
         skills={props.skills}

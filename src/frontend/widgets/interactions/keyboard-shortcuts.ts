@@ -1,5 +1,5 @@
 export type ShortcutAction = "save" | "create" | "delete";
-export type ShortcutLabel = ShortcutAction | "cancel";
+export type ShortcutLabel = ShortcutAction | "cancel" | "submit" | "newline";
 
 export type ShortcutPlatform = "mac" | "default";
 
@@ -22,12 +22,16 @@ const SHORTCUT_LABELS = {
     create: "⌘N",
     delete: "⌘⌫",
     cancel: "Esc",
+    submit: "Enter",
+    newline: "Shift+Enter",
   },
   default: {
     save: "Ctrl+S",
     create: "Ctrl+N",
     delete: "Del",
     cancel: "Esc",
+    submit: "Enter",
+    newline: "Shift+Enter",
   },
 } satisfies Record<ShortcutPlatform, Record<ShortcutLabel, string>>;
 
@@ -141,9 +145,11 @@ function is_element_text_editing_target(element: Element): boolean {
   return tag_name === "input" || tag_name === "textarea" || tag_name === "select";
 }
 
+/** 页面级动作只在当前交互目标不会争用同一按键时接管事件。 */
 export function should_ignore_action_shortcut_event(
   event: ShortcutKeyboardEvent,
   action: ShortcutAction,
+  allow_in_text_editing = false,
 ): boolean {
   if (action === "save") {
     return false;
@@ -153,5 +159,9 @@ export function should_ignore_action_shortcut_event(
     return false;
   }
 
-  return is_element_text_editing_target(event.target) || is_element_inside_dialog(event.target);
+  // 调用方只能放宽文本编辑目标；Dialog 始终隔离页面级快捷键。
+  return (
+    is_element_inside_dialog(event.target) ||
+    (!allow_in_text_editing && is_element_text_editing_target(event.target))
+  );
 }

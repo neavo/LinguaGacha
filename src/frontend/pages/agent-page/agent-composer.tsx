@@ -65,6 +65,9 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import { get_shortcut_label } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type {
   AgentCommand,
   AgentInputSession,
@@ -107,7 +110,6 @@ type AgentComposerProps = {
   /** 原位编辑复用编辑能力，但不携带普通 Composer 的模型、重置和队列操作。 */
   presentation?: "composer" | "inline";
   inline_role?: "user" | "assistant";
-  inline_kind?: "entry" | "queue";
   on_cancel_edit?: () => void;
   locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
@@ -189,6 +191,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
 const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
 
 /** 页面私有的纯文本消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
+/** AGENT 主输入器与原位编辑器共享正文、附件和键盘交互，页面只提供命令入口。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolved_theme } = useAppearance();
@@ -213,6 +216,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const menu_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
+  // CodeMirror 扩展只创建一次，ref 保证 Escape 调用最新的页面取消入口。
+  const cancel_edit_ref = useRef(props.on_cancel_edit);
   const select_candidate_ref = useRef<(candidate: AgentMentionCandidate) => void>(() => undefined);
   const menu_open_ref = useRef(false);
   const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
@@ -267,6 +272,21 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const continuing_queue = props.can_continue_queue && !props.running && !inline && !locked;
   // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
   const stopping = props.running && !has_sendable_content && !inline && !locked;
+  // 按钮与全局快捷键消费同一可用性，避免锁定态仍能从键盘重置会话。
+  const new_task_available =
+    !inline &&
+    props.can_reset &&
+    !locked &&
+    !props.running &&
+    !compacting &&
+    props.unavailable_reason === null &&
+    props.command === null;
+  useActionShortcut({
+    action: "create",
+    enabled: new_task_available,
+    allow_in_text_editing: true,
+    on_trigger: props.on_reset,
+  });
   let submit_label_key: LocaleKey = "agent_page.action.send";
   const can_submit =
     !locked &&
@@ -281,14 +301,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     submit_label_key = "agent_page.action.send";
   else if (compacting) submit_label_key = "agent_page.compaction.running";
   else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
-  else if (inline && props.inline_kind === "queue")
-    submit_label_key = "agent_page.action.save_queue";
-  else if (inline) {
-    submit_label_key =
-      props.inline_role === "user"
-        ? "agent_page.action.save_and_retry"
-        : "agent_page.action.save_edit";
-  } else if (stopping) submit_label_key = "agent_page.action.stop";
+  else if (inline) submit_label_key = "app.action.save";
+  else if (stopping) submit_label_key = "agent_page.action.stop";
   const contextual_submit_label = t(submit_label_key);
   const image_count = draft_attachments.reduce(
     (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
@@ -328,6 +342,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
   input_session_ref.current = props.input_session;
+  cancel_edit_ref.current = props.on_cancel_edit;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -384,8 +399,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             {
               key: "Escape",
               run: () => {
-                if (!menu_open_ref.current) return false;
-                set_menu_suppressed(true);
+                if (menu_open_ref.current) {
+                  set_menu_suppressed(true);
+                  return true;
+                }
+                if (!inline) return false;
+                cancel_edit_ref.current?.();
                 return true;
               },
             },
@@ -761,24 +780,29 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             </Tooltip>
           ) : null}
           {!inline ? (
-            <AppButton
-              type="button"
-              size="xs"
-              variant="ghost"
-              className="agent-composer__reset"
-              disabled={
-                !props.can_reset ||
-                locked ||
-                props.running ||
-                compacting ||
-                props.unavailable_reason !== null ||
-                props.command !== null
-              }
-              onClick={props.on_reset}
-            >
-              <MessageSquarePlus aria-hidden="true" />
-              <span>{t("agent_page.action.new_task")}</span>
-            </AppButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AppButton
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  className="agent-composer__reset"
+                  disabled={!new_task_available}
+                  onClick={props.on_reset}
+                >
+                  <MessageSquarePlus aria-hidden="true" />
+                  <span>{t("agent_page.action.new_task")}</span>
+                </AppButton>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                <p>
+                  {t("agent_page.shortcut_hint", {
+                    action: t("agent_page.action.new_task"),
+                    shortcut: get_shortcut_label("create"),
+                  })}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
           {!inline ? (
             <AppDropdownMenu>
@@ -874,25 +898,45 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             <>
               <AppButton
                 type="button"
-                size="xs"
-                variant="ghost"
+                size="sm"
+                variant="outline"
                 disabled={locked || props.command !== null}
+                aria-label={t("app.action.cancel")}
+                aria-keyshortcuts="Escape"
                 onClick={props.on_cancel_edit}
               >
                 {t("app.action.cancel")}
+                <ShortcutKbd action="cancel" />
               </AppButton>
-              <AppButton
-                className="agent-composer__inline-submit"
-                type="submit"
-                size="xs"
-                disabled={props.command !== null || !can_submit}
-                aria-label={contextual_submit_label}
-              >
-                {submit_command_active ? (
-                  <LoaderCircle className="animate-spin" aria-hidden="true" />
-                ) : null}
-                <span>{contextual_submit_label}</span>
-              </AppButton>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AppButton
+                    className="agent-composer__inline-submit"
+                    type="submit"
+                    size="sm"
+                    disabled={props.command !== null || !can_submit}
+                    aria-label={contextual_submit_label}
+                    aria-keyshortcuts="Enter"
+                  >
+                    {submit_command_active ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : null}
+                    <span>{contextual_submit_label}</span>
+                    <ShortcutKbd
+                      action="submit"
+                      className="bg-background/18 text-primary-foreground"
+                    />
+                  </AppButton>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                  <p>
+                    {t("agent_page.shortcut_hint", {
+                      action: t("agent_page.input.newline"),
+                      shortcut: get_shortcut_label("newline"),
+                    })}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
             </>
           ) : (
             <Tooltip>

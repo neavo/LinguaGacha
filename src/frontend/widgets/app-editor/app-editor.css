@@ -219,7 +219,7 @@
   border: none;
   background: transparent;
   box-shadow: none;
-  z-index: 60;
+  z-index: var(--ui-layer-tooltip);
 }
 
 .app-text-mark-tooltip {

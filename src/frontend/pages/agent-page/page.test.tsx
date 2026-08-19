@@ -155,9 +155,8 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.copy") return "复制";
       if (key === "agent_page.action.copied") return "已复制";
       if (key === "agent_page.action.copy_failed") return "复制失败";
-      if (key === "agent_page.action.save_and_retry") return "保存并重试";
-      if (key === "agent_page.action.save_edit") return "保存修改";
-      if (key === "agent_page.action.save_queue") return "保存队列消息";
+      if (key === "app.action.save") return "保存";
+      if (key === "app.action.cancel") return "取消";
       if (key === "agent_page.editing.user") return "正在编辑用户消息";
       if (key === "agent_page.editing.assistant") return "正在编辑模型回复";
       if (key === "agent_page.editing.queue") return "正在编辑排队消息";
@@ -671,11 +670,6 @@ describe("AgentPage", () => {
     const assistant_editor = get_editor(view);
     expect(view.querySelector(".agent-composer--inline .agent-composer__image-trigger")).toBeNull();
     expect(view.querySelector(".agent-composer--inline .agent-composer__model-trigger")).toBeNull();
-    expect(
-      view.querySelector<HTMLButtonElement>(
-        ".agent-composer--inline .agent-composer__inline-submit",
-      )?.textContent,
-    ).toContain("保存修改");
     await act(async () =>
       assistant_editor.dispatch({
         changes: { from: 0, to: assistant_editor.state.doc.length, insert: "新输出" },

@@ -1,6 +1,8 @@
-import { act, type ReactNode } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -12,7 +14,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
         "agent_page.annotation.selected_text": "目标",
         "agent_page.annotation.user_comment": "批注",
         "agent_page.annotation.comment_placeholder": "写下评论",
+        "app.action.cancel": "取消",
         "app.action.close": "关闭",
+        "app.action.save": "保存",
       })[key] ?? key,
   }),
 }));
@@ -39,11 +43,11 @@ describe("AgentResponseAnnotation", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () => root?.render(view));
+    await act(async () => root?.render(createElement(TooltipProvider, null, view)));
     return container;
   }
 
-  it("编辑器把评论变化、快捷提交和取消交还给拥有者", async () => {
+  it("编辑器把评论变化和键盘操作交还给拥有者", async () => {
     const on_comment_change = vi.fn();
     const on_submit = vi.fn();
     const on_cancel = vi.fn();
@@ -52,7 +56,6 @@ describe("AgentResponseAnnotation", () => {
         aria-label="添加批注"
         selected_text="旧回复"
         comment="原评论"
-        submit_label="添加批注"
         on_comment_change={on_comment_change}
         on_submit={on_submit}
         on_cancel={on_cancel}
@@ -62,11 +65,26 @@ describe("AgentResponseAnnotation", () => {
     if (textarea === null) throw new Error("缺少批注输入");
 
     await act(async () => set_textarea_value(textarea, "新评论"));
-    await act(async () =>
-      textarea.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
-      ),
-    );
+    const submit_event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    const newline_event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const composing_event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(composing_event, "isComposing", { value: true });
+    await act(async () => textarea.dispatchEvent(submit_event));
+    await act(async () => textarea.dispatchEvent(newline_event));
+    await act(async () => textarea.dispatchEvent(composing_event));
     await act(async () =>
       textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
     );
@@ -74,6 +92,9 @@ describe("AgentResponseAnnotation", () => {
     expect(on_comment_change).toHaveBeenCalledWith("新评论");
     expect(on_submit).toHaveBeenCalledOnce();
     expect(on_cancel).toHaveBeenCalledOnce();
+    expect(submit_event.defaultPrevented).toBe(true);
+    expect(newline_event.defaultPrevented).toBe(false);
+    expect(composing_event.defaultPrevented).toBe(false);
   });
 
   it("只读视图展示评论，空评论不生成占位", async () => {
@@ -126,9 +147,7 @@ describe("AgentResponseAnnotation", () => {
     );
     if (textarea === null) throw new Error("缺少批注输入");
     await act(async () => set_textarea_value(textarea, "  请改写  "));
-    const submit = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
-      button.textContent?.includes("添加批注"),
-    );
+    const submit = document.body.querySelector<HTMLButtonElement>('button[aria-label="保存"]');
     await act(async () => submit?.click());
 
     expect(on_add).toHaveBeenCalledWith({

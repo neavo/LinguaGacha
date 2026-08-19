@@ -1,4 +1,5 @@
 .agent-page {
+  /* 工作区拥有外边界；页面根节点只管理尺寸、滚动和页内节奏。 */
   /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧。 */
   --agent-composer-max-width: 1120px;
   --agent-stream-width-offset: 48px;
@@ -8,14 +9,13 @@
 
   position: relative;
   display: flex;
+  width: 100%;
   min-height: 0;
   height: 100%;
   flex: 1;
   flex-direction: column;
+  gap: var(--ui-page-gap);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--card) 56%, var(--background));
 }
 
 .agent-page__conversation {
@@ -813,7 +813,7 @@
   flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
-  margin: 0 auto 14px;
+  margin: 0 auto;
 }
 
 .agent-task-progress,
@@ -1102,7 +1102,7 @@
 .agent-annotation-panel {
   display: grid;
   width: min(420px, calc(100vw - 32px));
-  gap: 7px;
+  gap: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--popover);
@@ -1112,8 +1112,9 @@
 }
 
 .agent-composer__annotation-editor,
-.agent-message__annotation-viewer {
-  z-index: 80;
+.agent-message__annotation-viewer,
+.agent-response-annotation-popover {
+  z-index: var(--ui-layer-popover);
 }
 
 .agent-annotation-panel label > span,
@@ -1161,16 +1162,15 @@
 .agent-annotation-editor__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.agent-annotation-editor__actions > button:last-child {
+.agent-annotation-editor__commit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-}
-
-.agent-response-annotation-popover {
-  z-index: 80;
 }
 
 .agent-response-annotation-popover[role="toolbar"] {

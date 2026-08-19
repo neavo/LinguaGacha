@@ -1,5 +1,6 @@
 export const en_us_agent_page = {
   title: "AGENT",
+  shortcut_hint: "{action} · {shortcut}",
   thinking: "Thinking",
   thinking_active: "Thinking",
   diagram: {
@@ -20,6 +21,7 @@ export const en_us_agent_page = {
     placeholder: "Describe a task, or type @ to select a skill or term …",
     edit_assistant_placeholder: "Edit the model response …",
     hint: "Enter to send · Shift + Enter for a new line",
+    newline: "New line",
     drop_images: "Release to add images",
   },
   mention: {
@@ -44,7 +46,6 @@ export const en_us_agent_page = {
   },
   action: {
     send: "Send",
-    save_queue: "Save queued message",
     stop: "Stop",
     applying: "Applying project changes; this cannot be stopped until completion",
     new_task: "New Task",
@@ -54,8 +55,6 @@ export const en_us_agent_page = {
     copy: "Copy",
     copied: "Copied",
     copy_failed: "Copy failed",
-    save_and_retry: "Save and retry",
-    save_edit: "Save edit",
     return_latest: "Return to latest",
   },
   editing: {

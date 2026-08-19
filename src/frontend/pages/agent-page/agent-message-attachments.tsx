@@ -146,7 +146,6 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
                         aria-label={t("agent_page.annotation.edit")}
                         selected_text={attachment.selectedText}
                         comment={annotation_comment}
-                        submit_label={t("app.action.save")}
                         on_comment_change={set_annotation_comment}
                         on_submit={save_selected_annotation}
                         on_cancel={close_attachment}
