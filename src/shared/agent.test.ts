@@ -4,10 +4,34 @@ import {
   find_agent_reference_ranges,
   format_agent_skill_reference,
   format_agent_term_reference,
+  normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
   normalize_agent_user_message_text,
 } from "./agent";
+
+describe("Agent assistant 消息协议", () => {
+  it("删除纯空白并合并相邻同类，同时保留可见正文原值", () => {
+    expect(
+      normalize_agent_assistant_message_parts([
+        { kind: "thinking", text: " \n " },
+        { kind: "thinking", text: "检查" },
+        { kind: "thinking", text: "\n完成" },
+        { kind: "text", text: "\t" },
+        { kind: "text", text: " 结论 " },
+      ]),
+    ).toEqual([
+      { kind: "thinking", text: "检查\n完成" },
+      { kind: "text", text: " 结论 " },
+    ]);
+    expect(
+      normalize_agent_assistant_message_parts([
+        { kind: "thinking", text: " \n " },
+        { kind: "text", text: "\t" },
+      ]),
+    ).toBeNull();
+  });
+});
 
 describe("Agent 用户消息协议", () => {
   it("拒绝非字符串和纯空白，只裁剪有效正文外缘", () => {

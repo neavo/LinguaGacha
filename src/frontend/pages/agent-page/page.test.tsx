@@ -5,7 +5,7 @@ import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentAssistantMessagePart, AgentEntryStatus } from "@shared/agent";
+import type { AgentAssistantMessageParts, AgentEntryStatus } from "@shared/agent";
 import type { useAgentSession as UseAgentSessionFunction } from "@frontend/app/session/agent/agent-session-context";
 
 type AgentPageState = ReturnType<typeof UseAgentSessionFunction>;
@@ -921,7 +921,7 @@ function workspace_apply_entry(id: string) {
 
 function assistant_parts_entry(
   id: string,
-  parts: AgentAssistantMessagePart[],
+  parts: AgentAssistantMessageParts,
   status: AgentEntryStatus,
   createdAt: number,
 ) {

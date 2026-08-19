@@ -52,31 +52,31 @@ colors:
   dark-titlebar-surface: "#121319"
 typography:
   display:
-    fontFamily: "LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
+    fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
     fontSize: "42px"
     fontWeight: 400
     lineHeight: 1
     letterSpacing: "-0.025em"
   headline:
-    fontFamily: "LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
+    fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 500
     lineHeight: 1.35
     letterSpacing: "-0.02em"
   title:
-    fontFamily: "LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
+    fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 500
     lineHeight: 1.25
     letterSpacing: "-0.018em"
   body:
-    fontFamily: "LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
+    fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "0em"
   label:
-    fontFamily: "LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
+    fontFamily: "Twemoji, LGMono, LGBaseFont, Segoe UI, Microsoft YaHei UI, PingFang SC, system-ui, sans-serif"
     fontSize: "12px"
     fontWeight: 500
     lineHeight: 1.4
@@ -285,13 +285,15 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ## Typography
 
+**Emoji Font:** Twemoji
+
 **Display Font:** LGMono，回退到 LGBaseFont、Segoe UI、Microsoft YaHei UI、PingFang SC、system-ui、sans-serif
 
 **Body Font:** LGMono，回退到 LGBaseFont、Segoe UI、Microsoft YaHei UI、PingFang SC、system-ui、sans-serif
 
 **Label/Mono Font:** LGMono
 
-**Character:** LGMono 使用 Monaspace Neon 的 400–700 可变字重、90% 尺寸校准与 `slnt -11` 斜体轴，给路径、模型名、术语、日志和表格数字带来代码编辑器气质。LGBaseFont 与系统中文字体负责中文可读性；对话 Markdown、校对上下文与结构化日志继续使用同一字族，只通过行高和局部层级提高可读性，不另造内容字体。用户关闭 LGBaseFont 后，回退栈保留 LGMono 与系统字体，仍避免营销页展示字体路线。
+**Character:** Twemoji 位于全局字体栈首位并统一彩色 emoji；字体资产的默认 cmap 只公开 Unicode Emoji 与 Emoji_Component，不公开空白、私用字符和普通 keycap base。`0–9`、`#` 与 `*` 的 FE0F UVS 使用可见的 LGMono 组件，完整 keycap 再由 GSUB 合成为 Twemoji，因此普通文本、显式 presentation 与复合序列均保持可见。LGMono 使用 Monaspace Neon 的 400–700 可变字重、90% 尺寸校准与 `slnt -11` 斜体轴，给路径、模型名、术语、日志和表格数字带来代码编辑器气质。LGBaseFont 与系统中文字体负责中文可读性；对话 Markdown、校对上下文与结构化日志继续使用同一字族，只通过行高和局部层级提高可读性，不另造内容字体。用户关闭 LGBaseFont 后，只移除该正文字体，仍保留 Twemoji、LGMono 与系统字体。
 
 ### Hierarchy
 

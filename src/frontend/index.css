@@ -39,11 +39,26 @@
   font-display: swap;
 }
 
+/*
+ * Twemoji graphics: https://github.com/jdecked/twemoji (CC-BY 4.0).
+ * The sanitized cmap only exposes Unicode emoji/components; ASCII keycaps use FE0F UVS.
+ */
+@font-face {
+  font-family: "Twemoji";
+  src: url("/fonts/Twemoji.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Font preferences only change the text fallback chain; Twemoji remains the emoji provider. */
+  --ui-font-family-text: "LGMono", "LGBaseFont";
   --ui-font-family-base:
-    "LGMono", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+    "Twemoji", var(--ui-font-family-text), "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
+    system-ui, sans-serif;
   font-family: var(--ui-font-family-base);
   line-height: 1.5;
   font-weight: 400;
@@ -165,8 +180,7 @@
 }
 
 :root[data-lg-base-font="disabled"] {
-  --ui-font-family-base:
-    "LGMono", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --ui-font-family-text: "LGMono";
 }
 
 html,

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_SESSION_EVENT_TOPIC,
+  type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageAttachment,
   type AgentSessionSnapshot,
@@ -475,6 +476,16 @@ describe("AgentSessionProvider", () => {
           kind: "assistant_message",
           id: "assistant-invalid-text",
           parts: [{ kind: "thinking", text: { value: "非法正文" } }],
+          status: "success",
+          createdAt: 9,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-whitespace",
+          parts: [
+            { kind: "thinking", text: " \n " },
+            { kind: "text", text: "\t" },
+          ],
           status: "success",
           createdAt: 9,
         },
@@ -1138,7 +1149,12 @@ describe("AgentSessionProvider", () => {
   }
 });
 
-function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
+function assistant_entry(
+  id: string,
+  text: string,
+  status: AgentEntryStatus,
+  createdAt: number,
+): Extract<AgentEntry, { kind: "assistant_message" }> {
   return {
     kind: "assistant_message" as const,
     id,

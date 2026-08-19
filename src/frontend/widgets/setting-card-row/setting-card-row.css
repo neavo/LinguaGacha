@@ -70,7 +70,7 @@
 }
 
 .setting-card-row--content-action .setting-card-row__action > * {
+  /* content 布局只负责收缩容器，控件自身拥有最小宽度契约。 */
   width: auto;
-  min-width: min(128px, 100%);
   max-width: 100%;
 }

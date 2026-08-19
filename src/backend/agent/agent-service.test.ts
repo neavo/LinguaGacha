@@ -336,6 +336,7 @@ function create_fake_response(context: Context): FauxResponseStep {
         thinkingSignature: "private-redacted",
         redacted: true,
       },
+      fauxText(" \n "),
       fauxText("已完成"),
     ]);
   }
@@ -894,7 +895,7 @@ describe("AgentService", () => {
     expect(JSON.stringify(fake_agent_state.model_contexts.at(-1)?.[0])).toContain("压缩摘要");
   });
 
-  it("按上游顺序流式公开思考与正文，并隔离脱敏内容和签名", async () => {
+  it("按上游顺序流式公开可见思考与正文，并隔离空白、脱敏内容和签名", async () => {
     vi.useFakeTimers();
     const { service, publish } = await create_service();
     fake_agent_state.mode = "thinking";

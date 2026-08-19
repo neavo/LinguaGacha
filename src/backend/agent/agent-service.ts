@@ -24,9 +24,11 @@ import {
   AGENT_SESSION_EVENT_TOPIC,
   find_agent_reference_ranges,
   format_agent_skill_reference,
+  normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
   type AgentAssistantMessagePart,
+  type AgentAssistantMessageParts,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
@@ -1255,19 +1257,20 @@ export class AgentService {
     );
   }
 
-  /** running 与 canonical final 复用同一条目身份和覆盖规则。 */
+  /** running 与 canonical final 复用同一条目身份；空终帧只封口已有可见内容。 */
   private upsert_assistant_parts(
-    parts: AgentAssistantMessagePart[],
+    parts: AgentAssistantMessageParts | null,
     created_at: number,
     status: AgentEntryStatus,
   ): void {
     const existing = this.find_open_assistant_entry();
+    const next_parts = parts ?? existing?.parts; // 空终帧不覆盖已经公开的流式内容。
+    if (next_parts === undefined) return;
     if (existing === undefined) {
-      if (parts.length === 0) return;
       const entry: AgentEntry = {
         kind: "assistant_message",
         id: uuidv7(),
-        parts,
+        parts: next_parts,
         status,
         createdAt: created_at,
       };
@@ -1280,7 +1283,7 @@ export class AgentService {
         };
       }
     } else {
-      this.upsert_entry({ ...existing, parts, status });
+      this.upsert_entry({ ...existing, parts: next_parts, status });
     }
   }
 
@@ -1310,10 +1313,9 @@ export class AgentService {
   private publish_assistant_stream(): void {
     const stream = this.assistant_stream;
     if (stream === null) return;
-    const parts: AgentAssistantMessagePart[] = [];
-    for (const block of stream.blocks) {
-      append_assistant_message_part(parts, block.kind, block.chunks.join(""));
-    }
+    const parts = normalize_agent_assistant_message_parts(
+      stream.blocks.map((block) => ({ kind: block.kind, text: block.chunks.join("") })),
+    );
     this.upsert_assistant_parts(parts, stream.created_at, "running");
   }
 
@@ -1698,25 +1700,15 @@ function read_agent_message_images(message: AgentMessageInput): string[] {
 }
 
 /** 将 Pi 内容投影成唯一公开形状；相邻同类块合并，脱敏思考和连续性元数据不外泄。 */
-function project_assistant_message_parts(message: AssistantMessage): AgentAssistantMessagePart[] {
+function project_assistant_message_parts(
+  message: AssistantMessage,
+): AgentAssistantMessageParts | null {
   const parts: AgentAssistantMessagePart[] = [];
   for (const content of message.content) {
-    if (content.type === "text") append_assistant_message_part(parts, "text", content.text);
+    if (content.type === "text") parts.push({ kind: "text", text: content.text });
     else if (content.type === "thinking" && !content.redacted) {
-      append_assistant_message_part(parts, "thinking", content.thinking);
+      parts.push({ kind: "thinking", text: content.thinking });
     }
   }
-  return parts;
-}
-
-/** 过滤不可见内容后合并相邻同类块，确保流帧与最终消息使用同一公开规则。 */
-function append_assistant_message_part(
-  parts: AgentAssistantMessagePart[],
-  kind: AgentAssistantMessagePart["kind"],
-  text: string,
-): void {
-  if (text === "" || (kind === "thinking" && text.trim() === "")) return;
-  const previous = parts.at(-1);
-  if (previous?.kind === kind) previous.text += text;
-  else parts.push({ kind, text });
+  return normalize_agent_assistant_message_parts(parts);
 }
