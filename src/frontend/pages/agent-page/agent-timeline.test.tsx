@@ -359,7 +359,7 @@ describe("AgentTimeline", () => {
     expect(on_thinking_follow_change).not.toHaveBeenCalled();
   });
 
-  it("并行工具复用无图标状态灯并保留独立状态语义", async () => {
+  it("并行工具用状态灯与可访问名称保留独立状态语义", async () => {
     const view = await render_timeline(
       round_entries([
         tool_entry("tool-running", "workspace_script", "running", null, 1),

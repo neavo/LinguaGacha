@@ -386,7 +386,7 @@ describe("AgentPage", () => {
       notify_resize_observers();
     });
     expect(scroll.top).toBe(100);
-    expect(view.querySelector(".agent-page__follow-control button")).not.toBeNull();
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
 
     scroll.top = 800;
     await act(async () => {
@@ -395,7 +395,7 @@ describe("AgentPage", () => {
       notify_resize_observers();
     });
     expect(scroll.top).toBe(900);
-    expect(view.querySelector(".agent-page__follow-control button")).toBeNull();
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
   });
 
   it("思考块独立暂停但保留外层追随，回到最新会同时恢复所有容器", async () => {
@@ -439,7 +439,7 @@ describe("AgentPage", () => {
       thinking[0]?.dispatchEvent(new Event("scroll"));
       thinking[1]?.dispatchEvent(new Event("scroll"));
     });
-    expect(view.querySelector(".agent-page__follow-control button")).not.toBeNull();
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
 
     await render_thinking("第一步\n第二步\n第三步", "甲\n乙\n丙");
     outer_scroll.height = 1_100;
@@ -450,11 +450,11 @@ describe("AgentPage", () => {
     outer_scroll.top = 100;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
 
-    const latest = view.querySelector<HTMLButtonElement>(".agent-page__follow-control button");
+    const latest = find_button_by_text(view, "agent_page.action.return_latest");
     await act(async () => latest?.click());
     expect(outer_scroll.top).toBe(700);
     expect(thinking_scrolls.map(({ top }) => top)).toEqual([240, 240]);
-    expect(view.querySelector(".agent-page__follow-control button")).toBeNull();
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
@@ -936,6 +936,12 @@ function get_button_by_label(container: HTMLElement, label: string): HTMLButtonE
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   if (button === null) throw new Error(`缺少按钮：${label}`);
   return button;
+}
+
+function find_button_by_text(container: HTMLElement, text: string): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent?.trim() === text,
+  );
 }
 
 function get_editor(container: HTMLElement): EditorView {

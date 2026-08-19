@@ -108,7 +108,9 @@ describe("AgentInputQueue", () => {
 
     const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")];
     await act(async () =>
-      buttons.find((button) => button.textContent?.includes("send_now"))?.click(),
+      buttons
+        .find((button) => button.getAttribute("aria-label") === "agent_page.queue.send_now")
+        ?.click(),
     );
     await act(async () =>
       buttons

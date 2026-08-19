@@ -1,4 +1,11 @@
 .agent-page {
+  /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧。 */
+  --agent-composer-max-width: 1120px;
+  --agent-stream-width-offset: 48px;
+  --agent-stream-max-width: calc(
+    var(--agent-composer-max-width) - var(--agent-stream-width-offset)
+  );
+
   position: relative;
   display: flex;
   min-height: 0;
@@ -32,7 +39,7 @@
 
 .agent-page__connection-status {
   display: flex;
-  width: min(calc(100% - 48px), 880px);
+  width: min(calc(100% - 32px - var(--agent-stream-width-offset)), var(--agent-stream-max-width));
   align-items: center;
   gap: 8px;
   margin: 16px auto 0;
@@ -66,16 +73,17 @@
 
 .agent-page__empty-intro {
   display: flex;
+  width: min(100%, 520px);
   align-items: center;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .agent-page__empty-icon {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   color: var(--primary);
-  stroke-width: 1.7;
+  stroke-width: 1.6;
 }
 
 .agent-page__empty p {
@@ -83,55 +91,107 @@
 }
 
 .agent-page__empty-message {
-  max-width: 620px;
+  width: 100%;
+  padding: 0 8px;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.55;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  text-align: center;
 }
 
 .agent-page__suggestions {
-  display: grid;
-  width: min(100%, 640px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  width: min(100%, 520px);
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-page__suggestions::before {
+  content: "";
+  width: 100%;
+  height: 1px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+  background: color-mix(in srgb, var(--border) 52%, transparent);
 }
 
 .agent-page__suggestion {
+  display: grid;
+  width: 100%;
   min-width: 0;
-  min-height: 88px;
-  align-items: flex-start;
-  justify-content: space-between;
+  min-height: 36px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
   gap: 8px;
   border: 0;
-  padding: 14px 16px;
-  color: var(--foreground);
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--secondary-foreground);
   font: inherit;
-  text-align: left;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.agent-page__suggestion:hover {
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+  color: var(--foreground);
+}
+
+.agent-page__suggestion:hover .agent-page__suggestion-icon,
+.agent-page__suggestion:focus-visible .agent-page__suggestion-icon {
+  color: var(--primary);
+}
+
+.agent-page__suggestion:active {
+  background: var(--accent);
+}
+
+.agent-page__suggestion:focus-visible {
+  background: var(--accent);
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-page__suggestion:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .agent-page__suggestion-icon {
-  width: 18px;
-  height: 18px;
-  color: var(--primary);
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
   stroke-width: 1.7;
+  transition: color 180ms ease;
 }
 
 .agent-page__suggestion-label {
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 1.45;
+  line-height: 1.4;
   white-space: normal;
 }
 
 .agent-page__messages {
   display: flex;
-  width: min(100%, 880px);
+  width: min(calc(100% - 32px - var(--agent-stream-width-offset)), var(--agent-stream-max-width));
   margin: 0 auto;
   flex-direction: column;
-  gap: 12px;
-  padding: 24px 24px 16px;
+  padding: 24px 0 16px;
+}
+
+.agent-page__messages > * + * {
+  margin-top: 12px;
+}
+
+.agent-page__messages > .agent-tool-entry + .agent-tool-entry {
+  margin-top: 4px;
 }
 
 .agent-message {
@@ -444,7 +504,6 @@
   object-fit: contain;
 }
 
-.agent-tool-entry,
 .agent-thinking-entry {
   overflow: hidden;
   width: 100%;
@@ -452,25 +511,32 @@
   background: color-mix(in srgb, var(--muted) 32%, transparent);
   color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
   font-size: 12px;
+  interpolate-size: allow-keywords;
 }
 
 .agent-tool-entry {
   display: grid;
-  min-height: 34px;
-  grid-template-columns: minmax(0, 1fr) 8px;
+  width: 100%;
+  height: 24px;
+  grid-template-columns: 12px minmax(0, 1fr) 8px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 0;
-  padding: 6px 8px;
+  background: transparent;
+  padding: 0 8px 0 6px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .agent-tool-entry:hover,
 .agent-tool-entry:focus-visible {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--foreground);
 }
 
@@ -479,7 +545,28 @@
   outline-offset: -1px;
 }
 
-.agent-tool-entry__label,
+.agent-tool-entry[data-status="running"] {
+  color: var(--foreground);
+}
+
+.agent-tool-entry__icon {
+  width: 12px;
+  height: 12px;
+  justify-self: center;
+  color: var(--muted-foreground);
+}
+
+.agent-tool-entry__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-tool-entry__elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
 .agent-thinking-entry__label {
   min-width: 0;
   overflow: hidden;
@@ -488,14 +575,13 @@
   white-space: nowrap;
 }
 
-.agent-tool-entry__elapsed,
 .agent-thinking-entry__elapsed {
   font-variant-numeric: tabular-nums;
 }
 
 .agent-thinking-entry summary {
   display: grid;
-  min-height: 34px;
+  height: 32px;
   width: 100%;
   grid-template-columns: 5px minmax(0, 1fr) 8px;
   align-items: center;
@@ -574,10 +660,6 @@
 .agent-thinking-entry pre {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.agent-thinking-entry {
-  interpolate-size: allow-keywords;
 }
 
 /* 思考正文常驻 DOM 才能平滑自动收缩。 */
@@ -720,40 +802,53 @@
 }
 
 .agent-page__composer-stack {
+  --agent-composer-accessory-row-height: 32px;
+  --agent-composer-accessory-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  --agent-composer-accessory-hover: color-mix(in srgb, var(--accent) 52%, transparent);
+
+  position: relative;
   container-type: inline-size;
   display: flex;
+  width: min(calc(100% - 32px), var(--agent-composer-max-width));
   flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
-  margin: 0 16px 14px;
+  margin: 0 auto 14px;
+}
+
+.agent-task-progress,
+.agent-input-queue {
+  border: var(--agent-composer-accessory-border);
+  border-radius: var(--ui-radius-card);
+  background: transparent;
+}
+
+.agent-task-progress,
+.agent-input-queue__item:not(.agent-input-queue__item--editing) {
+  height: var(--agent-composer-accessory-row-height);
+  transition: background-color 120ms ease;
+}
+
+.agent-task-progress:hover,
+.agent-input-queue__item:not(.agent-input-queue__item--editing):hover,
+.agent-input-queue__item:not(.agent-input-queue__item--editing):focus-within {
+  background: var(--agent-composer-accessory-hover);
 }
 
 .agent-task-progress {
   /* 等宽侧轨让队首相对整条居中，余项计数消失时也不跳位。 */
   display: grid;
   width: min(100%, 420px);
-  min-height: 32px;
   flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
   margin: 0 auto;
-  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--popover) 82%, var(--muted));
   padding: 0 12px;
   color: var(--muted-foreground);
   cursor: help;
   font-size: 12px;
   line-height: 1.4;
-  transition:
-    border-color 120ms ease,
-    background-color 120ms ease;
-}
-
-.agent-task-progress:hover {
-  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
-  background: color-mix(in srgb, var(--popover) 72%, var(--accent));
 }
 
 .agent-task-progress:focus-visible {
@@ -835,12 +930,9 @@
 
 .agent-input-queue {
   display: grid;
-  max-height: min(248px, 32vh);
+  max-height: min(calc(var(--agent-composer-accessory-row-height) * 5 + 2px), 24vh);
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--popover) 94%, var(--muted));
 }
 
 .agent-input-queue__items {
@@ -854,18 +946,17 @@
 
 .agent-input-queue__item {
   display: grid;
-  min-height: 38px;
   grid-template-columns: 24px minmax(80px, 1fr) auto auto;
   align-items: center;
   gap: 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  padding: 3px 6px;
-  background: var(--popover);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 46%, transparent);
+  padding: 2px 6px;
 }
 
 .agent-input-queue__item--editing {
   display: block;
   padding: 8px;
+  background: var(--popover);
 }
 
 .agent-input-queue__item:last-child {
@@ -882,7 +973,14 @@
   border-radius: var(--ui-radius-button);
   background: transparent;
   color: var(--muted-foreground);
+  opacity: 0.6;
   cursor: grab;
+}
+
+.agent-input-queue__drag:hover:not(:disabled),
+.agent-input-queue__drag:focus-visible {
+  color: var(--secondary-foreground);
+  opacity: 1;
 }
 
 .agent-input-queue__drag:focus-visible {
@@ -896,15 +994,15 @@
 }
 
 .agent-input-queue__drag svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .agent-input-queue__preview {
   min-width: 0;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -920,6 +1018,19 @@
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.agent-input-queue__actions button {
+  color: var(--muted-foreground);
+}
+
+.agent-input-queue__actions button:hover,
+.agent-input-queue__actions button:focus-visible {
+  color: var(--foreground);
+}
+
+.agent-input-queue__actions button[aria-busy="true"] {
+  color: var(--primary);
 }
 
 @container (max-width: 520px) {
@@ -976,20 +1087,12 @@
   min-width: 0;
 }
 
-/* 控件占零高度叠在输入框上方，不挤压信息流或改变滚动高度。 */
 .agent-page__follow-control {
-  position: relative;
-  z-index: 10;
-  height: 0;
-  flex: 0 0 0;
-  pointer-events: none;
-}
-
-.agent-page__follow-control > button {
+  /* 离岸控件跟随输入区轨道，不根据页面或滚动条宽度反算位置。 */
   position: absolute;
-  right: 24px;
-  bottom: 8px;
-  pointer-events: auto;
+  inset-inline-end: 0;
+  inset-block-end: calc(100% + 8px);
+  z-index: 10;
 }
 
 .agent-composer:focus-within {
@@ -1439,7 +1542,10 @@
 
   .agent-thinking-entry summary::before,
   .agent-thinking-entry::details-content,
+  .agent-tool-entry,
   .agent-composer__drop-overlay,
+  .agent-page__suggestion,
+  .agent-page__suggestion-icon,
   .agent-composer {
     transition: none;
   }

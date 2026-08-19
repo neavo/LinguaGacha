@@ -9,6 +9,7 @@ export const zh_cn_agent_page = {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
     suggestions: {
       capabilities: "介绍你的能力",
+      roleplay: "开始角色扮演",
       quality_rule_create: "帮我提取术语",
       translation_review: "帮我审校译文",
     },

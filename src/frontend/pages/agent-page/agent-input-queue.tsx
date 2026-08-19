@@ -154,23 +154,18 @@ function AgentInputQueueItem(props: {
         </span>
       ) : null}
       <div className="agent-input-queue__actions">
-        <AppButton
-          type="button"
-          size="xs"
-          variant="ghost"
-          className={sending ? "text-primary disabled:opacity-100" : undefined}
+        <QueueIconAction
+          label={t(sending ? "agent_page.queue.sending" : "agent_page.queue.send_now")}
           disabled={item_actions_disabled || !props.can_send_now}
-          aria-busy={sending || undefined}
-          aria-live="polite"
-          onClick={() => props.on_send_now(props.item.id)}
+          busy={sending}
+          on_click={() => props.on_send_now(props.item.id)}
         >
           {sending ? (
             <LoaderCircle className="animate-spin" aria-hidden="true" />
           ) : (
             <Send aria-hidden="true" />
           )}
-          {t(sending ? "agent_page.queue.sending" : "agent_page.queue.send_now")}
-        </AppButton>
+        </QueueIconAction>
         <QueueIconAction
           label={t("agent_page.action.edit")}
           disabled={item_actions_disabled}
@@ -194,6 +189,7 @@ function AgentInputQueueItem(props: {
 function QueueIconAction(props: {
   label: string;
   disabled: boolean;
+  busy?: boolean; // 同时驱动运行态公告和禁用态视觉
   on_click: () => void;
   children: ReactNode;
 }): JSX.Element {
@@ -206,6 +202,9 @@ function QueueIconAction(props: {
           variant="ghost"
           disabled={props.disabled}
           aria-label={props.label}
+          aria-busy={props.busy || undefined}
+          aria-live={props.busy ? "polite" : undefined}
+          className={props.busy ? "disabled:opacity-100" : undefined}
           onClick={props.on_click}
         >
           {props.children}
