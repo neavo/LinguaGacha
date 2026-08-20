@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type UIEvent,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
@@ -35,7 +27,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
-import { is_at_scroll_end } from "./agent-scroll";
+import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -79,13 +71,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const runtime_snapshot = useRuntimeSnapshot();
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
-  const conversation_follow_paused_ref = useRef(false); // 用户接管必须先于 React state 提交阻断布局归底
   const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const [conversation_follow_paused, set_conversation_follow_paused] = useState(false);
-  // 这里只聚合全局归底入口，不允许思考块暂停反向控制外层跟随。
-  const [paused_thinking_ids, set_paused_thinking_ids] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const {
+    paused: conversation_follow_paused,
+    paused_ref: conversation_follow_paused_ref,
+    follow_user_scroll: follow_conversation_scroll,
+    resume: resume_conversation_follow,
+  } = useAgentScrollFollow();
   // 单调修订只广播一次性用户命令，不承载任何滚动容器的持续状态。
   const [return_latest_revision, set_return_latest_revision] = useState(0);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
@@ -133,7 +125,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue =
     !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
-  const return_latest_available = conversation_follow_paused || paused_thinking_ids.size > 0;
+  const return_latest_available = conversation_follow_paused;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
@@ -155,26 +147,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     if (!target_exists) set_active_inline_edit(null);
   }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
 
-  /** 思考块暂停只决定全局归底入口是否可用，不参与外层跟随裁决。 */
-  const set_thinking_follow_pause = useCallback((id: string, paused: boolean): void => {
-    set_paused_thinking_ids((current) => {
-      if (current.has(id) === paused) return current;
-      const next = new Set(current);
-      if (paused) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
-
   /** 显式归底同步恢复外层，并广播所有思考详情清除各自阅读暂停。 */
   const return_to_latest = useCallback((): void => {
-    conversation_follow_paused_ref.current = false;
-    set_conversation_follow_paused(false);
-    set_paused_thinking_ids(new Set());
+    resume_conversation_follow();
     set_return_latest_revision((current) => current + 1);
     const conversation = conversation_ref.current;
     if (conversation !== null) conversation.scrollTop = conversation.scrollHeight;
-  }, []);
+  }, [resume_conversation_follow]);
 
   // 内容尺寸变化统一由 JS 归底；关闭原生锚定后不会再有第二个滚动写入者。
   useLayoutEffect(() => {
@@ -372,10 +351,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ref={conversation_ref}
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
-        onScroll={(event: UIEvent<HTMLElement>) => {
-          const paused = !is_at_scroll_end(event.currentTarget);
-          conversation_follow_paused_ref.current = paused;
-          set_conversation_follow_paused(paused);
+        onWheel={(event) => follow_conversation_scroll(event.currentTarget)}
+        onTouchMove={(event) => follow_conversation_scroll(event.currentTarget)}
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) follow_conversation_scroll(event.currentTarget);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons > 0 && event.target === event.currentTarget) {
+            follow_conversation_scroll(event.currentTarget);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (
+            is_agent_scroll_key(event.key) &&
+            (event.key !== " " || event.target === event.currentTarget)
+          ) {
+            follow_conversation_scroll(event.currentTarget);
+          }
         }}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
@@ -452,7 +444,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               entries={agent.entries}
               mention_tokens={mention_tokens}
               return_latest_revision={return_latest_revision}
-              on_thinking_follow_change={set_thinking_follow_pause}
               on_continue={continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}

@@ -3,9 +3,8 @@ import { describe, expect, it } from "vitest";
 import { is_at_scroll_end } from "./agent-scroll";
 
 describe("Agent 滚动位置", () => {
-  it("只容忍亚像素舍入，真实离开底端后立即暂停跟随", () => {
-    expect(is_at_scroll_end(scroll_target(598))).toBe(true);
-    expect(is_at_scroll_end(scroll_target(597.9))).toBe(false);
+  it("区分底端与历史阅读位置", () => {
+    expect(is_at_scroll_end(scroll_target(600))).toBe(true);
     expect(is_at_scroll_end(scroll_target(120))).toBe(false);
   });
 });

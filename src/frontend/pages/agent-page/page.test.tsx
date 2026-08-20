@@ -65,6 +65,11 @@ function notify_resize_observers(): void {
   for (const observer of resize_observers) observer.notify();
 }
 
+/** 等待用户滚动后的帧末位置裁决，不用固定时长猜测浏览器调度。 */
+function next_animation_frame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 type ScrollMetrics = {
   top: number;
   height: number;
@@ -381,10 +386,25 @@ describe("AgentPage", () => {
     await act(async () => notify_resize_observers());
     expect(scroll.top).toBe(700);
 
+    await act(async () => {
+      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await next_animation_frame();
+    });
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+
     scroll.top = 100;
     scroll.height = 1_200;
     await act(async () => {
       conversation.dispatchEvent(new Event("scroll"));
+      notify_resize_observers();
+    });
+    expect(scroll.top).toBe(800);
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+
+    scroll.top = 100;
+    await act(async () => {
+      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await next_animation_frame();
       notify_resize_observers();
     });
     expect(scroll.top).toBe(100);
@@ -392,7 +412,8 @@ describe("AgentPage", () => {
 
     scroll.top = 800;
     await act(async () => {
-      conversation.dispatchEvent(new Event("scroll"));
+      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await next_animation_frame();
       scroll.height = 1_300;
       notify_resize_observers();
     });
@@ -400,7 +421,7 @@ describe("AgentPage", () => {
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
   });
 
-  it("思考块独立暂停但保留外层追随，回到最新会同时恢复所有容器", async () => {
+  it("思考块局部暂停不影响外层追随，外层接管才显示回到底部", async () => {
     const render_thinking = (first: string, second: string) =>
       render_page({
         state: "running",
@@ -438,10 +459,11 @@ describe("AgentPage", () => {
     thinking_scrolls[0].top = 80;
     thinking_scrolls[1].top = 120;
     await act(async () => {
-      thinking[0]?.dispatchEvent(new Event("scroll"));
-      thinking[1]?.dispatchEvent(new Event("scroll"));
+      thinking[0]?.dispatchEvent(new Event("wheel", { bubbles: true }));
+      thinking[1]?.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await next_animation_frame();
     });
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
 
     await render_thinking("第一步\n第二步\n第三步", "甲\n乙\n丙");
     outer_scroll.height = 1_100;
@@ -450,7 +472,10 @@ describe("AgentPage", () => {
     expect(outer_scroll.top).toBe(700);
 
     outer_scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    await act(async () => {
+      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await next_animation_frame();
+    });
 
     const latest = find_button_by_text(view, "agent_page.action.return_latest");
     await act(async () => latest?.click());
