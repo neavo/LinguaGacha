@@ -19,7 +19,7 @@ describe("模型选择快照", () => {
             name: " 预设 ",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "HIGH",
-            thinking_configurable: true,
+            available_thinking_levels: ["LOW", "HIGH", "UNKNOWN"],
           },
           {
             id: "model-2",
@@ -50,7 +50,7 @@ describe("模型选择快照", () => {
           name: "预设",
           agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
           thinking_level: "HIGH",
-          thinking_configurable: true,
+          available_thinking_levels: ["LOW", "HIGH"],
         },
       ],
     });
@@ -65,14 +65,14 @@ describe("模型选择快照", () => {
           name: "预设",
           agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
           thinking_level: "UNKNOWN",
-          thinking_configurable: "true",
+          available_thinking_levels: "HIGH",
         },
       ],
     });
 
     expect(snapshot.models[0]).toMatchObject({
       thinking_level: "OFF",
-      thinking_configurable: false,
+      available_thinking_levels: [],
     });
   });
 });

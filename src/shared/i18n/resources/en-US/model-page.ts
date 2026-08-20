@@ -87,8 +87,7 @@ export const en_us_model_page = {
     },
     thinking: {
       title: "Thinking Level",
-      description:
-        "Configure thinking level which will affect time and cost, click question icon for supported models",
+      description: "Configure the model's thinking behavior, which affects time and usage",
     },
     input_token_limit: {
       title: "Input Token Limit",

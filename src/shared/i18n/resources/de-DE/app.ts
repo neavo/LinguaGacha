@@ -22,6 +22,8 @@ export const de_de_app = {
     },
     thinking_level: {
       label: "Denkstufe",
+      default: "Standard",
+      unsupported: "Das ausgewählte Modell wird noch nicht unterstützt",
       off: "Off",
       low: "Low",
       medium: "Medium",

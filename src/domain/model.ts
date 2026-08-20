@@ -1,10 +1,6 @@
 import type { JsonRecord } from "./json";
 import { read_json_record } from "./json";
-import {
-  resolve_model_agent_config,
-  type ModelAgentConfig,
-  type ModelAgentLimits,
-} from "./model-agent";
+import { normalize_model_agent_config, type ModelAgentConfig } from "./model-agent";
 
 // 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域。
 const MODEL_TYPE_DEFINITIONS = {
@@ -114,7 +110,6 @@ export class Model {
   public readonly api_key: string; // API Key
   public readonly model_id: string; // 服务商模型 ID
   public readonly agent: ModelAgentConfig; // 0 表示自动的 Agent 容量配置
-  public readonly agent_limits: ModelAgentLimits; // 按模型 ID 解析后的实际容量
   public readonly request: ModelRequestConfig; // 请求层配置快照
   public readonly threshold: ModelThresholdConfig; // 阈值配置快照
   public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
@@ -129,7 +124,6 @@ export class Model {
     api_key: string;
     model_id: string;
     agent: ModelAgentConfig;
-    agent_limits: ModelAgentLimits;
     request: ModelRequestConfig;
     threshold: ModelThresholdConfig;
     thinking: ModelThinkingConfig;
@@ -143,7 +137,6 @@ export class Model {
     this.api_key = fields.api_key;
     this.model_id = fields.model_id;
     this.agent = fields.agent;
-    this.agent_limits = fields.agent_limits;
     this.request = fields.request;
     this.threshold = fields.threshold;
     this.thinking = fields.thinking;
@@ -156,7 +149,7 @@ export class Model {
   public static from_json(payload: unknown, fallback_id: string): Model {
     const record = read_json_model_record(payload);
     const model_id = String(record["model_id"] ?? "");
-    const resolved_agent = resolve_model_agent_config(model_id, record["agent"]);
+    const agent = normalize_model_agent_config(record["agent"]).config;
     return new Model({
       id: String(record["id"] ?? fallback_id),
       type: Model.normalize_type(record["type"]),
@@ -165,8 +158,7 @@ export class Model {
       api_url: String(record["api_url"] ?? ""),
       api_key: String(record["api_key"] ?? "no_key_required"),
       model_id,
-      agent: resolved_agent.config,
-      agent_limits: resolved_agent.limits,
+      agent,
       request: Model.normalize_request_config(record["request"]),
       threshold: Model.normalize_threshold_config(record["threshold"]),
       thinking: Model.normalize_thinking_config(record["thinking"]),
@@ -248,13 +240,6 @@ export class Model {
   public static resolve_template_filename(value: unknown): string | null;
   public static resolve_template_filename(value: unknown): string | null {
     return is_model_type(value) ? MODEL_TYPE_DEFINITIONS[value].template_filename : null;
-  }
-
-  /**
-   * API 格式是否允许显示思考配置，具体请求仍以模型配置与模型能力为准。
-   */
-  public static api_format_supports_thinking_configuration(api_format: ModelApiFormat): boolean {
-    return api_format !== "SakuraLLM";
   }
 
   /** 模板存在性是自定义类型的唯一判据，避免另维护一份并行枚举。 */

@@ -7,7 +7,6 @@ import {
   apply_openai_responses_one_shot_request_overrides,
   apply_openai_responses_request_overrides,
   apply_sakura_one_shot_request_overrides,
-  build_openai_thinking_payload,
   normalize_openai_sdk_base_url,
 } from "./openai-policy";
 
@@ -74,7 +73,7 @@ describe("OpenAI 请求规则", () => {
     });
   });
 
-  it("Responses Agent 保留 Pi Items 与 tools，并清除未匹配模型的 Pi reasoning", () => {
+  it("Responses Agent 保留 Pi Items、tools 与原生 reasoning", () => {
     const source = {
       input: [{ role: "system", content: "rules" }, { type: "message" }],
       tools: [{ type: "function", name: "lookup" }],
@@ -96,6 +95,7 @@ describe("OpenAI 请求规则", () => {
       input: [{ role: "developer", content: "rules" }, { type: "message" }],
       tools: source.tools,
       include: source.include,
+      reasoning: source.reasoning,
       custom_flag: true,
     });
     expect(source.reasoning).toEqual({ effort: "high", summary: "auto" });
@@ -115,7 +115,7 @@ describe("OpenAI 请求规则", () => {
     expect(payload).toEqual({ messages: [], top_p: 0.8, custom_flag: true });
   });
 
-  it("Chat Completions 覆盖清除 Pi 思考字段且不修改输入", () => {
+  it("Chat Completions 保留 Pi 思考字段并让 extra_body 最终覆盖", () => {
     const source = {
       messages: [{ role: "user", content: "こんにちは" }],
       reasoning_effort: "medium",
@@ -138,46 +138,13 @@ describe("OpenAI 请求规则", () => {
       reasoning_effort: "high",
       custom_flag: true,
     });
-    expect(payload).not.toHaveProperty("reasoning");
-    expect(payload).not.toHaveProperty("thinking");
-    expect(payload).not.toHaveProperty("enable_thinking");
-    expect(payload).not.toHaveProperty("chat_template_kwargs");
-    expect(source).toHaveProperty("reasoning_effort", "medium");
-  });
-
-  it("GPT 最高档原样下传 max", () => {
-    expect(build_openai_thinking_payload("OpenAI", "gpt-5.5", "MAX")).toEqual({
-      reasoning_effort: "max",
+    expect(payload).toMatchObject({
+      reasoning: source.reasoning,
+      thinking: source.thinking,
+      enable_thinking: source.enable_thinking,
+      chat_template_kwargs: source.chat_template_kwargs,
     });
-  });
-
-  it.each([
-    ["OpenAI", "vendor/GROK-preview", "XHIGH", { reasoning_effort: "xhigh" }],
-    ["OpenAIResponses", "vendor/GROK-preview", "XHIGH", { reasoning: { effort: "xhigh" } }],
-    ["OpenAI", "glm-5.1", "MAX", { thinking: { type: "enabled" } }],
-    ["OpenAI", "glm-5.2", "OFF", { reasoning_effort: "minimal" }],
-    ["OpenAI", "glm-5.2", "LOW", { reasoning_effort: "minimal" }],
-    ["OpenAI", "glm-5.2", "XHIGH", { reasoning_effort: "high" }],
-    ["OpenAI", "glm-5.3", "MEDIUM", { reasoning_effort: "low" }],
-    ["OpenAI", "glm-5.3", "XHIGH", { reasoning_effort: "high" }],
-    ["OpenAI", "glm-5.3", "MAX", { reasoning_effort: "max" }],
-    ["OpenAI", "deepseek-v4-flash", "OFF", { thinking: { type: "disabled" } }],
-    [
-      "OpenAI",
-      "deepseek-v4-flash",
-      "MEDIUM",
-      { thinking: { type: "enabled" }, reasoning_effort: "low" },
-    ],
-    [
-      "OpenAI",
-      "deepseek-v4-flash",
-      "MAX",
-      { thinking: { type: "enabled" }, reasoning_effort: "max" },
-    ],
-    ["OpenAIResponses", "deepseek-v4-pro", "MEDIUM", { reasoning: { effort: "low" } }],
-    ["OpenAIResponses", "deepseek-v4-pro", "MAX", { reasoning: { effort: "max" } }],
-  ] as const)("%s/%s 为 %s 生成对应协议字段", (api_format, model_id, level, expected) => {
-    expect(build_openai_thinking_payload(api_format, model_id, level)).toEqual(expected);
+    expect(source).toHaveProperty("reasoning_effort", "medium");
   });
 });
 

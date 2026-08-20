@@ -1,11 +1,6 @@
 import { Circle, CircleCheck, Cpu } from "lucide-react";
 
-import {
-  MODEL_THINKING_LEVELS,
-  MODEL_TYPES,
-  is_model_thinking_level,
-  type ModelUsage,
-} from "@domain/model";
+import { MODEL_TYPES, is_model_thinking_level, type ModelUsage } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   AppDropdownMenuRadioGroup,
@@ -92,7 +87,7 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
 export function ModelThinkingLevelOptions(props: ModelSelectionMenuProps): JSX.Element | null {
   const { t } = useI18n();
   const selected = read_selected_model(props.controller, props.usage);
-  if (selected === null || !selected.thinking_configurable) return null;
+  if (selected === null || selected.available_thinking_levels.length === 0) return null;
   const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
 
   return (
@@ -104,7 +99,7 @@ export function ModelThinkingLevelOptions(props: ModelSelectionMenuProps): JSX.E
         }
       }}
     >
-      {MODEL_THINKING_LEVELS.map((thinking_level) => (
+      {selected.available_thinking_levels.map((thinking_level) => (
         <AppDropdownMenuRadioItem key={thinking_level} value={thinking_level} disabled={disabled}>
           {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
         </AppDropdownMenuRadioItem>

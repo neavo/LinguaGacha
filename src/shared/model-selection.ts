@@ -1,6 +1,7 @@
 import { is_json_record, type JsonRecord } from "../domain/json";
 import {
   Model,
+  is_model_thinking_level,
   is_model_type,
   normalize_model_selection,
   type ModelSelection,
@@ -16,7 +17,7 @@ export type ModelSelectionOption = JsonRecord & {
   name: string;
   agent_limits: ModelAgentLimits; // Agent 空会话展示与运行时共用的实际容量
   thinking_level: ModelThinkingLevel; // 模型当前持久化的全局思考档位
-  thinking_configurable: boolean; // 当前 API 格式是否允许用户修改思考档位
+  available_thinking_levels: ModelThinkingLevel[]; // 后端能力解析确认可直接下传的档位
 };
 
 /** renderer 查询与选择命令共用的公开快照。 */
@@ -33,6 +34,9 @@ export function normalize_model_selection_snapshot(value: unknown): ModelSelecti
     if (!is_json_record(item)) return [];
     const id = typeof item["id"] === "string" ? item["id"].trim() : "";
     const agent_limits = parse_model_agent_limits(item["agent_limits"]);
+    const available_thinking_levels = Array.isArray(item["available_thinking_levels"])
+      ? item["available_thinking_levels"].filter(is_model_thinking_level)
+      : [];
     if (id === "" || !is_model_type(item["type"]) || agent_limits === null) return [];
     return [
       {
@@ -41,7 +45,7 @@ export function normalize_model_selection_snapshot(value: unknown): ModelSelecti
         name: typeof item["name"] === "string" ? item["name"].trim() : "",
         agent_limits,
         thinking_level: Model.normalize_thinking_level(item["thinking_level"]),
-        thinking_configurable: item["thinking_configurable"] === true,
+        available_thinking_levels,
       },
     ];
   });

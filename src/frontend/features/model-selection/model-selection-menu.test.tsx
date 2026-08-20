@@ -57,7 +57,7 @@ describe("ModelSelectionMenu", () => {
             name: "",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "OFF",
-            thinking_configurable: true,
+            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
           },
           {
             id: "openai",
@@ -65,7 +65,7 @@ describe("ModelSelectionMenu", () => {
             name: "OpenAI Main",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "MEDIUM",
-            thinking_configurable: true,
+            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
           },
         ],
       },
@@ -98,7 +98,7 @@ describe("ModelSelectionMenu", () => {
             name: "OpenAI Main",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "OFF",
-            thinking_configurable: true,
+            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
           },
         ],
       },
@@ -129,7 +129,7 @@ describe("ModelSelectionMenu", () => {
             name: "OpenAI Main",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "MEDIUM",
-            thinking_configurable: true,
+            available_thinking_levels: ["LOW", "MEDIUM", "MAX"],
           },
         ],
       },
@@ -148,6 +148,7 @@ describe("ModelSelectionMenu", () => {
       "MEDIUM",
     );
     expect(document.querySelector('[role="radio"][data-value="MAX"]')).not.toBeNull();
+    expect(document.querySelector('[role="radio"][data-value="OFF"]')).toBeNull();
     menu_state.on_value_change?.("MAX");
     expect(update_thinking_level).toHaveBeenCalledWith("agent", "MAX");
   });
@@ -163,7 +164,7 @@ describe("ModelSelectionMenu", () => {
             name: "Sakura",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "OFF",
-            thinking_configurable: false,
+            available_thinking_levels: [],
           },
         ],
       },
