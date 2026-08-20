@@ -18,7 +18,7 @@ import {
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
-import { is_at_scroll_end } from "./agent-scroll";
+import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
@@ -51,7 +51,6 @@ type AgentTimelineProps = {
   entries: readonly AgentEntry[];
   mention_tokens: readonly AgentMentionToken[];
   return_latest_revision: number;
-  on_thinking_follow_change: (id: string, paused: boolean) => void;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: (entry: UserEntry | AssistantEntry) => ReactNode | null;
@@ -88,7 +87,6 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             mention_tokens={props.mention_tokens}
             t={t}
             return_latest_revision={props.return_latest_revision}
-            on_thinking_follow_change={props.on_thinking_follow_change}
             revision_available={index === rounds.length - 1 && !revision_blocked}
             on_continue={props.on_continue}
             on_edit={props.on_edit}
@@ -130,7 +128,6 @@ function AgentRound(props: {
   mention_tokens: readonly AgentMentionToken[];
   t: Translate;
   return_latest_revision: number;
-  on_thinking_follow_change: (id: string, paused: boolean) => void;
   revision_available: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
@@ -211,7 +208,6 @@ function AgentRound(props: {
             entry={entry}
             t={props.t}
             return_latest_revision={props.return_latest_revision}
-            on_thinking_follow_change={props.on_thinking_follow_change}
             on_continue={props.on_continue}
             continue_disabled={props.continue_disabled}
             on_open_tool={props.on_open_tool}
@@ -370,7 +366,6 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
   t: Translate;
   return_latest_revision: number;
-  on_thinking_follow_change: (id: string, paused: boolean) => void;
   on_continue: () => void;
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
@@ -396,13 +391,7 @@ const AgentEntryView = memo(function AgentEntryView(props: {
       />
     );
   }
-  return render_assistant_entry(
-    entry,
-    props.t,
-    props.return_latest_revision,
-    props.on_thinking_follow_change,
-    props.annotatable,
-  );
+  return render_assistant_entry(entry, props.t, props.return_latest_revision, props.annotatable);
 });
 
 /** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
@@ -457,7 +446,6 @@ function render_assistant_entry(
   entry: AssistantEntry,
   t: Translate,
   return_latest_revision: number,
-  on_thinking_follow_change: (id: string, paused: boolean) => void,
   annotatable: boolean,
 ): JSX.Element {
   return (
@@ -469,14 +457,12 @@ function render_assistant_entry(
           return (
             <AgentThinkingDetail
               key={key}
-              id={`thinking:${key}`}
               label={t(status === "running" ? "agent_page.thinking_active" : "agent_page.thinking")}
               started_at={entry.createdAt}
               status={status}
               status_label={t(AGENT_STATUS_LABEL_KEYS[status])}
               content={part.text}
               return_latest_revision={return_latest_revision}
-              on_thinking_follow_change={on_thinking_follow_change}
             />
           );
         }
@@ -526,20 +512,22 @@ function AgentToolEntryButton(props: {
 
 /** 思考详情独立拥有流式跟随、用户接管与完成后的自动收缩。 */
 function AgentThinkingDetail(props: {
-  id: string;
   label: string;
   started_at: number;
   status: AgentEntryStatus;
   status_label: string;
   content: string;
   return_latest_revision: number;
-  on_thinking_follow_change: (id: string, paused: boolean) => void;
 }): JSX.Element {
   const active = props.status === "running";
   const [open, set_open] = useState(active);
-  const [follow_paused, set_follow_paused] = useState(false);
   const content_ref = useRef<HTMLPreElement | null>(null);
-  const follow_paused_ref = useRef(false); // 同步守卫先于 React 状态提交，避免下一帧增量抢回滚动位置
+  const {
+    paused: follow_paused,
+    paused_ref: follow_paused_ref,
+    follow_user_scroll,
+    resume: resume_follow,
+  } = useAgentScrollFollow();
   const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
   const previous_return_latest_revision_ref = useRef(props.return_latest_revision);
 
@@ -557,22 +545,15 @@ function AgentThinkingDetail(props: {
     previous_return_latest_revision_ref.current = props.return_latest_revision;
     const content = content_ref.current;
     if (content === null) return;
+    resume_follow();
     content.scrollTop = content.scrollHeight;
-    follow_paused_ref.current = false;
-    set_follow_paused(false);
-    props.on_thinking_follow_change(props.id, false);
-  }, [props.id, props.on_thinking_follow_change, props.return_latest_revision]);
+  }, [props.return_latest_revision, resume_follow]);
 
   useEffect(() => {
     if (active || !open || follow_paused || user_toggled_ref.current) return;
     const timer = window.setTimeout(() => set_open(false), AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [active, follow_paused, open]);
-
-  useEffect(
-    () => () => props.on_thinking_follow_change(props.id, false),
-    [props.id, props.on_thinking_follow_change],
-  );
 
   const duration = useAgentElapsed(props.started_at, active);
   return (
@@ -582,8 +563,6 @@ function AgentThinkingDetail(props: {
       onToggle={(event) => {
         const next_open = event.currentTarget.open;
         set_open(next_open);
-        // 收起只撤销全局入口；本地位置保留，重新展开后仍可继续回看。
-        props.on_thinking_follow_change(props.id, next_open && follow_paused_ref.current);
       }}
     >
       <summary
@@ -605,11 +584,25 @@ function AgentThinkingDetail(props: {
       <pre
         ref={content_ref}
         tabIndex={0}
-        onScroll={(event) => {
-          const paused = !is_at_scroll_end(event.currentTarget);
-          follow_paused_ref.current = paused;
-          set_follow_paused(paused);
-          props.on_thinking_follow_change(props.id, paused);
+        onWheel={(event) => {
+          event.stopPropagation();
+          follow_user_scroll(event.currentTarget);
+        }}
+        onTouchMove={(event) => {
+          event.stopPropagation();
+          follow_user_scroll(event.currentTarget);
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          follow_user_scroll(event.currentTarget);
+        }}
+        onPointerMove={(event) => {
+          event.stopPropagation();
+          if (event.buttons > 0) follow_user_scroll(event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (is_agent_scroll_key(event.key)) follow_user_scroll(event.currentTarget);
         }}
       >
         {props.content}
