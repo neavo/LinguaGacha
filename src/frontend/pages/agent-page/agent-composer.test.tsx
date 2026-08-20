@@ -42,7 +42,7 @@ type RenderComposerOptions = Partial<
 > & {
   composer_ref?: RefObject<AgentComposerHandle | null>;
   input_session?: AgentInputSession;
-  model_selection?: { loading?: boolean; updating?: boolean };
+  model_selection?: Partial<AgentComposerTestProps["model_selection"]>;
 };
 
 type TestAgentInputSession = AgentInputSession & {
@@ -79,6 +79,8 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.unavailable.settling": "正在结束当前任务",
   "app.model.selection.label": "选择模型",
   "app.model.thinking_level.label": "思考等级",
+  "app.model.thinking_level.default": "默认",
+  "app.model.thinking_level.unsupported": "尚不支持所选模型",
   "app.model.thinking_level.medium": "中",
 }));
 
@@ -669,6 +671,31 @@ describe("AgentComposer", () => {
     );
   });
 
+  it("所选模型没有可用思考档位时保留禁用的默认入口", async () => {
+    const view = await render_composer({
+      model_selection: {
+        snapshot: {
+          model_selection: { translation: "agent", analysis: "agent", agent: "agent" },
+          models: [
+            {
+              id: "agent",
+              type: "CUSTOM_OPENAI",
+              name: "Unknown Model",
+              agent_limits: { context_window: 256_000, max_output_tokens: 32_000 },
+              thinking_level: "OFF",
+              available_thinking_levels: [],
+            },
+          ],
+        },
+      },
+    });
+
+    const trigger = view.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
+    expect(trigger?.disabled).toBe(true);
+    expect(trigger?.textContent).toContain("默认");
+    expect(trigger?.parentElement?.tabIndex).toBe(0);
+  });
+
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -708,7 +735,7 @@ describe("AgentComposer", () => {
                     name: "Agent Model",
                     agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
                     thinking_level: "MEDIUM",
-                    thinking_configurable: true,
+                    available_thinking_levels: ["LOW", "MEDIUM", "HIGH"],
                   },
                 ],
               },

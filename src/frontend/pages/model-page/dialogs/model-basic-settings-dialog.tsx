@@ -1,7 +1,7 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { MODEL_THINKING_LEVELS, Model, is_model_thinking_level } from "@domain/model";
+import { is_model_thinking_level } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
@@ -16,8 +16,8 @@ import {
   SelectValue,
 } from "@frontend/shadcn/select";
 import { Textarea } from "@frontend/shadcn/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 type ModelBasicSettingsDialogProps = {
@@ -30,16 +30,9 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-// 支持说明只有中英文版本，未单独维护的 locale 统一落到英文页面。
-const THINKING_SUPPORT_URL_BY_LOCALE = {
-  "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
-  "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
-  "de-DE": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
-} as const;
-
 /** 编辑模型名称、连接信息和思考档位的基础设置对话框。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
   const [model_id_input_value, set_model_id_input_value] = useState("");
 
@@ -60,7 +53,11 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   }
 
   const model = props.model;
-  const show_thinking_field = Model.api_format_supports_thinking_configuration(model.api_format);
+  const thinking_unavailable = model.available_thinking_levels.length === 0;
+  const current_thinking_available = model.available_thinking_levels.includes(model.thinking.level);
+  const thinking_label = current_thinking_available
+    ? t(MODEL_THINKING_LEVEL_LABEL_KEY[model.thinking.level])
+    : t("app.model.thinking_level.default");
 
   /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
   async function commit_model_id_input(): Promise<void> {
@@ -190,47 +187,50 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               }
             />
 
-            {show_thinking_field ? (
-              <SettingCardRow
-                action_width="content"
-                title={t("model_page.fields.thinking.title")}
-                title_suffix={
-                  <SettingHelpButton
-                    url={THINKING_SUPPORT_URL_BY_LOCALE[locale]}
-                    aria_label={t("model_page.fields.thinking.title")}
-                  />
-                }
-                description={t("model_page.fields.thinking.description")}
-                action={
-                  <Select
-                    value={model.thinking.level}
-                    disabled={props.readonly}
-                    onValueChange={(next_value) => {
-                      if (is_model_thinking_level(next_value)) {
-                        void props.onPatch({
-                          thinking: {
-                            level: next_value,
-                          },
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="model-page__field">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {MODEL_THINKING_LEVELS.map((thinking_level) => (
-                          <SelectItem key={thinking_level} value={thinking_level}>
-                            {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                }
-              />
-            ) : null}
+            <SettingCardRow
+              action_width="content"
+              title={t("model_page.fields.thinking.title")}
+              description={t("model_page.fields.thinking.description")}
+              action={
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
+                      <Select
+                        value={current_thinking_available ? model.thinking.level : "DEFAULT"}
+                        disabled={props.readonly || thinking_unavailable}
+                        onValueChange={(next_value) => {
+                          if (is_model_thinking_level(next_value)) {
+                            void props.onPatch({
+                              thinking: {
+                                level: next_value,
+                              },
+                            });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="model-page__field">
+                          <SelectValue>{thinking_label}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {model.available_thinking_levels.map((thinking_level) => (
+                              <SelectItem key={thinking_level} value={thinking_level}>
+                                {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </span>
+                  </TooltipTrigger>
+                  {thinking_unavailable ? (
+                    <TooltipContent side="top" sideOffset={8}>
+                      <p>{t("app.model.thinking_level.unsupported")}</p>
+                    </TooltipContent>
+                  ) : null}
+                </Tooltip>
+              }
+            />
           </div>
         </div>
       </AppPageDialog>

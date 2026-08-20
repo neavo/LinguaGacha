@@ -33,6 +33,12 @@ vi.mock("@frontend/shadcn/select", () => ({
   ),
 }));
 
+vi.mock("@frontend/shadcn/tooltip", () => ({
+  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
+}));
+
 describe("ModelBasicSettingsDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -94,7 +100,7 @@ describe("ModelBasicSettingsDialog", () => {
     expect(on_patch).not.toHaveBeenCalled();
   });
 
-  it("Responses 模型显示连接字段并提交最高思考档位", async () => {
+  it("Responses 模型只显示并提交后端确认可用的思考档位", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -103,7 +109,10 @@ describe("ModelBasicSettingsDialog", () => {
       root?.render(
         <ModelBasicSettingsDialog
           open
-          model={create_model_snapshot({ api_format: "OpenAIResponses" })}
+          model={create_model_snapshot({
+            api_format: "OpenAIResponses",
+            available_thinking_levels: ["LOW", "HIGH"],
+          })}
           readonly={false}
           onPatch={on_patch}
           onRequestOpenSelector={() => {}}
@@ -121,12 +130,45 @@ describe("ModelBasicSettingsDialog", () => {
     if (!(thinking_select instanceof HTMLSelectElement)) {
       throw new Error("思考档位选择器未挂载。");
     }
-    expect(thinking_select.querySelector('option[value="MAX"]')).not.toBeNull();
+    expect(thinking_select.querySelector('option[value="MAX"]')).toBeNull();
+    expect(thinking_select.querySelector('option[value="HIGH"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("model_page.fields.thinking.description");
+    expect(
+      Array.from(document.querySelectorAll("button")).some(
+        (button) => button.getAttribute("aria-label") === "model_page.fields.thinking.title",
+      ),
+    ).toBe(false);
     await act(async () => {
-      thinking_select.value = "MAX";
+      thinking_select.value = "HIGH";
       thinking_select.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "MAX" } });
+    expect(on_patch).toHaveBeenCalledWith({ thinking: { level: "HIGH" } });
+  });
+
+  it("没有可用思考档位时显示默认、禁用并说明原因", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <ModelBasicSettingsDialog
+          open
+          model={create_model_snapshot({ available_thinking_levels: [] })}
+          readonly={false}
+          onPatch={async () => {}}
+          onRequestOpenSelector={() => {}}
+          onRequestTestModel={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    const thinking_select = document.querySelector("select");
+    expect(thinking_select?.disabled).toBe(true);
+    expect(thinking_select?.parentElement?.tabIndex).toBe(0);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+      "app.model.thinking_level.unsupported",
+    );
   });
 });

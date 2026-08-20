@@ -91,11 +91,7 @@ export function useModelSelection(): ModelSelectionController {
       const selected = snapshot.models.find(
         (model) => model.id === snapshot.model_selection[usage],
       );
-      if (
-        selected === undefined ||
-        !selected.thinking_configurable ||
-        selected.thinking_level === thinking_level
-      ) {
+      if (selected === undefined || selected.thinking_level === thinking_level) {
         return;
       }
       await update_snapshot("/api/models/thinking-level/update", { usage, thinking_level });

@@ -11,19 +11,15 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.models";
-import { GOOGLE_MODELS } from "@earendil-works/pi-ai/providers/google.models";
 
+import { DEFAULT_MODEL_AGENT_CONFIG } from "../../domain/model-agent";
 import { AppError } from "../../shared/error";
 import {
   apply_one_shot_request_overrides,
   resolve_one_shot_generation_options,
 } from "./llm-client-policy";
 import type { LLMMessage } from "./llm-types";
-import {
-  resolve_effective_model_thinking_level,
-  resolve_model_thinking,
-} from "./policy/model-thinking-policy";
+import { resolve_model_capability, resolve_pi_thinking_level } from "./model-capability";
 import type { ModelRequestSnapshot } from "./policy/policy-types";
 
 // Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
@@ -62,23 +58,17 @@ export function resolve_pi_model(
   streamSimple: ProviderStreams["streamSimple"];
 } {
   const api = resolve_pi_api(snapshot.api_format);
-  const catalog_model = match_native_pi_catalog_model(snapshot.api_format, snapshot.model_id);
-  const thinking =
-    catalog_model === null
-      ? resolve_model_thinking(snapshot.api_format, snapshot.model_id, snapshot.thinking_level)
-      : null;
-  const reasoning = catalog_model?.reasoning === true || thinking !== null;
-  const thinking_level_map = catalog_model?.thinkingLevelMap ?? thinking?.thinking_level_map;
-  const thinking_level =
-    catalog_model === null
-      ? (thinking?.effective_level ?? "off")
-      : resolve_effective_model_thinking_level(
-          catalog_model.reasoning,
-          catalog_model.thinkingLevelMap,
-          snapshot.thinking_level,
-        );
+  const capability = resolve_model_capability({
+    api_format: snapshot.api_format,
+    model_id: snapshot.model_id,
+    agent: DEFAULT_MODEL_AGENT_CONFIG,
+  });
+  const thinking_level = resolve_pi_thinking_level(
+    snapshot.thinking_level,
+    capability.available_thinking_levels,
+  );
   const compat = {
-    ...catalog_model?.compat,
+    ...capability.compat,
     // 自定义 OpenAI-compatible 服务只共同保证 system role；OneShot 会继续冻结旧 payload 形状。
     ...(api.api === "openai-completions" ? { supportsDeveloperRole: false } : {}),
   };
@@ -88,12 +78,15 @@ export function resolve_pi_model(
     provider: api.provider,
     api: api.api,
     baseUrl: snapshot.base_url,
-    reasoning,
-    ...(thinking_level_map === undefined ? {} : { thinkingLevelMap: { ...thinking_level_map } }),
+    reasoning: capability.reasoning,
+    ...(capability.thinking_level_map === undefined
+      ? {}
+      : { thinkingLevelMap: { ...capability.thinking_level_map } }),
     input: settings.input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: settings.contextWindow ?? catalog_model?.contextWindow ?? 0,
-    maxTokens: settings.maxTokens ?? catalog_model?.maxTokens ?? settings.fallbackMaxTokens ?? 0,
+    contextWindow: settings.contextWindow ?? capability.catalog_context_window ?? 0,
+    maxTokens:
+      settings.maxTokens ?? capability.catalog_max_tokens ?? settings.fallbackMaxTokens ?? 0,
     headers: { ...snapshot.headers },
     ...(Object.keys(compat).length === 0 ? {} : { compat }),
   };
@@ -133,6 +126,7 @@ export function resolve_one_shot_pi_request(
       ? {
           ...resolved.model,
           compat: {
+            ...resolved.model.compat,
             supportsDeveloperRole: false,
             supportsStore: false,
             supportsUsageInStreaming: true,
@@ -148,7 +142,7 @@ export function resolve_one_shot_pi_request(
     signal,
     ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
     ...(generation.maxTokens === undefined ? {} : { maxTokens: generation.maxTokens }),
-    ...(snapshot.api_format === "OpenAIResponses" &&
+    ...((snapshot.api_format === "OpenAI" || snapshot.api_format === "OpenAIResponses") &&
     resolved.model.reasoning &&
     resolved.thinkingLevel !== "off"
       ? { reasoningEffort: resolved.thinkingLevel }
@@ -177,45 +171,6 @@ export function resolve_one_shot_pi_request(
     options,
     stream,
   };
-}
-
-/** Google/Anthropic catalog 只提供能力模板，匹配不改写真实请求 ID。 */
-function match_native_pi_catalog_model(
-  api_format: ModelRequestSnapshot["api_format"],
-  configured_id: string,
-): PiModel<PiApi> | null {
-  const catalog =
-    api_format === "Google"
-      ? (Object.values(GOOGLE_MODELS) as readonly PiModel<PiApi>[])
-      : api_format === "Anthropic"
-        ? (Object.values(ANTHROPIC_MODELS) as readonly PiModel<PiApi>[])
-        : null;
-  if (catalog === null) return null;
-  return match_pi_catalog_model(configured_id, catalog);
-}
-
-/** 精确命中优先，否则选择配置 ID 中最长且唯一的 catalog ID。 */
-export function match_pi_catalog_model(
-  configured_id: string,
-  catalog: readonly PiModel<PiApi>[],
-): PiModel<PiApi> | null {
-  const normalized_id = configured_id.toLowerCase();
-  const exact = catalog.find((model) => model.id.toLowerCase() === normalized_id);
-  if (exact !== undefined) return exact;
-
-  let match: PiModel<PiApi> | null = null;
-  let ambiguous = false;
-  for (const model of catalog) {
-    const catalog_id = model.id.toLowerCase();
-    if (!normalized_id.includes(catalog_id)) continue;
-    if (match === null || catalog_id.length > match.id.length) {
-      match = model;
-      ambiguous = false;
-    } else if (catalog_id.length === match.id.length && catalog_id !== match.id.toLowerCase()) {
-      ambiguous = true;
-    }
-  }
-  return ambiguous ? null : match;
 }
 
 /** 产品 API 枚举只在这里绑定 Pi provider 身份与惰性 adapter。 */

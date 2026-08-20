@@ -130,7 +130,7 @@ function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"):
         name: "Preset",
         agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
         thinking_level,
-        thinking_configurable: true,
+        available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
       },
       {
         id: "openai",
@@ -138,7 +138,7 @@ function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"):
         name: "OpenAI",
         agent_limits: { context_window: 400_000, max_output_tokens: 50_000 },
         thinking_level: "OFF",
-        thinking_configurable: true,
+        available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
       },
     ],
   };

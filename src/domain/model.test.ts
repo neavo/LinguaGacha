@@ -127,8 +127,6 @@ describe("Model", () => {
       "preset_model_custom_anthropic.json",
     );
     expect(Model.resolve_template_filename("PRESET")).toBeNull();
-    expect(Model.api_format_supports_thinking_configuration("OpenAIResponses")).toBe(true);
-    expect(Model.api_format_supports_thinking_configuration("SakuraLLM")).toBe(false);
   });
 
   it("模型用途选择只保留规范化后的三个模型 ID", () => {

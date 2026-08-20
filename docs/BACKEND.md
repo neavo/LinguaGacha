@@ -76,11 +76,11 @@ project, files, items, quality, prompts, analysis, proofreading
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- 模型请求快照、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 共用请求事实和 `pi-ai` adapter，模型列表探测直接调用供应商 REST API。
-- Google 与 Anthropic 的 Pi catalog 只作为模型能力模板：配置 ID 优先精确命中，否则取其中最长且唯一的 catalog ID；真实请求仍沿用用户模型 ID、归一后的 API URL 与请求头，调用方容量优先于 catalog 缺省容量。模型能力容量与单次生成限制保持独立：Google 自动上限不进入最终 payload，Anthropic 自动上限使用 catalog `maxTokens` 且在未知模型时回退总计 `64000`，显式限制和 `extra_body` 按协议最终覆盖。catalog 同时提供 reasoning、挡位映射与 compat，产品统一六档只在共享边界向下降挡，原生思考载荷由 Pi `streamSimple` 生成；结构化思考字段高于 `extra_body`，未匹配时不猜测能力并允许扩展字段自行接管。
+- 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
+- 模型能力优先采用项目内少量精确修正，否则读取 Pi 内置 catalog，两者均未命中时不猜测思考能力并使用 Agent 安全容量。配置 ID 优先精确匹配；变种 ID 只在字母数字分隔边界内取最长且唯一的 canonical ID。思考能力使用与当前协议适配的单一模板；容量聚合同 canonical ID 在全部 Pi catalog 中的记录并分别取最大 `contextWindow` 与 `maxTokens`，不改写真实请求 ID、归一后的 API URL 或请求头。应用修正只承载 Pi 缺失或落后的当前事实，Pi 更新并验证后直接删除对应修正。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消、退化和结果语义：供应商错误、长度截断、工具调用或空正文统一成为当前请求错误，任务层不解析异常文本；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
 - 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendBootstrap` 在服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
-- OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；兼容模型的思考字段继续由项目共享策略生成，未命中策略的模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
+- OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。
 
 ## 5. 数据库与 `.lg` 存储
 

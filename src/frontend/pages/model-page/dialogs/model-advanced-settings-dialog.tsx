@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 import {
-  resolve_model_agent_config,
+  normalize_model_agent_config,
   type ModelAgentConfig,
-  type ResolvedModelAgentConfig,
+  type NormalizedModelAgentConfig,
 } from "@domain/model-agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
@@ -170,12 +170,11 @@ function create_agent_limit_draft(
 
 /** 两项草稿共用领域规范化，避免前端维护第二套数值关系。 */
 function resolve_agent_limit_draft(
-  model_id: string,
   draft: Record<AgentLimitFieldName, string>,
-): ResolvedModelAgentConfig {
+): NormalizedModelAgentConfig {
   const context_window_text = draft.context_window.trim();
   const max_output_tokens_text = draft.max_output_tokens.trim();
-  return resolve_model_agent_config(model_id, {
+  return normalize_model_agent_config({
     context_window: context_window_text === "" ? null : Number(context_window_text),
     max_output_tokens: max_output_tokens_text === "" ? null : Number(max_output_tokens_text),
   });
@@ -252,7 +251,7 @@ export function ModelAdvancedSettingsDialog(
 
   /** 两项容量必须作为一组规范化和保存，避免产生瞬时非法组合。 */
   function commit_agent_limits(): void {
-    const resolved = resolve_agent_limit_draft(model.model_id, agent_limit_draft);
+    const resolved = resolve_agent_limit_draft(agent_limit_draft);
     set_agent_limit_draft({
       context_window: resolved.config.context_window.toString(),
       max_output_tokens: resolved.config.max_output_tokens.toString(),

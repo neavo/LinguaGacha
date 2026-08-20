@@ -12,6 +12,7 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import type { LLMClientPort } from "../llm/llm-types";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { read_config_model_records } from "./model-config-resolver";
 import { ModelService } from "./model-service";
 
 type ModelPresetFiles = {
@@ -93,6 +94,29 @@ describe("ModelService 配置管理", () => {
     );
   });
 
+  it("首次读取旧配置时统一持久化失效思考档位的修正", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({
+        api_format: "OpenAIResponses",
+        id: "legacy-mimo",
+        model_id: "mimo-v2.5-pro",
+        thinking: { level: "MAX" },
+      }),
+    ]);
+
+    const snapshot = read_request_model_snapshot(service.get_snapshot());
+    expect(snapshot.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "legacy-mimo", thinking: { level: "HIGH" } }),
+      ]),
+    );
+    expect(
+      read_config_model_records(app_setting_service.read_setting()).find(
+        (model) => model["id"] === "legacy-mimo",
+      ),
+    ).toEqual(expect.objectContaining({ thinking: { level: "HIGH" } }));
+  });
+
   it("空模型配置按内置预设后补齐全部自定义模型", async () => {
     stub_random_ids(
       "00000000-0000-4000-8000-000000000011",
@@ -149,7 +173,7 @@ describe("ModelService 配置管理", () => {
     stub_random_ids("00000000-0000-4000-8000-000000000021");
     const { paths, service, app_setting_service } = await create_model_service([
       create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
-      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "openai", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
       create_model({
         id: "responses",
         type: "CUSTOM_OPENAI_RESPONSES",
@@ -249,7 +273,7 @@ describe("ModelService 配置管理", () => {
         max_output_tokens: expect.any(Number),
       },
       thinking_level: "OFF",
-      thinking_configurable: true,
+      available_thinking_levels: expect.any(Array),
     });
     expect(snapshot.models[0]).not.toHaveProperty("api_key");
     expect(management.models[0]?.["agent"]).toEqual({
@@ -261,7 +285,7 @@ describe("ModelService 配置管理", () => {
   it("按用途更新当前模型思考档位并保持选择快照狭窄", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
-      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "openai", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
     ]);
     service.select_model({ usage: "agent", model_id: "openai" });
 
@@ -274,7 +298,7 @@ describe("ModelService 配置管理", () => {
 
     expect(selected).toMatchObject({
       thinking_level: "MAX",
-      thinking_configurable: true,
+      available_thinking_levels: expect.arrayContaining(["MAX"]),
     });
     expect(selected).not.toHaveProperty("api_key");
     expect(persisted?.["thinking"]).toEqual({ level: "MAX" });
@@ -299,16 +323,59 @@ describe("ModelService 配置管理", () => {
     expect(service.get_selection_snapshot()).toEqual(before);
   });
 
-  it("不可配置思考档位的模型不落盘", async () => {
-    const { service } = await create_model_service([
+  it("思考档位写入口统一归一为模型可用档位", async () => {
+    const { service, app_setting_service } = await create_model_service([
       create_model({ id: "sakura", type: "PRESET", api_format: "SakuraLLM" }),
     ]);
-    const before = service.get_selection_snapshot();
 
-    expect(() =>
-      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" }),
-    ).toThrow("request.validation_failed");
-    expect(service.get_selection_snapshot()).toEqual(before);
+    const snapshot = service.update_selected_model_thinking_level({
+      usage: "agent",
+      thinking_level: "HIGH",
+    });
+
+    expect(read_selection_snapshot(snapshot).models[0]).toMatchObject({
+      thinking_level: "OFF",
+      available_thinking_levels: [],
+    });
+    expect(read_config_model_records(app_setting_service.read_setting())[0]?.["thinking"]).toEqual({
+      level: "OFF",
+    });
+  });
+
+  it("修改模型 ID 与选择模型时都保持有效思考档位", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({
+        api_format: "OpenAIResponses",
+        id: "edited",
+        model_id: "gpt-5.6-luna",
+        thinking: { level: "MAX" },
+      }),
+      create_model({
+        id: "stale",
+        model_id: "kimi-k3",
+        thinking: { level: "XHIGH" },
+        type: "CUSTOM_OPENAI",
+      }),
+    ]);
+
+    const edited_snapshot = read_request_model_snapshot(
+      service.update_model({ model_id: "edited", patch: { model_id: "gpt-5.5" } }),
+    );
+    expect(edited_snapshot.models.find((model) => model["id"] === "edited")?.["thinking"]).toEqual({
+      level: "XHIGH",
+    });
+
+    const selected_snapshot = read_selection_snapshot(
+      service.select_model({ usage: "agent", model_id: "stale" }),
+    );
+    expect(selected_snapshot.models.find((model) => model["id"] === "stale")).toMatchObject({
+      thinking_level: "HIGH",
+      available_thinking_levels: ["LOW", "HIGH", "MAX"],
+    });
+    const persisted = read_config_model_records(app_setting_service.read_setting());
+    expect(persisted.find((model) => model["id"] === "stale")?.["thinking"]).toEqual({
+      level: "HIGH",
+    });
   });
 
   it("非法用途和缺失模型均不落盘", async () => {

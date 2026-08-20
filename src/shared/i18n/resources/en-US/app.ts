@@ -22,6 +22,8 @@ export const en_us_app = {
     },
     thinking_level: {
       label: "Thinking level",
+      default: "Default",
+      unsupported: "The selected model is not supported yet",
       off: "Off",
       low: "Low",
       medium: "Medium",

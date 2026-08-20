@@ -4,27 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { read_model_request_snapshot } from "./llm-client-policy";
-import { match_pi_catalog_model, resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
+import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 
 describe("pi-ai 请求适配", () => {
-  it("catalog 匹配优先精确项，否则选择最长且唯一的包含项", () => {
-    const catalog = [
-      create_catalog_model("gemini-3"),
-      create_catalog_model("gemini-3.6-flash"),
-      create_catalog_model("model-alpha"),
-      create_catalog_model("model-bravo"),
-    ];
-
-    expect(match_pi_catalog_model("GEMINI-3", catalog)?.id).toBe("gemini-3");
-    expect(match_pi_catalog_model("vendor/gemini-3.6-flash:free", catalog)?.id).toBe(
-      "gemini-3.6-flash",
-    );
-    expect(match_pi_catalog_model("model-alpha+model-bravo", catalog)).toBeNull();
-    expect(match_pi_catalog_model("provider-defined-model", catalog)).toBeNull();
-  });
-
   it.each([
     ["OpenAI", "openai", "openai-completions"],
     ["OpenAIResponses", "openai", "openai-responses"],
@@ -251,18 +235,18 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("include");
   });
 
-  it("GPT Responses 的最高档启用 Pi reasoning 连续性", async () => {
+  it("GPT Responses 的可用档位启用 Pi reasoning 连续性", async () => {
     const request = resolve_request({
       api_format: "OpenAIResponses",
       model_id: "gpt-5.5",
-      thinking: { level: "MAX" },
+      thinking: { level: "XHIGH" },
     });
     const payload = await capture_payload(request);
 
     expect(request.model.reasoning).toBe(true);
-    expect(request.options).toMatchObject({ reasoningEffort: "max" });
+    expect(request.options).toMatchObject({ reasoningEffort: "xhigh" });
     expect(payload).toMatchObject({
-      reasoning: { effort: "max", summary: "auto" },
+      reasoning: { effort: "xhigh", summary: "auto" },
       include: ["reasoning.encrypted_content"],
     });
     expect(payload["input"]).toEqual([
@@ -274,16 +258,68 @@ describe("pi-ai 请求适配", () => {
     ]);
   });
 
-  it("Kimi K3 的特高档在 Pi 与最终 payload 中统一降为 high", async () => {
+  it("Kimi K3 的可用档位由 Pi 直接生成最终 payload", async () => {
     const request = resolve_request({
       api_format: "OpenAI",
       model_id: "kimi-k3",
-      thinking: { level: "XHIGH" },
+      thinking: { level: "HIGH" },
     });
     const payload = await capture_payload(request);
 
     expect(request.model).toMatchObject({ reasoning: true });
     expect(payload).toHaveProperty("reasoning_effort", "high");
+  });
+
+  it("应用精确修正通过 Pi 生成 Grok 与 DeepSeek 新档位", async () => {
+    const grok_request = resolve_request({
+      api_format: "OpenAI",
+      model_id: "vendor/grok-4.6-fast",
+      thinking: { level: "XHIGH" },
+    });
+    const deepseek_request = resolve_request({
+      api_format: "OpenAI",
+      model_id: "deepseek-v4-pro",
+      thinking: { level: "LOW" },
+    });
+
+    await expect(capture_payload(grok_request)).resolves.toHaveProperty(
+      "reasoning_effort",
+      "xhigh",
+    );
+    await expect(capture_payload(deepseek_request)).resolves.toMatchObject({
+      thinking: { type: "enabled" },
+      reasoning_effort: "low",
+    });
+  });
+
+  it("MiMo V2.5 在两种 OpenAI 协议中只发送思考开关", async () => {
+    const completions_request = resolve_request({
+      api_format: "OpenAI",
+      model_id: "mimo-v2.5-pro",
+      thinking: { level: "HIGH" },
+    });
+    const disabled_request = resolve_request({
+      api_format: "OpenAI",
+      model_id: "mimo-v2.5-pro",
+      thinking: { level: "OFF" },
+    });
+    const responses_request = resolve_request({
+      api_format: "OpenAIResponses",
+      model_id: "mimo-v2.5-pro",
+      thinking: { level: "HIGH" },
+    });
+
+    const completions_payload = await capture_payload(completions_request);
+    expect(completions_payload).toMatchObject({ thinking: { type: "enabled" } });
+    expect(completions_payload).not.toHaveProperty("reasoning_effort");
+    await expect(capture_payload(disabled_request)).resolves.toHaveProperty(
+      "thinking.type",
+      "disabled",
+    );
+    await expect(capture_payload(responses_request)).resolves.toHaveProperty(
+      "reasoning.effort",
+      "high",
+    );
   });
 
   it("Responses 未收录模型即使选择 HIGH 也不启用 reasoning", async () => {
@@ -433,12 +469,12 @@ describe("pi-ai 请求适配", () => {
     expect(config).not.toHaveProperty("maxOutputTokens");
   });
 
-  it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID并应用向下降档", async () => {
+  it("让 Pi catalog 为带前后缀的 Gemini 保留原始 ID与可用档位", async () => {
     const request = resolve_request({
       api_format: "Google",
       api_url: "https://google-proxy.example/api",
       model_id: "vendor/models/gemini-3.6-flash:free",
-      thinking: { level: "MAX" },
+      thinking: { level: "HIGH" },
     });
     const payload = await capture_payload(request);
     const config = payload["config"];
@@ -501,20 +537,5 @@ function create_model(overrides: JsonRecord = {}): JsonRecord {
     thinking: { level: "OFF" },
     threshold: { output_token_limit: 4096 },
     ...overrides,
-  };
-}
-
-function create_catalog_model(id: string): Model<"google-generative-ai"> {
-  return {
-    id,
-    name: id,
-    api: "google-generative-ai",
-    provider: "google",
-    baseUrl: "https://example.com/v1beta",
-    reasoning: true,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 0,
-    maxTokens: 0,
   };
 }
