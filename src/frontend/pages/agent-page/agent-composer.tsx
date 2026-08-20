@@ -321,10 +321,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
+  const selected_thinking_available =
+    selected_model !== null &&
+    selected_model.available_thinking_levels.includes(selected_model.thinking_level);
+  const thinking_unavailable =
+    selected_model !== null && selected_model.available_thinking_levels.length === 0;
   const selected_thinking_label =
-    selected_model?.thinking_configurable === true
-      ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
-      : null;
+    selected_model === null
+      ? null
+      : selected_thinking_available
+        ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
+        : t("app.model.thinking_level.default");
   // 后端只拥有历史 token；容量跟随当前选择，并会在下一次模型操作前同步到既有会话。
   const context_usage =
     selected_model === null
@@ -840,23 +847,29 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <AppDropdownMenuTrigger asChild>
-                    <AppButton
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="agent-composer__thinking-trigger"
-                      disabled={model_controls_disabled}
-                      aria-label={`${t("app.model.thinking_level.label")}: ${selected_thinking_label}`}
-                    >
-                      <Brain aria-hidden="true" />
-                      <span>{selected_thinking_label}</span>
-                      <ChevronDown aria-hidden="true" />
-                    </AppButton>
-                  </AppDropdownMenuTrigger>
+                  <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
+                    <AppDropdownMenuTrigger asChild>
+                      <AppButton
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="agent-composer__thinking-trigger"
+                        disabled={model_controls_disabled || thinking_unavailable}
+                        aria-label={`${t("app.model.thinking_level.label")}: ${selected_thinking_label}`}
+                      >
+                        <Brain aria-hidden="true" />
+                        <span>{selected_thinking_label}</span>
+                        <ChevronDown aria-hidden="true" />
+                      </AppButton>
+                    </AppDropdownMenuTrigger>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
-                  <p>{t("app.model.thinking_level.label")}</p>
+                  <p>
+                    {thinking_unavailable
+                      ? t("app.model.thinking_level.unsupported")
+                      : t("app.model.thinking_level.label")}
+                  </p>
                 </TooltipContent>
               </Tooltip>
               <AppDropdownMenuContent align="start" matchTriggerWidth={false}>

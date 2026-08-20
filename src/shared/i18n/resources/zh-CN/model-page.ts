@@ -84,7 +84,7 @@ export const zh_cn_model_page = {
     },
     thinking: {
       title: "思考等级",
-      description: "设置模型的思考行为，会影响思考的时间和消耗，点击问号图标查看支持的模型列表",
+      description: "设置模型的思考行为，会影响思考的时间和消耗",
     },
     input_token_limit: {
       title: "输入 Token 限制",

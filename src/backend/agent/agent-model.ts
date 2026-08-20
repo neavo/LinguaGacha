@@ -11,6 +11,7 @@ import {
   apply_agent_request_overrides,
   read_model_request_snapshot,
 } from "../llm/llm-client-policy";
+import { resolve_model_capability } from "../llm/model-capability";
 import { resolve_pi_model } from "../llm/llm-pi";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 
@@ -32,14 +33,15 @@ export function register_agent_model(
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
+  const capability = resolve_model_capability(configured_model);
   const snapshot = read_model_request_snapshot(raw_model, user_agent);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
   const request_headers = Object.freeze({ ...snapshot.headers });
   const pi = resolve_pi_model(snapshot, {
     name: configured_name || snapshot.model_id,
-    contextWindow: configured_model.agent_limits.context_window,
-    maxTokens: configured_model.agent_limits.max_output_tokens,
+    contextWindow: capability.agent_limits.context_window,
+    maxTokens: capability.agent_limits.max_output_tokens,
     input: ["text", "image"],
   });
   // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。

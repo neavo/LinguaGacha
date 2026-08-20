@@ -34,6 +34,7 @@ export type ModelEntrySnapshot = {
   api_url: string;
   api_key: string;
   model_id: string;
+  available_thinking_levels: ModelThinkingLevel[];
   agent: ModelAgentConfig;
   request: ModelRequestSnapshot;
   threshold: ModelThresholdSnapshot;

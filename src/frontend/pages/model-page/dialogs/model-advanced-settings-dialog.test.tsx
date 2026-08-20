@@ -92,7 +92,7 @@ describe("ModelAdvancedSettingsDialog", () => {
     });
   });
 
-  it("将 Agent 容量超限值调小、不可用组合整组恢复自动", async () => {
+  it("保留后端自动输出语义，并把不可用显式组合整组恢复自动", async () => {
     const available_output_tokens = 10_000;
     const adjusted_context_window = AGENT_COMPACTION_RESERVE_TOKENS + available_output_tokens;
     container = document.createElement("div");
@@ -142,12 +142,12 @@ describe("ModelAdvancedSettingsDialog", () => {
     expect(on_patch).toHaveBeenLastCalledWith({
       agent: {
         context_window: adjusted_context_window,
-        max_output_tokens: available_output_tokens,
+        max_output_tokens: 0,
       },
     });
-    expect(on_agent_limits_adjusted).toHaveBeenCalledOnce();
+    expect(on_agent_limits_adjusted).not.toHaveBeenCalled();
     expect(context_window.value).toBe(adjusted_context_window.toString());
-    expect(max_output_tokens.value).toBe(available_output_tokens.toString());
+    expect(max_output_tokens.value).toBe("0");
     expect(context_window.getAttribute("aria-invalid")).toBeNull();
     expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
 
@@ -179,7 +179,7 @@ describe("ModelAdvancedSettingsDialog", () => {
     expect(on_patch).toHaveBeenCalledWith({
       agent: { context_window: 0, max_output_tokens: 0 },
     });
-    expect(on_agent_limits_adjusted).toHaveBeenCalledTimes(2);
+    expect(on_agent_limits_adjusted).toHaveBeenCalledOnce();
     expect(context_window.value).toBe("0");
     expect(max_output_tokens.value).toBe("0");
     expect(context_window.getAttribute("aria-invalid")).toBeNull();

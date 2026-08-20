@@ -12,6 +12,7 @@ export function create_model_snapshot(
     api_url: "https://api.example.test",
     api_key: "secret",
     model_id: "alpha-model",
+    available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
     agent: {
       context_window: 0,
       max_output_tokens: 0,

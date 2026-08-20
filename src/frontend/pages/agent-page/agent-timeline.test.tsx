@@ -59,7 +59,6 @@ const MENTION_TOKENS = create_agent_mention_tokens(
 describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  const on_thinking_follow_change = vi.fn();
   const on_edit = vi.fn();
   const on_continue = vi.fn();
   const on_add_annotation = vi.fn();
@@ -82,7 +81,6 @@ describe("AgentTimeline", () => {
     });
     root = null;
     container = null;
-    on_thinking_follow_change.mockReset();
     on_edit.mockReset();
     on_continue.mockReset();
     on_add_annotation.mockReset();
@@ -106,7 +104,6 @@ describe("AgentTimeline", () => {
             entries={entries}
             mention_tokens={MENTION_TOKENS}
             return_latest_revision={return_latest_revision}
-            on_thinking_follow_change={on_thinking_follow_change}
             on_continue={on_continue}
             on_edit={on_edit}
             on_add_annotation={on_add_annotation}
@@ -356,7 +353,6 @@ describe("AgentTimeline", () => {
     );
     expect(get_tool_dialog_json()).toEqual({ scope: "output" });
     expect(view.querySelector(".agent-tool-entry .agent-status-mark--success")).not.toBeNull();
-    expect(on_thinking_follow_change).not.toHaveBeenCalled();
   });
 
   it("并行工具用状态灯与可访问名称保留独立状态语义", async () => {
@@ -398,7 +394,6 @@ describe("AgentTimeline", () => {
       throw new Error("缺少思考块");
     }
     expect(thinking.open).toBe(true);
-    expect(thinking.querySelector("summary")?.textContent).toBe("正在思考 · 8s");
     let scroll_height = 480;
     let scroll_top = 240;
     Object.defineProperties(content, {
@@ -418,22 +413,31 @@ describe("AgentTimeline", () => {
     expect(view.querySelector("pre")).toBe(content);
     expect(content.textContent).toBe("检查术语\n逐项核对完成");
     expect(thinking.open).toBe(true);
-    expect(on_thinking_follow_change).not.toHaveBeenCalledWith("thinking:assistant-1-0", true);
     expect(content.scrollTop).toBe(320);
 
     content.scrollTop = 80;
-    await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
-    expect(on_thinking_follow_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", true);
+    await act(async () => content.dispatchEvent(new Event("scroll")));
     scroll_height = 640;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境");
+    expect(content.scrollTop).toBe(400);
+
+    content.scrollTop = 80;
+    await act(async () => {
+      content.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await vi.advanceTimersToNextTimerAsync();
+    });
+    scroll_height = 720;
+    await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项");
     expect(content.scrollTop).toBe(80);
 
-    content.scrollTop = 400;
-    await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
-    expect(on_thinking_follow_change).toHaveBeenLastCalledWith("thinking:assistant-1-0", false);
-    scroll_height = 720;
-    await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n确认结果");
-    expect(content.scrollTop).toBe(480);
+    content.scrollTop = 480;
+    await act(async () => {
+      content.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await vi.advanceTimersToNextTimerAsync();
+    });
+    scroll_height = 800;
+    await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项\n确认结果");
+    expect(content.scrollTop).toBe(560);
   });
 
   it("未手动操作的思考结束后自动关闭但保留可动画内容", async () => {
@@ -507,12 +511,18 @@ describe("AgentTimeline", () => {
       ]),
     );
     content.scrollTop = 80;
-    await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
+    await act(async () => {
+      content.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await vi.advanceTimersToNextTimerAsync();
+    });
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.open).toBe(true);
 
     content.scrollTop = 240;
-    await act(async () => content.dispatchEvent(new Event("scroll", { bubbles: true })));
+    await act(async () => {
+      content.dispatchEvent(new Event("wheel", { bubbles: true }));
+      await vi.advanceTimersToNextTimerAsync();
+    });
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.open).toBe(false);
   });

@@ -307,9 +307,11 @@ export function AgentResponseAnnotationSelection(
                 role="toolbar"
                 aria-label={t("agent_page.annotation.add")}
               >
-                <button
+                <AppButton
                   ref={action_ref}
                   type="button"
+                  variant="ghost"
+                  className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() =>
                     set_selection((current) =>
@@ -319,7 +321,7 @@ export function AgentResponseAnnotationSelection(
                 >
                   <MessageSquareQuote aria-hidden="true" />
                   {t("agent_page.annotation.add")}
-                </button>
+                </AppButton>
               </div>
             )}
           </PopoverPrimitive.Content>

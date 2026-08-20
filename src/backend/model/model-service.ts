@@ -5,6 +5,7 @@ import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { list_available_models } from "../llm/llm-model-catalog";
+import { adjust_model_thinking_level, resolve_model_capability } from "../llm/model-capability";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { collect_api_keys } from "../llm/llm-client-policy";
 import {
@@ -136,6 +137,7 @@ export class ModelService {
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     this.find_model_index_or_raise(models, model_id);
+    config["models"] = models as unknown as JsonValue;
     const selection = normalize_model_selection(config["model_selection"]);
     selection[usage] = model_id;
     config["model_selection"] = selection;
@@ -157,15 +159,6 @@ export class ModelService {
     const selection = normalize_model_selection(config["model_selection"]);
     const index = this.find_model_index_or_raise(models, selection[usage]);
     const model = models[index] ?? {};
-    if (
-      !Model.api_format_supports_thinking_configuration(
-        Model.normalize_api_format(model["api_format"]),
-      )
-    ) {
-      throw new AppErrors.AppError("request.validation_failed", {
-        public_details: { field: "thinking_level" },
-      });
-    }
     models[index] = this.apply_patch(model, { thinking: { level: thinking_level } });
     config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
@@ -619,12 +612,23 @@ export class ModelService {
   }
 
   /**
-   * 归一模型对象，保护配置文件旧字段和缺省字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID
+   * 归一模型对象并同步能力派生字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID。
+   * 思考档位在这里统一修正，保证快照与持久化模型不会暴露当前模型不支持的值。
    */
   private normalize_model(model: JsonRecord): JsonRecord {
     const existing_id = String(model["id"] ?? "").trim();
     const fallback_id = existing_id === "" ? crypto.randomUUID() : existing_id;
-    return Model.from_json(model, fallback_id).to_json() as JsonRecord;
+    const normalized = Model.from_json(model, fallback_id);
+    const capability = resolve_model_capability(normalized);
+    const thinking_level = adjust_model_thinking_level(
+      normalized.thinking.level,
+      capability.available_thinking_levels,
+    );
+    return {
+      ...normalized.to_json(),
+      agent: capability.agent_config,
+      thinking: { level: thinking_level },
+    };
   }
 
   /**
@@ -738,7 +742,14 @@ export class ModelService {
    * 生成模型页管理快照，隔离配置内部结构
    */
   private build_snapshot_response(config: JsonRecord): JsonRecord {
-    const models = read_config_model_records(config);
+    const models = read_config_model_records(config).map((model) => {
+      const normalized = Model.from_json(model, String(model["id"] ?? ""));
+      const capability = resolve_model_capability(normalized);
+      return {
+        ...normalized.to_json(),
+        available_thinking_levels: [...capability.available_thinking_levels],
+      };
+    });
     return {
       snapshot: {
         models: models as unknown as JsonValue,
@@ -752,15 +763,14 @@ export class ModelService {
       model_selection: normalize_model_selection(config["model_selection"]),
       models: read_config_model_records(config).map((model) => {
         const normalized = Model.from_json(model, String(model["id"] ?? ""));
+        const capability = resolve_model_capability(normalized);
         return {
           id: normalized.id,
           type: normalized.type,
           name: normalized.name,
-          agent_limits: normalized.agent_limits,
+          agent_limits: capability.agent_limits,
           thinking_level: normalized.thinking.level,
-          thinking_configurable: Model.api_format_supports_thinking_configuration(
-            normalized.api_format,
-          ),
+          available_thinking_levels: [...capability.available_thinking_levels],
         };
       }),
     };

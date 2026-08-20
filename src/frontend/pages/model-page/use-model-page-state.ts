@@ -19,8 +19,8 @@ import type {
   ModelThinkingSnapshot,
   ModelThresholdSnapshot,
 } from "@frontend/pages/model-page/types";
-import { resolve_model_agent_config } from "@domain/model-agent";
-import { MODEL_TYPES, Model, type ModelType } from "@domain/model";
+import { normalize_model_agent_config } from "@domain/model-agent";
+import { MODEL_TYPES, Model, is_model_thinking_level, type ModelType } from "@domain/model";
 import { MODEL_TYPE_TITLE_KEY } from "@frontend/features/model-selection/model-selection-meta";
 
 type ModelPageSnapshotPayload = {
@@ -228,7 +228,10 @@ function normalize_model_entry(
     api_url: String(source.api_url ?? ""),
     api_key: String(source.api_key ?? ""),
     model_id: String(source.model_id ?? ""),
-    agent: resolve_model_agent_config(String(source.model_id ?? ""), source.agent).config,
+    available_thinking_levels: Array.isArray(source.available_thinking_levels)
+      ? source.available_thinking_levels.filter(is_model_thinking_level)
+      : [],
+    agent: normalize_model_agent_config(source.agent).config,
     request: normalize_request_snapshot(source.request),
     threshold: normalize_threshold_snapshot(source.threshold),
     thinking: normalize_thinking_snapshot(source.thinking),
@@ -318,7 +321,8 @@ function merge_model_patch(
     api_url: patch.api_url === undefined ? model.api_url : String(patch.api_url),
     api_key: patch.api_key === undefined ? model.api_key : String(patch.api_key),
     model_id,
-    agent: resolve_model_agent_config(model_id, agent_source).config,
+    available_thinking_levels: patch.model_id === undefined ? model.available_thinking_levels : [],
+    agent: normalize_model_agent_config(agent_source).config,
     request: normalize_request_snapshot(request_source),
     threshold: normalize_threshold_snapshot(threshold_source),
     thinking: normalize_thinking_snapshot(thinking_source),
