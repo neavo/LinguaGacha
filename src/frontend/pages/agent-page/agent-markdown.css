@@ -1,3 +1,9 @@
+/*
+ * Agent Markdown presentation contract.
+ * The parser owns Markdown semantics; this file owns the product's compact,
+ * selectable reading surface and its Agent-specific extensions.
+ */
+
 .agent-markdown {
   min-width: 0;
   width: 100%;
@@ -8,6 +14,8 @@
   overflow-wrap: anywhere;
   user-select: text;
 }
+
+/* Block flow */
 
 .agent-markdown > :first-child {
   margin-top: 0;
@@ -77,10 +85,7 @@
   margin: 4px 0;
 }
 
-.agent-markdown .contains-task-list {
-  list-style: none;
-}
-
+.agent-markdown .contains-task-list,
 .agent-markdown .task-list-item {
   list-style: none;
 }
@@ -92,6 +97,8 @@
   accent-color: var(--primary);
   vertical-align: -2px;
 }
+
+/* Links and inline syntax */
 
 .agent-markdown a {
   border-radius: var(--ui-radius-button);
@@ -110,11 +117,22 @@
   outline-offset: 2px;
 }
 
+.agent-markdown del {
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
+}
+
+/* A quote is a reading transcript: keep its soft line breaks visible. */
+
 .agent-markdown blockquote {
   border-left: 1px solid var(--primary);
   background: color-mix(in srgb, var(--muted) 38%, transparent);
   padding: 8px 12px;
   color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground));
+  white-space: normal;
+}
+
+.agent-markdown blockquote > p {
+  white-space: pre-line;
 }
 
 .agent-markdown blockquote > :first-child {
@@ -138,12 +156,15 @@
   font-size: 12px;
 }
 
+/* Code and syntax highlighting */
+
 .agent-markdown pre {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border);
   background: var(--popover);
   padding: 10px;
+  white-space: pre;
 }
 
 .agent-markdown pre code {
@@ -245,6 +266,26 @@
   font-weight: 600;
 }
 
+/* GFM footnotes */
+
+.agent-markdown [data-footnotes] {
+  margin: 12px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.agent-markdown [data-footnotes] ol {
+  margin: 0;
+}
+
+.agent-markdown [data-footnotes] li + li {
+  margin-top: 4px;
+}
+
+/* Product-specific Markdown extensions */
+
 .agent-markdown__image-alt {
   color: var(--muted-foreground);
   font-style: italic;
@@ -286,9 +327,10 @@
   margin: 0;
 }
 
+/* Tables */
+
 .agent-markdown table {
   width: 100%;
-  margin: 12px 0;
   border-collapse: collapse;
 }
 

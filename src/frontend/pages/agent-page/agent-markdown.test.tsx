@@ -73,6 +73,30 @@ describe("AgentMarkdown", () => {
     expect(view.textContent).toContain("agent_page.image.omitted");
   });
 
+  it("保留同一引用块中的软换行", async () => {
+    const view = await render_markdown("> 第一行\n> 第二行\n> 第三行", false);
+    const quotes = view.querySelectorAll("blockquote");
+
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0]?.querySelector("p")?.textContent).toBe("第一行\n第二行\n第三行");
+  });
+
+  it("用空行区分独立引用块，而不是依赖引用行换行", async () => {
+    const view = await render_markdown("> 第一块\n\n> 第二块", false);
+    const quotes = view.querySelectorAll("blockquote");
+
+    expect(quotes).toHaveLength(2);
+    expect(quotes[0]?.querySelector("p")?.textContent).toBe("第一块");
+    expect(quotes[1]?.querySelector("p")?.textContent).toBe("第二块");
+  });
+
+  it("保留 GFM 删除线与脚注结构", async () => {
+    const view = await render_markdown("~~旧文本~~\n\n说明[^1]\n\n[^1]: 脚注内容", false);
+
+    expect(view.querySelector("del")?.textContent).toBe("旧文本");
+    expect(view.querySelector("[data-footnotes]")?.textContent).toContain("脚注内容");
+  });
+
   it("只在完整消息中高亮带显式语言的代码块", async () => {
     const source = 'const heroine = "Lingua";';
     const view = await render_markdown(`\`\`\`js\n${source}\n\`\`\``, true);
