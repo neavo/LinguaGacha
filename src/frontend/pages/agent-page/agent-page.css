@@ -487,7 +487,7 @@
   gap: 6px;
   border: 0;
   background: transparent;
-  padding: 0 8px 0 6px;
+  padding: 0 8px 0 0;
   color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
   font: inherit;
   font-size: 13px;
