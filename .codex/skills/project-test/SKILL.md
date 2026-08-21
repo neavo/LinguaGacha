@@ -23,13 +23,13 @@ description: 新增、修复、审查或整理项目自动化测试，覆盖单�
 
 仅修改翻译措辞、Agent 指令正文、文档或静态展示文本，不构成自动化测试目标。只有键集合、占位符、格式或模式、解析与加载、运行时选择与回退，或明确要求保持的精确文案等机器契约，才进入测试层级选择。
 
-| 要证明的行为 | 最小有效层级 |
-| --- | --- |
-| 纯规则、转换、校验和错误分支 | 单元测试 |
-| 组件、Hook、Context 或局部用户交互 | 组件或 UI 测试 |
-| 适配器、存储、文件系统或真实协作者语义 | 集成测试 |
-| API、事件、进程或前后端载荷 | 生产者与消费者契约测试 |
-| 浏览器 API、宿主桥接、跨进程启动或完整关键流程 | 浏览器、端到端或 smoke 测试 |
+|要证明的行为|最小有效层级|
+|---|---|
+|纯规则、转换、校验和错误分支|单元测试|
+|组件、Hook、Context 或局部用户交互|组件或 UI 测试|
+|适配器、存储、文件系统或真实协作者语义|集成测试|
+|API、事件、进程或前后端载荷|生产者与消费者契约测试|
+|浏览器 API、宿主桥接、跨进程启动或完整关键流程|浏览器、端到端或 smoke 测试|
 
 仅当真实运行环境本身构成风险时才使用浏览器、端到端或跨进程测试；能由更低层公开结果充分证明时就停在那里。
 
@@ -52,11 +52,11 @@ description: 新增、修复、审查或整理项目自动化测试，覆盖单�
 
 ## 典型用例
 
-| 用户请求 | 关键步骤 | 完成证据 |
-| --- | --- | --- |
-| “修复取消任务后仍显示运行中，并补回归测试” | 从公开状态入口稳定复现；先写失败测试；修复共享写入口；运行目标与受影响套件 | 回归测试修复前按预期失败、修复后通过，相关状态测试通过 |
-| “审查这些测试为什么偶发失败” | 检查时间、完成信号、共享状态、清理和顺序依赖；只读运行并记录复现频次 | 每项发现包含位置、复现或静态证据、风险和建议，不修改文件 |
-| “API 新增状态字段并更新测试” | 确认契约拥有者；分别验证生产者和消费者；仅在序列化本身有风险时增加真实 round-trip | 两侧契约测试通过，未覆盖的部署或真实传输风险已说明 |
+|用户请求|关键步骤|完成证据|
+|---|---|---|
+|“修复取消任务后仍显示运行中，并补回归测试”|从公开状态入口稳定复现；先写失败测试；修复共享写入口；运行目标与受影响套件|回归测试修复前按预期失败、修复后通过，相关状态测试通过|
+|“审查这些测试为什么偶发失败”|检查时间、完成信号、共享状态、清理和顺序依赖；只读运行并记录复现频次|每项发现包含位置、复现或静态证据、风险和建议，不修改文件|
+|“API 新增状态字段并更新测试”|确认契约拥有者；分别验证生产者和消费者；仅在序列化本身有风险时增加真实 round-trip|两侧契约测试通过，未覆盖的部署或真实传输风险已说明|
 
 ## 完成与停止条件
 
@@ -78,18 +78,18 @@ description: 新增、修复、审查或整理项目自动化测试，覆盖单�
 
 ### 技术栈
 
-| 技术栈 | 参考文件 |
-| --- | --- |
-| Python、pytest、文件系统、数据库、并发 | [references/python-pytest.md](references/python-pytest.md) |
-| TypeScript、Vitest、状态或异步逻辑 | [references/typescript-vitest.md](references/typescript-vitest.md) |
-| React、Hook、Context、组件交互 | [references/react-renderer.md](references/react-renderer.md) |
+|技术栈|参考文件|
+|---|---|
+|Python、pytest、文件系统、数据库、并发|[references/python-pytest.md](references/python-pytest.md)|
+|TypeScript、Vitest、状态或异步逻辑|[references/typescript-vitest.md](references/typescript-vitest.md)|
+|React、Hook、Context、组件交互|[references/react-renderer.md](references/react-renderer.md)|
 
 ### 问题类型
 
-| 问题类型 | 参考文件 |
-| --- | --- |
-| API、事件、进程、前后端或宿主边界 | [references/cross-stack-boundaries.md](references/cross-stack-boundaries.md) |
-| 审查、合并、清理或重构旧测试 | [references/test-audit.md](references/test-audit.md) |
-| 定位白盒断言、mock 滥用和测试坏味道 | [references/anti-patterns.md](references/anti-patterns.md) |
+|问题类型|参考文件|
+|---|---|
+|API、事件、进程、前后端或宿主边界|[references/cross-stack-boundaries.md](references/cross-stack-boundaries.md)|
+|审查、合并、清理或重构旧测试|[references/test-audit.md](references/test-audit.md)|
+|定位白盒断言、mock 滥用和测试坏味道|[references/anti-patterns.md](references/anti-patterns.md)|
 
 例如，审查 React 测试中的 mock 滥用时，组合读取 React、测试审查和反模式引用。若技术栈不在表中，先识别仓库已有框架和命令，再按相同原则工作；不要套用无关示例。

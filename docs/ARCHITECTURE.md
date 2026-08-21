@@ -4,14 +4,14 @@
 
 ## 1. 专题地图
 
-| 问题 | 唯一归宿 |
-| --- | --- |
-| 系统分层、进程拓扑、跨层边界、运行时主链路 | 本文 |
-| CLI 入口、命令、临时工程、资源、输出、平台启动器 | [`CLI.md`](CLI.md) |
-| 后端 API / SSE、状态、任务、数据库、`.lg` 存储 | [`BACKEND.md`](BACKEND.md) |
-| 产品 Agent 会话、模型历史、启动资源、skill、工具、宿主能力、页面消费 | [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) |
-| Electron / preload / renderer、共享运行态、页面 query、导航、样式消费 | [`FRONTEND.md`](FRONTEND.md) |
-| 阅读路径与验证矩阵 | [`WORKFLOW.md`](WORKFLOW.md) |
+|问题|唯一归宿|
+|---|---|
+|系统分层、进程拓扑、跨层边界、运行时主链路|本文|
+|CLI 入口、命令、临时工程、资源、输出、平台启动器|[`CLI.md`](CLI.md)|
+|后端 API / SSE、状态、任务、数据库、`.lg` 存储|[`BACKEND.md`](BACKEND.md)|
+|产品 Agent 会话、模型历史、启动资源、skill、工具、宿主能力、页面消费|[`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)|
+|Electron / preload / renderer、共享运行态、页面 query、导航、样式消费|[`FRONTEND.md`](FRONTEND.md)|
+|阅读路径与验证矩阵|[`WORKFLOW.md`](WORKFLOW.md)|
 
 ## 2. 运行时拓扑
 

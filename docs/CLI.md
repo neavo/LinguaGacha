@@ -12,10 +12,10 @@
 
 全局层只保留 `--help` 与 `--version`，业务层只接受一个动词。
 
-| 命令 | 必填参数 | 可选资源 | 产物 |
-| --- | --- | --- | --- |
-| `translate` | `--input` 可重复、`--output-dir`、`--source-language`、`--target-language` | `--prompt .txt`、`--glossary .json/.xlsx`、`--pre-replacement .json/.xlsx`、`--post-replacement .json/.xlsx`、`--text-preserve .json/.xlsx` | 译文写入 `--output-dir`，双语文件写入固定 `bilingual/` 子目录 |
-| `analyze` | `--input` 可重复、`--output-dir`、`--source-language`、`--target-language` | `--prompt .txt` | 生成 `glossary.json` 与 `glossary.xlsx` |
+|命令|必填参数|可选资源|产物|
+|---|---|---|---|
+|`translate`|`--input` 可重复、`--output-dir`、`--source-language`、`--target-language`|`--prompt .txt`、`--glossary .json/.xlsx`、`--pre-replacement .json/.xlsx`、`--post-replacement .json/.xlsx`、`--text-preserve .json/.xlsx`|译文写入 `--output-dir`，双语文件写入固定 `bilingual/` 子目录|
+|`analyze`|`--input` 可重复、`--output-dir`、`--source-language`、`--target-language`|`--prompt .txt`|生成 `glossary.json` 与 `glossary.xlsx`|
 
 - `--input` 保留传入顺序；支持格式、路径身份和去重继续由文件域处理。
 - 源语言允许 `ALL`，目标语言不允许 `ALL`，两者都走共享语言值域归一。
@@ -36,11 +36,11 @@
 
 help / version 输出普通文本。进入 job 后，stdout 每行输出一个紧凑 JSON 对象：
 
-| `type` | 稳定字段 | 语义 |
-| --- | --- | --- |
-| `started` | `command`、ISO `timestamp` | job 开始，最多一次 |
-| `progress` | `command`、`status`、ISO `timestamp`、`stats` | 初始全零和与上一条相同的统计不重复输出 |
-| `finished` | `command`、`status`、ISO `timestamp`、失败时的 `error.message` | job 终态，最多一次 |
+|`type`|稳定字段|语义|
+|---|---|---|
+|`started`|`command`、ISO `timestamp`|job 开始，最多一次|
+|`progress`|`command`、`status`、ISO `timestamp`、`stats`|初始全零和与上一条相同的统计不重复输出|
+|`finished`|`command`、`status`、ISO `timestamp`、失败时的 `error.message`|job 终态，最多一次|
 
 `progress.stats` 固定为 `total`、`skipped`、`failed`、`completed`、`pending`、`percent`，不暴露内部 `TaskSnapshot.progress` 字段名。成功事件不重复输出调用方已知的 `--output-dir`；诊断日志只进入日志目标。
 

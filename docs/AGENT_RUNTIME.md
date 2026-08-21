@@ -12,13 +12,13 @@
 
 ## 2. 状态与生命周期
 
-| 状态                                               | 拥有者                  | 唯一入口                                                |
-| -------------------------------------------------- | ----------------------- | ------------------------------------------------------- |
-| 公开状态、完整 UI 时间线、会话生命周期与启动期资源 | `AgentService`          | Agent API、`agent.session_event`                        |
-| 模型可见历史、工具循环、上下文压缩、中断与 settle  | 内存 `AgentSession`     | `AgentService` 调用 SDK 的 prompt、模型切换与关闭 API   |
-| 用户输入队列与暂停 / 发送状态                      | `AgentService`          | Agent message、continue 与 queue API                   |
-| 模型对话级动态工作队列                             | `AgentService`          | `task_progress`                                        |
-| 当前对话 task、数据快照与显式 change 准备          | `AgentWorkspaceService` | `workspace_load`、`workspace_script`、`workspace_apply` |
+|状态|拥有者|唯一入口|
+|---|---|---|
+|公开状态、完整 UI 时间线、会话生命周期与启动期资源|`AgentService`|Agent API、`agent.session_event`|
+|模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
+|用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
+|模型对话级动态工作队列|`AgentService`|`task_progress`|
+|当前对话 task、数据快照与显式 change 准备|`AgentWorkspaceService`|`workspace_load`、`workspace_script`、`workspace_apply`|
 
 - Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease；单个 round 可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次。Pi `agent_start / agent_end` 与压缩事件共同决定公开 `canSendNow`，避免在异步预检、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到压缩、失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
@@ -36,7 +36,9 @@
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。skill 正文可以声明必读或条件组合的其它 skill，组合本身不改变任务对象、范围或工作区权限。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
-- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织和决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。质量规则创建与审查保留两个薄公开入口，共同读取一个隐藏 workflow；同一任务内共享一次 load、动态发现前沿和提交，glossary 与 text_preserve 的隐藏领域 skill 按实际范围提供独立事实与表达判据。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织和决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- 内置 skill 只补充领域规则；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
+- 质量规则创建与审查保留两个薄公开入口，共同读取一个隐藏 workflow；同一任务内共享一次 load、动态发现前沿和提交，glossary 与 text_preserve 的隐藏领域 skill 按实际范围提供独立事实与表达判据。
 
 ## 4. 产品工具与宿主能力
 

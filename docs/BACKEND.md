@@ -16,21 +16,21 @@
 
 ## 2. 状态拥有者
 
-| 状态 / 边界 | 拥有者 | 唯一写入口 / 读出口 |
-| --- | --- | --- |
-| 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
-| 模型集合、配置与按用途选择 | `ModelService` | 模型 API；经 `AppSettingService` 持久化到应用设置 |
-| 普通任务 / Agent 活动所有者与项目写互斥 | `RuntimeOperationGate` | 运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed` |
-| loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
-| Agent 工程数据快照与 change 准备 | `AgentWorkspaceService` | 完整 load / run / apply 生命周期 |
-| 项目事实提交 | `ProjectWriteStore` | 单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change` |
-| 活动任务类型、translation scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
-| 任务 progress / analysis candidate count | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
-| 任务公开快照 | `TaskRuntime.build_snapshot` | 组合内存运行态与 `.lg` meta |
-| `.lg` 物理 workflow | `ProjectDatabase` | 类型化读写方法、`transaction(projectPath, callback)` |
-| 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
-| 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
+|状态 / 边界|拥有者|唯一写入口 / 读出口|
+|---|---|---|
+|应用设置、最近工程、语言|`AppSettingService`|设置 API、CLI transient overrides、`settings.changed`|
+|模型集合、配置与按用途选择|`ModelService`|模型 API；经 `AppSettingService` 持久化到应用设置|
+|普通任务 / Agent 活动所有者与项目写互斥|`RuntimeOperationGate`|运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed`|
+|loaded 工程身份|`ProjectSessionState`|`ProjectLifecycleService`|
+|loaded 工程热读数据|`CacheManager`|工程热机、committed event、功能 query|
+|Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
+|项目事实提交|`ProjectWriteStore`|单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change`|
+|活动任务类型、translation scope、status、busy、`run_revision`、请求压力|`TaskRuntime`|任务命令、Engine 生命周期、项目会话切换|
+|任务 progress / analysis candidate count|`.lg` meta|`TaskProjectStore` 经 `ProjectWriteStore` 写入|
+|任务公开快照|`TaskRuntime.build_snapshot`|组合内存运行态与 `.lg` meta|
+|`.lg` 物理 workflow|`ProjectDatabase`|类型化读写方法、`transaction(projectPath, callback)`|
+|平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
+|后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
 
 `RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，设置和模型配置写入也必须先确认运行时空闲。Agent 只能在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；冲突统一返回 `runtime.busy`。
 
