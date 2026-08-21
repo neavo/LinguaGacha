@@ -1,6 +1,6 @@
 ---
 name: roleplay
-description: 扮演故事中的指定角色，深入探索虚拟世界
+description: 依据当前工程原作，与用户共同选择角色、建立分支并持续进行有状态的故事角色扮演。
 disable-model-invocation: true
 ---
 

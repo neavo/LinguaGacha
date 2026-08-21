@@ -1,6 +1,6 @@
 ---
 name: glossary-rules
-description: 质量规则创建与审查使用的术语发现、收录、字段、证据和最小充分集合判据；不独立响应任务。
+description: 为质量规则创建与审查提供术语发现、收录、字段、证据和最小充分集合判据。
 disable-model-invocation: true
 ---
 
