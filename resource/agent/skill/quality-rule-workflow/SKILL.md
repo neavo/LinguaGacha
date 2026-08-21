@@ -1,6 +1,6 @@
 ---
 name: quality-rule-workflow
-description: 质量规则创建与审查入口共用的工作区状态、结构聚类、动态发现前沿、分组核验和收敛流程；不独立响应任务。
+description: 供质量规则创建与审查入口共用，统一组织工作区加载、证据核验、动态发现、收敛与提交。
 disable-model-invocation: true
 ---
 
