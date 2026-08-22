@@ -13,25 +13,7 @@ const { laboratory_state_fixture } = vi.hoisted(() => ({
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: "zh-CN",
-    t: (key: string) => {
-      if (key === "laboratory_page.fields.prompt_enhancement_enable.title") {
-        return "提示词增强";
-      }
-      if (key === "laboratory_page.fields.prompt_enhancement_enable.description") {
-        return (
-          "通过模拟思维链强化 AI 对指令的遵循" +
-          "\n" +
-          "关闭此功能可以略微减少 Token 消耗，但是会显著降低 AI 的智能水平，默认启用"
-        );
-      }
-      if (key === "laboratory_page.fields.mtool_optimizer_enable.title") {
-        return "MTool 优化器";
-      }
-      if (key === "laboratory_page.fields.skip_duplicate_source_text_enable.title") {
-        return "跳过重复原文";
-      }
-      return key;
-    },
+    t: (key: string) => key,
   }),
 }));
 
@@ -108,7 +90,9 @@ describe("LaboratoryPage", () => {
 
   it("展示提示词增强开关并按设置值提交", async () => {
     await mount_page();
-    const toggle = container?.querySelector('button[aria-label="提示词增强"]');
+    const toggle = container?.querySelector(
+      'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
+    );
     await act(async () => {
       (toggle as HTMLButtonElement | undefined)?.click();
     });
@@ -124,7 +108,9 @@ describe("LaboratoryPage", () => {
     };
     await mount_page();
 
-    const toggle = container?.querySelector('button[aria-label="提示词增强"]');
+    const toggle = container?.querySelector(
+      'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
+    );
     expect((toggle as HTMLButtonElement | null)?.disabled).toBe(true);
   });
 });

@@ -13,30 +13,8 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) => {
-      if (key === "agent_page.thinking_active") return "正在思考";
-      if (key === "agent_page.status.running") return "正在处理";
-      if (key === "agent_page.status.success") return "已完成";
-      if (key === "agent_page.status.error") return "失败";
-      if (key === "agent_page.status.stopped") return "已停止";
-      if (key === "agent_page.action.continue") return "继续";
-      if (key === "agent_page.action.edit") return "修改";
-      if (key === "agent_page.action.copy") return "复制";
-      if (key === "agent_page.action.copied") return "已复制";
-      if (key === "agent_page.action.copy_failed") return "复制失败";
-      if (key === "agent_page.annotation.title") return "批注";
-      if (key === "agent_page.annotation.add") return "添加批注";
-      if (key === "agent_page.annotation.selected_text") return "目标";
-      if (key === "agent_page.annotation.user_comment") return "批注";
-      if (key === "agent_page.annotation.comment_placeholder") return "写下评论";
-      if (key === "agent_page.image.title") return "图片";
-      if (key === "app.action.close") return "关闭";
-      if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
-      if (key === "agent_page.compaction.success") return "上下文压缩成功";
-      if (key === "agent_page.compaction.error") return "上下文压缩失败";
-      if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
-      return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
-    },
+    t: (key: string, params?: Record<string, string>) =>
+      params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
 vi.mock("@frontend/app/appearance/appearance-provider", () => ({
@@ -199,13 +177,13 @@ describe("AgentTimeline", () => {
     expect(
       error.compareDocumentPosition(latest_footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-    expect(error.textContent).toContain("模型服务请求失败。");
-    expect(error.textContent).toContain("继续");
+    expect(error.textContent).toContain("app.error.model.provider_failed.message");
+    expect(error.textContent).toContain("agent_page.action.continue");
     await act(async () => error.click());
     expect(on_continue).toHaveBeenCalledOnce();
     const edits = [
       ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
-    ].filter((button) => button.textContent === "修改");
+    ].filter((button) => button.textContent === "agent_page.action.edit");
     expect(edits).toHaveLength(2);
     expect(latest_footer.querySelector("button")).toBeNull();
     await act(async () => edits[0]?.click());
@@ -234,10 +212,18 @@ describe("AgentTimeline", () => {
       ".agent-message-frame--assistant .agent-message-actions button",
     );
 
-    expect([...user_actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
-    expect([...output_actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
+    expect([...user_actions].map((button) => button.textContent)).toEqual([
+      "agent_page.action.copy",
+      "agent_page.action.edit",
+    ]);
+    expect([...output_actions].map((button) => button.textContent)).toEqual([
+      "agent_page.action.copy",
+      "agent_page.action.edit",
+    ]);
     await act(async () =>
-      [...output_actions].find((button) => button.textContent === "修改")?.click(),
+      [...output_actions]
+        .find((button) => button.textContent === "agent_page.action.edit")
+        ?.click(),
     );
     expect(on_edit).toHaveBeenCalledWith(
       expect.objectContaining({ id: "assistant-final", kind: "assistant_message" }),
@@ -261,7 +247,10 @@ describe("AgentTimeline", () => {
       ".agent-message-frame--user .agent-message-actions button",
     );
 
-    expect([...actions].map((button) => button.textContent)).toEqual(["复制", "修改"]);
+    expect([...actions].map((button) => button.textContent)).toEqual([
+      "agent_page.action.copy",
+      "agent_page.action.edit",
+    ]);
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
   });
 
@@ -272,15 +261,15 @@ describe("AgentTimeline", () => {
     ]);
     const copy_buttons = [
       ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
-    ].filter((button) => button.textContent === "复制");
+    ].filter((button) => button.textContent === "agent_page.action.copy");
     expect(copy_buttons).toHaveLength(2);
 
     await act(async () => copy_buttons[0]?.click());
-    await vi.waitFor(() => expect(copy_buttons[0]?.textContent).toBe("已复制"));
+    await vi.waitFor(() => expect(copy_buttons[0]?.textContent).toBe("agent_page.action.copied"));
     expect(write_clipboard).toHaveBeenCalledWith("输入正文");
 
     await act(async () => copy_buttons[1]?.click());
-    await vi.waitFor(() => expect(copy_buttons[1]?.textContent).toBe("已复制"));
+    await vi.waitFor(() => expect(copy_buttons[1]?.textContent).toBe("agent_page.action.copied"));
     expect(write_clipboard).toHaveBeenLastCalledWith("输出正文");
   });
 
@@ -294,22 +283,24 @@ describe("AgentTimeline", () => {
       compaction_entry("compaction-1", "running", 1_500),
     ]);
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
-      "正在压缩上下文 …",
+      "agent_page.compaction.running",
     );
     expect(view.querySelector(".agent-round-footer[data-running]")).toBeNull();
 
     await render_timeline([...round, compaction_entry("compaction-1", "error", 1_500)]);
     const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
-    expect(continue_button?.textContent).toContain("上下文压缩失败");
-    expect(continue_button?.textContent).toContain("继续");
+    expect(continue_button?.textContent).toContain("agent_page.compaction.error");
+    expect(continue_button?.textContent).toContain("agent_page.action.continue");
     await act(async () => continue_button?.click());
     expect(on_continue).toHaveBeenCalledOnce();
 
     await render_timeline([...round, compaction_entry("compaction-1", "success", 1_500)]);
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
-      "上下文压缩成功",
+      "agent_page.compaction.success",
     );
-    expect(view.querySelector(".agent-continue-entry")?.textContent).toContain("模型服务请求失败");
+    expect(view.querySelector(".agent-continue-entry")?.textContent).toContain(
+      "app.error.model.provider_failed.message",
+    );
   });
 
   it("运行工具逐秒计时，模态按同 id 更新且不抢切输出", async () => {
@@ -365,10 +356,10 @@ describe("AgentTimeline", () => {
       ]),
     );
     for (const [status, label] of [
-      ["running", "正在处理"],
-      ["success", "已完成"],
-      ["error", "失败"],
-      ["stopped", "已停止"],
+      ["running", "agent_page.status.running"],
+      ["success", "agent_page.status.success"],
+      ["error", "agent_page.status.error"],
+      ["stopped", "agent_page.status.stopped"],
     ] as const) {
       const mark = view.querySelector<HTMLElement>(
         `.agent-tool-entry .agent-status-mark--${status}[role="img"]`,
@@ -608,7 +599,7 @@ describe("AgentTimeline", () => {
     const tools = view.querySelectorAll<HTMLButtonElement>(".agent-tool-entry");
     expect(tools[0]?.textContent).not.toContain("Alice");
     expect(tools[1]?.querySelector(".agent-status-mark--error")?.getAttribute("aria-label")).toBe(
-      "失败",
+      "agent_page.status.error",
     );
     expect(view.querySelector("pre")).toBeNull();
     await act(async () => tools[0]?.click());

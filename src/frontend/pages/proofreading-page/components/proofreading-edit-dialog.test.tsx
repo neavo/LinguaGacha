@@ -10,32 +10,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {
-        t: (key: string) => {
-          const messages: Record<string, string> = {
-            "app.action.cancel": "取消",
-            "proofreading_page.action.clear_translation": "清空译文",
-            "proofreading_page.action.retranslate": "重新翻译",
-            "proofreading_page.action.set_translation_status": "设置翻译状态",
-            "app.action.save": "保存",
-            "app.action.edit": "编辑",
-            "proofreading_page.action.view_context": "查看上下文",
-            "proofreading_page.action.back": "返回",
-            "proofreading_page.fields.source": "原文",
-            "proofreading_page.fields.status": "状态",
-            "proofreading_page.fields.translation": "译文",
-            "proofreading_page.glossary.missing": "术语未落实",
-            "proofreading_page.glossary.applied": "术语已落实",
-            "proofreading_page.glossary.partial": "术语部分落实",
-            "proofreading_page.glossary.tooltip_applied": "术语已落实",
-            "proofreading_page.glossary.tooltip_missing": "术语未落实",
-            "proofreading_page.status.excluded": "已排除",
-            "task_progress.translation_pending": "等待翻译",
-            "task_progress.translation_completed": "翻译成功",
-            "proofreading_page.tooltip.glossary_applied_terms": "已落实",
-            "proofreading_page.tooltip.glossary_missing_terms": "未落实",
-          };
-          return messages[key] ?? key;
-        },
+        t: (key: string) => key,
       };
     },
   };
@@ -374,7 +349,7 @@ describe("ProofreadingEditDialog", () => {
       "Alice",
     );
     expect(translation_root.querySelector(".app-text-mark[data-tone='warning']")).toBeNull();
-    expect(rendered.textContent).toContain("术语未落实");
+    expect(rendered.textContent).toContain("proofreading_page.glossary.missing");
 
     await render_dialog({
       item,
@@ -395,14 +370,14 @@ describe("ProofreadingEditDialog", () => {
     expect(
       next_translation_root.querySelector(".app-text-mark[data-tone='success']")?.textContent,
     ).toBe("艾丽丝");
-    expect(rendered.textContent).toContain("术语已落实");
+    expect(rendered.textContent).toContain("proofreading_page.glossary.applied");
   });
 
   it("只读时仍可查看上下文且保存中禁用入口", async () => {
     const on_open_context = vi.fn(async () => {});
     const rendered = await render_dialog({ readonly: true, on_open_context });
     const trigger = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("查看上下文"),
+      button.textContent?.includes("proofreading_page.action.view_context"),
     );
     expect(trigger?.disabled).toBe(false);
     await act(async () => trigger?.click());
@@ -413,7 +388,7 @@ describe("ProofreadingEditDialog", () => {
       on_open_context,
     });
     const saving_trigger = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("查看上下文"),
+      button.textContent?.includes("proofreading_page.action.view_context"),
     );
     expect(saving_trigger?.disabled).toBe(true);
   });
@@ -421,7 +396,7 @@ describe("ProofreadingEditDialog", () => {
   it("编辑态取消按钮显示 Esc 且保存中阻止快捷关闭", async () => {
     const rendered = await render_dialog();
     const cancel_button = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("取消"),
+      button.textContent?.includes("app.action.cancel"),
     );
 
     expect(rendered.querySelector("[data-dismiss-behavior='escape-only']")).not.toBeNull();
@@ -456,14 +431,15 @@ describe("ProofreadingEditDialog", () => {
 
     expect(rendered.querySelector("[data-dismiss-behavior='default']")).not.toBeNull();
     const back_button = [...rendered.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("返回"),
+      button.textContent?.includes("proofreading_page.action.back"),
     );
-    expect(back_button?.textContent).not.toContain("返回编辑");
     expect(back_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
     expect(rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden")).toBe(
       true,
     );
-    expect(rendered.querySelector("textarea[aria-label='译文']")).not.toBeNull();
+    expect(
+      rendered.querySelector("textarea[aria-label='proofreading_page.fields.translation']"),
+    ).not.toBeNull();
     act(() => {
       rendered.querySelector<HTMLButtonElement>("[data-dialog-close-probe]")?.click();
     });

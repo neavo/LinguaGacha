@@ -6,15 +6,7 @@ import { ProofreadingContextView } from "./proofreading-context-view";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "app.action.retry": "重试",
-        "proofreading_page.context.load_failed": "无法读取上下文",
-        "proofreading_page.context.loading": "正在读取上下文 …",
-        "proofreading_page.title": "校对",
-        "proofreading_page.fields.source": "原文",
-        "proofreading_page.fields.translation": "译文",
-      })[key] ?? key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -113,7 +105,9 @@ describe("ProofreadingContextView", () => {
         on_retry={on_retry}
       />,
     );
-    expect(rendered.querySelector("[role='status']")?.textContent).toContain("正在读取上下文");
+    expect(rendered.querySelector("[role='status']")?.textContent).toContain(
+      "proofreading_page.context.loading",
+    );
 
     render_view(
       <ProofreadingContextView
@@ -125,9 +119,11 @@ describe("ProofreadingContextView", () => {
       />,
     );
     const retry = [...rendered.querySelectorAll("button")].find(
-      (button) => button.textContent === "重试",
+      (button) => button.textContent === "app.action.retry",
     );
-    expect(rendered.querySelector("[role='alert']")?.textContent).toContain("无法读取上下文");
+    expect(rendered.querySelector("[role='alert']")?.textContent).toContain(
+      "proofreading_page.context.load_failed",
+    );
     act(() => retry?.click());
     expect(on_retry).toHaveBeenCalledOnce();
   });

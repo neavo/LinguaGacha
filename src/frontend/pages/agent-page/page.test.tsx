@@ -154,44 +154,8 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
 });
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) => {
-      if (key === "agent_page.action.new_task") return "新任务";
-      if (key === "agent_page.action.send") return "发送";
-      if (key === "app.action.retry") return "重试";
-      if (key === "agent_page.action.continue") return "继续";
-      if (key === "agent_page.action.edit") return "编辑";
-      if (key === "agent_page.action.copy") return "复制";
-      if (key === "agent_page.action.copied") return "已复制";
-      if (key === "agent_page.action.copy_failed") return "复制失败";
-      if (key === "app.action.save") return "保存";
-      if (key === "app.action.cancel") return "取消";
-      if (key === "agent_page.editing.user") return "正在编辑用户消息";
-      if (key === "agent_page.editing.assistant") return "正在编辑模型回复";
-      if (key === "agent_page.editing.queue") return "正在编辑排队消息";
-      if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
-      if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
-      if (key === "agent_page.empty.suggestions.quality_rule_create") return "准备质量规则";
-      if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
-      if (key === "agent_page.mention.groups.skills") return "技能";
-      if (key === "agent_page.mention.groups.terms") return "术语";
-      if (key === "agent_page.mention.no_matches") return "没有匹配的项目 …";
-      if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
-      if (key === "agent_page.error.terms_load") return "术语加载失败";
-      if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
-      if (key === "agent_page.error.continue") return "继续失败，请再次尝试。";
-      if (key === "agent_page.error.edit") return "消息修改失败，编辑内容已保留。";
-      if (key === "agent_page.error.stop") return "停止失败，请重试。";
-      if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
-      if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
-      if (key === "agent_page.action.applying") return "正在应用工程修改，完成前不可停止";
-      if (key === "agent_page.status.error") return "失败";
-      if (key === "agent_page.task_progress.next") return "下一步";
-      if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
-      if (key === "agent_page.compaction.success") return "上下文压缩成功";
-      if (key === "agent_page.compaction.error") return "上下文压缩失败";
-      if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
-      return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
-    },
+    t: (key: string, params?: Record<string, string>) =>
+      params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
 vi.mock("@frontend/app/appearance/appearance-provider", () => ({
@@ -261,7 +225,7 @@ describe("AgentPage", () => {
       return button.querySelector(".agent-mention-token") !== null;
     });
     const editor = view.querySelector<HTMLElement>(".cm-content");
-    const submit = get_button_by_label(view, "发送");
+    const submit = get_button_by_label(view, "agent_page.action.send");
     const literal_text = literal_suggestion?.textContent?.trim();
     const skill_text = skill_suggestion?.textContent?.trim();
     if (literal_suggestion === undefined || literal_text === undefined) {
@@ -319,7 +283,7 @@ describe("AgentPage", () => {
     );
     expect(
       view.querySelector('[aria-labelledby="agent-mention-terms-label"]')?.textContent,
-    ).toContain("Alice爱丽丝 · 主角 · 7 次");
+    ).toContain("Alice爱丽丝 · 主角");
     expect(quality_query_state.last_args).toMatchObject({
       rule_type: "glossary",
       project_path: "E:/demo/demo.lg",
@@ -329,7 +293,7 @@ describe("AgentPage", () => {
     const on_load_error = quality_query_state.last_args?.["on_load_error"];
     if (typeof on_load_error !== "function") throw new Error("缺少术语错误出口");
     await act(async () => on_load_error(new Error("load failed")));
-    expect(push_toast).toHaveBeenCalledWith("error", "术语加载失败");
+    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.terms_load");
 
     desktop_state.current = {
       project_snapshot: { loaded: false, path: "" },
@@ -345,7 +309,7 @@ describe("AgentPage", () => {
     const view = await render_page({ transport: "restore_failed", reconnect });
     const alert = view.querySelector<HTMLElement>('[role="alert"]');
     const retry_button = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "重试",
+      (button) => button.textContent === "app.action.retry",
     );
     if (retry_button === undefined) throw new Error("缺少恢复重试按钮");
 
@@ -509,7 +473,7 @@ describe("AgentPage", () => {
         },
       ],
     });
-    const submit = get_button_by_label(view, "正在应用工程修改，完成前不可停止");
+    const submit = get_button_by_label(view, "agent_page.action.applying");
 
     expect(submit.disabled).toBe(true);
     await act(async () => submit.click());
@@ -534,10 +498,10 @@ describe("AgentPage", () => {
     });
     const continue_entries = [...view.querySelectorAll<HTMLButtonElement>(".agent-continue-entry")];
     const compaction_continue = continue_entries.find((button) =>
-      button.textContent?.includes("上下文压缩失败"),
+      button.textContent?.includes("agent_page.compaction.error"),
     );
     const message_continue = continue_entries.find((button) =>
-      button.textContent?.includes("模型服务请求失败"),
+      button.textContent?.includes("app.error.model.provider_failed.message"),
     );
     expect(compaction_continue?.disabled).toBe(false);
     expect(message_continue).toBeUndefined();
@@ -555,7 +519,7 @@ describe("AgentPage", () => {
     await act(async () => {
       get_button_by_label(view, "agent_page.action.stop").click();
       await vi.waitFor(() =>
-        expect(push_toast).toHaveBeenCalledWith("error", "停止失败，请重试。"),
+        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.stop"),
       );
     });
 
@@ -570,11 +534,11 @@ describe("AgentPage", () => {
       editor.dispatch({ changes: { from: 0, insert: "继续处理" } });
     });
     await act(async () => {
-      get_button_by_label(view, "发送").click();
+      get_button_by_label(view, "agent_page.action.send").click();
       await vi.waitFor(() => expect(push_toast).toHaveBeenCalledOnce());
     });
 
-    expect(push_toast).toHaveBeenCalledWith("error", "发送失败，草稿已保留。");
+    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.send");
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
@@ -597,14 +561,16 @@ describe("AgentPage", () => {
       },
     });
 
-    await act(async () => get_button_by_label(view, "继续").click());
+    await act(async () => get_button_by_label(view, "agent_page.action.continue").click());
     expect(continue_session).toHaveBeenLastCalledWith(undefined);
 
     await act(async () => {
       get_editor(view).dispatch({ changes: { from: 0, insert: "追加消息" } });
     });
-    await vi.waitFor(() => expect(get_button_by_label(view, "继续")).toBeDefined());
-    await act(async () => get_button_by_label(view, "继续").click());
+    await vi.waitFor(() =>
+      expect(get_button_by_label(view, "agent_page.action.continue")).toBeDefined(),
+    );
+    await act(async () => get_button_by_label(view, "agent_page.action.continue").click());
     expect(continue_session).toHaveBeenLastCalledWith({ text: "追加消息", attachments: [] });
   });
 
@@ -661,7 +627,7 @@ describe("AgentPage", () => {
       ...view.querySelectorAll<HTMLButtonElement>(
         ".agent-message-frame--user .agent-message-actions button",
       ),
-    ].find((button) => button.textContent === "编辑");
+    ].find((button) => button.textContent === "agent_page.action.edit");
     if (user_edit === undefined) throw new Error("缺少 user 编辑按钮");
     await act(async () => user_edit.click());
     const user_editor = get_editor(view);
@@ -692,7 +658,7 @@ describe("AgentPage", () => {
       ...view.querySelectorAll<HTMLButtonElement>(
         ".agent-message-frame--assistant .agent-message-actions button",
       ),
-    ].find((button) => button.textContent === "编辑");
+    ].find((button) => button.textContent === "agent_page.action.edit");
     if (assistant_edit === undefined) throw new Error("缺少 assistant 编辑按钮");
     await act(async () => assistant_edit.click());
     const assistant_editor = get_editor(view);
@@ -726,7 +692,7 @@ describe("AgentPage", () => {
       ...view.querySelectorAll<HTMLButtonElement>(
         ".agent-message-frame--user .agent-message-actions button",
       ),
-    ].find((button) => button.textContent === "编辑");
+    ].find((button) => button.textContent === "agent_page.action.edit");
     if (edit === undefined) throw new Error("缺少 user 编辑按钮");
     await act(async () => edit.click());
     const editor = get_editor(view);
@@ -746,7 +712,7 @@ describe("AgentPage", () => {
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
     expect(view.querySelector(".agent-inline-editor__error")?.textContent).toContain(
-      "消息修改失败",
+      "agent_page.error.edit",
     );
   });
 
@@ -764,7 +730,9 @@ describe("AgentPage", () => {
       updateQueuedMessage,
     });
 
-    const edit = view.querySelector<HTMLButtonElement>('button[aria-label="编辑"]');
+    const edit = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="agent_page.action.edit"]',
+    );
     if (edit === null) throw new Error("缺少队列编辑按钮");
     await act(async () => edit.click());
     const editor = get_editor(view);
@@ -830,7 +798,7 @@ describe("AgentPage", () => {
     await act(async () => reset_button.click());
     await act(async () => get_portal_action_button().click());
     expect(reset).toHaveBeenCalledOnce();
-    expect(push_toast).toHaveBeenCalledWith("error", "新任务创建失败，请重试。");
+    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.reset");
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 });

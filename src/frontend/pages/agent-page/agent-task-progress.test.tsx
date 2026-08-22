@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({ t: () => "下一步" }),
+  useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/shadcn/tooltip", () => ({
   Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
