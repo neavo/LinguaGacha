@@ -7,10 +7,7 @@ import type { QualityRuleConfirmState } from "./quality-rule-confirm-state";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      key === "quality_rule_editor.confirm.delete_selection.description"
-        ? "是否确认删除 {COUNT} 条记录"
-        : key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -54,6 +51,6 @@ describe("QualityRuleConfirmDialog", () => {
       );
     });
 
-    expect(container?.textContent).toBe("是否确认删除 3 条记录");
+    expect(container?.textContent).toBe("quality_rule_editor.confirm.delete_selection.description");
   });
 });

@@ -12,12 +12,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "toolbox_page.title": "百宝箱",
-        "toolbox_page.entries.ts_conversion.title": "繁简转换",
-        "toolbox_page.entries.ts_conversion.description": "批量转换项目译文",
-      })[key] ?? key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -42,7 +37,7 @@ describe("ToolboxPage", () => {
       root?.render(<ToolboxPage is_sidebar_collapsed={false} />);
     });
 
-    const entry = get_button_by_name(container, "繁简转换");
+    const entry = get_button_by_name(container, "toolbox_page.entries.ts_conversion.title");
 
     await act(async () => entry.click());
 

@@ -6,19 +6,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "agent_page.image.title": "图片",
-        "agent_page.annotation.title": "批注",
-        "agent_page.annotation.selected_text": "目标",
-        "agent_page.annotation.user_comment": "批注",
-        "agent_page.annotation.comment_placeholder": "写下评论",
-        "agent_page.annotation.edit": "修改批注",
-        "agent_page.annotation.remove": "删除",
-        "app.action.close": "关闭",
-        "app.action.delete": "删除",
-        "app.action.save": "保存",
-      })[key] ?? key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -61,7 +49,9 @@ describe("AgentMessageAttachments", () => {
     expect(buttons[1]?.textContent).toBe("旧回复片段");
     await act(async () => buttons[1]?.click());
 
-    const panel = document.body.querySelector('[role="dialog"][aria-label="批注"]');
+    const panel = document.body.querySelector(
+      '[role="dialog"][aria-label="agent_page.annotation.title"]',
+    );
     expect(panel?.querySelector("blockquote")?.textContent).toBe("旧回复片段");
     expect(panel?.textContent).toContain("请更准确");
     expect(panel?.querySelector("textarea")).toBeNull();
@@ -71,7 +61,9 @@ describe("AgentMessageAttachments", () => {
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
     expect(dialog?.querySelector("img")?.alt).toBe("");
     expect(
-      [...document.body.querySelectorAll("button")].some((button) => button.textContent === "删除"),
+      [...document.body.querySelectorAll("button")].some(
+        (button) => button.textContent === "app.action.delete",
+      ),
     ).toBe(false);
   });
 
@@ -86,11 +78,13 @@ describe("AgentMessageAttachments", () => {
     });
 
     await act(async () =>
-      view.querySelector<HTMLButtonElement>('button[aria-label="图片 1"]')?.click(),
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
+        ?.click(),
     );
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
     const remove = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-      (button) => button.textContent === "删除",
+      (button) => button.textContent === "app.action.delete",
     );
     await act(async () => remove?.click());
 
@@ -109,20 +103,24 @@ describe("AgentMessageAttachments", () => {
       on_update_annotation,
     });
 
-    const open = view.querySelector<HTMLButtonElement>('button[aria-label="批注 1"]');
+    const open = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="agent_page.annotation.title 1"]',
+    );
     await act(async () => open?.click());
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
-      '[role="dialog"][aria-label="修改批注"] textarea',
+      '[role="dialog"][aria-label="agent_page.annotation.edit"] textarea',
     );
     if (textarea === null) throw new Error("缺少批注编辑器");
     await act(async () => set_textarea_value(textarea, "  新评论  "));
-    const save = document.body.querySelector<HTMLButtonElement>('button[aria-label="保存"]');
+    const save = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.action.save"]',
+    );
     await act(async () => save?.click());
     expect(on_update_annotation).toHaveBeenCalledWith(0, "新评论");
 
     await act(async () => open?.click());
     const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "删除",
+      (button) => button.textContent === "agent_page.annotation.remove",
     );
     await act(async () => remove?.click());
     expect(on_remove).toHaveBeenCalledWith(0);

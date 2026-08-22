@@ -15,13 +15,7 @@ type MockComposerProps = {
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "agent_page.editing.user": "正在编辑用户消息",
-        "agent_page.editing.queue": "正在编辑排队消息",
-        "agent_page.error.edit": "消息修改失败，编辑内容已保留。",
-        "agent_page.error.queue_update": "排队消息修改失败，编辑内容已保留。",
-      })[key] ?? key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -105,7 +99,9 @@ describe("AgentInlineEditor", () => {
     });
     const failed_view = render_editor(failed_save, vi.fn(), on_cancel);
     await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-send]")?.click());
-    expect(failed_view.querySelector('[role="alert"]')?.textContent).toContain("消息修改失败");
+    expect(failed_view.querySelector('[role="alert"]')?.textContent).toContain(
+      "agent_page.error.edit",
+    );
     await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-cancel]")?.click());
     expect(on_cancel).toHaveBeenCalledOnce();
   });

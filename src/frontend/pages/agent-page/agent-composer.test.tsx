@@ -49,41 +49,6 @@ type TestAgentInputSession = AgentInputSession & {
   accept_message: () => void;
 };
 
-/** 只列当前组件断言涉及的可见文案，其余 key 原样返回以便定位。 */
-const TEST_MESSAGES = vi.hoisted(() => ({
-  "agent_page.input.placeholder": "描述任务，或输入 @ 选择技能或术语 …",
-  "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
-  "agent_page.input.drop_images": "松开以添加图片",
-  "agent_page.mention.groups.skills": "技能",
-  "agent_page.mention.groups.terms": "术语",
-  "agent_page.mention.no_matches": "没有匹配的项目 …",
-  "agent_page.context_usage_warning": "即将自动压缩上下文",
-  "agent_page.compaction.running": "正在压缩上下文 …",
-  "agent_page.action.send": "发送",
-  "agent_page.annotation.edit": "修改批注",
-  "agent_page.annotation.remove": "删除",
-  "agent_page.annotation.selected_text": "目标",
-  "agent_page.annotation.user_comment": "批注",
-  "agent_page.annotation.comment_placeholder": "写下评论",
-  "agent_page.annotation.title": "批注",
-  "agent_page.image.title": "图片",
-  "app.action.cancel": "取消",
-  "app.action.close": "关闭",
-  "app.action.delete": "删除",
-  "app.action.save": "保存",
-  "agent_page.action.stop": "停止",
-  "agent_page.action.applying": "正在应用工程修改，完成前不可停止",
-  "agent_page.action.add_image": "添加图片",
-  "agent_page.unavailable.restoring": "正在恢复会话",
-  "agent_page.unavailable.runtime_busy": "其它任务正在运行",
-  "agent_page.unavailable.settling": "正在结束当前任务",
-  "app.model.selection.label": "选择模型",
-  "app.model.thinking_level.label": "思考等级",
-  "app.model.thinking_level.default": "默认",
-  "app.model.thinking_level.unsupported": "尚不支持所选模型",
-  "app.model.thinking_level.medium": "中",
-}));
-
 const image_mocks = vi.hoisted(() => ({
   normalize_agent_images: vi.fn(async (files: Iterable<File>) =>
     Array.from(files, (file) => `webp-${file.name}`),
@@ -101,10 +66,8 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => ({
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: "zh-CN",
-    t: (key: string, params?: Record<string, string>) => {
-      if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
-      return TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key;
-    },
+    t: (key: string, params?: Record<string, string>) =>
+      params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
 
@@ -399,10 +362,12 @@ describe("AgentComposer", () => {
     });
 
     await act(async () =>
-      view.querySelector<HTMLButtonElement>('button[aria-label="图片 1"]')?.click(),
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
+        ?.click(),
     );
     const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "删除",
+      (button) => button.textContent === "app.action.delete",
     );
     await act(async () => remove?.click());
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(0);
@@ -486,10 +451,12 @@ describe("AgentComposer", () => {
     expect(input_session.read_draft()).toEqual(full_draft);
 
     await act(async () =>
-      view.querySelector<HTMLButtonElement>('button[aria-label="图片 1"]')?.click(),
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
+        ?.click(),
     );
     const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "删除",
+      (button) => button.textContent === "app.action.delete",
     );
     await act(async () => remove?.click());
     expect(image_trigger.disabled).toBe(false);
@@ -513,7 +480,9 @@ describe("AgentComposer", () => {
     ]);
 
     await act(async () =>
-      view.querySelector<HTMLButtonElement>('button[aria-label="批注 1"]')?.click(),
+      view
+        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.annotation.title 1"]')
+        ?.click(),
     );
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
       ".agent-composer__annotation-editor textarea",
@@ -526,7 +495,7 @@ describe("AgentComposer", () => {
       ...document.body.querySelectorAll<HTMLButtonElement>(
         ".agent-composer__annotation-editor button",
       ),
-    ].find((button) => button.textContent?.includes("保存"));
+    ].find((button) => button.textContent?.includes("app.action.save"));
     await act(async () => save?.click());
     await click_send(view);
 
@@ -551,13 +520,15 @@ describe("AgentComposer", () => {
       "response_annotation",
       "image",
     ]);
-    const annotation = view.querySelector<HTMLButtonElement>('button[aria-label^="批注 "]');
+    const annotation = view.querySelector<HTMLButtonElement>(
+      'button[aria-label^="agent_page.annotation.title "]',
+    );
     await act(async () => annotation?.click());
     const remove = [
       ...document.body.querySelectorAll<HTMLButtonElement>(
         ".agent-composer__annotation-editor button",
       ),
-    ].find((button) => button.textContent?.includes("删除"));
+    ].find((button) => button.textContent?.includes("agent_page.annotation.remove"));
     if (remove === undefined) throw new Error("缺少批注删除动作");
     await act(async () => remove.click());
     expect(input_session.read_draft().attachments.map((attachment) => attachment.kind)).toEqual([
@@ -692,7 +663,7 @@ describe("AgentComposer", () => {
 
     const trigger = view.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
     expect(trigger?.disabled).toBe(true);
-    expect(trigger?.textContent).toContain("默认");
+    expect(trigger?.textContent).toContain("app.model.thinking_level.default");
     expect(trigger?.parentElement?.tabIndex).toBe(0);
   });
 

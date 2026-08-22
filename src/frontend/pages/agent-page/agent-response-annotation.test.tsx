@@ -6,18 +6,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "agent_page.annotation.add": "添加批注",
-        "agent_page.annotation.title": "批注",
-        "agent_page.annotation.remove": "删除",
-        "agent_page.annotation.selected_text": "目标",
-        "agent_page.annotation.user_comment": "批注",
-        "agent_page.annotation.comment_placeholder": "写下评论",
-        "app.action.cancel": "取消",
-        "app.action.close": "关闭",
-        "app.action.save": "保存",
-      })[key] ?? key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -139,15 +128,17 @@ describe("AgentResponseAnnotation", () => {
         ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
     );
     const add_button = document.body.querySelector<HTMLButtonElement>(
-      '[role="toolbar"][aria-label="添加批注"] button',
+      '[role="toolbar"][aria-label="agent_page.annotation.add"] button',
     );
     await act(async () => add_button?.click());
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
-      '[role="dialog"][aria-label="添加批注"] textarea',
+      '[role="dialog"][aria-label="agent_page.annotation.add"] textarea',
     );
     if (textarea === null) throw new Error("缺少批注输入");
     await act(async () => set_textarea_value(textarea, "  请改写  "));
-    const submit = document.body.querySelector<HTMLButtonElement>('button[aria-label="保存"]');
+    const submit = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.action.save"]',
+    );
     await act(async () => submit?.click());
 
     expect(on_add).toHaveBeenCalledWith({
@@ -181,18 +172,22 @@ describe("AgentResponseAnnotation", () => {
     });
 
     const add_button = document.body.querySelector<HTMLButtonElement>(
-      '[role="toolbar"][aria-label="添加批注"] button',
+      '[role="toolbar"][aria-label="agent_page.annotation.add"] button',
     );
     await act(async () => add_button?.click());
     expect(
-      document.body.querySelector('[role="dialog"][aria-label="添加批注"] blockquote')?.textContent,
+      document.body.querySelector(
+        '[role="dialog"][aria-label="agent_page.annotation.add"] blockquote',
+      )?.textContent,
     ).toBe("最终回复");
 
     await act(async () => {
       document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     });
-    expect(document.body.querySelector('[role="dialog"][aria-label="添加批注"]')).toBeNull();
+    expect(
+      document.body.querySelector('[role="dialog"][aria-label="agent_page.annotation.add"]'),
+    ).toBeNull();
   });
 
   it("跨回复正文的选区不创建批注入口", async () => {

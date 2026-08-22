@@ -68,7 +68,7 @@ export const zh_cn_agent_page = {
     new_task: "是否确认开始新的对话任务 …?",
   },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
-  task_progress: { next: "下一步" },
+  task_progress: { next: "正在推进" },
   tool: {
     details: "{tool} 工具调用详情",
     input: "输入",
