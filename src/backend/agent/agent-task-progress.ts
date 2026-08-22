@@ -193,7 +193,7 @@ export function create_agent_task_progress_tools(progress: AgentTaskProgress): T
       name: "task_progress",
       label: "任务进度",
       description:
-        "管理当前对话中一个长任务的动态工作队列。start 建立任务；advance 原子完成工作并追加派生项；read 读取紧凑进度；finish 仅在无待办时结束；cancel 只在用户放弃或替换任务时取消。进度不保存领域事实，也不代替领域完成条件。",
+        "管理当前对话中任务的动态工作队列。start 建立任务；advance 原子完成工作并追加派生项；read 读取紧凑进度；finish 仅在无待办时结束；cancel 只在用户放弃或替换任务时取消。长流程跨回合维护队列，单回合任务的队列在回复前收尾。进度不保存领域事实，也不代替领域完成条件。",
       executionMode: "sequential",
       parameters: TASK_PROGRESS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
