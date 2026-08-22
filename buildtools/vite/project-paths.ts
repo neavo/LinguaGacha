@@ -13,7 +13,6 @@ export const frontend_resolve_alias = {
   "@backend/api/api-base-url": project_path("src/backend/api/api-base-url.ts"),
   "@gui/bridge-api": project_path("src/gui/bridge/bridge-api.ts"),
   "@gui/bridge-types": project_path("src/gui/bridge/bridge-types.ts"),
-  "@gui/external-url-policy": project_path("src/gui/shell/external-url-policy.ts"),
   "@gui/ipc-contract": project_path("src/gui/gui-ipc-contract.ts"),
   "@gui/shell-contract": project_path("src/gui/shell/shell-contract.ts"),
   "@shared": project_path("src/shared"),

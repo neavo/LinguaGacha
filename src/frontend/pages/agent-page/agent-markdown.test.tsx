@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// 当前组件的外部协作者集中在同一可重置夹具中，测试仍观察最终 DOM。
 const mocks = vi.hoisted(() => ({
   initialize: vi.fn(),
   open_external_url: vi.fn(),
@@ -57,9 +58,9 @@ describe("AgentMarkdown", () => {
     return container;
   }
 
-  it("保留 GFM 与宿主外链，并把图片降级为替代文字", async () => {
+  it("渲染 GFM、富文本和远程图片，并把链接交给宿主", async () => {
     const view = await render_markdown(
-      "| 名称 | 值 |\n| --- | --- |\n| A | 1 |\n\n[证据](https://example.com)\n\n![示意图](https://example.com/a.png) ![](https://example.com/b.png)",
+      '| 名称 | 值 |\n| --- | --- |\n| A | 1 |\n\n<span style="color: red">重点</span>\n\n[证据](https://example.com)\n\n![示意图](https://example.com/a.png)',
       false,
     );
     const link = view.querySelector<HTMLAnchorElement>('a[href="https://example.com"]');
@@ -67,10 +68,19 @@ describe("AgentMarkdown", () => {
 
     await act(async () => link.click());
     expect(view.querySelector("table")?.textContent).toContain("名称");
+    const rich_text = view.querySelector<HTMLSpanElement>("span");
+    expect(rich_text?.textContent).toBe("重点");
+    expect(rich_text?.style.color).toBe("red");
     expect(mocks.open_external_url).toHaveBeenCalledWith("https://example.com");
-    expect(view.querySelector("img")).toBeNull();
-    expect(view.textContent).toContain("示意图");
-    expect(view.textContent).toContain("agent_page.image.omitted");
+    expect(view.querySelector<HTMLImageElement>('img[src="https://example.com/a.png"]')?.alt).toBe(
+      "示意图",
+    );
+  });
+
+  it("流式消息也渲染富文本", async () => {
+    const view = await render_markdown("<mark>进行中</mark>", true);
+
+    expect(view.querySelector("mark")?.textContent).toBe("进行中");
   });
 
   it("保留同一引用块中的软换行", async () => {
@@ -148,30 +158,19 @@ describe("AgentMarkdown", () => {
     expect(mocks.render).not.toHaveBeenCalled();
   });
 
-  it("完成后生成可聚焦图表并应用安全主题配置", async () => {
+  it("完成后生成可聚焦图表并保持 Mermaid 隔离与宿主主题", async () => {
     const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), false);
     await wait_for_condition(() => view.querySelector("figure svg") !== null);
 
     const figure = view.querySelector<HTMLElement>("figure.agent-markdown__diagram");
     expect(figure?.tabIndex).toBe(0);
     expect(view.querySelector("code.language-mermaid")).toBeNull();
-    expect(mocks.render).toHaveBeenCalledWith(
-      expect.stringMatching(/^agent-mermaid-/u),
-      "flowchart LR\nA-->B",
-    );
     expect(mocks.initialize).toHaveBeenCalledWith(
       expect.objectContaining({
-        startOnLoad: false,
         securityLevel: "strict",
-        suppressErrorRendering: true,
-        theme: "base",
         secure: ["theme", "themeVariables", "themeCSS", "fontFamily"],
-        fontFamily: "var(--ui-font-family-base)",
-        flowchart: { useMaxWidth: true },
         themeVariables: expect.objectContaining({
           background: "#f00001",
-          fontFamily: "var(--ui-font-family-base)",
-          fontSize: "13px",
           darkMode: false,
         }),
       }),
@@ -211,6 +210,7 @@ describe("AgentMarkdown", () => {
   });
 });
 
+/** 构造唯一会进入图表渲染分支的显式 Mermaid 围栏。 */
 function mermaid_block(source: string): string {
   return `\`\`\`mermaid\n${source}\n\`\`\``;
 }

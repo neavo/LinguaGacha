@@ -12,7 +12,6 @@ const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
   "@gui/bridge-api",
   "@gui/bridge-types",
   "@backend/api/api-base-url",
-  "@gui/external-url-policy",
   "@gui/ipc-contract",
   "@gui/shell-contract",
 ]);

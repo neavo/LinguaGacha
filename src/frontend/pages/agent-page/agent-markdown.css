@@ -286,11 +286,6 @@
 
 /* Product-specific Markdown extensions */
 
-.agent-markdown__image-alt {
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-
 .agent-markdown__diagram {
   max-width: 100%;
   margin: 8px 0;

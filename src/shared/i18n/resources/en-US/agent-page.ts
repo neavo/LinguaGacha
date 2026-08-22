@@ -6,7 +6,7 @@ export const en_us_agent_page = {
   diagram: {
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
   },
-  image: { title: "Image", omitted: "Image omitted" },
+  image: { title: "Image" },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",

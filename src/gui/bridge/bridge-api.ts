@@ -23,7 +23,7 @@ export interface DesktopBridgeApi {
   openLogWindow: () => Promise<void>; // 日志窗口单例由 main 持有，renderer 只发起显隐请求
   onWindowCloseRequest: (callback: () => void) => () => void; // 主窗口关闭确认由 renderer 展示 UI，main 只发送请求事件
   reportRendererDiagnostics: (payload: DesktopRendererDiagnosticsPayload) => void; // renderer 崩溃前的轻量黑匣子面包屑留在 main，避免依赖崩溃瞬间 HTTP 上报
-  openExternalUrl: (url: string) => Promise<void>; // 外链打开必须经 main 的协议白名单校验后交给系统浏览器
+  openExternalUrl: (url: string) => Promise<void>; // 外链统一交给 main，再由系统外部处理程序处理
   downloadUpdate: (
     request: DesktopUpdateDownloadRequest,
     on_progress: (progress: DesktopUpdateDownloadProgress) => void,

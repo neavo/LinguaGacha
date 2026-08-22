@@ -7,7 +7,7 @@
 - renderer 只能通过 `window.desktopApp` 的按用途窄接口接触宿主能力，不直接导入 Electron、Node、`src/native`、preload 或 backend 实现；原生路径选择在 preload / main 之间统一收口为单一判别联合 IPC，页面不传 Electron 对话框选项。
 - renderer 通过无参数的 `requestUserAttention` 请求桌面注意力；是否播放系统提示音与闪烁窗口由 main 按所属窗口焦点决定，renderer 不传业务文案或任务字段。
 - 主进程按 Chromium 编辑语义为主窗口和日志窗口提供原生文本菜单；renderer 不新增菜单 IPC 或页面私有实现。
-- renderer 只加载同源、`data:` 与 `blob:` 图片；模型 Markdown 的远程图片降级为文本，用户外链仍交给宿主入口。
+- Agent Markdown 直接渲染原始 HTML 与图片；链接点击统一交给宿主外部打开，URL 语义由 Markdown 渲染链和宿主处理。
 - 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面和跨页面 feature 可以直接调用其 `api_fetch`，也可以在各自所有权目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
 - `desktop-api.ts` 统一处理 API base URL、health probe、响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求；renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
 - Agent 工作区 runner 属于 Electron main 私有宿主能力，Backend Runtime 只通过可取消 host request 调用；它不经过 preload、`window.desktopApp` 或产品 renderer，普通前端不持有工作区路径或脚本执行 API。完整沙箱、文件协议与生命周期归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
