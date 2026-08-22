@@ -602,12 +602,7 @@ export async function read_log_detail(id: string): Promise<LogDetail | null> {
   return normalize_log_detail(payload.detail);
 }
 
+/** 外链不做应用级判断或改写，原样交给桌面宿主。 */
 export async function open_external_url(url: string): Promise<void> {
-  const normalized_url = url.trim();
-
-  if (normalized_url === "") {
-    return;
-  }
-
-  await window.desktopApp.openExternalUrl(normalized_url);
+  await window.desktopApp.openExternalUrl(url);
 }

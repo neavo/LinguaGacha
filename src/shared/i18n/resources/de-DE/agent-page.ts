@@ -6,7 +6,7 @@ export const de_de_agent_page = {
   diagram: {
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
   },
-  image: { title: "Bild", omitted: "Bild ausgelassen" },
+  image: { title: "Bild" },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",

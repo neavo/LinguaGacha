@@ -86,13 +86,12 @@ describe("桌面 IPC 宿主", () => {
     vi.resetModules();
   });
 
-  it("标题栏主题、退出、日志窗口和外链 IPC 会执行对应宿主能力", async () => {
+  it("标题栏主题、退出和日志窗口 IPC 会执行对应宿主能力", async () => {
     const main_window = { id: "main-window" };
     const renderer_contents = { id: "renderer-contents" };
     const log_window_host = { toggle: vi.fn() };
     const mark_renderer_confirmed_app_quit = vi.fn();
     electron_mock.browser_window_from_web_contents.mockReturnValue(main_window);
-    electron_mock.open_external.mockResolvedValue(undefined);
     await register_handlers({
       mainWindow: main_window,
       logWindowHost: log_window_host,
@@ -102,13 +101,11 @@ describe("桌面 IPC 宿主", () => {
     emit_send(IPC_CHANNEL_TITLE_BAR_THEME, { sender: renderer_contents }, "dark");
     await invoke(IPC_CHANNEL_QUIT_APP);
     await invoke(IPC_CHANNEL_OPEN_LOG_WINDOW);
-    await invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, " https://example.com/docs ");
 
     expect(window_handler_mock.sync_title_bar_overlay).toHaveBeenCalledWith(main_window, "dark");
     expect(mark_renderer_confirmed_app_quit).toHaveBeenCalledTimes(1);
     expect(electron_mock.app_quit).toHaveBeenCalledTimes(1);
     expect(log_window_host.toggle).toHaveBeenCalledTimes(1);
-    expect(electron_mock.open_external).toHaveBeenCalledWith("https://example.com/docs");
   });
 
   it("窗口未聚焦时请求一次系统提示并闪烁窗口，聚焦时保持安静", async () => {
@@ -253,14 +250,12 @@ describe("桌面 IPC 宿主", () => {
     expect(record_renderer_diagnostics).toHaveBeenCalledWith(renderer_contents, payload);
   });
 
-  it("外链 IPC 拒绝非 http 协议并且不交给系统浏览器", async () => {
+  it("外链 IPC 不判断协议并直接交给系统外部处理程序", async () => {
     await register_handlers();
 
-    await expect(invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, "file:///C:/secret.txt")).rejects.toThrow(
-      "Only http and https URLs can be opened in the system browser.",
-    );
+    await invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, "file:///C:/secret.txt");
 
-    expect(electron_mock.open_external).not.toHaveBeenCalled();
+    expect(electron_mock.open_external).toHaveBeenCalledWith("file:///C:/secret.txt");
   });
 
   it("打开路径类 IPC 返回路径快照并传递对应原生选择限制", async () => {

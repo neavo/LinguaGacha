@@ -13,7 +13,6 @@ import {
   IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
   IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
 } from "../gui-ipc-contract";
-import { resolve_external_url } from "./external-url-policy";
 import {
   type DesktopPathPickIpcRequest,
   type DesktopPathPickResult,
@@ -82,9 +81,9 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     options.getLogWindowHost()?.toggle();
   });
 
-  // 外链统一交给系统浏览器，主进程负责协议白名单校验
+  // 外链统一交给系统外部处理程序；URL 语义与可用性由宿主和系统处理
   ipcMain.handle(IPC_CHANNEL_OPEN_EXTERNAL_URL, async (_event, url: string) => {
-    await shell.openExternal(resolve_external_url(url));
+    await shell.openExternal(url);
   });
 
   // 更新包下载和进度只在 main 执行，renderer 通过 request_id 消费自身那一次进度。

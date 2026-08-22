@@ -1,6 +1,7 @@
 import { isValidElement, useEffect, useId, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 import type { MermaidConfig } from "mermaid";
@@ -34,7 +35,7 @@ type CodeBlock = {
 
 /** 渲染 Agent 正文 Markdown；图表仅在完整消息内进入 Mermaid 异步边界。 */
 export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
-  const { t } = useI18n();
+  // Markdown 只接管外链宿主交互与 Mermaid，HTML 和图片沿用标准渲染链。
   const components: Components = {
     a: ({ href, children }) => (
       <a
@@ -46,11 +47,6 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
       >
         {children}
       </a>
-    ),
-    img: ({ alt }) => (
-      <span className="agent-markdown__image-alt">
-        {alt?.trim() || t("agent_page.image.omitted")}
-      </span>
     ),
     pre: ({ node: _node, children, ...pre_props }) => {
       const code_block = read_code_block(children);
@@ -75,8 +71,8 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={
           props.streaming
-            ? undefined
-            : [[rehypeHighlight, { detect: false, plainText: ["mermaid"] }]]
+            ? [rehypeRaw]
+            : [rehypeRaw, [rehypeHighlight, { detect: false, plainText: ["mermaid"] }]]
         }
         components={components}
       >
