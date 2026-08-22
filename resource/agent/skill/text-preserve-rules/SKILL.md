@@ -1,7 +1,6 @@
 ---
 name: text-preserve-rules
-description: 为质量规则创建与审查提供文本保护发现、正则表达式、字段与独立安全判据。
-disable-model-invocation: true
+description: 创建或审查文本保护规则时使用，判断保护结构、正则表达式、字段和安全边界。
 ---
 
 # 文本保护领域判据

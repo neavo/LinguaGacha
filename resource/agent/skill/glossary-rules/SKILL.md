@@ -1,7 +1,6 @@
 ---
 name: glossary-rules
-description: 为质量规则创建与审查提供术语发现、收录、字段、证据和最小充分集合判据。
-disable-model-invocation: true
+description: 创建或审查术语规则时使用，判断术语的收录、译名、条件和字段。
 ---
 
 # 术语领域判据

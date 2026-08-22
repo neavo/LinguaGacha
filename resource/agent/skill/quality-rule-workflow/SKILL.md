@@ -1,7 +1,6 @@
 ---
 name: quality-rule-workflow
-description: 供质量规则创建与审查入口共用，统一组织工作区加载、证据核验、动态发现、收敛与提交。
-disable-model-invocation: true
+description: 创建或审查质量规则时使用，组织工作区加载、证据核验、动态发现、收敛与提交。
 ---
 
 # 质量规则共享工作流
