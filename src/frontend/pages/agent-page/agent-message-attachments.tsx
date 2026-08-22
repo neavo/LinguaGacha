@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { MessageSquareQuote, Trash2 } from "lucide-react";
+import { MessageSquareQuote } from "lucide-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 
 import type { AgentMessageAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { AppButton } from "@frontend/widgets/app-button";
-import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import {
   AgentResponseAnnotationEditor,
   AgentResponseAnnotationViewer,
 } from "./agent-response-annotation";
+import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
 
 type AgentMessageAttachmentsProps =
   | {
@@ -169,9 +169,9 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
       </div>
 
       {selected_attachment?.kind !== "image" ? null : (
-        <AppPageDialog
+        <AgentMediaPreviewDialog
+          key={selected_index}
           open
-          size="lg"
           title={t("agent_page.image.title")}
           onClose={close_attachment}
           footer={
@@ -181,10 +181,10 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
                   type="button"
                   size="sm"
                   variant="destructive"
+                  className="sm:mr-auto"
                   disabled={props.disabled}
                   onClick={remove_selected_attachment}
                 >
-                  <Trash2 aria-hidden="true" />
                   {t("app.action.delete")}
                 </AppButton>
                 <AppButton type="button" size="sm" variant="outline" onClick={close_attachment}>
@@ -194,14 +194,12 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
             )
           }
         >
-          <div className="agent-image-attachment-viewer">
-            <img
-              src={`data:image/webp;base64,${selected_attachment.webpBase64}`}
-              alt=""
-              decoding="async"
-            />
-          </div>
-        </AppPageDialog>
+          <img
+            src={`data:image/webp;base64,${selected_attachment.webpBase64}`}
+            alt=""
+            decoding="async"
+          />
+        </AgentMediaPreviewDialog>
       )}
     </>
   );

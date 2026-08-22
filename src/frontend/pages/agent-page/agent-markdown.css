@@ -289,23 +289,60 @@
 .agent-markdown__diagram {
   max-width: 100%;
   margin: 8px 0;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-button);
   background: var(--popover);
+}
+
+.agent-markdown__diagram-content {
+  min-width: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
-.agent-markdown__diagram:focus-visible {
+.agent-markdown__diagram-trigger {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 12px;
+  font: inherit;
+  text-align: inherit;
+  cursor: zoom-in;
+}
+
+.agent-markdown__diagram-trigger:hover {
+  background: var(--accent);
+}
+
+.agent-markdown__diagram-trigger:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.agent-markdown__diagram svg {
+.agent-markdown__diagram-trigger > span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.agent-markdown__diagram-trigger svg {
   display: block;
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+}
+
+.agent-markdown__diagram-pending {
+  display: grid;
+  min-height: 96px;
+  place-items: center;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .agent-markdown__diagram-error {
@@ -320,6 +357,28 @@
 
 .agent-markdown__diagram-error pre {
   margin: 0;
+}
+
+.agent-markdown__image-trigger {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.agent-markdown__image-trigger img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.agent-markdown__image-trigger:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* Tables */

@@ -4,9 +4,19 @@ export const de_de_agent_page = {
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
+    open_preview: "Diagrammvorschau öffnen",
+    preview_title: "Diagrammvorschau",
+    rendering: "Diagramm wird gerendert …",
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
   },
-  image: { title: "Bild" },
+  image: { title: "Bild", open_preview: "Bildvorschau öffnen" },
+  media: {
+    canvas_label: "Medienvorschaufläche",
+    controls_label: "Medien-Zoom-Steuerung",
+    zoom_out: "Verkleinern",
+    zoom_in: "Vergrößern",
+    reset_zoom: "Zoom zurücksetzen",
+  },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
