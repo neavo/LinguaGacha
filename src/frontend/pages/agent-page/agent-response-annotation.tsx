@@ -6,7 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { MessageSquareQuote, Trash2, X } from "lucide-react";
+import { MessageSquareQuote, X } from "lucide-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 
 import type { AgentResponseAnnotationAttachment } from "@shared/agent";
@@ -103,7 +103,6 @@ export function AgentResponseAnnotationEditor({
       <div className="agent-annotation-editor__actions">
         {on_remove === undefined ? null : (
           <AppButton type="button" size="sm" variant="destructive" onClick={on_remove}>
-            <Trash2 aria-hidden="true" />
             {t("agent_page.annotation.remove")}
           </AppButton>
         )}

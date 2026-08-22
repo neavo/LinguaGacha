@@ -1,14 +1,13 @@
-import { isValidElement, useEffect, useId, useState, type ReactNode } from "react";
+import { isValidElement, useMemo, useState, type ImgHTMLAttributes, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
-import type { MermaidConfig } from "mermaid";
-import { useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { open_external_url } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import type { ResolvedThemeMode } from "@gui/bridge-types";
+import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
+import { AgentMermaidBlock } from "./agent-mermaid";
 
 import "./agent-markdown.css";
 
@@ -17,11 +16,6 @@ type AgentMarkdownProps = {
   streaming: boolean;
   annotatable?: boolean;
 };
-
-type MermaidRenderState =
-  | { key: string; status: "success"; svg: string }
-  | { key: string; status: "error" }
-  | null;
 
 type CodeElementProps = {
   className?: string;
@@ -35,35 +29,44 @@ type CodeBlock = {
 
 /** 渲染 Agent 正文 Markdown；图表仅在完整消息内进入 Mermaid 异步边界。 */
 export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
-  // Markdown 只接管外链宿主交互与 Mermaid，HTML 和图片沿用标准渲染链。
-  const components: Components = {
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        onClick={(event) => {
-          event.preventDefault();
-          if (href !== undefined) void open_external_url(href);
-        }}
-      >
-        {children}
-      </a>
-    ),
-    pre: ({ node: _node, children, ...pre_props }) => {
-      const code_block = read_code_block(children);
-      if (!props.streaming && code_block?.language === "mermaid") {
-        return <AgentMermaid source={code_block.source} />;
-      }
-      const language = code_block?.language;
-      return (
-        <pre
-          {...pre_props}
-          data-language={language === "mermaid" ? undefined : (language ?? undefined)}
+  const { t } = useI18n();
+  // Markdown 只接管外链、图片预览与 Mermaid，其余 HTML 沿用标准渲染链。
+  const components = useMemo<Components>(
+    () => ({
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          onClick={(event) => {
+            event.preventDefault();
+            if (href !== undefined) void open_external_url(href);
+          }}
         >
           {children}
-        </pre>
-      );
-    },
-  };
+        </a>
+      ),
+      pre: ({ node: _node, children, ...pre_props }) => {
+        const code_block = read_code_block(children);
+        if (!props.streaming && code_block?.language === "mermaid") {
+          return <AgentMermaidBlock source={code_block.source} />;
+        }
+        const language = code_block?.language;
+        return (
+          <pre
+            {...pre_props}
+            data-language={language === "mermaid" ? undefined : (language ?? undefined)}
+          >
+            {children}
+          </pre>
+        );
+      },
+      img: ({ node: _node, src, alt, title, ...img_props }) => {
+        if (src === undefined) return null;
+        const label = alt?.trim() || title?.trim() || t("agent_page.image.title");
+        return <AgentMarkdownImage src={src} alt={label} image_props={img_props} />;
+      },
+    }),
+    [props.streaming, t],
+  );
 
   return (
     <div className="agent-markdown" data-agent-annotation-content={props.annotatable || undefined}>
@@ -82,54 +85,36 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   );
 }
 
-/** 主题或源码变化时重建图表；旧异步结果由 effect 生命周期丢弃。 */
-function AgentMermaid({ source }: { source: string }): JSX.Element {
+/** 把 Markdown 图片投影为可访问的内嵌预览入口。 */
+function AgentMarkdownImage(props: {
+  src: string;
+  alt: string;
+  image_props: ImgHTMLAttributes<HTMLImageElement>;
+}): JSX.Element {
   const { t } = useI18n();
-  const { resolved_theme } = useAppearance();
-  const diagram_id = `agent-mermaid-${useId().replaceAll(":", "")}`;
-  const theme_mode = resolved_theme;
-  const render_key = `${theme_mode}\u0000${source}`;
-  const [render_state, set_render_state] = useState<MermaidRenderState>(null);
-
-  useEffect(() => {
-    let active = true;
-    void render_mermaid(diagram_id, source, theme_mode).then(
-      (svg) => {
-        if (active) set_render_state({ key: render_key, status: "success", svg });
-      },
-      () => {
-        if (active) set_render_state({ key: render_key, status: "error" });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [diagram_id, render_key, source, theme_mode]);
-
-  if (render_state?.key !== render_key) return <MermaidSource source={source} />;
-  if (render_state.status === "error") {
-    return (
-      <div className="agent-markdown__diagram-error">
-        <p>{t("agent_page.diagram.render_failed")}</p>
-        <MermaidSource source={source} />
-      </div>
-    );
-  }
+  const [open, set_open] = useState(false);
   return (
-    <figure
-      className="agent-markdown__diagram"
-      tabIndex={0}
-      dangerouslySetInnerHTML={{ __html: render_state.svg }}
-    />
-  );
-}
-
-/** Mermaid 未完成或失败时保留可复制、可诊断的原始围栏正文。 */
-function MermaidSource({ source }: { source: string }): JSX.Element {
-  return (
-    <pre>
-      <code className="language-mermaid">{source}</code>
-    </pre>
+    <>
+      <button
+        type="button"
+        className="agent-markdown__image-trigger"
+        aria-label={props.alt}
+        aria-haspopup="dialog"
+        title={t("agent_page.image.open_preview")}
+        onClick={() => set_open(true)}
+      >
+        <img
+          {...props.image_props}
+          src={props.src}
+          alt={props.alt}
+          loading={props.image_props.loading ?? "lazy"}
+          decoding={props.image_props.decoding ?? "async"}
+        />
+      </button>
+      <AgentMediaPreviewDialog open={open} title={props.alt} onClose={() => set_open(false)}>
+        <img src={props.src} alt={props.alt} decoding="async" />
+      </AgentMediaPreviewDialog>
+    </>
   );
 }
 
@@ -143,45 +128,5 @@ function read_code_block(children: ReactNode): CodeBlock | null {
   return {
     language,
     source: String(children.props.children ?? "").replace(/\n$/u, ""),
-  };
-}
-
-/** Mermaid 自带渲染队列；这里只应用当前主题，不维护第二套调度状态。 */
-async function render_mermaid(
-  id: string,
-  source: string,
-  theme_mode: ResolvedThemeMode,
-): Promise<string> {
-  const mermaid = (await import("mermaid")).default;
-  mermaid.initialize(build_mermaid_config(theme_mode));
-  return (await mermaid.render(id, source)).svg;
-}
-
-/** 只从全局设计 token 投影安全主题，图表源码不能覆盖这些宿主约束。 */
-function build_mermaid_config(theme_mode: ResolvedThemeMode): MermaidConfig {
-  const style = getComputedStyle(document.documentElement);
-  const read_token = (name: string): string => style.getPropertyValue(name).trim();
-  const font_family = "var(--ui-font-family-base)";
-  const theme_variables = {
-    background: read_token("--popover"),
-    primaryColor: read_token("--muted"),
-    primaryTextColor: read_token("--foreground"),
-    primaryBorderColor: read_token("--border"),
-    secondaryColor: read_token("--accent"),
-    tertiaryColor: read_token("--secondary"),
-    lineColor: read_token("--muted-foreground"),
-    fontFamily: font_family,
-    fontSize: "13px",
-    darkMode: theme_mode === "dark",
-  };
-  return {
-    startOnLoad: false,
-    securityLevel: "strict",
-    suppressErrorRendering: true,
-    theme: "base",
-    secure: ["theme", "themeVariables", "themeCSS", "fontFamily"],
-    fontFamily: font_family,
-    themeVariables: theme_variables,
-    flowchart: { useMaxWidth: true },
   };
 }

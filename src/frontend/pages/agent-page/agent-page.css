@@ -454,20 +454,6 @@
   line-height: 1.4;
 }
 
-.agent-image-attachment-viewer {
-  display: grid;
-  min-height: 0;
-  place-items: center;
-}
-
-.agent-image-attachment-viewer > img {
-  display: block;
-  max-width: 100%;
-  max-height: calc(100vh - 200px);
-  border-radius: var(--ui-radius-button);
-  object-fit: contain;
-}
-
 .agent-thinking-entry {
   overflow: hidden;
   width: 100%;

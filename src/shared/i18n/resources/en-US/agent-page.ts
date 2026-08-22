@@ -4,9 +4,19 @@ export const en_us_agent_page = {
   thinking: "Thinking",
   thinking_active: "Thinking",
   diagram: {
+    open_preview: "Open diagram preview",
+    preview_title: "Diagram preview",
+    rendering: "Rendering diagram …",
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
   },
-  image: { title: "Image" },
+  image: { title: "Image", open_preview: "Open image preview" },
+  media: {
+    canvas_label: "Media preview canvas",
+    controls_label: "Media zoom controls",
+    zoom_out: "Zoom out",
+    zoom_in: "Zoom in",
+    reset_zoom: "Reset zoom",
+  },
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
