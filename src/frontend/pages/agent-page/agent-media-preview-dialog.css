@@ -10,7 +10,7 @@
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background: var(--muted);
+  background: var(--popover);
   cursor: grab;
   outline: none;
   user-select: none;

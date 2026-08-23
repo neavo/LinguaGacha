@@ -217,41 +217,21 @@ describe("AgentPage", () => {
   it("空会话建议写入草稿而不直接发送", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });
-    const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
-    const literal_suggestion = suggestions.find((button) => {
-      return button.querySelector(".agent-mention-token") === null;
-    });
-    const skill_suggestion = suggestions.find((button) => {
-      return button.querySelector(".agent-mention-token") !== null;
-    });
+    const suggestion = view.querySelector<HTMLButtonElement>(".agent-page__suggestion");
     const editor = view.querySelector<HTMLElement>(".cm-content");
     const submit = get_button_by_label(view, "agent_page.action.send");
-    const literal_text = literal_suggestion?.textContent?.trim();
-    const skill_text = skill_suggestion?.textContent?.trim();
-    if (literal_suggestion === undefined || literal_text === undefined) {
-      throw new Error("缺少普通起始任务。");
-    }
-    if (skill_suggestion === undefined || skill_text === undefined) {
-      throw new Error("缺少技能起始任务。");
-    }
+    const suggestion_text = suggestion?.textContent?.trim();
+    if (suggestion === null || suggestion_text === undefined) throw new Error("缺少起始任务。");
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
-    await act(async () => literal_suggestion.click());
+    await act(async () => suggestion.click());
     expect(send).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith({ text: literal_text, attachments: [] });
-
-    await act(async () => skill_suggestion.click());
-    expect(document.activeElement).toBe(editor);
-    await act(async () => {
-      submit.click();
-      await Promise.resolve();
-    });
-    expect(send).toHaveBeenLastCalledWith({ text: skill_text, attachments: [] });
+    expect(send).toHaveBeenLastCalledWith({ text: suggestion_text, attachments: [] });
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
@@ -804,47 +784,13 @@ describe("AgentPage", () => {
 });
 
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
-  const skills = [
-    {
-      name: "quality-rule-create",
-      displayDescriptions: {
-        "zh-CN": "创建质量规则",
-        "en-US": "Create quality rules",
-        "de-DE": "Qualitätsregeln erstellen",
-      },
-    },
-    {
-      name: "quality-rule-review",
-      displayDescriptions: {
-        "zh-CN": "审校质量规则",
-        "en-US": "Review quality rules",
-        "de-DE": "Qualitätsregeln prüfen",
-      },
-    },
-    {
-      name: "translation-review",
-      displayDescriptions: {
-        "zh-CN": "审查译文",
-        "en-US": "Review translations",
-        "de-DE": "Übersetzungen prüfen",
-      },
-    },
-    {
-      name: "corpus-search",
-      displayDescriptions: {
-        "zh-CN": "检索语料",
-        "en-US": "Search corpus",
-        "de-DE": "Korpus durchsuchen",
-      },
-    },
-  ];
   return {
     state: "idle",
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
       assistant_entry("assistant-1", "**变更方案**", "success", 1),
     ],
-    skills,
+    skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
     taskProgress: overrides.taskProgress ?? [],
     contextTokens: overrides.contextTokens ?? null,

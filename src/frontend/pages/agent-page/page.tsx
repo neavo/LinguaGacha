@@ -38,8 +38,8 @@ const FEATURED_AGENT_SKILLS = [
     Icon: Drama,
   },
   {
-    name: "quality-rule-create",
-    suggestionKey: "agent_page.empty.suggestions.quality_rule_create",
+    name: "quality-rule-workflow",
+    suggestionKey: "agent_page.empty.suggestions.quality_rule_workflow",
     Icon: ListChecks,
   },
   {

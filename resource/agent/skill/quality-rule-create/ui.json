@@ -1,8 +1,0 @@
-{
-  "order": 200,
-  "displayDescriptions": {
-    "zh-CN": "基于 AI 分析当前工程并创建术语和文本保护规则",
-    "en-US": "Use AI to analyze the current project and create glossary and text-protection rules",
-    "de-DE": "Das aktuelle Projekt mit KI analysieren und Glossar- sowie Textschutzregeln erstellen"
-  }
-}

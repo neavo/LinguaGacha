@@ -28,8 +28,8 @@ import {
 } from "@frontend/widgets/command-bar/command-bar";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
-/** 工作台迁移入口与 Agent 引导卡片共用统一质量规则创建 skill。 */
-const QUALITY_RULE_CREATE_SKILL_NAME = "quality-rule-create";
+/** 工作台迁移入口与 Agent 引导卡片共用统一质量规则工作流 skill。 */
+const QUALITY_RULE_WORKFLOW_SKILL_NAME = "quality-rule-workflow";
 
 type WorkbenchCommandBarProps = {
   translation_workbench_task: TranslationWorkbenchTask;
@@ -145,7 +145,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     const draft = agent.input.read_draft();
     if (draft.text.trim() === "" && draft.attachments.length === 0) {
       agent.input.write_draft({
-        text: `${t("agent_page.empty.suggestions.quality_rule_create")} ${format_agent_skill_reference(QUALITY_RULE_CREATE_SKILL_NAME)}`,
+        text: `${t("agent_page.empty.suggestions.quality_rule_workflow")} ${format_agent_skill_reference(QUALITY_RULE_WORKFLOW_SKILL_NAME)}`,
         attachments: [],
       });
     } else {

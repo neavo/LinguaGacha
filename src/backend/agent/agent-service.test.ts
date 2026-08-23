@@ -24,6 +24,8 @@ import { RuntimeOperationGate } from "../runtime-operation-gate";
 
 /** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
 const skill_test_fixture = vi.hoisted(() => {
+  const app_root = "E:/linguagacha-agent-service-test";
+  const skill_root = `${app_root}/builtin-skills`;
   const corpus_search_snapshot = {
     name: "corpus-search",
     displayDescriptions: {
@@ -40,42 +42,47 @@ const skill_test_fixture = vi.hoisted(() => {
       "de-DE": "Glossar prüfen",
     },
   };
+  const glossary_audit_content = `${glossary_audit_snapshot.name}:fixture`;
   const snapshots = [corpus_search_snapshot, glossary_audit_snapshot];
+  const skills = [
+    {
+      ...glossary_audit_snapshot,
+      visible: true,
+      description: "审校术语",
+      content: glossary_audit_content,
+      filePath: `${skill_root}/glossary-audit/SKILL.md`,
+      disableModelInvocation: false,
+    },
+    {
+      ...corpus_search_snapshot,
+      visible: true,
+      order: Number.MAX_SAFE_INTEGER,
+      description: "检索语料",
+      content: `${corpus_search_snapshot.name}:fixture`,
+      filePath: `${skill_root}/corpus-search/SKILL.md`,
+      disableModelInvocation: true,
+    },
+    {
+      name: "internal-guidance",
+      visible: false,
+      order: 0,
+      displayDescriptions: {
+        "zh-CN": "内部指导",
+        "en-US": "Internal guidance",
+        "de-DE": "Interne Anleitung",
+      },
+      description: "内部指导",
+      content: "internal-guidance:fixture",
+      filePath: `${skill_root}/internal-guidance/SKILL.md`,
+      disableModelInvocation: false,
+    },
+  ];
   return {
+    app_root,
+    fixture_contents: { glossary_audit: glossary_audit_content },
+    skill_root,
     snapshots,
-    loader: vi.fn(() => [
-      {
-        ...glossary_audit_snapshot,
-        visible: true,
-        description: "审校术语",
-        content: "执行术语审校。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/quality-rule-review/SKILL.md",
-        disableModelInvocation: false,
-      },
-      {
-        ...corpus_search_snapshot,
-        visible: true,
-        order: Number.MAX_SAFE_INTEGER,
-        description: "检索语料",
-        content: "执行语料检索。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/glossary-rules/SKILL.md",
-        disableModelInvocation: true,
-      },
-      {
-        name: "internal-guidance",
-        visible: false,
-        order: 0,
-        displayDescriptions: {
-          "zh-CN": "内部指导",
-          "en-US": "Internal guidance",
-          "de-DE": "Interne Anleitung",
-        },
-        description: "内部指导",
-        content: "执行内部指导。",
-        filePath: "E:/Project/LinguaGacha/resource/agent/skill/agent-charter/SKILL.md",
-        disableModelInvocation: false,
-      },
-    ]),
+    loader: vi.fn(() => skills),
   };
 });
 const agent_resource_fixture = vi.hoisted(() => {
@@ -385,7 +392,7 @@ function create_fake_response(context: Context): FauxResponseStep {
       [
         fauxText("准备查询"),
         fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-1" }),
-        fauxToolCall("read_skill", { name: "glossary-audit", path: "ui.json" }, { id: "tool-2" }),
+        fauxToolCall("workspace_load", {}, { id: "tool-2" }),
       ],
       { stopReason: "toolUse" },
     );
@@ -590,8 +597,8 @@ describe("AgentService", () => {
           "de-DE": "Neue Fähigkeit",
         },
         description: "会话中新增的技能",
-        content: "执行新技能。",
-        filePath: "E:/skills/new-skill/SKILL.md",
+        content: "new-skill:fixture",
+        filePath: `${skill_test_fixture.skill_root}/new-skill/SKILL.md`,
         disableModelInvocation: false,
       },
     ]);
@@ -1059,10 +1066,10 @@ describe("AgentService", () => {
       {
         kind: "tool_call",
         id: "tool-2",
-        toolName: "read_skill",
-        input: '{"name":"glossary-audit","path":"ui.json"}',
+        toolName: "workspace_load",
+        input: "{}",
         status: "success",
-        output: expect.stringContaining("displayDescriptions"),
+        output: expect.stringContaining('"status":"loaded"'),
         createdAt: expect.any(Number),
       },
       {
@@ -1744,7 +1751,9 @@ describe("AgentService", () => {
 
     expect(fake_agent_state.system_prompts.at(-1)).toBe(fake_agent_state.system_prompts.at(-2));
     expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
-    expect(fake_agent_state.prompts.at(-2)).toContain("执行术语审校。");
+    expect(fake_agent_state.prompts.at(-2)).toContain(
+      skill_test_fixture.fixture_contents.glossary_audit,
+    );
     expect(fake_agent_state.prompts.at(-1)).toBe("普通对话");
   });
 
@@ -2371,13 +2380,13 @@ describe("AgentService", () => {
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
       paths: {
-        get_app_root: () => "E:/Project/LinguaGacha",
-        get_agent_builtin_skill_dir: () => "E:/Project/LinguaGacha/resource/agent/skill",
-        get_agent_user_skill_dir: () => "E:/Project/LinguaGacha/userdata/agent/skill",
+        get_app_root: () => skill_test_fixture.app_root,
+        get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
+        get_agent_user_skill_dir: () => `${skill_test_fixture.app_root}/user-skills`,
         get_agent_system_prompt_path: () =>
-          "E:/Project/LinguaGacha/resource/agent/system_prompt.md",
+          `${skill_test_fixture.app_root}/resource/agent/system_prompt.md`,
         get_agent_session_seed_path: () =>
-          "E:/Project/LinguaGacha/resource/agent/session_seed.json",
+          `${skill_test_fixture.app_root}/resource/agent/session_seed.json`,
       },
       settings,
       userAgent: "LinguaGacha/Test",
@@ -2477,7 +2486,6 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).not.toContain("Read the full skill file when the task matches");
   expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
   expect(prompt?.match(/Current working directory:/gu)).toHaveLength(1);
-  expect(prompt?.trimEnd().endsWith("Current working directory: E:/Project/LinguaGacha")).toBe(
-    true,
-  );
+  const working_directory = prompt?.trimEnd().split("Current working directory:").at(-1)?.trim();
+  expect(working_directory?.replaceAll("\\", "/")).toBe(skill_test_fixture.app_root);
 }

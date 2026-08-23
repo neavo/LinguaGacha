@@ -23,7 +23,7 @@ export const zh_cn_agent_page = {
     suggestions: {
       capabilities: "介绍你的能力",
       roleplay: "开始角色扮演",
-      quality_rule_create: "帮我提取术语",
+      quality_rule_workflow: "帮我提取术语",
       translation_review: "帮我审校译文",
     },
   },
