@@ -1,4 +1,12 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide-react";
 
 import type {
@@ -18,7 +26,7 @@ import {
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
-import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
+import { is_at_scroll_end } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
@@ -510,7 +518,7 @@ function AgentToolEntryButton(props: {
   );
 }
 
-/** 思考详情独立拥有流式跟随、用户接管与完成后的自动收缩。 */
+/** 思考详情独立拥有真实阅读位置、首次锚点激活与完成后的自动收缩。 */
 function AgentThinkingDetail(props: {
   label: string;
   started_at: number;
@@ -521,39 +529,89 @@ function AgentThinkingDetail(props: {
 }): JSX.Element {
   const active = props.status === "running";
   const [open, set_open] = useState(active);
-  const content_ref = useRef<HTMLPreElement | null>(null);
-  const {
-    paused: follow_paused,
-    paused_ref: follow_paused_ref,
-    follow_user_scroll,
-    resume: resume_follow,
-  } = useAgentScrollFollow();
+  const viewport_ref = useRef<HTMLDivElement | null>(null);
+  const pre_ref = useRef<HTMLPreElement | null>(null);
+  const [thinking_reading_history, set_thinking_reading_history] = useState(false); // 真实几何位置
+  const [thinking_following_latest, set_thinking_following_latest] = useState(active); // CSS 锚定意图
   const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
   const previous_return_latest_revision_ref = useRef(props.return_latest_revision);
+  const has_opened_ref = useRef(active); // 普通历史详情首次打开不得归底
+  const following_ref = useRef(active); // observer 回调读取同步跟随意图
+  const pending_return_latest_ref = useRef(false); // 关闭态延迟消费全局归底命令
+  const scroll_anchor_activated_ref = useRef(false); // 每个可见周期只写底一次
 
-  // 流式增量只在详情仍跟随时归底，用户一旦上划便保留当前位置。
+  /** 同步更新 React 属性与提交外 observer 使用的跟随意图。 */
+  const set_following_latest = useCallback((following: boolean): void => {
+    following_ref.current = following;
+    set_thinking_following_latest(following);
+  }, []);
+
+  // 唯一滚动写入口只跨过首次 overflow、重新打开和显式 revision 三个离散边界。
   useLayoutEffect(() => {
-    const content = content_ref.current;
-    if (active && open && !follow_paused_ref.current && content !== null) {
-      content.scrollTop = content.scrollHeight;
+    let observer: ResizeObserver | null = null;
+
+    /** 按 revision、可见性、历史首开和 overflow 的固定优先级激活本周期锚点。 */
+    const try_activate_anchor = (): boolean => {
+      if (previous_return_latest_revision_ref.current !== props.return_latest_revision) {
+        previous_return_latest_revision_ref.current = props.return_latest_revision;
+        pending_return_latest_ref.current = true;
+        scroll_anchor_activated_ref.current = false;
+        set_following_latest(true);
+      }
+
+      const viewport = viewport_ref.current;
+      const pre = pre_ref.current;
+      if (!open || viewport === null || pre === null) {
+        scroll_anchor_activated_ref.current = false;
+        return true;
+      }
+
+      if (!has_opened_ref.current) {
+        has_opened_ref.current = true;
+        if (!pending_return_latest_ref.current) set_following_latest(false);
+      }
+
+      const following = following_ref.current || pending_return_latest_ref.current;
+      if (!following) {
+        scroll_anchor_activated_ref.current = false;
+        set_thinking_reading_history(!is_at_scroll_end(viewport));
+        return true;
+      }
+      if (scroll_anchor_activated_ref.current) return true;
+      if (viewport.clientHeight <= 0 || viewport.scrollHeight <= viewport.clientHeight) {
+        set_thinking_reading_history(!is_at_scroll_end(viewport));
+        return false;
+      }
+
+      viewport.scrollTop = viewport.scrollHeight;
+      const reading_history = !is_at_scroll_end(viewport);
+      set_following_latest(true);
+      set_thinking_reading_history(reading_history);
+      if (reading_history) return false;
+      pending_return_latest_ref.current = false;
+      scroll_anchor_activated_ref.current = true;
+      return true;
+    };
+
+    if (!try_activate_anchor()) {
+      // 只观察首次 overflow；激活后连续增长完全交给 CSS 锚定。
+      observer = new ResizeObserver(() => {
+        if (try_activate_anchor()) observer?.disconnect();
+      });
+      const viewport = viewport_ref.current;
+      const pre = pre_ref.current;
+      if (viewport !== null) observer.observe(viewport);
+      if (pre !== null) observer.observe(pre);
     }
-  }, [active, open, props.content]);
 
-  // 显式“回到最新”覆盖所有阅读暂停，并让完成后的自动收缩重新获得资格。
-  useLayoutEffect(() => {
-    if (previous_return_latest_revision_ref.current === props.return_latest_revision) return;
-    previous_return_latest_revision_ref.current = props.return_latest_revision;
-    const content = content_ref.current;
-    if (content === null) return;
-    resume_follow();
-    content.scrollTop = content.scrollHeight;
-  }, [props.return_latest_revision, resume_follow]);
+    return () => observer?.disconnect();
+  }, [active, open, props.content, props.return_latest_revision, set_following_latest]);
 
   useEffect(() => {
-    if (active || !open || follow_paused || user_toggled_ref.current) return;
+    if (active || !open || thinking_reading_history || user_toggled_ref.current) return;
     const timer = window.setTimeout(() => set_open(false), AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [active, follow_paused, open]);
+  }, [active, open, thinking_reading_history]);
 
   const duration = useAgentElapsed(props.started_at, active);
   return (
@@ -562,6 +620,8 @@ function AgentThinkingDetail(props: {
       open={open}
       onToggle={(event) => {
         const next_open = event.currentTarget.open;
+        // 只有真实开合才开始新周期，忽略受控 open 属性产生的同值 toggle。
+        if (next_open !== open) scroll_anchor_activated_ref.current = false;
         set_open(next_open);
       }}
     >
@@ -581,32 +641,25 @@ function AgentThinkingDetail(props: {
         </span>
         <AgentStatusMark status={props.status} label={props.status_label} />
       </summary>
-      <pre
-        ref={content_ref}
+      <div
+        ref={viewport_ref}
+        className="agent-thinking-entry__viewport"
+        data-following={thinking_following_latest || undefined}
         tabIndex={0}
-        onWheel={(event) => {
-          event.stopPropagation();
-          follow_user_scroll(event.currentTarget);
-        }}
-        onTouchMove={(event) => {
-          event.stopPropagation();
-          follow_user_scroll(event.currentTarget);
-        }}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          follow_user_scroll(event.currentTarget);
-        }}
-        onPointerMove={(event) => {
-          event.stopPropagation();
-          if (event.buttons > 0) follow_user_scroll(event.currentTarget);
-        }}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (is_agent_scroll_key(event.key)) follow_user_scroll(event.currentTarget);
+        onScroll={(event) => {
+          const viewport = event.currentTarget;
+          // 原生 scroll 的最终几何值同时决定阅读状态和后续 CSS 跟随意图。
+          const following = is_at_scroll_end(viewport);
+          set_thinking_reading_history(!following);
+          set_following_latest(following);
+          if (following && viewport.scrollHeight > viewport.clientHeight) {
+            scroll_anchor_activated_ref.current = true;
+          }
         }}
       >
-        {props.content}
-      </pre>
+        <pre ref={pre_ref}>{props.content}</pre>
+        <span className="agent-thinking-entry__scroll-anchor" aria-hidden="true" />
+      </div>
     </details>
   );
 }

@@ -24,17 +24,31 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
-  /* 归底由页面 ResizeObserver 唯一负责，避免原生锚点与手动滚动竞争。 */
-  overflow-anchor: none;
   scrollbar-gutter: stable;
 }
 
 .agent-page__conversation-content {
-  /* 单一内容盒让 ResizeObserver 覆盖连接状态、时间线和详情高度变化。 */
   display: flex;
   min-height: 100%;
   flex: 0 0 auto;
   flex-direction: column;
+}
+
+/* 跟随态只让末尾 sentinel 参与锚定；历史态恢复内容候选并排除 sentinel。 */
+.agent-page__conversation-content[data-following="true"] {
+  overflow-anchor: none;
+}
+
+.agent-page__conversation-content:not([data-following="true"]) + .agent-page__scroll-anchor {
+  overflow-anchor: none;
+}
+
+.agent-page__scroll-anchor {
+  height: 3px;
+  flex: 0 0 3px;
+  margin-block-start: -3px; /* 保留可见锚点范围但不增加底部空白 */
+  overflow-anchor: auto;
+  pointer-events: none;
 }
 
 .agent-page__connection-status {
@@ -596,18 +610,37 @@
   background: var(--ui-failure);
 }
 
-.agent-thinking-entry pre {
+.agent-thinking-entry__viewport {
   max-height: 240px;
-  margin: 0;
   overflow: auto;
-  /* 思考块暂停时保留用户阅读位置，不让内容增长触发原生锚定。 */
-  overflow-anchor: none;
   border-top: 1px solid var(--border);
   padding: 8px 12px 10px 28px;
+}
+
+.agent-thinking-entry pre {
+  margin: 0;
   color: var(--foreground);
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* 每个思考 viewport 独立切换正文与末尾 sentinel 的锚点资格。 */
+.agent-thinking-entry__viewport[data-following="true"] > pre {
+  overflow-anchor: none;
+}
+
+.agent-thinking-entry__viewport:not([data-following="true"])
+  > .agent-thinking-entry__scroll-anchor {
+  overflow-anchor: none;
+}
+
+.agent-thinking-entry__scroll-anchor {
+  display: block;
+  height: 3px;
+  margin-block-start: -3px; /* 与外层 sentinel 共用零视觉间距约束 */
+  overflow-anchor: auto;
+  pointer-events: none;
 }
 
 /* 思考正文常驻 DOM 才能平滑自动收缩。 */
