@@ -37,11 +37,13 @@ import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
 
+const TEST_APP_ROOT = "E:/linguagacha-backend-test";
+
 /** 构造不访问磁盘和真实外部服务的最小组合根依赖。 */
 function create_backend_services_options(): BackendServicesOptions {
   return {
     paths: {
-      get_app_root: () => "E:/Project/LinguaGacha",
+      get_app_root: () => TEST_APP_ROOT,
       get_user_data_dir: () => "E:/UserData",
     },
     metadata: {

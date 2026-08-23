@@ -23,7 +23,7 @@ export const de_de_agent_page = {
     suggestions: {
       capabilities: "Stell deine Fähigkeiten vor",
       roleplay: "Rollenspiel starten",
-      quality_rule_create: "Hilf mir, Begriffe zu extrahieren",
+      quality_rule_workflow: "Hilf mir, Begriffe zu extrahieren",
       translation_review: "Prüfe meine Übersetzungen",
     },
   },

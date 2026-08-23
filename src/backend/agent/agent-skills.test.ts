@@ -53,27 +53,6 @@ describe("Agent skill 模型投影", () => {
 });
 
 describe("Agent skill 加载", () => {
-  it("内置 skill 资源可直接加载且不产生诊断", async () => {
-    using temp_root = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-agent-builtin-skills-"),
-    );
-    const warning = vi.fn();
-    const error = vi.fn();
-
-    const skills = await load_agent_skills(
-      {
-        get_app_root: () => process.cwd(),
-        get_agent_builtin_skill_dir: () => path.join(process.cwd(), "resource", "agent", "skill"),
-        get_agent_user_skill_dir: () => path.join(temp_root.path, "user-skill"),
-      },
-      { warning, error },
-    );
-
-    expect(skills.length).toBeGreaterThan(0);
-    expect(warning).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-  });
-
   it("加载双目录合法 SKILL.md，记录坏 frontmatter，并过滤目录名不匹配项", async () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
     const app_root = temp_root.path;

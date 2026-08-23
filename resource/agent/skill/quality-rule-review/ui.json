@@ -1,8 +1,0 @@
-{
-  "order": 300,
-  "displayDescriptions": {
-    "zh-CN": "基于 AI 审查和校正当前工程的术语与文本保护规则",
-    "en-US": "Use AI to review and correct glossary and text-protection rules in the current project",
-    "de-DE": "Glossar- und Textschutzregeln im aktuellen Projekt mit KI prüfen und korrigieren"
-  }
-}

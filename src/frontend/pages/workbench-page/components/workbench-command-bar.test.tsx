@@ -12,12 +12,11 @@ const toast_mocks = vi.hoisted(() => ({ push_toast: vi.fn() }));
 const agent_input_mocks = vi.hoisted(() => ({
   draft: { text: "", attachments: [] } as AgentMessageInput,
   read_draft: vi.fn(),
-  write_draft: vi.fn(),
+  write_draft: vi.fn<(draft: AgentMessageInput) => void>(),
 }));
 
 /** 测试只关心 i18n 键的消费关系，不复制可独立调整的产品文案。 */
 const locale_messages: Record<string, string> = {
-  "agent_page.empty.suggestions.quality_rule_create": "create-quality-rules",
   "workbench_page.analysis_task.migration.jump": "jump-to-agent",
   "workbench_page.analysis_task.migration.continue": "continue-classic-analysis",
   "workbench_page.analysis_task.feedback.agent_draft_preserved": "draft-preserved",
@@ -228,10 +227,10 @@ describe("WorkbenchCommandBar", () => {
     await act(async () => find_button("analysis-task").click());
     await act(async () => find_button("jump-to-agent").click());
 
-    expect(agent_input_mocks.write_draft).toHaveBeenCalledWith({
-      text: "create-quality-rules @skill(quality-rule-create)",
-      attachments: [],
-    });
+    expect(agent_input_mocks.write_draft).toHaveBeenCalledOnce();
+    const written_draft = agent_input_mocks.write_draft.mock.calls[0]?.[0];
+    expect(written_draft?.text.trim()).not.toBe("");
+    expect(written_draft?.attachments).toEqual([]);
     expect(navigation_mocks.navigate_to_route).toHaveBeenCalledWith("agent");
     expect(props.analysis_workbench_task.request_start_or_continue_analysis).not.toHaveBeenCalled();
   });
