@@ -34,8 +34,9 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 
-import type { GlossaryEntry } from "@domain/quality";
+import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
+import type { GlossaryEntry } from "@domain/quality";
 import {
   AGENT_MESSAGE_IMAGE_LIMIT,
   type AgentMessageAttachment,
@@ -127,6 +128,7 @@ type AgentComposerProps = {
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
   on_send: (message: AgentMessageInput) => void;
+  on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void; // 主 Composer 交给页面决定是否确认关闭思考
   on_image_error: () => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
@@ -877,6 +879,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   controller={props.model_selection}
                   usage="agent"
                   disabled={model_commands_disabled}
+                  on_thinking_level_change={props.on_thinking_level_change}
                 />
               </AppDropdownMenuContent>
             </AppDropdownMenu>

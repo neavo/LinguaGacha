@@ -1,6 +1,11 @@
 import { Circle, CircleCheck, Cpu } from "lucide-react";
 
-import { MODEL_TYPES, is_model_thinking_level, type ModelUsage } from "@domain/model";
+import {
+  MODEL_TYPES,
+  is_model_thinking_level,
+  type ModelThinkingLevel,
+  type ModelUsage,
+} from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   AppDropdownMenuRadioGroup,
@@ -16,6 +21,10 @@ type ModelSelectionMenuProps = {
   controller: ModelSelectionController;
   usage: ModelUsage;
   disabled?: boolean;
+};
+
+type ModelThinkingLevelOptionsProps = ModelSelectionMenuProps & {
+  on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void;
 };
 
 /** 工作台使用的三级入口：当前模型、模型类型、类型内模型。 */
@@ -83,8 +92,10 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
   );
 }
 
-/** 当前用途模型的思考档位；触发器布局由消费页面负责。 */
-export function ModelThinkingLevelOptions(props: ModelSelectionMenuProps): JSX.Element | null {
+/** 当前用途模型的思考档位；消费页面可以在通用写入口前处理页面私有交互。 */
+export function ModelThinkingLevelOptions(
+  props: ModelThinkingLevelOptionsProps,
+): JSX.Element | null {
   const { t } = useI18n();
   const selected = read_selected_model(props.controller, props.usage);
   if (selected === null || selected.available_thinking_levels.length === 0) return null;
@@ -95,7 +106,11 @@ export function ModelThinkingLevelOptions(props: ModelSelectionMenuProps): JSX.E
       value={selected.thinking_level}
       onValueChange={(thinking_level) => {
         if (is_model_thinking_level(thinking_level)) {
-          void props.controller.update_thinking_level(props.usage, thinking_level);
+          if (props.on_thinking_level_change === undefined) {
+            void props.controller.update_thinking_level(props.usage, thinking_level);
+          } else {
+            props.on_thinking_level_change(thinking_level);
+          }
         }
       }}
     >

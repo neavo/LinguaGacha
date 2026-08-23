@@ -82,6 +82,8 @@ export const de_de_agent_page = {
   },
   confirm: {
     new_task: "Wirklich eine neue Unterhaltung starten …?",
+    thinking_off:
+      "Die Intelligenz von AGENT-Aufgaben nimmt deutlich ab, wenn das Modell-Denken deaktiviert ist. Wirklich fortfahren …?",
   },
   status: {
     running: "Wird verarbeitet",

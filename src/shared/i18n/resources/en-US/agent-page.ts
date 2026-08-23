@@ -82,6 +82,8 @@ export const en_us_agent_page = {
   },
   confirm: {
     new_task: "Confirm starting a new conversation task …?",
+    thinking_off:
+      "AGENT task intelligence will be significantly reduced when model thinking is disabled. Confirm continuing …?",
   },
   status: {
     running: "Processing",

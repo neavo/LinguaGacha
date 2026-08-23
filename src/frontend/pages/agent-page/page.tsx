@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
+import type { ModelThinkingLevel } from "@domain/model";
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
   format_agent_skill_reference,
@@ -13,7 +14,10 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
-import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
+import {
+  read_selected_model,
+  useModelSelection,
+} from "@frontend/features/model-selection/use-model-selection";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
@@ -51,6 +55,11 @@ const FEATURED_AGENT_SKILLS = [
 /** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
 const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
 
+/** 同一个系统确认框承接首条发送与已有对话关闭思考两个用户动作。 */
+type PendingThinkingOffAction =
+  | { kind: "send"; message: AgentMessageInput }
+  | { kind: "disable_thinking" };
+
 /** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
 function normalize_agent_terms(
   slice: QualityRuleQuerySlice<"glossary"> | undefined,
@@ -81,6 +90,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 单调修订只广播一次性用户命令，不承载任何滚动容器的持续状态。
   const [return_latest_revision, set_return_latest_revision] = useState(0);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
+  const [pending_thinking_off_action, set_pending_thinking_off_action] =
+    useState<PendingThinkingOffAction | null>(null);
   /** 页面只允许一个历史或队列目标进入原位编辑，普通 Composer 始终保持独立草稿。 */
   const [active_inline_edit, set_active_inline_edit] = useState<AgentInlineEditTarget | null>(null);
   const handle_terms_load_error = useCallback((): void => {
@@ -177,21 +188,78 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [push_toast, t],
   );
 
+  const selected_agent_model = read_selected_model(model_selection, "agent");
+  // 公开时间线出现条目才表示用户已经开始当前对话；隐藏会话种子不参与 UI 判断。
+  const conversation_started = agent.entries.length > 0;
+  /** 只警告支持思考且明确关闭思考的模型，不把能力缺失误报为用户选择。 */
+  const thinking_off_confirmation_required =
+    !can_continue_queue &&
+    !conversation_started &&
+    selected_agent_model?.thinking_level === "OFF" &&
+    selected_agent_model.available_thinking_levels.includes("OFF");
+
+  /** 页面内所有普通发送共用同一条实际提交出口，确认框只延迟调用它。 */
+  const send_message = useCallback(
+    async (message: AgentMessageInput): Promise<boolean> => {
+      return_to_latest();
+      const request = can_continue_queue
+        ? agent.continue(
+            message.text === "" && message.attachments.length === 0 ? undefined : message,
+          )
+        : agent.send(message);
+      try {
+        await request;
+        return true;
+      } catch (error: unknown) {
+        show_command_error(
+          error,
+          can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
+        );
+        return false;
+      }
+    },
+    [agent, can_continue_queue, return_to_latest, show_command_error],
+  );
+
   /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
   const submit_message = (message: AgentMessageInput): void => {
     if (active_inline_edit !== null) return;
-    return_to_latest();
-    const request = can_continue_queue
-      ? agent.continue(
-          message.text === "" && message.attachments.length === 0 ? undefined : message,
-        )
-      : agent.send(message);
-    void request.catch((error: unknown) => {
-      show_command_error(
-        error,
-        can_continue_queue ? "agent_page.error.continue" : "agent_page.error.send",
-      );
-    });
+    if (thinking_off_confirmation_required) {
+      set_pending_thinking_off_action({ kind: "send", message });
+      return;
+    }
+    void send_message(message);
+  };
+
+  /** 空对话可自由配置；已有对话只有从其它档位切到关闭时才需确认。 */
+  const change_agent_thinking_level = (thinking_level: ModelThinkingLevel): void => {
+    if (
+      conversation_started &&
+      selected_agent_model !== null &&
+      selected_agent_model.thinking_level !== "OFF" &&
+      thinking_level === "OFF"
+    ) {
+      set_pending_thinking_off_action({ kind: "disable_thinking" });
+      return;
+    }
+    void model_selection.update_thinking_level("agent", thinking_level);
+  };
+
+  /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
+  const confirm_pending_thinking_off_action = async (): Promise<void> => {
+    const action = pending_thinking_off_action;
+    if (action === null) return;
+    if (action.kind === "disable_thinking") {
+      await model_selection.update_thinking_level("agent", "OFF");
+      set_pending_thinking_off_action(null);
+    } else if (await send_message(action.message)) {
+      set_pending_thinking_off_action(null);
+    }
+  };
+
+  /** 取消只撤销待确认动作，不发送消息也不更新模型。 */
+  const close_pending_thinking_off_action = (): void => {
+    set_pending_thinking_off_action(null);
   };
 
   /** 历史消息编辑只建立独立原位目标，不改写普通 Composer 草稿。 */
@@ -528,11 +596,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           model_selection={model_selection}
           input_session={agent.input}
           on_send={submit_message}
+          on_thinking_level_change={change_agent_thinking_level}
           on_image_error={() => push_toast("error", t("agent_page.error.image"))}
           on_stop={stop}
           on_reset={() => set_reset_dialog_open(true)}
         />
       </div>
+      <AppConfirmDialog
+        open={pending_thinking_off_action !== null}
+        description={t("agent_page.confirm.thinking_off")}
+        submitting={
+          pending_thinking_off_action?.kind === "disable_thinking"
+            ? model_selection.updating
+            : agent.command === "send"
+        }
+        onConfirm={confirm_pending_thinking_off_action}
+        onClose={close_pending_thinking_off_action}
+      />
       <AppConfirmDialog
         open={reset_dialog_open}
         description={t("agent_page.confirm.new_task")}
