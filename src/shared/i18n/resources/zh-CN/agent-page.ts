@@ -78,6 +78,7 @@ export const zh_cn_agent_page = {
   },
   confirm: {
     new_task: "是否确认开始新的对话任务 …?",
+    thinking_off: "模型思考关闭时 AGENT 任务智能会显著下降，是否确认继续执行 …?",
   },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
   task_progress: { next: "正在推进" },

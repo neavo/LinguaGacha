@@ -5,6 +5,7 @@ import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import type { ModelThinkingLevel } from "@domain/model";
 import type { AgentAssistantMessageParts, AgentEntryStatus } from "@shared/agent";
 import type { useAgentSession as UseAgentSessionFunction } from "@frontend/app/session/agent/agent-session-context";
 
@@ -36,6 +37,13 @@ const push_toast = vi.hoisted(() => vi.fn());
 const model_agent_limits = vi.hoisted(() => ({
   context_window: 288_000,
   max_output_tokens: 32_000,
+}));
+const model_thinking_state = vi.hoisted(() => ({
+  thinking_level: "OFF" as ModelThinkingLevel,
+  available_thinking_levels: [] as ModelThinkingLevel[],
+}));
+const model_selection_commands = vi.hoisted(() => ({
+  update_thinking_level: vi.fn(async () => undefined),
 }));
 const resize_observers = new Set<TestResizeObserver>();
 
@@ -140,15 +148,15 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
             type: "CUSTOM_OPENAI",
             name: "Agent Model",
             agent_limits: { ...model_agent_limits },
-            thinking_level: "OFF",
-            available_thinking_levels: [],
+            thinking_level: model_thinking_state.thinking_level,
+            available_thinking_levels: model_thinking_state.available_thinking_levels,
           },
         ],
       },
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      update_thinking_level: vi.fn(async () => undefined),
+      update_thinking_level: model_selection_commands.update_thinking_level,
     }),
   };
 });
@@ -185,6 +193,9 @@ describe("AgentPage", () => {
     push_toast.mockReset();
     model_agent_limits.context_window = 288_000;
     model_agent_limits.max_output_tokens = 32_000;
+    model_thinking_state.thinking_level = "OFF";
+    model_thinking_state.available_thinking_levels = [];
+    model_selection_commands.update_thinking_level.mockClear();
   });
 
   afterEach(async () => {
@@ -235,6 +246,72 @@ describe("AgentPage", () => {
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
+  });
+
+  it("模型思考关闭时，新会话首条消息需确认后才发送", async () => {
+    model_thinking_state.available_thinking_levels = ["OFF"];
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ entries: [], send });
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "执行任务" } }));
+
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
+
+    await act(async () => get_portal_cancel_button().click());
+    expect(send).not.toHaveBeenCalled();
+    expect(editor.state.doc.toString()).toBe("执行任务");
+
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    await act(async () => get_portal_action_button().click());
+    expect(send).toHaveBeenCalledWith({ text: "执行任务", attachments: [] });
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+  });
+
+  it("已有 Agent 对话在思考关闭时不重复弹出确认", async () => {
+    model_thinking_state.available_thinking_levels = ["OFF"];
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ send });
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
+
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).toHaveBeenCalledWith({ text: "继续任务", attachments: [] });
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+  });
+
+  it("空对话切换到关闭思考时直接更新", async () => {
+    model_thinking_state.thinking_level = "HIGH";
+    model_thinking_state.available_thinking_levels = ["OFF", "HIGH"];
+    const view = await render_page({ entries: [] });
+
+    await select_agent_thinking_level(view, "app.model.thinking_level.off");
+
+    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "OFF");
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+  });
+
+  it("已有对话切换到关闭思考时需确认", async () => {
+    model_thinking_state.thinking_level = "HIGH";
+    model_thinking_state.available_thinking_levels = ["OFF", "LOW", "HIGH"];
+    const view = await render_page();
+
+    await select_agent_thinking_level(view, "app.model.thinking_level.low");
+    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "LOW");
+    model_selection_commands.update_thinking_level.mockClear();
+
+    await select_agent_thinking_level(view, "app.model.thinking_level.off");
+    expect(model_selection_commands.update_thinking_level).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
+
+    await act(async () => get_portal_cancel_button().click());
+    expect(model_selection_commands.update_thinking_level).not.toHaveBeenCalled();
+
+    await select_agent_thinking_level(view, "app.model.thinking_level.off");
+    await act(async () => get_portal_action_button().click());
+    expect(model_selection_commands.update_thinking_level).toHaveBeenCalledWith("agent", "OFF");
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
   it("按当前工程接入规范术语，未加载工程与读取失败不阻断能力和发送", async () => {
@@ -885,6 +962,20 @@ function get_editor(container: HTMLElement): EditorView {
   const editor = content === null ? null : EditorView.findFromDOM(content);
   if (editor === null) throw new Error("缺少 CodeMirror 编辑器");
   return editor;
+}
+
+/** 通过真实 Radix 菜单选择 Agent 思考档位，覆盖 Composer 到页面的交互接缝。 */
+async function select_agent_thinking_level(container: HTMLElement, label: string): Promise<void> {
+  const trigger = container.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
+  if (trigger === null) throw new Error("缺少思考档位入口");
+  await act(async () => {
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+  });
+  const option = Array.from(
+    document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+  ).find((candidate) => candidate.textContent?.trim() === label);
+  if (option === undefined) throw new Error(`缺少思考档位：${label}`);
+  await act(async () => option.click());
 }
 
 function get_portal_action_button(): HTMLButtonElement {
