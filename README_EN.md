@@ -88,6 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260823 v0.116.3
+  - Adjustments and improvements
+
 - 20260820 v0.116.2
   - Adjustments and improvements [#785](https://github.com/neavo/LinguaGacha/issues/785) [#786](https://github.com/neavo/LinguaGacha/issues/786) [#787](https://github.com/neavo/LinguaGacha/issues/787) [#788](https://github.com/neavo/LinguaGacha/issues/788) [#790](https://github.com/neavo/LinguaGacha/issues/790)
 
