@@ -33,6 +33,56 @@ const MENTION_TOKENS = create_agent_mention_tokens(
   ],
   [{ src: "Alice", dst: "爱丽丝", info: "", case_sensitive: false }],
 );
+const resize_observers = new Set<TestResizeObserver>();
+
+/** happy-dom 只显式推进首次 overflow 观察，不模拟 Chromium 的连续滚动锚定。 */
+class TestResizeObserver implements ResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    resize_observers.add(this);
+  }
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    resize_observers.delete(this);
+  }
+  takeRecords(): ResizeObserverEntry[] {
+    return [];
+  }
+  notify(): void {
+    this.callback([], this);
+  }
+}
+
+function notify_resize_observers(): void {
+  for (const observer of resize_observers) observer.notify();
+}
+
+type ScrollMetrics = {
+  top: number;
+  height: number;
+  viewport: number;
+  writes: number;
+};
+
+/** 只模拟可测几何与显式写入，不模拟浏览器连续锚定。 */
+function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): void {
+  Object.defineProperties(target, {
+    scrollHeight: { configurable: true, get: () => metrics.height },
+    clientHeight: { configurable: true, get: () => metrics.viewport },
+    scrollTop: {
+      configurable: true,
+      get: () => metrics.top,
+      set: (value: number) => {
+        metrics.writes += 1;
+        metrics.top = Math.max(0, Math.min(value, Math.max(0, metrics.height - metrics.viewport)));
+      },
+    },
+  });
+}
 
 describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
@@ -43,6 +93,8 @@ describe("AgentTimeline", () => {
   const write_clipboard = vi.fn(async (_text: string) => undefined);
 
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    resize_observers.clear();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: write_clipboard },
@@ -63,6 +115,8 @@ describe("AgentTimeline", () => {
     on_continue.mockReset();
     on_add_annotation.mockReset();
     write_clipboard.mockReset();
+    resize_observers.clear();
+    vi.unstubAllGlobals();
   });
 
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
@@ -369,7 +423,7 @@ describe("AgentTimeline", () => {
     }
   });
 
-  it("流式思考只在底端自动跟随，用户上划后保持位置并可回到底端恢复", async () => {
+  it("流式思考首次 overflow 只激活一次，后续增长不再由 JavaScript 归底", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(8_001);
     const render_thinking = (text: string) =>
@@ -380,55 +434,168 @@ describe("AgentTimeline", () => {
       );
     const view = await render_thinking("检查术语\n逐项核对");
     const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
-    const content = thinking?.querySelector<HTMLPreElement>("pre");
-    if (thinking === null || content === null || content === undefined) {
+    const viewport = thinking?.querySelector<HTMLDivElement>(".agent-thinking-entry__viewport");
+    const content = viewport?.querySelector<HTMLPreElement>("pre");
+    const sentinel = viewport?.querySelector<HTMLElement>(".agent-thinking-entry__scroll-anchor");
+    if (
+      thinking === null ||
+      viewport === null ||
+      viewport === undefined ||
+      content === null ||
+      content === undefined ||
+      sentinel === null ||
+      sentinel === undefined
+    ) {
       throw new Error("缺少思考块");
     }
     expect(thinking.open).toBe(true);
-    let scroll_height = 480;
-    let scroll_top = 240;
-    Object.defineProperties(content, {
-      clientHeight: { configurable: true, value: 240 },
-      scrollHeight: { configurable: true, get: () => scroll_height },
-      scrollTop: {
-        configurable: true,
-        get: () => scroll_top,
-        set: (value: number) => {
-          scroll_top = Math.min(value, scroll_height - 240);
-        },
-      },
-    });
+    expect([...viewport.children]).toEqual([content, sentinel]);
+    expect(sentinel.getAttribute("aria-hidden")).toBe("true");
 
-    scroll_height = 560;
-    await render_thinking("检查术语\n逐项核对完成");
-    expect(view.querySelector("pre")).toBe(content);
-    expect(content.textContent).toBe("检查术语\n逐项核对完成");
-    expect(thinking.open).toBe(true);
-    expect(content.scrollTop).toBe(320);
+    const scroll = { top: 0, height: 200, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+    await act(async () => notify_resize_observers());
+    expect(scroll.writes).toBe(0);
+    expect(resize_observers.size).toBe(1);
 
-    content.scrollTop = 80;
-    await act(async () => content.dispatchEvent(new Event("scroll")));
-    scroll_height = 640;
+    scroll.height = 480;
+    await act(async () => notify_resize_observers());
+    expect(scroll).toMatchObject({ top: 240, writes: 1 });
+    expect(resize_observers.size).toBe(0);
+    expect(viewport.dataset.following).toBe("true");
+
+    scroll.height = 560;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境");
-    expect(content.scrollTop).toBe(400);
+    expect(scroll).toMatchObject({ top: 240, writes: 1 });
 
-    content.scrollTop = 80;
-    await act(async () => {
-      content.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await vi.advanceTimersToNextTimerAsync();
-    });
-    scroll_height = 720;
+    scroll.top = 80;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    expect(viewport.hasAttribute("data-following")).toBe(false);
+    scroll.height = 640;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项");
-    expect(content.scrollTop).toBe(80);
+    expect(scroll).toMatchObject({ top: 80, writes: 1 });
 
-    content.scrollTop = 480;
-    await act(async () => {
-      content.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await vi.advanceTimersToNextTimerAsync();
-    });
-    scroll_height = 800;
-    await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项\n确认结果");
-    expect(content.scrollTop).toBe(560);
+    scroll.top = 400;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    expect(viewport.dataset.following).toBe("true");
+  });
+
+  it("普通历史详情未溢出时也不声明跟随意图", async () => {
+    const view = await render_timeline(
+      round_entries(
+        [
+          assistant_parts_entry(
+            "assistant-short-history",
+            [{ kind: "thinking", text: "短历史思考" }],
+            "success",
+            1,
+          ),
+        ],
+        "success",
+      ),
+    );
+    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (thinking === null || viewport === null || viewport === undefined) {
+      throw new Error("缺少历史思考块");
+    }
+    const scroll = { top: 0, height: 200, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+
+    await act(async () => thinking.querySelector("summary")?.click());
+    expect(scroll.writes).toBe(0);
+    expect(viewport.hasAttribute("data-following")).toBe(false);
+  });
+
+  it("普通历史详情首次打开不归底，关闭态 revision 延迟到下次打开", async () => {
+    const history_entries = round_entries(
+      [
+        assistant_parts_entry(
+          "assistant-history",
+          [{ kind: "thinking", text: "历史思考" }],
+          "success",
+          1,
+        ),
+      ],
+      "success",
+    );
+    const view = await render_timeline(history_entries);
+    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (thinking === null || viewport === null || viewport === undefined) {
+      throw new Error("缺少历史思考块");
+    }
+    const scroll = { top: 40, height: 480, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+
+    await act(async () => thinking.querySelector("summary")?.click());
+    expect(thinking.open).toBe(true);
+    expect(scroll).toMatchObject({ top: 40, writes: 0 });
+
+    await act(async () => thinking.querySelector("summary")?.click());
+    await render_timeline(history_entries, 1);
+    expect(scroll.writes).toBe(0);
+    expect(viewport.dataset.following).toBe("true");
+
+    await act(async () => thinking.querySelector("summary")?.click());
+    expect(scroll).toMatchObject({ top: 240, writes: 1 });
+  });
+
+  it("重新打开时跟随详情归底一次，历史详情保留位置", async () => {
+    const render_thinking = (text: string) =>
+      render_timeline(
+        round_entries([
+          assistant_parts_entry("assistant-reopen", [{ kind: "thinking", text }], "running", 1),
+        ]),
+      );
+    const view = await render_thinking("检查术语");
+    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (thinking === null || viewport === null || viewport === undefined) {
+      throw new Error("缺少运行中思考块");
+    }
+    const scroll = { top: 0, height: 480, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+    await act(async () => notify_resize_observers());
+    expect(scroll.writes).toBe(1);
+
+    await act(async () => thinking.querySelector("summary")?.click());
+    scroll.height = 560;
+    await render_thinking("检查术语\n继续检查");
+    expect(scroll.writes).toBe(1);
+    await act(async () => thinking.querySelector("summary")?.click());
+    expect(scroll).toMatchObject({ top: 320, writes: 2 });
+
+    scroll.top = 80;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    await act(async () => thinking.querySelector("summary")?.click());
+    scroll.height = 640;
+    await render_thinking("检查术语\n继续检查\n再检查");
+    await act(async () => thinking.querySelector("summary")?.click());
+    expect(scroll).toMatchObject({ top: 80, writes: 2 });
+  });
+
+  it("打开详情收到 revision 时复位历史状态且最多写底一次", async () => {
+    const entries = round_entries([
+      assistant_parts_entry(
+        "assistant-revision",
+        [{ kind: "thinking", text: "检查术语" }],
+        "running",
+        1,
+      ),
+    ]);
+    const view = await render_timeline(entries);
+    const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (viewport === null) throw new Error("缺少运行中思考 viewport");
+    const scroll = { top: 0, height: 480, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+    await act(async () => notify_resize_observers());
+    scroll.top = 80;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+
+    await render_timeline(entries, 1);
+    expect(scroll).toMatchObject({ top: 240, writes: 2 });
+    expect(viewport.dataset.following).toBe("true");
   });
 
   it("未手动操作的思考结束后自动关闭但保留可动画内容", async () => {
@@ -465,7 +632,7 @@ describe("AgentTimeline", () => {
     expect(view.querySelector("strong")?.textContent).toBe("结论");
   });
 
-  it("完成后离底会暂停自动收缩，回到底端后重新计时", async () => {
+  it("完成后处于历史位置不收缩，自然回底后重新计时", async () => {
     vi.useFakeTimers();
     const view = await render_timeline(
       round_entries([
@@ -478,15 +645,16 @@ describe("AgentTimeline", () => {
       ]),
     );
     const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
-    const content = thinking?.querySelector<HTMLPreElement>("pre");
-    if (thinking === null || content === null || content === undefined) {
+    const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (thinking === null || viewport === null || viewport === undefined) {
       throw new Error("缺少思考块");
     }
-    Object.defineProperties(content, {
-      clientHeight: { configurable: true, value: 240 },
-      scrollHeight: { configurable: true, value: 480 },
-      scrollTop: { configurable: true, value: 240, writable: true },
-    });
+    const scroll = { top: 0, height: 480, viewport: 240, writes: 0 };
+    install_scroll_metrics(viewport, scroll);
+    await act(async () => notify_resize_observers());
+
+    scroll.top = 80;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
 
     await render_timeline(
       round_entries([
@@ -501,19 +669,11 @@ describe("AgentTimeline", () => {
         ),
       ]),
     );
-    content.scrollTop = 80;
-    await act(async () => {
-      content.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await vi.advanceTimersToNextTimerAsync();
-    });
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.open).toBe(true);
 
-    content.scrollTop = 240;
-    await act(async () => {
-      content.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await vi.advanceTimersToNextTimerAsync();
-    });
+    scroll.top = 240;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.open).toBe(false);
   });

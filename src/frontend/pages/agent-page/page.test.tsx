@@ -45,43 +45,12 @@ const model_thinking_state = vi.hoisted(() => ({
 const model_selection_commands = vi.hoisted(() => ({
   update_thinking_level: vi.fn(async () => undefined),
 }));
-const resize_observers = new Set<TestResizeObserver>();
-
-/** happy-dom 不主动分发内容尺寸变化，测试显式触发真实观察回调。 */
-class TestResizeObserver implements ResizeObserver {
-  private readonly callback: ResizeObserverCallback;
-
-  constructor(callback: ResizeObserverCallback) {
-    this.callback = callback;
-    resize_observers.add(this);
-  }
-
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {
-    resize_observers.delete(this);
-  }
-  takeRecords(): ResizeObserverEntry[] {
-    return [];
-  }
-  notify(): void {
-    this.callback([], this);
-  }
-}
-
-function notify_resize_observers(): void {
-  for (const observer of resize_observers) observer.notify();
-}
-
-/** 等待用户滚动后的帧末位置裁决，不用固定时长猜测浏览器调度。 */
-function next_animation_frame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
 
 type ScrollMetrics = {
   top: number;
   height: number;
   viewport: number;
+  writes: number;
 };
 
 /** 用可变布局数据模拟浏览器的滚动范围与 scrollTop 夹取。 */
@@ -93,7 +62,8 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
       configurable: true,
       get: () => metrics.top,
       set: (value: number) => {
-        metrics.top = Math.max(0, Math.min(value, metrics.height - metrics.viewport));
+        metrics.writes += 1;
+        metrics.top = Math.max(0, Math.min(value, Math.max(0, metrics.height - metrics.viewport)));
       },
     },
   });
@@ -177,8 +147,6 @@ describe("AgentPage", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
-    vi.stubGlobal("ResizeObserver", TestResizeObserver);
-    resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     desktop_state.current = {
       project_snapshot: { loaded: true, path: "E:/demo/demo.lg" },
@@ -203,7 +171,6 @@ describe("AgentPage", () => {
     container?.remove();
     root = null;
     container = null;
-    resize_observers.clear();
     vi.unstubAllGlobals();
   });
 
@@ -396,113 +363,111 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("外层接管同步阻断同一批尺寸变化，回到底端后恢复追随", async () => {
-    const view = await render_page();
+  it("每个首条 entry 只初始置底一次，清空后新会话重新激活", async () => {
+    const view = await render_page({ entries: [] });
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    const scroll = { top: 0, height: 1_000, viewport: 400, writes: 0 };
     install_scroll_metrics(conversation, scroll);
 
-    scroll.height = 1_100;
-    await act(async () => notify_resize_observers());
-    expect(scroll.top).toBe(700);
-
-    await act(async () => {
-      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await next_animation_frame();
+    await render_page({
+      entries: [
+        user_entry("user-first", "开始", "running", 0, null),
+        assistant_entry("assistant-first", "处理中", "running", 1),
+      ],
     });
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(scroll).toMatchObject({ top: 600, writes: 1 });
 
-    scroll.top = 100;
     scroll.height = 1_200;
-    await act(async () => {
-      conversation.dispatchEvent(new Event("scroll"));
-      notify_resize_observers();
+    await render_page({
+      entries: [
+        user_entry("user-first", "开始", "running", 0, null),
+        assistant_entry("assistant-first", "继续处理中", "running", 1),
+      ],
     });
-    expect(scroll.top).toBe(800);
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(scroll).toMatchObject({ top: 600, writes: 1 });
 
     scroll.top = 100;
-    await act(async () => {
-      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await next_animation_frame();
-      notify_resize_observers();
-    });
-    expect(scroll.top).toBe(100);
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
-
-    scroll.top = 800;
-    await act(async () => {
-      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await next_animation_frame();
-      scroll.height = 1_300;
-      notify_resize_observers();
-    });
-    expect(scroll.top).toBe(900);
+    await render_page({ entries: [] });
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    scroll.top = 100;
+    await render_page({
+      entries: [
+        user_entry("user-next", "新会话", "success", 2, 3),
+        assistant_entry("assistant-next", "完成", "success", 3),
+      ],
+    });
+    expect(scroll).toMatchObject({ top: 800, writes: 2 });
   });
 
-  it("思考块局部暂停不影响外层追随，外层接管才显示回到底部", async () => {
-    const render_thinking = (first: string, second: string) =>
-      render_page({
-        state: "running",
-        entries: [
-          user_entry("user-thinking", "开始检查", "running", 0, null),
-          assistant_parts_entry(
-            "assistant-thinking-1",
-            [{ kind: "thinking", text: first }],
-            "running",
-            1,
-          ),
-          assistant_parts_entry(
-            "assistant-thinking-2",
-            [{ kind: "thinking", text: second }],
-            "running",
-            2,
-          ),
-        ],
-      });
-    const view = await render_thinking("第一步\n第二步", "甲\n乙");
+  it("外层真实位置切换跟随状态，显式归底后不再持续写入", async () => {
+    const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    const thinking = [...view.querySelectorAll<HTMLPreElement>(".agent-thinking-entry pre")];
-    if (conversation === null || thinking.length !== 2) throw new Error("缺少嵌套滚动容器");
-    const outer_scroll = { top: 600, height: 1_000, viewport: 400 };
-    const thinking_scrolls: [ScrollMetrics, ScrollMetrics] = [
-      { top: 240, height: 480, viewport: 240 },
-      { top: 240, height: 480, viewport: 240 },
-    ];
-    install_scroll_metrics(conversation, outer_scroll);
-    thinking.forEach((content, index) => {
-      const metrics = thinking_scrolls[index];
-      if (metrics !== undefined) install_scroll_metrics(content, metrics);
-    });
+    const content = view.querySelector<HTMLElement>(".agent-page__conversation-content");
+    const sentinel = view.querySelector<HTMLElement>(".agent-page__scroll-anchor");
+    if (conversation === null || content === null || sentinel === null) {
+      throw new Error("缺少会话滚动契约节点");
+    }
+    const scroll = { top: 100, height: 1_000, viewport: 400, writes: 0 };
+    install_scroll_metrics(conversation, scroll);
 
-    thinking_scrolls[0].top = 80;
-    thinking_scrolls[1].top = 120;
-    await act(async () => {
-      thinking[0]?.dispatchEvent(new Event("wheel", { bubbles: true }));
-      thinking[1]?.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await next_animation_frame();
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    expect(content.hasAttribute("data-following")).toBe(false);
+
+    scroll.height = 1_200;
+    await render_page({
+      entries: [
+        user_entry("user-1", "开始", "success", 0, 1),
+        assistant_entry("assistant-1", "流式更新", "running", 1),
+      ],
     });
+    expect(scroll).toMatchObject({ top: 100, writes: 0 });
+
+    scroll.top = 800;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(content.dataset.following).toBe("true");
 
-    await render_thinking("第一步\n第二步\n第三步", "甲\n乙\n丙");
-    outer_scroll.height = 1_100;
-    await act(async () => notify_resize_observers());
-    expect(thinking_scrolls.map(({ top }) => top)).toEqual([80, 120]);
-    expect(outer_scroll.top).toBe(700);
+    scroll.top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    await act(async () => find_button_by_text(view, "agent_page.action.return_latest")?.click());
+    expect(scroll).toMatchObject({ top: 800, writes: 1 });
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(conversation.lastElementChild).toBe(sentinel);
+    expect(sentinel.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("思考 viewport 的 scroll 不改变外层历史状态", async () => {
+    const view = await render_page({
+      entries: [
+        user_entry("user-thinking", "开始检查", "success", 0, 2),
+        assistant_parts_entry(
+          "assistant-thinking",
+          [{ kind: "thinking", text: "第一步\n第二步" }],
+          "success",
+          1,
+        ),
+      ],
+    });
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    if (conversation === null || viewport === null) throw new Error("缺少嵌套滚动容器");
+    const outer_scroll = { top: 600, height: 1_000, viewport: 400, writes: 0 };
+    install_scroll_metrics(conversation, outer_scroll);
+    install_scroll_metrics(viewport, { top: 80, height: 480, viewport: 240, writes: 0 });
+
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
 
     outer_scroll.top = 100;
-    await act(async () => {
-      conversation.dispatchEvent(new Event("wheel", { bubbles: true }));
-      await next_animation_frame();
-    });
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
 
-    const latest = find_button_by_text(view, "agent_page.action.return_latest");
-    await act(async () => latest?.click());
-    expect(outer_scroll.top).toBe(700);
-    expect(thinking_scrolls.map(({ top }) => top)).toEqual([240, 240]);
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
