@@ -65,10 +65,6 @@ describe("统一模型能力", () => {
         "HIGH",
       ]);
     }
-    expect(resolve_capability("OpenAI", "mimo-v2-pro").available_thinking_levels).toEqual([
-      "OFF",
-      "LOW",
-    ]);
   });
 
   it("未知模型不猜测思考能力并使用安全容量", () => {

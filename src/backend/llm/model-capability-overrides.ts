@@ -11,7 +11,7 @@ type CompleteThinkingLevelMap = Readonly<Record<PiModelThinkingLevel, string | n
 export type ModelCapabilityOverride = Readonly<{
   api_format: Extract<ModelApiFormat, "OpenAI" | "OpenAIResponses">;
   model_id: string;
-  thinking_level_map: ThinkingLevelMap;
+  thinking_level_map?: ThinkingLevelMap;
   compat?: OpenAICompletionsCompat;
 }>;
 
@@ -40,13 +40,7 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
   {
     api_format: "OpenAI",
     model_id: "grok-4.6",
-    thinking_level_map: define_level_map(["low", "medium", "high", "xhigh"]),
     compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
-  },
-  {
-    api_format: "OpenAIResponses",
-    model_id: "grok-4.6",
-    thinking_level_map: define_level_map(["low", "medium", "high", "xhigh"]),
   },
   {
     api_format: "OpenAI",
@@ -58,17 +52,6 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
     api_format: "OpenAIResponses",
     model_id: "doubao-seed",
     thinking_level_map: define_level_map(["minimal", "low", "medium", "high"]),
-  },
-  {
-    api_format: "OpenAI",
-    model_id: "glm-5.3",
-    thinking_level_map: define_level_map(["low", "high", "max"]),
-    compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
-  },
-  {
-    api_format: "OpenAIResponses",
-    model_id: "glm-5.3",
-    thinking_level_map: define_level_map(["low", "high", "max"]),
   },
   {
     api_format: "OpenAI",
