@@ -1,33 +1,25 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
-import { AGENT_WORKSPACE_SCRIPT_API } from "../../shared/backend-runtime";
+import { AGENT_WORKSPACE_API } from "../../shared/backend-runtime";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
 import { create_agent_workspace_tools } from "./agent-workspace-tools";
 
 type WorkspaceToolResult = { details: unknown };
 
 describe("Agent 工作区工具", () => {
-  it("三个工具只适配生命周期、脚本参数、取消信号与服务结果", async () => {
+  it("两个工具只适配脚本参数、取消信号与服务结果", async () => {
     const workspace = build_workspace_port();
     const tools = create_agent_workspace_tools(workspace);
     expect(new Set(tools.map((tool) => tool.name))).toEqual(
-      new Set(["workspace_load", "workspace_script", "workspace_apply"]),
+      new Set(["workspace_script", "workspace_apply"]),
     );
-    const load_tool = read_tool(tools, "workspace_load");
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
-    const loaded = (await load_tool.execute(
-      "load",
-      {},
-      undefined,
-      undefined,
-      undefined as never,
-    )) as WorkspaceToolResult;
     const script = (await script_tool.execute(
       "script",
-      { script: "async function main() { return { changed: 2 }; }" },
+      { script: "return { changed: 2 };" },
       undefined,
       undefined,
       undefined as never,
@@ -40,29 +32,24 @@ describe("Agent 工作区工具", () => {
       undefined as never,
     )) as WorkspaceToolResult;
 
-    expect(workspace.load_workspace).toHaveBeenCalledOnce();
     expect(workspace.run_script).toHaveBeenCalledWith(
-      "async function main() { return { changed: 2 }; }",
+      "return { changed: 2 };",
       expect.any(AbortSignal),
     );
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
-    expect(loaded.details).toEqual({ status: "loaded", counts: { items: 2 } });
     expect(script.details).toEqual({ result: { changed: 2 } });
     expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
-  it("函数工具 Schema 只约束三个跨 Agent loop 的公开入口", () => {
+  it("函数工具 Schema 只约束两个跨 Agent loop 的公开入口", () => {
     const tools = create_agent_workspace_tools(build_workspace_port());
-    const load_tool = read_tool(tools, "workspace_load");
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
-    expect(validate(load_tool, {})).toEqual({});
-    expect(validate(script_tool, { script: "async function main() { return null; }" })).toEqual({
-      script: "async function main() { return null; }",
+    expect(validate(script_tool, { script: "return null;" })).toEqual({
+      script: "return null;",
     });
     expect(validate(apply_tool, {})).toEqual({});
-    expect(() => validate(load_tool, { target: "items" })).toThrow();
     expect(() => validate(script_tool, { script: "" })).toThrow();
     expect(() => validate(apply_tool, { target: "items" })).toThrow();
   });
@@ -77,25 +64,33 @@ describe("Agent 工作区工具", () => {
     };
     const description = parameters.properties.script.description;
 
-    expect(description).toContain("除此之外没有其他成员");
-    for (const [name, declaration] of Object.entries(AGENT_WORKSPACE_SCRIPT_API.members)) {
+    for (const [name, declaration] of Object.entries(AGENT_WORKSPACE_API.members)) {
       expect(description).toContain(`${name}${declaration}`);
     }
-    for (const root of Object.values(AGENT_WORKSPACE_SCRIPT_API.roots)) {
+    for (const root of Object.values(AGENT_WORKSPACE_API.roots)) {
       expect(description).toContain(root);
+    }
+    for (const method of AGENT_WORKSPACE_API.publishedMethods) {
+      expect(Object.hasOwn(AGENT_WORKSPACE_API.members, method)).toBe(true);
     }
   });
 
   it("调用前已取消时不触达工作区服务", async () => {
     const workspace = build_workspace_port();
-    const load_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_load");
+    const script_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_script");
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
     await expect(
-      load_tool.execute("load", {}, controller.signal, undefined, undefined as never),
+      script_tool.execute(
+        "script",
+        { script: "return null;" },
+        controller.signal,
+        undefined,
+        undefined as never,
+      ),
     ).rejects.toThrow("提前取消");
-    expect(workspace.load_workspace).not.toHaveBeenCalled();
+    expect(workspace.run_script).not.toHaveBeenCalled();
   });
 });
 
@@ -125,7 +120,6 @@ function build_workspace_port(): AgentWorkspacePort {
     initialize: vi.fn(async () => undefined),
     reset_workspace: vi.fn(async () => undefined),
     reset_project: vi.fn(async () => undefined),
-    load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
     run_script: vi.fn(async () => ({ changed: 2 })),
     apply_workspace: vi.fn(async () => ({
       status: "applied",
