@@ -31,7 +31,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
-import { is_at_scroll_end } from "./agent-scroll";
+import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -79,11 +79,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const conversation_ref = useRef<HTMLElement | null>(null);
-  const initialized_first_entry_id_ref = useRef<string | null>(null); // 同一公开会话只激活一次末尾锚点
+  const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const [conversation_reading_history, set_conversation_reading_history] = useState(false); // 外层真实几何位置
-  // 单调修订只广播一次性用户命令，不承载任何滚动容器的持续状态。
-  const [return_latest_revision, set_return_latest_revision] = useState(0);
+  const {
+    paused: conversation_follow_paused,
+    follow_content: follow_conversation_content,
+    begin_user_scroll: begin_conversation_user_scroll,
+    reconcile_scroll: reconcile_conversation_scroll,
+    resume: resume_conversation,
+  } = useAgentScrollFollow();
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
     useState<PendingThinkingOffAction | null>(null);
@@ -131,7 +135,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue =
     !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
-  const return_latest_available = conversation_reading_history;
+  const return_latest_available = conversation_follow_paused;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
@@ -153,29 +157,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     if (!target_exists) set_active_inline_edit(null);
   }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
 
-  /** 显式归底同步恢复外层，并广播所有思考详情清除各自阅读暂停。 */
+  /** 显式归底只恢复外层会话；每个思考详情独立保留自己的阅读位置。 */
   const return_to_latest = useCallback((): void => {
-    set_conversation_reading_history(false);
-    set_return_latest_revision((current) => current + 1);
     const conversation = conversation_ref.current;
-    if (conversation !== null) conversation.scrollTop = conversation.scrollHeight;
-  }, []);
+    if (conversation !== null) resume_conversation(conversation);
+  }, [resume_conversation]);
 
-  // 每个公开会话只激活一次末尾锚点；后续内容增长交给 Chromium 原生锚定。
+  // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
   useLayoutEffect(() => {
-    const first_entry_id = agent.entries[0]?.id ?? null;
-    if (first_entry_id === null) {
-      initialized_first_entry_id_ref.current = null;
-      set_conversation_reading_history(false);
-      return;
-    }
-    if (initialized_first_entry_id_ref.current === first_entry_id) return;
     const conversation = conversation_ref.current;
-    if (conversation === null) return;
-    conversation.scrollTop = conversation.scrollHeight;
-    initialized_first_entry_id_ref.current = first_entry_id;
-    set_conversation_reading_history(!is_at_scroll_end(conversation));
-  }, [agent.entries]);
+    const content = conversation_content_ref.current;
+    if (conversation === null || content === null) return;
+    const observer = new ResizeObserver(() => follow_conversation_content(conversation));
+    observer.observe(content);
+    follow_conversation_content(conversation);
+    return () => observer.disconnect();
+  }, [follow_conversation_content]);
 
   /** 命令失败只投影为页面 Toast，不写回共享会话状态。 */
   const show_command_error = useCallback(
@@ -416,14 +413,29 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ref={conversation_ref}
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
-        onScroll={(event) =>
-          set_conversation_reading_history(!is_at_scroll_end(event.currentTarget))
-        }
+        onWheel={(event) => begin_conversation_user_scroll(event.currentTarget)}
+        onTouchMove={(event) => begin_conversation_user_scroll(event.currentTarget)}
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) {
+            begin_conversation_user_scroll(event.currentTarget);
+          }
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons > 0 && event.target === event.currentTarget) {
+            begin_conversation_user_scroll(event.currentTarget);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (
+            is_agent_scroll_key(event.key) &&
+            (event.key !== " " || event.target === event.currentTarget)
+          ) {
+            begin_conversation_user_scroll(event.currentTarget);
+          }
+        }}
+        onScroll={(event) => reconcile_conversation_scroll(event.currentTarget)}
       >
-        <div
-          className="agent-page__conversation-content"
-          data-following={!conversation_reading_history || undefined}
-        >
+        <div ref={conversation_content_ref} className="agent-page__conversation-content">
           {agent.transport === "disconnected" && (
             <div className="agent-page__connection-status" role="status">
               <WifiOff aria-hidden="true" />
@@ -496,7 +508,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             <AgentTimeline
               entries={agent.entries}
               mention_tokens={mention_tokens}
-              return_latest_revision={return_latest_revision}
               on_continue={continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}
@@ -520,7 +531,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             />
           )}
         </div>
-        <div className="agent-page__scroll-anchor" aria-hidden="true" />
       </section>
 
       <div className="agent-page__composer-stack">

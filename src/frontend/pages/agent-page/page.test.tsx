@@ -45,13 +45,49 @@ const model_thinking_state = vi.hoisted(() => ({
 const model_selection_commands = vi.hoisted(() => ({
   update_thinking_level: vi.fn(async () => undefined),
 }));
+const resize_observers = new Set<TestResizeObserver>();
+
+/** happy-dom 不主动分发内容尺寸变化，测试显式推进真实观察回调。 */
+class TestResizeObserver implements ResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    resize_observers.add(this);
+  }
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    resize_observers.delete(this);
+  }
+  takeRecords(): ResizeObserverEntry[] {
+    return [];
+  }
+  notify(): void {
+    this.callback([], this);
+  }
+}
+
+function notify_resize_observers(): void {
+  for (const observer of resize_observers) observer.notify();
+}
+
+/** 等待用户输入无位移时的所有权恢复。 */
+function next_animation_frame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 type ScrollMetrics = {
   top: number;
   height: number;
   viewport: number;
-  writes: number;
 };
+
+/** 按浏览器夹取规则从测试几何计算底端。 */
+function scroll_end(metrics: ScrollMetrics): number {
+  return Math.max(0, metrics.height - metrics.viewport);
+}
 
 /** 用可变布局数据模拟浏览器的滚动范围与 scrollTop 夹取。 */
 function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): void {
@@ -62,8 +98,7 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
       configurable: true,
       get: () => metrics.top,
       set: (value: number) => {
-        metrics.writes += 1;
-        metrics.top = Math.max(0, Math.min(value, Math.max(0, metrics.height - metrics.viewport)));
+        metrics.top = Math.max(0, Math.min(value, scroll_end(metrics)));
       },
     },
   });
@@ -147,6 +182,8 @@ describe("AgentPage", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     desktop_state.current = {
       project_snapshot: { loaded: true, path: "E:/demo/demo.lg" },
@@ -171,6 +208,7 @@ describe("AgentPage", () => {
     container?.remove();
     root = null;
     container = null;
+    resize_observers.clear();
     vi.unstubAllGlobals();
   });
 
@@ -363,81 +401,72 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("每个首条 entry 只初始置底一次，清空后新会话重新激活", async () => {
-    const view = await render_page({ entries: [] });
-    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 0, height: 1_000, viewport: 400, writes: 0 };
-    install_scroll_metrics(conversation, scroll);
-
-    await render_page({
-      entries: [
-        user_entry("user-first", "开始", "running", 0, null),
-        assistant_entry("assistant-first", "处理中", "running", 1),
-      ],
-    });
-    expect(scroll).toMatchObject({ top: 600, writes: 1 });
-
-    scroll.height = 1_200;
-    await render_page({
-      entries: [
-        user_entry("user-first", "开始", "running", 0, null),
-        assistant_entry("assistant-first", "继续处理中", "running", 1),
-      ],
-    });
-    expect(scroll).toMatchObject({ top: 600, writes: 1 });
-
-    scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
-    await render_page({ entries: [] });
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
-    scroll.top = 100;
-    await render_page({
-      entries: [
-        user_entry("user-next", "新会话", "success", 2, 3),
-        assistant_entry("assistant-next", "完成", "success", 3),
-      ],
-    });
-    expect(scroll).toMatchObject({ top: 800, writes: 2 });
-  });
-
-  it("外层真实位置切换跟随状态，显式归底后不再持续写入", async () => {
+  it("跟随态内容增长归底，用户接管在同批尺寸变化前生效", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    const content = view.querySelector<HTMLElement>(".agent-page__conversation-content");
-    const sentinel = view.querySelector<HTMLElement>(".agent-page__scroll-anchor");
-    if (conversation === null || content === null || sentinel === null) {
-      throw new Error("缺少会话滚动契约节点");
-    }
-    const scroll = { top: 100, height: 1_000, viewport: 400, writes: 0 };
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    scroll.height = 1_100;
+    await act(async () => notify_resize_observers());
+    expect(scroll.top).toBe(scroll_end(scroll));
+
+    scroll.top = 100;
+    act(() => {
+      conversation.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
+      scroll.height = 1_200;
+      notify_resize_observers();
+      expect(scroll.top).toBe(100);
+      conversation.dispatchEvent(new Event("scroll"));
+    });
+  });
+
+  it("用户输入没有产生位移时恢复跟随并补齐同帧增长", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    act(() => {
+      conversation.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 100 }));
+      scroll.height = 1_100;
+      notify_resize_observers();
+      expect(scroll.top).toBe(600);
+    });
+    await act(async () => next_animation_frame());
+
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+  });
+
+  it("外层真实位置切换跟随状态，自然或显式归底后恢复内容跟随", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 100, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
 
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
-    expect(content.hasAttribute("data-following")).toBe(false);
 
     scroll.height = 1_200;
-    await render_page({
-      entries: [
-        user_entry("user-1", "开始", "success", 0, 1),
-        assistant_entry("assistant-1", "流式更新", "running", 1),
-      ],
-    });
-    expect(scroll).toMatchObject({ top: 100, writes: 0 });
+    await act(async () => notify_resize_observers());
+    expect(scroll.top).toBe(100);
 
     scroll.top = 800;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
-    expect(content.dataset.following).toBe("true");
+    scroll.height = 1_300;
+    await act(async () => notify_resize_observers());
+    expect(scroll.top).toBe(scroll_end(scroll));
 
     scroll.top = 100;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
     await act(async () => find_button_by_text(view, "agent_page.action.return_latest")?.click());
-    expect(scroll).toMatchObject({ top: 800, writes: 1 });
+    expect(scroll.top).toBe(scroll_end(scroll));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
-    expect(conversation.lastElementChild).toBe(sentinel);
-    expect(sentinel.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("思考 viewport 的 scroll 不改变外层历史状态", async () => {
@@ -455,9 +484,9 @@ describe("AgentPage", () => {
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
     if (conversation === null || viewport === null) throw new Error("缺少嵌套滚动容器");
-    const outer_scroll = { top: 600, height: 1_000, viewport: 400, writes: 0 };
+    const outer_scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, outer_scroll);
-    install_scroll_metrics(viewport, { top: 80, height: 480, viewport: 240, writes: 0 });
+    install_scroll_metrics(viewport, { top: 80, height: 480, viewport: 240 });
 
     await act(async () => viewport.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
