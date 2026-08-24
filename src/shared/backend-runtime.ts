@@ -19,20 +19,8 @@ export const AGENT_WORKSPACE_MAX_RESULT_BYTES = 128 * 1024;
 /** Backend 与 Electron main 共用的对话级任务目录挂载名。 */
 export const AGENT_WORKSPACE_TASK_ROOT = "task";
 
-/** 固定只读方法的模型可见契约；Electron bundle 必须提供同名沙箱实现。 */
-export const AGENT_WORKSPACE_PUBLISHED_METHOD_API = Object.freeze({
-  queryItems:
-    "(args: { filters?: { item_ids?: number[], statuses?: string[], file_paths?: string[], warning_types?: string[] }, search?: { keywords?: string[], scope?: 'src' | 'dst' | 'all' }, include_warnings?: boolean, offset?: number, limit?: number }): Promise<{ total_item_count: number, items: object[], next_offset?: number }>",
-  queryItemContexts:
-    "(args: { item_ids: number[] }): Promise<{ contexts: object[], items: object[], missing_item_ids: number[] }>",
-  groupQualityRuleEntries:
-    "(args: { kind: 'glossary' | 'text_preserve', entries?: object[], target_entry_ids?: string[], offset?: number, limit?: number }): Promise<JsonValue>",
-  deriveCommonLiteralRoots:
-    "(args: { forms: string[] }): Promise<{ candidates: Array<{ root: string, grapheme_length: number }> }>",
-} as const);
-
-/** workspace_script 在首次调用前通过工具 Schema 公开的完整固定 SDK。 */
-export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
+/** workspace_script 固定 SDK 清单；publishedMethods 由 Electron bundle 提供沙箱实现。 */
+export const AGENT_WORKSPACE_API = Object.freeze({
   members: Object.freeze({
     contract:
       ": WorkspaceContract（当前工作区的 limits、datasets、changes、effects、guidance 与 apply 契约）",
@@ -46,10 +34,23 @@ export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
       "(path: string, rows: Iterable<JsonValue> | AsyncIterable<JsonValue>): Promise<void>",
     list: "(path?: string): Promise<Array<{ name: string, type: 'file' | 'directory', size_bytes?: number }>>",
     remove: "(path: string): Promise<void>",
-    ...AGENT_WORKSPACE_PUBLISHED_METHOD_API,
+    queryItems:
+      "(args: { filters?: { item_ids?: number[], statuses?: string[], file_paths?: string[], warning_types?: string[] }, search?: { keywords?: string[], scope?: 'src' | 'dst' | 'all' }, include_warnings?: boolean, offset?: number, limit?: number }): Promise<{ total_item_count: number, items: object[], next_offset?: number }>",
+    queryItemContexts:
+      "(args: { item_ids: number[] }): Promise<{ contexts: object[], items: object[], missing_item_ids: number[] }>",
+    groupQualityRuleEntries:
+      "(args: { kind: 'glossary' | 'text_preserve', entries?: object[], target_entry_ids?: string[], offset?: number, limit?: number }): Promise<JsonValue>",
+    deriveCommonLiteralRoots:
+      "(args: { forms: string[] }): Promise<{ candidates: Array<{ root: string, grapheme_length: number }> }>",
     matchLiterals:
       "(args: { patterns: Array<{ key: string, text: string, case_sensitive: boolean }>; examples_per_pattern?: number }): Promise<{ scanned_item_count: number; matched_item_count: number; patterns: Array<{ key: string; matched_item_count: number; field_item_counts: { src: number; name_src: number }; example_matches: Array<{ item_id: number; field: 'src' | 'name_src'; ranges: Array<{ start: number; end: number }> }> }> }>",
   }),
+  publishedMethods: Object.freeze([
+    "queryItems",
+    "queryItemContexts",
+    "groupQualityRuleEntries",
+    "deriveCommonLiteralRoots",
+  ] as const),
   roots: Object.freeze({
     task: `${AGENT_WORKSPACE_TASK_ROOT}/**`,
     scratch: "scratch/**",
@@ -59,7 +60,7 @@ export const AGENT_WORKSPACE_SCRIPT_API = Object.freeze({
 /** 单个字面模式最多回传的证据条目数，主进程协议与公开 contract 共用。 */
 export const AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES = 50;
 
-/** Backend 只把当前工作区身份与完整脚本入口交给受信任 Electron main。 */
+/** Backend 把当前工作区身份与一次性脚本体交给受信任 Electron main。 */
 export type BackendRuntimeAgentWorkspaceRunRequest = Readonly<{
   workspacePath: string;
   script: string;

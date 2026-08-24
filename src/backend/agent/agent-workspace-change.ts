@@ -506,7 +506,7 @@ async function read_change_rows(native_fs: NativeFs, file_path: string): Promise
   try {
     if (!native_fs.exists(file_path)) {
       throw new AppErrors.AppError("runtime.internal_invariant", {
-        public_details: { action: "workspace_load" },
+        public_details: { action: "workspace_script" },
         diagnostic_context: { reason: "agent_workspace_change_file_missing" },
       });
     }

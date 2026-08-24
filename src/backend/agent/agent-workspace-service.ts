@@ -63,7 +63,7 @@ export type AgentWorkspaceRunPort = (
 
 type ActiveAgentWorkspace = {
   path: string; // Backend 持有的受信任绝对目录，不进入模型结果
-  projectPath: string; // load 时 loaded 工程身份
+  projectPath: string; // snapshot 建立时绑定的工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧快照
   revisions: ProjectDataSectionRevisions; // 完整七 section 快照
   languageKey: string; // 只包含解释工作区数据所需的语言
@@ -71,7 +71,7 @@ type ActiveAgentWorkspace = {
 
 /** 当前工程文件世代共享的 sources 身份与 project_meta 映射。 */
 type AgentWorkspaceSourceSession = {
-  projectPath: string; // 关联的 loaded 工程身份
+  projectPath: string; // 关联的当前工程身份
   projectEpoch: number; // 隔离同路径重新加载后的旧投影
   filesRevision: number; // 只在源资产集合变化时重新生成
   files: AgentWorkspaceSourceFile[]; // project_meta 复用的不可变文件映射
@@ -79,7 +79,7 @@ type AgentWorkspaceSourceSession = {
 
 /** 与当前 Agent 对话和工程解释边界绑定、跨数据快照保留的自由任务目录。 */
 type AgentWorkspaceTaskSession = {
-  projectPath: string; // 对话当前绑定的 loaded 工程
+  projectPath: string; // snapshot 建立时绑定的工程身份
   projectEpoch: number; // 同路径重新加载后不得复用旧任务内容
   languageKey: string; // 语言解释边界变化时旧任务内容失效
 };
@@ -90,7 +90,7 @@ export class AgentWorkspaceService {
   private active: ActiveAgentWorkspace | null = null;
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private task_session: AgentWorkspaceTaskSession | null = null; // 不读取目录内容，只拥有生命周期
-  private busy = false; // load、script 与 apply 共用的进程内互斥
+  private busy = false; // snapshot、script 与 apply 共用的进程内互斥
 
   /** 注入当前工程读侧、唯一写入口与 Electron 脚本端口。 */
   public constructor(
@@ -134,145 +134,145 @@ export class AgentWorkspaceService {
     await this.native_fs.make_dir_async(this.root_path);
   }
 
-  /** 加载完整只读快照，并同时创建空的显式 change 文件。 */
-  public async load_workspace(): Promise<JsonRecord> {
-    return await this.exclusive(async () => {
-      const project_path = this.options.sessionState.require_loaded_project_path();
-      const start_snapshot = this.options.cache.snapshot();
-      assert_snapshot_project(start_snapshot, project_path, "agent_workspace_load_project_changed");
-      const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
-      const language = read_workspace_language(this.options.settings.read_setting());
-      const language_key = JsonTool.stringifyStrict(language);
-      await this.discard_incompatible_task({
-        projectPath: project_path,
-        projectEpoch: start_snapshot.epoch,
-        languageKey: language_key,
-      });
-      const current_items = this.options.cache.items.readItems();
-      const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
-        file_path: entry.rel_path,
-        file_type: entry.file_type,
-      }));
-      const quality_block = this.options.cache.quality.readBlock();
-      const quality_entries = Object.fromEntries(
-        QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
-      ) as Record<QualityRuleKind, JsonRecord[]>;
-      const prompts = project_workspace_prompts(this.options.cache.prompts.readBlock());
-      const warning_result = await this.options.proofreading.query_warnings({
-        warning_types: [...PROOFREADING_WARNING_CODES],
-        keywords: [],
-        scope: "all",
-        offset: 0,
-        limit: Number.MAX_SAFE_INTEGER,
-      });
-      assert_load_dependencies_fresh({
-        projectPath: project_path,
-        snapshot: start_snapshot,
-        current: this.options.cache.snapshot(),
-        warnings: warning_result,
-        languageKey: language_key,
-        currentLanguageKey: JsonTool.stringifyStrict(
-          read_workspace_language(this.options.settings.read_setting()),
-        ),
-      });
-      const files = await this.ensure_sources({
-        projectPath: project_path,
-        projectEpoch: start_snapshot.epoch,
-        filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
-        files: snapshot_files,
-      });
+  /** 工作区工具按需建立完整只读快照和空 change 文件。 */
+  private async create_snapshot_locked(): Promise<void> {
+    const project_path = this.options.sessionState.require_loaded_project_path();
+    const start_snapshot = this.options.cache.snapshot();
+    assert_snapshot_project(
+      start_snapshot,
+      project_path,
+      "agent_workspace_snapshot_project_changed",
+    );
+    const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
+    const language = read_workspace_language(this.options.settings.read_setting());
+    const language_key = JsonTool.stringifyStrict(language);
+    await this.discard_incompatible_task({
+      projectPath: project_path,
+      projectEpoch: start_snapshot.epoch,
+      languageKey: language_key,
+    });
+    const current_items = this.options.cache.items.readItems();
+    const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
+      file_path: entry.rel_path,
+      file_type: entry.file_type,
+    }));
+    const quality_block = this.options.cache.quality.readBlock();
+    const quality_entries = Object.fromEntries(
+      QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
+    ) as Record<QualityRuleKind, JsonRecord[]>;
+    const prompts = project_workspace_prompts(this.options.cache.prompts.readBlock());
+    const warning_result = await this.options.proofreading.query_warnings({
+      warning_types: [...PROOFREADING_WARNING_CODES],
+      keywords: [],
+      scope: "all",
+      offset: 0,
+      limit: Number.MAX_SAFE_INTEGER,
+    });
+    assert_snapshot_dependencies_fresh({
+      projectPath: project_path,
+      snapshot: start_snapshot,
+      current: this.options.cache.snapshot(),
+      warnings: warning_result,
+      languageKey: language_key,
+      currentLanguageKey: JsonTool.stringifyStrict(
+        read_workspace_language(this.options.settings.read_setting()),
+      ),
+    });
+    const files = await this.ensure_sources({
+      projectPath: project_path,
+      projectEpoch: start_snapshot.epoch,
+      filesRevision: read_json_integer(start_snapshot.sectionRevisions.files, 0),
+      files: snapshot_files,
+    });
 
-      const project_meta: JsonRecord = {
-        ...language,
-        counts: {
-          files: files.length,
-          items: current_items.length,
-          items_with_warnings: warning_result.data.items.length,
-          ...Object.fromEntries(
-            QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
-          ),
-        },
-        files,
-      };
-      const workspace_path = path.join(this.root_path, randomUUID());
-      try {
-        // 所有并行写入必须结算后再清理；否则迟到写入会在失败目录删除后复活半成品。
-        const write_results = await Promise.allSettled([
-          write_json_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.projectMeta),
-            project_meta,
-          ),
-          write_json_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.contract),
-            AGENT_WORKSPACE_CONTRACT,
-          ),
+    const project_meta: JsonRecord = {
+      ...language,
+      counts: {
+        files: files.length,
+        items: current_items.length,
+        items_with_warnings: warning_result.data.items.length,
+        ...Object.fromEntries(
+          QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
+        ),
+      },
+      files,
+    };
+    const workspace_path = path.join(this.root_path, randomUUID());
+    try {
+      // 所有并行写入必须结算后再清理；否则迟到写入会在失败目录删除后复活半成品。
+      const write_results = await Promise.allSettled([
+        write_json_file(
+          this.native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_PATHS.projectMeta),
+          project_meta,
+        ),
+        write_json_file(
+          this.native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_PATHS.contract),
+          AGENT_WORKSPACE_CONTRACT,
+        ),
+        write_jsonl_file(
+          this.native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_PATHS.items),
+          map_iterable(current_items, project_agent_workspace_item),
+        ),
+        write_json_file(
+          this.native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts),
+          prompts,
+        ),
+        write_jsonl_file(
+          this.native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_PATHS.warnings),
+          map_iterable(warning_result.data.items, project_agent_workspace_warning),
+        ),
+        ...QUALITY_RULE_KINDS.map((kind) =>
           write_jsonl_file(
             this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.items),
-            map_iterable(current_items, project_agent_workspace_item),
-          ),
-          write_json_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts),
-            prompts,
-          ),
-          write_jsonl_file(
-            this.native_fs,
-            path.join(workspace_path, AGENT_WORKSPACE_PATHS.warnings),
-            map_iterable(warning_result.data.items, project_agent_workspace_warning),
-          ),
-          ...QUALITY_RULE_KINDS.map((kind) =>
-            write_jsonl_file(
-              this.native_fs,
-              path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
-              map_iterable(quality_entries[kind], (entry) =>
-                project_agent_workspace_quality_entry(kind, entry),
-              ),
+            path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
+            map_iterable(quality_entries[kind], (entry) =>
+              project_agent_workspace_quality_entry(kind, entry),
             ),
           ),
-          ...all_change_paths().map((relative_path) =>
-            this.native_fs.write_file(path.join(workspace_path, relative_path), ""),
-          ),
-          this.native_fs.make_dir_async(path.join(workspace_path, "scratch")),
-        ]);
-        const write_failure = write_results.find(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        if (write_failure !== undefined) throw write_failure.reason;
-        await this.ensure_task({
-          projectPath: project_path,
-          projectEpoch: start_snapshot.epoch,
-          languageKey: language_key,
-        });
-      } catch (error) {
-        await this.remove_workspace_directory(workspace_path);
-        throw error;
-      }
-
-      const previous = this.active;
-      this.active = {
-        path: workspace_path,
+        ),
+        ...all_change_paths().map((relative_path) =>
+          this.native_fs.write_file(path.join(workspace_path, relative_path), ""),
+        ),
+        this.native_fs.make_dir_async(path.join(workspace_path, "scratch")),
+      ]);
+      const write_failure = write_results.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      if (write_failure !== undefined) throw write_failure.reason;
+      await this.ensure_task({
         projectPath: project_path,
         projectEpoch: start_snapshot.epoch,
-        revisions,
         languageKey: language_key,
-      };
-      if (previous !== null) await this.remove_workspace_directory(previous.path);
-      return {
-        status: "loaded",
-        ...language,
-        counts: project_meta["counts"],
-      };
-    });
+      });
+    } catch (error) {
+      await this.remove_workspace_directory(workspace_path);
+      throw error;
+    }
+
+    const previous = this.active;
+    this.active = {
+      path: workspace_path,
+      projectPath: project_path,
+      projectEpoch: start_snapshot.epoch,
+      revisions,
+      languageKey: language_key,
+    };
+    if (previous !== null) await this.remove_workspace_directory(previous.path);
   }
 
   /** 模型脚本由宿主事务隔离；仅宿主未知失败或明确失效时销毁工作区。 */
   public async run_script(script: string, signal: AbortSignal): Promise<JsonValue> {
     return await this.exclusive(async () => {
-      const active = this.require_active();
-      await this.assert_fresh(active);
+      let active = this.active;
+      if (active === null || !this.read_freshness(active).snapshotFresh) {
+        await this.create_snapshot_locked();
+        active = this.require_active();
+      }
       let response: BackendRuntimeAgentWorkspaceRunResponse;
       try {
         response = await this.options.run({ workspacePath: active.path, script }, signal);
@@ -302,7 +302,12 @@ export class AgentWorkspaceService {
   public async apply_workspace(): Promise<JsonRecord> {
     return await this.exclusive(async () => {
       const active = this.require_active();
-      await this.assert_fresh(active);
+      const freshness = this.read_freshness(active);
+      if (!freshness.snapshotFresh) {
+        await this.discard_active();
+        if (!freshness.taskCompatible) await this.discard_task();
+        throw workspace_validation_error("agent_workspace_stale");
+      }
       let prepared: PreparedAgentWorkspaceChanges;
       try {
         prepared = await prepare_agent_workspace_changes({
@@ -345,7 +350,7 @@ export class AgentWorkspaceService {
         }
         if (AppErrors.is_app_error(error) && error.code === "data.revision_conflict") {
           await this.discard_active();
-          throw workspace_error_with_action(error, "workspace_load");
+          throw workspace_error_with_action(error, "workspace_script");
         }
         throw workspace_error_with_action(error, "workspace_apply");
       }
@@ -376,7 +381,7 @@ export class AgentWorkspaceService {
     await this.discard_task();
   }
 
-  /** 工程切换先销毁旧投影；非空路径表示为新 loaded 工程立即生成 sources。 */
+  /** 工程切换先销毁旧投影；非空路径表示为当前工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
     await this.discard_active();
     await this.discard_task();
@@ -385,7 +390,7 @@ export class AgentWorkspaceService {
     if (project_path === null) return;
     const snapshot = this.options.cache.snapshot();
     try {
-      assert_snapshot_project(snapshot, project_path, "agent_workspace_load_project_changed");
+      assert_snapshot_project(snapshot, project_path, "agent_workspace_snapshot_project_changed");
       await this.ensure_sources({
         projectPath: project_path,
         projectEpoch: snapshot.epoch,
@@ -396,7 +401,7 @@ export class AgentWorkspaceService {
         })),
       });
     } catch (error) {
-      // sources 是 Agent 附属投影，生成失败不能回滚已经成功的工程加载；workspace_load 会重试。
+      // sources 是 Agent 附属投影，生成失败不能回滚已经成功的工程加载；下一次 workspace_script 会重试。
       this.options.logManager.warning("Agent 工程源文件投影生成失败。", {
         source: "agent_workspace",
         error,
@@ -404,8 +409,11 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 任一工程身份、七 section revision 或语言变化都会废弃旧快照。 */
-  private async assert_fresh(active: ActiveAgentWorkspace): Promise<void> {
+  /** 比较当前工程事实；task 只依赖工程身份与语言，不依赖普通 section revision。 */
+  private read_freshness(active: ActiveAgentWorkspace): {
+    snapshotFresh: boolean;
+    taskCompatible: boolean;
+  } {
     const snapshot = this.options.cache.snapshot();
     const language_key = JsonTool.stringifyStrict(
       read_workspace_language(this.options.settings.read_setting()),
@@ -414,28 +422,25 @@ export class AgentWorkspaceService {
       snapshot.projectPath === active.projectPath &&
       snapshot.epoch === active.projectEpoch &&
       language_key === active.languageKey;
-    const fresh =
+    const snapshot_fresh =
       task_compatible &&
       PROJECT_DATA_SECTIONS.every(
         (section) =>
           read_json_integer(snapshot.sectionRevisions[section], 0) ===
           read_json_integer(active.revisions[section], 0),
       );
-    if (fresh) return;
-    await this.discard_active();
-    if (!task_compatible) await this.discard_task();
-    throw workspace_validation_error("agent_workspace_stale", "workspace_load");
+    return { snapshotFresh: snapshot_fresh, taskCompatible: task_compatible };
   }
 
-  /** 所有 run/apply 都要求已经成功完成一次 load。 */
+  /** apply 仍要求已有脚本准备出的活动快照。 */
   private require_active(): ActiveAgentWorkspace {
     if (this.active === null) {
-      throw workspace_validation_error("agent_workspace_missing", "workspace_load");
+      throw workspace_validation_error("agent_workspace_missing");
     }
     return this.active;
   }
 
-  /** 每个工程文件快照只展开一次；普通 workspace_load 复用同一个 sources 目录。 */
+  /** 每个工程文件快照只展开一次；连续 workspace_script 复用同一个 sources 目录。 */
   private async ensure_sources(args: {
     projectPath: string;
     projectEpoch: number;
@@ -452,7 +457,7 @@ export class AgentWorkspaceService {
     }
     const source_path = path.join(this.root_path, "sources");
     this.source_session = null;
-    // reset_project 已隔离旧工作区，load、run 与 apply 由 exclusive 串行；完整生成前应用内没有 sources 读者。
+    // reset_project 已隔离旧工作区，snapshot、run 与 apply 由 exclusive 串行；完整生成前应用内没有 sources 读者。
     await this.native_fs.remove_async(source_path, { recursive: true, force: true });
     try {
       const files = await write_agent_workspace_sources({
@@ -508,7 +513,7 @@ export class AgentWorkspaceService {
     if (active !== null) await this.remove_workspace_directory(active.path);
   }
 
-  /** 先解除任务身份；删除失败的旧目录不会在下次 load 中被静默复用。 */
+  /** 先解除任务身份；删除失败的旧目录不会在下次 snapshot 建立时被静默复用。 */
   private async discard_task(): Promise<void> {
     this.task_session = null;
     await this.remove_workspace_directory(this.task_path);
@@ -526,7 +531,7 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** load、run 与 apply 在服务内串行，避免活动目录被交叉替换。 */
+  /** snapshot、run 与 apply 在服务内串行，避免活动目录被交叉替换。 */
   private async exclusive<T>(action: () => Promise<T>): Promise<T> {
     if (this.busy) throw new AppErrors.AppError("runtime.busy");
     this.busy = true;
@@ -541,12 +546,7 @@ export class AgentWorkspaceService {
 /** AgentService 只依赖工作区生命周期，不接触领域协作者。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
-  | "initialize"
-  | "load_workspace"
-  | "run_script"
-  | "apply_workspace"
-  | "reset_workspace"
-  | "reset_project"
+  "initialize" | "run_script" | "apply_workspace" | "reset_workspace" | "reset_project"
 >;
 
 /** apply 只有至少一个领域存在真实变化时才进入项目写入口。 */
@@ -580,7 +580,7 @@ function read_workspace_language(value: unknown): JsonRecord {
   };
 }
 
-/** load 时复制完整七 section revision，隔离 cache 返回的可变引用。 */
+/** 建立 snapshot 时复制完整七 section revision，隔离 cache 返回的可变引用。 */
 function pick_workspace_revisions(
   revisions: ProjectDataSectionRevisions,
 ): ProjectDataSectionRevisions {
@@ -615,19 +615,19 @@ function project_workspace_prompts(block: JsonRecord): JsonRecord {
   );
 }
 
-/** sessionState 与 cache 必须指向同一 loaded 工程。 */
+/** sessionState 与 cache 必须指向同一当前工程。 */
 function assert_snapshot_project(
   snapshot: CacheSnapshot,
   project_path: string,
   reason: string,
 ): void {
   if (snapshot.projectPath !== project_path) {
-    throw workspace_validation_error(reason, "workspace_load");
+    throw workspace_validation_error(reason);
   }
 }
 
 /** 异步派生数据全部完成后复核依赖，禁止落盘混合时点快照。 */
-function assert_load_dependencies_fresh(args: {
+function assert_snapshot_dependencies_fresh(args: {
   projectPath: string;
   snapshot: CacheSnapshot;
   current: CacheSnapshot;
@@ -651,7 +651,7 @@ function assert_load_dependencies_fresh(args: {
         read_json_integer(args.snapshot.sectionRevisions[section], 0),
     );
   if (!same_snapshot || !warnings_fresh || args.languageKey !== args.currentLanguageKey) {
-    throw workspace_validation_error("agent_workspace_load_dependencies_changed", "workspace_load");
+    throw workspace_validation_error("agent_workspace_snapshot_dependencies_changed");
   }
 }
 
@@ -689,25 +689,22 @@ async function write_jsonl_file(
 }
 
 /** 工作区业务校验统一返回下一步恢复动作。 */
-function workspace_validation_error(
-  reason: string,
-  action: "workspace_load" | "workspace_script" = "workspace_script",
-): AppErrors.AppError {
+function workspace_validation_error(reason: string): AppErrors.AppError {
   return new AppErrors.AppError("request.validation_failed", {
-    public_details: { action },
+    public_details: { action: "workspace_script" },
     diagnostic_context: { reason },
   });
 }
 
-/** 无法继续使用当前目录的错误统一要求重新 load。 */
+/** 无法继续使用当前目录的错误统一回到按需工作区脚本。 */
 function workspace_recovery_error(error: unknown, reason: string): AppErrors.AppError {
-  return workspace_error_with_action(error, "workspace_load", reason);
+  return workspace_error_with_action(error, "workspace_script", reason);
 }
 
 /** 包装错误时保留稳定 code、公开详情、诊断上下文和原始 cause。 */
 function workspace_error_with_action(
   error: unknown,
-  action: "workspace_load" | "workspace_apply",
+  action: "workspace_script" | "workspace_apply",
   reason?: string,
 ): AppErrors.AppError {
   if (AppErrors.is_app_error(error)) {

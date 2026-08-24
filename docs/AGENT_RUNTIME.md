@@ -18,13 +18,13 @@
 |模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
 |模型对话级动态工作队列|`AgentService`|`task_progress`|
-|当前对话 task、数据快照与显式 change 准备|`AgentWorkspaceService`|`workspace_load`、`workspace_script`、`workspace_apply`|
+|当前对话 task、数据快照与显式 change 准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
 - Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease；单个 round 可以跨越多个 SDK run，但只在 SDK settle 的安全边界压缩，并以隐藏的“继续”消息保持同一公开轮次。Pi `agent_start / agent_end` 与压缩事件共同决定公开 `canSendNow`，避免在异步预检、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到压缩、失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
-- GUI Agent 在应用 userdata 中持有活动 UUID 数据快照及其同级 `task`、`sources`。task 在当前 Agent 对话、工程 epoch 与权威语言内跨 load、普通 section revision、apply、stale 和 revision 冲突保留；内容结构及使用方式完全由模型决定，不自动进入模型上下文或项目事实。
-- 工程加载时从 `.lg` 原始资产生成 sources，同一工程 epoch 与 files revision 内复用，files revision 变化后由下一次 load 替换；普通文本保留为单文件，EPUB / XLSX 保留容器内部路径并只展开文本成员。新 load 全部成功后才替换旧快照；成功 `workspace_script` 将 change、task 和 scratch 作为同一文件事务提交，脚本失败、取消或结果无效只回滚本次运行。普通 revision、apply 和 stale 只清理快照；reset、工程身份、epoch 或语言变化、无法补偿的文件事务、未知宿主失败、dispose 和下次启动同时清理 task。change 校验与数据库回滚保留快照，sources 生成失败不回滚工程加载。目录清理失败只留诊断，不改变项目提交事实；task、快照与 sources 都不进入 Agent snapshot、模型历史或项目事实。
+- GUI Agent 在应用 userdata 中持有活动 UUID 数据快照及其同级 `task`、`sources`。task 绑定当前 Agent 对话、工程 epoch 与权威语言，在数据快照替换、普通 section revision、apply、stale 和 revision 冲突后继续有效；reset、身份边界变化、无法补偿的文件事务、未知宿主失败、dispose 和下次启动结束其生命周期。task、快照与 sources 是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
+- 工程加载从 `.lg` 原始资产生成 sources；同一工程 epoch 与 files revision 复用同一投影，files revision 变化时由新快照替换。普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。新快照完整生成后替换旧快照；脚本文件事务共同提交 change、task 与 scratch，脚本失败、取消和结果无效恢复本次运行前的基线。普通 revision、apply 和 stale 结束当前快照；change 校验与数据库回滚保留当前快照。sources 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 
 ## 3. 模型、资源与 skill
 
@@ -36,21 +36,20 @@
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。skill 正文可以声明必读或条件组合的其它 skill，组合本身不改变任务对象、范围或工作区权限。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
-- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织和决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、授权与分组边界以及决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
 - 内置 skill 只补充领域规则；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
 
 ## 4. 产品工具与宿主能力
 
 - 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `task_progress` 始终注册，管理当前对话中至多一个内存动态工作队列；`advance` 在完整校验后原子完成既有项并追加派生项，`finish` 拒绝遗留待办，显式 `cancel` 只清理进度而不回滚其它副作用。工具只向模型返回分阶段计数和有限待办，不保存领域事实、工程证据、百分比或完成判据；公开 Agent snapshot 与 SSE 另以 `taskProgress` 投影全部待办标签，空数组表示不展示，不公开标题、键、阶段或完成统计。
-- 工程数据工具只保留 `workspace_load`、`workspace_script`、`workspace_apply`，并且只在 GUI Electron 沙箱端口存在时成组注册；端口缺失时不注册工程数据假实现。`AgentService` 只负责会话与工具注册，不持有 item、quality 或 proofreading 领域依赖。
-- `workspace_load` 无参数生成完整只读快照和空 change 文件、挂载当前对话 task，只在工具结果返回语言与数量摘要；完整 project_meta 和 contract 保留在磁盘，脚本运行时把 contract 投影为 `workspace.contract`。`items/entries.jsonl` 额外携带只读 `text_type`，用于按文本格式解释规则命中分布；project_meta 保存解释快照所需的语言、数量、文件顺序及可用的 source 文本路径或容器文本根，质量规则功能开关和文本处理设置不进入工作区。contract 是 datasets、显式 change 操作、字段、身份、稳定写入副作用、领域提交软建议、模型结果与查询上限的唯一代码权威，不承载固定脚本 SDK 或运行时生命周期。`workspace_script` 的 TypeBox 工具 Schema 是固定 SDK、具名工作区方法和完整入口语法的唯一模型可见权威，Electron runner 注入相同成员。System Prompt 规定 items 优先、sources 仅补足缺失片段或结构证据，并提供无 skill 时读取工作区事实、准备并提交 contract 声明变更的完整默认流程；skill 只补充领域判断与处理方法。
-- 工作区按业务领域相邻组织只读数据；analysis 状态、候选、预计算质量分析和质量规则关系组不进入只读数据集。warnings 是 load 时证据且不随程序化处理重新计算；模型在 `task/**` 与 `scratch/**` 中维护的领域任务资产不属于 contract 或项目事实。固定 change 文件按 items / prompts 更新和每个 quality kind 的创建、更新、删除、移动分开；具体路径与字段留在 contract，固定查询方法的参数与返回形状留在脚本 SDK，实现随 Electron bundle 发布并由相邻行为测试验证。
-- JavaScript 是唯一处理编排面。筛选、邻近上下文、质量规则分组、公共词根与正式字面匹配都作为具名 `workspace.*` 方法进入同一脚本 SDK；发布源码方法在一次性 renderer 内运行，只获得 contract、读取与列表 API，不能写 change、task 或 scratch，正式字面匹配则由 Electron main 的私有 protocol 执行。质量规则结构组仍只安排共同审查，不推断语义或合并结论；公共词根方法仍只为调用方已确认语义相关的词形枚举候选。质量规则 probes 与 facts 仍是 scratch 内的领域任务资产，不由查询方法建立第二套语义协议。
-- `workspace.matchLiterals` 是 `src` 与 `name_src` 的正式完整字面匹配入口；私有 protocol 同时匹配全部具名 pattern，并按自然顺序扫描完整 items JSONL 一次，返回实际扫描数、item 去重计数、字段计数与有限原文范围证据。`workspace.queryItems` 的 NFKC 小写 includes 只用于确定性筛选。
-- 每次 `workspace_script` 只接收完整的 `async function main(workspace) { ... }` 入口函数，并在无 Node、无 preload、无 Shell、无网络、无权限与下载的一次性 Chromium renderer 中由宿主注入 `workspace` 后调用；缺少具名入口或未显式返回 JSON 值都失败并回滚。每次调用拥有唯一磁盘事务，脚本只把 contract `changes` 区块声明的固定文件及 `task/**`、`scratch/**` 写入 overlay；最终脚本结果通过 JSON 与 `contract.limits.result_bytes` 字节硬门后才提交，未捕获失败、停止或超限只回滚本次 overlay。提交失败先恢复被替换基线，补偿或清理失败才把当前快照标为失效。私有 protocol 提供活动快照、同级可写 task 与同级只读 sources 的合并视图、流式文件访问和正式字面匹配；datasets、project_meta、contract 与 sources 永远只读，固定 change 文件不能删除。路径穿越、绝对路径、反斜线、符号链接和事务实现目录均拒绝。
-- `workspace_apply` 无参数，只读取非空显式 change 文件；items 按 ID 定点读取，prompts 只读取目标 kind，quality 只为受影响 kind 构造 prospective 最终集合，不扫描或比较完整 datasets。change 校验错误与数据库事务回滚保留当前快照，stale 或 revision 冲突只清理当前快照并要求重新 load；无变化不进入项目写口、不推进 revision、不发布事件。成功只返回紧凑真实计数与提交后 revision，并以 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`；apply 成功或无变化后销毁当前快照但保留 task。数据库已提交但缓存或公开事件同步失败使用带 `committed: true` 的稳定错误，销毁当前快照且禁止重试。
-- Agent 先对完整范围执行确定性程序化处理，只把剩余开放式语义目标按模型上下文软上限组成审查组；审查组不等于提交单元。技术提交只遵循 contract 的领域软建议，后端不以审查组或建议值建立硬上限；写入授权分具体差异、确定规则与已确认判断标准三种形态，一经取得持续覆盖范围内全部技术提交，连续 apply 之间重新 load。
+- 工程数据工具由 `workspace_script` 与 `workspace_apply` 组成，并在 GUI Electron 沙箱端口存在时成组注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与提交协调。
+- `AGENT_WORKSPACE_API` 是固定 SDK 的代码权威；工具 Schema 将脚本形式、SDK 和结果边界投影给模型；`workspace.contract` 拥有当前快照的 datasets、路径、字段、limits、changes、effects、guidance 与 apply 契约。Electron runner 按 manifest 注入固定成员，领域 skill 提供范围、证据、批次和停止条件。
+- `workspace_script` 按需建立或刷新完整只读快照、空 change 文件和当前对话 task。project_meta 保存语言、数量、文件顺序与 source 文本映射；items 额外携带用于解释规则命中分布的 `text_type`；warnings 是快照建立时冻结的发现证据。数据集按业务领域相邻组织，显式 change 文件按 items、prompts 和各 quality kind 的操作分开。
+- JavaScript 异步脚本体在一次性 Chromium 沙箱中运行，宿主注入 `workspace` 并支持顶层 `await` 与 `return`。同一快照内的确定性数据流在一次脚本中完成，返回值通过 JSON 与结果字节门后提交文件事务。沙箱暴露私有工作区协议和声明目录；路径规范化、事务 overlay、回滚与快照失效共同保护宿主和项目基线。
+- `workspace.queryItems` 提供确定性筛选，`workspace.queryItemContexts` 提供邻近上下文，`workspace.groupQualityRuleEntries` 与 `workspace.deriveCommonLiteralRoots` 提供结构候选，`workspace.matchLiterals` 按正式连续字面语义扫描 `src` 与 `name_src`。发布方法获得冻结的读取面，正式字面匹配由 Electron main 私有 protocol 执行。
+- `workspace_apply` 读取显式 change，按受影响 item、prompt kind 与 quality kind 构造 prospective 结果，并通过 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。真实变化返回紧凑计数和提交后 revision；unchanged、校验失败、事务回滚、revision 冲突和已提交同步失败分别驱动对应的快照保留、重建或项目重载状态。`committed: true` 是已提交终态，恢复流程不再重试 apply。
+- Agent 先完成范围内的确定性程序处理；剩余开放式语义目标不超过 300 条时保留一个任务范围，超过 300 条时在开放式审查前展示完整分组，由用户选择逐组处理或连续处理全部。任务范围、审查组、提交单元和写入授权相互独立；具体差异、确定规则和已确认判断标准形成三类写入授权，并持续覆盖其范围内的技术提交。
 - GUI Agent 的 Web 能力以 `web_search` 与 `web_fetch` 成组注册，宿主抓取端口缺失时不注册假实现。`web_search` 通过固定的 Exa、Tavily、Firecrawl、AnySearch 与 Keenable 无凭据 MCP 工具实现统一查询 Schema 和错误契约，不动态投影远端工具；模型只提交自然语言查询，供应商协议或业务失败均进入同一回退链。应用级搜索服务从 Exa 开始，当前来源失败时环形尝试其余来源并将成功来源晋升为首选，该内存状态跨工程切换复用、应用重启后重置。五家会话均按需建立并复用，组合根在 Agent 之后统一释放；`web_fetch` 仍独立使用本地安全下载链路，不委托搜索供应商抓取正文。
 - `web_fetch` 与普通模型网络共用 Electron session 提供的当前系统代理解析，但保留独立的安全下载边界：Backend 使用 Undici 逐跳抓取 HTTP(S)，每一跳重新解析代理；直连请求在实际 socket lookup 中只交付公网地址，代理请求把用户配置的代理视为目标解析与可达范围的信任边界。每次调用限制总时长、重定向和响应字节，HTTP 失败向模型返回状态码与最终 URL，受支持文本统一归一为 Markdown。System Prompt 是搜索摘要和网页正文不可信规则的唯一归宿，工具描述和结果不重复注入同一规则。
 

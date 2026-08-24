@@ -16,11 +16,11 @@ import { AGENT_WORKSPACE_METHOD_SOURCES } from "./desktop-agent-workspace-method
 const AGENT_WORKSPACE_SCHEME = "lg-agent-workspace"; // 只注册在独立脚本 session
 const AGENT_WORKSPACE_URL = `${AGENT_WORKSPACE_SCHEME}://workspace/__runner__`; // 唯一允许导航的空文档
 const AGENT_WORKSPACE_PARTITION = "agent-workspace"; // 无 persist: 前缀，应用退出后不落盘
+const AGENT_WORKSPACE_SCRIPT_TIMEOUT_MS = 120_000; // 防止模型脚本永久占用隐藏 renderer
+const AGENT_WORKSPACE_SCRIPT_TIMEOUT = "工作区脚本执行超时。";
 const AGENT_WORKSPACE_SCRIPT_RESULT_TOO_LARGE =
   "脚本返回结果过大；请在工作区内完成聚合并只返回摘要，按实际生命周期自行管理 task 或 scratch 内容。";
-const AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED =
-  "脚本必须是完整的 async function main(workspace) { ... } 入口函数。";
-const AGENT_WORKSPACE_SCRIPT_RESULT_REQUIRED = "工作区入口函数必须显式返回 JSON 结果。";
+const AGENT_WORKSPACE_SCRIPT_RESULT_REQUIRED = "工作区脚本必须显式返回 JSON 结果。";
 
 /** 自定义 scheme 权限必须在 Electron ready 前注册。 */
 export function register_agent_workspace_scheme(): void {
@@ -124,13 +124,24 @@ export class DesktopAgentWorkspaceRunner {
     });
     const abort = () => target_window.destroy();
     signal.addEventListener("abort", abort, { once: true });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await target_window.loadURL(AGENT_WORKSPACE_URL);
       signal.throwIfAborted();
-      const serialized = await target_window.webContents.executeJavaScript(
-        build_workspace_program(request.script, AGENT_WORKSPACE_METHOD_SOURCES),
-        true,
-      );
+      // renderer 销毁不保证 executeJavaScript 立即 settle，竞速拒绝确保事务能进入回滚。
+      const timeout_failure = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          target_window.destroy();
+          reject(new Error(AGENT_WORKSPACE_SCRIPT_TIMEOUT));
+        }, AGENT_WORKSPACE_SCRIPT_TIMEOUT_MS);
+      });
+      const serialized = await Promise.race([
+        target_window.webContents.executeJavaScript(
+          build_workspace_program(request.script, AGENT_WORKSPACE_METHOD_SOURCES),
+          true,
+        ),
+        timeout_failure,
+      ]);
       signal.throwIfAborted();
       // protocol 会把类型化宿主错误投影成 HTTP 文本；提交前必须从事务对象恢复真实故障。
       const host_failure = files.get_host_failure();
@@ -192,6 +203,7 @@ export class DesktopAgentWorkspaceRunner {
       }
       return failure_response(error, "execution_failed", "preserved", request.workspacePath);
     } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
       signal.removeEventListener("abort", abort);
       if (!target_window.isDestroyed()) target_window.destroy();
       if (this.active_window === target_window) this.active_window = null;
@@ -263,7 +275,7 @@ function response_text(status: number, text: string): Response {
   return new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-/** 模型提供完整 main 入口；单次调用不落盘、不建立长期 REPL。 */
+/** 模型提供一次性异步脚本体；单次调用不落盘、不建立长期 REPL。 */
 function build_workspace_program(
   script: string,
   method_sources: Readonly<Record<string, string>>,
@@ -382,22 +394,9 @@ function build_workspace_program(
     ...publishedMethods,
     matchLiterals,
   });
-  // 括号把输入限制为单一函数表达式；解析失败统一返回可修复的公开入口错误。
-  let entrypoint;
-  try {
-    entrypoint = await new AsyncFunction("return (" + ${JSON.stringify(script)} + "\\n)")();
-  } catch {
-    throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED)});
-  }
-  // 构造器与名称共同拒绝同步函数、箭头函数和其它具名入口。
-  if (
-    typeof entrypoint !== "function" ||
-    entrypoint.constructor !== AsyncFunction ||
-    entrypoint.name !== "main"
-  ) {
-    throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_ENTRYPOINT_REQUIRED)});
-  }
-  const result = await entrypoint(workspace);
+  // 脚本本身就是 async body；顶层 await 与 return 由 AsyncFunction 提供。
+  const execute = new AsyncFunction("workspace", "'use strict';\\n" + ${JSON.stringify(script)});
+  const result = await execute(workspace);
   if (result === undefined) {
     throw new TypeError(${JSON.stringify(AGENT_WORKSPACE_SCRIPT_RESULT_REQUIRED)});
   }

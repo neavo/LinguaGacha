@@ -415,7 +415,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "legacy",
-          toolName: "workspace_script",
+          toolName: "test_tool",
           status: "success",
           detail: "旧协议不得兼容",
           createdAt: 4,
@@ -423,7 +423,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "tool_call",
           id: "invalid",
-          toolName: "workspace_load",
+          toolName: "test_tool",
           input: "{}",
           status: "success",
           output: { entries: [] },

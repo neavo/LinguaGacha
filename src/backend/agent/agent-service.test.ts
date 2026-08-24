@@ -103,7 +103,7 @@ const agent_resource_fixture = vi.hoisted(() => {
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
-const FAKE_WORKSPACE_SCRIPT = "async function main() { return { items: [] }; }";
+const FAKE_WORKSPACE_SCRIPT = "return { items: [] };";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -392,7 +392,6 @@ function create_fake_response(context: Context): FauxResponseStep {
       [
         fauxText("准备查询"),
         fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-1" }),
-        fauxToolCall("workspace_load", {}, { id: "tool-2" }),
       ],
       { stopReason: "toolUse" },
     );
@@ -1064,15 +1063,6 @@ describe("AgentService", () => {
         createdAt: expect.any(Number),
       },
       {
-        kind: "tool_call",
-        id: "tool-2",
-        toolName: "workspace_load",
-        input: "{}",
-        status: "success",
-        output: expect.stringContaining('"status":"loaded"'),
-        createdAt: expect.any(Number),
-      },
-      {
         kind: "assistant_message",
         id: expect.any(String),
         parts: [{ kind: "text", text: "查询完成" }],
@@ -1088,7 +1078,7 @@ describe("AgentService", () => {
           : [];
       })
       .filter((entry) => entry["kind"] === "tool_call");
-    expect(published_tool_entries).toHaveLength(4);
+    expect(published_tool_entries).toHaveLength(2);
     expect(
       published_tool_entries.every(
         (entry) =>
@@ -1423,12 +1413,11 @@ describe("AgentService", () => {
     );
   });
 
-  it("Electron 工作区端口随三工具注册，并区分会话与工程 reset", async () => {
+  it("Electron 工作区端口随两个工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
-      load_workspace: vi.fn(),
       run_script: vi.fn(),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
@@ -1439,13 +1428,7 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      [
-        "task_progress",
-        "workspace_load",
-        "workspace_script",
-        "workspace_apply",
-        "read_skill",
-      ].sort(),
+      ["task_progress", "workspace_script", "workspace_apply", "read_skill"].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -2351,7 +2334,6 @@ describe("AgentService", () => {
             initialize: vi.fn(async () => undefined),
             reset_workspace: vi.fn(async () => undefined),
             reset_project: vi.fn(async () => undefined),
-            load_workspace: vi.fn(async () => ({ status: "loaded", counts: { items: 2 } })),
             run_script: vi.fn(async () => {
               await wait_for_held_tool();
               return { items: read_items() };

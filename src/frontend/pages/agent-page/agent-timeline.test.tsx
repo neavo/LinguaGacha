@@ -167,7 +167,7 @@ describe("AgentTimeline", () => {
     const view = await render_timeline([
       user_entry("user-1", "开始", "success", 0, 4_000),
       assistant_entry("assistant-intermediate", "准备工作", "success", 1_000),
-      tool_entry("tool-1", "workspace_load", "success", "{}", 2_000),
+      tool_entry("tool-1", "test_tool", "success", "{}", 2_000),
       assistant_entry("assistant-final", "最终结果", "success", 3_000),
     ]);
     const surfaces = view.querySelectorAll<HTMLElement>(".agent-markdown");
@@ -224,7 +224,7 @@ describe("AgentTimeline", () => {
     const view = await render_timeline([
       user_entry("user-1", "开始", "success", 0, 4_000),
       assistant_entry("assistant-intermediate", "准备调用工具", "success", 1_000),
-      tool_entry("tool-1", "workspace_load", "success", "{}", 2_000),
+      tool_entry("tool-1", "test_tool", "success", "{}", 2_000),
       assistant_entry("assistant-final", "最终结果", "success", 3_000),
     ]);
     const user_actions = view.querySelectorAll<HTMLButtonElement>(
@@ -372,7 +372,7 @@ describe("AgentTimeline", () => {
     const view = await render_timeline(
       round_entries([
         tool_entry("tool-running", "workspace_script", "running", null, 1),
-        tool_entry("tool-success", "workspace_load", "success", "{}", 2),
+        tool_entry("tool-success", "test_tool", "success", "{}", 2),
         tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
         tool_entry("tool-stopped", "workspace_apply", "stopped", null, 4),
       ]),
