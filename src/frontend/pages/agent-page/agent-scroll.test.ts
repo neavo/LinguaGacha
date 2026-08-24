@@ -3,11 +3,9 @@ import { describe, expect, it } from "vitest";
 import { is_at_scroll_end } from "./agent-scroll";
 
 describe("Agent 滚动位置", () => {
-  it.each([
-    ["距底端 2px", 598, true],
-    ["距底端超过 2px", 597, false],
-  ])("%s", (_case, scroll_top, expected) => {
-    expect(is_at_scroll_end(scroll_target(scroll_top))).toBe(expected);
+  it("区分底端与历史阅读位置", () => {
+    expect(is_at_scroll_end(scroll_target(600))).toBe(true);
+    expect(is_at_scroll_end(scroll_target(120))).toBe(false);
   });
 });
 

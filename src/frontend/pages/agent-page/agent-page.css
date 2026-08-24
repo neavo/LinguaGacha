@@ -24,6 +24,8 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
+  /* 跟随由页面唯一写入口负责，浏览器不建立第二套滚动所有权。 */
+  overflow-anchor: none;
   scrollbar-gutter: stable;
 }
 
@@ -32,23 +34,6 @@
   min-height: 100%;
   flex: 0 0 auto;
   flex-direction: column;
-}
-
-/* 跟随态只让末尾 sentinel 参与锚定；历史态恢复内容候选并排除 sentinel。 */
-.agent-page__conversation-content[data-following="true"] {
-  overflow-anchor: none;
-}
-
-.agent-page__conversation-content:not([data-following="true"]) + .agent-page__scroll-anchor {
-  overflow-anchor: none;
-}
-
-.agent-page__scroll-anchor {
-  height: 3px;
-  flex: 0 0 3px;
-  margin-block-start: -3px; /* 保留可见锚点范围但不增加底部空白 */
-  overflow-anchor: auto;
-  pointer-events: none;
 }
 
 .agent-page__connection-status {
@@ -475,7 +460,6 @@
   background: color-mix(in srgb, var(--muted) 32%, transparent);
   color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
   font-size: 12px;
-  interpolate-size: allow-keywords;
 }
 
 .agent-tool-entry {
@@ -613,6 +597,7 @@
 .agent-thinking-entry__viewport {
   max-height: 240px;
   overflow: auto;
+  overflow-anchor: none;
   border-top: 1px solid var(--border);
   padding: 8px 12px 10px 28px;
 }
@@ -623,40 +608,6 @@
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-/* 每个思考 viewport 独立切换正文与末尾 sentinel 的锚点资格。 */
-.agent-thinking-entry__viewport[data-following="true"] > pre {
-  overflow-anchor: none;
-}
-
-.agent-thinking-entry__viewport:not([data-following="true"])
-  > .agent-thinking-entry__scroll-anchor {
-  overflow-anchor: none;
-}
-
-.agent-thinking-entry__scroll-anchor {
-  display: block;
-  height: 3px;
-  margin-block-start: -3px; /* 与外层 sentinel 共用零视觉间距约束 */
-  overflow-anchor: auto;
-  pointer-events: none;
-}
-
-/* 思考正文常驻 DOM 才能平滑自动收缩。 */
-.agent-thinking-entry::details-content {
-  height: 0;
-  overflow: clip;
-  opacity: 0;
-  transition:
-    height 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 120ms ease-out,
-    content-visibility 180ms allow-discrete;
-}
-
-.agent-thinking-entry[open]::details-content {
-  height: auto;
-  opacity: 1;
 }
 
 .agent-tool-detail__header {
@@ -1491,7 +1442,6 @@
 
   .agent-thinking-entry summary::before,
   .agent-thinking-entry summary,
-  .agent-thinking-entry::details-content,
   .agent-tool-entry,
   .agent-composer__drop-overlay,
   .agent-page__suggestion,
