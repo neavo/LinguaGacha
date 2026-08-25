@@ -92,7 +92,10 @@ describe("AgentTimeline", () => {
   });
 
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
-  async function render_timeline(entries: readonly AgentEntry[]): Promise<HTMLDivElement> {
+  async function render_timeline(
+    entries: readonly AgentEntry[],
+    follow_latest = true,
+  ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
@@ -104,6 +107,7 @@ describe("AgentTimeline", () => {
           <AgentTimeline
             entries={entries}
             mention_tokens={MENTION_TOKENS}
+            follow_latest={follow_latest}
             on_continue={on_continue}
             on_edit={on_edit}
             on_add_annotation={on_add_annotation}
@@ -390,12 +394,13 @@ describe("AgentTimeline", () => {
     }
   });
 
-  it("运行中的思考块默认展开，内部离底后保留阅读位置", async () => {
+  it("关闭最新时运行中的思考块保留阅读位置", async () => {
     const render_thinking = (text: string) =>
       render_timeline(
         round_entries([
           assistant_parts_entry("assistant-1", [{ kind: "thinking", text }], "running", 1),
         ]),
+        false,
       );
     const view = await render_thinking("检查术语\n逐项核对");
     const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
@@ -491,7 +496,7 @@ describe("AgentTimeline", () => {
     expect(view.querySelector("strong")?.textContent).toBe("结论");
   });
 
-  it("完成后处于历史位置不收缩，自然回底后重新计时", async () => {
+  it("关闭最新时完成的思考不收缩，重新激活后开始计时", async () => {
     vi.useFakeTimers();
     const view = await render_timeline(
       round_entries([
@@ -502,6 +507,7 @@ describe("AgentTimeline", () => {
           1,
         ),
       ]),
+      false,
     );
     const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
@@ -526,12 +532,25 @@ describe("AgentTimeline", () => {
           1,
         ),
       ]),
+      false,
     );
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.dataset.open).toBe("true");
 
-    scroll.top = 240;
-    await act(async () => viewport.dispatchEvent(new Event("scroll")));
+    await render_timeline(
+      round_entries([
+        assistant_parts_entry(
+          "assistant-1",
+          [
+            { kind: "thinking", text: "检查术语完成" },
+            { kind: "text", text: "完成" },
+          ],
+          "running",
+          1,
+        ),
+      ]),
+      true,
+    );
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.dataset.open).toBeUndefined();
   });

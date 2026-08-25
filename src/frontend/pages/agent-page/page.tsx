@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
+import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import type { ModelThinkingLevel } from "@domain/model";
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
@@ -25,6 +25,7 @@ import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-edit
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentApprovalPanel } from "./agent-approval-panel";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
@@ -33,7 +34,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
-import { useAgentScrollFollow } from "./agent-scroll";
+import { useAgentAutoScroll } from "./agent-scroll";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -83,14 +84,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const {
-    following: conversation_following,
-    activate: activate_conversation,
-    follow_content: follow_conversation_content,
-    reconcile_scroll: reconcile_conversation_scroll,
-    settle_scroll: settle_conversation_scroll,
-    resume: resume_conversation,
-  } = useAgentScrollFollow();
+  const [follow_latest, set_follow_latest] = useState(true); // 页面级实时阅读模式，滚动位置不参与推断
+  const { follow_content: follow_conversation_content, resume: resume_conversation } =
+    useAgentAutoScroll(follow_latest);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
     useState<PendingThinkingOffAction | null>(null);
@@ -138,7 +134,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue =
     !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
-  const return_latest_available = !conversation_following;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
@@ -160,18 +155,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     if (!target_exists) set_active_inline_edit(null);
   }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
 
-  /** 显式归底只恢复外层会话；每个思考详情独立保留自己的阅读位置。 */
-  const return_to_latest = useCallback((): void => {
+  /** 显式激活最新并归底外层会话；活动思考视口消费同一页面状态。 */
+  const activate_follow_latest = useCallback((): void => {
+    set_follow_latest(true);
     const conversation = conversation_ref.current;
     if (conversation !== null) resume_conversation(conversation);
   }, [resume_conversation]);
 
-  /** 新公开会话在绘制前取得默认跟随权，不依赖浏览器先发出 scroll。 */
+  /** 新公开会话与重新激活“最新”时都在布局阶段归底。 */
   const conversation_key = agent.entries[0]?.id ?? null; // 首条公开条目身份定义页面滚动生命周期
   useLayoutEffect(() => {
+    set_follow_latest(true);
+  }, [conversation_key]);
+  useLayoutEffect(() => {
     const conversation = conversation_ref.current;
-    if (conversation !== null) activate_conversation(conversation);
-  }, [activate_conversation, conversation_key]);
+    if (conversation !== null && follow_latest) resume_conversation(conversation);
+  }, [conversation_key, follow_latest, resume_conversation]);
 
   // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
   useLayoutEffect(() => {
@@ -206,7 +205,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   /** 页面内所有普通发送共用同一条实际提交出口，确认框只延迟调用它。 */
   const send_message = useCallback(
     async (message: AgentMessageInput): Promise<boolean> => {
-      return_to_latest();
+      activate_follow_latest();
       const request = can_continue_queue
         ? agent.continue(
             message.text === "" && message.attachments.length === 0 ? undefined : message,
@@ -223,7 +222,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         return false;
       }
     },
-    [agent, can_continue_queue, return_to_latest, show_command_error],
+    [activate_follow_latest, agent, can_continue_queue, show_command_error],
   );
 
   /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
@@ -334,13 +333,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         agent.input.replace_history(target.message.text, message.text);
         return;
       }
-      return_to_latest();
+      activate_follow_latest();
       await agent.reviseLatestRound(target.entryId, message);
       if (target.role === "user") {
         agent.input.replace_history(target.message.text, message.text);
       }
     },
-    [active_inline_edit, agent, return_to_latest],
+    [activate_follow_latest, active_inline_edit, agent],
   );
 
   const cancel_inline_edit = useCallback((): void => {
@@ -439,7 +438,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
   /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
   const continue_latest_round = (): void => {
-    return_to_latest();
+    activate_follow_latest();
     void agent.continue().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.continue");
     });
@@ -451,9 +450,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ref={conversation_ref}
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
-        data-following={conversation_following || undefined}
-        onScroll={(event) => reconcile_conversation_scroll(event.currentTarget)}
-        onScrollEnd={(event) => settle_conversation_scroll(event.currentTarget)}
+        data-following={follow_latest || undefined}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
           {agent.transport === "disconnected" && (
@@ -528,6 +525,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             <AgentTimeline
               entries={agent.entries}
               mention_tokens={mention_tokens}
+              follow_latest={follow_latest}
               on_continue={continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}
@@ -554,18 +552,30 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       </section>
 
       <div className="agent-page__composer-stack">
-        {return_latest_available && (
-          <AppButton
-            type="button"
-            className="agent-page__follow-control"
-            size="xs"
-            variant="secondary"
-            onClick={return_to_latest}
-          >
-            <ArrowDown aria-hidden="true" />
-            {t("agent_page.action.return_latest")}
-          </AppButton>
-        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <AppButton
+              type="button"
+              className="agent-page__follow-control"
+              size="icon-sm"
+              variant="outline"
+              aria-label={t("agent_page.action.follow_latest")}
+              aria-pressed={follow_latest}
+              onClick={() => {
+                if (follow_latest) {
+                  set_follow_latest(false);
+                  return;
+                }
+                activate_follow_latest();
+              }}
+            >
+              <ArrowDownToLine aria-hidden="true" />
+            </AppButton>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={8}>
+            <p>{t("agent_page.action.follow_latest")}</p>
+          </TooltipContent>
+        </Tooltip>
         <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
         <AgentInputQueue
           queue={agent.inputQueue}
