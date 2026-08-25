@@ -539,7 +539,7 @@ function AgentThinkingDetail(props: {
   const id = useId(); // 为 disclosure 的 aria 关系提供稳定局部 ID
   const toggle_id = `agent-thinking-toggle-${id}`;
   const content_id = `agent-thinking-content-${id}`;
-  const { follow_content, resume } = useAgentAutoScroll(props.follow_latest && props.active);
+  const { follow_content, scroll_to_end } = useAgentAutoScroll(props.follow_latest && props.active);
 
   useEffect(() => {
     if (was_active_ref.current && !props.active && props.completed) {
@@ -568,10 +568,10 @@ function AgentThinkingDetail(props: {
     });
     observer.observe(content);
     observer.observe(body);
-    resume(viewport);
+    scroll_to_end(viewport);
     follow_content(viewport);
     return () => observer.disconnect();
-  }, [follow_content, open, props.active, props.follow_latest, resume]);
+  }, [follow_content, open, props.active, props.follow_latest, scroll_to_end]);
 
   useEffect(() => {
     if (
