@@ -3,11 +3,13 @@ import {
   ArrowUp,
   BookA,
   Brain,
+  Boxes,
   ChevronDown,
-  Cpu,
   ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
+  ShieldCheck,
+  ShieldQuestionMark,
   Sparkles,
   Square,
 } from "lucide-react";
@@ -41,6 +43,7 @@ import {
   AGENT_MESSAGE_IMAGE_LIMIT,
   type AgentMessageAttachment,
   type AgentMessageInput,
+  type AgentApprovalMode,
   type AgentResponseAnnotationAttachment,
   type AgentSkillSnapshot,
 } from "@shared/agent";
@@ -60,6 +63,8 @@ import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
+  AppDropdownMenuRadioGroup,
+  AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import {
@@ -125,10 +130,13 @@ type AgentComposerProps = {
   can_continue_queue: boolean;
   can_reset: boolean;
   context_tokens: number | null;
+  approval_mode?: AgentApprovalMode;
+  approval_mode_disabled?: boolean;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
   on_send: (message: AgentMessageInput) => void;
   on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void; // 主 Composer 交给页面决定是否确认关闭思考
+  on_approval_mode_change?: (approval_mode: AgentApprovalMode) => void;
   on_image_error: () => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
@@ -199,6 +207,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { resolved_theme } = useAppearance();
   // inline 由页面拥有目标草稿；locked 只冻结当前 Composer，不改变共享会话事实。
   const inline = props.presentation === "inline";
+  const approval_mode = props.approval_mode ?? "manual";
   const locked = props.locked === true;
   const assistant_editing = inline && props.inline_role === "assistant";
   const placeholder_text = t(
@@ -320,6 +329,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.command !== null;
   const model_controls_disabled =
     model_commands_disabled || props.model_selection.loading || props.model_selection.updating;
+  const approval_mode_disabled =
+    inline ||
+    props.approval_mode_disabled === true ||
+    props.command !== null ||
+    props.unavailable_reason !== null;
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
@@ -334,6 +348,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       : selected_thinking_available
         ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
         : t("app.model.thinking_level.default");
+  const approval_mode_label = t(
+    approval_mode === "auto" ? "agent_page.approval.auto" : "agent_page.approval.manual",
+  );
+  const approval_mode_tooltip = t(
+    approval_mode === "auto"
+      ? "agent_page.approval.tooltip_auto"
+      : "agent_page.approval.tooltip_manual",
+  );
+  const ApprovalModeIcon = approval_mode === "auto" ? ShieldCheck : ShieldQuestionMark;
+  const model_selection_label = t("app.model.selection.label");
+  const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}`;
   // 后端只拥有历史 token；容量跟随当前选择，并会在下一次模型操作前同步到既有会话。
   const context_usage =
     selected_model === null
@@ -824,16 +849,43 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       variant="ghost"
                       className="agent-composer__model-trigger"
                       disabled={model_controls_disabled}
-                      aria-label={`${t("app.model.selection.label")}: ${selected_model_name}`}
+                      aria-label={
+                        context_usage === null
+                          ? model_selection_aria_label
+                          : `${model_selection_aria_label} · ${context_usage.percent}`
+                      }
                     >
-                      <Cpu aria-hidden="true" />
-                      <span>{selected_model_name}</span>
+                      <Boxes aria-hidden="true" />
+                      <span className="agent-composer__model-name">{selected_model_name}</span>
+                      {context_usage !== null ? (
+                        <>
+                          <span
+                            className="agent-composer__model-context-separator"
+                            aria-hidden="true"
+                          >
+                            ·
+                          </span>
+                          <span
+                            className="agent-composer__model-context"
+                            data-tone={context_usage.tone}
+                          >
+                            {context_usage.percent}
+                          </span>
+                        </>
+                      ) : null}
                       <ChevronDown aria-hidden="true" />
                     </AppButton>
                   </AppDropdownMenuTrigger>
                 </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={8}>
-                  <p>{t("app.model.selection.label")}</p>
+                <TooltipContent
+                  className="flex-col items-start gap-0.5 whitespace-nowrap"
+                  side="top"
+                  sideOffset={8}
+                >
+                  {context_usage !== null ? (
+                    <p>{`${context_usage.used} / ${context_usage.total}`}</p>
+                  ) : null}
+                  {context_usage?.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
                 </TooltipContent>
               </Tooltip>
               <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
@@ -884,27 +936,54 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           )}
-          {!inline && context_usage !== null && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className="agent-composer__context-usage"
-                  data-tone={context_usage.tone}
-                  tabIndex={0}
+          {!inline ? (
+            <AppDropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AppDropdownMenuTrigger asChild>
+                    <AppButton
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="agent-composer__approval-trigger"
+                      data-approval-mode={approval_mode}
+                      disabled={approval_mode_disabled}
+                      aria-label={approval_mode_tooltip}
+                    >
+                      <ApprovalModeIcon
+                        className="agent-composer__approval-icon"
+                        aria-hidden="true"
+                      />
+                      <span className="agent-composer__approval-label">{approval_mode_label}</span>
+                      <ChevronDown aria-hidden="true" />
+                    </AppButton>
+                  </AppDropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                  <p>{approval_mode_tooltip}</p>
+                </TooltipContent>
+              </Tooltip>
+              <AppDropdownMenuContent align="end" matchTriggerWidth={false}>
+                <AppDropdownMenuRadioGroup
+                  value={approval_mode}
+                  onValueChange={(value) => {
+                    if (value === "manual" || value === "auto") {
+                      props.on_approval_mode_change?.(value);
+                    }
+                  }}
                 >
-                  {context_usage.percent}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent
-                className="flex-col items-start gap-0.5 whitespace-nowrap"
-                side="top"
-                sideOffset={8}
-              >
-                <p>{`${context_usage.used} / ${context_usage.total}`}</p>
-                {context_usage.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
-              </TooltipContent>
-            </Tooltip>
-          )}
+                  <AppDropdownMenuRadioItem value="manual">
+                    <ShieldQuestionMark aria-hidden="true" />
+                    {t("agent_page.approval.manual")}
+                  </AppDropdownMenuRadioItem>
+                  <AppDropdownMenuRadioItem value="auto">
+                    <ShieldCheck aria-hidden="true" />
+                    {t("agent_page.approval.auto")}
+                  </AppDropdownMenuRadioItem>
+                </AppDropdownMenuRadioGroup>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          ) : null}
           {!inline ? (
             <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
           ) : null}

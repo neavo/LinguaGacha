@@ -5,6 +5,7 @@ import type { ModelThinkingLevel } from "@domain/model";
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
   format_agent_skill_reference,
+  type AgentApprovalMode,
   type AgentEntry,
   type AgentMessageInput,
   type AgentQueuedInput,
@@ -25,6 +26,7 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
+import { AgentApprovalPanel } from "./agent-approval-panel";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -239,6 +241,33 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     }
     void model_selection.update_thinking_level("agent", thinking_level);
   };
+
+  /** 写入审批模式只接受后端确认的会话状态，失败沿用页面命令错误反馈。 */
+  const change_approval_mode = useCallback(
+    (approval_mode: AgentApprovalMode): void => {
+      void agent.setApprovalMode(approval_mode).catch((error: unknown) => {
+        show_command_error(error, "agent_page.error.approval_mode");
+      });
+    },
+    [agent, show_command_error],
+  );
+
+  /** 审批面批准当前后端冻结的写入，错误沿用页面命令反馈。 */
+  const approve_pending_write = useCallback(
+    (switch_to_auto: boolean): void => {
+      void agent.approvePendingWrite(switch_to_auto).catch((error: unknown) => {
+        show_command_error(error, "agent_page.error.approval_decision");
+      });
+    },
+    [agent, show_command_error],
+  );
+
+  /** 审批面拒绝当前后端冻结的写入，保持模型工具失败语义。 */
+  const reject_pending_write = useCallback((): void => {
+    void agent.rejectPendingWrite().catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.approval_decision");
+    });
+  }, [agent, show_command_error]);
 
   /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
@@ -534,6 +563,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           queue={agent.inputQueue}
           disabled={
             agent.command !== null ||
+            agent.pendingWriteApproval !== null ||
             active_inline_edit !== null ||
             unavailable_reason !== null ||
             compacting ||
@@ -557,29 +587,40 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             run_queue_command(() => agent.sendQueuedMessage(id), "agent_page.error.queue_send")
           }
         />
-        <AgentComposer
-          ref={composer_ref}
-          locked={active_inline_edit !== null}
-          skills={agent.skills}
-          terms={available_terms}
-          term_hit_counts={term_hit_counts}
-          running={is_running}
-          stop_disabled={workspace_apply_running}
-          compacting={compacting}
-          compaction_failed={compaction_failed}
-          unavailable_reason={unavailable_reason}
-          command={agent.command}
-          can_continue_queue={can_continue_queue}
-          can_reset={!agent_restoring && agent.entries.length > 0}
-          context_tokens={agent.contextTokens}
-          model_selection={model_selection}
-          input_session={agent.input}
-          on_send={submit_message}
-          on_thinking_level_change={change_agent_thinking_level}
-          on_image_error={() => push_toast("error", t("agent_page.error.image"))}
-          on_stop={stop}
-          on_reset={() => set_reset_dialog_open(true)}
-        />
+        {agent.pendingWriteApproval === null ? (
+          <AgentComposer
+            ref={composer_ref}
+            locked={active_inline_edit !== null}
+            skills={agent.skills}
+            terms={available_terms}
+            term_hit_counts={term_hit_counts}
+            running={is_running}
+            stop_disabled={workspace_apply_running}
+            compacting={compacting}
+            compaction_failed={compaction_failed}
+            unavailable_reason={unavailable_reason}
+            command={agent.command}
+            can_continue_queue={can_continue_queue}
+            can_reset={!agent_restoring && agent.entries.length > 0}
+            context_tokens={agent.contextTokens}
+            approval_mode={agent.approvalMode}
+            approval_mode_disabled={workspace_apply_running}
+            model_selection={model_selection}
+            input_session={agent.input}
+            on_send={submit_message}
+            on_thinking_level_change={change_agent_thinking_level}
+            on_approval_mode_change={change_approval_mode}
+            on_image_error={() => push_toast("error", t("agent_page.error.image"))}
+            on_stop={stop}
+            on_reset={() => set_reset_dialog_open(true)}
+          />
+        ) : (
+          <AgentApprovalPanel
+            pending={agent.pendingWriteApproval}
+            on_approve={approve_pending_write}
+            on_reject={reject_pending_write}
+          />
+        )}
       </div>
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}

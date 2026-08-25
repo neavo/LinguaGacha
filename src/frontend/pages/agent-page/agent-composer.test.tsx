@@ -21,6 +21,8 @@ type RenderComposerOptions = Partial<
   Pick<
     AgentComposerTestProps,
     | "can_reset"
+    | "approval_mode"
+    | "approval_mode_disabled"
     | "can_continue_queue"
     | "command"
     | "compacting"
@@ -32,6 +34,7 @@ type RenderComposerOptions = Partial<
     | "on_reset"
     | "on_send"
     | "on_stop"
+    | "on_approval_mode_change"
     | "presentation"
     | "running"
     | "stop_disabled"
@@ -667,6 +670,30 @@ describe("AgentComposer", () => {
     expect(trigger?.parentElement?.tabIndex).toBe(0);
   });
 
+  it("显示当前写入请求审批模式并在运行 apply 时禁用入口", async () => {
+    const on_approval_mode_change = vi.fn();
+    const view = await render_composer({
+      approval_mode: "auto",
+      approval_mode_disabled: true,
+      on_approval_mode_change,
+    });
+
+    const trigger = view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger");
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute("aria-label")?.trim()).not.toBe("");
+    expect(trigger?.disabled).toBe(true);
+    expect(on_approval_mode_change).not.toHaveBeenCalled();
+  });
+
+  it("将上下文使用率并入模型选择入口，并保持思考入口独立", async () => {
+    const view = await render_composer({ context_tokens: 31_488 });
+
+    expect(view.querySelector(".agent-composer__model-context")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__model-context-separator")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__context-usage")).toBeNull();
+    expect(view.querySelector(".agent-composer__thinking-trigger")).not.toBeNull();
+  });
+
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -696,6 +723,8 @@ describe("AgentComposer", () => {
             can_continue_queue={options.can_continue_queue ?? false}
             can_reset={options.can_reset ?? true}
             context_tokens={options.context_tokens ?? null}
+            approval_mode={options.approval_mode}
+            approval_mode_disabled={options.approval_mode_disabled ?? false}
             model_selection={{
               snapshot: {
                 model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
@@ -718,6 +747,7 @@ describe("AgentComposer", () => {
             }}
             input_session={options.input_session ?? default_input_session}
             on_send={options.on_send ?? vi.fn()}
+            on_approval_mode_change={options.on_approval_mode_change}
             on_image_error={options.on_image_error ?? vi.fn()}
             on_stop={options.on_stop ?? vi.fn(async () => undefined)}
             on_reset={options.on_reset ?? vi.fn()}

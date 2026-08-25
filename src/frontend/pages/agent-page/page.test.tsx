@@ -548,6 +548,54 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
+  it("待审批时由页面用审批面互斥替换输入器", async () => {
+    const view = await render_page({
+      pendingWriteApproval: {
+        id: "apply-1",
+        status: "waiting",
+        summary: {
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          prompts: 0,
+        },
+      },
+    });
+
+    expect(view.querySelector(".agent-approval")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__editor")).toBeNull();
+  });
+
+  it("写入决策失败显示对应恢复提示", async () => {
+    const approve_pending_write = vi.fn(() => Promise.reject(new Error("offline")));
+    const view = await render_page({
+      pendingWriteApproval: {
+        id: "apply-1",
+        status: "waiting",
+        summary: {
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          prompts: 0,
+        },
+      },
+      approvePendingWrite: approve_pending_write,
+    });
+    const approve = view.querySelector<HTMLButtonElement>("button[aria-keyshortcuts='Enter']");
+    if (approve === null) throw new Error("缺少写入批准按钮");
+
+    await act(async () => approve.click());
+    await act(async () =>
+      vi.waitFor(() =>
+        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.approval_decision"),
+      ),
+    );
+  });
+
   it("压缩失败只显示原位继续入口并调用统一命令", async () => {
     const continue_session = vi.fn(async () => undefined);
     const view = await render_page({
@@ -874,6 +922,8 @@ describe("AgentPage", () => {
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
+    approvalMode: overrides.approvalMode ?? "manual",
+    pendingWriteApproval: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
       assistant_entry("assistant-1", "**变更方案**", "success", 1),
@@ -900,6 +950,9 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     continue: vi.fn(async () => undefined),
     stop: vi.fn(),
     reset: vi.fn(async () => undefined),
+    setApprovalMode: vi.fn(async () => undefined),
+    approvePendingWrite: vi.fn(async () => undefined),
+    rejectPendingWrite: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,
   };

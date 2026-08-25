@@ -11,6 +11,9 @@ import {
 
 import type {
   AgentEntry,
+  AgentApprovalMode,
+  AgentPendingWriteApproval,
+  AgentPendingWriteSummary,
   AgentEntryStatus,
   AgentInputQueueSnapshot,
   AgentMessageInput,
@@ -39,6 +42,8 @@ import {
 /** 首帧占位不代表恢复成功；transport 在合法快照或明确失败后才离开 restoring。 */
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
+  approvalMode: "manual",
+  pendingWriteApproval: null,
   entries: [],
   skills: [],
   inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -57,12 +62,16 @@ export type AgentCommand =
   | "queue_delete"
   | "queue_reorder"
   | "queue_send"
+  | "approval_mode"
+  | "approval_decision"
   | null;
 /** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
 type AgentSessionStateView = {
   state: AgentSessionState;
+  approvalMode: AgentApprovalMode;
+  pendingWriteApproval: AgentPendingWriteApproval | null;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
@@ -79,6 +88,9 @@ type AgentSessionStateView = {
   continue: (message?: AgentMessageInput) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<void>;
+  setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
+  approvePendingWrite: (switch_to_auto: boolean) => Promise<void>;
+  rejectPendingWrite: () => Promise<void>;
   reconnect: () => void;
 };
 
@@ -332,6 +344,34 @@ function useAgentSessionState(
     await execute_command("reset", () => api_fetch<AgentSessionSnapshot>("/api/agent/reset"));
   };
 
+  /** 写入审批模式由后端确认并通过 ack / SSE 回流，页面不做本地乐观切换。 */
+  const set_approval_mode = async (approval_mode: AgentApprovalMode): Promise<void> => {
+    await execute_command("approval_mode", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/approval-mode", { approvalMode: approval_mode }),
+    );
+  };
+
+  /** 以 snapshot 中冻结的审批 ID 确认当前写入，避免页面自行猜测状态。 */
+  const approve_pending_write = async (switch_to_auto: boolean): Promise<void> => {
+    const pending = snapshot.pendingWriteApproval;
+    if (pending === null) return;
+    await execute_command("approval_decision", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/approval/approve", {
+        id: pending.id,
+        switchToAuto: switch_to_auto,
+      }),
+    );
+  };
+
+  /** 以 snapshot 中冻结的审批 ID 拒绝当前写入，工具终态继续由后端事件同步。 */
+  const reject_pending_write = async (): Promise<void> => {
+    const pending = snapshot.pendingWriteApproval;
+    if (pending === null) return;
+    await execute_command("approval_decision", () =>
+      api_fetch<AgentSessionSnapshot>("/api/agent/approval/reject", { id: pending.id }),
+    );
+  };
+
   /** 显式重试把 transport 置回 restoring，并推进 connection revision 重建传输。 */
   const reconnect = (): void => {
     set_transport("restoring");
@@ -340,6 +380,8 @@ function useAgentSessionState(
 
   return {
     state: snapshot.state,
+    approvalMode: snapshot.approvalMode,
+    pendingWriteApproval: snapshot.pendingWriteApproval,
     entries: snapshot.entries,
     skills: snapshot.skills,
     inputQueue: snapshot.inputQueue,
@@ -356,6 +398,9 @@ function useAgentSessionState(
     continue: continue_session,
     stop,
     reset,
+    setApprovalMode: set_approval_mode,
+    approvePendingWrite: approve_pending_write,
+    rejectPendingWrite: reject_pending_write,
     reconnect,
   };
 }
@@ -444,6 +489,10 @@ function apply_agent_event(
       return normalize_snapshot(event.snapshot);
     case "session_state":
       return { ...snapshot, state: event.state };
+    case "approval_mode":
+      return { ...snapshot, approvalMode: event.approvalMode };
+    case "pending_write_approval":
+      return { ...snapshot, pendingWriteApproval: event.pendingWriteApproval };
     case "input_queue":
       return { ...snapshot, inputQueue: event.inputQueue };
     case "task_progress":
@@ -466,6 +515,8 @@ function apply_agent_event(
 function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const record = read_json_record(value);
   const state = normalize_state(record["state"]);
+  const approval_mode = normalize_approval_mode(record["approvalMode"]);
+  const pending_write_approval = normalize_pending_write_approval(record["pendingWriteApproval"]);
   const entries = Array.isArray(record["entries"])
     ? record["entries"].flatMap(normalize_entry)
     : [];
@@ -473,11 +524,19 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const input_queue = normalize_input_queue(record["inputQueue"]);
   const task_progress = normalize_task_progress(record["taskProgress"]);
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
-  if (input_queue === null || task_progress === null || context_tokens === undefined) {
+  if (
+    approval_mode === null ||
+    pending_write_approval === undefined ||
+    input_queue === null ||
+    task_progress === null ||
+    context_tokens === undefined
+  ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
   return {
     state,
+    approvalMode: approval_mode,
+    pendingWriteApproval: pending_write_approval,
     entries,
     skills,
     inputQueue: input_queue,
@@ -494,6 +553,18 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
     case "session_state":
       return { type: "session_state", state: normalize_state(record["state"]) };
+    case "approval_mode": {
+      const approval_mode = normalize_approval_mode(record["approvalMode"]);
+      return approval_mode === null ? null : { type: "approval_mode", approvalMode: approval_mode };
+    }
+    case "pending_write_approval": {
+      const pending_write_approval = normalize_pending_write_approval(
+        record["pendingWriteApproval"],
+      );
+      return pending_write_approval === undefined
+        ? null
+        : { type: "pending_write_approval", pendingWriteApproval: pending_write_approval };
+    }
     case "input_queue": {
       const input_queue = normalize_input_queue(record["inputQueue"]);
       return input_queue === null ? null : { type: "input_queue", inputQueue: input_queue };
@@ -666,6 +737,60 @@ function normalize_entry_status(value: unknown): AgentEntryStatus | null {
 function normalize_state(value: unknown): AgentSessionState {
   if (value === "idle" || value === "running") return value;
   throw new TypeError("Agent snapshot state is invalid.");
+}
+
+/** 审批模式是公开协议窄枚举，快照与增量使用同一严格值域。 */
+function normalize_approval_mode(value: unknown): AgentApprovalMode | null {
+  return value === "manual" || value === "auto" ? value : null;
+}
+
+/** 待审批状态只接纳控制面 ID、阶段与后端生成的变更摘要，不进入时间线。 */
+function normalize_pending_write_approval(
+  value: unknown,
+): AgentPendingWriteApproval | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  if (!is_json_record(value)) return undefined;
+  const id = value["id"];
+  const status = value["status"];
+  if (
+    typeof id !== "string" ||
+    id.trim() === "" ||
+    (status !== "waiting" && status !== "processing")
+  ) {
+    return undefined;
+  }
+  const raw_summary = value["summary"];
+  if (!is_json_record(raw_summary)) return undefined;
+  const items = raw_summary["items"];
+  const glossary = raw_summary["glossary"];
+  const text_preserve = raw_summary["textPreserve"];
+  const pre_replacement = raw_summary["preReplacement"];
+  const post_replacement = raw_summary["postReplacement"];
+  const prompts = raw_summary["prompts"];
+  if (
+    ![items, glossary, text_preserve, pre_replacement, post_replacement, prompts].every(
+      (count) => typeof count === "number" && Number.isInteger(count) && count >= 0,
+    ) ||
+    (items as number) +
+      (glossary as number) +
+      (text_preserve as number) +
+      (pre_replacement as number) +
+      (post_replacement as number) +
+      (prompts as number) ===
+      0
+  ) {
+    return undefined;
+  }
+  const summary: AgentPendingWriteSummary = {
+    items: items as number,
+    glossary: glossary as number,
+    textPreserve: text_preserve as number,
+    preReplacement: pre_replacement as number,
+    postReplacement: post_replacement as number,
+    prompts: prompts as number,
+  };
+  return { id, status, summary };
 }
 
 /** skill snapshot 严格接纳新协议的完整 UI 描述，不兼容旧单数 description。 */

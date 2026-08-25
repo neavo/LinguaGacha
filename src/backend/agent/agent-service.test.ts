@@ -16,7 +16,7 @@ import {
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
-import type { AgentSessionEvent } from "../../shared/agent";
+import type { AgentSessionEvent, AgentSessionSnapshot } from "../../shared/agent";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
 import type { AgentWebPort, AgentWebSearchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -499,6 +499,152 @@ describe("AgentService", () => {
       "request.validation_failed",
     );
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+  });
+
+  it("写入审批模式通过快照与事件同步，模型请求保持稳定", async () => {
+    const fixture = await create_service();
+
+    expect(fixture.service.get_snapshot()).toMatchObject({ approvalMode: "manual" });
+    expect(fixture.service.set_approval_mode({ approvalMode: "auto" })).toMatchObject({
+      approvalMode: "auto",
+    });
+    expect(fixture.publish).toHaveBeenCalledWith("agent.session_event", {
+      type: "approval_mode",
+      approvalMode: "auto",
+    });
+
+    await fixture.service.send_message({ text: "执行任务", attachments: [] });
+    await wait_for_idle(fixture.service);
+    const stable_system_prompt = fake_agent_state.system_prompts[0];
+
+    await fixture.service.reset();
+    await fixture.service.send_message({ text: "手动任务", attachments: [] });
+    await wait_for_idle(fixture.service);
+    expect(fake_agent_state.system_prompts.at(-1)).toBe(stable_system_prompt);
+
+    expect(fixture.service.get_snapshot()).toMatchObject({ approvalMode: "manual" });
+    expect(() => fixture.service.set_approval_mode({ approvalMode: "unknown" })).toThrow(
+      "request.validation_failed",
+    );
+  });
+
+  it("批准命令确认决定后由 processing 状态承接原工具调用", async () => {
+    const fixture = await create_service();
+    fake_agent_state.mode = "write";
+    fake_agent_state.hold_tool_execution = true;
+
+    await fixture.service.send_message({ text: "写入", attachments: [] });
+    await vi.waitFor(() =>
+      expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
+        status: "waiting",
+        summary: {
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          prompts: 0,
+        },
+      }),
+    );
+    const pending = fixture.service.get_snapshot().pendingWriteApproval;
+    if (pending === null) throw new Error("缺少待审批写入");
+    expect(fixture.service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "running",
+        }),
+      ]),
+    );
+
+    let approval_ack: AgentSessionSnapshot | null = null;
+    const approval = Promise.resolve(
+      fixture.service.approve_pending_write({ id: pending.id, switchToAuto: true }),
+    ).then((snapshot) => {
+      approval_ack = snapshot;
+    });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(approval_ack).toMatchObject({
+        pendingWriteApproval: { id: pending.id, status: "processing" },
+      });
+    } finally {
+      fake_agent_state.release_tool_execution?.();
+      await approval;
+    }
+    await wait_for_idle(fixture.service);
+    expect(fixture.service.get_snapshot().pendingWriteApproval).toBeNull();
+    expect(fixture.service.get_snapshot().approvalMode).toBe("auto");
+    expect(fixture.service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "success",
+        }),
+      ]),
+    );
+  });
+
+  it("拒绝手动写入后以工具失败结束", async () => {
+    const fixture = await create_service();
+    fake_agent_state.mode = "write";
+
+    await fixture.service.send_message({ text: "拒绝写入", attachments: [] });
+    await vi.waitFor(() =>
+      expect(fixture.service.get_snapshot().pendingWriteApproval).not.toBeNull(),
+    );
+    const pending = fixture.service.get_snapshot().pendingWriteApproval;
+    if (pending === null) throw new Error("缺少待审批写入");
+
+    await fixture.service.reject_pending_write({ id: pending.id });
+    await wait_for_idle(fixture.service);
+    expect(fixture.service.get_snapshot().pendingWriteApproval).toBeNull();
+    expect(fixture.service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "error",
+          output: expect.stringContaining('"action":"await_user"'),
+        }),
+      ]),
+    );
+  });
+
+  it("reset 在 processing 阶段隔离延迟决定", async () => {
+    const fixture = await create_service();
+    fake_agent_state.mode = "write";
+    fake_agent_state.hold_tool_execution = true;
+
+    await fixture.service.send_message({ text: "写入后重置", attachments: [] });
+    await vi.waitFor(() =>
+      expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
+        status: "waiting",
+      }),
+    );
+    const pending = fixture.service.get_snapshot().pendingWriteApproval;
+    if (pending === null) throw new Error("缺少待审批写入");
+
+    expect(
+      fixture.service.approve_pending_write({ id: pending.id, switchToAuto: false }),
+    ).toMatchObject({ pendingWriteApproval: { id: pending.id, status: "processing" } });
+    await expect(fixture.service.reset()).resolves.toMatchObject({
+      state: "idle",
+      pendingWriteApproval: null,
+      entries: [],
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(fake_agent_state.release_tool_execution).toBeNull();
+    expect(fixture.service.get_snapshot()).toMatchObject({
+      state: "idle",
+      pendingWriteApproval: null,
+      entries: [],
+    });
   });
 
   it("把纯图片作为 WebP 传给模型并原样写入公开时间线", async () => {
@@ -1339,6 +1485,8 @@ describe("AgentService", () => {
 
     expect(service.get_snapshot()).toEqual({
       state: "idle",
+      approvalMode: "manual",
+      pendingWriteApproval: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -1544,6 +1692,7 @@ describe("AgentService", () => {
 
   it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
     const { service, runtime_gate, log_append } = await create_service();
+    service.set_approval_mode({ approvalMode: "auto" });
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "写入", attachments: [] });
@@ -1625,6 +1774,8 @@ describe("AgentService", () => {
     expect(fake_agent_state.abort_count).toBe(1);
     expect(service.get_snapshot()).toEqual({
       state: "idle",
+      approvalMode: "manual",
+      pendingWriteApproval: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -2338,7 +2489,15 @@ describe("AgentService", () => {
               await wait_for_held_tool();
               return { items: read_items() };
             }),
-            apply_workspace: vi.fn(async () => {
+            apply_workspace: vi.fn(async (request_approval) => {
+              await request_approval?.({
+                items: 1,
+                glossary: 0,
+                textPreserve: 0,
+                preReplacement: 0,
+                postReplacement: 0,
+                prompts: 0,
+              });
               await wait_for_held_tool();
               return { status: "applied" };
             }),

@@ -20,6 +20,9 @@ const POST_PATHS = new Set([
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
+  "/api/agent/approval-mode",
+  "/api/agent/approval/approve",
+  "/api/agent/approval/reject",
   "/api/agent/queue/update",
   "/api/agent/queue/delete",
   "/api/agent/queue/reorder",
@@ -114,7 +117,14 @@ describe("register_api_routes", () => {
 
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,
-      data: { state: "idle", entries: [], skills: [], contextTokens: null },
+      data: {
+        state: "idle",
+        approvalMode: "manual",
+        pendingWriteApproval: null,
+        entries: [],
+        skills: [],
+        contextTokens: null,
+      },
     });
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
       ok: true,
@@ -138,6 +148,21 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
     ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
+    const approval_mode = { approvalMode: "auto" };
+    expect(read_post_handler(fixture.post_json, "/api/agent/approval-mode")(approval_mode)).toEqual(
+      { state: "idle", approvalMode: "auto" },
+    );
+    expect(fixture.set_approval_mode).toHaveBeenCalledWith(approval_mode);
+    const pending = { id: "apply-1", switchToAuto: true };
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/approval/approve")(pending),
+    ).resolves.toEqual({ state: "idle", approvalMode: "manual" });
+    expect(fixture.approve_pending_write).toHaveBeenCalledWith(pending);
+    const rejected = { id: "apply-1" };
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/approval/reject")(rejected),
+    ).resolves.toEqual({ state: "idle", approvalMode: "manual" });
+    expect(fixture.reject_pending_write).toHaveBeenCalledWith(rejected);
     const queued = { id: "queue-1" };
     expect(read_post_handler(fixture.post_json, "/api/agent/queue/delete")(queued)).toEqual({
       state: "running",
@@ -228,6 +253,9 @@ function create_route_fixture() {
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(async () => ({ state: "running" }));
+  const set_approval_mode = vi.fn(() => ({ state: "idle", approvalMode: "auto" }));
+  const approve_pending_write = vi.fn(async () => ({ state: "idle", approvalMode: "manual" }));
+  const reject_pending_write = vi.fn(async () => ({ state: "idle", approvalMode: "manual" }));
   const revise_latest_round = vi.fn(async () => ({ state: "idle" }));
   const update_queued_message = vi.fn(() => ({ state: "running" }));
   const delete_queued_message = vi.fn(() => ({ state: "running" }));
@@ -270,11 +298,16 @@ function create_route_fixture() {
     agent: {
       get_snapshot: vi.fn(() => ({
         state: "idle",
+        approvalMode: "manual",
+        pendingWriteApproval: null,
         entries: [],
         skills: [],
         contextTokens: null,
       })),
       send_message,
+      set_approval_mode,
+      approve_pending_write,
+      reject_pending_write,
       update_queued_message,
       delete_queued_message,
       reorder_queued_messages,
@@ -307,6 +340,9 @@ function create_route_fixture() {
     revise_latest_round,
     reset,
     send_message,
+    set_approval_mode,
+    approve_pending_write,
+    reject_pending_write,
     send_queued_message,
     reorder_queued_messages,
     update_queued_message,
