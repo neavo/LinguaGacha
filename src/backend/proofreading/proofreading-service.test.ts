@@ -216,6 +216,51 @@ describe("ProofreadingService", () => {
     );
   });
 
+  it("超过存储分块大小的状态批量仍在单事务内提交", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    const item_count = 501;
+    database.set_items(
+      lg_path,
+      Array.from({ length: item_count }, (_, index) =>
+        create_project_item({ id: index + 1, src: `原文-${index + 1}` }),
+      ),
+    );
+
+    const result = await service.apply_item_changes({
+      changes: Array.from({ length: item_count }, (_, index) => ({
+        item_id: index + 1,
+        status: "PROCESSED",
+      })),
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "proofreading_apply_item_changes",
+          sectionRevisions: { items: 1, proofreading: 1 },
+          items: { payloadMode: "canonical-delta" },
+        },
+      ],
+    });
+    expect(
+      (result.changes[0]?.items as { changedIds?: number[] } | undefined)?.changedIds,
+    ).toHaveLength(item_count);
+    expect(database.get_item_count(lg_path)).toBe(item_count);
+    expect(database.get_items_by_ids(lg_path, [1, item_count])).toEqual([
+      expect.objectContaining({ id: 1, status: "PROCESSED" }),
+      expect.objectContaining({ id: item_count, status: "PROCESSED" }),
+    ]);
+    expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+      total_line: item_count,
+      processed_line: item_count,
+      error_line: 0,
+      line: item_count,
+    });
+    expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
+  });
+
   it("重复、越界、缺失 item 或非法字段整批拒绝且不发布事件", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [create_project_item({ id: 1, dst: "旧译文" })]);

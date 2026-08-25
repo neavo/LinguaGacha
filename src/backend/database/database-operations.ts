@@ -19,6 +19,19 @@ import {
 
 type DatabaseRow = Record<string, unknown>;
 
+// SQLite 的 IN 参数统一在数据库边界分块；业务批量大小不应复用这个存储安全值。
+const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
+
+/** 让所有 IN 查询共享同一存储分块边界，避免调用方各自猜测 SQLite 参数容量。 */
+function for_each_sqlite_in_clause_chunk<T>(
+  values: readonly T[],
+  callback: (chunk: readonly T[]) => void,
+): void {
+  for (let index = 0; index < values.length; index += SQLITE_IN_CLAUSE_CHUNK_SIZE) {
+    callback(values.slice(index, index + SQLITE_IN_CLAUSE_CHUNK_SIZE));
+  }
+}
+
 export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
 
 /**
@@ -710,22 +723,28 @@ export class ProjectDatabase {
     project_path: string,
     srcs: string[],
   ): JsonValue {
-    const normalized_srcs = srcs.map((src) => src.trim()).filter((src) => src !== "");
+    const normalized_srcs = [
+      ...new Set(srcs.map((src) => src.trim()).filter((src) => src !== "")),
+    ].sort();
     if (normalized_srcs.length === 0) {
       return [];
     }
-    const placeholders = normalized_srcs.map(() => "?").join(",");
     const db = this.open_project(project_path);
-    return this.normalize_candidate_rows(
-      db
-        .prepare(
-          `SELECT src, dst_votes, info_votes, observation_count, first_seen_at, last_seen_at, case_sensitive
-           FROM analysis_candidate_aggregate
-           WHERE src IN (${placeholders})
-           ORDER BY src`,
-        )
-        .all(...normalized_srcs),
-    );
+    const rows: DatabaseRow[] = [];
+    for_each_sqlite_in_clause_chunk(normalized_srcs, (chunk) => {
+      const placeholders = chunk.map(() => "?").join(",");
+      rows.push(
+        ...db
+          .prepare(
+            `SELECT src, dst_votes, info_votes, observation_count, first_seen_at, last_seen_at, case_sensitive
+             FROM analysis_candidate_aggregate
+             WHERE src IN (${placeholders})
+             ORDER BY src`,
+          )
+          .all(...chunk),
+      );
+    });
+    return this.normalize_candidate_rows(rows);
   }
 
   /**
@@ -773,10 +792,13 @@ export class ProjectDatabase {
     if (normalized_srcs.length === 0) {
       return;
     }
-    const placeholders = normalized_srcs.map(() => "?").join(",");
-    this.open_project(project_path)
-      .prepare(`DELETE FROM analysis_candidate_aggregate WHERE src IN (${placeholders})`)
-      .run(...normalized_srcs);
+    const db = this.open_project(project_path);
+    for_each_sqlite_in_clause_chunk(normalized_srcs, (chunk) => {
+      const placeholders = chunk.map(() => "?").join(",");
+      db.prepare(`DELETE FROM analysis_candidate_aggregate WHERE src IN (${placeholders})`).run(
+        ...chunk,
+      );
+    });
   }
 
   /**
@@ -953,8 +975,7 @@ export class ProjectDatabase {
     }
     const rows_by_id = new Map<number, DatabaseRow>();
     const db = this.open_project(project_path);
-    for (let index = 0; index < normalized_ids.length; index += 500) {
-      const chunk = normalized_ids.slice(index, index + 500);
+    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of db
         .prepare(`SELECT id, data FROM items WHERE id IN (${placeholders})`)
@@ -962,7 +983,7 @@ export class ProjectDatabase {
         const item_id = row_number(row, "id");
         rows_by_id.set(item_id, { ...this.value_record(json_parse(row["data"])), id: item_id });
       }
-    }
+    });
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
       .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
@@ -984,8 +1005,7 @@ export class ProjectDatabase {
     }
     const rows_by_id = new Map<number, DatabaseRow>();
     const db = this.open_project(project_path);
-    for (let index = 0; index < normalized_ids.length; index += 500) {
-      const chunk = normalized_ids.slice(index, index + 500);
+    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of db
         .prepare(
@@ -1009,7 +1029,7 @@ export class ProjectDatabase {
           retry_count: row_number(row, "retry_count"),
         });
       }
-    }
+    });
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
       .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
@@ -1135,13 +1155,12 @@ export class ProjectDatabase {
         : patch_entry.value,
     ]);
     const db = this.open_project(project_path);
-    for (let index = 0; index < normalized_ids.length; index += 500) {
-      const chunk = normalized_ids.slice(index, index + 500);
+    for_each_sqlite_in_clause_chunk(normalized_ids, (chunk) => {
       const placeholders = chunk.map(() => "?").join(",");
       db.prepare(
         `UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id IN (${placeholders})`,
       ).run(...patch_values, ...chunk);
-    }
+    });
   }
 
   /**

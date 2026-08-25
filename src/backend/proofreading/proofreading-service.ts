@@ -30,7 +30,6 @@ type ProofreadingItemUpdate = ProofreadingItemUpdateFields & {
   item_id: number;
 };
 
-const MAX_PROOFREADING_ITEM_UPDATES = 500;
 const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_apply_item_changes";
 
 /**
@@ -291,11 +290,7 @@ export class ProofreadingService {
    * item 更新命令必须非空、字段已知、ID 唯一且每项至少包含一个可写字段。
    */
   private normalize_item_updates(value: JsonValue | undefined): ProofreadingItemUpdate[] {
-    if (
-      !Array.isArray(value) ||
-      value.length === 0 ||
-      value.length > MAX_PROOFREADING_ITEM_UPDATES
-    ) {
+    if (!Array.isArray(value) || value.length === 0) {
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "invalid_proofreading_item_updates" },
       });
