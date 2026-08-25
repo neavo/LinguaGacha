@@ -50,27 +50,33 @@ const resize_observers = new Set<TestResizeObserver>();
 /** happy-dom 不主动分发内容尺寸变化，测试显式推进真实观察回调。 */
 class TestResizeObserver implements ResizeObserver {
   private readonly callback: ResizeObserverCallback;
+  private readonly targets = new Set<Element>();
 
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     resize_observers.add(this);
   }
 
-  observe(): void {}
-  unobserve(): void {}
+  observe(target: Element): void {
+    this.targets.add(target);
+  }
+  unobserve(target: Element): void {
+    this.targets.delete(target);
+  }
   disconnect(): void {
     resize_observers.delete(this);
   }
   takeRecords(): ResizeObserverEntry[] {
     return [];
   }
-  notify(): void {
+  notify(target?: Element): void {
+    if (target !== undefined && !this.targets.has(target)) return;
     this.callback([], this);
   }
 }
 
-function notify_resize_observers(): void {
-  for (const observer of resize_observers) observer.notify();
+function notify_resize_observers(target?: Element): void {
+  for (const observer of resize_observers) observer.notify(target);
 }
 
 /** 等待合帧布局跟随完成。 */
@@ -401,41 +407,63 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("新会话激活时同步归底，用户离底一次就显示回到最新", async () => {
+  it("最新开关默认激活且新会话归底", async () => {
     const view = await render_page({ entries: [] });
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 0, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
 
-    await render_page();
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
     expect(scroll.top).toBe(scroll_end(scroll));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    const button = get_follow_latest_button(view);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("滚动不会改变最新开关，按钮显式切换自由滚动与跟随", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
 
     scroll.top = 100;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    const button = get_follow_latest_button(view);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => button.click());
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    scroll.height = 1_200;
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
+    expect(scroll.top).toBe(100);
+
+    await act(async () => button.click());
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("新公开会话不会继承旧会话的阅读位置", async () => {
+  it("新会话不会继承旧会话的阅读位置", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 100, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
 
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    const button = get_follow_latest_button(view);
+    await act(async () => button.click());
+    expect(button.getAttribute("aria-pressed")).toBe("false");
 
     await render_page({ entries: [] });
-    await render_page({
-      entries: [user_entry("user-next", "新会话", "success", 2, 3)],
-    });
+    await render_page({ entries: [user_entry("user-next", "新会话", "success", 2, 3)] });
     expect(scroll.top).toBe(scroll_end(scroll));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("真实 scroll 会取消已排队的布局跟随", async () => {
+  it("自由滚动会取消已排队的布局跟随", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
@@ -444,61 +472,37 @@ describe("AgentPage", () => {
 
     scroll.height = 1_100;
     await act(async () => notify_resize_observers());
+    const button = get_follow_latest_button(view);
+    await act(async () => button.click());
     scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
     await act(async () => next_animation_frame());
-
     expect(scroll.top).toBe(100);
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    expect(button.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("布局变化只合并一个跟随帧，不靠输入事件夺回所有权", async () => {
+  it("布局变化只在最新模式归底", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
 
-    act(() => {
-      scroll.height = 1_100;
-      notify_resize_observers();
-      expect(scroll.top).toBe(600);
-    });
+    scroll.height = 1_100;
+    await act(async () => notify_resize_observers());
     await act(async () => next_animation_frame());
-
     expect(scroll.top).toBe(scroll_end(scroll));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(get_follow_latest_button(view).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("回到最新会等待 scrollend，迟到历史事件不会重新锁死顶部", async () => {
-    const view = await render_page();
-    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 100, height: 1_000, viewport: 400 };
-    install_scroll_metrics(conversation, scroll);
-
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    const button = find_button_by_text(view, "agent_page.action.return_latest");
-    if (button === undefined) throw new Error("缺少回到最新入口");
-    await act(async () => button.click());
-    expect(scroll.top).toBe(scroll_end(scroll));
-
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    await act(async () => conversation.dispatchEvent(new Event("scrollend")));
-    expect(scroll.top).toBe(scroll_end(scroll));
-
-    scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
-  });
-
-  it("已经在底部时恢复不会卡在等待 scrollend，后续内容仍然跟随", async () => {
+  it("发送消息显式恢复最新跟随", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ send });
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
+    const follow_button = get_follow_latest_button(view);
+    await act(async () => follow_button.click());
 
     const editor = get_editor(view);
     await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
@@ -510,38 +514,50 @@ describe("AgentPage", () => {
     await act(async () => next_animation_frame());
 
     expect(scroll.top).toBe(scroll_end(scroll));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    expect(follow_button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("外层真实位置切换跟随状态，自然或显式归底后恢复内容跟随", async () => {
-    const view = await render_page();
+  it("活动思考视口服从页面级最新开关", async () => {
+    const view = await render_page({
+      entries: [
+        user_entry("user-thinking", "开始检查", "running", 0, null),
+        assistant_parts_entry(
+          "assistant-thinking",
+          [{ kind: "thinking", text: "第一步\n第二步" }],
+          "running",
+          1,
+        ),
+      ],
+    });
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 100, height: 1_000, viewport: 400 };
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
+    const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
+    const body = view.querySelector<HTMLPreElement>(".agent-thinking-entry__viewport pre");
+    if (viewport === null || body === null) throw new Error("缺少思考滚动容器");
+    const thinking_scroll = { top: 240, height: 480, viewport: 240 };
+    install_scroll_metrics(viewport, thinking_scroll);
+    const button = get_follow_latest_button(view);
 
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    thinking_scroll.top = 80;
+    thinking_scroll.height = 640;
+    await act(async () => notify_resize_observers(body));
+    await act(async () => next_animation_frame());
+    expect(thinking_scroll.top).toBe(scroll_end(thinking_scroll));
 
-    scroll.height = 1_200;
-    await act(async () => notify_resize_observers());
-    expect(scroll.top).toBe(100);
+    await act(async () => button.click());
+    thinking_scroll.top = 80;
+    thinking_scroll.height = 800;
+    await act(async () => notify_resize_observers(body));
+    await act(async () => next_animation_frame());
+    expect(thinking_scroll.top).toBe(80);
 
-    scroll.top = 800;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
-    scroll.height = 1_300;
-    await act(async () => notify_resize_observers());
-    expect(scroll.top).toBe(scroll_end(scroll));
-
-    scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    await act(async () => find_button_by_text(view, "agent_page.action.return_latest")?.click());
-    expect(scroll.top).toBe(scroll_end(scroll));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+    await act(async () => button.click());
+    expect(thinking_scroll.top).toBe(scroll_end(thinking_scroll));
   });
 
-  it("思考 viewport 的 scroll 不改变外层历史状态", async () => {
+  it("历史思考视口不受页面最新开关归底", async () => {
     const view = await render_page({
       entries: [
         user_entry("user-thinking", "开始检查", "success", 0, 2),
@@ -553,22 +569,15 @@ describe("AgentPage", () => {
         ),
       ],
     });
-    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
-    if (conversation === null || viewport === null) throw new Error("缺少嵌套滚动容器");
-    const outer_scroll = { top: 600, height: 1_000, viewport: 400 };
-    install_scroll_metrics(conversation, outer_scroll);
-    install_scroll_metrics(viewport, { top: 80, height: 480, viewport: 240 });
-
-    await act(async () => viewport.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
-
-    outer_scroll.top = 100;
-    await act(async () => conversation.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
-
-    await act(async () => viewport.dispatchEvent(new Event("scroll")));
-    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+    if (viewport === null) throw new Error("缺少思考滚动容器");
+    const scroll = { top: 80, height: 480, viewport: 240 };
+    install_scroll_metrics(viewport, scroll);
+    await act(async () => get_follow_latest_button(view).click());
+    scroll.height = 640;
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
+    expect(scroll.top).toBe(80);
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
@@ -1070,10 +1079,8 @@ function get_button_by_label(container: HTMLElement, label: string): HTMLButtonE
   return button;
 }
 
-function find_button_by_text(container: HTMLElement, text: string): HTMLButtonElement | undefined {
-  return [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent?.trim() === text,
-  );
+function get_follow_latest_button(container: HTMLElement): HTMLButtonElement {
+  return get_button_by_label(container, "agent_page.action.follow_latest");
 }
 
 function get_editor(container: HTMLElement): EditorView {

@@ -1056,6 +1056,16 @@
   inset-inline-end: 0;
   inset-block-end: calc(100% + 8px);
   z-index: 10;
+  color: var(--muted-foreground);
+}
+
+.agent-page__follow-control[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.agent-page__follow-control[aria-pressed="true"]:hover {
+  color: var(--primary);
 }
 
 .agent-composer:focus-within {

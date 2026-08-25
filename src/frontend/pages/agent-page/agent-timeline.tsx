@@ -18,7 +18,7 @@ import {
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
-import { useAgentScrollFollow } from "./agent-scroll";
+import { useAgentAutoScroll } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
@@ -49,10 +49,11 @@ const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["statu
   });
 const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
-/** 页面只传入时间线事实和用户命令，不下放外层滚动所有权。 */
+/** 页面传入时间线事实、用户命令和统一的实时跟随模式。 */
 type AgentTimelineProps = {
   entries: readonly AgentEntry[];
   mention_tokens: readonly AgentMentionToken[];
+  follow_latest: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: (entry: UserEntry | AssistantEntry) => ReactNode | null;
@@ -62,7 +63,7 @@ type AgentTimelineProps = {
   annotation_disabled: boolean;
 };
 
-/** 时间线独立拥有条目次序、详情状态与运行指示，页面只负责滚动和命令入口。 */
+/** 时间线独立拥有条目次序、详情状态与运行指示，页面拥有唯一跟随模式。 */
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             key={round.user.id}
             round={round}
             mention_tokens={props.mention_tokens}
+            follow_latest={props.follow_latest}
             t={t}
             revision_available={index === rounds.length - 1 && !revision_blocked}
             on_continue={props.on_continue}
@@ -127,6 +129,7 @@ function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[]
 function AgentRound(props: {
   round: AgentRoundEntries;
   mention_tokens: readonly AgentMentionToken[];
+  follow_latest: boolean;
   t: Translate;
   revision_available: boolean;
   on_continue: () => void;
@@ -207,6 +210,7 @@ function AgentRound(props: {
             key={entry.id}
             entry={entry}
             t={props.t}
+            follow_latest={props.follow_latest}
             on_continue={props.on_continue}
             continue_disabled={props.continue_disabled}
             on_open_tool={props.on_open_tool}
@@ -368,6 +372,7 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
   annotatable: boolean;
+  follow_latest: boolean;
 }): ReactNode {
   const entry = props.entry;
   if (entry.kind === "context_compaction") {
@@ -389,7 +394,7 @@ const AgentEntryView = memo(function AgentEntryView(props: {
       />
     );
   }
-  return render_assistant_entry(entry, props.t, props.annotatable);
+  return render_assistant_entry(entry, props.t, props.annotatable, props.follow_latest);
 });
 
 /** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
@@ -444,6 +449,7 @@ function render_assistant_entry(
   entry: AssistantEntry,
   t: Translate,
   annotatable: boolean,
+  follow_latest: boolean,
 ): JSX.Element {
   return (
     <article className="agent-message agent-message--assistant" key={entry.id}>
@@ -463,6 +469,7 @@ function render_assistant_entry(
               status={display_status}
               status_label={t(AGENT_STATUS_LABEL_KEYS[display_status])}
               content={part.text}
+              follow_latest={follow_latest}
             />
           );
         }
@@ -519,20 +526,20 @@ function AgentThinkingDetail(props: {
   status: AgentEntryStatus;
   status_label: string;
   content: string;
+  follow_latest: boolean;
 }): JSX.Element {
   const [open, set_open] = useState(props.active);
   const toggle_ref = useRef<HTMLButtonElement | null>(null); // 自动收缩前承接焦点
   const content_ref = useRef<HTMLDivElement | null>(null); // 观察开合动画的布局变化
   const viewport_ref = useRef<HTMLDivElement | null>(null); // 思考内容独立滚动容器
+  const body_ref = useRef<HTMLPreElement | null>(null); // 观察流式正文的真实高度变化
   const was_active_ref = useRef(props.active); // 识别 active -> completed 的流式转折
   const completion_seen_ref = useRef(false); // 历史完成块不启动自动收缩
   const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
   const id = useId(); // 为 disclosure 的 aria 关系提供稳定局部 ID
   const toggle_id = `agent-thinking-toggle-${id}`;
   const content_id = `agent-thinking-content-${id}`;
-  const { following, follow_content, reconcile_scroll, settle_scroll } = useAgentScrollFollow(
-    props.active,
-  );
+  const { follow_content, resume } = useAgentAutoScroll(props.follow_latest && props.active);
 
   useEffect(() => {
     if (was_active_ref.current && !props.active && props.completed) {
@@ -541,25 +548,37 @@ function AgentThinkingDetail(props: {
     was_active_ref.current = props.active;
   }, [props.active, props.completed]);
 
-  // 思考正文和开合动画共用局部尺寸观察；观察回调只进入滚动 Hook。
+  // 只为活动且跟随中的思考观察布局和正文，历史块保持普通阅读位置。
   useLayoutEffect(() => {
     const content = content_ref.current;
     const viewport = viewport_ref.current;
-    if (content === null || viewport === null) return;
+    const body = body_ref.current;
+    if (
+      content === null ||
+      viewport === null ||
+      body === null ||
+      !open ||
+      !props.active ||
+      !props.follow_latest
+    ) {
+      return;
+    }
     const observer = new ResizeObserver(() => {
-      if (open) follow_content(viewport);
+      follow_content(viewport);
     });
     observer.observe(content);
-    if (open) follow_content(viewport);
+    observer.observe(body);
+    resume(viewport);
+    follow_content(viewport);
     return () => observer.disconnect();
-  }, [follow_content, open]);
+  }, [follow_content, open, props.active, props.follow_latest, resume]);
 
   useEffect(() => {
     if (
       !completion_seen_ref.current ||
       !props.completed ||
       !open ||
-      !following ||
+      !props.follow_latest ||
       user_toggled_ref.current
     ) {
       return;
@@ -572,14 +591,14 @@ function AgentThinkingDetail(props: {
       set_open(false);
     }, AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [following, open, props.completed]);
+  }, [open, props.active, props.completed, props.follow_latest]);
 
   const duration = useAgentElapsed(props.started_at, props.active);
   return (
     <div
       className="agent-thinking-entry"
       data-open={open || undefined}
-      data-following={following || undefined}
+      data-following={(props.follow_latest && props.active) || undefined}
     >
       <button
         ref={toggle_ref}
@@ -617,16 +636,8 @@ function AgentThinkingDetail(props: {
             ref={viewport_ref}
             className="agent-thinking-entry__viewport"
             tabIndex={open ? 0 : -1}
-            onScroll={(event) => {
-              event.stopPropagation();
-              reconcile_scroll(event.currentTarget);
-            }}
-            onScrollEnd={(event) => {
-              event.stopPropagation();
-              settle_scroll(event.currentTarget);
-            }}
           >
-            <pre>{props.content}</pre>
+            <pre ref={body_ref}>{props.content}</pre>
           </div>
         </div>
       </div>

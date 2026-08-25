@@ -83,7 +83,7 @@ export const zh_cn_agent_page = {
     copy: "复制",
     copied: "已复制",
     copy_failed: "复制失败",
-    return_latest: "回到最新",
+    follow_latest: "跟随最新",
   },
   editing: { user: "正在修改你的消息", assistant: "正在修改模型回复", queue: "正在修改排队消息" },
   queue: {

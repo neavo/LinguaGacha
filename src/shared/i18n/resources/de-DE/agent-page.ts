@@ -83,7 +83,7 @@ export const de_de_agent_page = {
     copy: "Kopieren",
     copied: "Kopiert",
     copy_failed: "Kopieren fehlgeschlagen",
-    return_latest: "Zum neuesten Stand",
+    follow_latest: "Neueste verfolgen",
   },
   editing: {
     user: "Deine Nachricht wird bearbeitet",

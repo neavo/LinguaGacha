@@ -1,43 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-
-/** 容差吸收亚像素舍入。 */
-const AGENT_SCROLL_END_TOLERANCE_PX = 2;
+import { useCallback, useEffect, useRef } from "react";
 
 /** 所有跟随路径共用同一个归底写入口。 */
 function scroll_to_end(target: HTMLElement): void {
   target.scrollTop = target.scrollHeight;
 }
 
-/** 页面会话与思考视口共用的最小滚动所有权控制面。 */
-type AgentScrollFollow = {
-  following: boolean;
-  activate: (target: HTMLElement) => void;
+/** 页面会话与活动思考视口共用的最小自动归底工具。 */
+type AgentAutoScroll = {
   follow_content: (target: HTMLElement) => void;
-  reconcile_scroll: (target: HTMLElement) => void;
-  settle_scroll: (target: HTMLElement) => void;
   resume: (target: HTMLElement) => void;
 };
 
-/** 小幅容忍浏览器的亚像素舍入。 */
-export function is_at_scroll_end(target: HTMLElement): boolean {
-  return (
-    target.scrollHeight - target.scrollTop - target.clientHeight <= AGENT_SCROLL_END_TOLERANCE_PX
-  );
-}
-
-/** 每个滚动容器独立拥有一个显式跟随状态和唯一归底写入口。 */
-export function useAgentScrollFollow(initial_following = true): AgentScrollFollow {
-  const following_ref = useRef(initial_following); // 同步保留当前滚动所有权，避免等待 React 提交
+/** 页面级跟随状态由 AgentPage 拥有；此 Hook 只处理内容变化后的合帧归底。 */
+export function useAgentAutoScroll(enabled: boolean): AgentAutoScroll {
+  const enabled_ref = useRef(enabled); // 在合帧回调执行前读取最新的页面跟随状态
   const pending_follow_frame_ref = useRef<number | null>(null); // 同一布局帧最多保留一个跟随写入
-  const reset_epoch_ref = useRef(0); // 让 resume 前已排队的布局回调失效
-  const reset_pending_ref = useRef(false); // scrollend 前屏蔽迟到的旧几何事件
-  const [following, set_following_state] = useState(initial_following);
-
-  /** 同步更新 Hook 内部所有权和按钮可见状态。 */
-  const set_following = useCallback((next_following: boolean): void => {
-    following_ref.current = next_following;
-    set_following_state(next_following);
-  }, []);
+  enabled_ref.current = enabled;
 
   /** 取消尚未提交的合帧位置写入。 */
   const clear_pending_follow = useCallback((): void => {
@@ -46,90 +24,35 @@ export function useAgentScrollFollow(initial_following = true): AgentScrollFollo
     pending_follow_frame_ref.current = null;
   }, []);
 
-  /** 新逻辑会话在绘制前取得跟随权，不进入用户归底事务。 */
-  const activate = useCallback(
-    (target: HTMLElement): void => {
-      clear_pending_follow();
-      reset_epoch_ref.current += 1;
-      reset_pending_ref.current = false;
-      set_following(true);
-      scroll_to_end(target);
-    },
-    [clear_pending_follow, set_following],
-  );
-
-  /** 合并同一布局帧的尺寸变化；不以迟到事件恢复旧所有权。 */
+  /** 合并同一布局帧的尺寸变化；滚动事件不参与跟随状态判断。 */
   const follow_content = useCallback((target: HTMLElement): void => {
-    if (reset_pending_ref.current || !following_ref.current) return;
+    if (!enabled_ref.current) return;
     if (pending_follow_frame_ref.current !== null) return;
-    const epoch = reset_epoch_ref.current;
     pending_follow_frame_ref.current = requestAnimationFrame(() => {
       pending_follow_frame_ref.current = null;
-      if (
-        epoch !== reset_epoch_ref.current ||
-        reset_pending_ref.current ||
-        !following_ref.current
-      ) {
-        return;
-      }
+      if (!enabled_ref.current) return;
       scroll_to_end(target);
     });
   }, []);
 
-  /** 最终几何位置决定当前滚动所有权。 */
-  const reconcile_scroll = useCallback(
-    (target: HTMLElement): void => {
-      if (reset_pending_ref.current) return;
-      const at_end = is_at_scroll_end(target);
-      if (!at_end) clear_pending_follow();
-      set_following(at_end);
-    },
-    [clear_pending_follow, set_following],
-  );
-
-  /** reset 窗口结束后重新读取最终几何，并补齐期间发生的布局变化。 */
-  const settle_scroll = useCallback(
-    (target: HTMLElement): void => {
-      reset_pending_ref.current = false;
-      reconcile_scroll(target);
-      if (following_ref.current) follow_content(target);
-    },
-    [follow_content, reconcile_scroll],
-  );
-
-  /** 可靠归底：使旧布局回调失效，迟到 scroll 在 scrollend 前不夺回所有权。 */
+  /** 显式激活“最新”时归底；不等待任何浏览器滚动事件。 */
   const resume = useCallback(
     (target: HTMLElement): void => {
       clear_pending_follow();
-      reset_epoch_ref.current += 1;
-      set_following(true);
-
-      // 已经在底部时不会产生新的滚动事务，不能进入永久等待 scrollend 的状态。
-      if (is_at_scroll_end(target)) {
-        reset_pending_ref.current = false;
-        return;
-      }
-
-      reset_pending_ref.current = true;
       scroll_to_end(target);
     },
-    [clear_pending_follow, set_following],
+    [clear_pending_follow],
   );
 
   useEffect(
     () => () => {
       clear_pending_follow();
-      reset_epoch_ref.current += 1;
     },
     [clear_pending_follow],
   );
 
   return {
-    following,
-    activate,
     follow_content,
-    reconcile_scroll,
-    settle_scroll,
     resume,
   };
 }
