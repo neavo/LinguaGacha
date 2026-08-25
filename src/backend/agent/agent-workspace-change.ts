@@ -51,6 +51,7 @@ export type PreparedAgentWorkspaceChanges = Readonly<{
   qualityChanges: AgentWorkspaceQualityChange[];
   promptChanges: AgentWorkspacePromptChange[];
   qualitySummary: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
+  qualityAffectedCounts: Partial<Record<QualityRuleKind, number>>; // 审批摘要按稳定 ID 统计受影响对象
 }>;
 
 /** 工作区 kind 到共享重复组规则类型的唯一适配。 */
@@ -69,8 +70,18 @@ export async function prepare_agent_workspace_changes(args: {
 }): Promise<PreparedAgentWorkspaceChanges> {
   const itemChanges = await prepare_item_changes(args);
   const promptChanges = await prepare_prompt_changes(args);
-  const { changes: qualityChanges, summary: qualitySummary } = await prepare_quality_changes(args);
-  return { itemChanges, promptChanges, qualityChanges, qualitySummary };
+  const {
+    changes: qualityChanges,
+    summary: qualitySummary,
+    affectedCounts: qualityAffectedCounts,
+  } = await prepare_quality_changes(args);
+  return {
+    itemChanges,
+    promptChanges,
+    qualityChanges,
+    qualitySummary,
+    qualityAffectedCounts,
+  };
 }
 
 /** item change 按稳定 ID 定点读取，只形成真实人工字段差异。 */
@@ -171,6 +182,7 @@ async function prepare_quality_changes(args: {
 }): Promise<{
   changes: AgentWorkspaceQualityChange[];
   summary: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
+  affectedCounts: Partial<Record<QualityRuleKind, number>>;
 }> {
   const rows_by_kind = new Map<QualityRuleKind, QualityOperationRows>();
   for (const kind of QUALITY_RULE_KINDS) {
@@ -195,22 +207,24 @@ async function prepare_quality_changes(args: {
       rows_by_kind.set(kind, rows);
     }
   }
-  if (rows_by_kind.size === 0) return { changes: [], summary: {} };
+  if (rows_by_kind.size === 0) return { changes: [], summary: {}, affectedCounts: {} };
 
   const quality_block = args.cache.quality.readBlock();
   const changes: AgentWorkspaceQualityChange[] = [];
   const summary: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>> = {};
+  const affectedCounts: Partial<Record<QualityRuleKind, number>> = {};
   for (const [kind, rows] of rows_by_kind) {
     const current = read_quality_entries(quality_block, kind);
-    const { next, moved } = apply_quality_operations(kind, current, rows);
+    const { next, movedIds } = apply_quality_operations(kind, current, rows);
     // 不把相互抵消的显式操作冒充真实变化，否则会无意义推进 quality revision。
     if (isDeepStrictEqual(current, next)) continue;
     assert_no_new_duplicate_groups(kind, current, next);
-    const change_summary = summarize_quality_changes(current, next, moved);
+    const change_summary = summarize_quality_changes(current, next, movedIds);
     changes.push({ kind, entries: next });
-    summary[kind] = change_summary;
+    summary[kind] = change_summary.operations;
+    affectedCounts[kind] = change_summary.affected;
   }
-  return { changes, summary };
+  return { changes, summary, affectedCounts };
 }
 
 /** 单个 quality kind 的四类操作行，执行顺序由 contract 固定。 */
@@ -224,7 +238,7 @@ function apply_quality_operations(
   kind: QualityRuleKind,
   current: JsonRecord[],
   rows: QualityOperationRows,
-): { next: JsonRecord[]; moved: number } {
+): { next: JsonRecord[]; movedIds: ReadonlySet<string> } {
   const current_ids = new Set(current.map(read_entry_id));
   const deleted_ids = read_unique_ids(
     rows.deletes,
@@ -233,10 +247,10 @@ function apply_quality_operations(
   );
   const updates = read_quality_updates(kind, rows.updates);
   const moves = read_quality_moves(rows.moves);
-  const moved_ids = new Set(moves.map((move) => move.id));
+  const requested_move_ids = new Set(moves.map((move) => move.id));
   for (const id of deleted_ids) {
     if (!current_ids.has(id)) throw change_validation_error("agent_workspace_quality_id_not_found");
-    if (updates.has(id) || moved_ids.has(id)) {
+    if (updates.has(id) || requested_move_ids.has(id)) {
       throw change_validation_error("agent_workspace_conflicting_quality_change");
     }
   }
@@ -264,7 +278,7 @@ function apply_quality_operations(
     const index = find_anchor_index(next, create.before_id);
     next.splice(index, 0, entry);
   }
-  let moved = 0;
+  const moved_ids = new Set<string>();
   for (const move of moves) {
     const before_order = next.map(read_entry_id);
     const source_index = next.findIndex((entry) => read_entry_id(entry) === move.id);
@@ -273,13 +287,13 @@ function apply_quality_operations(
     if (entry === undefined) throw change_validation_error("agent_workspace_quality_id_not_found");
     const target_index = find_anchor_index(next, move.before_id);
     next.splice(target_index, 0, entry);
-    if (!isDeepStrictEqual(before_order, next.map(read_entry_id))) moved += 1;
+    if (!isDeepStrictEqual(before_order, next.map(read_entry_id))) moved_ids.add(move.id);
   }
 
   try {
     return {
       next: normalize_quality_rule_entries(QualityRule.from_json(kind), next) as JsonRecord[],
-      moved,
+      movedIds: moved_ids,
     };
   } catch (cause) {
     throw new AppErrors.AppError("request.validation_failed", {
@@ -464,18 +478,26 @@ function assert_no_new_duplicate_groups(
 function summarize_quality_changes(
   current: JsonRecord[],
   next: JsonRecord[],
-  moved: number,
-): AgentWorkspaceQualitySummary {
+  moved_ids: ReadonlySet<string>,
+): { operations: AgentWorkspaceQualitySummary; affected: number } {
   const current_by_id = new Map(current.map((entry) => [read_entry_id(entry), entry]));
   const next_by_id = new Map(next.map((entry) => [read_entry_id(entry), entry]));
+  const created = next.filter((entry) => !current_by_id.has(read_entry_id(entry)));
+  const updated = next.filter((entry) => {
+    const previous = current_by_id.get(read_entry_id(entry));
+    return previous !== undefined && !isDeepStrictEqual(previous, entry);
+  });
+  const deleted = current.filter((entry) => !next_by_id.has(read_entry_id(entry)));
+  const affected_ids = new Set(moved_ids);
+  for (const entry of [...created, ...updated, ...deleted]) affected_ids.add(read_entry_id(entry));
   return {
-    created: next.filter((entry) => !current_by_id.has(read_entry_id(entry))).length,
-    updated: next.filter((entry) => {
-      const previous = current_by_id.get(read_entry_id(entry));
-      return previous !== undefined && !isDeepStrictEqual(previous, entry);
-    }).length,
-    deleted: current.filter((entry) => !next_by_id.has(read_entry_id(entry))).length,
-    moved,
+    operations: {
+      created: created.length,
+      updated: updated.length,
+      deleted: deleted.length,
+      moved: moved_ids.size,
+    },
+    affected: affected_ids.size,
   };
 }
 

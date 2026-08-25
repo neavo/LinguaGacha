@@ -60,6 +60,13 @@ export function register_api_routes(context: ApiRouteContext): void {
     hono_context.json(ok(services.agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
+  context.postJson("/api/agent/approval-mode", (body) => services.agent.set_approval_mode(body));
+  context.postJson("/api/agent/approval/approve", (body) =>
+    services.agent.approve_pending_write(body),
+  );
+  context.postJson("/api/agent/approval/reject", (body) =>
+    services.agent.reject_pending_write(body),
+  );
   context.postJson("/api/agent/queue/update", (body) => services.agent.update_queued_message(body));
   context.postJson("/api/agent/queue/delete", (body) => services.agent.delete_queued_message(body));
   context.postJson("/api/agent/queue/reorder", (body) =>

@@ -18,6 +18,7 @@ import {
   type BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
 import * as AppErrors from "../../shared/error";
+import type { AgentPendingWriteSummary } from "../../shared/agent";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import {
   PROJECT_DATA_SECTIONS,
@@ -298,8 +299,10 @@ export class AgentWorkspaceService {
     });
   }
 
-  /** 校验显式 change，并把真实局部修改交给一次跨 section 事务。 */
-  public async apply_workspace(): Promise<JsonRecord> {
+  /** 一次准备真实差异，按需等待审批，再把同一份差异交给跨 section 事务。 */
+  public async apply_workspace(
+    request_approval?: (summary: AgentPendingWriteSummary) => Promise<void>,
+  ): Promise<JsonRecord> {
     return await this.exclusive(async () => {
       const active = this.require_active();
       const freshness = this.read_freshness(active);
@@ -329,6 +332,7 @@ export class AgentWorkspaceService {
           revisions: pick_apply_revisions(active.revisions),
         };
       }
+      await request_approval?.(summarize_prepared_changes(prepared));
 
       let write_ack: AgentWorkspaceApplyAck;
       try {
@@ -556,6 +560,23 @@ function has_prepared_changes(prepared: PreparedAgentWorkspaceChanges): boolean 
     prepared.qualityChanges.length > 0 ||
     prepared.promptChanges.length > 0
   );
+}
+
+/** 审批摘要直接投影本次将提交的差异，不读取模型描述或再次准备工作区。 */
+function summarize_prepared_changes(
+  prepared: PreparedAgentWorkspaceChanges,
+): AgentPendingWriteSummary {
+  const count_quality = (kind: QualityRuleKind): number => {
+    return prepared.qualityAffectedCounts[kind] ?? 0;
+  };
+  return {
+    items: prepared.itemChanges.length,
+    glossary: count_quality("glossary"),
+    textPreserve: count_quality("text_preserve"),
+    preReplacement: count_quality("pre_replacement"),
+    postReplacement: count_quality("post_replacement"),
+    prompts: prepared.promptChanges.length,
+  };
 }
 
 /** 固定 change 路径只从共享 contract 词表展开，避免宿主与 Backend 分叉。 */

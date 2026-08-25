@@ -3,14 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AGENT_WORKSPACE_API } from "../../shared/backend-runtime";
 import type { AgentWorkspacePort } from "./agent-workspace-service";
-import { create_agent_workspace_tools } from "./agent-workspace-tools";
+import {
+  create_agent_workspace_tools,
+  type AgentWorkspaceApprovalPort,
+} from "./agent-workspace-tools";
 
 type WorkspaceToolResult = { details: unknown };
 
 describe("Agent 工作区工具", () => {
   it("两个工具只适配脚本参数、取消信号与服务结果", async () => {
     const workspace = build_workspace_port();
-    const tools = create_agent_workspace_tools(workspace);
+    const tools = create_agent_workspace_tools(workspace, build_approval_port());
     expect(new Set(tools.map((tool) => tool.name))).toEqual(
       new Set(["workspace_script", "workspace_apply"]),
     );
@@ -42,7 +45,7 @@ describe("Agent 工作区工具", () => {
   });
 
   it("函数工具 Schema 只约束两个跨 Agent loop 的公开入口", () => {
-    const tools = create_agent_workspace_tools(build_workspace_port());
+    const tools = create_agent_workspace_tools(build_workspace_port(), build_approval_port());
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
@@ -56,7 +59,7 @@ describe("Agent 工作区工具", () => {
 
   it("workspace_script Schema 在首次调用前公开完整固定 SDK", () => {
     const script_tool = read_tool(
-      create_agent_workspace_tools(build_workspace_port()),
+      create_agent_workspace_tools(build_workspace_port(), build_approval_port()),
       "workspace_script",
     );
     const parameters = script_tool.parameters as {
@@ -77,7 +80,10 @@ describe("Agent 工作区工具", () => {
 
   it("调用前已取消时不触达工作区服务", async () => {
     const workspace = build_workspace_port();
-    const script_tool = read_tool(create_agent_workspace_tools(workspace), "workspace_script");
+    const script_tool = read_tool(
+      create_agent_workspace_tools(workspace, build_approval_port()),
+      "workspace_script",
+    );
     const controller = new AbortController();
     controller.abort(new Error("提前取消"));
 
@@ -121,9 +127,29 @@ function build_workspace_port(): AgentWorkspacePort {
     reset_workspace: vi.fn(async () => undefined),
     reset_project: vi.fn(async () => undefined),
     run_script: vi.fn(async () => ({ changed: 2 })),
-    apply_workspace: vi.fn(async () => ({
-      status: "applied",
-      changes: { items: { updated: 2 } },
-    })),
+    apply_workspace: vi.fn(async (request_approval) => {
+      await request_approval?.({
+        items: 2,
+        glossary: 0,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
+      });
+      return {
+        status: "applied",
+        changes: { items: { updated: 2 } },
+      };
+    }),
+  };
+}
+
+/** 工具适配测试使用自动模式，审批状态本身由 AgentService 测试覆盖。 */
+function build_approval_port(): AgentWorkspaceApprovalPort {
+  return {
+    read_mode: () => "auto",
+    wait_for_decision: vi.fn(async () => ({ switch_to_auto: false })),
+    finish: vi.fn(),
+    activate_auto: vi.fn(),
   };
 }

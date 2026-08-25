@@ -308,7 +308,8 @@ describe("AgentWorkspaceService", () => {
       { kind: "translation", text: "新翻译正文" },
     ]);
 
-    await expect(fixture.service.apply_workspace()).resolves.toEqual({
+    const request_approval = vi.fn(async () => undefined);
+    await expect(fixture.service.apply_workspace(request_approval)).resolves.toEqual({
       status: "applied",
       changes: {
         items: { updated: 1 },
@@ -316,6 +317,14 @@ describe("AgentWorkspaceService", () => {
         prompts: { updated: ["translation"] },
       },
       revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2 },
+    });
+    expect(request_approval).toHaveBeenCalledWith({
+      items: 1,
+      glossary: 1,
+      textPreserve: 0,
+      preReplacement: 0,
+      postReplacement: 0,
+      prompts: 1,
     });
     expect(fixture.write_store).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -333,6 +342,23 @@ describe("AgentWorkspaceService", () => {
     );
     expect(fixture.active_path()).toBe("");
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
+  });
+
+  it("审批拒绝不触达项目写入口并保留已准备工作区", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await run_workspace_script(fixture);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
+      { item_id: 1, dst: "译文" },
+    ]);
+
+    await expect(
+      fixture.service.apply_workspace(async () => {
+        throw new Error("denied");
+      }),
+    ).rejects.toThrow("denied");
+    expect(fixture.write_store).not.toHaveBeenCalled();
+    expect(fixture.active_path()).not.toBe("");
   });
 
   it("change 校验失败保留工作区供脚本修复", async () => {
@@ -417,11 +443,13 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.initialize();
     await run_workspace_script(fixture);
 
-    await expect(fixture.service.apply_workspace()).resolves.toEqual({
+    const request_approval = vi.fn(async () => undefined);
+    await expect(fixture.service.apply_workspace(request_approval)).resolves.toEqual({
       status: "unchanged",
       changes: {},
       revisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
     });
+    expect(request_approval).not.toHaveBeenCalled();
     expect(fixture.write_store).not.toHaveBeenCalled();
     expect(fixture.active_path()).toBe("");
   });

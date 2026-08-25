@@ -266,6 +266,120 @@ describe("AgentSessionProvider", () => {
     expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
   });
 
+  it("写入审批模式通过后端命令更新并由快照回流", async () => {
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ approvalMode: "auto" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.setApprovalMode("auto"));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/approval-mode", {
+      approvalMode: "auto",
+    });
+    expect(latest.approvalMode).toBe("auto");
+
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "manual",
+      }),
+    );
+    expect(latest.approvalMode).toBe("manual");
+  });
+
+  it("批准命令以 processing ack 承接写入并由工具终帧清空", async () => {
+    const waiting = {
+      id: "apply-1",
+      status: "waiting" as const,
+      summary: {
+        items: 2,
+        glossary: 1,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
+      },
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingWriteApproval: waiting }));
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({ pendingWriteApproval: { ...waiting, status: "processing" } }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.approvePendingWrite(true));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/approval/approve", {
+      id: "apply-1",
+      switchToAuto: true,
+    });
+    expect(latest.pendingWriteApproval).toEqual({
+      ...waiting,
+      status: "processing",
+    });
+
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_write_approval",
+        pendingWriteApproval: null,
+      }),
+    );
+    expect(latest.pendingWriteApproval).toBeNull();
+  });
+
+  it("畸形审批增量保持最近一次完整控制状态", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const pending = {
+      id: "apply-1",
+      status: "waiting" as const,
+      summary: {
+        items: 1,
+        glossary: 0,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
+      },
+    };
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "auto",
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_write_approval",
+        pendingWriteApproval: pending,
+      });
+    });
+    expect(latest.approvalMode).toBe("auto");
+    expect(latest.pendingWriteApproval).toEqual(pending);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "approval_mode" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_write_approval" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_write_approval",
+        pendingWriteApproval: {
+          ...pending,
+          summary: { ...pending.summary, items: 0 },
+        },
+      });
+    });
+
+    expect(latest.approvalMode).toBe("auto");
+    expect(latest.pendingWriteApproval).toEqual(pending);
+  });
+
   it("携带消息 continue 通过唯一入口受理并清空草稿", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({
@@ -304,16 +418,50 @@ describe("AgentSessionProvider", () => {
   it.each([
     [
       "inputQueue",
-      { state: "idle", entries: [], skills: [], taskProgress: [], contextTokens: null },
+      {
+        state: "idle",
+        approvalMode: "manual",
+        pendingWriteApproval: null,
+        entries: [],
+        skills: [],
+        taskProgress: [],
+        contextTokens: null,
+      },
     ],
     [
       "contextTokens",
       {
         state: "idle",
+        approvalMode: "manual",
+        pendingWriteApproval: null,
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         taskProgress: [],
+      },
+    ],
+    [
+      "approvalMode",
+      {
+        state: "idle",
+        pendingWriteApproval: null,
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
+        contextTokens: null,
+      },
+    ],
+    [
+      "pendingWriteApproval",
+      {
+        state: "idle",
+        approvalMode: "manual",
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
+        contextTokens: null,
       },
     ],
   ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
@@ -355,6 +503,8 @@ describe("AgentSessionProvider", () => {
   it("skill 清单只接纳完整的新 UI 描述协议", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
       state: "idle",
+      approvalMode: "manual",
+      pendingWriteApproval: null,
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       taskProgress: [],
@@ -384,6 +534,8 @@ describe("AgentSessionProvider", () => {
   it("只接纳字段完整且值域合法的时间线条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
       state: "idle",
+      approvalMode: "manual",
+      pendingWriteApproval: null,
       entries: [
         {
           kind: "tool_call",
@@ -1184,6 +1336,8 @@ function image_attachments(...images: string[]): AgentMessageAttachment[] {
 function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
   return {
     state: "idle",
+    approvalMode: "manual",
+    pendingWriteApproval: null,
     entries: [],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },

@@ -120,6 +120,7 @@ describe("Agent 工作区显式 change", () => {
       deleted: 1,
       moved: 1,
     });
+    expect(prepared.qualityAffectedCounts.glossary).toBe(4);
   });
 
   it("显式 no-op 与相互抵消的 move 不形成真实 change", async () => {
@@ -145,6 +146,7 @@ describe("Agent 工作区显式 change", () => {
       qualityChanges: [],
       promptChanges: [],
       qualitySummary: {},
+      qualityAffectedCounts: {},
     });
   });
 

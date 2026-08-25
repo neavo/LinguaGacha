@@ -29,6 +29,26 @@ export type AgentSessionState = "idle" | "running";
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
+/** 当前 Agent 会话任务的工程写入确认方式；默认手动，自动持续到会话重置。 */
+export type AgentApprovalMode = "manual" | "auto";
+
+/** 待审批写入的结构化变更摘要；按业务种类统计受影响对象数量。 */
+export type AgentPendingWriteSummary = Readonly<{
+  items: number;
+  glossary: number;
+  textPreserve: number;
+  preReplacement: number;
+  postReplacement: number;
+  prompts: number;
+}>;
+
+/** 待审批写入只属于 Composer 控制面，不进入 Agent 时间线或模型历史。 */
+export type AgentPendingWriteApproval = {
+  id: string;
+  status: "waiting" | "processing";
+  summary: AgentPendingWriteSummary;
+};
+
 /** 单条用户消息按输入顺序最多保留的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
 /** 用户消息附件只有 renderer 归一的 WebP 与已确认的回复批注两种公开形状。 */
@@ -121,6 +141,8 @@ export type AgentEntry = JsonRecord &
 /** GET snapshot、命令响应与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
   state: AgentSessionState;
+  approvalMode: AgentApprovalMode;
+  pendingWriteApproval: AgentPendingWriteApproval | null;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
@@ -133,6 +155,8 @@ export type AgentSessionEvent = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
+    | { type: "approval_mode"; approvalMode: AgentApprovalMode }
+    | { type: "pending_write_approval"; pendingWriteApproval: AgentPendingWriteApproval | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "task_progress"; taskProgress: string[] }
     | { type: "context_tokens"; contextTokens: number }

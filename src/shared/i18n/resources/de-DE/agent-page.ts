@@ -49,6 +49,24 @@ export const de_de_agent_page = {
     comment_placeholder: "Ausgewählten Text kommentieren …",
   },
   context_usage_warning: "Kontext wird bald automatisch komprimiert",
+  approval: {
+    manual: "Manuelle Genehmigung",
+    auto: "Automatische Genehmigung",
+    tooltip_manual: "Schreibanfrage - Manuelle Genehmigung",
+    tooltip_auto: "Schreibanfrage - Automatische Genehmigung",
+    pending: "Schreiben von Projektdaten wartet auf Genehmigung",
+    summary_items: "{count} Texteinträge",
+    summary_glossary: "{count} Glossarregeln",
+    summary_text_preserve: "{count} Textschutzregeln",
+    summary_pre_replacement: "{count} Vorersetzungsregeln",
+    summary_post_replacement: "{count} Nachersetzungsregeln",
+    summary_prompts: "{count} benutzerdefinierte Prompts",
+    summary_separator: ", ",
+    summary_last_separator: " und ",
+    reject: "Ablehnen",
+    approve_once: "Einmal erlauben",
+    approve_future: "Weitere Schreibvorgänge für diese Aufgabe erlauben",
+  },
   compaction: {
     running: "Kontext wird komprimiert …",
     success: "Kontext erfolgreich komprimiert …",
@@ -119,6 +137,10 @@ export const de_de_agent_page = {
     image: "Das Bild konnte nicht gelesen werden. Unterstützt werden PNG, JPG, BMP, WebP und AVIF.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
+    approval_mode:
+      "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
+    approval_decision:
+      "Die Schreibanfrage konnte nicht verarbeitet werden. Bitte erneut versuchen.",
     terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
   },
   unavailable: {

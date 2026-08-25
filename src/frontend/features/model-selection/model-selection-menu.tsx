@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, Cpu } from "lucide-react";
+import { Boxes, Circle, CircleCheck } from "lucide-react";
 
 import {
   MODEL_TYPES,
@@ -37,7 +37,7 @@ export function ModelSelectionMenu(props: ModelSelectionMenuProps): JSX.Element 
   return (
     <AppDropdownMenuSub>
       <AppDropdownMenuSubTrigger disabled={disabled} title={selected_name}>
-        <Cpu aria-hidden="true" />
+        <Boxes aria-hidden="true" />
         <span className="max-w-72 truncate">{selected_name}</span>
       </AppDropdownMenuSubTrigger>
       <AppDropdownMenuSubContent>
