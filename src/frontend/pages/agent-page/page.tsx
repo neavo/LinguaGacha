@@ -557,7 +557,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             <AppButton
               type="button"
               className="agent-page__follow-control"
-              size="icon-sm"
+              size="icon-xs"
               variant="outline"
               aria-label={t("agent_page.action.follow_latest")}
               aria-pressed={follow_latest}
