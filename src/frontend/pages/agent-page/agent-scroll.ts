@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** 容差吸收亚像素舍入；键集合限定会改变滚动位置的键盘输入。 */
+/** 容差吸收亚像素舍入。 */
 const AGENT_SCROLL_END_TOLERANCE_PX = 2;
-const AGENT_SCROLL_KEYS = new Set([
-  "ArrowDown",
-  "ArrowUp",
-  "End",
-  "Home",
-  "PageDown",
-  "PageUp",
-  " ",
-]);
 
 /** 所有跟随路径共用同一个归底写入口。 */
 function scroll_to_end(target: HTMLElement): void {
@@ -21,8 +12,8 @@ function scroll_to_end(target: HTMLElement): void {
 type AgentScrollFollow = {
   paused: boolean;
   follow_content: (target: HTMLElement) => void;
-  begin_user_scroll: (target: HTMLElement) => void;
   reconcile_scroll: (target: HTMLElement) => void;
+  settle_scroll: (target: HTMLElement) => void;
   resume: (target: HTMLElement) => void;
 };
 
@@ -33,76 +24,91 @@ export function is_at_scroll_end(target: HTMLElement): boolean {
   );
 }
 
-/** 只把可能改变滚动位置的键盘操作视为用户接管。 */
-export function is_agent_scroll_key(key: string): boolean {
-  return AGENT_SCROLL_KEYS.has(key);
-}
-
 /** 每个滚动容器独立拥有一个显式跟随状态和唯一归底写入口。 */
 export function useAgentScrollFollow(initial_paused = false): AgentScrollFollow {
-  const paused_ref = useRef(initial_paused); // 尺寸回调必须在 React 提交前看到用户接管
-  const pending_frame_ref = useRef<number | null>(null); // 同帧连续输入只保留一次最终裁决
-  const pending_previous_paused_ref = useRef(initial_paused); // 无位移时恢复输入前所有权
+  const following_ref = useRef(!initial_paused); // 同步保留当前滚动所有权，避免等待 React 提交
+  const pending_follow_frame_ref = useRef<number | null>(null); // 同一布局帧最多保留一个跟随写入
+  const reset_epoch_ref = useRef(0); // 让 resume 前已排队的布局回调失效
+  const reset_pending_ref = useRef(false); // scrollend 前屏蔽迟到的旧几何事件
   const [paused, set_paused] = useState(initial_paused);
 
-  /** 同步提交可见状态与尺寸回调读取的所有权。 */
-  const set_follow_paused = useCallback((next: boolean): void => {
-    paused_ref.current = next;
-    set_paused(next);
+  /** 同步更新 Hook 内部所有权和按钮可见状态。 */
+  const set_following = useCallback((following: boolean): void => {
+    following_ref.current = following;
+    set_paused(!following);
   }, []);
 
-  /** 取消尚未完成的位置裁决。 */
-  const clear_pending_frame = useCallback((): void => {
-    if (pending_frame_ref.current === null) return;
-    cancelAnimationFrame(pending_frame_ref.current);
-    pending_frame_ref.current = null;
+  /** 取消尚未提交的合帧位置写入。 */
+  const clear_pending_follow = useCallback((): void => {
+    if (pending_follow_frame_ref.current === null) return;
+    cancelAnimationFrame(pending_follow_frame_ref.current);
+    pending_follow_frame_ref.current = null;
   }, []);
 
-  /** 内容增长只在容器仍归页面所有时写入底端。 */
+  /** 合并同一布局帧的尺寸变化；不以迟到事件恢复旧所有权。 */
   const follow_content = useCallback((target: HTMLElement): void => {
-    if (!paused_ref.current) scroll_to_end(target);
+    if (reset_pending_ref.current || !following_ref.current) return;
+    if (pending_follow_frame_ref.current !== null) return;
+    const epoch = reset_epoch_ref.current;
+    pending_follow_frame_ref.current = requestAnimationFrame(() => {
+      pending_follow_frame_ref.current = null;
+      if (
+        epoch !== reset_epoch_ref.current ||
+        reset_pending_ref.current ||
+        !following_ref.current
+      ) {
+        return;
+      }
+      scroll_to_end(target);
+    });
   }, []);
 
-  /** 用户输入先同步阻断尺寸回调；若没有产生滚动，下一帧恢复输入前状态。 */
-  const begin_user_scroll = useCallback(
-    (target: HTMLElement): void => {
-      if (pending_frame_ref.current === null) {
-        pending_previous_paused_ref.current = paused_ref.current;
-      } else {
-        cancelAnimationFrame(pending_frame_ref.current);
-      }
-      paused_ref.current = true;
-      pending_frame_ref.current = requestAnimationFrame(() => {
-        pending_frame_ref.current = null;
-        const previous_paused = pending_previous_paused_ref.current;
-        set_follow_paused(previous_paused);
-        if (!previous_paused) scroll_to_end(target);
-      });
-    },
-    [set_follow_paused],
-  );
-
-  /** scroll 事件的最终几何位置决定用户是否仍在阅读历史。 */
+  /** 最终几何位置决定当前滚动所有权。 */
   const reconcile_scroll = useCallback(
     (target: HTMLElement): void => {
-      clear_pending_frame();
-      set_follow_paused(!is_at_scroll_end(target));
+      if (reset_pending_ref.current) return;
+      const at_end = is_at_scroll_end(target);
+      if (!at_end) clear_pending_follow();
+      set_following(at_end);
     },
-    [clear_pending_frame, set_follow_paused],
+    [clear_pending_follow, set_following],
   );
 
-  /** 显式回到最新同时恢复跟随并由同一入口归底。 */
+  /** reset 窗口结束后重新读取最终几何，并补齐期间发生的布局变化。 */
+  const settle_scroll = useCallback(
+    (target: HTMLElement): void => {
+      reset_pending_ref.current = false;
+      reconcile_scroll(target);
+      if (following_ref.current) follow_content(target);
+    },
+    [follow_content, reconcile_scroll],
+  );
+
+  /** 可靠归底：使旧布局回调失效，迟到 scroll 在 scrollend 前不夺回所有权。 */
   const resume = useCallback(
     (target: HTMLElement): void => {
-      clear_pending_frame();
-      set_follow_paused(false);
+      clear_pending_follow();
+      reset_epoch_ref.current += 1;
+      reset_pending_ref.current = true;
+      set_following(true);
       scroll_to_end(target);
     },
-    [clear_pending_frame, set_follow_paused],
+    [clear_pending_follow, set_following],
   );
 
-  // 组件卸载后不得让过期 DOM 参与位置裁决。
-  useEffect(() => () => clear_pending_frame(), [clear_pending_frame]);
+  useEffect(
+    () => () => {
+      clear_pending_follow();
+      reset_epoch_ref.current += 1;
+    },
+    [clear_pending_follow],
+  );
 
-  return { paused, follow_content, begin_user_scroll, reconcile_scroll, resume };
+  return {
+    paused,
+    follow_content,
+    reconcile_scroll,
+    settle_scroll,
+    resume,
+  };
 }

@@ -390,9 +390,7 @@ describe("AgentTimeline", () => {
     }
   });
 
-  it("流式思考持续跟随，用户接管后保持位置并在自然回底后恢复", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_001);
+  it("运行中的思考块默认展开，内部离底后保留阅读位置", async () => {
     const render_thinking = (text: string) =>
       render_timeline(
         round_entries([
@@ -400,34 +398,24 @@ describe("AgentTimeline", () => {
         ]),
       );
     const view = await render_thinking("检查术语\n逐项核对");
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     const viewport = thinking?.querySelector<HTMLDivElement>(".agent-thinking-entry__viewport");
     if (thinking === null || viewport === null || viewport === undefined) {
       throw new Error("缺少思考块");
     }
-    expect(thinking.open).toBe(true);
+    expect(thinking.dataset.open).toBe("true");
+    const toggle = thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(viewport.getAttribute("tabindex")).toBe("0");
 
     const scroll = { top: 240, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, scroll);
 
-    scroll.height = 560;
-    await render_thinking("检查术语\n逐项核对完成\n继续检查语境");
-    expect(scroll.top).toBe(scroll_end(scroll));
-
     scroll.top = 80;
-    await act(async () => {
-      viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
-      viewport.dispatchEvent(new Event("scroll"));
-    });
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
     scroll.height = 640;
     await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项");
     expect(scroll.top).toBe(80);
-
-    scroll.top = 400;
-    await act(async () => viewport.dispatchEvent(new Event("scroll")));
-    scroll.height = 720;
-    await render_thinking("检查术语\n逐项核对完成\n继续检查语境\n再检查一项\n确认结果");
-    expect(scroll.top).toBe(scroll_end(scroll));
   });
 
   it("普通历史详情首次打开与重新渲染都保留阅读位置", async () => {
@@ -443,7 +431,7 @@ describe("AgentTimeline", () => {
       "success",
     );
     const view = await render_timeline(history_entries);
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
     if (thinking === null || viewport === null || viewport === undefined) {
       throw new Error("缺少历史思考块");
@@ -451,50 +439,23 @@ describe("AgentTimeline", () => {
     const scroll = { top: 40, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, scroll);
 
-    await act(async () => thinking.querySelector("summary")?.click());
-    expect(thinking.open).toBe(true);
+    await act(async () =>
+      thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
+    expect(thinking.dataset.open).toBe("true");
+    expect(thinking.querySelector("[role='region']")?.getAttribute("aria-hidden")).toBe("false");
     expect(scroll.top).toBe(40);
 
-    await act(async () => thinking.querySelector("summary")?.click());
+    await act(async () =>
+      thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
     await render_timeline(history_entries);
     expect(scroll.top).toBe(40);
 
-    await act(async () => thinking.querySelector("summary")?.click());
+    await act(async () =>
+      thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
     expect(scroll.top).toBe(40);
-  });
-
-  it("重新打开时跟随详情归底一次，历史详情保留位置", async () => {
-    const render_thinking = (text: string) =>
-      render_timeline(
-        round_entries([
-          assistant_parts_entry("assistant-reopen", [{ kind: "thinking", text }], "running", 1),
-        ]),
-      );
-    const view = await render_thinking("检查术语");
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
-    const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
-    if (thinking === null || viewport === null || viewport === undefined) {
-      throw new Error("缺少运行中思考块");
-    }
-    const scroll = { top: 0, height: 480, viewport: 240 };
-    install_scroll_metrics(viewport, scroll);
-    await render_thinking("检查术语\n继续检查");
-    expect(scroll.top).toBe(scroll_end(scroll));
-
-    await act(async () => thinking.querySelector("summary")?.click());
-    scroll.height = 560;
-    await render_thinking("检查术语\n继续检查\n继续核对");
-    expect(scroll.top).toBe(240);
-    await act(async () => thinking.querySelector("summary")?.click());
-    expect(scroll.top).toBe(scroll_end(scroll));
-
-    scroll.top = 80;
-    await act(async () => viewport.dispatchEvent(new Event("scroll")));
-    await act(async () => thinking.querySelector("summary")?.click());
-    scroll.height = 640;
-    await render_thinking("检查术语\n继续检查\n再检查");
-    await act(async () => thinking.querySelector("summary")?.click());
-    expect(scroll.top).toBe(80);
   });
 
   it("未手动操作的思考结束后自动关闭且不影响后续正文", async () => {
@@ -509,7 +470,7 @@ describe("AgentTimeline", () => {
         ),
       ]),
     );
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     if (thinking === null) throw new Error("缺少思考块");
 
     await render_timeline(
@@ -526,7 +487,7 @@ describe("AgentTimeline", () => {
       ]),
     );
     await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.open).toBe(false);
+    expect(thinking.dataset.open).toBeUndefined();
     expect(view.querySelector("strong")?.textContent).toBe("结论");
   });
 
@@ -542,7 +503,7 @@ describe("AgentTimeline", () => {
         ),
       ]),
     );
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
     if (thinking === null || viewport === null || viewport === undefined) {
       throw new Error("缺少思考块");
@@ -567,12 +528,12 @@ describe("AgentTimeline", () => {
       ]),
     );
     await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.open).toBe(true);
+    expect(thinking.dataset.open).toBe("true");
 
     scroll.top = 240;
     await act(async () => viewport.dispatchEvent(new Event("scroll")));
     await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.open).toBe(false);
+    expect(thinking.dataset.open).toBeUndefined();
   });
 
   it("用户手动开合优先且历史思考不启动自动收缩", async () => {
@@ -587,9 +548,11 @@ describe("AgentTimeline", () => {
         ),
       ]),
     );
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     if (thinking === null) throw new Error("缺少思考块");
-    await act(async () => thinking.querySelector("summary")?.click());
+    await act(async () =>
+      thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
 
     await render_timeline(
       round_entries([
@@ -605,10 +568,12 @@ describe("AgentTimeline", () => {
       ]),
     );
     await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.open).toBe(false);
-    await act(async () => thinking.querySelector("summary")?.click());
+    expect(thinking.dataset.open).toBeUndefined();
+    await act(async () =>
+      thinking.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
     await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.open).toBe(true);
+    expect(thinking.dataset.open).toBe("true");
 
     await render_timeline(
       round_entries(
@@ -623,12 +588,14 @@ describe("AgentTimeline", () => {
         "success",
       ),
     );
-    const history = view.querySelector<HTMLDetailsElement>(".agent-thinking-entry");
+    const history = view.querySelector<HTMLElement>(".agent-thinking-entry");
     if (history === null) throw new Error("缺少历史思考块");
-    expect(history.open).toBe(false);
-    await act(async () => history.querySelector("summary")?.click());
+    expect(history.dataset.open).toBeUndefined();
+    await act(async () =>
+      history.querySelector<HTMLButtonElement>(".agent-thinking-entry__toggle")?.click(),
+    );
     await act(async () => vi.runOnlyPendingTimers());
-    expect(history.open).toBe(true);
+    expect(history.dataset.open).toBe("true");
     expect(history.querySelector("pre")?.textContent).toBe("历史思考");
   });
 
