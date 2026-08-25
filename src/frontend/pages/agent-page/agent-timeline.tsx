@@ -530,12 +530,9 @@ function AgentThinkingDetail(props: {
   const id = useId(); // 为 disclosure 的 aria 关系提供稳定局部 ID
   const toggle_id = `agent-thinking-toggle-${id}`;
   const content_id = `agent-thinking-content-${id}`;
-  const {
-    paused: follow_paused,
-    follow_content,
-    reconcile_scroll,
-    settle_scroll,
-  } = useAgentScrollFollow(!props.active);
+  const { following, follow_content, reconcile_scroll, settle_scroll } = useAgentScrollFollow(
+    props.active,
+  );
 
   useEffect(() => {
     if (was_active_ref.current && !props.active && props.completed) {
@@ -555,14 +552,14 @@ function AgentThinkingDetail(props: {
     observer.observe(content);
     if (open) follow_content(viewport);
     return () => observer.disconnect();
-  }, [follow_content, open, props.content]);
+  }, [follow_content, open]);
 
   useEffect(() => {
     if (
       !completion_seen_ref.current ||
       !props.completed ||
       !open ||
-      follow_paused ||
+      !following ||
       user_toggled_ref.current
     ) {
       return;
@@ -575,14 +572,14 @@ function AgentThinkingDetail(props: {
       set_open(false);
     }, AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [follow_paused, open, props.completed]);
+  }, [following, open, props.completed]);
 
   const duration = useAgentElapsed(props.started_at, props.active);
   return (
     <div
       className="agent-thinking-entry"
       data-open={open || undefined}
-      data-following={!follow_paused || undefined}
+      data-following={following || undefined}
     >
       <button
         ref={toggle_ref}

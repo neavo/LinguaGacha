@@ -10,7 +10,8 @@ function scroll_to_end(target: HTMLElement): void {
 
 /** 页面会话与思考视口共用的最小滚动所有权控制面。 */
 type AgentScrollFollow = {
-  paused: boolean;
+  following: boolean;
+  activate: (target: HTMLElement) => void;
   follow_content: (target: HTMLElement) => void;
   reconcile_scroll: (target: HTMLElement) => void;
   settle_scroll: (target: HTMLElement) => void;
@@ -25,17 +26,17 @@ export function is_at_scroll_end(target: HTMLElement): boolean {
 }
 
 /** 每个滚动容器独立拥有一个显式跟随状态和唯一归底写入口。 */
-export function useAgentScrollFollow(initial_paused = false): AgentScrollFollow {
-  const following_ref = useRef(!initial_paused); // 同步保留当前滚动所有权，避免等待 React 提交
+export function useAgentScrollFollow(initial_following = true): AgentScrollFollow {
+  const following_ref = useRef(initial_following); // 同步保留当前滚动所有权，避免等待 React 提交
   const pending_follow_frame_ref = useRef<number | null>(null); // 同一布局帧最多保留一个跟随写入
   const reset_epoch_ref = useRef(0); // 让 resume 前已排队的布局回调失效
   const reset_pending_ref = useRef(false); // scrollend 前屏蔽迟到的旧几何事件
-  const [paused, set_paused] = useState(initial_paused);
+  const [following, set_following_state] = useState(initial_following);
 
   /** 同步更新 Hook 内部所有权和按钮可见状态。 */
-  const set_following = useCallback((following: boolean): void => {
-    following_ref.current = following;
-    set_paused(!following);
+  const set_following = useCallback((next_following: boolean): void => {
+    following_ref.current = next_following;
+    set_following_state(next_following);
   }, []);
 
   /** 取消尚未提交的合帧位置写入。 */
@@ -44,6 +45,18 @@ export function useAgentScrollFollow(initial_paused = false): AgentScrollFollow 
     cancelAnimationFrame(pending_follow_frame_ref.current);
     pending_follow_frame_ref.current = null;
   }, []);
+
+  /** 新逻辑会话在绘制前取得跟随权，不进入用户归底事务。 */
+  const activate = useCallback(
+    (target: HTMLElement): void => {
+      clear_pending_follow();
+      reset_epoch_ref.current += 1;
+      reset_pending_ref.current = false;
+      set_following(true);
+      scroll_to_end(target);
+    },
+    [clear_pending_follow, set_following],
+  );
 
   /** 合并同一布局帧的尺寸变化；不以迟到事件恢复旧所有权。 */
   const follow_content = useCallback((target: HTMLElement): void => {
@@ -89,8 +102,15 @@ export function useAgentScrollFollow(initial_paused = false): AgentScrollFollow 
     (target: HTMLElement): void => {
       clear_pending_follow();
       reset_epoch_ref.current += 1;
-      reset_pending_ref.current = true;
       set_following(true);
+
+      // 已经在底部时不会产生新的滚动事务，不能进入永久等待 scrollend 的状态。
+      if (is_at_scroll_end(target)) {
+        reset_pending_ref.current = false;
+        return;
+      }
+
+      reset_pending_ref.current = true;
       scroll_to_end(target);
     },
     [clear_pending_follow, set_following],
@@ -105,7 +125,8 @@ export function useAgentScrollFollow(initial_paused = false): AgentScrollFollow 
   );
 
   return {
-    paused,
+    following,
+    activate,
     follow_content,
     reconcile_scroll,
     settle_scroll,

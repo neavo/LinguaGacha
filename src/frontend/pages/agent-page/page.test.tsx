@@ -401,6 +401,40 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
+  it("新会话激活时同步归底，用户离底一次就显示回到最新", async () => {
+    const view = await render_page({ entries: [] });
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 0, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    await render_page();
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+
+    scroll.top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+  });
+
+  it("新公开会话不会继承旧会话的阅读位置", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 100, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+
+    await render_page({ entries: [] });
+    await render_page({
+      entries: [user_entry("user-next", "新会话", "success", 2, 3)],
+    });
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+  });
+
   it("真实 scroll 会取消已排队的布局跟随", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
@@ -456,6 +490,27 @@ describe("AgentPage", () => {
     scroll.top = 100;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
+  });
+
+  it("已经在底部时恢复不会卡在等待 scrollend，后续内容仍然跟随", async () => {
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ send });
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).toHaveBeenCalledOnce();
+
+    scroll.height = 1_100;
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
+
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
   });
 
   it("外层真实位置切换跟随状态，自然或显式归底后恢复内容跟随", async () => {
