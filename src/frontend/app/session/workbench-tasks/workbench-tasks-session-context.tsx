@@ -89,10 +89,12 @@ function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
 
   return (
     <>
+      {/* 仅全量重置需要防误触，失败重置及其它任务动作保持即时确认。 */}
       <AppConfirmDialog
         open={translation_workbench_task.task_confirm_state?.open ?? false}
         description={translation_confirm_description}
         submitting={translation_workbench_task.task_confirm_state?.submitting ?? false}
+        confirmDelay={translation_workbench_task.task_confirm_state?.kind === "reset-all"}
         onConfirm={translation_workbench_task.confirm_task_action}
         onClose={translation_workbench_task.close_task_action_confirmation}
       />
@@ -100,6 +102,7 @@ function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
         open={analysis_workbench_task.analysis_confirm_state?.open ?? false}
         description={analysis_confirm_description}
         submitting={analysis_workbench_task.analysis_confirm_state?.submitting ?? false}
+        confirmDelay={analysis_workbench_task.analysis_confirm_state?.kind === "reset-all"}
         onConfirm={analysis_workbench_task.confirm_analysis_task_action}
         onClose={analysis_workbench_task.close_analysis_task_action_confirmation}
       />
