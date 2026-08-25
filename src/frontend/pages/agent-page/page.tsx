@@ -85,7 +85,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
   const [follow_latest, set_follow_latest] = useState(true); // 页面级实时阅读模式，滚动位置不参与推断
-  const { follow_content: follow_conversation_content, resume: resume_conversation } =
+  const { follow_content: follow_conversation_content, scroll_to_end: scroll_conversation_to_end } =
     useAgentAutoScroll(follow_latest);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
@@ -155,22 +155,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     if (!target_exists) set_active_inline_edit(null);
   }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
 
-  /** 显式激活最新并归底外层会话；活动思考视口消费同一页面状态。 */
-  const activate_follow_latest = useCallback((): void => {
-    set_follow_latest(true);
-    const conversation = conversation_ref.current;
-    if (conversation !== null) resume_conversation(conversation);
-  }, [resume_conversation]);
-
-  /** 新公开会话与重新激活“最新”时都在布局阶段归底。 */
-  const conversation_key = agent.entries[0]?.id ?? null; // 首条公开条目身份定义页面滚动生命周期
-  useLayoutEffect(() => {
-    set_follow_latest(true);
-  }, [conversation_key]);
+  /** 开启跟随时在布局阶段归底；后续内容变化由统一观察入口接管。 */
   useLayoutEffect(() => {
     const conversation = conversation_ref.current;
-    if (conversation !== null && follow_latest) resume_conversation(conversation);
-  }, [conversation_key, follow_latest, resume_conversation]);
+    if (conversation !== null && follow_latest) scroll_conversation_to_end(conversation);
+  }, [follow_latest, scroll_conversation_to_end]);
 
   // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
   useLayoutEffect(() => {
@@ -205,7 +194,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   /** 页面内所有普通发送共用同一条实际提交出口，确认框只延迟调用它。 */
   const send_message = useCallback(
     async (message: AgentMessageInput): Promise<boolean> => {
-      activate_follow_latest();
       const request = can_continue_queue
         ? agent.continue(
             message.text === "" && message.attachments.length === 0 ? undefined : message,
@@ -222,7 +210,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         return false;
       }
     },
-    [activate_follow_latest, agent, can_continue_queue, show_command_error],
+    [agent, can_continue_queue, show_command_error],
   );
 
   /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
@@ -333,13 +321,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         agent.input.replace_history(target.message.text, message.text);
         return;
       }
-      activate_follow_latest();
       await agent.reviseLatestRound(target.entryId, message);
       if (target.role === "user") {
         agent.input.replace_history(target.message.text, message.text);
       }
     },
-    [activate_follow_latest, active_inline_edit, agent],
+    [active_inline_edit, agent],
   );
 
   const cancel_inline_edit = useCallback((): void => {
@@ -438,7 +425,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
   /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
   const continue_latest_round = (): void => {
-    activate_follow_latest();
     void agent.continue().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.continue");
     });
@@ -561,13 +547,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               variant="outline"
               aria-label={t("agent_page.action.follow_latest")}
               aria-pressed={follow_latest}
-              onClick={() => {
-                if (follow_latest) {
-                  set_follow_latest(false);
-                  return;
-                }
-                activate_follow_latest();
-              }}
+              onClick={() => set_follow_latest((following) => !following)}
             >
               <ArrowDownToLine aria-hidden="true" />
             </AppButton>

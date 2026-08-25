@@ -84,39 +84,42 @@ describe("useAgentAutoScroll", () => {
     let api!: AutoScrollApi;
     await render(<AutoScrollProbe enabled on_ready={(next_api) => (api = next_api)} />);
     const scroll = scroll_target();
+    const initial_top = scroll.read_top();
 
     api.follow_content(scroll.target);
     api.follow_content(scroll.target);
-    expect(scroll.read_top()).toBe(0);
+    expect(scroll.read_top()).toBe(initial_top);
     expect(pending_frames.size).toBe(1);
 
     flush_frames();
-    expect(scroll.read_top()).toBe(1_000);
+    expect(scroll.read_top()).toBe(scroll.target.scrollHeight);
   });
 
-  it("禁用时不执行排队跟随，显式恢复仍然立即归底", async () => {
+  it("禁用时不执行排队跟随，显式归底仍然立即生效", async () => {
     let api!: AutoScrollApi;
     await render(<AutoScrollProbe enabled={false} on_ready={(next_api) => (api = next_api)} />);
     const scroll = scroll_target();
+    const initial_top = scroll.read_top();
 
     api.follow_content(scroll.target);
     flush_frames();
-    expect(scroll.read_top()).toBe(0);
+    expect(scroll.read_top()).toBe(initial_top);
 
-    api.resume(scroll.target);
-    expect(scroll.read_top()).toBe(1_000);
+    api.scroll_to_end(scroll.target);
+    expect(scroll.read_top()).toBe(scroll.target.scrollHeight);
   });
 
   it("卸载时取消尚未执行的跟随帧", async () => {
     let api!: AutoScrollApi;
     await render(<AutoScrollProbe enabled on_ready={(next_api) => (api = next_api)} />);
     const scroll = scroll_target();
+    const initial_top = scroll.read_top();
     api.follow_content(scroll.target);
     expect(pending_frames.size).toBe(1);
 
     await act(async () => root?.unmount());
     root = null;
     flush_frames();
-    expect(scroll.read_top()).toBe(0);
+    expect(scroll.read_top()).toBe(initial_top);
   });
 });

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 
 /** 所有跟随路径共用同一个归底写入口。 */
-function scroll_to_end(target: HTMLElement): void {
+function write_scroll_end(target: HTMLElement): void {
   target.scrollTop = target.scrollHeight;
 }
 
 /** 页面会话与活动思考视口共用的最小自动归底工具。 */
 type AgentAutoScroll = {
   follow_content: (target: HTMLElement) => void;
-  resume: (target: HTMLElement) => void;
+  scroll_to_end: (target: HTMLElement) => void;
 };
 
 /** 页面级跟随状态由 AgentPage 拥有；此 Hook 只处理内容变化后的合帧归底。 */
@@ -31,15 +31,15 @@ export function useAgentAutoScroll(enabled: boolean): AgentAutoScroll {
     pending_follow_frame_ref.current = requestAnimationFrame(() => {
       pending_follow_frame_ref.current = null;
       if (!enabled_ref.current) return;
-      scroll_to_end(target);
+      write_scroll_end(target);
     });
   }, []);
 
-  /** 显式激活“最新”时归底；不等待任何浏览器滚动事件。 */
-  const resume = useCallback(
+  /** 立即归底并清除尚未提交的合帧写入。 */
+  const scroll_to_end = useCallback(
     (target: HTMLElement): void => {
       clear_pending_follow();
-      scroll_to_end(target);
+      write_scroll_end(target);
     },
     [clear_pending_follow],
   );
@@ -53,6 +53,6 @@ export function useAgentAutoScroll(enabled: boolean): AgentAutoScroll {
 
   return {
     follow_content,
-    resume,
+    scroll_to_end,
   };
 }
