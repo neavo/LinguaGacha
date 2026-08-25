@@ -87,21 +87,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260823 v0.116.3
-  - 调整与改进
-
-- 20260820 v0.116.2
-  - 调整与改进 [#785](https://github.com/neavo/LinguaGacha/issues/785) [#786](https://github.com/neavo/LinguaGacha/issues/786) [#787](https://github.com/neavo/LinguaGacha/issues/787) [#788](https://github.com/neavo/LinguaGacha/issues/788) [#790](https://github.com/neavo/LinguaGacha/issues/790)
-
-- 20260819 v0.116.1
-  - 修复 Gemini 系列兼容问题
-
-- 20260818 v0.116.0
-  - `AGENT` 交互优化
-    - 消息队列 [#772](https://github.com/neavo/LinguaGacha/issues/772)
-    - 引用与批注 [#770](https://github.com/neavo/LinguaGacha/issues/770)
-    - 任务完成提醒 [#776](https://github.com/neavo/LinguaGacha/issues/776)
-  - 调整与改进 [#774](https://github.com/neavo/LinguaGacha/issues/774) [#775](https://github.com/neavo/LinguaGacha/issues/775) [#777](https://github.com/neavo/LinguaGacha/issues/777) [#778](https://github.com/neavo/LinguaGacha/issues/778) [#780](https://github.com/neavo/LinguaGacha/issues/780)
+- 20260825 v0.117.0
+  - `AGENT` - 自动写入审批 [#806](https://github.com/neavo/LinguaGacha/issues/806)
+  - 调整与改进 [#795](https://github.com/neavo/LinguaGacha/issues/795) [#797](https://github.com/neavo/LinguaGacha/issues/797) [#801](https://github.com/neavo/LinguaGacha/issues/801) [#804](https://github.com/neavo/LinguaGacha/issues/804)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`

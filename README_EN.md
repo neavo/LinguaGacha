@@ -88,21 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260823 v0.116.3
-  - Adjustments and improvements
-
-- 20260820 v0.116.2
-  - Adjustments and improvements [#785](https://github.com/neavo/LinguaGacha/issues/785) [#786](https://github.com/neavo/LinguaGacha/issues/786) [#787](https://github.com/neavo/LinguaGacha/issues/787) [#788](https://github.com/neavo/LinguaGacha/issues/788) [#790](https://github.com/neavo/LinguaGacha/issues/790)
-
-- 20260819 v0.116.1
-  - Fix Gemini series compatibility issues
-
-- 20260818 v0.116.0
-  - `AGENT` UI improvements
-    - Message queue [#772](https://github.com/neavo/LinguaGacha/issues/772)
-    - Quotes and annotations [#770](https://github.com/neavo/LinguaGacha/issues/770)
-    - Task completion reminders [#776](https://github.com/neavo/LinguaGacha/issues/776)
-  - Adjustments and improvements [#774](https://github.com/neavo/LinguaGacha/issues/774) [#775](https://github.com/neavo/LinguaGacha/issues/775) [#777](https://github.com/neavo/LinguaGacha/issues/777) [#778](https://github.com/neavo/LinguaGacha/issues/778) [#780](https://github.com/neavo/LinguaGacha/issues/780)
+- 20260825 v0.117.0
+  - `AGENT` - Auto write approval [#806](https://github.com/neavo/LinguaGacha/issues/806)
+  - Adjustments and improvements [#795](https://github.com/neavo/LinguaGacha/issues/795) [#797](https://github.com/neavo/LinguaGacha/issues/797) [#801](https://github.com/neavo/LinguaGacha/issues/801) [#804](https://github.com/neavo/LinguaGacha/issues/804)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
