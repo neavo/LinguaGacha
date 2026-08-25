@@ -1,4 +1,5 @@
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
+import { useLayoutEffect, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { Button } from "@frontend/shadcn/button";
@@ -8,6 +9,7 @@ type AppDialogAction = {
   label: string;
   onSelect: () => void | Promise<void>;
   variant?: "default" | "destructive" | "outline";
+  disabled?: boolean; // 动作自身的可用性独立于提交互斥
 };
 
 type AppDialogDismissAction = {
@@ -27,6 +29,7 @@ type AppDialogBaseProps = {
 
 type AppConfirmDialogProps = Omit<AppDialogBaseProps, "submittingLabel" | "submittingIcon"> & {
   onConfirm: () => void | Promise<void>;
+  confirmDelay?: boolean; // 危险动作在开放确认前启用统一倒计时
 };
 
 type AppActionDialogProps = AppDialogBaseProps & {
@@ -39,14 +42,43 @@ type ClosableEvent = {
   preventDefault: () => void;
 };
 
+// 延迟确认采用统一时长，业务层只判断动作是否需要保护。
+const CONFIRM_DELAY_SECONDS = 3;
+
 /** 提交期间禁止通过键盘或外部事件关闭模态窗。 */
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
 
-/** 固定承载取消/确认语义，调用方不能改写动作文案或主题色。 */
+/** 固定承载取消/确认语义，并在危险动作需要时统一延迟确认。 */
 export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
+  const [remaining_seconds, set_remaining_seconds] = useState(0); // 当前弹窗的瞬时倒计时，不进入业务状态
+
+  useLayoutEffect(() => {
+    if (!props.open || !props.confirmDelay) {
+      set_remaining_seconds(0);
+      return;
+    }
+
+    // 在弹窗绘制前锁定确认按钮，避免打开瞬间短暂暴露可提交状态。
+    set_remaining_seconds(CONFIRM_DELAY_SECONDS);
+    // 每秒递减，归零后立即停止，避免确认框关闭后继续持有定时器。
+    const timer_id = window.setInterval(() => {
+      set_remaining_seconds((previous_seconds) => {
+        if (previous_seconds <= 1) {
+          window.clearInterval(timer_id);
+          return 0;
+        }
+
+        return previous_seconds - 1;
+      });
+    }, 1_000);
+
+    return () => window.clearInterval(timer_id);
+  }, [props.confirmDelay, props.open]);
+
+  const confirm_is_delayed = props.open && remaining_seconds > 0; // 同时驱动可见秒数与动作禁用，避免两套状态漂移
   return (
     <AppDialog
       open={props.open}
@@ -54,8 +86,9 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
       description={props.description}
       submitting={props.submitting}
       primaryAction={{
-        label: t("app.action.confirm"),
+        label: confirm_is_delayed ? `${remaining_seconds}s` : t("app.action.confirm"),
         onSelect: props.onConfirm,
+        disabled: confirm_is_delayed,
       }}
       dismissAction={{ label: t("app.action.cancel") }}
       onClose={props.onClose}
@@ -142,7 +175,7 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
               <Button variant={props.secondaryAction.variant ?? "outline"} size="sm" asChild>
                 <AlertDialogPrimitive.Action
                   data-slot="alert-dialog-secondary-action"
-                  disabled={submitting}
+                  disabled={submitting || props.secondaryAction.disabled}
                   onClick={(event) => {
                     event.preventDefault();
                     void props.secondaryAction?.onSelect();
@@ -155,7 +188,7 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
             <Button variant={props.primaryAction.variant ?? "default"} size="sm" asChild>
               <AlertDialogPrimitive.Action
                 data-slot="alert-dialog-primary-action"
-                disabled={submitting}
+                disabled={submitting || props.primaryAction.disabled}
                 onClick={(event) => {
                   event.preventDefault();
                   void props.primaryAction.onSelect();

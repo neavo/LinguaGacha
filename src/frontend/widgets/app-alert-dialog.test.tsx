@@ -31,6 +31,7 @@ describe("应用模态窗", () => {
     container?.remove();
     container = null;
     root = null;
+    vi.useRealTimers();
   });
 
   it("普通确认固定使用取消、确认和主题色", () => {
@@ -105,6 +106,32 @@ describe("应用模态窗", () => {
     expect(document.body.querySelector('[data-testid="spinner"]')).toBeNull();
     expect(read_button("50%")?.disabled).toBe(true);
     expect(read_button("app.action.cancel")?.disabled).toBe(true);
+  });
+
+  it("延迟确认显示秒数并在三秒后开放提交", () => {
+    vi.useFakeTimers();
+    const on_confirm = vi.fn();
+
+    render_dialog(
+      <AppConfirmDialog
+        open
+        description="是否确认重置？"
+        confirmDelay
+        onConfirm={on_confirm}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(read_button("3s")?.disabled).toBe(true);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(read_button("2s")?.disabled).toBe(true);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(read_button("1s")?.disabled).toBe(true);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(read_button("app.action.confirm")?.disabled).toBe(false);
+
+    click_button("app.action.confirm");
+    expect(on_confirm).toHaveBeenCalledTimes(1);
   });
 
   function render_dialog(element: JSX.Element): void {
