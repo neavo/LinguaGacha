@@ -73,7 +73,7 @@ function notify_resize_observers(): void {
   for (const observer of resize_observers) observer.notify();
 }
 
-/** 等待用户输入无位移时的所有权恢复。 */
+/** 等待合帧布局跟随完成。 */
 function next_animation_frame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -401,7 +401,7 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("跟随态内容增长归底，用户接管在同批尺寸变化前生效", async () => {
+  it("真实 scroll 会取消已排队的布局跟随", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
@@ -410,19 +410,15 @@ describe("AgentPage", () => {
 
     scroll.height = 1_100;
     await act(async () => notify_resize_observers());
-    expect(scroll.top).toBe(scroll_end(scroll));
-
     scroll.top = 100;
-    act(() => {
-      conversation.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 }));
-      scroll.height = 1_200;
-      notify_resize_observers();
-      expect(scroll.top).toBe(100);
-      conversation.dispatchEvent(new Event("scroll"));
-    });
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    await act(async () => next_animation_frame());
+
+    expect(scroll.top).toBe(100);
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
   });
 
-  it("用户输入没有产生位移时恢复跟随并补齐同帧增长", async () => {
+  it("布局变化只合并一个跟随帧，不靠输入事件夺回所有权", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
@@ -430,7 +426,6 @@ describe("AgentPage", () => {
     install_scroll_metrics(conversation, scroll);
 
     act(() => {
-      conversation.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 100 }));
       scroll.height = 1_100;
       notify_resize_observers();
       expect(scroll.top).toBe(600);
@@ -439,6 +434,28 @@ describe("AgentPage", () => {
 
     expect(scroll.top).toBe(scroll_end(scroll));
     expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeUndefined();
+  });
+
+  it("回到最新会等待 scrollend，迟到历史事件不会重新锁死顶部", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 100, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    const button = find_button_by_text(view, "agent_page.action.return_latest");
+    if (button === undefined) throw new Error("缺少回到最新入口");
+    await act(async () => button.click());
+    expect(scroll.top).toBe(scroll_end(scroll));
+
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    await act(async () => conversation.dispatchEvent(new Event("scrollend")));
+    expect(scroll.top).toBe(scroll_end(scroll));
+
+    scroll.top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    expect(find_button_by_text(view, "agent_page.action.return_latest")).toBeDefined();
   });
 
   it("外层真实位置切换跟随状态，自然或显式归底后恢复内容跟随", async () => {

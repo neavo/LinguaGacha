@@ -31,7 +31,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
-import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
+import { useAgentScrollFollow } from "./agent-scroll";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -84,8 +84,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const {
     paused: conversation_follow_paused,
     follow_content: follow_conversation_content,
-    begin_user_scroll: begin_conversation_user_scroll,
     reconcile_scroll: reconcile_conversation_scroll,
+    settle_scroll: settle_conversation_scroll,
     resume: resume_conversation,
   } = useAgentScrollFollow();
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
@@ -169,6 +169,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     const content = conversation_content_ref.current;
     if (conversation === null || content === null) return;
     const observer = new ResizeObserver(() => follow_conversation_content(conversation));
+    observer.observe(conversation);
     observer.observe(content);
     follow_conversation_content(conversation);
     return () => observer.disconnect();
@@ -413,27 +414,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ref={conversation_ref}
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
-        onWheel={(event) => begin_conversation_user_scroll(event.currentTarget)}
-        onTouchMove={(event) => begin_conversation_user_scroll(event.currentTarget)}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) {
-            begin_conversation_user_scroll(event.currentTarget);
-          }
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons > 0 && event.target === event.currentTarget) {
-            begin_conversation_user_scroll(event.currentTarget);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (
-            is_agent_scroll_key(event.key) &&
-            (event.key !== " " || event.target === event.currentTarget)
-          ) {
-            begin_conversation_user_scroll(event.currentTarget);
-          }
-        }}
+        data-following={!conversation_follow_paused || undefined}
         onScroll={(event) => reconcile_conversation_scroll(event.currentTarget)}
+        onScrollEnd={(event) => settle_conversation_scroll(event.currentTarget)}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
           {agent.transport === "disconnected" && (

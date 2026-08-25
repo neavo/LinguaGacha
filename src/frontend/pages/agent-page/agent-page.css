@@ -24,9 +24,13 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
-  /* 跟随由页面唯一写入口负责，浏览器不建立第二套滚动所有权。 */
-  overflow-anchor: none;
+  /* 阅读态交给浏览器被动锚定；跟随态由 Hook 显式归底。 */
+  overflow-anchor: auto;
   scrollbar-gutter: stable;
+}
+
+.agent-page__conversation[data-following="true"] {
+  overflow-anchor: none;
 }
 
 .agent-page__conversation-content {
@@ -527,14 +531,19 @@
   font-variant-numeric: tabular-nums;
 }
 
-.agent-thinking-entry summary {
+.agent-thinking-entry__toggle {
   display: grid;
   height: 32px;
   width: 100%;
   grid-template-columns: 5px minmax(0, 1fr) 8px;
   align-items: center;
   gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   padding: 6px 8px;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   list-style: none;
   transition:
@@ -542,11 +551,7 @@
     color 120ms ease;
 }
 
-.agent-thinking-entry summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-thinking-entry summary::before {
+.agent-thinking-entry__toggle::before {
   width: 0;
   height: 0;
   border-top: 4px solid transparent;
@@ -556,16 +561,16 @@
   transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.agent-thinking-entry[open] summary::before {
+.agent-thinking-entry[data-open="true"] .agent-thinking-entry__toggle::before {
   transform: rotate(90deg);
 }
 
-.agent-thinking-entry summary:hover {
+.agent-thinking-entry__toggle:hover {
   background: var(--accent);
   color: var(--foreground);
 }
 
-.agent-thinking-entry summary:focus-visible {
+.agent-thinking-entry__toggle:focus-visible {
   background: var(--accent);
   color: var(--foreground);
   outline: 1px solid var(--ring);
@@ -594,12 +599,35 @@
   background: var(--ui-failure);
 }
 
+.agent-thinking-entry__content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+}
+
+.agent-thinking-entry[data-open="true"] .agent-thinking-entry__content {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.agent-thinking-entry__content-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .agent-thinking-entry__viewport {
   max-height: 240px;
   overflow: auto;
-  overflow-anchor: none;
+  overflow-anchor: auto;
   border-top: 1px solid var(--border);
   padding: 8px 12px 10px 28px;
+}
+
+.agent-thinking-entry[data-following="true"] .agent-thinking-entry__viewport {
+  overflow-anchor: none;
 }
 
 .agent-thinking-entry pre {
@@ -1440,8 +1468,9 @@
     animation: none;
   }
 
-  .agent-thinking-entry summary::before,
-  .agent-thinking-entry summary,
+  .agent-thinking-entry__toggle::before,
+  .agent-thinking-entry__toggle,
+  .agent-thinking-entry__content,
   .agent-tool-entry,
   .agent-composer__drop-overlay,
   .agent-page__suggestion,

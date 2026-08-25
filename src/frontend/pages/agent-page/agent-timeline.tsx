@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide-react";
 
 import type {
@@ -18,7 +18,7 @@ import {
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
-import { is_agent_scroll_key, useAgentScrollFollow } from "./agent-scroll";
+import { useAgentScrollFollow } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
@@ -450,14 +450,18 @@ function render_assistant_entry(
       {entry.parts.map((part, part_index) => {
         const key = `${entry.id}-${part_index.toString()}`;
         if (part.kind === "thinking") {
-          const status = part_index === entry.parts.length - 1 ? entry.status : "success";
+          const block_active = part_index === entry.parts.length - 1 && entry.status === "running";
+          const block_completed = !block_active;
+          const display_status = block_active ? entry.status : "success";
           return (
             <AgentThinkingDetail
               key={key}
-              label={t(status === "running" ? "agent_page.thinking_active" : "agent_page.thinking")}
+              label={t(block_active ? "agent_page.thinking_active" : "agent_page.thinking")}
               started_at={entry.createdAt}
-              status={status}
-              status_label={t(AGENT_STATUS_LABEL_KEYS[status])}
+              active={block_active}
+              completed={block_completed}
+              status={display_status}
+              status_label={t(AGENT_STATUS_LABEL_KEYS[display_status])}
               content={part.text}
             />
           );
@@ -510,48 +514,91 @@ function AgentToolEntryButton(props: {
 function AgentThinkingDetail(props: {
   label: string;
   started_at: number;
+  active: boolean;
+  completed: boolean;
   status: AgentEntryStatus;
   status_label: string;
   content: string;
 }): JSX.Element {
-  const active = props.status === "running";
-  const [open, set_open] = useState(active);
-  const viewport_ref = useRef<HTMLDivElement | null>(null);
+  const [open, set_open] = useState(props.active);
+  const toggle_ref = useRef<HTMLButtonElement | null>(null); // 自动收缩前承接焦点
+  const content_ref = useRef<HTMLDivElement | null>(null); // 观察开合动画的布局变化
+  const viewport_ref = useRef<HTMLDivElement | null>(null); // 思考内容独立滚动容器
+  const was_active_ref = useRef(props.active); // 识别 active -> completed 的流式转折
+  const completion_seen_ref = useRef(false); // 历史完成块不启动自动收缩
+  const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
+  const id = useId(); // 为 disclosure 的 aria 关系提供稳定局部 ID
+  const toggle_id = `agent-thinking-toggle-${id}`;
+  const content_id = `agent-thinking-content-${id}`;
   const {
     paused: follow_paused,
     follow_content,
-    begin_user_scroll,
     reconcile_scroll,
-  } = useAgentScrollFollow(!active);
-  const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
-
-  // 思考正文是纯文本，提交后直接复用局部跟随控制器，不建立第二套尺寸观察状态。
-  useLayoutEffect(() => {
-    const viewport = viewport_ref.current;
-    if (open && viewport !== null) follow_content(viewport);
-  }, [active, follow_content, open, props.content]);
+    settle_scroll,
+  } = useAgentScrollFollow(!props.active);
 
   useEffect(() => {
-    if (active || !open || follow_paused || user_toggled_ref.current) return;
-    const timer = window.setTimeout(() => set_open(false), AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [active, follow_paused, open]);
+    if (was_active_ref.current && !props.active && props.completed) {
+      completion_seen_ref.current = true;
+    }
+    was_active_ref.current = props.active;
+  }, [props.active, props.completed]);
 
-  const duration = useAgentElapsed(props.started_at, active);
+  // 思考正文和开合动画共用局部尺寸观察；观察回调只进入滚动 Hook。
+  useLayoutEffect(() => {
+    const content = content_ref.current;
+    const viewport = viewport_ref.current;
+    if (content === null || viewport === null) return;
+    const observer = new ResizeObserver(() => {
+      if (open) follow_content(viewport);
+    });
+    observer.observe(content);
+    if (open) follow_content(viewport);
+    return () => observer.disconnect();
+  }, [follow_content, open, props.content]);
+
+  useEffect(() => {
+    if (
+      !completion_seen_ref.current ||
+      !props.completed ||
+      !open ||
+      follow_paused ||
+      user_toggled_ref.current
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const viewport = viewport_ref.current;
+      if (viewport !== null && viewport.contains(document.activeElement)) {
+        toggle_ref.current?.focus({ preventScroll: true });
+      }
+      set_open(false);
+    }, AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [follow_paused, open, props.completed]);
+
+  const duration = useAgentElapsed(props.started_at, props.active);
   return (
-    <details
+    <div
       className="agent-thinking-entry"
-      open={open}
-      onToggle={(event) => set_open(event.currentTarget.open)}
+      data-open={open || undefined}
+      data-following={!follow_paused || undefined}
     >
-      <summary
+      <button
+        ref={toggle_ref}
+        id={toggle_id}
+        type="button"
+        className="agent-thinking-entry__toggle"
+        aria-expanded={open}
+        aria-controls={content_id}
         onClick={() => {
           user_toggled_ref.current = true;
+          set_open((current) => !current);
         }}
       >
         <span className="agent-thinking-entry__label">
           {props.label}
-          {active ? (
+          {props.active ? (
             <>
               {" · "}
               <span className="agent-thinking-entry__elapsed">{duration}</span>
@@ -559,39 +606,34 @@ function AgentThinkingDetail(props: {
           ) : null}
         </span>
         <AgentStatusMark status={props.status} label={props.status_label} />
-      </summary>
+      </button>
       <div
-        ref={viewport_ref}
-        className="agent-thinking-entry__viewport"
-        tabIndex={0}
-        onWheel={(event) => {
-          event.stopPropagation();
-          begin_user_scroll(event.currentTarget);
-        }}
-        onTouchMove={(event) => {
-          event.stopPropagation();
-          begin_user_scroll(event.currentTarget);
-        }}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          begin_user_scroll(event.currentTarget);
-        }}
-        onPointerMove={(event) => {
-          event.stopPropagation();
-          if (event.buttons > 0) begin_user_scroll(event.currentTarget);
-        }}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (is_agent_scroll_key(event.key)) begin_user_scroll(event.currentTarget);
-        }}
-        onScroll={(event) => {
-          event.stopPropagation();
-          reconcile_scroll(event.currentTarget);
-        }}
+        ref={content_ref}
+        id={content_id}
+        role="region"
+        aria-labelledby={toggle_id}
+        aria-hidden={!open}
+        className="agent-thinking-entry__content"
       >
-        <pre>{props.content}</pre>
+        <div className="agent-thinking-entry__content-inner">
+          <div
+            ref={viewport_ref}
+            className="agent-thinking-entry__viewport"
+            tabIndex={open ? 0 : -1}
+            onScroll={(event) => {
+              event.stopPropagation();
+              reconcile_scroll(event.currentTarget);
+            }}
+            onScrollEnd={(event) => {
+              event.stopPropagation();
+              settle_scroll(event.currentTarget);
+            }}
+          >
+            <pre>{props.content}</pre>
+          </div>
+        </div>
       </div>
-    </details>
+    </div>
   );
 }
 
