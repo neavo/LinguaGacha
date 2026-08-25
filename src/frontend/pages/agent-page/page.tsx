@@ -84,7 +84,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
   const {
-    paused: conversation_follow_paused,
+    following: conversation_following,
+    activate: activate_conversation,
     follow_content: follow_conversation_content,
     reconcile_scroll: reconcile_conversation_scroll,
     settle_scroll: settle_conversation_scroll,
@@ -137,7 +138,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue =
     !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
-  const return_latest_available = conversation_follow_paused;
+  const return_latest_available = !conversation_following;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
@@ -164,6 +165,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     const conversation = conversation_ref.current;
     if (conversation !== null) resume_conversation(conversation);
   }, [resume_conversation]);
+
+  /** 新公开会话在绘制前取得默认跟随权，不依赖浏览器先发出 scroll。 */
+  const conversation_key = agent.entries[0]?.id ?? null; // 首条公开条目身份定义页面滚动生命周期
+  useLayoutEffect(() => {
+    const conversation = conversation_ref.current;
+    if (conversation !== null) activate_conversation(conversation);
+  }, [activate_conversation, conversation_key]);
 
   // 外层只有一个显式滚动写入者；图片、详情与流式内容的尺寸变化共用同一观察入口。
   useLayoutEffect(() => {
@@ -443,7 +451,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ref={conversation_ref}
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
-        data-following={!conversation_follow_paused || undefined}
+        data-following={conversation_following || undefined}
         onScroll={(event) => reconcile_conversation_scroll(event.currentTarget)}
         onScrollEnd={(event) => settle_conversation_scroll(event.currentTarget)}
       >
