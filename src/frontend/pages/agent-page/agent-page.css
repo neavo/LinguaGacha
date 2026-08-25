@@ -1053,7 +1053,7 @@
 .agent-page__follow-control {
   /* 离岸控件跟随输入区轨道，不根据页面或滚动条宽度反算位置。 */
   position: absolute;
-  inset-inline-end: 0;
+  inset-inline-end: 6px;
   inset-block-end: calc(100% + 8px);
   z-index: 10;
   color: var(--muted-foreground);

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
-  ArrowUp,
   BookA,
   Brain,
   Boxes,
@@ -8,6 +7,7 @@ import {
   ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
+  Send,
   ShieldCheck,
   ShieldQuestionMark,
   Sparkles,
@@ -1058,7 +1058,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                     ) : stopping ? (
                       <Square aria-hidden="true" />
                     ) : (
-                      <ArrowUp aria-hidden="true" />
+                      <Send aria-hidden="true" />
                     )}
                   </AppButton>
                 </span>
