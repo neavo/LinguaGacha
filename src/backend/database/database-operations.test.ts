@@ -470,6 +470,32 @@ describe("ProjectDatabase", () => {
     expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
 
+  it("候选原文超过单条 SQL 参数容量时仍可完整查询和删除", () => {
+    const { database, lg_path } = create_database_project("large-analysis-candidates");
+    const candidate_count = 32_767;
+    const srcs = Array.from({ length: candidate_count }, (_, index) => `候选-${index}`);
+    database.upsert_analysis_candidate_aggregates(
+      lg_path,
+      srcs.map((src) => ({
+        src,
+        dst_votes: { 译文: 1 },
+        info_votes: {},
+        observation_count: 1,
+        first_seen_at: "2026-08-25T00:00:00.000Z",
+        last_seen_at: "2026-08-25T00:00:00.000Z",
+        case_sensitive: false,
+      })),
+    );
+
+    expect(database.get_analysis_candidate_aggregates_by_srcs(lg_path, srcs)).toHaveLength(
+      candidate_count,
+    );
+
+    database.delete_analysis_candidate_aggregates_by_srcs(lg_path, srcs);
+
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
+  });
+
   it("兼容读取旧压缩 asset bytes", () => {
     const lg_path = project_path("legacy-asset.lg");
     const db = new DatabaseSync(lg_path);
