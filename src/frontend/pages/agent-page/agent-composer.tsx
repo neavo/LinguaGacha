@@ -59,7 +59,12 @@ import {
   read_selected_model,
   type ModelSelectionController,
 } from "@frontend/features/model-selection/use-model-selection";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  tooltip_trigger_target,
+} from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
@@ -806,21 +811,23 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           {!assistant_editing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <AppButton
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  className="agent-composer__image-trigger"
-                  disabled={editor_read_only || image_processing || image_limit_reached}
-                  aria-label={t("agent_page.action.add_image")}
-                  onClick={() => file_input_ref.current?.click()}
-                >
-                  {image_processing ? (
-                    <LoaderCircle className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <ImagePlus aria-hidden="true" />
-                  )}
-                </AppButton>
+                {tooltip_trigger_target(
+                  <AppButton
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    className="agent-composer__image-trigger"
+                    disabled={editor_read_only || image_processing || image_limit_reached}
+                    aria-label={t("agent_page.action.add_image")}
+                    onClick={() => file_input_ref.current?.click()}
+                  >
+                    {image_processing ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ImagePlus aria-hidden="true" />
+                    )}
+                  </AppButton>,
+                )}
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
                 <p>{t("agent_page.action.add_image")}</p>
@@ -830,17 +837,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           {!inline ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <AppButton
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  className="agent-composer__reset"
-                  disabled={!new_task_available}
-                  onClick={props.on_reset}
-                >
-                  <MessageSquarePlus aria-hidden="true" />
-                  <span>{t("agent_page.action.new_task")}</span>
-                </AppButton>
+                {tooltip_trigger_target(
+                  <AppButton
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="agent-composer__reset"
+                    disabled={!new_task_available}
+                    onClick={props.on_reset}
+                  >
+                    <MessageSquarePlus aria-hidden="true" />
+                    <span>{t("agent_page.action.new_task")}</span>
+                  </AppButton>,
+                )}
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
                 <p>
@@ -856,40 +865,42 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <AppDropdownMenuTrigger asChild>
-                    <AppButton
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="agent-composer__model-trigger"
-                      disabled={model_controls_disabled}
-                      aria-label={
-                        context_usage === null
-                          ? model_selection_aria_label
-                          : `${model_selection_aria_label} · ${context_usage.percent}`
-                      }
-                    >
-                      <Boxes aria-hidden="true" />
-                      <span className="agent-composer__model-name">{selected_model_name}</span>
-                      {context_usage !== null ? (
-                        <>
-                          <span
-                            className="agent-composer__model-context-separator"
-                            aria-hidden="true"
-                          >
-                            ·
-                          </span>
-                          <span
-                            className="agent-composer__model-context"
-                            data-tone={context_usage.tone}
-                          >
-                            {context_usage.percent}
-                          </span>
-                        </>
-                      ) : null}
-                      <ChevronDown aria-hidden="true" />
-                    </AppButton>
-                  </AppDropdownMenuTrigger>
+                  {tooltip_trigger_target(
+                    <AppDropdownMenuTrigger asChild>
+                      <AppButton
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="agent-composer__model-trigger"
+                        disabled={model_controls_disabled}
+                        aria-label={
+                          context_usage === null
+                            ? model_selection_aria_label
+                            : `${model_selection_aria_label} · ${context_usage.percent}`
+                        }
+                      >
+                        <Boxes aria-hidden="true" />
+                        <span className="agent-composer__model-name">{selected_model_name}</span>
+                        {context_usage !== null ? (
+                          <>
+                            <span
+                              className="agent-composer__model-context-separator"
+                              aria-hidden="true"
+                            >
+                              ·
+                            </span>
+                            <span
+                              className="agent-composer__model-context"
+                              data-tone={context_usage.tone}
+                            >
+                              {context_usage.percent}
+                            </span>
+                          </>
+                        ) : null}
+                        <ChevronDown aria-hidden="true" />
+                      </AppButton>
+                    </AppDropdownMenuTrigger>,
+                  )}
                 </TooltipTrigger>
                 <TooltipContent
                   className="flex-col items-start gap-0.5 whitespace-nowrap"
@@ -954,24 +965,28 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             <AppDropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <AppDropdownMenuTrigger asChild>
-                    <AppButton
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="agent-composer__approval-trigger"
-                      data-approval-mode={approval_mode}
-                      disabled={approval_mode_disabled}
-                      aria-label={approval_mode_tooltip}
-                    >
-                      <ApprovalModeIcon
-                        className="agent-composer__approval-icon"
-                        aria-hidden="true"
-                      />
-                      <span className="agent-composer__approval-label">{approval_mode_label}</span>
-                      <ChevronDown aria-hidden="true" />
-                    </AppButton>
-                  </AppDropdownMenuTrigger>
+                  {tooltip_trigger_target(
+                    <AppDropdownMenuTrigger asChild>
+                      <AppButton
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="agent-composer__approval-trigger"
+                        data-approval-mode={approval_mode}
+                        disabled={approval_mode_disabled}
+                        aria-label={approval_mode_tooltip}
+                      >
+                        <ApprovalModeIcon
+                          className="agent-composer__approval-icon"
+                          aria-hidden="true"
+                        />
+                        <span className="agent-composer__approval-label">
+                          {approval_mode_label}
+                        </span>
+                        <ChevronDown aria-hidden="true" />
+                      </AppButton>
+                    </AppDropdownMenuTrigger>,
+                  )}
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
                   <p>{approval_mode_tooltip}</p>
@@ -1019,23 +1034,25 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppButton>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <AppButton
-                    className="agent-composer__inline-submit"
-                    type="submit"
-                    size="sm"
-                    disabled={props.command !== null || !can_submit}
-                    aria-label={contextual_submit_label}
-                    aria-keyshortcuts="Enter"
-                  >
-                    {submit_command_active ? (
-                      <LoaderCircle className="animate-spin" aria-hidden="true" />
-                    ) : null}
-                    <span>{contextual_submit_label}</span>
-                    <ShortcutKbd
-                      action="submit"
-                      className="bg-background/18 text-primary-foreground"
-                    />
-                  </AppButton>
+                  {tooltip_trigger_target(
+                    <AppButton
+                      className="agent-composer__inline-submit"
+                      type="submit"
+                      size="sm"
+                      disabled={props.command !== null || !can_submit}
+                      aria-label={contextual_submit_label}
+                      aria-keyshortcuts="Enter"
+                    >
+                      {submit_command_active ? (
+                        <LoaderCircle className="animate-spin" aria-hidden="true" />
+                      ) : null}
+                      <span>{contextual_submit_label}</span>
+                      <ShortcutKbd
+                        action="submit"
+                        className="bg-background/18 text-primary-foreground"
+                      />
+                    </AppButton>,
+                  )}
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
                   <p>

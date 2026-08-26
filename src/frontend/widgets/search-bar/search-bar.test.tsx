@@ -114,6 +114,7 @@ vi.mock("@frontend/shadcn/tooltip", () => {
     Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
     TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
     TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
   };
 });
 
