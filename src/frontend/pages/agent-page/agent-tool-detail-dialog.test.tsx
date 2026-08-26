@@ -80,7 +80,7 @@ describe("AgentToolDetailDialog", () => {
       (tab) => tab.textContent === "agent_page.tool.input",
     );
     const wrap_button = document.body.querySelector<HTMLButtonElement>(
-      "button[aria-label='agent_page.tool.wrap_enabled']",
+      "button[aria-label='agent_page.tool.wrap']",
     );
     expect(input_tab?.getAttribute("data-state")).toBe("active");
     expect(wrap_button?.getAttribute("aria-pressed")).toBe("true");
@@ -94,7 +94,7 @@ describe("AgentToolDetailDialog", () => {
 
     await act(async () => wrap_button?.click());
     expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
-    expect(wrap_button?.getAttribute("aria-label")).toBe("agent_page.tool.wrap_disabled");
+    expect(wrap_button?.getAttribute("aria-label")).toBe("agent_page.tool.wrap");
     expect(
       document.body.querySelector(".agent-tool-detail__viewer.app-editor--wrap-lines"),
     ).toBeNull();

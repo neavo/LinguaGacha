@@ -37,8 +37,8 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
     proofreading_page_state.is_writing ||
     proofreading_page_state.cache_status !== "ready";
   const regex_state_label = proofreading_page_state.is_regex
-    ? t("app.toggle.enabled")
-    : t("app.toggle.disabled");
+    ? t("app.state.enabled")
+    : t("app.state.disabled");
   const scope_button_label =
     proofreading_page_state.search_scope === "all"
       ? t("proofreading_page.search.scope.label")
@@ -46,12 +46,14 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const scope_state_label = t(
     PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE[proofreading_page_state.search_scope],
   );
-  const scope_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("proofreading_page.search.scope.tooltip_label"))
-    .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("proofreading_page.search.regex_tooltip_label"))
-    .replace("{STATE}", regex_state_label);
+  const scope_tooltip = t("app.tooltip.value", {
+    TITLE: t("proofreading_page.search.scope.tooltip_label"),
+    VALUE: scope_state_label,
+  });
+  const regex_tooltip = t("app.tooltip.value", {
+    TITLE: t("proofreading_page.search.regex_tooltip_label"),
+    VALUE: regex_state_label,
+  });
   const proofreading_scope_options: SearchBarScopeOption<ProofreadingSearchScope>[] =
     PROOFREADING_SEARCH_SCOPES.map((scope) => {
       return {
@@ -90,8 +92,6 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           value: proofreading_page_state.is_regex,
           label: t("proofreading_page.search.regex"),
           tooltip: regex_tooltip,
-          enabled_label: t("app.toggle.enabled"),
-          disabled_label: t("app.toggle.disabled"),
           on_change: proofreading_page_state.update_regex,
         }}
         extra_actions={

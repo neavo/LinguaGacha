@@ -372,6 +372,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Hover / Focus:** hover 轻微改变当前语义面；focus-visible 使用 ring 边框和 3px 半透明焦点环；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
 - **Shortcuts:** 常驻按钮把快捷键显示为紧随行为文案的键帽；Tooltip 不嵌套键帽，只使用完整的本地化纯文本“行为 · 快捷键”。
+- **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
 
 ### Dialogs
 

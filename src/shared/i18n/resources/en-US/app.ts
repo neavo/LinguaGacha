@@ -98,9 +98,17 @@ export const en_us_app = {
     import_here: "Release to import the rule file",
   },
   toggle: {
-    disabled: "OFF",
-    enabled: "ON",
-    status: "{TITLE} - {STATE}",
+    option: {
+      disabled: "OFF",
+      enabled: "ON",
+    },
+  },
+  state: {
+    disabled: "Disabled",
+    enabled: "Enabled",
+  },
+  tooltip: {
+    value: "{TITLE} · {VALUE}",
   },
   drag: {
     enabled: "Drag to reorder",

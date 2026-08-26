@@ -48,11 +48,17 @@ describe("AgentTaskProgress", () => {
     );
 
     expect(progress?.querySelector(".agent-task-progress__item")?.textContent).toBe("读取工程");
+    expect(progress?.querySelector(".agent-task-progress__label")?.textContent).toBe(
+      "agent_page.task_progress.pending",
+    );
+    expect(progress?.querySelector(".agent-status-mark--running")).not.toBeNull();
     expect(progress?.querySelector(".agent-task-progress__more")?.textContent).toBe("+2");
     expect((progress as HTMLElement | null)?.tabIndex).toBe(0);
     expect(tooltip_items).toEqual(["读取工程", "检查章节", "汇总结果"]);
 
     await render_progress(["读取工程"]);
+    expect(view.querySelector(".agent-status-mark--running")).toBeNull();
+    expect(view.querySelector(".agent-status-mark")).not.toBeNull();
     expect(view.querySelector(".agent-task-progress__more")).toBeNull();
     expect(
       [...view.querySelectorAll('[role="tooltip"] li')].map((item) => item.textContent),

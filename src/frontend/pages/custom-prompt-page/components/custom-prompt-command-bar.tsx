@@ -39,17 +39,18 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
   const boolean_segmented_options = [
     {
       value: "disabled",
-      label: t("app.toggle.disabled"),
+      label: t("app.toggle.option.disabled"),
     },
     {
       value: "enabled",
-      label: t("app.toggle.enabled"),
+      label: t("app.toggle.option.enabled"),
     },
   ] as const;
-  const toggle_state_key = props.enabled ? "app.toggle.enabled" : "app.toggle.disabled";
-  const toggle_tooltip_title = t("app.toggle.status")
-    .replace("{TITLE}", t(props.header_title_key))
-    .replace("{STATE}", t(toggle_state_key));
+  const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
+  const toggle_tooltip_title = t("app.tooltip.value", {
+    TITLE: t(props.header_title_key),
+    VALUE: t(toggle_state_key),
+  });
 
   return (
     <CommandBar

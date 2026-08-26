@@ -43,8 +43,6 @@ type SearchBarSharedProps<scope_value extends string = string> = React.Component
     value: boolean;
     label: React.ReactNode;
     tooltip: React.ReactNode;
-    enabled_label: React.ReactNode;
-    disabled_label: React.ReactNode;
     on_change: (next_value: boolean) => void;
   };
   extra_actions?: React.ReactNode;

@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
-import { ChevronDown, FilePenLine, LoaderCircle } from "lucide-react";
+import { ChevronDown, ShieldQuestionMark } from "lucide-react";
 
-import type { AgentPendingWriteApproval } from "@shared/agent";
+import type { AgentPendingWriteSummary } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -14,6 +14,8 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 /** 用不会出现在本地化正文中的标记，把计数插回翻译前后文。 */
 const APPROVAL_COUNT_MARKER = "\uE000";
+/** 完整句式保留给 locale，组件只在摘要占位处插入带高亮的结构化计数。 */
+const APPROVAL_SUMMARY_MARKER = "\uE001";
 /** 摘要字段顺序与公开 pending summary 保持一致，文案仍由 locale 拥有。 */
 const APPROVAL_SUMMARY_FIELDS = [
   ["items", "agent_page.approval.summary_items"],
@@ -22,11 +24,11 @@ const APPROVAL_SUMMARY_FIELDS = [
   ["preReplacement", "agent_page.approval.summary_pre_replacement"],
   ["postReplacement", "agent_page.approval.summary_post_replacement"],
   ["prompts", "agent_page.approval.summary_prompts"],
-] as const satisfies readonly (readonly [keyof AgentPendingWriteApproval["summary"], LocaleKey])[];
+] as const satisfies readonly (readonly [keyof AgentPendingWriteSummary, LocaleKey])[];
 
 /** 审批面只接收后端摘要和公开决策回调，不持有写入或会话状态。 */
 type AgentApprovalPanelProps = {
-  pending: AgentPendingWriteApproval;
+  summary: AgentPendingWriteSummary;
   on_approve: (switch_to_auto: boolean) => void;
   on_reject: () => void;
 };
@@ -34,12 +36,10 @@ type AgentApprovalPanelProps = {
 /** 待审批写入独占 Composer 槽位；摘要、快捷键和决策行为不进入输入器。 */
 export function AgentApprovalPanel(props: AgentApprovalPanelProps): JSX.Element {
   const { t } = useI18n();
-  const processing = props.pending.status === "processing";
   const approve_once = useEffectEvent(() => props.on_approve(false));
   const reject = useEffectEvent(props.on_reject);
 
   useEffect(() => {
-    if (processing) return undefined;
     const handle_keydown = (event: KeyboardEvent): void => {
       if (
         event.defaultPrevented ||
@@ -70,55 +70,57 @@ export function AgentApprovalPanel(props: AgentApprovalPanelProps): JSX.Element 
     };
     window.addEventListener("keydown", handle_keydown);
     return () => window.removeEventListener("keydown", handle_keydown);
-  }, [processing]);
+  }, []);
+
+  const summary_parts = APPROVAL_SUMMARY_FIELDS.map(([field, key], index) => {
+    const count = props.summary[field];
+    const [before, after] = t(key, { count: APPROVAL_COUNT_MARKER }).split(APPROVAL_COUNT_MARKER);
+    const separator =
+      index === APPROVAL_SUMMARY_FIELDS.length - 1
+        ? ""
+        : t(
+            index === APPROVAL_SUMMARY_FIELDS.length - 2
+              ? "agent_page.approval.summary_last_separator"
+              : "agent_page.approval.summary_separator",
+          );
+    return (
+      <span key={field}>
+        {before}
+        <span
+          className="agent-approval__change-count"
+          data-changed={count > 0 ? "true" : undefined}
+        >
+          {count}
+        </span>
+        {after}
+        {separator}
+      </span>
+    );
+  });
+  const [description_before, description_after] = t("agent_page.approval.description", {
+    summary: APPROVAL_SUMMARY_MARKER,
+  }).split(APPROVAL_SUMMARY_MARKER);
 
   return (
     <section
-      className="agent-composer agent-approval"
-      aria-labelledby="agent-approval-title"
-      aria-busy={processing}
+      className="agent-operation-surface agent-approval"
+      aria-labelledby="agent-approval-description"
     >
-      <header className="agent-approval__header">
-        <span className="agent-approval__icon" aria-hidden="true">
-          {processing ? <LoaderCircle className="animate-spin" /> : <FilePenLine />}
+      <p id="agent-approval-description" className="agent-approval__description">
+        <span className="agent-approval__description-icon" aria-hidden="true">
+          <ShieldQuestionMark />
         </span>
-        <strong id="agent-approval-title">{t("agent_page.approval.pending")}</strong>
-      </header>
-      <p className="agent-approval__changes">
-        {APPROVAL_SUMMARY_FIELDS.map(([field, key], index) => {
-          const count = props.pending.summary[field];
-          const [before, after] = t(key, { count: APPROVAL_COUNT_MARKER }).split(
-            APPROVAL_COUNT_MARKER,
-          );
-          const separator =
-            index === APPROVAL_SUMMARY_FIELDS.length - 1
-              ? ""
-              : t(
-                  index === APPROVAL_SUMMARY_FIELDS.length - 2
-                    ? "agent_page.approval.summary_last_separator"
-                    : "agent_page.approval.summary_separator",
-                );
-          return (
-            <span key={field} className="agent-approval__change">
-              {before}
-              <span
-                className="agent-approval__change-count"
-                data-changed={count > 0 ? "true" : undefined}
-              >
-                {count}
-              </span>
-              {after}
-              {separator}
-            </span>
-          );
-        })}
+        <span className="agent-approval__description-text">
+          {description_before}
+          {summary_parts}
+          {description_after}
+        </span>
       </p>
       <div className="agent-approval__actions">
         <AppButton
           type="button"
           size="sm"
           variant="outline"
-          disabled={processing}
           aria-keyshortcuts="Escape"
           onClick={props.on_reject}
         >
@@ -130,7 +132,6 @@ export function AgentApprovalPanel(props: AgentApprovalPanelProps): JSX.Element 
             type="button"
             size="sm"
             variant="default"
-            disabled={processing}
             aria-keyshortcuts="Enter"
             onClick={() => props.on_approve(false)}
           >
@@ -143,7 +144,6 @@ export function AgentApprovalPanel(props: AgentApprovalPanelProps): JSX.Element 
                 type="button"
                 size="icon-sm"
                 variant="default"
-                disabled={processing}
                 aria-label={t("agent_page.approval.approve_future")}
               >
                 <ChevronDown aria-hidden="true" />

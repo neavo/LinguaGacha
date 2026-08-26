@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { AGENT_INPUT_QUEUE_LIMIT, AgentInputQueue } from "./agent-input-queue";
+import { AGENT_INPUT_QUEUE_LIMIT } from "../../shared/agent";
+import { AgentInputQueue } from "./agent-input-queue";
 
 const message = (text: string) => ({ text, attachments: [] });
 

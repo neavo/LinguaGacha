@@ -36,6 +36,7 @@ type RenderComposerOptions = Partial<
     | "on_stop"
     | "on_approval_mode_change"
     | "presentation"
+    | "queue_full"
     | "running"
     | "stop_disabled"
     | "term_hit_counts"
@@ -573,6 +574,22 @@ describe("AgentComposer", () => {
     expect(on_stop).not.toHaveBeenCalled();
   });
 
+  it("消息队列已满时禁用新增发送并显示容量提示", async () => {
+    const on_send = vi.fn();
+    const view = await render_composer({ running: true, queue_full: true, on_send });
+    await set_document(get_editor(view), "继续补充", 4);
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    expect(submit?.disabled).toBe(true);
+    expect(submit?.getAttribute("aria-label")).toContain("agent_page.queue.full");
+
+    await act(async () => submit?.click());
+    expect(on_send).not.toHaveBeenCalled();
+
+    await render_composer({ can_continue_queue: true, queue_full: true, on_send });
+    await set_document(get_editor(view), "追加消息", 4);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+  });
+
   it("运行态无内容时主按钮停止当前任务", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
@@ -721,6 +738,7 @@ describe("AgentComposer", () => {
             unavailable_reason={options.unavailable_reason ?? null}
             command={options.command ?? null}
             can_continue_queue={options.can_continue_queue ?? false}
+            queue_full={options.queue_full ?? false}
             can_reset={options.can_reset ?? true}
             context_tokens={options.context_tokens ?? null}
             approval_mode={options.approval_mode}

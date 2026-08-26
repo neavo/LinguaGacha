@@ -19,11 +19,12 @@ export function AgentTaskProgress(props: AgentTaskProgressProps): JSX.Element | 
         <div className="agent-task-progress" role="status" tabIndex={0}>
           <span className="agent-task-progress__lead">
             <span
-              className="agent-task-progress__spinner"
-              data-running={props.running || undefined}
+              className={`agent-status-mark${props.running ? " agent-status-mark--running" : ""}`}
               aria-hidden="true"
             />
-            <span className="agent-task-progress__label">{t("agent_page.task_progress.next")}</span>
+            <span className="agent-task-progress__label">
+              {t("agent_page.task_progress.pending")}
+            </span>
           </span>
           <span className="agent-task-progress__item">{next_item}</span>
           {remaining_count === 0 ? null : (

@@ -26,6 +26,18 @@ describe("shared i18n", () => {
       create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
     ).toBe("Glossar aktiviert …");
   });
+
+  it.each(["zh-CN", "en-US", "de-DE"] as const)("%s 区分开关选项与当前状态", (locale) => {
+    const t = create_text_resolver(locale);
+    const option = t("app.toggle.option.enabled");
+    const state = t("app.state.enabled");
+    const title = t("agent_page.action.follow_latest");
+    const tooltip = t("app.tooltip.value", { TITLE: title, VALUE: state });
+
+    expect(option).not.toBe(state);
+    expect(tooltip).toContain(title);
+    expect(tooltip).toContain(state);
+  });
 });
 
 /**

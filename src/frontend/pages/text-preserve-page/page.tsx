@@ -32,14 +32,16 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
     TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope],
   );
   const regex_state_label = page_state.filter_state.is_regex
-    ? t("app.toggle.enabled")
-    : t("app.toggle.disabled");
-  const scope_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("quality_rule_editor.filter.scope.tooltip_label"))
-    .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("quality_rule_editor.filter.regex_tooltip_label"))
-    .replace("{STATE}", regex_state_label);
+    ? t("app.state.enabled")
+    : t("app.state.disabled");
+  const scope_tooltip = t("app.tooltip.value", {
+    TITLE: t("quality_rule_editor.filter.scope.tooltip_label"),
+    VALUE: scope_state_label,
+  });
+  const regex_tooltip = t("app.tooltip.value", {
+    TITLE: t("quality_rule_editor.filter.regex_tooltip_label"),
+    VALUE: regex_state_label,
+  });
   const text_preserve_scope_options: SearchBarScopeOption<TextPreserveFilterScope>[] =
     TEXT_PRESERVE_FILTER_SCOPES.map((scope) => {
       return {
@@ -68,8 +70,6 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
           value: page_state.filter_state.is_regex,
           label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
-          enabled_label: t("app.toggle.enabled"),
-          disabled_label: t("app.toggle.disabled"),
           on_change: page_state.update_filter_regex,
         }}
       />

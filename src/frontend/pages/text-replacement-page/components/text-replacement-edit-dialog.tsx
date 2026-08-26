@@ -30,11 +30,11 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
   const boolean_segmented_options = [
     {
       value: "disabled",
-      label: t("app.toggle.disabled"),
+      label: t("app.toggle.option.disabled"),
     },
     {
       value: "enabled",
-      label: t("app.toggle.enabled"),
+      label: t("app.toggle.option.enabled"),
     },
   ] as const;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");

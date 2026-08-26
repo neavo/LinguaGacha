@@ -51,6 +51,8 @@ export type AgentPendingWriteApproval = {
 
 /** 单条用户消息按输入顺序最多保留的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
+/** 当前会话最多保留的待发送输入数；renderer 与 AgentService 共用同一产品上限。 */
+export const AGENT_INPUT_QUEUE_LIMIT = 5;
 /** 用户消息附件只有 renderer 归一的 WebP 与已确认的回复批注两种公开形状。 */
 export type AgentMessageAttachment = JsonRecord &
   (

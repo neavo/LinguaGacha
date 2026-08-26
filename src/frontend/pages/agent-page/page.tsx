@@ -4,6 +4,7 @@ import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } 
 import type { ModelThinkingLevel } from "@domain/model";
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
+  AGENT_INPUT_QUEUE_LIMIT,
   format_agent_skill_reference,
   type AgentApprovalMode,
   type AgentEntry,
@@ -430,6 +431,38 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   };
 
+  // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
+  const has_task_progress = agent.taskProgress.length > 0;
+  const has_input_queue = agent.inputQueue.items.length > 0;
+  const queue_full = agent.inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
+  const show_write_approval =
+    agent.pendingWriteApproval?.status === "waiting" && agent.command !== "approval_decision";
+  const follow_latest_label = t("agent_page.action.follow_latest");
+  const follow_latest_status = t("app.tooltip.value", {
+    TITLE: follow_latest_label,
+    VALUE: t(follow_latest ? "app.state.enabled" : "app.state.disabled"),
+  });
+  const follow_latest_control = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <AppButton
+          type="button"
+          className="agent-page__follow-control"
+          size="icon-xs"
+          variant="outline"
+          aria-label={follow_latest_label}
+          aria-pressed={follow_latest}
+          onClick={() => set_follow_latest((following) => !following)}
+        >
+          <ArrowDownToLine aria-hidden="true" />
+        </AppButton>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        <p>{follow_latest_status}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+
   return (
     <div className="agent-page">
       <section
@@ -537,89 +570,89 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div className="agent-page__composer-stack">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <AppButton
-              type="button"
-              className="agent-page__follow-control"
-              size="icon-xs"
-              variant="outline"
-              aria-label={t("agent_page.action.follow_latest")}
-              aria-pressed={follow_latest}
-              onClick={() => set_follow_latest((following) => !following)}
-            >
-              <ArrowDownToLine aria-hidden="true" />
-            </AppButton>
-          </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={8}>
-            <p>{t("agent_page.action.follow_latest")}</p>
-          </TooltipContent>
-        </Tooltip>
-        <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
-        <AgentInputQueue
-          queue={agent.inputQueue}
-          disabled={
-            agent.command !== null ||
-            agent.pendingWriteApproval !== null ||
-            active_inline_edit !== null ||
-            unavailable_reason !== null ||
-            compacting ||
-            compaction_failed
-          }
-          active_edit_item_id={
-            active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
-          }
-          render_item_editor={render_queue_editor}
-          on_edit={start_queue_edit}
-          on_delete={(id) =>
-            run_queue_command(() => agent.deleteQueuedMessage(id), "agent_page.error.queue_delete")
-          }
-          on_reorder={(ids) =>
-            run_queue_command(
-              () => agent.reorderQueuedMessages(ids),
-              "agent_page.error.queue_reorder",
-            )
-          }
-          on_send_now={(id) =>
-            run_queue_command(() => agent.sendQueuedMessage(id), "agent_page.error.queue_send")
-          }
-        />
-        {agent.pendingWriteApproval === null ? (
-          <AgentComposer
-            ref={composer_ref}
-            locked={active_inline_edit !== null}
-            skills={agent.skills}
-            terms={available_terms}
-            term_hit_counts={term_hit_counts}
-            running={is_running}
-            stop_disabled={workspace_apply_running}
-            compacting={compacting}
-            compaction_failed={compaction_failed}
-            unavailable_reason={unavailable_reason}
-            command={agent.command}
-            can_continue_queue={can_continue_queue}
-            can_reset={!agent_restoring && agent.entries.length > 0}
-            context_tokens={agent.contextTokens}
-            approval_mode={agent.approvalMode}
-            approval_mode_disabled={workspace_apply_running}
-            model_selection={model_selection}
-            input_session={agent.input}
-            on_send={submit_message}
-            on_thinking_level_change={change_agent_thinking_level}
-            on_approval_mode_change={change_approval_mode}
-            on_image_error={() => push_toast("error", t("agent_page.error.image"))}
-            on_stop={stop}
-            on_reset={() => set_reset_dialog_open(true)}
-          />
-        ) : (
-          <AgentApprovalPanel
-            pending={agent.pendingWriteApproval}
-            on_approve={approve_pending_write}
-            on_reject={reject_pending_write}
-          />
-        )}
+      <div className="agent-page__status-zone">
+        {has_task_progress ? (
+          <div className="agent-page__status-task-row">
+            <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
+          </div>
+        ) : null}
+        {has_input_queue ? (
+          <div className="agent-page__status-queue-row">
+            <AgentInputQueue
+              queue={agent.inputQueue}
+              disabled={
+                agent.command !== null ||
+                agent.pendingWriteApproval !== null ||
+                active_inline_edit !== null ||
+                unavailable_reason !== null ||
+                compacting ||
+                compaction_failed
+              }
+              active_edit_item_id={
+                active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
+              }
+              render_item_editor={render_queue_editor}
+              on_edit={start_queue_edit}
+              on_delete={(id) =>
+                run_queue_command(
+                  () => agent.deleteQueuedMessage(id),
+                  "agent_page.error.queue_delete",
+                )
+              }
+              on_reorder={(ids) =>
+                run_queue_command(
+                  () => agent.reorderQueuedMessages(ids),
+                  "agent_page.error.queue_reorder",
+                )
+              }
+              on_send_now={(id) =>
+                run_queue_command(() => agent.sendQueuedMessage(id), "agent_page.error.queue_send")
+              }
+            />
+          </div>
+        ) : null}
+        {follow_latest_control}
       </div>
+
+      {agent.pendingWriteApproval === null || show_write_approval ? (
+        <div className="agent-page__operation-zone">
+          {agent.pendingWriteApproval === null ? (
+            <AgentComposer
+              ref={composer_ref}
+              locked={active_inline_edit !== null}
+              skills={agent.skills}
+              terms={available_terms}
+              term_hit_counts={term_hit_counts}
+              running={is_running}
+              stop_disabled={workspace_apply_running}
+              compacting={compacting}
+              compaction_failed={compaction_failed}
+              unavailable_reason={unavailable_reason}
+              command={agent.command}
+              can_continue_queue={can_continue_queue}
+              queue_full={queue_full}
+              can_reset={!agent_restoring && agent.entries.length > 0}
+              context_tokens={agent.contextTokens}
+              approval_mode={agent.approvalMode}
+              approval_mode_disabled={workspace_apply_running}
+              model_selection={model_selection}
+              input_session={agent.input}
+              on_send={submit_message}
+              on_thinking_level_change={change_agent_thinking_level}
+              on_approval_mode_change={change_approval_mode}
+              on_image_error={() => push_toast("error", t("agent_page.error.image"))}
+              on_stop={stop}
+              on_reset={() => set_reset_dialog_open(true)}
+            />
+          ) : (
+            <AgentApprovalPanel
+              summary={agent.pendingWriteApproval.summary}
+              on_approve={approve_pending_write}
+              on_reject={reject_pending_write}
+            />
+          )}
+        </div>
+      ) : null}
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}
         description={t("agent_page.confirm.thinking_off")}

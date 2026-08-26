@@ -132,6 +132,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         unavailable_reason={props.unavailable_reason}
         command={props.command}
         can_continue_queue={false}
+        queue_full={false}
         can_reset={false}
         context_tokens={null}
         model_selection={props.model_selection}

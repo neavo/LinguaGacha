@@ -24,9 +24,11 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
   const duration = useAgentElapsed(entry.createdAt, active);
   const status_label = t(AGENT_STATUS_LABEL_KEYS[entry.status]);
   const title = t("agent_page.tool.details", { tool: entry.toolName });
-  const wrap_label = t(
-    wrap_lines ? "agent_page.tool.wrap_enabled" : "agent_page.tool.wrap_disabled",
-  );
+  const wrap_label = t("agent_page.tool.wrap");
+  const wrap_status = t("app.tooltip.value", {
+    TITLE: wrap_label,
+    VALUE: t(wrap_lines ? "app.state.enabled" : "app.state.disabled"),
+  });
 
   return (
     <AppPageDialog
@@ -71,7 +73,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
               </AppButton>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={8}>
-              <p>{wrap_label}</p>
+              <p>{wrap_status}</p>
             </TooltipContent>
           </Tooltip>
         </div>

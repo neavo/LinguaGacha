@@ -40,6 +40,7 @@ import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import type { GlossaryEntry } from "@domain/quality";
 import {
+  AGENT_INPUT_QUEUE_LIMIT,
   AGENT_MESSAGE_IMAGE_LIMIT,
   type AgentMessageAttachment,
   type AgentMessageInput,
@@ -128,6 +129,7 @@ type AgentComposerProps = {
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
   can_continue_queue: boolean;
+  queue_full: boolean;
   can_reset: boolean;
   context_tokens: number | null;
   approval_mode?: AgentApprovalMode;
@@ -283,6 +285,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const continuing_queue = props.can_continue_queue && !props.running && !inline && !locked;
   // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
   const stopping = props.running && !has_sendable_content && !inline && !locked;
+  // 满队列只阻止会新增输入的动作；停止、保存和编辑不受容量提示影响。
+  const queue_full_for_submit =
+    props.queue_full &&
+    has_sendable_content &&
+    ((props.running && !inline && !locked) || continuing_queue);
   // 按钮与全局快捷键消费同一可用性，避免锁定态仍能从键盘重置会话。
   const new_task_available =
     !inline &&
@@ -306,15 +313,22 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     !props.model_selection.updating &&
     !image_processing &&
     (has_sendable_content || continuing_queue) &&
-    (!props.compaction_failed || continuing_queue);
-  if (continuing_queue) submit_label_key = "agent_page.action.continue";
+    (!props.compaction_failed || continuing_queue) &&
+    !queue_full_for_submit;
+  if (queue_full_for_submit) submit_label_key = "agent_page.queue.full";
+  else if (continuing_queue) submit_label_key = "agent_page.action.continue";
   else if (props.running && has_sendable_content && !inline)
     submit_label_key = "agent_page.action.send";
   else if (compacting) submit_label_key = "agent_page.compaction.running";
   else if (props.running && props.stop_disabled) submit_label_key = "agent_page.action.applying";
   else if (inline) submit_label_key = "app.action.save";
   else if (stopping) submit_label_key = "agent_page.action.stop";
-  const contextual_submit_label = t(submit_label_key);
+  const contextual_submit_label = queue_full_for_submit
+    ? t("agent_page.queue.full", {
+        count: AGENT_INPUT_QUEUE_LIMIT.toString(),
+        limit: AGENT_INPUT_QUEUE_LIMIT.toString(),
+      })
+    : t(submit_label_key);
   const image_count = draft_attachments.reduce(
     (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
     0,
@@ -676,7 +690,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   return (
     <form
-      className={`agent-composer${inline ? " agent-composer--inline" : ""}`}
+      className={`agent-operation-surface agent-composer${inline ? " agent-composer--inline" : ""}`}
       data-image-drop-active={image_drop_active ? "true" : undefined}
       onSubmit={(event) => {
         event.preventDefault();

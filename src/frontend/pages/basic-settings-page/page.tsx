@@ -52,11 +52,11 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   const boolean_segmented_options = [
     {
       value: "disabled",
-      label: t("app.toggle.disabled"),
+      label: t("app.toggle.option.disabled"),
     },
     {
       value: "enabled",
-      label: t("app.toggle.enabled"),
+      label: t("app.toggle.option.enabled"),
     },
   ] as const;
 

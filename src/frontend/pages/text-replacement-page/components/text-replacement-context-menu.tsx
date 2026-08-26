@@ -49,10 +49,10 @@ export function TextReplacementContextMenuContent(
               }}
             >
               <AppContextMenuRadioItem value="enabled">
-                {t("app.toggle.enabled")}
+                {t("app.toggle.option.enabled")}
               </AppContextMenuRadioItem>
               <AppContextMenuRadioItem value="disabled">
-                {t("app.toggle.disabled")}
+                {t("app.toggle.option.disabled")}
               </AppContextMenuRadioItem>
             </AppContextMenuRadioGroup>
           </AppContextMenuSubContent>
@@ -74,10 +74,10 @@ export function TextReplacementContextMenuContent(
               }}
             >
               <AppContextMenuRadioItem value="enabled">
-                {t("app.toggle.enabled")}
+                {t("app.toggle.option.enabled")}
               </AppContextMenuRadioItem>
               <AppContextMenuRadioItem value="disabled">
-                {t("app.toggle.disabled")}
+                {t("app.toggle.option.disabled")}
               </AppContextMenuRadioItem>
             </AppContextMenuRadioGroup>
           </AppContextMenuSubContent>

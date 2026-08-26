@@ -30,8 +30,8 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
   const { push_toast } = useDesktopToast();
   const page_state = useTextReplacementPageState(props.variant);
   const regex_state_label = page_state.filter_state.is_regex
-    ? t("app.toggle.enabled")
-    : t("app.toggle.disabled");
+    ? t("app.state.enabled")
+    : t("app.state.disabled");
   const scope_button_label =
     page_state.filter_state.scope === "all"
       ? t("quality_rule_editor.filter.scope.label")
@@ -39,12 +39,14 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
   const scope_state_label = t(
     TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope],
   );
-  const scope_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("text_replacement_page.filter.scope.tooltip_label"))
-    .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("quality_rule_editor.filter.regex_tooltip_label"))
-    .replace("{STATE}", regex_state_label);
+  const scope_tooltip = t("app.tooltip.value", {
+    TITLE: t("text_replacement_page.filter.scope.tooltip_label"),
+    VALUE: scope_state_label,
+  });
+  const regex_tooltip = t("app.tooltip.value", {
+    TITLE: t("quality_rule_editor.filter.regex_tooltip_label"),
+    VALUE: regex_state_label,
+  });
   const text_replacement_scope_options: SearchBarScopeOption<TextReplacementFilterScope>[] =
     TEXT_REPLACEMENT_FILTER_SCOPES.map((scope) => {
       return {
@@ -73,8 +75,6 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
           value: page_state.filter_state.is_regex,
           label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
-          enabled_label: t("app.toggle.enabled"),
-          disabled_label: t("app.toggle.disabled"),
           on_change: page_state.update_filter_regex,
         }}
       />

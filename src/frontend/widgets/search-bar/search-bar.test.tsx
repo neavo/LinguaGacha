@@ -199,8 +199,6 @@ describe("SearchBar", () => {
             value: false,
             label: "正则",
             tooltip: "正则开关",
-            enabled_label: "已启用",
-            disabled_label: "已禁用",
             on_change: () => undefined,
           }}
         />,

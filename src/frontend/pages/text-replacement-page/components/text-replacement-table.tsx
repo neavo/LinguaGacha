@@ -160,18 +160,14 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         head_class_name: "text-replacement-page__table-rule-head",
         cell_class_name: "text-replacement-page__table-rule-cell",
         render_cell: (payload) => {
-          const regex_tooltip = t("app.toggle.status")
-            .replace("{TITLE}", t("text_replacement_page.rule.regex"))
-            .replace(
-              "{STATE}",
-              t(payload.row.entry.regex ? "app.toggle.enabled" : "app.toggle.disabled"),
-            );
-          const case_tooltip = t("app.toggle.status")
-            .replace("{TITLE}", t("text_replacement_page.rule.case_sensitive"))
-            .replace(
-              "{STATE}",
-              t(payload.row.entry.case_sensitive ? "app.toggle.enabled" : "app.toggle.disabled"),
-            );
+          const regex_tooltip = t("app.tooltip.value", {
+            TITLE: t("text_replacement_page.rule.regex"),
+            VALUE: t(payload.row.entry.regex ? "app.state.enabled" : "app.state.disabled"),
+          });
+          const case_tooltip = t("app.tooltip.value", {
+            TITLE: t("text_replacement_page.rule.case_sensitive"),
+            VALUE: t(payload.row.entry.case_sensitive ? "app.state.enabled" : "app.state.disabled"),
+          });
 
           return (
             <div className="text-replacement-page__rule-badge-group">

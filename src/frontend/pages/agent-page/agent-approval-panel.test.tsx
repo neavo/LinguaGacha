@@ -2,12 +2,13 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentPendingWriteApproval } from "@shared/agent";
+import type { AgentPendingWriteSummary } from "@shared/agent";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, values?: Record<string, string>) => {
       const messages: Record<string, string> = {
+        "agent_page.approval.description": "writing {summary}",
         "agent_page.approval.summary_items": "items {count}",
         "agent_page.approval.summary_glossary": "glossary {count}",
         "agent_page.approval.summary_text_preserve": "text-preserve {count}",
@@ -28,17 +29,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 
 import { AgentApprovalPanel } from "./agent-approval-panel";
 
-const waiting: AgentPendingWriteApproval = {
-  id: "apply-1",
-  status: "waiting",
-  summary: {
-    items: 2,
-    glossary: 1,
-    textPreserve: 0,
-    preReplacement: 0,
-    postReplacement: 0,
-    prompts: 0,
-  },
+const summary: AgentPendingWriteSummary = {
+  items: 2,
+  glossary: 1,
+  textPreserve: 0,
+  preReplacement: 0,
+  postReplacement: 0,
+  prompts: 0,
 };
 
 describe("AgentApprovalPanel", () => {
@@ -55,11 +52,14 @@ describe("AgentApprovalPanel", () => {
   it("显示后端摘要并暴露审批决策", async () => {
     const on_approve = vi.fn();
     const on_reject = vi.fn();
-    const view = await render_panel(waiting, on_approve, on_reject);
+    const view = await render_panel(summary, on_approve, on_reject);
 
     const counts = [...view.querySelectorAll<HTMLElement>(".agent-approval__change-count")];
     expect(counts.map((count) => count.textContent)).toEqual(["2", "1", "0", "0", "0", "0"]);
     expect(counts.filter((count) => count.dataset.changed === "true")).toHaveLength(2);
+    expect(view.querySelector(".agent-approval__description-text")?.textContent).toBe(
+      "writing items 2|glossary 1|text-preserve 0|pre-replacement 0|post-replacement 0|prompts 0",
+    );
 
     const reject_button = view.querySelector<HTMLButtonElement>(
       "button[aria-keyshortcuts='Escape']",
@@ -88,10 +88,10 @@ describe("AgentApprovalPanel", () => {
     expect(on_approve).toHaveBeenNthCalledWith(2, true);
   });
 
-  it("只在等待态以 Escape 拒绝、Enter 允许一次", async () => {
+  it("以 Escape 拒绝、Enter 允许一次且菜单打开时不误触", async () => {
     const on_approve = vi.fn();
     const on_reject = vi.fn();
-    const view = await render_panel(waiting, on_approve, on_reject);
+    const view = await render_panel(summary, on_approve, on_reject);
     const approve_button = view.querySelector<HTMLButtonElement>(
       "button[aria-keyshortcuts='Enter']",
     );
@@ -117,19 +117,10 @@ describe("AgentApprovalPanel", () => {
     expect(on_reject).toHaveBeenCalledOnce();
     expect(on_approve).toHaveBeenCalledOnce();
     expect(on_approve).toHaveBeenCalledWith(false);
-
-    await render_panel({ ...waiting, status: "processing" }, on_approve, on_reject);
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    expect(on_reject).toHaveBeenCalledOnce();
-    expect(on_approve).toHaveBeenCalledOnce();
-    expect(
-      [...view.querySelectorAll<HTMLButtonElement>("button")].every((button) => button.disabled),
-    ).toBe(true);
   });
 
   async function render_panel(
-    pending: AgentPendingWriteApproval,
+    approval_summary: AgentPendingWriteSummary,
     on_approve: (switch_to_auto: boolean) => void,
     on_reject: () => void,
   ): Promise<HTMLDivElement> {
@@ -140,7 +131,11 @@ describe("AgentApprovalPanel", () => {
     root ??= createRoot(container);
     await act(async () =>
       root?.render(
-        <AgentApprovalPanel pending={pending} on_approve={on_approve} on_reject={on_reject} />,
+        <AgentApprovalPanel
+          summary={approval_summary}
+          on_approve={on_approve}
+          on_reject={on_reject}
+        />,
       ),
     );
     return container;

@@ -22,11 +22,11 @@ export const de_de_log_window_page = {
     placeholder: "Abfrage …",
     clear: "Löschen",
     regex: "Regex",
-    regex_tooltip: "Regex-Modus - {STATE}",
+    regex_tooltip_label: "Regex-Modus",
     regex_invalid: "Ungültiger regulärer Ausdruck.",
     scope: {
       label: "Bereich",
-      tooltip: "Protokollbereich - {STATE}",
+      tooltip_label: "Protokollbereich",
     },
   },
   detail: {
