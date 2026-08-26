@@ -1,7 +1,7 @@
 {
-  "order": 200,
+  "order": 300,
   "displayDescriptions": {
-    "zh-CN": "基于 AI 发现并持续完善当前工程的术语与文本保护规则",
+    "zh-CN": "基于 AI 智能对术语与文本保护规则进行自动化提取或审校",
     "en-US": "Use AI to discover and continuously improve glossary and text-protection rules in the current project",
     "de-DE": "Glossar- und Textschutzregeln im aktuellen Projekt mit KI entdecken und kontinuierlich verbessern"
   }

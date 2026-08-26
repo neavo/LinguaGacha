@@ -1,0 +1,8 @@
+{
+  "order": 200,
+  "displayDescriptions": {
+    "zh-CN": "基于 AI 智能对原文和译文进行自动化翻译或审校",
+    "en-US": "Use AI to translate, actively review, and correct translation data in the current project",
+    "de-DE": "Übersetzungsdaten im aktuellen Projekt mit KI übersetzen, aktiv prüfen und korrigieren"
+  }
+}
