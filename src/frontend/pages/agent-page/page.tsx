@@ -27,7 +27,15 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
+import {
+  useAgentControls,
+  useAgentInput,
+  useAgentProgress,
+  useAgentQueue,
+  useAgentSessionActions,
+  useAgentSkills,
+  useAgentTimeline,
+} from "@frontend/app/session/agent/agent-session-context";
 import { AgentApprovalPanel } from "./agent-approval-panel";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
@@ -79,7 +87,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
   const { project_snapshot, project_session_status = "ready" } = useDesktopState();
-  const agent = useAgentSession();
+  const { entries } = useAgentTimeline();
+  const controls = useAgentControls();
+  const { inputQueue } = useAgentQueue();
+  const { taskProgress } = useAgentProgress();
+  const { skills } = useAgentSkills();
+  const input = useAgentInput();
+  const agent_actions = useAgentSessionActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const conversation_ref = useRef<HTMLElement | null>(null);
@@ -117,28 +131,27 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const available_terms =
     project_snapshot.loaded && project_session_status === "ready" ? terms : EMPTY_AGENT_TERMS;
   const mention_tokens = useMemo(
-    () => create_agent_mention_tokens(agent.skills, available_terms),
-    [agent.skills, available_terms],
+    () => create_agent_mention_tokens(skills, available_terms),
+    [available_terms, skills],
   );
-  const is_running = agent.state === "running";
+  const is_running = controls.state === "running";
   // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
-  const workspace_apply_running = agent.entries.some(
+  const workspace_apply_running = entries.some(
     (entry) =>
       entry.kind === "tool_call" &&
       entry.toolName === "workspace_apply" &&
       entry.status === "running",
   );
-  const agent_restoring = agent.transport === "restoring";
-  const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
+  const agent_restoring = controls.transport === "restoring";
+  const last_compaction = entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
   const compaction_failed = last_compaction?.status === "error";
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
-  const can_continue_queue =
-    !is_running && agent.inputQueue.paused && agent.inputQueue.items.length > 0;
+  const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
-    agent_restoring || agent.transport === "restore_failed"
+    agent_restoring || controls.transport === "restore_failed"
       ? "restoring"
       : agent_settling
         ? "settling"
@@ -151,10 +164,10 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     if (active_inline_edit === null) return;
     const target_exists =
       active_inline_edit.kind === "queue"
-        ? agent.inputQueue.items.some((item) => item.id === active_inline_edit.itemId)
-        : agent.entries.some((entry) => entry.id === active_inline_edit.entryId);
+        ? inputQueue.items.some((item) => item.id === active_inline_edit.itemId)
+        : entries.some((entry) => entry.id === active_inline_edit.entryId);
     if (!target_exists) set_active_inline_edit(null);
-  }, [active_inline_edit, agent.entries, agent.inputQueue.items]);
+  }, [active_inline_edit, entries, inputQueue.items]);
 
   /** 开启跟随时在布局阶段归底；后续内容变化由统一观察入口接管。 */
   useLayoutEffect(() => {
@@ -184,7 +197,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
   const selected_agent_model = read_selected_model(model_selection, "agent");
   // 公开时间线出现条目才表示用户已经开始当前对话；隐藏会话种子不参与 UI 判断。
-  const conversation_started = agent.entries.length > 0;
+  const conversation_started = entries.length > 0;
   /** 只警告支持思考且明确关闭思考的模型，不把能力缺失误报为用户选择。 */
   const thinking_off_confirmation_required =
     !can_continue_queue &&
@@ -196,10 +209,10 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const send_message = useCallback(
     async (message: AgentMessageInput): Promise<boolean> => {
       const request = can_continue_queue
-        ? agent.continue(
+        ? agent_actions.continue(
             message.text === "" && message.attachments.length === 0 ? undefined : message,
           )
-        : agent.send(message);
+        : agent_actions.send(message);
       try {
         await request;
         return true;
@@ -211,7 +224,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         return false;
       }
     },
-    [agent, can_continue_queue, show_command_error],
+    [agent_actions, can_continue_queue, show_command_error],
   );
 
   /** 普通发送继续使用底部 Composer；历史修订已由消息原位编辑器独立承接。 */
@@ -241,29 +254,29 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   /** 写入审批模式只接受后端确认的会话状态，失败沿用页面命令错误反馈。 */
   const change_approval_mode = useCallback(
     (approval_mode: AgentApprovalMode): void => {
-      void agent.setApprovalMode(approval_mode).catch((error: unknown) => {
+      void agent_actions.setApprovalMode(approval_mode).catch((error: unknown) => {
         show_command_error(error, "agent_page.error.approval_mode");
       });
     },
-    [agent, show_command_error],
+    [agent_actions, show_command_error],
   );
 
   /** 审批面批准当前后端冻结的写入，错误沿用页面命令反馈。 */
   const approve_pending_write = useCallback(
     (switch_to_auto: boolean): void => {
-      void agent.approvePendingWrite(switch_to_auto).catch((error: unknown) => {
+      void agent_actions.approvePendingWrite(switch_to_auto).catch((error: unknown) => {
         show_command_error(error, "agent_page.error.approval_decision");
       });
     },
-    [agent, show_command_error],
+    [agent_actions, show_command_error],
   );
 
   /** 审批面拒绝当前后端冻结的写入，保持模型工具失败语义。 */
   const reject_pending_write = useCallback((): void => {
-    void agent.rejectPendingWrite().catch((error: unknown) => {
+    void agent_actions.rejectPendingWrite().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.approval_decision");
     });
-  }, [agent, show_command_error]);
+  }, [agent_actions, show_command_error]);
 
   /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
@@ -283,34 +296,35 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   };
 
   /** 历史消息编辑只建立独立原位目标，不改写普通 Composer 草稿。 */
-  const start_edit = (
-    entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>,
-  ): void => {
-    set_active_inline_edit(
-      entry.kind === "user_message"
-        ? {
-            kind: "entry",
-            entryId: entry.id,
-            role: "user",
-            message: {
-              text: entry.text,
-              attachments: structuredClone(entry.attachments),
+  const start_edit = useCallback(
+    (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>): void => {
+      set_active_inline_edit(
+        entry.kind === "user_message"
+          ? {
+              kind: "entry",
+              entryId: entry.id,
+              role: "user",
+              message: {
+                text: entry.text,
+                attachments: structuredClone(entry.attachments),
+              },
+            }
+          : {
+              kind: "entry",
+              entryId: entry.id,
+              role: "assistant",
+              message: {
+                text: entry.parts
+                  .filter((part) => part.kind === "text")
+                  .map((part) => part.text)
+                  .join(""),
+                attachments: [],
+              },
             },
-          }
-        : {
-            kind: "entry",
-            entryId: entry.id,
-            role: "assistant",
-            message: {
-              text: entry.parts
-                .filter((part) => part.kind === "text")
-                .map((part) => part.text)
-                .join(""),
-              attachments: [],
-            },
-          },
-    );
-  };
+      );
+    },
+    [],
+  );
 
   /** 原位修订统一走现有后端命令；成功后由编辑器关闭自身。 */
   const save_inline_edit = useCallback(
@@ -318,16 +332,16 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       const target = active_inline_edit;
       if (target === null) return;
       if (target.kind === "queue") {
-        await agent.updateQueuedMessage(target.itemId, message);
-        agent.input.replace_history(target.message.text, message.text);
+        await agent_actions.updateQueuedMessage(target.itemId, message);
+        input.replace_history(target.message.text, message.text);
         return;
       }
-      await agent.reviseLatestRound(target.entryId, message);
+      await agent_actions.reviseLatestRound(target.entryId, message);
       if (target.role === "user") {
-        agent.input.replace_history(target.message.text, message.text);
+        input.replace_history(target.message.text, message.text);
       }
     },
-    [active_inline_edit, agent],
+    [active_inline_edit, agent_actions, input],
   );
 
   const cancel_inline_edit = useCallback((): void => {
@@ -350,10 +364,10 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       return (
         <AgentInlineEditor
           target={target}
-          skills={agent.skills}
+          skills={skills}
           terms={available_terms}
           term_hit_counts={term_hit_counts}
-          command={agent.command}
+          command={controls.command}
           model_selection={model_selection}
           unavailable_reason={unavailable_reason}
           on_save={save_inline_edit}
@@ -364,14 +378,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       );
     },
     [
-      agent.command,
-      agent.skills,
+      controls.command,
       available_terms,
       cancel_inline_edit,
       complete_inline_edit,
       handle_inline_image_error,
       model_selection,
       save_inline_edit,
+      skills,
       term_hit_counts,
       unavailable_reason,
     ],
@@ -416,27 +430,34 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   };
 
   /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
-  const stop = async (): Promise<void> => {
+  const stop = useCallback(async (): Promise<void> => {
     try {
-      await agent.stop();
+      await agent_actions.stop();
     } catch (error) {
       show_command_error(error, "agent_page.error.stop");
     }
-  };
+  }, [agent_actions, show_command_error]);
 
   /** “继续”把所有尾部失败交给后端唯一恢复入口判断并续跑。 */
-  const continue_latest_round = (): void => {
-    void agent.continue().catch((error: unknown) => {
+  const continue_latest_round = useCallback((): void => {
+    void agent_actions.continue().catch((error: unknown) => {
       show_command_error(error, "agent_page.error.continue");
     });
-  };
+  }, [agent_actions, show_command_error]);
+
+  const add_response_annotation = useCallback(
+    (annotation: Parameters<AgentComposerHandle["add_response_annotation"]>[0]): void => {
+      composer_ref.current?.add_response_annotation(annotation);
+    },
+    [],
+  );
 
   // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
-  const has_task_progress = agent.taskProgress.length > 0;
-  const has_input_queue = agent.inputQueue.items.length > 0;
-  const queue_full = agent.inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
+  const has_task_progress = taskProgress.length > 0;
+  const has_input_queue = inputQueue.items.length > 0;
+  const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const show_write_approval =
-    agent.pendingWriteApproval?.status === "waiting" && agent.command !== "approval_decision";
+    controls.pendingWriteApproval?.status === "waiting" && controls.command !== "approval_decision";
   const follow_latest_label = t("agent_page.action.follow_latest");
   const follow_latest_status = t("app.tooltip.value", {
     TITLE: follow_latest_label,
@@ -472,18 +493,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         data-following={follow_latest || undefined}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
-          {agent.transport === "disconnected" && (
+          {controls.transport === "disconnected" && (
             <div className="agent-page__connection-status" role="status">
               <WifiOff aria-hidden="true" />
               <span>{t("agent_page.error.connection")}</span>
             </div>
           )}
-          {agent.transport === "restore_failed" ? (
+          {controls.transport === "restore_failed" ? (
             <div className="agent-page__empty" role="alert">
               <div className="agent-page__empty-intro">
                 <Bot className="agent-page__empty-icon" aria-hidden="true" />
                 <p>{t("agent_page.error.restore")}</p>
-                <AppButton type="button" size="sm" variant="outline" onClick={agent.reconnect}>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={agent_actions.reconnect}
+                >
                   {t("app.action.retry")}
                 </AppButton>
               </div>
@@ -495,7 +521,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 <p>{t("agent_page.loading")}</p>
               </div>
             </div>
-          ) : agent.entries.length === 0 ? (
+          ) : entries.length === 0 ? (
             <div className="agent-page__empty">
               <div className="agent-page__empty-intro">
                 <Bot className="agent-page__empty-icon" aria-hidden="true" />
@@ -517,7 +543,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                   </span>
                 </button>
                 {FEATURED_AGENT_SKILLS.filter((featured) =>
-                  agent.skills.some((skill) => skill.name === featured.name),
+                  skills.some((skill) => skill.name === featured.name),
                 ).map(({ name, suggestionKey, Icon }) => (
                   <button
                     key={name}
@@ -542,17 +568,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             </div>
           ) : (
             <AgentTimeline
-              entries={agent.entries}
+              entries={entries}
               mention_tokens={mention_tokens}
               follow_latest={follow_latest}
               on_continue={continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}
-              on_add_annotation={(annotation) =>
-                composer_ref.current?.add_response_annotation(annotation)
-              }
+              on_add_annotation={add_response_annotation}
               revision_disabled={
-                agent.command !== null ||
+                controls.command !== null ||
                 active_inline_edit !== null ||
                 is_running ||
                 compacting ||
@@ -560,10 +584,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 unavailable_reason !== null
               }
               continue_disabled={
-                agent.command !== null || is_running || compacting || unavailable_reason !== null
+                controls.command !== null || is_running || compacting || unavailable_reason !== null
               }
               annotation_disabled={
-                agent.command !== null || active_inline_edit !== null || unavailable_reason !== null
+                controls.command !== null ||
+                active_inline_edit !== null ||
+                unavailable_reason !== null
               }
             />
           )}
@@ -573,16 +599,16 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <div className="agent-page__status-zone">
         {has_task_progress ? (
           <div className="agent-page__status-task-row">
-            <AgentTaskProgress pending_labels={agent.taskProgress} running={is_running} />
+            <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
           </div>
         ) : null}
         {has_input_queue ? (
           <div className="agent-page__status-queue-row">
             <AgentInputQueue
-              queue={agent.inputQueue}
+              queue={inputQueue}
               disabled={
-                agent.command !== null ||
-                agent.pendingWriteApproval !== null ||
+                controls.command !== null ||
+                controls.pendingWriteApproval !== null ||
                 active_inline_edit !== null ||
                 unavailable_reason !== null ||
                 compacting ||
@@ -595,18 +621,21 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               on_edit={start_queue_edit}
               on_delete={(id) =>
                 run_queue_command(
-                  () => agent.deleteQueuedMessage(id),
+                  () => agent_actions.deleteQueuedMessage(id),
                   "agent_page.error.queue_delete",
                 )
               }
               on_reorder={(ids) =>
                 run_queue_command(
-                  () => agent.reorderQueuedMessages(ids),
+                  () => agent_actions.reorderQueuedMessages(ids),
                   "agent_page.error.queue_reorder",
                 )
               }
               on_send_now={(id) =>
-                run_queue_command(() => agent.sendQueuedMessage(id), "agent_page.error.queue_send")
+                run_queue_command(
+                  () => agent_actions.sendQueuedMessage(id),
+                  "agent_page.error.queue_send",
+                )
               }
             />
           </div>
@@ -614,13 +643,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         {follow_latest_control}
       </div>
 
-      {agent.pendingWriteApproval === null || show_write_approval ? (
+      {controls.pendingWriteApproval === null || show_write_approval ? (
         <div className="agent-page__operation-zone">
-          {agent.pendingWriteApproval === null ? (
+          {controls.pendingWriteApproval === null ? (
             <AgentComposer
               ref={composer_ref}
               locked={active_inline_edit !== null}
-              skills={agent.skills}
+              skills={skills}
               terms={available_terms}
               term_hit_counts={term_hit_counts}
               running={is_running}
@@ -628,15 +657,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               compacting={compacting}
               compaction_failed={compaction_failed}
               unavailable_reason={unavailable_reason}
-              command={agent.command}
+              command={controls.command}
               can_continue_queue={can_continue_queue}
               queue_full={queue_full}
-              can_reset={!agent_restoring && agent.entries.length > 0}
-              context_tokens={agent.contextTokens}
-              approval_mode={agent.approvalMode}
+              can_reset={!agent_restoring && entries.length > 0}
+              context_tokens={controls.contextTokens}
+              approval_mode={controls.approvalMode}
               approval_mode_disabled={workspace_apply_running}
               model_selection={model_selection}
-              input_session={agent.input}
+              input_session={input}
               on_send={submit_message}
               on_thinking_level_change={change_agent_thinking_level}
               on_approval_mode_change={change_approval_mode}
@@ -646,7 +675,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             />
           ) : (
             <AgentApprovalPanel
-              summary={agent.pendingWriteApproval.summary}
+              summary={controls.pendingWriteApproval.summary}
               on_approve={approve_pending_write}
               on_reject={reject_pending_write}
             />
@@ -659,7 +688,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         submitting={
           pending_thinking_off_action?.kind === "disable_thinking"
             ? model_selection.updating
-            : agent.command === "send"
+            : controls.command === "send"
         }
         onConfirm={confirm_pending_thinking_off_action}
         onClose={close_pending_thinking_off_action}
@@ -667,10 +696,10 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <AppConfirmDialog
         open={reset_dialog_open}
         description={t("agent_page.confirm.new_task")}
-        submitting={agent.command === "reset"}
+        submitting={controls.command === "reset"}
         onConfirm={async () => {
           try {
-            await agent.reset();
+            await agent_actions.reset();
             set_reset_dialog_open(false);
           } catch (error) {
             show_command_error(error, "agent_page.error.reset");

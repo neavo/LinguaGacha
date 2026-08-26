@@ -30,12 +30,14 @@ import {
   type AgentAssistantMessagePart,
   type AgentAssistantMessageParts,
   type AgentApprovalMode,
+  type AgentCommandAck,
   type AgentPendingWriteApproval,
   type AgentPendingWriteSummary,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
   type AgentSessionEvent,
+  type AgentSessionEventPayload,
   type AgentSessionSnapshot,
   type AgentSessionState,
 } from "../../shared/agent";
@@ -189,6 +191,8 @@ type AgentServiceOptions = {
   publish: (topic: string, payload: JsonRecord) => void;
 };
 
+type AgentIncrementalEvent = Exclude<AgentSessionEventPayload, { type: "snapshot_seed" }>;
+
 type LoadedAgentResources = Readonly<{
   /** 保留未拼接 skill catalog 的原文，reset 时可重建能力清单而不累积旧投影。 */
   baseSystemPrompt: string;
@@ -215,7 +219,7 @@ export class AgentService {
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
-  private operation_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖建会话、换模与尾部恢复
+  private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与尾部恢复
   private runtime_settlement: Promise<void> | null = null; // SDK idle 未覆盖 preflight，统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
@@ -230,6 +234,7 @@ export class AgentService {
   private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
   private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
   private resources: LoadedAgentResources | null = null; // 基础资源与当前会话 catalog 的唯一原子快照
+  private revision = 0; // 当前产品会话公开事件的全局单调序号；reset 与工程切换均不回退
   private disposed = false;
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
@@ -251,6 +256,7 @@ export class AgentService {
   /** 返回仅含不可变投影的公开快照；UI 排序不改写模型侧持有的原始 skill 顺序。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
+      revision: this.revision,
       state: this.state,
       approvalMode: this.approval_mode,
       pendingWriteApproval:
@@ -281,7 +287,7 @@ export class AgentService {
   }
 
   /** 更新当前 Agent 任务的写入请求审批模式；reset、工程切换和应用重启都会回到手动。 */
-  public set_approval_mode(request: JsonRecord): AgentSessionSnapshot {
+  public set_approval_mode(request: JsonRecord): AgentCommandAck {
     this.assert_not_disposed();
     if (
       this.session_reset !== null ||
@@ -295,11 +301,11 @@ export class AgentService {
       this.approval_mode = approval_mode;
       this.publish_event({ type: "approval_mode", approvalMode: approval_mode });
     }
-    return this.get_snapshot();
+    return this.get_acknowledgement();
   }
 
   /** UI 批准当前冻结的 workspace_apply；确认决定后由工具继续结算。 */
-  public approve_pending_write(request: JsonRecord): AgentSessionSnapshot {
+  public approve_pending_write(request: JsonRecord): AgentCommandAck {
     const pending = this.require_pending_workspace_apply(request);
     const switch_to_auto = request["switchToAuto"];
     if (switch_to_auto !== undefined && typeof switch_to_auto !== "boolean") {
@@ -314,7 +320,7 @@ export class AgentService {
   }
 
   /** UI 拒绝当前冻结的 workspace_apply；确认决定后由工具生成稳定失败结果。 */
-  public reject_pending_write(request: JsonRecord): AgentSessionSnapshot {
+  public reject_pending_write(request: JsonRecord): AgentCommandAck {
     const pending = this.require_pending_workspace_apply(request);
     return this.accept_pending_workspace_decision(pending, {
       approved: false,
@@ -339,7 +345,7 @@ export class AgentService {
   }
 
   /** 同步校验消息，以单一 Promise 串行完成建会话或刷新模型请求快照。 */
-  public async send_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
+  public async send_message(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_not_disposed();
     if (this.session_reset !== null) {
       throw new AppErrors.AppError("runtime.busy");
@@ -357,7 +363,7 @@ export class AgentService {
     if (this.state === "running") {
       this.input_queue.enqueue(message);
       this.publish_input_queue();
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     }
     if (this.input_queue.is_paused) {
       throw agent_queue_validation_error("agent_continue_required");
@@ -377,24 +383,24 @@ export class AgentService {
   }
 
   /** 只允许修改仍在等待的队列项；发送中的内容已经交给 Pi，不能再改写。 */
-  public update_queued_message(request: JsonRecord): AgentSessionSnapshot {
+  public update_queued_message(request: JsonRecord): AgentCommandAck {
     this.assert_queue_command_available();
     const { id, message } = read_queue_message_request(request);
     this.input_queue.update(id, message);
     this.publish_input_queue();
-    return this.get_snapshot();
+    return this.get_acknowledgement();
   }
 
   /** 删除等待项后由队列自行解除无项目标暂停态。 */
-  public delete_queued_message(request: JsonRecord): AgentSessionSnapshot {
+  public delete_queued_message(request: JsonRecord): AgentCommandAck {
     this.assert_queue_command_available();
     this.input_queue.delete(read_queue_id(request));
     this.publish_input_queue();
-    return this.get_snapshot();
+    return this.get_acknowledgement();
   }
 
   /** 重排请求必须完整列出当前队列身份，避免部分顺序覆盖并发变化。 */
-  public reorder_queued_messages(request: JsonRecord): AgentSessionSnapshot {
+  public reorder_queued_messages(request: JsonRecord): AgentCommandAck {
     this.assert_queue_command_available();
     const ids = request["ids"];
     if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
@@ -402,11 +408,11 @@ export class AgentService {
     }
     this.input_queue.reorder(ids as string[]);
     this.publish_input_queue();
-    return this.get_snapshot();
+    return this.get_acknowledgement();
   }
 
   /** 运行中交给 Pi steer；空闲时将选中项作为新公开轮次启动，其他暂停项保持不动。 */
-  public async send_queued_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
+  public async send_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_queue_command_available();
     this.session_state.require_loaded_project_path();
     const id = read_queue_id(request);
@@ -430,7 +436,7 @@ export class AgentService {
         this.publish_input_queue();
         throw error;
       }
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     }
     this.assert_new_round_available();
 
@@ -445,7 +451,7 @@ export class AgentService {
   }
 
   /** 最新轮次输入与最终输出可独立修订；原输入修订为自身即表示重试。 */
-  public async revise_latest_round(request: JsonRecord): Promise<AgentSessionSnapshot> {
+  public async revise_latest_round(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_revision_available();
     const revision = normalize_agent_revision_request(request);
     if (revision === null) {
@@ -499,7 +505,7 @@ export class AgentService {
   }
 
   /** 唯一继续入口原子追加可选队尾消息，并恢复失败轮次或暂停队列。 */
-  public async continue_session(request: JsonRecord): Promise<AgentSessionSnapshot> {
+  public async continue_session(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.state !== "idle") {
       throw new AppErrors.AppError("runtime.busy");
@@ -544,21 +550,21 @@ export class AgentService {
   }
 
   /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
-  public async reset(): Promise<AgentSessionSnapshot> {
+  public async reset(): Promise<AgentCommandAck> {
     this.assert_not_disposed();
     const existing_lease = this.runtime_lease;
     const reset_lease = existing_lease ?? this.runtime_gate.begin_runtime("agent");
     if (existing_lease === null) this.runtime_lease = reset_lease;
     try {
       await this.reset_session("workspace");
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     } finally {
       if (existing_lease === null) this.finish_runtime(reset_lease);
     }
   }
 
   /** 立即封口公开轮次并保留历史；压缩与 workspace_apply 不接受中途停止。 */
-  public stop(): AgentSessionSnapshot {
+  public stop(): AgentCommandAck {
     this.assert_not_disposed();
     if (
       this.find_open_compaction_entry() !== undefined ||
@@ -584,7 +590,7 @@ export class AgentService {
       }
       void runtime.session.abort().catch((error: unknown) => this.warn_cleanup_failure(error));
     }
-    return this.get_snapshot();
+    return this.get_acknowledgement();
   }
 
   /** dispose 不再发布事件，但会等待 reset、消息受理与所有运行时清理。 */
@@ -617,7 +623,7 @@ export class AgentService {
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
     queued_id?: string,
-  ): Promise<AgentSessionSnapshot> {
+  ): Promise<AgentCommandAck> {
     let prompt_started = false;
     try {
       const generation = this.runtime_generation;
@@ -645,7 +651,7 @@ export class AgentService {
         }
         if (created) {
           this.runtime = runtime;
-          this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
+          this.publish_context_tokens(estimateContextTokens(runtime.session.messages).tokens);
         }
       } catch (error) {
         if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
@@ -665,14 +671,14 @@ export class AgentService {
         if (this.runtime_settlement === prompt) this.runtime_settlement = null;
       };
       void prompt.then(clear_prompt, clear_prompt);
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     } finally {
       if (!prompt_started) this.finish_runtime(runtime_lease);
     }
   }
 
   /** 已解除暂停的继续命令从产品 FIFO 选择队首，复用普通队列受理链。 */
-  private accept_next_queued_message(runtime_lease: RuntimeLease): Promise<AgentSessionSnapshot> {
+  private accept_next_queued_message(runtime_lease: RuntimeLease): Promise<AgentCommandAck> {
     const item = this.input_queue.read_next();
     if (item === null) {
       throw new AppErrors.AppError("runtime.internal_invariant", {
@@ -690,7 +696,7 @@ export class AgentService {
   }
 
   /** 重试与修改共享同一受理边界，目标检查通过后才取得运行 lease。 */
-  private async begin_revision(revision: AgentRevision): Promise<AgentSessionSnapshot> {
+  private async begin_revision(revision: AgentRevision): Promise<AgentCommandAck> {
     const resources = this.require_resources();
     this.session_state.require_loaded_project_path();
     const runtime = this.runtime;
@@ -716,7 +722,7 @@ export class AgentService {
     revision: AgentRevision,
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
-  ): Promise<AgentSessionSnapshot> {
+  ): Promise<AgentCommandAck> {
     let prompt_started = false;
     try {
       const generation = this.runtime_generation;
@@ -731,7 +737,7 @@ export class AgentService {
       this.pending_assistant_checkpoint = null;
       if (revision.role === "assistant") {
         this.replace_with_assistant(runtime, revision.prefix, revision.message.text);
-        return this.get_snapshot();
+        return this.get_acknowledgement();
       }
 
       const prompt = this.start_round(
@@ -748,7 +754,7 @@ export class AgentService {
         if (this.runtime_settlement === prompt) this.runtime_settlement = null;
       };
       void prompt.then(clear_prompt, clear_prompt);
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     } finally {
       if (!prompt_started) this.finish_runtime(runtime_lease);
     }
@@ -807,7 +813,7 @@ export class AgentService {
     this.latest_output_checkpoint = { entry_id: entry.id, leaf_id: checkpoint_leaf };
     this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
     this.state = "idle";
-    this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+    this.publish_snapshot_seed();
   }
 
   /** 继续受理只更新模型并启动唯一尾部恢复，不在 renderer 建立补偿命令。 */
@@ -816,7 +822,7 @@ export class AgentService {
     failed_entry: Extract<AgentEntry, { kind: "context_compaction" }> | undefined,
     continue_failed_round: boolean,
     runtime_lease: RuntimeLease,
-  ): Promise<AgentSessionSnapshot> {
+  ): Promise<AgentCommandAck> {
     let continuation_started = false;
     try {
       const generation = this.runtime_generation;
@@ -843,7 +849,7 @@ export class AgentService {
         if (this.runtime_settlement === continuation) this.runtime_settlement = null;
       };
       void continuation.then(clear_continuation, clear_continuation);
-      return this.get_snapshot();
+      return this.get_acknowledgement();
     } finally {
       if (!continuation_started) this.finish_runtime(runtime_lease);
     }
@@ -895,7 +901,7 @@ export class AgentService {
     } else {
       this.entries = [...structuredClone(replacement_prefix), entry];
       this.state = "running";
-      this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+      this.publish_snapshot_seed();
     }
   }
 
@@ -1527,9 +1533,26 @@ export class AgentService {
     return this.runtime_gate.get_snapshot().owner === null;
   }
 
-  /** AgentService 的所有增量统一复用单一公开 topic。 */
-  private publish_event(event: AgentSessionEvent): void {
+  /** AgentService 的所有增量在唯一入口分配 revision，再复用同一公开 topic。 */
+  private publish_event(event: AgentIncrementalEvent): void {
+    this.revision += 1;
+    this.publish(AGENT_SESSION_EVENT_TOPIC, { ...event, revision: this.revision });
+  }
+
+  /** seed 先占用 revision，再以同一个值构造内外两层快照边界。 */
+  private publish_snapshot_seed(): void {
+    this.revision += 1;
+    const event: AgentSessionEvent = {
+      type: "snapshot_seed",
+      revision: this.revision,
+      snapshot: this.get_snapshot(),
+    };
     this.publish(AGENT_SESSION_EVENT_TOPIC, event);
+  }
+
+  /** 命令回执只暴露同步受理完成时的事件边界，不复制会话历史。 */
+  private get_acknowledgement(): AgentCommandAck {
+    return { revision: this.revision };
   }
 
   /** 立即隔离公开会话；工程切换还把新工程路径交给 sources 生命周期。 */
@@ -1572,7 +1595,7 @@ export class AgentService {
           await this.workspace?.reset_workspace();
         }
         if (!this.disposed) {
-          this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+          this.publish_snapshot_seed();
         }
       })
       .finally(() => {
@@ -1617,8 +1640,8 @@ export class AgentService {
 
   /** 所有异步受理共享同一关闭屏障，命令类型不再各自复制清理时序。 */
   private async track_operation_acceptance(
-    acceptance: Promise<AgentSessionSnapshot>,
-  ): Promise<AgentSessionSnapshot> {
+    acceptance: Promise<AgentCommandAck>,
+  ): Promise<AgentCommandAck> {
     this.operation_acceptance = acceptance;
     try {
       return await acceptance;
@@ -1751,12 +1774,12 @@ export class AgentService {
   private accept_pending_workspace_decision(
     pending: PendingWorkspaceApply,
     decision: WorkspaceApplyDecision,
-  ): AgentSessionSnapshot {
+  ): AgentCommandAck {
     pending.status = "processing";
     this.publish_pending_workspace_apply();
-    const snapshot = this.get_snapshot();
+    const acknowledgement = this.get_acknowledgement();
     setImmediate(() => pending.decide(decision));
-    return snapshot;
+    return acknowledgement;
   }
 
   /** 只允许当前等待态和同一工具调用 ID 参与审批，拒绝重复或过期命令。 */

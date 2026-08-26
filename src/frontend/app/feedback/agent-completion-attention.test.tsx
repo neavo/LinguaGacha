@@ -10,7 +10,8 @@ const agent_mock = vi.hoisted(() => ({
 }));
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentSession: () => agent_mock.session,
+  useAgentControls: () => ({ state: (agent_mock.session as { state: string }).state }),
+  useAgentTimeline: () => ({ entries: (agent_mock.session as { entries: AgentEntry[] }).entries }),
 }));
 
 import {

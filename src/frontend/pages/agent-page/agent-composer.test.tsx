@@ -621,6 +621,8 @@ describe("AgentComposer", () => {
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
 
     expect(submit?.getAttribute("aria-label")).toBe("agent_page.action.continue");
+    expect(submit?.getAttribute("aria-busy")).toBe("true");
+    expect(submit?.querySelector(".animate-spin")).not.toBeNull();
     expect(view.querySelector(".agent-composer__footer-end [role=tooltip]")).toBeNull();
   });
 
