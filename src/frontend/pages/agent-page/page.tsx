@@ -43,7 +43,7 @@ import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTaskProgress } from "./agent-task-progress";
 import { AgentTimeline } from "./agent-timeline";
-import { useAgentAutoScroll } from "./agent-scroll";
+import { useAgentFollowLatest } from "./agent-scroll";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -99,9 +99,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
-  const [follow_latest, set_follow_latest] = useState(true); // 页面级实时阅读模式，滚动位置不参与推断
-  const { follow_content: follow_conversation_content, scroll_to_end: scroll_conversation_to_end } =
-    useAgentAutoScroll(follow_latest);
+  const {
+    following: follow_latest,
+    follow_content: follow_conversation_content,
+    scroll_to_end: scroll_conversation_to_end,
+    activate: activate_conversation_follow,
+    deactivate: deactivate_conversation_follow,
+    handle_scroll: handle_conversation_scroll,
+  } = useAgentFollowLatest(true);
+  const [follow_reset_revision, set_follow_reset_revision] = useState(0);
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const [pending_thinking_off_action, set_pending_thinking_off_action] =
     useState<PendingThinkingOffAction | null>(null);
@@ -473,7 +479,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           variant="outline"
           aria-label={follow_latest_label}
           aria-pressed={follow_latest}
-          onClick={() => set_follow_latest((following) => !following)}
+          onClick={() => {
+            if (follow_latest) {
+              deactivate_conversation_follow();
+              return;
+            }
+            set_follow_reset_revision((revision) => revision + 1);
+            activate_conversation_follow(conversation_ref.current);
+          }}
         >
           <ArrowDownToLine aria-hidden="true" />
         </AppButton>
@@ -491,6 +504,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         className="agent-page__conversation"
         aria-label={t("agent_page.title")}
         data-following={follow_latest || undefined}
+        onScroll={(event) => handle_conversation_scroll(event.currentTarget)}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
           {controls.transport === "disconnected" && (
@@ -570,7 +584,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             <AgentTimeline
               entries={entries}
               mention_tokens={mention_tokens}
-              follow_latest={follow_latest}
+              follow_reset_revision={follow_reset_revision}
               on_continue={continue_latest_round}
               on_edit={start_edit}
               render_entry_editor={render_entry_editor}

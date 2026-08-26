@@ -45,7 +45,7 @@ describe("AgentTimeline 渲染边界", () => {
           <AgentTimeline
             entries={next_entries}
             mention_tokens={[]}
-            follow_latest={true}
+            follow_reset_revision={0}
             on_continue={on_continue}
             on_edit={on_edit}
             on_add_annotation={on_add_annotation}
