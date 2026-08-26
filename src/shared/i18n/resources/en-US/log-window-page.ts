@@ -22,11 +22,11 @@ export const en_us_log_window_page = {
     placeholder: "Query …",
     clear: "Clear",
     regex: "Regex",
-    regex_tooltip: "Regex Mode - {STATE}",
+    regex_tooltip_label: "Regex Mode",
     regex_invalid: "Invalid regular expression.",
     scope: {
       label: "Scope",
-      tooltip: "Log Scope - {STATE}",
+      tooltip_label: "Log Scope",
     },
   },
   detail: {

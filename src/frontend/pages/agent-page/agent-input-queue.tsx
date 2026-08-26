@@ -145,9 +145,7 @@ function AgentInputQueueItem(props: {
           <p>{t("agent_page.queue.reorder")}</p>
         </TooltipContent>
       </Tooltip>
-      <span className="agent-input-queue__preview" title={preview}>
-        {preview}
-      </span>
+      <span className="agent-input-queue__preview">{preview}</span>
       {attachment_count > 0 ? (
         <span className="agent-input-queue__attachments">
           {t("agent_page.queue.attachments", { count: attachment_count.toString() })}

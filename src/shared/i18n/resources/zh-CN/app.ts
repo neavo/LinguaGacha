@@ -94,9 +94,17 @@ export const zh_cn_app = {
     import_here: "松手即可导入规则文件",
   },
   toggle: {
-    disabled: "禁用",
-    enabled: "启用",
-    status: "{TITLE} - {STATE}",
+    option: {
+      disabled: "禁用",
+      enabled: "启用",
+    },
+  },
+  state: {
+    disabled: "已禁用",
+    enabled: "已启用",
+  },
+  tooltip: {
+    value: "{TITLE} · {VALUE}",
   },
   drag: {
     enabled: "拖拽排序",

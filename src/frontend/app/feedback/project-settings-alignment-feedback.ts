@@ -7,8 +7,8 @@ type Translate = TextResolver;
 export type ProjectSettingsAlignmentSettings = {
   source_language: string; // 源语言展示按当前设置镜像解析
   target_language: string; // 目标语言展示按当前设置镜像解析
-  mtool_optimizer_enable: boolean; // MTool 开关展示为启用或禁用
-  skip_duplicate_source_text_enable: boolean; // 重复原文开关展示为启用或禁用
+  mtool_optimizer_enable: boolean; // MTool 开关展示为已启用或已禁用
+  skip_duplicate_source_text_enable: boolean; // 重复原文开关展示为已启用或已禁用
 };
 
 export type ProjectSettingsAlignmentChangedFields = Partial<{
@@ -42,31 +42,43 @@ export function format_project_settings_aligned_toast(args: {
 
   if (args.changed_fields.source_language === true) {
     rows.push(
-      `${args.t("app.project_settings_alignment.field.source_language")} - ${format_language_label(args.settings.source_language, args.t)}`,
+      args.t("app.tooltip.value", {
+        TITLE: args.t("app.project_settings_alignment.field.source_language"),
+        VALUE: format_language_label(args.settings.source_language, args.t),
+      }),
     );
   }
 
   if (args.changed_fields.target_language === true) {
     rows.push(
-      `${args.t("app.project_settings_alignment.field.target_language")} - ${format_language_label(args.settings.target_language, args.t)}`,
+      args.t("app.tooltip.value", {
+        TITLE: args.t("app.project_settings_alignment.field.target_language"),
+        VALUE: format_language_label(args.settings.target_language, args.t),
+      }),
     );
   }
 
   if (args.changed_fields.mtool_optimizer_enable === true) {
     const mtool_label = args.settings.mtool_optimizer_enable
-      ? args.t("app.toggle.enabled")
-      : args.t("app.toggle.disabled");
+      ? args.t("app.state.enabled")
+      : args.t("app.state.disabled");
     rows.push(
-      `${args.t("app.project_settings_alignment.field.mtool_optimizer_enable")} - ${mtool_label}`,
+      args.t("app.tooltip.value", {
+        TITLE: args.t("app.project_settings_alignment.field.mtool_optimizer_enable"),
+        VALUE: mtool_label,
+      }),
     );
   }
 
   if (args.changed_fields.skip_duplicate_source_text_enable === true) {
     const skip_duplicate_source_text_label = args.settings.skip_duplicate_source_text_enable
-      ? args.t("app.toggle.enabled")
-      : args.t("app.toggle.disabled");
+      ? args.t("app.state.enabled")
+      : args.t("app.state.disabled");
     rows.push(
-      `${args.t("app.project_settings_alignment.field.skip_duplicate_source_text_enable")} - ${skip_duplicate_source_text_label}`,
+      args.t("app.tooltip.value", {
+        TITLE: args.t("app.project_settings_alignment.field.skip_duplicate_source_text_enable"),
+        VALUE: skip_duplicate_source_text_label,
+      }),
     );
   }
 

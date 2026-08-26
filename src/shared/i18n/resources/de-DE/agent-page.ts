@@ -54,7 +54,7 @@ export const de_de_agent_page = {
     auto: "Automatische Genehmigung",
     tooltip_manual: "Schreibanfrage - Manuelle Genehmigung",
     tooltip_auto: "Schreibanfrage - Automatische Genehmigung",
-    pending: "Schreiben von Projektdaten wartet auf Genehmigung",
+    description: "Projektdaten werden geschrieben: {summary}",
     summary_items: "{count} Texteinträge",
     summary_glossary: "{count} Glossarregeln",
     summary_text_preserve: "{count} Textschutzregeln",
@@ -97,6 +97,7 @@ export const de_de_agent_page = {
     send_now: "Jetzt senden",
     sending: "Wird gesendet",
     delete: "Nachricht löschen",
+    full: "Nachrichtenwarteschlange voll · {count}/{limit}",
   },
   confirm: {
     new_task: "Wirklich eine neue Unterhaltung starten …?",
@@ -109,13 +110,12 @@ export const de_de_agent_page = {
     error: "Fehlgeschlagen",
     stopped: "Gestoppt",
   },
-  task_progress: { next: "In Arbeit" },
+  task_progress: { pending: "Offene Aufgaben" },
   tool: {
     details: "Werkzeugaufrufdetails für {tool}",
     input: "Eingabe",
     output: "Ausgabe",
-    wrap_enabled: "Zeilenumbruch - Aktiviert",
-    wrap_disabled: "Zeilenumbruch - Deaktiviert",
+    wrap: "Zeilenumbruch",
   },
   round: {
     running: "Wird seit {duration} verarbeitet",

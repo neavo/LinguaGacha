@@ -64,9 +64,10 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       label: t("text_preserve_page.mode.options.custom"),
     },
   ];
-  const mode_tooltip_title = t("app.toggle.status")
-    .replace("{TITLE}", t("text_preserve_page.mode.label"))
-    .replace("{STATE}", t(MODE_LABEL_KEY_BY_MODE[props.mode]));
+  const mode_tooltip_title = t("app.tooltip.value", {
+    TITLE: t("text_preserve_page.mode.label"),
+    VALUE: t(MODE_LABEL_KEY_BY_MODE[props.mode]),
+  });
 
   useActionShortcut({
     action: "create",

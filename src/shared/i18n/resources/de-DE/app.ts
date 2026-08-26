@@ -99,9 +99,17 @@ export const de_de_app = {
     import_here: "Zum Importieren der Regeldatei loslassen",
   },
   toggle: {
-    disabled: "AUS",
-    enabled: "AN",
-    status: "{TITLE} - {STATE}",
+    option: {
+      disabled: "AUS",
+      enabled: "AN",
+    },
+  },
+  state: {
+    disabled: "Deaktiviert",
+    enabled: "Aktiviert",
+  },
+  tooltip: {
+    value: "{TITLE} · {VALUE}",
   },
   drag: {
     enabled: "Zum Neuanordnen ziehen",

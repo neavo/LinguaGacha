@@ -188,11 +188,11 @@ export function ModelAdvancedSettingsDialog(
   const boolean_segmented_options = [
     {
       value: "disabled",
-      label: t("app.toggle.disabled"),
+      label: t("app.toggle.option.disabled"),
     },
     {
       value: "enabled",
-      label: t("app.toggle.enabled"),
+      label: t("app.toggle.option.enabled"),
     },
   ] as const;
   const [headers_text, set_headers_text] = useState("");

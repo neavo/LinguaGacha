@@ -124,10 +124,6 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   return "neutral";
 }
 
-function build_compact_tooltip(template: string, title: string, content: string): string {
-  return template.replace("{TITLE}", title).replace("{STATE}", content);
-}
-
 function render_name_prefixed_text(args: { name: string | null; text: string }): JSX.Element {
   return (
     <span className="proofreading-page__table-text-line">
@@ -167,8 +163,6 @@ function ProofreadingStatusCell(props: {
       props.item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
     ];
   const status_label = status_label_key === undefined ? props.item.status : t(status_label_key);
-  const compact_tooltip_template = t("app.toggle.status");
-
   if (props.retranslating) {
     return (
       <div className="proofreading-page__status-icons">
@@ -184,11 +178,10 @@ function ProofreadingStatusCell(props: {
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={8}>
             <p>
-              {build_compact_tooltip(
-                compact_tooltip_template,
-                t("proofreading_page.fields.status"),
-                t("proofreading_page.action.retranslate"),
-              )}
+              {t("app.tooltip.value", {
+                TITLE: t("proofreading_page.fields.status"),
+                VALUE: t("proofreading_page.action.retranslate"),
+              })}
             </p>
           </TooltipContent>
         </Tooltip>
@@ -218,11 +211,10 @@ function ProofreadingStatusCell(props: {
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={8}>
             <p>
-              {build_compact_tooltip(
-                compact_tooltip_template,
-                t("proofreading_page.fields.status"),
-                status_label,
-              )}
+              {t("app.tooltip.value", {
+                TITLE: t("proofreading_page.fields.status"),
+                VALUE: status_label,
+              })}
             </p>
           </TooltipContent>
         </Tooltip>
@@ -241,11 +233,10 @@ function ProofreadingStatusCell(props: {
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={8}>
             <p>
-              {build_compact_tooltip(
-                compact_tooltip_template,
-                t("proofreading_page.tooltip.warning_title"),
-                warning_label,
-              )}
+              {t("app.tooltip.value", {
+                TITLE: t("proofreading_page.tooltip.warning_title"),
+                VALUE: warning_label,
+              })}
             </p>
           </TooltipContent>
         </Tooltip>

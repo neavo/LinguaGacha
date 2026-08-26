@@ -2,14 +2,12 @@ import { uuidv7 } from "@earendil-works/pi-ai";
 
 import {
   normalize_agent_message_input,
+  AGENT_INPUT_QUEUE_LIMIT,
   type AgentInputQueueSnapshot,
   type AgentMessageInput,
   type AgentQueuedInput,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
-
-/** 单个会话允许等待的用户输入数；避免附件在内存中无界累积。 */
-export const AGENT_INPUT_QUEUE_LIMIT = 20;
 
 /** 输入队列只拥有排队事实；运行时何时取用由 AgentService 编排。 */
 export class AgentInputQueue {

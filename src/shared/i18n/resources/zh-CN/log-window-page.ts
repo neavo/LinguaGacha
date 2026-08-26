@@ -19,11 +19,11 @@ export const zh_cn_log_window_page = {
     placeholder: "查询 …",
     clear: "清空",
     regex: "正则",
-    regex_tooltip: "正则模式 - {STATE}",
+    regex_tooltip_label: "正则模式",
     regex_invalid: "正则表达式无效。",
     scope: {
       label: "范围",
-      tooltip: "日志范围 - {STATE}",
+      tooltip_label: "日志范围",
     },
   },
   detail: {

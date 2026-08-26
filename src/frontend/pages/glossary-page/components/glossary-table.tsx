@@ -182,12 +182,10 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         head_class_name: "glossary-page__table-rule-head",
         cell_class_name: "glossary-page__table-rule-cell",
         render_cell: (payload) => {
-          const case_tooltip = t("app.toggle.status")
-            .replace("{TITLE}", t("glossary_page.rule.case_sensitive"))
-            .replace(
-              "{STATE}",
-              t(payload.row.entry.case_sensitive ? "app.toggle.enabled" : "app.toggle.disabled"),
-            );
+          const case_tooltip = t("app.tooltip.value", {
+            TITLE: t("glossary_page.rule.case_sensitive"),
+            VALUE: t(payload.row.entry.case_sensitive ? "app.state.enabled" : "app.state.disabled"),
+          });
 
           return (
             <GlossaryRuleBadge enabled={payload.row.entry.case_sensitive} tooltip={case_tooltip} />

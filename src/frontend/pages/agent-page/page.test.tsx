@@ -6,7 +6,11 @@ import { EditorView } from "@codemirror/view";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { ModelThinkingLevel } from "@domain/model";
-import type { AgentAssistantMessageParts, AgentEntryStatus } from "@shared/agent";
+import {
+  AGENT_INPUT_QUEUE_LIMIT,
+  type AgentAssistantMessageParts,
+  type AgentEntryStatus,
+} from "@shared/agent";
 import type { useAgentSession as UseAgentSessionFunction } from "@frontend/app/session/agent/agent-session-context";
 
 type AgentPageState = ReturnType<typeof UseAgentSessionFunction>;
@@ -447,6 +451,79 @@ describe("AgentPage", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("状态区按任务进度、消息队列、跟随控件组织并与操作区分离", async () => {
+    const view = await render_page({
+      taskProgress: ["检查章节"],
+      inputQueue: {
+        paused: false,
+        canSendNow: false,
+        items: [
+          {
+            id: "queue-1",
+            text: "继续检查",
+            attachments: [],
+            status: "queued",
+            createdAt: 1,
+          },
+        ],
+      },
+    });
+    const status_zone = view.querySelector<HTMLElement>(".agent-page__status-zone");
+    const operation_zone = view.querySelector<HTMLElement>(".agent-page__operation-zone");
+    if (status_zone === null || operation_zone === null) throw new Error("缺少 Agent 页面区域");
+
+    expect(status_zone.querySelector(".agent-task-progress")).not.toBeNull();
+    expect(
+      status_zone.querySelector(".agent-page__status-queue-row .agent-input-queue"),
+    ).not.toBeNull();
+    const follow_control = status_zone.querySelector<HTMLElement>(".agent-page__follow-control");
+    expect(follow_control).not.toBeNull();
+    expect(follow_control?.parentElement).toBe(status_zone);
+    expect(
+      status_zone.querySelector(".agent-page__status-queue-row .agent-page__follow-control"),
+    ).toBeNull();
+    expect(operation_zone.querySelector(".agent-composer")).not.toBeNull();
+    expect(status_zone.compareDocumentPosition(operation_zone)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    await render_page({ taskProgress: ["检查章节"] });
+    const task_only_status_zone = view.querySelector<HTMLElement>(".agent-page__status-zone");
+    const task_only_follow_control = task_only_status_zone?.querySelector<HTMLElement>(
+      ".agent-page__follow-control",
+    );
+    expect(task_only_follow_control).not.toBeNull();
+    expect(task_only_follow_control?.parentElement).toBe(task_only_status_zone);
+    expect(
+      task_only_status_zone?.querySelector(
+        ".agent-page__status-task-row .agent-page__follow-control",
+      ),
+    ).toBeNull();
+    expect(task_only_status_zone?.querySelector(".agent-page__status-queue-row")).toBeNull();
+  });
+
+  it("满消息队列时页面禁用新增发送并显示容量提示", async () => {
+    const view = await render_page({
+      state: "running",
+      inputQueue: {
+        paused: false,
+        canSendNow: false,
+        items: Array.from({ length: AGENT_INPUT_QUEUE_LIMIT }, (_, index) => ({
+          id: `queue-${index.toString()}`,
+          text: `排队消息 ${index.toString()}`,
+          attachments: [],
+          status: "queued" as const,
+          createdAt: index,
+        })),
+      },
+    });
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "新增消息" } }));
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    expect(submit?.disabled).toBe(true);
+    expect(submit?.getAttribute("aria-label")).toContain("agent_page.queue.full");
+  });
+
   it("会话内容替换保持自由滚动模式", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
@@ -619,24 +696,37 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("待审批时由页面用审批面互斥替换输入器", async () => {
-    const view = await render_page({
-      pendingWriteApproval: {
-        id: "apply-1",
-        status: "waiting",
-        summary: {
-          items: 1,
-          glossary: 0,
-          textPreserve: 0,
-          preReplacement: 0,
-          postReplacement: 0,
-          prompts: 0,
-        },
+  it("只在等待决定时显示审批面，决定后由信息流接管", async () => {
+    const pending_write_approval = {
+      id: "apply-1",
+      status: "waiting" as const,
+      summary: {
+        items: 1,
+        glossary: 0,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
       },
-    });
+    };
+    const view = await render_page({ pendingWriteApproval: pending_write_approval });
 
     expect(view.querySelector(".agent-approval")).not.toBeNull();
     expect(view.querySelector(".agent-composer__editor")).toBeNull();
+
+    await render_page({
+      command: "approval_decision",
+      pendingWriteApproval: pending_write_approval,
+    });
+    expect(view.querySelector(".agent-page__operation-zone")).toBeNull();
+
+    await render_page({
+      pendingWriteApproval: { ...pending_write_approval, status: "processing" },
+    });
+    expect(view.querySelector(".agent-page__operation-zone")).toBeNull();
+
+    await render_page({ pendingWriteApproval: null });
+    expect(view.querySelector(".agent-composer__editor")).not.toBeNull();
   });
 
   it("写入决策失败显示对应恢复提示", async () => {

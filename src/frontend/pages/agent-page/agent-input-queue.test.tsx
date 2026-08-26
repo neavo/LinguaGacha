@@ -128,6 +128,9 @@ describe("AgentInputQueue", () => {
     expect(on_edit).toHaveBeenCalledWith(first);
     expect(on_delete).toHaveBeenCalledWith("queue-1");
     expect(on_reorder).toHaveBeenCalledWith(["queue-2", "queue-1"]);
+    expect(
+      container.querySelector(".agent-input-queue__preview")?.getAttribute("title"),
+    ).toBeNull();
   });
 
   it("sending 项把主操作切为 busy 并禁用全部操作", async () => {

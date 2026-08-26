@@ -54,7 +54,7 @@ export const en_us_agent_page = {
     auto: "Automatic approval",
     tooltip_manual: "Write request - Manual approval",
     tooltip_auto: "Write request - Automatic approval",
-    pending: "Project data write awaiting approval",
+    description: "Writing project data: {summary}",
     summary_items: "{count} text entries",
     summary_glossary: "{count} glossary rules",
     summary_text_preserve: "{count} text-preserve rules",
@@ -97,6 +97,7 @@ export const en_us_agent_page = {
     send_now: "Send now",
     sending: "Sending",
     delete: "Delete message",
+    full: "Message queue full · {count}/{limit}",
   },
   confirm: {
     new_task: "Confirm starting a new conversation task …?",
@@ -109,13 +110,12 @@ export const en_us_agent_page = {
     error: "Failed",
     stopped: "Stopped",
   },
-  task_progress: { next: "In Progress" },
+  task_progress: { pending: "Pending items" },
   tool: {
     details: "{tool} tool call details",
     input: "Input",
     output: "Output",
-    wrap_enabled: "Line wrapping - Enabled",
-    wrap_disabled: "Line wrapping - Disabled",
+    wrap: "Line wrapping",
   },
   round: {
     running: "Processing for {duration}",

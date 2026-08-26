@@ -178,15 +178,15 @@ export function LogWindowPage(): JSX.Element {
   }, [t]);
 
   const level_filter_label = t(LEVEL_LABEL_KEYS[level_filter]);
-  const scope_tooltip = t("log_window_page.search.scope.tooltip").replace(
-    "{STATE}",
-    level_filter_label,
-  );
-  const regex_state_label = t(is_regex ? "app.toggle.enabled" : "app.toggle.disabled");
-  const regex_tooltip = t("log_window_page.search.regex_tooltip").replace(
-    "{STATE}",
-    regex_state_label,
-  );
+  const scope_tooltip = t("app.tooltip.value", {
+    TITLE: t("log_window_page.search.scope.tooltip_label"),
+    VALUE: level_filter_label,
+  });
+  const regex_state_label = t(is_regex ? "app.state.enabled" : "app.state.disabled");
+  const regex_tooltip = t("app.tooltip.value", {
+    TITLE: t("log_window_page.search.regex_tooltip_label"),
+    VALUE: regex_state_label,
+  });
   const detail_expand_label = t(
     DETAIL_EXPAND_LABEL_KEYS[detail_expanded ? "expanded" : "collapsed"],
   );
@@ -462,8 +462,6 @@ export function LogWindowPage(): JSX.Element {
             value: is_regex,
             label: t("log_window_page.search.regex"),
             tooltip: regex_tooltip,
-            enabled_label: t("app.toggle.enabled"),
-            disabled_label: t("app.toggle.disabled"),
             on_change: set_is_regex,
           }}
           extra_actions={

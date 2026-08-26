@@ -26,8 +26,8 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
   const { push_toast } = useDesktopToast();
   const glossary_page_state = useGlossaryPageState();
   const regex_state_label = glossary_page_state.filter_state.is_regex
-    ? t("app.toggle.enabled")
-    : t("app.toggle.disabled");
+    ? t("app.state.enabled")
+    : t("app.state.disabled");
   const scope_button_label =
     glossary_page_state.filter_state.scope === "all"
       ? t("quality_rule_editor.filter.scope.label")
@@ -35,12 +35,14 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
   const scope_state_label = t(
     GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope],
   );
-  const scope_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("quality_rule_editor.filter.scope.tooltip_label"))
-    .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("app.toggle.status")
-    .replace("{TITLE}", t("quality_rule_editor.filter.regex_tooltip_label"))
-    .replace("{STATE}", regex_state_label);
+  const scope_tooltip = t("app.tooltip.value", {
+    TITLE: t("quality_rule_editor.filter.scope.tooltip_label"),
+    VALUE: scope_state_label,
+  });
+  const regex_tooltip = t("app.tooltip.value", {
+    TITLE: t("quality_rule_editor.filter.regex_tooltip_label"),
+    VALUE: regex_state_label,
+  });
   const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] =
     GLOSSARY_FILTER_SCOPES.map((scope) => {
       return {
@@ -69,8 +71,6 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
           value: glossary_page_state.filter_state.is_regex,
           label: t("quality_rule_editor.filter.regex"),
           tooltip: regex_tooltip,
-          enabled_label: t("app.toggle.enabled"),
-          disabled_label: t("app.toggle.disabled"),
           on_change: glossary_page_state.update_filter_regex,
         }}
       />
