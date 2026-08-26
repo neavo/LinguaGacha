@@ -27,7 +27,7 @@ import {
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
-import { useAgentAutoScroll } from "./agent-scroll";
+import { useAgentFollowLatest } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
 
@@ -58,11 +58,11 @@ const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["statu
   });
 const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
-/** 页面传入时间线事实、用户命令和统一的实时跟随模式。 */
+/** 页面传入时间线事实、用户命令和思考块跟随重置版本。 */
 type AgentTimelineProps = {
   entries: readonly AgentEntry[];
   mention_tokens: readonly AgentMentionToken[];
-  follow_latest: boolean;
+  follow_reset_revision: number;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
   render_entry_editor?: (entry: UserEntry | AssistantEntry) => ReactNode | null;
@@ -72,7 +72,7 @@ type AgentTimelineProps = {
   annotation_disabled: boolean;
 };
 
-/** 时间线独立拥有条目次序、详情状态与运行指示，页面拥有唯一跟随模式。 */
+/** 时间线独立拥有条目次序、详情状态与运行指示。 */
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             key={round.user.id}
             round={round}
             mention_tokens={props.mention_tokens}
-            follow_latest={props.follow_latest}
+            follow_reset_revision={props.follow_reset_revision}
             t={t}
             latest={index === rounds.length - 1}
             revision_available={index === rounds.length - 1 && !revision_blocked}
@@ -162,7 +162,7 @@ export function build_agent_rounds(
 type AgentRoundProps = {
   round: AgentRoundEntries;
   mention_tokens: readonly AgentMentionToken[];
-  follow_latest: boolean;
+  follow_reset_revision: number;
   t: Translate;
   latest: boolean;
   revision_available: boolean;
@@ -246,7 +246,7 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
             key={entry.id}
             entry={entry}
             t={props.t}
-            follow_latest={props.follow_latest}
+            follow_reset_revision={props.follow_reset_revision}
             on_continue={props.on_continue}
             continue_disabled={props.continue_disabled}
             on_open_tool={props.on_open_tool}
@@ -296,7 +296,7 @@ function agent_round_props_equal(previous: AgentRoundProps, next: AgentRoundProp
   if (
     previous.round !== next.round ||
     previous.mention_tokens !== next.mention_tokens ||
-    previous.follow_latest !== next.follow_latest ||
+    previous.follow_reset_revision !== next.follow_reset_revision ||
     previous.t !== next.t ||
     previous.latest !== next.latest ||
     previous.revision_available !== next.revision_available ||
@@ -431,7 +431,7 @@ type AgentEntryViewProps = {
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
   annotatable: boolean;
-  follow_latest: boolean;
+  follow_reset_revision: number;
 };
 
 const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps): ReactNode {
@@ -455,7 +455,7 @@ const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps):
       />
     );
   }
-  return render_assistant_entry(entry, props.t, props.annotatable, props.follow_latest);
+  return render_assistant_entry(entry, props.t, props.annotatable, props.follow_reset_revision);
 }, agent_entry_view_props_equal);
 
 /** 每种条目只比较真正参与自身正文渲染的 props，控制按钮变化不穿透 Markdown。 */
@@ -466,7 +466,8 @@ function agent_entry_view_props_equal(
   if (previous.entry !== next.entry || previous.t !== next.t) return false;
   if (next.entry.kind === "assistant_message") {
     return (
-      previous.annotatable === next.annotatable && previous.follow_latest === next.follow_latest
+      previous.annotatable === next.annotatable &&
+      previous.follow_reset_revision === next.follow_reset_revision
     );
   }
   if (next.entry.kind === "context_compaction") {
@@ -530,7 +531,7 @@ function render_assistant_entry(
   entry: AssistantEntry,
   t: Translate,
   annotatable: boolean,
-  follow_latest: boolean,
+  follow_reset_revision: number,
 ): JSX.Element {
   return (
     <article className="agent-message agent-message--assistant" key={entry.id}>
@@ -550,7 +551,7 @@ function render_assistant_entry(
               status={display_status}
               status_label={t(AGENT_STATUS_LABEL_KEYS[display_status])}
               content={part.text}
-              follow_latest={follow_latest}
+              follow_reset_revision={follow_reset_revision}
             />
           );
         }
@@ -607,7 +608,7 @@ function AgentThinkingDetail(props: {
   status: AgentEntryStatus;
   status_label: string;
   content: string;
-  follow_latest: boolean;
+  follow_reset_revision: number;
 }): JSX.Element {
   const [open, set_open] = useState(props.active);
   const toggle_ref = useRef<HTMLButtonElement | null>(null); // 自动收缩前承接焦点
@@ -620,14 +621,32 @@ function AgentThinkingDetail(props: {
   const id = useId(); // 为 disclosure 的 aria 关系提供稳定局部 ID
   const toggle_id = `agent-thinking-toggle-${id}`;
   const content_id = `agent-thinking-content-${id}`;
-  const { follow_content, scroll_to_end } = useAgentAutoScroll(props.follow_latest && props.active);
+  const { following, follow_content, scroll_to_end, activate, handle_scroll } =
+    useAgentFollowLatest(props.active);
+
+  const previous_follow_reset_revision_ref = useRef(props.follow_reset_revision);
+
+  useLayoutEffect(() => {
+    if (previous_follow_reset_revision_ref.current === props.follow_reset_revision) return;
+    previous_follow_reset_revision_ref.current = props.follow_reset_revision;
+    if (!props.active) return;
+    user_toggled_ref.current = false;
+    set_open(true);
+    activate(viewport_ref.current);
+  }, [activate, props.active, props.follow_reset_revision]);
 
   useEffect(() => {
-    if (was_active_ref.current && !props.active && props.completed) {
+    const was_active = was_active_ref.current;
+    if (was_active && !props.active && props.completed) {
       completion_seen_ref.current = true;
     }
+    if (!was_active && props.active) {
+      user_toggled_ref.current = false;
+      set_open(true);
+      activate(viewport_ref.current);
+    }
     was_active_ref.current = props.active;
-  }, [props.active, props.completed]);
+  }, [activate, props.active, props.completed]);
 
   // 只为活动且跟随中的思考观察布局和正文，历史块保持普通阅读位置。
   useLayoutEffect(() => {
@@ -640,7 +659,7 @@ function AgentThinkingDetail(props: {
       body === null ||
       !open ||
       !props.active ||
-      !props.follow_latest
+      !following
     ) {
       return;
     }
@@ -652,14 +671,14 @@ function AgentThinkingDetail(props: {
     scroll_to_end(viewport);
     follow_content(viewport);
     return () => observer.disconnect();
-  }, [follow_content, open, props.active, props.follow_latest, scroll_to_end]);
+  }, [follow_content, following, open, props.active, scroll_to_end]);
 
   useEffect(() => {
     if (
       !completion_seen_ref.current ||
       !props.completed ||
       !open ||
-      !props.follow_latest ||
+      !following ||
       user_toggled_ref.current
     ) {
       return;
@@ -672,14 +691,14 @@ function AgentThinkingDetail(props: {
       set_open(false);
     }, AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [open, props.active, props.completed, props.follow_latest]);
+  }, [following, open, props.active, props.completed]);
 
   const duration = useAgentElapsed(props.started_at, props.active);
   return (
     <div
       className="agent-thinking-entry"
       data-open={open || undefined}
-      data-following={(props.follow_latest && props.active) || undefined}
+      data-following={(following && props.active) || undefined}
     >
       <button
         ref={toggle_ref}
@@ -717,6 +736,7 @@ function AgentThinkingDetail(props: {
             ref={viewport_ref}
             className="agent-thinking-entry__viewport"
             tabIndex={open ? 0 : -1}
+            onScroll={(event) => handle_scroll(event.currentTarget)}
           >
             <pre ref={body_ref}>{props.content}</pre>
           </div>

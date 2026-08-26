@@ -117,7 +117,7 @@ describe("AgentTimeline", () => {
   /** 复用同一 root，确保模态选择和思考详情状态跨增量保留。 */
   async function render_timeline(
     entries: readonly AgentEntry[],
-    follow_latest = true,
+    follow_reset_revision = 0,
   ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -130,7 +130,7 @@ describe("AgentTimeline", () => {
           <AgentTimeline
             entries={entries}
             mention_tokens={MENTION_TOKENS}
-            follow_latest={follow_latest}
+            follow_reset_revision={follow_reset_revision}
             on_continue={on_continue}
             on_edit={on_edit}
             on_add_annotation={on_add_annotation}
@@ -417,13 +417,14 @@ describe("AgentTimeline", () => {
     }
   });
 
-  it("关闭最新时运行中的思考块保留阅读位置", async () => {
+  it("运行中的思考块上滚后保留阅读位置并退出跟随", async () => {
+    let follow_reset_revision = 0;
     const render_thinking = (text: string) =>
       render_timeline(
         round_entries([
           assistant_parts_entry("assistant-1", [{ kind: "thinking", text }], "running", 1),
         ]),
-        false,
+        follow_reset_revision,
       );
     const view = await render_thinking("检查术语\n逐项核对");
     const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
@@ -438,6 +439,8 @@ describe("AgentTimeline", () => {
 
     const scroll = { top: 240, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, scroll);
+    follow_reset_revision += 1;
+    await render_thinking("检查术语\n逐项核对");
 
     scroll.top = 80;
     await act(async () => viewport.dispatchEvent(new Event("scroll")));
@@ -519,19 +522,12 @@ describe("AgentTimeline", () => {
     expect(view.querySelector("strong")?.textContent).toBe("结论");
   });
 
-  it("关闭最新时完成的思考不收缩，重新激活后开始计时", async () => {
+  it("思考块上滚后完成也不自动收缩", async () => {
     vi.useFakeTimers();
-    const view = await render_timeline(
-      round_entries([
-        assistant_parts_entry(
-          "assistant-1",
-          [{ kind: "thinking", text: "检查术语" }],
-          "running",
-          1,
-        ),
-      ]),
-      false,
-    );
+    const active_entries = round_entries([
+      assistant_parts_entry("assistant-1", [{ kind: "thinking", text: "检查术语" }], "running", 1),
+    ]);
+    const view = await render_timeline(active_entries);
     const thinking = view.querySelector<HTMLElement>(".agent-thinking-entry");
     const viewport = thinking?.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
     if (thinking === null || viewport === null || viewport === undefined) {
@@ -539,6 +535,7 @@ describe("AgentTimeline", () => {
     }
     const scroll = { top: 0, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, scroll);
+    await render_timeline(active_entries, 1);
 
     scroll.top = 80;
     await act(async () => viewport.dispatchEvent(new Event("scroll")));
@@ -555,27 +552,10 @@ describe("AgentTimeline", () => {
           1,
         ),
       ]),
-      false,
+      1,
     );
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.dataset.open).toBe("true");
-
-    await render_timeline(
-      round_entries([
-        assistant_parts_entry(
-          "assistant-1",
-          [
-            { kind: "thinking", text: "检查术语完成" },
-            { kind: "text", text: "完成" },
-          ],
-          "running",
-          1,
-        ),
-      ]),
-      true,
-    );
-    await act(async () => vi.runOnlyPendingTimers());
-    expect(thinking.dataset.open).toBeUndefined();
   });
 
   it("用户手动开合优先且历史思考不启动自动收缩", async () => {

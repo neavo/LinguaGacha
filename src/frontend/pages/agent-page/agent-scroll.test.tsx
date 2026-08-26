@@ -2,24 +2,24 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useAgentAutoScroll } from "./agent-scroll";
+import { AGENT_SCROLL_BOTTOM_TOLERANCE_PX, useAgentFollowLatest } from "./agent-scroll";
 
-type AutoScrollApi = ReturnType<typeof useAgentAutoScroll>;
-type AutoScrollProbeProps = {
-  enabled: boolean;
-  on_ready: (api: AutoScrollApi) => void;
+type FollowLatestApi = ReturnType<typeof useAgentFollowLatest>;
+type FollowLatestProbeProps = {
+  initial_following: boolean;
+  on_ready: (api: FollowLatestApi) => void;
 };
 
 /** 只暴露 Hook 的公开归底 API，不复制其内部调度状态。 */
-function AutoScrollProbe(props: AutoScrollProbeProps): JSX.Element | null {
-  const api = useAgentAutoScroll(props.enabled);
+function FollowLatestProbe(props: FollowLatestProbeProps): JSX.Element | null {
+  const api = useAgentFollowLatest(props.initial_following);
   useEffect(() => {
     props.on_ready(api);
   }, [api, props.on_ready]);
   return null;
 }
 
-describe("useAgentAutoScroll", () => {
+describe("useAgentFollowLatest", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let next_frame_id = 1;
@@ -64,25 +64,41 @@ describe("useAgentAutoScroll", () => {
   }
 
   /** 构造可观察的滚动目标，只保留归底行为需要的几何属性。 */
-  function scroll_target(): { target: HTMLElement; read_top: () => number } {
+  function scroll_target(): {
+    target: HTMLElement;
+    read_top: () => number;
+    read_end: () => number;
+    set_top: (value: number) => void;
+    set_height: (value: number) => void;
+  } {
     const target = document.createElement("div");
     let scroll_top = 0;
+    let scroll_height = 1_000;
+    const client_height = 400;
+    const scroll_end = (): number => Math.max(0, scroll_height - client_height);
     Object.defineProperties(target, {
-      scrollHeight: { configurable: true, value: 1_000 },
+      scrollHeight: { configurable: true, get: () => scroll_height },
+      clientHeight: { configurable: true, value: client_height },
       scrollTop: {
         configurable: true,
         get: () => scroll_top,
         set: (value: number) => {
-          scroll_top = value;
+          scroll_top = Math.max(0, Math.min(value, scroll_end()));
         },
       },
     });
-    return { target, read_top: () => scroll_top };
+    return {
+      target,
+      read_top: () => scroll_top,
+      read_end: scroll_end,
+      set_top: (value) => (target.scrollTop = value),
+      set_height: (value) => (scroll_height = value),
+    };
   }
 
-  it("启用时合并同一帧的内容跟随并归底", async () => {
-    let api!: AutoScrollApi;
-    await render(<AutoScrollProbe enabled on_ready={(next_api) => (api = next_api)} />);
+  it("跟随时合并同一帧的内容变化并归底", async () => {
+    let api!: FollowLatestApi;
+    await render(<FollowLatestProbe initial_following on_ready={(next_api) => (api = next_api)} />);
     const scroll = scroll_target();
     const initial_top = scroll.read_top();
 
@@ -92,12 +108,14 @@ describe("useAgentAutoScroll", () => {
     expect(pending_frames.size).toBe(1);
 
     flush_frames();
-    expect(scroll.read_top()).toBe(scroll.target.scrollHeight);
+    expect(scroll.read_top()).toBe(scroll.read_end());
   });
 
-  it("禁用时不执行排队跟随，显式归底仍然立即生效", async () => {
-    let api!: AutoScrollApi;
-    await render(<AutoScrollProbe enabled={false} on_ready={(next_api) => (api = next_api)} />);
+  it("离开底部时取消排队跟随，显式激活仍然立即归底", async () => {
+    let api!: FollowLatestApi;
+    await render(
+      <FollowLatestProbe initial_following={false} on_ready={(next_api) => (api = next_api)} />,
+    );
     const scroll = scroll_target();
     const initial_top = scroll.read_top();
 
@@ -105,13 +123,66 @@ describe("useAgentAutoScroll", () => {
     flush_frames();
     expect(scroll.read_top()).toBe(initial_top);
 
+    await act(async () => api.activate(scroll.target));
+    expect(scroll.read_top()).toBe(scroll.read_end());
+    expect(api.following).toBe(true);
+
+    scroll.set_top(scroll.target.scrollHeight - scroll.target.clientHeight - 32);
+    api.follow_content(scroll.target);
+    await act(async () => api.handle_scroll(scroll.target));
+    expect(api.following).toBe(false);
+    flush_frames();
+    expect(scroll.read_top()).toBe(scroll.target.scrollHeight - scroll.target.clientHeight - 32);
+  });
+
+  it("内容快速增长后的迟到滚动事件不会退出跟随", async () => {
+    let api!: FollowLatestApi;
+    await render(<FollowLatestProbe initial_following on_ready={(next_api) => (api = next_api)} />);
+    const scroll = scroll_target();
     api.scroll_to_end(scroll.target);
-    expect(scroll.read_top()).toBe(scroll.target.scrollHeight);
+    expect(scroll.read_top()).toBe(scroll.read_end());
+
+    scroll.set_height(1_200);
+    await act(async () => api.handle_scroll(scroll.target));
+    expect(api.following).toBe(true);
+
+    api.follow_content(scroll.target);
+    flush_frames();
+    expect(scroll.read_top()).toBe(scroll.read_end());
+  });
+
+  it("已经在底部时重复激活也不依赖滚动事件完成跟随", async () => {
+    let api!: FollowLatestApi;
+    await render(
+      <FollowLatestProbe initial_following={false} on_ready={(next_api) => (api = next_api)} />,
+    );
+    const scroll = scroll_target();
+
+    await act(async () => api.activate(scroll.target));
+    await act(async () => api.activate(scroll.target));
+    scroll.set_height(1_200);
+    api.follow_content(scroll.target);
+    flush_frames();
+
+    expect(api.following).toBe(true);
+    expect(scroll.read_top()).toBe(scroll.read_end());
+  });
+
+  it("底部容差内的滚动不会取消跟随", async () => {
+    let api!: FollowLatestApi;
+    await render(<FollowLatestProbe initial_following on_ready={(next_api) => (api = next_api)} />);
+    const scroll = scroll_target();
+    scroll.set_top(
+      scroll.target.scrollHeight - scroll.target.clientHeight - AGENT_SCROLL_BOTTOM_TOLERANCE_PX,
+    );
+
+    await act(async () => api.handle_scroll(scroll.target));
+    expect(api.following).toBe(true);
   });
 
   it("卸载时取消尚未执行的跟随帧", async () => {
-    let api!: AutoScrollApi;
-    await render(<AutoScrollProbe enabled on_ready={(next_api) => (api = next_api)} />);
+    let api!: FollowLatestApi;
+    await render(<FollowLatestProbe initial_following on_ready={(next_api) => (api = next_api)} />);
     const scroll = scroll_target();
     const initial_top = scroll.read_top();
     api.follow_content(scroll.target);

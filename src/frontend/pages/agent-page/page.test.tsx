@@ -437,7 +437,7 @@ describe("AgentPage", () => {
     expect(model?.disabled).toBe(false);
   });
 
-  it("页面挂载时最新开关默认激活并归底", async () => {
+  it("页面挂载时默认激活跟随最新并归底", async () => {
     const view = await render_page({ entries: [] });
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
@@ -451,20 +451,41 @@ describe("AgentPage", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("滚动不会改变最新开关，按钮显式切换自由滚动与跟随", async () => {
+  it("按钮可取消跟随，再次点击才重新归底并激活", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
+    const button = get_follow_latest_button(view);
+
+    await act(async () => button.click());
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    scroll.top = 100;
+    scroll.height = 1_200;
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
+    expect(scroll.top).toBe(100);
+
+    await act(async () => button.click());
+    expect(scroll.top).toBe(scroll_end(scroll));
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("离开底部自动取消跟随，按钮显式恢复并归底", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
+    install_scroll_metrics(conversation, scroll);
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
 
     scroll.top = 100;
     const reading_position = scroll.top;
     await act(async () => conversation.dispatchEvent(new Event("scroll")));
     const button = get_follow_latest_button(view);
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-
-    await act(async () => button.click());
     expect(button.getAttribute("aria-pressed")).toBe("false");
 
     scroll.height = 1_200;
@@ -550,22 +571,23 @@ describe("AgentPage", () => {
     expect(submit?.getAttribute("aria-label")).toContain("agent_page.queue.full");
   });
 
-  it("会话内容替换保持自由滚动模式", async () => {
+  it("会话内容替换保持用户的自由滚动模式", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 100, height: 1_000, viewport: 400 };
+    const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
+    scroll.top = 100;
     const reading_position = scroll.top;
 
-    const button = get_follow_latest_button(view);
-    await act(async () => button.click());
-    expect(button.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
 
     await render_page({ entries: [] });
     await render_page({ entries: [user_entry("user-next", "新会话", "success", 2, 3)] });
     expect(scroll.top).toBe(reading_position);
-    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(get_follow_latest_button(view).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("自由滚动会取消已排队的布局跟随", async () => {
@@ -574,16 +596,17 @@ describe("AgentPage", () => {
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
 
     scroll.height = 1_100;
     await act(async () => notify_resize_observers());
-    const button = get_follow_latest_button(view);
-    await act(async () => button.click());
     scroll.top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
     const reading_position = scroll.top;
     await act(async () => next_animation_frame());
     expect(scroll.top).toBe(reading_position);
-    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(get_follow_latest_button(view).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("布局变化只在最新模式归底", async () => {
@@ -607,9 +630,10 @@ describe("AgentPage", () => {
     if (conversation === null) throw new Error("缺少消息滚动容器");
     const scroll = { top: 600, height: 1_000, viewport: 400 };
     install_scroll_metrics(conversation, scroll);
-    const follow_button = get_follow_latest_button(view);
-    await act(async () => follow_button.click());
+    await act(async () => notify_resize_observers());
+    await act(async () => next_animation_frame());
     scroll.top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
     const reading_position = scroll.top;
 
     const editor = get_editor(view);
@@ -622,10 +646,10 @@ describe("AgentPage", () => {
     await act(async () => next_animation_frame());
 
     expect(scroll.top).toBe(reading_position);
-    expect(follow_button.getAttribute("aria-pressed")).toBe("false");
+    expect(get_follow_latest_button(view).getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("活动思考视口服从页面级最新开关", async () => {
+  it("活动思考视口独立跟随并可由页面按钮重置", async () => {
     const view = await render_page({
       entries: [
         user_entry("user-thinking", "开始检查", "running", 0, null),
@@ -637,36 +661,34 @@ describe("AgentPage", () => {
         ),
       ],
     });
-    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll = { top: 600, height: 1_000, viewport: 400 };
-    install_scroll_metrics(conversation, scroll);
     const viewport = view.querySelector<HTMLElement>(".agent-thinking-entry__viewport");
     const body = view.querySelector<HTMLPreElement>(".agent-thinking-entry__viewport pre");
     if (viewport === null || body === null) throw new Error("缺少思考滚动容器");
     const thinking_scroll = { top: 240, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, thinking_scroll);
     const button = get_follow_latest_button(view);
+    await act(async () => notify_resize_observers(body));
+    await act(async () => next_animation_frame());
 
     thinking_scroll.top = 80;
+    await act(async () => viewport.dispatchEvent(new Event("scroll")));
     thinking_scroll.height = 640;
     await act(async () => notify_resize_observers(body));
     await act(async () => next_animation_frame());
-    expect(thinking_scroll.top).toBe(scroll_end(thinking_scroll));
+    expect(thinking_scroll.top).toBe(80);
 
     await act(async () => button.click());
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => button.click());
+    expect(thinking_scroll.top).toBe(scroll_end(thinking_scroll));
     thinking_scroll.top = 80;
-    const reading_position = thinking_scroll.top;
     thinking_scroll.height = 800;
     await act(async () => notify_resize_observers(body));
     await act(async () => next_animation_frame());
-    expect(thinking_scroll.top).toBe(reading_position);
-
-    await act(async () => button.click());
     expect(thinking_scroll.top).toBe(scroll_end(thinking_scroll));
   });
 
-  it("历史思考视口不受页面最新开关归底", async () => {
+  it("历史思考视口不受页面按钮归底", async () => {
     const view = await render_page({
       entries: [
         user_entry("user-thinking", "开始检查", "success", 0, 2),
@@ -683,7 +705,6 @@ describe("AgentPage", () => {
     const scroll = { top: 80, height: 480, viewport: 240 };
     install_scroll_metrics(viewport, scroll);
     const reading_position = scroll.top;
-    await act(async () => get_follow_latest_button(view).click());
     scroll.height = 640;
     await act(async () => notify_resize_observers());
     await act(async () => next_animation_frame());
