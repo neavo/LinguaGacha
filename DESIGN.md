@@ -113,6 +113,18 @@ components:
     rounded: "{rounded.button}"
     height: "{spacing.control-height}"
     padding: "0 10px"
+  button-secondary:
+    backgroundColor: "{colors.secondary}"
+    textColor: "{colors.secondary-foreground}"
+    rounded: "{rounded.button}"
+    height: "{spacing.control-height}"
+    padding: "0 10px"
+  button-ghost:
+    backgroundColor: "transparent"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.button}"
+    height: "{spacing.control-height}"
+    padding: "0 10px"
   button-outline:
     backgroundColor: "transparent"
     textColor: "{colors.foreground}"
@@ -122,7 +134,6 @@ components:
   button-destructive:
     backgroundColor: "color-mix(in srgb, {colors.failure} 10%, transparent)"
     textColor: "{colors.failure}"
-    borderColor: "color-mix(in srgb, {colors.failure} 30%, transparent)"
     rounded: "{rounded.button}"
     height: "{spacing.control-height}"
     padding: "0 10px"
@@ -134,7 +145,7 @@ components:
     height: "{spacing.toolbar-button-height}"
     padding: "0 8px"
   badge-brand:
-    backgroundColor: "{colors.accent}"
+    backgroundColor: "color-mix(in srgb, {colors.primary} 14%, transparent)"
     textColor: "{colors.primary}"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
@@ -242,36 +253,36 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ### Primary
 
-- **图标暖橙主强调**（`colors.primary` / `colors.dark-primary`）：用于主按钮、当前导航轨、选中行轨、进度跳段和关键可操作状态；它必须稀少，像工具给出的线索。
-- **聚焦暖橙**（`colors.ring` / `colors.dark-ring`）：只用于键盘焦点、可操作边界与短时强调。
-- **暖米强调前景**（`colors.primary-foreground` / `colors.dark-primary-foreground`）：保证主强调面上的文字和图标清楚。
+- **图标暖橙主强调** (`#ad5a17` / `#f49a51`): 用于主按钮、当前导航轨、选中行轨、进度跳段和关键可操作状态；它必须稀少，像工具给出的线索。
+- **聚焦暖橙** (`#d97924` / `#f4a261`): 只用于键盘焦点、可操作边界与短时强调。
+- **暖米强调前景** (`#fff7ed` / `#2b1b0f`): 保证主强调面上的文字和图标清楚。
 
 ### Secondary
 
-- **冷灰次级面**（`colors.secondary` / `colors.dark-secondary`）：用于次级按钮、分段切换、弱状态背景和工具栏分区。
-- **石墨次级文字**（`colors.secondary-foreground` / `colors.dark-secondary-foreground`）：用于次级控件和说明文字，弱于正文但保持可读。
+- **冷灰次级面** (`#e8eaee` / `#20242b`): 用于次级按钮、分段切换、弱状态背景和工具栏分区。
+- **石墨次级文字** (`#4d535d` / `#e8ebf0`): 用于次级控件和说明文字，弱于正文但保持可读。
 
 ### Tertiary
 
-- **蜜黄图表色**（`colors.chart-amber`）：用于统计、进度分段和项目首页的文件类别辅助。
-- **珊瑚图表色**（`colors.chart-coral`）：用于分类、项目入口或图表辅助，不能替代失败红。
-- **钢灰图表色**（`colors.chart-slate`）：用于低优先级数据系列和辅助参照；暗色主题使用对应的 `dark-chart-*` 映射保持区分度。
+- **蜜黄图表色** (`#f2b84b` / `#ffb454`): 用于统计、进度分段和项目首页的文件类别辅助。
+- **珊瑚图表色** (`#d85f42` / `#ee6f4d`): 用于分类、项目入口或图表辅助，不能替代失败红。
+- **钢灰图表色** (`#7a8491` / `#8ea0b5`): 用于低优先级数据系列和辅助参照；暗色主题使用对应的 `dark-chart-*` 映射保持区分度。
 
 ### Status
 
-- **状态绿**（`colors.success` / `colors.dark-success`）：只表达成功、完成或通过。
-- **警告橙**（`colors.warning` / `colors.dark-warning`）：只表达需要注意但仍可继续的状态。
-- **失败红**（`colors.failure` / `colors.dark-failure`）：只表达失败、破坏性操作和无效输入。
+- **状态绿** (`#22c55e` / `#4ade80`): 只表达成功、完成或通过。
+- **警告橙** (`#f97316` / `#fb923c`): 只表达需要注意但仍可继续的状态。
+- **失败红** (`oklch(0.61 0.18 28)` / `oklch(0.68 0.17 28)`): 只表达失败、破坏性操作和无效输入。
 
 ### Neutral
 
-- **冷灰工作台**（`colors.background` / `colors.dark-background`）：应用主背景和工作区基底。
-- **石墨正文**（`colors.foreground` / `colors.dark-foreground`）：正文、标题和图标默认色，避免纯黑纯白的生硬对比。
-- **近白卡片与浮层**（`colors.card`、`colors.popover` / `colors.dark-card`）：卡片、弹层、表格头、输入和编辑器承载面。
-- **雾灰静音面**（`colors.muted` / `colors.dark-muted`）：hover、只读态、筛选区和弱层级背景。
-- **浅冷灰强调面**（`colors.accent` / `colors.dark-accent`）：选择、hover 与低强度分组状态。
-- **柔冷灰边框**（`colors.border` / `colors.dark-border`）：分割线、输入边框、表格线和卡片描边。
-- **侧栏与标题栏冷灰**（`colors.sidebar`、`colors.titlebar-surface` 及其暗色映射）：稳定桌面壳层，与工作区形成轻微分区。
+- **冷灰工作台** (`#f3f4f6` / `#111318`): 应用主背景和工作区基底。
+- **石墨正文** (`#25272c` / `#eef1f5`): 正文、标题和图标默认色，避免纯黑纯白的生硬对比。
+- **近白卡片与浮层** (`#fbfcfd` / `#171a20`): 卡片、弹层、表格头、输入和编辑器承载面。
+- **雾灰静音面** (`#e5e7eb` / `#1d2128`): hover、只读态、筛选区和弱层级背景。
+- **浅冷灰强调面** (`#eef0f3` / `#252a32`): 选择、hover 与低强度分组状态。
+- **柔冷灰边框** (`#d6dae0` / `#343a44`): 分割线、输入边框、表格线和卡片描边。
+- **侧栏与标题栏冷灰** (`#ebeef2` / `#14171d`, `#f4f5f7` / `#121319`): 稳定桌面壳层，与工作区形成轻微分区。
 
 ### Named Rules
 
@@ -297,11 +308,11 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 ### Hierarchy
 
-- **Display**（400，42px，1，-0.025em）：只用于统计数字、关键计数和大号任务状态值。
-- **Headline**（500，16px，1.35，-0.02em）：用于重要分组、覆盖层标题和拖放状态文案。
-- **Title**（500，14px，1.25，-0.018em）：用于卡片标题、设置项标题、表格上方标题和侧栏品牌。
-- **Body**（400，13px，1.5，0em）：用于常规内容、表格单元格、说明文字和控件正文；对话、校对上下文和结构化详情可把行高提高到 1.6–1.7，内容宽度由所属生产组件统一控制，不对子元素重复限宽。
-- **Label**（500，12px，1.4，0em）：用于表头、徽标、工具栏提示、状态说明和紧凑控件标签；耗时、行号、上下文用量与统计值使用等宽数字。
+- **Display** (400, 42px, 1, -0.025em): 只用于统计数字、关键计数和大号任务状态值。
+- **Headline** (500, 16px, 1.35, -0.02em): 用于重要分组、覆盖层标题和拖放状态文案。
+- **Title** (500, 14px, 1.25, -0.018em): 用于卡片标题、设置项标题、表格上方标题和侧栏品牌。
+- **Body** (400, 13px, 1.5, 0em): 用于常规内容、表格单元格、说明文字和控件正文；对话、校对上下文和结构化详情可把行高提高到 1.6–1.7，内容宽度由所属生产组件统一控制，不对子元素重复限宽。
+- **Label** (500, 12px, 1.4, 0em): 用于表头、徽标、工具栏提示、状态说明和紧凑控件标签；耗时、行号、上下文用量与统计值使用等宽数字。
 
 ### Named Rules
 
@@ -317,7 +328,7 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 工作区左上角使用 8px 壳层圆角与 1px 顶边、左边分界，页面默认填满可用宽高，不套网页式居中内容容器。壳层背景只使用低对比径向与纵向渐变，维持工作区层次而不形成装饰焦点。项目首页在 1180px 和 760px 设置防御性窄视口收叠，但生产窗口不会低于 1280px；这些规则不是全局移动端体系，CSS 的 320px 最小宽度也只是 renderer 兜底。
 
-只有连续阅读会从满幅工作面中切出内部窄栏：Agent 时间线与连接状态在工作面内部限制为 880px，空态任务建议限制为 640px；输入器仍固定在同一工作面底部，滚动只属于上方对话区。表格、编辑器、校对上下文和结构化日志继续按任务需要利用可用宽度，展开详情时才把原文、译文或术语字段并列。
+只有连续阅读会从满幅工作面中切出内部阅读栏：Agent 时间线与连接状态以输入器的 1120px 工作宽度为基准，向内收窄 48px，最大宽度为 1072px；空态任务建议限制为 520px。输入器仍固定在同一工作面底部，滚动只属于上方对话区。表格、编辑器、校对上下文和结构化日志继续按任务需要利用可用宽度，展开详情时才把原文、译文或术语字段并列。
 
 ### Named Rules
 
@@ -335,11 +346,11 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Shadow Vocabulary
 
-- **默认卡片阴影**（`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 14px 28px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`）：普通卡片和轻量容器。
-- **面板卡片阴影**（`0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent), 0 18px 32px -24px color-mix(in srgb, var(--foreground) 18%, transparent)`）：承载较多配置内容的面板。
-- **表格卡片阴影**（`0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent), 0 10px 20px -24px color-mix(in srgb, var(--foreground) 12%, transparent)`）：数据表容器和表头。
-- **工具栏卡片阴影**（`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 12px 24px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`）：命令栏、搜索栏和紧凑操作组。
-- **覆盖层阴影**（`0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent)`）：弹窗、浮层和暂时盖过工作区的界面。
+- **默认卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 14px 28px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`): 普通卡片和轻量容器。
+- **面板卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent), 0 18px 32px -24px color-mix(in srgb, var(--foreground) 18%, transparent)`): 承载较多配置内容的面板。
+- **表格卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent), 0 10px 20px -24px color-mix(in srgb, var(--foreground) 12%, transparent)`): 数据表容器和表头。
+- **工具栏卡片阴影** (`0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent), 0 12px 24px -24px color-mix(in srgb, var(--foreground) 16%, transparent)`): 命令栏、搜索栏和紧凑操作组。
+- **覆盖层阴影** (`0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent)`): 弹窗、浮层和暂时盖过工作区的界面。
 
 ### Named Rules
 
@@ -433,15 +444,16 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Agent Conversation
 
-- **Frame:** 工作区壳层拥有页面外边界；对话页根节点填满工作区，只承接布局与滚动，不形成第二层卡片。时间线在内部滚动，消息列最大宽 880px，水平内边距 24px；输入器作为独立操作表面保留边界。
+- **Frame:** 工作区壳层拥有页面外边界；对话页根节点填满工作区，只承接布局与滚动，不形成第二层卡片。输入器工作面最大宽 1120px，时间线向内收窄 48px 后最大宽 1072px，空态引导列最大宽 520px；时间线在内部滚动，输入器作为独立操作表面保留边界。
 - **Message Roles:** 用户消息右对齐、最大宽 75%，使用紧凑 muted 气泡；暗色主题可混入 22% 主色。助手回答保持无外框的开放 Markdown，不配头像列或对称气泡。
-- **Markdown:** 正文使用 13px / 1.65 并填满 880px 消息列，不对子元素二次限宽；一级、二级标题复用 16px Headline 与 14px Title，三级到六级标题使用紧凑 13px Body；代码、表格和 Mermaid 图使用 popover 面与 1px 边界承载。带显式语言标记的普通代码块在顶边显示原始标记的弱层级语言标签，不推断或维护别名映射；完整消息中的 Mermaid 直接在信息流内展示，并提供可选的 `xl` 预览模态页，模态页复用已生成 SVG 而不重复渲染；流式 Mermaid、无语言和未知语言代码块保持可复制的纯文本回退，完整 Mermaid 只有解析或渲染失败时才显示源码回退。
+- **Markdown:** 正文使用 13px / 1.65 并填满 1072px 消息列，不对子元素二次限宽；一级、二级标题复用 16px Headline 与 14px Title，三级到六级标题使用紧凑 13px Body；代码、表格和 Mermaid 图使用 popover 面与 1px 边界承载。带显式语言标记的普通代码块在顶边显示原始标记的弱层级语言标签，不推断或维护别名映射；完整消息中的 Mermaid 直接在信息流内展示，并提供可选的 `xl` 预览模态页，模态页复用已生成 SVG 而不重复渲染；流式 Mermaid、无语言和未知语言代码块保持可复制的纯文本回退，完整 Mermaid 只有解析或渲染失败时才显示源码回退。
 - **Process Entries:** 普通工具、思考、上下文压缩与失败恢复行保持紧凑、可扫描的状态语义。动态任务进度不作为普通工具进入历史信息流，只在输入器上方的紧凑状态条展示队首；进度标签左对齐、队首居中并允许截断、余项计数右对齐，整条触发的 Tooltip 完整承载全部待办。运行态使用暖橙弧段圆环，减少动态效果时保留弧段但停止旋转。
 
 ### Agent Composer
 
-- **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，沿用输入器的既有外边距并保持密集间距，状态条空时不占位；输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距。
+- **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，操作区最大宽 1120px，状态条空时不占位；状态行高 32px，输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距，操作表面最小高 102px。
 - **Editor:** CodeMirror 输入区最小高 64px、最大高 140px、13px / 1.5，超出后内部滚动；页脚最小高 24px，承接附件、模型、思考等级、上下文用量和发送操作。
+- **Queue:** 输入队列在容器宽度 520px 以下隐藏附件列；队首进度、队列和回到最新控件共享固定侧轨，不因余项计数消失而跳位。
 - **References / Attachments:** 技能与术语引用使用低透明暖橙 token，不退化为裸文本；图片与响应批注附件共享中性外壳，分别使用方形缩略图和紧凑行。
 - **Focus / Menus:** focus-within 只把边界切换为主色；引用候选菜单使用 popover、覆盖层阴影和高亮行，图片拖入只在输入器内部显示虚线临时覆盖层。
 
@@ -464,7 +476,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Do** 保持固定标题栏、侧栏、工作区边界、紧凑命令栏和可重复操作路径。
 - **Do** 先使用 4px 圆角、32px 基础控件、16px 页面节奏与 1px 边界，再按已记录的组件变体调整。
 - **Do** 用暖橙表达主操作、选择轨、焦点、进度和关键状态线索。
-- **Do** 只在长内容阅读组件内部使用 880px 窄栏，表格、编辑器和页面壳层继续占满工作面。
+- **Do** 只在长内容阅读组件内部使用 1072px 阅读栏（由 1120px 操作区向内收窄 48px），表格、编辑器和页面壳层继续占满工作面。
 - **Do** 让日志、校对上下文、对话内容和工具载荷可选取，并把滚动约束在对应生产组件内部。
 - **Do** 让 Agent 的运行、成功、失败、压缩与失败恢复同时拥有文字、结构和颜色证据。
 - **Do** 在新增页面样式时遵守 px-first：尺寸字面量用 px，line-height 用无单位数值，letter-spacing 用 em。
@@ -482,4 +494,4 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Don't** 把内部阅读窄栏扩张成全局居中页面模板。
 - **Don't** 在页面私有 CSS 中重定义 `--ui-*` token；新增全局 token 必须回到 `src/frontend/index.css`。
 - **Don't** 用超过 1px 的侧边彩条装饰卡片、列表项、提示或警告；3px 选择轨只用于明确交互状态。
-- **Don't** 在新文档、脚本提示或样式说明里继续引用旧 `src/renderer/` 目录。
+- **Don't** 在新文档、脚本提示或样式说明里复用已迁移的旧目录名；统一链接当前 `src/frontend/` 入口。
