@@ -21,7 +21,12 @@ import type { ReactNode } from "react";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { AgentInputQueueSnapshot, AgentQueuedInput } from "@shared/agent";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  tooltip_trigger_target,
+} from "@frontend/shadcn/tooltip";
 
 type AgentInputQueueProps = {
   queue: AgentInputQueueSnapshot;
@@ -130,16 +135,18 @@ function AgentInputQueueItem(props: {
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="agent-input-queue__drag"
-            disabled={item_actions_disabled}
-            aria-label={t("agent_page.queue.reorder")}
-            {...sortable.attributes}
-            {...sortable.listeners}
-          >
-            <GripVertical aria-hidden="true" />
-          </button>
+          {tooltip_trigger_target(
+            <button
+              type="button"
+              className="agent-input-queue__drag"
+              disabled={item_actions_disabled}
+              aria-label={t("agent_page.queue.reorder")}
+              {...sortable.attributes}
+              {...sortable.listeners}
+            >
+              <GripVertical aria-hidden="true" />
+            </button>,
+          )}
         </TooltipTrigger>
         <TooltipContent side="top">
           <p>{t("agent_page.queue.reorder")}</p>
@@ -194,19 +201,21 @@ function QueueIconAction(props: {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <AppButton
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          disabled={props.disabled}
-          aria-label={props.label}
-          aria-busy={props.busy || undefined}
-          aria-live={props.busy ? "polite" : undefined}
-          className={props.busy ? "disabled:opacity-100" : undefined}
-          onClick={props.on_click}
-        >
-          {props.children}
-        </AppButton>
+        {tooltip_trigger_target(
+          <AppButton
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            disabled={props.disabled}
+            aria-label={props.label}
+            aria-busy={props.busy || undefined}
+            aria-live={props.busy ? "polite" : undefined}
+            className={props.busy ? "disabled:opacity-100" : undefined}
+            onClick={props.on_click}
+          >
+            {props.children}
+          </AppButton>,
+        )}
       </TooltipTrigger>
       <TooltipContent side="top">
         <p>{props.label}</p>

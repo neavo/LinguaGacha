@@ -29,6 +29,11 @@ function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimiti
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
+/** Keep Tooltip's hit target stable because disabled native controls cannot receive pointer events. */
+function tooltip_trigger_target(trigger: React.ReactElement): React.ReactElement {
+  return <span className="inline-flex">{trigger}</span>;
+}
+
 function TooltipContent({
   className,
   sideOffset = 0,
@@ -50,4 +55,11 @@ function TooltipContent({
   );
 }
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, tooltipContentClassName };
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  tooltipContentClassName,
+  tooltip_trigger_target,
+};

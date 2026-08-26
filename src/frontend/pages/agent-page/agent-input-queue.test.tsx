@@ -56,6 +56,7 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
   Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
   TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
   TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
+  tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
 }));
 
 import { AgentInputQueue } from "./agent-input-queue";

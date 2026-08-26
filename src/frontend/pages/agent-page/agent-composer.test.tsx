@@ -635,6 +635,32 @@ describe("AgentComposer", () => {
     expect(on_stop).not.toHaveBeenCalled();
   });
 
+  it("禁用的底栏控件仍由非禁用外壳承接鼠标提示", async () => {
+    const view = await render_composer({
+      command: "send",
+      approval_mode_disabled: true,
+    });
+
+    const image_button = view.querySelector<HTMLButtonElement>(".agent-composer__image-trigger");
+    const trigger = image_button?.parentElement;
+    expect(image_button?.disabled).toBe(true);
+    expect(trigger).not.toBeNull();
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        trigger?.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
+        );
+        vi.runOnlyPendingTimers();
+      });
+      expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain(
+        "agent_page.action.add_image",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("压缩期间允许有效草稿排队但禁用空草稿停止，失败后阻止发送", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);

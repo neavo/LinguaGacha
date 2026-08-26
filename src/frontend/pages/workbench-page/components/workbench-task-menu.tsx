@@ -7,7 +7,12 @@ import type { ModelSelectionController } from "@frontend/features/model-selectio
 import type { WorkbenchStats } from "@frontend/pages/workbench-page/types";
 import { Badge } from "@frontend/shadcn/badge";
 import { Spinner } from "@frontend/shadcn/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  tooltip_trigger_target,
+} from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
@@ -63,16 +68,18 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
     <AppDropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
-            <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
-              {is_analysis ? (
-                <Radar data-icon="inline-start" />
-              ) : (
-                <ScanText data-icon="inline-start" />
-              )}
-              {t(`workbench_page.action.${props.task_kind}_task`)}
-            </AppButton>
-          </AppDropdownMenuTrigger>
+          {tooltip_trigger_target(
+            <AppDropdownMenuTrigger asChild>
+              <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+                {is_analysis ? (
+                  <Radar data-icon="inline-start" />
+                ) : (
+                  <ScanText data-icon="inline-start" />
+                )}
+                {t(`workbench_page.action.${props.task_kind}_task`)}
+              </AppButton>
+            </AppDropdownMenuTrigger>,
+          )}
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
           <p>{t(`workbench_page.${props.task_kind}_task.menu.tooltip`)}</p>
