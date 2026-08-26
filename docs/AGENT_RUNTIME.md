@@ -40,6 +40,7 @@
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。skill 正文可以声明必读或条件组合的其它 skill，组合本身不改变任务对象、范围或工作区权限。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
 - System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、写入边界与决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- 质量规则任务在账本中使用任务内 `seed` 控制既有 glossary 条目的发现作用；该状态随领域证据更新，不进入项目 glossary 字段或运行时执行模型。
 - 内置 skill 只补充领域规则；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
 
 ## 4. 产品工具与宿主能力
@@ -52,7 +53,7 @@
 - JavaScript 异步脚本体在一次性 Chromium 沙箱中运行，宿主注入 `workspace` 并支持顶层 `await` 与 `return`。同一快照内的确定性数据流在一次脚本中完成，返回值通过 JSON 与结果字节门后提交文件事务。沙箱暴露私有工作区协议和声明目录；路径规范化、事务 overlay、回滚与快照失效共同保护宿主和项目基线。
 - `workspace.queryItems` 提供确定性筛选，`workspace.queryItemContexts` 提供邻近上下文，`workspace.groupQualityRuleEntries` 与 `workspace.deriveCommonLiteralRoots` 提供结构候选，`workspace.matchLiterals` 按正式连续字面语义扫描 `src` 与 `name_src`。发布方法获得冻结的读取面，正式字面匹配由 Electron main 私有 protocol 执行。
 - `workspace_apply` 单次读取一个提交批次的显式变更清单，按受影响条目、提示词类型与质量规则类型构造预期结果；没有实际变化时直接返回 `unchanged`，手动模式从同一份已准备差异发布审批摘要，批准后再把该差异交给 [`BACKEND.md`](BACKEND.md) 的单事务入口修改 `.lg`。实际变化返回紧凑计数和提交后修订号；校验失败、审批拒绝、事务回滚、修订冲突和已提交同步失败分别驱动对应的快照保留、等待用户决定、重建或项目重载状态。`committed: true` 是已提交终态，恢复流程不再重试写入。
-- Agent 先完成范围内的确定性程序处理；剩余开放式语义目标保持固定任务范围，并按 System Prompt 的规模建议与领域边界形成承载完整判断结果的业务单元。System Prompt 定义任务原子性与提交批次的关系，领域技能声明默认原子性，用户可以在首次写入前调整：完整范围原子性汇总全部业务单元形成一个提交批次，逐业务单元写入则依次形成提交批次并在真实回执后刷新事实快照。`workspace_apply` 每次只提交一个提交批次；用户只在范围、标准、任务原子性、写入策略或语义未决需要决定时介入。
+- Agent 先完成确定性处理，再按 System Prompt 的规模建议与领域边界组织固定范围内的开放式语义业务单元。完整范围原子性汇总全部业务单元，逐业务单元写入则依次提交并刷新事实；每次 `workspace_apply` 只提交一个批次。开放式语义批次先输出完整业务结果，手动模式由审批界面承接用户决定，工具返回后输出执行回执。用户只在范围、标准、任务原子性、写入策略或语义未决需要决定时介入。
 - GUI Agent 的 Web 能力以 `web_search` 与 `web_fetch` 成组注册，宿主抓取端口缺失时不注册假实现。`web_search` 通过固定的 Exa、Tavily、Firecrawl、AnySearch 与 Keenable 无凭据 MCP 工具实现统一查询 Schema 和错误契约，不动态投影远端工具；模型只提交自然语言查询，供应商协议或业务失败均进入同一回退链。应用级搜索服务从 Exa 开始，当前来源失败时环形尝试其余来源并将成功来源晋升为首选，该内存状态跨工程切换复用、应用重启后重置。五家会话均按需建立并复用，组合根在 Agent 之后统一释放；`web_fetch` 仍独立使用本地安全下载链路，不委托搜索供应商抓取正文。
 - `web_fetch` 与普通模型网络共用 Electron session 提供的当前系统代理解析，但保留独立的安全下载边界：Backend 使用 Undici 逐跳抓取 HTTP(S)，每一跳重新解析代理；直连请求在实际 socket lookup 中只交付公网地址，代理请求把用户配置的代理视为目标解析与可达范围的信任边界。每次调用限制总时长、重定向和响应字节，HTTP 失败向模型返回状态码与最终 URL，受支持文本统一归一为 Markdown。System Prompt 是搜索摘要和网页正文不可信规则的唯一归宿，工具描述和结果不重复注入同一规则。
 
