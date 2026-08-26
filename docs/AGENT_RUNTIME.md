@@ -37,11 +37,12 @@
 - 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时从用户、内置目录依次加载 skill，以首个有效同名定义获胜，坏 skill 只记录诊断；形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述，显式注入块只公开名称与正文；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
-- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。skill 正文可以声明必读或条件组合的其它 skill，组合本身不改变任务对象、范围或工作区权限。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
-- `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
+- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
+- `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。skill 正文声明的前置或条件组合技能统一由模型调用 `read_skill` 加载，组合本身不改变任务对象、范围或工作区权限。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
 - System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、写入边界与决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
-- 质量规则任务在账本中使用任务内 `seed` 控制既有 glossary 条目的发现作用；该状态随领域证据更新，不进入项目 glossary 字段或运行时执行模型。
-- 内置 skill 只补充领域规则；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
+- `quality-rule-workflow` 技能拥有质量规则任务的范围、发现、账本、目标集合和提交，领域判断分别路由到 `glossary-rules` 与 `text-preserve-rules` 技能；任务内 `seed` 控制既有 glossary 条目的发现作用，随领域证据更新且不进入项目字段或运行时执行模型。`glossary-rules` 技能只提供术语领域结论，需要译名质量时加载并遵循 `writing-guide` 技能。
+- `translation-workflow` 技能统一拥有工程译文的两条路径：`translate` 处理没有译文的条目，`review` 处理已有译文的审校、修正和重译；两条路径共享自启发发现、业务单元、写入和核验，`translation-rules` 技能只提供 item 字段与译文领域结论，需要文本质量时加载并遵循 `writing-guide` 技能。领域规则不拥有 workflow 状态或流程入口。
+- 内置 skill 只补充各自任务的领域判断、证据方法与流程；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
 
 ## 4. 产品工具与宿主能力
 

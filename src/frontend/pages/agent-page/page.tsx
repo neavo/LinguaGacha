@@ -59,8 +59,8 @@ const FEATURED_AGENT_SKILLS = [
     Icon: ListChecks,
   },
   {
-    name: "translation-review",
-    suggestionKey: "agent_page.empty.suggestions.translation_review",
+    name: "translation-workflow",
+    suggestionKey: "agent_page.empty.suggestions.translation_workflow",
     Icon: ScanText,
   },
 ] as const;

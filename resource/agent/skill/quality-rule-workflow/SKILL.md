@@ -1,9 +1,14 @@
 ---
 name: quality-rule-workflow
-description: 当用户要在当前工程中审校既有质量规则、提取未覆盖的术语或文本保护规则，并形成后续调整方案时使用。
+description: 对术语与文本保护规则进行提取或审校时使用。
 ---
 
 # 质量规则工作流
+
+## 技能协作
+
+- 任务涉及 glossary 时，加载并遵循 `glossary-rules` 技能。
+- 任务涉及 text_preserve 时，加载并遵循 `text-preserve-rules` 技能。
 
 本技能是质量规则任务的流程权威。它负责把用户范围、工程事实、既有规则和领域技能判断组织成一个可追溯、可收敛的任务；glossary 与 text_preserve 的对象资格、字段和安全表达分别以对应领域技能为准。
 
@@ -26,7 +31,7 @@ description: 当用户要在当前工程中审校既有质量规则、提取未�
 | 指定控制符、占位符、格式结构或文本保护 | text_preserve |
 | 指定只新增、只核验或指定规则 | 按用户要求收窄调查范围或允许的 action |
 
-范围包含 glossary 时读取 `@skill(glossary-rules)`；包含 text_preserve 时读取 `@skill(text-preserve-rules)`。领域技能独占各自的发现方向和对象判据，workflow 负责组织共同流程。
+领域技能独占各自的发现方向和对象判据，workflow 负责组织共同流程。
 
 `scope` 至少记录：
 
