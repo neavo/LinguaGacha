@@ -1041,6 +1041,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       size="sm"
                       disabled={props.command !== null || !can_submit}
                       aria-label={contextual_submit_label}
+                      aria-busy={submit_command_active || undefined}
                       aria-keyshortcuts="Enter"
                     >
                       {submit_command_active ? (
@@ -1083,6 +1084,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       (stopping ? props.stop_disabled || compacting : !can_submit)
                     }
                     aria-label={contextual_submit_label}
+                    aria-busy={submit_command_active || undefined}
                   >
                     {(compacting && stopping) || submit_command_active ? (
                       <LoaderCircle className="animate-spin" aria-hidden="true" />

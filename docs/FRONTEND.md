@@ -24,7 +24,7 @@
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task progress 分别携带累计输入、思考与输出 token，工作台详情使用相同三段口径，输出单独驱动速度与波形。消费方通过 `useTaskSnapshot` 精确订阅，task 不进入项目 query 或页面计算缓存。
 - `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置和任务启动统一按 `owner !== null` 锁定；Agent 页在 task owner 下同样锁定，但 Agent owner 期间允许当前会话内存输入排队，并仅按 Agent snapshot 的 `canSendNow` 开放 Pi steer。reset、round 修订和模型选择 / 思考档位仍要求共享运行时空闲。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
-- settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步。
+- settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
 - flush、SSE 或写入处理失败进入 renderer 诊断，并通过可等待、可去重的权威 query 恢复；当前项目的有效事件不静默丢弃。
@@ -41,6 +41,7 @@
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端分析结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面由一个页面级“最新”开关拥有实时跟随状态：激活时外层信息流与活动思考视口在布局变化后归底，未激活时两者保持自由滚动；滚动与 `scrollend` 事件不改变跟随状态，历史思考视口保留自己的阅读位置。
+- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、progress、skills 与 input 切片订阅；command、queue、task progress 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。Agent 会话恢复与连接世代规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。

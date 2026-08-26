@@ -5,7 +5,7 @@ import { format_agent_skill_reference } from "@shared/agent";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
-import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
+import { useAgentInput } from "@frontend/app/session/agent/agent-session-context";
 import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
 import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -63,7 +63,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
   const { navigate_to_route } = useAppNavigation();
-  const agent = useAgentSession();
+  const agent_input = useAgentInput();
   const model_selection = useModelSelection();
   // 迁移提醒每次启动经典分析时重新显示，不持久化已读状态。
   const [analysis_migration_dialog_open, set_analysis_migration_dialog_open] = useState(false);
@@ -142,9 +142,9 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
 
   /** 跳转前只填充空草稿，避免覆盖 Agent 跨路由保留的用户输入。 */
   function jump_to_agent(): void {
-    const draft = agent.input.read_draft();
+    const draft = agent_input.read_draft();
     if (draft.text.trim() === "" && draft.attachments.length === 0) {
-      agent.input.write_draft({
+      agent_input.write_draft({
         text: `${t("agent_page.empty.suggestions.quality_rule_workflow")} ${format_agent_skill_reference(QUALITY_RULE_WORKFLOW_SKILL_NAME)}`,
         attachments: [],
       });

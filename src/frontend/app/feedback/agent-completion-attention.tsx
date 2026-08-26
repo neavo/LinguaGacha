@@ -1,10 +1,16 @@
 import { useEffect, useRef } from "react";
 
-import type { AgentEntry, AgentSessionSnapshot } from "@shared/agent";
-import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
+import type { AgentEntry, AgentSessionState } from "@shared/agent";
+import {
+  useAgentControls,
+  useAgentTimeline,
+} from "@frontend/app/session/agent/agent-session-context";
 
 /** 注意力判定只依赖会话状态和时间线，不把完整 controller 形状带进纯规则。 */
-type AgentCompletionSnapshot = Pick<AgentSessionSnapshot, "state" | "entries">;
+type AgentCompletionSnapshot = Readonly<{
+  state: AgentSessionState;
+  entries: readonly AgentEntry[];
+}>;
 
 /** 记录一次 effect 观察到的运行收束，并把 ref 更新与宿主请求拆开表达。 */
 export type AgentCompletionAttentionTransition = Readonly<{
@@ -42,16 +48,20 @@ function is_round_entry(entry: AgentEntry): boolean {
  * 跨路由观察 Agent 终态；宿主只收到无参数的注意力请求，不承载 Agent 业务字段。
  */
 export function AgentCompletionAttention(): null {
-  const agent = useAgentSession();
+  const { state } = useAgentControls();
+  const { entries } = useAgentTimeline();
   const was_running_ref = useRef(false); // 只记住已观察到的运行，避免恢复历史终态时补发提醒
 
   useEffect(() => {
-    const transition = resolve_agent_completion_attention(was_running_ref.current, agent);
+    const transition = resolve_agent_completion_attention(was_running_ref.current, {
+      state,
+      entries,
+    });
     was_running_ref.current = transition.was_running;
     if (transition.should_request) {
       window.desktopApp.requestUserAttention();
     }
-  }, [agent.entries, agent.state]);
+  }, [entries, state]);
 
   return null;
 }

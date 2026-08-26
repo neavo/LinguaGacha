@@ -1,4 +1,4 @@
-import { act, useEffect } from "react";
+import { act, StrictMode, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +19,28 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
-import { AgentSessionProvider, useAgentSession } from "./agent-session-context";
+import {
+  AgentSessionProvider,
+  useAgentControls,
+  useAgentInput,
+  useAgentProgress,
+  useAgentQueue,
+  useAgentSessionActions,
+  useAgentSkills,
+  useAgentTimeline,
+} from "./agent-session-context";
+
+/** 测试探针聚合公开切片，生产代码不再暴露会随任意字段变化的完整 controller。 */
+function useAgentSession() {
+  const timeline = useAgentTimeline();
+  const controls = useAgentControls();
+  const queue = useAgentQueue();
+  const progress = useAgentProgress();
+  const skills = useAgentSkills();
+  const input = useAgentInput();
+  const actions = useAgentSessionActions();
+  return { ...timeline, ...controls, ...queue, ...progress, ...skills, input, ...actions };
+}
 
 /** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
 const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
@@ -46,6 +67,11 @@ class FakeEventSource {
   public onopen: (() => void) | null = null;
   public onerror: (() => void) | null = null;
   private readonly listeners = new Map<string, EventListener>();
+  private revision = 0;
+
+  public get current_revision(): number {
+    return this.revision;
+  }
 
   /** 页面每个 topic 只注册一个监听器，后注册值可直接替换。 */
   public addEventListener(type: string, listener: EventListener): void {
@@ -57,7 +83,17 @@ class FakeEventSource {
 
   /** 通过真实 MessageEvent.data 形状投递 JSON 载荷。 */
   public emit(type: string, payload: unknown): void {
-    this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(payload) }));
+    let next = payload;
+    if (type === AGENT_SESSION_EVENT_TOPIC && typeof payload === "object" && payload !== null) {
+      const record = payload as Record<string, unknown>;
+      const explicit_revision = record["revision"];
+      if (typeof explicit_revision === "number") this.revision = explicit_revision;
+      else {
+        this.revision += 1;
+        next = { ...record, revision: this.revision };
+      }
+    }
+    this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(next) }));
   }
 
   /** 绕过 JSON 编码以验证损坏帧的恢复路径。 */
@@ -86,8 +122,50 @@ describe("AgentSessionProvider", () => {
         skills: TEST_SKILLS,
       }),
     );
-    desktop_api_mocks.api_fetch.mockReset();
+    desktop_api_mocks.api_fetch
+      .mockReset()
+      .mockImplementation(async () => ({ revision: event_source.current_revision }));
     desktop_api_mocks.open_event_stream.mockReset().mockResolvedValue(event_source);
+  });
+
+  it("StrictMode effect 重放后仍能完成会话恢复", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    function Probe(): null {
+      latest = useAgentSession();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () =>
+      root?.render(
+        <StrictMode>
+          <AgentSessionProvider>
+            <Probe />
+          </AgentSessionProvider>
+        </StrictMode>,
+      ),
+    );
+
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已恢复", "success", 1)]);
+  });
+
+  it("SSE 监听挂载后立即读取 snapshot", async () => {
+    let resolve_stream!: (source: FakeEventSource) => void;
+    desktop_api_mocks.open_event_stream.mockImplementation(
+      () => new Promise<FakeEventSource>((resolve) => (resolve_stream = resolve)),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+
+    expect(desktop_api_mocks.api_get).not.toHaveBeenCalled();
+    resolve_stream(event_source);
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(desktop_api_mocks.api_get).toHaveBeenCalledWith("/api/agent/snapshot");
   });
 
   afterEach(async () => {
@@ -130,6 +208,129 @@ describe("AgentSessionProvider", () => {
         { kind: "text", text: "第一段第二段" },
       ],
       status: "success",
+    });
+  });
+
+  it("队列事件保持时间线引用，条目 upsert 只替换目标身份", async () => {
+    const first = assistant_entry("assistant-1", "第一条", "success", 1);
+    const second = assistant_entry("assistant-2", "第二条", "running", 2);
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [first, second] }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const initial_entries = latest.entries;
+    const [initial_first, initial_second] = initial_entries;
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "input_queue",
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+      });
+    });
+    expect(latest.entries).toBe(initial_entries);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-2", "第二条完成", "success", 2),
+      });
+    });
+    expect(latest.entries).not.toBe(initial_entries);
+    expect(latest.entries[0]).toBe(initial_first);
+    expect(latest.entries[1]).not.toBe(initial_second);
+  });
+
+  it("丢弃旧 revision，并在缺口时用完整快照恢复", async () => {
+    desktop_api_mocks.api_get
+      .mockReset()
+      .mockResolvedValueOnce(agent_snapshot())
+      .mockResolvedValueOnce(agent_snapshot({ revision: 3, contextTokens: 300 }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context_tokens",
+        revision: 1,
+        contextTokens: 100,
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context_tokens",
+        revision: 1,
+        contextTokens: 200,
+      });
+    });
+    expect(latest.contextTokens).toBe(100);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context_tokens",
+        revision: 3,
+        contextTokens: 300,
+      });
+    });
+    await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.contextTokens).toBe(300);
+  });
+
+  it("command 更新只通知 controls 订阅者", async () => {
+    let timeline_renders = 0;
+    let controls_renders = 0;
+    let actions!: ReturnType<typeof useAgentSessionActions>;
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    function TimelineProbe(): null {
+      useAgentTimeline();
+      timeline_renders += 1;
+      return null;
+    }
+    function ControlsProbe(): null {
+      useAgentControls();
+      controls_renders += 1;
+      return null;
+    }
+    function ActionsProbe(): null {
+      actions = useAgentSessionActions();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        <AgentSessionProvider>
+          <TimelineProbe />
+          <ControlsProbe />
+          <ActionsProbe />
+        </AgentSessionProvider>,
+      ),
+    );
+    await wait_for(() => expect(controls_renders).toBeGreaterThan(1));
+    const timeline_before_command = timeline_renders;
+    const controls_before_command = controls_renders;
+
+    let sending!: Promise<void>;
+    await act(async () => {
+      sending = actions.send({ text: "开始", attachments: [] });
+      await Promise.resolve();
+    });
+    expect(controls_renders).toBeGreaterThan(controls_before_command);
+    expect(timeline_renders).toBe(timeline_before_command);
+
+    await act(async () => {
+      resolve_send({ revision: event_source.current_revision });
+      await sending;
     });
   });
 
@@ -211,9 +412,6 @@ describe("AgentSessionProvider", () => {
     expect(latest.inputQueue).toEqual({ paused: true, canSendNow: true, items: [item] });
     latest.input.write_draft({ text: "普通草稿", attachments: [] });
 
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({ inputQueue: { paused: false, canSendNow: false, items: [] } }),
-    );
     await act(async () => {
       await latest.updateQueuedMessage(item.id, { text: "修改后", attachments: [] });
       await latest.deleteQueuedMessage(item.id);
@@ -267,7 +465,13 @@ describe("AgentSessionProvider", () => {
   });
 
   it("写入审批模式通过后端命令更新并由快照回流", async () => {
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ approvalMode: "auto" }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "auto",
+      });
+      return { revision: event_source.current_revision };
+    });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -304,9 +508,13 @@ describe("AgentSessionProvider", () => {
       },
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingWriteApproval: waiting }));
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({ pendingWriteApproval: { ...waiting, status: "processing" } }),
-    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_write_approval",
+        pendingWriteApproval: { ...waiting, status: "processing" },
+      });
+      return { revision: event_source.current_revision };
+    });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -502,6 +710,7 @@ describe("AgentSessionProvider", () => {
 
   it("skill 清单只接纳完整的新 UI 描述协议", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
+      revision: 0,
       state: "idle",
       approvalMode: "manual",
       pendingWriteApproval: null,
@@ -533,6 +742,7 @@ describe("AgentSessionProvider", () => {
 
   it("只接纳字段完整且值域合法的时间线条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
+      revision: 0,
       state: "idle",
       approvalMode: "manual",
       pendingWriteApproval: null,
@@ -809,6 +1019,7 @@ describe("AgentSessionProvider", () => {
       )
       .mockResolvedValueOnce(
         agent_snapshot({
+          revision: 2,
           state: "idle",
           entries: [assistant_entry("assistant-1", "重连已恢复", "success", 1)],
         }),
@@ -845,8 +1056,10 @@ describe("AgentSessionProvider", () => {
     expect(latest.transport).toBe("disconnected");
     expect(texts.at(-1)).toBe("订阅期条目");
 
-    event_source.emit_open();
-    event_source.emit_open();
+    await act(async () => {
+      event_source.emit_open();
+      event_source.emit_open();
+    });
     await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
     await wait_for(() => expect(texts.at(-1)).toBe("重连已恢复"));
     expect(latest.transport).toBe("ready");
@@ -859,7 +1072,10 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     desktop_api_mocks.api_get.mockResolvedValueOnce(
-      agent_snapshot({ entries: [assistant_entry("assistant-recovered", "已校正", "success", 2)] }),
+      agent_snapshot({
+        revision: 2,
+        entries: [assistant_entry("assistant-recovered", "已校正", "success", 2)],
+      }),
     );
 
     await act(async () => event_source.emit_raw(AGENT_SESSION_EVENT_TOPIC, "{"));
@@ -1056,17 +1272,19 @@ describe("AgentSessionProvider", () => {
         type: "context_tokens",
         contextTokens: 200,
       });
-      resolve_send(
-        agent_snapshot({
-          state: "running",
-          contextTokens: 100,
-        }),
-      );
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "session_state",
+        state: "running",
+      });
+      resolve_send({ revision: event_source.current_revision });
       await result;
     });
 
     expect(latest.state).toBe("running");
-    expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", "running", 2)]);
+    expect(latest.entries).toEqual([
+      assistant_entry("assistant-1", "已恢复", "success", 1),
+      assistant_entry("assistant-2", "SSE 新消息", "running", 2),
+    ]);
     expect(latest.contextTokens).toBe(200);
   });
 
@@ -1100,7 +1318,9 @@ describe("AgentSessionProvider", () => {
 
     expect(latest.contextTokens).toBe(200);
 
-    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    desktop_api_mocks.api_fetch.mockImplementation(async () => ({
+      revision: event_source.current_revision,
+    }));
     await act(async () => {
       await latest.send({ text: "再次继续", attachments: [] });
     });
@@ -1131,7 +1351,7 @@ describe("AgentSessionProvider", () => {
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
     await second;
     await act(async () => {
-      resolve_send(agent_snapshot({ state: "running" }));
+      resolve_send({ revision: event_source.current_revision });
       await first;
     });
     await first;
@@ -1162,12 +1382,14 @@ describe("AgentSessionProvider", () => {
         entries: [assistant_entry("assistant-1", "处理中", "running", 1)],
       }),
     );
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({
-        state: "idle",
-        entries: [assistant_entry("assistant-1", "已停止", "stopped", 1)],
-      }),
-    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-1", "已停止", "stopped", 1),
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "idle" });
+      return { revision: event_source.current_revision };
+    });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -1215,9 +1437,13 @@ describe("AgentSessionProvider", () => {
       createdAt: 1,
     };
     desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [failed_compaction] }));
-    desktop_api_mocks.api_fetch.mockResolvedValue(
-      agent_snapshot({ entries: [{ ...failed_compaction, status: "running" }] }),
-    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: { ...failed_compaction, status: "running" },
+      });
+      return { revision: event_source.current_revision };
+    });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -1253,7 +1479,12 @@ describe("AgentSessionProvider", () => {
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
 
     await act(async () => {
-      resolve_reset(agent_snapshot({ skills: TEST_SKILLS.slice(0, 1) }));
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        revision: 1,
+        snapshot: agent_snapshot({ revision: 1, skills: TEST_SKILLS.slice(0, 1) }),
+      });
+      resolve_reset({ revision: 1 });
       await result;
     });
     expect(latest).toMatchObject({
@@ -1335,6 +1566,7 @@ function image_attachments(...images: string[]): AgentMessageAttachment[] {
 
 function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
   return {
+    revision: 0,
     state: "idle",
     approvalMode: "manual",
     pendingWriteApproval: null,

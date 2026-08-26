@@ -11,9 +11,22 @@ import {
   type AgentAssistantMessageParts,
   type AgentEntryStatus,
 } from "@shared/agent";
-import type { useAgentSession as UseAgentSessionFunction } from "@frontend/app/session/agent/agent-session-context";
+import type {
+  AgentControlsSlice,
+  AgentInputSession,
+  AgentProgressSlice,
+  AgentQueueSlice,
+  AgentSessionActions,
+  AgentSkillsSlice,
+  AgentTimelineSlice,
+} from "@frontend/app/session/agent/agent-session-store";
 
-type AgentPageState = ReturnType<typeof UseAgentSessionFunction>;
+type AgentPageState = AgentTimelineSlice &
+  AgentControlsSlice &
+  AgentQueueSlice &
+  AgentProgressSlice &
+  AgentSkillsSlice &
+  AgentSessionActions & { input: AgentInputSession };
 
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
@@ -115,7 +128,20 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
 }
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentSession: () => page_state.current,
+  useAgentTimeline: () => ({ entries: page_state.current.entries }),
+  useAgentControls: () => ({
+    state: page_state.current.state,
+    approvalMode: page_state.current.approvalMode,
+    pendingWriteApproval: page_state.current.pendingWriteApproval,
+    contextTokens: page_state.current.contextTokens,
+    transport: page_state.current.transport,
+    command: page_state.current.command,
+  }),
+  useAgentQueue: () => ({ inputQueue: page_state.current.inputQueue }),
+  useAgentProgress: () => ({ taskProgress: page_state.current.taskProgress }),
+  useAgentSkills: () => ({ skills: page_state.current.skills }),
+  useAgentInput: () => page_state.current.input,
+  useAgentSessionActions: () => page_state.current,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => desktop_state.current,

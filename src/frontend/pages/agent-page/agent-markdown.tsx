@@ -1,4 +1,11 @@
-import { isValidElement, useMemo, useState, type ImgHTMLAttributes, type ReactNode } from "react";
+import {
+  isValidElement,
+  memo,
+  useMemo,
+  useState,
+  type ImgHTMLAttributes,
+  type ReactNode,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
@@ -28,7 +35,7 @@ type CodeBlock = {
 };
 
 /** 渲染 Agent 正文 Markdown；图表仅在完整消息内进入 Mermaid 异步边界。 */
-export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
+export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
   // Markdown 只接管外链、图片预览与 Mermaid，其余 HTML 沿用标准渲染链。
   const components = useMemo<Components>(
@@ -82,6 +89,17 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
         {props.text}
       </ReactMarkdown>
     </div>
+  );
+}, agent_markdown_props_equal);
+
+function agent_markdown_props_equal(
+  previous: AgentMarkdownProps,
+  next: AgentMarkdownProps,
+): boolean {
+  return (
+    previous.text === next.text &&
+    previous.streaming === next.streaming &&
+    previous.annotatable === next.annotatable
   );
 }
 

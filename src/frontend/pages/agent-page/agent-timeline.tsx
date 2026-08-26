@@ -1,4 +1,13 @@
-import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Check, ChevronsDownUp, CircleAlert, Copy, Pencil, Wrench } from "lucide-react";
 
 import type {
@@ -28,7 +37,7 @@ type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
 type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
 type AgentRoundEntry = UserEntry | AssistantEntry | AgentToolEntry | ContextCompactionEntry;
 /** 公开 user 条目拥有随后全部输出，直到下一个 user 条目开始新轮次。 */
-type AgentRoundEntries = {
+export type AgentRoundEntries = {
   user: UserEntry;
   entries: AgentRoundEntry[];
 };
@@ -67,7 +76,12 @@ type AgentTimelineProps = {
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
   const [selected_tool_id, set_selected_tool_id] = useState<string | null>(null);
-  const rounds = group_agent_rounds(props.entries);
+  const previous_rounds_ref = useRef<readonly AgentRoundEntries[]>([]);
+  const rounds = useMemo(() => {
+    const next = build_agent_rounds(previous_rounds_ref.current, props.entries);
+    previous_rounds_ref.current = next;
+    return next;
+  }, [props.entries]);
   // 未解决的压缩失败冻结消息改写，只保留原位压缩恢复入口。
   const revision_blocked = props.entries.some(
     (entry) => entry.kind === "context_compaction" && entry.status === "error",
@@ -90,12 +104,13 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             mention_tokens={props.mention_tokens}
             follow_latest={props.follow_latest}
             t={t}
+            latest={index === rounds.length - 1}
             revision_available={index === rounds.length - 1 && !revision_blocked}
             on_continue={props.on_continue}
             on_edit={props.on_edit}
             render_entry_editor={props.render_entry_editor}
-            revision_disabled={props.revision_disabled}
-            continue_disabled={props.continue_disabled}
+            revision_disabled={index === rounds.length - 1 ? props.revision_disabled : false}
+            continue_disabled={index === rounds.length - 1 ? props.continue_disabled : false}
             on_open_tool={set_selected_tool_id}
           />
         ))}
@@ -125,12 +140,31 @@ function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[]
   return rounds;
 }
 
+/** 只重建含变更 entry 的 round；其余 round 与内部 entries 数组保持身份。 */
+export function build_agent_rounds(
+  previous: readonly AgentRoundEntries[],
+  entries: readonly AgentEntry[],
+): AgentRoundEntries[] {
+  return group_agent_rounds(entries).map((round, index) => {
+    const existing = previous[index];
+    if (
+      existing?.user === round.user &&
+      existing.entries.length === round.entries.length &&
+      existing.entries.every((entry, entry_index) => entry === round.entries[entry_index])
+    ) {
+      return existing;
+    }
+    return round;
+  });
+}
+
 /** 轮次统一拥有用户消息、公开条目、恢复入口与最终状态。 */
-function AgentRound(props: {
+type AgentRoundProps = {
   round: AgentRoundEntries;
   mention_tokens: readonly AgentMentionToken[];
   follow_latest: boolean;
   t: Translate;
+  latest: boolean;
   revision_available: boolean;
   on_continue: () => void;
   on_edit: (entry: UserEntry | AssistantEntry) => void;
@@ -138,7 +172,9 @@ function AgentRound(props: {
   revision_disabled: boolean;
   continue_disabled: boolean;
   on_open_tool: (id: string) => void;
-}): JSX.Element {
+};
+
+const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element {
   const { user, entries } = props.round;
   const mention_ranges = find_agent_mention_ranges(user.text, props.mention_tokens);
   const mention_only =
@@ -253,6 +289,29 @@ function AgentRound(props: {
       <AgentRoundFooter user={user} t={props.t} />
     </>
   );
+}, agent_round_props_equal);
+
+/** 历史 round 不消费命令禁用态或编辑器工厂，command 更新只提交最后一轮操作区。 */
+function agent_round_props_equal(previous: AgentRoundProps, next: AgentRoundProps): boolean {
+  if (
+    previous.round !== next.round ||
+    previous.mention_tokens !== next.mention_tokens ||
+    previous.follow_latest !== next.follow_latest ||
+    previous.t !== next.t ||
+    previous.latest !== next.latest ||
+    previous.revision_available !== next.revision_available ||
+    previous.on_edit !== next.on_edit ||
+    previous.on_open_tool !== next.on_open_tool
+  ) {
+    return false;
+  }
+  if (!next.latest) return true;
+  return (
+    previous.on_continue === next.on_continue &&
+    previous.render_entry_editor === next.render_entry_editor &&
+    previous.revision_disabled === next.revision_disabled &&
+    previous.continue_disabled === next.continue_disabled
+  );
 }
 
 /** 消息容器统一拥有角色对齐与操作归属，工具和轮次状态不进入该结构。 */
@@ -365,7 +424,7 @@ function AgentContinueEntry(props: {
 }
 
 /** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
-const AgentEntryView = memo(function AgentEntryView(props: {
+type AgentEntryViewProps = {
   entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
   t: Translate;
   on_continue: () => void;
@@ -373,7 +432,9 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   on_open_tool: (id: string) => void;
   annotatable: boolean;
   follow_latest: boolean;
-}): ReactNode {
+};
+
+const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps): ReactNode {
   const entry = props.entry;
   if (entry.kind === "context_compaction") {
     return (
@@ -395,7 +456,27 @@ const AgentEntryView = memo(function AgentEntryView(props: {
     );
   }
   return render_assistant_entry(entry, props.t, props.annotatable, props.follow_latest);
-});
+}, agent_entry_view_props_equal);
+
+/** 每种条目只比较真正参与自身正文渲染的 props，控制按钮变化不穿透 Markdown。 */
+function agent_entry_view_props_equal(
+  previous: AgentEntryViewProps,
+  next: AgentEntryViewProps,
+): boolean {
+  if (previous.entry !== next.entry || previous.t !== next.t) return false;
+  if (next.entry.kind === "assistant_message") {
+    return (
+      previous.annotatable === next.annotatable && previous.follow_latest === next.follow_latest
+    );
+  }
+  if (next.entry.kind === "context_compaction") {
+    return (
+      previous.continue_disabled === next.continue_disabled &&
+      previous.on_continue === next.on_continue
+    );
+  }
+  return previous.on_open_tool === next.on_open_tool;
+}
 
 /** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
 function AgentContextCompactionEntry(props: {

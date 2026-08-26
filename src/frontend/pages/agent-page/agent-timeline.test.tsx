@@ -21,7 +21,7 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 
-import { AgentTimeline } from "./agent-timeline";
+import { AgentTimeline, build_agent_rounds } from "./agent-timeline";
 import { create_agent_mention_tokens } from "./agent-mention";
 
 const MENTION_TOKENS = create_agent_mention_tokens(
@@ -72,6 +72,29 @@ describe("AgentTimeline", () => {
       configurable: true,
       value: { writeText: write_clipboard },
     });
+  });
+
+  it("只重建包含新增或替换条目的 round", () => {
+    const first_user = user_entry("user-1", "第一轮", "success", 1, 2);
+    const first_assistant = assistant_entry("assistant-1", "第一答复", "success", 2);
+    const second_user = user_entry("user-2", "第二轮", "running", 3, null);
+    const second_assistant = assistant_entry("assistant-2", "第二答复", "running", 4);
+    const initial = build_agent_rounds(
+      [],
+      [first_user, first_assistant, second_user, second_assistant],
+    );
+    const updated_assistant = assistant_entry("assistant-2", "第二答复完成", "success", 4);
+    const updated = build_agent_rounds(initial, [
+      first_user,
+      first_assistant,
+      second_user,
+      updated_assistant,
+    ]);
+
+    expect(updated[0]).toBe(initial[0]);
+    expect(updated[0]?.entries).toBe(initial[0]?.entries);
+    expect(updated[1]).not.toBe(initial[1]);
+    expect(updated[1]?.user).toBe(initial[1]?.user);
   });
 
   afterEach(async () => {

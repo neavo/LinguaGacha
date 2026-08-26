@@ -37,7 +37,7 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
 }));
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentSession: () => ({ input: agent_input_mocks }),
+  useAgentInput: () => agent_input_mocks,
 }));
 
 vi.mock("@frontend/pages/workbench-page/components/workbench-task-menu", () => ({

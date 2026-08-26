@@ -118,11 +118,14 @@ describe("register_api_routes", () => {
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,
       data: {
+        revision: 0,
         state: "idle",
         approvalMode: "manual",
         pendingWriteApproval: null,
         entries: [],
         skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
         contextTokens: null,
       },
     });
@@ -146,65 +149,58 @@ describe("register_api_routes", () => {
     expect(fixture.start_task).toHaveBeenCalledWith(task);
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/message")(message),
-    ).resolves.toEqual({ state: "running" });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
     const approval_mode = { approvalMode: "auto" };
     expect(read_post_handler(fixture.post_json, "/api/agent/approval-mode")(approval_mode)).toEqual(
-      { state: "idle", approvalMode: "auto" },
+      {
+        revision: 7,
+      },
     );
     expect(fixture.set_approval_mode).toHaveBeenCalledWith(approval_mode);
     const pending = { id: "apply-1", switchToAuto: true };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/approval/approve")(pending),
-    ).resolves.toEqual({ state: "idle", approvalMode: "manual" });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.approve_pending_write).toHaveBeenCalledWith(pending);
     const rejected = { id: "apply-1" };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/approval/reject")(rejected),
-    ).resolves.toEqual({ state: "idle", approvalMode: "manual" });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.reject_pending_write).toHaveBeenCalledWith(rejected);
     const queued = { id: "queue-1" };
     expect(read_post_handler(fixture.post_json, "/api/agent/queue/delete")(queued)).toEqual({
-      state: "running",
+      revision: 7,
     });
     expect(fixture.delete_queued_message).toHaveBeenCalledWith(queued);
     const update = { id: "queue-1", message: { text: "修改", attachments: [] } };
     expect(read_post_handler(fixture.post_json, "/api/agent/queue/update")(update)).toEqual({
-      state: "running",
+      revision: 7,
     });
     expect(fixture.update_queued_message).toHaveBeenCalledWith(update);
     const reorder = { ids: ["queue-2", "queue-1"] };
     expect(read_post_handler(fixture.post_json, "/api/agent/queue/reorder")(reorder)).toEqual({
-      state: "running",
+      revision: 7,
     });
     expect(fixture.reorder_queued_messages).toHaveBeenCalledWith(reorder);
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/queue/send")(queued),
-    ).resolves.toEqual({
-      state: "running",
-    });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.send_queued_message).toHaveBeenCalledWith(queued);
     const continuation = { message: { text: "继续后追加", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/continue")(continuation),
-    ).resolves.toEqual({
-      state: "running",
-    });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.continue_session).toHaveBeenCalledWith(continuation);
     const revision = { entryId: "assistant-1", message: { text: "修订", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
-    ).resolves.toEqual({ state: "idle" });
+    ).resolves.toEqual({ revision: 7 });
     expect(fixture.revise_latest_round).toHaveBeenCalledWith(revision);
-    expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
-      state: "idle",
-    });
+    expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({ revision: 7 });
     expect(fixture.stop).toHaveBeenCalledWith();
     await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
-      state: "idle",
-      entries: [],
-      skills: [],
-      contextTokens: null,
+      revision: 7,
     });
     expect(fixture.reset).toHaveBeenCalledWith();
   });
@@ -252,23 +248,19 @@ function create_route_fixture() {
   const get = vi.fn();
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
-  const send_message = vi.fn(async () => ({ state: "running" }));
-  const set_approval_mode = vi.fn(() => ({ state: "idle", approvalMode: "auto" }));
-  const approve_pending_write = vi.fn(async () => ({ state: "idle", approvalMode: "manual" }));
-  const reject_pending_write = vi.fn(async () => ({ state: "idle", approvalMode: "manual" }));
-  const revise_latest_round = vi.fn(async () => ({ state: "idle" }));
-  const update_queued_message = vi.fn(() => ({ state: "running" }));
-  const delete_queued_message = vi.fn(() => ({ state: "running" }));
-  const reorder_queued_messages = vi.fn(() => ({ state: "running" }));
-  const send_queued_message = vi.fn(async () => ({ state: "running" }));
-  const continue_session = vi.fn(async () => ({ state: "running" }));
-  const stop = vi.fn(() => ({ state: "idle" }));
-  const reset = vi.fn(async () => ({
-    state: "idle",
-    entries: [],
-    skills: [],
-    contextTokens: null,
-  }));
+  const acknowledgement = { revision: 7 };
+  const send_message = vi.fn(async () => acknowledgement);
+  const set_approval_mode = vi.fn(() => acknowledgement);
+  const approve_pending_write = vi.fn(async () => acknowledgement);
+  const reject_pending_write = vi.fn(async () => acknowledgement);
+  const revise_latest_round = vi.fn(async () => acknowledgement);
+  const update_queued_message = vi.fn(() => acknowledgement);
+  const delete_queued_message = vi.fn(() => acknowledgement);
+  const reorder_queued_messages = vi.fn(() => acknowledgement);
+  const send_queued_message = vi.fn(async () => acknowledgement);
+  const continue_session = vi.fn(async () => acknowledgement);
+  const stop = vi.fn(() => acknowledgement);
+  const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
     updated: request,
@@ -297,11 +289,14 @@ function create_route_fixture() {
     },
     agent: {
       get_snapshot: vi.fn(() => ({
+        revision: 0,
         state: "idle",
         approvalMode: "manual",
         pendingWriteApproval: null,
         entries: [],
         skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
         contextTokens: null,
       })),
       send_message,

@@ -140,8 +140,9 @@ export type AgentEntry = JsonRecord &
     | AgentContextCompactionEntry
   );
 
-/** GET snapshot、命令响应与 snapshot_seed 共用的完整会话形状。 */
+/** GET snapshot 与 snapshot_seed 共用的完整会话形状。 */
 export type AgentSessionSnapshot = JsonRecord & {
+  revision: number;
   state: AgentSessionState;
   approvalMode: AgentApprovalMode;
   pendingWriteApproval: AgentPendingWriteApproval | null;
@@ -152,8 +153,13 @@ export type AgentSessionSnapshot = JsonRecord & {
   contextTokens: number | null; // 当前模型可见历史的估算用量
 };
 
-/** SSE 以完整条目按 id 覆盖，重复帧天然幂等；断线时由 snapshot_seed 或 GET 恢复。 */
-export type AgentSessionEvent = JsonRecord &
+/** 写命令只确认后端受理到的事件边界，公开事实继续由事件同步。 */
+export type AgentCommandAck = Readonly<{
+  revision: number;
+}>;
+
+/** AgentService 发布前的事件事实；单调 revision 只由统一发布入口分配。 */
+export type AgentSessionEventPayload = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
@@ -164,6 +170,9 @@ export type AgentSessionEvent = JsonRecord &
     | { type: "context_tokens"; contextTokens: number }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
+
+/** SSE 以单调 revision 排序；重复、旧帧与缺口由 renderer 显式处理。 */
+export type AgentSessionEvent = AgentSessionEventPayload & { revision: number };
 
 /** Agent marker 的稳定字面量范围；前后端共用同一转义与重叠规则。 */
 export type AgentReferenceRange = Readonly<{
