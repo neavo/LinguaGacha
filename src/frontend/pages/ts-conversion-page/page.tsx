@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import { Play } from "lucide-react";
 
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
@@ -30,6 +32,12 @@ const DIRECTION_LABEL_KEY_BY_DIRECTION = {
 export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const page_state = useTsConversionPageState();
+  const direction_options = useMemo(() => {
+    return DIRECTION_OPTIONS.map((value) => ({
+      value,
+      label: t(DIRECTION_LABEL_KEY_BY_DIRECTION[value]),
+    }));
+  }, [t]);
   return (
     <div className="ts-conversion-page page-shell page-shell--full">
       <section className="ts-conversion-page__list" aria-label={t("ts_conversion_page.title")}>
@@ -39,6 +47,7 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
           description={t("ts_conversion_page.fields.direction.description")}
           action={
             <Select
+              items={direction_options}
               value={page_state.direction}
               disabled={page_state.is_running}
               onValueChange={(next_value) => {
@@ -50,9 +59,9 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {DIRECTION_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {t(DIRECTION_LABEL_KEY_BY_DIRECTION[option])}
+                  {direction_options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectGroup>
