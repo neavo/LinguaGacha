@@ -861,7 +861,7 @@
   min-width: 0;
   align-items: center;
   justify-self: start;
-  gap: 6px;
+  gap: 8px;
 }
 
 .agent-task-progress__label {

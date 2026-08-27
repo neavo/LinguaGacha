@@ -1,6 +1,6 @@
 ---
 name: agent-charter
-description: 开启新的任务周期时必须首先使用的最优先任务准则。
+description: 开启新的任务周期时必须首先使用的最优先任务宪章。
 ---
 
 # 工作准则
