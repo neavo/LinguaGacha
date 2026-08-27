@@ -102,15 +102,21 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => {
     AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppDropdownMenuItem: (props: { children: ReactNode }) => <button>{props.children}</button>,
-    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
 });
 
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
-    Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
 });
 

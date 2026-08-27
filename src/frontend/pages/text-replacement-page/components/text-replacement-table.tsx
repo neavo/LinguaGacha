@@ -68,7 +68,7 @@ function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Ele
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipTrigger render={badge} />
       <TooltipContent side="top" sideOffset={8}>
         <p className="whitespace-pre-line">{props.tooltip}</p>
       </TooltipContent>

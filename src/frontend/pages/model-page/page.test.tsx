@@ -58,8 +58,8 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => ({
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuItem: (props: { children: ReactNode; onSelect?: () => void }) => (
-    <button type="button" onClick={props.onSelect}>
+  AppDropdownMenuItem: (props: { children: ReactNode; onClick?: () => void }) => (
+    <button type="button" onClick={props.onClick}>
       {props.children}
     </button>
   ),

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { MessageSquareQuote, X } from "lucide-react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import type { AgentResponseAnnotationAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -119,18 +119,23 @@ export function AgentResponseAnnotationEditor({
             <ShortcutKbd action="cancel" />
           </AppButton>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <AppButton
-                type="button"
-                size="sm"
-                aria-label={t("app.action.save")}
-                aria-keyshortcuts="Enter"
-                onClick={on_submit}
-              >
-                {t("app.action.save")}
-                <ShortcutKbd action="submit" className="bg-background/18 text-primary-foreground" />
-              </AppButton>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  type="button"
+                  size="sm"
+                  aria-label={t("app.action.save")}
+                  aria-keyshortcuts="Enter"
+                  onClick={on_submit}
+                >
+                  {t("app.action.save")}
+                  <ShortcutKbd
+                    action="submit"
+                    className="bg-background/18 text-primary-foreground"
+                  />
+                </AppButton>
+              }
+            />
             <TooltipContent side="top" sideOffset={8}>
               <p>
                 {t("agent_page.shortcut_hint", {
@@ -189,7 +194,7 @@ export function AgentResponseAnnotationSelection(
 ): JSX.Element {
   const { t } = useI18n();
   const root_ref = useRef<HTMLDivElement | null>(null);
-  // Range 是批注浮层唯一锚点；Radix 直接读取其视口矩形，滚动与碰撞无需第二套坐标状态。
+  // Range 是批注浮层唯一锚点；Base UI 直接读取其视口矩形，滚动与碰撞无需第二套坐标状态。
   const anchor_ref = useRef<{ getBoundingClientRect: () => DOMRect } | null>(null);
   const action_ref = useRef<HTMLButtonElement | null>(null);
   const [selection, set_selection] = useState<AnnotationSelection | null>(null);
@@ -250,8 +255,15 @@ export function AgentResponseAnnotationSelection(
   return (
     <PopoverPrimitive.Root
       open={selection !== null}
-      onOpenChange={(open) => {
-        if (!open) set_selection(null);
+      onOpenChange={(open, details) => {
+        if (!open) {
+          const target = details.event.target;
+          if (target instanceof Node && root_ref.current?.contains(target)) {
+            details.cancel();
+            return;
+          }
+          set_selection(null);
+        }
       }}
     >
       <div
@@ -264,66 +276,57 @@ export function AgentResponseAnnotationSelection(
       >
         {props.children}
       </div>
-      <PopoverPrimitive.Anchor virtualRef={anchor_ref} />
       {selection === null ? null : (
         <PopoverPrimitive.Portal>
-          <PopoverPrimitive.Content
-            asChild
+          <PopoverPrimitive.Positioner
+            className="isolate z-(--ui-layer-popover)"
             side="top"
             align="center"
             sideOffset={8}
             collisionPadding={8}
-            hideWhenDetached
-            updatePositionStrategy="always"
-            onPointerDownOutside={(event) => {
-              // 正文内的重新选择由 onPointerUp 统一裁决，不能再让 Popover 的延迟关闭覆盖结果。
-              const target = event.detail.originalEvent.target;
-              if (target instanceof Node && root_ref.current?.contains(target)) {
-                event.preventDefault();
-              }
-            }}
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              if (selection.focus_action) requestAnimationFrame(() => action_ref.current?.focus());
-            }}
-            onCloseAutoFocus={(event) => event.preventDefault()}
+            anchor={() => anchor_ref.current}
           >
-            {selection.editing ? (
-              <AgentResponseAnnotationEditor
-                className="agent-response-annotation-popover"
-                aria-label={t("agent_page.annotation.add")}
-                selected_text={selection.selectedText}
-                comment={selection.comment}
-                on_comment_change={(comment) =>
-                  set_selection((current) => (current === null ? null : { ...current, comment }))
-                }
-                on_submit={submit}
-                on_cancel={() => set_selection(null)}
-              />
-            ) : (
-              <div
-                className="agent-response-annotation-popover"
-                role="toolbar"
-                aria-label={t("agent_page.annotation.add")}
-              >
-                <AppButton
-                  ref={action_ref}
-                  type="button"
-                  variant="ghost"
-                  className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() =>
-                    set_selection((current) =>
-                      current === null ? null : { ...current, editing: true },
-                    )
+            <PopoverPrimitive.Popup
+              initialFocus={() => (selection.focus_action ? action_ref.current : false)}
+              finalFocus={false}
+            >
+              {selection.editing ? (
+                <AgentResponseAnnotationEditor
+                  className="agent-response-annotation-popover"
+                  aria-label={t("agent_page.annotation.add")}
+                  selected_text={selection.selectedText}
+                  comment={selection.comment}
+                  on_comment_change={(comment) =>
+                    set_selection((current) => (current === null ? null : { ...current, comment }))
                   }
+                  on_submit={submit}
+                  on_cancel={() => set_selection(null)}
+                />
+              ) : (
+                <div
+                  className="agent-response-annotation-popover"
+                  role="toolbar"
+                  aria-label={t("agent_page.annotation.add")}
                 >
-                  <MessageSquareQuote aria-hidden="true" />
-                  {t("agent_page.annotation.add")}
-                </AppButton>
-              </div>
-            )}
-          </PopoverPrimitive.Content>
+                  <AppButton
+                    ref={action_ref}
+                    type="button"
+                    variant="ghost"
+                    className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() =>
+                      set_selection((current) =>
+                        current === null ? null : { ...current, editing: true },
+                      )
+                    }
+                  >
+                    <MessageSquareQuote aria-hidden="true" />
+                    {t("agent_page.annotation.add")}
+                  </AppButton>
+                </div>
+              )}
+            </PopoverPrimitive.Popup>
+          </PopoverPrimitive.Positioner>
         </PopoverPrimitive.Portal>
       )}
     </PopoverPrimitive.Root>

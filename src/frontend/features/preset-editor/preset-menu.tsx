@@ -57,7 +57,7 @@ function PresetDefaultMenuItem(props: {
   return props.item.is_default ? (
     <AppDropdownMenuItem
       disabled={props.readonly}
-      onSelect={() => {
+      onClick={() => {
         void props.on_cancel_default();
       }}
     >
@@ -67,7 +67,7 @@ function PresetDefaultMenuItem(props: {
   ) : (
     <AppDropdownMenuItem
       disabled={props.readonly}
-      onSelect={() => {
+      onClick={() => {
         void props.on_set_default(props.item.virtual_id);
       }}
     >
@@ -95,19 +95,21 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
         }
       }}
     >
-      <AppDropdownMenuTrigger asChild>
-        <AppButton variant="ghost" size="toolbar">
-          <FolderOpen data-icon="inline-start" />
-          {props.trigger_label}
-        </AppButton>
-      </AppDropdownMenuTrigger>
+      <AppDropdownMenuTrigger
+        render={
+          <AppButton variant="ghost" size="toolbar">
+            <FolderOpen data-icon="inline-start" />
+            {props.trigger_label}
+          </AppButton>
+        }
+      />
       <AppDropdownMenuContent align="center">
         <AppDropdownMenuGroup>
-          <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
+          <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_request_reset}>
             <Recycle />
             {t("app.action.reset")}
           </AppDropdownMenuItem>
-          <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_save}>
+          <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_request_save}>
             <Save />
             {t("preset_editor.action.save")}
           </AppDropdownMenuItem>
@@ -124,7 +126,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                 <AppDropdownMenuSubContent>
                   <AppDropdownMenuItem
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       void props.on_apply(item.virtual_id);
                     }}
                   >
@@ -155,7 +157,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                 <AppDropdownMenuSubContent>
                   <AppDropdownMenuItem
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       void props.on_apply(item.virtual_id);
                     }}
                   >
@@ -164,7 +166,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       props.on_request_rename(item);
                     }}
                   >
@@ -174,7 +176,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                   <AppDropdownMenuItem
                     variant="destructive"
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       props.on_request_delete(item);
                     }}
                   >

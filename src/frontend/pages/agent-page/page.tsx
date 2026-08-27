@@ -494,20 +494,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   });
   const follow_latest_control = (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <AppButton
-          type="button"
-          className="agent-page__follow-control"
-          size="icon-xs"
-          variant="outline"
-          aria-label={follow_latest_label}
-          aria-pressed={follow_latest}
-          aria-keyshortcuts={follow_latest_aria_shortcut}
-          onClick={toggle_follow_latest}
-        >
-          <ArrowDownToLine aria-hidden="true" />
-        </AppButton>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <AppButton
+            type="button"
+            className="agent-page__follow-control"
+            size="icon-xs"
+            variant="outline"
+            aria-label={follow_latest_label}
+            aria-pressed={follow_latest}
+            aria-keyshortcuts={follow_latest_aria_shortcut}
+            onClick={toggle_follow_latest}
+          >
+            <ArrowDownToLine aria-hidden="true" />
+          </AppButton>
+        }
+      />
       <TooltipContent side="top" sideOffset={8}>
         <p>
           {follow_latest_status} <ShortcutKbd action="follow_latest" />

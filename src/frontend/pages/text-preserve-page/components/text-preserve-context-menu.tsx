@@ -18,7 +18,7 @@ export function TextPreserveContextMenuContent(
   return (
     <AppContextMenuContent>
       <AppContextMenuGroup>
-        <AppContextMenuItem onSelect={props.on_open_edit}>
+        <AppContextMenuItem onClick={props.on_open_edit}>
           <PencilLine />
           {t("app.action.edit")}
         </AppContextMenuItem>

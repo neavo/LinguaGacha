@@ -59,7 +59,7 @@ describe("AppAppearanceMenu", () => {
       throw new Error("缺少外观菜单按钮。");
     }
     await act(async () => {
-      trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     });
   }
 
@@ -77,8 +77,8 @@ describe("AppAppearanceMenu", () => {
     await render_menu();
     await open_menu();
 
-    expect(find_option("LGBase").dataset.state).toBe("checked");
-    expect(find_option("跟随系统").dataset.state).toBe("checked");
+    expect(find_option("LGBase").hasAttribute("data-checked")).toBe(true);
+    expect(find_option("跟随系统").hasAttribute("data-checked")).toBe(true);
   });
 
   it("选择选项时提交明确的字体和主题偏好", async () => {

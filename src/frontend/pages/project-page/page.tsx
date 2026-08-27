@@ -592,12 +592,14 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
           <File className="size-[18px] stroke-[1.8]" />
         </span>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="project-home__recent-name">{props.name}</span>
-              <span className="project-home__recent-path">{props.path}</span>
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 flex-1 text-left">
+                <span className="project-home__recent-name">{props.name}</span>
+                <span className="project-home__recent-path">{props.path}</span>
+              </span>
+            }
+          />
           <TooltipContent
             side="top"
             align="start"
@@ -1329,28 +1331,30 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const source_dropzone =
     selected_source === null ? (
       <AppContextMenu>
-        <AppContextMenuTrigger asChild>
-          <DropZoneCard
-            icon="source"
-            tone="source"
-            title={t("project_page.create.drop_title")}
-            is_active={active_dropzone === "source"}
-            disabled={is_source_checking || is_creating_project}
-            on_click={open_context_menu_at_click_position}
-            on_drag_over={(event) => {
-              handle_drop_over("source", event);
-            }}
-            on_drag_leave={() => {
-              handle_drop_leave("source");
-            }}
-            on_drop={(event) => {
-              void handle_source_drop(event);
-            }}
-          />
-        </AppContextMenuTrigger>
+        <AppContextMenuTrigger
+          render={
+            <DropZoneCard
+              icon="source"
+              tone="source"
+              title={t("project_page.create.drop_title")}
+              is_active={active_dropzone === "source"}
+              disabled={is_source_checking || is_creating_project}
+              on_click={open_context_menu_at_click_position}
+              on_drag_over={(event) => {
+                handle_drop_over("source", event);
+              }}
+              on_drag_leave={() => {
+                handle_drop_leave("source");
+              }}
+              on_drop={(event) => {
+                void handle_source_drop(event);
+              }}
+            />
+          }
+        />
         <AppContextMenuContent>
           <AppContextMenuItem
-            onSelect={() => {
+            onClick={() => {
               void handle_select_source_file();
             }}
           >
@@ -1358,7 +1362,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             {t("app.action.select_file")}
           </AppContextMenuItem>
           <AppContextMenuItem
-            onSelect={() => {
+            onClick={() => {
               void handle_select_source_folder();
             }}
           >
@@ -1383,36 +1387,38 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         </AppButton>
 
         <AppContextMenu>
-          <AppContextMenuTrigger asChild>
-            <button
-              className="project-home__selected-content w-full"
-              type="button"
-              onClick={open_context_menu_at_click_position}
-              onDragOver={(event) => {
-                handle_drop_over("source", event);
-              }}
-              onDragLeave={() => {
-                handle_drop_leave("source");
-              }}
-              onDrop={(event) => {
-                void handle_source_drop(event);
-              }}
-            >
-              <span className="project-home__dropzone-icon">
-                <SquareMousePointer className="size-11 stroke-[1.85]" />
-              </span>
-              <div className="project-home__selected-summary">
-                <p className="project-home__selected-name">
-                  {t("project_page.create.ready_status", {
-                    COUNT: selected_source.source_file_count.toString(),
-                  })}
-                </p>
-              </div>
-            </button>
-          </AppContextMenuTrigger>
+          <AppContextMenuTrigger
+            render={
+              <button
+                className="project-home__selected-content w-full"
+                type="button"
+                onClick={open_context_menu_at_click_position}
+                onDragOver={(event) => {
+                  handle_drop_over("source", event);
+                }}
+                onDragLeave={() => {
+                  handle_drop_leave("source");
+                }}
+                onDrop={(event) => {
+                  void handle_source_drop(event);
+                }}
+              >
+                <span className="project-home__dropzone-icon">
+                  <SquareMousePointer className="size-11 stroke-[1.85]" />
+                </span>
+                <div className="project-home__selected-summary">
+                  <p className="project-home__selected-name">
+                    {t("project_page.create.ready_status", {
+                      COUNT: selected_source.source_file_count.toString(),
+                    })}
+                  </p>
+                </div>
+              </button>
+            }
+          />
           <AppContextMenuContent>
             <AppContextMenuItem
-              onSelect={() => {
+              onClick={() => {
                 void handle_select_source_file();
               }}
             >
@@ -1420,7 +1426,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               {t("app.action.select_file")}
             </AppContextMenuItem>
             <AppContextMenuItem
-              onSelect={() => {
+              onClick={() => {
                 void handle_select_source_folder();
               }}
             >
@@ -1569,19 +1575,21 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                     const hit_count = selected_source?.format_hit_counts[format.id] ?? 0;
                     return (
                       <Tooltip key={format.id}>
-                        <TooltipTrigger asChild>
-                          <li className="project-home__format-tag">
-                            <span className="project-home__format-title">
-                              {t(format.title_key)}
-                            </span>
-                            <span className="project-home__format-extension">
-                              {format.extension}
-                            </span>
-                            {hit_count > 0 ? (
-                              <span className="project-home__format-count">{hit_count}</span>
-                            ) : null}
-                          </li>
-                        </TooltipTrigger>
+                        <TooltipTrigger
+                          render={
+                            <li className="project-home__format-tag">
+                              <span className="project-home__format-title">
+                                {t(format.title_key)}
+                              </span>
+                              <span className="project-home__format-extension">
+                                {format.extension}
+                              </span>
+                              {hit_count > 0 ? (
+                                <span className="project-home__format-count">{hit_count}</span>
+                              ) : null}
+                            </li>
+                          }
+                        />
                         <TooltipContent
                           side="top"
                           sideOffset={8}

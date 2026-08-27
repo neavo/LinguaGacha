@@ -5,6 +5,7 @@ import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import {
   CommandBar,
   CommandBarGroup,
@@ -12,7 +13,6 @@ import {
 } from "@frontend/widgets/command-bar/command-bar";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 
 type TextReplacementCommandBarProps = {
   title_key: LocaleKey;
@@ -39,16 +39,6 @@ type TextReplacementCommandBarProps = {
 
 export function TextReplacementCommandBar(props: TextReplacementCommandBarProps): JSX.Element {
   const { t } = useI18n();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
   const toggle_tooltip_title = t("app.tooltip.value", {
     TITLE: t(props.title_key),
@@ -140,20 +130,20 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
       }
       hint={
         <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="text-replacement-page__toggle-cluster">
-              <SegmentedToggle
-                aria_label={t(props.title_key)}
-                size="sm"
-                value={props.enabled ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
-                disabled={props.readonly}
-                on_value_change={(next_value) => {
-                  void props.on_toggle_enabled(next_value === "enabled");
-                }}
-              />
-            </div>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <div className="text-replacement-page__toggle-cluster">
+                <BooleanSegmentedToggle
+                  aria_label={t(props.title_key)}
+                  value={props.enabled}
+                  disabled={props.readonly}
+                  on_value_change={(next_value) => {
+                    void props.on_toggle_enabled(next_value);
+                  }}
+                />
+              </div>
+            }
+          />
           <TooltipContent
             side="top"
             align="end"

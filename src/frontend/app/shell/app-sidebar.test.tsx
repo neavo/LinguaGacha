@@ -74,7 +74,7 @@ describe("AppSidebar", () => {
     }
 
     await act(async () => {
-      trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     });
   }
 

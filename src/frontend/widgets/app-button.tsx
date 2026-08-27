@@ -1,61 +1,19 @@
-import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { cn } from "@frontend/shadcn/classnames";
 import { Button } from "@frontend/shadcn/button";
 
-type ShadcnButtonProps = React.ComponentProps<typeof Button>;
-type ShadcnButtonSize = NonNullable<ShadcnButtonProps["size"]>;
-type AppButtonSize = ShadcnButtonSize | "toolbar";
+type AppButtonProps = Omit<React.ComponentProps<typeof Button>, "size" | "variant"> & {
+  variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link";
+  size?: "default" | "xs" | "sm" | "lg" | "toolbar" | "icon" | "icon-xs" | "icon-sm" | "icon-lg";
+};
 
-const appButtonVariants = cva("rounded-[var(--ui-radius-button)] text-[13px]", {
-  variants: {
-    variant: {
-      default: "hover:bg-primary/90",
-      outline: null,
-      secondary: null,
-      ghost: null,
-      destructive: null,
-      link: null,
-    },
-    size: {
-      default: null,
-      xs: "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
-      sm: "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
-      lg: null,
-      toolbar:
-        "h-[var(--ui-toolbar-button-height)] gap-2 rounded-[var(--ui-radius-button)] px-[var(--ui-toolbar-button-padding-x)] text-[12px] has-data-[icon=inline-end]:pr-[calc(var(--ui-toolbar-button-padding-x)-2px)] has-data-[icon=inline-start]:pl-[calc(var(--ui-toolbar-button-padding-x)-2px)]",
-      icon: null,
-      "icon-xs":
-        "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)] [&_svg:not([class*='size-'])]:size-3",
-      "icon-sm":
-        "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
-      "icon-lg": null,
-    },
-  },
-});
-
-type AppButtonProps = Omit<ShadcnButtonProps, "size"> &
-  VariantProps<typeof appButtonVariants> & {
-    size?: AppButtonSize;
-  };
 function AppButton({
   className,
   variant = "default",
   size = "default",
   ...props
 }: AppButtonProps): JSX.Element {
-  const shadcn_size: ShadcnButtonSize = size === "toolbar" ? "default" : size;
-
-  return (
-    <Button
-      variant={variant}
-      size={shadcn_size}
-      data-size={size}
-      className={cn(appButtonVariants({ variant, size }), className)}
-      {...props}
-    />
-  );
+  return <Button variant={variant} size={size} data-size={size} className={className} {...props} />;
 }
 
-export { AppButton, appButtonVariants };
+export { AppButton };

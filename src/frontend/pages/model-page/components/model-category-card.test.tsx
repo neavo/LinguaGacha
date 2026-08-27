@@ -30,7 +30,9 @@ vi.mock("@dnd-kit/core", async (import_original) => {
 vi.mock("@dnd-kit/sortable", async (import_original) => {
   const mock_module = {
     ...(await import_original<typeof import("@dnd-kit/sortable")>()),
-    SortableContext: (props: { children: ReactNode }) => <>{props.children}</>,
+    SortableContext: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
   return { ...mock_module, default: mock_module };
 });

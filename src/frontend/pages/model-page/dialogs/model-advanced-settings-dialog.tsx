@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/
 import { Input } from "@frontend/shadcn/input";
 import { Textarea } from "@frontend/shadcn/textarea";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 type ModelAdvancedSettingsDialogProps = {
@@ -185,16 +185,6 @@ export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
 ): JSX.Element | null {
   const { t } = useI18n();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const [headers_text, set_headers_text] = useState("");
   const [body_text, set_body_text] = useState("");
   const [headers_error, set_headers_error] = useState(false);
@@ -384,18 +374,16 @@ export function ModelAdvancedSettingsDialog(
                         </div>
                       ) : null}
 
-                      <SegmentedToggle
+                      <BooleanSegmentedToggle
                         aria_label={t(field_config.title_key)}
-                        size="sm"
-                        value={current_enabled ? "enabled" : "disabled"}
-                        options={boolean_segmented_options}
+                        value={current_enabled}
                         className="model-page__advanced-toggle-group"
                         stretch
                         disabled={props.readonly}
                         on_value_change={(next_value) => {
                           void props.onPatch({
                             generation: {
-                              [field_config.enabled_key]: next_value === "enabled",
+                              [field_config.enabled_key]: next_value,
                             },
                           });
                         }}
@@ -418,18 +406,16 @@ export function ModelAdvancedSettingsDialog(
                 </div>
 
                 <div className="model-page__advanced-inline-control">
-                  <SegmentedToggle
+                  <BooleanSegmentedToggle
                     aria_label={t("model_page.fields.extra_headers.title")}
-                    size="sm"
-                    value={model.request.extra_headers_custom_enable ? "enabled" : "disabled"}
-                    options={boolean_segmented_options}
+                    value={model.request.extra_headers_custom_enable}
                     className="model-page__advanced-toggle-group"
                     stretch
                     disabled={props.readonly}
                     on_value_change={(next_value) => {
                       void props.onPatch({
                         request: {
-                          extra_headers_custom_enable: next_value === "enabled",
+                          extra_headers_custom_enable: next_value,
                         },
                       });
                     }}
@@ -468,18 +454,16 @@ export function ModelAdvancedSettingsDialog(
                 </div>
 
                 <div className="model-page__advanced-inline-control">
-                  <SegmentedToggle
+                  <BooleanSegmentedToggle
                     aria_label={t("model_page.fields.extra_body.title")}
-                    size="sm"
-                    value={model.request.extra_body_custom_enable ? "enabled" : "disabled"}
-                    options={boolean_segmented_options}
+                    value={model.request.extra_body_custom_enable}
                     className="model-page__advanced-toggle-group"
                     stretch
                     disabled={props.readonly}
                     on_value_change={(next_value) => {
                       void props.onPatch({
                         request: {
-                          extra_body_custom_enable: next_value === "enabled",
+                          extra_body_custom_enable: next_value,
                         },
                       });
                     }}

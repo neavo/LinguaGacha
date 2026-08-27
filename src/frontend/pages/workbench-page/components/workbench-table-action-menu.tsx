@@ -49,20 +49,22 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
         }
       }}
     >
-      <AppDropdownMenuTrigger asChild>
-        <AppButton
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          disabled={props.disabled}
-          className="workbench-page__row-action"
-          aria-label={t("workbench_page.table.actions")}
-          data-app-table-ignore-row-click="true"
-          data-app-table-ignore-box-select="true"
-        >
-          <CircleEllipsis data-icon="inline-start" />
-        </AppButton>
-      </AppDropdownMenuTrigger>
+      <AppDropdownMenuTrigger
+        render={
+          <AppButton
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={props.disabled}
+            className="workbench-page__row-action"
+            aria-label={t("workbench_page.table.actions")}
+            data-app-table-ignore-row-click="true"
+            data-app-table-ignore-box-select="true"
+          >
+            <CircleEllipsis data-icon="inline-start" />
+          </AppButton>
+        }
+      />
       <AppDropdownMenuContent align="center">
         <WorkbenchTableActionMenuContent disabled={props.disabled} on_reset={props.on_reset} />
       </AppDropdownMenuContent>

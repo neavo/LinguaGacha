@@ -288,7 +288,7 @@ LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住�
 
 **The Cool Desktop Rule.** 中性灰必须保持轻微蓝灰调，禁止纯黑、纯白和默认高饱和冷蓝。
 
-**The Icon Glow Scarcity Rule.** 暖橙只用于主操作、选择、焦点、进度和状态线索；单屏大面积铺色会破坏内敛气质。
+**The Accent Scarcity Rule.** 暖橙只用于主操作、选择、焦点、进度和状态线索；单屏大面积铺色会破坏内敛气质。
 
 **The Status Honesty Rule.** 成功绿、警告橙和失败红只表达状态，禁止参与普通装饰配色。
 
@@ -380,7 +380,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 - **Shape:** 应用按钮默认高 32px、4px 圆角、13px 字号和 10px 水平内边距；标题栏按钮为 32px，工具栏按钮为 36px、12px 字号和 8px 水平内边距。
 - **Primary:** 暖橙背景配暖米文字，只用于主操作。
-- **Hover / Focus:** hover 轻微改变当前语义面；focus-visible 使用 ring 边框和 3px 半透明焦点环；非弹出型按钮 active 下压 1px。
+- **Hover / Focus:** hover 轻微改变当前语义面；按钮预留 1px 边框，focus-visible 把边框切换为 ring；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
 - **Shortcuts:** 常驻按钮把快捷键显示为紧随行为文案的键帽；Tooltip 不嵌套键帽，只使用完整的本地化纯文本“行为 · 快捷键”。
 - **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
@@ -399,7 +399,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 ### Tabs
 
 - **Structure:** 局部分段容器高 32px、4px 圆角、muted 背景和 4px 内边距；触发项高 24px、最小宽 64px、12px 字号和 12px 水平内边距。
-- **Active / Focus:** 激活项使用 popover 面、正文色和极轻阴影；键盘焦点使用 1px ring，不放大或位移。
+- **Active / Focus:** 激活项使用 popover 面、正文色和极轻阴影；键盘焦点使用 1px 实线轮廓，不放大或位移。
 - **Limit:** Tabs 只切换同一任务对象的局部视图，例如工具输入与输出；不得替代侧栏主导航或制造网页式页签栏。
 
 ### Cards / Containers

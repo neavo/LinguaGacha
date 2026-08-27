@@ -5,13 +5,13 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem as GlossaryPresetItem } from "@frontend/features/preset-editor/preset-types";
 import { AppButton } from "@frontend/widgets/app-button";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type GlossaryCommandBarProps = {
@@ -37,16 +37,6 @@ type GlossaryCommandBarProps = {
 };
 export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element {
   const { t } = useI18n();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
   const toggle_tooltip_title = t("app.tooltip.value", {
     TITLE: t("glossary_page.title"),
@@ -138,20 +128,20 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
       }
       hint={
         <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="glossary-page__toggle-cluster">
-              <SegmentedToggle
-                aria_label={t("glossary_page.title")}
-                size="sm"
-                value={props.enabled ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
-                disabled={props.readonly}
-                on_value_change={(next_value) => {
-                  void props.on_toggle_enabled(next_value === "enabled");
-                }}
-              />
-            </div>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <div className="glossary-page__toggle-cluster">
+                <BooleanSegmentedToggle
+                  aria_label={t("glossary_page.title")}
+                  value={props.enabled}
+                  disabled={props.readonly}
+                  on_value_change={(next_value) => {
+                    void props.on_toggle_enabled(next_value);
+                  }}
+                />
+              </div>
+            }
+          />
           <TooltipContent
             side="top"
             align="end"

@@ -6,6 +6,10 @@ import { afterEach } from "vitest";
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+if (typeof Element !== "undefined" && Element.prototype.getAnimations === undefined) {
+  Element.prototype.getAnimations = () => [];
+}
+
 afterEach(() => {
   if (typeof document === "undefined") {
     return;

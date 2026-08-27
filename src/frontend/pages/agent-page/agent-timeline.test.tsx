@@ -145,7 +145,16 @@ describe("AgentTimeline", () => {
   }
 
   function get_tool_dialog_text(): string | undefined {
-    return document.body.querySelector('[role="dialog"] .cm-content')?.textContent ?? undefined;
+    const active_scope =
+      document.body.querySelector<HTMLButtonElement>('button[role="tab"][data-active]')
+        ?.textContent === "agent_page.tool.output"
+        ? "output"
+        : "input";
+    return (
+      document.body.querySelector(
+        `[role="dialog"] .cm-content[aria-label="agent_page.tool.${active_scope}"]`,
+      )?.textContent ?? undefined
+    );
   }
 
   function get_tool_dialog_json(): unknown {
@@ -386,11 +395,7 @@ describe("AgentTimeline", () => {
     const output_tab = [
       ...document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]'),
     ].find((button) => button.textContent === "agent_page.tool.output");
-    await act(async () =>
-      output_tab?.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true, button: 0, ctrlKey: false }),
-      ),
-    );
+    await act(async () => output_tab?.click());
     expect(get_tool_dialog_json()).toEqual({ scope: "output" });
     expect(view.querySelector(".agent-tool-entry .agent-status-mark--success")).not.toBeNull();
   });

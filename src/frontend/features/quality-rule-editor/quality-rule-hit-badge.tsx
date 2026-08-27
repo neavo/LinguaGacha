@@ -80,16 +80,18 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
   if (props.badge_state.kind === "unmatched") {
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-app-table-ignore-box-select="true"
-            data-app-table-ignore-row-click="true"
-            className={props.wrap_class_name}
-            aria-label={props.badge_state.tooltip}
-          >
-            {badge}
-          </span>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <span
+              data-app-table-ignore-box-select="true"
+              data-app-table-ignore-row-click="true"
+              className={props.wrap_class_name}
+              aria-label={props.badge_state.tooltip}
+            >
+              {badge}
+            </span>
+          }
+        />
         {tooltip_content}
       </Tooltip>
     );
@@ -102,31 +104,8 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
   ) {
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-app-table-ignore-box-select="true"
-            data-app-table-ignore-row-click="true"
-            className={props.button_class_name}
-            aria-label={props.badge_state.tooltip}
-            onClick={(event) => {
-              event.stopPropagation();
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {badge}
-          </button>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  return (
-    <AppDropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
+        <TooltipTrigger
+          render={
             <button
               type="button"
               data-app-table-ignore-box-select="true"
@@ -135,12 +114,41 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
               aria-label={props.badge_state.tooltip}
               onClick={(event) => {
                 event.stopPropagation();
+                void props.on_query_entry_source(props.entry_id);
               }}
             >
               {badge}
             </button>
-          </AppDropdownMenuTrigger>
-        </TooltipTrigger>
+          }
+        />
+        {tooltip_content}
+      </Tooltip>
+    );
+  }
+
+  return (
+    <AppDropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <AppDropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  data-app-table-ignore-box-select="true"
+                  data-app-table-ignore-row-click="true"
+                  className={props.button_class_name}
+                  aria-label={props.badge_state.tooltip}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  {badge}
+                </button>
+              }
+            />
+          }
+        />
         {tooltip_content}
       </Tooltip>
       <AppDropdownMenuContent align="center">

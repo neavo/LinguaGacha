@@ -283,20 +283,10 @@
   line-height: 1.25;
   padding: 5px 8px;
   text-align: left;
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease;
 }
 
 .model-page__selector-item:hover {
   background: color-mix(in srgb, var(--popover) 80%, var(--muted) 20%);
-}
-
-.model-page__selector-item:focus-visible {
-  border-color: var(--ring);
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 40%, transparent);
 }
 
 .model-page__selector-loading {

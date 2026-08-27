@@ -19,7 +19,9 @@ vi.mock("@dnd-kit/sortable", async (import_original) => {
 
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
 }));
 
 describe("ModelItemChip", () => {

@@ -4,6 +4,7 @@ import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import type { TextPreserveMode } from "@frontend/pages/text-preserve-page/types";
+import { SegmentedToggle, type SegmentedToggleOption } from "@frontend/shadcn/segmented-toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -13,10 +14,6 @@ import {
 } from "@frontend/widgets/command-bar/command-bar";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
-import {
-  SegmentedToggle,
-  type SegmentedToggleOption,
-} from "@frontend/widgets/segmented-toggle/segmented-toggle";
 
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey;
@@ -154,22 +151,22 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       }
       hint={
         <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="text-preserve-page__mode-cluster">
-              <SegmentedToggle
-                aria_label={t("text_preserve_page.mode.label")}
-                className="text-preserve-page__mode-toggle"
-                item_class_name="text-preserve-page__mode-toggle-item"
-                size="sm"
-                disabled={props.readonly || props.mode_updating}
-                value={props.mode}
-                options={mode_options}
-                on_value_change={(next_value) => {
-                  void props.on_mode_change(next_value);
-                }}
-              />
-            </div>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <div className="text-preserve-page__mode-cluster">
+                <SegmentedToggle
+                  aria_label={t("text_preserve_page.mode.label")}
+                  className="text-preserve-page__mode-toggle"
+                  disabled={props.readonly || props.mode_updating}
+                  value={props.mode}
+                  options={mode_options}
+                  on_value_change={(next_value) => {
+                    void props.on_mode_change(next_value);
+                  }}
+                />
+              </div>
+            }
+          />
           <TooltipContent
             side="top"
             align="end"

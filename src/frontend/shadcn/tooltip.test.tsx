@@ -24,7 +24,7 @@ describe("Tooltip", () => {
     root = createRoot(container);
     await act(async () =>
       root?.render(
-        <TooltipProvider delayDuration={0}>
+        <TooltipProvider delay={0}>
           <Tooltip>
             <TooltipTrigger>提示按钮</TooltipTrigger>
             <TooltipContent>提示内容</TooltipContent>
@@ -39,12 +39,14 @@ describe("Tooltip", () => {
 
   function move_pointer(target: HTMLElement, x: number, y: number): void {
     target.dispatchEvent(
-      new PointerEvent("pointermove", {
+      new MouseEvent("mouseenter", {
         bubbles: true,
-        pointerType: "mouse",
         clientX: x,
         clientY: y,
       }),
+    );
+    target.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: x, clientY: y }),
     );
   }
 
@@ -55,10 +57,13 @@ describe("Tooltip", () => {
       move_pointer(trigger, 10, 10);
       vi.runAllTimers();
     });
-    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
 
-    await act(async () => window.dispatchEvent(new Event("blur")));
-    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new Event("blur"));
+      vi.runAllTimers();
+    });
+    expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
 
     await act(async () => window.dispatchEvent(new Event("focus")));
     const restored_trigger = container?.querySelector<HTMLButtonElement>("button");
@@ -69,12 +74,12 @@ describe("Tooltip", () => {
       move_pointer(restored_trigger, 10, 10);
       vi.runAllTimers();
     });
-    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
 
     await act(async () => {
       move_pointer(restored_trigger, 20, 10);
       vi.runAllTimers();
     });
-    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
   });
 });

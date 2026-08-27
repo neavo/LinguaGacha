@@ -3,9 +3,9 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { Locale } from "@shared/i18n";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 
 type LaboratoryHelpField = "mtool_optimizer_enable";
 
@@ -24,17 +24,6 @@ const HELP_URL_BY_FIELD = {
 export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n();
   const laboratory_page_state = useLaboratoryPageState();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
-
   function render_help_button(field: LaboratoryHelpField): JSX.Element {
     const help_url = HELP_URL_BY_FIELD[locale][field];
 
@@ -57,16 +46,12 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
     on_value_change: (next_value: boolean) => void;
   }): JSX.Element {
     return (
-      <SegmentedToggle
+      <BooleanSegmentedToggle
         aria_label={t(options.title_key)}
-        size="sm"
-        value={options.value ? "enabled" : "disabled"}
-        options={boolean_segmented_options}
+        value={options.value}
         stretch
         disabled={options.disabled}
-        on_value_change={(next_value) => {
-          options.on_value_change(next_value === "enabled");
-        }}
+        on_value_change={options.on_value_change}
       />
     );
   }

@@ -63,7 +63,7 @@ describe("应用模态窗", () => {
       <AppActionDialog
         open
         description="请选择处理方式"
-        primaryAction={{ label: "覆盖", onSelect: on_primary, variant: "destructive" }}
+        primaryAction={{ label: "覆盖", onSelect: on_primary, destructive: true }}
         secondaryAction={{ label: "跳过", onSelect: on_secondary }}
         dismissAction={{ label: "取消", onSelect: on_dismiss }}
         onClose={vi.fn()}

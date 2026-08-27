@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { WrapText } from "lucide-react";
 
 import type { AgentToolEntry } from "@shared/agent";
@@ -20,6 +20,7 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
   const { t } = useI18n();
   const [wrap_lines, set_wrap_lines] = useState(true);
   const entry = props.entry;
+  const initial_tab_ref = useRef<"input" | "output">(entry.output === null ? "input" : "output");
   const active = entry.status === "running";
   const duration = useAgentElapsed(entry.createdAt, active);
   const status_label = t(AGENT_STATUS_LABEL_KEYS[entry.status]);
@@ -49,29 +50,28 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
         <AgentStatusMark status={entry.status} label={status_label} />
       </div>
 
-      <Tabs
-        defaultValue={entry.output === null ? "input" : "output"}
-        className="agent-tool-detail__tabs"
-      >
+      <Tabs defaultValue={initial_tab_ref.current} className="agent-tool-detail__tabs">
         <div className="agent-tool-detail__toolbar">
           <TabsList aria-label={title}>
             <TabsTrigger value="input">{t("agent_page.tool.input")}</TabsTrigger>
             <TabsTrigger value="output">{t("agent_page.tool.output")}</TabsTrigger>
           </TabsList>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <AppButton
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="agent-tool-detail__wrap-action"
-                aria-label={wrap_label}
-                aria-pressed={wrap_lines}
-                onClick={() => set_wrap_lines((previous_value) => !previous_value)}
-              >
-                <WrapText aria-hidden="true" />
-              </AppButton>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <AppButton
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="agent-tool-detail__wrap-action"
+                  aria-label={wrap_label}
+                  aria-pressed={wrap_lines}
+                  onClick={() => set_wrap_lines((previous_value) => !previous_value)}
+                >
+                  <WrapText aria-hidden="true" />
+                </AppButton>
+              }
+            />
             <TooltipContent side="bottom" sideOffset={8}>
               <p>{wrap_status}</p>
             </TooltipContent>

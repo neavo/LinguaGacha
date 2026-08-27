@@ -9,16 +9,30 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 }));
 
 vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
+  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipContent: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
 }));
 
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
-  AppDropdownMenu: (props: { children: ReactNode }) => <>{props.children}</>,
-  AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-  AppDropdownMenuContent: (props: { children: ReactNode }) => <>{props.children}</>,
-  AppDropdownMenuGroup: (props: { children: ReactNode }) => <>{props.children}</>,
+  AppDropdownMenu: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  AppDropdownMenuContent: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  AppDropdownMenuGroup: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   AppDropdownMenuItem: (props: { children: ReactNode; onClick: () => void }) => (
     <button type="button" onClick={props.onClick}>
       {props.children}

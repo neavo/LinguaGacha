@@ -107,6 +107,8 @@ describe("AgentMessageAttachments", () => {
       'button[aria-label="agent_page.annotation.title 1"]',
     );
     await act(async () => open?.click());
+    const positioner = document.body.querySelector<HTMLElement>('[role="presentation"]');
+    expect(positioner?.className).toContain("z-(--ui-layer-popover)");
     const textarea = document.body.querySelector<HTMLTextAreaElement>(
       '[role="dialog"][aria-label="agent_page.annotation.edit"] textarea',
     );

@@ -10,8 +10,8 @@ import {
   PRECEDING_LINES_THRESHOLD_MIN,
 } from "@frontend/pages/expert-settings-page/types";
 import { Input } from "@frontend/shadcn/input";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 
 type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean;
@@ -35,17 +35,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     PRECEDING_LINES_THRESHOLD_MAX,
   );
   const preceding_lines_threshold_invalid = parsed_preceding_lines_threshold === null;
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
-
   function render_boolean_toggle(options: {
     title_key:
       | "expert_settings_page.fields.clean_ruby.title"
@@ -57,16 +46,12 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     on_value_change: (next_value: boolean) => void;
   }): JSX.Element {
     return (
-      <SegmentedToggle
+      <BooleanSegmentedToggle
         aria_label={t(options.title_key)}
-        size="sm"
-        value={options.value ? "enabled" : "disabled"}
-        options={boolean_segmented_options}
+        value={options.value}
         stretch
         disabled={options.disabled}
-        on_value_change={(next_value) => {
-          options.on_value_change(next_value === "enabled");
-        }}
+        on_value_change={options.on_value_change}
       />
     );
   }

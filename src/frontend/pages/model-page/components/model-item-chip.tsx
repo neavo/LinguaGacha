@@ -50,12 +50,14 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
       </AppButton>
 
       <AppDropdownMenu>
-        <AppDropdownMenuTrigger asChild>
-          <AppButton type="button" variant="outline" className="model-page__name-trigger">
-            <span className="model-page__name-text">{props.model.name}</span>
-            <ChevronDown data-icon="inline-end" />
-          </AppButton>
-        </AppDropdownMenuTrigger>
+        <AppDropdownMenuTrigger
+          render={
+            <AppButton type="button" variant="outline" className="model-page__name-trigger">
+              <span className="model-page__name-text">{props.model.name}</span>
+              <ChevronDown data-icon="inline-end" />
+            </AppButton>
+          }
+        />
         {props.menu}
       </AppDropdownMenu>
     </div>

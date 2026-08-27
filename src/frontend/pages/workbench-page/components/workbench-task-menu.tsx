@@ -67,20 +67,22 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
   return (
     <AppDropdownMenu>
       <Tooltip>
-        <TooltipTrigger asChild>
-          {tooltip_trigger_target(
-            <AppDropdownMenuTrigger asChild>
-              <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
-                {is_analysis ? (
-                  <Radar data-icon="inline-start" />
-                ) : (
-                  <ScanText data-icon="inline-start" />
-                )}
-                {t(`workbench_page.action.${props.task_kind}_task`)}
-              </AppButton>
-            </AppDropdownMenuTrigger>,
+        <TooltipTrigger
+          render={tooltip_trigger_target(
+            <AppDropdownMenuTrigger
+              render={
+                <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+                  {is_analysis ? (
+                    <Radar data-icon="inline-start" />
+                  ) : (
+                    <ScanText data-icon="inline-start" />
+                  )}
+                  {t(`workbench_page.action.${props.task_kind}_task`)}
+                </AppButton>
+              }
+            />,
           )}
-        </TooltipTrigger>
+        />
         <TooltipContent side="top" sideOffset={8}>
           <p>{t(`workbench_page.${props.task_kind}_task.menu.tooltip`)}</p>
         </TooltipContent>
@@ -113,7 +115,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
         <AppDropdownMenuGroup>
           <AppDropdownMenuItem
             disabled={action_items_disabled}
-            onSelect={() => {
+            onClick={() => {
               void props.on_start_or_continue();
             }}
           >
@@ -140,7 +142,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
           <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
-            onSelect={() => {
+            onClick={() => {
               props.on_request_reset("reset-all");
             }}
           >
@@ -154,7 +156,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
           <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
-            onSelect={() => {
+            onClick={() => {
               props.on_request_reset("reset-failed");
             }}
           >
@@ -178,7 +180,7 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
                   props.analysis_import.importing ||
                   props.analysis_import.candidate_count <= 0
                 }
-                onSelect={props.analysis_import.on_request}
+                onClick={props.analysis_import.on_request}
               >
                 {props.analysis_import.importing ? (
                   <Spinner data-icon="inline-start" />

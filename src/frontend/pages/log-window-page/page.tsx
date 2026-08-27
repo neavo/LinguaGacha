@@ -533,8 +533,8 @@ export function LogWindowPage(): JSX.Element {
               <h2>{t("log_window_page.detail.title")}</h2>
               <div className="log-window-page__detail-head-actions">
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    {tooltip_trigger_target(
+                  <TooltipTrigger
+                    render={tooltip_trigger_target(
                       <AppButton
                         type="button"
                         variant="ghost"
@@ -551,14 +551,14 @@ export function LogWindowPage(): JSX.Element {
                         <ChevronUp aria-hidden="true" />
                       </AppButton>,
                     )}
-                  </TooltipTrigger>
+                  />
                   <TooltipContent side="bottom" sideOffset={8}>
                     <p>{t("log_window_page.detail.previous")}</p>
                   </TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    {tooltip_trigger_target(
+                  <TooltipTrigger
+                    render={tooltip_trigger_target(
                       <AppButton
                         type="button"
                         variant="ghost"
@@ -575,30 +575,32 @@ export function LogWindowPage(): JSX.Element {
                         <ChevronDown aria-hidden="true" />
                       </AppButton>,
                     )}
-                  </TooltipTrigger>
+                  />
                   <TooltipContent side="bottom" sideOffset={8}>
                     <p>{t("log_window_page.detail.next")}</p>
                   </TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <AppButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="log-window-page__detail-action"
-                      aria-label={detail_expand_label}
-                      onClick={() => {
-                        set_detail_expanded((previous_value) => !previous_value);
-                      }}
-                    >
-                      {detail_expanded ? (
-                        <Minimize2 aria-hidden="true" />
-                      ) : (
-                        <Maximize2 aria-hidden="true" />
-                      )}
-                    </AppButton>
-                  </TooltipTrigger>
+                  <TooltipTrigger
+                    render={
+                      <AppButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="log-window-page__detail-action"
+                        aria-label={detail_expand_label}
+                        onClick={() => {
+                          set_detail_expanded((previous_value) => !previous_value);
+                        }}
+                      >
+                        {detail_expanded ? (
+                          <Minimize2 aria-hidden="true" />
+                        ) : (
+                          <Maximize2 aria-hidden="true" />
+                        )}
+                      </AppButton>
+                    }
+                  />
                   <TooltipContent side="bottom" sideOffset={8}>
                     <p>{detail_expand_label}</p>
                   </TooltipContent>

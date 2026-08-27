@@ -58,17 +58,19 @@ vi.mock("@frontend/widgets/app-context-menu", () => {
   return {
     AppContextMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppContextMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppContextMenuItem: (props: { children: ReactNode; onSelect?: (event: Event) => void }) => (
+    AppContextMenuItem: (props: { children: ReactNode; onClick?: (event: Event) => void }) => (
       <button
         type="button"
         onClick={() => {
-          props.onSelect?.(new Event("select"));
+          props.onClick?.(new Event("select"));
         }}
       >
         {props.children}
       </button>
     ),
-    AppContextMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    AppContextMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
 });
 
@@ -112,9 +114,13 @@ vi.mock("@frontend/shadcn/spinner", () => {
 
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
-    Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
-    TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
 });
 

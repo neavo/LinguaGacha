@@ -41,7 +41,9 @@ vi.mock("@frontend/shadcn/card", () => {
 
 vi.mock("@frontend/widgets/app-dropdown-menu", () => {
   return {
-    AppDropdownMenu: (props: { children: ReactNode }) => <>{props.children}</>,
+    AppDropdownMenu: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppDropdownMenuRadioGroup: (props: {
       children: ReactNode;
@@ -55,7 +57,9 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => {
     AppDropdownMenuRadioItem: (props: { children: ReactNode; value: string }) => (
       <div data-value={props.value}>{props.children}</div>
     ),
-    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
   };
 });
 
@@ -111,9 +115,13 @@ vi.mock("@frontend/shadcn/input-group", () => {
 
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
-    Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
   };
 });

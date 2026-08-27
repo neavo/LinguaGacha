@@ -33,7 +33,7 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
         primaryAction={{
           label: t("app.action.replace"),
           onSelect: props.on_confirm,
-          variant: "destructive",
+          destructive: true,
         }}
         secondaryAction={{ label: t("app.action.skip"), onSelect: props.on_secondary }}
         onClose={props.on_close}

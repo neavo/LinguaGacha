@@ -150,9 +150,13 @@ vi.mock("@frontend/shadcn/card", () => {
 
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
-    Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+    Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     TooltipContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+    TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
   };
 });

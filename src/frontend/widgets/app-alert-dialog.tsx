@@ -1,15 +1,18 @@
-import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
-import { useLayoutEffect, useState } from "react";
+import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { Button } from "@frontend/shadcn/button";
 import { Spinner } from "@frontend/shadcn/spinner";
+import { AppButton } from "@frontend/widgets/app-button";
 
 type AppDialogAction = {
   label: string;
   onSelect: () => void | Promise<void>;
-  variant?: "default" | "destructive" | "outline";
   disabled?: boolean; // 动作自身的可用性独立于提交互斥
+};
+
+type AppDialogPrimaryAction = AppDialogAction & {
+  destructive?: boolean;
 };
 
 type AppDialogDismissAction = {
@@ -33,22 +36,13 @@ type AppConfirmDialogProps = Omit<AppDialogBaseProps, "submittingLabel" | "submi
 };
 
 type AppActionDialogProps = AppDialogBaseProps & {
-  primaryAction: AppDialogAction;
+  primaryAction: AppDialogPrimaryAction;
   secondaryAction?: AppDialogAction;
   dismissAction?: AppDialogDismissAction | null;
 };
 
-type ClosableEvent = {
-  preventDefault: () => void;
-};
-
 // 延迟确认采用统一时长，业务层只判断动作是否需要保护。
 const CONFIRM_DELAY_SECONDS = 3;
-
-/** 提交期间禁止通过键盘或外部事件关闭模态窗。 */
-function preventDialogClose(event: ClosableEvent): void {
-  event.preventDefault();
-}
 
 /** 固定承载取消/确认语义，并在危险动作需要时统一延迟确认。 */
 export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
@@ -109,32 +103,37 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   );
 }
 
-/** 共享 Radix 壳层只负责可访问性、提交互斥和动作布局，不决定业务语义。 */
+/** 共享 Base UI 壳层只负责可访问性、提交互斥和动作布局，不决定业务语义。 */
 function AppDialog(props: AppActionDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title ?? t("app.action.confirm");
+  const close_handled_ref = useRef(false);
+  useLayoutEffect(() => {
+    if (props.open) close_handled_ref.current = false;
+  }, [props.open]);
 
   return (
     <AlertDialogPrimitive.Root
       data-slot="alert-dialog"
       open={props.open}
-      onOpenChange={(next_open) => {
-        if (!next_open && !submitting) {
-          props.onClose();
+      onOpenChange={(next_open, details) => {
+        if (!next_open && !close_handled_ref.current) {
+          close_handled_ref.current = true;
+          if (submitting) details.cancel();
+          else props.onClose();
         }
       }}
     >
       <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal">
-        <AlertDialogPrimitive.Overlay
+        <AlertDialogPrimitive.Backdrop
           data-slot="alert-dialog-overlay"
           className="fixed inset-0 z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
-        <AlertDialogPrimitive.Content
+        <AlertDialogPrimitive.Popup
           data-slot="alert-dialog-content"
           className="fixed top-1/2 left-1/2 z-(--ui-layer-overlay) grid w-full max-w-xs -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
-          onEscapeKeyDown={submitting ? preventDialogClose : undefined}
         >
           <div data-slot="alert-dialog-header" className="grid place-items-start gap-1.5 text-left">
             <AlertDialogPrimitive.Title
@@ -155,57 +154,55 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
             className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end"
           >
             {props.dismissAction === null ? null : (
-              <Button variant="outline" size="sm" asChild>
-                <AlertDialogPrimitive.Cancel
-                  data-slot="alert-dialog-cancel"
-                  disabled={submitting}
-                  onClick={(event) => {
-                    if (props.dismissAction?.onSelect === undefined) {
-                      return;
-                    }
-                    event.preventDefault();
-                    void props.dismissAction.onSelect();
-                  }}
-                >
-                  {props.dismissAction?.label}
-                </AlertDialogPrimitive.Cancel>
-              </Button>
-            )}
-            {props.secondaryAction === undefined ? null : (
-              <Button variant={props.secondaryAction.variant ?? "outline"} size="sm" asChild>
-                <AlertDialogPrimitive.Action
-                  data-slot="alert-dialog-secondary-action"
-                  disabled={submitting || props.secondaryAction.disabled}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void props.secondaryAction?.onSelect();
-                  }}
-                >
-                  {props.secondaryAction.label}
-                </AlertDialogPrimitive.Action>
-              </Button>
-            )}
-            <Button variant={props.primaryAction.variant ?? "default"} size="sm" asChild>
-              <AlertDialogPrimitive.Action
-                data-slot="alert-dialog-primary-action"
-                disabled={submitting || props.primaryAction.disabled}
+              <AppButton
+                variant="outline"
+                size="sm"
+                data-slot="alert-dialog-cancel"
+                disabled={submitting}
                 onClick={(event) => {
                   event.preventDefault();
-                  void props.primaryAction.onSelect();
+                  if (props.dismissAction?.onSelect) void props.dismissAction.onSelect();
+                  else props.onClose();
                 }}
               >
-                {submitting ? (
-                  <>
-                    {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
-                    {props.submittingLabel ?? t("app.action.loading")}
-                  </>
-                ) : (
-                  props.primaryAction.label
-                )}
-              </AlertDialogPrimitive.Action>
-            </Button>
+                {props.dismissAction?.label}
+              </AppButton>
+            )}
+            {props.secondaryAction === undefined ? null : (
+              <AppButton
+                variant="outline"
+                size="sm"
+                data-slot="alert-dialog-secondary-action"
+                disabled={submitting || props.secondaryAction.disabled}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void props.secondaryAction?.onSelect();
+                }}
+              >
+                {props.secondaryAction.label}
+              </AppButton>
+            )}
+            <AppButton
+              variant={props.primaryAction.destructive ? "destructive" : "default"}
+              size="sm"
+              data-slot="alert-dialog-primary-action"
+              disabled={submitting || props.primaryAction.disabled}
+              onClick={(event) => {
+                event.preventDefault();
+                void props.primaryAction.onSelect();
+              }}
+            >
+              {submitting ? (
+                <>
+                  {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
+                  {props.submittingLabel ?? t("app.action.loading")}
+                </>
+              ) : (
+                props.primaryAction.label
+              )}
+            </AppButton>
           </div>
-        </AlertDialogPrimitive.Content>
+        </AlertDialogPrimitive.Popup>
       </AlertDialogPrimitive.Portal>
     </AlertDialogPrimitive.Root>
   );

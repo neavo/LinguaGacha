@@ -77,15 +77,17 @@ export function WorkbenchTaskSummary(props: WorkbenchTaskSummaryProps): JSX.Elem
 
   return (
     <Tooltip open={tooltip_open} onOpenChange={handle_open_change}>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="workbench-task__summary-trigger"
-          onClick={handle_open_detail}
-        >
-          {summary_badge}
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="workbench-task__summary-trigger"
+            onClick={handle_open_detail}
+          >
+            {summary_badge}
+          </button>
+        }
+      />
       <TooltipContent side="top" sideOffset={8}>
         <p>{props.display.detail_tooltip_text}</p>
       </TooltipContent>

@@ -17,8 +17,8 @@ import {
 } from "@frontend/pages/basic-settings-page/types";
 import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-basic-settings-state";
 import { Input } from "@frontend/shadcn/input";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import {
   Select,
   SelectContent,
@@ -49,17 +49,6 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     REQUEST_TIMEOUT_MAX,
   );
   const request_timeout_invalid = parsed_request_timeout === null;
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
-
   const source_language_options = useMemo(() => {
     return [
       {
@@ -149,7 +138,8 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
               value={basic_settings_state.snapshot.source_language}
               disabled={language_locked || basic_settings_state.pending_state.source_language}
               onValueChange={(next_value) => {
-                void basic_settings_state.update_source_language(next_value);
+                if (next_value !== null)
+                  void basic_settings_state.update_source_language(next_value);
               }}
             >
               <SelectTrigger>
@@ -177,7 +167,8 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
               value={basic_settings_state.snapshot.target_language}
               disabled={language_locked || basic_settings_state.pending_state.target_language}
               onValueChange={(next_value) => {
-                void basic_settings_state.update_target_language(next_value);
+                if (next_value !== null)
+                  void basic_settings_state.update_target_language(next_value);
               }}
             >
               <SelectTrigger>
@@ -205,7 +196,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
               value={basic_settings_state.snapshot.project_save_mode}
               disabled={basic_settings_state.pending_state.project_save_mode}
               onValueChange={(next_value) => {
-                if (is_project_save_mode(next_value)) {
+                if (next_value !== null && is_project_save_mode(next_value)) {
                   void basic_settings_state.update_project_save_mode(next_value);
                 }
               }}
@@ -230,19 +221,13 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           title={t("basic_settings_page.fields.output_folder_open_on_finish.title")}
           description={t("basic_settings_page.fields.output_folder_open_on_finish.description")}
           action={
-            <SegmentedToggle
+            <BooleanSegmentedToggle
               aria_label={t("basic_settings_page.fields.output_folder_open_on_finish.title")}
-              size="sm"
-              value={
-                basic_settings_state.snapshot.output_folder_open_on_finish ? "enabled" : "disabled"
-              }
-              options={boolean_segmented_options}
+              value={basic_settings_state.snapshot.output_folder_open_on_finish}
               stretch
               disabled={basic_settings_state.pending_state.output_folder_open_on_finish}
               on_value_change={(next_value) => {
-                void basic_settings_state.update_output_folder_open_on_finish(
-                  next_value === "enabled",
-                );
+                void basic_settings_state.update_output_folder_open_on_finish(next_value);
               }}
             />
           }

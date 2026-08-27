@@ -15,23 +15,25 @@ export function AgentTaskProgress(props: AgentTaskProgressProps): JSX.Element | 
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="agent-task-progress" role="status" tabIndex={0}>
-          <span className="agent-task-progress__lead">
-            <span
-              className={`agent-status-mark${props.running ? " agent-status-mark--running" : ""}`}
-              aria-hidden="true"
-            />
-            <span className="agent-task-progress__label">
-              {t("agent_page.task_progress.pending")}
+      <TooltipTrigger
+        render={
+          <div className="agent-task-progress" role="status" tabIndex={0}>
+            <span className="agent-task-progress__lead">
+              <span
+                className={`agent-status-mark${props.running ? " agent-status-mark--running" : ""}`}
+                aria-hidden="true"
+              />
+              <span className="agent-task-progress__label">
+                {t("agent_page.task_progress.pending")}
+              </span>
             </span>
-          </span>
-          <span className="agent-task-progress__item">{next_item}</span>
-          {remaining_count === 0 ? null : (
-            <span className="agent-task-progress__more">+{remaining_count.toString()}</span>
-          )}
-        </div>
-      </TooltipTrigger>
+            <span className="agent-task-progress__item">{next_item}</span>
+            {remaining_count === 0 ? null : (
+              <span className="agent-task-progress__more">+{remaining_count.toString()}</span>
+            )}
+          </div>
+        }
+      />
       <TooltipContent side="top" sideOffset={8} className="agent-task-progress__tooltip">
         <ul>
           {props.pending_labels.map((item, index) => (
