@@ -1252,12 +1252,13 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-/** 通过真实 Radix 菜单选择 Agent 思考档位，覆盖 Composer 到页面的交互接缝。 */
+/** 通过真实 Base UI 菜单选择 Agent 思考档位，覆盖 Composer 到页面的交互接缝。 */
 async function select_agent_thinking_level(container: HTMLElement, label: string): Promise<void> {
   const trigger = container.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
   if (trigger === null) throw new Error("缺少思考档位入口");
   await act(async () => {
-    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    trigger.click();
   });
   const option = Array.from(
     document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),

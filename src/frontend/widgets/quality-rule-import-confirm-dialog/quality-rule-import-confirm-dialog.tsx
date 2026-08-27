@@ -26,7 +26,7 @@ export function QualityRuleImportConfirmDialog(
       primaryAction={{
         label: t("app.action.overwrite"),
         onSelect: props.on_overwrite,
-        variant: "destructive",
+        destructive: true,
       }}
       secondaryAction={{ label: t("app.action.skip"), onSelect: props.on_skip }}
       onClose={props.on_close}

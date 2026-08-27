@@ -1,12 +1,15 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchStatCard } from "./workbench-stat-card";
 
 describe("WorkbenchStatCard", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
+
+  beforeEach(() => vi.useFakeTimers());
 
   afterEach(async () => {
     if (root !== null) {
@@ -25,13 +28,15 @@ describe("WorkbenchStatCard", () => {
 
     await act(async () => {
       root?.render(
-        <WorkbenchStatCard
-          title="总数"
-          value={12}
-          unit="行"
-          toggle_tooltip="切换统计"
-          on_toggle={on_toggle}
-        />,
+        <TooltipProvider delay={0}>
+          <WorkbenchStatCard
+            title="总数"
+            value={12}
+            unit="行"
+            toggle_tooltip="切换统计"
+            on_toggle={on_toggle}
+          />
+        </TooltipProvider>,
       );
     });
 
@@ -40,7 +45,8 @@ describe("WorkbenchStatCard", () => {
       throw new Error("缺少统计切换入口");
     }
     await act(async () => trigger.focus());
-    expect(container.querySelector('[role="tooltip"]')).not.toBeNull();
+    await act(async () => vi.runAllTimers());
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
 
     await act(async () => {
       trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

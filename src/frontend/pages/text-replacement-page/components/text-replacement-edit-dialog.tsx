@@ -7,9 +7,9 @@ import type {
   TextReplacementEntryDraft,
 } from "@frontend/pages/text-replacement-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type TextReplacementEditDialogProps = {
@@ -27,16 +27,6 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
   const { t } = useI18n();
   const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
   useActionShortcut({
@@ -142,15 +132,13 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   {t("text_replacement_page.rule.regex")}
                 </span>
               </div>
-              <SegmentedToggle
+              <BooleanSegmentedToggle
                 aria_label={t("text_replacement_page.rule.regex")}
-                value={props.entry.regex ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
+                value={props.entry.regex}
                 disabled={disabled}
-                size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({
-                    regex: next_value === "enabled",
+                    regex: next_value,
                   });
                 }}
               />
@@ -170,15 +158,13 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   {t("text_replacement_page.rule.case_sensitive")}
                 </span>
               </div>
-              <SegmentedToggle
+              <BooleanSegmentedToggle
                 aria_label={t("text_replacement_page.rule.case_sensitive")}
-                value={props.entry.case_sensitive ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
+                value={props.entry.case_sensitive}
                 disabled={disabled}
-                size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({
-                    case_sensitive: next_value === "enabled",
+                    case_sensitive: next_value,
                   });
                 }}
               />

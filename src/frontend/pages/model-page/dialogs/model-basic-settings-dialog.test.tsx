@@ -26,16 +26,24 @@ vi.mock("@frontend/shadcn/select", () => ({
   ),
   SelectTrigger: () => null,
   SelectValue: () => null,
-  SelectContent: (props: { children: ReactNode }) => <>{props.children}</>,
-  SelectGroup: (props: { children: ReactNode }) => <>{props.children}</>,
+  SelectContent: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  SelectGroup: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   SelectItem: (props: { children: ReactNode; value: string }) => (
     <option value={props.value}>{props.children}</option>
   ),
 }));
 
 vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
 }));
 

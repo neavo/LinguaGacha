@@ -18,6 +18,7 @@ const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
 
 const DESKTOP_API_RELATIVE_PATH = "src/frontend/app/desktop/desktop-api.ts";
 const TOKEN_OWNER_RELATIVE_PATH = "src/frontend/index.css";
+const APP_BUTTON_RELATIVE_PATH = "src/frontend/widgets/app-button.tsx";
 const PX_FIRST_SCOPE_PREFIXES = [
   "src/frontend/app/",
   "src/frontend/features/",
@@ -438,7 +439,20 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "renderer 不能读取 native 实现";
   }
 
+  if (
+    specifier === "@frontend/shadcn/button" &&
+    relative_project_path(project_root, file_path) !== APP_BUTTON_RELATIVE_PATH &&
+    !relative_project_path(project_root, file_path).startsWith("src/frontend/shadcn/")
+  ) {
+    return "业务 renderer 只能通过 widgets/app-button.tsx 使用产品按钮入口";
+  }
+
   return null;
+}
+
+function relative_project_path(project_root, file_path) {
+  // 统一分隔符后再比较仓库相对路径，确保 Windows 与 CI 的规则结果一致。
+  return path.relative(project_root, file_path).replaceAll(path.sep, "/");
 }
 
 // 别名和相对导入必须落到同一 page owner 口径，避免换一种路径写法绕过边界。

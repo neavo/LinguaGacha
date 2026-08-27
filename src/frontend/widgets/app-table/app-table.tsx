@@ -431,7 +431,7 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
         }
       }}
     >
-      <AppContextMenuTrigger asChild>{row_body}</AppContextMenuTrigger>
+      <AppContextMenuTrigger render={row_body} />
       {props.render_row_context_menu(row_event)}
     </AppContextMenu>
   );

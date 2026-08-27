@@ -20,7 +20,9 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
       {props.children}
     </div>
   ),
-  AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuSeparator: () => <hr />,
@@ -31,13 +33,13 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
     children: ReactNode;
     disabled?: boolean;
     variant?: string;
-    onSelect?: () => void;
+    onClick?: () => void;
   }) => (
     <button
       type="button"
       data-variant={props.variant ?? "default"}
       disabled={props.disabled}
-      onClick={props.onSelect}
+      onClick={props.onClick}
     >
       {props.children}
     </button>

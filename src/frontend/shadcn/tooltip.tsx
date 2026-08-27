@@ -1,169 +1,138 @@
 "use client";
 
 import * as React from "react";
-import { Tooltip as TooltipPrimitive } from "radix-ui";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "@frontend/shadcn/classnames";
 
 const tooltipContentClassName =
-  "z-(--ui-layer-tooltip) inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
-
+  "relative box-border flex w-max min-w-0 max-w-[min(320px,var(--available-width))] items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background origin-(--transform-origin) whitespace-normal break-words [overflow-wrap:anywhere] has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+const tooltipArrowClassName =
+  "relative block h-1.5 w-3 overflow-clip data-[side=bottom]:top-[-6px] data-[side=left]:right-[-9px] data-[side=left]:rotate-90 data-[side=right]:left-[-9px] data-[side=right]:-rotate-90 data-[side=top]:bottom-[-6px] data-[side=top]:rotate-180 before:absolute before:bottom-0 before:left-1/2 before:h-[calc(6px*sqrt(2))] before:w-[calc(6px*sqrt(2))] before:bg-foreground before:content-[''] before:[transform:translate(-50%,50%)_rotate(45deg)]";
 const TOOLTIP_WINDOW_DEACTIVATED = "linguagacha:tooltip-window-deactivated";
 
-type TooltipWindowActivationContext = {
-  suppressed_ref: React.RefObject<boolean>;
-  activation_revision: number;
-};
-
-const TooltipWindowActivationContext = React.createContext<TooltipWindowActivationContext | null>(
-  null,
-);
+type TooltipWindowContext = { suppressed: React.RefObject<boolean>; revision: number };
+const TooltipWindowContext = React.createContext<TooltipWindowContext | null>(null);
 
 function TooltipProvider({
-  delayDuration = 0,
+  delay = 0,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  const suppressed_ref = React.useRef(false);
-  const pointer_position_ref = React.useRef<{ x: number; y: number } | null>(null);
-  const [activation_revision, set_activation_revision] = React.useState(0);
+}: TooltipPrimitive.Provider.Props): JSX.Element {
+  const suppressed = React.useRef(false);
+  const [revision, set_revision] = React.useState(0);
 
   React.useEffect(() => {
-    const suppress_tooltips = (): void => {
-      suppressed_ref.current = true;
-      set_activation_revision((revision) => revision + 1);
+    // 窗口或页面可见性切换时关闭当前提示，并让触发器重挂载，避免静止指针再次打开提示。
+    const suppress = (): void => {
+      suppressed.current = true;
+      set_revision((current) => current + 1);
       document.dispatchEvent(new Event(TOOLTIP_WINDOW_DEACTIVATED));
     };
-    const release_tooltip_suppression = (): void => {
-      if (!suppressed_ref.current) return;
-      suppressed_ref.current = false;
+    const release = (): void => {
+      suppressed.current = false;
     };
-    const handle_pointer_move = (event: PointerEvent): void => {
-      const previous = pointer_position_ref.current;
-      pointer_position_ref.current = { x: event.clientX, y: event.clientY };
-      if (
-        suppressed_ref.current &&
-        (previous === null || (previous.x === event.clientX && previous.y === event.clientY))
-      ) {
-        // Ignore the synthetic stationary pointer move emitted while a window is restored.
-        event.stopPropagation();
-        return;
-      }
-      release_tooltip_suppression();
-    };
-    const handle_pointer_down = (): void => release_tooltip_suppression();
-    const handle_key_down = (): void => release_tooltip_suppression();
-    const handle_visibility_change = (): void => suppress_tooltips();
 
-    window.addEventListener("blur", suppress_tooltips);
-    window.addEventListener("focus", suppress_tooltips);
-    window.addEventListener("pointermove", handle_pointer_move, true);
-    window.addEventListener("pointerdown", handle_pointer_down, true);
-    window.addEventListener("keydown", handle_key_down, true);
-    document.addEventListener("visibilitychange", handle_visibility_change);
+    window.addEventListener("blur", suppress);
+    window.addEventListener("focus", suppress);
+    window.addEventListener("pointermove", release, true);
+    window.addEventListener("pointerdown", release, true);
+    window.addEventListener("keydown", release, true);
+    document.addEventListener("visibilitychange", suppress);
+
     return () => {
-      window.removeEventListener("blur", suppress_tooltips);
-      window.removeEventListener("focus", suppress_tooltips);
-      window.removeEventListener("pointermove", handle_pointer_move, true);
-      window.removeEventListener("pointerdown", handle_pointer_down, true);
-      window.removeEventListener("keydown", handle_key_down, true);
-      document.removeEventListener("visibilitychange", handle_visibility_change);
+      window.removeEventListener("blur", suppress);
+      window.removeEventListener("focus", suppress);
+      window.removeEventListener("pointermove", release, true);
+      window.removeEventListener("pointerdown", release, true);
+      window.removeEventListener("keydown", release, true);
+      document.removeEventListener("visibilitychange", suppress);
     };
   }, []);
 
   return (
-    <TooltipWindowActivationContext.Provider value={{ suppressed_ref, activation_revision }}>
-      <TooltipPrimitive.Provider
-        data-slot="tooltip-provider"
-        delayDuration={delayDuration}
-        {...props}
-      >
+    <TooltipWindowContext.Provider value={{ suppressed, revision }}>
+      <TooltipPrimitive.Provider delay={delay} {...props}>
         {children}
       </TooltipPrimitive.Provider>
-    </TooltipWindowActivationContext.Provider>
+    </TooltipWindowContext.Provider>
   );
 }
 
-function Tooltip({
-  open: open_prop,
-  defaultOpen,
-  onOpenChange,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  const window_activation = React.useContext(TooltipWindowActivationContext);
-  const controlled = open_prop !== undefined;
-  const [uncontrolled_open, set_uncontrolled_open] = React.useState(defaultOpen ?? false);
-  const open = controlled ? open_prop : uncontrolled_open;
-  const handle_open_change = React.useCallback(
-    (next_open: boolean): void => {
-      if (next_open && window_activation?.suppressed_ref.current) return;
-      if (!controlled) set_uncontrolled_open(next_open);
-      onOpenChange?.(next_open);
-    },
-    [controlled, onOpenChange, window_activation],
-  );
-
+function Tooltip({ actionsRef, onOpenChange, ...props }: TooltipPrimitive.Root.Props): JSX.Element {
+  const window_context = React.useContext(TooltipWindowContext);
+  const local_actions = React.useRef<TooltipPrimitive.Root.Actions | null>(null);
   React.useEffect(() => {
-    const close_tooltip = (): void => {
-      if (!controlled) set_uncontrolled_open(false);
-      onOpenChange?.(false);
-    };
-    document.addEventListener(TOOLTIP_WINDOW_DEACTIVATED, close_tooltip);
-    return () => document.removeEventListener(TOOLTIP_WINDOW_DEACTIVATED, close_tooltip);
-  }, [controlled, onOpenChange]);
+    const close = (): void => local_actions.current?.close();
+    document.addEventListener(TOOLTIP_WINDOW_DEACTIVATED, close);
+    return () => document.removeEventListener(TOOLTIP_WINDOW_DEACTIVATED, close);
+  }, []);
 
   return (
     <TooltipPrimitive.Root
-      data-slot="tooltip"
       {...props}
-      open={open}
-      onOpenChange={handle_open_change}
+      actionsRef={actionsRef ?? local_actions}
+      onOpenChange={(open, details) => {
+        if (open && window_context?.suppressed.current) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(open, details);
+      }}
     />
   );
 }
 
-function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  const window_activation = React.useContext(TooltipWindowActivationContext);
+function TooltipTrigger({ children, ...props }: TooltipPrimitive.Trigger.Props): JSX.Element {
+  const window_context = React.useContext(TooltipWindowContext);
   return (
-    <TooltipPrimitive.Trigger
-      key={window_activation?.activation_revision}
-      data-slot="tooltip-trigger"
-      {...props}
-    />
+    <TooltipPrimitive.Trigger key={window_context?.revision} data-slot="tooltip-trigger" {...props}>
+      {children}
+    </TooltipPrimitive.Trigger>
   );
-}
-
-/** Keep Tooltip's hit target stable because disabled native controls cannot receive pointer events. */
-function tooltip_trigger_target(trigger: React.ReactElement): React.ReactElement {
-  return <span className="inline-flex">{trigger}</span>;
 }
 
 function TooltipContent({
   className,
+  side = "top",
   sideOffset = 0,
+  align = "center",
+  alignOffset = 0,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: TooltipPrimitive.Popup.Props &
+  Pick<
+    TooltipPrimitive.Positioner.Props,
+    "side" | "sideOffset" | "align" | "alignOffset"
+  >): JSX.Element {
   return (
     <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
+      <TooltipPrimitive.Positioner
+        data-slot="tooltip-positioner"
+        side={side}
         sideOffset={sideOffset}
-        className={cn(tooltipContentClassName, className)}
-        {...props}
+        align={align}
+        alignOffset={alignOffset}
+        collisionPadding={8}
+        arrowPadding={8}
+        className="isolate max-w-(--available-width) z-(--ui-layer-tooltip) [-webkit-app-region:no-drag]"
       >
-        {children}
-        <TooltipPrimitive.Arrow className="size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
-      </TooltipPrimitive.Content>
+        <TooltipPrimitive.Popup
+          role="tooltip"
+          data-slot="tooltip-content"
+          className={cn(tooltipContentClassName, className)}
+          {...props}
+        >
+          {children}
+          <TooltipPrimitive.Arrow className={tooltipArrowClassName} />
+        </TooltipPrimitive.Popup>
+      </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
   );
 }
 
-export {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  tooltipContentClassName,
-  tooltip_trigger_target,
-};
+function tooltip_trigger_target(trigger: React.ReactElement): React.ReactElement {
+  return <span className="inline-flex">{trigger}</span>;
+}
+
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, tooltip_trigger_target };

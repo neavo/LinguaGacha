@@ -4,9 +4,9 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type { GlossaryDialogMode, GlossaryEntryDraft } from "@frontend/pages/glossary-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type GlossaryEditDialogProps = {
@@ -23,16 +23,6 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
   const { t } = useI18n();
   const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
   useActionShortcut({
@@ -148,15 +138,13 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   {t("glossary_page.rule.case_sensitive")}
                 </span>
               </div>
-              <SegmentedToggle
+              <BooleanSegmentedToggle
                 aria_label={t("glossary_page.rule.case_sensitive")}
-                value={props.entry.case_sensitive ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
+                value={props.entry.case_sensitive}
                 disabled={disabled}
-                size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({
-                    case_sensitive: next_value === "enabled",
+                    case_sensitive: next_value,
                   });
                 }}
               />

@@ -1,71 +1,75 @@
 import type { ComponentProps } from "react";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
-import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
+import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 
 import { cn } from "@frontend/shadcn/classnames";
 
-/** Radix 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
+/** 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
 const MENU_VIEWPORT_PADDING = 8;
 
-// 本文件只为 Radix 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
-function AppContextMenu(props: ComponentProps<typeof ContextMenuPrimitive.Root>): JSX.Element {
+// 本文件只为 Base UI 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
+function AppContextMenu(props: ContextMenuPrimitive.Root.Props): JSX.Element {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
 }
 
 function AppContextMenuTrigger({
   className,
+  children,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Trigger>): JSX.Element {
+}: ContextMenuPrimitive.Trigger.Props): JSX.Element {
   return (
     <ContextMenuPrimitive.Trigger
       data-slot="context-menu-trigger"
       className={cn("select-none", className)}
       {...props}
-    />
+    >
+      {children}
+    </ContextMenuPrimitive.Trigger>
   );
 }
 
-function AppContextMenuGroup(
-  props: ComponentProps<typeof ContextMenuPrimitive.Group>,
-): JSX.Element {
+function AppContextMenuGroup(props: ContextMenuPrimitive.Group.Props): JSX.Element {
   return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />;
 }
 
-function AppContextMenuPortal(
-  props: ComponentProps<typeof ContextMenuPrimitive.Portal>,
-): JSX.Element {
+function AppContextMenuPortal(props: ContextMenuPrimitive.Portal.Props): JSX.Element {
   return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />;
 }
 
-function AppContextMenuSub(props: ComponentProps<typeof ContextMenuPrimitive.Sub>): JSX.Element {
-  return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {...props} />;
+function AppContextMenuSub(props: ContextMenuPrimitive.SubmenuRoot.Props): JSX.Element {
+  return <ContextMenuPrimitive.SubmenuRoot data-slot="context-menu-sub" {...props} />;
 }
 
-function AppContextMenuRadioGroup(
-  props: ComponentProps<typeof ContextMenuPrimitive.RadioGroup>,
-): JSX.Element {
+function AppContextMenuRadioGroup(props: ContextMenuPrimitive.RadioGroup.Props): JSX.Element {
   return <ContextMenuPrimitive.RadioGroup data-slot="context-menu-radio-group" {...props} />;
 }
 
 function AppContextMenuContent({
   className,
   collisionPadding = MENU_VIEWPORT_PADDING,
+  side = "right",
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Content> & {
-  side?: "top" | "right" | "bottom" | "left";
-}): JSX.Element {
+}: ContextMenuPrimitive.Popup.Props &
+  Pick<ContextMenuPrimitive.Positioner.Props, "collisionPadding"> & {
+    side?: "top" | "right" | "bottom" | "left";
+  }): JSX.Element {
   return (
     <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Content
-        data-slot="context-menu-content"
+      <ContextMenuPrimitive.Positioner
+        className="isolate z-(--ui-layer-popover)"
         collisionPadding={collisionPadding}
-        className={cn(
-          "z-(--ui-layer-popover) max-h-(--radix-context-menu-content-available-height) min-w-36 origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          "w-max min-w-36 text-[13px]",
-          className,
-        )}
-        {...props}
-      />
+        side={side}
+      >
+        <ContextMenuPrimitive.Popup
+          data-slot="context-menu-content"
+          className={cn(
+            "max-h-(--available-height) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "w-max min-w-36 text-[13px]",
+            className,
+          )}
+          {...props}
+        />
+      </ContextMenuPrimitive.Positioner>
     </ContextMenuPrimitive.Portal>
   );
 }
@@ -74,8 +78,9 @@ function AppContextMenuItem({
   className,
   inset,
   variant = "default",
+  onClick,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Item> & {
+}: ContextMenuPrimitive.Item.Props & {
   inset?: boolean;
   variant?: "default" | "destructive";
 }): JSX.Element {
@@ -89,6 +94,8 @@ function AppContextMenuItem({
         "text-[13px]",
         className,
       )}
+      onClick={onClick}
+      closeOnClick
       {...props}
     />
   );
@@ -99,11 +106,11 @@ function AppContextMenuSubTrigger({
   inset,
   children,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.SubTrigger> & {
+}: ContextMenuPrimitive.SubmenuTrigger.Props & {
   inset?: boolean;
 }): JSX.Element {
   return (
-    <ContextMenuPrimitive.SubTrigger
+    <ContextMenuPrimitive.SubmenuTrigger
       data-slot="context-menu-sub-trigger"
       data-inset={inset}
       className={cn(
@@ -115,7 +122,7 @@ function AppContextMenuSubTrigger({
     >
       {children}
       <ChevronRightIcon className="ml-auto" />
-    </ContextMenuPrimitive.SubTrigger>
+    </ContextMenuPrimitive.SubmenuTrigger>
   );
 }
 
@@ -123,18 +130,23 @@ function AppContextMenuSubContent({
   className,
   collisionPadding = MENU_VIEWPORT_PADDING,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.SubContent>): JSX.Element {
+}: ContextMenuPrimitive.Popup.Props &
+  Pick<ContextMenuPrimitive.Positioner.Props, "collisionPadding">): JSX.Element {
   return (
-    <ContextMenuPrimitive.SubContent
-      data-slot="context-menu-sub-content"
+    <ContextMenuPrimitive.Positioner
+      className="isolate z-(--ui-layer-popover)"
       collisionPadding={collisionPadding}
-      className={cn(
-        "z-(--ui-layer-popover) min-w-32 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-        "text-[13px] ring-1 ring-foreground/10",
-        className,
-      )}
-      {...props}
-    />
+    >
+      <ContextMenuPrimitive.Popup
+        data-slot="context-menu-sub-content"
+        className={cn(
+          "min-w-32 origin-(--transform-origin) overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "text-[13px] ring-1 ring-foreground/10",
+          className,
+        )}
+        {...props}
+      />
+    </ContextMenuPrimitive.Positioner>
   );
 }
 
@@ -144,7 +156,7 @@ function AppContextMenuCheckboxItem({
   checked,
   inset,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.CheckboxItem> & {
+}: ContextMenuPrimitive.CheckboxItem.Props & {
   inset?: boolean;
 }): JSX.Element {
   return (
@@ -160,9 +172,9 @@ function AppContextMenuCheckboxItem({
       {...props}
     >
       <span className="pointer-events-none absolute right-2">
-        <ContextMenuPrimitive.ItemIndicator>
+        <ContextMenuPrimitive.CheckboxItemIndicator>
           <CheckIcon />
-        </ContextMenuPrimitive.ItemIndicator>
+        </ContextMenuPrimitive.CheckboxItemIndicator>
       </span>
       {children}
     </ContextMenuPrimitive.CheckboxItem>
@@ -173,8 +185,9 @@ function AppContextMenuRadioItem({
   className,
   children,
   inset,
+  closeOnClick = true,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.RadioItem> & {
+}: ContextMenuPrimitive.RadioItem.Props & {
   inset?: boolean;
 }): JSX.Element {
   return (
@@ -187,11 +200,12 @@ function AppContextMenuRadioItem({
         className,
       )}
       {...props}
+      closeOnClick={closeOnClick}
     >
       <span className="pointer-events-none absolute right-2">
-        <ContextMenuPrimitive.ItemIndicator>
+        <ContextMenuPrimitive.RadioItemIndicator>
           <CheckIcon />
-        </ContextMenuPrimitive.ItemIndicator>
+        </ContextMenuPrimitive.RadioItemIndicator>
       </span>
       {children}
     </ContextMenuPrimitive.RadioItem>
@@ -202,11 +216,11 @@ function AppContextMenuLabel({
   className,
   inset,
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Label> & {
+}: ContextMenuPrimitive.GroupLabel.Props & {
   inset?: boolean;
 }): JSX.Element {
   return (
-    <ContextMenuPrimitive.Label
+    <ContextMenuPrimitive.GroupLabel
       data-slot="context-menu-label"
       data-inset={inset}
       className={cn(

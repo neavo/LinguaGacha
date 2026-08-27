@@ -18,8 +18,8 @@ import {
 import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { CommandBar, CommandBarGroup } from "@frontend/widgets/command-bar/command-bar";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 const DIRECTION_OPTIONS: TsConversionDirection[] = ["t2s", "s2t"];
@@ -30,17 +30,6 @@ const DIRECTION_LABEL_KEY_BY_DIRECTION = {
 export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const page_state = useTsConversionPageState();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
-
   return (
     <div className="ts-conversion-page page-shell page-shell--full">
       <section className="ts-conversion-page__list" aria-label={t("ts_conversion_page.title")}>
@@ -76,16 +65,12 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
           title={t("ts_conversion_page.fields.preserve_text.title")}
           description={t("ts_conversion_page.fields.preserve_text.description")}
           action={
-            <SegmentedToggle
+            <BooleanSegmentedToggle
               aria_label={t("ts_conversion_page.fields.preserve_text.title")}
-              size="sm"
-              value={page_state.preserve_text ? "enabled" : "disabled"}
-              options={boolean_segmented_options}
+              value={page_state.preserve_text}
               stretch
               disabled={page_state.is_running}
-              on_value_change={(next_value) => {
-                page_state.set_preserve_text(next_value === "enabled");
-              }}
+              on_value_change={page_state.set_preserve_text}
             />
           }
         />
@@ -94,16 +79,12 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
           title={t("ts_conversion_page.fields.target_name.title")}
           description={t("ts_conversion_page.fields.target_name.description")}
           action={
-            <SegmentedToggle
+            <BooleanSegmentedToggle
               aria_label={t("ts_conversion_page.fields.target_name.title")}
-              size="sm"
-              value={page_state.convert_name ? "enabled" : "disabled"}
-              options={boolean_segmented_options}
+              value={page_state.convert_name}
               stretch
               disabled={page_state.is_running}
-              on_value_change={(next_value) => {
-                page_state.set_convert_name(next_value === "enabled");
-              }}
+              on_value_change={page_state.set_convert_name}
             />
           }
         />
@@ -130,16 +111,18 @@ export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
         }
         hint={
           <Tooltip>
-            <TooltipTrigger asChild>
-              <button className="ts-conversion-page__summary-trigger" type="button">
-                <Badge
-                  className="ts-conversion-page__summary-badge ts-conversion-page__summary-badge--neutral"
-                  variant="outline"
-                >
-                  {t("ts_conversion_page.title")}
-                </Badge>
-              </button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <button className="ts-conversion-page__summary-trigger" type="button">
+                  <Badge
+                    className="ts-conversion-page__summary-badge ts-conversion-page__summary-badge--neutral"
+                    variant="outline"
+                  >
+                    {t("ts_conversion_page.title")}
+                  </Badge>
+                </button>
+              }
+            />
             <TooltipContent side="top" sideOffset={8}>
               <p>{t("ts_conversion_page.description")}</p>
             </TooltipContent>

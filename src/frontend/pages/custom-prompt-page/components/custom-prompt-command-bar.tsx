@@ -5,12 +5,12 @@ import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
+import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
-import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
 
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey;
@@ -36,16 +36,6 @@ type CustomPromptCommandBarProps = {
 
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
-  const boolean_segmented_options = [
-    {
-      value: "disabled",
-      label: t("app.toggle.option.disabled"),
-    },
-    {
-      value: "enabled",
-      label: t("app.toggle.option.enabled"),
-    },
-  ] as const;
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
   const toggle_tooltip_title = t("app.tooltip.value", {
     TITLE: t(props.header_title_key),
@@ -99,20 +89,20 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
       }
       hint={
         <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="custom-prompt-page__toggle-cluster">
-              <SegmentedToggle
-                aria_label={t(props.header_title_key)}
-                size="sm"
-                value={props.enabled ? "enabled" : "disabled"}
-                options={boolean_segmented_options}
-                disabled={props.readonly}
-                on_value_change={(next_value) => {
-                  void props.on_toggle_enabled(next_value === "enabled");
-                }}
-              />
-            </div>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <div className="custom-prompt-page__toggle-cluster">
+                <BooleanSegmentedToggle
+                  aria_label={t(props.header_title_key)}
+                  value={props.enabled}
+                  disabled={props.readonly}
+                  on_value_change={(next_value) => {
+                    void props.on_toggle_enabled(next_value);
+                  }}
+                />
+              </div>
+            }
+          />
           <TooltipContent
             side="top"
             align="end"

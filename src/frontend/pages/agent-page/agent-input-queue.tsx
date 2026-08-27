@@ -134,8 +134,8 @@ function AgentInputQueueItem(props: {
       }}
     >
       <Tooltip>
-        <TooltipTrigger asChild>
-          {tooltip_trigger_target(
+        <TooltipTrigger
+          render={tooltip_trigger_target(
             <button
               type="button"
               className="agent-input-queue__drag"
@@ -147,7 +147,7 @@ function AgentInputQueueItem(props: {
               <GripVertical aria-hidden="true" />
             </button>,
           )}
-        </TooltipTrigger>
+        />
         <TooltipContent side="top">
           <p>{t("agent_page.queue.reorder")}</p>
         </TooltipContent>
@@ -200,8 +200,8 @@ function QueueIconAction(props: {
 }): JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        {tooltip_trigger_target(
+      <TooltipTrigger
+        render={tooltip_trigger_target(
           <AppButton
             type="button"
             size="icon-xs"
@@ -216,7 +216,7 @@ function QueueIconAction(props: {
             {props.children}
           </AppButton>,
         )}
-      </TooltipTrigger>
+      />
       <TooltipContent side="top">
         <p>{props.label}</p>
       </TooltipContent>

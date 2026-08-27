@@ -178,7 +178,7 @@ function render_status_badge(args: {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipTrigger render={badge} />
       <TooltipContent
         side="top"
         align="start"
@@ -372,9 +372,11 @@ function render_name_input_with_glossary_state(args: {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="proofreading-page__dialog-name-tooltip-trigger">{args.input}</span>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <span className="proofreading-page__dialog-name-tooltip-trigger">{args.input}</span>
+        }
+      />
       <TooltipContent
         side="top"
         align="start"
@@ -511,23 +513,25 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 {t("proofreading_page.action.clear_translation")}
               </AppButton>
               <AppDropdownMenu>
-                <AppDropdownMenuTrigger asChild>
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={props.readonly || saving}
-                  >
-                    <ListChecks data-icon="inline-start" />
-                    {t("proofreading_page.action.set_translation_status")}
-                  </AppButton>
-                </AppDropdownMenuTrigger>
+                <AppDropdownMenuTrigger
+                  render={
+                    <AppButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={props.readonly || saving}
+                    >
+                      <ListChecks data-icon="inline-start" />
+                      {t("proofreading_page.action.set_translation_status")}
+                    </AppButton>
+                  }
+                />
                 <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
                   <AppDropdownMenuGroup>
                     {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
                       <AppDropdownMenuItem
                         key={status}
-                        onSelect={() => {
+                        onClick={() => {
                           props.on_request_set_translation_status([String(item.item_id)], status);
                         }}
                       >

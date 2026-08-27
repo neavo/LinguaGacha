@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MessageSquareQuote } from "lucide-react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import type { AgentMessageAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -128,39 +128,39 @@ export function AgentMessageAttachments(props: AgentMessageAttachmentsProps): JS
                 else if (open) close_attachment();
               }}
             >
-              <PopoverPrimitive.Trigger asChild>{trigger}</PopoverPrimitive.Trigger>
+              <PopoverPrimitive.Trigger render={trigger} />
               {open ? (
                 <PopoverPrimitive.Portal>
-                  <PopoverPrimitive.Content
-                    asChild
+                  <PopoverPrimitive.Positioner
+                    className="isolate z-(--ui-layer-popover)"
                     side="top"
                     align="start"
                     sideOffset={6}
                     collisionPadding={8}
-                    hideWhenDetached
-                    onOpenAutoFocus={(event) => event.preventDefault()}
                   >
-                    {props.mode === "draft" ? (
-                      <AgentResponseAnnotationEditor
-                        className="agent-composer__annotation-editor"
-                        aria-label={t("agent_page.annotation.edit")}
-                        selected_text={attachment.selectedText}
-                        comment={annotation_comment}
-                        on_comment_change={set_annotation_comment}
-                        on_submit={save_selected_annotation}
-                        on_cancel={close_attachment}
-                        on_remove={remove_selected_attachment}
-                      />
-                    ) : (
-                      <AgentResponseAnnotationViewer
-                        className="agent-message__annotation-viewer"
-                        aria-label={t("agent_page.annotation.title")}
-                        selected_text={attachment.selectedText}
-                        comment={attachment.comment}
-                        on_cancel={close_attachment}
-                      />
-                    )}
-                  </PopoverPrimitive.Content>
+                    <PopoverPrimitive.Popup initialFocus={false}>
+                      {props.mode === "draft" ? (
+                        <AgentResponseAnnotationEditor
+                          className="agent-composer__annotation-editor"
+                          aria-label={t("agent_page.annotation.edit")}
+                          selected_text={attachment.selectedText}
+                          comment={annotation_comment}
+                          on_comment_change={set_annotation_comment}
+                          on_submit={save_selected_annotation}
+                          on_cancel={close_attachment}
+                          on_remove={remove_selected_attachment}
+                        />
+                      ) : (
+                        <AgentResponseAnnotationViewer
+                          className="agent-message__annotation-viewer"
+                          aria-label={t("agent_page.annotation.title")}
+                          selected_text={attachment.selectedText}
+                          comment={attachment.comment}
+                          on_cancel={close_attachment}
+                        />
+                      )}
+                    </PopoverPrimitive.Popup>
+                  </PopoverPrimitive.Positioner>
                 </PopoverPrimitive.Portal>
               ) : null}
             </PopoverPrimitive.Root>

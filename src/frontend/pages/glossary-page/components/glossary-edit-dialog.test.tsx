@@ -29,18 +29,18 @@ vi.mock("@frontend/widgets/app-page-dialog", () => ({
       </section>
     ) : null,
 }));
-vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => ({
-  SegmentedToggle: (props: {
+vi.mock("@frontend/widgets/boolean-segmented-toggle", () => ({
+  BooleanSegmentedToggle: (props: {
     aria_label: string;
-    value: "enabled" | "disabled";
+    value: boolean;
     disabled: boolean;
-    on_value_change: (value: "enabled" | "disabled") => void;
+    on_value_change: (value: boolean) => void;
   }) => (
     <button
       type="button"
       aria-label={props.aria_label}
       disabled={props.disabled}
-      onClick={() => props.on_value_change(props.value === "enabled" ? "disabled" : "enabled")}
+      onClick={() => props.on_value_change(!props.value)}
     />
   ),
 }));

@@ -86,7 +86,7 @@ type ProofreadingTableProps = {
 type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
 
 function run_after_context_menu_close(action: () => void): void {
-  // Radix ContextMenu 会在 select 后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
+  // ContextMenu 会在选择后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
   window.setTimeout(action, 0);
 }
 
@@ -167,15 +167,17 @@ function ProofreadingStatusCell(props: {
     return (
       <div className="proofreading-page__status-icons">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="proofreading-page__status-icon"
-              data-app-table-ignore-box-select="true"
-              data-app-table-ignore-row-click="true"
-            >
-              <Spinner className="proofreading-page__status-spinner" />
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span
+                className="proofreading-page__status-icon"
+                data-app-table-ignore-box-select="true"
+                data-app-table-ignore-row-click="true"
+              >
+                <Spinner className="proofreading-page__status-spinner" />
+              </span>
+            }
+          />
           <TooltipContent side="top" sideOffset={8}>
             <p>
               {t("app.tooltip.value", {
@@ -197,18 +199,20 @@ function ProofreadingStatusCell(props: {
     <div className="proofreading-page__status-icons">
       {StatusIcon === null ? null : (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className={[
-                "proofreading-page__status-icon",
-                `proofreading-page__status-icon--${status_icon_tone}`,
-              ].join(" ")}
-              data-app-table-ignore-box-select="true"
-              data-app-table-ignore-row-click="true"
-            >
-              <StatusIcon />
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span
+                className={[
+                  "proofreading-page__status-icon",
+                  `proofreading-page__status-icon--${status_icon_tone}`,
+                ].join(" ")}
+                data-app-table-ignore-box-select="true"
+                data-app-table-ignore-row-click="true"
+              >
+                <StatusIcon />
+              </span>
+            }
+          />
           <TooltipContent side="top" sideOffset={8}>
             <p>
               {t("app.tooltip.value", {
@@ -222,15 +226,17 @@ function ProofreadingStatusCell(props: {
 
       {props.item.warnings.length === 0 ? null : (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="proofreading-page__status-icon proofreading-page__status-icon--warning"
-              data-app-table-ignore-box-select="true"
-              data-app-table-ignore-row-click="true"
-            >
-              <TriangleAlert />
-            </span>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <span
+                className="proofreading-page__status-icon proofreading-page__status-icon--warning"
+                data-app-table-ignore-box-select="true"
+                data-app-table-ignore-row-click="true"
+              >
+                <TriangleAlert />
+              </span>
+            }
+          />
           <TooltipContent side="top" sideOffset={8}>
             <p>
               {t("app.tooltip.value", {
@@ -401,7 +407,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
               <AppContextMenuContent>
                 <AppContextMenuGroup>
                   <AppContextMenuItem
-                    onSelect={() => {
+                    onClick={() => {
                       run_after_context_menu_close(() => {
                         props.on_open_edit(payload.row_id);
                       });
@@ -412,7 +418,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       run_after_context_menu_close(() => {
                         props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
                       });
@@ -423,7 +429,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}
-                    onSelect={() => {
+                    onClick={() => {
                       run_after_context_menu_close(() => {
                         props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
                       });
@@ -442,7 +448,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                         <AppContextMenuItem
                           key={status}
                           disabled={props.readonly}
-                          onSelect={() => {
+                          onClick={() => {
                             props.on_request_set_translation_status_row_ids(
                               target_row_ids,
                               status,

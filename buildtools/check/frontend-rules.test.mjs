@@ -23,6 +23,7 @@ describe("frontend boundary rules", () => {
       "src/frontend/hooks/legacy.ts": 'import "electron";',
       "src/frontend/pages/alpha/page.tsx": [
         'import "@frontend/pages/beta/page";',
+        'import { Button } from "@frontend/shadcn/button";',
         "write_project_snapshot(next);",
         "fetch('/api/direct');",
         "export const Page = () => <div>可见中文</div>;",
@@ -57,6 +58,8 @@ describe("frontend boundary rules", () => {
           'import "./types";',
           "export const Page = () => <div>{t('page.title')}</div>;",
         ].join("\n"),
+        "src/frontend/widgets/app-button.tsx": 'import { Button } from "@frontend/shadcn/button";',
+        "src/frontend/shadcn/sheet.tsx": 'import { Button } from "@frontend/shadcn/button";',
       }),
     ).toEqual([]);
   });

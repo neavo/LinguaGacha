@@ -23,21 +23,30 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
     return <div>{props.children}</div>;
   },
   AppDropdownMenuTrigger: (props: {
-    children: ReactElement<{
+    children?: ReactElement<{
       "aria-label"?: string;
       children?: ReactNode;
       disabled?: boolean;
     }>;
-  }) => (
-    <button
-      type="button"
-      aria-label={props.children.props["aria-label"]}
-      disabled={props.children.props.disabled}
-      onClick={() => dropdown_open_change_ref.current?.(true)}
-    >
-      {props.children.props.children}
-    </button>
-  ),
+    render?: ReactElement<{
+      "aria-label"?: string;
+      children?: ReactNode;
+      disabled?: boolean;
+    }>;
+  }) => {
+    const trigger = props.render ?? props.children;
+    if (trigger === undefined) return null;
+    return (
+      <button
+        type="button"
+        aria-label={trigger.props["aria-label"]}
+        disabled={trigger.props.disabled}
+        onClick={() => dropdown_open_change_ref.current?.(true)}
+      >
+        {trigger.props.children}
+      </button>
+    );
+  },
   AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuItem: (props: {

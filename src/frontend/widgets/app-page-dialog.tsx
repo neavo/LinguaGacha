@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Dialog as DialogPrimitive } from "radix-ui";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { cn } from "@frontend/shadcn/classnames";
@@ -21,10 +21,6 @@ type AppPageDialogProps = {
   footerClassName?: string;
 };
 
-type ClosableEvent = {
-  preventDefault: () => void;
-};
-
 const SIZE_CLASS_NAME_BY_VALUE: Record<AppPageDialogSize, string> = {
   sm: "sm:max-w-[560px]",
   md: "sm:max-w-[720px]",
@@ -38,11 +34,6 @@ const DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE: Record<AppPageDialogSize, string> = {
   lg: "h-[640px]",
   xl: "h-[640px]",
 };
-
-/** 按弹窗关闭策略拦截 Esc 或点击遮罩关闭。 */
-function preventDialogClose(event: ClosableEvent): void {
-  event.preventDefault();
-}
 
 /**
  * 页面级内容对话框：统一尺寸、默认页脚，并显式区分默认、仅 Esc 和不可取消流程。
@@ -73,18 +64,20 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
     <DialogPrimitive.Root
       data-slot="dialog"
       open={props.open}
-      onOpenChange={(next_open) => {
-        if (!next_open && !blocks_escape) {
-          void props.onClose();
+      onOpenChange={(next_open, details) => {
+        if (!next_open) {
+          const blocked = blocks_escape || (blocks_pointer && details.reason === "outside-press");
+          if (blocked) details.cancel();
+          else void props.onClose();
         }
       }}
     >
       <DialogPrimitive.Portal data-slot="dialog-portal">
-        <DialogPrimitive.Overlay
+        <DialogPrimitive.Backdrop
           data-slot="dialog-overlay"
           className="fixed inset-0 isolate z-(--ui-layer-overlay) bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
-        <DialogPrimitive.Content
+        <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
             "fixed top-1/2 left-1/2 z-(--ui-layer-overlay) flex max-h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-0 overflow-hidden rounded-xl bg-popover p-0 text-sm text-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
@@ -92,8 +85,6 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
             DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE[size],
             props.contentClassName,
           )}
-          onEscapeKeyDown={blocks_escape ? preventDialogClose : undefined}
-          onPointerDownOutside={blocks_pointer ? preventDialogClose : undefined}
         >
           <DialogPrimitive.Title
             data-slot="dialog-title"
@@ -121,7 +112,7 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
               {footer_content}
             </div>
           )}
-        </DialogPrimitive.Content>
+        </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );

@@ -29,7 +29,7 @@ export default defineConfig({
             "@tanstack/react-virtual",
             "lucide-react",
             "next-themes",
-            "radix-ui",
+            "@base-ui/react",
             "react-dom",
             "react",
             "sonner",

@@ -650,6 +650,7 @@ describe("AgentComposer", () => {
     vi.useFakeTimers();
     try {
       await act(async () => {
+        trigger?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
         trigger?.dispatchEvent(
           new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
         );

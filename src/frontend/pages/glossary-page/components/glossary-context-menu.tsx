@@ -25,7 +25,7 @@ export function GlossaryContextMenuContent(props: GlossaryContextMenuContentProp
     <AppContextMenuContent>
       <AppContextMenuGroup>
         <AppContextMenuItem
-          onSelect={() => {
+          onClick={() => {
             props.on_open_edit();
           }}
         >

@@ -892,9 +892,9 @@
 /* 浮层跟随真实触发器宽度，长队列只在可用空间内换行与滚动。 */
 .agent-task-progress__tooltip {
   display: block;
-  width: var(--radix-tooltip-trigger-width);
-  max-width: var(--radix-tooltip-content-available-width);
-  max-height: min(320px, var(--radix-tooltip-content-available-height));
+  width: var(--anchor-width);
+  max-width: var(--available-width);
+  max-height: min(320px, var(--available-height));
   overflow-y: auto;
   scrollbar-gutter: stable;
   line-height: 1.5;
@@ -1122,12 +1122,6 @@
   color: var(--foreground);
   padding: 10px;
   box-shadow: var(--ui-shadow-overlay);
-}
-
-.agent-composer__annotation-editor,
-.agent-message__annotation-viewer,
-.agent-response-annotation-popover {
-  z-index: var(--ui-layer-popover);
 }
 
 .agent-annotation-panel label > span,

@@ -24,7 +24,9 @@ vi.mock("@dnd-kit/core", () => {
 });
 vi.mock("@dnd-kit/sortable", () => {
   const mocked = {
-    SortableContext: (props: { children: ReactNode }) => <>{props.children}</>,
+    SortableContext: (props: { children?: ReactNode; render?: ReactNode }) => (
+      <>{props.render ?? props.children}</>
+    ),
     arrayMove: (items: string[], from: number, to: number) => {
       const next = [...items];
       const [item] = next.splice(from, 1);
@@ -53,9 +55,15 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   }),
 }));
 vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
+  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipContent: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
 }));
 

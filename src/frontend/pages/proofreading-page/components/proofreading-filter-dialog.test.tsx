@@ -19,9 +19,15 @@ vi.mock("@frontend/widgets/app-page-dialog", () => ({
 }));
 
 vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
+  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipContent: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
 }));
 
 const filters = {

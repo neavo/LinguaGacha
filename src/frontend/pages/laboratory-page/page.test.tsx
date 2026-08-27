@@ -25,19 +25,19 @@ vi.mock("@frontend/widgets/setting-help-button", () => ({
   SettingHelpButton: () => null,
 }));
 
-vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => ({
-  SegmentedToggle: (props: {
+vi.mock("@frontend/widgets/boolean-segmented-toggle", () => ({
+  BooleanSegmentedToggle: (props: {
     aria_label: string;
-    value: "disabled" | "enabled";
+    value: boolean;
     disabled: boolean;
-    on_value_change: (value: "disabled" | "enabled") => void;
+    on_value_change: (value: boolean) => void;
   }) => (
     <button
       type="button"
       aria-label={props.aria_label}
-      data-value={props.value}
+      data-value={String(props.value)}
       disabled={props.disabled}
-      onClick={() => props.on_value_change(props.value === "enabled" ? "disabled" : "enabled")}
+      onClick={() => props.on_value_change(!props.value)}
     />
   ),
 }));

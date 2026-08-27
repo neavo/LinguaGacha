@@ -648,7 +648,7 @@ function WindowVisualContent({ children }: { children: ReactNode }): JSX.Element
   const { resolved_theme } = useAppearance();
 
   return (
-    <TooltipProvider delayDuration={120}>
+    <TooltipProvider delay={120}>
       {children}
       <Toaster theme={resolved_theme} />
     </TooltipProvider>

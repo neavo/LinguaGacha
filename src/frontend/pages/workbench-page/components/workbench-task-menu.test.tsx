@@ -21,16 +21,18 @@ vi.mock("@frontend/features/model-selection/model-selection-menu", () => ({
 
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  AppDropdownMenuTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuSeparator: () => <hr />,
   AppDropdownMenuItem: (props: {
     children: ReactNode;
     disabled?: boolean;
-    onSelect?: () => void;
+    onClick?: () => void;
   }) => (
-    <button type="button" disabled={props.disabled} onClick={props.onSelect}>
+    <button type="button" disabled={props.disabled} onClick={props.onClick}>
       {props.children}
     </button>
   ),
@@ -41,8 +43,12 @@ vi.mock("@frontend/widgets/segmented-progress/segmented-progress", () => ({
 }));
 
 vi.mock("@frontend/shadcn/tooltip", () => ({
-  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
+  TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
+    <>{props.render ?? props.children}</>
+  ),
   TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
   tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
 }));

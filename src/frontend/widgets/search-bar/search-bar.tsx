@@ -192,8 +192,8 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
         <InputGroupAddon align="inline-end" className="search-bar__input-addon">
           {show_clear_keyword ? (
             <Tooltip>
-              <TooltipTrigger asChild>
-                {tooltip_trigger_target(
+              <TooltipTrigger
+                render={tooltip_trigger_target(
                   <InputGroupButton
                     size="icon-xs"
                     disabled={props.search_disabled}
@@ -206,7 +206,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
                     <X />
                   </InputGroupButton>,
                 )}
-              </TooltipTrigger>
+              />
               <TooltipContent side="top" sideOffset={8}>
                 <p>{props.clear_label}</p>
               </TooltipContent>
@@ -214,15 +214,17 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
           ) : null}
           {show_invalid_state ? (
             <Tooltip>
-              <TooltipTrigger asChild>
-                <InputGroupButton
-                  size="icon-xs"
-                  aria-label={props.invalid_message ?? undefined}
-                  className="search-bar__invalid-button"
-                >
-                  <TriangleAlert />
-                </InputGroupButton>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <InputGroupButton
+                    size="icon-xs"
+                    aria-label={props.invalid_message ?? undefined}
+                    className="search-bar__invalid-button"
+                  >
+                    <TriangleAlert />
+                  </InputGroupButton>
+                }
+              />
               <TooltipContent side="bottom" sideOffset={8}>
                 <p className="search-bar__invalid-tooltip">{props.invalid_message}</p>
               </TooltipContent>
@@ -245,23 +247,25 @@ function SearchBarScopeAction<scope_value extends string = string>(
   return (
     <AppDropdownMenu>
       <Tooltip>
-        <TooltipTrigger asChild>
-          {tooltip_trigger_target(
-            <AppDropdownMenuTrigger asChild>
-              <AppButton
-                type="button"
-                variant="ghost"
-                size="toolbar"
-                disabled={props.search_disabled}
-                className="search-bar__action-trigger"
-                data-active={props.scope.value === "all" ? undefined : "true"}
-              >
-                <ListFilter data-icon="inline-start" />
-                {props.scope.button_label}
-              </AppButton>
-            </AppDropdownMenuTrigger>,
+        <TooltipTrigger
+          render={tooltip_trigger_target(
+            <AppDropdownMenuTrigger
+              render={
+                <AppButton
+                  type="button"
+                  variant="ghost"
+                  size="toolbar"
+                  disabled={props.search_disabled}
+                  className="search-bar__action-trigger"
+                  data-active={props.scope.value === "all" ? undefined : "true"}
+                >
+                  <ListFilter data-icon="inline-start" />
+                  {props.scope.button_label}
+                </AppButton>
+              }
+            />,
           )}
-        </TooltipTrigger>
+        />
         <TooltipContent side="bottom" sideOffset={8}>
           <p>{props.scope.tooltip}</p>
         </TooltipContent>
@@ -292,8 +296,8 @@ type SearchBarRegexActionProps = {
 function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        {tooltip_trigger_target(
+      <TooltipTrigger
+        render={tooltip_trigger_target(
           <AppButton
             type="button"
             variant="ghost"
@@ -309,7 +313,7 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
             {props.regex.label}
           </AppButton>,
         )}
-      </TooltipTrigger>
+      />
       <TooltipContent side="bottom" sideOffset={8}>
         <p>{props.regex.tooltip}</p>
       </TooltipContent>
@@ -353,8 +357,8 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
       >
         {show_clear_replace_text ? (
           <Tooltip>
-            <TooltipTrigger asChild>
-              {tooltip_trigger_target(
+            <TooltipTrigger
+              render={tooltip_trigger_target(
                 <InputGroupButton
                   size="icon-xs"
                   disabled={props.replace_text_disabled}
@@ -367,15 +371,15 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
                   <X />
                 </InputGroupButton>,
               )}
-            </TooltipTrigger>
+            />
             <TooltipContent side="top" sideOffset={8}>
               <p>{props.replace_clear_label}</p>
             </TooltipContent>
           </Tooltip>
         ) : null}
         <Tooltip>
-          <TooltipTrigger asChild>
-            {tooltip_trigger_target(
+          <TooltipTrigger
+            render={tooltip_trigger_target(
               <InputGroupButton
                 size="icon-xs"
                 disabled={props.replace_submit_disabled}
@@ -388,14 +392,14 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
                 <Replace />
               </InputGroupButton>,
             )}
-          </TooltipTrigger>
+          />
           <TooltipContent side="top" sideOffset={8}>
             <p>{props.replace_next_label}</p>
           </TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
-            {tooltip_trigger_target(
+          <TooltipTrigger
+            render={tooltip_trigger_target(
               <InputGroupButton
                 size="icon-xs"
                 disabled={props.replace_submit_disabled}
@@ -408,7 +412,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
                 <ReplaceAll />
               </InputGroupButton>,
             )}
-          </TooltipTrigger>
+          />
           <TooltipContent side="top" sideOffset={8}>
             <p>{props.replace_all_label}</p>
           </TooltipContent>

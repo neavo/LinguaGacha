@@ -60,7 +60,7 @@ export function AppTableDragIndicator(props: AppTableDragIndicatorProps): JSX.El
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{indicator}</TooltipTrigger>
+      <TooltipTrigger render={indicator} />
       <TooltipContent side="top" sideOffset={8}>
         <p>{tooltip_label}</p>
       </TooltipContent>

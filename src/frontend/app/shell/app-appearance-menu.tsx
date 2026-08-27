@@ -42,22 +42,20 @@ export function AppAppearanceMenu(props: AppAppearanceMenuProps): JSX.Element {
   return (
     <SidebarMenuItem>
       <AppDropdownMenu>
-        <AppDropdownMenuTrigger asChild>
-          <SidebarMenuButton
-            className="sidebar-bottom-button"
-            tooltip={appearance_label}
-            aria-label={appearance_label}
-          >
-            <Palette size={16} className="sidebar-bottom-button__icon" />
-            <span className="sidebar-bottom-button__text">{appearance_label}</span>
-          </SidebarMenuButton>
-        </AppDropdownMenuTrigger>
+        <AppDropdownMenuTrigger
+          render={
+            <SidebarMenuButton className="sidebar-bottom-button" aria-label={appearance_label}>
+              <Palette size={16} className="sidebar-bottom-button__icon" />
+              <span className="sidebar-bottom-button__text">{appearance_label}</span>
+            </SidebarMenuButton>
+          }
+        />
         <AppDropdownMenuContent
           side={props.is_collapsed ? "right" : "top"}
           align="center"
           sideOffset={props.is_collapsed ? 8 : 4}
           matchTriggerWidth={!props.is_collapsed}
-          className={cn(!props.is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
+          className={cn(!props.is_collapsed && "w-(--anchor-width)")}
         >
           <AppDropdownMenuGroup>
             <AppDropdownMenuLabel>{font_label}</AppDropdownMenuLabel>

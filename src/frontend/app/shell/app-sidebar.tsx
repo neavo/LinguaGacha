@@ -148,32 +148,32 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                                 return (
                                   <SidebarMenuSubItem key={child.id}>
                                     <SidebarMenuSubButton
-                                      asChild
                                       isActive={is_child_active}
                                       className={cn(
                                         "sidebar-subitem",
                                         is_child_active && "sidebar-subitem--active",
                                       )}
-                                    >
-                                      <button
-                                        disabled={is_child_disabled}
-                                        onClick={() => {
-                                          props.on_select_route(child.id);
-                                        }}
-                                        aria-label={t(child.title_key)}
-                                        tabIndex={is_subitems_open ? 0 : -1}
-                                      >
-                                        <ChildIcon size={16} className="sidebar-subitem__icon" />
-                                        <span
-                                          className={cn(
-                                            "sidebar-subitem__label",
-                                            is_child_active && "font-medium",
-                                          )}
+                                      render={
+                                        <button
+                                          disabled={is_child_disabled}
+                                          onClick={() => {
+                                            props.on_select_route(child.id);
+                                          }}
+                                          aria-label={t(child.title_key)}
+                                          tabIndex={is_subitems_open ? 0 : -1}
                                         >
-                                          {t(child.title_key)}
-                                        </span>
-                                      </button>
-                                    </SidebarMenuSubButton>
+                                          <ChildIcon size={16} className="sidebar-subitem__icon" />
+                                          <span
+                                            className={cn(
+                                              "sidebar-subitem__label",
+                                              is_child_active && "font-medium",
+                                            )}
+                                          >
+                                            {t(child.title_key)}
+                                          </span>
+                                        </button>
+                                      }
+                                    />
                                   </SidebarMenuSubItem>
                                 );
                               })}
@@ -213,24 +213,26 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
 
           <SidebarMenuItem>
             <AppDropdownMenu>
-              <AppDropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  className="sidebar-bottom-button"
-                  disabled={props.is_language_updating}
-                  aria-label={t("app.navigation_action.language")}
-                >
-                  <Languages size={16} className="sidebar-bottom-button__icon" />
-                  <span className="sidebar-bottom-button__text">
-                    {t("app.navigation_action.language")}
-                  </span>
-                </SidebarMenuButton>
-              </AppDropdownMenuTrigger>
+              <AppDropdownMenuTrigger
+                render={
+                  <SidebarMenuButton
+                    className="sidebar-bottom-button"
+                    disabled={props.is_language_updating}
+                    aria-label={t("app.navigation_action.language")}
+                  >
+                    <Languages size={16} className="sidebar-bottom-button__icon" />
+                    <span className="sidebar-bottom-button__text">
+                      {t("app.navigation_action.language")}
+                    </span>
+                  </SidebarMenuButton>
+                }
+              />
               <AppDropdownMenuContent
                 side={is_collapsed ? "right" : "top"}
                 align="center"
                 sideOffset={is_collapsed ? 8 : 4}
                 matchTriggerWidth={!is_collapsed}
-                className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
+                className={cn(!is_collapsed && "w-(--anchor-width)")}
               >
                 <AppDropdownMenuRadioGroup
                   value={props.app_language}

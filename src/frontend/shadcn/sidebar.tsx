@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Slot } from "radix-ui";
+import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
 
 import { cn } from "@frontend/shadcn/classnames";
 import { Separator } from "@frontend/shadcn/separator";
@@ -283,7 +284,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-sidebar-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -304,31 +305,35 @@ const sidebarMenuButtonVariants = cva(
 );
 
 function SidebarMenuButton({
-  asChild = false,
   isActive = false,
   variant = "default",
   size = "default",
   tooltip,
   className,
+  children,
+  render,
   ...props
-}: React.ComponentProps<"button"> & {
-  asChild?: boolean;
+}: useRender.ComponentProps<"button"> & {
   isActive?: boolean;
   tooltip?: string | React.ComponentProps<typeof TooltipContent>;
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const Comp = asChild ? Slot.Root : "button";
   const { state } = useSidebar();
-
-  const button = (
-    <Comp
-      data-slot="sidebar-menu-button"
-      data-sidebar="menu-button"
-      data-size={size}
-      data-active={isActive}
-      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
-      {...props}
-    />
-  );
+  const button = useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        "data-slot": "sidebar-menu-button",
+        "data-sidebar": "menu-button",
+        "data-size": size,
+        "data-active": isActive,
+        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+        children,
+      } as React.ComponentProps<"button">,
+      props,
+    ),
+    render,
+    state: { slot: "sidebar-menu-button", sidebar: "menu-button", size, active: isActive },
+  });
 
   if (!tooltip) {
     return button;
@@ -342,7 +347,7 @@ function SidebarMenuButton({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipContent side="right" align="center" hidden={state !== "collapsed"} {...tooltip} />
     </Tooltip>
   );
@@ -374,31 +379,35 @@ function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">)
 }
 
 function SidebarMenuSubButton({
-  asChild = false,
   size = "md",
   isActive = false,
+  children,
+  render,
   className,
   ...props
-}: React.ComponentProps<"a"> & {
-  asChild?: boolean;
+}: useRender.ComponentProps<"a"> & {
   size?: "sm" | "md";
   isActive?: boolean;
 }) {
-  const Comp = asChild ? Slot.Root : "a";
-
-  return (
-    <Comp
-      data-slot="sidebar-menu-sub-button"
-      data-sidebar="menu-sub-button"
-      data-size={size}
-      data-active={isActive}
-      className={cn(
-        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return useRender({
+    defaultTagName: "a",
+    props: mergeProps<"a">(
+      {
+        "data-slot": "sidebar-menu-sub-button",
+        "data-sidebar": "menu-sub-button",
+        "data-size": size,
+        "data-active": isActive,
+        className: cn(
+          "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-hidden group-data-[collapsible=icon]:hidden focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-sidebar-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+          className,
+        ),
+        children,
+      } as React.ComponentProps<"a">,
+      props,
+    ),
+    render,
+    state: { slot: "sidebar-menu-sub-button", sidebar: "menu-sub-button", size, active: isActive },
+  });
 }
 
 export {

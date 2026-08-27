@@ -51,7 +51,7 @@ describe("AgentToolDetailDialog", () => {
     const tabs = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
     const input_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.input");
     const output_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.output");
-    expect(output_tab?.getAttribute("data-state")).toBe("active");
+    expect(output_tab?.hasAttribute("data-active")).toBe(true);
     const output = dialog?.querySelector<HTMLElement>(
       ".cm-content[aria-label='agent_page.tool.output']",
     );
@@ -59,12 +59,8 @@ describe("AgentToolDetailDialog", () => {
     expect(output?.querySelector(".cm-line span")).not.toBeNull();
     expect(dialog?.textContent).not.toContain("Alice");
 
-    await act(async () =>
-      input_tab?.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true, button: 0, ctrlKey: false }),
-      ),
-    );
-    expect(input_tab?.getAttribute("data-state")).toBe("active");
+    await act(async () => input_tab?.click());
+    expect(input_tab?.hasAttribute("data-active")).toBe(true);
     const input = dialog?.querySelector<HTMLElement>(
       ".cm-content[aria-label='agent_page.tool.input']",
     );
@@ -82,7 +78,7 @@ describe("AgentToolDetailDialog", () => {
     const wrap_button = document.body.querySelector<HTMLButtonElement>(
       "button[aria-label='agent_page.tool.wrap']",
     );
-    expect(input_tab?.getAttribute("data-state")).toBe("active");
+    expect(input_tab?.hasAttribute("data-active")).toBe(true);
     expect(wrap_button?.getAttribute("aria-pressed")).toBe("true");
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')
@@ -100,7 +96,7 @@ describe("AgentToolDetailDialog", () => {
     ).toBeNull();
 
     await render_dialog(tool_success('{"path":"SKILL.md"}', "完整正文。"));
-    expect(input_tab?.getAttribute("data-state")).toBe("active");
+    expect(input_tab?.hasAttribute("data-active")).toBe(true);
     expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
     expect(
       document.body.querySelector('[role="dialog"] .cm-content[aria-label="agent_page.tool.input"]')

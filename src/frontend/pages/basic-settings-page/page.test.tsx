@@ -44,9 +44,9 @@ vi.mock("@frontend/widgets/setting-card-row/setting-card-row", () => {
   };
 });
 
-vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => {
+vi.mock("@frontend/widgets/boolean-segmented-toggle", () => {
   return {
-    SegmentedToggle: () => <button type="button" />,
+    BooleanSegmentedToggle: () => <button type="button" />,
   };
 });
 

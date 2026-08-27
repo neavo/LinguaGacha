@@ -139,18 +139,20 @@ export function AgentApprovalPanel(props: AgentApprovalPanelProps): JSX.Element 
             <ShortcutKbd action="submit" className="bg-background/18 text-primary-foreground" />
           </AppButton>
           <AppDropdownMenu>
-            <AppDropdownMenuTrigger asChild>
-              <AppButton
-                type="button"
-                size="icon-sm"
-                variant="default"
-                aria-label={t("agent_page.approval.approve_future")}
-              >
-                <ChevronDown aria-hidden="true" />
-              </AppButton>
-            </AppDropdownMenuTrigger>
+            <AppDropdownMenuTrigger
+              render={
+                <AppButton
+                  type="button"
+                  size="icon-sm"
+                  variant="default"
+                  aria-label={t("agent_page.approval.approve_future")}
+                >
+                  <ChevronDown aria-hidden="true" />
+                </AppButton>
+              }
+            />
             <AppDropdownMenuContent align="end" matchTriggerWidth={false}>
-              <AppDropdownMenuItem onSelect={() => props.on_approve(true)}>
+              <AppDropdownMenuItem onClick={() => props.on_approve(true)}>
                 {t("agent_page.approval.approve_future")}
               </AppDropdownMenuItem>
             </AppDropdownMenuContent>

@@ -69,22 +69,24 @@ function FilterListRow(props: {
 }): JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="proofreading-page__filter-list-row"
-          data-selected={props.selected ? "true" : undefined}
-          onClick={props.onClick}
-        >
-          <span className="proofreading-page__filter-list-row-copy">{props.label}</span>
-          <Badge
-            variant="secondary"
-            className="proofreading-page__filter-count-badge min-w-5 justify-center tabular-nums"
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="proofreading-page__filter-list-row"
+            data-selected={props.selected ? "true" : undefined}
+            onClick={props.onClick}
           >
-            {props.count.toString()}
-          </Badge>
-        </button>
-      </TooltipTrigger>
+            <span className="proofreading-page__filter-list-row-copy">{props.label}</span>
+            <Badge
+              variant="secondary"
+              className="proofreading-page__filter-count-badge min-w-5 justify-center tabular-nums"
+            >
+              {props.count.toString()}
+            </Badge>
+          </button>
+        }
+      />
       <TooltipContent side="top" sideOffset={8}>
         <p className="proofreading-page__filter-list-row-tooltip">{props.label}</p>
       </TooltipContent>

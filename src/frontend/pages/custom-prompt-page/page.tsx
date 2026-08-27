@@ -25,20 +25,22 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
     <div className="custom-prompt-page page-shell page-shell--full">
       <div className="custom-prompt-page__content">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <section
-              className="custom-prompt-page__readonly-strip"
-              aria-label={t("custom_prompt_page.section.prefix_label")}
-              tabIndex={0}
-            >
-              <p className="custom-prompt-page__readonly-strip-label font-medium">
-                {t("custom_prompt_page.section.prefix_label")}
-              </p>
-              <pre className="custom-prompt-page__readonly-block">
-                {compress_prompt_preview(page_state.template.prefix_text)}
-              </pre>
-            </section>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <section
+                className="custom-prompt-page__readonly-strip"
+                aria-label={t("custom_prompt_page.section.prefix_label")}
+                tabIndex={0}
+              >
+                <p className="custom-prompt-page__readonly-strip-label font-medium">
+                  {t("custom_prompt_page.section.prefix_label")}
+                </p>
+                <pre className="custom-prompt-page__readonly-block">
+                  {compress_prompt_preview(page_state.template.prefix_text)}
+                </pre>
+              </section>
+            }
+          />
           <TooltipContent
             side="top"
             align="start"
@@ -64,20 +66,22 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
         />
 
         <Tooltip>
-          <TooltipTrigger asChild>
-            <section
-              className="custom-prompt-page__readonly-strip"
-              aria-label={t("custom_prompt_page.section.suffix_label")}
-              tabIndex={0}
-            >
-              <p className="custom-prompt-page__readonly-strip-label font-medium">
-                {t("custom_prompt_page.section.suffix_label")}
-              </p>
-              <pre className="custom-prompt-page__readonly-block">
-                {compress_prompt_preview(page_state.template.suffix_text)}
-              </pre>
-            </section>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <section
+                className="custom-prompt-page__readonly-strip"
+                aria-label={t("custom_prompt_page.section.suffix_label")}
+                tabIndex={0}
+              >
+                <p className="custom-prompt-page__readonly-strip-label font-medium">
+                  {t("custom_prompt_page.section.suffix_label")}
+                </p>
+                <pre className="custom-prompt-page__readonly-block">
+                  {compress_prompt_preview(page_state.template.suffix_text)}
+                </pre>
+              </section>
+            }
+          />
           <TooltipContent
             side="top"
             align="start"

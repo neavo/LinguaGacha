@@ -193,36 +193,38 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               description={t("model_page.fields.thinking.description")}
               action={
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
-                      <Select
-                        value={current_thinking_available ? model.thinking.level : "DEFAULT"}
-                        disabled={props.readonly || thinking_unavailable}
-                        onValueChange={(next_value) => {
-                          if (is_model_thinking_level(next_value)) {
-                            void props.onPatch({
-                              thinking: {
-                                level: next_value,
-                              },
-                            });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="model-page__field">
-                          <SelectValue>{thinking_label}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {model.available_thinking_levels.map((thinking_level) => (
-                              <SelectItem key={thinking_level} value={thinking_level}>
-                                {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </span>
-                  </TooltipTrigger>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
+                        <Select
+                          value={current_thinking_available ? model.thinking.level : "DEFAULT"}
+                          disabled={props.readonly || thinking_unavailable}
+                          onValueChange={(next_value) => {
+                            if (is_model_thinking_level(next_value)) {
+                              void props.onPatch({
+                                thinking: {
+                                  level: next_value,
+                                },
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="model-page__field">
+                            <SelectValue>{thinking_label}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {model.available_thinking_levels.map((thinking_level) => (
+                                <SelectItem key={thinking_level} value={thinking_level}>
+                                  {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </span>
+                    }
+                  />
                   {thinking_unavailable ? (
                     <TooltipContent side="top" sideOffset={8}>
                       <p>{t("app.model.thinking_level.unsupported")}</p>

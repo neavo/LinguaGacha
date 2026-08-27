@@ -112,12 +112,6 @@
   color: var(--workbench-unit);
 }
 
-.workbench-page__cursor-tooltip {
-  position: fixed;
-  transform: translate(12px, 12px);
-  pointer-events: none;
-}
-
 .workbench-page__table-card {
   display: flex;
   min-height: 0;

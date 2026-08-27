@@ -6,6 +6,7 @@ import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Input } from "@frontend/shadcn/input";
 import { ScrollArea } from "@frontend/shadcn/scroll-area";
+import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
 type ModelSelectorDialogProps = {
@@ -94,16 +95,18 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
             ) : (
               <div className="model-page__selector-options">
                 {filtered_models.map((model_name) => (
-                  <button
+                  <AppButton
                     key={model_name}
                     type="button"
+                    variant="outline"
+                    size="sm"
                     className="model-page__selector-item"
                     onClick={() => {
                       void onSelectModelId(model_name);
                     }}
                   >
                     {model_name}
-                  </button>
+                  </AppButton>
                 ))}
               </div>
             )}

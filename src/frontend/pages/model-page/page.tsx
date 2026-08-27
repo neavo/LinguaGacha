@@ -142,7 +142,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                     <AppDropdownMenuContent align="center">
                       <AppDropdownMenuGroup>
                         <AppDropdownMenuItem
-                          onSelect={() => {
+                          onClick={() => {
                             model_page_state.open_dialog("basic", model.id);
                           }}
                         >
@@ -150,7 +150,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                           {t("model_page.action.basic_settings")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
-                          onSelect={() => {
+                          onClick={() => {
                             model_page_state.open_dialog("task", model.id);
                           }}
                         >
@@ -158,7 +158,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                           {t("model_page.action.task_settings")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
-                          onSelect={() => {
+                          onClick={() => {
                             model_page_state.open_dialog("advanced", model.id);
                           }}
                         >
@@ -168,7 +168,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                         <AppDropdownMenuSeparator />
                         {model.type === "PRESET" ? (
                           <AppDropdownMenuItem
-                            onSelect={() => {
+                            onClick={() => {
                               model_page_state.request_reset_model(model.id);
                             }}
                           >
@@ -178,7 +178,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                         ) : (
                           <AppDropdownMenuItem
                             variant="destructive"
-                            onSelect={() => {
+                            onClick={() => {
                               model_page_state.request_delete_model(model.id);
                             }}
                           >

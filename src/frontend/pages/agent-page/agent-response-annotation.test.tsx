@@ -162,8 +162,6 @@ describe("AgentResponseAnnotation", () => {
     }
     select_range(text_node, 0, text_node, 2);
     await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
-    await wait_for_radix_outside_pointer_listener();
-
     await act(async () => {
       messages.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
       select_range(text_node, 0, text_node, 4);
@@ -214,11 +212,6 @@ describe("AgentResponseAnnotation", () => {
     expect(document.body.querySelector('[role="toolbar"][aria-label="添加批注"]')).toBeNull();
   });
 });
-
-/** Radix 在下一任务注册外部指针监听；回归用例必须等到真实关闭路径已经可观察。 */
-async function wait_for_radix_outside_pointer_listener(): Promise<void> {
-  await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
-}
 
 function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
