@@ -473,6 +473,24 @@ describe("AgentPage", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("Ctrl+E 在编辑器内切换跟随并公开可访问快捷键", async () => {
+    const view = await render_page();
+    const editor = view.querySelector<HTMLElement>(".cm-content");
+    if (editor === null) throw new Error("缺少消息编辑器");
+    const button = get_follow_latest_button(view);
+    const event = new KeyboardEvent("keydown", {
+      key: "e",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => editor.dispatchEvent(event));
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+E");
+  });
+
   it("离开底部自动取消跟随，按钮显式恢复并归底", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");

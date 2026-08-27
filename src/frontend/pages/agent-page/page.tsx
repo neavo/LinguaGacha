@@ -26,6 +26,9 @@ import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-edit
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
+import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
   useAgentControls,
@@ -113,6 +116,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     useState<PendingThinkingOffAction | null>(null);
   /** 页面只允许一个历史或队列目标进入原位编辑，普通 Composer 始终保持独立草稿。 */
   const [active_inline_edit, set_active_inline_edit] = useState<AgentInlineEditTarget | null>(null);
+
+  /** 页面级快捷键与按钮共享同一条跟随切换入口。 */
+  const toggle_follow_latest = useCallback((): void => {
+    if (follow_latest) {
+      deactivate_conversation_follow();
+      return;
+    }
+    set_follow_reset_revision((revision) => revision + 1);
+    activate_conversation_follow(conversation_ref.current);
+  }, [activate_conversation_follow, deactivate_conversation_follow, follow_latest]);
+
+  useActionShortcut({
+    action: "follow_latest",
+    enabled: true,
+    allow_in_text_editing: true,
+    on_trigger: toggle_follow_latest,
+  });
   const handle_terms_load_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.terms_load"));
   }, [push_toast, t]);
@@ -465,6 +485,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const show_write_approval =
     controls.pendingWriteApproval?.status === "waiting" && controls.command !== "approval_decision";
   const follow_latest_label = t("agent_page.action.follow_latest");
+  // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
+  const follow_latest_aria_shortcut =
+    resolve_shortcut_platform() === "mac" ? "Meta+E" : "Control+E";
   const follow_latest_status = t("app.tooltip.value", {
     TITLE: follow_latest_label,
     VALUE: t(follow_latest ? "app.state.enabled" : "app.state.disabled"),
@@ -479,20 +502,16 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           variant="outline"
           aria-label={follow_latest_label}
           aria-pressed={follow_latest}
-          onClick={() => {
-            if (follow_latest) {
-              deactivate_conversation_follow();
-              return;
-            }
-            set_follow_reset_revision((revision) => revision + 1);
-            activate_conversation_follow(conversation_ref.current);
-          }}
+          aria-keyshortcuts={follow_latest_aria_shortcut}
+          onClick={toggle_follow_latest}
         >
           <ArrowDownToLine aria-hidden="true" />
         </AppButton>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>
-        <p>{follow_latest_status}</p>
+        <p>
+          {follow_latest_status} <ShortcutKbd action="follow_latest" />
+        </p>
       </TooltipContent>
     </Tooltip>
   );

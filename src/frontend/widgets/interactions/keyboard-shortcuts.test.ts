@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  get_shortcut_label,
   is_action_shortcut_event,
   resolve_shortcut_platform,
   should_ignore_action_shortcut_event,
@@ -37,13 +38,23 @@ describe("keyboard shortcuts", () => {
   });
 
   it.each([
+    ["default", "Ctrl+E"],
+    ["mac", "⌘E"],
+  ] as const)("显示跟随最新的 %s 快捷键", (platform, expected) => {
+    expect(get_shortcut_label("follow_latest", platform)).toBe(expected);
+  });
+
+  it.each([
     ["default", "save", { key: "s", ctrlKey: true }, true],
+    ["default", "follow_latest", { key: "e", ctrlKey: true }, true],
     ["default", "delete", { key: "Delete" }, true],
     ["default", "save", { key: "s", metaKey: true }, false],
+    ["mac", "follow_latest", { key: "e", metaKey: true }, true],
     ["mac", "save", { key: "s", metaKey: true }, true],
     ["mac", "delete", { key: "Backspace", metaKey: true }, true],
     ["default", "save", { key: "s", ctrlKey: true, isComposing: true }, false],
     ["default", "create", { key: "n", ctrlKey: true, altKey: true }, false],
+    ["default", "follow_latest", { key: "e", ctrlKey: true, shiftKey: true }, false],
   ] as const)("%s 平台的 %s 快捷键（%o）匹配结果为 %s", (platform, action, input, expected) => {
     expect(is_action_shortcut_event(create_shortcut_event(input), action, platform)).toBe(expected);
   });
@@ -73,6 +84,13 @@ describe("keyboard shortcuts", () => {
         should_ignore_action_shortcut_event(
           create_shortcut_event({ key: "n", target: dialog_child }),
           "create",
+        ),
+      ).toBe(true);
+      expect(
+        should_ignore_action_shortcut_event(
+          create_shortcut_event({ key: "e", ctrlKey: true, target: dialog_child }),
+          "follow_latest",
+          true,
         ),
       ).toBe(true);
       expect(

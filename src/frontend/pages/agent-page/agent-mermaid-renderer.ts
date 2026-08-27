@@ -3,6 +3,28 @@ import type { MermaidConfig } from "mermaid";
 import type { ResolvedThemeMode } from "@gui/bridge-types";
 
 const MERMAID_RENDER_CACHE_SIZE = 32;
+const MERMAID_NODE_RADIUS = 4;
+const MERMAID_EDGE_LABEL_RADIUS = 3;
+
+/** Mermaid 官方主题变量无法完整表达节点圆角、线端与边标签几何，仅在适配器内收口。 */
+const MERMAID_THEME_CSS = `
+  .node rect.basic.label-container,
+  .cluster rect {
+    rx: ${MERMAID_NODE_RADIUS}px;
+    ry: ${MERMAID_NODE_RADIUS}px;
+  }
+
+  .edgePath .path,
+  .flowchart-link {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .edgeLabel rect {
+    rx: ${MERMAID_EDGE_LABEL_RADIUS}px;
+    ry: ${MERMAID_EDGE_LABEL_RADIUS}px;
+  }
+`;
 
 export type MermaidRenderResult =
   | { status: "success"; svg: string }
@@ -102,12 +124,18 @@ function build_mermaid_theme_profile(theme_mode: ResolvedThemeMode): MermaidThem
   const font_family = "var(--ui-font-family-base)";
   const theme_variables = {
     background: read_token("--popover"),
-    primaryColor: read_token("--muted"),
+    primaryColor: read_token("--popover"),
     primaryTextColor: read_token("--foreground"),
     primaryBorderColor: read_token("--border"),
     secondaryColor: read_token("--accent"),
     tertiaryColor: read_token("--secondary"),
     lineColor: read_token("--muted-foreground"),
+    arrowheadColor: read_token("--muted-foreground"),
+    clusterBkg: read_token("--background"),
+    clusterBorder: read_token("--border"),
+    edgeLabelBackground: read_token("--background"),
+    titleColor: read_token("--foreground"),
+    strokeWidth: 1,
     fontFamily: font_family,
     fontSize: "13px",
     darkMode: theme_mode === "dark",
@@ -120,8 +148,9 @@ function build_mermaid_theme_profile(theme_mode: ResolvedThemeMode): MermaidThem
     secure: ["theme", "themeVariables", "themeCSS", "fontFamily"],
     fontFamily: font_family,
     themeVariables: theme_variables,
+    themeCSS: MERMAID_THEME_CSS,
     // 保留 SVG 固有尺寸，信息流与预览画布各自决定展示比例。
-    flowchart: { useMaxWidth: false },
+    flowchart: { useMaxWidth: false, curve: "rounded" },
   };
   return {
     key: JSON.stringify({ theme_mode, theme_variables }),

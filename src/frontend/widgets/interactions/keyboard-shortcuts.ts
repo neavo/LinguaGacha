@@ -1,7 +1,8 @@
-export type ShortcutAction = "save" | "create" | "delete";
+export type ShortcutAction = "save" | "create" | "delete" | "follow_latest";
 export type ShortcutLabel = ShortcutAction | "cancel" | "submit" | "newline";
 
 export type ShortcutPlatform = "mac" | "default";
+type PrimaryShortcutAction = Exclude<ShortcutAction, "delete">;
 
 type NavigatorLike = {
   platform?: string;
@@ -21,6 +22,7 @@ const SHORTCUT_LABELS = {
     save: "⌘S",
     create: "⌘N",
     delete: "⌘⌫",
+    follow_latest: "⌘E",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
@@ -29,11 +31,19 @@ const SHORTCUT_LABELS = {
     save: "Ctrl+S",
     create: "Ctrl+N",
     delete: "Del",
+    follow_latest: "Ctrl+E",
     cancel: "Esc",
     submit: "Enter",
     newline: "Shift+Enter",
   },
 } satisfies Record<ShortcutPlatform, Record<ShortcutLabel, string>>;
+
+/** 非删除动作统一使用平台主修饰键与单字符键。 */
+const PRIMARY_SHORTCUT_KEYS = {
+  save: "s",
+  create: "n",
+  follow_latest: "e",
+} satisfies Record<PrimaryShortcutAction, string>;
 
 function get_runtime_navigator(): NavigatorLike | undefined {
   if (typeof navigator === "undefined") {
@@ -79,17 +89,16 @@ function has_plain_primary_modifier(
   return event.ctrlKey && !event.metaKey;
 }
 
-function is_save_or_create_shortcut_event(
+function is_primary_shortcut_event(
   event: ShortcutKeyboardEvent,
-  action: "save" | "create",
+  action: PrimaryShortcutAction,
   platform: ShortcutPlatform,
 ): boolean {
   if (event.isComposing || !has_plain_primary_modifier(event, platform)) {
     return false;
   }
 
-  const expected_key = action === "save" ? "s" : "n";
-  return event.key.toLowerCase() === expected_key;
+  return event.key.toLowerCase() === PRIMARY_SHORTCUT_KEYS[action];
 }
 
 function is_delete_shortcut_event(
@@ -116,7 +125,7 @@ export function is_action_shortcut_event(
     return is_delete_shortcut_event(event, platform);
   }
 
-  return is_save_or_create_shortcut_event(event, action, platform);
+  return is_primary_shortcut_event(event, action, platform);
 }
 
 function is_element_inside_dialog(element: Element): boolean {
