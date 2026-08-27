@@ -39,6 +39,17 @@ function define_level_map(
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
   {
     api_format: "OpenAI",
+    model_id: "z-ai/glm-5.3",
+    thinking_level_map: define_level_map(["low", "high", "max"]),
+    compat: { supportsReasoningEffort: true, thinkingFormat: "openrouter" },
+  },
+  {
+    api_format: "OpenAIResponses",
+    model_id: "z-ai/glm-5.3",
+    thinking_level_map: define_level_map(["low", "high", "max"]),
+  },
+  {
+    api_format: "OpenAI",
     model_id: "grok-4.6",
     compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
   },
