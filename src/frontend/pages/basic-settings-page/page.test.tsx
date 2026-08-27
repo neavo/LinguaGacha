@@ -52,7 +52,11 @@ vi.mock("@frontend/widgets/boolean-segmented-toggle", () => {
 
 vi.mock("@frontend/shadcn/select", () => {
   return {
-    Select: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    Select: (props: { children: ReactNode; items?: unknown; value?: string }) => (
+      <div data-items={JSON.stringify(props.items)} data-value={props.value}>
+        {props.children}
+      </div>
+    ),
     SelectContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
     SelectGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
     SelectItem: (props: { children: ReactNode; value: string }) => (
@@ -170,6 +174,27 @@ describe("BasicSettingsPage", () => {
 
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledTimes(1);
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledWith(1234);
+  });
+
+  it("把下拉协议值对应的本地化标签交给选择控件", async () => {
+    await mount_page();
+
+    const selects = [...(container?.querySelectorAll("[data-items]") ?? [])];
+    expect(selects).toHaveLength(3);
+    expect(
+      selects.map((select) => JSON.parse(select.getAttribute("data-items") ?? "null")),
+    ).toEqual([
+      expect.arrayContaining([
+        { value: "JA", label: "app.language.JA" },
+        { value: "ALL", label: "app.language.ALL" },
+      ]),
+      expect.arrayContaining([{ value: "ZH", label: "app.language.ZH" }]),
+      expect.arrayContaining([
+        { value: "MANUAL", label: "basic_settings_page.fields.project_save_mode.options.manual" },
+        { value: "FIXED", label: "basic_settings_page.fields.project_save_mode.options.fixed" },
+        { value: "SOURCE", label: "basic_settings_page.fields.project_save_mode.options.source" },
+      ]),
+    ]);
   });
 
   it("提交非法请求超时时间时标记红框并弹 toast", async () => {

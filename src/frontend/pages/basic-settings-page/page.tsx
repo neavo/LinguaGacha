@@ -135,6 +135,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           description={t("basic_settings_page.fields.source_language.description")}
           action={
             <Select
+              items={source_language_options}
               value={basic_settings_state.snapshot.source_language}
               disabled={language_locked || basic_settings_state.pending_state.source_language}
               onValueChange={(next_value) => {
@@ -164,6 +165,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           description={t("basic_settings_page.fields.target_language.description")}
           action={
             <Select
+              items={target_language_options}
               value={basic_settings_state.snapshot.target_language}
               disabled={language_locked || basic_settings_state.pending_state.target_language}
               onValueChange={(next_value) => {
@@ -193,6 +195,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
           description={project_save_mode_description}
           action={
             <Select
+              items={project_save_mode_options}
               value={basic_settings_state.snapshot.project_save_mode}
               disabled={basic_settings_state.pending_state.project_save_mode}
               onValueChange={(next_value) => {
