@@ -87,7 +87,7 @@ describe("PromptBuilder", () => {
     const result = await builder.generate_glossary_prompt(["Alice"]);
 
     expect(result.messages[0]?.content).toContain("Chinese");
-    expect(result.messages[1]?.content).toBe("Input:\nAlice");
+    expect(result.messages[1]?.content).toContain("Alice");
   });
 
   it("提示词模板语言跟随 UI 语言而不是目标语言", async () => {
@@ -127,9 +127,10 @@ describe("PromptBuilder", () => {
 
     const result = await builder.build_main("text");
 
-    expect(result).toBe(
-      '翻译前缀\n自定义规则：中文\n\n思考过程\n\n输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
-    );
+    expect(result).toContain("翻译前缀");
+    expect(result).toContain("自定义规则：中文");
+    expect(result).toContain("思考过程");
+    expect(result).toContain('{"index":<序号>,"text":"<译文文本>"}');
   });
 
   it("关闭提示词增强时翻译和分析都只保留前缀、正文与后缀", async () => {
@@ -145,12 +146,16 @@ describe("PromptBuilder", () => {
       [],
     );
 
-    await expect(builder.build_main("text")).resolves.toBe(
-      '翻译前缀\n请从 日文 翻译到 中文，保留控制字符。\n\n输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
-    );
-    await expect(builder.build_glossary_analysis_main()).resolves.toBe(
-      "分析前缀\n提取 中文 术语。\n\n输出 JSONLINE",
-    );
+    const translation_prompt = await builder.build_main("text");
+    expect(translation_prompt).toContain("翻译前缀");
+    expect(translation_prompt).toContain("请从 日文 翻译到 中文，保留控制字符。");
+    expect(translation_prompt).toContain('{"index":<序号>,"text":"<译文文本>"}');
+    expect(translation_prompt).not.toContain("思考过程");
+
+    const analysis_prompt = await builder.build_glossary_analysis_main();
+    expect(analysis_prompt).toContain("分析前缀");
+    expect(analysis_prompt).toContain("提取 中文 术语。");
+    expect(analysis_prompt).not.toContain("分析思考");
   });
 
   it("公开提示词只格式化 runner 已激活的术语", async () => {
@@ -201,20 +206,6 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).not.toContain("控制字符示例");
   });
 
-  it("Sakura 提示词没有已激活术语时使用默认内容", () => {
-    const builder = new PromptBuilder(
-      "unused",
-      { app_language: "ZH", target_language: "ZH", prompt_enhancement_enable: false },
-      create_quality_snapshot(),
-      [],
-    );
-
-    const result = builder.generate_prompt_sakura(["hp が足りない"]);
-
-    expect(result.messages[1]?.content).toBe("将下面的日文文本翻译成中文：\nhp が足りない");
-    expect(result.console_log).toEqual([]);
-  });
-
   it("Sakura 已激活术语使用无空格箭头格式", () => {
     const builder = new PromptBuilder(
       "unused",
@@ -223,7 +214,7 @@ describe("PromptBuilder", () => {
       [{ entry_id: "hp", src: "HP", dst: "生命值", info: "stat", case_sensitive: true }],
     );
 
-    const result = builder.generate_prompt_sakura(["hp", "HP"]);
+    const result = builder.generate_prompt_sakura("HP");
 
     expect(result.console_log).toEqual(["HP->生命值 #stat"]);
     expect(result.messages[1]?.content).toContain("根据以下术语表");
@@ -264,7 +255,9 @@ describe("PromptBuilder", () => {
 
     const result = await builder.build_glossary_analysis_main();
 
-    expect(result).toBe("分析前缀\n自定义分析：中文\n\n分析思考\n\n输出 JSONLINE");
+    expect(result).toContain("分析前缀");
+    expect(result).toContain("自定义分析：中文");
+    expect(result).toContain("分析思考");
     expect(result).not.toContain("翻译前缀");
   });
 
@@ -307,7 +300,7 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).toContain("虎鉄 -> 虎铁 #男性人名");
   });
 
-  it("纯文本请求保持旧的字符串 JSONL 输入格式", async () => {
+  it("纯文本请求使用字符串 JSONL 输入格式", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
       app_root,

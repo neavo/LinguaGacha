@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { ResponseDecoder } from "./response-decoder";
 
 describe("响应解码器", () => {
+  it("解码单 item 的 SakuraLLM 纯文本响应并保留内部换行", () => {
+    expect(new ResponseDecoder().decode_plain_text_item("第一行\n第二行", 3)).toEqual([
+      { request_index: 3, text_dst: "第一行\n第二行", actor_dst: null },
+    ]);
+  });
+
   it("解码一条包含真实换行的 item JSONL 记录", async () => {
     await expect(
       new ResponseDecoder().decode_translation('{"index":"7","text":"第一行\\n第二行"}', "text"),

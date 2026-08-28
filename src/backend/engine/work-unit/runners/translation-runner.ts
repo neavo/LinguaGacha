@@ -37,7 +37,7 @@ import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import type { LogError } from "../../../../shared/error";
 
-/** Worker-local immutable request envelope reconstructed from the public unit payload. */
+/** 根据公开 work-unit 载荷重建的 worker 本地不可变请求信封。 */
 interface TranslationWorkUnitRequest {
   run_id: string; // Isolates one task run across worker messages.
   work_unit_id: string; // Identifies this chunk in logs and diagnostics.
@@ -52,7 +52,7 @@ interface TranslationWorkUnitRequest {
   is_initial?: JsonValue; // Distinguishes first execution from retries.
 }
 
-/** Runner result before it is wrapped in the cross-thread execution envelope. */
+/** Runner 结果，尚未包装进跨线程执行信封。 */
 interface TranslationWorkUnitResult {
   items: TextTaskItemRecord[];
   input_tokens: number;
@@ -62,15 +62,15 @@ interface TranslationWorkUnitResult {
   logs?: WorkUnitLogEntry[];
 }
 
-/** Item-oriented translation worker. Line preparation/restoration stays inside the pipelines. */
+/** 以 item 为单位的翻译 worker；逐行准备与恢复均留在 pipeline 内部。 */
 export class TranslationWorkUnitRunner {
-  /** Keeps prompt resources and the sole LLM boundary explicit for worker tests. */
+  /** 显式持有提示词资源和唯一 LLM 边界，便于 worker 测试。 */
   public constructor(
     private readonly app_root: string,
     private readonly llm_client: LLMClientPort,
   ) {}
 
-  /** Executes one translation unit; Engine owns commit and retry decisions. */
+  /** 执行一个翻译单元；提交与重试决策由 Engine 负责。 */
   public async execute_unit(
     unit: TranslationWorkUnit,
     signal: AbortSignal,
@@ -109,7 +109,7 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  /** Runs preparation, one LLM request, decoding, checking and item restoration. */
+  /** 执行准备、单次 LLM 请求、解码、校验和 item 恢复。 */
   private async execute_items(
     request: TranslationWorkUnitRequest,
     signal: AbortSignal,
@@ -148,7 +148,7 @@ export class TranslationWorkUnitRunner {
     );
   }
 
-  /** Builds one request record per item while retaining line facts inside the pipeline. */
+  /** 为每个 item 构建一条请求记录，并将逐行事实保留在 pipeline 内部。 */
   private async prepare_request_data(
     request: TranslationWorkUnitRequest,
     config: TextProcessingConfig,
@@ -196,7 +196,7 @@ export class TranslationWorkUnitRunner {
       api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(request_items);
     const prompt =
       api_format === "SakuraLLM"
-        ? builder.generate_prompt_sakura(request_items.map((item) => item.text_src))
+        ? builder.generate_prompt_sakura(request_items[0]?.text_src ?? "")
         : await builder.generate_prompt(request_items, mode, samples, precedings);
     return {
       done: false,
@@ -208,7 +208,7 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  /** Applies independent index checks so one malformed item cannot poison its siblings. */
+  /** 按 index 独立校验，避免单个格式错误的 item 影响其它 item。 */
   private async apply_response_data(
     context: {
       config: TextProcessingConfig;
@@ -230,13 +230,21 @@ export class TranslationWorkUnitRunner {
       context.request_error === undefined
         ? ResponseCleaner.extract_rule_analysis_from_response(response.response_result)
         : { cleaned_response_result: "", rule_analysis_text: "" };
+    const decoder = new ResponseDecoder();
+    // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
+    const is_sakura =
+      String(read_json_record(context.request.model)["api_format"] ?? "") === "SakuraLLM";
     const decoded =
-      context.request_error === undefined
-        ? await new ResponseDecoder().decode_translation(
-            cleaner.cleaned_response_result,
-            context.mode,
-          )
-        : [];
+      context.request_error !== undefined
+        ? []
+        : is_sakura && context.request_items.length === 1
+          ? decoder.decode_plain_text_item(
+              cleaner.cleaned_response_result,
+              context.request_items[0]?.request_index ?? 0,
+            )
+          : is_sakura
+            ? []
+            : await decoder.decode_translation(cleaner.cleaned_response_result, context.mode);
     const by_index = new Map<number, TranslationDecodedItem>();
     const duplicates = new Set<number>();
     for (const item of decoded) {
@@ -267,7 +275,7 @@ export class TranslationWorkUnitRunner {
                     item?.skip_internal_filter === true,
                   );
       checks.push(check);
-      // Keep log pairs positional even when a response item is missing or malformed.
+      // 即使响应 item 缺失或格式错误，也保持日志中的配对位置。
       dsts.push(decoded_item?.text_dst ?? "");
       actor_dsts.push(decoded_item?.actor_dst ?? null);
       if (check === "NONE" && decoded_item && item && pipeline_context) {
@@ -288,7 +296,7 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  /** Produces the structured worker log without exposing internal alignment details. */
+  /** 生成结构化 worker 日志，不暴露内部对齐细节。 */
   private build_logs(
     context: {
       request: TranslationWorkUnitRequest;
@@ -354,7 +362,7 @@ export class TranslationWorkUnitRunner {
     ];
   }
 
-  /** Activates glossary entries from original item fields, not transformed prompt text. */
+  /** 根据原始 item 字段激活术语，而不是根据转换后的提示词文本匹配。 */
   private resolve_activated_glossary_entries(
     quality: TextQualitySnapshot,
     items: TextTaskItemRecord[],
@@ -379,7 +387,7 @@ export class TranslationWorkUnitRunner {
     return compiled.entries.filter((entry) => entry.dst.trim() !== "" && ids.has(entry.entry_id));
   }
 
-  /** Projects run snapshots to the prompt builder's narrow configuration contract. */
+  /** 将运行快照投影为 PromptBuilder 所需的窄配置契约。 */
   private config_to_prompt_config(
     config: TextProcessingConfig,
     raw: JsonValue,
@@ -392,15 +400,15 @@ export class TranslationWorkUnitRunner {
       prompt_enhancement_enable: settings.prompt_enhancement_enable,
     };
   }
-  /** Narrows cross-thread JSON arrays to independent mutable item snapshots. */
+  /** 将跨线程 JSON 数组收窄为相互独立的可变 item 快照。 */
   private read_item_list(value: JsonValue | undefined): TextTaskItemRecord[] {
     return Array.isArray(value) ? value.filter(is_json_record).map((item) => ({ ...item })) : [];
   }
-  /** Returns the neutral result used for cancellation and empty request branches. */
+  /** 返回取消分支和空请求分支使用的中性结果。 */
   private empty_result(): TranslationWorkUnitResult {
     return { items: [], input_tokens: 0, reasoning_tokens: 0, output_tokens: 0, stopped: false };
   }
-  /** Localizes worker diagnostics using the task-start language snapshot. */
+  /** 使用任务启动时的语言快照本地化 worker 诊断信息。 */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_app_locale(app_language), key, params);
   }

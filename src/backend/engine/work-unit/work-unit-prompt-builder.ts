@@ -114,10 +114,8 @@ export class PromptBuilder {
     return { messages, console_log };
   }
 
-  /**
-   * 生成 SakuraLLM 固定提示词，保持旧模型专用语义
-   */
-  public generate_prompt_sakura(srcs: string[]): PromptBuildResult {
+  /** 构建单个 SakuraLLM item 使用的纯文本提示词。 */
+  public generate_prompt_sakura(src: string): PromptBuildResult {
     const messages: LLMMessage[] = [
       {
         role: "system",
@@ -126,10 +124,10 @@ export class PromptBuilder {
       },
     ];
     const console_log: string[] = [];
-    let content = `将下面的日文文本翻译成中文：\n${srcs.join("\n")}`;
+    let content = `将下面的日文文本翻译成中文：\n${src}`;
     const glossary = this.build_glossary("->", false);
     if (glossary !== "") {
-      content = `根据以下术语表（可以为空）：\n${glossary}\n将下面的日文文本根据对应关系和备注翻译成中文：\n${srcs.join("\n")}`;
+      content = `根据以下术语表（可以为空）：\n${glossary}\n将下面的日文文本根据对应关系和备注翻译成中文：\n${src}`;
       console_log.push(glossary);
     }
     messages.push({ role: "user", content });

@@ -351,7 +351,7 @@ describe("LLMClient", () => {
     expect(result).toEqual(create_result({ degraded: true }));
   });
 
-  it("Sakura 成功正文继续转换为逐行 JSON map", async () => {
+  it("Sakura 成功正文保留原始纯文本", async () => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(create_message({ content: [{ type: "text", text: " 第一行 \n 第二行 " }] })),
     );
@@ -362,7 +362,7 @@ describe("LLMClient", () => {
       new AbortController().signal,
     );
 
-    expect(result.response_result).toBe('{"0":"第一行","1":"第二行"}');
+    expect(result.response_result).toBe("第一行 \n 第二行");
   });
 });
 

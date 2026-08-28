@@ -91,7 +91,7 @@ describe("TranslationWorkUnitRunner", () => {
         captured_requests.push(body);
         return {
           response_think: "",
-          response_result: '{"index":0,"text":"你好"}',
+          response_result: "你好",
           input_tokens: 1,
           reasoning_tokens: 0,
           output_tokens: 1,
@@ -283,7 +283,10 @@ describe("TranslationWorkUnitRunner", () => {
       };
       const runner = new TranslationWorkUnitRunner(
         await create_template_root(),
-        create_llm_client({ response_result: '{"index":0,"text":"译文"}' }, captured_requests),
+        create_llm_client(
+          { response_result: api_format === "SakuraLLM" ? "译文" : '{"index":0,"text":"译文"}' },
+          captured_requests,
+        ),
       );
 
       await runner.execute_unit(
@@ -402,7 +405,7 @@ describe("TranslationWorkUnitRunner", () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"index":0,"text":"你好"}',
+        response_result: "你好",
       }),
     );
 
@@ -421,70 +424,6 @@ describe("TranslationWorkUnitRunner", () => {
     });
   });
 
-  it("单条 item 换行数量变化达重试阈值时保留完整模型译文", async () => {
-    const runner = new TranslationWorkUnitRunner(
-      await create_template_root(),
-      create_llm_client({
-        response_result: '{"index":0,"text":" 你好 "}',
-      }),
-    );
-
-    const result = await runner.execute_unit(
-      create_translation_unit({
-        model: { api_format: "SakuraLLM" },
-        src: "こんにちは\n世界",
-        retry_count: 2,
-      }),
-      new AbortController().signal,
-    );
-
-    expect(result.outcome).toBe("success");
-    expect(result.output).toMatchObject({
-      kind: "translation",
-      items: [
-        {
-          id: 1,
-          src: "こんにちは\n世界",
-          dst: " 你好 ",
-          status: "PROCESSED",
-          text_type: "TXT",
-          retry_count: 2,
-        },
-      ],
-    });
-  });
-
-  it("单条 item 换行数量变化未达重试阈值时也可提交", async () => {
-    const runner = new TranslationWorkUnitRunner(
-      await create_template_root(),
-      create_llm_client({
-        response_result: '{"index":0,"text":"你好"}',
-      }),
-    );
-
-    const result = await runner.execute_unit(
-      create_translation_unit({
-        model: { api_format: "SakuraLLM" },
-        src: "こんにちは\n世界",
-        retry_count: 1,
-      }),
-      new AbortController().signal,
-    );
-
-    expect(result.outcome).toBe("success");
-    expect(result.output).toMatchObject({
-      kind: "translation",
-      items: [
-        {
-          id: 1,
-          dst: "你好",
-          status: "PROCESSED",
-          retry_count: 1,
-        },
-      ],
-    });
-  });
-
   it("多条 item 响应按序号独立提交，缺失项保持待处理", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
@@ -495,7 +434,7 @@ describe("TranslationWorkUnitRunner", () => {
 
     const result = await runner.execute_unit(
       create_translation_unit({
-        model: { api_format: "SakuraLLM" },
+        model: { api_format: "OpenAI" },
         items: [
           {
             id: 1,
@@ -567,7 +506,7 @@ describe("TranslationWorkUnitRunner", () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"index":0,"text":"你好\\n"}',
+        response_result: "你好\n",
       }),
     );
 

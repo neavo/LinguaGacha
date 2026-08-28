@@ -1,6 +1,5 @@
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 
-import { JsonTool } from "../../shared/utils/json-tool";
 import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
 import { read_model_request_snapshot, read_request_timeout_ms } from "./llm-client-policy";
 import { LLMClientDegradationDetector } from "./llm-client-degradation-detector";
@@ -94,13 +93,9 @@ function normalize_pi_result(
     .trim();
   const usage = normalize_usage(message);
   const finish_error = read_finish_error(snapshot, message, response_result);
-  const normalized_result =
-    snapshot.api_format === "SakuraLLM" && response_result !== "" && finish_error === undefined
-      ? convert_sakura_response(response_result)
-      : response_result;
   return {
     response_think,
-    response_result: finish_error === undefined ? normalized_result : "",
+    response_result: finish_error === undefined ? response_result : "",
     ...usage,
     cancelled: false,
     timeout: false,
@@ -154,15 +149,6 @@ function read_finish_error(
     });
   }
   return undefined;
-}
-
-/** Sakura 仍向 ResponseDecoder 暴露逐行 JSON map，而不另建 transport。 */
-function convert_sakura_response(response_result: string): string {
-  const rows: Record<string, string> = {};
-  for (const [index, line] of response_result.trim().split(/\r?\n/u).entries()) {
-    rows[String(index)] = line.trim();
-  }
-  return JsonTool.stringifyStrict(rows);
 }
 
 /** 请求异常只附加安全的模型与 work-unit 定位字段。 */

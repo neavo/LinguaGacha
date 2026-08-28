@@ -11,6 +11,11 @@ import {
  * 模型响应解码器，显式区分翻译结果和术语候选
  */
 export class ResponseDecoder {
+  /** 解码单 item Sakura 请求返回的完整纯文本正文。 */
+  public decode_plain_text_item(response: string, request_index: number): TranslationDecodedItem[] {
+    return response.trim() === "" ? [] : [{ request_index, text_dst: response, actor_dst: null }];
+  }
+
   /**
    * 按请求模式解码翻译结果，调用方负责按 request_index 对齐请求 item。
    */
@@ -62,7 +67,7 @@ export class ResponseDecoder {
     return glossary_entries;
   }
 
-  /** Decode the fixed index/text record used by both request and response. */
+  /** 解码请求与响应共用的固定 index/text 记录。 */
   private build_translation_item(
     json_data: Record<string, unknown>,
     mode: TranslationPromptMode,
