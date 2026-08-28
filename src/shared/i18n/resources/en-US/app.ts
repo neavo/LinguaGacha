@@ -363,20 +363,9 @@ export const en_us_app = {
     generate_translation_done: "Translation files saved to {PATH} …",
     generate_translation_start: "Generating translation files …",
     response_checker_fail_data: "Data Structure Error",
-    response_checker_fail_degradation: "Degradation Occurred",
-    response_checker_fail_line_count: "Line Count Mismatch",
-    response_checker_fail_request: "Model Request Failed",
     request_failed_retry: "Model request failed, will automatically retry …",
     response_checker_fail_timeout: "Network Request Timeout",
-    response_checker_line_error_empty_line: "Empty Line",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
-    translation_response_check_fail: "Data error, will automatically retry, Reason: {REASON}",
-    translation_response_check_fail_all:
-      "All translated text quality check failed, will automatically split and retry, Reason: {REASON}",
-    translation_response_check_fail_part:
-      "Partial translated text quality check failed, will automatically split and retry, Reason: {REASON}",
     translation_task_result: "Translation Result:",
-    translation_task_status_info:
-      "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

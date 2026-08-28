@@ -372,21 +372,10 @@ export const de_de_app = {
     generate_translation_done: "Übersetzungsdateien gespeichert unter {PATH} …",
     generate_translation_start: "Übersetzungsdateien werden erstellt …",
     response_checker_fail_data: "Datenstrukturfehler",
-    response_checker_fail_degradation: "Verschlechterung aufgetreten",
-    response_checker_fail_line_count: "Zeilenanzahl stimmt nicht überein",
-    response_checker_fail_request: "Modellanfrage fehlgeschlagen",
     request_failed_retry: "Modellanfrage fehlgeschlagen, wird automatisch wiederholt …",
     response_checker_fail_timeout: "Netzwerkanfrage-Zeitüberschreitung",
-    response_checker_line_error_empty_line: "Leere Zeile",
     system_closed_dropped:
       "Protokollsystem ist heruntergefahren; neues Protokoll wird verworfen: {MESSAGE}",
-    translation_response_check_fail: "Datenfehler, wird automatisch wiederholt, Grund: {REASON}",
-    translation_response_check_fail_all:
-      "Alle übersetzten Textqualitätsprüfungen fehlgeschlagen, wird automatisch aufgeteilt und wiederholt, Grund: {REASON}",
-    translation_response_check_fail_part:
-      "Teilweise übersetzte Textqualitätsprüfung fehlgeschlagen, wird automatisch aufgeteilt und wiederholt, Grund: {REASON}",
     translation_task_result: "Übersetzungsergebnis:",
-    translation_task_status_info:
-      "Aufteilung: {SPLIT} | Wiederholung: {RETRY} | Aufgabenlängen-Schwellenwert: {THRESHOLD}",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

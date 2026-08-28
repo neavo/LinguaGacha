@@ -69,7 +69,6 @@ describe("LLMClient", () => {
           ],
           usage: create_usage({ input: 10, output: 7, cacheRead: 2, cacheWrite: 3 }),
         }),
-        [" 你", "好 "],
       ),
     );
     const client = create_client();
@@ -337,20 +336,6 @@ describe("LLMClient", () => {
     expect(await request).toEqual(create_result({ timeout: true }));
   });
 
-  it("检测流式退化后中止 Pi 并返回空 degraded 结果", async () => {
-    api_mocks.openai.mockImplementation((_model, _context, options) => {
-      const stream = abortable_stream(options);
-      const partial = create_message();
-      stream.push({ type: "text_delta", contentIndex: 0, delta: "啊".repeat(50), partial });
-      return stream;
-    });
-    const client = create_client();
-
-    const result = await client.request(create_body(), new AbortController().signal);
-
-    expect(result).toEqual(create_result({ degraded: true }));
-  });
-
   it("Sakura 成功正文保留原始纯文本", async () => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(create_message({ content: [{ type: "text", text: " 第一行 \n 第二行 " }] })),
@@ -372,14 +357,8 @@ function create_client(): LLMClient {
 }
 
 /** 用 Pi 公开事件流构造确定的成功或 provider-error 终态。 */
-function completed_stream(
-  message: AssistantMessage,
-  deltas: string[] = [],
-): AssistantMessageEventStream {
+function completed_stream(message: AssistantMessage): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
-  for (const delta of deltas) {
-    stream.push({ type: "text_delta", contentIndex: 0, delta, partial: message });
-  }
   if (
     message.stopReason === "error" ||
     message.stopReason === "aborted" ||
@@ -396,7 +375,7 @@ function completed_stream(
   return stream;
 }
 
-/** 模拟只在 AbortSignal 到达后结束的远端流，用于取消、超时和退化分支。 */
+/** 模拟只在 AbortSignal 到达后结束的远端流，用于取消和超时分支。 */
 function abortable_stream(
   options: StreamOptions | undefined,
   partial_text = "",
@@ -482,7 +461,6 @@ function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestRes
     output_tokens: 0,
     cancelled: false,
     timeout: false,
-    degraded: false,
     ...overrides,
   };
 }

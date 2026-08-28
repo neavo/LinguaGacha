@@ -2,7 +2,6 @@ import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
 import { read_model_request_snapshot, read_request_timeout_ms } from "./llm-client-policy";
-import { LLMClientDegradationDetector } from "./llm-client-degradation-detector";
 import { resolve_one_shot_pi_request } from "./llm-pi";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
 import type { ModelRequestSnapshot } from "./policy/policy-types";
@@ -11,7 +10,7 @@ interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
 }
 
-/** Backend 进程内 OneShot LLM 入口，拥有总时限、取消、退化和结果归一。 */
+/** Backend 进程内 OneShot LLM 入口，拥有总时限、取消和结果归一。 */
 export class LLMClient implements LLMClientPort {
   private readonly user_agent: string; // 当前 Backend 实例的固定请求身份
 
@@ -25,10 +24,9 @@ export class LLMClient implements LLMClientPort {
     const snapshot = read_model_request_snapshot(body.model, this.user_agent);
     const controller = new AbortController();
     const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
-    // AbortController 只传递中止；三个标记保留触发原因并决定最终结果优先级。
+    // AbortController 只传递中止；两个标记保留触发原因并决定最终结果优先级。
     let timeout = false;
     let cancelled = false;
-    let degraded = false;
     const timer = setTimeout(() => {
       timeout = true;
       controller.abort();
@@ -42,29 +40,17 @@ export class LLMClient implements LLMClientPort {
       if (signal.aborted) {
         return empty_llm_result({ cancelled: true });
       }
-      const stream = request.stream(request.model, request.context, request.options);
-      const final_message = stream.result(); // 先持有终态，再消费 delta 做实时退化检测
-      const detector = new LLMClientDegradationDetector();
-      for await (const event of stream) {
-        if (event.type === "text_delta" && detector.feed(event.delta)) {
-          degraded = true;
-          controller.abort();
-        }
-      }
-      const message = await final_message;
+      const message = await request
+        .stream(request.model, request.context, request.options)
+        .result();
       if (timeout) return empty_llm_result({ timeout: true });
       if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
-      if (degraded) return empty_llm_result({ degraded: true });
 
       const response_result = contentText(message.content, "").trim();
-      if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
-        return empty_llm_result({ degraded: true });
-      }
       return normalize_pi_result(snapshot, message, response_result);
     } catch (error) {
       if (timeout) return empty_llm_result({ timeout: true });
       if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
-      if (degraded) return empty_llm_result({ degraded: true });
       return empty_llm_result({ request_error: build_request_error(error, snapshot, body) });
     } finally {
       clearTimeout(timer);
@@ -99,7 +85,6 @@ function normalize_pi_result(
     ...usage,
     cancelled: false,
     timeout: false,
-    degraded: false,
     ...(finish_error === undefined ? {} : { request_error: finish_error }),
   };
 }
@@ -175,7 +160,6 @@ function empty_llm_result(overrides: Partial<LLMRequestResult> = {}): LLMRequest
     output_tokens: 0,
     cancelled: false,
     timeout: false,
-    degraded: false,
     ...overrides,
   };
 }

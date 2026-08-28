@@ -140,7 +140,6 @@ export class TranslationWorkUnitRunner {
         request,
         start_time,
         items,
-        stream_degraded: response.degraded,
         request_error: response.request_error,
         request_timeout: response.timeout,
       },
@@ -220,7 +219,6 @@ export class TranslationWorkUnitRunner {
       mode: TranslationPromptMode;
       pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
-      stream_degraded: boolean;
       request_error?: LogError;
       request_timeout: boolean;
     },
@@ -264,16 +262,14 @@ export class TranslationWorkUnitRunner {
           ? "FAIL_REQUEST"
           : context.request_timeout
             ? "FAIL_TIMEOUT"
-            : context.stream_degraded
-              ? "FAIL_DEGRADATION"
-              : decoded_item === undefined || duplicates.has(request_item.request_index)
-                ? "FAIL_DATA"
-                : ResponseChecker.check_item(
-                    request_item.text_src,
-                    decoded_item.text_dst,
-                    context.config.source_language,
-                    item?.skip_internal_filter === true,
-                  );
+            : decoded_item === undefined || duplicates.has(request_item.request_index)
+              ? "FAIL_DATA"
+              : ResponseChecker.check_item(
+                  request_item.text_src,
+                  decoded_item.text_dst,
+                  context.config.source_language,
+                  item?.skip_internal_filter === true,
+                );
       checks.push(check);
       // 即使响应 item 缺失或格式错误，也保持日志中的配对位置。
       dsts.push(decoded_item?.text_dst ?? "");

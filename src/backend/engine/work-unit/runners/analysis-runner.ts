@@ -148,13 +148,11 @@ export class AnalysisWorkUnitRunner {
         glossary_entries: [],
       };
     }
-    if (llm_result.timeout || llm_result.degraded || llm_result.request_error !== undefined) {
+    if (llm_result.timeout || llm_result.request_error !== undefined) {
       const app_language = this.read_app_language(request.config_snapshot);
       const status_text = llm_result.timeout
         ? this.t(app_language, "app.log.response_checker_fail_timeout")
-        : llm_result.degraded
-          ? this.t(app_language, "app.log.response_checker_fail_degradation")
-          : this.t(app_language, "app.log.request_failed_retry");
+        : this.t(app_language, "app.log.request_failed_retry");
       return {
         success: false,
         stopped: false,
