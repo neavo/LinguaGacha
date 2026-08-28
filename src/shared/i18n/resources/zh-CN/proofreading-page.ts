@@ -36,7 +36,7 @@ export const zh_cn_proofreading_page = {
     excluded: "已排除",
     rule_skipped: "规则跳过",
     non_target_source_language: "非目标语言",
-    duplicated: "重复条目",
+    duplicated: "重复文本",
   },
   warning: {
     kana: "假名残留",
@@ -54,7 +54,6 @@ export const zh_cn_proofreading_page = {
     tooltip_applied: "术语已落实",
     tooltip_missing: "术语未落实",
   },
-  result_check_title: "结果检查",
   tooltip: {
     warning_title: "警告",
     glossary_applied_terms: "已落实",
@@ -64,9 +63,13 @@ export const zh_cn_proofreading_page = {
     hangeul_fragments: "谚文残留片段",
   },
   filter: {
-    status_title: "翻译状态",
+    translated_group: "翻译成功",
+    unfinished_group: "尚未完成",
+    not_required_group: "无需翻译",
     file_scope: "文件范围",
     select_all: "全选",
+    select_group: "全部选择",
+    deselect_group: "取消选择",
     clear: "清除",
     search_placeholder: "筛选 …",
     glossary_detail: "未落实的术语",

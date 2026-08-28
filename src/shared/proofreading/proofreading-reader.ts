@@ -1,14 +1,11 @@
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
-  PROOFREADING_NO_WARNING_CODE,
-  PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES,
-  PROOFREADING_STATUS_ORDER,
-  PROOFREADING_WARNING_FILTER_CODES,
+  PROOFREADING_OUTCOME_GROUPS,
   clone_proofreading_filter_options,
+  create_empty_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
-  resolve_default_proofreading_warning_types,
-  resolve_proofreading_status_sort_rank,
+  resolve_proofreading_outcomes,
   type ProofreadingClientItem,
   type ProofreadingContextItem,
   type ProofreadingFilterOptions,
@@ -189,8 +186,6 @@ type ProofreadingReaderState = {
   raw_item_by_id: Map<string, ProofreadingItemRecord>;
   natural_item_ids: string[];
   evaluated_item_by_id: Map<string, ProofreadingClientItem>;
-  status_count_by_code: Map<string, number>;
-  warning_count_by_code: Map<string, number>;
   file_count_by_path: Map<string, number>;
   glossary_term_count_map: Map<string, ProofreadingFilterPanelTermEntry>;
   defaultFilters: ProofreadingFilterOptions;
@@ -212,16 +207,11 @@ type ProofreadingListViewCache = {
 };
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
-type ProofreadingFilterDimension =
-  | "warning_types"
-  | "statuses"
-  | "file_paths"
-  | "glossary_entry_ids";
+type ProofreadingFilterDimension = "outcomes" | "file_paths" | "glossary_entry_ids";
 
 // 单次筛选查询的预编译上下文，避免在每个 item 上重复构造 Set
 type ProofreadingFilterContext = {
-  warning_type_set: Set<string> | null; // null 表示当前查询忽略 warning 维度
-  status_set: Set<string> | null; // null 表示当前查询忽略 status 维度
+  outcome_set: Set<string> | null; // null 表示当前查询忽略翻译结果维度
   file_path_set: Set<string> | null; // null 表示当前查询忽略 file 维度
   glossary_filter_enabled: boolean; // false 表示当前查询忽略术语维度
   glossary_entry_id_set: Set<string>; // 术语缺失筛选直接使用稳定条目身份
@@ -297,8 +287,7 @@ function normalize_runtime_filter_options(args: {
   defaultFilters: ProofreadingFilterOptions;
 }): ProofreadingFilterOptions {
   const filters = args.filters;
-  const has_warning_types = Array.isArray(filters?.warning_types);
-  const has_statuses = Array.isArray(filters?.statuses);
+  const has_outcomes = Array.isArray(filters?.outcomes);
   const has_file_paths = Array.isArray(filters?.file_paths);
   const has_glossary_entry_ids = Array.isArray(filters?.glossary_entry_ids);
   const has_include_without_glossary_miss =
@@ -309,12 +298,9 @@ function normalize_runtime_filter_options(args: {
     : [];
 
   return {
-    warning_types: has_warning_types
-      ? unique_strings((filters?.warning_types ?? []).map((value) => String(value)))
-      : [...args.defaultFilters.warning_types],
-    statuses: has_statuses
-      ? unique_strings((filters?.statuses ?? []).map((value) => String(value)))
-      : [...args.defaultFilters.statuses],
+    outcomes: has_outcomes
+      ? unique_strings((filters?.outcomes ?? []).map((value) => String(value)))
+      : [...args.defaultFilters.outcomes],
     file_paths: has_file_paths
       ? unique_strings((filters?.file_paths ?? []).map((value) => String(value)))
       : [...args.defaultFilters.file_paths],
@@ -350,15 +336,10 @@ function create_proofreading_filter_context(args: {
       args.filters.include_without_glossary_miss !== undefined);
 
   return {
-    warning_type_set: ignored_dimension_set.has("warning_types")
-      ? null
-      : args.filters.warning_types === undefined
+    outcome_set:
+      ignored_dimension_set.has("outcomes") || args.filters.outcomes === undefined
         ? null
-        : new Set(args.filters.warning_types),
-    status_set:
-      ignored_dimension_set.has("statuses") || args.filters.statuses === undefined
-        ? null
-        : new Set(args.filters.statuses),
+        : new Set(args.filters.outcomes),
     file_path_set: ignored_dimension_set.has("file_paths")
       ? null
       : args.filters.file_paths === undefined
@@ -419,23 +400,17 @@ function item_matches_glossary_filter(
 }
 
 /**
- * 单个 item 必须同时满足 warning、status、file 和术语筛选
+ * 单个 item 必须同时满足翻译结果、文件和术语筛选
  */
 function item_matches_filter_context(
   item: ProofreadingClientItem,
   context: ProofreadingFilterContext,
 ): boolean {
-  const item_warning_codes =
-    item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
-  if (context.warning_type_set !== null) {
-    const warning_type_set = context.warning_type_set;
-    if (!item_warning_codes.some((warning) => warning_type_set.has(warning))) {
+  if (context.outcome_set !== null) {
+    const outcome_set = context.outcome_set;
+    if (!resolve_proofreading_outcomes(item).some((outcome) => outcome_set.has(outcome))) {
       return false;
     }
-  }
-
-  if (context.status_set !== null && !context.status_set.has(item.status)) {
-    return false;
   }
 
   if (context.file_path_set !== null && !context.file_path_set.has(item.file_path)) {
@@ -497,86 +472,33 @@ function filter_items_by_context(args: {
 }
 
 /**
- * 状态筛选值保留已知顺序，并把运行时出现的未知状态附在后面
+ * 翻译结果筛选值保留稳定顺序，同时补上运行时出现的新检查类型。
  */
-function build_status_values(args: {
+function build_outcome_values(args: {
   items: ProofreadingClientItem[];
   filters: ProofreadingFilterOptions;
 }): string[] {
-  const known_statuses: string[] = [...PROOFREADING_STATUS_ORDER];
-  const known_status_set = new Set(known_statuses);
-  const extra_statuses = [
-    ...new Set([...args.items.map((item) => item.status), ...args.filters.statuses]),
-  ].filter((status) => !known_status_set.has(status));
-
-  extra_statuses.sort((left_status, right_status) => {
-    const left_rank = resolve_proofreading_status_sort_rank(left_status);
-    const right_rank = resolve_proofreading_status_sort_rank(right_status);
-    if (left_rank !== right_rank) {
-      return left_rank - right_rank;
-    }
-
-    return left_status.localeCompare(right_status);
-  });
-
-  return [...known_statuses, ...extra_statuses];
-}
-
-/**
- * 警告筛选值保留已知顺序，同时补上动态出现的未知 warning
- */
-function build_warning_values(args: {
-  items: ProofreadingClientItem[];
-  filters: ProofreadingFilterOptions;
-}): string[] {
-  const known_warnings: string[] = [...PROOFREADING_WARNING_FILTER_CODES];
-  const known_warning_set = new Set(known_warnings);
-  const dynamic_warnings = args.items.flatMap((item) => {
-    return item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
-  });
-  const extra_warnings = [...new Set([...dynamic_warnings, ...args.filters.warning_types])].filter(
-    (warning) => !known_warning_set.has(warning),
+  const known_outcomes = PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [...group.outcome_codes]);
+  const known_outcome_set = new Set<string>(known_outcomes);
+  const dynamic_outcomes = args.items.flatMap(resolve_proofreading_outcomes);
+  const extra_outcomes = [...new Set([...dynamic_outcomes, ...args.filters.outcomes])].filter(
+    (outcome) => !known_outcome_set.has(outcome),
   );
-
-  extra_warnings.sort((left_warning, right_warning) => {
-    return left_warning.localeCompare(right_warning);
-  });
-
-  return [...known_warnings, ...extra_warnings];
+  extra_outcomes.sort((left, right) => left.localeCompare(right));
+  return [...known_outcomes, ...extra_outcomes];
 }
 
 /**
- * 统计当前上下文中的状态数量，筛选面板直接消费普通对象
+ * 结果计数复用列表筛选的唯一投影，成功条目的多个检查结果分别计数。
  */
-function build_status_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
-  const next_count_by_code: Record<string, number> = {};
+function build_outcome_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
+  const counts: Record<string, number> = {};
   items.forEach((item) => {
-    next_count_by_code[item.status] = (next_count_by_code[item.status] ?? 0) + 1;
-  });
-  return next_count_by_code;
-}
-
-/**
- * 无警告项显式计入 NO_WARNING，保证“无警告”筛选有稳定计数
- */
-function build_warning_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
-  const next_count_by_code: Record<string, number> = {
-    [PROOFREADING_NO_WARNING_CODE]: 0,
-  };
-
-  items.forEach((item) => {
-    if (item.warnings.length === 0) {
-      next_count_by_code[PROOFREADING_NO_WARNING_CODE] =
-        (next_count_by_code[PROOFREADING_NO_WARNING_CODE] ?? 0) + 1;
-      return;
-    }
-
-    item.warnings.forEach((warning) => {
-      next_count_by_code[warning] = (next_count_by_code[warning] ?? 0) + 1;
+    resolve_proofreading_outcomes(item).forEach((outcome) => {
+      counts[outcome] = (counts[outcome] ?? 0) + 1;
     });
   });
-
-  return next_count_by_code;
+  return counts;
 }
 
 /**
@@ -645,14 +567,7 @@ function apply_counter_delta(args: {
   item: ProofreadingClientItem;
   delta: number;
 }): void {
-  increment_map_count(args.state.status_count_by_code, args.item.status, args.delta);
   increment_map_count(args.state.file_count_by_path, args.item.file_path, args.delta);
-
-  const item_warning_codes =
-    args.item.warnings.length > 0 ? args.item.warnings : [PROOFREADING_NO_WARNING_CODE];
-  item_warning_codes.forEach((warning) => {
-    increment_map_count(args.state.warning_count_by_code, warning, args.delta);
-  });
 
   args.item.glossary_applications.forEach((application) => {
     if (application.fields.every((field) => field.applied)) return;
@@ -741,14 +656,23 @@ function delete_runtime_item_from_state(
 }
 
 /**
- * 默认筛选从当前可见事实计算，进入页面时只展示最常用的有效范围
+ * 默认筛选选择分组声明的常用范围，并稳定追加运行时新增的成功检查类型。
  */
 function buildDefaultFiltersFromState(state: ProofreadingReaderState): ProofreadingFilterOptions {
-  const warning_type_set = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
-  for (const warning of state.warning_count_by_code.keys()) {
-    warning_type_set.add(warning);
-  }
-  const warning_types = resolve_default_proofreading_warning_types([...warning_type_set]);
+  const known_outcomes = PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [...group.outcome_codes]);
+  const known_outcome_set = new Set<string>(known_outcomes);
+  const default_outcomes = PROOFREADING_OUTCOME_GROUPS.filter(
+    (group) => group.selected_by_default,
+  ).flatMap((group) => [...group.outcome_codes]);
+  const extra_outcomes = [
+    ...new Set(
+      [...state.evaluated_item_by_id.values()]
+        .filter((item) => item.status === "PROCESSED")
+        .flatMap((item) => resolve_proofreading_outcomes(item)),
+    ),
+  ]
+    .filter((outcome) => !known_outcome_set.has(outcome))
+    .sort((left, right) => left.localeCompare(right));
 
   const file_paths = [...state.file_count_by_path.keys()].sort(compare_proofreading_text);
   const glossary_entry_ids = [...state.glossary_term_count_map.keys()].sort(
@@ -756,8 +680,7 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
   );
 
   return {
-    warning_types,
-    statuses: [...PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES],
+    outcomes: [...default_outcomes, ...extra_outcomes],
     file_paths,
     glossary_entry_ids,
     include_without_glossary_miss: true,
@@ -787,16 +710,6 @@ function build_sync_state(state: ProofreadingReaderState): ProofreadingSyncState
     targetLanguage: state.processingConfig.target_language,
     revisions: { ...state.revisions },
     defaultFilters: clone_proofreading_filter_options(state.defaultFilters),
-  };
-}
-
-function create_empty_filter_options(): ProofreadingFilterOptions {
-  return {
-    warning_types: [],
-    statuses: [],
-    file_paths: [],
-    glossary_entry_ids: [],
-    include_without_glossary_miss: true,
   };
 }
 
@@ -913,11 +826,9 @@ function create_run_state_from_evaluated(
     raw_item_by_id: new Map(),
     natural_item_ids: [],
     evaluated_item_by_id: new Map(),
-    status_count_by_code: new Map(),
-    warning_count_by_code: new Map(),
     file_count_by_path: new Map(),
     glossary_term_count_map: new Map(),
-    defaultFilters: create_empty_filter_options(),
+    defaultFilters: create_empty_proofreading_filter_options(),
   };
   const evaluated_item_by_id = new Map(
     input.evaluatedItems.map((item) => {
@@ -1203,10 +1114,14 @@ export function createProofreadingReader() {
         return { total_item_count: 0, items: [] };
       }
 
+      // Agent warning 查询只消费成功条目的检查结果；不包含成功状态的显式范围直接为空。
+      const warning_outcomes =
+        query.statuses === undefined || query.statuses.includes("PROCESSED")
+          ? query.warning_types
+          : [];
       const resolved = resolve_proofreading_items(state, {
         filters: {
-          warning_types: query.warning_types,
-          ...(query.statuses === undefined ? {} : { statuses: query.statuses }),
+          outcomes: warning_outcomes,
           ...(query.file_paths === undefined ? {} : { file_paths: query.file_paths }),
         },
         keywords: query.keywords,
@@ -1388,15 +1303,10 @@ export function createProofreadingReader() {
         defaultFilters: state.defaultFilters,
       });
       const items_in_natural_order = resolve_items_in_natural_order(state);
-      const status_scope_items = filter_items_by_context({
+      const outcome_scope_items = filter_items_by_context({
         items: items_in_natural_order,
         filters,
-        ignored_dimensions: ["statuses"],
-      });
-      const warning_scope_items = filter_items_by_context({
-        items: items_in_natural_order,
-        filters,
-        ignored_dimensions: ["warning_types", "glossary_entry_ids"],
+        ignored_dimensions: ["outcomes", "glossary_entry_ids"],
       });
       const file_scope_items = filter_items_by_context({
         items: items_in_natural_order,
@@ -1412,16 +1322,11 @@ export function createProofreadingReader() {
       const file_count_by_path = build_file_count_by_path(file_scope_items);
 
       return {
-        available_statuses: build_status_values({
+        available_outcomes: build_outcome_values({
           items: items_in_natural_order,
           filters,
         }),
-        status_count_by_code: build_status_count_by_code(status_scope_items),
-        available_warning_types: build_warning_values({
-          items: items_in_natural_order,
-          filters,
-        }),
-        warning_count_by_code: build_warning_count_by_code(warning_scope_items),
+        outcome_count_by_code: build_outcome_count_by_code(outcome_scope_items),
         all_file_paths,
         available_file_paths: [
           ...new Set([...Object.keys(file_count_by_path), ...filters.file_paths]),

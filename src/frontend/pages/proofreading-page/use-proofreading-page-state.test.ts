@@ -317,8 +317,7 @@ function create_sync_state(
   section_revisions_patch: ProjectDataSectionRevisions = {},
 ) {
   const default_filters: ProofreadingFilterOptions = {
-    warning_types: ["NO_WARNING"],
-    statuses: ["NONE"],
+    outcomes: ["NO_WARNING", "NONE"],
     file_paths: ["chapter01.txt"],
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
@@ -459,13 +458,9 @@ function install_api_fetch_default_mock(): void {
 function create_filter_panel() {
   return {
     ...create_empty_proofreading_filter_panel_state(),
-    available_statuses: ["NONE"],
-    status_count_by_code: {
+    available_outcomes: ["NONE"],
+    outcome_count_by_code: {
       NONE: 1,
-    },
-    available_warning_types: ["NO_WARNING"],
-    warning_count_by_code: {
-      NO_WARNING: 1,
     },
     all_file_paths: ["chapter01.txt"],
     available_file_paths: ["chapter01.txt"],
@@ -731,8 +726,7 @@ describe("useProofreadingPageState", () => {
         throw new Error("校对页面状态未准备就绪。");
       }
       latest_state.update_filter_dialog_filters({
-        warning_types: [],
-        statuses: [],
+        outcomes: [],
         file_paths: [],
         glossary_entry_ids: ["stale"],
         include_without_glossary_miss: false,
@@ -766,8 +760,7 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: {
-          warning_types: ["NO_WARNING"],
-          statuses: ["NONE"],
+          outcomes: ["NO_WARNING", "NONE"],
           file_paths: ["chapter01.txt"],
           glossary_entry_ids: [],
           include_without_glossary_miss: true,
@@ -801,7 +794,7 @@ describe("useProofreadingPageState", () => {
     const glossary_entry_id = "magic";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        statuses: ["NONE", "PROCESSED", "ERROR"],
+        outcomes: ["NO_WARNING", "NONE", "PROCESSED", "ERROR"],
         glossary_entry_ids: [glossary_entry_id],
       });
     });
@@ -813,7 +806,7 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          statuses: ["NONE", "PROCESSED", "ERROR"],
+          outcomes: ["NO_WARNING", "NONE", "PROCESSED", "ERROR"],
           glossary_entry_ids: [glossary_entry_id],
         }),
       }),
@@ -1085,11 +1078,11 @@ describe("useProofreadingPageState", () => {
       }
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        statuses: [],
+        outcomes: [],
       });
     });
     expect(latest_state?.filter_dialog_open).toBe(true);
-    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.outcomes).toEqual([]);
 
     const sync_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
@@ -1113,7 +1106,7 @@ describe("useProofreadingPageState", () => {
 
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.filter_dialog_open).toBe(true);
-    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.outcomes).toEqual([]);
   });
 
   it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
@@ -1181,14 +1174,14 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
-    expect(latest_state?.filter_panel.available_statuses).toEqual([]);
+    expect(latest_state?.filter_panel.available_outcomes).toEqual([]);
 
     await act(async () => {
       filter_panel_deferred.resolve(create_filter_panel());
     });
     await flush_async_updates();
 
-    expect(latest_state?.filter_panel.available_statuses).toEqual(["NONE"]);
+    expect(latest_state?.filter_panel.available_outcomes).toEqual(["NONE"]);
   });
 
   it("搜索输入更新时输入本身不会被后台列表查询阻塞", async () => {
@@ -1391,11 +1384,11 @@ describe("useProofreadingPageState", () => {
       }
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        statuses: [],
+        outcomes: [],
       });
     });
 
-    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.outcomes).toEqual([]);
     expect(
       proofreading_client_fixture.current.build_proofreading_filter_panel,
     ).not.toHaveBeenCalled();
@@ -1420,7 +1413,7 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.build_proofreading_filter_panel,
     ).toHaveBeenLastCalledWith({
       filters: expect.objectContaining({
-        statuses: [],
+        outcomes: [],
       }),
     });
   });
@@ -1450,7 +1443,7 @@ describe("useProofreadingPageState", () => {
 
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        statuses: [],
+        outcomes: [],
       });
       confirm_promise = latest_state.confirm_filter_dialog_filters();
       await Promise.resolve();
@@ -1529,7 +1522,7 @@ describe("useProofreadingPageState", () => {
       }
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        statuses: [],
+        outcomes: [],
       });
     });
 
@@ -1574,7 +1567,7 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.build_proofreading_filter_panel,
     ).toHaveBeenLastCalledWith({
       filters: expect.objectContaining({
-        statuses: ["NONE"],
+        outcomes: ["NO_WARNING", "NONE"],
       }),
     });
   });
@@ -2316,8 +2309,7 @@ describe("useProofreadingPageState", () => {
   it("显式筛选意图会克隆术语选择", async () => {
     vi.useFakeTimers();
     const selected_filters: ProofreadingFilterOptions = {
-      warning_types: ["NO_WARNING"],
-      statuses: ["NONE"],
+      outcomes: ["NO_WARNING", "NONE"],
       file_paths: ["chapter01.txt"],
       glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
@@ -2374,7 +2366,7 @@ describe("useProofreadingPageState", () => {
 
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        statuses: [],
+        outcomes: [],
       });
       await latest_state.confirm_filter_dialog_filters();
     });
@@ -2400,7 +2392,7 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.search_keyword).toBe("foo");
-    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.outcomes).toEqual([]);
     expect(latest_state?.sort_state).toEqual({
       column_id: "src",
       direction: "descending",
@@ -2422,7 +2414,7 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         keyword: "foo",
         filters: expect.objectContaining({
-          statuses: [],
+          outcomes: [],
         }),
         sort_state: {
           column_id: "src",

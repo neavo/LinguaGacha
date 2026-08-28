@@ -45,8 +45,7 @@ function create_list_view(row_count = 3) {
 // 构造完整筛选值，避免签名测试遗漏未关注的维度。
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
   return {
-    warning_types: ["NO_WARNING"],
-    statuses: ["NONE", "PROCESSED"],
+    outcomes: ["NO_WARNING", "NONE", "PROCESSED"],
     file_paths: ["chapter01.txt"],
     glossary_entry_ids: ["magic"],
     include_without_glossary_miss: true,
@@ -237,7 +236,7 @@ describe("proofreading-list-query-utils", () => {
       build_filter_panel_signature({
         revisions,
         filters: create_filters({
-          statuses: [...filters.statuses].reverse(),
+          outcomes: [...filters.outcomes].reverse(),
         }),
       }),
     ).toBe(signature);

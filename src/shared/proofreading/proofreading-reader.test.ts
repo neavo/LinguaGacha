@@ -75,6 +75,33 @@ function sync_full(
 }
 
 describe("proofreading-reader", () => {
+  it("默认筛选选中翻译成功和尚未完成两组", () => {
+    const service = createProofreadingReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 4,
+      processingConfig: create_processing_config(),
+      quality: create_quality(),
+      upsertItems: [
+        create_item({ item_id: 1, dst: "译文", status: "PROCESSED" }),
+        create_item({ item_id: 2, dst: "", status: "ERROR" }),
+        create_item({ item_id: 3, dst: "", status: "NONE" }),
+        create_item({ item_id: 4, dst: "", status: "EXCLUDED" }),
+      ],
+    });
+
+    const default_view = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+
+    expect(default_view.window_rows.map((row) => row.row_id)).toEqual(["1", "2", "3"]);
+  });
+
   it("warning 分页复用组合筛选与搜索，且不改变 GUI 视图", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {

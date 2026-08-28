@@ -39,7 +39,7 @@ export const de_de_proofreading_page = {
     excluded: "Ausgeschlossen",
     rule_skipped: "Regel übersprungen",
     non_target_source_language: "Nicht-Zielsprache",
-    duplicated: "Dupliziert",
+    duplicated: "Doppelter Text",
   },
   warning: {
     kana: "Kana-Rückstand",
@@ -57,7 +57,6 @@ export const de_de_proofreading_page = {
     tooltip_applied: "Angewendet",
     tooltip_missing: "Nicht angewendet",
   },
-  result_check_title: "Ergebnisprüfung",
   tooltip: {
     warning_title: "Warnung",
     glossary_applied_terms: "Angewendet",
@@ -67,9 +66,13 @@ export const de_de_proofreading_page = {
     hangeul_fragments: "Hangeul-Rückstandsfragmente",
   },
   filter: {
-    status_title: "Übersetzungsstatus",
+    translated_group: "Übersetzt",
+    unfinished_group: "Nicht abgeschlossen",
+    not_required_group: "Keine Übersetzung erforderlich",
     file_scope: "Dateibereich",
     select_all: "Alle",
+    select_group: "Alle auswählen",
+    deselect_group: "Auswahl aufheben",
     clear: "Löschen",
     search_placeholder: "Filtern …",
     glossary_detail: "Glossar-Fehlschläge",

@@ -153,8 +153,7 @@ export class ProofreadingQueryService {
   private read_filters(value: JsonValue | undefined): ProofreadingFilterOptions {
     const record = read_json_record(value);
     return {
-      warning_types: this.read_string_array(record["warning_types"] as JsonValue | undefined),
-      statuses: this.read_string_array(record["statuses"] as JsonValue | undefined),
+      outcomes: this.read_string_array(record["outcomes"] as JsonValue | undefined),
       file_paths: this.read_string_array(record["file_paths"] as JsonValue | undefined),
       glossary_entry_ids: this.read_string_array(
         record["glossary_entry_ids"] as JsonValue | undefined,
