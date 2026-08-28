@@ -246,6 +246,7 @@ describe("ApiGatewayServer", () => {
       database,
       logManager: log_manager,
       openOutputFolder: async () => undefined,
+      renderPdf: async () => new Uint8Array(),
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
     backend_services.start();

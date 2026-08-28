@@ -45,7 +45,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
 - 功能 query 返回其结果依赖的 `sectionRevisions`；只有基于已消费快照形成的用户写入或预演提交才以这些 revision 做乐观锁。任务启动和面向当前项目事实的 reset 不携带 revision，由运行或项目写 lease 后读取当前事实；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
-- `.md` 只生成 `file_type: MD_V2`、`text_type: MD` 的 AST 块 Item；`row` 是块起始物理行，并与 `file_path` 共同作为 reset 重解析身份。格式 metadata 只保存块间布局，链接、图片与定义的 destination 投影为短资源引用，writer 再从原始 asset 宽松恢复；可选文本保护预设负责检查资源引用是否被译文改写。
+- Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item；文本型 `.pdf` 先由本地 pdf-inspector WASM 提取 Markdown，再生成 metadata 同形的 `file_type: PDF`、`text_type: MD` Item。`row` 是块起始物理行，并与 `file_path` 共同作为 reset 重解析身份；格式 metadata 只保存块间布局，链接、图片与定义的 destination 投影为短资源引用，writer 再从原始 asset 宽松恢复。PDF reset 从原始 asset 经同一转换链重建；混合 PDF 保留 converter 返回的可用 Markdown，并由 reader 结果携带 `pagesNeedingOcr` 对应的跳过页；没有可用文本或 PDF 受密码保护时统一返回 `file.parse_failed`，diagnostic context 保留 `no_extractable_text` 或 `encrypted` 原因。
+- 译文导出由 `TranslationFileExportService` 统一编排；PDF writer 把 Item 重建为 Markdown，经必需的 `PdfRenderPort` 请求 Electron Chromium 重新排版，只在 translated 目录写入原相对路径的 `.pdf`，不生成 PDF 双语文件，也不承诺保留原页面几何、分页、字体、图片或附件。
 - 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源与分析候选只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - 翻译与校对复用共享的逐行源文准备事实，固定 Ruby 清理、空白与保护前后缀提取、译前替换和保护样例收集的顺序；校对不逆推译后规则。校对 worker 与 cache identity 携带完整文本处理配置，增量评估沿用全量同步冻结的配置。
@@ -88,6 +89,6 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectDatabase` 是 `.lg` workflow 的唯一入口；上层调用类型化读写方法，不持有 SQLite 连接，也不拼字符串操作协议。
 - `transaction(projectPath, callback)` 只为该路径的连接建立事务；回调内的类型化方法仍显式接收路径，跨 `.lg` 写入不具备原子性。`create_project` 完成基础建库后在该路径事务内执行可选初始化回调；回调失败时关闭并移除新文件。
 - 运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
-- asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
+- asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。PDF 继续保存原始二进制 asset，转换所得 Markdown 只在解析、导出和 Agent 工作区投影时生成，不作为项目事实持久化。
 - `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
 - 启动期迁移先处理 userdata / resource 落点，再读取设置；项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。

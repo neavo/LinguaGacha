@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@firecrawl/pdf-inspector-wasm/pdf_inspector_wasm_bg.wasm?url", () => ({
+  default: pathToFileURL(
+    path.join(
+      process.cwd(),
+      "node_modules/@firecrawl/pdf-inspector-wasm/pdf_inspector_wasm_bg.wasm",
+    ),
+  ).href,
+}));
 
 import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
+import { build_text_pdf } from "../../test/pdf-fixture";
 
 function create_format_service(): FileFormatService {
   return new FileFormatService({
@@ -16,6 +27,31 @@ function create_format_service(): FileFormatService {
 }
 
 describe("SourceFileParsePipeline", () => {
+  it("真实文本 PDF 进入工程草稿并生成 PDF/MD Item", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
+    );
+    const source_file = path.join(temp_dir.path, "report.pdf");
+    fs.writeFileSync(source_file, build_text_pdf("Pipeline PDF text"));
+
+    const draft = await new SourceFileParsePipeline(create_format_service()).build_project_draft([
+      source_file,
+    ]);
+
+    expect(draft.failed_files).toEqual([]);
+    expect(draft.files).toEqual([
+      expect.objectContaining({ rel_path: "report.pdf", file_type: "PDF" }),
+    ]);
+    expect(draft.items).toEqual([
+      expect.objectContaining({
+        src: expect.stringContaining("Pipeline PDF text"),
+        file_path: "report.pdf",
+        file_type: "PDF",
+        text_type: "MD",
+      }),
+    ]);
+  });
+
   it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),

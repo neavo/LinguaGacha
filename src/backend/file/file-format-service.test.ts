@@ -2,7 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const read_pdf_markdown = vi.hoisted(() => vi.fn(() => "# PDF 标题\n\n正文"));
+vi.mock("./formats/pdf/pdf-markdown-reader", () => ({ read_pdf_markdown }));
 
 import { FileFormatService } from "../file/file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
@@ -24,7 +27,20 @@ describe("FileFormatService", () => {
 
     expect(service.is_supported_file("script.txt")).toBe(true);
     expect(service.is_supported_file("script.epub")).toBe(true);
+    expect(service.is_supported_file("report.pdf")).toBe(true);
     expect(service.is_supported_file("archive.bin")).toBe(false);
+  });
+
+  it("把 PDF 分发为 PDF/MD Markdown 块", async () => {
+    const items = await create_service().parse_asset(
+      "report.pdf",
+      new Uint8Array([37, 80, 68, 70]),
+    );
+
+    expect(items).toEqual([
+      expect.objectContaining({ file_type: "PDF", text_type: "MD", src: "# PDF 标题" }),
+      expect.objectContaining({ file_type: "PDF", text_type: "MD", src: "正文" }),
+    ]);
   });
 
   it("按扩展名分发解析器，并保持 JSON 的 KV 优先与 MESSAGE fallback", async () => {
@@ -154,11 +170,14 @@ describe("FileFormatService", () => {
     item.dst = "你好";
     item.name_dst = "爱丽丝";
 
-    await service.write_items(
-      [item],
-      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
-      () => Buffer.from(text),
-    );
+    await service.write_items([item], {
+      paths: {
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
+      },
+      asset_reader: () => Buffer.from(text),
+      render_pdf: async () => new Uint8Array(),
+    });
 
     expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
       '"Alice" "你好"',

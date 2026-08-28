@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   run_cli_job: vi.fn(),
   write_stdout: vi.fn(),
+  render_desktop_pdf: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
 }));
 
 vi.mock("electron", () => ({
@@ -43,6 +44,9 @@ vi.mock("../backend/bootstrap/backend-bootstrap", () => ({
 vi.mock("./job/cli-job-runner", () => ({ run_cli_job: mocks.run_cli_job }));
 vi.mock("./cli-output", () => ({
   write_stdout: mocks.write_stdout,
+}));
+vi.mock("../gui/shell/desktop-pdf-render-host", () => ({
+  render_desktop_pdf: mocks.render_desktop_pdf,
 }));
 
 import { run_cli_command } from "./cli-runner";
@@ -72,7 +76,7 @@ describe("run_cli_command", () => {
   it("等待 Electron ready 后以无 Gateway 配置执行 CLI job", async () => {
     const command = create_translate_command();
 
-    await run_cli_command("E:/App", command, { kind: "in_process" });
+    await run_cli_command("E:/App", "E:/Desktop", command, { kind: "in_process" });
 
     expect(mocks.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
     const bootstrap_options = mocks.backend_bootstrap_options[0] as
@@ -89,6 +93,14 @@ describe("run_cli_command", () => {
       bootstrap_options?.systemProxyResolver.resolveProxy("https://api.example/v1"),
     ).resolves.toBe("DIRECT");
     expect(mocks.resolve_proxy).toHaveBeenCalledWith("https://api.example/v1");
+    await expect(bootstrap_options?.renderPdf("# 译题")).resolves.toEqual(
+      new Uint8Array([37, 80, 68, 70]),
+    );
+    expect(mocks.render_desktop_pdf).toHaveBeenCalledWith({
+      markdown: "# 译题",
+      desktopBundleDir: "E:/Desktop",
+      signal: expect.any(AbortSignal),
+    });
     expect(mocks.run_cli_job).toHaveBeenCalledWith(
       mocks.backend_services,
       command,
@@ -107,9 +119,14 @@ describe("run_cli_command", () => {
     mocks.run_cli_job.mockRejectedValue(job_failure);
     mocks.stop.mockRejectedValue(stop_failure);
 
-    const command_error = await run_cli_command("E:/App", create_translate_command(), {
-      kind: "in_process",
-    }).catch((error: unknown) => error);
+    const command_error = await run_cli_command(
+      "E:/App",
+      "E:/Desktop",
+      create_translate_command(),
+      {
+        kind: "in_process",
+      },
+    ).catch((error: unknown) => error);
 
     expect(command_error).toBeInstanceOf(AggregateError);
     expect((command_error as AggregateError).errors).toEqual([job_failure, stop_failure]);

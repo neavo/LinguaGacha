@@ -24,6 +24,12 @@ export const PROJECT_SOURCE_FORMATS = [
     description_keys: GENERAL_TEXT_FORMAT_DESCRIPTION_KEYS,
   },
   {
+    id: "pdf",
+    extension: ".pdf",
+    title_key: "project_page.formats.pdf",
+    description_keys: ["project_page.formats.ebook"],
+  },
+  {
     id: "srt",
     extension: ".srt",
     title_key: "project_page.formats.srt",

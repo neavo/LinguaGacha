@@ -17,6 +17,7 @@ export const ITEM_STATUSES = [
 export const ITEM_FILE_TYPES = [
   "NONE",
   "MD_V2",
+  "PDF",
   "TXT",
   "SRT",
   "ASS",

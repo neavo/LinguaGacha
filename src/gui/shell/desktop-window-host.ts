@@ -99,7 +99,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
       });
     },
     loadTarget: (target_window) => {
-      load_renderer_entry(target_window, options.desktopBundleDir, {
+      void load_renderer_entry(target_window, options.desktopBundleDir, "index.html", {
         [LOG_WINDOW_QUERY_KEY]: LOG_WINDOW_QUERY_VALUE,
       });
     },
@@ -135,7 +135,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
   if (is_development_mode()) {
     show_window_if_hidden(main_window); // 开发态优先让窗口可见，这样就算首屏挂掉也能直接看到错误弹窗和 DevTools
   }
-  load_renderer_entry(main_window, options.desktopBundleDir);
+  void load_renderer_entry(main_window, options.desktopBundleDir, "index.html");
 
   return main_window;
 }
@@ -403,25 +403,28 @@ function register_window_events(
 /**
  * 加载同一份 renderer 入口；日志窗口通过 query 进入独立页面模式
  */
-function load_renderer_entry(
+export function load_renderer_entry(
   target_window: BrowserWindow,
   desktop_bundle_dir: string,
+  entry_file_name: "index.html" | "pdf-renderer.html",
   query?: Record<string, string>,
-): void {
+): Promise<void> {
   if (RENDERER_DEV_SERVER_URL) {
-    const target_url = new URL(RENDERER_DEV_SERVER_URL);
+    const target_url =
+      entry_file_name === "index.html"
+        ? new URL(RENDERER_DEV_SERVER_URL)
+        : new URL(entry_file_name, RENDERER_DEV_SERVER_URL);
     for (const [key, value] of Object.entries(query ?? {})) {
       target_url.searchParams.set(key, value);
     }
-    void target_window.loadURL(target_url.toString());
-  } else {
-    void target_window.loadFile(
-      path.join(resolve_renderer_dist(desktop_bundle_dir), "index.html"),
-      {
-        query,
-      },
-    );
+    return target_window.loadURL(target_url.toString());
   }
+  return target_window.loadFile(
+    path.join(resolve_renderer_dist(desktop_bundle_dir), entry_file_name),
+    {
+      query,
+    },
+  );
 }
 
 /**

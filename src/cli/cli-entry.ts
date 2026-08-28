@@ -12,6 +12,7 @@ import type { BackendWorkerExecution } from "../backend/worker/worker-execution"
 export async function run_cli_entry(
   argv: string[],
   app_root: string,
+  desktop_bundle_dir: string,
   worker_execution: BackendWorkerExecution,
 ): Promise<number> {
   try {
@@ -25,7 +26,7 @@ export async function run_cli_entry(
       return 0;
     }
 
-    await run_cli_command(app_root, parse_result.command, worker_execution);
+    await run_cli_command(app_root, desktop_bundle_dir, parse_result.command, worker_execution);
     return 0;
   } catch (error) {
     if (error instanceof CLIUsageError) {

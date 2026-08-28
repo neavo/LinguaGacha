@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { build_project_item_persistent_records, Item } from "./item";
 
 describe("Item", () => {
+  it("保留 PDF 文件身份与显式 Markdown 文本语义", () => {
+    const item = Item.from_json({ file_type: "PDF", text_type: "MD" });
+
+    expect(item.file_type).toBe("PDF");
+    expect(item.text_type).toBe("MD");
+  });
   it("从持久记录归一字段并序列化完整记录", () => {
     const item = Item.from_json({
       id: 5,

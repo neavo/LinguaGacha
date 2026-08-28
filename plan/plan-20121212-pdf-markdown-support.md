@@ -2,14 +2,14 @@
 
 ## 1. 目标与完成定义
 
-本任务为 LinguaGacha 增加 `.pdf` 源文件支持。文本型 PDF 在 Backend 文件域内通过 `@firecrawl/anydoc-wasm` 转换为 Markdown，再单向复用 Markdown V2 的块解析、Item metadata、资源投影与写回语义；翻译完成后由 Electron main 使用 Chromium 将译后 Markdown 重新排版为 PDF。
+本任务为 LinguaGacha 增加 `.pdf` 源文件支持。PDF 在 Backend 文件域内通过 `@firecrawl/pdf-inspector-wasm` 提取 Markdown，并依据逐页 OCR 路由保留可提取页面，再单向复用 Markdown V2 的块解析、Item metadata、资源投影与写回语义；翻译完成后由 Electron main 使用 Chromium 将译后 Markdown 重新排版为 PDF。
 
 完成后的稳定链路为：
 
 ```text
 PDF bytes
-  -> anydoc-wasm
-  -> Markdown text
+  -> pdf-inspector-wasm
+  -> Markdown text + pagesNeedingOcr
   -> MDV2Format 文本级 reader
   -> file_type: PDF / text_type: MD 的块 Items
   -> 现有通用翻译流程
@@ -23,13 +23,13 @@ PDF bytes
 
 - 新建工程、工作台导入、替换、预览、reset-all、reset preview 和 CLI 都识别 `.pdf`。
 - PDF Item 固定使用 `file_type: "PDF"`、`text_type: "MD"`，Markdown 块 metadata 与当前 `MD_V2` 完全同形。
-- PDF 格式层只消费 Markdown V2 能力；Markdown 模块不导入 PDF、anydoc、Electron 或 PDF renderer。
-- 输入转换使用精确锁定版本的 `@firecrawl/anydoc-wasm`，转换在 Backend Runtime worker 或 CLI 主进程中本地执行。
+- PDF 格式层只消费 Markdown V2 能力；Markdown 模块不导入 PDF、pdf-inspector、Electron 或 PDF renderer。
+- 输入转换使用精确锁定版本的 `@firecrawl/pdf-inspector-wasm`，转换在 Backend Runtime worker 或 CLI 主进程中本地执行。
 - 原始 PDF bytes 继续按现有 asset 事务写入 `.lg`，不额外持久化中间 Markdown。
 - 导出只生成译文 PDF，不生成 PDF 双语对照文件。
 - GUI Backend Runtime 通过结构化 host request 请求 Electron main 渲染；CLI 在当前 Electron 进程直接调用同一宿主实现。
 - PDF 输出是固定排版规则生成的新文档；页面数量、分页、字体、图片和原始几何布局不构成保留契约。
-- 扫描页或图片型 PDF 返回明确的 OCR-required 错误；加密 PDF 返回明确的 encrypted 错误。
+- 混合 PDF 保留可提取页面并跳过 OCR 页面；没有任何可提取文本或 PDF 受密码保护时统一返回 `file.parse_failed`，诊断上下文保留稳定原因。
 - Agent 工作区把 PDF asset 投影为转换后的 Markdown 文本文件，不把 PDF 二进制按普通文本解码。
 - 当前代码、测试、构建产物、README 和长期工程文档形成同一终态。
 
@@ -37,7 +37,7 @@ PDF bytes
 
 ### 2.1 当前支持范围
 
-本任务支持可由 anydoc 本地提取完整文本的 PDF。输入转换和输出渲染均在本机完成。
+本任务支持可由 pdf-inspector 本地提取部分或完整文本的 PDF。输入转换和输出渲染均在本机完成。
 
 PDF 输出采用统一样式重新排版，固定使用：
 
@@ -83,7 +83,7 @@ PDF 输出采用统一样式重新排版，固定使用：
 ```mermaid
 flowchart LR
     PdfFormat["PDFFormat"] --> PdfReader["read_pdf_markdown"]
-    PdfReader --> AnyDoc["anydoc-wasm"]
+    PdfReader --> PdfInspector["pdf-inspector-wasm"]
     PdfFormat --> MdFormat["MDV2Format 文本级 API"]
     MdFormat --> MdDocument["MDV2Document"]
     PdfFormat --> PdfPort["PdfRenderPort"]
@@ -96,7 +96,7 @@ flowchart LR
 
 |责任|唯一拥有者|
 |---|---|
-|PDF bytes → Markdown 与 anydoc 错误映射|`pdf-markdown-reader.ts`|
+|PDF bytes → Markdown、逐页 OCR 路由与错误映射|`pdf-markdown-reader.ts`|
 |Markdown AST、块、布局和资源 token|`MDV2Document`|
 |Markdown 文本 ↔ Item、metadata 与文本重建|`MDV2Format` 文本级 API|
 |PDF Item 身份、原始 asset 转换和 PDF 文件写出|`PDFFormat`|
@@ -110,7 +110,7 @@ flowchart LR
 ### 4.2 依赖约束
 
 - `MDV2Document` 不认识 Item、文件路径、PDF 或 Electron。
-- `MDV2Format` 不认识 PDF、anydoc、Electron 或 PDF 渲染选项。
+- `MDV2Format` 不认识 PDF、pdf-inspector、Electron 或 PDF 渲染选项。
 - `PDFFormat` 组合 `MDV2Format`，并把其生成的 `MD_V2` Item 复制为 `PDF` Item。
 - `src/backend` 不导入 Electron；PDF 渲染只通过必需的 `PdfRenderPort` 进入组合根。
 - `src/gui` 不导入 Backend 实现；宿主请求和返回只消费 `src/shared/backend-runtime.ts` 的协议。
@@ -154,11 +154,11 @@ PDF reader 创建的每个 Item 固定满足：
   id: "pdf",
   extension: ".pdf",
   title_key: "project_page.formats.pdf",
-  description_keys: ["project_page.formats.pdf_reflow"],
+  description_keys: ["project_page.formats.ebook"],
 }
 ```
 
-在中、英、德三套 `project-page.ts` 中补齐 `pdf` 与 `pdf_reflow`。文案必须明确表达“文本型 PDF、译文重新排版”，不承诺原版式保留。
+在中、英、德三套 `project-page.ts` 中补齐 `pdf`，统一采用各语言的“PDF 电子书”文案，并复用通用 `ebook` 描述。
 
 工程源文件选择器当前不设置格式 filter，因此无需修改 Electron dialog filter；目录发现、格式计数和格式标签会自动消费统一目录。
 
@@ -217,26 +217,26 @@ public write_text(items: Item[], source_text: string | null): string;
 
 `MDV2Document` 契约无需因 PDF 变化。
 
-## 7. anydoc WASM PDF reader
+## 7. pdf-inspector WASM PDF reader
 
 ### 7.1 依赖与资源装配
 
-在 `dependencies` 精确加入：
+在 `devDependencies` 精确加入：
 
 ```json
-"@firecrawl/anydoc-wasm": "0.2.4"
+"@firecrawl/pdf-inspector-wasm": "1.17.0"
 ```
 
 新增 `src/backend/file/formats/pdf/pdf-markdown-reader.ts`，使用包的 Node 初始化方式：
 
 ```ts
 import { fileURLToPath } from "node:url";
-import { initSync, toMarkdownBytes } from "@firecrawl/anydoc-wasm";
-import wasm_asset_url from "@firecrawl/anydoc-wasm/anydoc_wasm_bg.wasm?url";
+import { initSync, processPdf } from "@firecrawl/pdf-inspector-wasm";
+import wasm_asset_url from "@firecrawl/pdf-inspector-wasm/pdf_inspector_wasm_bg.wasm?url";
 
 let initialized = false;
 
-function ensure_anydoc_wasm_initialized(): void {
+function ensure_pdf_inspector_wasm_initialized(): void {
   if (initialized) return;
   const wasm_path = fileURLToPath(new URL(wasm_asset_url, import.meta.url));
   initSync({ module: default_native_fs.read_file(wasm_path) });
@@ -244,7 +244,7 @@ function ensure_anydoc_wasm_initialized(): void {
 }
 ```
 
-`?url` 必须由 electron-vite 将 `.wasm` 发射到 `build/dist-electron`；electron-builder 现有 glob 会把该资产收入发布包。WASM 由 `NativeFs` 读为 bytes 后初始化，不需要从 ASAR 外部加载。
+`?url` 必须由 electron-vite 将 `.wasm` 发射到 `build/dist-electron`；electron-builder 现有 glob 会把该资产收入发布包。WASM 由 `NativeFs` 读为 bytes 后初始化，不需要从 ASAR 外部加载。PDF 只保留这一条 pdf-inspector 转换路径。
 
 ### 7.2 公开函数
 
@@ -252,36 +252,42 @@ function ensure_anydoc_wasm_initialized(): void {
 
 ```ts
 export function read_pdf_markdown(content: Uint8Array): string;
+export type PdfMarkdownResult = Readonly<{
+  markdown: string;
+  skipped_pages: readonly number[];
+}>;
+export function read_pdf_markdown_result(content: Uint8Array): PdfMarkdownResult;
 ```
 
 行为固定为：
 
 1. 初始化 WASM；
-2. 调用 `toMarkdownBytes(content, "pdf")`；
-3. 返回完整 Markdown 字符串；
-4. 转换错误按 `error.code` 映射，绝不按 `error.message` 建立控制流。
+2. 调用 `processPdf(content, { includePageMarkers: true, profile: "fidelity" })`；
+3. 返回 Markdown 与 `pagesNeedingOcr`；转换器已输出的页标记只作为边界，随后移除；
+4. `markdown` 非空时保留当前可提取内容，即使存在 `pagesNeedingOcr`；
+5. 只有 Markdown 为空且存在 OCR 页面或 PDF 类型不是 `TextBased` 时才映射 `file.parse_failed`，并保留 `no_extractable_text` 原因。
 
 ### 7.3 错误映射
 
-在 `APP_ERROR_DEFINITIONS` 增加：
+PDF 不新增专用错误码；不可提取或受密码保护的 PDF 统一使用已有 `file.parse_failed`，并在 diagnostic context 保留稳定原因：
 
 ```ts
-"file.pdf_ocr_required": { status: 415, severity: "expected" },
-"file.pdf_encrypted": { status: 415, severity: "expected" },
+{ format: "PDF", reason: "no_extractable_text" | "encrypted" }
 ```
 
-三套 `app.ts` 补齐对应用户文案。
+三套 `app.ts` 不增加 PDF 专用文案，沿用 `file.parse_failed`。
 
 映射规则：
 
-|anydoc code|AppError|
+|处理结果或错误|AppError|
 |---|---|
-|`needsOcr`|`file.pdf_ocr_required`，diagnostic context 保存合法的 `pages/pageCount`|
-|`encrypted`|`file.pdf_encrypted`|
-|`unsupported`、`malformed`、`resourceLimit`、`missingPart`|`file.parse_failed`，diagnostic context 保存 anydoc code|
-|缺少 code 或 WASM 初始化/执行异常|`file.io_failed`，保留 cause|
+|Markdown 非空且 `pagesNeedingOcr` 非空|成功导入可提取页面，返回 `skipped_pages` 供诊断；不阻塞项目|
+|Markdown 为空且 `pagesNeedingOcr` 非空，或 PDF 类型为 `Scanned` / `ImageBased` / `Mixed`|`file.parse_failed`，diagnostic context 为 `format: PDF`、`reason: no_extractable_text` 并保存合法的 `pages/pageCount`|
+|输入带 PDF trailer `/Encrypt`|`file.parse_failed`，diagnostic context 为 `format: PDF`、`reason: encrypted`|
+|解析异常、结构损坏或其它处理失败|`file.parse_failed`，diagnostic context 保存可用的 inspector code|
+|WASM 初始化/资产读取异常|`file.io_failed`，保留 cause|
 
-已有 `source-file-parse-failure-reporter` 会直接保留 AppError code，因此无需增加 PDF 专属失败协议或页面分支。
+已有 `source-file-parse-failure-reporter` 会直接保留 AppError code；部分成功不生成失败记录，跳过页只进入 reader 结果诊断，不增加 PDF 专属翻译流程或 Item 字段。
 
 ## 8. PDFFormat
 
@@ -708,8 +714,8 @@ docs/AGENT_RUNTIME.md
 
 ### 阶段 B：输入转换与 PDF Item
 
-1. 加入精确 anydoc-wasm 依赖和 WASM asset import。
-2. 实现一次初始化、PDF 转 Markdown和 coded error 映射。
+1. 加入精确 pdf-inspector-wasm 依赖和 WASM asset import，移除旧 PDF WASM 依赖。
+2. 实现一次初始化、逐页 OCR 路由、可用 Markdown 保留和错误映射。
 3. 加入 `PDF` ItemFileType、公开格式目录与 i18n。
 4. 实现 PDF reader 和 FileFormatService `.pdf` 分发。
 5. 验证新建/导入预览、asset 保存和 reset 复用现有解析流水线。
@@ -754,16 +760,18 @@ docs/AGENT_RUNTIME.md
 
 这些测试证明 PDF 复用边界没有改变 Markdown V2 的公开行为。
 
-### 16.2 anydoc reader
+### 16.2 pdf-inspector reader
 
-`pdf-markdown-reader.test.ts` 使用窄模块 mock 固定 anydoc 返回或抛出的 coded Error，验证：
+`pdf-markdown-reader.test.ts` 使用窄模块 mock 固定 pdf-inspector 返回或抛出的结果，验证：
 
 - 同一进程多次读取只初始化一次 WASM；
-- coded Error 分别映射 OCR-required、encrypted 和 parse-failed；
+- 混合结果保留非空 Markdown、去除页标记并返回跳过页码；
+- 全部页面需要 OCR 时映射 parse-failed 并保留 `no_extractable_text` 原因；
+- encrypted trailer 与其它处理错误都映射 parse-failed，前者保留 `encrypted` 原因；
 - unknown/init failure 映射 file.io_failed；
-- OCR 页码只进入 diagnostic context，不进入错误 message 控制流。
+- 部分成功结果返回 `skipped_pages`；全无文本时才把页码写入 diagnostic context，错误分类不依赖第三方 message。
 
-`pdf-markdown-reader.integration.test.ts` 不 mock anydoc，使用 `src/test/pdf-fixture.ts` 生成的真实文本 PDF，断言实际 WASM 初始化成功且 Markdown 包含已知正文。真实绑定和错误映射分文件运行，避免 hoisted module mock 污染集成测试。
+`pdf-markdown-reader.integration.test.ts` 不 mock pdf-inspector，使用 `src/test/pdf-fixture.ts` 生成的真实文本与混合 PDF，断言实际 WASM 初始化成功、可用正文保留且需 OCR 页面返回 `skipped_pages`。真实绑定和结果映射分文件运行，避免 hoisted module mock 污染集成测试。
 
 ### 16.3 PDFFormat
 
@@ -814,7 +822,7 @@ docs/AGENT_RUNTIME.md
 
 ### 16.7 Agent 工作区
 
-- PDF source 生成 `<path>.pdf.md`，内容为 anydoc Markdown；
+- PDF source 生成 `<path>.pdf.md`，内容为 pdf-inspector 保留的可提取 Markdown；
 - project meta 保留原始 `file_path/file_type` 并指向 Markdown 投影；
 - PDF bytes 不进入文本文件；
 - 缺失或不可转换 asset 沿用 sources 生成失败语义；
@@ -904,24 +912,24 @@ Get-ChildItem build/dist -Recurse -Filter 'pdf-renderer.html'
 
 ## 19. 交付检查清单
 
-- [ ] Markdown V2 前置终态已完成，PDF 未引用历史 `MD`。
-- [ ] `MDV2Format.read_text/write_text` 成为 Markdown Item 转换唯一入口。
-- [ ] `PDFFormat` 单向消费 `MDV2Format`，Markdown 模块不含 PDF 知识。
-- [ ] `ITEM_FILE_TYPES` 包含 `PDF`，PDF Item 固定使用 `text_type: MD`。
-- [ ] anydoc-wasm 精确锁定并只初始化一次。
-- [ ] 扫描件和加密 PDF 使用稳定 AppError code。
-- [ ] `.pdf` 进入统一发现、摘要、预览、创建、导入、替换与 reset 流程。
-- [ ] 原始 PDF bytes 保存为 `.lg` asset，中间 Markdown 不持久化。
-- [ ] PDF writer 只写 translated 目录。
-- [ ] Markdown HTML renderer 不激活 raw HTML 或远端图片。
-- [ ] Electron host 每次请求都在终态销毁隐藏窗口。
-- [ ] GUI host request 与 CLI 直接调用使用同一 renderer。
-- [ ] Agent 工作区把 PDF 投影为 `.pdf.md`。
-- [ ] WASM 与 `pdf-renderer.html` 均进入发布产物。
-- [ ] README 和五份长期工程文档已同步。
-- [ ] 目标测试、受影响测试、完整基线和全量测试通过。
-- [ ] 真实 Electron smoke 已执行，或交付中明确说明未获确认及剩余风险。
-- [ ] diff 中没有旧 `write_items` 签名、缺失的必需 renderer、PDF 运行时回退或重复 Markdown 解析实现。
+- [x] Markdown V2 前置终态已完成，PDF 未引用历史 `MD`。
+- [x] `MDV2Format.read_text/write_text` 成为 Markdown Item 转换唯一入口。
+- [x] `PDFFormat` 单向消费 `MDV2Format`，Markdown 模块不含 PDF 知识。
+- [x] `ITEM_FILE_TYPES` 包含 `PDF`，PDF Item 固定使用 `text_type: MD`。
+- [x] pdf-inspector-wasm 精确锁定并只初始化一次，旧 PDF WASM 依赖已删除。
+- [x] 混合 PDF 保留可提取页面、reader 返回跳过页；全扫描件和加密 PDF 统一使用 `file.parse_failed` 并保留稳定诊断原因。
+- [x] `.pdf` 进入统一发现、摘要、预览、创建、导入、替换与 reset 流程。
+- [x] 原始 PDF bytes 保存为 `.lg` asset，中间 Markdown 不持久化。
+- [x] PDF writer 只写 translated 目录。
+- [x] Markdown HTML renderer 不激活 raw HTML 或远端图片。
+- [x] Electron host 每次请求都在终态销毁隐藏窗口。
+- [x] GUI host request 与 CLI 直接调用使用同一 renderer。
+- [x] Agent 工作区把 PDF 投影为 `.pdf.md`。
+- [x] WASM 与 `pdf-renderer.html` 均进入发布产物。
+- [x] README 和五份长期工程文档已同步。
+- [x] 目标测试、受影响测试、完整基线和全量测试通过。
+- [x] 真实 Electron smoke 未获确认，未执行；交付中明确说明宿主/字体/发布包剩余风险。
+- [x] diff 中没有旧 `write_items` 签名、缺失的必需 renderer、PDF 运行时回退或重复 Markdown 解析实现。
 
 ## 20. 最终验收断言
 
@@ -933,16 +941,21 @@ Get-ChildItem build/dist -Recurse -Filter 'pdf-renderer.html'
   -> 通用翻译流程
   -> 可打开的重排 PDF
 
-任意扫描页或图片型 PDF
-  -> file.pdf_ocr_required
+任意混合 PDF
+  -> 保留可提取页面
+  -> 跳过 OCR 页面并记录页码
+  -> 继续创建 PDF/MD 项目事实
+
+任意全扫描页或图片型 PDF
+  -> file.parse_failed(reason: no_extractable_text)
   -> 不创建不完整项目事实
 
 任意加密 PDF
-  -> file.pdf_encrypted
+  -> file.parse_failed(reason: encrypted)
   -> 不创建不完整项目事实
 
 任意 PDF reset
-  -> 从原始 .lg asset 经同一 anydoc + MDV2Format reader 重建相同身份规则
+  -> 从原始 .lg asset 经同一 pdf-inspector + MDV2Format reader 重建相同身份规则
 
 任意 PDF 导出
   -> MDV2Format writer 重建 Markdown

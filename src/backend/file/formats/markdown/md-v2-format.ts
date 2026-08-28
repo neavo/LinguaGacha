@@ -17,7 +17,12 @@ type MarkdownV2ItemMetadata = {
 export class MDV2Format {
   /** 把 Markdown AST 块转换为通用 Item，并只持久化重建布局需要的 metadata。 */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const document = parse_markdown_v2_document(await decode_text_content(content));
+    return this.read_text(await decode_text_content(content), rel_path);
+  }
+
+  /** 把已解码 Markdown 文本转换为通用块 Item。 */
+  public read_text(text: string, rel_path: string): Item[] {
+    const document = parse_markdown_v2_document(text);
     return document.units.map((unit) =>
       Item.from_json({
         src: unit.src,
@@ -44,20 +49,33 @@ export class MDV2Format {
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
     for (const [rel_path, file_items] of group_items(items, "MD_V2")) {
-      const resources = await this.read_resources(rel_path, asset_reader);
-      const content = [...file_items]
-        .sort((left, right) => left.row - right.row || (left.id ?? 0) - (right.id ?? 0))
-        .map((item) => {
-          const metadata = this.read_metadata(item);
-          return (
-            metadata.before +
-            restore_markdown_v2_resources(item.effective_dst(), resources) +
-            metadata.after
-          );
-        })
-        .join("");
+      const source_text = await this.read_source_text(rel_path, asset_reader);
+      const content = this.write_text(file_items, source_text);
       await write_text_file(path.join(paths.translated_path, rel_path), content);
     }
+  }
+
+  /** 按块起始行重建 Markdown，并从可用原文恢复仍合法的资源 destination。 */
+  public write_text(items: Item[], source_text: string | null): string {
+    let resources: ReadonlyMap<string, string> = new Map();
+    if (source_text !== null) {
+      try {
+        resources = parse_markdown_v2_document(source_text).resources;
+      } catch {
+        // 原始文本只服务资源恢复；无法解析时仍按当前译文宽松导出。
+      }
+    }
+    return [...items]
+      .sort((left, right) => left.row - right.row || (left.id ?? 0) - (right.id ?? 0))
+      .map((item) => {
+        const metadata = this.read_metadata(item);
+        return (
+          metadata.before +
+          restore_markdown_v2_resources(item.effective_dst(), resources) +
+          metadata.after
+        );
+      })
+      .join("");
   }
 
   /** 损坏或缺失的布局字段收窄为空串，保证现有 Item 文本仍可导出。 */
@@ -70,19 +88,16 @@ export class MDV2Format {
   }
 
   /** 原始 asset 仅提供 token 映射；任何读取失败都保留当前译文中的 destination。 */
-  private async read_resources(
+  private async read_source_text(
     rel_path: string,
     asset_reader: (rel_path: string) => Buffer | null,
-  ): Promise<ReadonlyMap<string, string>> {
+  ): Promise<string | null> {
     try {
       const content = asset_reader(rel_path);
-      if (content === null) {
-        return new Map();
-      }
-      return parse_markdown_v2_document(await decode_text_content(content)).resources;
+      return content === null ? null : await decode_text_content(content);
     } catch {
       // 原始 asset 只服务资源恢复；缺失或无法解析时仍按当前译文宽松导出。
-      return new Map();
+      return null;
     }
   }
 }

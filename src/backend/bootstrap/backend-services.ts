@@ -44,6 +44,7 @@ import { QualityRuleService } from "../quality/quality-rule-service";
 import { QualityStatisticsService } from "../quality/quality-statistics-service";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
+import type { PdfRenderPort } from "../file/formats/file-format-shared";
 import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
 import {
@@ -62,6 +63,7 @@ export interface BackendServicesOptions {
   agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 使用宿主代理解析创建 Backend 抓取入口
   agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
+  renderPdf: PdfRenderPort; // PDF 输出必须由当前产品入口显式提供 Chromium 宿主
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
 
@@ -187,6 +189,7 @@ export class BackendServices {
       this.app_setting_service,
       session_state,
       options.openOutputFolder,
+      options.renderPdf,
       this.logManager,
     );
 

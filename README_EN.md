@@ -75,16 +75,16 @@
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
-- Subtitles (.srt .ass)
-- E-books (.txt .epub)
-- Markdown（.md）
-- [RenPy](https://www.renpy.org) exports (.rpy)
-- [MTool](https://mtool.app) exports (.json)
-- [SExtractor](https://github.com/satan53x/SExtractor) exports (.txt .json .xlsx)
-- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
-- [Translator++](https://dreamsavior.net/translator-plusplus) project (.trans)
-- [Translator++](https://dreamsavior.net/translator-plusplus) exports (.xlsx)
-- [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports (.xlsx)
+- Subtitles `.srt .ass`
+- E-books `.txt .pdf .epub`
+- Markdown `.md`
+- [RenPy](https://www.renpy.org) exports `.rpy`
+- [MTool](https://mtool.app) exports `.json`
+- [SExtractor](https://github.com/satan53x/SExtractor) exports `.txt .json .xlsx`
+- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports `.json`
+- [Translator++](https://dreamsavior.net/translator-plusplus) project `.trans`
+- [Translator++](https://dreamsavior.net/translator-plusplus) exports `.xlsx`
+- [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports `.xlsx`
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅

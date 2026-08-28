@@ -22,7 +22,12 @@ async function run_product_entry(): Promise<void> {
   if (should_run_cli()) {
     const { run_cli_entry } = await import("./cli/cli-entry");
     return exit_cli_process(
-      await run_cli_entry(resolve_cli_argv(), resolve_app_root(), worker_execution),
+      await run_cli_entry(
+        resolve_cli_argv(),
+        resolve_app_root(),
+        desktop_bundle_dir,
+        worker_execution,
+      ),
     );
   }
 

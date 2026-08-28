@@ -66,6 +66,7 @@ export const en_us_project_page = {
     title: "Supported File Formats",
     txt: "Plain Text",
     md: "Markdown",
+    pdf: "PDF EBook",
     srt: "SubRip Subtitles",
     ass: "ASS Subtitles",
     epub: "EPUB EBook",

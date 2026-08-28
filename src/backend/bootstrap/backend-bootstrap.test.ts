@@ -11,6 +11,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { BackendBootstrap } from "./backend-bootstrap";
+import type { BackendBootstrapOptions } from "./backend-bootstrap-types";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 
 let temp_dir = ""; // 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
@@ -70,7 +71,7 @@ describe("BackendBootstrap", () => {
     const http_dispose = vi.spyOn(SystemProxyHttpClient.prototype, "dispose");
     const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -95,7 +96,7 @@ describe("BackendBootstrap", () => {
       "---\nname: test-skill\ndescription: 启动期能力\n---\n\n执行测试任务。",
       "utf-8",
     );
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -150,7 +151,7 @@ describe("BackendBootstrap", () => {
   it("停止时等待 Gateway 在途 handler，再按 Backend、数据库、日志逆序释放", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -215,7 +216,7 @@ describe("BackendBootstrap", () => {
   });
 
   it("并发 stop 共享同一次关闭并等待完整资源链", async () => {
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -268,7 +269,7 @@ describe("BackendBootstrap", () => {
   });
 
   it("单个关闭步骤失败仍继续释放数据库和日志并汇总异常", async () => {
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -320,7 +321,7 @@ describe("BackendBootstrap", () => {
     });
     const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -357,7 +358,7 @@ describe("BackendBootstrap", () => {
       return { baseUrl: "http://127.0.0.1:65535" };
     });
     const gateway_stop = vi.spyOn(ApiGatewayServer.prototype, "stop");
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -417,7 +418,7 @@ describe("BackendBootstrap", () => {
       }
       return { baseUrl: "http://127.0.0.1:65535" };
     });
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       logTargets: { console: false, window: false },
@@ -458,7 +459,7 @@ describe("BackendBootstrap", () => {
   });
 
   it("禁止 ready 状态重复进入启动链路", async () => {
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -490,7 +491,7 @@ describe("BackendBootstrap", () => {
   it("入口可关闭控制台日志并保留文件日志", async () => {
     const stdout_write = vi.mocked(process.stdout.write);
     stdout_write.mockClear();
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
@@ -510,7 +511,7 @@ describe("BackendBootstrap", () => {
 
   it("启动不提前解析系统代理", async () => {
     const resolve_proxy = vi.fn(async () => "DIRECT");
-    const manager = new BackendBootstrap({
+    const manager = create_backend_bootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
@@ -529,3 +530,12 @@ describe("BackendBootstrap", () => {
 });
 
 async function noop_output_folder(_output_path: string): Promise<void> {}
+
+function create_backend_bootstrap(
+  options: Omit<BackendBootstrapOptions, "renderPdf">,
+): BackendBootstrap {
+  return new BackendBootstrap({
+    ...options,
+    renderPdf: async () => new Uint8Array(),
+  });
+}
