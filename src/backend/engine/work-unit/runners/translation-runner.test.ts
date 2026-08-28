@@ -97,7 +97,6 @@ describe("TranslationWorkUnitRunner", () => {
           output_tokens: 1,
           cancelled: false,
           timeout: false,
-          degraded: false,
         };
       }),
     };
@@ -317,7 +316,6 @@ describe("TranslationWorkUnitRunner", () => {
           output_tokens: 5,
           cancelled: false,
           timeout: false,
-          degraded: false,
         };
       },
     });
@@ -584,7 +582,6 @@ function create_llm_client(
         output_tokens: 1,
         cancelled: false,
         timeout: false,
-        degraded: false,
         ...overrides,
       };
     },

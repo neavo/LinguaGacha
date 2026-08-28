@@ -103,7 +103,6 @@ describe("work-unit-worker-entry", () => {
           output_tokens: 2,
           cancelled: false,
           timeout: false,
-          degraded: false,
         },
       },
     });

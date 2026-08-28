@@ -392,11 +392,6 @@ export class ModelService {
         }),
       };
     }
-    if (result.degraded) {
-      return {
-        reason: this.t(config["app_language"], "app.log.response_checker_fail_degradation"),
-      };
-    }
     if (result.request_error !== undefined) {
       return { reason: result.request_error.message, error: result.request_error };
     }

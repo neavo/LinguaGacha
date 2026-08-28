@@ -79,7 +79,6 @@ describe("AnalysisWorkUnitRunner", () => {
           output_tokens: 3,
           cancelled: false,
           timeout: false,
-          degraded: false,
         };
       },
     });

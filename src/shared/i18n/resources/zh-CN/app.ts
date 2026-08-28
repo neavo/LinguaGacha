@@ -357,18 +357,9 @@ export const zh_cn_app = {
     generate_translation_done: "译文已保存至 {PATH} …",
     generate_translation_start: "生成译文中 …",
     response_checker_fail_data: "数据结构错误",
-    response_checker_fail_degradation: "发生退化现象",
-    response_checker_fail_line_count: "行数不一致",
-    response_checker_fail_request: "模型请求失败",
     request_failed_retry: "模型请求失败，将自动重试 …",
     response_checker_fail_timeout: "网络请求超时",
-    response_checker_line_error_empty_line: "存在空行",
     system_closed_dropped: "日志系统已关闭，丢弃新日志：{MESSAGE}",
-    translation_response_check_fail: "返回数据错误，将自动重试，原因：{REASON}",
-    translation_response_check_fail_all: "全部译文质量校验失败，将自动切分重试，原因：{REASON}",
-    translation_response_check_fail_part: "部分译文质量校验失败，将自动切分重试，原因：{REASON}",
     translation_task_result: "翻译结果：",
-    translation_task_status_info:
-      "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}",
   },
 } as const;

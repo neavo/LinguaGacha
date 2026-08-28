@@ -696,7 +696,6 @@ describe("ModelService 远端模型能力", () => {
     const request_mock = llm_request
       .mockResolvedValueOnce({
         cancelled: false,
-        degraded: false,
         input_tokens: 2,
         reasoning_tokens: 1,
         output_tokens: 3,
@@ -706,7 +705,6 @@ describe("ModelService 远端模型能力", () => {
       })
       .mockResolvedValueOnce({
         cancelled: false,
-        degraded: false,
         input_tokens: 0,
         reasoning_tokens: 0,
         output_tokens: 0,

@@ -30,7 +30,6 @@ describe("WorkUnitWorkerPool", () => {
         output_tokens: 2,
         cancelled: false,
         timeout: false,
-        degraded: false,
       }),
     };
     const pool = new WorkUnitWorkerPool({
@@ -129,7 +128,6 @@ parentPort?.on("message", (message) => {
       output_tokens: 4,
       cancelled: false,
       timeout: false,
-      degraded: false,
     });
     const pool = new WorkUnitWorkerPool({
       appRoot: app_root,
@@ -159,7 +157,6 @@ parentPort?.on("message", (message) => {
           output_tokens: 4,
           cancelled: false,
           timeout: false,
-          degraded: false,
         },
       });
       expect(llm_request).toHaveBeenCalledWith(
