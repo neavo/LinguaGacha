@@ -120,9 +120,9 @@ item 是不可拆业务对象；正文和姓名字段可以分别判断，但在
 
 先完成确定性程序处理，再按自然文件边界、文本结构和已确认关系组织开放式语义目标。每个业务单元完整处置其中全部 targets，并按 `translation-rules` 的领域判据形成唯一的 `update`、`keep` 或 `blocked` 结论。
 
-信息结果累计各业务单元结论。工程变更结果只为当前业务单元生成 `workspace.contract.changes.items.updates.path` 的必要行，字段副作用读取 `workspace.contract.effects.item_updates`；批次校验后调用一次 `workspace_apply` 并记录真实回执。
+信息结果累计各业务单元结论。工程变更结果只为当前业务单元生成 `workspace.contract.changes.items.updates.path` 的必要行，并复制对应 item 的 `fp`；字段副作用读取 `workspace.contract.effects.item_updates`。批次校验后调用一次 `workspace_apply`。
 
-apply 后刷新事实快照，核对实际值、warnings 和副作用。新的决定性证据进入发现前沿；结果与方案一致时继续下一业务单元。回执与方案不一致时保留真实状态并按工具返回动作恢复。
+后续领域核验关注译文实际值、warnings 和字段副作用；新的决定性证据进入发现前沿，未完成的 targets 重新纳入业务单元。
 
 ## 8. 发现穷尽与结果验收
 

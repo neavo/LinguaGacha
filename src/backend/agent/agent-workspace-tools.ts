@@ -45,7 +45,7 @@ const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** apply 消费当前活动工作区中的一个提交批次，身份与 revision 由服务持有。 */
+/** apply 消费当前活动工作区中的一个提交批次，身份与对象 fp 由服务持有。 */
 const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false });
 
 /** 工作区由单一服务持有，模型接口由脚本与提交批次组成。 */
@@ -74,7 +74,7 @@ export function create_agent_workspace_tools(
       name: "workspace_apply",
       label: "应用工作区",
       description:
-        "校验当前提交批次的非空 change 文件并以一次独立事务应用到工程；批量任务按提交批次逐次调用，每次调用对应一个提交批次。无真实变化返回 unchanged，提交前校验、revision 或领域规则失败时保持工程基线。workspace_apply 是工程写入入口。",
+        "读取当前提交批次并按对象 fp 与领域规则逐行处理；实际成功对象在一个独立事务中提交，单个对象失败进入 rejected，不阻塞无关对象。回执始终包含 status、applied、rejected、destroyed、revisions；无真实变化返回 unchanged。workspace_apply 是工程写入入口。",
       executionMode: "sequential",
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {

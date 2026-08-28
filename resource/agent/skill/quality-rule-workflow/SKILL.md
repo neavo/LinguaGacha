@@ -204,7 +204,7 @@ description: 对术语与文本保护规则进行提取或审校时使用。
 
 text_preserve 以单条规则为验收单位，逐条验收资格、表达式和已知命中安全。
 
-存在缺口时返回缺口和代表证据。零缺口时，`report` 形成完整目标规则方案，`change` 准备选定规则类型的 create、update、delete、move 文件；具体 change 操作由目标集合和 contract 共同确定。
+存在缺口时返回缺口和代表证据。零缺口时，`report` 形成完整目标规则方案，`change` 准备选定规则类型的 create、update、delete 文件；具体 change 操作由目标集合和 contract 共同确定。
 
 ## 10. 面向用户的业务结果
 
@@ -220,6 +220,6 @@ text_preserve 以单条规则为验收单位，逐条验收资格、表达式和
 
 ## 11. 提交、恢复与执行回执
 
-`change` 把验收通过且已经报告的完整目标规则集合形成一个提交批次，并调用一次 `workspace_apply`，工具返回后按 System Prompt 输出执行回执。
+`change` 使用 `create`、`update`、`delete` 三类文件；create/update 携带 `sort` 意图，既有 entry 的 update/delete 复制 `fp`。验收通过且已经报告的目标形成一个提交批次并调用一次 `workspace_apply`，按真实回执重建剩余目标。
 
-stale、revision 冲突或提交回滚按照工作区返回动作重新读取并形成完整目标规则集合，再回到业务结果阶段。已提交同步失败保留真实写入状态，报告恢复动作并结束当前提交尝试。
+收到回执后依据实际成功结果更新目标集合，重新验收剩余规则的排序、重复关系和集合最小性；后续判断依赖新事实时，按 System Prompt 的提交与续跑规则读取有效快照。
