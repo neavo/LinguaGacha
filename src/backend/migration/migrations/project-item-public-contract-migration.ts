@@ -10,6 +10,7 @@ type ItemContractPayload = Record<string, unknown>;
 
 // 完整公开 DTO 契约需要这些文件类型在缺失 text_type 时保留历史推断语义。
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
+const LEGACY_MARKDOWN_FILE_TYPE = "MD";
 
 /**
  * 迁移背景：
@@ -96,7 +97,7 @@ export function normalize_item_public_contract_payload(item_data: ItemContractRo
     changed = true;
   }
 
-  const file_type = Item.normalize_file_type(normalized["file_type"]);
+  const file_type = normalize_migration_file_type(normalized["file_type"]);
   changed = assign_contract_field(normalized, "file_type", file_type) || changed;
   changed =
     assign_contract_field(normalized, "file_path", read_string(normalized["file_path"])) || changed;
@@ -120,6 +121,13 @@ export function normalize_item_public_contract_payload(item_data: ItemContractRo
     ) || changed;
 
   return { data: normalized, changed };
+}
+
+/** 写回迁移先保留历史 Markdown 类型，交给后续 project-open 文件迁移消费。 */
+function normalize_migration_file_type(value: unknown): string {
+  return value === LEGACY_MARKDOWN_FILE_TYPE
+    ? LEGACY_MARKDOWN_FILE_TYPE
+    : Item.normalize_file_type(value);
 }
 
 /**

@@ -46,7 +46,7 @@ describe("FileFormatService", () => {
   });
 
   it.each([
-    ["a.md", "正文", "MD"],
+    ["a.md", "正文", "MD_V2"],
     [
       "a.ass",
       "[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,字幕",

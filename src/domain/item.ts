@@ -16,7 +16,7 @@ export const ITEM_STATUSES = [
 // 文件的类型
 export const ITEM_FILE_TYPES = [
   "NONE",
-  "MD",
+  "MD_V2",
   "TXT",
   "SRT",
   "ASS",

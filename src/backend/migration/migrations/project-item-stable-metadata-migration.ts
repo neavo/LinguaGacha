@@ -13,6 +13,7 @@ const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
 const LEGACY_PROCESSING = "PROCESSING";
 const CURRENT_PROCESSED = "PROCESSED";
 const CURRENT_NONE = "NONE";
+const LEGACY_MARKDOWN_FILE_TYPE = "MD";
 // 这些文件类型在旧工程缺失 text_type 时仍可从 src 推导文本语义。
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
 
@@ -89,8 +90,7 @@ function normalize_item_payload(item_data: ItemMigrationRow): {
   }
 
   const raw_file_type = normalized["file_type"];
-  const normalized_file_type =
-    typeof raw_file_type === "string" && is_item_file_type(raw_file_type) ? raw_file_type : "NONE";
+  const normalized_file_type = normalize_migration_file_type(raw_file_type);
   if (raw_file_type !== normalized_file_type) {
     normalized["file_type"] = normalized_file_type;
     changed = true;
@@ -122,6 +122,14 @@ function normalize_item_payload(item_data: ItemMigrationRow): {
   }
 
   return { data: normalized, changed };
+}
+
+/** 写回迁移先保留历史 Markdown 类型，交给后续 project-open 文件迁移消费。 */
+function normalize_migration_file_type(value: unknown): string {
+  if (value === LEGACY_MARKDOWN_FILE_TYPE) {
+    return LEGACY_MARKDOWN_FILE_TYPE;
+  }
+  return typeof value === "string" && is_item_file_type(value) ? value : "NONE";
 }
 
 /**

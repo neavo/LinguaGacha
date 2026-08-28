@@ -2,6 +2,7 @@ import { Item } from "../../../domain/item";
 import { read_json_record, type JsonValue } from "../../../domain/json";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
 import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
+import { replace_project_file_items } from "../project-open-file-item-replacement";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
 /**
@@ -75,10 +76,22 @@ export class EpubRubyBlockTextMigration {
       return [];
     }
 
-    const items = this.replace_items_by_file(current_items, replacements);
+    const replacement_payloads = new Map(
+      [...replacements].map(([file_path, items]) => [
+        file_path,
+        items.map((item) => item.to_json() as unknown as JsonValue),
+      ]),
+    );
     return [
       (database) => {
-        database.set_items(project_path, items);
+        const latest_items = database.get_all_items(project_path);
+        database.set_items(
+          project_path,
+          replace_project_file_items(
+            Array.isArray(latest_items) ? latest_items : [],
+            replacement_payloads,
+          ),
+        );
         database.delete_analysis_item_checkpoints(project_path);
         database.clear_analysis_candidate_aggregates(project_path);
         database.upsert_meta_entries(project_path, {
@@ -162,31 +175,6 @@ export class EpubRubyBlockTextMigration {
       (old_item) => !consumed_old_items.has(old_item) && this.has_user_fact(old_item),
     );
     return unsafe_unmapped_item ? null : merged_items;
-  }
-
-  /**
-   * 全量 setItems 必须保留未迁移文件原顺序，只在原 EPUB 文件位置替换重建结果。
-   */
-  private replace_items_by_file(
-    current_items: Item[],
-    replacements: Map<string, Item[]>,
-  ): JsonValue[] {
-    const emitted_files = new Set<string>();
-    const next_items: JsonValue[] = [];
-    for (const item of current_items) {
-      const replacement = replacements.get(item.file_path);
-      if (item.file_type === "EPUB" && replacement !== undefined) {
-        if (!emitted_files.has(item.file_path)) {
-          next_items.push(
-            ...(replacement.map((next_item) => next_item.to_json()) as unknown as JsonValue[]),
-          );
-          emitted_files.add(item.file_path);
-        }
-        continue;
-      }
-      next_items.push(item.to_json() as unknown as JsonValue);
-    }
-    return next_items;
   }
 
   /**
