@@ -18,10 +18,10 @@ import type {
   ProjectDataSectionRevisions,
   ProjectWriteResult,
 } from "../../shared/project-event";
-import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
 import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
+import { create_quality_rule_entry_id } from "../../shared/quality/quality-rule-entry";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
 import {
   build_analysis_section_delta,
@@ -36,9 +36,6 @@ import type {
   AnalysisCheckpointWrite,
   AnalysisGlossaryWrite,
   AnalysisProgressWrite,
-  AgentWorkspaceApplyAck,
-  AgentWorkspacePromptChange,
-  AgentWorkspaceQualityChange,
   ProjectItemWriteChange,
   TranslationItemPatch,
 } from "./project-write-request";
@@ -48,6 +45,15 @@ import {
   type ProjectTaskInput,
 } from "./project-task-input";
 import type { ProjectEvent, ProjectEventHandler } from "./project-events";
+import {
+  resolve_agent_workspace_writes,
+  has_agent_workspace_applied_changes,
+  type AgentWorkspaceIntentBatch,
+  type AgentWorkspaceRejectedChange,
+  type AgentWorkspaceAppliedSummary,
+} from "./agent-workspace-write";
+import type { PromptKind } from "../../domain/prompt";
+import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
 type RevisionBackedSection = "files" | "items" | "analysis" | "proofreading";
 type ProjectWriteRevisionContext = {
@@ -799,116 +805,156 @@ export class ProjectWriteStore {
     });
   }
 
-  /**
-   * 将 Agent 工作区差异放入同一个 revision guard 和事务，并返回提交后 revision 确认。
-   */
+  /** 在单事务内按当前对象重算 Agent 意图，并只发布实际提交的 section。 */
   public async apply_agent_workspace_changes(request: {
     projectPath: string;
-    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: "agent_workspace_apply";
-    itemChanges: readonly ProjectItemWriteChange[];
-    qualityChanges: readonly AgentWorkspaceQualityChange[];
-    promptChanges: readonly AgentWorkspacePromptChange[];
-  }): Promise<AgentWorkspaceApplyAck> {
+    batch: AgentWorkspaceIntentBatch;
+  }): Promise<{
+    applied: AgentWorkspaceAppliedSummary;
+    rejected: AgentWorkspaceRejectedChange[];
+    destroyed: boolean;
+    sectionRevisions: ProjectDataSectionRevisions;
+  }> {
+    const actual = this.database.transaction(request.projectPath, () => {
+      const current_meta = this.read_project_meta(request.projectPath);
+      const item_ids = [...new Set(request.batch.items.map((intent) => intent.item_id))];
+      const items = this.database.get_items_by_ids(request.projectPath, item_ids);
+      const quality_kinds = QUALITY_RULE_KINDS.filter((kind) => {
+        const intents = request.batch.quality[kind];
+        return intents.creates.length + intents.updates.length + intents.deletes.length > 0;
+      });
+      const quality = Object.fromEntries(
+        quality_kinds.map((kind) => {
+          const storage = resolve_project_quality_rule_storage(kind);
+          return [kind, this.database.get_rules(request.projectPath, storage.database_type)];
+        }),
+      ) as Record<QualityRuleKind, JsonValue>;
+      const prompt_kinds = [...new Set(request.batch.prompts.map((intent) => intent.kind))];
+      const prompts = Object.fromEntries(
+        prompt_kinds.map((kind) => {
+          const storage = resolve_project_prompt_storage(kind);
+          return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
+        }),
+      ) as Partial<Record<PromptKind, string>>;
+      const outcome = resolve_agent_workspace_writes({
+        batch: request.batch,
+        current: {
+          items: Array.isArray(items) ? items.filter(is_json_record) : [],
+          quality: Object.fromEntries(
+            quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
+          ),
+          prompts,
+        },
+        createQualityEntryId: create_quality_rule_entry_id,
+      });
+      if (!has_agent_workspace_applied_changes(outcome.applied)) return outcome;
+      const updated_sections: ProjectDataSection[] = [];
+      if (outcome.itemChanges.length > 0) updated_sections.push("items", "proofreading");
+      if (outcome.qualityChanges.length > 0) updated_sections.push("quality");
+      if (outcome.promptChanges.length > 0) updated_sections.push("prompts");
+      const item_patches = outcome.itemChanges.map((change) => ({
+        item_id: change.item_id,
+        patch: this.build_translation_patch_from_items(change.current, change.next),
+      }));
+      if (item_patches.length > 0)
+        this.database.patch_item_translation_fields(
+          request.projectPath,
+          this.to_database_translation_patches(item_patches),
+        );
+      if (item_patches.length > 0 && this.has_translation_status_change(outcome.itemChanges)) {
+        const translation_extras = this.build_translation_extras_after_status_changes(
+          request.projectPath,
+          { project_path: request.projectPath, meta: current_meta, sections: updated_sections },
+          outcome.itemChanges,
+        );
+        this.database.upsert_meta_entries(request.projectPath, {
+          translation_extras: translation_extras as unknown as JsonValue,
+        } as unknown as JsonRecord);
+      }
+      for (const change of outcome.qualityChanges) {
+        const storage = resolve_project_quality_rule_storage(change.kind);
+        this.database.set_rules(
+          request.projectPath,
+          storage.database_type,
+          change.entries as unknown as JsonValue[],
+        );
+      }
+      if (outcome.qualityChanges.length > 0) {
+        const quality_revision = get_section_revision(current_meta, "quality") + 1;
+        for (const kind of new Set(outcome.qualityChanges.map((change) => change.kind))) {
+          const storage = resolve_project_quality_rule_storage(kind);
+          this.database.set_meta(request.projectPath, storage.revision_meta_key, quality_revision);
+        }
+      }
+      for (const change of outcome.promptChanges) {
+        const storage = resolve_project_prompt_storage(change.kind);
+        this.database.set_rule_text(request.projectPath, storage.database_type, change.text);
+      }
+      if (outcome.promptChanges.length > 0) {
+        const prompt_revision = get_section_revision(current_meta, "prompts") + 1;
+        for (const kind of new Set(outcome.promptChanges.map((change) => change.kind))) {
+          const storage = resolve_project_prompt_storage(kind);
+          this.database.set_meta(request.projectPath, storage.revision_meta_key, prompt_revision);
+        }
+      }
+      for (const write of this.build_section_revision_writes({
+        project_path: request.projectPath,
+        meta: current_meta,
+        sections: updated_sections,
+      }))
+        write(this.database);
+      return outcome;
+    });
     const updated_sections: ProjectDataSection[] = [];
-    if (request.itemChanges.length > 0) updated_sections.push("items", "proofreading");
-    if (request.qualityChanges.length > 0) updated_sections.push("quality");
-    if (request.promptChanges.length > 0) updated_sections.push("prompts");
-    if (updated_sections.length === 0) {
+    if (actual.itemChanges.length > 0) updated_sections.push("items", "proofreading");
+    if (actual.qualityChanges.length > 0) updated_sections.push("quality");
+    if (actual.promptChanges.length > 0) updated_sections.push("prompts");
+    if (updated_sections.length === 0)
       return {
-        committed: true,
+        applied: {},
+        rejected: actual.rejected,
+        destroyed: actual.rejected.some(
+          (rejection) =>
+            rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
+        ),
         sectionRevisions: build_section_revisions_from_meta(
           this.read_project_meta(request.projectPath),
         ),
       };
-    }
-
-    const item_patches = request.itemChanges.map((change) => ({
-      item_id: change.item_id,
-      patch: this.build_translation_patch_from_items(change.current, change.next),
-    }));
-
-    await this.commit_runtime_change({
+    const change_request: ProjectWriteChangeRequest = {
       projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
-      requireExpectedSectionRevisions: true,
-      revisionSections: [...PROJECT_DATA_SECTIONS],
       source: request.source,
       updatedSections: updated_sections,
-      ...(item_patches.length === 0
-        ? {}
-        : { items: { payloadMode: "section-invalidated" as const } }),
-      buildWrites: (revision_context) => {
-        const writes: ProjectDatabaseWrite[] = [];
-        if (item_patches.length > 0) {
-          writes.push((database) =>
-            database.patch_item_translation_fields(
-              request.projectPath,
-              this.to_database_translation_patches(item_patches),
-            ),
-          );
-          if (this.has_translation_status_change(request.itemChanges)) {
-            const translation_extras = this.build_translation_extras_after_status_changes(
-              request.projectPath,
-              revision_context,
-              request.itemChanges,
-            );
-            writes.push((database) =>
-              database.upsert_meta_entries(request.projectPath, {
-                translation_extras: translation_extras as unknown as JsonValue,
-              } as unknown as JsonRecord),
-            );
-          }
-          writes.push(
-            ...this.build_section_revision_writes(revision_context, ["items", "proofreading"]),
-          );
-        }
-
-        const quality_revision = get_section_revision(revision_context.meta, "quality") + 1;
-        for (const change of request.qualityChanges) {
-          const storage = resolve_project_quality_rule_storage(change.kind);
-          writes.push(
-            (database) =>
-              database.set_rules(
-                request.projectPath,
-                storage.database_type,
-                change.entries as unknown as JsonValue[],
-              ),
-            (database) =>
-              database.set_meta(request.projectPath, storage.revision_meta_key, quality_revision),
-          );
-        }
-
-        const prompts_revision = get_section_revision(revision_context.meta, "prompts") + 1;
-        for (const change of request.promptChanges) {
-          const storage = resolve_project_prompt_storage(change.kind);
-          writes.push(
-            (database) =>
-              database.set_rule_text(request.projectPath, storage.database_type, change.text),
-            (database) =>
-              database.set_meta(request.projectPath, storage.revision_meta_key, prompts_revision),
-          );
-        }
-        return writes;
-      },
-    });
+      ...(actual.itemChanges.length === 0 ? {} : { items: { payloadMode: "section-invalidated" } }),
+    };
     try {
-      return {
-        committed: true,
-        sectionRevisions: build_section_revisions_from_meta(
-          this.read_project_meta(request.projectPath),
-        ),
-      };
+      await this.publish_app_events_for_committed_change(change_request);
+      this.publish_project_data_change(change_request);
     } catch (cause) {
       throw new AppErrors.AppError("data.committed_sync_failed", {
         cause,
-        public_details: { committed: true, section_revisions: {}, action: "reload_project" },
+        public_details: {
+          committed: true,
+          section_revisions: build_section_revisions_from_meta(
+            this.read_project_meta(request.projectPath),
+          ),
+          action: "reload_project",
+        },
         diagnostic_context: {
-          reason: "agent_workspace_commit_ack_failed",
+          reason: "project_committed_change_sync_failed",
           source: request.source,
         },
       });
     }
+    return {
+      applied: actual.applied,
+      rejected: actual.rejected,
+      destroyed: true,
+      sectionRevisions: build_section_revisions_from_meta(
+        this.read_project_meta(request.projectPath),
+      ),
+    };
   }
 
   /**

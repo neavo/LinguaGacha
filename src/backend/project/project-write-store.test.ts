@@ -14,7 +14,12 @@ import { get_section_revision } from "./project-data-reader";
 import type { ProjectEventHandler } from "./project-events";
 import { ProjectWriteStore } from "./project-write-store";
 import type { ProjectChangeEvent } from "../../shared/project-event";
-import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
+import {
+  create_empty_agent_workspace_intent_batch,
+  project_agent_workspace_item,
+  project_agent_workspace_prompt,
+  type AgentWorkspaceIntentBatch,
+} from "./agent-workspace-write";
 
 describe("ProjectWriteStore", () => {
   const cleanup_callbacks: Array<() => void> = [];
@@ -485,37 +490,63 @@ describe("ProjectWriteStore", () => {
         return result;
       });
 
+    const item = read_items(database, project_path)[0]!;
     const ack = await store.apply_agent_workspace_changes({
       projectPath: project_path,
-      expectedSectionRevisions: zero_revisions(),
       source: "agent_workspace_apply",
-      itemChanges: [
-        {
-          item_id: 1,
-          current: { dst: "", name_dst: null, status: "NONE", retry_count: 2 },
-          next: { dst: "译文", name_dst: "译名", status: "PROCESSED", retry_count: 0 },
+      batch: agent_batch({
+        items: [
+          {
+            line: 1,
+            item_id: 1,
+            fp: String(project_agent_workspace_item(item)["fp"]),
+            update: { dst: "译文", name_dst: "译名", status: "PROCESSED" },
+          },
+        ],
+        quality: {
+          glossary: {
+            creates: [
+              {
+                line: 2,
+                kind: "glossary",
+                fields: { src: "姫", dst: "公主", info: "", case_sensitive: false },
+                sort: -1,
+              },
+            ],
+            updates: [],
+            deletes: [],
+          },
+          pre_replacement: {
+            creates: [
+              {
+                line: 3,
+                kind: "pre_replacement",
+                fields: { src: "妃", dst: "王妃", regex: false, case_sensitive: false },
+                sort: -1,
+              },
+            ],
+            updates: [],
+            deletes: [],
+          },
         },
-      ],
-      qualityChanges: [
-        {
-          kind: "glossary",
-          entries: [{ entry_id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false }],
-        },
-        {
-          kind: "pre_replacement",
-          entries: [
-            { entry_id: "r-1", src: "妃", dst: "王妃", regex: false, case_sensitive: false },
-          ],
-        },
-      ],
-      promptChanges: [
-        { kind: "translation", text: "翻译正文" },
-        { kind: "analysis", text: "分析正文" },
-      ],
+        prompts: [
+          {
+            line: 4,
+            kind: "translation",
+            fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+            text: "翻译正文",
+          },
+          {
+            line: 5,
+            kind: "analysis",
+            fp: String(project_agent_workspace_prompt("analysis", "")["fp"]),
+            text: "分析正文",
+          },
+        ],
+      }),
     });
 
     expect(ack).toMatchObject({
-      committed: true,
       sectionRevisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
     });
     expect(transaction).toHaveBeenCalledOnce();
@@ -565,25 +596,47 @@ describe("ProjectWriteStore", () => {
     await expect(
       store.apply_agent_workspace_changes({
         projectPath: project_path,
-        expectedSectionRevisions: zero_revisions(),
         source: "agent_workspace_apply",
-        itemChanges: [
-          {
-            item_id: 1,
-            current: { dst: "", name_dst: null, status: "NONE", retry_count: 2 },
-            next: { dst: "译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
+        batch: agent_batch({
+          items: [
+            {
+              line: 1,
+              item_id: 1,
+              fp: String(
+                project_agent_workspace_item(read_items(database, project_path)[0]!)["fp"],
+              ),
+              update: { dst: "译文", status: "PROCESSED" },
+            },
+          ],
+          quality: {
+            glossary: {
+              creates: [
+                {
+                  line: 2,
+                  kind: "glossary",
+                  fields: { src: "姫", dst: "公主", info: "", case_sensitive: false },
+                  sort: -1,
+                },
+              ],
+              updates: [],
+              deletes: [],
+            },
           },
-        ],
-        qualityChanges: [
-          {
-            kind: "glossary",
-            entries: [{ entry_id: "g-1", src: "姫", dst: "公主", info: "", case_sensitive: false }],
-          },
-        ],
-        promptChanges: [
-          { kind: "translation", text: "翻译正文" },
-          { kind: "analysis", text: "分析正文" },
-        ],
+          prompts: [
+            {
+              line: 3,
+              kind: "translation",
+              fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+              text: "翻译正文",
+            },
+            {
+              line: 4,
+              kind: "analysis",
+              fp: String(project_agent_workspace_prompt("analysis", "")["fp"]),
+              text: "分析正文",
+            },
+          ],
+        }),
       }),
     ).rejects.toThrow("prompt write failed");
 
@@ -597,6 +650,40 @@ describe("ProjectWriteStore", () => {
     expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
     expect(project_event_handler).not.toHaveBeenCalled();
     expect(published_changes).toEqual([]);
+  });
+
+  it("事务内对象漂移只拒绝目标并提交无关 prompt", async () => {
+    const { database, project_path, store } = create_store("agent-workspace-partial");
+    seed_items(database, project_path);
+    const baseline_item = read_items(database, project_path)[0]!;
+    const baseline_fp = String(project_agent_workspace_item(baseline_item)["fp"]);
+    database.set_items(project_path, [{ ...baseline_item, dst: "外部译文" }]);
+
+    const ack = await store.apply_agent_workspace_changes({
+      projectPath: project_path,
+      source: "agent_workspace_apply",
+      batch: agent_batch({
+        items: [{ line: 1, item_id: 1, fp: baseline_fp, update: { dst: "Agent 译文" } }],
+        quality: {},
+        prompts: [
+          {
+            line: 2,
+            kind: "translation",
+            fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
+            text: "翻译正文",
+          },
+        ],
+      }),
+    });
+
+    expect(ack).toMatchObject({
+      applied: { prompts: { updated: ["translation"] } },
+      rejected: [{ scope: "items", op: "update", id: 1, reason: "fp_mismatch" }],
+      destroyed: true,
+      sectionRevisions: { items: 0, prompts: 1 },
+    });
+    expect(read_items(database, project_path)[0]?.dst).toBe("外部译文");
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
   });
 
   function create_store(
@@ -711,11 +798,17 @@ describe("ProjectWriteStore", () => {
     database.add_asset_from_source(project_path, asset_path, source_path, sort_order);
   }
 
-  /** Agent 工作区场景从未写入工程开始，七个 section 均以零作 revision guard。 */
-  function zero_revisions(): Record<(typeof PROJECT_DATA_SECTIONS)[number], number> {
-    return Object.fromEntries(PROJECT_DATA_SECTIONS.map((section) => [section, 0])) as Record<
-      (typeof PROJECT_DATA_SECTIONS)[number],
-      number
-    >;
+  /** 为 Store 集成场景补齐未受影响 kind 的空意图。 */
+  function agent_batch(
+    args: Pick<AgentWorkspaceIntentBatch, "items" | "prompts"> & {
+      quality: Partial<AgentWorkspaceIntentBatch["quality"]>;
+    },
+  ): AgentWorkspaceIntentBatch {
+    const empty = create_empty_agent_workspace_intent_batch();
+    return {
+      items: args.items,
+      prompts: args.prompts,
+      quality: { ...empty.quality, ...args.quality },
+    };
   }
 });

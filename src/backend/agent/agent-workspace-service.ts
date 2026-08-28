@@ -4,12 +4,13 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import {
+  is_json_record,
   read_json_integer,
   read_json_record,
   type JsonRecord,
   type JsonValue,
 } from "../../domain/json";
-import { Prompt } from "../../domain/prompt";
+import { Prompt, PROMPT_KINDS, type PromptKind } from "../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import {
@@ -33,13 +34,28 @@ import type { CacheReadPort, CacheSnapshot } from "../cache/cache-types";
 import type { LogManager } from "../log/log-manager";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
-import type { AgentWorkspaceApplyAck } from "../project/project-write-request";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectWriteStore } from "../project/project-write-store";
+import { prepare_agent_workspace_changes } from "./agent-workspace-change";
 import {
-  prepare_agent_workspace_changes,
-  type PreparedAgentWorkspaceChanges,
-} from "./agent-workspace-change";
+  project_agent_workspace_item,
+  project_agent_workspace_prompt,
+  project_agent_workspace_quality_entry,
+  resolve_agent_workspace_writes,
+  derive_agent_workspace_apply_status,
+  has_agent_workspace_applied_changes,
+  type AgentWorkspaceCurrentFacts,
+  type AgentWorkspaceAppliedSummary,
+  type AgentWorkspaceIntentBatch,
+} from "../project/agent-workspace-write";
+import type { AgentWorkspaceRejectedChange } from "../project/agent-workspace-write";
+
+type AgentWorkspaceStoreResult = {
+  applied: AgentWorkspaceAppliedSummary;
+  rejected: AgentWorkspaceRejectedChange[];
+  destroyed: boolean;
+  sectionRevisions: ProjectDataSectionRevisions;
+};
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_CONTRACT,
@@ -47,8 +63,6 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
-  project_agent_workspace_item,
-  project_agent_workspace_quality_entry,
   project_agent_workspace_warning,
 } from "./agent-workspace-contract";
 import {
@@ -104,8 +118,8 @@ export class AgentWorkspaceService {
       database: Pick<ProjectDatabase, "read_asset_content">;
       runtimeGate: {
         run_agent_project_write(
-          operation: () => Promise<AgentWorkspaceApplyAck>,
-        ): Promise<AgentWorkspaceApplyAck>;
+          operation: () => Promise<AgentWorkspaceStoreResult>,
+        ): Promise<AgentWorkspaceStoreResult>;
       };
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
@@ -220,7 +234,12 @@ export class AgentWorkspaceService {
         write_json_file(
           this.native_fs,
           path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts),
-          prompts,
+          Object.fromEntries(
+            Object.entries(prompts).map(([kind, text]) => [
+              kind,
+              project_agent_workspace_prompt(kind as "translation" | "analysis", String(text)),
+            ]),
+          ),
         ),
         write_jsonl_file(
           this.native_fs,
@@ -231,8 +250,8 @@ export class AgentWorkspaceService {
           write_jsonl_file(
             this.native_fs,
             path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
-            map_iterable(quality_entries[kind], (entry) =>
-              project_agent_workspace_quality_entry(kind, entry),
+            map_iterable(quality_entries[kind], (entry, index) =>
+              project_agent_workspace_quality_entry(kind, entry, index),
             ),
           ),
         ),
@@ -306,17 +325,16 @@ export class AgentWorkspaceService {
     return await this.exclusive(async () => {
       const active = this.require_active();
       const freshness = this.read_freshness(active);
-      if (!freshness.snapshotFresh) {
+      if (!freshness.taskCompatible) {
         await this.discard_active();
-        if (!freshness.taskCompatible) await this.discard_task();
+        await this.discard_task();
         throw workspace_validation_error("agent_workspace_stale");
       }
-      let prepared: PreparedAgentWorkspaceChanges;
+      let parsed;
       try {
-        prepared = await prepare_agent_workspace_changes({
+        parsed = await prepare_agent_workspace_changes({
           nativeFs: this.native_fs,
           workspacePath: active.path,
-          cache: this.options.cache,
         });
       } catch (error) {
         if (AppErrors.is_app_error(error) && error.code === "request.validation_failed")
@@ -324,27 +342,57 @@ export class AgentWorkspaceService {
         await this.discard_active();
         throw workspace_recovery_error(error, "agent_workspace_apply_prepare_failed");
       }
-      if (!has_prepared_changes(prepared)) {
+      let preview: ReturnType<typeof resolve_agent_workspace_writes>;
+      let all_rejected: AgentWorkspaceRejectedChange[];
+      try {
+        const current: AgentWorkspaceCurrentFacts = {
+          items: this.options.cache.items.readItems() as unknown as JsonRecord[],
+          quality: Object.fromEntries(
+            QUALITY_RULE_KINDS.map((kind) => [
+              kind,
+              read_quality_entries(this.options.cache.quality.readBlock(), kind),
+            ]),
+          ),
+          prompts: Object.fromEntries(
+            Object.entries(project_workspace_prompts(this.options.cache.prompts.readBlock())),
+          ),
+        };
+        preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
+        all_rejected = normalize_workspace_rejections(
+          [...parsed.rejected, ...preview.rejected],
+          parsed.batch,
+          active.path,
+          this.native_fs,
+        );
+      } catch (error) {
         await this.discard_active();
+        throw workspace_recovery_error(error, "agent_workspace_apply_preview_failed");
+      }
+      if (!has_agent_workspace_applied_changes(preview.applied)) {
+        const status = derive_agent_workspace_apply_status({}, all_rejected);
+        const destroyed = all_rejected.some(
+          (rejection) =>
+            rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
+        );
+        if (destroyed) await this.discard_active();
         return {
-          status: "unchanged",
-          changes: {},
-          revisions: pick_apply_revisions(active.revisions),
+          status,
+          applied: {},
+          rejected: all_rejected,
+          destroyed,
+          revisions: pick_apply_revisions(this.options.cache.snapshot().sectionRevisions),
         };
       }
-      await request_approval?.(summarize_prepared_changes(prepared));
+      await request_approval?.(summarize_applied_changes(preview.applied));
 
-      let write_ack: AgentWorkspaceApplyAck;
+      let write_ack: AgentWorkspaceStoreResult;
       try {
         write_ack = await this.options.runtimeGate.run_agent_project_write(
           async () =>
             await this.options.writeStore.apply_agent_workspace_changes({
               projectPath: active.projectPath,
-              expectedSectionRevisions: active.revisions,
               source: "agent_workspace_apply",
-              itemChanges: prepared.itemChanges,
-              qualityChanges: prepared.qualityChanges,
-              promptChanges: prepared.promptChanges,
+              batch: preview.candidates,
             }),
         );
       } catch (error) {
@@ -352,29 +400,18 @@ export class AgentWorkspaceService {
           await this.discard_active();
           throw error;
         }
-        if (AppErrors.is_app_error(error) && error.code === "data.revision_conflict") {
-          await this.discard_active();
-          throw workspace_error_with_action(error, "workspace_script");
-        }
         throw workspace_error_with_action(error, "workspace_apply");
       }
-
-      const result: JsonRecord = {
-        status: "applied",
-        changes: {
-          ...(prepared.itemChanges.length === 0
-            ? {}
-            : { items: { updated: prepared.itemChanges.length } }),
-          ...(prepared.qualityChanges.length === 0
-            ? {}
-            : { quality: prepared.qualitySummary as unknown as JsonValue }),
-          ...(prepared.promptChanges.length === 0
-            ? {}
-            : { prompts: { updated: prepared.promptChanges.map((change) => change.kind) } }),
-        },
+      // Store 只接收已匹配活动基线的 preview candidates，事务新增 mismatch 必然来自外部漂移。
+      const rejected = [...all_rejected, ...write_ack.rejected];
+      const result = {
+        status: derive_agent_workspace_apply_status(write_ack.applied, rejected),
+        applied: write_ack.applied,
+        rejected,
+        destroyed: write_ack.destroyed,
         revisions: pick_apply_revisions(write_ack.sectionRevisions),
       };
-      await this.discard_active();
+      if (write_ack.destroyed) await this.discard_active();
       return result;
     });
   }
@@ -553,30 +590,172 @@ export type AgentWorkspacePort = Pick<
   "initialize" | "run_script" | "apply_workspace" | "reset_workspace" | "reset_project"
 >;
 
-/** apply 只有至少一个领域存在真实变化时才进入项目写入口。 */
-function has_prepared_changes(prepared: PreparedAgentWorkspaceChanges): boolean {
-  return (
-    prepared.itemChanges.length > 0 ||
-    prepared.qualityChanges.length > 0 ||
-    prepared.promptChanges.length > 0
-  );
-}
-
-/** 审批摘要直接投影本次将提交的差异，不读取模型描述或再次准备工作区。 */
-function summarize_prepared_changes(
-  prepared: PreparedAgentWorkspaceChanges,
+/** 审批摘要只统计预演实际候选对象。 */
+function summarize_applied_changes(
+  applied: AgentWorkspaceAppliedSummary,
 ): AgentPendingWriteSummary {
+  const quality = applied.quality ?? {};
   const count_quality = (kind: QualityRuleKind): number => {
-    return prepared.qualityAffectedCounts[kind] ?? 0;
+    const summary = quality[kind];
+    return summary === undefined ? 0 : summary.created + summary.updated + summary.deleted;
   };
   return {
-    items: prepared.itemChanges.length,
+    items: applied.items?.updated ?? 0,
     glossary: count_quality("glossary"),
     textPreserve: count_quality("text_preserve"),
     preReplacement: count_quality("pre_replacement"),
     postReplacement: count_quality("post_replacement"),
-    prompts: prepared.promptChanges.length,
+    prompts: applied.prompts?.updated.length ?? 0,
   };
+}
+
+function normalize_workspace_rejections(
+  rejections: readonly AgentWorkspaceRejectedChange[],
+  batch: AgentWorkspaceIntentBatch,
+  workspace_path: string,
+  native_fs: NativeFs,
+): AgentWorkspaceRejectedChange[] {
+  const drift_candidates = rejections.filter(
+    (rejection) => rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
+  );
+  if (drift_candidates.length === 0) return [...rejections];
+
+  // 仅加载发生 mismatch/missing 的数据集；活动快照是区分输入错误与外部事实漂移的权威基线。
+  const item_candidates = drift_candidates.filter((rejection) => rejection.scope === "items");
+  const baseline_items =
+    item_candidates.length === 0
+      ? new Map<number, string>()
+      : new Map(
+          read_workspace_jsonl(
+            native_fs,
+            path.join(workspace_path, AGENT_WORKSPACE_PATHS.items),
+          ).map((row) => [read_json_integer(row["item_id"], 0), String(row["fp"] ?? "")]),
+        );
+  const quality_kinds = new Set(
+    drift_candidates.flatMap((rejection) =>
+      rejection.scope === "quality" &&
+      typeof rejection.kind === "string" &&
+      (QUALITY_RULE_KINDS as readonly string[]).includes(rejection.kind)
+        ? [rejection.kind as QualityRuleKind]
+        : [],
+    ),
+  );
+  const baseline_quality = Object.fromEntries(
+    [...quality_kinds].map((kind) => [
+      kind,
+      new Map(
+        read_workspace_jsonl(
+          native_fs,
+          path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind]),
+        ).map((row) => [String(row["id"] ?? ""), String(row["fp"] ?? "")]),
+      ),
+    ]),
+  ) as Partial<Record<QualityRuleKind, Map<string, string>>>;
+  const needs_prompts = drift_candidates.some((rejection) => rejection.scope === "prompts");
+  const baseline_prompts = needs_prompts
+    ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts))
+    : {};
+
+  return rejections.map((rejection) => {
+    if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
+      return rejection;
+    const baseline_fp = read_rejection_baseline_fp(
+      rejection,
+      baseline_items,
+      baseline_quality,
+      baseline_prompts,
+    );
+    const intent_fps = read_rejection_intent_fps(rejection, batch);
+    return baseline_fp !== undefined &&
+      intent_fps.length > 0 &&
+      intent_fps.every((fp) => fp === baseline_fp)
+      ? rejection
+      : { ...rejection, reason: "invalid_change" };
+  });
+}
+
+/** 从活动快照读取目标指纹；缺失表示该 change 从未指向基线对象。 */
+function read_rejection_baseline_fp(
+  rejection: AgentWorkspaceRejectedChange,
+  items: ReadonlyMap<number, string>,
+  quality: Partial<Record<QualityRuleKind, ReadonlyMap<string, string>>>,
+  prompts: JsonRecord,
+): string | undefined {
+  if (rejection.scope === "items" && typeof rejection.id === "number")
+    return items.get(rejection.id);
+  if (
+    rejection.scope === "quality" &&
+    typeof rejection.kind === "string" &&
+    typeof rejection.id === "string" &&
+    (QUALITY_RULE_KINDS as readonly string[]).includes(rejection.kind)
+  )
+    return quality[rejection.kind as QualityRuleKind]?.get(rejection.id);
+  if (
+    rejection.scope === "prompts" &&
+    typeof rejection.kind === "string" &&
+    (PROMPT_KINDS as readonly string[]).includes(rejection.kind)
+  ) {
+    const prompt = baseline_prompts_entry(prompts, rejection.kind as PromptKind);
+    return prompt === undefined ? undefined : String(prompt["fp"] ?? "");
+  }
+  return undefined;
+}
+
+/** 找出同一拒绝对象的全部提交指纹，避免混合好坏行被误认成外部漂移。 */
+function read_rejection_intent_fps(
+  rejection: AgentWorkspaceRejectedChange,
+  batch: AgentWorkspaceIntentBatch,
+): string[] {
+  if (rejection.scope === "items" && typeof rejection.id === "number")
+    return batch.items
+      .filter((intent) => intent.item_id === rejection.id)
+      .map((intent) => intent.fp);
+  if (
+    rejection.scope === "quality" &&
+    typeof rejection.kind === "string" &&
+    typeof rejection.id === "string" &&
+    (QUALITY_RULE_KINDS as readonly string[]).includes(rejection.kind)
+  ) {
+    const intents = batch.quality[rejection.kind as QualityRuleKind];
+    return [...intents.updates, ...intents.deletes]
+      .filter((intent) => intent.id === rejection.id)
+      .map((intent) => intent.fp);
+  }
+  if (
+    rejection.scope === "prompts" &&
+    typeof rejection.kind === "string" &&
+    (PROMPT_KINDS as readonly string[]).includes(rejection.kind)
+  )
+    return batch.prompts
+      .filter((intent) => intent.kind === rejection.kind)
+      .map((intent) => intent.fp);
+  return [];
+}
+
+/** 活动 snapshot 文件由本服务生成；损坏时抛错并进入统一恢复路径。 */
+function read_workspace_jsonl(native_fs: NativeFs, file_path: string): JsonRecord[] {
+  return native_fs
+    .read_text_file(file_path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => {
+      const value = JsonTool.parseStrict(line);
+      if (!is_json_record(value)) throw new TypeError("Agent workspace row is not an object.");
+      return value;
+    });
+}
+
+/** 读取工作区固定 JSON 对象，并拒绝被外部破坏的 snapshot 形状。 */
+function read_workspace_json(native_fs: NativeFs, file_path: string): JsonRecord {
+  const value = JsonTool.parseStrict(native_fs.read_text_file(file_path, "utf8"));
+  if (!is_json_record(value)) throw new TypeError("Agent workspace file is not an object.");
+  return value;
+}
+
+/** prompts.json 的每个固定 kind 都是带 fp 与正文的对象。 */
+function baseline_prompts_entry(prompts: JsonRecord, kind: PromptKind): JsonRecord | undefined {
+  const value = prompts[kind];
+  return is_json_record(value) ? value : undefined;
 }
 
 /** 固定 change 路径只从共享 contract 词表展开，避免宿主与 Backend 分叉。 */
@@ -688,9 +867,10 @@ async function write_json_file(
 /** 边界投影保持惰性，避免 JSONL 落盘前再复制一份完整数组。 */
 function* map_iterable<T>(
   values: Iterable<T>,
-  project: (value: T) => JsonRecord,
+  project: (value: T, index: number) => JsonRecord,
 ): Generator<JsonRecord> {
-  for (const value of values) yield project(value);
+  let index = 0;
+  for (const value of values) yield project(value, index++);
 }
 
 /** JSONL 逐条严格序列化到流，空集合仍会创建固定文件。 */

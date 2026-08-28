@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import { DEFAULT_SETTING } from "../../domain/setting";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 import * as AppErrors from "../../shared/error";
 import {
@@ -17,6 +17,10 @@ import { NativeFs } from "../../native/native-fs";
 import type { CacheReadPort } from "../cache/cache-types";
 import { AGENT_WORKSPACE_TASK_ROOT } from "../../shared/backend-runtime";
 import type { ProjectWriteStore } from "../project/project-write-store";
+import {
+  has_agent_workspace_applied_changes,
+  resolve_agent_workspace_writes,
+} from "../project/agent-workspace-write";
 import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "./agent-workspace-service";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
@@ -77,8 +81,8 @@ describe("AgentWorkspaceService", () => {
       },
     ]);
     expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.prompts))).toEqual({
-      translation: "翻译正文",
-      analysis: "分析正文",
+      translation: { fp: expect.any(String), text: "翻译正文" },
+      analysis: { fp: expect.any(String), text: "分析正文" },
     });
     for (const kind of QUALITY_RULE_KINDS) {
       expect(
@@ -299,23 +303,33 @@ describe("AgentWorkspaceService", () => {
     const task_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT, "state.json");
     fs.writeFileSync(task_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 2, dst: "译文-2" },
+      { item_id: 2, fp: item_fp(fixture.active_path(), 2), dst: "译文-2" },
     ]);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_QUALITY_CHANGE_PATHS.glossary.updates, [
-      { id: "glossary-1", dst: "姬" },
+      {
+        id: "glossary-1",
+        fp: quality_fp(fixture.active_path(), "glossary", "glossary-1"),
+        dst: "姬",
+      },
     ]);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
-      { kind: "translation", text: "新翻译正文" },
+      {
+        kind: "translation",
+        fp: prompt_fp(fixture.active_path(), "translation"),
+        text: "新翻译正文",
+      },
     ]);
 
     const request_approval = vi.fn(async () => undefined);
     await expect(fixture.service.apply_workspace(request_approval)).resolves.toEqual({
       status: "applied",
-      changes: {
+      applied: {
         items: { updated: 1 },
-        quality: { glossary: { created: 0, updated: 1, deleted: 0, moved: 0 } },
+        quality: { glossary: { created: 0, updated: 1, deleted: 0 } },
         prompts: { updated: ["translation"] },
       },
+      rejected: [],
+      destroyed: true,
       revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2 },
     });
     expect(request_approval).toHaveBeenCalledWith({
@@ -329,19 +343,34 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.write_store).toHaveBeenCalledWith(
       expect.objectContaining({
         projectPath: "test.lg",
-        expectedSectionRevisions: fixture.revisions,
-        itemChanges: [
-          expect.objectContaining({
-            item_id: 2,
-            next: expect.objectContaining({ dst: "译文-2" }),
-          }),
-        ],
-        qualityChanges: [expect.objectContaining({ kind: "glossary" })],
-        promptChanges: [{ kind: "translation", text: "新翻译正文" }],
+        source: "agent_workspace_apply",
+        batch: expect.objectContaining({
+          items: [expect.objectContaining({ item_id: 2, update: { dst: "译文-2" } })],
+          prompts: [expect.objectContaining({ kind: "translation", text: "新翻译正文" })],
+        }),
       }),
     );
     expect(fixture.active_path()).toBe("");
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
+  });
+
+  it("部分成功只保留规范化后的拒绝并按实际对象生成状态", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await run_workspace_script(fixture);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
+      { kind: "translation", fp: "AAAAAA", text: "新翻译正文" },
+    ]);
+
+    await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
+      status: "partial",
+      applied: { items: { updated: 1 } },
+      rejected: [{ scope: "prompts", op: "update", kind: "translation", reason: "invalid_change" }],
+      destroyed: true,
+    });
   });
 
   it("审批拒绝不触达项目写入口并保留已准备工作区", async () => {
@@ -349,7 +378,7 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.initialize();
     await run_workspace_script(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "译文" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
 
     await expect(
@@ -361,24 +390,55 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).not.toBe("");
   });
 
-  it("change 校验失败保留工作区供脚本修复", async () => {
+  it("对象内冲突返回 rejected 并保留工作区供脚本修复", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
     await run_workspace_script(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "甲" },
-      { item_id: 1, dst: "乙" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "甲" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "乙" },
     ]);
 
-    await expect(fixture.service.apply_workspace()).rejects.toMatchObject({
-      public_details: { action: "workspace_script" },
+    await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
+      status: "rejected",
+      rejected: [{ scope: "items", op: "update", id: 1, reason: "merge_conflict" }],
+      destroyed: false,
     });
     expect(fixture.active_path()).not.toBe("");
 
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "甲" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "甲" },
     ]);
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({ status: "applied" });
+  });
+
+  it("未匹配活动基线的 quality 与 prompt fp 归为输入错误并保留工作区", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await run_workspace_script(fixture);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_QUALITY_CHANGE_PATHS.glossary.updates, [
+      { id: "glossary-1", fp: "AAAAAA", dst: "姬" },
+    ]);
+    write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
+      { kind: "translation", fp: "BBBBBB", text: "新翻译正文" },
+    ]);
+
+    await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
+      status: "rejected",
+      rejected: expect.arrayContaining([
+        {
+          scope: "quality",
+          kind: "glossary",
+          op: "update",
+          id: "glossary-1",
+          reason: "invalid_change",
+        },
+        { scope: "prompts", op: "update", kind: "translation", reason: "invalid_change" },
+      ]),
+      destroyed: false,
+    });
+    expect(fixture.write_store).not.toHaveBeenCalled();
+    expect(fixture.active_path()).not.toBe("");
   });
 
   it("数据库回滚失败保留工作区并允许安全重试", async () => {
@@ -386,7 +446,7 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.initialize();
     await run_workspace_script(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "译文" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
     fixture.write_store.mockRejectedValueOnce(new Error("database failed"));
 
@@ -397,20 +457,23 @@ describe("AgentWorkspaceService", () => {
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({ status: "applied" });
   });
 
-  it("revision 冲突销毁快照、保留 task 并要求重新执行脚本", async () => {
+  it("目标事实漂移销毁快照、保留 task 并拒绝旧对象写入", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
     await run_workspace_script(fixture);
     const task_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT, "state.json");
     fs.writeFileSync(task_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "译文" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
-    fixture.write_store.mockRejectedValueOnce(new AppErrors.AppError("data.revision_conflict"));
+    fixture.items[0]!.dst = "外部译文";
 
-    await expect(fixture.service.apply_workspace()).rejects.toMatchObject({
-      public_details: { action: "workspace_script" },
+    await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
+      status: "rejected",
+      rejected: [{ scope: "items", op: "update", id: 1, reason: "fp_mismatch" }],
+      destroyed: true,
     });
+    expect(fixture.write_store).not.toHaveBeenCalled();
     expect(fixture.active_path()).toBe("");
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
   });
@@ -422,7 +485,7 @@ describe("AgentWorkspaceService", () => {
     const task_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_TASK_ROOT, "state.json");
     fs.writeFileSync(task_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
-      { item_id: 1, dst: "译文" },
+      { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
     fixture.write_store.mockRejectedValueOnce(
       new AppErrors.AppError("data.committed_sync_failed", {
@@ -438,7 +501,7 @@ describe("AgentWorkspaceService", () => {
     expect(fs.readFileSync(task_file, "utf-8")).toBe("state");
   });
 
-  it("无真实 change 不触达项目写入口并销毁快照", async () => {
+  it("无真实 change 不触达项目写入口并保留工作区", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
     await run_workspace_script(fixture);
@@ -446,12 +509,14 @@ describe("AgentWorkspaceService", () => {
     const request_approval = vi.fn(async () => undefined);
     await expect(fixture.service.apply_workspace(request_approval)).resolves.toEqual({
       status: "unchanged",
-      changes: {},
+      applied: {},
+      rejected: [],
+      destroyed: false,
       revisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
     });
     expect(request_approval).not.toHaveBeenCalled();
     expect(fixture.write_store).not.toHaveBeenCalled();
-    expect(fixture.active_path()).toBe("");
+    expect(fixture.active_path()).not.toBe("");
   });
 
   it("workspace_script 派生数据读取期间 revision 漂移时拒绝生成混合快照", async () => {
@@ -551,17 +616,37 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
   const run = vi.fn<AgentWorkspaceRunPort>(async () => ({ status: "success", result: null }));
-  const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(
-    async (request) => ({
-      committed: true,
+  const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
+    const outcome = resolve_agent_workspace_writes({
+      batch: request.batch,
+      current: {
+        items: items as unknown as JsonRecord[],
+        quality: Object.fromEntries(
+          QUALITY_RULE_KINDS.map((kind) => [
+            kind,
+            read_json_record(quality[kind])["entries"] as JsonRecord[],
+          ]),
+        ),
+        prompts: { translation: "翻译正文", analysis: "分析正文" },
+      },
+    });
+    const destroyed =
+      has_agent_workspace_applied_changes(outcome.applied) ||
+      outcome.rejected.some(
+        (rejection) => rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
+      );
+    return {
+      applied: outcome.applied,
+      rejected: outcome.rejected,
+      destroyed,
       sectionRevisions: {
         ...revisions,
-        ...(request.itemChanges.length === 0 ? {} : { items: 2, proofreading: 2 }),
-        ...(request.qualityChanges.length === 0 ? {} : { quality: 2 }),
-        ...(request.promptChanges.length === 0 ? {} : { prompts: 2 }),
+        ...(outcome.itemChanges.length === 0 ? {} : { items: 2, proofreading: 2 }),
+        ...(outcome.qualityChanges.length === 0 ? {} : { quality: 2 }),
+        ...(outcome.promptChanges.length === 0 ? {} : { prompts: 2 }),
       },
-    }),
-  );
+    };
+  });
   const runtime_gate = vi.fn(async (operation: () => ReturnType<typeof write_store>) =>
     operation(),
   );
@@ -620,6 +705,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     query_warnings,
     run,
     write_store,
+    items,
     read_asset_content,
     active_path: () => {
       if (!fs.existsSync(workspace_root)) return "";
@@ -671,6 +757,28 @@ function read_jsonl(file_path: string): JsonRecord[] {
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as JsonRecord);
+}
+
+/** 从真实 snapshot 复制 item fp，模拟模型只回传已见身份。 */
+function item_fp(workspace_path: string, item_id: number): string {
+  const row = read_jsonl(path.join(workspace_path, AGENT_WORKSPACE_PATHS.items)).find(
+    (item) => item["item_id"] === item_id,
+  );
+  return String(row?.["fp"] ?? "");
+}
+
+/** 从对应 quality 数据集复制既有 entry fp。 */
+function quality_fp(workspace_path: string, kind: QualityRuleKind, entry_id: string): string {
+  const row = read_jsonl(path.join(workspace_path, AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind])).find(
+    (entry) => entry["id"] === entry_id,
+  );
+  return String(row?.["fp"] ?? "");
+}
+
+/** prompts.json 以对象形式暴露每个 kind 的 fp 与正文。 */
+function prompt_fp(workspace_path: string, kind: "translation" | "analysis"): string {
+  const prompts = read_json(path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts));
+  return String(read_json_record(prompts[kind])["fp"] ?? "");
 }
 
 /** 直接准备 apply 输入，脚本事务本身由宿主层测试负责。 */

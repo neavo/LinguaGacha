@@ -15,7 +15,7 @@ import {
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
-  AGENT_WORKSPACE_QUALITY_FIELDS,
+  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
   project_agent_workspace_item,
   project_agent_workspace_quality_entry,
   project_agent_workspace_warning,
@@ -77,9 +77,12 @@ describe("Agent 工作区 contract", () => {
         path: AGENT_WORKSPACE_QUALITY_ENTRY_PATHS[kind],
         format: "jsonl",
       });
-      expect(Object.keys(read_json_record(entries["fields"]))).toEqual(
-        AGENT_WORKSPACE_QUALITY_FIELDS[kind],
-      );
+      expect(Object.keys(read_json_record(entries["fields"]))).toEqual([
+        "id",
+        "fp",
+        "sort",
+        ...AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind],
+      ]);
     }
 
     for (const dataset of Object.values(datasets).map(read_json_record)) {
@@ -95,6 +98,7 @@ describe("Agent 工作区 contract", () => {
     });
     expect(Object.keys(read_json_record(item_updates["fields"]))).toEqual([
       "item_id",
+      "fp",
       ...AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
     ]);
     expect(read_json_record(read_json_record(changes["prompts"])["updates"])).toMatchObject({
@@ -102,7 +106,7 @@ describe("Agent 工作区 contract", () => {
     });
     for (const kind of QUALITY_RULE_KINDS) {
       const operations = read_json_record(changes[kind]);
-      expect(Object.keys(operations)).toEqual(["creates", "updates", "deletes", "moves"]);
+      expect(Object.keys(operations)).toEqual(["creates", "updates", "deletes"]);
       for (const operation of Object.keys(operations)) {
         expect(read_json_record(operations[operation])).toMatchObject({
           path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][
@@ -114,15 +118,19 @@ describe("Agent 工作区 contract", () => {
     }
   });
 
-  it("contract 对齐共享硬限制且不重复声明固定脚本 SDK", () => {
+  it("contract 对齐共享硬限制与 apply 回执协议", () => {
     const limits = read_json_record(AGENT_WORKSPACE_CONTRACT["limits"]);
+    const apply = read_json_record(AGENT_WORKSPACE_CONTRACT["apply"]);
+    const result = read_json_record(apply["result"]);
 
     expect(limits).toMatchObject({
       result_bytes: AGENT_WORKSPACE_MAX_RESULT_BYTES,
       literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
     });
-    expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("script_api");
-    expect(AGENT_WORKSPACE_CONTRACT).not.toHaveProperty("recipes");
+    expect(result).toMatchObject({
+      status: ["applied", "partial", "rejected", "unchanged"],
+      fields: ["status", "applied", "rejected", "destroyed", "revisions"],
+    });
   });
 
   it("contract 为无 skill 写入声明 item 副作用与领域提交软建议", () => {
@@ -163,6 +171,7 @@ describe("Agent 工作区 contract", () => {
       }),
     ).toEqual({
       item_id: 1,
+      fp: expect.any(String),
       src: "原文",
       dst: "",
       name_src: "",
@@ -198,15 +207,17 @@ describe("Agent 工作区 contract", () => {
       glossary_applications: [],
     });
     expect(
-      project_agent_workspace_quality_entry("glossary", {
-        entry_id: "term-1",
-        src: "姫",
-        dst: "公主",
-        info: "称谓",
-        case_sensitive: false,
-        enabled: true,
-        mode: "smart",
-      }),
-    ).toEqual({ id: "term-1", src: "姫", dst: "公主", info: "称谓", case_sensitive: false });
+      project_agent_workspace_quality_entry(
+        "glossary",
+        {
+          entry_id: "term-1",
+          src: "姫",
+          dst: "公主",
+          info: "称谓",
+          case_sensitive: false,
+        },
+        0,
+      ),
+    ).toMatchObject({ id: "term-1", src: "姫", dst: "公主", info: "称谓", sort: 0 });
   });
 });

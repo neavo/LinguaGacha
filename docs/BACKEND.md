@@ -60,9 +60,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
-- Agent 磁盘工作区只是一次性只读快照和显式 change 准备区，不是 `.lg` 写入口。`AgentWorkspaceService` 对完整七 section revision、工程 epoch 与语言做 freshness 守卫；apply 只解析固定 change 文件，items 用稳定 ID 定点读取，prompts 只读取目标 kind，quality 只为受影响 kind 按删除、更新、创建、移动构造 prospective 最终集合并复用真实领域规范化与重复组校验。功能开关不进入工作区，也不随 apply 改变。
-- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：一次 `BEGIN IMMEDIATE` 内完成完整 revision guard，并组合一个提交批次中的 items / proofreading 字段补丁、任意多个受影响 quality kind 最终集合和目标 prompt 正文。每个变化 section 的 aggregate revision 只推进一次，同一事务内变化的 quality kind 或 prompt kind 共用各自的新 revision；items 公开载荷固定为 `section-invalidated`。方法返回独立于公开事件存在与否的 committed ack 和提交后 revisions。
-- 工作区无真实 change 时不调用 store、不推进 revision、不发布事件。任一数据库写失败会回滚当前提交批次的所有 item、规则、提示词与 revision，且不发布内部或公开事件；事务回滚保留工作区供安全重试，revision 冲突则废弃旧快照。成功提交后才按 items、quality、prompts 顺序维护 cache，最后为该提交批次发布一个公开 change；后置同步失败按已经提交处理，不做补偿或重复写入。
+- Agent 磁盘工作区只是一次性只读快照和显式 change 准备区，不是 `.lg` 写入口。`AgentWorkspaceService` 以工程身份、epoch 与语言守卫快照边界，以对象指纹校验写入目标；普通 section revision 漂移不阻塞对象级 apply。
+- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、quality、prompt 尽可能一次提交。对象冲突形成逻辑部分成功；quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
+- 工作区无实际 change 时不写数据库、不推进 revision、不发布事件。数据库失败回滚本次事务全部事实与 revision；提交后 cache / 公开事件只依据 actual applied sections，后置同步失败按已提交处理并返回 reload 语义。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 
 ## 4. 任务、worker 与 LLM
