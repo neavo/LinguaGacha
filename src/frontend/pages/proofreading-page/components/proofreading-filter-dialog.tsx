@@ -367,8 +367,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                 }}
               />
 
-              <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--compact">
-                <div className="proofreading-page__filter-list-body proofreading-page__filter-list-body--compact">
+              <ScrollArea className="proofreading-page__filter-list">
+                <div className="proofreading-page__filter-list-body">
                   {visible_file_paths.map((file_path) => (
                     <FilterListRow
                       key={file_path}
@@ -436,8 +436,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
               }}
             />
 
-            <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--compact">
-              <div className="proofreading-page__filter-list-body proofreading-page__filter-list-body--compact">
+            <ScrollArea className="proofreading-page__filter-list">
+              <div className="proofreading-page__filter-list-body">
                 {visible_term_entries.length > 0 ? (
                   <>
                     <FilterListRow
@@ -472,10 +472,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                     ))}
                   </>
                 ) : (
-                  <div
-                    className="proofreading-page__filter-empty proofreading-page__filter-empty--compact"
-                    role="status"
-                  >
+                  <div className="proofreading-page__filter-empty" role="status">
                     {t("proofreading_page.filter.no_glossary_error")}
                   </div>
                 )}

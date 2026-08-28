@@ -35,11 +35,13 @@ export function AgentTaskProgress(props: AgentTaskProgressProps): JSX.Element | 
         }
       />
       <TooltipContent side="top" sideOffset={8} className="agent-task-progress__tooltip">
-        <ul>
-          {props.pending_labels.map((item, index) => (
-            <li key={`${index.toString()}:${item}`}>{item}</li>
-          ))}
-        </ul>
+        <div className="agent-task-progress__viewport">
+          <ul>
+            {props.pending_labels.map((item, index) => (
+              <li key={`${index.toString()}:${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
       </TooltipContent>
     </Tooltip>
   );

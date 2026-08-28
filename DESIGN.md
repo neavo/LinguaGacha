@@ -174,7 +174,7 @@ components:
     rounded: "{rounded.card}"
     padding: "0"
   input-default:
-    backgroundColor: "transparent"
+    backgroundColor: "{colors.popover}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.button}"
     height: "{spacing.control-height}"
@@ -412,9 +412,9 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Inputs / Fields
 
-- **Style:** 桌面输入框高 32px、14px 字号、4px 圆角、透明背景、1px input 边框和 10px 水平内边距。
+- **Style:** 桌面输入框高 32px、14px 字号、4px 圆角、popover 承载面、1px input 边框和 10px 水平内边距。
 - **Focus:** focus-visible 把边框切换为 ring；编辑器聚焦时同时切到 popover 背景。
-- **Error / Disabled:** error 使用 failure 边框与低透明红底；disabled 降低透明度、冻结指针并使用弱 input 背景。
+- **Readonly / Disabled / Error:** readonly 与 disabled 使用弱 muted 承载面，disabled 同时降低透明度并冻结指针；error 使用 failure 边框与低透明红底。
 
 ### Navigation
 

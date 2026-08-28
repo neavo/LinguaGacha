@@ -305,16 +305,16 @@
   min-width: 0;
   width: 100%;
   max-width: 100%;
-  min-height: 36px;
+  min-height: 30px;
   overflow: hidden;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
-  border-radius: var(--ui-radius-card);
+  border-radius: calc(var(--ui-radius-card) + 1px);
   background: color-mix(in srgb, var(--popover) 90%, var(--muted) 10%);
   color: var(--foreground);
-  padding: 7px 10px;
+  padding: 5px 8px;
   text-align: left;
   transition:
     border-color 180ms ease,
@@ -377,48 +377,21 @@
   overflow-x: hidden;
 }
 
-.proofreading-page__filter-list [data-slot="scroll-area-viewport"] > div {
-  display: block !important;
-  min-width: 0 !important;
-  max-width: 100%;
-}
-
-.proofreading-page__filter-list--compact {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
 .proofreading-page__filter-list-body {
   display: flex;
   min-width: 0;
   width: 100%;
   max-width: 100%;
   flex-direction: column;
-  gap: 8px;
-  padding-right: 8px;
-}
-
-.proofreading-page__filter-list-body--compact {
   gap: 6px;
   padding-right: 0;
 }
 
-.proofreading-page__filter-list--compact .proofreading-page__filter-list-row {
-  min-height: 30px;
-  border-radius: calc(var(--ui-radius-card) + 1px);
-  padding: 5px 8px;
-}
-
-.proofreading-page__filter-list--compact .proofreading-page__filter-list-row-copy {
-  font-size: 12px;
-  line-height: 1.25;
-}
-
 .proofreading-page__filter-empty {
   display: flex;
+  width: 100%;
   min-height: 30px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-start;
   padding: 5px 8px;
@@ -428,11 +401,6 @@
   line-height: 1.25;
   text-align: left;
   white-space: nowrap;
-}
-
-.proofreading-page__filter-empty--compact {
-  width: 100%;
-  flex: 0 0 auto;
 }
 
 .proofreading-page__dialog-scroll {

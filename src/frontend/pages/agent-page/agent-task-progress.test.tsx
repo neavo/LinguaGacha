@@ -13,7 +13,12 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
   TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
     <>{props.render ?? props.children}</>
   ),
-  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
+  TooltipContent: (props: { children: ReactNode }) => (
+    <div role="tooltip">
+      {props.children}
+      <span className="tooltip-arrow" aria-hidden="true" />
+    </div>
+  ),
 }));
 
 import { AgentTaskProgress } from "./agent-task-progress";
@@ -47,6 +52,7 @@ describe("AgentTaskProgress", () => {
   it("固定展示队首，并在 shadcn 提示中分行保留完整待办", async () => {
     const view = await render_progress(["读取工程", "检查章节", "汇总结果"], true);
     const progress = view.querySelector(".agent-task-progress");
+    const tooltip = view.querySelector('[role="tooltip"]');
     const tooltip_items = [...view.querySelectorAll('[role="tooltip"] li')].map(
       (item) => item.textContent,
     );
@@ -58,6 +64,8 @@ describe("AgentTaskProgress", () => {
     expect(progress?.querySelector(".agent-status-mark--running")).not.toBeNull();
     expect(progress?.querySelector(".agent-task-progress__more")?.textContent).toBe("+2");
     expect((progress as HTMLElement | null)?.tabIndex).toBe(0);
+    expect(tooltip?.querySelector(".agent-task-progress__viewport ul")).not.toBeNull();
+    expect(tooltip?.querySelector(":scope > .tooltip-arrow")).not.toBeNull();
     expect(tooltip_items).toEqual(["读取工程", "检查章节", "汇总结果"]);
 
     await render_progress(["读取工程"]);
