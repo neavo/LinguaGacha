@@ -62,6 +62,7 @@ function create_backend_services_options(): BackendServicesOptions {
       info: vi.fn(),
     },
     openOutputFolder: vi.fn(),
+    renderPdf: vi.fn(async () => new Uint8Array()),
     workerExecution: { kind: "in_process" },
   } as unknown as BackendServicesOptions;
 }

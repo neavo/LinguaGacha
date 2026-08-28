@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'none'; connect-src 'none'; script-src 'none'"
+    />
+    <title>LinguaGacha PDF</title>
+    <style>
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("./fonts/LGBaseFont-Regular.woff2") format("woff2");
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("./fonts/LGBaseFont-Bold.woff2") format("woff2");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: "LGMono";
+        src: url("./fonts/MonaspaceNeon.woff2") format("woff2");
+      }
+      @page {
+        size: A4;
+        margin: 18mm 16mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: #25272c;
+        font:
+          11pt/1.65 "LGBaseFont",
+          sans-serif;
+        font-synthesis: none;
+        overflow-wrap: anywhere;
+        text-rendering: optimizeLegibility;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
+        margin: 1.4em 0 0.55em;
+        color: #25272c;
+        line-height: 1.25;
+        break-after: avoid-page;
+      }
+      h1 {
+        font-size: 22pt;
+      }
+      h2 {
+        font-size: 18pt;
+      }
+      h3 {
+        font-size: 15pt;
+      }
+      h4,
+      h5,
+      h6 {
+        font-size: 12pt;
+      }
+      p,
+      ul,
+      ol,
+      blockquote,
+      pre,
+      table {
+        margin: 0.7em 0;
+      }
+      li > p {
+        margin: 0.2em 0;
+      }
+      p,
+      li {
+        orphans: 3;
+        widows: 3;
+      }
+      blockquote {
+        padding: 0.1em 0 0.1em 1em;
+        border-inline-start: 1px solid #d6dae0;
+        color: #4d535d;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9.5pt;
+      }
+      th,
+      td {
+        padding: 0.4em 0.55em;
+        border: 1px solid #d6dae0;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f3f4f6;
+        font-weight: 700;
+      }
+      thead {
+        display: table-header-group;
+      }
+      tr,
+      img,
+      pre,
+      blockquote {
+        break-inside: avoid-page;
+      }
+      code,
+      pre {
+        font-family: "LGMono", "LGBaseFont", monospace;
+      }
+      code {
+        padding: 0.08em 0.25em;
+        border-radius: 4px;
+        background: #eef0f3;
+        font-size: 0.9em;
+      }
+      pre {
+        padding: 0.8em 1em;
+        border: 1px solid #d6dae0;
+        border-radius: 4px;
+        background: #f3f4f6;
+        white-space: pre-wrap;
+      }
+      pre code {
+        padding: 0;
+        background: transparent;
+      }
+      a {
+        color: #ad5a17;
+        text-decoration: underline;
+        text-underline-offset: 0.12em;
+      }
+      hr {
+        margin: 1.5em 0;
+        border: 0;
+        border-top: 1px solid #d6dae0;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="pdf-content"></main>
+  </body>
+</html>

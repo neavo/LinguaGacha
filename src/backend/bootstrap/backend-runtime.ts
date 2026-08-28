@@ -18,6 +18,7 @@ import {
   resolve_desktop_bundle_dir_from_module_url,
 } from "../worker/worker-execution";
 import { BackendBootstrap } from "./backend-bootstrap";
+import { normalize_native_file_bytes } from "../../native/native-fs";
 
 /** runtime 只依赖 parentPort 的消息能力，不把完整 MessagePort API 泄漏进生命周期实现。 */
 export type BackendRuntimePort = {
@@ -109,6 +110,8 @@ export async function run_backend_runtime(args: {
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
+    renderPdf: async (markdown) =>
+      normalize_native_file_bytes(await call_host({ kind: "render_pdf", request: { markdown } })),
     // 下载与内容限制留在 Backend，仅把每跳系统代理解析反向交给 Electron main。
     agentWebFetch: create_agent_web_fetch(system_proxy_resolver),
     agentWorkspaceRun: async (request, signal) =>

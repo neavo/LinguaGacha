@@ -13,6 +13,7 @@ let exit_codes: Array<string | number | null | undefined> = []; // 记录 CLI �
 type CLIEntryCall = {
   appRoot: string;
   argv: string[];
+  desktopBundleDir: string;
   workerExecution: BackendWorkerExecution;
 };
 
@@ -56,6 +57,7 @@ describe("产品统一入口", () => {
     expect(calls.cli[0]).toMatchObject({
       argv: ["translate", "--help"],
       appRoot: app_root,
+      desktopBundleDir: expect.any(String),
     });
     expect_worker_threads_backend_worker_execution(calls.cli[0]?.workerExecution);
     expect(calls.gui).toEqual([]);
@@ -80,6 +82,7 @@ describe("产品统一入口", () => {
     expect(calls.cli[0]).toMatchObject({
       argv: ["analyze", "--help"],
       appRoot: process.cwd(),
+      desktopBundleDir: expect.any(String),
     });
     expect_worker_threads_backend_worker_execution(calls.cli[0]?.workerExecution);
     expect(calls.gui).toEqual([]);
@@ -121,9 +124,10 @@ function mock_entry_modules(): {
       run_cli_entry: async (
         argv: string[],
         appRoot: string,
+        desktopBundleDir: string,
         workerExecution: BackendWorkerExecution,
       ) => {
-        calls.cli.push({ argv, appRoot, workerExecution });
+        calls.cli.push({ argv, appRoot, desktopBundleDir, workerExecution });
         return 0;
       },
     };

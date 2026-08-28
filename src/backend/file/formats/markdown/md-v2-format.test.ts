@@ -8,6 +8,17 @@ import { Item } from "../../../../domain/item";
 import { MDV2Format } from "./md-v2-format";
 
 describe("MDV2Format", () => {
+  it("文本级 reader 与 stream reader 产生相同块契约", async () => {
+    const format = new MDV2Format();
+    const text = "# 标题\n\n正文\n";
+
+    expect(format.read_text(text, "demo.md").map((item) => item.to_json())).toEqual(
+      (await format.read_from_stream(new TextEncoder().encode(text), "demo.md")).map((item) =>
+        item.to_json(),
+      ),
+    );
+  });
+
   it("reader 生成块 Item、排除状态和布局 metadata", async () => {
     const format = new MDV2Format();
     const items = await format.read_from_stream(
@@ -130,6 +141,21 @@ describe("MDV2Format", () => {
     );
 
     expect(fs.readFileSync(path.join(temp_dir.path, "demo.md"), "utf-8")).toBe("译文");
+  });
+
+  it("文本级 writer 不依赖 file_type，source 缺失时直接保留当前译文", () => {
+    const item = Item.from_json({
+      id: 2,
+      src: "[原文](lg-resource:link/0)",
+      dst: "[译文](lg-resource:link/0)",
+      row: 0,
+      file_type: "PDF",
+      file_path: "demo.pdf",
+      text_type: "MD",
+      extra_field: { markdown: { before: "", after: "\n" } },
+    });
+
+    expect(new MDV2Format().write_text([item], null)).toBe("[译文](lg-resource:link/0)\n");
   });
 });
 

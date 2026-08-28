@@ -26,6 +26,16 @@ export interface ExportPaths {
   bilingual_path: string; // 双语对照根目录
 }
 
+/** Electron main 提供的 Markdown 到 PDF 宿主能力。 */
+export type PdfRenderPort = (markdown: string) => Promise<Uint8Array>;
+
+/** 全部格式共享的导出依赖，调用方一次性提供完整写回上下文。 */
+export interface FileFormatWriteContext {
+  paths: ExportPaths;
+  asset_reader: (rel_path: string) => Buffer | null;
+  render_pdf: PdfRenderPort;
+}
+
 const EPUB_READING_LAYOUT_TARGET_LANGUAGES = new Set(["JA", "ZH-HANT"]); // 日文与繁中导出保留原 EPUB 翻页方向和竖排信息
 const SPLITLINES_CODE_POINTS = new Set([
   0x000a, 0x000b, 0x000c, 0x000d, 0x001c, 0x001d, 0x001e, 0x0085, 0x2028, 0x2029,

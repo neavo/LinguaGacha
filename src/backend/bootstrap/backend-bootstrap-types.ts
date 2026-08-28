@@ -4,6 +4,7 @@ import type { LogTargets } from "../../shared/log";
 import type { SystemProxyResolver } from "../network/system-proxy-http-client";
 import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
 import type { AgentWorkspaceRunPort } from "../agent/agent-workspace-service";
+import type { PdfRenderPort } from "../file/formats/file-format-shared";
 
 export type BackendBootstrapState =
   | "idle"
@@ -27,5 +28,6 @@ export interface BackendBootstrapOptions {
   agentWebFetch?: AgentWebFetchPort; // 仅 GUI 注入 Backend 抓取入口；其它入口不提供该能力
   agentWorkspaceRun?: AgentWorkspaceRunPort; // 仅 GUI 注入 Electron 沙箱脚本执行能力
   openOutputFolder: (outputPath: string) => Promise<void>;
+  renderPdf: PdfRenderPort;
   workerExecution: BackendWorkerExecution; // 固定 Backend worker 执行配置，避免服务层自行回退或探测入口。
 }

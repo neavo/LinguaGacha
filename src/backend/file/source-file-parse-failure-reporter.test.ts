@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { create_text_resolver } from "../../shared/i18n";
+import { AppError } from "../../shared/error";
 import {
   build_source_file_parse_failure,
   log_source_file_parse_failures,
@@ -35,6 +36,15 @@ describe("source-file-parse-failure-reporter", () => {
         error: new Error(),
       }).code,
     ).toBe("file.io_failed");
+    expect(
+      build_source_file_parse_failure({
+        source_path: "scan.pdf",
+        rel_path: "scan.pdf",
+        error: new AppError("file.parse_failed", {
+          diagnostic_context: { format: "PDF", reason: "no_extractable_text" },
+        }),
+      }).code,
+    ).toBe("file.parse_failed");
   });
 
   it("日志输出用户可见原因和结构化文件上下文", () => {

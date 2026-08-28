@@ -4,6 +4,7 @@ import JSZip from "jszip";
 
 import { decode_text_content } from "../../shared/utils/text-tool";
 import type { NativeFs } from "../../native/native-fs";
+import { read_pdf_markdown } from "../file/formats/pdf/pdf-markdown-reader";
 
 /** 当前受支持源格式中只有 EPUB 与 XLSX 需要展开容器。 */
 const ARCHIVE_EXTENSIONS = new Set([".epub", ".xlsx"]);
@@ -28,7 +29,7 @@ const ARCHIVE_TEXT_EXTENSIONS = new Set([
 export type AgentWorkspaceSourceFile = {
   file_path: string; // 工程内原始文件身份
   file_type: string; // items 使用的既有格式类型
-  source_text_path?: string; // 普通文本资产的工作区路径
+  source_text_path?: string; // 普通文本资产或 PDF Markdown 投影的工作区路径
   source_text_root?: string; // 容器资产的工作区文本树根
 };
 
@@ -45,6 +46,15 @@ export async function write_agent_workspace_sources(args: {
     const relative_path = normalize_source_relative_path(file.file_path);
     const content = args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
+    if (file.file_type === "PDF") {
+      const source_text_path = `sources/${relative_path}.md`;
+      await args.nativeFs.write_file(
+        path.join(args.sourceRoot, ...`${relative_path}.md`.split("/")),
+        read_pdf_markdown(content),
+      );
+      projected.push({ ...file, source_text_path });
+      continue;
+    }
     const extension = path.posix.extname(relative_path).toLowerCase();
     if (ARCHIVE_EXTENSIONS.has(extension)) {
       const source_text_root = `sources/${relative_path}`;

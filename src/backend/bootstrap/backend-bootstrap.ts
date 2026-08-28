@@ -118,6 +118,7 @@ export class BackendBootstrap {
           ? {}
           : { agentWorkspaceRun: this.options.agentWorkspaceRun }),
         openOutputFolder: this.options.openOutputFolder,
+        renderPdf: this.options.renderPdf,
         workerExecution: this.options.workerExecution,
       });
       this.backend_services = backend_services;

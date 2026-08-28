@@ -27,7 +27,9 @@
 - continue 从受理到压缩、失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
 - GUI Agent 在应用 userdata 中持有活动 UUID 数据快照及其同级 `task`、`sources`。task 绑定当前 Agent 对话、工程 epoch 与权威语言；三类目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
-- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时由新快照替换。普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。新快照完整生成后替换旧快照；脚本文件事务共同提交 `changes`、`task` 与 `scratch`，脚本失败、取消和结果无效恢复本次运行前的基线。`workspace_script` 在普通 section revision 后重建数据快照；`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时由完整生成的新快照替换旧快照。`workspace_script` 在普通 section revision 后重建数据快照；`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- 普通文本映射为单文件；PDF 通过文件域的同一 pdf-inspector 转换在原文件名后追加 `.md`（如 `docs/report.pdf` → `sources/docs/report.pdf.md`），project meta 保留原 `file_path: *.pdf` 与 `file_type: PDF` 并以 `source_text_path` 指向该 Markdown；混合 PDF 只投影 converter 返回的可用页面内容，需 OCR 页面不阻塞快照生成；EPUB / XLSX 按容器内部路径展开文本成员。
+- 脚本文件事务共同提交 `changes`、`task` 与 `scratch`；脚本失败、取消和结果无效时恢复本次运行前的基线。
 
 ## 3. 模型、资源与 skill
 

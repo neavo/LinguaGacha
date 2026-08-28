@@ -42,6 +42,7 @@ export class BackendRuntimeClient {
       appRoot: string;
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
+      renderPdf: (markdown: string, signal: AbortSignal) => Promise<Uint8Array>;
       /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
       runAgentWorkspace: (
         request: BackendRuntimeAgentWorkspaceRunRequest,
@@ -178,6 +179,9 @@ export class BackendRuntimeClient {
           break;
         case "run_agent_workspace":
           data = await this.options.runAgentWorkspace(operation.request, controller.signal);
+          break;
+        case "render_pdf":
+          data = await this.options.renderPdf(operation.request.markdown, controller.signal);
           break;
       }
       result = { ok: true, data };
