@@ -24,7 +24,7 @@ describe("WorkUnitWorkerPool", () => {
     const llm_client = {
       request: vi.fn().mockResolvedValue({
         response_think: "",
-        response_result: '{"0":"你好"}',
+        response_result: '{"index":0,"text":"你好"}',
         input_tokens: 1,
         reasoning_tokens: 0,
         output_tokens: 2,
@@ -80,7 +80,6 @@ describe("WorkUnitWorkerPool", () => {
     if (result.output.kind !== "translation") {
       throw new Error("期望翻译输出");
     }
-    expect(result.output.row_count).toBe(1);
     expect(result.output.items).toEqual([
       { id: 1, src: "こんにちは", dst: "你好", status: "PROCESSED", text_type: "TXT" },
     ]);

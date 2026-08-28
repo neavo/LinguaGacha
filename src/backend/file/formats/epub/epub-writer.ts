@@ -10,6 +10,15 @@ import {
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
+import { split_text_lines } from "../../../../shared/text/text-lines";
+
+/** Deterministically maps item text lines to a fixed number of EPUB slots. */
+export function distribute_text_to_slots(text: string, slot_count: number): string[] {
+  const lines = split_text_lines(text);
+  return Array.from({ length: Math.max(0, slot_count) }, (_, index) =>
+    index === slot_count - 1 ? lines.slice(index).join("\n") : (lines[index] ?? ""),
+  );
+}
 
 /**
  * 目标语言不保留原排版时，导出写回会移除竖排样式
@@ -206,8 +215,8 @@ export class EpubWriter {
         ) {
           continue;
         }
-        const src_lines = item.src.split("\n");
-        const dst_lines = item.dst.split("\n");
+        const src_lines = split_text_lines(item.src);
+        const dst_lines = split_text_lines(item.dst);
         if (src_lines.length === 1 && dst_lines.length === 1) {
           return [src_lines[0] as string, dst_lines[0] as string];
         }
@@ -340,11 +349,7 @@ export class EpubWriter {
         continue;
       }
 
-      const dst_lines = item_dst.split("\n");
-      if (dst_lines.length !== parts.length) {
-        skipped += 1;
-        continue;
-      }
+      const dst_lines = distribute_text_to_slots(item_dst, parts.length);
 
       const current_texts: string[] = [];
       const resolved: Array<[string, Element]> = [];

@@ -4,6 +4,26 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shar
 import { TranslationPrePipeline } from "./translation-pre-pipeline";
 
 describe("TranslationPrePipeline", () => {
+  it("混合保护行和可翻译行时产出完整 item 文本", () => {
+    const context = new TranslationPrePipeline(
+      create_config(),
+      create_quality_snapshot(),
+    ).process_item(
+      {
+        src: "<skip>\nhello\n\nworld",
+        text_type: "TXT",
+      },
+      4,
+      9,
+    );
+    expect(context.request_item).toMatchObject({
+      request_index: 9,
+      item_index: 4,
+      text_src: "<skip>\nhello\n\nworld",
+    });
+    expect(context.prepared_lines).toHaveLength(4);
+  });
+
   it("保持源正文的 Unicode 形态进入模型行", () => {
     const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
     const source_text = "ＡＢＣ１２３ ｶﾞ Cafe\u0301";
@@ -76,7 +96,7 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["こんにちは"]);
-    expect(context.lines[0]?.actor_src).toBe("Alice");
+    expect(context.request_item?.actor_src).toBe("Alice");
   });
 
   it("空 item 会返回同一形状的空上下文", () => {
@@ -178,7 +198,9 @@ describe("TranslationPrePipeline", () => {
  * 读取译前产物中的模型输入正文，测试只关心公开 context 内容。
  */
 function line_texts(context: ReturnType<TranslationPrePipeline["process_item"]>): string[] {
-  return context.lines.map((line) => line.text_src);
+  return context.prepared_lines
+    .filter((line) => line.state === "translatable")
+    .map((line) => line.model_text);
 }
 
 /**

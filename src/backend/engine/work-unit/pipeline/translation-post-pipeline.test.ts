@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import type { TranslationDecodedLine } from "../translation-line";
+import type { TranslationDecodedItem } from "../translation-item";
 import { TranslationPostPipeline } from "./translation-post-pipeline";
 import {
   TranslationPrePipeline,
@@ -122,13 +122,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      [
-        {
-          request_index: 0,
-          text_dst: "hi",
-          actor_dst: "爱丽丝",
-        },
-      ],
+      { request_index: 0, text_dst: "hi", actor_dst: "爱丽丝" },
       "actor_text",
     );
 
@@ -148,13 +142,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      [
-        {
-          request_index: 2,
-          text_dst: "hi",
-          actor_dst: "旁白",
-        },
-      ],
+      { request_index: 2, text_dst: "hi", actor_dst: "旁白" },
       "actor_text",
     );
 
@@ -171,13 +159,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      [
-        {
-          request_index: 0,
-          text_dst: "hi",
-          actor_dst: null,
-        },
-      ],
+      { request_index: 0, text_dst: "hi", actor_dst: null },
       "actor_text",
     );
 
@@ -259,28 +241,33 @@ function create_pipeline_pair(config: TextProcessingConfig, quality_snapshot: Te
 }
 
 /**
- * 以 text 模式执行译后流程，隐藏测试里重复的 decoded line 组装。
+ * 以 text 模式执行译后流程，构造与真实响应相同的完整 item 文本。
  */
 function process_text(
   post_pipeline: TranslationPostPipeline,
   context: TranslationPrePipelineContext,
   dsts: string[],
 ): string {
-  return post_pipeline.process_item(context, decoded_lines(context, dsts), "text").dst;
+  return post_pipeline.process_item(context, decoded_item(context, dsts), "text").dst;
 }
 
 /**
- * 根据译前行序号构造模型解码结果，保持回填路径与运行态一致。
+ * 将可翻译行译文嵌回完整 item，保留保护行与空行以命中正常恢复路径。
  */
-function decoded_lines(
+function decoded_item(
   context: TranslationPrePipelineContext,
   dsts: string[],
-): TranslationDecodedLine[] {
-  return context.lines.map((line, index) => ({
-    request_index: line.request_index,
-    text_dst: dsts[index] ?? "",
+): TranslationDecodedItem {
+  let translated_index = 0;
+  const lines = context.prepared_lines.map((line) => {
+    if (line.state === "preserved") return line.raw_text;
+    return dsts[translated_index++] ?? "";
+  });
+  return {
+    request_index: context.request_item?.request_index ?? 0,
+    text_dst: lines.join("\n"),
     actor_dst: null,
-  }));
+  };
 }
 
 /**

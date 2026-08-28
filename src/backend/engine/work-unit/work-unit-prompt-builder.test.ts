@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
-import type { TranslationActor, TranslationLine } from "./translation-line";
+import type { TranslationActor, TranslationRequestItem } from "./translation-item";
 import { PromptBuilder } from "./work-unit-prompt-builder";
 
 const template_roots: string[] = [];
@@ -19,6 +19,24 @@ afterEach(async () => {
 });
 
 describe("PromptBuilder", () => {
+  it("每个 item 只生成一条 JSONL，text 内换行由 JSON 转义承载", async () => {
+    const builder = new PromptBuilder(
+      await create_template_root(),
+      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
+      create_quality_snapshot(),
+      [],
+    );
+    const result = await builder.generate_prompt(
+      [{ request_index: 3, item_index: 0, text_src: "甲\n乙", actor_src: null }],
+      "text",
+      [],
+      [],
+    );
+    const input = result.messages[1]?.content ?? "";
+    expect(input).toContain('{"index":3,"text":"甲\\n乙"}');
+    expect(input.match(/\{"index":/gu)).toHaveLength(1);
+  });
+
   it("从资源模板生成翻译提示词并注入上文、术语和控制字符示例", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
@@ -54,7 +72,7 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).toContain("参考上文");
     expect(result.messages[1]?.content).toContain("Alice -> 爱丽丝 #女性人名");
     expect(result.messages[1]?.content).toContain("控制字符示例：\n\\n[1], <b>");
-    expect(result.messages[1]?.content).toContain('{"0":"Alice\\\\n[1]"}');
+    expect(result.messages[1]?.content).toContain('{"index":0,"text":"Alice\\\\n[1]"}');
   });
 
   it("生成术语分析提示词时只携带分析输入", async () => {
@@ -110,7 +128,7 @@ describe("PromptBuilder", () => {
     const result = await builder.build_main("text");
 
     expect(result).toBe(
-      '翻译前缀\n自定义规则：中文\n\n思考过程\n\n输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+      '翻译前缀\n自定义规则：中文\n\n思考过程\n\n输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
     );
   });
 
@@ -128,7 +146,7 @@ describe("PromptBuilder", () => {
     );
 
     await expect(builder.build_main("text")).resolves.toBe(
-      '翻译前缀\n请从 日文 翻译到 中文，保留控制字符。\n\n输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+      '翻译前缀\n请从 日文 翻译到 中文，保留控制字符。\n\n输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
     );
     await expect(builder.build_glossary_analysis_main()).resolves.toBe(
       "分析前缀\n提取 中文 术语。\n\n输出 JSONLINE",
@@ -282,10 +300,10 @@ describe("PromptBuilder", () => {
     );
 
     expect(result.messages[0]?.content).toContain(
-      '{"<序号>":{"actor":"<姓名译文或null>","text":"<正文译文>"}}',
+      '{"index":<序号>,"actor":"<姓名译文或null>","text":"<正文译文>"}',
     );
-    expect(result.messages[1]?.content).toContain('{"0":{"actor":"虎鉄","text":"こんにちは"}}');
-    expect(result.messages[1]?.content).toContain('{"1":{"actor":null,"text":"地の文"}}');
+    expect(result.messages[1]?.content).toContain('{"index":0,"actor":"虎鉄","text":"こんにちは"}');
+    expect(result.messages[1]?.content).toContain('{"index":1,"actor":null,"text":"地の文"}');
     expect(result.messages[1]?.content).toContain("虎鉄 -> 虎铁 #男性人名");
   });
 
@@ -305,8 +323,8 @@ describe("PromptBuilder", () => {
       [],
     );
 
-    expect(result.messages[0]?.content).toContain('{"<序号>":"<译文文本>"}');
-    expect(result.messages[1]?.content).toContain('{"0":"こんにちは"}');
+    expect(result.messages[0]?.content).toContain('{"index":<序号>,"text":"<译文文本>"}');
+    expect(result.messages[1]?.content).toContain('{"index":0,"text":"こんにちは"}');
   });
 });
 
@@ -389,11 +407,10 @@ function create_line(overrides: {
   request_index?: number;
   text_src: string;
   actor_src?: TranslationActor;
-}): TranslationLine {
+}): TranslationRequestItem {
   return {
     request_index: overrides.request_index ?? 0,
     item_index: 0,
-    line_index: overrides.request_index ?? 0,
     text_src: overrides.text_src,
     actor_src: overrides.actor_src ?? null,
   };

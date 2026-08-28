@@ -19,10 +19,10 @@ export function build_translation_output_format(
   if (mode === "actor_text") {
     const actor_label = language === "zh" ? "<姓名译文或null>" : "<Translated Actor or null>";
     const text_label = language === "zh" ? "<正文译文>" : "<Translated Text>";
-    return `\`\`\`jsonline\n{"${index_label}":{"actor":"${actor_label}","text":"${text_label}"}}\n\`\`\``;
+    return `\`\`\`jsonline\n{"index":${index_label},"actor":"${actor_label}","text":"${text_label}"}\n\`\`\``;
   }
   const text_label = language === "zh" ? "<译文文本>" : "<Translated Text>";
-  return `\`\`\`jsonline\n{"${index_label}":"${text_label}"}\n\`\`\``;
+  return `\`\`\`jsonline\n{"index":${index_label},"text":"${text_label}"}\n\`\`\``;
 }
 
 /**

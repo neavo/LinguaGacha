@@ -47,7 +47,7 @@ describe("QualityPromptService", () => {
     const template = result["template"] as Record<string, string>;
 
     expect(template["suffix_text"]).toBe(
-      '输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+      '输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
     );
   });
 
@@ -138,17 +138,15 @@ describe("QualityPromptService", () => {
     const app_setting_service = new AppSettingService(paths);
     const project_database = database ?? (null as unknown as ProjectDatabase);
     const session_state = new ProjectSessionState();
-    const published = vi.fn(
-      (payload: ProjectWriteChangeRequest): ProjectChangeEvent => ({
-        type: "project.changed",
-        eventId: "test",
-        source: payload.source,
-        projectPath: payload.projectPath,
-        projectRevision: 1,
-        sectionRevisions: { prompts: 1 },
-        updatedSections: payload.updatedSections,
-      }),
-    );
+    const published = vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => ({
+      type: "project.changed",
+      eventId: "test",
+      source: payload.source,
+      projectPath: payload.projectPath,
+      projectRevision: 1,
+      sectionRevisions: { prompts: 1 },
+      updatedSections: payload.updatedSections,
+    }));
     const publisher = published as ProjectChangePublisher;
     const service = new QualityPromptService(
       paths,

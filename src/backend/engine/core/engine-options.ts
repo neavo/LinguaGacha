@@ -55,7 +55,6 @@ export type TaskProgressSnapshot = DomainTaskProgressSnapshot;
  */
 export interface TranslationWorkUnitResult {
   items: MutableJsonRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
-  row_count: number; // 对齐旧日志口径，表示本 work unit 覆盖行数
   input_tokens: number; // 请求输入 token，用于任务统计
   reasoning_tokens: number; // 请求思考 token，与输出分开累计
   output_tokens: number; // 请求输出 token，不作为成功与否依据

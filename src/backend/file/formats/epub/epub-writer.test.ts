@@ -8,7 +8,7 @@ import JSZip from "jszip";
 import { create_epub_fixture, read_epub_entry_text } from "../../../../test/epub-fixture";
 import { Item } from "../../../../domain/item";
 import { EpubAst } from "./epub-ast";
-import { EpubWriter } from "./epub-writer";
+import { distribute_text_to_slots, EpubWriter } from "./epub-writer";
 
 /**
  * 写回器配置固定为日译中，便于断言导出后的可见正文
@@ -20,6 +20,14 @@ function create_writer(target_language = "ZH"): EpubWriter {
     write_translated_name_fields_to_file: true,
   });
 }
+
+describe("EPUB item slot distribution", () => {
+  it("fills missing slots and puts extra lines in the final slot", () => {
+    expect(distribute_text_to_slots("甲", 3)).toEqual(["甲", "", ""]);
+    expect(distribute_text_to_slots("甲\n乙", 2)).toEqual(["甲", "乙"]);
+    expect(distribute_text_to_slots("甲\n乙\n丙", 2)).toEqual(["甲", "乙\n丙"]);
+  });
+});
 
 /**
  * 构造带翻页方向、竖排 CSS 和横竖排 class 的 EPUB，专门覆盖写回排版策略

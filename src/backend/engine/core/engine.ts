@@ -370,7 +370,6 @@ export class TaskEngine {
       }
       return {
         items: context.items,
-        row_count: 0,
         input_tokens: 0,
         reasoning_tokens: 0,
         output_tokens: 0,
@@ -415,7 +414,6 @@ export class TaskEngine {
     }
     return {
       items: this.normalize_record_list(result.output.items),
-      row_count: result.output.row_count,
       input_tokens: result.metrics.input_tokens,
       reasoning_tokens: result.metrics.reasoning_tokens,
       output_tokens: result.metrics.output_tokens,

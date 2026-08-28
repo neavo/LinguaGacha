@@ -41,6 +41,7 @@ import {
   type GlossaryApplication,
 } from "../quality/glossary";
 import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
+import { split_text_lines } from "../text/text-lines";
 
 export type ProofreadingEvaluationContext = {
   glossary: CompiledGlossary; // 术语始终按原始 src/name_src 命中
@@ -152,8 +153,7 @@ export function evaluateProofreadingItem(args: {
   }
 
   if (args.item.dst !== "") {
-    const review_src = args.item.src
-      .split("\n")
+    const review_src = split_text_lines(args.item.src)
       .map(
         (raw_text, line_index) =>
           prepare_translation_source_line({
@@ -163,10 +163,13 @@ export function evaluateProofreadingItem(args: {
             config: args.processingConfig,
             preserve_rule: sample_rule,
             pre_replacements: args.quality_context.pre_replacements,
-          }).review_text,
+          }).prepared_text,
       )
       .join("\n");
     const normalized_dst = strip_preserved_segments_by_line(args.item.dst, sample_rule);
+    if (split_text_lines(args.item.src).length !== split_text_lines(args.item.dst).length) {
+      warnings.push("LINE_COUNT_MISMATCH");
+    }
     const residue_fragments = collect_translation_residue_fragments({
       text: normalized_dst,
       sourceLanguage: args.processingConfig.source_language,
@@ -241,8 +244,7 @@ export function evaluateProofreadingItem(args: {
 function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule | null): string {
   return rule === null
     ? text
-    : text
-        .split("\n")
+    : split_text_lines(text)
         .map((line) => rule.replace(line, ""))
         .join("\n");
 }
@@ -253,9 +255,7 @@ function collect_non_blank_segments_by_line(
   rule: TextPreserveRule | null,
 ): ProofreadingPreservedSegment[] {
   if (rule === null) return [];
-  return text
-    .split("\n")
-    .flatMap((line, line_index) =>
-      collect_non_blank_text_preserve_segments(line, rule).map((value) => ({ line_index, value })),
-    );
+  return split_text_lines(text).flatMap((line, line_index) =>
+    collect_non_blank_text_preserve_segments(line, rule).map((value) => ({ line_index, value })),
+  );
 }

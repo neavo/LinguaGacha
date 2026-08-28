@@ -28,7 +28,7 @@ describe("prepare_translation_source_line", () => {
       raw_text: "  <A>one  ",
       state: "translatable",
       model_text: "<Q>one",
-      review_text: "  <A><Q>one  ",
+      prepared_text: "  <A><Q>one  ",
       leading_whitespace: "  ",
       trailing_whitespace: "  ",
       prefix_segments: ["<A>"],
