@@ -10,11 +10,14 @@ import type {
   ProofreadingRowIdsRangeQuery,
   ProofreadingSyncState,
 } from "@shared/proofreading/proofreading-reader";
-import type {
-  ProofreadingClientItem,
-  ProofreadingContextItem,
-  ProofreadingFilterPanelState,
-  ProofreadingListView,
+import {
+  create_empty_proofreading_filter_options,
+  create_empty_proofreading_filter_panel_state,
+  create_empty_proofreading_list_view,
+  type ProofreadingClientItem,
+  type ProofreadingContextItem,
+  type ProofreadingFilterPanelState,
+  type ProofreadingListView,
 } from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
@@ -64,13 +67,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         sourceLanguage: input.sourceLanguage,
         targetLanguage: input.targetLanguage,
         revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
-        defaultFilters: {
-          warning_types: [],
-          statuses: [],
-          file_paths: [],
-          glossary_entry_ids: [],
-          include_without_glossary_miss: true,
-        },
+        defaultFilters: create_empty_proofreading_filter_options(),
       };
       return {
         syncState,
@@ -83,17 +80,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         action: "list",
         query: input,
       });
-      return (
-        response.view ?? {
-          projectId: "",
-          revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
-          view_id: "",
-          row_count: 0,
-          window_start: 0,
-          window_rows: [],
-          invalid_regex_message: null,
-        }
-      );
+      return response.view ?? create_empty_proofreading_list_view();
     },
     async read_proofreading_list_window(input) {
       const response = await api_fetch<{ window?: ProofreadingListWindow }>(
@@ -135,19 +122,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         "/api/proofreading/query",
         { action: "filter_panel", filters: input.filters },
       );
-      return (
-        response.filterPanel ?? {
-          available_statuses: [],
-          status_count_by_code: {},
-          available_warning_types: [],
-          warning_count_by_code: {},
-          all_file_paths: [],
-          available_file_paths: [],
-          file_count_by_path: {},
-          glossary_term_entries: [],
-          without_glossary_miss_count: 0,
-        }
-      );
+      return response.filterPanel ?? create_empty_proofreading_filter_panel_state();
     },
   };
 }

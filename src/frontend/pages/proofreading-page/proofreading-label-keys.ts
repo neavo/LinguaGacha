@@ -1,7 +1,8 @@
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
+  PROOFREADING_OUTCOME_GROUPS,
   PROOFREADING_STATUS_ORDER,
-  PROOFREADING_WARNING_FILTER_CODES,
+  PROOFREADING_TRANSLATED_OUTCOME_CODES,
 } from "@shared/proofreading/proofreading-types";
 
 /** 校对状态只在 renderer 映射为可见标签，shared 保持纯业务状态码。 */
@@ -25,4 +26,11 @@ export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   RETRY_THRESHOLD: "proofreading_page.warning.retry_threshold",
   LINE_COUNT_MISMATCH: "proofreading_page.warning.line_count_mismatch",
   NO_WARNING: "proofreading_page.filter.no_warning",
-} as const satisfies Record<(typeof PROOFREADING_WARNING_FILTER_CODES)[number], LocaleKey>;
+} as const satisfies Record<(typeof PROOFREADING_TRANSLATED_OUTCOME_CODES)[number], LocaleKey>;
+
+/** 结果分组标签与 shared 分组词表保持穷尽对应。 */
+export const PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE = {
+  translated: "proofreading_page.filter.translated_group",
+  unfinished: "proofreading_page.filter.unfinished_group",
+  not_required: "proofreading_page.filter.not_required_group",
+} as const satisfies Record<(typeof PROOFREADING_OUTCOME_GROUPS)[number]["code"], LocaleKey>;

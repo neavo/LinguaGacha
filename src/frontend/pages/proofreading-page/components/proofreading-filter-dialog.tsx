@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle, Minus } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
+  PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
 } from "@frontend/pages/proofreading-page/proofreading-label-keys";
 import {
   clone_proofreading_filter_options,
   format_proofreading_glossary_term,
+  PROOFREADING_OUTCOME_GROUPS,
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
 } from "@shared/proofreading/proofreading-types";
@@ -29,12 +31,34 @@ type ProofreadingFilterDialogProps = {
   on_close: () => void;
 };
 
+// 内置结果用于识别运行时新增的检查类型；扩展类型沿用“翻译成功”分组。
+const KNOWN_PROOFREADING_OUTCOMES = new Set<string>(
+  PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [...group.outcome_codes]),
+);
+
 function toggle_string(values: string[], target_value: string): string[] {
   return values.includes(target_value)
     ? values.filter((value) => value !== target_value)
     : [...values, target_value];
 }
 
+/** 把 shared 结果码映射为 renderer 可见标签，未知检查类型回退到原始值。 */
+function outcome_label(outcome: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const warning_key =
+    PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
+      outcome as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
+    ];
+  if (warning_key !== undefined) {
+    return t(warning_key);
+  }
+  const status_key =
+    PROOFREADING_STATUS_LABEL_KEY_BY_CODE[
+      outcome as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
+    ];
+  return status_key === undefined ? outcome : t(status_key);
+}
+
+/** 结果项同时呈现选择状态与当前筛选上下文中的命中数。 */
 function FilterToggleButton(props: {
   label: string;
   count: number;
@@ -61,6 +85,67 @@ function FilterToggleButton(props: {
     </AppButton>
   );
 }
+
+/** 分组标题把全选、部分选择和清空状态收口到单一可访问控件。 */
+function FilterGroupHeader(props: {
+  label_id: string;
+  label: string;
+  action_label: string;
+  selected: boolean;
+  partial: boolean;
+  loading?: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  const checked_state = props.partial ? "mixed" : props.selected;
+
+  return (
+    <div className="proofreading-page__filter-group-header">
+      <h3 id={props.label_id} className="proofreading-page__filter-group-label">
+        {props.label}
+      </h3>
+      <div className="proofreading-page__filter-group-actions">
+        {props.loading === undefined ? null : (
+          <span
+            className="proofreading-page__filter-loading-slot"
+            data-loading={props.loading ? "true" : undefined}
+            aria-hidden="true"
+          >
+            <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
+          </span>
+        )}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={checked_state}
+                aria-label={`${props.label}: ${props.action_label}`}
+                className="proofreading-page__filter-group-control"
+                onClick={props.onClick}
+              >
+                <span
+                  className="proofreading-page__filter-group-indicator"
+                  data-state={checked_state}
+                >
+                  {props.partial ? (
+                    <Minus className="size-3" aria-hidden="true" />
+                  ) : props.selected ? (
+                    <Check className="size-3" aria-hidden="true" />
+                  ) : null}
+                </span>
+              </button>
+            }
+          />
+          <TooltipContent side="top" sideOffset={8}>
+            {props.action_label}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
 function FilterListRow(props: {
   label: string;
   count: number;
@@ -132,6 +217,10 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
         .includes(normalized_keyword);
     });
   }, [props.panel.glossary_term_entries, term_keyword]);
+  const extra_outcomes = props.panel.available_outcomes.filter(
+    (outcome) => !KNOWN_PROOFREADING_OUTCOMES.has(outcome),
+  );
+
   async function handle_confirm(): Promise<void> {
     set_submitting(true);
     try {
@@ -177,71 +266,61 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
       <div className="proofreading-page__filter-dialog-scroll">
         <div className="proofreading-page__filter-layout">
           <div className="proofreading-page__filter-left-column">
-            <section className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles">
-              <div className="proofreading-page__filter-section-head">
-                <h3 className="proofreading-page__filter-section-title">
-                  {t("proofreading_page.filter.status_title")}
-                </h3>
-                <span
-                  className="proofreading-page__filter-loading-slot"
-                  data-loading={props.loading ? "true" : undefined}
-                  aria-hidden={!props.loading}
-                >
-                  <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-                </span>
-              </div>
-              <div className="proofreading-page__filter-toggle-grid">
-                {props.panel.available_statuses.map((status) => {
-                  const label_key =
-                    PROOFREADING_STATUS_LABEL_KEY_BY_CODE[
-                      status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
-                    ];
-                  return (
-                    <FilterToggleButton
-                      key={status}
-                      label={label_key === undefined ? status : t(label_key)}
-                      count={props.panel.status_count_by_code[status] ?? 0}
-                      selected={props.filters.statuses.includes(status)}
+            <section
+              className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles"
+              aria-busy={props.loading}
+            >
+              {PROOFREADING_OUTCOME_GROUPS.map((group) => {
+                const dynamic_outcomes = group.code === "translated" ? extra_outcomes : [];
+                const outcomes = [...group.outcome_codes, ...dynamic_outcomes].filter((outcome) =>
+                  props.panel.available_outcomes.includes(outcome),
+                );
+                const selected_count = outcomes.filter((outcome) =>
+                  props.filters.outcomes.includes(outcome),
+                ).length;
+                const all_selected = outcomes.length > 0 && selected_count === outcomes.length;
+                return (
+                  <div key={group.code} className="proofreading-page__filter-outcome-group">
+                    <FilterGroupHeader
+                      label_id={`proofreading-filter-group-${group.code}`}
+                      label={t(PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE[group.code])}
+                      action_label={t(
+                        all_selected
+                          ? "proofreading_page.filter.deselect_group"
+                          : "proofreading_page.filter.select_group",
+                      )}
+                      selected={all_selected}
+                      partial={selected_count > 0 && !all_selected}
+                      loading={group.code === "translated" ? props.loading : undefined}
                       onClick={() => {
+                        const next_outcomes = all_selected
+                          ? props.filters.outcomes.filter((outcome) => !outcomes.includes(outcome))
+                          : [...new Set([...props.filters.outcomes, ...outcomes])];
                         props.on_change({
                           ...clone_proofreading_filter_options(props.filters),
-                          statuses: toggle_string(props.filters.statuses, status),
+                          outcomes: next_outcomes,
                         });
                       }}
                     />
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles">
-              <div className="proofreading-page__filter-section-head">
-                <h3 className="proofreading-page__filter-section-title">
-                  {t("proofreading_page.result_check_title")}
-                </h3>
-              </div>
-              <div className="proofreading-page__filter-toggle-grid">
-                {props.panel.available_warning_types.map((warning) => {
-                  const label_key =
-                    PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
-                      warning as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
-                    ];
-                  return (
-                    <FilterToggleButton
-                      key={warning}
-                      label={label_key === undefined ? warning : t(label_key)}
-                      count={props.panel.warning_count_by_code[warning] ?? 0}
-                      selected={props.filters.warning_types.includes(warning)}
-                      onClick={() => {
-                        props.on_change({
-                          ...clone_proofreading_filter_options(props.filters),
-                          warning_types: toggle_string(props.filters.warning_types, warning),
-                        });
-                      }}
-                    />
-                  );
-                })}
-              </div>
+                    <div className="proofreading-page__filter-toggle-grid">
+                      {outcomes.map((outcome) => (
+                        <FilterToggleButton
+                          key={outcome}
+                          label={outcome_label(outcome, t)}
+                          count={props.panel.outcome_count_by_code[outcome] ?? 0}
+                          selected={props.filters.outcomes.includes(outcome)}
+                          onClick={() => {
+                            props.on_change({
+                              ...clone_proofreading_filter_options(props.filters),
+                              outcomes: toggle_string(props.filters.outcomes, outcome),
+                            });
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </section>
 
             <section className="proofreading-page__filter-section proofreading-page__filter-section--stretch">

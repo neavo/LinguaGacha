@@ -31,18 +31,15 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 }));
 
 const filters = {
-  warning_types: [],
-  statuses: [],
+  outcomes: [],
   file_paths: ["chapter01.txt", "appendix.txt"],
   glossary_entry_ids: [],
   include_without_glossary_miss: true,
 };
 
 const panel = {
-  available_statuses: ["CUSTOM"],
-  status_count_by_code: { CUSTOM: 2 },
-  available_warning_types: [],
-  warning_count_by_code: {},
+  available_outcomes: ["CUSTOM"],
+  outcome_count_by_code: { CUSTOM: 2 },
   all_file_paths: ["chapter01.txt", "appendix.txt"],
   available_file_paths: ["chapter01.txt", "appendix.txt"],
   file_count_by_path: { "chapter01.txt": 1, "appendix.txt": 1 },
@@ -88,7 +85,7 @@ describe("ProofreadingFilterDialog", () => {
     return container;
   }
 
-  it("切换状态时提交新的筛选值且不修改输入对象", async () => {
+  it("切换结果时提交新的筛选值且不修改输入对象", async () => {
     const on_change = vi.fn();
     const rendered = await render_dialog({ on_change });
     const status_button = [...rendered.querySelectorAll("button")].find((button) =>
@@ -97,8 +94,43 @@ describe("ProofreadingFilterDialog", () => {
 
     await act(async () => status_button?.click());
 
-    expect(on_change).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["CUSTOM"] }));
-    expect(filters.statuses).toEqual([]);
+    expect(on_change).toHaveBeenCalledWith(expect.objectContaining({ outcomes: ["CUSTOM"] }));
+    expect(filters.outcomes).toEqual([]);
+  });
+
+  it("分组使用右侧三态选择并批量切换子项", async () => {
+    const on_change = vi.fn();
+    const rendered = await render_dialog({
+      on_change,
+      filters: {
+        ...filters,
+        outcomes: ["NO_WARNING", "ERROR", "NONE"],
+      },
+      panel: {
+        ...panel,
+        available_outcomes: ["NO_WARNING", "KANA", "ERROR", "NONE", "EXCLUDED"],
+        outcome_count_by_code: { NO_WARNING: 2, KANA: 1, ERROR: 3, NONE: 4, EXCLUDED: 5 },
+      },
+    });
+    const translated_group = rendered.querySelector(
+      '[role="checkbox"][aria-label^="proofreading_page.filter.translated_group"]',
+    );
+    const unfinished_group = rendered.querySelector(
+      '[role="checkbox"][aria-label^="proofreading_page.filter.unfinished_group"]',
+    );
+    const not_required_group = rendered.querySelector(
+      '[role="checkbox"][aria-label^="proofreading_page.filter.not_required_group"]',
+    );
+
+    expect(translated_group?.getAttribute("aria-checked")).toBe("mixed");
+    expect(unfinished_group?.getAttribute("aria-checked")).toBe("true");
+    expect(not_required_group?.getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => (translated_group as HTMLButtonElement | undefined)?.click());
+
+    expect(on_change).toHaveBeenCalledWith(
+      expect.objectContaining({ outcomes: ["NO_WARNING", "ERROR", "NONE", "KANA"] }),
+    );
   });
 
   it("文件关键字只保留匹配项", async () => {

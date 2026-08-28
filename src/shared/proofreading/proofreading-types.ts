@@ -17,13 +17,33 @@ export const PROOFREADING_WARNING_CODES = [
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
 
-// GUI 筛选词表额外包含“无警告”虚拟值。
-export const PROOFREADING_WARNING_FILTER_CODES = [
+// 翻译成功分组包含真实检查项和“无警告”集合项。
+export const PROOFREADING_TRANSLATED_OUTCOME_CODES = [
   PROOFREADING_NO_WARNING_CODE,
   ...PROOFREADING_WARNING_CODES,
 ] as const;
 
-export const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
+// 分组定义统一提供显示顺序、默认选择和组内结果词表。
+export const PROOFREADING_OUTCOME_GROUPS = [
+  {
+    code: "translated",
+    selected_by_default: true,
+    outcome_codes: [...PROOFREADING_TRANSLATED_OUTCOME_CODES],
+  },
+  {
+    code: "unfinished",
+    selected_by_default: true,
+    outcome_codes: ["ERROR", "NONE"],
+  },
+  {
+    code: "not_required",
+    selected_by_default: false,
+    outcome_codes: ["EXCLUDED", "DUPLICATED", "RULE_SKIPPED", "LANGUAGE_SKIPPED"],
+  },
+] as const;
+
+// 运行时可能出现尚未进入内置词表的新检查结果，因此公开筛选值保留字符串扩展点。
+export type ProofreadingOutcomeCode = string;
 
 // 设置翻译状态菜单的唯一状态词表。
 export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
@@ -48,8 +68,7 @@ export type ProofreadingWarningFragmentsByCode = {
 };
 
 export type ProofreadingFilterOptions = {
-  warning_types: string[];
-  statuses: string[];
+  outcomes: ProofreadingOutcomeCode[];
   file_paths: string[];
   glossary_entry_ids: string[];
   include_without_glossary_miss: boolean;
@@ -131,10 +150,8 @@ export type ProofreadingFilterPanelTermEntry = {
 };
 
 export type ProofreadingFilterPanelState = {
-  available_statuses: string[];
-  status_count_by_code: Record<string, number>;
-  available_warning_types: string[];
-  warning_count_by_code: Record<string, number>;
+  available_outcomes: ProofreadingOutcomeCode[];
+  outcome_count_by_code: Record<string, number>;
   all_file_paths: string[];
   available_file_paths: string[];
   file_count_by_path: Record<string, number>;
@@ -143,6 +160,20 @@ export type ProofreadingFilterPanelState = {
 };
 
 export type ProofreadingSearchScope = "all" | "src" | "dst";
+
+/**
+ * 把条目投影为用户可选择的结果集合；成功条目可同时命中多个检查项。
+ */
+export function resolve_proofreading_outcomes(item: {
+  status: string;
+  warnings: string[];
+}): ProofreadingOutcomeCode[] {
+  if (item.status === "PROCESSED") {
+    return item.warnings.length > 0 ? [...new Set(item.warnings)] : [PROOFREADING_NO_WARNING_CODE];
+  }
+
+  return [item.status];
+}
 
 /**
  * row id 是校对列表和后端 item id 的字符串桥接，统一在入口处归一。
@@ -182,8 +213,7 @@ export function clone_proofreading_filter_options(
   filters: ProofreadingFilterOptions,
 ): ProofreadingFilterOptions {
   return {
-    warning_types: [...filters.warning_types],
-    statuses: [...filters.statuses],
+    outcomes: [...filters.outcomes],
     file_paths: [...filters.file_paths],
     glossary_entry_ids: [...filters.glossary_entry_ids],
     include_without_glossary_miss: filters.include_without_glossary_miss,
@@ -191,24 +221,15 @@ export function clone_proofreading_filter_options(
 }
 
 /**
- * 默认警告筛选保留已知顺序，同时把运行时出现的新警告稳定追加。
+ * 空筛选值是跨后端与 renderer 共用的缺省载荷，集中构造以保持协议形状一致。
  */
-export function resolve_default_proofreading_warning_types(
-  available_warning_types: string[],
-): string[] {
-  const known_warning_types: string[] = [...PROOFREADING_WARNING_FILTER_CODES];
-  const known_warning_type_set = new Set<string>(known_warning_types);
-  const extra_warning_types = unique_strings(available_warning_types)
-    .filter((warning) => !known_warning_type_set.has(warning))
-    .sort((left_warning, right_warning) => {
-      return left_warning.localeCompare(right_warning, "zh-Hans-CN");
-    });
-
-  return [...known_warning_types, ...extra_warning_types];
-}
-
-function unique_strings(values: string[]): string[] {
-  return [...new Set(values)];
+export function create_empty_proofreading_filter_options(): ProofreadingFilterOptions {
+  return {
+    outcomes: [],
+    file_paths: [],
+    glossary_entry_ids: [],
+    include_without_glossary_miss: true,
+  };
 }
 
 /**
@@ -232,16 +253,12 @@ export function create_empty_proofreading_list_view(): ProofreadingListView {
 }
 
 /**
- * 空筛选面板保留无警告计数入口，避免 UI 需要特殊判断缺失字段。
+ * 空筛选面板保持完整结果形状，UI 可直接消费统一协议。
  */
 export function create_empty_proofreading_filter_panel_state(): ProofreadingFilterPanelState {
   return {
-    available_statuses: [],
-    status_count_by_code: {},
-    available_warning_types: [],
-    warning_count_by_code: {
-      [PROOFREADING_NO_WARNING_CODE]: 0,
-    },
+    available_outcomes: [],
+    outcome_count_by_code: {},
     all_file_paths: [],
     available_file_paths: [],
     file_count_by_path: {},

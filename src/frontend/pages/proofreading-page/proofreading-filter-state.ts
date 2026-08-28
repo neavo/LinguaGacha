@@ -1,5 +1,6 @@
 import { JsonTool } from "@shared/utils/json-tool";
 import {
+  create_empty_proofreading_filter_options,
   type ProofreadingFilterOptions,
   type ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
@@ -14,8 +15,7 @@ export type ProofreadingFilterChoice<T> =
     };
 
 export type ProofreadingFilterSelection = {
-  warning_types: ProofreadingFilterChoice<string>;
-  statuses: ProofreadingFilterChoice<string>;
+  outcomes: ProofreadingFilterChoice<string>;
   file_paths: ProofreadingFilterChoice<string>;
   glossary_entry_ids: ProofreadingFilterChoice<string>;
   include_without_glossary_miss: boolean;
@@ -89,34 +89,16 @@ function resolve_string_filter_choice(args: {
     : create_selected_filter_choice(args.values, (value) => value);
 }
 
-/**
- * 将已物化的术语筛选值恢复成筛选意图，用户改动过的术语列表才固化为显式选择。
- */
-function resolve_glossary_entry_id_filter_choice(args: {
-  values: string[];
-  default_values: string[];
-}): ProofreadingFilterChoice<string> {
-  return are_string_values_equal(args.values, args.default_values)
-    ? create_default_filter_choice()
-    : create_selected_filter_choice(args.values, (value) => value);
-}
-
+/** 页面沿用领域内短名称，空载荷由 shared 协议构造器统一拥有。 */
 export function create_empty_filter_options(): ProofreadingFilterOptions {
-  return {
-    warning_types: [],
-    statuses: [],
-    file_paths: [],
-    glossary_entry_ids: [],
-    include_without_glossary_miss: true,
-  };
+  return create_empty_proofreading_filter_options();
 }
 
 export function create_default_proofreading_filter_selection(
   default_filters: ProofreadingFilterOptions = create_empty_filter_options(),
 ): ProofreadingFilterSelection {
   return {
-    warning_types: create_default_filter_choice(),
-    statuses: create_default_filter_choice(),
+    outcomes: create_default_filter_choice(),
     file_paths: create_default_filter_choice(),
     glossary_entry_ids: create_default_filter_choice(),
     include_without_glossary_miss: default_filters.include_without_glossary_miss,
@@ -127,8 +109,7 @@ export function create_selected_proofreading_filter_selection(
   filters: ProofreadingFilterOptions,
 ): ProofreadingFilterSelection {
   return {
-    warning_types: create_selected_filter_choice(filters.warning_types, (value) => value),
-    statuses: create_selected_filter_choice(filters.statuses, (value) => value),
+    outcomes: create_selected_filter_choice(filters.outcomes, (value) => value),
     file_paths: create_selected_filter_choice(filters.file_paths, (value) => value),
     glossary_entry_ids: create_selected_filter_choice(filters.glossary_entry_ids, (value) => value),
     include_without_glossary_miss: filters.include_without_glossary_miss,
@@ -139,8 +120,7 @@ export function clone_proofreading_filter_selection(
   selection: ProofreadingFilterSelection,
 ): ProofreadingFilterSelection {
   return {
-    warning_types: clone_filter_choice(selection.warning_types, (value) => value),
-    statuses: clone_filter_choice(selection.statuses, (value) => value),
+    outcomes: clone_filter_choice(selection.outcomes, (value) => value),
     file_paths: clone_filter_choice(selection.file_paths, (value) => value),
     glossary_entry_ids: clone_filter_choice(selection.glossary_entry_ids, (value) => value),
     include_without_glossary_miss: selection.include_without_glossary_miss,
@@ -155,19 +135,15 @@ export function resolve_proofreading_filter_selection_from_filters(args: {
   default_filters: ProofreadingFilterOptions;
 }): ProofreadingFilterSelection {
   return {
-    warning_types: resolve_string_filter_choice({
-      values: args.filters.warning_types,
-      default_values: args.default_filters.warning_types,
-    }),
-    statuses: resolve_string_filter_choice({
-      values: args.filters.statuses,
-      default_values: args.default_filters.statuses,
+    outcomes: resolve_string_filter_choice({
+      values: args.filters.outcomes,
+      default_values: args.default_filters.outcomes,
     }),
     file_paths: resolve_string_filter_choice({
       values: args.filters.file_paths,
       default_values: args.default_filters.file_paths,
     }),
-    glossary_entry_ids: resolve_glossary_entry_id_filter_choice({
+    glossary_entry_ids: resolve_string_filter_choice({
       values: args.filters.glossary_entry_ids,
       default_values: args.default_filters.glossary_entry_ids,
     }),
@@ -180,14 +156,11 @@ export function materialize_proofreading_filters(
   default_filters: ProofreadingFilterOptions,
 ): ProofreadingFilterOptions {
   return {
-    warning_types: materialize_filter_choice(
-      selection.warning_types,
-      default_filters.warning_types,
+    outcomes: materialize_filter_choice(
+      selection.outcomes,
+      default_filters.outcomes,
       (value) => value,
     ),
-    statuses: materialize_filter_choice(selection.statuses, default_filters.statuses, (value) => {
-      return value;
-    }),
     file_paths: materialize_filter_choice(
       selection.file_paths,
       default_filters.file_paths,
@@ -238,8 +211,7 @@ export function create_proofreading_view_filter_state(args: {
 
 export function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JsonTool.stringifyStrict({
-    warning_types: [...filters.warning_types].sort(),
-    statuses: [...filters.statuses].sort(),
+    outcomes: [...filters.outcomes].sort(),
     file_paths: [...filters.file_paths].sort(),
     glossary_entry_ids: [...filters.glossary_entry_ids].sort(),
     include_without_glossary_miss: filters.include_without_glossary_miss,

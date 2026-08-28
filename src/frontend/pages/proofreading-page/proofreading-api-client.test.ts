@@ -27,8 +27,7 @@ describe("proofreading-api-client", () => {
             targetLanguage: "zh-CN",
             revisions: { files: 1, items: 6, quality: 1, proofreading: 1 },
             defaultFilters: {
-              warning_types: [],
-              statuses: [],
+              outcomes: [],
               file_paths: [],
               glossary_entry_ids: [],
               include_without_glossary_miss: true,
@@ -90,7 +89,7 @@ describe("proofreading-api-client", () => {
     const view = await client.build_proofreading_list_view({
       filters: {
         ...sync_state.defaultFilters,
-        statuses: ["PROCESSED"],
+        outcomes: ["NO_WARNING"],
       },
       keyword: "",
       scope: "all",

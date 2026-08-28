@@ -9,8 +9,7 @@ import type { ProofreadingFilterOptions } from "@shared/proofreading/proofreadin
 // 生成当前测试场景的完整筛选载荷，避免用例只关心术语时遗漏其它维度语义。
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
   return {
-    warning_types: ["NO_WARNING", "GLOSSARY"],
-    statuses: ["NONE", "PROCESSED", "ERROR"],
+    outcomes: ["NO_WARNING", "GLOSSARY", "NONE", "PROCESSED", "ERROR"],
     file_paths: ["chapter01.txt"],
     glossary_entry_ids: [],
     include_without_glossary_miss: true,
@@ -74,13 +73,13 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
   it("默认筛选值顺序变化不会固化普通筛选维度", () => {
     const selection = resolve_proofreading_filter_selection_from_filters({
       filters: create_filters({
-        statuses: ["ERROR", "NONE", "PROCESSED"],
+        outcomes: ["ERROR", "NONE", "PROCESSED"],
       }),
       default_filters: create_filters({
-        statuses: ["NONE", "PROCESSED", "ERROR"],
+        outcomes: ["NONE", "PROCESSED", "ERROR"],
       }),
     });
 
-    expect(selection.statuses).toEqual({ mode: "default" });
+    expect(selection.outcomes).toEqual({ mode: "default" });
   });
 });

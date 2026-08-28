@@ -18,8 +18,7 @@ function create_cache(): ProofreadingCache {
         targetLanguage: "ZH",
         revisions: { files: 4, items: 3, quality: 2, proofreading: 1 },
         defaultFilters: {
-          warning_types: ["GLOSSARY"],
-          statuses: ["PROCESSED"],
+          outcomes: ["GLOSSARY"],
           file_paths: [],
           glossary_entry_ids: [],
           include_without_glossary_miss: true,
@@ -88,7 +87,7 @@ describe("ProofreadingQueryService", () => {
         targetLanguage: "ZH",
       },
       defaultFilters: {
-        warning_types: ["GLOSSARY"],
+        outcomes: ["GLOSSARY"],
       },
     });
   });
@@ -102,6 +101,9 @@ describe("ProofreadingQueryService", () => {
     const view = await service.query({
       action: "list",
       query: {
+        filters: {
+          outcomes: ["NO_WARNING", "NONE"],
+        },
         keyword: "原文",
         window_anchor: { row_id: "17", offset: 7 },
         window_count: 11,
@@ -125,6 +127,7 @@ describe("ProofreadingQueryService", () => {
     expect(cache.context).toHaveBeenCalledWith({ row_id: "1" });
     expect(cache.list).toHaveBeenCalledWith(
       expect.objectContaining({
+        filters: expect.objectContaining({ outcomes: ["NO_WARNING", "NONE"] }),
         window_anchor: { row_id: "17", offset: 7 },
         window_count: 11,
       }),
