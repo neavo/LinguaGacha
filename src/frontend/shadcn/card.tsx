@@ -1,4 +1,6 @@
 import * as React from "react";
+import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
 
 import { cn } from "@frontend/shadcn/classnames";
 
@@ -7,8 +9,10 @@ type CardVariant = "default" | "panel" | "table" | "toolbar";
 function Card({
   className,
   variant = "default",
+  render,
   ...props
-}: React.ComponentProps<"section"> & { variant?: CardVariant }) {
+}: useRender.ComponentProps<"section"> & { variant?: CardVariant }) {
+  // 交互标记由公开事件/语义属性推导，供卡片 hover 与按下反馈共用。
   const is_interactive =
     props.onClick !== undefined ||
     props.onKeyDown !== undefined ||
@@ -17,18 +21,22 @@ function Card({
     props.role === "link" ||
     (props.tabIndex !== undefined && props.tabIndex >= 0);
 
-  return (
-    <section
-      data-slot="card"
-      data-variant={variant}
-      data-interactive={is_interactive ? "true" : undefined}
-      className={cn(
-        "card-surface rounded-[var(--card-radius-current)] text-card-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return useRender({
+    defaultTagName: "section",
+    props: mergeProps<"section">(
+      {
+        "data-slot": "card",
+        "data-variant": variant,
+        "data-interactive": is_interactive ? "true" : undefined,
+        className: cn(
+          "card-surface rounded-[var(--card-radius-current)] text-card-foreground",
+          className,
+        ),
+      } as React.ComponentProps<"section">,
+      props,
+    ),
+    render,
+  });
 }
 
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {

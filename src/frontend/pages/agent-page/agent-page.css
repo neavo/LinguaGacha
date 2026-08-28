@@ -889,20 +889,25 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 浮层跟随真实触发器宽度，长队列只在可用空间内换行与滚动。 */
+/* 浮层跟随真实触发器宽度；滚动只属于待办列表，不把箭头算入滚动溢出。 */
 .agent-task-progress__tooltip {
   display: block;
   width: var(--anchor-width);
   max-width: var(--available-width);
-  max-height: min(320px, var(--available-height));
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  overflow: visible;
   line-height: 1.5;
   white-space: normal;
   animation: none;
 }
 
-.agent-task-progress__tooltip ul {
+.agent-task-progress__viewport {
+  /* Popup 的上下内边距各 6px，列表预算扣除后仍服从碰撞高度。 */
+  max-height: max(0px, min(308px, calc(var(--available-height) - 12px)));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.agent-task-progress__viewport ul {
   display: grid;
   gap: 4px;
   margin: 0;
@@ -910,7 +915,7 @@
   list-style: disc outside;
 }
 
-.agent-task-progress__tooltip li {
+.agent-task-progress__viewport li {
   overflow-wrap: anywhere;
 }
 
