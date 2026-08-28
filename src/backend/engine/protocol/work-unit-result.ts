@@ -5,7 +5,6 @@ import type { WorkUnitLogEntry } from "./work-unit";
 export type TranslationWorkUnitOutput = {
   kind: "translation";
   items: JsonValue;
-  row_count: number;
 };
 
 /** 分析 work unit 输出只表达候选术语原始结果，checkpoint 由 Engine 解释 */

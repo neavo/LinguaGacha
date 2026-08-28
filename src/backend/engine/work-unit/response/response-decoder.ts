@@ -1,24 +1,25 @@
 import { JsonTool } from "../../../../shared/utils/json-tool";
+import { split_text_lines } from "../../../../shared/text/text-lines";
 import { is_json_record } from "../../../../domain/json";
 import {
   normalize_translation_actor,
-  type TranslationDecodedLine,
+  type TranslationDecodedItem,
   type TranslationPromptMode,
-} from "../translation-line";
+} from "../translation-item";
 
 /**
  * 模型响应解码器，显式区分翻译结果和术语候选
  */
 export class ResponseDecoder {
   /**
-   * 按请求模式解码翻译结果，调用方负责按 request_index 对齐请求行。
+   * 按请求模式解码翻译结果，调用方负责按 request_index 对齐请求 item。
    */
   public async decode_translation(
     response: string,
     mode: TranslationPromptMode,
-  ): Promise<TranslationDecodedLine[]> {
-    const lines: TranslationDecodedLine[] = [];
-    for (const line of response.split(/\r?\n/u)) {
+  ): Promise<TranslationDecodedItem[]> {
+    const lines: TranslationDecodedItem[] = [];
+    for (const line of split_text_lines(response)) {
       const stripped_line = line.trim();
       if (stripped_line === "" || stripped_line.startsWith("```")) {
         continue;
@@ -27,13 +28,16 @@ export class ResponseDecoder {
       if (json_data === null) {
         continue;
       }
-      lines.push(...this.build_translation_lines(json_data, mode, true));
+      const item = this.build_translation_item(json_data, mode);
+      if (item !== null) lines.push(item);
     }
     if (lines.length > 0) {
       return lines;
     }
     const json_data = await this.repair_parse_object(response);
-    return json_data === null ? [] : this.build_translation_lines(json_data, mode, false);
+    if (json_data === null) return [];
+    const item = this.build_translation_item(json_data, mode);
+    return item === null ? [] : [item];
   }
 
   /**
@@ -41,7 +45,7 @@ export class ResponseDecoder {
    */
   public async decode_glossary_entries(response: string): Promise<Array<Record<string, string>>> {
     const glossary_entries: Array<Record<string, string>> = [];
-    for (const line of response.split(/\r?\n/u)) {
+    for (const line of split_text_lines(response)) {
       const stripped_line = line.trim();
       if (stripped_line === "" || stripped_line.startsWith("```")) {
         continue;
@@ -58,74 +62,28 @@ export class ResponseDecoder {
     return glossary_entries;
   }
 
-  /**
-   * JSONLINE 行必须是单键对象；整块对象回退允许多个序号键。
-   */
-  private build_translation_lines(
+  /** Decode the fixed index/text record used by both request and response. */
+  private build_translation_item(
     json_data: Record<string, unknown>,
     mode: TranslationPromptMode,
-    require_single_entry: boolean,
-  ): TranslationDecodedLine[] {
-    const entries = Object.entries(json_data);
-    if (require_single_entry && entries.length !== 1) {
-      return [];
-    }
-    const lines: TranslationDecodedLine[] = [];
-    for (const [key, value] of entries) {
-      const request_index = this.read_request_index(key);
-      if (request_index === null) {
-        continue;
-      }
-      const line =
-        mode === "actor_text"
-          ? this.build_actor_text_line(request_index, value)
-          : this.build_text_line(request_index, value);
-      if (line !== null) {
-        lines.push(line);
-      }
-    }
-    return lines;
-  }
-
-  /**
-   * 纯文本模式只接收字符串译文，坏值交由缺行校验处理。
-   */
-  private build_text_line(request_index: number, value: unknown): TranslationDecodedLine | null {
-    if (typeof value !== "string") {
-      return null;
-    }
-    return { request_index, text_dst: value, actor_dst: null };
-  }
-
-  /**
-   * actor/text 模式要求对象同时带 actor 和 text，避免旧字符串响应误写姓名字段。
-   */
-  private build_actor_text_line(
-    request_index: number,
-    value: unknown,
-  ): TranslationDecodedLine | null {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return null;
-    }
-    const record = value as Record<string, unknown>;
-    if (!("actor" in record) || typeof record.text !== "string") {
-      return null;
-    }
-    if (record.actor !== null && typeof record.actor !== "string") {
-      return null;
-    }
+  ): TranslationDecodedItem | null {
+    const request_index = this.read_request_index(json_data.index);
+    if (request_index === null || typeof json_data.text !== "string") return null;
+    if (mode === "text") return { request_index, text_dst: json_data.text, actor_dst: null };
+    if (json_data.actor !== null && typeof json_data.actor !== "string") return null;
     return {
       request_index,
-      text_dst: record.text,
-      actor_dst: normalize_translation_actor(record.actor),
+      text_dst: json_data.text,
+      actor_dst: normalize_translation_actor(json_data.actor),
     };
   }
 
   /**
    * request_index 只允许安全整数，防止模型输出任意 key 污染对齐流程。
    */
-  private read_request_index(key: string): number | null {
-    if (!/^\d+$/u.test(key)) {
+  private read_request_index(key: unknown): number | null {
+    if (typeof key === "number" && Number.isSafeInteger(key) && key >= 0) return key;
+    if (typeof key !== "string" || !/^\d+$/u.test(key)) {
       return null;
     }
     const index = Number(key);

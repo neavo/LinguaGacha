@@ -12,6 +12,7 @@ export const PROOFREADING_WARNING_CODES = [
   "SIMILARITY",
   "GLOSSARY",
   "RETRY_THRESHOLD",
+  "LINE_COUNT_MISMATCH",
 ] as const;
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];

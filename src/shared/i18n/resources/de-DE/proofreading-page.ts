@@ -48,6 +48,7 @@ export const de_de_proofreading_page = {
     similarity: "Hohe Ähnlichkeit",
     glossary: "Glossar nicht angewendet",
     retry_threshold: "Wiederholungsschwelle erreicht",
+    line_count_mismatch: "Zeilenanzahl stimmt nicht überein",
   },
   glossary: {
     applied: "Glossar angewendet",

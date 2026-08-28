@@ -21,7 +21,7 @@ import {
   get_prompt_target_language_name,
   normalize_language_code,
 } from "../../../domain/language";
-import type { TranslationLine, TranslationPromptMode } from "./translation-line";
+import type { TranslationRequestItem, TranslationPromptMode } from "./translation-item";
 import { format_glossary_entry, type GlossaryEntry } from "../../../shared/quality/glossary";
 
 /**
@@ -76,7 +76,7 @@ export class PromptBuilder {
    * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
    */
   public async generate_prompt(
-    lines: TranslationLine[],
+    items: TranslationRequestItem[],
     mode: TranslationPromptMode,
     samples: string[],
     precedings: TextTaskItemRecord[],
@@ -104,7 +104,7 @@ export class PromptBuilder {
       console_log.push(control_samples);
     }
 
-    const inputs = this.build_inputs(lines, mode);
+    const inputs = this.build_inputs(items, mode);
     if (inputs !== "") {
       user_parts.push(inputs);
     }
@@ -267,12 +267,13 @@ export class PromptBuilder {
   /**
    * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析
    */
-  private build_inputs(lines: TranslationLine[], mode: TranslationPromptMode): string {
-    const inputs = lines
-      .map((line) =>
+  private build_inputs(items: TranslationRequestItem[], mode: TranslationPromptMode): string {
+    const inputs = items
+      .map((item) =>
         JsonTool.stringifyStrict({
-          [String(line.request_index)]:
-            mode === "actor_text" ? { actor: line.actor_src, text: line.text_src } : line.text_src,
+          index: item.request_index,
+          ...(mode === "actor_text" ? { actor: item.actor_src } : {}),
+          text: item.text_src,
         }),
       )
       .join("\n");

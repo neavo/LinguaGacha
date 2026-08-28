@@ -78,7 +78,6 @@ describe("TranslationWorkUnitRunner", () => {
       output: {
         kind: "translation",
         items: [],
-        row_count: 0,
       },
       logs: [],
     });
@@ -92,7 +91,7 @@ describe("TranslationWorkUnitRunner", () => {
         captured_requests.push(body);
         return {
           response_think: "",
-          response_result: '{"0":"你好"}',
+          response_result: '{"index":0,"text":"你好"}',
           input_tokens: 1,
           reasoning_tokens: 0,
           output_tokens: 1,
@@ -160,7 +159,7 @@ describe("TranslationWorkUnitRunner", () => {
       create_llm_client(
         {
           response_result:
-            '{"0":{"actor":"虎铁","text":"你好"}}\n{"1":{"actor":null,"text":"旁白译文"}}',
+            '{"index":0,"actor":"虎铁","text":"你好"}\n{"index":1,"actor":null,"text":"旁白译文"}',
           input_tokens: 4,
           reasoning_tokens: 2,
           output_tokens: 5,
@@ -198,7 +197,6 @@ describe("TranslationWorkUnitRunner", () => {
 
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 2,
       items: [
         { id: 1, dst: "你好", name_dst: "虎铁", status: "PROCESSED" },
         { id: 2, dst: "旁白译文", name_dst: "既有译名", status: "PROCESSED" },
@@ -214,10 +212,10 @@ describe("TranslationWorkUnitRunner", () => {
       { src: "地の文", dst: "旁白译文", actor_src: null, actor_dst: null },
     ]);
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"0":{"actor":"虎鉄","text":"こんにちは"}}',
+      '{"index":0,"actor":"虎鉄","text":"こんにちは"}',
     );
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"1":{"actor":null,"text":"地の文"}}',
+      '{"index":1,"actor":null,"text":"地の文"}',
     );
     expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
   });
@@ -227,7 +225,7 @@ describe("TranslationWorkUnitRunner", () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client(
-        { response_result: '{"0":{"actor":"爱丽丝","text":"生命值"}}' },
+        { response_result: '{"index":0,"actor":"爱丽丝","text":"生命值"}' },
         captured_requests,
       ),
     );
@@ -247,7 +245,7 @@ describe("TranslationWorkUnitRunner", () => {
       entries: [{ entry_id: "hp", src: "HP", dst: "Mana", regex: false, case_sensitive: true }],
     };
 
-    await runner.execute_unit(
+    const result = await runner.execute_unit(
       create_translation_unit({
         model: { api_format: "OpenAI" },
         quality_snapshot: quality,
@@ -272,6 +270,7 @@ describe("TranslationWorkUnitRunner", () => {
     expect(prompt).not.toContain("Mana -> 魔力");
     expect(prompt).not.toContain("HP ->    ");
     expect(prompt).toContain("Mana");
+    expect(read_log_summary(result.logs[0])).toContain("HP -> 生命值");
   });
 
   it("术语全局关闭时普通与 Sakura 请求都不注入术语", async () => {
@@ -284,7 +283,7 @@ describe("TranslationWorkUnitRunner", () => {
       };
       const runner = new TranslationWorkUnitRunner(
         await create_template_root(),
-        create_llm_client({ response_result: '{"0":"译文"}' }, captured_requests),
+        create_llm_client({ response_result: '{"index":0,"text":"译文"}' }, captured_requests),
       );
 
       await runner.execute_unit(
@@ -309,7 +308,7 @@ describe("TranslationWorkUnitRunner", () => {
         vi.setSystemTime(new Date(3500));
         return {
           response_think: "",
-          response_result: '{"0":"你好"}',
+          response_result: '{"index":0,"text":"你好"}',
           input_tokens: 4,
           reasoning_tokens: 0,
           output_tokens: 5,
@@ -325,9 +324,7 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    expect(read_log_summary(result.logs[0])).toContain(
-      "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，思考消耗 0 Tokens，输出消耗 5 Tokens",
-    );
+    expect(read_log_summary(result.logs[0])).toContain("任务耗时 2.50 秒");
   });
 
   it("翻译日志分离模型思考、规则分析和译文", async () => {
@@ -335,7 +332,7 @@ describe("TranslationWorkUnitRunner", () => {
       await create_template_root(),
       create_llm_client({
         response_think: "真实思考链",
-        response_result: '<why>[核心约束]：保持行数</why>\n{"0":"你好"}',
+        response_result: '<why>[核心约束]：保持行数</why>\n{"index":0,"text":"你好"}',
       }),
     );
 
@@ -347,7 +344,7 @@ describe("TranslationWorkUnitRunner", () => {
     expect(read_translation_log(result.logs[0]).sections).toEqual([
       { title: "思考过程：", text: "真实思考链" },
       { title: "规则分析：", text: "[核心约束]：保持行数" },
-      { title: "翻译结果：", text: '{"0":"你好"}' },
+      { title: "翻译结果：", text: '{"index":0,"text":"你好"}' },
     ]);
   });
 
@@ -399,15 +396,13 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(result.outcome).toBe("failed");
-    expect(read_log_summary(result.logs[0])).toContain("数据结构错误");
-    expect(read_log_summary(result.logs[0])).not.toContain("行数不一致");
   });
 
-  it("部分合法译文无法覆盖请求行时记录行数不一致", async () => {
+  it("item 内换行数量变化时仍按完整译文提交", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"0":"你好"}',
+        response_result: '{"index":0,"text":"你好"}',
       }),
     );
 
@@ -419,16 +414,18 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("failed");
-    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
-    expect(read_log_summary(result.logs[0])).not.toContain("数据结构错误");
+    expect(result.outcome).toBe("success");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      items: [{ dst: "你好", status: "PROCESSED" }],
+    });
   });
 
-  it("单条行数不一致达重试阈值时写回 fallback 译文并保留真实日志原因", async () => {
+  it("单条 item 换行数量变化达重试阈值时保留完整模型译文", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"0":" 你好 "}',
+        response_result: '{"index":0,"text":" 你好 "}',
       }),
     );
 
@@ -444,26 +441,24 @@ describe("TranslationWorkUnitRunner", () => {
     expect(result.outcome).toBe("success");
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 1,
       items: [
         {
           id: 1,
           src: "こんにちは\n世界",
-          dst: "你好\n",
+          dst: " 你好 ",
           status: "PROCESSED",
           text_type: "TXT",
           retry_count: 2,
         },
       ],
     });
-    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
   });
 
-  it("单条行数不一致未达重试阈值时继续失败并递增重试次数", async () => {
+  it("单条 item 换行数量变化未达重试阈值时也可提交", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"0":"你好"}',
+        response_result: '{"index":0,"text":"你好"}',
       }),
     );
 
@@ -476,26 +471,25 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("failed");
+    expect(result.outcome).toBe("success");
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 0,
       items: [
         {
           id: 1,
-          dst: "",
-          status: "NONE",
-          retry_count: 2,
+          dst: "你好",
+          status: "PROCESSED",
+          retry_count: 1,
         },
       ],
     });
   });
 
-  it("多条行数不一致达重试阈值时不混写 fallback", async () => {
+  it("多条 item 响应按序号独立提交，缺失项保持待处理", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"0":"你好"}',
+        response_result: '{"index":0,"text":"你好"}',
       }),
     );
 
@@ -524,16 +518,18 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("failed");
+    expect(result.outcome).toBe("success");
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 0,
       items: [
-        { id: 1, dst: "", status: "NONE", retry_count: 2 },
+        { id: 1, dst: "你好", status: "PROCESSED", retry_count: 2 },
         { id: 2, dst: "", status: "NONE", retry_count: 2 },
       ],
     });
-    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
+    expect(read_translation_log(result.logs[0]).pairs).toEqual([
+      { src: "こんにちは", dst: "你好" },
+      { src: "世界", dst: "" },
+    ]);
   });
 
   it("完全无法解析译文即使达重试阈值也不写 fallback", async () => {
@@ -556,7 +552,6 @@ describe("TranslationWorkUnitRunner", () => {
     expect(result.outcome).toBe("failed");
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 0,
       items: [
         {
           id: 1,
@@ -566,14 +561,13 @@ describe("TranslationWorkUnitRunner", () => {
         },
       ],
     });
-    expect(read_log_summary(result.logs[0])).toContain("数据结构错误");
   });
 
-  it("已对齐逐行质量失败达重试阈值时提交译文但日志保留空行原因", async () => {
+  it("item 内尾部空行不阻止译文提交", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"0":"你好","1":""}',
+        response_result: '{"index":0,"text":"你好\\n"}',
       }),
     );
 
@@ -589,17 +583,15 @@ describe("TranslationWorkUnitRunner", () => {
     expect(result.outcome).toBe("success");
     expect(result.output).toMatchObject({
       kind: "translation",
-      row_count: 1,
       items: [
         {
           id: 1,
-          dst: "你好\n",
           status: "PROCESSED",
           retry_count: 2,
         },
       ],
     });
-    expect(read_log_summary(result.logs[0])).toContain("存在空行");
+    expect((result.output as { items: Array<{ dst?: string }> }).items[0]?.dst).toContain("你好");
   });
 });
 

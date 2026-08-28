@@ -16,15 +16,15 @@ import type {
   TextTaskItemRecord,
 } from "../../../../shared/text/text-types";
 import { read_optional_item_name_text } from "../../../../shared/item-name";
-import type { TranslationLine } from "../translation-line";
+import type { TranslationRequestItem } from "../translation-item";
 
 /**
  * 翻译译前流程产物，显式保存译后恢复需要的每行状态
  */
 export interface TranslationPrePipelineContext {
   item: TextTaskItemRecord | null; // 保留当前 work unit 的可写快照，译后流程只回写这份对象
-  prepared_lines: PreparedTranslationSourceLine[]; // 全部原始行及其唯一处理事实
-  lines: TranslationLine[]; // 真正送入模型的行，空行和完全保护行不会进入请求
+  prepared_lines: PreparedTranslationSourceLine[]; // Per-line facts used only for deterministic restoration
+  request_item: TranslationRequestItem | null; // One complete item record sent to the model, when translatable
   samples: string[]; // 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
   preserve_rule: TextPreserveRule | null; // 同一 item 的保护能力只编译一次并交给译后流程
 }
@@ -54,7 +54,7 @@ export class TranslationPrePipeline {
   public process_item(
     item: TextTaskItemRecord | null,
     item_index = 0,
-    request_index_start = 0,
+    request_index = 0,
   ): TranslationPrePipelineContext {
     const context = this.create_empty_context(item);
     if (item === null) {
@@ -67,9 +67,8 @@ export class TranslationPrePipeline {
       entries: this.quality_snapshot.text_preserve_entries,
     });
     const actor_src = read_optional_item_name_text(item.name_src);
-    for (const [line_index, raw_text] of String(item.src ?? "")
-      .split("\n")
-      .entries()) {
+    const source = String(item.src ?? "").replace(/\r\n|\r/gu, "\n");
+    for (const [line_index, raw_text] of source.split("\n").entries()) {
       const prepared_line = prepare_translation_source_line({
         line_index,
         raw_text,
@@ -80,14 +79,15 @@ export class TranslationPrePipeline {
       });
       context.prepared_lines.push(prepared_line);
       context.samples.push(...prepared_line.samples);
-      if (prepared_line.state === "preserved") continue;
-      context.lines.push({
-        request_index: request_index_start + context.lines.length,
+    }
+    const has_translatable = context.prepared_lines.some((line) => line.state === "translatable");
+    if (has_translatable) {
+      context.request_item = {
+        request_index,
         item_index,
-        line_index,
-        text_src: prepared_line.model_text,
+        text_src: context.prepared_lines.map((line) => line.prepared_text).join("\n"),
         actor_src,
-      });
+      };
     }
     return context;
   }
@@ -99,7 +99,7 @@ export class TranslationPrePipeline {
     return {
       item,
       prepared_lines: [],
-      lines: [],
+      request_item: null,
       samples: [],
       preserve_rule: null,
     };

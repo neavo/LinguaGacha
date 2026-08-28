@@ -48,6 +48,7 @@ export const en_us_proofreading_page = {
     similarity: "High Similarity",
     glossary: "Glossary Not Applied",
     retry_threshold: "Retry Threshold Reached",
+    line_count_mismatch: "Line Count Mismatch",
   },
   glossary: {
     applied: "Glossary Applied",

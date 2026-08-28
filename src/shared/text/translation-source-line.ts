@@ -6,7 +6,7 @@ import { apply_text_replacements, type CompiledTextReplacements } from "./text-r
 type PreparedTranslationSourceLineBase = {
   line_index: number;
   raw_text: string;
-  review_text: string;
+  prepared_text: string;
   leading_whitespace: string;
   trailing_whitespace: string;
   prefix_segments: string[];
@@ -31,7 +31,7 @@ export function prepare_translation_source_line(args: {
     raw_text: args.raw_text,
     state: "preserved",
     model_text: null,
-    review_text: args.raw_text,
+    prepared_text: args.raw_text,
     leading_whitespace: "",
     trailing_whitespace: "",
     prefix_segments: [],
@@ -76,7 +76,7 @@ export function prepare_translation_source_line(args: {
     raw_text: args.raw_text,
     state: "translatable",
     model_text,
-    review_text: `${leading_whitespace}${prefix_segments.join("")}${model_text}${suffix_segments.join("")}${trailing_whitespace}`,
+    prepared_text: `${leading_whitespace}${prefix_segments.join("")}${model_text}${suffix_segments.join("")}${trailing_whitespace}`,
     leading_whitespace,
     trailing_whitespace,
     prefix_segments,

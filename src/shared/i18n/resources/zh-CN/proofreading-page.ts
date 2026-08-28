@@ -45,6 +45,7 @@ export const zh_cn_proofreading_page = {
     similarity: "相似度过高",
     glossary: "术语未落实",
     retry_threshold: "重试次数达阈值",
+    line_count_mismatch: "行数不一致",
   },
   glossary: {
     applied: "术语已落实",

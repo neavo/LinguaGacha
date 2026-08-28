@@ -53,8 +53,7 @@ describe("TaskEngine", () => {
       }),
       taskRuntime: task_runtime,
       executorClient: {
-        execute_unit: async () =>
-          create_translation_worker_result([create_pending_item()], 0, 1, 2),
+        execute_unit: async () => create_translation_worker_result([create_pending_item()], 1, 2),
       },
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
@@ -357,7 +356,6 @@ describe("TaskEngine", () => {
               dst: `译文${String(item["id"] ?? "")}`,
               status: "PROCESSED",
             })),
-            items.length,
             1,
             1,
           );
@@ -411,7 +409,6 @@ describe("TaskEngine", () => {
               dst: `译文${String(item["id"] ?? "")}`,
               status: "PROCESSED",
             })),
-            items.length,
             1,
             1,
           );
@@ -551,7 +548,7 @@ describe("TaskEngine", () => {
     expect(dispose_completed).toBe(false);
     expect(lease_release_count).toBe(0);
 
-    release_execution(create_translation_worker_result([create_pending_item()], 1, 1, 1));
+    release_execution(create_translation_worker_result([create_pending_item()], 1, 1));
     await disposing;
 
     expect(dispose_completed).toBe(true);
@@ -573,19 +570,17 @@ describe("TaskEngine", () => {
 
   function create_translation_worker_result(
     items: MutableJsonRecord[],
-    row_count: number,
     input_tokens: number,
     output_tokens: number,
   ): WorkUnitExecutionResult {
     return {
       unit_id: "unit-1",
       kind: "translation",
-      outcome: row_count > 0 ? "success" : "failed",
+      outcome: items.some((item) => item["status"] === "PROCESSED") ? "success" : "failed",
       metrics: { input_tokens, reasoning_tokens: 0, output_tokens },
       output: {
         kind: "translation",
         items,
-        row_count,
       },
       logs: [],
     };

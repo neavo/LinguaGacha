@@ -3,11 +3,26 @@ import { describe, expect, it } from "vitest";
 import { ResponseDecoder } from "./response-decoder";
 
 describe("响应解码器", () => {
+  it("解码一条包含真实换行的 item JSONL 记录", async () => {
+    await expect(
+      new ResponseDecoder().decode_translation('{"index":"7","text":"第一行\\n第二行"}', "text"),
+    ).resolves.toEqual([{ request_index: 7, text_dst: "第一行\n第二行", actor_dst: null }]);
+  });
+
+  it("actor item 使用同一 index/text 骨架并校验 actor", async () => {
+    await expect(
+      new ResponseDecoder().decode_translation(
+        '{"index":2,"actor":null,"text":"正文\\n续行"}',
+        "actor_text",
+      ),
+    ).resolves.toEqual([{ request_index: 2, text_dst: "正文\n续行", actor_dst: null }]);
+  });
+
   it("按序号解码纯文本翻译 JSONLINE", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
       `
-{"0":"你好"}
-{"1":"世界"}
+{"index":0,"text":"你好"}
+{"index":1,"text":"世界"}
 `.trim(),
       "text",
     );
@@ -18,9 +33,9 @@ describe("响应解码器", () => {
     ]);
   });
 
-  it("纯文本模式在行式解析失败时回退整块 JSON 对象", async () => {
+  it("纯文本模式跳过无效 JSONL 记录并保留有效 item", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
-      '{"0":"你好","1":2,"2":"世界"}',
+      '{"index":0,"text":"你好"}\n{"index":1,"text":2}\n{"index":2,"text":"世界"}',
       "text",
     );
 
@@ -34,9 +49,9 @@ describe("响应解码器", () => {
     const decoded = await new ResponseDecoder().decode_translation(
       `
 \`\`\`jsonline
-{"0":{"actor":" 虎铁 ","text":"你好"}}
-{"1":{"actor":[" 爱丽丝 ",""],"text":"世界"}}
-{"2":{"actor":null,"text":"旁白"}}
+{"index":0,"actor":" 虎铁 ","text":"你好"}
+{"index":1,"actor":[" 爱丽丝 ",""],"text":"世界"}
+{"index":2,"actor":null,"text":"旁白"}
 \`\`\`
 `.trim(),
       "actor_text",
@@ -51,9 +66,9 @@ describe("响应解码器", () => {
   it("actor/text 模式拒绝字符串值和缺少字段的对象", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
       `
-{"0":"你好"}
-{"1":{"actor":"虎铁"}}
-{"2":{"actor":"虎铁","text":"通过"}}
+{"index":0,"text":"你好"}
+{"index":1,"actor":"虎铁"}
+{"index":2,"actor":"虎铁","text":"通过"}
 `.trim(),
       "actor_text",
     );
@@ -61,9 +76,9 @@ describe("响应解码器", () => {
     expect(decoded).toEqual([{ request_index: 2, text_dst: "通过", actor_dst: "虎铁" }]);
   });
 
-  it("actor/text 模式支持整块 JSON 对象响应", async () => {
+  it("actor/text 模式支持多条 JSONL item 响应", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
-      '{"0":{"actor":"虎铁","text":"你好"},"1":{"actor":null,"text":"旁白"}}',
+      '{"index":0,"actor":"虎铁","text":"你好"}\n{"index":1,"actor":null,"text":"旁白"}',
       "actor_text",
     );
 
@@ -77,7 +92,7 @@ describe("响应解码器", () => {
     const decoded = await new ResponseDecoder().decode_glossary_entries(
       `
 {"src":"魔导具","dst":"魔导器","type":"特殊物品"}
-{"0":"忽略这条翻译"}
+{"index":0,"text":"忽略这条翻译"}
 `.trim(),
     );
 

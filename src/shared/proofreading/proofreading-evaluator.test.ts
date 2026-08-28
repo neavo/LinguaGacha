@@ -58,6 +58,15 @@ function evaluate(args: {
 }
 
 describe("proofreading-evaluator", () => {
+  it("派生 item 行数变化 warning，并在修正后消失", () => {
+    expect(evaluate({ src: "a\nb", dst: "甲", sourceLanguage: "EN" }).warnings).toContain(
+      "LINE_COUNT_MISMATCH",
+    );
+    expect(evaluate({ src: "a\nb", dst: "甲\n乙", sourceLanguage: "EN" }).warnings).not.toContain(
+      "LINE_COUNT_MISMATCH",
+    );
+  });
+
   it("禁用规则也必须通过真实编译校验", () => {
     const quality = create_quality({
       pre_replacement: {

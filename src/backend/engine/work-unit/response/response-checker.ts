@@ -2,31 +2,21 @@ import { should_skip_by_language_prefilter } from "../../../../shared/prefilter/
 import { should_skip_by_rule_prefilter } from "../../../../shared/prefilter/rule-prefilter";
 
 /**
- * 翻译响应行质量检查器，按模型结果决定哪些行可提交
+ * 翻译响应 item 质量检查器；item 内的换行不再构成失败条件。
  */
 export class ResponseChecker {
-  /**
-   * 已对齐译文的整体和逐行质量检查。
-   */
-  public static check_aligned(
-    srcs: string[],
-    dsts: string[],
+  /** Checks one request item without interpreting its internal line breaks. */
+  public static check_item(
+    src: string,
+    dst: string,
     source_language: string,
-    skip_internal_filter_by_line: boolean[] = [],
-  ): string[] {
-    if (dsts.every((value) => value === "")) {
-      return srcs.map(() => "FAIL_DATA");
+    skip_internal_filter: boolean,
+  ): "NONE" | "FAIL_DATA" {
+    if (dst.trim() === "") return "FAIL_DATA";
+    const normalized_src = src.trim();
+    if (!skip_internal_filter && !should_skip_by_rule_prefilter(normalized_src)) {
+      should_skip_by_language_prefilter(normalized_src, source_language);
     }
-    return srcs.map((raw_src, index) => {
-      const src = raw_src.trim();
-      if (src !== "" && (dsts[index] ?? "").trim() === "") {
-        return "LINE_ERROR_EMPTY_LINE";
-      }
-      if (skip_internal_filter_by_line[index] !== true && !should_skip_by_rule_prefilter(src)) {
-        // 过滤已在任务输入阶段完成；这里保留未知源语言显式失败的既有语义。
-        should_skip_by_language_prefilter(src, source_language);
-      }
-      return "NONE";
-    });
+    return "NONE";
   }
 }
