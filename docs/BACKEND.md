@@ -76,7 +76,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
 - `TaskRuntime` 拥有任务取消、终态和 Engine completion，并以当前 active run 派生 task snapshot 的 `busy`。`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
-- 翻译 work-unit 以 item 为唯一请求、响应和提交单位：每个请求 item 只有一条 JSONL 记录（`index`、`text`，actor 模式再加 `actor`），`text` 可包含换行；worker 内部才保留逐行准备与恢复事实。响应按 item index 独立裁决，缺失、重复、未知或空白正文只影响对应 item，请求错误 / 超时 / 退化只影响本次发送的 items；结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。
+- 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`index`、`text`，actor 模式再加 `actor`），`text` 可包含换行；SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文。worker 内部才保留逐行准备与恢复事实。响应按 item index 独立裁决，缺失、重复、未知或空白正文只影响对应 item，请求错误 / 超时 / 退化只影响本次发送的 items；结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。

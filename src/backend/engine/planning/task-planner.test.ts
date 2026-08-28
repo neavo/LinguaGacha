@@ -57,6 +57,26 @@ describe("TaskPlanner", () => {
     expect(contexts[1]?.precedings.map((item) => item["id"])).toEqual([1]);
   });
 
+  it("SakuraLLM 每个 work unit 只携带一个 item", async () => {
+    const planner = create_planner(async (items) =>
+      items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
+    );
+    const items = [
+      create_item({ id: 1, src: "第一句。", file_path: "chapter.txt" }),
+      create_item({ id: 2, src: "第二句。", file_path: "chapter.txt" }),
+    ];
+
+    const contexts = await planner.build_translation_contexts(
+      items,
+      { preceding_lines_threshold: 2 },
+      { api_format: "SakuraLLM", threshold: { input_token_limit: 20 } },
+      new AbortController().signal,
+    );
+
+    expect(contexts.map((context) => context.items.map((item) => item["id"]))).toEqual([[1], [2]]);
+    expect(contexts.every((context) => context.precedings.length === 0)).toBe(true);
+  });
+
   it("分析规划只调度未完成且可分析的 item，并携带 checkpoint 状态", async () => {
     const count_items = vi.fn(async (items: TaskTokenCountInput[]) =>
       items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
