@@ -20,6 +20,7 @@ describe("run_project_item_public_contract_migration", () => {
     db.exec(`
       CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
       INSERT INTO items (data) VALUES ('{"src":"@12 A","name_src":["A",1],"row_number":"7","file_type":"XLSX","status":"BAD","retry_count":"2","skip_internal_filter":"yes","legacy_private":{"keep":true}}');
+      INSERT INTO items (data) VALUES ('{"src":"legacy","file_type":"MD"}');
       INSERT INTO items (data) VALUES ('not-json');
     `);
 
@@ -41,6 +42,21 @@ describe("run_project_item_public_contract_migration", () => {
         row: 7,
         file_path: "",
         text_type: "WOLF",
+      },
+      {
+        src: "legacy",
+        file_type: "MD",
+        dst: "",
+        name_src: null,
+        name_dst: null,
+        extra_field: "",
+        tag: "",
+        row: 0,
+        file_path: "",
+        text_type: "NONE",
+        status: "NONE",
+        retry_count: 0,
+        skip_internal_filter: false,
       },
       "not-json",
     ]);

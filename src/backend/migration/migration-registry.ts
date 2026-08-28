@@ -2,6 +2,7 @@ import type { MigrationDescriptor } from "./migration-types";
 import { analysis_checkpoint_status_migration } from "./migrations/analysis-checkpoint-status-migration";
 import { epub_ruby_block_text_migration } from "./migrations/epub-ruby-block-text-migration";
 import { legacy_default_config_migration } from "./migrations/legacy-default-config-migration";
+import { markdown_v2_block_migration } from "./migrations/markdown-v2-block-migration";
 import { model_selection_migration } from "./migrations/model-selection-migration";
 import { project_item_stable_metadata_migration } from "./migrations/project-item-stable-metadata-migration";
 import { project_item_public_contract_migration } from "./migrations/project-item-public-contract-migration";
@@ -34,6 +35,7 @@ export const MIGRATIONS: readonly MigrationDescriptor[] = [
   quality_default_meta_migration,
   translation_prompt_legacy_slot_migration,
   epub_ruby_block_text_migration,
+  markdown_v2_block_migration,
 ];
 
 /**

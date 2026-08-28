@@ -3,7 +3,7 @@ import path from "node:path";
 import { Item, type ItemFileType } from "../../domain/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
-import { MDFormat } from "./formats/md-format";
+import { MDV2Format } from "./formats/markdown/md-v2-format";
 import { MESSAGEJSONFormat } from "./formats/messagejson-format";
 import { RenPyFormat } from "./formats/renpy/renpy-format";
 import { SRTFormat } from "./formats/srt-format";
@@ -37,7 +37,7 @@ export class FileFormatService {
   private readonly native_fs: NativeFs; // 源文件扫描和预览读取的唯一磁盘入口
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly txt: TXTFormat;
-  private readonly md: MDFormat;
+  private readonly md: MDV2Format;
   private readonly ass: ASSFormat;
   private readonly srt: SRTFormat;
   private readonly kvjson: KVJSONFormat;
@@ -54,7 +54,7 @@ export class FileFormatService {
   public constructor(config: FileFormatServiceConfig, native_fs: NativeFs = default_native_fs) {
     this.native_fs = native_fs;
     this.txt = new TXTFormat(config);
-    this.md = new MDFormat();
+    this.md = new MDV2Format();
     this.ass = new ASSFormat(config);
     this.srt = new SRTFormat(config);
     this.kvjson = new KVJSONFormat();
@@ -195,7 +195,7 @@ export class FileFormatService {
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
     await this.txt.write_to_path(items, paths);
-    await this.md.write_to_path(items, paths);
+    await this.md.write_to_path(items, paths, asset_reader);
     await this.ass.write_to_path(items, paths);
     await this.srt.write_to_path(items, paths);
     await this.kvjson.write_to_path(items, paths);

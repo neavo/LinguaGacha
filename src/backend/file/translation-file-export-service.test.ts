@@ -82,10 +82,13 @@ function create_output_folder_opener(error?: Error): {
   };
 }
 
-function create_database(items: Array<Record<string, string | number>>): ProjectDatabase {
+function create_database(
+  items: Array<Record<string, unknown>>,
+  assets: Record<string, Buffer> = {},
+): ProjectDatabase {
   return {
     get_all_items: () => items,
-    read_asset_content: () => null,
+    read_asset_content: (_project_path: string, rel_path: string) => assets[rel_path] ?? null,
   } as unknown as ProjectDatabase;
 }
 
@@ -131,6 +134,51 @@ describe("TranslationFileExportService", () => {
       "译文\n译文",
     );
     expect(output_folder_opener.opened_paths).toEqual([]);
+  });
+
+  it("导出时从项目 asset 恢复 Markdown 资源", async () => {
+    const project_path = path.join(temp_dir, "mixed.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const source = "# 标题\n\n![封面](data:image/png;base64,AAAA)\n";
+    const database = create_database(
+      [
+        {
+          id: 1,
+          src: "# 标题",
+          dst: "# Title",
+          status: "PROCESSED",
+          file_type: "MD_V2",
+          file_path: "readme.md",
+          row: 0,
+          extra_field: { markdown: { before: "", after: "" } },
+        },
+        {
+          id: 2,
+          src: "![封面](lg-resource:image/0)",
+          dst: "![Cover](lg-resource:image/0)",
+          status: "PROCESSED",
+          file_type: "MD_V2",
+          file_path: "readme.md",
+          row: 2,
+          extra_field: { markdown: { before: "\n\n", after: "\n" } },
+        },
+      ],
+      { "readme.md": Buffer.from(source) },
+    );
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(),
+      session_state,
+      create_output_folder_opener().open,
+      create_log_collector(),
+    );
+
+    await service.export_files();
+
+    expect(fs.readFileSync(path.join(temp_dir, "mixed_译文", "readme.md"), "utf-8")).toBe(
+      "# Title\n\n![Cover](data:image/png;base64,AAAA)\n",
+    );
   });
 
   it("德语界面使用德语导出目录名和日志", async () => {

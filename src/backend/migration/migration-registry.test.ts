@@ -20,6 +20,7 @@ describe("migration-registry", () => {
       "quality-default-meta",
       "translation-prompt-legacy-slot",
       "epub-ruby-block-text",
+      "markdown-v2-block",
     ]);
     expect(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS).toEqual([
       "project-rule-storage",
