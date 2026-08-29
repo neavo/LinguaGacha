@@ -17,6 +17,16 @@ export const PROOFREADING_WARNING_CODES = [
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
 
+export type ProofreadingWarningSummaryEntry = {
+  code: ProofreadingWarningCode; // 真实 warning 类型
+  count: number; // 命中该 warning 的不同成功译文条目数
+};
+
+export type ProofreadingWarningSummary = {
+  total_count: number; // entries count 之和，同一条目命中多类时分别计数
+  entries: ProofreadingWarningSummaryEntry[]; // 按 PROOFREADING_WARNING_CODES 顺序返回非零类型
+};
+
 // 翻译成功分组包含真实检查项和“无警告”集合项。
 export const PROOFREADING_TRANSLATED_OUTCOME_CODES = [
   PROOFREADING_NO_WARNING_CODE,
@@ -173,6 +183,29 @@ export function resolve_proofreading_outcomes(item: {
   }
 
   return [item.status];
+}
+
+/** 汇总成功译文的真实 warning；总数按各类型命中数求和。 */
+export function build_proofreading_warning_summary(
+  items: readonly Pick<ProofreadingItem, "status" | "warnings">[],
+): ProofreadingWarningSummary {
+  const count_by_code = new Map<ProofreadingWarningCode, number>();
+  items.forEach((item) => {
+    if (item.status !== "PROCESSED") {
+      return;
+    }
+    new Set(item.warnings).forEach((code) => {
+      count_by_code.set(code, (count_by_code.get(code) ?? 0) + 1);
+    });
+  });
+  const entries = PROOFREADING_WARNING_CODES.flatMap((code) => {
+    const count = count_by_code.get(code) ?? 0;
+    return count === 0 ? [] : [{ code, count }];
+  });
+  return {
+    total_count: entries.reduce((total, entry) => total + entry.count, 0),
+    entries,
+  };
 }
 
 /**

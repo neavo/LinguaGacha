@@ -17,11 +17,7 @@ import {
 
 export { is_active_translation_task_status };
 
-export type TranslationTaskActionKind =
-  | "reset-all"
-  | "reset-failed"
-  | "stop-translation"
-  | "generate-translation";
+export type TranslationTaskActionKind = "reset-all" | "reset-failed" | "stop-translation";
 
 export type TranslationTaskSnapshot = WorkbenchTaskSnapshot & {
   scope: TranslationScope;

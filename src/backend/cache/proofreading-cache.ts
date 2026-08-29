@@ -25,6 +25,7 @@ import type {
   ProofreadingFilterPanelState,
   ProofreadingListView,
   ProofreadingItemRecord,
+  ProofreadingWarningSummary,
 } from "../../shared/proofreading/proofreading-types";
 import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-reader";
 import type { QualitySlice, QualitySnapshot } from "../../shared/quality/quality-rule-snapshot";
@@ -113,6 +114,11 @@ export class ProofreadingCache {
     query: ProofreadingWarningQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingWarningPage>> {
     return this.query_current(() => this.reader.read_warning_page(query));
+  }
+
+  /** 读取当前评估运行态中的 warning 类型计数。 */
+  public async warningSummary(): Promise<ProofreadingCacheResult<ProofreadingWarningSummary>> {
+    return this.query_current(() => this.reader.read_warning_summary());
   }
 
   /**

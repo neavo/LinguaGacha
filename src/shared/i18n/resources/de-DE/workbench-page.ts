@@ -68,7 +68,7 @@ export const de_de_workbench_page = {
     },
     migration: {
       description:
-        "Der klassische Analyse-Workflow wird demnächst entfernt …\nNutze AGENT, um das Glossar vollautomatisch, schneller und intelligenter zu erstellen …!",
+        "Der klassische Analyse-Workflow wird demnächst entfernt. Wir empfehlen, das Glossar automatisch mit AGENT zu erstellen. Trotzdem fortfahren …?",
       jump: "Zu AGENT",
       continue: "Aufgabe fortsetzen",
     },
@@ -133,8 +133,18 @@ export const de_de_workbench_page = {
 
       reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts.",
       reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge.",
-      generate_failed: "Fehler beim Erstellen verfügbarer Übersetzungsdateien.",
     },
+  },
+  translation_export: {
+    checking: "Korrekturwarnungen werden geprüft …",
+    check_failed:
+      "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden.",
+    warning_description:
+      "Es bestehen noch {COUNT} Korrekturwarnungen. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu beheben. Trotzdem fortfahren …?",
+    warning_list: "Korrekturwarnungen",
+    retry_check: "Erneut prüfen",
+    jump_to_agent: "Zu AGENT",
+    continue_generate: "Trotzdem erstellen",
   },
   reorder: {
     failed: "Fehler beim Speichern der Dateireihenfolge. Bitte versuchen Sie es später erneut.",

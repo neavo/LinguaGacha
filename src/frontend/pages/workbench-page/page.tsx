@@ -16,7 +16,8 @@ type WorkbenchPageProps = {
 // 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
-  const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();
+  const { translation_workbench_task, analysis_workbench_task, translation_export } =
+    useWorkbenchTasksSession();
   const workbench_state = useWorkbenchPageState({
     translationWorkbenchTask: translation_workbench_task,
     analysisWorkbenchTask: analysis_workbench_task,
@@ -64,13 +65,15 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         analysis_stats={workbench_state.analysis_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
-        can_generate_translation={workbench_state.can_generate_translation}
+        can_generate_translation={
+          workbench_state.can_generate_translation && translation_export.can_request_export
+        }
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
           void workbench_state.request_add_file();
         }}
         on_delete_selected={workbench_state.request_delete_selected_files}
-        on_generate_translation={workbench_state.request_generate_translation}
+        on_generate_translation={translation_export.request_export}
         on_close_project={workbench_state.request_close_project}
       />
       <WorkbenchDialogs

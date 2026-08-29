@@ -67,7 +67,7 @@ export const en_us_workbench_page = {
     },
     migration: {
       description:
-        "The classic Analysis task workflow will be removed soon …\nUse AGENT to generate the glossary automatically—faster and smarter …!",
+        "The classic Analysis task workflow will be removed soon. We recommend using AGENT to generate the glossary automatically. Continue anyway …?",
       jump: "Go to AGENT",
       continue: "Continue Task",
     },
@@ -130,8 +130,18 @@ export const en_us_workbench_page = {
 
       reset_all_failed: "Failed to reset all translation progress.",
       reset_failed_failed: "Failed to reset failed translation entries.",
-      generate_failed: "Failed to generate available translation files.",
     },
+  },
+  translation_export: {
+    checking: "Checking proofreading warnings …",
+    check_failed:
+      "Proofreading warnings could not be loaded. You can still generate the current translation.",
+    warning_description:
+      "{COUNT} proofreading warnings remain. We recommend using AGENT to fix them automatically before generating the translation. Continue anyway …?",
+    warning_list: "Proofreading warnings",
+    retry_check: "Check Again",
+    jump_to_agent: "Go to AGENT",
+    continue_generate: "Generate Anyway",
   },
   reorder: {
     failed: "Failed to save the file order. Please try again later.",

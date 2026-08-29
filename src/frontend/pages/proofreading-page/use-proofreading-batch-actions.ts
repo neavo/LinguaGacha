@@ -6,7 +6,7 @@ import {
   type TaskSnapshot,
 } from "@frontend/app/state/task-snapshot-store";
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
-import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/pages/proofreading-page/proofreading-label-keys";
+import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   create_clear_translations_plan,
   create_apply_item_changes_plan,

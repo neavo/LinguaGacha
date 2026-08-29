@@ -17,7 +17,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
-} from "@frontend/pages/proofreading-page/proofreading-label-keys";
+} from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
   type ProofreadingItem,

@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useTranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 
-const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, on_request_export_mock } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
+    on_request_export_mock: vi.fn(),
   };
 });
 
@@ -137,7 +138,7 @@ function flush_microtasks(): Promise<void> {
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTranslationWorkbenchTask>) => void;
 }): JSX.Element | null {
-  const state = useTranslationWorkbenchTask();
+  const state = useTranslationWorkbenchTask({ onRequestExport: on_request_export_mock });
 
   useEffect(() => {
     props.on_ready(state);
@@ -165,6 +166,7 @@ describe("useTranslationWorkbenchTask", () => {
     runtime_fixture.current = create_runtime_fixture();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    on_request_export_mock.mockReset();
   });
 
   async function render_probe(): Promise<void> {
@@ -185,7 +187,7 @@ describe("useTranslationWorkbenchTask", () => {
     });
   }
 
-  it("翻译完成后自动弹出生成译文确认框", async () => {
+  it("翻译完成后请求统一译文导出流程", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "running",
@@ -222,11 +224,8 @@ describe("useTranslationWorkbenchTask", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(latest_state?.task_confirm_state).toMatchObject({
-      kind: "generate-translation",
-      open: true,
-      submitting: false,
-    });
+    expect(latest_state?.task_confirm_state).toBeNull();
+    expect(on_request_export_mock).toHaveBeenCalledOnce();
     expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.done");
     expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/translation/files/export", {});
   });
@@ -720,11 +719,8 @@ describe("useTranslationWorkbenchTask", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(latest_state?.task_confirm_state).toMatchObject({
-      kind: "generate-translation",
-      open: true,
-      submitting: false,
-    });
+    expect(latest_state?.task_confirm_state).toBeNull();
+    expect(on_request_export_mock).toHaveBeenCalledOnce();
   });
 
   it("分析任务停止完成时不会刷新翻译快照或弹翻译停止提示", async () => {
@@ -820,53 +816,6 @@ describe("useTranslationWorkbenchTask", () => {
     await flush_microtasks();
 
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
-  });
-
-  it("确认生成译文时调用导出接口", async () => {
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "running",
-        busy: true,
-        total_line: 1,
-      }),
-    );
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/translation/files/export") {
-        return {};
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "done",
-        busy: false,
-        line: 1,
-        total_line: 1,
-        processed_line: 1,
-        total_output_tokens: 4,
-      }),
-    );
-
-    await render_probe();
-    await flush_microtasks();
-
-    await act(async () => {
-      await latest_state?.confirm_task_action();
-    });
-    await flush_microtasks();
-
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/translation/files/export", {});
-    expect(latest_state?.task_confirm_state).toBeNull();
   });
 
   it("translation reset all 成功时应用后端变更并刷新任务快照", async () => {

@@ -8,11 +8,13 @@ import {
 } from "@frontend/app/session/workbench-tasks/workbench-tasks-session-context";
 import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
 import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
+import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 
 const task_runtime_mock = vi.hoisted(() => {
   return {
     translation_workbench_task: null as TranslationWorkbenchTask | null,
     analysis_workbench_task: null as AnalysisWorkbenchTask | null,
+    translation_export: null as TranslationExportFlow | null,
   };
 });
 
@@ -26,12 +28,33 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
 
 vi.mock("@frontend/app/session/workbench-tasks/use-translation-workbench-task", () => {
   return {
-    useTranslationWorkbenchTask: () => {
+    useTranslationWorkbenchTask: (_options: { onRequestExport: () => void }) => {
       if (task_runtime_mock.translation_workbench_task === null) {
         throw new Error("缺少翻译任务运行态夹具。");
       }
 
       return task_runtime_mock.translation_workbench_task;
+    },
+  };
+});
+
+vi.mock("@frontend/features/translation-export/use-translation-export-flow", () => {
+  return {
+    useTranslationExportFlow: () => {
+      if (task_runtime_mock.translation_export === null) {
+        throw new Error("缺少译文导出流程夹具。");
+      }
+      return task_runtime_mock.translation_export;
+    },
+  };
+});
+
+vi.mock("@frontend/features/translation-export/translation-export-dialog", () => {
+  return {
+    TranslationExportDialog: (props: TranslationExportFlow) => {
+      return props.state.phase === "closed" ? null : (
+        <div data-testid="translation-export-dialog" />
+      );
     },
   };
 });
@@ -184,10 +207,26 @@ function create_analysis_workbench_task_fixture(
   };
 }
 
+function create_translation_export_fixture(
+  overrides: Partial<TranslationExportFlow> = {},
+): TranslationExportFlow {
+  return {
+    state: { phase: "closed" },
+    can_request_export: true,
+    request_export: vi.fn(),
+    retry_check: vi.fn(),
+    confirm_export: vi.fn(async () => {}),
+    jump_to_agent: vi.fn(),
+    close: vi.fn(),
+    ...overrides,
+  };
+}
+
 function StateProbe(props: {
   onState: (state: {
     translation_workbench_task: TranslationWorkbenchTask;
     analysis_workbench_task: AnalysisWorkbenchTask;
+    translation_export: TranslationExportFlow;
   }) => void;
 }): JSX.Element | null {
   props.onState(useWorkbenchTasksSession());
@@ -201,6 +240,7 @@ describe("WorkbenchTasksSessionProvider", () => {
   beforeEach(() => {
     task_runtime_mock.translation_workbench_task = create_translation_workbench_task_fixture();
     task_runtime_mock.analysis_workbench_task = create_analysis_workbench_task_fixture();
+    task_runtime_mock.translation_export = create_translation_export_fixture();
   });
 
   afterEach(async () => {
@@ -215,6 +255,7 @@ describe("WorkbenchTasksSessionProvider", () => {
     root = null;
     task_runtime_mock.translation_workbench_task = null;
     task_runtime_mock.analysis_workbench_task = null;
+    task_runtime_mock.translation_export = null;
   });
 
   async function render_provider(children: ReactNode): Promise<void> {
@@ -227,18 +268,14 @@ describe("WorkbenchTasksSessionProvider", () => {
     });
   }
 
-  it("不挂载工作台页面时仍会渲染翻译完成确认", async () => {
-    task_runtime_mock.translation_workbench_task = create_translation_workbench_task_fixture({
-      task_confirm_state: {
-        kind: "generate-translation",
-        open: true,
-        submitting: false,
-      },
+  it("不挂载工作台页面时仍会渲染统一译文导出确认", async () => {
+    task_runtime_mock.translation_export = create_translation_export_fixture({
+      state: { phase: "ready", summary: { total_count: 0, entries: [] } },
     });
 
     await render_provider(<div data-testid="non-workbench-page" />);
 
-    const dialog = container?.querySelector('[data-testid="task-confirm-dialog"]');
+    const dialog = container?.querySelector('[data-testid="translation-export-dialog"]');
     expect(container?.querySelector('[data-testid="non-workbench-page"]')).not.toBeNull();
     expect(dialog).not.toBeNull();
   });
@@ -247,6 +284,7 @@ describe("WorkbenchTasksSessionProvider", () => {
     const observed_states: Array<{
       translation_workbench_task: TranslationWorkbenchTask;
       analysis_workbench_task: AnalysisWorkbenchTask;
+      translation_export: TranslationExportFlow;
     }> = [];
 
     await render_provider(<StateProbe onState={(state) => observed_states.push(state)} />);
@@ -257,5 +295,6 @@ describe("WorkbenchTasksSessionProvider", () => {
     expect(observed_states.at(-1)?.analysis_workbench_task).toBe(
       task_runtime_mock.analysis_workbench_task,
     );
+    expect(observed_states.at(-1)?.translation_export).toBe(task_runtime_mock.translation_export);
   });
 });

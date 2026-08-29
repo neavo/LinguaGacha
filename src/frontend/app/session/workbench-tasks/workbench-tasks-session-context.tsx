@@ -13,10 +13,16 @@ import type { AnalysisTaskConfirmState } from "@shared/workbench/analysis-task";
 import type { TranslationTaskConfirmState } from "@shared/workbench/translation-task";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
+import { TranslationExportDialog } from "@frontend/features/translation-export/translation-export-dialog";
+import {
+  useTranslationExportFlow,
+  type TranslationExportFlow,
+} from "@frontend/features/translation-export/use-translation-export-flow";
 
 type WorkbenchTasksSessionContextValue = {
   translation_workbench_task: TranslationWorkbenchTask; // 常驻监听翻译任务完成意图
   analysis_workbench_task: AnalysisWorkbenchTask; // 常驻监听分析任务完成意图
+  translation_export: TranslationExportFlow; // 手动与任务完成提示共用唯一导出流程
 };
 
 // 保留工作台任务 follow-up 的跨页面运行态。
@@ -37,10 +43,6 @@ function resolve_translation_task_confirm_description(
 
   if (state.kind === "reset-failed") {
     return t("workbench_page.translation_task.confirm.reset_failed_description");
-  }
-
-  if (state.kind === "generate-translation") {
-    return t("workbench_page.translation_task.confirm.generate_description");
   }
 
   return t("workbench_page.translation_task.confirm.stop_description");
@@ -73,7 +75,8 @@ function resolve_analysis_task_confirm_description(
 // 常驻渲染任务完成后的用户确认，不依赖工作台页面是否挂载。
 function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
   const { t } = useI18n();
-  const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();
+  const { translation_workbench_task, analysis_workbench_task, translation_export } =
+    useWorkbenchTasksSession();
   const translation_confirm_description = useMemo(() => {
     return resolve_translation_task_confirm_description(
       translation_workbench_task.task_confirm_state,
@@ -112,22 +115,27 @@ function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
         on_overwrite={analysis_workbench_task.import_analysis_glossary_duplicate_overwrite}
         on_close={analysis_workbench_task.close_analysis_glossary_import_confirmation}
       />
+      <TranslationExportDialog {...translation_export} />
     </>
   );
 }
 
 // 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
 export function WorkbenchTasksSessionProvider(props: { children: ReactNode }): JSX.Element {
+  const translation_export = useTranslationExportFlow();
   // 翻译任务常驻于 session 内，确保离开工作台后任务完成确认不丢失。
-  const translation_workbench_task = useTranslationWorkbenchTask();
+  const translation_workbench_task = useTranslationWorkbenchTask({
+    onRequestExport: translation_export.request_export,
+  });
   // 分析任务同样常驻，承接分析完成后的导入术语确认流程。
   const analysis_workbench_task = useAnalysisWorkbenchTask();
   const context_value = useMemo<WorkbenchTasksSessionContextValue>(() => {
     return {
       translation_workbench_task,
       analysis_workbench_task,
+      translation_export,
     };
-  }, [analysis_workbench_task, translation_workbench_task]);
+  }, [analysis_workbench_task, translation_export, translation_workbench_task]);
 
   return (
     <WorkbenchTasksSessionContext.Provider value={context_value}>

@@ -82,6 +82,29 @@ describe("应用模态窗", () => {
     expect(on_dismiss).toHaveBeenCalledTimes(1);
   });
 
+  it("结构化详情独立于无障碍描述显示", () => {
+    render_dialog(
+      <AppActionDialog
+        open
+        description="确认说明"
+        details={
+          <ul aria-label="检查结果">
+            <li>术语未落实 2</li>
+          </ul>
+        }
+        primaryAction={{ label: "继续", onSelect: vi.fn() }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
+      "确认说明",
+    );
+    expect(document.body.querySelector('[aria-label="检查结果"]')?.textContent).toBe(
+      "术语未落实 2",
+    );
+  });
+
   it("提交中锁定关闭与动作，并支持无图标进度文案", () => {
     const on_close = vi.fn();
     render_dialog(

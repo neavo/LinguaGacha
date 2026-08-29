@@ -1,5 +1,5 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { Spinner } from "@frontend/shadcn/spinner";
@@ -24,13 +24,17 @@ type AppDialogBaseProps = {
   open: boolean;
   title?: string;
   description: string;
+  details?: ReactNode; // 动作弹窗可在无障碍描述之外承载结构化业务详情
   onClose: () => void;
   submitting?: boolean;
   submittingLabel?: string;
   submittingIcon?: boolean;
 };
 
-type AppConfirmDialogProps = Omit<AppDialogBaseProps, "submittingLabel" | "submittingIcon"> & {
+type AppConfirmDialogProps = Omit<
+  AppDialogBaseProps,
+  "details" | "submittingLabel" | "submittingIcon"
+> & {
   onConfirm: () => void | Promise<void>;
   confirmDelay?: boolean; // 危险动作在开放确认前启用统一倒计时
 };
@@ -149,6 +153,9 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
               {props.description}
             </AlertDialogPrimitive.Description>
           </div>
+          {props.details === undefined ? null : (
+            <div data-slot="alert-dialog-details">{props.details}</div>
+          )}
           <div
             data-slot="alert-dialog-footer"
             className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end"

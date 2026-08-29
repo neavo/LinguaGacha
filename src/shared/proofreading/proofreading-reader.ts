@@ -1,5 +1,6 @@
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
+  build_proofreading_warning_summary,
   PROOFREADING_OUTCOME_GROUPS,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_options,
@@ -14,6 +15,7 @@ import {
   type ProofreadingListView,
   type ProofreadingItemRecord,
   type ProofreadingSearchScope,
+  type ProofreadingWarningSummary,
   type ProofreadingVisibleItem,
   type ProofreadingWarningCode,
 } from "./proofreading-types";
@@ -1139,6 +1141,13 @@ export function createProofreadingReader() {
         total_item_count: resolved.items.length,
         items: resolved.items.slice(bounds.start, bounds.start + bounds.count),
       };
+    },
+    /** 汇总当前成功译文的真实 warning，不创建 GUI 列表视图。 */
+    read_warning_summary(): ProofreadingWarningSummary {
+      if (state === null) {
+        return { total_count: 0, entries: [] };
+      }
+      return build_proofreading_warning_summary(resolve_items_in_natural_order(state));
     },
     /**
      * 读取已构建列表视图的窗口切片，失效 view_id 直接返回空窗口防止旧请求覆盖新 UI

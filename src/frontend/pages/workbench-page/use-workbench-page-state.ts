@@ -654,7 +654,6 @@ export type UseWorkbenchPageStateResult = {
   request_add_file_from_path: (source_path: string) => Promise<void>;
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
-  request_generate_translation: () => void;
   request_close_project: () => void;
   request_reset_file: (entry_id: string) => void;
   request_delete_selected_files: () => void;
@@ -1108,14 +1107,11 @@ export function useWorkbenchPageState(
     can_edit_files &&
     selected_delete_target_rel_paths.length > 0 &&
     selected_delete_target_rel_paths.length < entries.length;
-  const generate_translation_submitting =
-    dialog_state.kind === "generate-translation" && dialog_state.submitting;
-  // 为什么：生成当前可用译文允许翻译运行中触发，但停止收尾和提交中必须保持单入口
+  // 为什么：生成当前可用译文允许翻译运行中触发，但停止收尾和结构写入中必须保持单入口
   const can_generate_translation =
     project_snapshot.loaded &&
     !file_op_running &&
     !is_write_running &&
-    !generate_translation_submitting &&
     !is_task_stopping(task_snapshot);
   const can_close_project =
     project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !is_write_running;
@@ -1257,19 +1253,6 @@ export function useWorkbenchPageState(
     );
   }
 
-  function request_generate_translation(): void {
-    if (!can_generate_translation) {
-      return;
-    }
-
-    set_dialog_state({
-      kind: "generate-translation",
-      target_rel_paths: [],
-      pending_path: null,
-      submitting: false,
-    });
-  }
-
   function request_close_project(): void {
     set_dialog_state({
       kind: "close-project",
@@ -1370,17 +1353,6 @@ export function useWorkbenchPageState(
         return;
       }
 
-      if (current_dialog_state.kind === "generate-translation") {
-        if (!can_generate_translation) {
-          set_dialog_submitting(false);
-          return;
-        }
-
-        await api_fetch("/api/translation/files/export", {});
-        set_dialog_state(close_dialog_state());
-        return;
-      }
-
       if (current_dialog_state.kind === "close-project") {
         set_is_write_running(true);
         try {
@@ -1404,11 +1376,9 @@ export function useWorkbenchPageState(
         return;
       }
       const fallback_message =
-        current_dialog_state.kind === "generate-translation"
-          ? t("workbench_page.feedback.generate_translation_failed")
-          : current_dialog_state.kind === "close-project"
-            ? t("workbench_page.feedback.close_project_failed")
-            : t("workbench_page.feedback.file_action_failed");
+        current_dialog_state.kind === "close-project"
+          ? t("workbench_page.feedback.close_project_failed")
+          : t("workbench_page.feedback.file_action_failed");
 
       push_toast("error", resolve_visible_error_message(error, t, fallback_message));
       set_dialog_submitting(false);
@@ -1485,7 +1455,6 @@ export function useWorkbenchPageState(
     request_add_file_from_path,
     request_add_files_from_paths,
     notify_add_file_drop_issue,
-    request_generate_translation,
     request_close_project,
     request_reset_file,
     request_delete_selected_files,
