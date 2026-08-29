@@ -4,14 +4,16 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-const read_pdf_markdown = vi.hoisted(() => vi.fn());
-vi.mock("./pdf-markdown-reader", () => ({ read_pdf_markdown }));
+const read_pdf_document = vi.hoisted(() => vi.fn());
+vi.mock("./pdf-document-reader", () => ({ read_pdf_document }));
 
 import { PDFFormat } from "./pdf-format";
 
 describe("PDFFormat", () => {
   it("把 PDF Markdown 转为 PDF/MD 块并保留 Markdown V2 metadata", async () => {
-    read_pdf_markdown.mockReturnValueOnce("# 标题\n\n正文\n\n```ts\ncode\n```\n");
+    read_pdf_document.mockResolvedValueOnce({
+      markdown: "# 标题\n\n正文\n\n```ts\ncode\n```\n",
+    });
 
     const items = await new PDFFormat().read_from_stream(new Uint8Array([1]), "docs/demo.pdf");
 
@@ -46,7 +48,7 @@ describe("PDFFormat", () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-pdf-format-"));
     const format = new PDFFormat();
     const source = "# 标题\n\n![封面](image.png)\n";
-    read_pdf_markdown.mockReturnValue(source);
+    read_pdf_document.mockResolvedValue({ markdown: source });
     const items = await format.read_from_stream(new Uint8Array([1]), "docs/demo.pdf");
     items[0]!.dst = "# 译题";
     items[1]!.dst = "![译图](lg-resource:image/0)";
@@ -70,7 +72,9 @@ describe("PDFFormat", () => {
 
   it("asset 缺失或二次转换失败时仍渲染当前译文", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-pdf-format-"));
-    read_pdf_markdown.mockReturnValueOnce("正文");
+    read_pdf_document.mockResolvedValueOnce({
+      markdown: "正文",
+    });
     const format = new PDFFormat();
     const items = await format.read_from_stream(new Uint8Array([1]), "demo.pdf");
     items[0]!.dst = "译文";

@@ -5,8 +5,11 @@ import path from "node:path";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const read_pdf_markdown = vi.hoisted(() => vi.fn(() => "# PDF 标题\n\n正文"));
-vi.mock("../file/formats/pdf/pdf-markdown-reader", () => ({ read_pdf_markdown }));
+vi.mock("../file/formats/pdf/pdf-document-reader", () => ({
+  read_pdf_document: vi.fn(async () => ({
+    markdown: "# PDF 标题\n\n正文",
+  })),
+}));
 
 import { NativeFs } from "../../native/native-fs";
 import { write_agent_workspace_sources } from "./agent-workspace-sources";

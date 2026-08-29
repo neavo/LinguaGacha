@@ -3,6 +3,12 @@
   $schema: "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   appId: "me.neavo.linguagacha",
   asar: true,
+  asarUnpack: [
+    "node_modules/@llamaindex/liteparse*/**/*.node",
+    "node_modules/@llamaindex/liteparse*/**/*.dll",
+    "node_modules/@llamaindex/liteparse*/**/*.so*",
+    "node_modules/@llamaindex/liteparse*/**/*.dylib",
+  ],
   productName: "LinguaGacha",
   directories: {
     buildResources: "public",
@@ -10,9 +16,11 @@
   },
   afterPack: "buildtools/builder/after-pack.mjs",
   files: [
-    // electron-vite 已内联纯 JS 依赖，node_modules 只保留三项 Agent 运行时。
+    // electron-vite 已内联纯 JS 依赖，LiteParse Node 原生包需随安装包保留。
     "build/dist/**/*",
     "build/dist-electron/**/*",
+    "node_modules/@llamaindex/liteparse/**/*",
+    "node_modules/@llamaindex/liteparse-*/**/*",
     "!node_modules/**/*.map",
   ],
   win: {

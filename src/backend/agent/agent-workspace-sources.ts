@@ -4,7 +4,7 @@ import JSZip from "jszip";
 
 import { decode_text_content } from "../../shared/utils/text-tool";
 import type { NativeFs } from "../../native/native-fs";
-import { read_pdf_markdown } from "../file/formats/pdf/pdf-markdown-reader";
+import { read_pdf_document } from "../file/formats/pdf/pdf-document-reader";
 
 /** 当前受支持源格式中只有 EPUB 与 XLSX 需要展开容器。 */
 const ARCHIVE_EXTENSIONS = new Set([".epub", ".xlsx"]);
@@ -50,7 +50,7 @@ export async function write_agent_workspace_sources(args: {
       const source_text_path = `sources/${relative_path}.md`;
       await args.nativeFs.write_file(
         path.join(args.sourceRoot, ...`${relative_path}.md`.split("/")),
-        read_pdf_markdown(content),
+        (await read_pdf_document(content)).markdown,
       );
       projected.push({ ...file, source_text_path });
       continue;
