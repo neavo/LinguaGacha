@@ -29,7 +29,6 @@ import {
   type TranslationRequestItem,
 } from "../translation-item";
 import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
-import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
@@ -224,62 +223,58 @@ export class TranslationWorkUnitRunner {
     },
     response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
-    const cleaner =
-      context.request_error === undefined
-        ? ResponseCleaner.extract_rule_analysis_from_response(response.response_result)
-        : { cleaned_response_result: "", rule_analysis_text: "" };
+    const request_failed = context.request_error !== undefined || context.request_timeout;
+    const cleaner = request_failed
+      ? { cleaned_response_result: "", rule_analysis_text: "" }
+      : ResponseCleaner.extract_rule_analysis_from_response(response.response_result);
     const decoder = new ResponseDecoder();
     // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
     const is_sakura =
       String(read_json_record(context.request.model)["api_format"] ?? "") === "SakuraLLM";
-    const decoded =
-      context.request_error !== undefined
-        ? []
-        : is_sakura && context.request_items.length === 1
-          ? decoder.decode_plain_text_item(
-              cleaner.cleaned_response_result,
-              context.request_items[0]?.request_index ?? 0,
-            )
-          : is_sakura
-            ? []
-            : await decoder.decode_translation(cleaner.cleaned_response_result, context.mode);
+    const decoded = request_failed
+      ? []
+      : is_sakura && context.request_items.length === 1
+        ? decoder.decode_plain_text_item(
+            cleaner.cleaned_response_result,
+            context.request_items[0]?.request_index ?? 0,
+          )
+        : is_sakura
+          ? []
+          : await decoder.decode_translation(cleaner.cleaned_response_result, context.mode);
     const by_index = new Map<number, TranslationDecodedItem>();
     const duplicates = new Set<number>();
     for (const item of decoded) {
       if (by_index.has(item.request_index)) duplicates.add(item.request_index);
       else by_index.set(item.request_index, item);
     }
-    const checks: string[] = [];
     const dsts: string[] = [];
     const actor_dsts: TranslationActor[] = [];
+    let valid_count = 0;
     const post = new TranslationPostPipeline(context.config, context.quality);
     for (const request_item of context.request_items) {
       const item = context.items[request_item.item_index];
       const pipeline_context = context.pipeline_contexts[request_item.item_index];
       const decoded_item = by_index.get(request_item.request_index);
-      const check =
-        context.request_error !== undefined
-          ? "FAIL_REQUEST"
-          : context.request_timeout
-            ? "FAIL_TIMEOUT"
-            : decoded_item === undefined || duplicates.has(request_item.request_index)
-              ? "FAIL_DATA"
-              : ResponseChecker.check_item(
-                  request_item.text_src,
-                  decoded_item.text_dst,
-                  context.config.source_language,
-                  item?.skip_internal_filter === true,
-                );
-      checks.push(check);
-      // 即使响应 item 缺失或格式错误，也保持日志中的配对位置。
-      dsts.push(decoded_item?.text_dst ?? "");
-      actor_dsts.push(decoded_item?.actor_dst ?? null);
-      if (check === "NONE" && decoded_item && item && pipeline_context) {
+      const valid =
+        !request_failed &&
+        decoded_item !== undefined &&
+        !duplicates.has(request_item.request_index) &&
+        item !== undefined &&
+        pipeline_context !== undefined;
+      if (valid) {
         const result = post.process_item(pipeline_context, decoded_item, context.mode);
         item.dst = result.dst;
         if (Object.hasOwn(result, "name_dst")) item.name_dst = result.name_dst ?? null;
         item.status = "PROCESSED";
-      } else if (check !== "NONE" && item && context.request_items.length === 1)
+        valid_count += 1;
+        dsts.push(decoded_item.text_dst);
+        actor_dsts.push(decoded_item.actor_dst);
+      } else {
+        // 对照区只展示实际接受的译文；原始候选仍保留在响应区段中。
+        dsts.push("");
+        actor_dsts.push(null);
+      }
+      if (!valid && item && context.request_items.length === 1)
         item.retry_count = read_json_integer(item.retry_count, 0) + 1;
     }
     return {
@@ -288,7 +283,7 @@ export class TranslationWorkUnitRunner {
       reasoning_tokens: response.reasoning_tokens,
       output_tokens: response.output_tokens,
       stopped: false,
-      logs: this.build_logs(context, checks, dsts, actor_dsts, response, cleaner),
+      logs: this.build_logs(context, valid_count, dsts, actor_dsts, response, cleaner),
     };
   }
 
@@ -301,8 +296,9 @@ export class TranslationWorkUnitRunner {
       request_items: TranslationRequestItem[];
       mode: TranslationPromptMode;
       request_error?: LogError;
+      request_timeout: boolean;
     },
-    checks: string[],
+    valid_count: number,
     dsts: string[],
     actor_dsts: TranslationActor[],
     response: LLMRequestResult,
@@ -316,8 +312,26 @@ export class TranslationWorkUnitRunner {
       RT: String(response.reasoning_tokens),
       TIME: ((Date.now() - context.start_time) / 1000).toFixed(2),
     });
-    const errors = checks.filter((check) => check !== "NONE").join("、");
-    const summary = errors === "" ? [stats] : [stats, errors];
+    const summary = [stats];
+    let level: WorkUnitLogEntry["level"] = "info";
+    // 供应商异常和本地超时共用请求失败摘要，结构化 error 仍只承载真实供应商诊断。
+    const request_failure_text =
+      context.request_error?.message ??
+      (context.request_timeout ? this.t(app_language, "app.log.request_timeout") : null);
+    if (request_failure_text !== null) {
+      level = "error";
+      summary.push(
+        this.t(app_language, "app.log.request_failed", {
+          ERROR: request_failure_text,
+        }),
+      );
+    } else if (valid_count === 0) {
+      level = "error";
+      summary.push(this.t(app_language, "app.log.model_response_invalid"));
+    } else if (valid_count < context.request_items.length) {
+      level = "warning";
+      summary.push(this.t(app_language, "app.log.translation_response_partially_invalid"));
+    }
     summary.push(...context.console_log.map((text) => text.trim()).filter(Boolean));
     const sections: Array<{ title: string; text: string }> = [];
     if (response.response_think.trim() !== "") {
@@ -340,7 +354,7 @@ export class TranslationWorkUnitRunner {
     }
     return [
       {
-        level: context.request_error ? "error" : errors === "" ? "info" : "warning",
+        level,
         content: {
           kind: "translation_result",
           summary,

@@ -78,7 +78,7 @@ function normalize_pi_result(
     .join("")
     .trim();
   const usage = normalize_usage(message);
-  const finish_error = read_finish_error(snapshot, message, response_result);
+  const finish_error = read_finish_error(snapshot, message);
   return {
     response_think,
     response_result: finish_error === undefined ? response_result : "",
@@ -105,11 +105,10 @@ function normalize_usage(
   };
 }
 
-/** 统一拒绝长度截断、工具调用和空正文，调用方只消费完整文本结果。 */
+/** 统一拒绝不完整终态；正常结束的正文由消费方按任务协议校验。 */
 function read_finish_error(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
-  response_result: string,
 ): LogError | undefined {
   const reason_key =
     snapshot.api_format === "Anthropic"
@@ -125,11 +124,6 @@ function read_finish_error(
   }
   if (message.stopReason === "toolUse") {
     return log_error_from_message("供应商返回工具调用，当前任务不支持。", {
-      [reason_key]: raw_reason,
-    });
-  }
-  if (response_result === "") {
-    return log_error_from_message("供应商未返回正文。", {
       [reason_key]: raw_reason,
     });
   }

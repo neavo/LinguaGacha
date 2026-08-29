@@ -51,6 +51,15 @@ describe("响应解码器", () => {
     ]);
   });
 
+  it("空白译文不形成有效翻译记录", async () => {
+    const decoded = await new ResponseDecoder().decode_translation(
+      '{"index":0,"text":""}\n{"index":1,"text":"   "}\n{"index":2,"text":"有效译文"}',
+      "text",
+    );
+
+    expect(decoded).toEqual([{ request_index: 2, text_dst: "有效译文", actor_dst: null }]);
+  });
+
   it("按 actor/text 模式解码正文和姓名译文", async () => {
     const decoded = await new ResponseDecoder().decode_translation(
       `

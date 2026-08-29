@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnalysisWorkUnitRunner } from "./analysis-runner";
-import type { LLMClientPort, LLMRequestBody } from "../../../llm/llm-types";
+import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit } from "../../protocol/work-unit";
 
 const cleanup_roots: string[] = [];
@@ -84,24 +84,7 @@ describe("AnalysisWorkUnitRunner", () => {
     });
 
     const result = await runner.execute_unit(
-      {
-        kind: "analysis",
-        unit_id: "analysis-unit-1",
-        run_id: "run-1",
-        model: {},
-        config_snapshot: {
-          app_language: "ZH",
-          source_language: "EN",
-          target_language: "ZH",
-          prompt_enhancement_enable: false,
-        },
-        quality_snapshot: {},
-        payload: {
-          file_path: "demo.txt",
-          items: [{ item_id: 1, file_path: "demo.txt", src_text: "【虎鉄】Alice" }],
-        },
-        diagnostics: { retry_count: 0 },
-      },
+      create_analysis_unit("【虎鉄】Alice"),
       new AbortController().signal,
     );
 
@@ -132,8 +115,74 @@ describe("AnalysisWorkUnitRunner", () => {
       terms: [{ src: "Alice", dst: "爱丽丝", info: "女性人名" }],
     });
   });
+
+  it("模型请求失败时记录实际错误", async () => {
+    const runner = new AnalysisWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ request_error: { message: "供应商爆炸" } }),
+    );
+
+    const result = await runner.execute_unit(create_analysis_unit(), new AbortController().signal);
+
+    expect(result.outcome).toBe("failed");
+    expect(result.logs[0]?.level).toBe("error");
+    expect(result.logs[0]?.content.summary).toEqual(
+      expect.arrayContaining([expect.stringContaining("供应商爆炸")]),
+    );
+  });
+
+  it("没有有效分析数据时记录错误结果", async () => {
+    const runner = new AnalysisWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ response_result: "not json", input_tokens: 1, output_tokens: 1 }),
+    );
+
+    const result = await runner.execute_unit(create_analysis_unit(), new AbortController().signal);
+
+    expect(result.outcome).toBe("failed");
+    expect(result.logs[0]?.level).toBe("error");
+  });
 });
 
+/** 构造需要真实模型响应的最小分析 work unit。 */
+function create_analysis_unit(src_text = "Alice"): AnalysisWorkUnit {
+  return {
+    kind: "analysis",
+    unit_id: "analysis-unit-1",
+    run_id: "run-1",
+    model: {},
+    config_snapshot: {
+      app_language: "ZH",
+      source_language: "EN",
+      target_language: "ZH",
+      prompt_enhancement_enable: false,
+    },
+    quality_snapshot: {},
+    payload: {
+      file_path: "demo.txt",
+      items: [{ item_id: 1, file_path: "demo.txt", src_text }],
+    },
+    diagnostics: { retry_count: 0 },
+  };
+}
+
+/** 只替换当前场景相关的 LLM 结果字段。 */
+function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort {
+  return {
+    request: async () => ({
+      response_think: "",
+      response_result: "",
+      input_tokens: 0,
+      reasoning_tokens: 0,
+      output_tokens: 0,
+      cancelled: false,
+      timeout: false,
+      ...overrides,
+    }),
+  };
+}
+
+/** 构造分析 runner 所需的临时提示词资源根。 */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-analysis-runner-"));
   cleanup_roots.push(app_root);

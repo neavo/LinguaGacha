@@ -395,6 +395,9 @@ export class ModelService {
     if (result.request_error !== undefined) {
       return { reason: result.request_error.message, error: result.request_error };
     }
+    if (result.response_result.trim() === "") {
+      return { reason: this.t(config["app_language"], "app.log.model_response_invalid") };
+    }
     return null;
   }
 

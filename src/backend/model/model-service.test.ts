@@ -757,6 +757,25 @@ describe("ModelService 远端模型能力", () => {
       source: "model",
     });
   });
+
+  it("模型连通性测试把空正文判为无效响应", async () => {
+    const { service, llm_request } = await create_model_service([
+      create_model({ api_key: "test-key", id: "test-empty" }),
+    ]);
+    llm_request.mockResolvedValue({
+      cancelled: false,
+      input_tokens: 2,
+      reasoning_tokens: 0,
+      output_tokens: 0,
+      response_result: "",
+      response_think: "",
+      timeout: false,
+    });
+
+    const result = await service.test_model({ model_id: "test-empty" });
+
+    expect(result).toMatchObject({ success: false, success_count: 0, failure_count: 1 });
+  });
 });
 
 /** 每个 fixture 自带隔离的 LLM 与进程 Fetch fake。 */

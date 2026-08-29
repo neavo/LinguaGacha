@@ -201,9 +201,10 @@ export function format_log_content_text(content: LogContent): string {
   return `${rows.filter((row) => row.trim() !== "").join("\n\n")}\n`;
 }
 
-// 日志人类可读出口的共享模板。
+// 普通文本附带异常消息；结构化结果由 summary 承载用户文案，只追加诊断调用栈。
 export function format_log_readable_text(detail: Pick<LogDetail, "content" | "error">): string {
-  return [format_log_content_text(detail.content), detail.error?.message, detail.error?.stack]
+  const error_message = detail.content.kind === "text" ? detail.error?.message : undefined;
+  return [format_log_content_text(detail.content), error_message, detail.error?.stack]
     .filter((value): value is string => value !== undefined && value.trim() !== "")
     .join("\n");
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalize_log_level, read_log_content } from "./log";
+import { format_log_readable_text, normalize_log_level, read_log_content } from "./log";
 
 describe("log 基础模型", () => {
   it("规范化日志等级", () => {
@@ -61,5 +61,24 @@ describe("log 基础模型", () => {
         pairs: [{ src: "原文", dst: "译文", actor_src: 1 }],
       }),
     ).toBeNull();
+  });
+
+  it("结构化摘要独立承载错误消息并保留诊断调用栈", () => {
+    const text = format_log_readable_text({
+      content: {
+        kind: "translation_result",
+        summary: ["用户可见摘要"],
+        sections: [],
+        pairs: [],
+      },
+      error: {
+        message: "不应单独投影的错误消息",
+        stack: "ProviderError\n    at request",
+      },
+    });
+
+    expect(text).toContain("用户可见摘要");
+    expect(text).toContain("ProviderError\n    at request");
+    expect(text).not.toContain("不应单独投影的错误消息");
   });
 });

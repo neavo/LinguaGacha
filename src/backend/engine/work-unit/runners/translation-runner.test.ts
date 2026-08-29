@@ -206,6 +206,7 @@ describe("TranslationWorkUnitRunner", () => {
       reasoning_tokens: 2,
       output_tokens: 5,
     });
+    expect(result.logs[0]?.level).toBe("info");
     expect(read_translation_log(result.logs[0]).pairs).toEqual([
       { src: "こんにちは", dst: "你好", actor_src: "虎鉄", actor_dst: "虎铁" },
       { src: "地の文", dst: "旁白译文", actor_src: null, actor_dst: null },
@@ -349,7 +350,7 @@ describe("TranslationWorkUnitRunner", () => {
     ]);
   });
 
-  it("LLM 请求失败时只在结构化日志字段保留调用栈", async () => {
+  it("LLM 请求失败时显示实际错误并在结构化字段保留诊断", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
@@ -377,10 +378,11 @@ describe("TranslationWorkUnitRunner", () => {
         context: { provider: "openai-compatible" },
       },
     });
-    expect(read_log_summary(result.logs[0])).not.toContain("ProviderError: 供应商爆炸");
+    expect(read_log_summary(result.logs[0])).toContain("供应商爆炸");
+    expect(read_log_summary(result.logs[0])).not.toContain("ProviderError:");
   });
 
-  it("完全无法解析译文时记录数据结构错误", async () => {
+  it("零有效译文时记录错误结果", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
@@ -397,6 +399,22 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(result.outcome).toBe("failed");
+    expect(result.logs[0]?.level).toBe("error");
+  });
+
+  it("模型请求超时时记录错误结果", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ timeout: true }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({ model: { api_format: "OpenAI" } }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.logs[0]?.level).toBe("error");
   });
 
   it("item 内换行数量变化时仍按完整译文提交", async () => {
@@ -456,6 +474,7 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(result.outcome).toBe("success");
+    expect(result.logs[0]?.level).toBe("warning");
     expect(result.output).toMatchObject({
       kind: "translation",
       items: [

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { Ansis } from "ansis";
 import wrapAnsi from "wrap-ansi";
 
-import { format_log_readable_text, type LogLevel } from "../../shared/log";
+import { format_log_readable_text, type LogContent, type LogLevel } from "../../shared/log";
 import type { LogError } from "../../shared/error";
 
 const CONSOLE_LEVEL_COLUMN_WIDTH = 7;
@@ -30,7 +30,7 @@ interface ConsoleLogFormatOptions {
 
 interface ConsoleLogPayload {
   level: LogLevel;
-  message: string;
+  content: LogContent;
   error?: LogError;
 }
 
@@ -53,7 +53,7 @@ export function format_console_log(
   const level_text = payload.level.toUpperCase().padEnd(CONSOLE_LEVEL_COLUMN_WIDTH, " ");
   const prefix = build_console_prefix(time_text, payload.level, level_text);
   const message = format_log_readable_text({
-    content: { kind: "text", text: payload.message },
+    content: payload.content,
     error: payload.error,
   });
   const message_text = format_console_message_lines(message, resolve_console_columns(options));

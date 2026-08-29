@@ -59,7 +59,7 @@ describe("format_console_log", () => {
   function create_payload(message: string): ConsoleLogTestPayload {
     return {
       level: "info",
-      message,
+      content: { kind: "text", text: message },
     };
   }
 });

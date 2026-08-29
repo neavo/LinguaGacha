@@ -371,11 +371,12 @@ export const de_de_app = {
       "Aufgabenzeit {TIME} Sekunden, {LINES} Textzeilen, Eingabe-Token {PT}, Denk-Token {RT}, Ausgabe-Token {CT}",
     generate_translation_done: "Übersetzungsdateien gespeichert unter {PATH} …",
     generate_translation_start: "Übersetzungsdateien werden erstellt …",
-    response_checker_fail_data: "Datenstrukturfehler",
-    request_failed_retry: "Modellanfrage fehlgeschlagen, wird automatisch wiederholt …",
-    response_checker_fail_timeout: "Netzwerkanfrage-Zeitüberschreitung",
+    model_response_invalid: "Das Modell hat ungültige Daten zurückgegeben …",
+    request_failed: "Anfrage fehlgeschlagen: {ERROR} …",
+    request_timeout: "Zeitüberschreitung bei der Netzwerkanfrage",
     system_closed_dropped:
       "Protokollsystem ist heruntergefahren; neues Protokoll wird verworfen: {MESSAGE}",
     translation_task_result: "Übersetzungsergebnis:",
+    translation_response_partially_invalid: "Einige Übersetzungen konnten nicht validiert werden …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;
