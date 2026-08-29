@@ -119,7 +119,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "progress_start"
     | "progress_read"
     | "invalid_tool"
-    | "checkpoint"
+    | "tool_compaction"
     | "tools",
   abort_count: 0,
   system_prompts: [] as string[],
@@ -136,8 +136,6 @@ const fake_agent_state = vi.hoisted(() => ({
   model_call_count: 0,
   retry_failures_remaining: 0,
   summary_failures_remaining: 0,
-  hold_summary: false, // 让手动压缩停在 running，以验证运行期互斥
-  release_summary: null as (() => void) | null, // 显式结束上述可控压缩
   request_kinds: [] as Array<"model" | "summary">,
   model_contexts: [] as Context["messages"][],
   auth_configured: true,
@@ -208,18 +206,9 @@ function create_fake_agent_stream(
             errorMessage: "摘要生成失败",
           });
         })()
-      : is_summary && fake_agent_state.hold_summary
-        ? async () =>
-            await new Promise<AssistantMessage>((resolve) => {
-              fake_agent_state.release_summary = () => {
-                fake_agent_state.hold_summary = false;
-                fake_agent_state.release_summary = null;
-                resolve(fauxAssistantMessage("压缩摘要"));
-              };
-            })
-        : is_summary
-          ? fauxAssistantMessage("压缩摘要")
-          : create_fake_response(context);
+      : is_summary
+        ? fauxAssistantMessage("压缩摘要")
+        : create_fake_response(context);
   faux.setResponses([response]);
   return faux.streamSimple(model, context, options);
 }
@@ -291,16 +280,17 @@ function create_fake_response(context: Context): FauxResponseStep {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
   const after_tool_call = context.messages.at(-1)?.role === "toolResult";
-  if (fake_agent_state.mode === "checkpoint") {
-    if (read_last_user_text(context) === "继续") {
-      return fauxAssistantMessage("压缩后完成");
+  if (fake_agent_state.mode === "tool_compaction") {
+    if (after_tool_call) {
+      return fauxAssistantMessage(
+        JSON.stringify(context.messages).includes("压缩摘要") ? "压缩后完成" : "未压缩继续",
+      );
     }
-    if (after_tool_call) return fauxAssistantMessage("未压缩继续");
     return fauxAssistantMessage(
       fauxToolCall(
         "workspace_script",
         { script: FAKE_WORKSPACE_SCRIPT },
-        { id: "checkpoint-query" },
+        { id: "tool-compaction-query" },
       ),
       { stopReason: "toolUse" },
     );
@@ -452,8 +442,6 @@ describe("AgentService", () => {
     fake_agent_state.model_call_count = 0;
     fake_agent_state.retry_failures_remaining = 0;
     fake_agent_state.summary_failures_remaining = 0;
-    fake_agent_state.hold_summary = false;
-    fake_agent_state.release_summary = null;
     fake_agent_state.request_kinds = [];
     fake_agent_state.model_contexts = [];
     fake_agent_state.auth_configured = true;
@@ -473,7 +461,6 @@ describe("AgentService", () => {
     vi.useRealTimers();
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_auth?.();
-    fake_agent_state.release_summary?.();
     fake_agent_state.release_tool_execution?.();
     fake_agent_state.release_pending?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
@@ -2101,19 +2088,20 @@ describe("AgentService", () => {
 
   it("长工具结果跨阈值后保留调用配对，压缩并继续同一轮次", async () => {
     const { service, read_items } = await create_service();
-    await prepare_long_tool_checkpoint(service, read_items);
+    await prepare_long_tool_history(service, read_items);
     expect(fake_agent_state.request_kinds).not.toContain("summary");
-    const requests_before_checkpoint = fake_agent_state.request_kinds.length;
-    fake_agent_state.mode = "checkpoint";
+    const requests_before_compaction = fake_agent_state.request_kinds.length;
+    fake_agent_state.mode = "tool_compaction";
 
     await service.send_message({ text: "检查长条目", attachments: [] });
     await wait_for_idle(service);
 
-    const checkpoint_requests = fake_agent_state.request_kinds.slice(requests_before_checkpoint);
-    expect(checkpoint_requests[0]).toBe("model");
-    expect(checkpoint_requests).toContain("summary");
-    expect(checkpoint_requests.at(-1)).toBe("model");
-    expect(checkpoint_requests.filter((kind) => kind === "model")).toHaveLength(2);
+    const compaction_requests = fake_agent_state.request_kinds.slice(requests_before_compaction);
+    expect(compaction_requests[0]).toBe("model");
+    expect(compaction_requests).toContain("summary");
+    expect(compaction_requests.at(-1)).toBe("model");
+    expect(compaction_requests.filter((kind) => kind === "model")).toHaveLength(2);
+    expect(fake_agent_state.prompts.at(-1)).toBe("检查长条目");
     expect(read_items).toHaveBeenCalledOnce();
     expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
@@ -2135,20 +2123,20 @@ describe("AgentService", () => {
     const call_index = resumed_context.findIndex(
       (message) =>
         message.role === "assistant" &&
-        JSON.stringify(message.content).includes("checkpoint-query"),
+        JSON.stringify(message.content).includes("tool-compaction-query"),
     );
     const result_index = resumed_context.findIndex(
-      (message) => message.role === "toolResult" && message.toolCallId === "checkpoint-query",
+      (message) => message.role === "toolResult" && message.toolCallId === "tool-compaction-query",
     );
     expect(call_index).toBeGreaterThanOrEqual(0);
     expect(result_index).toBeGreaterThan(call_index);
   });
 
-  it("checkpoint 抢先时在压缩后优先消费待发送 steer", async () => {
+  it("工具轮次压缩后优先消费待发送 steer", async () => {
     const { service, read_items } = await create_service();
-    await prepare_long_tool_checkpoint(service, read_items);
+    await prepare_long_tool_history(service, read_items);
     const prompts_before = fake_agent_state.prompts.length;
-    fake_agent_state.mode = "checkpoint";
+    fake_agent_state.mode = "tool_compaction";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "检查长条目", attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
@@ -2176,83 +2164,39 @@ describe("AgentService", () => {
     );
   });
 
-  it("已完成回答的压缩失败由统一恢复原位处理，且不会续跑模型", async () => {
-    const { service, log_error, log_warning } = await create_service();
-    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
-    fake_agent_state.summary_failures_remaining = 100;
-    for (const round of [1, 2, 3, 4, 5]) {
-      await service.send_message({
-        text: `第${round.toString()}轮${"x".repeat(40_000)}`,
-        attachments: [],
-      });
-      await wait_for_idle(service);
-      if (
-        service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction")
-          ?.status === "error"
-      ) {
-        break;
-      }
-    }
+  it("同一 run 压缩结束后恢复队列即时发送能力", async () => {
+    const { service, read_items, publish } = await create_service();
+    await prepare_long_tool_history(service, read_items);
+    fake_agent_state.mode = "tool_compaction";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "检查长条目", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    await service.send_message({ text: "等待发送", attachments: [] });
 
-    expect(fake_agent_state.request_kinds).toContain("summary");
-    expect(service.get_snapshot()).toMatchObject({
-      state: "idle",
-      entries: expect.arrayContaining([
-        expect.objectContaining({
-          kind: "assistant_message",
-          parts: [{ kind: "text", text: "已完成" }],
-        }),
-        expect.objectContaining({ kind: "context_compaction", status: "error" }),
-      ]),
-    });
-    expect(log_warning).toHaveBeenCalledWith(
-      "Agent 上下文压缩失败 …",
-      expect.objectContaining({ source: "agent" }),
-    );
-    expect(log_error).not.toHaveBeenCalled();
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
 
-    const failed_entry = service
-      .get_snapshot()
-      .entries.findLast((entry) => entry.kind === "context_compaction");
-    const model_call_count_before_resume = fake_agent_state.model_call_count;
-    fake_agent_state.summary_failures_remaining = 0;
-    fake_agent_state.hold_summary = true;
-    await expect(service.continue_session({})).resolves.toEqual({ revision: expect.any(Number) });
-    expect(service.get_snapshot()).toMatchObject({
-      state: "running",
-      entries: expect.arrayContaining([
-        expect.objectContaining({
-          kind: "context_compaction",
-          id: failed_entry?.id,
-          status: "running",
-        }),
-      ]),
-    });
-    await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
-    expect(() => service.stop()).toThrow("runtime.busy");
-    fake_agent_state.release_summary?.();
-    await vi.waitFor(() =>
-      expect(service.get_snapshot()).toMatchObject({
-        state: "idle",
-        entries: expect.arrayContaining([
-          expect.objectContaining({
-            kind: "context_compaction",
-            id: failed_entry?.id,
-            status: "success",
-          }),
-        ]),
-      }),
+    const events = publish.mock.calls.map(([, event]) => event as AgentSessionEvent);
+    const compaction_end_index = events.findIndex(
+      (event) =>
+        event.type === "entry_upsert" &&
+        event.entry.kind === "context_compaction" &&
+        event.entry.status === "success",
     );
-    expect(fake_agent_state.model_call_count).toBe(model_call_count_before_resume);
-    await expect(service.continue_session({})).rejects.toThrow("request.validation_failed");
+    expect(
+      events
+        .slice(compaction_end_index + 1)
+        .some((event) => event.type === "input_queue" && event.inputQueue.canSendNow),
+    ).toBe(true);
   });
 
-  it("中途压缩失败阻断模型与消息旁路，继续后不新增公开 user", async () => {
-    const { service, read_items } = await create_service();
-    await prepare_long_tool_checkpoint(service, read_items);
-    fake_agent_state.mode = "checkpoint";
+  it("自动压缩失败只公开诊断，下一请求由 SDK 自动重试", async () => {
+    const { service, read_items, log_error, log_warning } = await create_service();
+    await prepare_long_tool_history(service, read_items);
+    fake_agent_state.mode = "tool_compaction";
     fake_agent_state.summary_failures_remaining = 100;
-    const calls_before_checkpoint = fake_agent_state.model_call_count;
+    const calls_before_compaction = fake_agent_state.model_call_count;
 
     await service.send_message({ text: "检查长条目", attachments: [] });
     await wait_for_idle(service);
@@ -2262,37 +2206,32 @@ describe("AgentService", () => {
       .entries.findLast((entry) => entry.kind === "context_compaction");
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-    ).toMatchObject({ text: "检查长条目", status: "error" });
+    ).toMatchObject({ text: "检查长条目", status: "success" });
     expect(failed_compaction).toMatchObject({ status: "error" });
-    expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(1);
-    await expect(service.send_message({ text: "绕过恢复", attachments: [] })).rejects.toThrow(
-      "request.validation_failed",
+    expect(fake_agent_state.model_call_count - calls_before_compaction).toBe(2);
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "assistant_message",
+          parts: [{ kind: "text", text: "未压缩继续" }],
+          status: "success",
+        }),
+      ]),
     );
+    expect(log_warning).toHaveBeenCalledWith(
+      "Agent 上下文压缩失败 …",
+      expect.objectContaining({ source: "agent" }),
+    );
+    expect(log_error).not.toHaveBeenCalled();
 
     fake_agent_state.summary_failures_remaining = 0;
-    await expect(service.continue_session({})).resolves.toEqual({ revision: expect.any(Number) });
-    expect(service.get_snapshot().state).toBe("running");
-
-    await vi.waitFor(() =>
-      expect(
-        service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
-      ).toMatchObject({ text: "检查长条目", status: "success" }),
-    );
-    expect(
-      service
-        .get_snapshot()
-        .entries.filter((entry) => entry.kind === "user_message" && entry.text === "检查长条目"),
-    ).toHaveLength(1);
-    expect(
-      service
-        .get_snapshot()
-        .entries.filter((entry) => entry.kind === "user_message" && entry.text === "继续"),
-    ).toHaveLength(0);
+    fake_agent_state.mode = "success";
+    await service.send_message({ text: "下一轮", attachments: [] });
+    await wait_for_idle(service);
     expect(
       service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
     ).toMatchObject({ id: failed_compaction?.id, status: "success" });
-    expect(fake_agent_state.model_call_count - calls_before_checkpoint).toBe(2);
-    expect(fake_agent_state.prompts.at(-1)).toBe("继续");
+    expect(fake_agent_state.prompts.at(-1)).toBe("下一轮");
   });
 
   it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {
@@ -2602,7 +2541,7 @@ describe("AgentService", () => {
 });
 
 /** 先建立可压缩旧历史，再用单个大工具结果跨过下一请求阈值。 */
-async function prepare_long_tool_checkpoint(
+async function prepare_long_tool_history(
   service: AgentService,
   read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>,
 ): Promise<void> {

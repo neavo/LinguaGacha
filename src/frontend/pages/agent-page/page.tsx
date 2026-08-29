@@ -171,7 +171,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const agent_restoring = controls.transport === "restoring";
   const last_compaction = entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
-  const compaction_failed = last_compaction?.status === "error";
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
@@ -615,7 +614,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 active_inline_edit !== null ||
                 is_running ||
                 compacting ||
-                compaction_failed ||
                 unavailable_reason !== null
               }
               continue_disabled={
@@ -644,8 +642,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 controls.pendingWriteApproval !== null ||
                 active_inline_edit !== null ||
                 unavailable_reason !== null ||
-                compacting ||
-                compaction_failed
+                compacting
               }
               active_edit_item_id={
                 active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
@@ -688,7 +685,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               running={is_running}
               stop_disabled={workspace_apply_running}
               compacting={compacting}
-              compaction_failed={compaction_failed}
               unavailable_reason={unavailable_reason}
               command={controls.command}
               can_continue_queue={can_continue_queue}

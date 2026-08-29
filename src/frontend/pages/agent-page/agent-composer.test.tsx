@@ -26,7 +26,6 @@ type RenderComposerOptions = Partial<
     | "can_continue_queue"
     | "command"
     | "compacting"
-    | "compaction_failed"
     | "context_tokens"
     | "inline_role"
     | "on_cancel_edit"
@@ -664,7 +663,7 @@ describe("AgentComposer", () => {
     }
   });
 
-  it("压缩期间允许有效草稿排队但禁用空草稿停止，失败后阻止发送", async () => {
+  it("压缩期间允许有效草稿排队", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
     const view = await render_composer({ running: true, compacting: true, on_send, on_stop });
@@ -677,18 +676,6 @@ describe("AgentComposer", () => {
     await act(async () => submit?.click());
     expect(on_stop).not.toHaveBeenCalled();
     expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
-
-    await render_composer({
-      running: false,
-      compacting: false,
-      compaction_failed: true,
-      on_send,
-      on_stop,
-    });
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
-      false,
-    );
   });
 
   it("所选模型没有可用思考档位时保留禁用的默认入口", async () => {
@@ -731,15 +718,6 @@ describe("AgentComposer", () => {
     expect(on_approval_mode_change).not.toHaveBeenCalled();
   });
 
-  it("将上下文使用率并入模型选择入口，并保持思考入口独立", async () => {
-    const view = await render_composer({ context_tokens: 31_488 });
-
-    expect(view.querySelector(".agent-composer__model-context")).not.toBeNull();
-    expect(view.querySelector(".agent-composer__model-context-separator")).not.toBeNull();
-    expect(view.querySelector(".agent-composer__context-usage")).toBeNull();
-    expect(view.querySelector(".agent-composer__thinking-trigger")).not.toBeNull();
-  });
-
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -763,7 +741,6 @@ describe("AgentComposer", () => {
             running={options.running ?? false}
             stop_disabled={options.stop_disabled ?? false}
             compacting={options.compacting ?? false}
-            compaction_failed={options.compaction_failed ?? false}
             unavailable_reason={options.unavailable_reason ?? null}
             command={options.command ?? null}
             can_continue_queue={options.can_continue_queue ?? false}

@@ -128,7 +128,6 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         running={false}
         stop_disabled
         compacting={false}
-        compaction_failed={false}
         unavailable_reason={props.unavailable_reason}
         command={props.command}
         can_continue_queue={false}

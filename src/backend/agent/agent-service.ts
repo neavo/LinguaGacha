@@ -117,7 +117,6 @@ function select_agent_skills(
 type AgentRuntime = {
   session: AgentSession;
   unsubscribe: () => void;
-  checkpoint_requested: boolean; // 工具批次结束后是否因容量主动停在安全边界
   steer_ready: boolean; // Pi 已进入 agent loop 且当前不在压缩阶段
 };
 
@@ -229,13 +228,13 @@ export class AgentService {
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private context_tokens: number | null = null; // 压缩终态优先采用 SDK 新历史估算，避免复用旧 usage
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
-  private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null;
+  private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null; // 固定窗口唯一发布计时器
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
   private latest_output_checkpoint: AgentHistoryCheckpoint | null = null; // 最新轮次最终可见 assistant 写入前的位置
   private pending_assistant_checkpoint: { leaf_id: string | null } | null = null; // message_start 到首个可见 part 的暂存位置
   private resources: LoadedAgentResources | null = null; // 基础资源与当前会话 catalog 的唯一原子快照
   private revision = 0; // 当前产品会话公开事件的全局单调序号；reset 与工程切换均不回退
-  private disposed = false;
+  private disposed = false; // 关闭后永久拒绝命令和事件发布
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
   public constructor(options: AgentServiceOptions) {
@@ -369,11 +368,6 @@ export class AgentService {
       throw agent_queue_validation_error("agent_continue_required");
     }
     const resources = this.require_resources();
-    if (this.find_latest_compaction_entry()?.status === "error") {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_continue_required" },
-      });
-    }
     const selected_skills = select_agent_skills(resources.skills, message.text);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
@@ -438,8 +432,6 @@ export class AgentService {
       }
       return this.get_acknowledgement();
     }
-    this.assert_new_round_available();
-
     const resources = this.require_resources();
     const item = this.input_queue.read(id);
     const selected_skills = select_agent_skills(resources.skills, item.text);
@@ -513,13 +505,10 @@ export class AgentService {
     this.session_state.require_loaded_project_path();
     const message = read_agent_continue_message(request);
     const runtime = this.runtime;
-    const latest_compaction = this.find_latest_compaction_entry();
-    const failed_compaction = latest_compaction?.status === "error" ? latest_compaction : undefined;
     const continue_failed_round =
       this.entries.findLast((entry) => entry.kind === "user_message" && entry.delivery === "round")
         ?.status === "error";
-    const continue_failed =
-      runtime !== null && (failed_compaction !== undefined || continue_failed_round);
+    const continue_failed = runtime !== null && continue_failed_round;
     if (!this.input_queue.has_items && !continue_failed) {
       throw new AppErrors.AppError("request.validation_failed", {
         diagnostic_context: { reason: "agent_continue_unavailable" },
@@ -537,7 +526,7 @@ export class AgentService {
       this.publish_input_queue();
       const acceptance =
         continue_failed && runtime !== null
-          ? this.accept_continue(runtime, failed_compaction, continue_failed_round, runtime_lease)
+          ? this.accept_continue(runtime, runtime_lease)
           : this.accept_next_queued_message(runtime_lease);
       delegated = true;
       return await this.track_operation_acceptance(acceptance);
@@ -816,11 +805,9 @@ export class AgentService {
     this.publish_snapshot_seed();
   }
 
-  /** 继续受理只更新模型并启动唯一尾部恢复，不在 renderer 建立补偿命令。 */
+  /** 继续受理只更新模型并启动失败 round 的唯一尾部恢复。 */
   private async accept_continue(
     runtime: AgentRuntime,
-    failed_entry: Extract<AgentEntry, { kind: "context_compaction" }> | undefined,
-    continue_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<AgentCommandAck> {
     let continuation_started = false;
@@ -832,17 +819,7 @@ export class AgentService {
           diagnostic_context: { reason: "agent_continue_invalidated" },
         });
       }
-      if (failed_entry !== undefined) {
-        this.upsert_entry({ ...failed_entry, status: "running" });
-        this.set_state("running");
-      }
-      const continuation = this.run_continue(
-        runtime,
-        generation,
-        failed_entry !== undefined,
-        continue_failed_round,
-        runtime_lease,
-      );
+      const continuation = this.run_continue(runtime, generation, runtime_lease);
       this.runtime_settlement = continuation;
       continuation_started = true;
       const clear_continuation = () => {
@@ -992,18 +969,7 @@ export class AgentService {
     const runtime: AgentRuntime = {
       session,
       unsubscribe: () => undefined,
-      checkpoint_requested: false,
       steer_ready: false,
-    };
-    session.agent.shouldStopAfterTurn = ({ toolResults, context }) => {
-      const context_window = session.model?.contextWindow;
-      const should_stop =
-        toolResults.length > 0 &&
-        context_window !== undefined &&
-        estimateContextTokens(context.messages).tokens >=
-          context_window - AGENT_COMPACTION_RESERVE_TOKENS;
-      runtime.checkpoint_requested = should_stop;
-      return should_stop;
     };
     runtime.unsubscribe = session.subscribe((event) => {
       log_agent_tool_event(this.log_manager, event);
@@ -1012,7 +978,7 @@ export class AgentService {
     return runtime;
   }
 
-  /** 每个安全检查点先完成压缩；成功轮次在同一 lease 内继续消费产品 FIFO。 */
+  /** SDK 拥有单个 round 内的工具循环与压缩；产品只在 settle 后消费 FIFO。 */
   private async run_round(
     runtime: AgentRuntime,
     generation: number,
@@ -1022,37 +988,8 @@ export class AgentService {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     let next_request: AgentModelRequest | null = null;
     try {
-      runtime.checkpoint_requested = false;
-      let previous_compaction_id = this.find_latest_compaction_entry()?.id;
       if (request.kind === "continue") await this.send_continue(runtime);
       else await this.send_prompt(runtime, generation, request.text, request.images);
-      while (this.prompt_is_current(runtime, generation) && runtime.checkpoint_requested) {
-        const compaction = this.find_latest_compaction_entry();
-        // SDK 可能已在 prompt settle 前自动压缩；只有未观察到新条目时才手动补足。
-        const compacted =
-          compaction?.id !== previous_compaction_id
-            ? compaction?.status === "success"
-            : await this.compact_checkpoint(runtime, generation);
-        if (!compacted) {
-          outcome = "error";
-          break;
-        }
-        runtime.checkpoint_requested = false;
-        previous_compaction_id = this.find_latest_compaction_entry()?.id;
-        const sending = this.input_queue.read_sending();
-        if (sending === null) await this.send_continue(runtime);
-        else {
-          // Pi 在 shouldStopAfterTurn 之后才取 steer；checkpoint 抢先时由产品消息先续跑。
-          runtime.session.clearQueue();
-          const resources = this.require_resources();
-          await this.send_prompt(
-            runtime,
-            generation,
-            build_agent_prompt(sending, select_agent_skills(resources.skills, sending.text)),
-            read_agent_message_images(sending),
-          );
-        }
-      }
       if (this.prompt_is_current(runtime, generation)) {
         const final_assistant = runtime.session.messages.findLast(
           (message): message is AssistantMessage => message.role === "assistant",
@@ -1095,7 +1032,7 @@ export class AgentService {
     }
   }
 
-  /** 初始 round 与 checkpoint 后的待消费 steer 共用同一失效预检。 */
+  /** 初始 round 统一通过 SDK preflight 防止失效请求启动模型。 */
   private async send_prompt(
     runtime: AgentRuntime,
     generation: number,
@@ -1123,34 +1060,16 @@ export class AgentService {
     });
   }
 
-  /** AgentSession 完全 settle 后才手动压缩，避免拆开工具调用与结果。 */
-  private async compact_checkpoint(runtime: AgentRuntime, generation: number): Promise<boolean> {
-    try {
-      await runtime.session.compact();
-      return this.prompt_is_current(runtime, generation);
-    } catch {
-      // SDK compaction_end 已发布权威失败条目和诊断；失败后不得发起下一次模型请求。
-      return false;
-    }
-  }
-
-  /** 恢复按需先修复压缩，再在同一公开 user 轮次隐藏续跑。 */
+  /** 以隐藏消息恢复失败 round；压缩重试由 SDK 的下一请求预检统一处理。 */
   private async run_continue(
     runtime: AgentRuntime,
     generation: number,
-    restore_compaction: boolean,
-    continue_failed_round: boolean,
     runtime_lease: RuntimeLease,
   ): Promise<void> {
     let round_started = false;
     try {
-      if (restore_compaction) await runtime.session.compact();
-      if (continue_failed_round && this.runtime_is_current(runtime, generation)) {
+      if (this.runtime_is_current(runtime, generation)) {
         const prompt = this.continue_failed_round(runtime, generation, runtime_lease);
-        round_started = true;
-        await prompt;
-      } else if (this.runtime_is_current(runtime, generation) && this.input_queue.has_items) {
-        const prompt = this.start_next_queued_round(runtime, generation, runtime_lease);
         round_started = true;
         await prompt;
       }
@@ -1164,29 +1083,6 @@ export class AgentService {
         this.finish_runtime(runtime_lease);
       }
     }
-  }
-
-  /** 恢复压缩完成后仍有队列时，直接在既有运行时启动队首。 */
-  private start_next_queued_round(
-    runtime: AgentRuntime,
-    generation: number,
-    runtime_lease: RuntimeLease,
-  ): Promise<void> {
-    const resources = this.require_resources();
-    const item = this.input_queue.take_next();
-    if (item === null) {
-      throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "agent_continue_queue_missing" },
-      });
-    }
-    this.publish_input_queue();
-    return this.start_round(
-      runtime,
-      generation,
-      item,
-      select_agent_skills(resources.skills, item.text),
-      runtime_lease,
-    );
   }
 
   /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
@@ -1227,7 +1123,7 @@ export class AgentService {
       if (success) this.publish_context_tokens(result.estimatedTokensAfter);
       return;
     }
-    if (event.type === "agent_start") {
+    if (event.type === "agent_start" || event.type === "turn_start") {
       if (this.runtime !== null) this.runtime.steer_ready = true;
       this.publish_input_queue();
       return;
@@ -1443,7 +1339,7 @@ export class AgentService {
     );
   }
 
-  /** 未解决压缩跨自动重试与手动恢复保持单一条目身份。 */
+  /** 连续自动压缩尝试复用最近一次失败条目，时间线始终只有一个诊断位置。 */
   private find_latest_compaction_entry():
     | Extract<AgentEntry, { kind: "context_compaction" }>
     | undefined {
@@ -1528,7 +1424,6 @@ export class AgentService {
 
   /** 只有 Pi agent loop 可接收 steer，空闲时则由共享 runtime gate 决定。 */
   private can_send_queued_now(): boolean {
-    if (this.find_latest_compaction_entry()?.status === "error") return false;
     if (this.state === "running") return this.runtime?.steer_ready === true;
     return this.runtime_gate.get_snapshot().owner === null;
   }
@@ -1694,7 +1589,7 @@ export class AgentService {
     };
   }
 
-  /** 所有自动与手动恢复共用同一种隐藏模型消息，不制造公开 user 轮次。 */
+  /** 失败 round 使用隐藏模型消息续跑，不制造公开 user 轮次。 */
   private async send_continue(runtime: AgentRuntime): Promise<void> {
     await runtime.session.sendCustomMessage(
       {
@@ -1811,16 +1706,11 @@ export class AgentService {
     if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
   }
 
-  /** 消息改写只允许发生在稳定空闲态，且不能绕过失败压缩恢复。 */
+  /** 消息改写只允许发生在稳定空闲态。 */
   private assert_revision_available(): void {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.state !== "idle") {
       throw new AppErrors.AppError("runtime.busy");
-    }
-    if (this.find_latest_compaction_entry()?.status === "error") {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_continue_required" },
-      });
     }
   }
 
@@ -1829,13 +1719,6 @@ export class AgentService {
     this.assert_not_disposed();
     if (this.session_reset !== null || this.pending_workspace_apply !== null) {
       throw new AppErrors.AppError("runtime.busy");
-    }
-  }
-
-  /** 空闲启动新 round 仍不能绕过未恢复的压缩失败。 */
-  private assert_new_round_available(): void {
-    if (this.find_latest_compaction_entry()?.status === "error") {
-      throw agent_queue_validation_error("agent_continue_required");
     }
   }
 }

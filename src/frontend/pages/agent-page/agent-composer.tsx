@@ -130,7 +130,6 @@ type AgentComposerProps = {
   running: boolean;
   stop_disabled: boolean; // 当前原子阶段只禁用 stop，不锁定草稿编辑
   compacting: boolean;
-  compaction_failed: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
   can_continue_queue: boolean;
@@ -207,7 +206,6 @@ const mention_tokens_field = StateField.define<DecorationSet>({
 });
 const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
 
-/** 页面私有的纯文本消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
 /** AGENT 主输入器与原位编辑器共享正文、附件和键盘交互，页面只提供命令入口。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
@@ -318,7 +316,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     !props.model_selection.updating &&
     !image_processing &&
     (has_sendable_content || continuing_queue) &&
-    (!props.compaction_failed || continuing_queue) &&
     !queue_full_for_submit;
   if (queue_full_for_submit) submit_label_key = "agent_page.queue.full";
   else if (continuing_queue) submit_label_key = "agent_page.action.continue";
