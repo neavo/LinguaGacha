@@ -1,18 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@firecrawl/pdf-inspector-wasm/pdf_inspector_wasm_bg.wasm?url", () => ({
-  default: pathToFileURL(
-    path.join(
-      process.cwd(),
-      "node_modules/@firecrawl/pdf-inspector-wasm/pdf_inspector_wasm_bg.wasm",
-    ),
-  ).href,
-}));
+import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";

@@ -10,7 +10,6 @@ export default defineConfig({
   main: {
     build: {
       outDir: desktop_dist_dir,
-      externalizeDeps: { exclude: ["@firecrawl/pdf-inspector-wasm"] },
       rolldownOptions: {
         input: {
           index: project_path("src/index.ts"),

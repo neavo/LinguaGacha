@@ -4,8 +4,11 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-const read_pdf_markdown = vi.hoisted(() => vi.fn(() => "# PDF 标题\n\n正文"));
-vi.mock("./formats/pdf/pdf-markdown-reader", () => ({ read_pdf_markdown }));
+vi.mock("./formats/pdf/pdf-document-reader", () => ({
+  read_pdf_document: vi.fn(async () => ({
+    markdown: "# PDF 标题\n\n正文",
+  })),
+}));
 
 import { FileFormatService } from "../file/file-format-service";
 import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";

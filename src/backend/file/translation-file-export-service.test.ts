@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const read_pdf_markdown = vi.hoisted(() => vi.fn(() => "# Source"));
-vi.mock("./formats/pdf/pdf-markdown-reader", () => ({ read_pdf_markdown }));
+const read_pdf_document = vi.hoisted(() => vi.fn(async () => ({ markdown: "# Source" })));
+vi.mock("./formats/pdf/pdf-document-reader", () => ({ read_pdf_document }));
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -24,7 +24,7 @@ beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
   render_pdf.mockClear();
   render_pdf.mockResolvedValue(new Uint8Array());
-  read_pdf_markdown.mockReset().mockReturnValue("# Source");
+  read_pdf_document.mockReset().mockResolvedValue({ markdown: "# Source" });
 });
 
 afterEach(() => {
@@ -222,7 +222,7 @@ describe("TranslationFileExportService", () => {
 
     await service.export_files();
 
-    expect(read_pdf_markdown).toHaveBeenCalledWith(Buffer.from([37, 80, 68, 70]));
+    expect(read_pdf_document).toHaveBeenCalledWith(Buffer.from([37, 80, 68, 70]));
     expect(render_pdf).toHaveBeenCalledWith("# 译题");
     expect(fs.readFileSync(path.join(temp_dir, "report_译文", "docs", "report.pdf"))).toEqual(
       Buffer.from([37, 80, 68, 70]),
