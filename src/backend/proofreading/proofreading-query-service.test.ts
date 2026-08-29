@@ -41,6 +41,16 @@ function create_cache(): ProofreadingCache {
       ...base_result,
       data: { total_item_count: 0, items: [], query },
     })),
+    warningSummary: vi.fn(async () => ({
+      ...base_result,
+      data: {
+        total_count: 3,
+        entries: [
+          { code: "KANA", count: 1 },
+          { code: "GLOSSARY", count: 2 },
+        ],
+      },
+    })),
     window: vi.fn(),
     rowIdsRange: vi.fn(),
     rowIndex: vi.fn(),
@@ -132,6 +142,24 @@ describe("ProofreadingQueryService", () => {
         window_count: 11,
       }),
     );
+  });
+
+  it("warning_summary 返回当前校对运行态的类型计数", async () => {
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded("E:/Project/demo.lg");
+    const cache = create_cache();
+    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+
+    await expect(service.query({ action: "warning_summary" })).resolves.toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      warningSummary: {
+        total_count: 3,
+        entries: [
+          { code: "KANA", count: 1 },
+          { code: "GLOSSARY", count: 2 },
+        ],
+      },
+    });
   });
 
   it("类型化 warning 查询保留 loaded-project 守卫且不扩张公开 action", async () => {

@@ -6,7 +6,7 @@ import {
   PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
-} from "@frontend/pages/proofreading-page/proofreading-label-keys";
+} from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   clone_proofreading_filter_options,
   format_proofreading_glossary_term,

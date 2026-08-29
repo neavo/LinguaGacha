@@ -3,7 +3,6 @@ type WorkbenchActionKind =
   | "inherit-import-files"
   | "reset-file"
   | "delete-file"
-  | "generate-translation"
   | "close-project";
 
 export type WorkbenchSnapshotEntry = {

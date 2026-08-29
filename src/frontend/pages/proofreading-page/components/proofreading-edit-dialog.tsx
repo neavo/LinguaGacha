@@ -5,7 +5,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
-} from "@frontend/pages/proofreading-page/proofreading-label-keys";
+} from "@frontend/features/proofreading/proofreading-label-keys";
 import { ProofreadingContextView } from "@frontend/pages/proofreading-page/components/proofreading-context-view";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";

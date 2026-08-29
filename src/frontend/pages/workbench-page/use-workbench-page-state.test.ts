@@ -243,9 +243,6 @@ function setup_api_fetch_mock(): void {
     if (path === "/api/workbench/file/parse") {
       return { files: [] };
     }
-    if (path === "/api/translation/files/export") {
-      return {};
-    }
     return create_project_write_result();
   });
 }
@@ -306,10 +303,6 @@ function create_workbench_query_response(stats?: {
       entries,
     },
   };
-}
-
-function count_api_calls(path: string): number {
-  return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
 
 function create_translation_workbench_task_fixture(): TranslationWorkbenchTaskFixture {
@@ -1155,14 +1148,9 @@ describe("useWorkbenchPageState", () => {
     };
     await render_hook();
 
-    act(() => {
-      latest_state?.request_generate_translation();
-    });
-
     expect(latest_state?.readonly).toBe(true);
     expect(latest_state?.can_edit_files).toBe(false);
     expect(latest_state?.can_generate_translation).toBe(true);
-    expect(latest_state?.dialog_state.kind).toBe("generate-translation");
   });
 
   it("任务停止收尾中禁止生成译文", async () => {
@@ -1177,35 +1165,7 @@ describe("useWorkbenchPageState", () => {
     };
     await render_hook();
 
-    act(() => {
-      latest_state?.request_generate_translation();
-    });
-
     expect(latest_state?.can_generate_translation).toBe(false);
     expect(latest_state?.dialog_state.kind).toBeNull();
-  });
-
-  it("导出提交中不会重复提交生成译文请求", async () => {
-    enqueue_api_response("/api/translation/files/export", () => new Promise(() => {}));
-    await render_hook();
-
-    act(() => {
-      latest_state?.request_generate_translation();
-    });
-    await act(async () => {
-      void latest_state?.confirm_dialog();
-      await Promise.resolve();
-    });
-
-    expect(latest_state?.dialog_state.submitting).toBe(true);
-    expect(latest_state?.can_generate_translation).toBe(false);
-
-    await act(async () => {
-      await latest_state?.confirm_dialog();
-      await Promise.resolve();
-    });
-
-    expect(count_api_calls("/api/translation/files/export")).toBe(1);
-    expect(api_fetch).toHaveBeenCalledWith("/api/translation/files/export", {});
   });
 });

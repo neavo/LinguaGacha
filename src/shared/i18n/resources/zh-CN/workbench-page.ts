@@ -62,7 +62,7 @@ export const zh_cn_workbench_page = {
       tooltip: "从原文中提取术语",
     },
     migration: {
-      description: "经典分析任务流程即将移除 …\n推荐使用 AGENT 全自动生成术语表，更快更智能 …!",
+      description: "经典分析任务流程即将移除，推荐使用 AGENT 全自动生成术语表，是否确认继续 …?",
       jump: "点击跳转",
       continue: "继续任务",
     },
@@ -125,8 +125,17 @@ export const zh_cn_workbench_page = {
 
       reset_all_failed: "重置全部翻译失败",
       reset_failed_failed: "重置失败条目失败",
-      generate_failed: "生成当前可用译文失败",
     },
+  },
+  translation_export: {
+    checking: "正在检查校对警告 …",
+    check_failed: "读取校对警告失败，仍可继续生成当前译文。",
+    warning_description:
+      "尚存在 {COUNT} 个校对警告，推荐使用 AGENT 自动修复后再生成译文，是否确认继续 …?",
+    warning_list: "校对警告",
+    retry_check: "重新检查",
+    jump_to_agent: "点击跳转",
+    continue_generate: "继续生成",
   },
   reorder: {
     failed: "文件顺序保存失败，请稍后再试。",

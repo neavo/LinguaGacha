@@ -12,7 +12,6 @@ type WorkbenchDialogsProps = {
 const CONFIRM_DESCRIPTION_KEY_BY_KIND = {
   "reset-file": "workbench_page.dialog.reset.description",
   "delete-file": "workbench_page.dialog.delete.description",
-  "generate-translation": "workbench_page.translation_task.confirm.generate_description",
   "close-project": "workbench_page.dialog.close_project.description",
 } as const satisfies Partial<Record<NonNullable<WorkbenchDialogState["kind"]>, LocaleKey>>;
 

@@ -16,7 +16,7 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   ERROR: "task_progress.translation_failed",
 } as const satisfies Record<(typeof PROOFREADING_STATUS_ORDER)[number], LocaleKey>;
 
-/** warning 筛选与结果行复用同一组标签，避免页面各自维护并行映射。 */
+/** 校对页与跨页面警告摘要复用同一组标签。 */
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   KANA: "proofreading_page.warning.kana",
   HANGEUL: "proofreading_page.warning.hangeul",

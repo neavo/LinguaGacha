@@ -51,7 +51,9 @@ type TranslationTaskCommandPayload = {
 // 翻译任务写入的诊断名由 renderer 会话拥有，desktop 层只负责提交与互斥。
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
-type TranslationWorkbenchTaskOptions = Record<string, never>;
+type TranslationWorkbenchTaskOptions = {
+  onRequestExport: () => void; // 全量翻译自然完成后交给跨路由导出流程
+};
 
 export type TranslationWorkbenchTask = {
   translation_task_display_snapshot: TranslationTaskSnapshot | null;
@@ -99,8 +101,9 @@ function resolve_active_translation_completion_scope(args: {
  * 拥有翻译任务菜单、确认框、终态提示和完成范围的 renderer 会话状态。
  */
 export function useTranslationWorkbenchTask(
-  _options: TranslationWorkbenchTaskOptions = {},
+  options: TranslationWorkbenchTaskOptions,
 ): TranslationWorkbenchTask {
+  const { onRequestExport } = options;
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
   const { project_snapshot, settings_snapshot, commit_project_write, refresh_task } =
@@ -408,9 +411,6 @@ export function useTranslationWorkbenchTask(
         suppress_next_terminal_prompt("manual-stop");
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
-      } else if (task_confirm_state.kind === "generate-translation") {
-        await api_fetch("/api/translation/files/export", {});
-        set_task_confirm_state(null);
       } else {
         const reset_request =
           task_confirm_state.kind === "reset-all"
@@ -445,8 +445,6 @@ export function useTranslationWorkbenchTask(
         fallback_message = t("workbench_page.translation_task.feedback.reset_all_failed");
       } else if (task_confirm_state.kind === "reset-failed") {
         fallback_message = t("workbench_page.translation_task.feedback.reset_failed_failed");
-      } else if (task_confirm_state.kind === "generate-translation") {
-        fallback_message = t("workbench_page.translation_task.feedback.generate_failed");
       }
 
       push_toast("error", resolve_visible_error_message(error, t, fallback_message));
@@ -542,7 +540,7 @@ export function useTranslationWorkbenchTask(
         scope: translation_completion_scope_ref.current,
       })
     ) {
-      set_task_confirm_state(create_task_confirm_state("generate-translation"));
+      onRequestExport();
     }
   }, [
     project_snapshot.loaded,
@@ -552,6 +550,7 @@ export function useTranslationWorkbenchTask(
     translation_dialog_open,
     translation_task_display_snapshot,
     translation_task_snapshot.status,
+    onRequestExport,
   ]);
 
   useEffect(() => {

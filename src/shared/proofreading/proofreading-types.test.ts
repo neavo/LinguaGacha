@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  build_proofreading_warning_summary,
   clone_proofreading_filter_options,
   compress_proofreading_text,
   format_proofreading_glossary_term,
@@ -40,5 +41,21 @@ describe("proofreading types", () => {
       resolve_proofreading_outcomes({ status: "PROCESSED", warnings: ["KANA", "GLOSSARY"] }),
     ).toEqual(["KANA", "GLOSSARY"]);
     expect(resolve_proofreading_outcomes({ status: "ERROR", warnings: [] })).toEqual(["ERROR"]);
+  });
+
+  it("按固定类型顺序汇总成功译文的校对警告", () => {
+    expect(
+      build_proofreading_warning_summary([
+        { status: "PROCESSED", warnings: ["GLOSSARY", "KANA"] },
+        { status: "PROCESSED", warnings: ["GLOSSARY", "GLOSSARY"] },
+        { status: "ERROR", warnings: ["TEXT_PRESERVE"] },
+      ]),
+    ).toEqual({
+      total_count: 3,
+      entries: [
+        { code: "KANA", count: 1 },
+        { code: "GLOSSARY", count: 2 },
+      ],
+    });
   });
 });
