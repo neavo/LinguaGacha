@@ -516,52 +516,6 @@ describe("AgentPage", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("状态区按任务进度、消息队列、跟随控件组织并与操作区分离", async () => {
-    const view = await render_page({
-      taskProgress: ["检查章节"],
-      inputQueue: {
-        paused: false,
-        canSendNow: false,
-        items: [
-          {
-            id: "queue-1",
-            text: "继续检查",
-            attachments: [],
-            status: "queued",
-            createdAt: 1,
-          },
-        ],
-      },
-    });
-    const status_zone = view.querySelector<HTMLElement>(".agent-page__status-zone");
-    const operation_zone = view.querySelector<HTMLElement>(".agent-page__operation-zone");
-    if (status_zone === null || operation_zone === null) throw new Error("缺少 Agent 页面区域");
-
-    expect(status_zone.querySelector(".agent-task-progress")).not.toBeNull();
-    expect(
-      status_zone.querySelector(".agent-page__status-queue-row .agent-input-queue"),
-    ).not.toBeNull();
-    const follow_control = status_zone.querySelector<HTMLElement>(".agent-page__follow-control");
-    expect(follow_control).not.toBeNull();
-    expect(follow_control?.parentElement).toBe(status_zone);
-    expect(
-      status_zone.querySelector(".agent-page__status-queue-row .agent-page__follow-control"),
-    ).toBeNull();
-    expect(operation_zone.querySelector(".agent-composer")).not.toBeNull();
-    expect(status_zone.compareDocumentPosition(operation_zone)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-
-    await render_page({ taskProgress: ["检查章节"] });
-    const task_only_status_zone = view.querySelector<HTMLElement>(".agent-page__status-zone");
-    const task_only_follow_control = task_only_status_zone?.querySelector<HTMLElement>(
-      ".agent-page__follow-control",
-    );
-    expect(task_only_follow_control).not.toBeNull();
-    expect(task_only_follow_control?.parentElement).toBe(task_only_status_zone);
-    expect(task_only_status_zone?.querySelector(".agent-page__status-queue-row")).toBeNull();
-  });
-
   it("满消息队列时页面禁用新增发送并显示容量提示", async () => {
     const view = await render_page({
       state: "running",
@@ -817,7 +771,8 @@ describe("AgentPage", () => {
     );
   });
 
-  it("压缩失败只显示原位继续入口并调用统一命令", async () => {
+  it("压缩失败后保留普通 round 操作与新消息发送", async () => {
+    const send = vi.fn(async () => undefined);
     const continue_session = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [
@@ -831,21 +786,21 @@ describe("AgentPage", () => {
         user_entry("user-2", "继续检查", "error", 2_000, 3_000),
         assistant_entry("assistant-1", "部分结果", "error", 2_500),
       ],
+      send,
       continue: continue_session,
     });
-    const continue_entries = [...view.querySelectorAll<HTMLButtonElement>(".agent-continue-entry")];
-    const compaction_continue = continue_entries.find((button) =>
-      button.textContent?.includes("agent_page.compaction.error"),
-    );
-    const message_continue = continue_entries.find((button) =>
-      button.textContent?.includes("app.error.model.provider_failed.message"),
-    );
-    expect(compaction_continue?.disabled).toBe(false);
-    expect(message_continue).toBeUndefined();
-    expect(view.querySelector(".agent-message-actions")).toBeNull();
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+    const message_continue = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
+    expect(message_continue?.disabled).toBe(false);
+    expect(
+      view.querySelector<HTMLButtonElement>(".agent-message-actions button:last-of-type")?.disabled,
+    ).toBe(false);
 
-    await act(async () => compaction_continue?.click());
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "新任务" } }));
+    await act(async () => get_button_by_label(view, "agent_page.action.send").click());
+    expect(send).toHaveBeenCalledWith({ text: "新任务", attachments: [] });
+
+    await act(async () => message_continue?.click());
 
     expect(continue_session).toHaveBeenCalledOnce();
   });

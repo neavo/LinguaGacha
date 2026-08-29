@@ -82,10 +82,6 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
     previous_rounds_ref.current = next;
     return next;
   }, [props.entries]);
-  // 未解决的压缩失败冻结消息改写，只保留原位压缩恢复入口。
-  const revision_blocked = props.entries.some(
-    (entry) => entry.kind === "context_compaction" && entry.status === "error",
-  );
   const selected_tool =
     props.entries.find(
       (entry): entry is AgentToolEntry =>
@@ -105,7 +101,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
             follow_reset_revision={props.follow_reset_revision}
             t={t}
             latest={index === rounds.length - 1}
-            revision_available={index === rounds.length - 1 && !revision_blocked}
+            revision_available={index === rounds.length - 1}
             on_continue={props.on_continue}
             on_edit={props.on_edit}
             render_entry_editor={props.render_entry_editor}
@@ -158,7 +154,6 @@ export function build_agent_rounds(
   });
 }
 
-/** 轮次统一拥有用户消息、公开条目、恢复入口与最终状态。 */
 type AgentRoundProps = {
   round: AgentRoundEntries;
   mention_tokens: readonly AgentMentionToken[];
@@ -174,6 +169,7 @@ type AgentRoundProps = {
   on_open_tool: (id: string) => void;
 };
 
+/** 单个轮次统一渲染用户消息、公开条目、恢复入口与最终状态。 */
 const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element {
   const { user, entries } = props.round;
   const mention_ranges = find_agent_mention_ranges(user.text, props.mention_tokens);
@@ -247,8 +243,6 @@ const AgentRound = memo(function AgentRound(props: AgentRoundProps): JSX.Element
             entry={entry}
             t={props.t}
             follow_reset_revision={props.follow_reset_revision}
-            on_continue={props.on_continue}
-            continue_disabled={props.continue_disabled}
             on_open_tool={props.on_open_tool}
             annotatable={annotatable}
           />
@@ -423,28 +417,19 @@ function AgentContinueEntry(props: {
   );
 }
 
-/** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
 type AgentEntryViewProps = {
   entry: Exclude<AgentRoundEntry, { kind: "user_message" }>;
   t: Translate;
-  on_continue: () => void;
-  continue_disabled: boolean;
   on_open_tool: (id: string) => void;
   annotatable: boolean;
   follow_reset_revision: number;
 };
 
+/** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
 const AgentEntryView = memo(function AgentEntryView(props: AgentEntryViewProps): ReactNode {
   const entry = props.entry;
   if (entry.kind === "context_compaction") {
-    return (
-      <AgentContextCompactionEntry
-        entry={entry}
-        t={props.t}
-        disabled={props.continue_disabled}
-        on_continue={props.on_continue}
-      />
-    );
+    return <AgentContextCompactionEntry entry={entry} t={props.t} />;
   }
   if (entry.kind === "tool_call") {
     return (
@@ -470,33 +455,16 @@ function agent_entry_view_props_equal(
       previous.follow_reset_revision === next.follow_reset_revision
     );
   }
-  if (next.entry.kind === "context_compaction") {
-    return (
-      previous.continue_disabled === next.continue_disabled &&
-      previous.on_continue === next.on_continue
-    );
-  }
+  if (next.entry.kind === "context_compaction") return true;
   return previous.on_open_tool === next.on_open_tool;
 }
 
-/** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
+/** 压缩是由 SDK 拥有的无详情模型历史边界。 */
 function AgentContextCompactionEntry(props: {
   entry: ContextCompactionEntry;
   t: Translate;
-  disabled: boolean;
-  on_continue: () => void;
 }): JSX.Element {
   const label = props.t(AGENT_COMPACTION_LABEL_KEYS[props.entry.status]);
-  if (props.entry.status === "error") {
-    return (
-      <AgentContinueEntry
-        label={label}
-        action_label={props.t("agent_page.action.continue")}
-        disabled={props.disabled}
-        on_continue={props.on_continue}
-      />
-    );
-  }
   return (
     <div className="agent-context-compaction" role="status">
       <ChevronsDownUp aria-hidden="true" />

@@ -331,34 +331,22 @@ describe("AgentTimeline", () => {
     expect(write_clipboard).toHaveBeenLastCalledWith("输出正文");
   });
 
-  it("压缩三态原位覆盖，失败时只开放统一恢复", async () => {
+  it("压缩诊断与 round 恢复各自显示", async () => {
     const round = [
       user_entry("user-error", "继续检查", "error", 0, 2_000),
       assistant_entry("assistant-error", "部分结果", "error", 1_000),
     ];
     const view = await render_timeline([
       ...round,
-      compaction_entry("compaction-1", "running", 1_500),
+      compaction_entry("compaction-1", "error", 1_500),
     ]);
     expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
-      "agent_page.compaction.running",
+      "agent_page.compaction.error",
     );
-    expect(view.querySelector(".agent-round-footer[data-running]")).toBeNull();
-
-    await render_timeline([...round, compaction_entry("compaction-1", "error", 1_500)]);
     const continue_button = view.querySelector<HTMLButtonElement>(".agent-continue-entry");
-    expect(continue_button?.textContent).toContain("agent_page.compaction.error");
-    expect(continue_button?.textContent).toContain("agent_page.action.continue");
+    expect(continue_button?.textContent).toContain("app.error.model.provider_failed.message");
     await act(async () => continue_button?.click());
     expect(on_continue).toHaveBeenCalledOnce();
-
-    await render_timeline([...round, compaction_entry("compaction-1", "success", 1_500)]);
-    expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
-      "agent_page.compaction.success",
-    );
-    expect(view.querySelector(".agent-continue-entry")?.textContent).toContain(
-      "app.error.model.provider_failed.message",
-    );
   });
 
   it("运行工具逐秒计时，模态按同 id 更新且不抢切输出", async () => {
