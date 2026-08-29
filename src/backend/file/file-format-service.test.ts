@@ -30,7 +30,7 @@ describe("FileFormatService", () => {
 
     expect(service.is_supported_file("script.txt")).toBe(true);
     expect(service.is_supported_file("script.epub")).toBe(true);
-    expect(service.is_supported_file("report.pdf")).toBe(true);
+    expect(service.is_supported_file("report.pdf")).toBe(false);
     expect(service.is_supported_file("archive.bin")).toBe(false);
   });
 

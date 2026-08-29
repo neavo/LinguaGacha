@@ -16,7 +16,7 @@ function create_format_service(): FileFormatService {
 }
 
 describe("SourceFileParsePipeline", () => {
-  it("真实文本 PDF 进入工程草稿并生成 PDF/MD Item", async () => {
+  it("新建工程草稿忽略暂未开放的 PDF", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
     );
@@ -27,18 +27,9 @@ describe("SourceFileParsePipeline", () => {
       source_file,
     ]);
 
+    expect(draft.files).toEqual([]);
+    expect(draft.items).toEqual([]);
     expect(draft.failed_files).toEqual([]);
-    expect(draft.files).toEqual([
-      expect.objectContaining({ rel_path: "report.pdf", file_type: "PDF" }),
-    ]);
-    expect(draft.items).toEqual([
-      expect.objectContaining({
-        src: expect.stringContaining("Pipeline PDF text"),
-        file_path: "report.pdf",
-        file_type: "PDF",
-        text_type: "MD",
-      }),
-    ]);
   });
 
   it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {

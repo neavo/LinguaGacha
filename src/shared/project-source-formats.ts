@@ -23,12 +23,13 @@ export const PROJECT_SOURCE_FORMATS = [
     title_key: "project_page.formats.md",
     description_keys: GENERAL_TEXT_FORMAT_DESCRIPTION_KEYS,
   },
-  {
-    id: "pdf",
-    extension: ".pdf",
-    title_key: "project_page.formats.pdf",
-    description_keys: ["project_page.formats.ebook"],
-  },
+  // PDF 源文件入口暂时关闭；保留格式实现供现有工程读取与导出。
+  // {
+  //   id: "pdf",
+  //   extension: ".pdf",
+  //   title_key: "project_page.formats.pdf",
+  //   description_keys: ["project_page.formats.ebook"],
+  // },
   {
     id: "srt",
     extension: ".srt",

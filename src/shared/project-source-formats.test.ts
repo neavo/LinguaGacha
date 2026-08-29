@@ -10,11 +10,6 @@ describe("PROJECT_SOURCE_FORMATS", () => {
     expect(new Set(format_ids).size).toBe(format_ids.length);
     expect(new Set(extensions).size).toBe(extensions.length);
     expect(PROJECT_SOURCE_FORMATS.every((format) => format.description_keys.length > 0)).toBe(true);
-    expect(PROJECT_SOURCE_FORMATS).toContainEqual({
-      id: "pdf",
-      extension: ".pdf",
-      title_key: "project_page.formats.pdf",
-      description_keys: ["project_page.formats.ebook"],
-    });
+    expect(PROJECT_SOURCE_FORMATS.map((format) => format.extension)).not.toContain(".pdf");
   });
 });
