@@ -29,6 +29,7 @@ __pycache__
 
 # app
 /log
+/tmp
 /input
 /output
 /userdata
