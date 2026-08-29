@@ -43,7 +43,7 @@ const TASK_WAVEFORM_DISPLAY_SPIKE_LIMIT = 0.08;
 
 type WorkbenchTaskWaveformObservation = {
   time_seconds: number; // 最近一次采样时间，用来计算滑动窗口吞吐
-  total_output_tokens: number; // 后端累计输出 token，只读事实，不承载页面计算状态
+  total_generated_tokens: number; // 累计思考与输出 token，只读事实，不承载页面计算状态
 };
 
 export type WorkbenchTaskWaveformState = {
@@ -59,7 +59,7 @@ export type WorkbenchTaskWaveformState = {
 export type WorkbenchTaskWaveformSample = {
   active: boolean; // 当前任务是否仍在运行，决定采样还是收尾衰减
   now_seconds: number; // 当前采样时间，调用方负责提供单调时间
-  total_output_tokens: number; // 当前后端累计输出 token
+  total_generated_tokens: number; // 当前累计思考与输出 token
 };
 
 // 创建空状态，供新任务、项目切换或无进度快照重置波形。
@@ -208,24 +208,24 @@ function ease_task_waveform_level(speed_level: number): number {
   return Math.sqrt(normalized_level);
 }
 
-// 用累计输出 token 的短窗口差值估计吞吐，避免单个 SSE 间隔决定整帧高度。
-function resolve_window_output_speed(observations: WorkbenchTaskWaveformObservation[]): number {
+// 用累计生成 token 的短窗口差值估计吞吐，避免单个 SSE 间隔决定整帧高度。
+function resolve_window_generation_speed(observations: WorkbenchTaskWaveformObservation[]): number {
   const first_observation = observations[0];
   const last_observation = observations.at(-1);
   if (first_observation === undefined || last_observation === undefined) {
     return 0;
   }
 
-  const output_token_delta = Math.max(
+  const generated_token_delta = Math.max(
     0,
-    last_observation.total_output_tokens - first_observation.total_output_tokens,
+    last_observation.total_generated_tokens - first_observation.total_generated_tokens,
   );
   const elapsed_seconds = Math.max(
     TASK_WAVEFORM_MIN_RATE_WINDOW_SECONDS,
     last_observation.time_seconds - first_observation.time_seconds,
   );
 
-  return output_token_delta / elapsed_seconds;
+  return generated_token_delta / elapsed_seconds;
 }
 
 // 维护慢变参照速度：首个信号从低位进入，持续高吞吐再慢慢重标定。
@@ -444,16 +444,16 @@ export function advance_task_waveform_state(
 
   const next_observations = append_task_waveform_observation(state.observations, {
     time_seconds: now_seconds,
-    total_output_tokens: normalize_non_negative_value(sample.total_output_tokens),
+    total_generated_tokens: normalize_non_negative_value(sample.total_generated_tokens),
   });
-  const window_output_speed = resolve_window_output_speed(next_observations);
+  const window_generation_speed = resolve_window_generation_speed(next_observations);
   const smoothing_seconds =
-    window_output_speed >= state.smoothed_speed
+    window_generation_speed >= state.smoothed_speed
       ? TASK_WAVEFORM_ATTACK_SECONDS
       : TASK_WAVEFORM_RELEASE_SECONDS;
   const next_smoothed_speed = smooth_task_waveform_value({
     previous_value: state.smoothed_speed,
-    target_value: window_output_speed,
+    target_value: window_generation_speed,
     elapsed_seconds,
     time_constant_seconds: smoothing_seconds,
   });

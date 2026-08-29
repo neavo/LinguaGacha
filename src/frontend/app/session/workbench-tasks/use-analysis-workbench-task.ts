@@ -22,6 +22,7 @@ import { resolve_visible_error_message } from "@frontend/app/feedback/visible-er
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { should_defer_task_snapshot_refresh } from "@shared/workbench/task-ownership";
 import { should_open_analysis_glossary_import_followup } from "@shared/workbench/task-completion-followup";
+import { resolve_workbench_generated_tokens } from "@shared/workbench/task-model";
 import {
   resolve_task_terminal_transition,
   useTerminalPromptSuppression,
@@ -210,11 +211,11 @@ export function useAnalysisWorkbenchTask(
       return;
     }
 
-    // 为什么：分析和翻译共用同一视觉信号模型，避免两套瞬时速度算法继续分叉。
+    // 为什么：分析和翻译都把已归一的思考与输出作为同一生成信号。
     const next_waveform_state = advance_task_waveform_state(analysis_waveform_state_ref.current, {
       active: analysis_task_active,
       now_seconds: next_now_seconds,
-      total_output_tokens: next_visual_snapshot.total_output_tokens,
+      total_generated_tokens: resolve_workbench_generated_tokens(next_metrics),
     });
     analysis_waveform_state_ref.current = next_waveform_state;
     set_analysis_waveform_history(() => {

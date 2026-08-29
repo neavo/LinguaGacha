@@ -22,6 +22,7 @@ import {
   useTerminalPromptSuppression,
 } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
 import { should_open_translation_export_followup } from "@shared/workbench/task-completion-followup";
+import { resolve_workbench_generated_tokens } from "@shared/workbench/task-model";
 import {
   advance_task_waveform_state,
   create_empty_task_waveform_state,
@@ -183,13 +184,13 @@ export function useTranslationWorkbenchTask(
       return;
     }
 
-    // 为什么：波形只消费累计输出 token，行进度变化不应制造 0 样本或尖峰。
+    // 为什么：波形只消费已归一的累计生成 token，行进度变化不应制造 0 样本或尖峰。
     const next_waveform_state = advance_task_waveform_state(
       translation_waveform_state_ref.current,
       {
         active: translation_task_active,
         now_seconds: next_now_seconds,
-        total_output_tokens: next_visual_snapshot.total_output_tokens,
+        total_generated_tokens: resolve_workbench_generated_tokens(next_metrics),
       },
     );
     translation_waveform_state_ref.current = next_waveform_state;

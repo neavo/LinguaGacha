@@ -28,12 +28,19 @@ export type WorkbenchTaskMetrics = {
   failed_count: number;
   elapsed_seconds: number;
   remaining_seconds: number;
-  average_output_speed: number;
+  average_generation_speed: number; // 思考与输出 token 的累计平均生成速度
   input_tokens: number;
   reasoning_tokens: number; // 详情展示的累计思考 token
   output_tokens: number; // 详情展示的累计输出 token
   request_in_flight_count: number;
 };
+
+/** 将已归一的互斥思考与输出计数恢复为模型完整生成量。 */
+export function resolve_workbench_generated_tokens(
+  metrics: Pick<WorkbenchTaskMetrics, "reasoning_tokens" | "output_tokens">,
+): number {
+  return metrics.reasoning_tokens + metrics.output_tokens;
+}
 
 /**
  * 两类工作台任务共享同一空运行态，领域包装只追加各自 extras。
@@ -142,7 +149,7 @@ export function resolve_workbench_task_metrics(args: {
       failed_count: 0,
       elapsed_seconds: 0,
       remaining_seconds: 0,
-      average_output_speed: 0,
+      average_generation_speed: 0,
       input_tokens: 0,
       reasoning_tokens: 0,
       output_tokens: 0,
@@ -156,6 +163,8 @@ export function resolve_workbench_task_metrics(args: {
       ? Math.max(0, args.now_seconds - snapshot.start_time)
       : Math.max(0, snapshot.time);
   const output_tokens = Math.max(0, snapshot.total_output_tokens);
+  const reasoning_tokens = Math.max(0, snapshot.total_reasoning_tokens);
+  const generated_tokens = resolve_workbench_generated_tokens({ reasoning_tokens, output_tokens });
   return {
     active: args.active,
     stopping: snapshot.status === "stopping",
@@ -174,7 +183,8 @@ export function resolve_workbench_task_metrics(args: {
             (elapsed_seconds / Math.max(1, snapshot.line)) *
               Math.max(0, snapshot.total_line - snapshot.line),
           ),
-    average_output_speed: elapsed_seconds <= 0 ? 0 : output_tokens / Math.max(1, elapsed_seconds),
+    average_generation_speed:
+      elapsed_seconds <= 0 ? 0 : generated_tokens / Math.max(1, elapsed_seconds),
     input_tokens:
       snapshot.total_input_tokens > 0
         ? snapshot.total_input_tokens
@@ -182,7 +192,7 @@ export function resolve_workbench_task_metrics(args: {
             0,
             snapshot.total_tokens - snapshot.total_reasoning_tokens - snapshot.total_output_tokens,
           ),
-    reasoning_tokens: Math.max(0, snapshot.total_reasoning_tokens),
+    reasoning_tokens,
     output_tokens,
     request_in_flight_count: Math.max(0, snapshot.request_in_flight_count),
   };
