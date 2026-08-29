@@ -6,6 +6,7 @@ import {
   type BackendRuntimeAgentWorkspaceRunRequest,
   type BackendRuntimeAgentWorkspaceRunResponse,
 } from "../../shared/backend-runtime";
+import { run_abortable_window_operation } from "../desktop-window-operation";
 import {
   AgentWorkspaceInvalidError,
   AgentWorkspaceTransactionError,
@@ -87,11 +88,12 @@ export class DesktopAgentWorkspaceRunner {
       return failure_response(error, "workspace_invalid", "invalidated", request.workspacePath);
     }
 
-    let target_window: BrowserWindow;
+    let target_window: BrowserWindow | null = null;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await this.runner_session.clearStorageData();
       signal.throwIfAborted();
-      target_window = new BrowserWindow({
+      const window = new BrowserWindow({
         show: false,
         webPreferences: {
           session: this.runner_session,
@@ -102,46 +104,36 @@ export class DesktopAgentWorkspaceRunner {
           backgroundThrottling: false,
         },
       });
-    } catch (error) {
-      try {
-        await files.rollback();
-      } catch (rollback_error) {
-        return failure_response(
-          rollback_error,
-          "transaction_failed",
-          "invalidated",
-          request.workspacePath,
-        );
-      }
-      if (signal.aborted) signal.throwIfAborted();
-      return failure_response(error, "execution_failed", "preserved", request.workspacePath);
-    }
-    this.active_files = files;
-    this.active_window = target_window;
-    target_window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    target_window.webContents.on("will-navigate", (event, url) => {
-      if (url !== AGENT_WORKSPACE_URL) event.preventDefault();
-    });
-    const abort = () => target_window.destroy();
-    signal.addEventListener("abort", abort, { once: true });
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await target_window.loadURL(AGENT_WORKSPACE_URL);
-      signal.throwIfAborted();
-      // renderer 销毁不保证 executeJavaScript 立即 settle，竞速拒绝确保事务能进入回滚。
-      const timeout_failure = new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          target_window.destroy();
-          reject(new Error(AGENT_WORKSPACE_SCRIPT_TIMEOUT));
-        }, AGENT_WORKSPACE_SCRIPT_TIMEOUT_MS);
+      target_window = window;
+      this.active_files = files;
+      this.active_window = window;
+      window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      window.webContents.on("will-navigate", (event, url) => {
+        if (url !== AGENT_WORKSPACE_URL) event.preventDefault();
       });
-      const serialized = await Promise.race([
-        target_window.webContents.executeJavaScript(
-          build_workspace_program(request.script, AGENT_WORKSPACE_METHOD_SOURCES),
-          true,
-        ),
-        timeout_failure,
-      ]);
+      // 窗口阶段负责物理中止，文件事务在其外部按单一 commit / rollback 路径结算。
+      let serialized: unknown;
+      try {
+        serialized = await run_abortable_window_operation(window, signal, async () => {
+          await window.loadURL(AGENT_WORKSPACE_URL);
+          signal.throwIfAborted();
+          const timeout_failure = new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => {
+              if (!window.isDestroyed()) window.destroy();
+              reject(new Error(AGENT_WORKSPACE_SCRIPT_TIMEOUT));
+            }, AGENT_WORKSPACE_SCRIPT_TIMEOUT_MS);
+          });
+          return await Promise.race([
+            window.webContents.executeJavaScript(
+              build_workspace_program(request.script, AGENT_WORKSPACE_METHOD_SOURCES),
+              true,
+            ),
+            timeout_failure,
+          ]);
+        });
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+      }
       signal.throwIfAborted();
       // protocol 会把类型化宿主错误投影成 HTTP 文本；提交前必须从事务对象恢复真实故障。
       const host_failure = files.get_host_failure();
@@ -203,9 +195,7 @@ export class DesktopAgentWorkspaceRunner {
       }
       return failure_response(error, "execution_failed", "preserved", request.workspacePath);
     } finally {
-      if (timeout !== undefined) clearTimeout(timeout);
-      signal.removeEventListener("abort", abort);
-      if (!target_window.isDestroyed()) target_window.destroy();
+      if (target_window !== null && !target_window.isDestroyed()) target_window.destroy();
       if (this.active_window === target_window) this.active_window = null;
       if (this.active_files === files) this.active_files = null;
     }
