@@ -87,12 +87,15 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260830 v0.117.2
+  - 调整与改进 [#823](../../issues/823) [#826](../../issues/826) [#828](../../issues/828) [#829](../../issues/829) [#830](../../issues/830) [#834](../../issues/834) [#836](../../issues/836) [#837](../../issues/837)
+
 - 20260827 v0.117.1
-  - 调整与改进 [#808](https://github.com/neavo/LinguaGacha/issues/808) [#810](https://github.com/neavo/LinguaGacha/issues/810) [#811](https://github.com/neavo/LinguaGacha/issues/811) [#812](https://github.com/neavo/LinguaGacha/issues/812) [#814](https://github.com/neavo/LinguaGacha/issues/814) [#815](https://github.com/neavo/LinguaGacha/issues/815) [#817](https://github.com/neavo/LinguaGacha/issues/817)
+  - 调整与改进 [#808](../../issues/808) [#810](../../issues/810) [#811](../../issues/811) [#812](../../issues/812) [#814](../../issues/814) [#815](../../issues/815) [#817](../../issues/817)
 
 - 20260825 v0.117.0
-  - `AGENT` - 自动写入审批 [#806](https://github.com/neavo/LinguaGacha/issues/806)
-  - 调整与改进 [#795](https://github.com/neavo/LinguaGacha/issues/795) [#797](https://github.com/neavo/LinguaGacha/issues/797) [#801](https://github.com/neavo/LinguaGacha/issues/801) [#804](https://github.com/neavo/LinguaGacha/issues/804)
+  - `AGENT` - 自动写入审批 [#806](../../issues/806)
+  - 调整与改进 [#795](../../issues/795) [#797](../../issues/797) [#801](../../issues/801) [#804](../../issues/804)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
