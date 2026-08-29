@@ -127,13 +127,9 @@ describe("AgentResponseAnnotation", () => {
         .querySelector(".agent-page__messages")
         ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
     );
-    const add_button = document.body.querySelector<HTMLButtonElement>(
-      '[role="toolbar"][aria-label="agent_page.annotation.add"] button',
-    );
+    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
     await act(async () => add_button?.click());
-    const textarea = document.body.querySelector<HTMLTextAreaElement>(
-      '[role="dialog"][aria-label="agent_page.annotation.add"] textarea',
-    );
+    const textarea = document.body.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea');
     if (textarea === null) throw new Error("缺少批注输入");
     await act(async () => set_textarea_value(textarea, "  请改写  "));
     const submit = document.body.querySelector<HTMLButtonElement>(
@@ -169,23 +165,39 @@ describe("AgentResponseAnnotation", () => {
       messages.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     });
 
-    const add_button = document.body.querySelector<HTMLButtonElement>(
-      '[role="toolbar"][aria-label="agent_page.annotation.add"] button',
-    );
+    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
     await act(async () => add_button?.click());
-    expect(
-      document.body.querySelector(
-        '[role="dialog"][aria-label="agent_page.annotation.add"] blockquote',
-      )?.textContent,
-    ).toBe("最终回复");
+    expect(document.body.querySelector('[role="dialog"] blockquote')?.textContent).toBe("最终回复");
 
     await act(async () => {
       document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     });
-    expect(
-      document.body.querySelector('[role="dialog"][aria-label="agent_page.annotation.add"]'),
-    ).toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("键盘扩展选区后把焦点交给添加批注操作", async () => {
+    const view = await render_view(
+      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
+        <div data-agent-annotation-content="true">最终回复</div>
+      </AgentResponseAnnotationSelection>,
+    );
+    const messages = view.querySelector<HTMLElement>(".agent-page__messages");
+    const text_node = view.querySelector("[data-agent-annotation-content]")?.firstChild;
+    if (messages === null || text_node === null || text_node === undefined) {
+      throw new Error("缺少回复文本");
+    }
+    select_range(text_node, 0, text_node, 2);
+
+    await act(async () =>
+      messages.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "ArrowRight", shiftKey: true, bubbles: true }),
+      ),
+    );
+
+    const add_button = document.body.querySelector<HTMLButtonElement>('[role="toolbar"] button');
+    expect(add_button).not.toBeNull();
+    expect(document.activeElement).toBe(add_button);
   });
 
   it("跨回复正文的选区不创建批注入口", async () => {
@@ -209,7 +221,7 @@ describe("AgentResponseAnnotation", () => {
         ?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })),
     );
 
-    expect(document.body.querySelector('[role="toolbar"][aria-label="添加批注"]')).toBeNull();
+    expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
   });
 });
 

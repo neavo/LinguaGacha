@@ -3,11 +3,20 @@ import {
   useRef,
   useState,
   type ComponentProps,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { MessageSquareQuote, X } from "lucide-react";
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import {
+  autoUpdate,
+  flip,
+  inline,
+  offset,
+  shift,
+  useFloating,
+  type VirtualElement,
+} from "@floating-ui/react-dom";
 
 import type { AgentResponseAnnotationAttachment } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -175,12 +184,19 @@ export function AgentResponseAnnotationViewer({
   );
 }
 
-type AnnotationSelection = {
-  selectedText: string;
-  comment: string;
-  editing: boolean;
-  focus_action: boolean; // 键盘创建的选区把焦点交给批注动作，指针选区保留原焦点。
-};
+type AnnotationSelection =
+  | {
+      mode: "action";
+      selectedText: string;
+      anchor: VirtualElement;
+      focus_action: boolean; // 键盘创建的选区把焦点交给批注动作，指针选区保留原焦点。
+    }
+  | {
+      mode: "editing";
+      selectedText: string;
+      anchor: VirtualElement;
+      comment: string;
+    };
 
 type AgentResponseAnnotationSelectionProps = {
   children: ReactNode;
@@ -188,20 +204,59 @@ type AgentResponseAnnotationSelectionProps = {
   on_add: (annotation: AgentResponseAnnotationAttachment) => void;
 };
 
-/** 只在已标记的最终回复正文内读取原生选区，并拥有唯一的临时批注浮层。 */
+/** 只在已标记的最终回复正文内读取原生选区，并拥有唯一的临时批注浮动工具。 */
 export function AgentResponseAnnotationSelection(
   props: AgentResponseAnnotationSelectionProps,
 ): JSX.Element {
   const { t } = useI18n();
   const root_ref = useRef<HTMLDivElement | null>(null);
-  // Range 是批注浮层唯一锚点；Base UI 直接读取其视口矩形，滚动与碰撞无需第二套坐标状态。
-  const anchor_ref = useRef<{ getBoundingClientRect: () => DOMRect } | null>(null);
   const action_ref = useRef<HTMLButtonElement | null>(null);
   const [selection, set_selection] = useState<AnnotationSelection | null>(null);
+  // 多行 Range 直接作为 fixed 虚拟锚点；定位层跟随滚动和布局变化，不复制坐标状态。
+  const { refs, floatingStyles } = useFloating({
+    open: selection !== null,
+    elements: { reference: selection?.anchor ?? null },
+    placement: "top",
+    strategy: "fixed",
+    middleware: [inline(), offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+  // Effect 只订阅语义开关，编辑评论时不反复解绑全局交互监听。
+  const selection_open = selection !== null;
+  const focus_action = selection?.mode === "action" && selection.focus_action;
 
   useEffect(() => {
     if (props.disabled) set_selection(null);
   }, [props.disabled]);
+
+  /** 键盘选区公开可达操作，指针选区继续保留正文焦点与复制语义。 */
+  useEffect(() => {
+    if (focus_action) action_ref.current?.focus();
+  }, [focus_action]);
+
+  /** 浮动工具只在正文、工具自身与 Escape 之外的交互中关闭。 */
+  useEffect(() => {
+    if (!selection_open) return;
+    const handle_pointer_down = (event: PointerEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        (root_ref.current?.contains(target) || refs.floating.current?.contains(target))
+      ) {
+        return;
+      }
+      set_selection(null);
+    };
+    const handle_key_down = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") set_selection(null);
+    };
+    document.addEventListener("pointerdown", handle_pointer_down);
+    document.addEventListener("keydown", handle_key_down);
+    return () => {
+      document.removeEventListener("pointerdown", handle_pointer_down);
+      document.removeEventListener("keydown", handle_key_down);
+    };
+  }, [refs.floating, selection_open]);
 
   /** 原生选区必须完整落在同一个最终回复正文内，避免跨工具或消息构造伪引用。 */
   const read_selection = (focus_action: boolean): void => {
@@ -231,18 +286,22 @@ export function AgentResponseAnnotationSelection(
       return;
     }
     const selected_range = range.cloneRange();
-    anchor_ref.current = { getBoundingClientRect: () => selected_range.getBoundingClientRect() };
+    const anchor: VirtualElement = {
+      getBoundingClientRect: () => selected_range.getBoundingClientRect(),
+      getClientRects: () => selected_range.getClientRects(),
+      contextElement: start_surface,
+    };
     set_selection({
       selectedText: selected_text,
-      comment: "",
-      editing: false,
+      anchor,
+      mode: "action",
       focus_action,
     });
   };
 
   /** 提交后同时清理临时 UI 与浏览器选区，已确认内容只由消息草稿继续持有。 */
   const submit = (): void => {
-    if (selection === null) return;
+    if (selection?.mode !== "editing") return;
     props.on_add({
       kind: "response_annotation",
       selectedText: selection.selectedText,
@@ -253,46 +312,31 @@ export function AgentResponseAnnotationSelection(
   };
 
   return (
-    <PopoverPrimitive.Root
-      open={selection !== null}
-      onOpenChange={(open, details) => {
-        if (!open) {
-          const target = details.event.target;
-          if (target instanceof Node && root_ref.current?.contains(target)) {
-            details.cancel();
-            return;
-          }
-          set_selection(null);
-        }
-      }}
-    >
+    <>
       <div
         ref={root_ref}
         className="agent-page__messages"
         onPointerUp={() => read_selection(false)}
-        onKeyUp={(event: KeyboardEvent<HTMLDivElement>) => {
+        onKeyUp={(event: ReactKeyboardEvent<HTMLDivElement>) => {
           if (event.shiftKey) read_selection(true);
         }}
       >
         {props.children}
       </div>
-      {selection === null ? null : (
-        <PopoverPrimitive.Portal>
-          <PopoverPrimitive.Positioner
-            className="isolate z-(--ui-layer-popover)"
-            side="top"
-            align="center"
-            sideOffset={8}
-            collisionPadding={8}
-            anchor={() => anchor_ref.current}
-          >
-            <PopoverPrimitive.Popup
-              initialFocus={() => (selection.focus_action ? action_ref.current : false)}
-              finalFocus={false}
+      {selection === null
+        ? null
+        : createPortal(
+            <div
+              ref={refs.setFloating}
+              className={`isolate z-(--ui-layer-popover)${
+                selection.mode === "action" ? " agent-response-annotation-popover" : ""
+              }`}
+              style={floatingStyles}
+              role={selection.mode === "action" ? "toolbar" : undefined}
+              aria-label={selection.mode === "action" ? t("agent_page.annotation.add") : undefined}
             >
-              {selection.editing ? (
+              {selection.mode === "editing" ? (
                 <AgentResponseAnnotationEditor
-                  className="agent-response-annotation-popover"
                   aria-label={t("agent_page.annotation.add")}
                   selected_text={selection.selectedText}
                   comment={selection.comment}
@@ -303,33 +347,33 @@ export function AgentResponseAnnotationSelection(
                   on_cancel={() => set_selection(null)}
                 />
               ) : (
-                <div
-                  className="agent-response-annotation-popover"
-                  role="toolbar"
-                  aria-label={t("agent_page.annotation.add")}
+                <AppButton
+                  ref={action_ref}
+                  type="button"
+                  variant="ghost"
+                  className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() =>
+                    set_selection((current) =>
+                      current?.mode !== "action"
+                        ? current
+                        : {
+                            mode: "editing",
+                            selectedText: current.selectedText,
+                            anchor: current.anchor,
+                            comment: "",
+                          },
+                    )
+                  }
                 >
-                  <AppButton
-                    ref={action_ref}
-                    type="button"
-                    variant="ghost"
-                    className="rounded-[inherit] text-[12px] [&_svg]:text-primary"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() =>
-                      set_selection((current) =>
-                        current === null ? null : { ...current, editing: true },
-                      )
-                    }
-                  >
-                    <MessageSquareQuote aria-hidden="true" />
-                    {t("agent_page.annotation.add")}
-                  </AppButton>
-                </div>
+                  <MessageSquareQuote aria-hidden="true" />
+                  {t("agent_page.annotation.add")}
+                </AppButton>
               )}
-            </PopoverPrimitive.Popup>
-          </PopoverPrimitive.Positioner>
-        </PopoverPrimitive.Portal>
-      )}
-    </PopoverPrimitive.Root>
+            </div>,
+            document.body,
+          )}
+    </>
   );
 }
 

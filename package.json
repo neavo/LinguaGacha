@@ -29,6 +29,7 @@
   "devDependencies": {
     "@babel/parser": "^8.0.4",
     "@base-ui/react": "^1.7.0",
+    "@floating-ui/react-dom": "^2.1.9",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.2",
