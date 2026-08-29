@@ -809,10 +809,6 @@
   transition: background-color 120ms ease;
 }
 
-.agent-page__status-task-row {
-  min-height: var(--agent-status-row-height, 32px);
-}
-
 .agent-page__status-queue-row {
   display: grid;
   min-width: 0;
@@ -836,13 +832,12 @@
 }
 
 .agent-task-progress {
-  /* 等宽侧轨让队首相对整条居中，余项计数消失时也不跳位。 */
-  display: grid;
+  /* 两侧状态信息按内容占宽，队首任务填充剩余空间并在不足时截断。 */
+  display: flex;
   width: min(100%, 420px);
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
   align-items: center;
-  column-gap: 8px;
+  gap: 8px;
   margin: 0 auto;
   padding: 0 12px;
   color: var(--muted-foreground);
@@ -860,7 +855,6 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-self: start;
   gap: 8px;
 }
 
@@ -872,9 +866,9 @@
 }
 
 .agent-task-progress__item {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
-  justify-self: stretch;
   color: var(--foreground);
   font-weight: 500;
   text-align: center;
@@ -883,7 +877,7 @@
 }
 
 .agent-task-progress__more {
-  justify-self: end;
+  flex: 0 0 auto;
   color: var(--muted-foreground);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
