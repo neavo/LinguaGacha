@@ -559,11 +559,6 @@ describe("AgentPage", () => {
     );
     expect(task_only_follow_control).not.toBeNull();
     expect(task_only_follow_control?.parentElement).toBe(task_only_status_zone);
-    expect(
-      task_only_status_zone?.querySelector(
-        ".agent-page__status-task-row .agent-page__follow-control",
-      ),
-    ).toBeNull();
     expect(task_only_status_zone?.querySelector(".agent-page__status-queue-row")).toBeNull();
   });
 

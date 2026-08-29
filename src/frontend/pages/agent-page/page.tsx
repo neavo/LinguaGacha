@@ -633,9 +633,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
 
       <div className="agent-page__status-zone">
         {has_task_progress ? (
-          <div className="agent-page__status-task-row">
-            <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
-          </div>
+          <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
         ) : null}
         {has_input_queue ? (
           <div className="agent-page__status-queue-row">
