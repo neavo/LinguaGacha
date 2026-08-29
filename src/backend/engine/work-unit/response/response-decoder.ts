@@ -67,13 +67,19 @@ export class ResponseDecoder {
     return glossary_entries;
   }
 
-  /** 解码请求与响应共用的固定 index/text 记录。 */
+  /** 只接受安全 index 与非空正文，调用方据此独立裁决每个请求 item。 */
   private build_translation_item(
     json_data: Record<string, unknown>,
     mode: TranslationPromptMode,
   ): TranslationDecodedItem | null {
     const request_index = this.read_request_index(json_data.index);
-    if (request_index === null || typeof json_data.text !== "string") return null;
+    if (
+      request_index === null ||
+      typeof json_data.text !== "string" ||
+      json_data.text.trim() === ""
+    ) {
+      return null;
+    }
     if (mode === "text") return { request_index, text_dst: json_data.text, actor_dst: null };
     if (json_data.actor !== null && typeof json_data.actor !== "string") return null;
     return {

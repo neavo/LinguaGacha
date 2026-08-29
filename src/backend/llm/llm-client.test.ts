@@ -223,7 +223,7 @@ describe("LLMClient", () => {
     });
   });
 
-  it("正常终止但没有正文时返回当前请求错误", async () => {
+  it("正常终止但没有正文时把空结果交给消费方校验", async () => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(
         create_message({
@@ -239,11 +239,9 @@ describe("LLMClient", () => {
     expect(result).toMatchObject({
       response_result: "",
       input_tokens: 4,
-      request_error: {
-        message: "供应商未返回正文。",
-        context: { finish_reason: "stop" },
-      },
+      timeout: false,
     });
+    expect(result).not.toHaveProperty("request_error");
   });
 
   it("Pi provider error 返回完整诊断并丢弃部分结果", async () => {

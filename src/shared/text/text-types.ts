@@ -1,13 +1,15 @@
 import { QualityRuleSnapshotTool } from "../quality/quality-rule-snapshot";
 import type { JsonRecord, JsonValue } from "../../domain/json";
+import { ALL_LANGUAGE_CODE, normalize_language_code } from "../../domain/language";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type { TextPreserveEntry, TextReplacementEntry } from "../../domain/quality";
+import { AppError } from "../error";
 
 /**
  * 文本处理只依赖的配置字段，字段名保持配置快照兼容
  */
 export interface TextProcessingConfig {
-  source_language: string; // 源/目标语言直接来自项目配置，语言过滤器负责未知值兜底
+  source_language: string; // 源/目标语言在快照恢复时完成归一与校验
   target_language: string;
   clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
   auto_process_prefix_suffix_preserved_text: boolean; // 自动保护前后缀开关决定完全保护行是否仍进入翻译流程
@@ -44,7 +46,6 @@ export type TextTaskItemRecord = JsonRecord & {
   status?: string;
   text_type?: string; // 决定保护规则分支，retry_count 用于任务调度诊断
   retry_count?: number;
-  skip_internal_filter?: boolean; // 强制翻译条目绕过规则/语言类内部过滤
   extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };
 
@@ -79,13 +80,27 @@ export class TextQualitySnapshotTool {
  */
 export class TextProcessingConfigTool {
   /**
-   * 从完整 config 快照抽取文本处理配置，缺失时使用设置领域默认值
+   * 从完整 config 快照抽取文本处理配置，并在 worker 入口归一和校验语言
    */
   public static from_api_value(value: JsonValue | undefined): TextProcessingConfig {
     const snapshot = normalize_setting_snapshot(value);
+    const source_language = normalize_language_code(snapshot.source_language);
+    if (source_language === null) {
+      throw new AppError("language.unknown_source_language_code", {
+        public_details: { source_language: snapshot.source_language },
+        diagnostic_context: { source_language: snapshot.source_language },
+      });
+    }
+    const target_language = normalize_language_code(snapshot.target_language);
+    if (target_language === ALL_LANGUAGE_CODE) {
+      throw new AppError("language.unsupported_all_target_language");
+    }
+    if (target_language === null) {
+      throw new AppError("language.invalid_target_language");
+    }
     return {
-      source_language: snapshot.source_language,
-      target_language: snapshot.target_language,
+      source_language,
+      target_language,
       clean_ruby: snapshot.clean_ruby,
       auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
     };

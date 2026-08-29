@@ -150,9 +150,9 @@ export class AnalysisWorkUnitRunner {
     }
     if (llm_result.timeout || llm_result.request_error !== undefined) {
       const app_language = this.read_app_language(request.config_snapshot);
-      const status_text = llm_result.timeout
-        ? this.t(app_language, "app.log.response_checker_fail_timeout")
-        : this.t(app_language, "app.log.request_failed_retry");
+      const error_text = llm_result.timeout
+        ? this.t(app_language, "app.log.request_timeout")
+        : (llm_result.request_error?.message ?? "");
       return {
         success: false,
         stopped: false,
@@ -169,10 +169,10 @@ export class AnalysisWorkUnitRunner {
           glossary_entries: [],
           response_think: llm_result.response_think,
           rule_analysis: "",
-          status_text,
+          status_text: this.t(app_language, "app.log.request_failed", { ERROR: error_text }),
           request_error: llm_result.request_error,
           app_language,
-          level: "warning",
+          level: "error",
         }),
       };
     }
@@ -210,10 +210,10 @@ export class AnalysisWorkUnitRunner {
           rule_analysis: cleaner_result.rule_analysis_text,
           status_text: this.t(
             this.read_app_language(request.config_snapshot),
-            "app.log.response_checker_fail_data",
+            "app.log.model_response_invalid",
           ),
           app_language: this.read_app_language(request.config_snapshot),
-          level: "warning",
+          level: "error",
         }),
       };
     }

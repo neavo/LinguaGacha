@@ -28,9 +28,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   }
 
   // 结构化结果已有独立内容布局，异常只追加诊断字段，避免再次生成正文投影。
-  const error_text = [props.detail.error?.message, props.detail.error?.stack]
-    .filter((value): value is string => value !== undefined && value.trim() !== "")
-    .join("\n");
+  const error_text = props.detail.error?.stack?.trim() ?? "";
 
   return (
     <div className="log-detail-view">

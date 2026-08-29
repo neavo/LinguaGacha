@@ -25,7 +25,7 @@ export interface LLMRequestBody {
  */
 export interface LLMRequestResult {
   response_think: string; // 只用于日志展示和分析，不参与译文解析
-  response_result: string; // 调用方后处理的唯一模型正文输入
+  response_result: string; // 正常终态的模型正文，可为空并由消费方按任务协议校验
   input_tokens: number; // token 计数用于任务统计，缺失时由客户端归零
   reasoning_tokens: number; // 供应商报告的思考 token 子集，缺失时归零
   output_tokens: number; // 只表示扣除思考后的输出 token
