@@ -22,7 +22,7 @@
 - `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 task、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
 - 初始状态并行读取设置、项目 snapshot、任务 snapshot 与 runtime snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
-- `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task progress 分别携带累计输入、思考与输出 token，工作台详情使用相同三段口径，输出单独驱动速度与波形。消费方通过 `useTaskSnapshot` 精确订阅，task 不进入项目 query 或页面计算缓存。
+- `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task progress 分别携带累计输入、思考与输出 token，工作台详情使用相同三段口径，思考与输出的互斥计数之和统一驱动生成速度与波形。消费方通过 `useTaskSnapshot` 精确订阅，task 不进入项目 query 或页面计算缓存。
 - `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置和任务启动统一按 `owner !== null` 锁定；Agent 页在 task owner 下同样锁定，但 Agent owner 期间允许当前会话内存输入排队，并仅按 Agent snapshot 的 `canSendNow` 开放 Pi steer。reset、round 修订和模型选择 / 思考档位仍要求共享运行时空闲。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。

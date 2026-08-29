@@ -60,7 +60,7 @@ describe("workbench task model", () => {
     ).toBe(current_snapshot);
   });
 
-  it("从任务行进度计算百分比和剩余时间", () => {
+  it("从任务进度计算完成度、剩余时间和生成速度", () => {
     const metrics = resolve_workbench_task_metrics({
       snapshot: {
         ...create_empty_workbench_task_snapshot("analysis"),
@@ -84,7 +84,7 @@ describe("workbench task model", () => {
       processed_count: 2,
       elapsed_seconds: 6,
       remaining_seconds: 2,
-      average_output_speed: 5,
+      average_generation_speed: 50 / 6,
       input_tokens: 40,
       reasoning_tokens: 20,
       output_tokens: 30,

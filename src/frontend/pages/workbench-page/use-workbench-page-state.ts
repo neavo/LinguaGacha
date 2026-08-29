@@ -410,7 +410,7 @@ function build_translation_task_metric_entries(
     {
       key: "speed",
       label: t("workbench_page.task.detail.average_speed"),
-      ...format_speed_value(metrics.average_output_speed),
+      ...format_speed_value(metrics.average_generation_speed),
     },
     {
       key: "input-tokens",
@@ -456,7 +456,7 @@ function build_analysis_task_metric_entries(
     {
       key: "speed",
       label: t("workbench_page.task.detail.average_speed"),
-      ...format_speed_value(metrics.average_output_speed),
+      ...format_speed_value(metrics.average_generation_speed),
     },
     {
       key: "input-tokens",
@@ -517,7 +517,7 @@ function build_translation_task_summary_display(
 
   return {
     status_text,
-    trailing_text: show_runtime ? format_summary_speed(metrics.average_output_speed) : null,
+    trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
     tone: resolve_task_tone({
       active: metrics.active,
       stopping: metrics.stopping,
@@ -544,7 +544,7 @@ function build_analysis_task_summary_display(
 
   return {
     status_text,
-    trailing_text: show_runtime ? format_summary_speed(metrics.average_output_speed) : null,
+    trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
     tone: resolve_task_tone({
       active: metrics.active,
       stopping: metrics.stopping,
