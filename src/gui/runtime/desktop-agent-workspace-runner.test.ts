@@ -460,12 +460,9 @@ describe("DesktopAgentWorkspaceRunner", () => {
   });
 
   it("停止会等待当前事务回滚后再以原始原因拒绝", async () => {
-    let reject_execution: ((error: Error) => void) | undefined;
+    vi.useFakeTimers();
     electron_mocks.execute_javascript.mockImplementationOnce(
-      async () =>
-        await new Promise<string>((_resolve, reject) => {
-          reject_execution = reject;
-        }),
+      async () => await new Promise<string>(() => undefined),
     );
     const runner = new DesktopAgentWorkspaceRunner();
     const controller = new AbortController();
@@ -477,10 +474,17 @@ describe("DesktopAgentWorkspaceRunner", () => {
     await vi.waitFor(() => expect(electron_mocks.execute_javascript).toHaveBeenCalledOnce());
 
     controller.abort(reason);
-    reject_execution?.(new Error("renderer destroyed"));
 
     await expect(running).rejects.toBe(reason);
     expect(fs.readdirSync(path.join(workspace_path, ".transactions"))).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await expect(
+      runner.run(
+        { workspacePath: workspace_path, script: "return null;" },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ status: "success" });
   });
 
   it("从异步准备开始拒绝并发操作", async () => {

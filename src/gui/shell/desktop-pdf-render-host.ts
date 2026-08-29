@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 
+import { run_abortable_window_operation } from "../desktop-window-operation";
 import { load_renderer_entry } from "./desktop-window-host";
 import { render_pdf_markdown_html } from "./pdf-markdown-html";
 
@@ -20,9 +21,7 @@ export async function render_desktop_pdf(args: {
       backgroundThrottling: false,
     },
   });
-  const abort = (): void => window.destroy();
-  args.signal.addEventListener("abort", abort, { once: true });
-  try {
+  return await run_abortable_window_operation(window, args.signal, async () => {
     await load_renderer_entry(window, args.desktopBundleDir, "pdf-renderer.html");
     args.signal.throwIfAborted();
     const html = render_pdf_markdown_html(args.markdown);
@@ -44,8 +43,5 @@ export async function render_desktop_pdf(args: {
         preferCSSPageSize: true,
       }),
     );
-  } finally {
-    args.signal.removeEventListener("abort", abort);
-    if (!window.isDestroyed()) window.destroy();
-  }
+  });
 }
