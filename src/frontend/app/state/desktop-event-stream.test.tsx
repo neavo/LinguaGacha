@@ -25,20 +25,23 @@ type DesktopEventStreamOptions = Parameters<typeof useDesktopEventStream>[0];
 function create_event_source_stub(): {
   event_source: EventSource;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
+  open: () => void;
   has_listener: (event_name: string) => boolean;
 } {
   const listener_map = new Map<string, EventListener>();
+  const event_source = {
+    addEventListener: vi.fn((event_name: string, listener: EventListener) => {
+      listener_map.set(event_name, listener);
+    }),
+    close: vi.fn(() => {
+      listener_map.clear();
+    }),
+    onopen: null as (() => void) | null,
+    onerror: null,
+  } as unknown as EventSource;
 
   return {
-    event_source: {
-      addEventListener: vi.fn((event_name: string, listener: EventListener) => {
-        listener_map.set(event_name, listener);
-      }),
-      close: vi.fn(() => {
-        listener_map.clear();
-      }),
-      onerror: null,
-    } as unknown as EventSource,
+    event_source,
     emit: (event_name: string, payload: Record<string, unknown>) => {
       const listener = listener_map.get(event_name);
       if (listener === undefined) {
@@ -48,6 +51,10 @@ function create_event_source_stub(): {
       listener({
         data: JSON.stringify(payload),
       } as MessageEvent<string>);
+    },
+    /** 模拟浏览器首次连接及断线重连后的 open 通知。 */
+    open: () => {
+      event_source.onopen?.(new Event("open"));
     },
     has_listener: (event_name: string) => listener_map.has(event_name),
   };
@@ -132,7 +139,7 @@ describe("useDesktopEventStream", () => {
     const refresh_project_state_after_error = vi.fn(async () => undefined);
     const project_pipeline_error = new Error("project pipeline failed");
     const raw_project_path = "E:/secret/private/demo.lg";
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_event_stream_mock.mockReturnValue(event_stream.event_source);
 
     render_event_stream(
       create_event_stream_options({
@@ -199,7 +206,7 @@ describe("useDesktopEventStream", () => {
   it("运行时事件立即写入共享快照", async () => {
     const event_stream = create_event_source_stub();
     const apply_runtime_snapshot = vi.fn();
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_event_stream_mock.mockReturnValue(event_stream.event_source);
     render_event_stream(
       create_event_stream_options({ applyRuntimeSnapshot: apply_runtime_snapshot }),
     );
@@ -212,5 +219,42 @@ describe("useDesktopEventStream", () => {
     });
 
     expect(apply_runtime_snapshot).toHaveBeenCalledWith({ revision: 3, owner: "agent" });
+  });
+
+  it("事件流重连后恢复各域权威状态且首次连接不重复刷新", async () => {
+    const event_stream = create_event_source_stub();
+    const refresh_settings = vi.fn(async () => undefined);
+    const refresh_runtime = vi.fn(async () => undefined);
+    const refresh_task = vi.fn(async () => undefined);
+    const refresh_project = vi.fn(async () => undefined);
+    open_event_stream_mock.mockReturnValue(event_stream.event_source);
+    render_event_stream(
+      create_event_stream_options({
+        refreshSettings: refresh_settings,
+        refreshRuntime: refresh_runtime,
+        recovery: {
+          report_state_error: vi.fn(),
+          refresh_task_after_state_error: refresh_task,
+          refresh_project_state_after_error: refresh_project,
+        },
+      }),
+    );
+    await wait_for_condition(() => event_stream.has_listener("task.snapshot_changed"));
+
+    event_stream.open();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(refresh_settings).not.toHaveBeenCalled();
+    expect(refresh_runtime).not.toHaveBeenCalled();
+    expect(refresh_task).not.toHaveBeenCalled();
+    expect(refresh_project).not.toHaveBeenCalled();
+
+    event_stream.open();
+    await wait_for_condition(() => refresh_settings.mock.calls.length === 1);
+
+    expect(refresh_runtime).toHaveBeenCalledOnce();
+    expect(refresh_task).toHaveBeenCalledOnce();
+    expect(refresh_project).toHaveBeenCalledOnce();
   });
 });

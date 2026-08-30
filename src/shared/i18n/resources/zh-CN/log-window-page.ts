@@ -45,7 +45,4 @@ export const zh_cn_log_window_page = {
       error: "错误详情",
     },
   },
-  feedback: {
-    stream_failed: "日志流连接失败。",
-  },
 } as const;

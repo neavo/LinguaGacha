@@ -31,6 +31,15 @@ class EventSourceStub {
     this.listeners.set(type, listeners);
   }
 
+  /** 取消订阅后不再向已卸载消费方投递事件。 */
+  removeEventListener(type: string, listener: EventListener): void {
+    const listeners = this.listeners.get(type) ?? [];
+    this.listeners.set(
+      type,
+      listeners.filter((candidate) => candidate !== listener),
+    );
+  }
+
   /**
    * 触发测试事件，帮助断言桌面 API 流解析结果
    */
@@ -87,7 +96,7 @@ describe("desktop-api", () => {
     vi.stubGlobal("EventSource", EventSourceStub);
 
     const { get_backend_metadata, open_event_stream } = await import("./desktop-api");
-    const event_source = await open_event_stream();
+    const event_source = open_event_stream();
     const backend_metadata = await get_backend_metadata();
 
     expect(fetch_mock).toHaveBeenCalledTimes(1);
@@ -104,35 +113,15 @@ describe("desktop-api", () => {
     expect(backend_metadata).toEqual({ version: "9.9.9" });
   });
 
-  it("open_log_stream 解析独立日志事件流", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            ok: true,
-            data: {
-              status: "ok",
-              service: "linguagacha-backend",
-              version: "9.9.9",
-            },
-          }),
-        } as Response;
-      }),
-    );
-
+  it("subscribe_log_stream 解析独立日志事件并仅在取消订阅时关闭", async () => {
     install_desktop_api_host("http://127.0.0.1:38191/");
     vi.stubGlobal("EventSource", EventSourceStub);
 
-    const { open_log_stream } = await import("./desktop-api");
-    const iterator = open_log_stream()[Symbol.asyncIterator]();
-    const next_event = iterator.next();
-    await vi.waitFor(() => {
-      expect(EventSourceStub.instances).toHaveLength(1);
-    });
-    EventSourceStub.instances[0]?.emit("log.appended", {
+    const received: unknown[] = [];
+    const { subscribe_log_stream } = await import("./desktop-api");
+    const unsubscribe = subscribe_log_stream((event) => received.push(event));
+    const event_source = EventSourceStub.instances[0];
+    event_source?.emit("log.appended", {
       id: "log-1",
       sequence: 1,
       created_at: "2026-04-26T00:00:00.000+00:00",
@@ -141,10 +130,10 @@ describe("desktop-api", () => {
       message_preview: "hello",
       message_length: 2048,
     });
+    event_source?.emit("log.appended", { id: "invalid" });
 
-    await expect(next_event).resolves.toEqual({
-      done: false,
-      value: {
+    expect(received).toEqual([
+      {
         id: "log-1",
         sequence: 1,
         created_at: "2026-04-26T00:00:00.000+00:00",
@@ -153,67 +142,24 @@ describe("desktop-api", () => {
         message_preview: "hello",
         message_length: 2048,
       },
-    });
-    expect(EventSourceStub.instances[0]?.url).toBe("http://127.0.0.1:38191/api/logs/stream");
-    await iterator.return?.();
-  });
+    ]);
+    expect(event_source?.url).toBe("http://127.0.0.1:38191/api/logs/stream");
+    expect(event_source?.onerror).toBeNull();
+    expect(event_source?.close).not.toHaveBeenCalled();
 
-  it("open_log_stream 按到达顺序消费积压日志事件", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            ok: true,
-            data: {
-              status: "ok",
-              service: "linguagacha-backend",
-              version: "9.9.9",
-            },
-          }),
-        } as Response;
-      }),
-    );
+    unsubscribe();
 
-    install_desktop_api_host("http://127.0.0.1:38191/");
-    vi.stubGlobal("EventSource", EventSourceStub);
-
-    const { open_log_stream } = await import("./desktop-api");
-    const iterator = open_log_stream()[Symbol.asyncIterator]();
-    const first_read = iterator.next();
-    await vi.waitFor(() => {
-      expect(EventSourceStub.instances).toHaveLength(1);
-    });
-    EventSourceStub.instances[0]?.emit("log.appended", {
-      id: "log-1",
-      sequence: 1,
-      created_at: "2026-04-26T00:00:00.000+00:00",
-      level: "info",
-      source: "engine",
-      message_preview: "第一条",
-      message_length: 3,
-    });
-    EventSourceStub.instances[0]?.emit("log.appended", {
+    expect(event_source?.close).toHaveBeenCalledOnce();
+    event_source?.emit("log.appended", {
       id: "log-2",
       sequence: 2,
       created_at: "2026-04-26T00:00:01.000+00:00",
-      level: "error",
-      source: "engine-worker",
-      message_preview: "第二条",
-      message_length: 3,
+      level: "info",
+      source: "test",
+      message_preview: "late",
+      message_length: 4,
     });
-
-    await expect(first_read).resolves.toMatchObject({
-      done: false,
-      value: { id: "log-1", sequence: 1, message_preview: "第一条" },
-    });
-    await expect(iterator.next()).resolves.toMatchObject({
-      done: false,
-      value: { id: "log-2", sequence: 2, message_preview: "第二条" },
-    });
-    await iterator.return?.();
+    expect(received).toHaveLength(1);
   });
 
   it("read_log_detail 读取完整日志详情", async () => {
@@ -560,14 +506,11 @@ describe("desktop-api", () => {
   });
 
   it("api_get 通过统一 envelope 读取 Backend query", async () => {
-    const fetch_mock = vi.fn(async (url: string) => {
-      const data = url.endsWith("/api/health")
-        ? { status: "ok", service: "linguagacha-backend", version: "9.9.9" }
-        : { state: "idle", entries: [], skills: [] };
+    const fetch_mock = vi.fn(async () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ ok: true, data }),
+        json: async () => ({ ok: true, data: { state: "idle", entries: [], skills: [] } }),
       } as Response;
     });
     vi.stubGlobal("fetch", fetch_mock);
@@ -576,7 +519,8 @@ describe("desktop-api", () => {
     const { api_get } = await import("./desktop-api");
 
     await expect(api_get("/api/agent/snapshot")).resolves.toMatchObject({ state: "idle" });
-    expect(fetch_mock).toHaveBeenLastCalledWith("http://127.0.0.1:38191/api/agent/snapshot", {
+    expect(fetch_mock).toHaveBeenCalledOnce();
+    expect(fetch_mock).toHaveBeenCalledWith("http://127.0.0.1:38191/api/agent/snapshot", {
       method: "GET",
     });
   });

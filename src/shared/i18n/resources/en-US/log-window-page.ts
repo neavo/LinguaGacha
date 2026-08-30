@@ -49,7 +49,4 @@ export const en_us_log_window_page = {
       error: "Error Details",
     },
   },
-  feedback: {
-    stream_failed: "Log stream connection failed.",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_log_window_page>;

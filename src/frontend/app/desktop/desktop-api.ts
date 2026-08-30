@@ -49,11 +49,6 @@ export type GithubReleaseUpdate = {
   windows_zip_urls: WindowsReleaseZipUrls; // renderer 只保存 release 解析结果，目标架构由 main 判定
 };
 
-type EventSourceJsonEvent = {
-  type: string;
-  [key: string]: unknown;
-};
-
 type SemanticVersion = {
   major: number;
   minor: number;
@@ -62,12 +57,9 @@ type SemanticVersion = {
 
 export type DesktopLocalErrorCode =
   | "missing_backend_api_base_url"
-  | "backend_api_unavailable"
   | "backend_metadata_unavailable"
-  | "event_stream_failed"
   | "http_error"
-  | "network_failed"
-  | "timeout";
+  | "network_failed";
 
 export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
 
@@ -75,13 +67,7 @@ export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
 const BACKEND_API_HEALTH_PATH = "/api/health";
 // CORE API SERVICE NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const BACKEND_API_SERVICE_NAME = "linguagacha-backend";
-// CORE API PROBE TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
-const BACKEND_API_PROBE_TIMEOUT_MS = 300;
 const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
-
-let cached_backend_api_base_url: string | null = null;
-let cached_backend_metadata: BackendMetadata | null = null;
-let pending_backend_api_base_url_resolution: Promise<string> | null = null;
 
 /**
  * 携带 Backend API 错误码，保持渲染层错误分支可判定
@@ -141,13 +127,11 @@ async function read_api_envelope<data_type>(
 }
 
 /**
- * 把 fetch 抛错归一为本地网络错误或超时错误。
+ * 把 fetch 抛错归一为携带请求路径的本地网络错误。
  */
 function create_network_error(path: string, cause: unknown): DesktopApiError {
-  const code: DesktopLocalErrorCode =
-    cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
   return new DesktopApiError({
-    code,
+    code: "network_failed",
     details: { path },
     cause,
   });
@@ -181,7 +165,12 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
 
 function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | null {
   const version = payload.version?.trim();
-  if (version === undefined || version === "") {
+  if (
+    payload.status !== "ok" ||
+    payload.service !== BACKEND_API_SERVICE_NAME ||
+    version === undefined ||
+    version === ""
+  ) {
     return null;
   }
 
@@ -249,78 +238,16 @@ function normalize_github_release_update(
   };
 }
 
-async function probe_backend_api_candidate(base_url: string): Promise<BackendMetadata | null> {
-  const abort_controller = new AbortController();
-  const timeout_id = window.setTimeout(() => {
-    abort_controller.abort();
-  }, BACKEND_API_PROBE_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(build_api_url(base_url, BACKEND_API_HEALTH_PATH), {
-      method: "GET",
-      signal: abort_controller.signal,
-    });
-    if (!response.ok) {
-      return null;
-    }
-
-    const payload = (await response.json()) as ApiEnvelope<HealthPayload>;
-    if (payload.ok !== true || payload.data === undefined) {
-      return null;
-    }
-
-    if (payload.data.status !== "ok") {
-      return null;
-    }
-
-    if (payload.data.service !== BACKEND_API_SERVICE_NAME) {
-      return null;
-    }
-
-    return normalize_backend_metadata(payload.data);
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timeout_id);
-  }
-}
-
-// resolve_backend_api_base_url 集中解析运行时决策，避免调用点复制条件判断。
-async function resolve_backend_api_base_url(): Promise<string> {
-  if (cached_backend_api_base_url !== null) {
-    return cached_backend_api_base_url;
-  }
-
-  if (pending_backend_api_base_url_resolution !== null) {
-    return pending_backend_api_base_url_resolution;
-  }
-
-  pending_backend_api_base_url_resolution = (async () => {
-    const base_url = read_backend_api_base_url();
-    const backend_metadata = await probe_backend_api_candidate(base_url);
-    if (backend_metadata !== null) {
-      cached_backend_api_base_url = base_url;
-      cached_backend_metadata = backend_metadata;
-      return base_url;
-    }
-
-    throw DesktopApiError.local("backend_api_unavailable");
-  })();
-
-  try {
-    return await pending_backend_api_base_url_resolution;
-  } finally {
-    pending_backend_api_base_url_resolution = null;
-  }
-}
-
+/** 健康检查只读取 Backend 身份与版本，不参与其它请求的连接决策。 */
 export async function get_backend_metadata(): Promise<BackendMetadata> {
-  await resolve_backend_api_base_url();
-  if (cached_backend_metadata === null) {
+  const metadata = normalize_backend_metadata(
+    await api_get<HealthPayload>(BACKEND_API_HEALTH_PATH),
+  );
+  if (metadata === null) {
     throw DesktopApiError.local("backend_metadata_unavailable");
   }
 
-  return cached_backend_metadata;
+  return metadata;
 }
 
 export async function check_github_release_update(
@@ -369,7 +296,7 @@ export async function api_get<data_type>(path: string): Promise<data_type> {
  * 收口 Backend 请求、网络异常与公开错误 envelope，调用方只接收 data。
  */
 async function api_request<data_type>(path: string, init: RequestInit): Promise<data_type> {
-  const base_url = await resolve_backend_api_base_url();
+  const base_url = read_backend_api_base_url();
   let response: Response;
   try {
     response = await fetch(build_api_url(base_url, path), init);
@@ -392,125 +319,17 @@ export async function report_renderer_error(report: RendererErrorReport): Promis
   await api_fetch<Record<string, never>>("/api/diagnostics/renderer-error", report);
 }
 
-async function open_event_source_at_path(path: string): Promise<EventSource> {
-  const base_url = await resolve_backend_api_base_url();
-  return new EventSource(build_api_url(base_url, path));
+function open_event_source_at_path(path: string): EventSource {
+  return new EventSource(build_api_url(read_backend_api_base_url(), path));
 }
 
-export async function open_event_stream(): Promise<EventSource> {
+/** 运行期地址已由 main 在 Backend ready 后注入，renderer 直接建立共享事件流。 */
+export function open_event_stream(): EventSource {
   return open_event_source_at_path("/api/events/stream");
 }
 
-async function* open_json_event_source_stream(args: {
-  path: string;
-  event_types: string[];
-}): AsyncIterable<EventSourceJsonEvent> {
-  const event_source = await open_event_source_at_path(args.path);
-  const queue: EventSourceJsonEvent[] = [];
-  let queue_read_index = 0;
-  let pending_resolve: ((value: EventSourceJsonEvent | null) => void) | null = null;
-  let stream_error: Error | null = null;
-  let closed = false;
-
-  /**
-   * 写入事件队列，若消费方正在等待则直接唤醒。
-   */
-  function push_event(event: EventSourceJsonEvent): void {
-    if (pending_resolve !== null) {
-      const resolve = pending_resolve;
-      pending_resolve = null;
-      resolve(event);
-      return;
-    }
-
-    queue.push(event);
-  }
-
-  /**
-   * 关闭 EventSource，并唤醒可能挂起的异步迭代读取。
-   */
-  function close_stream(): void {
-    if (closed) {
-      return;
-    }
-
-    closed = true;
-    event_source.close();
-    if (pending_resolve !== null) {
-      const resolve = pending_resolve;
-      pending_resolve = null;
-      resolve(null);
-    }
-  }
-
-  /**
-   * 标记流错误并复用关闭流程通知消费方。
-   */
-  function fail_stream(): void {
-    stream_error = DesktopApiError.local("event_stream_failed");
-    close_stream();
-  }
-
-  for (const event_type of args.event_types) {
-    event_source.addEventListener(event_type, ((event: MessageEvent<string>) => {
-      const payload = parse_event_source_payload(event);
-      push_event({
-        type: event_type,
-        ...payload,
-      });
-      if (event_type === "completed" || event_type === "failed") {
-        close_stream();
-      }
-    }) as EventListener);
-  }
-
-  event_source.onerror = () => {
-    fail_stream();
-  };
-
-  try {
-    while (true) {
-      // EventSource 短时积压时用游标读取，避免 shift 反复搬移数组
-      if (queue_read_index < queue.length) {
-        const next_event = queue[queue_read_index];
-        queue_read_index += 1;
-        if (queue_read_index >= queue.length) {
-          queue.length = 0;
-          queue_read_index = 0;
-        }
-        if (next_event !== undefined) {
-          yield next_event;
-          continue;
-        }
-      }
-
-      if (closed) {
-        if (stream_error !== null) {
-          throw stream_error;
-        }
-        return;
-      }
-
-      const next_event = await new Promise<EventSourceJsonEvent | null>((resolve) => {
-        pending_resolve = resolve;
-      });
-
-      if (next_event === null) {
-        if (stream_error !== null) {
-          throw stream_error;
-        }
-        return;
-      }
-
-      yield next_event;
-    }
-  } finally {
-    close_stream();
-  }
-}
-
 // 日志流只接受轻量事件字段，缺失预览契约时直接丢弃该条边界数据
-function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
+function normalize_log_event(payload: Record<string, unknown>): LogEvent | null {
   if (typeof payload.id !== "string") {
     return null;
   }
@@ -582,16 +401,21 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
   };
 }
 
-export async function* open_log_stream(): AsyncIterable<LogEvent> {
-  for await (const event of open_json_event_source_stream({
-    path: "/api/logs/stream",
-    event_types: ["log.appended"],
-  })) {
-    const log_event = normalize_log_event(event);
+/** 日志页面只接收已收窄的轻量事件，连接重试由浏览器 EventSource 负责。 */
+export function subscribe_log_stream(on_append: (event: LogEvent) => void): () => void {
+  const event_source = open_event_source_at_path("/api/logs/stream");
+  const handle_append = ((event: MessageEvent<string>) => {
+    const log_event = normalize_log_event(parse_event_source_payload(event));
     if (log_event !== null) {
-      yield log_event;
+      on_append(log_event);
     }
-  }
+  }) as EventListener;
+  event_source.addEventListener("log.appended", handle_append);
+
+  return () => {
+    event_source.removeEventListener("log.appended", handle_append);
+    event_source.close();
+  };
 }
 
 /**

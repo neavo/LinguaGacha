@@ -49,7 +49,4 @@ export const de_de_log_window_page = {
       error: "Fehlerdetails",
     },
   },
-  feedback: {
-    stream_failed: "Verbindung zum Protokollstream fehlgeschlagen.",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_log_window_page>;

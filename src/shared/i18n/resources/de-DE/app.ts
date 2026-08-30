@@ -278,14 +278,8 @@ export const de_de_app = {
       missing_backend_api_base_url: {
         message: "Backend-API-URL ist nicht konfiguriert …",
       },
-      backend_api_unavailable: {
-        message: "Backend-API ist nicht verfügbar …",
-      },
       backend_metadata_unavailable: {
         message: "Backend-Metadaten sind nicht verfügbar …",
-      },
-      event_stream_failed: {
-        message: "Ereignisstream-Verbindung fehlgeschlagen …",
       },
       http_error: {
         message: "Anfrage fehlgeschlagen: {PATH} …",

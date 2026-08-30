@@ -185,15 +185,45 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    async function attach_event_stream(): Promise<void> {
-      try {
-        const next_event_source = await open_event_stream();
-        if (cancelled) {
-          next_event_source.close();
-          return;
-        }
+    /** 重连可能跨过任意增量事件，各状态域统一回到自身权威读取入口。 */
+    async function restore_state_after_reconnect(): Promise<void> {
+      refresh_scheduler.flush();
+      await Promise.all([
+        refreshSettings().catch((error: unknown) => {
+          report_state_error(error, {
+            source: "state-recovery",
+            context: { stage: "refresh_settings_after_reconnect" },
+          });
+        }),
+        refreshRuntime().catch((error: unknown) => {
+          report_state_error(error, {
+            source: "state-recovery",
+            context: { stage: "refresh_runtime_after_reconnect" },
+          });
+        }),
+        refresh_task_after_state_error("event_stream_reconnected", {
+          topic: "task.snapshot_changed",
+        }),
+        refresh_project_state_after_error("event_stream_reconnected", {
+          topic: PROJECT_CHANGE_EVENT_TOPIC,
+        }),
+      ]);
+    }
 
+    function attach_event_stream(): void {
+      try {
+        const next_event_source = open_event_stream();
         event_source = next_event_source;
+        let opened_once = false; // 首次 open 由初始快照负责，后续 open 才代表需要恢复的重连
+        next_event_source.onopen = () => {
+          if (cancelled) {
+            return;
+          }
+          if (opened_once) {
+            void restore_state_after_reconnect();
+          }
+          opened_once = true;
+        };
         event_source.addEventListener(
           "task.snapshot_changed",
           handle_task_snapshot_changed as EventListener,
@@ -216,7 +246,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    void attach_event_stream();
+    attach_event_stream();
 
     return () => {
       cancelled = true;
