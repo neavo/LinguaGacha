@@ -66,7 +66,6 @@ export const de_de_project_page = {
     title: "Unterstützte Dateiformate",
     txt: "Nur Text",
     md: "Markdown",
-    pdf: "PDF-E-Book",
     srt: "SubRip-Untertitel",
     ass: "ASS-Untertitel",
     epub: "EPUB-E-Book",

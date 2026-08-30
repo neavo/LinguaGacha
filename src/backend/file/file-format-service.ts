@@ -4,7 +4,6 @@ import { Item, type ItemFileType } from "../../domain/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDV2Format } from "./formats/markdown/md-v2-format";
-import { PDFFormat } from "./formats/pdf/pdf-format";
 import { MESSAGEJSONFormat } from "./formats/messagejson-format";
 import { RenPyFormat } from "./formats/renpy/renpy-format";
 import { SRTFormat } from "./formats/srt-format";
@@ -39,7 +38,6 @@ export class FileFormatService {
   // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly txt: TXTFormat;
   private readonly md: MDV2Format;
-  private readonly pdf: PDFFormat;
   private readonly ass: ASSFormat;
   private readonly srt: SRTFormat;
   private readonly kvjson: KVJSONFormat;
@@ -57,7 +55,6 @@ export class FileFormatService {
     this.native_fs = native_fs;
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
-    this.pdf = new PDFFormat();
     this.ass = new ASSFormat(config);
     this.srt = new SRTFormat(config);
     this.kvjson = new KVJSONFormat();
@@ -83,9 +80,6 @@ export class FileFormatService {
     const ext = path.extname(rel_path).toLowerCase();
     if (ext === ".md") {
       return this.md.read_from_stream(content, rel_path);
-    }
-    if (ext === ".pdf") {
-      return this.pdf.read_from_stream(content, rel_path);
     }
     if (ext === ".txt") {
       return this.txt.read_from_stream(content, rel_path);
@@ -208,7 +202,6 @@ export class FileFormatService {
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
-    await this.pdf.write_to_path(items, context);
   }
 
   /**

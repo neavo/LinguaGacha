@@ -75,7 +75,7 @@
 
 ## 対応フォーマット 🏷️
 - 字幕 `.srt .ass`
-- 電子書籍 `.txt .pdf .epub`
+- 電子書籍 `.txt .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) エクスポート `.rpy`
 - [MTool](https://mtool.app) エクスポート `.json`

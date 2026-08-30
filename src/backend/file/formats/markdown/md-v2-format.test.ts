@@ -149,8 +149,8 @@ describe("MDV2Format", () => {
       src: "[原文](lg-resource:link/0)",
       dst: "[译文](lg-resource:link/0)",
       row: 0,
-      file_type: "PDF",
-      file_path: "demo.pdf",
+      file_type: "NONE",
+      file_path: "demo.md",
       text_type: "MD",
       extra_field: { markdown: { before: "", after: "\n" } },
     });

@@ -19,7 +19,6 @@
     "@earendil-works/pi-agent-core": "^0.84.4",
     "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
-    "@llamaindex/liteparse": "2.14.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",

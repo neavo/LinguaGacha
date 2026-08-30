@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
-import { build_text_pdf } from "../../test/pdf-fixture";
 
 function create_format_service(): FileFormatService {
   return new FileFormatService({
@@ -16,22 +15,6 @@ function create_format_service(): FileFormatService {
 }
 
 describe("SourceFileParsePipeline", () => {
-  it("新建工程草稿忽略暂未开放的 PDF", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
-    );
-    const source_file = path.join(temp_dir.path, "report.pdf");
-    fs.writeFileSync(source_file, build_text_pdf("Pipeline PDF text"));
-
-    const draft = await new SourceFileParsePipeline(create_format_service()).build_project_draft([
-      source_file,
-    ]);
-
-    expect(draft.files).toEqual([]);
-    expect(draft.items).toEqual([]);
-    expect(draft.failed_files).toEqual([]);
-  });
-
   it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),

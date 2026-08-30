@@ -3,13 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import JSZip from "jszip";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../file/formats/pdf/pdf-document-reader", () => ({
-  read_pdf_document: vi.fn(async () => ({
-    markdown: "# PDF 标题\n\n正文",
-  })),
-}));
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NativeFs } from "../../native/native-fs";
 import { write_agent_workspace_sources } from "./agent-workspace-sources";
@@ -90,25 +84,5 @@ describe("Agent 工作区源文件投影", () => {
       }),
     ).rejects.toThrow("Invalid project source path");
     expect(fs.existsSync(path.join(temp_dir, "outside.txt"))).toBe(false);
-  });
-
-  it("PDF asset 投影为保留原始身份的 .pdf.md 文本", async () => {
-    const files = await write_agent_workspace_sources({
-      nativeFs: new NativeFs(),
-      sourceRoot: path.join(temp_dir, "sources"),
-      files: [{ file_path: "docs/report.pdf", file_type: "PDF" }],
-      readAsset: () => Buffer.from([37, 80, 68, 70, 0, 255]),
-    });
-
-    expect(files).toEqual([
-      {
-        file_path: "docs/report.pdf",
-        file_type: "PDF",
-        source_text_path: "sources/docs/report.pdf.md",
-      },
-    ]);
-    expect(fs.readFileSync(path.join(temp_dir, "sources", "docs", "report.pdf.md"), "utf-8")).toBe(
-      "# PDF 标题\n\n正文",
-    );
   });
 });

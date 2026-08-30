@@ -6,14 +6,12 @@ import type { CLICommandOptions } from "./cli-parser";
 import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { write_stdout } from "./cli-output";
-import { render_desktop_pdf } from "../gui/shell/desktop-pdf-render-host";
 
 /**
  * 在无 GUI Gateway 的 BackendBootstrap 中执行 CLI 命令，并沿入口契约下传 worker_execution。
  */
 export async function run_cli_command(
   app_root: string,
-  desktop_bundle_dir: string,
   command: CLICommandOptions,
   worker_execution: BackendWorkerExecution,
 ): Promise<void> {
@@ -26,12 +24,6 @@ export async function run_cli_command(
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
     openOutputFolder: async () => undefined,
-    renderPdf: (markdown) =>
-      render_desktop_pdf({
-        markdown,
-        desktopBundleDir: desktop_bundle_dir,
-        signal: new AbortController().signal,
-      }),
     workerExecution: worker_execution,
   });
   try {

@@ -38,11 +38,9 @@ describe("source-file-parse-failure-reporter", () => {
     ).toBe("file.io_failed");
     expect(
       build_source_file_parse_failure({
-        source_path: "scan.pdf",
-        rel_path: "scan.pdf",
-        error: new AppError("file.parse_failed", {
-          diagnostic_context: { format: "PDF", reason: "no_extractable_text" },
-        }),
+        source_path: "broken.txt",
+        rel_path: "broken.txt",
+        error: new AppError("file.parse_failed"),
       }).code,
     ).toBe("file.parse_failed");
   });

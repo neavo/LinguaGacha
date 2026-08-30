@@ -4,9 +4,6 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const read_pdf_document = vi.hoisted(() => vi.fn(async () => ({ markdown: "# Source" })));
-vi.mock("./formats/pdf/pdf-document-reader", () => ({ read_pdf_document }));
-
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import { default_native_fs } from "../../native/native-fs";
@@ -18,13 +15,8 @@ import {
 } from "./translation-file-export-service";
 
 let temp_dir = "";
-const render_pdf = vi.fn(async () => new Uint8Array());
-
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
-  render_pdf.mockClear();
-  render_pdf.mockResolvedValue(new Uint8Array());
-  read_pdf_document.mockReset().mockResolvedValue({ markdown: "# Source" });
 });
 
 afterEach(() => {
@@ -130,7 +122,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       output_folder_opener.open,
-      render_pdf,
       create_log_collector(),
     );
 
@@ -179,7 +170,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       create_output_folder_opener().open,
-      render_pdf,
       create_log_collector(),
     );
 
@@ -188,46 +178,6 @@ describe("TranslationFileExportService", () => {
     expect(fs.readFileSync(path.join(temp_dir, "mixed_译文", "readme.md"), "utf-8")).toBe(
       "# Title\n\n![Cover](data:image/png;base64,AAAA)\n",
     );
-  });
-
-  it("数据库 PDF Item 与 asset 经统一导出服务只写译文 PDF", async () => {
-    const project_path = path.join(temp_dir, "report.lg");
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded(project_path);
-    const database = create_database(
-      [
-        {
-          id: 1,
-          src: "# Source",
-          dst: "# 译题",
-          status: "PROCESSED",
-          file_type: "PDF",
-          file_path: "docs/report.pdf",
-          text_type: "MD",
-          row: 0,
-          extra_field: { markdown: { before: "", after: "" } },
-        },
-      ],
-      { "docs/report.pdf": Buffer.from([37, 80, 68, 70]) },
-    );
-    render_pdf.mockResolvedValueOnce(new Uint8Array([37, 80, 68, 70]));
-    const service = new TranslationFileExportService(
-      database,
-      create_setting_service(),
-      session_state,
-      create_output_folder_opener().open,
-      render_pdf,
-      create_log_collector(),
-    );
-
-    await service.export_files();
-
-    expect(read_pdf_document).toHaveBeenCalledWith(Buffer.from([37, 80, 68, 70]));
-    expect(render_pdf).toHaveBeenCalledWith("# 译题");
-    expect(fs.readFileSync(path.join(temp_dir, "report_译文", "docs", "report.pdf"))).toEqual(
-      Buffer.from([37, 80, 68, 70]),
-    );
-    expect(fs.existsSync(path.join(temp_dir, "report_双语", "docs", "report.pdf"))).toBe(false);
   });
 
   it("德语界面使用德语导出目录名和日志", async () => {
@@ -251,7 +201,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ app_language: "DE" }),
       session_state,
       create_output_folder_opener().open,
-      render_pdf,
       log_collector,
     );
     const translated_path = path.join(temp_dir, "demo_Übersetzung");
@@ -290,7 +239,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
-      render_pdf,
       create_log_collector(),
     );
 
@@ -324,7 +272,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
-      render_pdf,
       create_log_collector(),
     );
 
@@ -361,7 +308,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
-      render_pdf,
       log_collector,
     );
 
@@ -404,7 +350,6 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       create_output_folder_opener().open,
-      render_pdf,
       log_collector,
     );
 

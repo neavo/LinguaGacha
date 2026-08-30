@@ -17,7 +17,6 @@ export const ITEM_STATUSES = [
 export const ITEM_FILE_TYPES = [
   "NONE",
   "MD_V2",
-  "PDF",
   "TXT",
   "SRT",
   "ASS",
@@ -127,6 +126,7 @@ export class Item {
   public retry_count = 0; // 重试次数，当前只有单独重试的时候才增加此计数
   public skip_internal_filter = false; // 强制翻译条目绕过规则/语言类内部过滤
 
+  /** Item 只能通过 from_json 收窄外部载荷，避免绕过统一值域归一。 */
   private constructor() {}
 
   /**

@@ -75,7 +75,7 @@
 
 ## 文本格式 🏷️
 - 字幕 `.srt .ass`
-- 电子书 `.txt .pdf .epub`
+- 电子书 `.txt .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) 导出游戏文本 `.rpy`
 - [MTool](https://mtool.app) 导出游戏文本 `.json`

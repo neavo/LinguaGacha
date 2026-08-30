@@ -31,18 +31,18 @@ export class BackendRuntimeClient {
   private readonly pending = new Map<string, PendingRequest>(); // requestId 隔离并发控制响应
   private readonly active_host_operations = new Map<string, AbortController>(); // worker 可按 requestId 取消 main 副作用
   private start_promise: Promise<BackendRuntimeReady> | null = null; // 固化单次启动结果，禁止复用实例重启
-  private start_reject: ((error: Error) => void) | null = null;
+  private start_reject: ((error: Error) => void) | null = null; // worker 提前退出时结算尚未 ready 的 start
   private ready = false; // 只有 ready 后退出才属于应用运行期故障
   private stopped = false; // 主动 stop 只抑制 unexpected-exit 回调，不跳过 pending 拒绝
   private exit_handled = false; // error 与 exit 可能连续到达，只允许结算一次
 
+  /** 构造时固定单个 worker 生命周期所需的 Electron main 宿主端口。 */
   public constructor(
     private readonly options: {
       workerEntryUrl: URL;
       appRoot: string;
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
-      renderPdf: (markdown: string, signal: AbortSignal) => Promise<Uint8Array>;
       /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
       runAgentWorkspace: (
         request: BackendRuntimeAgentWorkspaceRunRequest,
@@ -180,9 +180,6 @@ export class BackendRuntimeClient {
         case "run_agent_workspace":
           data = await this.options.runAgentWorkspace(operation.request, controller.signal);
           break;
-        case "render_pdf":
-          data = await this.options.renderPdf(operation.request.markdown, controller.signal);
-          break;
       }
       result = { ok: true, data };
     } catch (error) {
@@ -209,6 +206,7 @@ export class BackendRuntimeClient {
   }
 }
 
+/** 把 worker 返回的结构化错误恢复为保留名称和调用栈的本地 Error。 */
 function to_error(value: unknown): Error {
   const error = normalize_log_error(value, "Backend runtime 调用失败。");
   const result = new Error(error.message);
