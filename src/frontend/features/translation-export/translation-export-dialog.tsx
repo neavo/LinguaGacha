@@ -99,14 +99,13 @@ export function TranslationExportDialog(props: TranslationExportDialogProps): JS
       }
       submitting={submitting}
       primaryAction={{
-        label: t("workbench_page.translation_export.continue_generate"),
+        label: t("app.action.continue_task"),
         onSelect: props.confirm_export,
       }}
       secondaryAction={{
-        label: t("workbench_page.translation_export.jump_to_agent"),
+        label: t("app.action.go_to_agent"),
         onSelect: props.jump_to_agent,
       }}
-      dismissAction={null}
       onClose={props.close}
     />
   );

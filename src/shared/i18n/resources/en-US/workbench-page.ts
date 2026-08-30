@@ -68,8 +68,6 @@ export const en_us_workbench_page = {
     migration: {
       description:
         "The classic Analysis task workflow will be removed soon. We recommend using AGENT to generate the glossary automatically. Continue anyway …?",
-      jump: "Go to AGENT",
-      continue: "Continue Task",
     },
     summary: {
       running: "Analyzing",
@@ -137,10 +135,9 @@ export const en_us_workbench_page = {
     check_failed:
       "Proofreading warnings could not be loaded. You can still generate the current translation.",
     warning_description:
-      "{COUNT} proofreading warnings remain. We recommend using AGENT to fix them automatically before generating the translation. Continue anyway …?",
+      "Detected {COUNT} proofreading warnings. We recommend using AGENT to review and fix them automatically before generating the translation. Continue anyway …?",
     warning_list: "Proofreading warnings",
     retry_check: "Check Again",
-    jump_to_agent: "Go to AGENT",
     continue_generate: "Generate Anyway",
   },
   reorder: {

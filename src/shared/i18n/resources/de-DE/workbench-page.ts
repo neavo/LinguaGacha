@@ -69,8 +69,6 @@ export const de_de_workbench_page = {
     migration: {
       description:
         "Der klassische Analyse-Workflow wird demnächst entfernt. Wir empfehlen, das Glossar automatisch mit AGENT zu erstellen. Trotzdem fortfahren …?",
-      jump: "Zu AGENT",
-      continue: "Aufgabe fortsetzen",
     },
     summary: {
       running: "Wird analysiert",
@@ -140,10 +138,9 @@ export const de_de_workbench_page = {
     check_failed:
       "Korrekturwarnungen konnten nicht geladen werden. Die aktuelle Übersetzung kann trotzdem erstellt werden.",
     warning_description:
-      "Es bestehen noch {COUNT} Korrekturwarnungen. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu beheben. Trotzdem fortfahren …?",
+      "Es wurden {COUNT} Korrekturwarnungen gefunden. Wir empfehlen, sie vor dem Erstellen der Übersetzung automatisch mit AGENT zu prüfen und zu beheben. Trotzdem fortfahren …?",
     warning_list: "Korrekturwarnungen",
     retry_check: "Erneut prüfen",
-    jump_to_agent: "Zu AGENT",
     continue_generate: "Trotzdem erstellen",
   },
   reorder: {

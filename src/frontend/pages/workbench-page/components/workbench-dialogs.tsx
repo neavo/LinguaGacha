@@ -15,6 +15,7 @@ const CONFIRM_DESCRIPTION_KEY_BY_KIND = {
   "close-project": "workbench_page.dialog.close_project.description",
 } as const satisfies Partial<Record<NonNullable<WorkbenchDialogState["kind"]>, LocaleKey>>;
 
+/** 将工作台对话状态映射为统一确认或动作弹窗。 */
 export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
   const { t } = useI18n();
   const kind = props.dialog_state.kind;
@@ -54,7 +55,6 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
           label: t("workbench_page.dialog.inherit_import.do_not_fill"),
           onSelect: props.on_secondary,
         }}
-        dismissAction={null}
         onClose={props.on_close}
       />
     );

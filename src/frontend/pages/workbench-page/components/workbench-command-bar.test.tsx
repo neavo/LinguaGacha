@@ -17,8 +17,6 @@ const agent_input_mocks = vi.hoisted(() => ({
 
 /** 测试只关心 i18n 键的消费关系，不复制可独立调整的产品文案。 */
 const locale_messages: Record<string, string> = {
-  "workbench_page.analysis_task.migration.jump": "jump-to-agent",
-  "workbench_page.analysis_task.migration.continue": "continue-classic-analysis",
   "workbench_page.analysis_task.feedback.agent_draft_preserved": "draft-preserved",
 };
 
@@ -198,6 +196,17 @@ describe("WorkbenchCommandBar", () => {
     return button;
   }
 
+  /** 从共享动作弹窗读取指定语义按钮。 */
+  function find_dialog_button(
+    slot: "cancel" | "secondary-action" | "primary-action",
+  ): HTMLButtonElement {
+    const button = document.body.querySelector<HTMLButtonElement>(
+      `[data-slot="alert-dialog-${slot}"]`,
+    );
+    if (button === null) throw new Error(`找不到弹窗按钮：${slot}`);
+    return button;
+  }
+
   it("删除按钮只消费上游删除权限", async () => {
     const props = create_workbench_command_bar_props();
     props.can_delete_selected_files = false;
@@ -214,18 +223,30 @@ describe("WorkbenchCommandBar", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     expect(start_analysis).not.toHaveBeenCalled();
 
-    await act(async () => find_button("continue-classic-analysis").click());
+    await act(async () => find_dialog_button("primary-action").click());
     expect(start_analysis).toHaveBeenCalledOnce();
 
     await act(async () => find_button("analysis-task").click());
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 
+  it("取消迁移提醒后不启动任务或跳转", async () => {
+    const props = await render_command_bar();
+
+    await act(async () => find_button("analysis-task").click());
+    await act(async () => find_dialog_button("cancel").click());
+
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+    expect(props.analysis_workbench_task.request_start_or_continue_analysis).not.toHaveBeenCalled();
+    expect(agent_input_mocks.write_draft).not.toHaveBeenCalled();
+    expect(navigation_mocks.navigate_to_route).not.toHaveBeenCalled();
+  });
+
   it("跳转 AGENT 前为当前空草稿写入质量规则任务", async () => {
     const props = await render_command_bar();
 
     await act(async () => find_button("analysis-task").click());
-    await act(async () => find_button("jump-to-agent").click());
+    await act(async () => find_dialog_button("secondary-action").click());
 
     expect(agent_input_mocks.write_draft).toHaveBeenCalledOnce();
     const written_draft = agent_input_mocks.write_draft.mock.calls[0]?.[0];
@@ -243,7 +264,7 @@ describe("WorkbenchCommandBar", () => {
     await render_command_bar();
 
     await act(async () => find_button("analysis-task").click());
-    await act(async () => find_button("jump-to-agent").click());
+    await act(async () => find_dialog_button("secondary-action").click());
 
     expect(agent_input_mocks.write_draft).not.toHaveBeenCalled();
     expect(toast_mocks.push_toast).toHaveBeenCalledWith("info", "draft-preserved");
