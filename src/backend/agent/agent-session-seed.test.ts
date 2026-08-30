@@ -19,7 +19,12 @@ afterEach(() => {
 
 describe("Agent 会话种子加载", () => {
   it("内置会话种子资源可直接加载", () => {
-    const paths = new AppPathService({ appRoot: process.cwd(), env: {}, platform: "win32" });
+    const paths = new AppPathService({
+      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
+      env: {},
+      platform: "win32",
+    });
 
     expect(() => load_agent_session_seed(paths, new NativeFs())).not.toThrow();
   });
@@ -90,7 +95,12 @@ describe("Agent 会话种子加载", () => {
 function create_paths(): AppPathService {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-seed-"));
   cleanup_roots.push(app_root);
-  return new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+  return new AppPathService({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+    env: {},
+    platform: "win32",
+  });
 }
 
 function write_seed(paths: AppPathService, content: string): void {

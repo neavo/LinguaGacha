@@ -184,13 +184,13 @@ function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort 
 
 /** 构造分析 runner 所需的临时提示词资源根。 */
 async function create_template_root(): Promise<string> {
-  const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-analysis-runner-"));
-  cleanup_roots.push(app_root);
-  const dir = path.join(app_root, "resource", "analysis_prompt", "template", "zh");
+  const builtin_root = await mkdtemp(path.join(tmpdir(), "linguagacha-analysis-runner-"));
+  cleanup_roots.push(builtin_root);
+  const dir = path.join(builtin_root, "analysis_prompt", "template", "zh");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "提取 {target_language} 术语", "utf-8");
   await writeFile(path.join(dir, "thinking.txt"), "提示词增强", "utf-8");
   await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
-  return app_root;
+  return builtin_root;
 }

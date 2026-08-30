@@ -41,13 +41,6 @@ vi.mock("../agent/agent-web-fetch", () => ({
       return { url, contentType: "text/plain", body: new Uint8Array([111, 107]) };
     },
 }));
-vi.mock("../app/app-path-service", () => ({
-  AppPathService: class {
-    get_berserker_update_root_dir(): string {
-      return "E:/userdata/berserker";
-    }
-  },
-}));
 vi.mock("../worker/worker-execution", () => ({
   resolve_desktop_bundle_dir_from_module_url: () => "E:/app/dist-electron",
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir: () => ({
@@ -67,7 +60,14 @@ describe("run_backend_runtime", () => {
     runtime_mocks.start.mockResolvedValue({
       apiBaseUrl: "http://127.0.0.1:4567",
       readAppLanguage: () => "EN",
-      backendServices: { logManager: runtime_mocks.log_manager },
+      backendServices: {
+        app: {
+          paths: {
+            get_berserker_update_root_dir: () => "E:/userdata/berserker",
+          },
+        },
+        logManager: runtime_mocks.log_manager,
+      },
     });
   });
 
@@ -75,6 +75,7 @@ describe("run_backend_runtime", () => {
     const port = create_port();
     await run_backend_runtime({
       appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
       port,
     });
@@ -87,6 +88,8 @@ describe("run_backend_runtime", () => {
       },
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
+      appRoot: string;
+      builtinRoot: string;
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openOutputFolder: (path: string) => Promise<void>;
       agentWebFetch: AgentWebFetchPort;
@@ -95,6 +98,10 @@ describe("run_backend_runtime", () => {
         signal: AbortSignal,
       ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
     };
+    expect(bootstrap_options).toMatchObject({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+    });
     const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
     port.emit({
@@ -176,7 +183,12 @@ describe("run_backend_runtime", () => {
 
   it("取消宿主操作后等待清理回执，再以原始原因结算", async () => {
     const port = create_port();
-    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    await run_backend_runtime({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+      moduleUrl: import.meta.url,
+      port,
+    });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       agentWebFetch: AgentWebFetchPort;
     };
@@ -222,7 +234,12 @@ describe("run_backend_runtime", () => {
     ],
   ])("取消工作区操作后把%s结果交回服务处理", async (_case, completed) => {
     const port = create_port();
-    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    await run_backend_runtime({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+      moduleUrl: import.meta.url,
+      port,
+    });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       agentWorkspaceRun: (
         request: BackendRuntimeAgentWorkspaceRunRequest,
@@ -251,7 +268,12 @@ describe("run_backend_runtime", () => {
 
   it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {
     const port = create_port();
-    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    await run_backend_runtime({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+      moduleUrl: import.meta.url,
+      port,
+    });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       openOutputFolder: (path: string) => Promise<void>;
     };
@@ -270,7 +292,12 @@ describe("run_backend_runtime", () => {
     runtime_mocks.start.mockRejectedValueOnce(new Error("端口占用"));
     const port = create_port();
 
-    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    await run_backend_runtime({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+      moduleUrl: import.meta.url,
+      port,
+    });
 
     expect(port.messages).toContainEqual({
       type: "start_failed",

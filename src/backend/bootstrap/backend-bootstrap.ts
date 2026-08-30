@@ -8,7 +8,6 @@ import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
 import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
 import { AppError } from "../../shared/error";
-import { resolve_app_root } from "../app/app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 import { BackendServices } from "./backend-services";
 import type {
@@ -83,8 +82,10 @@ export class BackendBootstrap {
    */
   private async start_services(): Promise<BackendBootstrapStartResult> {
     this.state = "starting";
-    const app_root = this.resolve_app_root();
-    const paths = new AppPathService({ appRoot: app_root });
+    const paths = new AppPathService({
+      appRoot: this.options.appRoot,
+      builtinRoot: this.options.builtinRoot,
+    });
     const metadata = new AppMetadataService(paths);
     const log_manager = new LogManager({
       logDir: paths.get_log_dir(),
@@ -98,7 +99,7 @@ export class BackendBootstrap {
         t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
         log_manager,
       );
-      // 启动期迁移必须早于服务启动，确保配置和预设读取只看到当前 userdata/resource 布局。
+      // 启动期迁移必须早于服务启动，确保设置读取只看到当前 userdata 布局。
       migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const app_setting_service = new AppSettingService(paths);
       set_main_log_language_reader(() => app_setting_service.read_app_language());
@@ -183,17 +184,6 @@ export class BackendBootstrap {
         this.stop_promise = null;
       }
     }
-  }
-
-  /**
-   * 按入口环境解析应用根目录，避免 GUI 和 CLI 分别猜测 resource 位置。
-   */
-  private resolve_app_root(): string {
-    return resolve_app_root({
-      appRoot: this.options.appRoot,
-      env: process.env,
-      platform: process.platform,
-    });
   }
 
   /**

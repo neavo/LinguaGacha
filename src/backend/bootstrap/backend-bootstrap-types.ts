@@ -20,7 +20,8 @@ export interface BackendBootstrapStartResult {
 }
 
 export interface BackendBootstrapOptions {
-  appRoot: string;
+  appRoot: string; // 安装根继续拥有便携 userdata 与版本文件语义
+  builtinRoot: string; // 当前版本只读内置资产根，发布态位于 app.asar
   exposeApiGateway: boolean;
   logTargets?: Partial<LogTargets>; // 由入口适配器选择，CLI 会关闭控制台避免污染 JSONL stdout
   systemProxyResolver: SystemProxyResolver; // GUI/CLI 入口都必须提供当前 Electron 系统代理解析

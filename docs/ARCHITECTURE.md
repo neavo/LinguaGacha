@@ -15,7 +15,7 @@
 
 ## 2. 运行时拓扑
 
-- `src/index.ts` 是唯一产品入口，只按显式 `--cli` 分发 GUI 或 CLI；入口层解析 CLI 应用根与桌面 bundle 根，并分别注入 GUI Backend Runtime worker 入口或 CLI `BackendWorkerExecution`。
+- `src/index.ts` 是唯一产品入口，只按显式 `--cli` 分发 GUI 或 CLI；入口适配器显式注入安装根、只读内置资产根、桌面 bundle 与 `BackendWorkerExecution`，Backend 和 worker 不从当前目录反推这些边界。`builtin` 随主应用打进 `app.asar`。
 - GUI 的完整 Backend Runtime 运行在独立 `worker_thread`，其中拥有 `BackendBootstrap`、Gateway、服务、数据库、Agent、cache 与日志；Electron main 只拥有应用、窗口、IPC、shell 和更新器。renderer 仍通过本机 HTTP / SSE 消费 Gateway，不直接使用线程消息。
 - GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议：ready、stop、语言读取、宿主诊断，以及代理解析、打开输出目录和 Agent 工作区执行宿主回调。宿主操作以 requestId 隔离并发；worker 取消会中止 main 中对应操作，但已发出的工作区请求必须等待宿主完成清理，已提交成功或工作区失效结果继续交给状态拥有者，其余操作才以原始取消原因结算；runtime 关闭强制拒绝全部待处理请求。worker 意外退出直接结束应用，不回退同进程、不自动重启。
 - CLI 仍在当前进程通过 `BackendBootstrap` 组装 `BackendServices`，关闭 Gateway 并直接消费类型化服务与任务快照订阅。

@@ -36,7 +36,10 @@ describe("prompt_user_preset_layout_migration", () => {
 
 function create_context(app_root: string) {
   return {
-    paths: new AppPathService({ appRoot: app_root }),
+    paths: new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+    }),
     log_manager: { warning(): void {} } as unknown as LogManager,
   };
 }

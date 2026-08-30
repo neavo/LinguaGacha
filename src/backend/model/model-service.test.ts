@@ -787,7 +787,10 @@ async function create_model_service(
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
   cleanup_roots.push(app_root);
   await write_model_presets(app_root, presets);
-  const paths = new AppPathService({ appRoot: app_root });
+  const paths = new AppPathService({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+  });
   const app_setting_service = new AppSettingService(paths);
   app_setting_service.save_setting({
     models,
@@ -847,7 +850,7 @@ function create_model(overrides: Partial<JsonRecord>): JsonRecord {
 }
 
 async function write_model_presets(app_root: string, presets: ModelPresetFiles): Promise<void> {
-  const preset_dir = path.join(app_root, "resource", "model", "preset");
+  const preset_dir = path.join(app_root, "builtin", "model", "preset");
   await mkdir(preset_dir, { recursive: true });
   await writeFile(
     path.join(preset_dir, "preset_model_builtin.json"),

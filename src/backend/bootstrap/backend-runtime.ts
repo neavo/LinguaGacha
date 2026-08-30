@@ -11,7 +11,6 @@ import type {
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 import { create_agent_web_fetch } from "../agent/agent-web-fetch";
-import { AppPathService } from "../app/app-path-service";
 import { t_main_log } from "../log/log-text";
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -39,7 +38,8 @@ type PendingHostRequest = {
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
 export async function run_backend_runtime(args: {
-  appRoot: string;
+  appRoot: string; // 安装根继续决定版本与便携数据位置
+  builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
   port: BackendRuntimePort;
 }): Promise<void> {
@@ -104,6 +104,7 @@ export async function run_backend_runtime(args: {
   };
   const bootstrap = new BackendBootstrap({
     appRoot: args.appRoot,
+    builtinRoot: args.builtinRoot,
     exposeApiGateway: true,
     systemProxyResolver: system_proxy_resolver,
     openOutputFolder: async (output_path) => {
@@ -182,10 +183,10 @@ export async function run_backend_runtime(args: {
   try {
     start_result = await bootstrap.start();
     if (start_result.apiBaseUrl === null) throw new Error("GUI Backend API is not exposed.");
-    const paths = new AppPathService({ appRoot: args.appRoot });
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,
-      berserkerUpdateRootDir: paths.get_berserker_update_root_dir(),
+      berserkerUpdateRootDir:
+        start_result.backendServices.app.paths.get_berserker_update_root_dir(),
     };
     args.port.postMessage({ type: "ready", data: ready });
   } catch (error) {

@@ -15,7 +15,7 @@
 |任务对象|权威归属与处理方式|
 |---|---|
 |`AGENTS.md`、`.codex/skills/` 等开发 Agent 行动规则与技能|属于开发控制面，只约束如何维护仓库；仅在任务明确针对开发工作流时修改，不视为产品实现或长期工程文档|
-|`resource/agent/` 及其加载、测试和消费代码中的产品 Agent 指令与 skill|属于 LinguaGacha 产品运行时实现；按资源、代码和测试维护，稳定运行边界变化时同步 [`docs/AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md)|
+|`builtin/agent/` 及其加载、测试和消费代码中的产品 Agent 指令与 skill|属于 LinguaGacha 产品运行时实现；按资源、代码和测试维护，稳定运行边界变化时同步 [`docs/AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md)|
 |`docs/` 下的 `ARCHITECTURE.md`、`CLI.md`、`BACKEND.md`、`AGENT_RUNTIME.md`、`FRONTEND.md` 和 `WORKFLOW.md`|构成完整的长期工程文档集合，由 `project-doc` 技能治理|
 
 |需要理解的工程问题|长期文档入口|

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 
 import type { BackendBootstrapOptions } from "../backend/bootstrap/backend-bootstrap-types";
 import type { BackendBootstrapStartResult } from "../backend/bootstrap/backend-bootstrap-types";
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
-  app: { whenReady: mocks.when_ready },
+  app: { whenReady: mocks.when_ready, getAppPath: () => "E:/app.asar" },
   session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
 }));
 
@@ -81,6 +82,7 @@ describe("run_cli_command", () => {
     expect(bootstrap_options).toBeDefined();
     expect(bootstrap_options).toMatchObject({
       appRoot: "E:/App",
+      builtinRoot: path.join("E:/app.asar", "builtin"),
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
       workerExecution: { kind: "in_process" } satisfies BackendWorkerExecution,

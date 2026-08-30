@@ -348,15 +348,15 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-presets.lg");
     write_file(
-      path.join(app_root, "resource", "glossary", "preset", "base.json"),
+      path.join(app_root, "builtin", "glossary", "preset", "base.json"),
       '[{"src":"魔力","dst":"Mana"}]',
     );
     write_file(
-      path.join(app_root, "resource", "text_preserve", "preset", "base.json"),
+      path.join(app_root, "builtin", "text_preserve", "preset", "base.json"),
       '[{"src":"\\\\[[^\\\\]]+\\\\]"}]',
     );
     write_file(
-      path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
+      path.join(app_root, "builtin", "translation_prompt", "preset", "base.txt"),
       "翻译提示词",
     );
     const database = new ProjectDatabase();
@@ -681,7 +681,10 @@ describe("ProjectLifecycleService", () => {
       create_runtime_gate(options.task_busy ?? false),
       options.session_state ?? create_session_state(),
       create_setting_service(options.config ?? {}),
-      new AppPathService({ appRoot: app_root }),
+      new AppPathService({
+        appRoot: app_root,
+        builtinRoot: path.join(app_root, "builtin"),
+      }),
       options.log_manager ?? create_log_manager(),
       project_event_handler,
       new ProjectWriteStore(options.database, project_event_handler, null),

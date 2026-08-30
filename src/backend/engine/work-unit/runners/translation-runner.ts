@@ -65,7 +65,7 @@ interface TranslationWorkUnitResult {
 export class TranslationWorkUnitRunner {
   /** 显式持有提示词资源和唯一 LLM 边界，便于 worker 测试。 */
   public constructor(
-    private readonly app_root: string,
+    private readonly builtin_root: string,
     private readonly llm_client: LLMClientPort,
   ) {}
 
@@ -184,7 +184,7 @@ export class TranslationWorkUnitRunner {
       };
     const samples = pipeline_contexts.flatMap((context) => context.samples);
     const builder = new PromptBuilder(
-      this.app_root,
+      this.builtin_root,
       this.config_to_prompt_config(config, request.config_snapshot),
       quality,
       activated,

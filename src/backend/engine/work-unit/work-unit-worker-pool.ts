@@ -17,7 +17,7 @@ import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-wor
  * worker 池只接收宿主已解析的执行模式和容量，不自行读取应用设置。
  */
 interface WorkUnitWorkerPoolOptions {
-  appRoot: string; // worker 与同进程 runner 共用的资源根
+  builtinRoot: string; // worker 与同进程 runner 共用的只读内置资产根
   execution: BackendWorkerExecution; // 明确选择 worker_threads 或 in_process
   llmClient: LLMClientPort; // 父线程真实模型请求入口
   workerCount?: number; // 只控制线程数，不是 LLM 并发上限
@@ -48,7 +48,7 @@ interface WorkerSlot {
  * multiplexed worker_threads 池：少量 worker 线程承载多个 in-flight LLM work unit。
  */
 export class WorkUnitWorkerPool implements WorkUnitExecutor {
-  private readonly app_root: string; // 提供 worker_threads 和同进程 runner 读取资源模板的根目录
+  private readonly builtin_root: string; // 提供 worker_threads 和同进程 runner 读取内置模板的根目录
   private readonly execution: BackendWorkerExecution; // 由入口层显式决定，池内不做入口探测或模式回退
   private readonly llm_client: LLMClientPort; // 正式 worker 只通过消息调用此父线程端口
   private readonly worker_count: number; // worker_threads 模式下的固定线程数
@@ -61,7 +61,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    * 构造共享 worker_threads 容量，并按显式执行模式启动。
    */
   public constructor(options: WorkUnitWorkerPoolOptions) {
-    this.app_root = options.appRoot;
+    this.builtin_root = options.builtinRoot;
     this.execution = options.execution;
     this.llm_client = options.llmClient;
     this.worker_count = resolve_default_worker_count({
@@ -70,7 +70,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     });
     if (this.execution.kind === "in_process") {
       this.in_process_runner = new WorkUnitRunner({
-        appRoot: this.app_root,
+        builtinRoot: this.builtin_root,
         llmClient: this.llm_client,
       });
       return;
@@ -209,7 +209,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     const slot: WorkerSlot = {
       worker: new Worker(this.execution.workUnitWorkerEntryUrl, {
-        workerData: { appRoot: this.app_root },
+        workerData: { builtinRoot: this.builtin_root },
       }),
       in_flight: new Map(),
     };

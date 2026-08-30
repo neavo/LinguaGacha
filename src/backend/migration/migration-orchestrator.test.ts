@@ -26,7 +26,10 @@ describe("MigrationOrchestrator", () => {
     ]);
 
     orchestrator.run_startup_migrations({
-      paths: new AppPathService({ appRoot: temp_dir.path }),
+      paths: new AppPathService({
+        appRoot: temp_dir.path,
+        builtinRoot: path.join(temp_dir.path, "builtin"),
+      }),
       log_manager: { warning(): void {} } as unknown as LogManager,
     });
 

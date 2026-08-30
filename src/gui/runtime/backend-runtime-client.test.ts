@@ -84,7 +84,10 @@ describe("BackendRuntimeClient", () => {
 
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
     await expect(start).resolves.toEqual(READY);
-    expect(worker.worker_data).toEqual({ appRoot: "E:/app" });
+    expect(worker.worker_data).toEqual({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
+    });
 
     const language = client.readAppLanguage();
     const language_request = get_last_request(worker, "read_app_language");
@@ -309,6 +312,7 @@ function create_client(overrides?: {
     client: new BackendRuntimeClient({
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
+      builtinRoot: "E:/app.asar/builtin",
       resolveProxy: resolve_proxy,
       openOutputFolder: open_output_folder,
       runAgentWorkspace: run_agent_workspace,

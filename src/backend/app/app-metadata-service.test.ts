@@ -22,7 +22,9 @@ describe("AppMetadataService", () => {
   it("读取 version.txt 后缓存版本并生成 LinguaGacha User-Agent", () => {
     const app_root = create_temp_root("linguagacha-metadata-");
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
-    const service = new AppMetadataService(new AppPathService({ appRoot: app_root }));
+    const service = new AppMetadataService(
+      new AppPathService({ appRoot: app_root, builtinRoot: path.join(app_root, "builtin") }),
+    );
 
     expect(service.read_version()).toBe("1.2.3");
     fs.writeFileSync(path.join(app_root, "version.txt"), "9.9.9", "utf-8");
@@ -35,7 +37,9 @@ describe("AppMetadataService", () => {
 
   it("允许 User-Agent 在缺失版本文件时使用占位版本", () => {
     const app_root = create_temp_root("linguagacha-metadata-missing-");
-    const service = new AppMetadataService(new AppPathService({ appRoot: app_root }));
+    const service = new AppMetadataService(
+      new AppPathService({ appRoot: app_root, builtinRoot: path.join(app_root, "builtin") }),
+    );
 
     expect(service.build_linguagacha_user_agent()).toBe(
       "LinguaGacha/v0.0.0 (https://github.com/neavo/LinguaGacha)",

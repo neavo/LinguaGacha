@@ -9,7 +9,7 @@ import type { WorkUnitWorkerCommand } from "./work-unit-worker-protocol";
 
 type RunnerMock = { run: ReturnType<typeof vi.fn> };
 
-const TEST_APP_ROOT = "E:/linguagacha-work-unit-test";
+const TEST_BUILTIN_ROOT = "E:/linguagacha-work-unit-test/builtin";
 
 function install_runner_mock(
   runner: RunnerMock,
@@ -42,7 +42,7 @@ describe("work-unit-worker-entry", () => {
 
   it("execute 结果使用统一终态 envelope 回传", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
-      appRoot: TEST_APP_ROOT,
+      builtinRoot: TEST_BUILTIN_ROOT,
     });
     const runner = { run: vi.fn(async () => ({ outcome: "completed" })) };
     install_runner_mock(runner);
@@ -65,7 +65,7 @@ describe("work-unit-worker-entry", () => {
 
   it("worker LLMClientPort 通过父线程请求并按 request id 结算", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
-      appRoot: TEST_APP_ROOT,
+      builtinRoot: TEST_BUILTIN_ROOT,
     });
     const llm_clients: LLMClientPort[] = [];
     install_runner_mock({ run: vi.fn() }, (client) => {
@@ -112,7 +112,7 @@ describe("work-unit-worker-entry", () => {
 
   it("cancel 只中断同 id 的运行中消息", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
-      appRoot: TEST_APP_ROOT,
+      builtinRoot: TEST_BUILTIN_ROOT,
     });
     const run_state: {
       signal: AbortSignal | null;

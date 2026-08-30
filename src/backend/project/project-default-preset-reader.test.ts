@@ -26,11 +26,11 @@ describe("ProjectDefaultPresetReader", () => {
   it("把质量规则和提示词预设读取为显式项目输入", () => {
     const app_root = create_temp_dir();
     write_file(
-      path.join(app_root, "resource", "glossary", "preset", "base.json"),
+      path.join(app_root, "builtin", "glossary", "preset", "base.json"),
       JsonTool.stringifyStrict([{ src: "勇者", dst: "Hero" }]),
     );
     write_file(
-      path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
+      path.join(app_root, "builtin", "translation_prompt", "preset", "base.txt"),
       "\uFEFF翻译提示词\n",
     );
     const log_manager = create_log_manager();
@@ -81,7 +81,7 @@ describe("ProjectDefaultPresetReader", () => {
   it("文本保护预设显式声明 custom 模式", () => {
     const app_root = create_temp_dir();
     write_file(
-      path.join(app_root, "resource", "text_preserve", "preset", "base.json"),
+      path.join(app_root, "builtin", "text_preserve", "preset", "base.json"),
       JsonTool.stringifyStrict([{ src: "\\[[^\\]]+\\]" }]),
     );
     const reader = create_reader({
@@ -157,7 +157,10 @@ describe("ProjectDefaultPresetReader", () => {
       {
         read_setting: vi.fn(() => options.config),
       } as unknown as AppSettingService,
-      new AppPathService({ appRoot: options.app_root }),
+      new AppPathService({
+        appRoot: options.app_root,
+        builtinRoot: path.join(options.app_root, "builtin"),
+      }),
       options.log_manager,
       default_native_fs,
     );

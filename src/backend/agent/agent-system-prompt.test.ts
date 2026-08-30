@@ -54,7 +54,12 @@ describe("Agent system prompt 加载与资源契约", () => {
 function create_paths(): AppPathService {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-prompt-"));
   cleanup_roots.push(app_root);
-  return new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+  return new AppPathService({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+    env: {},
+    platform: "win32",
+  });
 }
 
 /** 只写当前用例的临时资源，避免读取或污染真实应用目录。 */

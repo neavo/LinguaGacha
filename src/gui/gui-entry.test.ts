@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
@@ -89,6 +90,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: {
     isPackaged: false,
+    getAppPath: vi.fn(() => "E:/app.asar"),
     on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       mocks.app_listeners.set(event, listener);
     }),
@@ -156,6 +158,7 @@ describe("run_gui_entry", () => {
     expect(mocks.backend_instances[0]).toMatchObject({
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
+      builtinRoot: path.join("E:/app.asar", "builtin"),
       runAgentWorkspace: expect.any(Function),
     });
     expect(mocks.register_agent_workspace_scheme).toHaveBeenCalledOnce();

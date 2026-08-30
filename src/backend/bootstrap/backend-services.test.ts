@@ -44,6 +44,7 @@ function create_backend_services_options(): BackendServicesOptions {
   return {
     paths: {
       get_app_root: () => TEST_APP_ROOT,
+      get_builtin_root: () => "E:/app.asar/builtin",
       get_user_data_dir: () => "E:/UserData",
     },
     metadata: {
