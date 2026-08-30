@@ -32,7 +32,7 @@ export class MigrationOrchestrator {
   public constructor(private readonly migrations: readonly MigrationDescriptor[] = MIGRATIONS) {}
 
   /**
-   * Backend 启动期迁移只处理 userdata/resource 文件落点，必须早于设置读取和 Gateway 启动。
+   * Backend 启动期迁移只处理 userdata 与历史安装布局，必须早于设置读取和 Gateway 启动。
    */
   public run_startup_migrations(context: StartupMigrationContext): void {
     for (const migration of this.by_order((item) => item.run_startup !== undefined)) {

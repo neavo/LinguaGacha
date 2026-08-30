@@ -12,7 +12,7 @@ import type { WorkUnitLogEntry } from "../protocol/work-unit";
  * TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface TaskEngineOptions {
-  appRoot: string; // 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
+  builtinRoot: string; // 用于任务启动日志读取提示词模板，保持 main 与 worker 内置资产根一致
   taskStore: Pick<
     TaskProjectStore,
     | "acquire_project_lease"

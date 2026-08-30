@@ -4,14 +4,15 @@ import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 export interface AppPathServiceOptions {
-  appRoot: string;
-  platform?: NodeJS.Platform;
-  env?: NodeJS.ProcessEnv;
+  appRoot: string; // 安装根，承载版本、历史迁移与便携数据位置
+  builtinRoot: string; // 当前版本只读内置资产根
+  platform?: NodeJS.Platform; // 只参与数据根选择
+  env?: NodeJS.ProcessEnv; // 只读取 APPIMAGE 运行形态
   nativeFs?: NativeFs;
 }
 
 const HOME_DATA_ROOT_NAME = "LinguaGacha";
-const RESOURCE_DIR_NAME = "resource";
+const BUILTIN_DIR_NAME = "builtin";
 const USER_DATA_DIR_NAME = "userdata";
 const BERSERKER_DIR_NAME = "berserker";
 const AGENT_DIR_NAME = "agent";
@@ -66,27 +67,29 @@ export function resolve_preset_file(options: {
 }
 
 /**
- * AppPathService 是应用根、数据根、资源和用户文件落点的唯一路径权威。
+ * AppPathService 是安装根、内置资产根、数据根和用户文件落点的唯一路径权威。
  */
 export class AppPathService {
-  private readonly app_root: string;
+  private readonly app_root: string; // 版本文件、历史迁移和便携数据共享的安装根
+  private readonly builtin_root: string; // 与安装根独立的当前版本只读资产根
   private readonly platform: NodeJS.Platform;
   private readonly env: NodeJS.ProcessEnv;
   private readonly native_fs: NativeFs; // 只服务数据根可写探测，不承载应用文件语义
-  private data_root: string | null = null;
+  private data_root: string | null = null; // 首次读取时完成一次可写探测并冻结结果
 
   /**
    * 初始化 AppPathService 依赖，保持外部写入口清晰
    */
   public constructor(options: AppPathServiceOptions) {
     this.app_root = path.resolve(options.appRoot);
+    this.builtin_root = path.resolve(options.builtinRoot);
     this.platform = options.platform ?? process.platform;
     this.env = options.env ?? process.env;
     this.native_fs = options.nativeFs ?? default_native_fs;
   }
 
   /**
-   * 返回应用根，供启动链路和资源解析共享同一事实
+   * 返回安装根，供版本、历史迁移和便携数据解析共享同一事实
    */
   public get_app_root(): string {
     return this.app_root;
@@ -102,18 +105,19 @@ export class AppPathService {
     return this.data_root;
   }
 
-  /**
-   * 解析资源绝对路径，保持发布态和开发态一致
-   */
-  public get_resource_path(...parts: string[]): string {
-    return path.join(this.app_root, RESOURCE_DIR_NAME, ...parts);
+  /** 返回版本内置资产根；发布态位于 app.asar，开发态位于仓库 builtin。 */
+  public get_builtin_root(): string {
+    return this.builtin_root;
   }
 
-  /**
-   * 解析资源相对路径，避免各服务重复拼接目录
-   */
-  public get_resource_relative_path(...parts: string[]): string {
-    return path.join(RESOURCE_DIR_NAME, ...parts).replace(/\\/g, "/");
+  /** 解析只读内置资产绝对路径。 */
+  public get_builtin_path(...parts: string[]): string {
+    return path.join(this.builtin_root, ...parts);
+  }
+
+  /** 解析面向界面展示的内置资产相对路径。 */
+  public get_builtin_relative_path(...parts: string[]): string {
+    return path.join(BUILTIN_DIR_NAME, ...parts).replace(/\\/g, "/");
   }
 
   /**
@@ -174,28 +178,28 @@ export class AppPathService {
    * 返回内置模型预设目录，保持模型资源入口集中
    */
   public get_model_preset_dir(): string {
-    return this.get_resource_path("model", PRESET_DIR_NAME);
+    return this.get_builtin_path("model", PRESET_DIR_NAME);
   }
 
   /**
    * 返回必需的内置 Agent system prompt 路径。
    */
   public get_agent_system_prompt_path(): string {
-    return this.get_resource_path("agent", "system_prompt.md");
+    return this.get_builtin_path("agent", "system_prompt.md");
   }
 
   /**
    * 返回必需的内置 Agent 会话种子路径。
    */
   public get_agent_session_seed_path(): string {
-    return this.get_resource_path("agent", "session_seed.json");
+    return this.get_builtin_path("agent", "session_seed.json");
   }
 
   /**
    * 返回内置 Agent skill 根目录，供启动期协议加载统一使用。
    */
   public get_agent_builtin_skill_dir(): string {
-    return this.get_resource_path("agent", "skill");
+    return this.get_builtin_path("agent", "skill");
   }
 
   /**
@@ -209,14 +213,14 @@ export class AppPathService {
    * 返回内置质量规则预设目录，保持规则资源入口集中
    */
   public get_quality_rule_builtin_preset_dir(preset_directory: string): string {
-    return this.get_resource_path(preset_directory, PRESET_DIR_NAME);
+    return this.get_builtin_path(preset_directory, PRESET_DIR_NAME);
   }
 
   /**
    * 返回内置质量规则相对目录，用于组合预设虚拟 id
    */
   public get_quality_rule_builtin_preset_relative_dir(preset_directory: string): string {
-    return this.get_resource_relative_path(preset_directory, PRESET_DIR_NAME);
+    return this.get_builtin_relative_path(preset_directory, PRESET_DIR_NAME);
   }
 
   /**
@@ -240,7 +244,7 @@ export class AppPathService {
    * 返回提示词模板目录，保持模板读取路径集中
    */
   public get_prompt_template_dir(task_type: string, language: string): string {
-    return this.get_resource_path(
+    return this.get_builtin_path(
       this.get_prompt_task_dir_name(task_type),
       TEMPLATE_DIR_NAME,
       language.toLowerCase(),
@@ -251,14 +255,14 @@ export class AppPathService {
    * 返回内置提示词预设目录，保持提示词资源入口集中
    */
   public get_prompt_builtin_preset_dir(task_type: string): string {
-    return this.get_resource_path(this.get_prompt_task_dir_name(task_type), PRESET_DIR_NAME);
+    return this.get_builtin_path(this.get_prompt_task_dir_name(task_type), PRESET_DIR_NAME);
   }
 
   /**
    * 返回内置提示词相对目录，用于生成稳定虚拟 id
    */
   public get_prompt_builtin_preset_relative_dir(task_type: string): string {
-    return this.get_resource_relative_path(
+    return this.get_builtin_relative_path(
       this.get_prompt_task_dir_name(task_type),
       PRESET_DIR_NAME,
     );

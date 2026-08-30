@@ -78,7 +78,7 @@ describe("model-config-resolver", () => {
   it("读取内置模型预设时过滤非对象项并兼容缺失文件", () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-model-preset-"));
     const preset_root = temp_root.path;
-    const preset_dir = path.join(preset_root, "resource", "model", "preset");
+    const preset_dir = path.join(preset_root, "builtin", "model", "preset");
     const paths = {
       get_model_preset_dir: () => preset_dir,
     };

@@ -6,7 +6,7 @@ import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../llm/
 import { WorkUnitRunner, type WorkUnitRunnerOptions } from "./work-unit-runner";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
 
-type WorkUnitWorkerData = Pick<WorkUnitRunnerOptions, "appRoot">;
+type WorkUnitWorkerData = Pick<WorkUnitRunnerOptions, "builtinRoot">;
 
 /** worker 只通过结构化请求访问父线程 LLMClient，不持有供应商网络能力。 */
 class WorkerLLMClient implements LLMClientPort {

@@ -53,10 +53,29 @@ describe("Agent skill 模型投影", () => {
 });
 
 describe("Agent skill 加载", () => {
+  it("只扫描用户与当前内置根，不加载安装目录残留的旧版 skill", async () => {
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-skills-legacy-resource-"),
+    );
+    const paths = create_paths(temp_root.path);
+    write_skill(
+      path.join(temp_root.path, "resource", "agent", "skill", "legacy", "SKILL.md"),
+      "---\nname: legacy\ndescription: 旧版能力\n---\n\n旧版正文。",
+    );
+    write_skill(
+      path.join(paths.get_agent_builtin_skill_dir(), "current", "SKILL.md"),
+      "---\nname: current\ndescription: 当前能力\n---\n\n当前正文。",
+    );
+
+    const skills = await load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() });
+
+    expect(skills.map((skill) => skill.name)).toEqual(["current"]);
+  });
+
   it("加载双目录合法 SKILL.md，记录坏 frontmatter，并过滤目录名不匹配项", async () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
     const app_root = temp_root.path;
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const paths = create_paths(app_root);
     write_skill(
       path.join(paths.get_agent_builtin_skill_dir(), "valid", "SKILL.md"),
       "---\nname: valid\ndescription: 合法能力\n---\n\n执行合法任务。",
@@ -121,7 +140,7 @@ describe("Agent skill 加载", () => {
       path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
     );
     const app_root = temp_root.path;
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const paths = create_paths(app_root);
     const builtin_dir = path.join(paths.get_agent_builtin_skill_dir(), "shared");
     const user_dir = path.join(paths.get_agent_user_skill_dir(), "shared");
     write_skill(
@@ -174,7 +193,7 @@ describe("Agent skill 加载", () => {
       path.join(os.tmpdir(), "linguagacha-agent-skills-ui-"),
     );
     const app_root = temp_root.path;
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const paths = create_paths(app_root);
     const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "invalid-ui");
     write_skill(
       path.join(skill_dir, "SKILL.md"),
@@ -210,7 +229,7 @@ describe("Agent skill 加载", () => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-hidden-"),
     );
-    const paths = new AppPathService({ appRoot: temp_root.path, env: {}, platform: "win32" });
+    const paths = create_paths(temp_root.path);
     const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "hidden");
     write_skill(
       path.join(skill_dir, "SKILL.md"),
@@ -236,6 +255,15 @@ describe("Agent skill 加载", () => {
     expect(warning).not.toHaveBeenCalled();
   });
 });
+
+function create_paths(app_root: string): AppPathService {
+  return new AppPathService({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+    env: {},
+    platform: "win32",
+  });
+}
 
 function write_skill(file_path: string, content: string): void {
   fs.mkdirSync(path.dirname(file_path), { recursive: true });

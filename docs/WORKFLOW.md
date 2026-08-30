@@ -11,7 +11,7 @@
 |API、SSE、错误、项目读写|[`BACKEND.md`](BACKEND.md)|`src/backend/api/`、`src/backend/project/`、`src/backend/cache/`、`src/shared/error/`|
 |数据库、`.lg`、migration、asset、NativeFs|[`BACKEND.md`](BACKEND.md)|`src/backend/database/`、`src/backend/migration/`、`src/native/`|
 |任务、worker、共享 LLM、系统代理网络|[`BACKEND.md`](BACKEND.md)|`src/backend/engine/`、`src/backend/worker/`、`src/backend/llm/`、`src/backend/network/`|
-|产品 Agent 会话、资源、skill、工具、宿主能力、页面消费|[`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)|`src/backend/agent/`、`src/shared/agent.ts`、`src/shared/backend-runtime.ts`、`src/gui/runtime/desktop-agent-workspace-runner.ts`、`src/frontend/app/session/agent/`、`src/frontend/pages/agent-page/`、`resource/agent/`|
+|产品 Agent 会话、资源、skill、工具、宿主能力、页面消费|[`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)|`src/backend/agent/`、`src/shared/agent.ts`、`src/shared/backend-runtime.ts`、`src/gui/runtime/desktop-agent-workspace-runner.ts`、`src/frontend/app/session/agent/`、`src/frontend/pages/agent-page/`、`builtin/agent/`|
 |Electron / preload / renderer 接入|[`FRONTEND.md`](FRONTEND.md)|`src/gui/`、`src/frontend/app/desktop/`|
 |前端共享状态、跨页面 feature、页面 query、导航、session UI|[`FRONTEND.md`](FRONTEND.md)|`src/frontend/app/state/`、`src/frontend/app/session/`、`src/frontend/features/`、`src/frontend/pages/`|
 |前端文案、样式消费、视觉|[`FRONTEND.md`](FRONTEND.md)|当前任务设计输入、既有界面证据、`src/frontend/index.css`、相关组件 / 页面 CSS|

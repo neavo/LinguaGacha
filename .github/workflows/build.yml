@@ -9,14 +9,14 @@ on:
         default: "main"
 jobs:
   prepare:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.check_version.outputs.version }}
       app_name: ${{ steps.app_meta.outputs.app_name }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
@@ -45,18 +45,18 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: buildtools/builder/win-cli/go.mod
           cache-dependency-path: buildtools/builder/**/go.mod
@@ -101,12 +101,12 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -144,10 +144,10 @@ jobs:
       matrix:
         include:
           - arch: x64
-            runner: ubuntu-26.04
+            runner: ubuntu-24.04
             builder_artifact_arch: x86_64
           - arch: arm64
-            runner: ubuntu-26.04-arm
+            runner: ubuntu-24.04-arm
             builder_artifact_arch: arm64
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -155,12 +155,12 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -203,7 +203,7 @@ jobs:
 
   create-release:
     needs: [prepare, build-windows, build-macos, build-linux]
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 

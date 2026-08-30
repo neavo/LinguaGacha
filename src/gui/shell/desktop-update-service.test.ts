@@ -121,7 +121,12 @@ describe("DesktopUpdateService", () => {
       path.join(os.tmpdir(), "linguagacha-update-cleanup-"),
     );
     const app_root = temp_root.path;
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const paths = new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+      env: {},
+      platform: "win32",
+    });
     fs.mkdirSync(path.join(paths.get_berserker_update_root_dir(), "v1.2.3"), { recursive: true });
     fs.mkdirSync(path.join(paths.get_berserker_update_root_dir(), "cache"), { recursive: true });
     fs.writeFileSync(path.join(paths.get_berserker_update_root_dir(), "berserker.exe"), "exe");
@@ -224,6 +229,7 @@ function create_service(
     appRoot: app_root,
     updateRootDir: new AppPathService({
       appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
       env: {},
       platform: "win32",
     }).get_berserker_update_root_dir(),

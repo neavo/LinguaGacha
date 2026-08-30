@@ -48,14 +48,14 @@ interface AnalysisWorkUnitResult {
  * 分析 work unit runner，负责 prompt、LLM 请求和候选术语归一
  */
 export class AnalysisWorkUnitRunner {
-  private readonly app_root: string; // 只用于读取分析提示词模板，runner 不依赖进程 cwd
+  private readonly builtin_root: string; // 只用于读取分析提示词模板，runner 不依赖进程 cwd
   private readonly llm_client: LLMClientPort; // 分析链路唯一外部调用口，便于取消和错误统一处理
 
   /**
    * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件
    */
-  public constructor(app_root: string, llm_client: LLMClientPort) {
-    this.app_root = app_root;
+  public constructor(builtin_root: string, llm_client: LLMClientPort) {
+    this.builtin_root = builtin_root;
     this.llm_client = llm_client;
   }
 
@@ -121,7 +121,7 @@ export class AnalysisWorkUnitRunner {
       };
     }
     const prompt_builder = new PromptBuilder(
-      this.app_root,
+      this.builtin_root,
       normalize_setting_snapshot(request.config_snapshot),
       quality_snapshot,
       [],

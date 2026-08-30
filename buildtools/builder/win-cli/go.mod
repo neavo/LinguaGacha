@@ -1,3 +1,3 @@
 module linguagacha/win-cli
 
-go 1.22
+go 1.27

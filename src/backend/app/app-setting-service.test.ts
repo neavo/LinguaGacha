@@ -210,7 +210,12 @@ function create_service(): {
 } {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-setting-service-"));
   cleanup_roots.push(app_root);
-  const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+  const paths = new AppPathService({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+    env: {},
+    platform: "win32",
+  });
   const events: SettingsStreamMessage[] = [];
   const service = new AppSettingService(paths, {
     publish: (topic, payload) => {

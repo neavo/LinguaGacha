@@ -44,24 +44,24 @@ export interface PromptBuildResult {
  * worker 侧提示词构造器，读取资源模板并拼接本次 work unit 动态数据
  */
 export class PromptBuilder {
-  private static readonly template_cache = new Map<string, string>();
+  private static readonly template_cache = new Map<string, string>(); // 按资产根和模板身份复用只读文本
 
-  private readonly app_root: string;
+  private readonly builtin_root: string; // 当前版本提示词模板根
   private readonly config: PromptBuilderConfig;
   private readonly quality_snapshot: TextQualitySnapshot;
   private readonly activated_glossary_entries: readonly GlossaryEntry[];
 
   /**
-   * app_root 由 Electron main 注入，worker 不自行猜测资源根
+   * builtin_root 由入口注入，worker 不自行猜测内置资产根
    */
   public constructor(
-    app_root: string,
+    builtin_root: string,
     config: Partial<PromptBuilderConfig>,
     quality_snapshot: TextQualitySnapshot,
     activated_glossary_entries: readonly GlossaryEntry[],
   ) {
     const setting_snapshot = normalize_setting_snapshot(config);
-    this.app_root = app_root;
+    this.builtin_root = builtin_root;
     this.config = {
       app_language: setting_snapshot.app_language,
       source_language: setting_snapshot.source_language,
@@ -344,21 +344,20 @@ export class PromptBuilder {
   }
 
   /**
-   * 模板路径固定在 resource 下，worker 不读用户预设目录
+   * 模板只从版本内置资产读取，worker 不读用户预设目录
    */
   private async read_prompt_text(
     task_dir_name: string,
     language: TranslationPromptLanguage,
     file_name: string,
   ): Promise<string> {
-    const cache_key = `${this.app_root}\u0000${task_dir_name}\u0000${language}\u0000${file_name}`;
+    const cache_key = `${this.builtin_root}\u0000${task_dir_name}\u0000${language}\u0000${file_name}`;
     const cached = PromptBuilder.template_cache.get(cache_key);
     if (cached !== undefined) {
       return cached;
     }
     const template_path = path.join(
-      this.app_root,
-      "resource",
+      this.builtin_root,
       task_dir_name,
       "template",
       language,

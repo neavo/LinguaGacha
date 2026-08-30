@@ -14,7 +14,7 @@ type TextPreservePresetEntry = {
 
 describe("text-preserve-rules", () => {
   it("内置文本保护预设只包含可编译的 JS Unicode 正则", () => {
-    const preset_dir = path.join(process.cwd(), "resource", "text_preserve", "preset");
+    const preset_dir = path.join(process.cwd(), "builtin", "text_preserve", "preset");
     const preset_files = fs.readdirSync(preset_dir).filter((file_name) => {
       return file_name.endsWith(".json");
     });

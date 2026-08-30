@@ -238,7 +238,10 @@ describe("ApiGatewayServer", () => {
     database: ProjectDatabase,
     log_manager: LogManager = create_log_manager(app_root),
   ): { gateway: ApiGatewayServer; backend_services: BackendServices } {
-    const paths = new AppPathService({ appRoot: app_root });
+    const paths = new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+    });
     const backend_services = new BackendServices({
       paths,
       metadata: new AppMetadataService(paths),

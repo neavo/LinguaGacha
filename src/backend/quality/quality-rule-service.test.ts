@@ -34,7 +34,7 @@ describe("QualityRuleService", () => {
 
   it("读取质量规则预设时兼容 UTF-8 BOM 且保持严格 JSON", () => {
     const { service, app_root } = create_service();
-    const preset_dir = path.join(app_root, "resource", "glossary", "preset");
+    const preset_dir = path.join(app_root, "builtin", "glossary", "preset");
     fs.mkdirSync(preset_dir, { recursive: true });
     fs.writeFileSync(path.join(preset_dir, "demo.json"), '\uFEFF[{"src":"A","dst":"甲"}]', "utf-8");
 
@@ -58,7 +58,7 @@ describe("QualityRuleService", () => {
 
   it("读取 text_preserve 内置预设时使用质量规则预设目录", () => {
     const { service, app_root } = create_service();
-    const preset_dir = path.join(app_root, "resource", "text_preserve", "preset"); // text_preserve 复用质量规则预设目录解析，避免简繁转换页再走专用接口
+    const preset_dir = path.join(app_root, "builtin", "text_preserve", "preset"); // text_preserve 复用质量规则预设目录解析，避免简繁转换页再走专用接口
     fs.mkdirSync(preset_dir, { recursive: true });
     fs.writeFileSync(
       path.join(preset_dir, "renpy.json"),
@@ -90,7 +90,7 @@ describe("QualityRuleService", () => {
       return value;
     }) as typeof globalThis.crypto.getRandomValues);
     const { service, app_root } = create_service();
-    const preset_dir = path.join(app_root, "resource", "glossary", "preset");
+    const preset_dir = path.join(app_root, "builtin", "glossary", "preset");
     fs.mkdirSync(preset_dir, { recursive: true });
     fs.writeFileSync(path.join(preset_dir, "collision.json"), '[{"src":"A","dst":"甲"}]', "utf-8");
 
@@ -496,6 +496,7 @@ describe("QualityRuleService", () => {
     cleanup_paths.push(app_root);
     const paths = new AppPathService({
       appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
       env: {},
       platform: process.platform,
     });
@@ -526,6 +527,7 @@ describe("QualityRuleService", () => {
     const { app_root } = create_service();
     const paths = new AppPathService({
       appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
       env: {},
       platform: process.platform,
     });

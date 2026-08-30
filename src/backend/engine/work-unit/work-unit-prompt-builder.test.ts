@@ -38,9 +38,9 @@ describe("PromptBuilder", () => {
   });
 
   it("从资源模板生成翻译提示词并注入上文、术语和控制字符示例", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       {
         app_language: "ZH",
         source_language: "JA",
@@ -76,9 +76,9 @@ describe("PromptBuilder", () => {
   });
 
   it("生成术语分析提示词时只携带分析输入", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       { app_language: "EN" },
       create_quality_snapshot(),
       [],
@@ -91,9 +91,9 @@ describe("PromptBuilder", () => {
   });
 
   it("提示词模板语言跟随 UI 语言而不是目标语言", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       {
         app_language: "EN",
         source_language: "JA",
@@ -110,9 +110,9 @@ describe("PromptBuilder", () => {
   });
 
   it("启用自定义翻译提示词时仍拼接前后缀和 thinking 段", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       {
         app_language: "ZH",
         source_language: "JA",
@@ -159,9 +159,9 @@ describe("PromptBuilder", () => {
   });
 
   it("公开提示词只格式化 runner 已激活的术语", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       { app_language: "EN", target_language: "EN" },
       create_quality_snapshot({
         glossary_entries: [
@@ -221,9 +221,9 @@ describe("PromptBuilder", () => {
   });
 
   it("普通提示词没有已激活术语时不写入术语段", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       { app_language: "ZH", source_language: "JA", target_language: "ZH" },
       create_quality_snapshot(),
       [],
@@ -242,9 +242,9 @@ describe("PromptBuilder", () => {
   });
 
   it("分析主提示词启用自定义正文时读取分析模板目录", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       { app_language: "ZH", target_language: "ZH" },
       create_quality_snapshot({
         analysis_prompt_enable: true,
@@ -262,9 +262,9 @@ describe("PromptBuilder", () => {
   });
 
   it("含姓名请求使用 actor/text 格式并写入已激活姓名术语", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       {
         app_language: "ZH",
         source_language: "JA",
@@ -301,9 +301,9 @@ describe("PromptBuilder", () => {
   });
 
   it("纯文本请求使用字符串 JSONL 输入格式", async () => {
-    const app_root = await create_template_root();
+    const builtin_root = await create_template_root();
     const builder = new PromptBuilder(
-      app_root,
+      builtin_root,
       { app_language: "ZH", source_language: "JA", target_language: "ZH" },
       create_quality_snapshot(),
       [],
@@ -322,48 +322,48 @@ describe("PromptBuilder", () => {
 });
 
 /**
- * 构造包含中英文提示词模板的临时 appRoot，避免测试依赖真实资源目录
+ * 构造包含中英文提示词模板的临时内置资产根，避免测试依赖仓库资源
  */
 async function create_template_root(): Promise<string> {
-  const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-prompt-"));
-  template_roots.push(app_root);
-  await write_template(app_root, "translation_prompt", "zh", {
+  const builtin_root = await mkdtemp(path.join(tmpdir(), "linguagacha-prompt-"));
+  template_roots.push(builtin_root);
+  await write_template(builtin_root, "translation_prompt", "zh", {
     prefix: "翻译前缀",
     base: "请从 {source_language} 翻译到 {target_language}，保留控制字符。",
     thinking: "思考过程",
     suffix: "输出 JSONLINE\n{translation_output_format}",
   });
-  await write_template(app_root, "analysis_prompt", "en", {
+  await write_template(builtin_root, "analysis_prompt", "en", {
     prefix: "Analysis prefix",
     base: "Extract terms for {target_language}.",
     thinking: "",
     suffix: "Return JSONLINE",
   });
-  await write_template(app_root, "translation_prompt", "en", {
+  await write_template(builtin_root, "translation_prompt", "en", {
     prefix: "Translation prefix",
     base: "Translate from {source_language} to {target_language}.",
     thinking: "",
     suffix: "Return JSONLINE\n{translation_output_format}",
   });
-  await write_template(app_root, "analysis_prompt", "zh", {
+  await write_template(builtin_root, "analysis_prompt", "zh", {
     prefix: "分析前缀",
     base: "提取 {target_language} 术语。",
     thinking: "分析思考",
     suffix: "输出 JSONLINE",
   });
-  return app_root;
+  return builtin_root;
 }
 
 /**
  * 写入单个任务语言模板，保持 PromptBuilder 读取路径与运行态一致
  */
 async function write_template(
-  app_root: string,
+  builtin_root: string,
   task_dir_name: string,
   language: "zh" | "en",
   sections: Record<"prefix" | "base" | "thinking" | "suffix", string>,
 ): Promise<void> {
-  const dir = path.join(app_root, "resource", task_dir_name, "template", language);
+  const dir = path.join(builtin_root, task_dir_name, "template", language);
   await mkdir(dir, { recursive: true });
   for (const [name, content] of Object.entries(sections)) {
     await writeFile(path.join(dir, `${name}.txt`), content, "utf-8");

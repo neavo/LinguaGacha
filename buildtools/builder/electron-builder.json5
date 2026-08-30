@@ -12,6 +12,7 @@
   files: [
     "build/dist/**/*",
     "build/dist-electron/**/*",
+    "builtin/**/*",
     "!node_modules/**/*.map",
   ],
   win: {
@@ -20,7 +21,6 @@
     executableName: "app",
     icon: "icon.png",
     extraFiles: [
-      { from: "resource", to: "resource" },
       { from: "version.txt", to: "version.txt" },
     ],
   },
@@ -31,7 +31,6 @@
     icon: "icon.png",
     identity: null,
     extraFiles: [
-      { from: "resource", to: "MacOS/resource" },
       { from: "version.txt", to: "MacOS/version.txt" },
     ],
   },
@@ -44,7 +43,6 @@
     category: "Utility",
     icon: "icon.png",
     extraFiles: [
-      { from: "resource", to: "resource" },
       { from: "version.txt", to: "version.txt" },
     ],
   },

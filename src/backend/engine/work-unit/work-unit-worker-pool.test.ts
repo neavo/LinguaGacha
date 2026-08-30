@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
 
-const cleanup_roots: string[] = []; // 记录测试创建的临时 appRoot 和 worker 文件目录
+const cleanup_roots: string[] = []; // 记录测试创建的临时内置资产根和 worker 文件目录
 
 describe("WorkUnitWorkerPool", () => {
   afterEach(async () => {
@@ -33,7 +33,7 @@ describe("WorkUnitWorkerPool", () => {
       }),
     };
     const pool = new WorkUnitWorkerPool({
-      appRoot: await create_template_root(),
+      builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
       llmClient: llm_client,
     });
@@ -85,8 +85,8 @@ describe("WorkUnitWorkerPool", () => {
   });
 
   it("worker_threads 模式只使用显式入口 URL 执行任务", async () => {
-    const app_root = await create_temp_root();
-    const worker_path = path.join(app_root, "test-work-unit-worker-entry.mjs");
+    const temp_root = await create_temp_root();
+    const worker_path = path.join(temp_root, "test-work-unit-worker-entry.mjs");
     await writeFile(
       worker_path,
       `import { parentPort } from "node:worker_threads";
@@ -130,7 +130,7 @@ parentPort?.on("message", (message) => {
       timeout: false,
     });
     const pool = new WorkUnitWorkerPool({
-      appRoot: app_root,
+      builtinRoot: temp_root,
       execution: {
         kind: "worker_threads",
         workUnitWorkerEntryUrl: pathToFileURL(worker_path),
@@ -173,7 +173,7 @@ parentPort?.on("message", (message) => {
 
   it("释放后拒绝新任务并返回结构化运行时错误", async () => {
     const pool = new WorkUnitWorkerPool({
-      appRoot: await create_template_root(),
+      builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
       llmClient: { request: vi.fn() },
     });
@@ -192,7 +192,7 @@ parentPort?.on("message", (message) => {
       resolve_request_started = resolve;
     });
     const pool = new WorkUnitWorkerPool({
-      appRoot: await create_template_root(),
+      builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
       llmClient: {
         request: vi.fn(async (_body, signal) => {
@@ -258,13 +258,13 @@ function create_translation_unit(unit_id: string) {
 }
 
 /**
- * in_process runner 测试需要真实模板目录，用临时 appRoot 隔离资源读取。
+ * in_process runner 测试需要真实模板目录，用临时内置资产根隔离资源读取。
  */
 async function create_template_root(): Promise<string> {
-  const app_root = await create_temp_root();
-  await write_template(app_root, "translation_prompt", "zh");
-  await write_template(app_root, "analysis_prompt", "zh");
-  return app_root;
+  const builtin_root = await create_temp_root();
+  await write_template(builtin_root, "translation_prompt", "zh");
+  await write_template(builtin_root, "analysis_prompt", "zh");
+  return builtin_root;
 }
 
 /**
@@ -280,11 +280,11 @@ async function create_temp_root(): Promise<string> {
  * 写入最小可用模板，确保 pool 测试只关注执行路径而非提示词内容
  */
 async function write_template(
-  app_root: string,
+  builtin_root: string,
   task_dir_name: string,
   language: "zh" | "en",
 ): Promise<void> {
-  const dir = path.join(app_root, "resource", task_dir_name, "template", language);
+  const dir = path.join(builtin_root, task_dir_name, "template", language);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");

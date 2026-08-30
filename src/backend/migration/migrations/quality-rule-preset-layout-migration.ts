@@ -30,9 +30,9 @@ const QUALITY_RULE_PRESET_DIRECTORIES = Object.values(QUALITY_RULE_PRESET_SETTIN
 /**
  * 迁移背景：
  * 质量规则预设曾经历同一次体系收敛：用户预设从 `resource/preset/<type>/user`
- * 迁到 `userdata/<type>`，内置预设从按语言分层的旧目录迁到
- * `resource/<type>/preset`，默认配置值从路径或 `builtin:<lang>:file.json`
- * 归一为当前 `source:file.json` 虚拟 ID。
+ * 迁到 `userdata/<type>`，默认配置值从旧路径或 `builtin:<lang>:file.json`
+ * 归一为当前 `source:file.json` 虚拟 ID。旧内置目录只用于识别配置来源；
+ * 当前内置预设随版本打包，不写入安装目录。
  *
  * 生效场景：
  * Backend 启动、设置服务读取前一次性迁移质量规则预设布局和默认预设引用。
@@ -53,11 +53,10 @@ export const quality_rule_preset_layout_migration: MigrationDescriptor = {
 };
 
 /**
- * 执行顺序固定为搬用户预设、搬 builtin、最后归一配置值。
+ * 执行顺序固定为迁移用户预设，再归一配置值。
  */
 export function run_quality_rule_preset_layout_migration(context: StartupMigrationContext): void {
   migrate_user_presets(context);
-  migrate_builtin_layout(context);
   normalize_default_preset_config_values(context);
 }
 
@@ -132,25 +131,6 @@ function migrate_user_presets(context: StartupMigrationContext): void {
       QUALITY_RULE_PRESET_EXTENSION,
       [context.paths.get_app_root(), context.paths.get_data_root()],
     );
-  }
-}
-
-/**
- * builtin 预设从两种历史语言层级迁到 `resource/<type>/preset`。
- */
-function migrate_builtin_layout(context: StartupMigrationContext): void {
-  for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
-    const destination_dir = context.paths.get_quality_rule_builtin_preset_dir(preset_directory);
-    default_native_fs.make_dir(destination_dir);
-    for (const source_dir of iter_builtin_source_dirs(context, preset_directory)) {
-      relocate_directory_items(
-        context.log_manager,
-        source_dir,
-        destination_dir,
-        QUALITY_RULE_PRESET_EXTENSION,
-        [context.paths.get_app_root(), context.paths.get_data_root()],
-      );
-    }
   }
 }
 
@@ -234,7 +214,7 @@ function resolve_source_from_path(
 
   const builtin_dirs = [
     context.paths.get_quality_rule_builtin_preset_dir(preset_directory),
-    ...iter_builtin_source_dirs(context, preset_directory),
+    ...get_legacy_builtin_preset_dirs(context, preset_directory),
   ];
   if (builtin_dirs.some((directory) => is_same_directory(context, raw_dir, directory))) {
     return "builtin";
@@ -261,7 +241,7 @@ function get_legacy_user_preset_dir(
 /**
  * 旧 builtin 同时兼容 `resource/<type>/preset/<lang>` 与 `resource/preset/<type>/<lang>`。
  */
-function iter_builtin_source_dirs(
+function get_legacy_builtin_preset_dirs(
   context: StartupMigrationContext,
   preset_directory: string,
 ): string[] {

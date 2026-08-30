@@ -58,7 +58,7 @@ interface TaskRunContext {
  * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环
  */
 export class TaskEngine {
-  private readonly app_root: string; // 让 Backend 启动日志和 worker 使用同一套提示词资源
+  private readonly builtin_root: string; // 让 Backend 启动日志和 worker 使用同一套内置提示词
   private readonly task_store: TaskEngineOptions["taskStore"]; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
   private readonly task_runtime: TaskEngineOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
@@ -71,7 +71,7 @@ export class TaskEngine {
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: TaskEngineOptions) {
-    this.app_root = options.appRoot;
+    this.builtin_root = options.builtinRoot;
     this.task_store = options.taskStore;
     this.task_runtime = options.taskRuntime;
     this.executor_client = options.executorClient;
@@ -818,7 +818,7 @@ export class TaskEngine {
       return null;
     }
     const builder = new PromptBuilder(
-      this.app_root,
+      this.builtin_root,
       normalize_setting_snapshot(run_context.config_snapshot),
       TextQualitySnapshotTool.from_api_value(quality_snapshot),
       [],

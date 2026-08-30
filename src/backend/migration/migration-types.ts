@@ -9,7 +9,7 @@ import type { AppSettingService } from "../app/app-setting-service";
  * startup hook 只服务应用启动期文件迁移，必须先于 AppSettingService 读取配置执行。
  */
 export interface StartupMigrationContext {
-  paths: AppPathService; // appRoot/dataRoot/userdata/resource 的唯一权威，不允许迁移点自行猜根目录
+  paths: AppPathService; // appRoot/builtinRoot/dataRoot/userdata 的唯一权威，不允许迁移点自行猜根目录
   log_manager: LogManager; // 启动期迁移失败的唯一诊断出口，失败不阻断 Backend 启动
 }
 

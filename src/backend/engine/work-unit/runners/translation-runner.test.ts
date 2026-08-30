@@ -651,9 +651,9 @@ function create_translation_unit(args: {
  * 构造临时提示词资源根，覆盖 SakuraLLM 专用提示词路径。
  */
 async function create_template_root(): Promise<string> {
-  const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-translation-runner-"));
-  cleanup_roots.push(app_root);
-  const dir = path.join(app_root, "resource", "translation_prompt", "template", "zh");
+  const builtin_root = await mkdtemp(path.join(tmpdir(), "linguagacha-translation-runner-"));
+  cleanup_roots.push(builtin_root);
+  const dir = path.join(builtin_root, "translation_prompt", "template", "zh");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
@@ -663,5 +663,5 @@ async function create_template_root(): Promise<string> {
     "输出 JSONLINE\n{translation_output_format}",
     "utf-8",
   );
-  return app_root;
+  return builtin_root;
 }

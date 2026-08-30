@@ -1,4 +1,5 @@
 import { app, session } from "electron";
+import path from "node:path";
 
 import { BackendBootstrap } from "../backend/bootstrap/backend-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
@@ -18,6 +19,7 @@ export async function run_cli_command(
   await app.whenReady();
   const bootstrap = new BackendBootstrap({
     appRoot: app_root,
+    builtinRoot: path.join(app.getAppPath(), "builtin"),
     exposeApiGateway: false,
     logTargets: { console: false, window: false },
     systemProxyResolver: {

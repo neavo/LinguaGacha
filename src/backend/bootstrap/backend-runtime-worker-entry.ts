@@ -7,9 +7,17 @@ if (parentPort === null) {
   throw new Error("Backend runtime worker is missing parentPort.");
 }
 
-const data = workerData as { appRoot?: unknown };
+const data = workerData as { appRoot?: unknown; builtinRoot?: unknown };
 if (typeof data.appRoot !== "string" || data.appRoot === "") {
   throw new Error("Backend runtime worker is missing appRoot.");
 }
+if (typeof data.builtinRoot !== "string" || data.builtinRoot === "") {
+  throw new Error("Backend runtime worker is missing builtinRoot.");
+}
 
-void run_backend_runtime({ appRoot: data.appRoot, moduleUrl: import.meta.url, port: parentPort });
+void run_backend_runtime({
+  appRoot: data.appRoot,
+  builtinRoot: data.builtinRoot,
+  moduleUrl: import.meta.url,
+  port: parentPort,
+});

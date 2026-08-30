@@ -18,9 +18,15 @@ afterEach(() => {
 });
 
 describe("AppPathService", () => {
-  it("应用根可写时把资源、配置、日志和预设路径收口到同一应用根", () => {
+  it("显式区分内置资产根、应用根与可写数据根", () => {
     const app_root = create_temp_root("linguagacha-path-service-");
-    const service = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const builtin_root = path.join(app_root, "builtin");
+    const service = new AppPathService({
+      appRoot: app_root,
+      builtinRoot: builtin_root,
+      env: {},
+      platform: "win32",
+    });
 
     expect(service.get_app_root()).toBe(path.resolve(app_root));
     expect(service.get_data_root()).toBe(path.resolve(app_root));
@@ -36,30 +42,28 @@ describe("AppPathService", () => {
     );
     expect(service.get_version_path()).toBe(path.join(app_root, "version.txt"));
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
-    expect(service.get_model_preset_dir()).toBe(path.join(app_root, "resource", "model", "preset"));
+    expect(service.get_model_preset_dir()).toBe(path.join(builtin_root, "model", "preset"));
     expect(service.get_agent_system_prompt_path()).toBe(
-      path.join(app_root, "resource", "agent", "system_prompt.md"),
+      path.join(builtin_root, "agent", "system_prompt.md"),
     );
     expect(service.get_agent_session_seed_path()).toBe(
-      path.join(app_root, "resource", "agent", "session_seed.json"),
+      path.join(builtin_root, "agent", "session_seed.json"),
     );
-    expect(service.get_agent_builtin_skill_dir()).toBe(
-      path.join(app_root, "resource", "agent", "skill"),
-    );
+    expect(service.get_agent_builtin_skill_dir()).toBe(path.join(builtin_root, "agent", "skill"));
     expect(service.get_agent_user_skill_dir()).toBe(
       path.join(app_root, "userdata", "agent", "skill"),
     );
     expect(service.get_quality_rule_builtin_preset_dir("glossary")).toBe(
-      path.join(app_root, "resource", "glossary", "preset"),
+      path.join(builtin_root, "glossary", "preset"),
     );
     expect(service.get_quality_rule_builtin_preset_relative_dir("glossary")).toBe(
-      "resource/glossary/preset",
+      "builtin/glossary/preset",
     );
     expect(service.get_prompt_template_dir("translation", "ZH")).toBe(
-      path.join(app_root, "resource", "translation_prompt", "template", "zh"),
+      path.join(builtin_root, "translation_prompt", "template", "zh"),
     );
     expect(service.get_prompt_builtin_preset_relative_dir("analysis")).toBe(
-      "resource/analysis_prompt/preset",
+      "builtin/analysis_prompt/preset",
     );
   });
 
@@ -68,6 +72,7 @@ describe("AppPathService", () => {
     const home_data_root = path.join(os.homedir(), "LinguaGacha");
     const appimage_service = new AppPathService({
       appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
       env: { APPIMAGE: "/tmp/LinguaGacha.AppImage" },
       platform: "linux",
     });
@@ -75,6 +80,7 @@ describe("AppPathService", () => {
     fs.writeFileSync(blocked_app_root, "not a directory", "utf-8");
     const blocked_service = new AppPathService({
       appRoot: blocked_app_root,
+      builtinRoot: path.join(app_root, "builtin"),
       env: {},
       platform: "win32",
     });
@@ -85,7 +91,12 @@ describe("AppPathService", () => {
 
   it("未知提示词任务类型不会生成资源路径", () => {
     const app_root = create_temp_root("linguagacha-path-invalid-prompt-");
-    const service = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const service = new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+      env: {},
+      platform: "win32",
+    });
 
     expect(() => service.get_prompt_template_dir("proofreading", "zh")).toThrow(
       "runtime.internal_invariant",
@@ -95,7 +106,7 @@ describe("AppPathService", () => {
 
 describe("resolve_preset_file", () => {
   it("按虚拟来源解析受控根目录并显式兼容旧 JSON 命名空间", () => {
-    const builtin_directory = path.join("resource", "glossary", "preset");
+    const builtin_directory = path.join("builtin", "glossary", "preset");
     const user_directory = path.join("userdata", "glossary");
 
     expect(

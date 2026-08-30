@@ -40,7 +40,8 @@ export class BackendRuntimeClient {
   public constructor(
     private readonly options: {
       workerEntryUrl: URL;
-      appRoot: string;
+      appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
+      builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
       /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
@@ -59,7 +60,7 @@ export class BackendRuntimeClient {
     this.stopped = false;
     this.exit_handled = false;
     const worker = new Worker(this.options.workerEntryUrl, {
-      workerData: { appRoot: this.options.appRoot },
+      workerData: { appRoot: this.options.appRoot, builtinRoot: this.options.builtinRoot },
     });
     this.worker = worker;
     this.start_promise = new Promise<BackendRuntimeReady>((resolve, reject) => {

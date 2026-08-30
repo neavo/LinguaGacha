@@ -61,9 +61,11 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   }
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+  const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
+    builtinRoot: builtin_root,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
     runAgentWorkspace: async (request, signal) => {

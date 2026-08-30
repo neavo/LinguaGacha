@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentService } from "../agent/agent-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
-import { NPM_INITIAL_CWD_ENV_NAME } from "../app/app-root-resolver";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { SystemProxyHttpClient } from "../network/system-proxy-http-client";
@@ -14,7 +13,6 @@ import { BackendBootstrap } from "./backend-bootstrap";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 
 let temp_dir = ""; // 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
-let original_initial_cwd: string | undefined; // 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" }; // bootstrap 测试只验证启动编排，不启动真实 worker_threads
 const DIRECT_SYSTEM_PROXY_RESOLVER = { resolveProxy: async () => "DIRECT" };
 
@@ -34,11 +32,11 @@ function read_log_text(log_dir: string): string {
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-lifecycle-"));
-  const agent_resource_dir = path.join(temp_dir, "resource", "agent");
-  fs.mkdirSync(agent_resource_dir, { recursive: true });
-  fs.writeFileSync(path.join(agent_resource_dir, "system_prompt.md"), "基础系统指令。", "utf-8");
+  const agent_builtin_dir = path.join(temp_dir, "builtin", "agent");
+  fs.mkdirSync(agent_builtin_dir, { recursive: true });
+  fs.writeFileSync(path.join(agent_builtin_dir, "system_prompt.md"), "基础系统指令。", "utf-8");
   fs.writeFileSync(
-    path.join(agent_resource_dir, "session_seed.json"),
+    path.join(agent_builtin_dir, "session_seed.json"),
     JSON.stringify([
       { role: "user", content: "种子设定。" },
       { role: "assistant", content: "种子确认。" },
@@ -46,24 +44,17 @@ beforeEach(() => {
     "utf-8",
   );
   fs.writeFileSync(path.join(temp_dir, "version.txt"), "9.8.7", "utf-8");
-  original_initial_cwd = process.env[NPM_INITIAL_CWD_ENV_NAME];
-  process.env[NPM_INITIAL_CWD_ENV_NAME] = temp_dir;
   vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {
-  if (original_initial_cwd === undefined) {
-    delete process.env[NPM_INITIAL_CWD_ENV_NAME];
-  } else {
-    process.env[NPM_INITIAL_CWD_ENV_NAME] = original_initial_cwd;
-  }
   fs.rmSync(temp_dir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
 describe("BackendBootstrap", () => {
   it("基础 system prompt 缺失时启动失败并释放已创建资源", async () => {
-    fs.rmSync(path.join(temp_dir, "resource", "agent", "system_prompt.md"));
+    fs.rmSync(path.join(temp_dir, "builtin", "agent", "system_prompt.md"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
@@ -72,6 +63,7 @@ describe("BackendBootstrap", () => {
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -88,7 +80,7 @@ describe("BackendBootstrap", () => {
   });
 
   it("直接注入 ProjectDatabase 并只启动公开 API Gateway", async () => {
-    const skill_dir = path.join(temp_dir, "resource", "agent", "skill", "test-skill");
+    const skill_dir = path.join(temp_dir, "builtin", "agent", "skill", "test-skill");
     fs.mkdirSync(skill_dir, { recursive: true });
     fs.writeFileSync(
       path.join(skill_dir, "SKILL.md"),
@@ -97,6 +89,7 @@ describe("BackendBootstrap", () => {
     );
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -152,6 +145,7 @@ describe("BackendBootstrap", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -217,6 +211,7 @@ describe("BackendBootstrap", () => {
   it("并发 stop 共享同一次关闭并等待完整资源链", async () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -270,6 +265,7 @@ describe("BackendBootstrap", () => {
   it("单个关闭步骤失败仍继续释放数据库和日志并汇总异常", async () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: false,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -322,6 +318,7 @@ describe("BackendBootstrap", () => {
     const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -359,6 +356,7 @@ describe("BackendBootstrap", () => {
     const gateway_stop = vi.spyOn(ApiGatewayServer.prototype, "stop");
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -419,6 +417,7 @@ describe("BackendBootstrap", () => {
     });
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       logTargets: { console: false, window: false },
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -460,6 +459,7 @@ describe("BackendBootstrap", () => {
   it("禁止 ready 状态重复进入启动链路", async () => {
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: true,
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
       openOutputFolder: noop_output_folder,
@@ -492,6 +492,7 @@ describe("BackendBootstrap", () => {
     stdout_write.mockClear();
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
       systemProxyResolver: DIRECT_SYSTEM_PROXY_RESOLVER,
@@ -512,6 +513,7 @@ describe("BackendBootstrap", () => {
     const resolve_proxy = vi.fn(async () => "DIRECT");
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
+      builtinRoot: path.join(temp_dir, "builtin"),
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: resolve_proxy },

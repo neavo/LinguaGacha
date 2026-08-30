@@ -33,7 +33,7 @@ describe("QualityPromptService", () => {
 
   it("读取翻译模板时填充输出格式占位符", () => {
     const { service, app_root } = create_service();
-    const template_dir = path.join(app_root, "resource", "translation_prompt", "template", "zh");
+    const template_dir = path.join(app_root, "builtin", "translation_prompt", "template", "zh");
     fs.mkdirSync(template_dir, { recursive: true });
     fs.writeFileSync(path.join(template_dir, "base.txt"), "默认提示词", "utf-8");
     fs.writeFileSync(path.join(template_dir, "prefix.txt"), "固定前缀", "utf-8");
@@ -134,7 +134,12 @@ describe("QualityPromptService", () => {
     published: ReturnType<typeof vi.fn>;
   } {
     const app_root = create_temp_dir();
-    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: process.platform });
+    const paths = new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+      env: {},
+      platform: process.platform,
+    });
     const app_setting_service = new AppSettingService(paths);
     const project_database = database ?? (null as unknown as ProjectDatabase);
     const session_state = new ProjectSessionState();

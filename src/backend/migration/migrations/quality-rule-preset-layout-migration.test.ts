@@ -13,7 +13,7 @@ import {
 } from "./quality-rule-preset-layout-migration";
 
 describe("quality_rule_preset_layout_migration", () => {
-  it("迁移质量规则用户预设、builtin 布局并归一默认预设值", () => {
+  it("迁移质量规则用户预设，并只用旧 builtin 路径归一默认预设值", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-quality-migration-"),
     );
@@ -35,8 +35,8 @@ describe("quality_rule_preset_layout_migration", () => {
 
     expect(fs.existsSync(path.join(temp_dir.path, "userdata", "glossary", "mine.json"))).toBe(true);
     expect(
-      fs.existsSync(path.join(temp_dir.path, "resource", "glossary", "preset", "base.json")),
-    ).toBe(true);
+      fs.existsSync(path.join(temp_dir.path, "builtin", "glossary", "preset", "base.json")),
+    ).toBe(false);
     expect(
       JsonTool.parseStrict(fs.readFileSync(path.join(temp_dir.path, "userdata", "config.json"))),
     ).toEqual({
@@ -63,7 +63,10 @@ describe("quality_rule_preset_layout_migration", () => {
 
 function create_context(app_root: string) {
   return {
-    paths: new AppPathService({ appRoot: app_root }),
+    paths: new AppPathService({
+      appRoot: app_root,
+      builtinRoot: path.join(app_root, "builtin"),
+    }),
     log_manager: { warning(): void {} } as unknown as LogManager,
   };
 }

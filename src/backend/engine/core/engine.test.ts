@@ -37,7 +37,7 @@ describe("TaskEngine", () => {
     const done = create_status_waiter("translation", "done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => ({
           items: [create_pending_item()],
@@ -96,7 +96,7 @@ describe("TaskEngine", () => {
     const done = create_status_waiter("analysis", "done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: create_template_root(),
+      builtinRoot: create_template_root(),
       taskStore: create_task_store({
         get_analysis_context: () => ({
           items: [create_pending_item()],
@@ -173,7 +173,7 @@ describe("TaskEngine", () => {
       const done = create_status_waiter(task_type, "done");
       const task_runtime = create_task_runtime(done.listener);
       const task_engine = new TaskEngine({
-        appRoot: create_template_root(),
+        builtinRoot: create_template_root(),
         taskStore: create_task_store(),
         taskRuntime: task_runtime,
         executorClient: create_unused_executor(),
@@ -218,7 +218,7 @@ describe("TaskEngine", () => {
       }
     });
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
@@ -277,7 +277,7 @@ describe("TaskEngine", () => {
       }
     });
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
@@ -321,7 +321,7 @@ describe("TaskEngine", () => {
     const failed_once_ids = new Set<number>();
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => ({
           items: [create_pending_item(1, "a.txt"), create_pending_item(2, "b.txt")],
@@ -383,7 +383,7 @@ describe("TaskEngine", () => {
     const done = create_status_waiter("translation", "done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => ({
           items: [
@@ -430,12 +430,12 @@ describe("TaskEngine", () => {
   });
 
   it("翻译任务启动时对齐旧实现打印主提示词", async () => {
-    const app_root = create_template_root();
+    const builtin_root = create_template_root();
     const logs: string[] = [];
     const done = create_status_waiter("translation", "done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: app_root,
+      builtinRoot: builtin_root,
       taskStore: create_task_store({
         get_translation_items: () => ({
           items: [],
@@ -463,12 +463,12 @@ describe("TaskEngine", () => {
   });
 
   it("分析任务启动时对齐旧实现打印分析主提示词", async () => {
-    const app_root = create_template_root();
+    const builtin_root = create_template_root();
     const logs: string[] = [];
     const done = create_status_waiter("analysis", "done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
-      appRoot: app_root,
+      builtinRoot: builtin_root,
       taskStore: create_task_store({
         get_analysis_context: () => ({
           items: [],
@@ -508,7 +508,7 @@ describe("TaskEngine", () => {
     let lease_release_count = 0;
     const task_runtime = create_task_runtime();
     const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
+      builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
@@ -735,30 +735,30 @@ describe("TaskEngine", () => {
   }
 
   function create_template_root(): string {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
-    cleanup_paths.push(app_root);
-    write_template(app_root, "translation_prompt", "zh", {
+    const builtin_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
+    cleanup_paths.push(builtin_root);
+    write_template(builtin_root, "translation_prompt", "zh", {
       "prefix.txt": "翻译前缀",
       "base.txt": "翻译正文 {target_language}",
       "thinking.txt": "翻译思考",
       "suffix.txt": "翻译后缀",
     });
-    write_template(app_root, "analysis_prompt", "zh", {
+    write_template(builtin_root, "analysis_prompt", "zh", {
       "prefix.txt": "分析前缀",
       "base.txt": "分析正文 {target_language}",
       "thinking.txt": "分析思考",
       "suffix.txt": "分析后缀",
     });
-    return app_root;
+    return builtin_root;
   }
 
   function write_template(
-    app_root: string,
+    builtin_root: string,
     task_dir_name: string,
     language: string,
     files: Record<string, string>,
   ): void {
-    const template_dir = path.join(app_root, "resource", task_dir_name, "template", language);
+    const template_dir = path.join(builtin_root, task_dir_name, "template", language);
     fs.mkdirSync(template_dir, { recursive: true });
     for (const [file_name, content] of Object.entries(files)) {
       fs.writeFileSync(path.join(template_dir, file_name), content, "utf-8");

@@ -191,7 +191,7 @@ export class BackendServices {
     );
 
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
-      appRoot: paths.get_app_root(),
+      builtinRoot: paths.get_builtin_root(),
       execution: options.workerExecution,
       llmClient: llm_client,
     });
@@ -199,7 +199,7 @@ export class BackendServices {
       execution: options.workerExecution,
     });
     const task_engine = new TaskEngine({
-      appRoot: paths.get_app_root(),
+      builtinRoot: paths.get_builtin_root(),
       taskStore: new TaskProjectStore(
         options.database,
         session_state,
