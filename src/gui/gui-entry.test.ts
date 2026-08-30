@@ -83,7 +83,6 @@ const mocks = vi.hoisted(() => {
     register_ipc: vi.fn(),
     install_fatal_handler: vi.fn(),
     show_native_error: vi.fn(),
-    render_desktop_pdf: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
   };
 });
 
@@ -128,9 +127,6 @@ vi.mock("./shell/main-fatal-error-handler", () => ({
 vi.mock("./shell/native-error-dialog", () => ({
   try_show_native_error_dialog: mocks.show_native_error,
 }));
-vi.mock("./shell/desktop-pdf-render-host", () => ({
-  render_desktop_pdf: mocks.render_desktop_pdf,
-}));
 vi.mock("./shell/renderer-process-diagnostics", () => ({
   configure_renderer_crash_reporting: mocks.configure_crash_reporting,
   create_renderer_process_diagnostics_registry: () => ({
@@ -161,17 +157,6 @@ describe("run_gui_entry", () => {
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
       runAgentWorkspace: expect.any(Function),
-      renderPdf: expect.any(Function),
-    });
-    const render_pdf = mocks.backend_instances[0]?.["renderPdf"] as
-      | ((markdown: string, signal: AbortSignal) => Promise<Uint8Array>)
-      | undefined;
-    const signal = new AbortController().signal;
-    await expect(render_pdf?.("# 译题", signal)).resolves.toEqual(new Uint8Array([37, 80, 68, 70]));
-    expect(mocks.render_desktop_pdf).toHaveBeenCalledWith({
-      markdown: "# 译题",
-      signal,
-      desktopBundleDir: "E:/app/dist-electron",
     });
     expect(mocks.register_agent_workspace_scheme).toHaveBeenCalledOnce();
     expect(mocks.update_options).toEqual([

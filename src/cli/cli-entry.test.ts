@@ -36,9 +36,9 @@ describe("run_cli_entry", () => {
     const stdout = spy_process_write(process.stdout);
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
 
-    await expect(
-      run_cli_entry(["--version"], app_root, "E:/Desktop", IN_PROCESS_WORKER_EXECUTION),
-    ).resolves.toBe(0);
+    await expect(run_cli_entry(["--version"], app_root, IN_PROCESS_WORKER_EXECUTION)).resolves.toBe(
+      0,
+    );
 
     expect(stdout.messages).toEqual(["1.2.3\n"]);
   });
@@ -48,12 +48,11 @@ describe("run_cli_entry", () => {
     const stdout = spy_process_write(process.stdout);
 
     await expect(
-      run_cli_entry([...TRANSLATE_ARGV], "E:/App", "E:/Desktop", IN_PROCESS_WORKER_EXECUTION),
+      run_cli_entry([...TRANSLATE_ARGV], "E:/App", IN_PROCESS_WORKER_EXECUTION),
     ).resolves.toBe(0);
 
     expect(run_cli_command_mock).toHaveBeenCalledWith(
       "E:/App",
-      "E:/Desktop",
       expect.objectContaining({ command: "translate" }),
       IN_PROCESS_WORKER_EXECUTION,
     );
@@ -63,9 +62,9 @@ describe("run_cli_entry", () => {
   it("参数错误返回 usage 退出码并写入错误与帮助", async () => {
     const stderr = spy_process_write(process.stderr);
 
-    await expect(
-      run_cli_entry(["translate"], "E:/App", "E:/Desktop", IN_PROCESS_WORKER_EXECUTION),
-    ).resolves.toBe(2);
+    await expect(run_cli_entry(["translate"], "E:/App", IN_PROCESS_WORKER_EXECUTION)).resolves.toBe(
+      2,
+    );
 
     expect(stderr.messages.join("")).toContain("Missing required option --input");
     expect(stderr.messages.join("")).toContain("全局参数 | Global Options:");
@@ -77,7 +76,7 @@ describe("run_cli_entry", () => {
     const stderr = spy_process_write(process.stderr);
 
     await expect(
-      run_cli_entry([...TRANSLATE_ARGV], "E:/App", "E:/Desktop", IN_PROCESS_WORKER_EXECUTION),
+      run_cli_entry([...TRANSLATE_ARGV], "E:/App", IN_PROCESS_WORKER_EXECUTION),
     ).resolves.toBe(1);
 
     expect(stderr.messages).toEqual(["job failed\n"]);

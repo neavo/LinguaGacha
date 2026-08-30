@@ -108,7 +108,7 @@ const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
         source_text_path: {
           type: "string",
           optional: true,
-          purpose: "普通文本源文件或 PDF Markdown 投影的只读路径",
+          purpose: "普通文本源文件的只读路径",
         },
         source_text_root: {
           type: "string",

@@ -59,7 +59,6 @@ export default defineConfig({
       rolldownOptions: {
         input: {
           index: project_path("src/frontend/index.html"),
-          "pdf-renderer": project_path("src/frontend/pdf-renderer.html"),
         },
       },
     },

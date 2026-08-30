@@ -11,7 +11,7 @@ import { resolve_app_locale, type AppLanguage } from "../../domain/app-language"
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { ExportPaths, PdfRenderPort } from "./formats/file-format-shared";
+import type { ExportPaths } from "./formats/file-format-shared";
 
 /**
  * 导出层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域
@@ -33,7 +33,6 @@ export class TranslationFileExportService {
   private readonly app_setting_service: AppSettingService; // 提供导出语言、格式和完成后动作配置
   private readonly session_state: ProjectSessionState; // 决定当前导出的 .lg 工程
   private readonly output_folder_opener: OutputFolderOpener; // 隔离宿主打开目录副作用
-  private readonly pdf_renderer: PdfRenderPort; // PDF 排版由 Electron main 提供，Backend 只传 Markdown
   private readonly log_manager?: FileExportLogManager; // 只承接导出诊断日志
   private readonly native_fs: NativeFs; // 负责导出目录存在性判断和格式写盘策略传递
 
@@ -45,7 +44,6 @@ export class TranslationFileExportService {
     app_setting_service: AppSettingService,
     session_state: ProjectSessionState,
     output_folder_opener: OutputFolderOpener,
-    pdf_renderer: PdfRenderPort,
     log_manager?: FileExportLogManager,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -53,7 +51,6 @@ export class TranslationFileExportService {
     this.app_setting_service = app_setting_service;
     this.session_state = session_state;
     this.output_folder_opener = output_folder_opener;
-    this.pdf_renderer = pdf_renderer;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
   }
@@ -163,7 +160,6 @@ export class TranslationFileExportService {
       await format_service.write_items(items, {
         paths,
         asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-        render_pdf: this.pdf_renderer,
       });
     } catch (error) {
       this.log_write_failed(config, error);

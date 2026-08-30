@@ -22,7 +22,6 @@ import {
   DesktopAgentWorkspaceRunner,
   register_agent_workspace_scheme,
 } from "./runtime/desktop-agent-workspace-runner";
-import { render_desktop_pdf } from "./shell/desktop-pdf-render-host";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
@@ -67,12 +66,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     appRoot: app_root,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
-    renderPdf: (markdown, signal) =>
-      render_desktop_pdf({
-        markdown,
-        signal,
-        desktopBundleDir: desktop_bundle_dir,
-      }),
     runAgentWorkspace: async (request, signal) => {
       if (agent_workspace_runner === null) {
         throw new AppErrors.AppError("runtime.internal_invariant", {

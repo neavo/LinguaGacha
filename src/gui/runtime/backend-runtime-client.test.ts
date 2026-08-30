@@ -108,8 +108,7 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_output_folder, render_pdf, run_agent_workspace } =
-      create_client();
+    const { client, resolve_proxy, open_output_folder, run_agent_workspace } = create_client();
     const start = client.start();
     const worker = get_worker();
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
@@ -136,12 +135,7 @@ describe("BackendRuntimeClient", () => {
         },
       },
     } satisfies BackendRuntimeWorkerMessage);
-    worker.emit("message", {
-      type: "host_request",
-      requestId: "pdf-1",
-      operation: { kind: "render_pdf", request: { markdown: "# 译题" } },
-    } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(4));
+    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(3));
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
     expect(open_output_folder).toHaveBeenCalledWith("E:/output");
@@ -152,7 +146,6 @@ describe("BackendRuntimeClient", () => {
       },
       expect.any(AbortSignal),
     );
-    expect(render_pdf).toHaveBeenCalledWith("# 译题", expect.any(AbortSignal));
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "proxy-1",
@@ -170,11 +163,6 @@ describe("BackendRuntimeClient", () => {
         ok: true,
         data: { status: "success", result: { workspace_path: "E:/workspace/run-1" } },
       },
-    });
-    expect(worker.posted_messages).toContainEqual({
-      type: "host_response",
-      requestId: "pdf-1",
-      result: { ok: true, data: new Uint8Array([37, 80, 68, 70]) },
     });
   });
 
@@ -311,7 +299,6 @@ function create_client(overrides?: {
     throw new Error("无法打开目录");
   });
   const on_unexpected_exit = vi.fn();
-  const render_pdf = vi.fn(async () => new Uint8Array([37, 80, 68, 70]));
   const run_agent_workspace =
     overrides?.runAgentWorkspace ??
     vi.fn(async (request: { workspacePath: string }) => ({
@@ -324,13 +311,11 @@ function create_client(overrides?: {
       appRoot: "E:/app",
       resolveProxy: resolve_proxy,
       openOutputFolder: open_output_folder,
-      renderPdf: render_pdf,
       runAgentWorkspace: run_agent_workspace,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
     open_output_folder,
-    render_pdf,
     run_agent_workspace,
     on_unexpected_exit,
   };

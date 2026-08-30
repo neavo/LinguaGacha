@@ -62,7 +62,6 @@ export const zh_cn_project_page = {
     title: "支持文件格式",
     txt: "纯文本",
     md: "Markdown",
-    pdf: "PDF 电子书",
     srt: "SubRip 字幕",
     ass: "ASS 字幕",
     epub: "EPUB 电子书",

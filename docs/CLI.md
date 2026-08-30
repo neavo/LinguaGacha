@@ -29,7 +29,7 @@
 - CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词和分析提示词的默认预设；只有命令行资源写入本次工程。
 - 未被上述覆盖的对应任务用途模型选择、并发、提示词增强、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
 - `build_cli_task_input` 只把显式资源解析成项目领域输入，统一由 `ProjectLifecycleService.apply_task_input` 写入；CLI 不接触 database、meta 或 revision。
-- `translate` 启动全量翻译后复用译文导出服务；文本型 PDF 输入沿用 PDF → Markdown V2 Item 链，输出由当前 Electron 进程直接调用与 GUI 相同的 Chromium 宿主重新排版为 PDF，只生成译文文件。`analyze` 启动全量分析后从候选池导出术语文件。
+- `translate` 启动全量翻译后复用译文导出服务；`analyze` 启动全量分析后从候选池导出术语文件。
 - job 通过 `TaskService.subscribe` 订阅同进程完整任务快照并等待终态，不依赖 API stream、轮询或第二套任务生命周期。
 
 ## 4. 输出协议

@@ -76,16 +76,11 @@ export type BackendRuntimeAgentWorkspaceRunResponse =
       message: string;
     }>;
 
-export type BackendRuntimePdfRenderRequest = Readonly<{
-  markdown: string;
-}>;
-
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
   | { kind: "resolve_proxy"; url: string }
   | { kind: "open_output_folder"; path: string }
-  | { kind: "run_agent_workspace"; request: BackendRuntimeAgentWorkspaceRunRequest }
-  | { kind: "render_pdf"; request: BackendRuntimePdfRenderRequest };
+  | { kind: "run_agent_workspace"; request: BackendRuntimeAgentWorkspaceRunRequest };
 
 export type BackendRuntimeDiagnosticLevel = "warning" | "error" | "fatal";
 

@@ -94,7 +94,6 @@ describe("run_backend_runtime", () => {
         request: BackendRuntimeAgentWorkspaceRunRequest,
         signal: AbortSignal,
       ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
-      renderPdf: (markdown: string) => Promise<Uint8Array>;
     };
     const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
@@ -151,19 +150,6 @@ describe("run_backend_runtime", () => {
       result: { ok: true, data: { status: "success", result: { changed: 2 } } },
     });
     await expect(workspace).resolves.toEqual({ status: "success", result: { changed: 2 } });
-
-    const pdf = bootstrap_options.renderPdf("# 译题");
-    const pdf_request = get_host_request(port, "render_pdf");
-    expect(structuredClone(pdf_request.operation)).toEqual({
-      kind: "render_pdf",
-      request: { markdown: "# 译题" },
-    });
-    port.emit({
-      type: "host_response",
-      requestId: pdf_request.requestId,
-      result: { ok: true, data: new Uint8Array([37, 80, 68, 70]) },
-    });
-    await expect(pdf).resolves.toEqual(new Uint8Array([37, 80, 68, 70]));
 
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({
@@ -267,11 +253,11 @@ describe("run_backend_runtime", () => {
     const port = create_port();
     await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      renderPdf: (markdown: string) => Promise<Uint8Array>;
+      openOutputFolder: (path: string) => Promise<void>;
     };
-    const pending = bootstrap_options.renderPdf("正文");
+    const pending = bootstrap_options.openOutputFolder("E:/output");
     const rejection = expect(pending).rejects.toThrow("Backend runtime is closed.");
-    const request = get_host_request(port, "render_pdf");
+    const request = get_host_request(port, "open_output_folder");
 
     port.emit({ type: "stop", requestId: "stop-pending" });
 
