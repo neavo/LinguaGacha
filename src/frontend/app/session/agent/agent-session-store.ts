@@ -200,7 +200,7 @@ export class AgentSessionStore {
   /** 拿到 EventSource 后立即挂载事件监听，再读取 snapshot，避免恢复窗口丢失增量。 */
   private async connect_event_stream(generation: number): Promise<void> {
     try {
-      const source = await open_event_stream();
+      const source = open_event_stream();
       if (!this.is_current(generation)) {
         source.close();
         return;

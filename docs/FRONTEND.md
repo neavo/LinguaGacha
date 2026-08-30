@@ -9,7 +9,7 @@
 - 主进程按 Chromium 编辑语义为主窗口和日志窗口提供原生文本菜单；renderer 不新增菜单 IPC 或页面私有实现。
 - Agent Markdown 直接渲染原始 HTML 与图片；链接点击统一交给宿主外部打开，URL 语义由 Markdown 渲染链和宿主处理。
 - 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面和跨页面 feature 可以直接调用其 `api_fetch`，也可以在各自所有权目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
-- `desktop-api.ts` 统一处理 API base URL、health probe、响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求；renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
+- Electron main 只在 Backend Runtime ready 后创建窗口并注入本次运行的 API base URL；`desktop-api.ts` 直接使用该地址处理响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求，`/api/health` 只读取版本元数据，不作为其它请求的前置门禁。renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
 - Agent 工作区 runner 与 PDF renderer 都属于 Electron main 私有宿主能力，Backend Runtime 只通过可取消 host request 调用；二者都不经过 preload、`window.desktopApp` 或产品 renderer。Agent runner 的完整沙箱、文件协议与生命周期归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。PDF renderer 每次请求创建一次隐藏 sandbox window，加载独立打印入口，把 Backend 提供的 Markdown 渲染为不激活 raw HTML 和远端图片的静态 GFM HTML，等待本地字体与布局稳定后调用 `printToPDF`，并在成功、失败或取消后销毁窗口。
 - `DesktopApiError` 是 API 与本地网络失败的统一错误，只承载 `code`、`details` 和可选 cause；用户可见文案键由稳定 `code` 推导并以 `details` 填参。页面只在确有恢复分支时按类型或 `code` 判断，不解析原始异常文本。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
@@ -27,7 +27,7 @@
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
-- flush、SSE 或写入处理失败进入 renderer 诊断，并通过可等待、可去重的权威 query 恢复；当前项目的有效事件不静默丢弃。
+- flush、SSE 或写入处理失败进入 renderer 诊断，并通过可等待、可去重的权威 query 恢复；EventSource 由浏览器负责重连，主窗口重连后刷新 settings、runtime、task 与当前项目状态，Agent 重连后恢复会话 snapshot，当前项目的有效事件不静默丢弃。
 
 ## 3. 页面、feature、导航与 session 状态
 

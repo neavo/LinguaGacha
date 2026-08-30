@@ -2,12 +2,11 @@ import { ChevronDown, ChevronUp, ListStart, Maximize2, Minimize2, ScrollText } f
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import {
-  open_log_stream,
   read_log_detail,
+  subscribe_log_stream,
   type LogDetail,
   type LogEvent,
 } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import { cn } from "@frontend/shadcn/classnames";
@@ -83,7 +82,6 @@ function scroll_log_table_to_top(): void {
 /** 日志窗口只持有轻量事件，详情按选中项读取并在当前筛选结果内导航。 */
 export function LogWindowPage(): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
   const shell_info = window.desktopApp.shell;
   const [events, set_events] = useState<LogEvent[]>([]);
   const [level_filter, set_level_filter] = useState<LogLevelFilter>("all");
@@ -117,36 +115,15 @@ export function LogWindowPage(): JSX.Element {
         set_events((previous_events) => append_log_events(previous_events, next_events));
       },
     });
-    let disposed = false;
-    const iterator = open_log_stream()[Symbol.asyncIterator]();
-
-    async function run_stream(): Promise<void> {
-      try {
-        while (!disposed) {
-          const next_event = await iterator.next();
-          if (next_event.done === true) {
-            return;
-          }
-          if (disposed) {
-            return;
-          }
-          log_append_buffer.append(next_event.value);
-        }
-      } catch {
-        if (!disposed) {
-          push_toast("error", t("log_window_page.feedback.stream_failed"));
-        }
-      }
-    }
-
-    void run_stream();
+    const unsubscribe = subscribe_log_stream((event) => {
+      log_append_buffer.append(event);
+    });
 
     return () => {
-      disposed = true;
+      unsubscribe();
       log_append_buffer.dispose();
-      void iterator.return?.();
     };
-  }, [push_toast, t]);
+  }, []);
 
   const filtered_events = useMemo(() => {
     return filter_log_events({

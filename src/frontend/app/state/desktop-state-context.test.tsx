@@ -482,7 +482,7 @@ describe("DesktopStateProvider", () => {
     children: ReactNode,
     strict = false,
   ): Promise<void> {
-    open_event_stream_mock.mockResolvedValue(event_source);
+    open_event_stream_mock.mockReturnValue(event_source);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);

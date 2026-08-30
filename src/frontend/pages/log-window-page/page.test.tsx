@@ -10,78 +10,46 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 type StreamController = {
   closed: boolean;
   emit: (event: LogEvent) => void;
-  iterator: AsyncIterator<LogEvent>;
+  unsubscribe: ReturnType<typeof vi.fn>;
 };
 
-const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_controllers } =
-  vi.hoisted(() => {
-    const controllers: StreamController[] = [];
+const { subscribe_log_stream_mock, read_log_detail_mock, stream_controllers } = vi.hoisted(() => {
+  const controllers: StreamController[] = [];
 
-    function create_controller(): StreamController {
-      const event_queue: LogEvent[] = [];
-      let pending_resolve: ((result: IteratorResult<LogEvent>) => void) | null = null;
-      const controller: StreamController = {
-        closed: false,
-        emit(event: LogEvent): void {
-          if (controller.closed) {
-            return;
-          }
-          if (pending_resolve !== null) {
-            const resolve = pending_resolve;
-            pending_resolve = null;
-            resolve({ done: false, value: event });
-            return;
-          }
-          event_queue.push(event);
-        },
-        iterator: {
-          next(): Promise<IteratorResult<LogEvent>> {
-            if (controller.closed) {
-              return Promise.resolve({ done: true, value: undefined });
-            }
-            const event = event_queue.shift();
-            if (event !== undefined) {
-              return Promise.resolve({ done: false, value: event });
-            }
-            return new Promise<IteratorResult<LogEvent>>((resolve) => {
-              pending_resolve = resolve;
-            });
-          },
-          return(): Promise<IteratorResult<LogEvent>> {
-            controller.closed = true;
-            if (pending_resolve !== null) {
-              const resolve = pending_resolve;
-              pending_resolve = null;
-              resolve({ done: true, value: undefined });
-            }
-            return Promise.resolve({ done: true, value: undefined });
-          },
-        },
-      };
-
-      return controller;
-    }
-
-    return {
-      open_log_stream_mock: vi.fn(() => {
-        const controller = create_controller();
-        controllers.push(controller);
-        return {
-          [Symbol.asyncIterator]: () => controller.iterator,
-        };
+  /** 只模拟页面可观察的订阅、投递与取消生命周期。 */
+  function create_controller(on_append: (event: LogEvent) => void): StreamController {
+    const controller: StreamController = {
+      closed: false,
+      emit(event: LogEvent): void {
+        if (!controller.closed) {
+          on_append(event);
+        }
+      },
+      unsubscribe: vi.fn(() => {
+        controller.closed = true;
       }),
-      push_toast_mock: vi.fn(),
-      read_log_detail_mock: vi.fn(async (id: string) => ({
-        id,
-        sequence: Number(id.replace(/^log-/u, "")) || 1,
-        created_at: "2026-04-26T00:00:00.000+00:00",
-        level: "info",
-        source: "test",
-        content: { kind: "text", text: `完整详情：${id}` },
-      })),
-      stream_controllers: controllers,
     };
-  });
+
+    return controller;
+  }
+
+  return {
+    subscribe_log_stream_mock: vi.fn((on_append: (event: LogEvent) => void) => {
+      const controller = create_controller(on_append);
+      controllers.push(controller);
+      return controller.unsubscribe;
+    }),
+    read_log_detail_mock: vi.fn(async (id: string) => ({
+      id,
+      sequence: Number(id.replace(/^log-/u, "")) || 1,
+      created_at: "2026-04-26T00:00:00.000+00:00",
+      level: "info",
+      source: "test",
+      content: { kind: "text", text: `完整详情：${id}` },
+    })),
+    stream_controllers: controllers,
+  };
+});
 
 vi.mock("@frontend/app/desktop/desktop-api", async () => {
   const actual = await vi.importActual<typeof import("@frontend/app/desktop/desktop-api")>(
@@ -89,16 +57,8 @@ vi.mock("@frontend/app/desktop/desktop-api", async () => {
   );
   return {
     ...actual,
-    open_log_stream: open_log_stream_mock,
+    subscribe_log_stream: subscribe_log_stream_mock,
     read_log_detail: read_log_detail_mock,
-  };
-});
-
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => ({
-      push_toast: push_toast_mock,
-    }),
   };
 });
 
@@ -320,9 +280,8 @@ describe("LogWindowPage", () => {
     container?.remove();
     container = null;
     root = null;
-    open_log_stream_mock.mockClear();
+    subscribe_log_stream_mock.mockClear();
     read_log_detail_mock.mockClear();
-    push_toast_mock.mockReset();
     stream_controllers.splice(0, stream_controllers.length);
     vi.useRealTimers();
   });
@@ -381,7 +340,18 @@ describe("LogWindowPage", () => {
     });
 
     expect(container?.textContent).toContain("严格模式日志");
-    expect(open_log_stream_mock).toHaveBeenCalled();
+  });
+
+  it("页面卸载时取消日志订阅", async () => {
+    await mount_page();
+    const active_stream = get_active_stream();
+
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+
+    expect(active_stream.unsubscribe).toHaveBeenCalledOnce();
   });
 
   it("按最新日志在前的顺序显示日志", async () => {

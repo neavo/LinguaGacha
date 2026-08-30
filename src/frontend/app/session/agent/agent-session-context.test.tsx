@@ -125,7 +125,7 @@ describe("AgentSessionProvider", () => {
     desktop_api_mocks.api_fetch
       .mockReset()
       .mockImplementation(async () => ({ revision: event_source.current_revision }));
-    desktop_api_mocks.open_event_stream.mockReset().mockResolvedValue(event_source);
+    desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
   });
 
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
@@ -150,22 +150,6 @@ describe("AgentSessionProvider", () => {
 
     await wait_for(() => expect(latest.transport).toBe("ready"));
     expect(latest.entries).toEqual([assistant_entry("assistant-1", "已恢复", "success", 1)]);
-  });
-
-  it("SSE 监听挂载后立即读取 snapshot", async () => {
-    let resolve_stream!: (source: FakeEventSource) => void;
-    desktop_api_mocks.open_event_stream.mockImplementation(
-      () => new Promise<FakeEventSource>((resolve) => (resolve_stream = resolve)),
-    );
-    let latest!: ReturnType<typeof useAgentSession>;
-    await render_probe(() => {
-      latest = useAgentSession();
-    });
-
-    expect(desktop_api_mocks.api_get).not.toHaveBeenCalled();
-    resolve_stream(event_source);
-    await wait_for(() => expect(latest.transport).toBe("ready"));
-    expect(desktop_api_mocks.api_get).toHaveBeenCalledWith("/api/agent/snapshot");
   });
 
   afterEach(async () => {
