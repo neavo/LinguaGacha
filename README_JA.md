@@ -87,6 +87,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260830 v0.117.3
+  - ログページを修正
+
 - 20260830 v0.117.2
   - 調整と改善 [#823](../../issues/823) [#826](../../issues/826) [#828](../../issues/828) [#829](../../issues/829) [#830](../../issues/830) [#834](../../issues/834) [#836](../../issues/836) [#837](../../issues/837)
 
