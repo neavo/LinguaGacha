@@ -15,11 +15,6 @@ type AppDialogPrimaryAction = AppDialogAction & {
   destructive?: boolean;
 };
 
-type AppDialogDismissAction = {
-  label: string;
-  onSelect?: () => void | Promise<void>;
-};
-
 type AppDialogBaseProps = {
   open: boolean;
   title?: string;
@@ -42,7 +37,6 @@ type AppConfirmDialogProps = Omit<
 type AppActionDialogProps = AppDialogBaseProps & {
   primaryAction: AppDialogPrimaryAction;
   secondaryAction?: AppDialogAction;
-  dismissAction?: AppDialogDismissAction | null;
 };
 
 // 延迟确认采用统一时长，业务层只判断动作是否需要保护。
@@ -78,7 +72,7 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
 
   const confirm_is_delayed = props.open && remaining_seconds > 0; // 同时驱动可见秒数与动作禁用，避免两套状态漂移
   return (
-    <AppDialog
+    <AppActionDialog
       open={props.open}
       title={props.title}
       description={props.description}
@@ -88,32 +82,18 @@ export function AppConfirmDialog(props: AppConfirmDialogProps): JSX.Element {
         onSelect: props.onConfirm,
         disabled: confirm_is_delayed,
       }}
-      dismissAction={{ label: t("app.action.cancel") }}
       onClose={props.onClose}
     />
   );
 }
 
-/** 承载冲突处理和流程选择；每个可见动作都必须由业务层显式命名。 */
+/** 承载冲突处理和流程选择，并统一可访问性、提交互斥与动作布局。 */
 export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
-  const { t } = useI18n();
-  return (
-    <AppDialog
-      {...props}
-      dismissAction={
-        props.dismissAction === undefined ? { label: t("app.action.cancel") } : props.dismissAction
-      }
-    />
-  );
-}
-
-/** 共享 Base UI 壳层只负责可访问性、提交互斥和动作布局，不决定业务语义。 */
-function AppDialog(props: AppActionDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title ?? t("app.action.confirm");
-  const close_handled_ref = useRef(false);
+  const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
     if (props.open) close_handled_ref.current = false;
   }, [props.open]);
@@ -160,21 +140,18 @@ function AppDialog(props: AppActionDialogProps): JSX.Element {
             data-slot="alert-dialog-footer"
             className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end"
           >
-            {props.dismissAction === null ? null : (
-              <AppButton
-                variant="outline"
-                size="sm"
-                data-slot="alert-dialog-cancel"
-                disabled={submitting}
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (props.dismissAction?.onSelect) void props.dismissAction.onSelect();
-                  else props.onClose();
-                }}
-              >
-                {props.dismissAction?.label}
-              </AppButton>
-            )}
+            <AppButton
+              variant="outline"
+              size="sm"
+              data-slot="alert-dialog-cancel"
+              disabled={submitting}
+              onClick={(event) => {
+                event.preventDefault();
+                props.onClose();
+              }}
+            >
+              {t("app.action.cancel")}
+            </AppButton>
             {props.secondaryAction === undefined ? null : (
               <AppButton
                 variant="outline"

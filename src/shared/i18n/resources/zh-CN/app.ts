@@ -48,6 +48,8 @@ export const zh_cn_app = {
     skip: "跳过",
     overwrite: "覆盖",
     replace: "替换",
+    go_to_agent: "前往 AGENT",
+    continue_task: "继续任务",
     loading: "加载中",
     select_file: "选择文件",
     select_folder: "选择文件夹",

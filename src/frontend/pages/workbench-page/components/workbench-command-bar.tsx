@@ -225,14 +225,13 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
             open={analysis_migration_dialog_open}
             description={t("workbench_page.analysis_task.migration.description")}
             primaryAction={{
-              label: t("workbench_page.analysis_task.migration.continue"),
+              label: t("app.action.continue_task"),
               onSelect: continue_classic_analysis,
             }}
             secondaryAction={{
-              label: t("workbench_page.analysis_task.migration.jump"),
+              label: t("app.action.go_to_agent"),
               onSelect: jump_to_agent,
             }}
-            dismissAction={null}
             onClose={() => set_analysis_migration_dialog_open(false)}
           />
         </>

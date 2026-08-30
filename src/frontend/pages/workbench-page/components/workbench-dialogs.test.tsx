@@ -21,7 +21,7 @@ describe("WorkbenchDialogs", () => {
     root = null;
   });
 
-  it("普通确认只显示取消和确认", () => {
+  it("普通确认提交主动作", () => {
     const on_confirm = vi.fn();
     render_dialog(
       {
@@ -34,13 +34,15 @@ describe("WorkbenchDialogs", () => {
       vi.fn(),
     );
 
-    expect(read_button("app.action.cancel")).not.toBeNull();
-    expect(read_button("app.action.confirm")?.dataset.variant).toBe("default");
-    act(() => read_button("app.action.confirm")?.click());
+    act(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
+        ?.click(),
+    );
     expect(on_confirm).toHaveBeenCalledOnce();
   });
 
-  it("继承询问显示填充与不填充两个业务选择", () => {
+  it("继承询问分别提交填充与不填充动作", () => {
     const on_confirm = vi.fn();
     const on_secondary = vi.fn();
     render_dialog(
@@ -54,9 +56,16 @@ describe("WorkbenchDialogs", () => {
       on_secondary,
     );
 
-    expect(read_button("app.action.cancel")).toBeNull();
-    act(() => read_button("workbench_page.dialog.inherit_import.fill")?.click());
-    act(() => read_button("workbench_page.dialog.inherit_import.do_not_fill")?.click());
+    act(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-primary-action"]')
+        ?.click(),
+    );
+    act(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-slot="alert-dialog-secondary-action"]')
+        ?.click(),
+    );
     expect(on_confirm).toHaveBeenCalledOnce();
     expect(on_secondary).toHaveBeenCalledOnce();
   });
@@ -79,13 +88,5 @@ describe("WorkbenchDialogs", () => {
         />,
       );
     });
-  }
-
-  function read_button(text: string): HTMLButtonElement | null {
-    return (
-      Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
-        (button) => button.textContent === text,
-      ) ?? null
-    );
   }
 });

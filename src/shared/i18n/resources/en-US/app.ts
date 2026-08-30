@@ -50,6 +50,8 @@ export const en_us_app = {
     skip: "Skip",
     overwrite: "Overwrite",
     replace: "Replace",
+    go_to_agent: "Go to AGENT",
+    continue_task: "Continue Task",
     loading: "Loading",
     select_file: "Select File",
     select_folder: "Select Folder",

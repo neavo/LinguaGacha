@@ -55,31 +55,38 @@ describe("应用模态窗", () => {
     expect(on_close).toHaveBeenCalledTimes(1);
   });
 
-  it("动作模态窗把显式选择交回业务层", () => {
+  it("动作模态窗固定提供取消并把业务选择交回调用方", () => {
     const on_primary = vi.fn();
     const on_secondary = vi.fn();
-    const on_dismiss = vi.fn();
+    const on_close = vi.fn();
     render_dialog(
       <AppActionDialog
         open
         description="请选择处理方式"
         primaryAction={{ label: "覆盖", onSelect: on_primary, destructive: true }}
         secondaryAction={{ label: "跳过", onSelect: on_secondary }}
-        dismissAction={{ label: "取消", onSelect: on_dismiss }}
-        onClose={vi.fn()}
+        onClose={on_close}
       />,
     );
 
     expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
       "app.action.confirm",
     );
+    expect(
+      Array.from(
+        document.body.querySelectorAll<HTMLButtonElement>(
+          '[data-slot="alert-dialog-footer"] button',
+        ),
+        (button) => button.textContent,
+      ),
+    ).toEqual(["app.action.cancel", "跳过", "覆盖"]);
     expect(read_button("覆盖")?.dataset.variant).toBe("destructive");
     click_button("覆盖");
     click_button("跳过");
-    click_button("取消");
+    click_button("app.action.cancel");
     expect(on_primary).toHaveBeenCalledTimes(1);
     expect(on_secondary).toHaveBeenCalledTimes(1);
-    expect(on_dismiss).toHaveBeenCalledTimes(1);
+    expect(on_close).toHaveBeenCalledTimes(1);
   });
 
   it("结构化详情独立于无障碍描述显示", () => {
