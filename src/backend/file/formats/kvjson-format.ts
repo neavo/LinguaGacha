@@ -11,7 +11,7 @@ export class KVJSONFormat {
    * 读取对象型 JSON，非字符串键值对不进入翻译条目
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const data = await this.parse_json_with_encoding(content);
+    const data = JsonTool.parseStrict(await decode_text_content(content));
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       return [];
     }
@@ -45,17 +45,6 @@ export class KVJSONFormat {
         `${paths.translated_path}/${rel_path}`,
         JsonTool.stringifyStrict(data, { indent: 4 }),
       );
-    }
-  }
-
-  /**
-   * JSON 先按 UTF-8 严格解析，失败时再走编码探测兼容旧资源文件
-   */
-  private async parse_json_with_encoding(content: Uint8Array): Promise<unknown> {
-    try {
-      return JsonTool.parseStrict(content);
-    } catch {
-      return JsonTool.parseStrict(await decode_text_content(content));
     }
   }
 }
