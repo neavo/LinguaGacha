@@ -20,6 +20,9 @@ import {
 } from "../proofreading/proofreading-item-update";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
+/** fp 以字符长度定义，使对象投影、change 校验与运行时 contract 共享同一格式。 */
+export const AGENT_WORKSPACE_FP_LENGTH = 4;
+
 export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
   "item_id",
   "fp",
@@ -276,11 +279,11 @@ export function derive_agent_workspace_apply_status(
 function fingerprint(tuple: JsonValue[]): string {
   return createHash("sha256")
     .update(JsonTool.stringifyStrict(tuple))
-    .digest()
-    .subarray(0, 4)
-    .toString("base64url");
+    .digest("base64url")
+    .slice(0, AGENT_WORKSPACE_FP_LENGTH);
 }
 
+/** item fp 覆盖工作区公开的完整对象事实，任何字段漂移都会失效。 */
 function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
   return [
     "item",
@@ -297,6 +300,7 @@ function item_fingerprint_tuple(row: JsonRecord): JsonValue[] {
   ];
 }
 
+/** quality fp 绑定 kind、稳定身份与业务字段，排序由独立 sort 意图表达。 */
 function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): JsonValue[] {
   return [
     "quality",

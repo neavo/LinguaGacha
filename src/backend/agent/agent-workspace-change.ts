@@ -14,6 +14,7 @@ import {
   is_agent_workspace_manual_status,
 } from "./agent-workspace-contract";
 import {
+  AGENT_WORKSPACE_FP_LENGTH,
   create_empty_agent_workspace_intent_batch,
   type AgentWorkspaceIntentBatch,
   type AgentWorkspaceItemUpdateIntent,
@@ -206,8 +207,13 @@ function exact(value: JsonRecord, fields: readonly string[]): boolean {
 function positive(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
+/** change 只接受运行时 contract 声明的定长 Base64URL fp。 */
 function fp_ok(value: unknown): value is string {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{6}$/u.test(value);
+  return (
+    typeof value === "string" &&
+    value.length === AGENT_WORKSPACE_FP_LENGTH &&
+    /^[A-Za-z0-9_-]+$/u.test(value)
+  );
 }
 function valid_sort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= -1;

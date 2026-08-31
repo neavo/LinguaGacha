@@ -24,9 +24,9 @@ describe("Agent workspace change parser", () => {
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
       [
-        JSON.stringify({ item_id: 1, fp: "abcdef", dst: "甲" }),
+        JSON.stringify({ item_id: 1, fp: "abcd", dst: "甲" }),
         "{broken",
-        JSON.stringify({ item_id: 2, fp: "ghijkl", dst: "乙" }),
+        JSON.stringify({ item_id: 2, fp: "ghij", dst: "乙" }),
       ].join("\n"),
     );
     const parsed = await prepare_agent_workspace_changes({
@@ -69,25 +69,25 @@ describe("Agent workspace change parser", () => {
     });
   });
 
-  it("按对象契约解析 prompt 与 quality 意图并保留可辨认拒绝身份", async () => {
+  it("按对象契约解析 prompt 与 quality 意图并拒绝格式错误的 fp", async () => {
     const workspace = create_workspace();
     write(
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
       [
-        JSON.stringify({ kind: "translation", fp: "abcdef", text: "正文" }),
-        JSON.stringify({ kind: "analysis", fp: "bad", text: "正文" }),
+        JSON.stringify({ kind: "translation", fp: "abcd", text: "正文" }),
+        JSON.stringify({ kind: "analysis", fp: "abcde", text: "正文" }),
       ].join("\n"),
     );
     write(
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.glossary.updates,
-      JSON.stringify({ id: "term-1", fp: "ghijkl", sort: -1 }),
+      JSON.stringify({ id: "term-1", fp: "ghij", sort: -1 }),
     );
     write(
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.glossary.deletes,
-      JSON.stringify({ id: "term-2", fp: "mnopqr" }),
+      JSON.stringify({ id: "term-2", fp: "mnop" }),
     );
 
     const parsed = await prepare_agent_workspace_changes({
@@ -96,13 +96,13 @@ describe("Agent workspace change parser", () => {
     });
 
     expect(parsed.batch.prompts).toEqual([
-      { line: 1, kind: "translation", fp: "abcdef", text: "正文" },
+      { line: 1, kind: "translation", fp: "abcd", text: "正文" },
     ]);
     expect(parsed.batch.quality.glossary.updates).toEqual([
-      { line: 1, kind: "glossary", id: "term-1", fp: "ghijkl", fields: {}, sort: -1 },
+      { line: 1, kind: "glossary", id: "term-1", fp: "ghij", fields: {}, sort: -1 },
     ]);
     expect(parsed.batch.quality.glossary.deletes).toEqual([
-      { line: 1, kind: "glossary", id: "term-2", fp: "mnopqr" },
+      { line: 1, kind: "glossary", id: "term-2", fp: "mnop" },
     ]);
     expect(parsed.rejected).toContainEqual({
       scope: "prompts",

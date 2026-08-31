@@ -16,7 +16,7 @@ import {
 } from "./agent-workspace-write";
 
 describe("Agent 工作区对象写入规则", () => {
-  it("三类对象生成稳定的 6 字符 fp，并对业务事实变化敏感", () => {
+  it("三类对象生成稳定的 4 字符 fp，并对业务事实变化敏感", () => {
     const item = project_agent_workspace_item(create_item(42));
     const quality = project_agent_workspace_quality_entry(
       "glossary",
@@ -25,7 +25,7 @@ describe("Agent 工作区对象写入规则", () => {
     );
     const prompt = project_agent_workspace_prompt("translation", "翻译提示词");
 
-    expect(String(item["fp"])).toMatch(/^[\w-]{6}$/u);
+    expect(String(item["fp"])).toMatch(/^[\w-]{4}$/u);
     expect(project_agent_workspace_item(create_item(42))["fp"]).toBe(item["fp"]);
     expect(
       project_agent_workspace_quality_entry(
