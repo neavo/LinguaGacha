@@ -1,26 +1,57 @@
 // Unicode 标点与符号类别是无正文标点判断的唯一事实源
 const PUNCTUATION_OR_SYMBOL_PATTERN = /[\p{P}\p{S}]/u;
-const UTF8_BOM = "\uFEFF"; // TextDecoder 会保留 BOM 字符，格式解析前必须显式剥掉
+const UNICODE_BOM = "\uFEFF"; // 所有 Unicode 编码解码后都用同一字符表示 BOM。
+
+// UTF-32 与 UTF-16 的 LE 前缀重叠，长 BOM 必须排在短 BOM 前匹配。
+const TEXT_BOM_ENCODINGS = [
+  { bytes: [0x00, 0x00, 0xfe, 0xff], encoding: "utf-32be" },
+  { bytes: [0xff, 0xfe, 0x00, 0x00], encoding: "utf-32le" },
+  { bytes: [0xef, 0xbb, 0xbf], encoding: "utf-8" },
+  { bytes: [0xfe, 0xff], encoding: "utf-16be" },
+  { bytes: [0xff, 0xfe], encoding: "utf-16le" },
+] as const;
 
 /**
- * 解码后统一移除 UTF-8 BOM，保持各格式处理器不感知文件头
+ * 解码后统一移除 Unicode BOM，保持各格式处理器不感知文件头。
  */
-function strip_utf8_bom(text: string): string {
-  return text.startsWith(UTF8_BOM) ? text.slice(1) : text;
+function strip_unicode_bom(text: string): string {
+  return text.startsWith(UNICODE_BOM) ? text.slice(1) : text;
 }
 
-/** 自动探测二进制内容编码；失败或无结果时由调用方回退 UTF-8。 */
-async function detect_text_encoding(content: Uint8Array): Promise<string | null> {
-  try {
-    const chardet = await import("chardet");
-    const detected = chardet.detect(content as never);
-    if (typeof detected === "string" && detected.trim() !== "") {
-      return detected.trim();
+/** BOM 是内容自身携带的编码事实，必须先于外部声明使用。 */
+function read_bom_encoding(content: Uint8Array): string | null {
+  for (const candidate of TEXT_BOM_ENCODINGS) {
+    if (candidate.bytes.every((byte, index) => content[index] === byte)) {
+      return candidate.encoding;
     }
-  } catch {
-    // 编码探测失败时回退 UTF-8，保持解析主流程可继续
   }
   return null;
+}
+
+/** 严格 UTF-8 成功时直接返回文本，失败才进入传统编码探测。 */
+function decode_utf8_strict(content: Uint8Array): string | null {
+  try {
+    return strip_unicode_bom(new TextDecoder("utf-8", { fatal: true }).decode(content));
+  } catch {
+    return null;
+  }
+}
+
+/** 优先使用平台严格解码，平台不认识的编码标签再交给兼容解码器。 */
+async function decode_known_encoding(
+  content: Uint8Array,
+  encoding: string,
+): Promise<string | null> {
+  try {
+    return strip_unicode_bom(new TextDecoder(encoding, { fatal: true }).decode(content));
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+  }
+  const iconv = await import("iconv-lite");
+  if (!iconv.encodingExists(encoding)) {
+    return null;
+  }
+  return strip_unicode_bom(iconv.decode(content as never, encoding));
 }
 
 /**
@@ -77,23 +108,34 @@ export function check_similarity_by_jaccard(left: string, right: string): number
   return intersection / union;
 }
 
-/** 按声明编码、自动探测、UTF-8 的固定优先级解码文本。 */
+/** 按 BOM、声明编码、严格 UTF-8、传统编码探测的唯一顺序解码文本。 */
 export async function decode_text_content(
   content: Uint8Array,
   options?: { declaredEncoding?: string },
 ): Promise<string> {
-  try {
-    const iconv = await import("iconv-lite");
-    const declared_encoding = options?.declaredEncoding?.trim();
-    if (declared_encoding !== undefined && iconv.encodingExists(declared_encoding)) {
-      return strip_utf8_bom(iconv.decode(content as never, declared_encoding));
-    }
-    const detected_encoding = await detect_text_encoding(content);
-    if (detected_encoding !== null && iconv.encodingExists(detected_encoding)) {
-      return strip_utf8_bom(iconv.decode(content as never, detected_encoding));
-    }
-  } catch {
-    // iconv 不可用或不支持探测结果时统一回退 UTF-8。
+  const bom_encoding = read_bom_encoding(content);
+  if (bom_encoding !== null) {
+    const decoded = await decode_known_encoding(content, bom_encoding);
+    if (decoded !== null) return decoded;
   }
-  return strip_utf8_bom(new TextDecoder("utf-8").decode(content));
+
+  const declared_encoding = options?.declaredEncoding?.trim();
+  if (declared_encoding !== undefined && declared_encoding !== "") {
+    const decoded = await decode_known_encoding(content, declared_encoding);
+    if (decoded !== null) return decoded;
+  }
+
+  const utf8 = decode_utf8_strict(content);
+  if (utf8 !== null) return utf8;
+
+  const chardet = await import("chardet");
+  const detected_encoding = chardet.detect(content as never)?.trim();
+  if (detected_encoding === undefined || detected_encoding === "") {
+    throw new TypeError("Text encoding could not be determined.");
+  }
+  const decoded = await decode_known_encoding(content, detected_encoding);
+  if (decoded === null) {
+    throw new TypeError(`Text encoding is not supported: ${detected_encoding}`);
+  }
+  return decoded;
 }

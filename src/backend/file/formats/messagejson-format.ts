@@ -26,7 +26,7 @@ export class MESSAGEJSONFormat {
    * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const data = await this.parse_json_with_encoding(content);
+    const data = JsonTool.parseStrict(await decode_text_content(content));
     if (!Array.isArray(data)) {
       return [];
     }
@@ -82,17 +82,6 @@ export class MESSAGEJSONFormat {
         path.join(paths.translated_path, rel_path),
         JsonTool.stringifyStrict(data as unknown as JsonValue, { indent: 4 }),
       );
-    }
-  }
-
-  /**
-   * JSON 先按 UTF-8 严格解析，失败时再走编码探测兼容旧资源文件
-   */
-  private async parse_json_with_encoding(content: Uint8Array): Promise<unknown> {
-    try {
-      return JsonTool.parseStrict(content);
-    } catch {
-      return JsonTool.parseStrict(await decode_text_content(content));
     }
   }
 }

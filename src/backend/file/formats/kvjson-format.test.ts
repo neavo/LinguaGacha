@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import iconv from "iconv-lite";
 import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
@@ -32,6 +33,17 @@ describe("KVJSONFormat", () => {
         "message.json",
       ),
     ).resolves.toEqual([]);
+  });
+
+  it("通过共享文本解码入口解析传统编码 JSON", async () => {
+    const format = new KVJSONFormat();
+
+    const items = await format.read_from_stream(
+      iconv.encode(JSON.stringify({ café: "élève" }), "windows-1252"),
+      "legacy.json",
+    );
+
+    expect(items.map((item) => [item.src, item.dst])).toEqual([["café", "élève"]]);
   });
 
   it("写回 key 到有效译文的 JSON 对象", async () => {
