@@ -362,7 +362,7 @@ describe("AgentWorkspaceService", () => {
       { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
-      { kind: "translation", fp: "AAAAAA", text: "新翻译正文" },
+      { kind: "translation", fp: "AAAA", text: "新翻译正文" },
     ]);
 
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({
@@ -417,10 +417,10 @@ describe("AgentWorkspaceService", () => {
     await fixture.service.initialize();
     await run_workspace_script(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_QUALITY_CHANGE_PATHS.glossary.updates, [
-      { id: "glossary-1", fp: "AAAAAA", dst: "姬" },
+      { id: "glossary-1", fp: "AAAA", dst: "姬" },
     ]);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates, [
-      { kind: "translation", fp: "BBBBBB", text: "新翻译正文" },
+      { kind: "translation", fp: "BBBB", text: "新翻译正文" },
     ]);
 
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({

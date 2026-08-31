@@ -13,6 +13,7 @@ import {
   type ProofreadingManualStatusCode,
 } from "../../shared/proofreading/proofreading-types";
 import {
+  AGENT_WORKSPACE_FP_LENGTH,
   AGENT_WORKSPACE_ITEM_FIELDS,
   AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
   AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
@@ -81,6 +82,19 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
 /** item 提交建议只控制上下文与失败恢复成本，不构成后端硬门。 */
 const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
 
+/** 工作区对象与对应 change 共享同一事实指纹格式。 */
+const FP_FIELD_CONTRACT: JsonRecord = Object.freeze({
+  type: "string",
+  length: AGENT_WORKSPACE_FP_LENGTH,
+});
+
+/** 只读数据集在共享格式上补充 fp 的提交用途。 */
+const FP_DATASET_FIELD_CONTRACT: JsonRecord = Object.freeze({
+  ...FP_FIELD_CONTRACT,
+  purpose:
+    "基于数据对象事实计算的指纹；用于 workspace_apply 时校验该对象自工作区快照后是否仍保持一致",
+});
+
 /** project_meta.json 只承载解释快照所需的语言、数量和文件顺序。 */
 const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
   source_language: { type: "string" },
@@ -123,12 +137,7 @@ const PROJECT_META_FIELD_CONTRACT: JsonRecord = {
 /** items 只读数据集的完整字段契约。 */
 const ITEM_FIELD_CONTRACT: JsonRecord = {
   item_id: { type: "positive_integer", purpose: "稳定条目身份" },
-  fp: {
-    type: "string",
-    length: 6,
-    purpose:
-      "基于数据对象事实计算的指纹；用于 workspace_apply 时校验该对象自工作区快照后是否仍保持一致",
-  },
+  fp: FP_DATASET_FIELD_CONTRACT,
   src: { type: "string", purpose: "原文正文" },
   dst: { type: "string", purpose: "译文正文" },
   name_src: { type: "string", purpose: "原文姓名" },
@@ -151,7 +160,7 @@ const ITEM_FIELD_CONTRACT: JsonRecord = {
 /** item update change 的稳定身份与三个可选人工字段。 */
 const ITEM_UPDATE_FIELD_CONTRACT: JsonRecord = {
   item_id: { type: "positive_integer" },
-  fp: { type: "string", length: 6 },
+  fp: FP_FIELD_CONTRACT,
   dst: { type: "string", optional: true },
   name_dst: { type: "string", optional: true },
   status: {
@@ -235,12 +244,7 @@ const quality_entry_datasets = Object.fromEntries(
       identity: ["id"],
       fields: {
         id: { type: "string" },
-        fp: {
-          type: "string",
-          length: 6,
-          purpose:
-            "基于数据对象事实计算的指纹；用于 workspace_apply 时校验该对象自工作区快照后是否仍保持一致",
-        },
+        fp: FP_DATASET_FIELD_CONTRACT,
         sort: { type: "integer", minimum: 0, purpose: "当前零基数组位置" },
         ...QUALITY_FIELD_CONTRACT[kind],
       },
@@ -273,7 +277,7 @@ const quality_changes = Object.fromEntries(
           format: "jsonl",
           fields: {
             id: { type: "string" },
-            fp: { type: "string", length: 6 },
+            fp: FP_FIELD_CONTRACT,
             ...mutable_fields,
             sort: { type: "integer", minimum: -1, optional: true },
           },
@@ -282,7 +286,7 @@ const quality_changes = Object.fromEntries(
         deletes: {
           path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].deletes,
           format: "jsonl",
-          fields: { id: { type: "string" }, fp: { type: "string", length: 6 } },
+          fields: { id: { type: "string" }, fp: FP_FIELD_CONTRACT },
         },
       },
     ];
@@ -331,7 +335,7 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
           kind,
           {
             type: "object",
-            fields: { fp: { type: "string", length: 6 }, text: { type: "string" } },
+            fields: { fp: FP_FIELD_CONTRACT, text: { type: "string" } },
           },
         ]),
       ),
@@ -355,7 +359,7 @@ export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze({
         identity: ["kind"],
         fields: {
           kind: { type: "enum", values: [...PROMPT_KINDS] },
-          fp: { type: "string", length: 6 },
+          fp: FP_FIELD_CONTRACT,
           text: { type: "string" },
         },
       },

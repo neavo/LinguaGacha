@@ -53,8 +53,13 @@ describe("Agent 工作区 contract", () => {
       path: AGENT_WORKSPACE_PATHS.items,
       format: "jsonl",
     });
-    expect(Object.keys(read_json_record(items["fields"]))).toEqual(AGENT_WORKSPACE_ITEM_FIELDS);
-    expect(read_json_record(read_json_record(items["fields"])["text_type"])).toMatchObject({
+    const item_fields = read_json_record(items["fields"]);
+    expect(Object.keys(item_fields)).toEqual(AGENT_WORKSPACE_ITEM_FIELDS);
+    expect(read_json_record(item_fields["fp"])).toMatchObject({
+      type: "string",
+      length: 4,
+    });
+    expect(read_json_record(item_fields["text_type"])).toMatchObject({
       type: "enum",
       values: [...ITEM_TEXT_TYPES],
     });
@@ -96,11 +101,16 @@ describe("Agent 工作区 contract", () => {
       path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
       require_one_of: AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
     });
-    expect(Object.keys(read_json_record(item_updates["fields"]))).toEqual([
+    const item_update_fields = read_json_record(item_updates["fields"]);
+    expect(Object.keys(item_update_fields)).toEqual([
       "item_id",
       "fp",
       ...AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
     ]);
+    expect(read_json_record(item_update_fields["fp"])).toMatchObject({
+      type: "string",
+      length: 4,
+    });
     expect(read_json_record(read_json_record(changes["prompts"])["updates"])).toMatchObject({
       path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     });
