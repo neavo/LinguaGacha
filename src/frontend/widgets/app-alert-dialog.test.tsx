@@ -138,6 +138,25 @@ describe("应用模态窗", () => {
     expect(read_button("app.action.cancel")?.disabled).toBe(true);
   });
 
+  it("多动作提交把加载反馈显示在实际触发的次操作上", () => {
+    render_dialog(
+      <AppActionDialog
+        open
+        description="正在清空"
+        submitting
+        submittingAction="secondary"
+        primaryAction={{ label: "清空并重置状态", onSelect: vi.fn() }}
+        secondaryAction={{ label: "清空译文", onSelect: vi.fn() }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(read_button("app.action.loading")?.disabled).toBe(true);
+    expect(read_button("清空并重置状态")?.disabled).toBe(true);
+    expect(read_button("清空译文")).toBeNull();
+    expect(document.body.querySelectorAll('[data-testid="spinner"]')).toHaveLength(1);
+  });
+
   it("延迟确认显示秒数并在三秒后开放提交", () => {
     vi.useFakeTimers();
     const on_confirm = vi.fn();

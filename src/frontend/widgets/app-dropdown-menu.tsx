@@ -3,6 +3,11 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
 
 import { cn } from "@frontend/shadcn/classnames";
+import {
+  APP_MENU_SUBMENU_SIDE_OFFSET,
+  APP_MENU_VIEWPORT_PADDING,
+  should_keep_submenu_open,
+} from "@frontend/widgets/app-menu";
 
 type AppDropdownMenuContentProps = DropdownMenuPrimitive.Popup.Props &
   Pick<
@@ -12,16 +17,9 @@ type AppDropdownMenuContentProps = DropdownMenuPrimitive.Popup.Props &
     matchTriggerWidth?: boolean;
   };
 
-/** 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
-const MENU_VIEWPORT_PADDING = 8;
-
 // 本文件只为 Base UI 菜单原语补充应用级 data-slot、尺寸和视觉约定，不持有业务状态。
 function AppDropdownMenu(props: DropdownMenuPrimitive.Root.Props): JSX.Element {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
-}
-
-function AppDropdownMenuPortal(props: DropdownMenuPrimitive.Portal.Props): JSX.Element {
-  return <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />;
 }
 
 function AppDropdownMenuTrigger({
@@ -39,7 +37,7 @@ function AppDropdownMenuContent({
   align = "center",
   side = "bottom",
   className,
-  collisionPadding = MENU_VIEWPORT_PADDING,
+  collisionPadding = APP_MENU_VIEWPORT_PADDING,
   matchTriggerWidth = true,
   sideOffset = 4,
   ...props
@@ -219,8 +217,23 @@ function AppDropdownMenuShortcut({ className, ...props }: ComponentProps<"span">
   );
 }
 
-function AppDropdownMenuSub(props: DropdownMenuPrimitive.SubmenuRoot.Props): JSX.Element {
-  return <DropdownMenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />;
+function AppDropdownMenuSub({
+  onOpenChange,
+  ...props
+}: DropdownMenuPrimitive.SubmenuRoot.Props): JSX.Element {
+  return (
+    <DropdownMenuPrimitive.SubmenuRoot
+      data-slot="dropdown-menu-sub"
+      {...props}
+      onOpenChange={(open, details) => {
+        if (should_keep_submenu_open(open, details.reason)) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(open, details);
+      }}
+    />
+  );
 }
 
 function AppDropdownMenuSubTrigger({
@@ -250,27 +263,26 @@ function AppDropdownMenuSubTrigger({
 
 function AppDropdownMenuSubContent({
   className,
-  collisionPadding = MENU_VIEWPORT_PADDING,
-  sideOffset = 8,
   ...props
-}: DropdownMenuPrimitive.Popup.Props &
-  Pick<DropdownMenuPrimitive.Positioner.Props, "collisionPadding" | "sideOffset">): JSX.Element {
+}: DropdownMenuPrimitive.Popup.Props): JSX.Element {
   return (
-    <DropdownMenuPrimitive.Positioner
-      className="isolate z-(--ui-layer-popover)"
-      collisionPadding={collisionPadding}
-      sideOffset={sideOffset}
-    >
-      <DropdownMenuPrimitive.Popup
-        data-slot="dropdown-menu-sub-content"
-        className={cn(
-          "min-w-[96px] origin-(--transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          "text-[13px]",
-          className,
-        )}
-        {...props}
-      />
-    </DropdownMenuPrimitive.Positioner>
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Positioner
+        className="isolate z-(--ui-layer-popover)"
+        collisionPadding={APP_MENU_VIEWPORT_PADDING}
+        sideOffset={APP_MENU_SUBMENU_SIDE_OFFSET}
+      >
+        <DropdownMenuPrimitive.Popup
+          data-slot="dropdown-menu-sub-content"
+          className={cn(
+            "min-w-[96px] origin-(--transform-origin) overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "text-[13px]",
+            className,
+          )}
+          {...props}
+        />
+      </DropdownMenuPrimitive.Positioner>
+    </DropdownMenuPrimitive.Portal>
   );
 }
 
@@ -281,7 +293,6 @@ export {
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuLabel,
-  AppDropdownMenuPortal,
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
   AppDropdownMenuSeparator,

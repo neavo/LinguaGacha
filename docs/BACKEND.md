@@ -9,7 +9,7 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `task | agent | null`。
-- 通用质量规则由切片 query / update 读写，分析术语导入等复合 workflow 保留独立命令；校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数，items update 原子批量更新 `dst` / `name_dst` / 人工状态，清空与替换保留各自的后端意图命令。
+- 通用质量规则由切片 query / update 读写，分析术语导入等复合 workflow 保留独立命令；校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数，items update 原子批量更新 `dst` / `name_dst` / 人工状态，清空命令以必填 `reset_status` 决定是否同时恢复 `status` / `retry_count`，替换保留独立的后端意图命令。
 - 模型管理 API 只负责配置 CRUD；任务入口按 `translation`、`analysis` 或 `agent` 用途读取窄选项并更新单项选择。选项只携带显示身份与解析后的非敏感 Agent 容量，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：结构化任务摘要拥有用户可见结果，其纯文本投影省略 `LogError.message`，调用栈和上下文作为诊断事实保留；文件和控制台从正文生成纯文本投影，`log.appended` 只携带轻量预览，每次日志流连接先回放当前进程 ring buffer 供 renderer 去重补漏，详情 query 只查询同一详情池且不回扫历史文件。`source: agent-tool` 的完整严格 JSON 正文是 file-only 特例，不进入控制台或日志窗口、不使用会裁剪的 context，并沿用每日文件及最近三个日期文件的轮转。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。

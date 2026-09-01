@@ -3,9 +3,11 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 
 import { cn } from "@frontend/shadcn/classnames";
-
-/** 菜单与窗口边缘保留的最小安全间距，两个菜单入口共用同一视觉约定。 */
-const MENU_VIEWPORT_PADDING = 8;
+import {
+  APP_MENU_SUBMENU_SIDE_OFFSET,
+  APP_MENU_VIEWPORT_PADDING,
+  should_keep_submenu_open,
+} from "@frontend/widgets/app-menu";
 
 // 本文件只为 Base UI 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
 function AppContextMenu(props: ContextMenuPrimitive.Root.Props): JSX.Element {
@@ -32,12 +34,23 @@ function AppContextMenuGroup(props: ContextMenuPrimitive.Group.Props): JSX.Eleme
   return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />;
 }
 
-function AppContextMenuPortal(props: ContextMenuPrimitive.Portal.Props): JSX.Element {
-  return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />;
-}
-
-function AppContextMenuSub(props: ContextMenuPrimitive.SubmenuRoot.Props): JSX.Element {
-  return <ContextMenuPrimitive.SubmenuRoot data-slot="context-menu-sub" {...props} />;
+function AppContextMenuSub({
+  onOpenChange,
+  ...props
+}: ContextMenuPrimitive.SubmenuRoot.Props): JSX.Element {
+  return (
+    <ContextMenuPrimitive.SubmenuRoot
+      data-slot="context-menu-sub"
+      {...props}
+      onOpenChange={(open, details) => {
+        if (should_keep_submenu_open(open, details.reason)) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(open, details);
+      }}
+    />
+  );
 }
 
 function AppContextMenuRadioGroup(props: ContextMenuPrimitive.RadioGroup.Props): JSX.Element {
@@ -46,7 +59,7 @@ function AppContextMenuRadioGroup(props: ContextMenuPrimitive.RadioGroup.Props):
 
 function AppContextMenuContent({
   className,
-  collisionPadding = MENU_VIEWPORT_PADDING,
+  collisionPadding = APP_MENU_VIEWPORT_PADDING,
   side = "right",
   ...props
 }: ContextMenuPrimitive.Popup.Props &
@@ -128,25 +141,26 @@ function AppContextMenuSubTrigger({
 
 function AppContextMenuSubContent({
   className,
-  collisionPadding = MENU_VIEWPORT_PADDING,
   ...props
-}: ContextMenuPrimitive.Popup.Props &
-  Pick<ContextMenuPrimitive.Positioner.Props, "collisionPadding">): JSX.Element {
+}: ContextMenuPrimitive.Popup.Props): JSX.Element {
   return (
-    <ContextMenuPrimitive.Positioner
-      className="isolate z-(--ui-layer-popover)"
-      collisionPadding={collisionPadding}
-    >
-      <ContextMenuPrimitive.Popup
-        data-slot="context-menu-sub-content"
-        className={cn(
-          "min-w-32 origin-(--transform-origin) overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          "text-[13px] ring-1 ring-foreground/10",
-          className,
-        )}
-        {...props}
-      />
-    </ContextMenuPrimitive.Positioner>
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.Positioner
+        className="isolate z-(--ui-layer-popover)"
+        collisionPadding={APP_MENU_VIEWPORT_PADDING}
+        sideOffset={APP_MENU_SUBMENU_SIDE_OFFSET}
+      >
+        <ContextMenuPrimitive.Popup
+          data-slot="context-menu-sub-content"
+          className={cn(
+            "min-w-32 origin-(--transform-origin) overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "text-[13px] ring-1 ring-foreground/10",
+            className,
+          )}
+          {...props}
+        />
+      </ContextMenuPrimitive.Positioner>
+    </ContextMenuPrimitive.Portal>
   );
 }
 
@@ -267,7 +281,6 @@ export {
   AppContextMenuGroup,
   AppContextMenuItem,
   AppContextMenuLabel,
-  AppContextMenuPortal,
   AppContextMenuRadioGroup,
   AppContextMenuRadioItem,
   AppContextMenuSeparator,

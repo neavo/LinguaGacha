@@ -203,10 +203,15 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {
-        t: (key: string) =>
-          key === "proofreading_page.feedback.clear_translation_success"
-            ? "已清空 {COUNT} 条译文"
-            : key,
+        t: (key: string) => {
+          if (key === "proofreading_page.feedback.clear_translation_success") {
+            return "已清空 {COUNT} 条译文";
+          }
+          if (key === "proofreading_page.feedback.clear_translation_and_reset_status_success") {
+            return "已清空 {COUNT} 条译文并重置状态";
+          }
+          return key;
+        },
       };
     },
   };
@@ -2030,11 +2035,12 @@ describe("useProofreadingPageState", () => {
         latest_state?.request_clear_translation_row_ids(["1", "2"]);
       });
       await act(async () => {
-        await latest_state?.confirm_pending_confirmation();
+        await latest_state?.confirm_pending_confirmation("clear-translations");
       });
 
       expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/translations/clear", {
         item_ids: [1, 2],
+        reset_status: false,
         expected_section_revisions: { items: 7, proofreading: 1 },
       });
       expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
@@ -2043,6 +2049,46 @@ describe("useProofreadingPageState", () => {
       );
     },
   );
+
+  it("清空并重置状态提交显式重置意图并反馈实际变更数量", async () => {
+    await render_hook();
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      accepted: true,
+      changes: [
+        {
+          type: "project.changed",
+          eventId: "clear-write-1",
+          source: "proofreading_apply_item_changes",
+          projectPath: "E:/demo/sample.lg",
+          projectRevision: 1,
+          sectionRevisions: { items: 8, proofreading: 2 },
+          updatedSections: ["items", "proofreading"],
+          items: {
+            payloadMode: "field-patch",
+            changedIds: [1, 2],
+            fieldPatch: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
+          },
+        },
+      ],
+    });
+
+    await request_pending_confirmation(() => {
+      latest_state?.request_clear_translation_row_ids(["1", "2"]);
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_confirmation("clear-translations-and-reset-status");
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/translations/clear", {
+      item_ids: [1, 2],
+      reset_status: true,
+      expected_section_revisions: { items: 7, proofreading: 1 },
+    });
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "success",
+      "已清空 2 条译文并重置状态",
+    );
+  });
 
   it("排序语义变化会收敛到首个选中条目并定位其新位置", async () => {
     await render_hook();
@@ -2521,7 +2567,7 @@ describe("useProofreadingPageState", () => {
       latest_state?.request_retranslate_row_ids(["1"]);
     });
     await act(async () => {
-      await latest_state?.confirm_pending_confirmation();
+      await latest_state?.confirm_pending_confirmation("retranslate");
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
@@ -2567,7 +2613,7 @@ describe("useProofreadingPageState", () => {
       latest_state?.request_retranslate_row_ids(["1"]);
     });
     await act(async () => {
-      await latest_state?.confirm_pending_confirmation();
+      await latest_state?.confirm_pending_confirmation("retranslate");
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
@@ -2610,19 +2656,19 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.pending_confirmation).toMatchObject({
       kind: "retranslate",
       target_row_ids: ["2", "1", "2"],
-      submitting: false,
+      submitting_action: null,
     });
 
     let confirm_promise: Promise<void> | undefined;
     await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_confirmation();
+      confirm_promise = latest_state?.confirm_pending_confirmation("retranslate");
       await Promise.resolve();
     });
 
     expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(latest_state?.pending_confirmation).toMatchObject({
       kind: "retranslate",
-      submitting: true,
+      submitting_action: "retranslate",
     });
 
     await act(async () => {
@@ -2684,7 +2730,7 @@ describe("useProofreadingPageState", () => {
 
     let confirm_promise: Promise<void> | undefined;
     await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_confirmation();
+      confirm_promise = latest_state?.confirm_pending_confirmation("retranslate");
       await Promise.resolve();
     });
 

@@ -492,6 +492,7 @@ describe("ProofreadingService", () => {
 
     const ack = await service.clear_translations({
       item_ids: [1],
+      reset_status: false,
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
@@ -535,6 +536,7 @@ describe("ProofreadingService", () => {
 
     const ack = await service.clear_translations({
       item_ids: [1],
+      reset_status: false,
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
@@ -553,6 +555,68 @@ describe("ProofreadingService", () => {
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "", name_dst: null }),
     ]);
+  });
+
+  it("清空并重置状态会恢复所有目标为未翻译并同步进度", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.set_items(lg_path, [
+      create_project_item({
+        id: 1,
+        dst: "旧译文",
+        name_dst: "旧译名",
+        status: "PROCESSED",
+        retry_count: 5,
+      }),
+      create_project_item({ id: 2, status: "EXCLUDED", retry_count: 3 }),
+    ]);
+    database.set_meta(lg_path, "translation_extras", {
+      total_line: 1,
+      processed_line: 1,
+      error_line: 0,
+      line: 1,
+    });
+
+    await service.clear_translations({
+      item_ids: [1, 2],
+      reset_status: true,
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.get_all_items(lg_path)).toEqual([
+      create_project_item({ id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 0 }),
+      create_project_item({ id: 2, status: "NONE", retry_count: 0 }),
+    ]);
+    expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+      total_line: 2,
+      processed_line: 0,
+      error_line: 0,
+      line: 0,
+    });
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      projectPath: lg_path,
+      source: "proofreading_apply_item_changes",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1, 2],
+        fieldPatch: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
+      },
+    });
+  });
+
+  it("清空译文必须显式声明是否重置状态", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.set_items(lg_path, [create_project_item({ dst: "旧译文" })]);
+
+    await expect(
+      service.clear_translations({
+        item_ids: [1],
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+
+    expect(database.get_all_items(lg_path)).toEqual([create_project_item({ dst: "旧译文" })]);
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
   it("统一 item 更新只改 status 时清除重试计数", async () => {
@@ -628,6 +692,7 @@ describe("ProofreadingService", () => {
 
     const ack = await service.clear_translations({
       item_ids: [404],
+      reset_status: false,
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 

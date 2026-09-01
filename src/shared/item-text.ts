@@ -54,14 +54,3 @@ export function read_item_translation_text_parts(item: ItemTextRecord): ItemText
 export function has_item_translation_text(item: ItemTextRecord): boolean {
   return read_item_translation_text_parts(item).some((part) => part.text !== "");
 }
-
-// 清空译文时保留其它条目字段，并把译名恢复为领域空值 null。
-export function clear_item_translation_fields<T extends ItemTextRecord>(
-  item: T,
-): T & { dst: string; name_dst: null } {
-  return {
-    ...item,
-    dst: "",
-    name_dst: null,
-  };
-}

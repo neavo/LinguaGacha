@@ -14,7 +14,10 @@ import {
   type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
 import type { ProofreadingManualStatusCode } from "@shared/proofreading/proofreading-types";
-import type { ProofreadingPendingConfirmation } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
+import type {
+  ProofreadingConfirmationAction,
+  ProofreadingPendingConfirmation,
+} from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
@@ -63,7 +66,7 @@ type UseProofreadingBatchActionsResult = {
     status: ProofreadingManualStatusCode,
     preferred_row_id?: string | null,
   ) => void;
-  confirm_pending_confirmation: () => Promise<void>;
+  confirm_pending_confirmation: (action: ProofreadingConfirmationAction) => Promise<void>;
   close_pending_confirmation: () => void;
   clear_pending_confirmation: () => void;
 };
@@ -195,7 +198,11 @@ export function useProofreadingBatchActions(
   );
 
   const submit_clear_translation_row_ids = useCallback(
-    async (row_ids: string[], preferred_row_id: string | null): Promise<void> => {
+    async (
+      row_ids: string[],
+      preferred_row_id: string | null,
+      reset_status: boolean,
+    ): Promise<void> => {
       const target_item_ids = normalize_numeric_item_ids(row_ids);
       if (target_item_ids.length === 0) {
         return;
@@ -206,14 +213,15 @@ export function useProofreadingBatchActions(
         plan: create_clear_translations_plan({
           section_revisions: list_revisions,
           item_ids: target_item_ids,
+          reset_status,
         }),
         fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
         preferred_row_id,
         success_message_builder: (changed_count) => {
-          return t("proofreading_page.feedback.clear_translation_success").replace(
-            "{COUNT}",
-            changed_count.toString(),
-          );
+          const feedback_key = reset_status
+            ? "proofreading_page.feedback.clear_translation_and_reset_status_success"
+            : "proofreading_page.feedback.clear_translation_success";
+          return t(feedback_key).replace("{COUNT}", changed_count.toString());
         },
         close_dialog: dialog_open,
         empty_warning_message: null,
@@ -267,7 +275,7 @@ export function useProofreadingBatchActions(
         kind: "retranslate",
         target_row_ids: [...row_ids],
         preferred_row_id: resolve_preferred_row_id(preferred_row_id),
-        submitting: false,
+        submitting_action: null,
       });
     },
     [can_request_action, resolve_preferred_row_id],
@@ -283,7 +291,7 @@ export function useProofreadingBatchActions(
         kind: "clear-translations",
         target_row_ids: [...row_ids],
         preferred_row_id: resolve_preferred_row_id(preferred_row_id),
-        submitting: false,
+        submitting_action: null,
       });
     },
     [can_request_action, resolve_preferred_row_id],
@@ -310,7 +318,7 @@ export function useProofreadingBatchActions(
 
   const close_pending_confirmation = useCallback((): void => {
     set_pending_confirmation((previous_confirmation) => {
-      return previous_confirmation?.submitting ? previous_confirmation : null;
+      return previous_confirmation?.submitting_action === null ? null : previous_confirmation;
     });
   }, []);
 
@@ -318,32 +326,42 @@ export function useProofreadingBatchActions(
     set_pending_confirmation(null);
   }, []);
 
-  const confirm_pending_confirmation = useCallback(async (): Promise<void> => {
-    if (pending_confirmation === null || pending_confirmation.submitting) {
-      return;
-    }
-
-    const confirmation_to_submit = pending_confirmation;
-    set_pending_confirmation({
-      ...confirmation_to_submit,
-      submitting: true,
-    });
-    try {
-      if (confirmation_to_submit.kind === "retranslate") {
-        await submit_retranslate_row_ids(
-          confirmation_to_submit.target_row_ids,
-          confirmation_to_submit.preferred_row_id,
-        );
-      } else {
-        await submit_clear_translation_row_ids(
-          confirmation_to_submit.target_row_ids,
-          confirmation_to_submit.preferred_row_id,
-        );
+  const confirm_pending_confirmation = useCallback(
+    async (action: ProofreadingConfirmationAction): Promise<void> => {
+      if (pending_confirmation === null || pending_confirmation.submitting_action !== null) {
+        return;
       }
-    } finally {
-      set_pending_confirmation(null);
-    }
-  }, [pending_confirmation, submit_clear_translation_row_ids, submit_retranslate_row_ids]);
+
+      const action_matches_confirmation =
+        pending_confirmation.kind === "retranslate"
+          ? action === "retranslate"
+          : action !== "retranslate";
+      if (!action_matches_confirmation) return;
+
+      const confirmation_to_submit = pending_confirmation;
+      set_pending_confirmation({
+        ...confirmation_to_submit,
+        submitting_action: action,
+      });
+      try {
+        if (action === "retranslate") {
+          await submit_retranslate_row_ids(
+            confirmation_to_submit.target_row_ids,
+            confirmation_to_submit.preferred_row_id,
+          );
+        } else {
+          await submit_clear_translation_row_ids(
+            confirmation_to_submit.target_row_ids,
+            confirmation_to_submit.preferred_row_id,
+            action === "clear-translations-and-reset-status",
+          );
+        }
+      } finally {
+        set_pending_confirmation(null);
+      }
+    },
+    [pending_confirmation, submit_clear_translation_row_ids, submit_retranslate_row_ids],
+  );
 
   return {
     pending_confirmation,

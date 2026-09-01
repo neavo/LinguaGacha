@@ -5,6 +5,7 @@ export const zh_cn_proofreading_page = {
     replace_all: "全部替换",
     retranslate: "重新翻译",
     clear_translation: "清空译文",
+    clear_and_reset_status: "清空并重置状态",
     set_translation_status: "设置翻译状态",
     view_context: "查看上下文",
     back: "返回",
@@ -99,6 +100,7 @@ export const zh_cn_proofreading_page = {
     no_match: "未找到匹配项",
     regex_invalid: "正则表达式无效",
     clear_translation_success: "已清空 {COUNT} 个条目的译文",
+    clear_translation_and_reset_status_success: "已清空 {COUNT} 个条目的译文并重置状态",
     set_status_success: "已将 {COUNT} 个条目设置为「{STATUS}」",
   },
 } as const;
