@@ -772,10 +772,10 @@
 }
 
 .agent-page__status-zone {
-  --agent-status-row-height: 32px;
-  --agent-status-card-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  --agent-status-queue-inset: 32px;
-  --agent-status-follow-rail: 32px;
+  --agent-status-row-height: 28px;
+  /* 对称侧轨为跟随按钮保留间隔，并让队列相对输入器保持居中。 */
+  --agent-status-side-rail: 36px;
+  --agent-status-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 
   container-type: inline-size;
   gap: 8px;
@@ -796,25 +796,20 @@
 }
 
 .agent-task-progress {
-  border: var(
-    --agent-status-card-border,
-    1px solid color-mix(in srgb, var(--border) 55%, transparent)
-  );
+  border: var(--agent-status-border);
   border-radius: var(--ui-radius-card);
 }
 
 .agent-task-progress,
 .agent-input-queue__item:not(.agent-input-queue__item--editing) {
-  height: var(--agent-status-row-height, 32px);
+  height: var(--agent-status-row-height);
   transition: background-color 120ms ease;
 }
 
 .agent-page__status-queue-row {
   display: grid;
   min-width: 0;
-  grid-template-columns: var(--agent-status-queue-inset) minmax(0, 1fr) var(
-      --agent-status-follow-rail
-    );
+  grid-template-columns: var(--agent-status-side-rail) minmax(0, 1fr) var(--agent-status-side-rail);
   align-items: center;
   column-gap: 8px;
 }
@@ -928,11 +923,11 @@
 .agent-input-queue__item {
   box-sizing: border-box;
   display: grid;
-  height: var(--agent-status-row-height, 32px);
+  height: var(--agent-status-row-height);
   grid-template-columns: 24px minmax(80px, 1fr) auto auto;
   align-items: center;
   gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border: var(--agent-status-border);
   border-top: 0;
   padding: 1px 6px;
 }
@@ -945,7 +940,7 @@
 }
 
 .agent-input-queue__item:first-child {
-  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-top: var(--agent-status-border);
   border-top-left-radius: var(--ui-radius-card);
   border-top-right-radius: var(--ui-radius-card);
 }
@@ -956,14 +951,6 @@
 }
 
 .agent-input-queue__drag {
-  display: inline-flex;
-  width: 24px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: var(--ui-radius-button);
-  background: transparent;
   color: var(--muted-foreground);
   opacity: 0.6;
   cursor: grab;
@@ -973,21 +960,6 @@
 .agent-input-queue__drag:focus-visible {
   color: var(--secondary-foreground);
   opacity: 1;
-}
-
-.agent-input-queue__drag:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-
-.agent-input-queue__drag:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.agent-input-queue__drag svg {
-  width: 12px;
-  height: 12px;
 }
 
 .agent-input-queue__preview {
@@ -1038,11 +1010,10 @@
 
 /* 输入与审批互斥切换时共享同一外框投影，内部布局由各自组件负责。 */
 .agent-operation-surface {
-  --agent-operation-surface-min-height: 102px;
-
   position: relative;
   box-sizing: border-box;
-  min-height: var(--agent-operation-surface-min-height);
+  /* 固定槽位覆盖编辑器、操作条和既有内边距，避免输入与审批切换时跳动。 */
+  min-height: 106px;
   flex: 0 0 auto;
   margin: 0;
   border: var(--agent-operation-surface-border-width, 1px) solid var(--border);
@@ -1086,6 +1057,17 @@
 
 .agent-composer--inline .agent-composer__inline-submit {
   min-width: 0;
+}
+
+.agent-page__follow-control,
+.agent-composer__submit {
+  border-radius: var(--ui-radius-pill);
+}
+
+.agent-page__follow-control svg,
+.agent-composer__submit svg {
+  width: 14px;
+  height: 14px;
 }
 
 .agent-page__follow-control {
@@ -1263,7 +1245,7 @@
 
 .agent-composer__footer {
   display: flex;
-  min-height: 24px;
+  min-height: 28px;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -1364,7 +1346,6 @@
 .agent-composer__model-trigger,
 .agent-composer__thinking-trigger,
 .agent-composer__approval-trigger {
-  height: 24px;
   padding-inline: 4px;
   color: var(--muted-foreground);
   font-size: 12px;
@@ -1400,7 +1381,6 @@
 
 .agent-composer__model-context {
   display: inline-flex;
-  height: 24px;
   flex: 0 0 auto;
   align-items: center;
   border-radius: var(--ui-radius-button);
@@ -1417,12 +1397,6 @@
 
 .agent-composer__model-context[data-tone="warning"] {
   color: var(--ui-warning);
-}
-
-.agent-composer__hint {
-  flex: 0 0 auto;
-  margin-left: 6px;
-  white-space: nowrap;
 }
 
 .agent-composer__submit-shell {

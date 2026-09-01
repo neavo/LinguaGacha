@@ -1,6 +1,5 @@
 export const zh_cn_agent_page = {
   title: "AGENT",
-  shortcut_hint: "{action} · {shortcut}",
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: {
@@ -30,7 +29,6 @@ export const zh_cn_agent_page = {
   input: {
     placeholder: "描述任务，或输入 @ 选择技能或术语 …",
     edit_assistant_placeholder: "修改模型回复 …",
-    hint: "Enter 发送 · Shift + Enter 换行",
     newline: "换行",
     drop_images: "松开以添加图片",
   },

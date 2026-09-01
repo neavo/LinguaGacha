@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
+  ArrowUp,
   BookA,
   Brain,
   Boxes,
@@ -7,7 +8,6 @@ import {
   ImagePlus,
   LoaderCircle,
   MessageSquarePlus,
-  Send,
   ShieldCheck,
   ShieldQuestionMark,
   Sparkles,
@@ -77,8 +77,8 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
-import { get_shortcut_label } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
+import { ShortcutKbd, ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type {
   AgentCommand,
@@ -317,6 +317,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     !image_processing &&
     (has_sendable_content || continuing_queue) &&
     !queue_full_for_submit;
+  const can_insert_newline = !editor_read_only;
+  // 原位编辑的取消入口同时约束按钮、可访问性声明与 CodeMirror 快捷键。
+  const can_cancel_edit =
+    inline && props.on_cancel_edit !== undefined && !locked && props.command === null;
+  const new_task_aria_shortcut = resolve_shortcut_platform() === "mac" ? "Meta+N" : "Control+N";
   if (queue_full_for_submit) submit_label_key = "agent_page.queue.full";
   else if (continuing_queue) submit_label_key = "agent_page.action.continue";
   else if (props.running && has_sendable_content && !inline)
@@ -392,7 +397,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
   input_session_ref.current = props.input_session;
-  cancel_edit_ref.current = props.on_cancel_edit;
+  cancel_edit_ref.current = can_cancel_edit ? props.on_cancel_edit : undefined;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -453,8 +458,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   set_menu_suppressed(true);
                   return true;
                 }
-                if (!inline) return false;
-                cancel_edit_ref.current?.();
+                const cancel_edit = cancel_edit_ref.current;
+                if (!inline || cancel_edit === undefined) return false;
+                cancel_edit();
                 return true;
               },
             },
@@ -811,7 +817,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 render={tooltip_trigger_target(
                   <AppButton
                     type="button"
-                    size="icon-xs"
+                    size="icon-sm"
                     variant="ghost"
                     className="agent-composer__image-trigger"
                     disabled={editor_read_only || image_processing || image_limit_reached}
@@ -837,10 +843,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 render={tooltip_trigger_target(
                   <AppButton
                     type="button"
-                    size="xs"
+                    size="sm"
                     variant="ghost"
                     className="agent-composer__reset"
                     disabled={!new_task_available}
+                    aria-keyshortcuts={new_task_available ? new_task_aria_shortcut : undefined}
                     onClick={props.on_reset}
                   >
                     <MessageSquarePlus aria-hidden="true" />
@@ -849,12 +856,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 )}
               />
               <TooltipContent side="top" sideOffset={8}>
-                <p>
-                  {t("agent_page.shortcut_hint", {
-                    action: t("agent_page.action.new_task"),
-                    shortcut: get_shortcut_label("create"),
-                  })}
-                </p>
+                {new_task_available ? (
+                  <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
+                ) : (
+                  <p>{t("agent_page.action.new_task")}</p>
+                )}
               </TooltipContent>
             </Tooltip>
           ) : null}
@@ -867,7 +873,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       render={
                         <AppButton
                           type="button"
-                          size="xs"
+                          size="sm"
                           variant="ghost"
                           className="agent-composer__model-trigger"
                           disabled={model_controls_disabled}
@@ -931,7 +937,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                         render={
                           <AppButton
                             type="button"
-                            size="xs"
+                            size="sm"
                             variant="ghost"
                             className="agent-composer__thinking-trigger"
                             disabled={model_controls_disabled || thinking_unavailable}
@@ -973,7 +979,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       render={
                         <AppButton
                           type="button"
-                          size="xs"
+                          size="sm"
                           variant="ghost"
                           className="agent-composer__approval-trigger"
                           data-approval-mode={approval_mode}
@@ -1018,9 +1024,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           ) : null}
-          {!inline ? (
-            <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
-          ) : null}
         </div>
         <div className="agent-composer__footer-end">
           {inline ? (
@@ -1029,13 +1032,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={locked || props.command !== null}
+                disabled={!can_cancel_edit}
                 aria-label={t("app.action.cancel")}
-                aria-keyshortcuts="Escape"
+                aria-keyshortcuts={can_cancel_edit ? "Escape" : undefined}
                 onClick={props.on_cancel_edit}
               >
                 {t("app.action.cancel")}
-                <ShortcutKbd action="cancel" />
+                {can_cancel_edit ? <ShortcutKbd action="cancel" /> : null}
               </AppButton>
               <Tooltip>
                 <TooltipTrigger
@@ -1044,30 +1047,29 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       className="agent-composer__inline-submit"
                       type="submit"
                       size="sm"
-                      disabled={props.command !== null || !can_submit}
+                      disabled={!can_submit}
                       aria-label={contextual_submit_label}
                       aria-busy={submit_command_active || undefined}
-                      aria-keyshortcuts="Enter"
+                      aria-keyshortcuts={can_submit ? "Enter" : undefined}
                     >
                       {submit_command_active ? (
                         <LoaderCircle className="animate-spin" aria-hidden="true" />
                       ) : null}
                       <span>{contextual_submit_label}</span>
-                      <ShortcutKbd
-                        action="submit"
-                        className="bg-background/18 text-primary-foreground"
-                      />
+                      {can_submit ? (
+                        <ShortcutKbd
+                          action="submit"
+                          className="bg-background/18 text-primary-foreground"
+                        />
+                      ) : null}
                     </AppButton>,
                   )}
                 />
-                <TooltipContent side="top" sideOffset={8}>
-                  <p>
-                    {t("agent_page.shortcut_hint", {
-                      action: t("agent_page.input.newline"),
-                      shortcut: get_shortcut_label("newline"),
-                    })}
-                  </p>
-                </TooltipContent>
+                {can_insert_newline ? (
+                  <TooltipContent side="top" sideOffset={8}>
+                    <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
+                  </TooltipContent>
+                ) : null}
               </Tooltip>
             </>
           ) : (
@@ -1079,7 +1081,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                     <AppButton
                       className="agent-composer__submit"
                       type={stopping ? "button" : "submit"}
-                      size="icon-xs"
+                      size="icon-sm"
                       onClick={
                         stopping && !props.stop_disabled && !compacting && props.command === null
                           ? () => void props.on_stop()
@@ -1091,25 +1093,44 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                       }
                       aria-label={contextual_submit_label}
                       aria-busy={submit_command_active || undefined}
+                      aria-keyshortcuts={can_submit ? "Enter" : undefined}
                     >
                       {(compacting && stopping) || submit_command_active ? (
                         <LoaderCircle className="animate-spin" aria-hidden="true" />
                       ) : stopping ? (
                         <Square aria-hidden="true" />
                       ) : (
-                        <Send aria-hidden="true" />
+                        <ArrowUp aria-hidden="true" />
                       )}
                     </AppButton>
                   </span>
                 }
               />
               {submit_command_active ? null : (
-                <TooltipContent side="top" sideOffset={8}>
-                  <p>
-                    {props.unavailable_reason === null
-                      ? contextual_submit_label
-                      : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}
-                  </p>
+                <TooltipContent
+                  className="flex-col items-stretch gap-1 whitespace-nowrap"
+                  side="top"
+                  sideOffset={8}
+                >
+                  {props.unavailable_reason !== null ? (
+                    <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}</p>
+                  ) : stopping || queue_full_for_submit ? (
+                    <p>{contextual_submit_label}</p>
+                  ) : (
+                    <>
+                      {can_submit ? (
+                        <ShortcutTooltipRow label={contextual_submit_label} shortcut="submit" />
+                      ) : (
+                        <p>{contextual_submit_label}</p>
+                      )}
+                      {can_insert_newline ? (
+                        <ShortcutTooltipRow
+                          label={t("agent_page.input.newline")}
+                          shortcut="newline"
+                        />
+                      ) : null}
+                    </>
+                  )}
                 </TooltipContent>
               )}
             </Tooltip>

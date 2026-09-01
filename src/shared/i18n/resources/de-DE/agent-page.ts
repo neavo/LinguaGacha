@@ -1,6 +1,5 @@
 export const de_de_agent_page = {
   title: "AGENT",
-  shortcut_hint: "{action} · {shortcut}",
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
@@ -30,7 +29,6 @@ export const de_de_agent_page = {
   input: {
     placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
-    hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
     newline: "Neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },

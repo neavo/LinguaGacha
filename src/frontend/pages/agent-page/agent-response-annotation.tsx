@@ -24,8 +24,7 @@ import { cn } from "@frontend/shadcn/classnames";
 import { Textarea } from "@frontend/shadcn/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
-import { get_shortcut_label } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { ShortcutKbd, ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type AgentResponseAnnotationEditorProps = Omit<ComponentProps<"div">, "aria-label" | "onSubmit"> & {
   "aria-label": string;
@@ -146,12 +145,7 @@ export function AgentResponseAnnotationEditor({
               }
             />
             <TooltipContent side="top" sideOffset={8}>
-              <p>
-                {t("agent_page.shortcut_hint", {
-                  action: t("agent_page.input.newline"),
-                  shortcut: get_shortcut_label("newline"),
-                })}
-              </p>
+              <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
             </TooltipContent>
           </Tooltip>
         </div>

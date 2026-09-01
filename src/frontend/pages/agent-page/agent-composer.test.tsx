@@ -28,6 +28,7 @@ type RenderComposerOptions = Partial<
     | "compacting"
     | "context_tokens"
     | "inline_role"
+    | "locked"
     | "on_cancel_edit"
     | "on_image_error"
     | "on_reset"
@@ -258,6 +259,39 @@ describe("AgentComposer", () => {
     expect(on_cancel_edit).toHaveBeenCalledOnce();
   });
 
+  it("原位编辑仅在动作有效时声明并接管快捷键", async () => {
+    const on_cancel_edit = vi.fn();
+    const view = await render_composer({
+      presentation: "inline",
+      inline_role: "user",
+      on_cancel_edit,
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "修改内容", 4);
+
+    let save = view.querySelector<HTMLButtonElement>(".agent-composer__inline-submit");
+    let cancel = view.querySelector<HTMLButtonElement>("button[aria-label='app.action.cancel']");
+    expect(save?.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(cancel?.getAttribute("aria-keyshortcuts")).toBe("Escape");
+
+    await render_composer({
+      presentation: "inline",
+      inline_role: "user",
+      locked: true,
+      on_cancel_edit,
+    });
+    save = view.querySelector<HTMLButtonElement>(".agent-composer__inline-submit");
+    cancel = view.querySelector<HTMLButtonElement>("button[aria-label='app.action.cancel']");
+    expect(save?.disabled).toBe(true);
+    expect(cancel?.disabled).toBe(true);
+    expect(save?.hasAttribute("aria-keyshortcuts")).toBe(false);
+    expect(cancel?.hasAttribute("aria-keyshortcuts")).toBe(false);
+
+    const escape_event = await dispatch_key(editor.contentDOM, "Escape");
+    expect(escape_event.defaultPrevented).toBe(false);
+    expect(on_cancel_edit).not.toHaveBeenCalled();
+  });
+
   it("新任务快捷键复用按钮可用性并允许从主输入器触发", async () => {
     const on_reset = vi.fn();
     const view = await render_composer({ on_reset });
@@ -279,6 +313,9 @@ describe("AgentComposer", () => {
     });
     expect(event?.defaultPrevented).toBe(true);
     expect(on_reset).toHaveBeenCalledOnce();
+    expect(view.querySelector(".agent-composer__reset")?.hasAttribute("aria-keyshortcuts")).toBe(
+      true,
+    );
 
     await render_composer({ can_reset: false, on_reset });
     await act(async () => {
@@ -286,6 +323,9 @@ describe("AgentComposer", () => {
     });
     expect(event?.defaultPrevented).toBe(false);
     expect(on_reset).toHaveBeenCalledOnce();
+    expect(view.querySelector(".agent-composer__reset")?.hasAttribute("aria-keyshortcuts")).toBe(
+      false,
+    );
   });
 
   it("用纯文本历史双向浏览并恢复当前草稿", async () => {
@@ -568,6 +608,9 @@ describe("AgentComposer", () => {
     const editor = get_editor(view);
     await set_document(editor, "继续补充", 4);
     expect(editor.state.readOnly).toBe(false);
+    expect(view.querySelector(".agent-composer__submit")?.getAttribute("aria-keyshortcuts")).toBe(
+      "Enter",
+    );
     await click_send(view);
     expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
     expect(on_stop).not.toHaveBeenCalled();
@@ -596,6 +639,9 @@ describe("AgentComposer", () => {
 
     await click_send(view);
 
+    expect(view.querySelector(".agent-composer__submit")?.hasAttribute("aria-keyshortcuts")).toBe(
+      false,
+    );
     expect(on_stop).toHaveBeenCalledOnce();
     expect(on_send).not.toHaveBeenCalled();
   });
@@ -735,6 +781,7 @@ describe("AgentComposer", () => {
             presentation={options.presentation}
             inline_role={options.inline_role}
             on_cancel_edit={options.on_cancel_edit}
+            locked={options.locked}
             skills={skills}
             terms={options.terms ?? terms}
             term_hit_counts={options.term_hit_counts ?? term_hit_counts}
@@ -851,22 +898,24 @@ async function wait_for_element(container: HTMLElement, selector: string): Promi
   return element;
 }
 
+/** 分发编辑器按键并返回事件，以便验证快捷键是否接管默认行为。 */
 async function dispatch_key(
   content: HTMLElement,
   key: string,
   shiftKey = false,
   isComposing = false,
-): Promise<void> {
+): Promise<KeyboardEvent> {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    code: key,
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
+  });
+  Object.defineProperty(event, "isComposing", { value: isComposing });
   await act(async () => {
     content.focus();
-    const event = new KeyboardEvent("keydown", {
-      key,
-      code: key,
-      shiftKey,
-      bubbles: true,
-      cancelable: true,
-    });
-    Object.defineProperty(event, "isComposing", { value: isComposing });
     content.dispatchEvent(event);
   });
+  return event;
 }

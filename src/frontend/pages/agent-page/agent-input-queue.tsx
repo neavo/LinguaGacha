@@ -136,8 +136,10 @@ function AgentInputQueueItem(props: {
       <Tooltip>
         <TooltipTrigger
           render={tooltip_trigger_target(
-            <button
+            <AppButton
               type="button"
+              size="icon-xs"
+              variant="ghost"
               className="agent-input-queue__drag"
               disabled={item_actions_disabled}
               aria-label={t("agent_page.queue.reorder")}
@@ -145,7 +147,7 @@ function AgentInputQueueItem(props: {
               {...sortable.listeners}
             >
               <GripVertical aria-hidden="true" />
-            </button>,
+            </AppButton>,
           )}
         />
         <TooltipContent side="top">

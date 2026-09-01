@@ -27,7 +27,7 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { resolve_shortcut_platform } from "@frontend/widgets/interactions/keyboard-shortcuts";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
@@ -498,7 +498,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           <AppButton
             type="button"
             className="agent-page__follow-control"
-            size="icon-xs"
+            size="icon-sm"
             variant="outline"
             aria-label={follow_latest_label}
             aria-pressed={follow_latest}
@@ -510,9 +510,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         }
       />
       <TooltipContent side="top" sideOffset={8}>
-        <p>
-          {follow_latest_status} <ShortcutKbd action="follow_latest" />
-        </p>
+        <ShortcutTooltipRow label={follow_latest_status} shortcut="follow_latest" />
       </TooltipContent>
     </Tooltip>
   );
