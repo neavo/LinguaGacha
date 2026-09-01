@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  clear_item_translation_fields,
   has_item_translation_text,
   read_item_source_text_parts,
   read_item_translation_text_parts,
@@ -51,19 +50,5 @@ describe("item-text", () => {
     expect(has_item_translation_text({ dst: "", name_dst: null })).toBe(false);
     expect(has_item_translation_text({ dst: "", name_dst: ["", "保留译名"] })).toBe(false);
     expect(has_item_translation_text({ dst: "正文译文", name_dst: null })).toBe(true);
-  });
-
-  it("清空译文时同时清空正文和整个姓名译文字段", () => {
-    expect(
-      clear_item_translation_fields({
-        dst: "正文译文",
-        name_dst: ["旧译名", "保留译名"],
-        status: "PROCESSED",
-      }),
-    ).toEqual({
-      dst: "",
-      name_dst: null,
-      status: "PROCESSED",
-    });
   });
 });

@@ -20,9 +20,13 @@ export type ProofreadingDialogState = {
 
 export type ProofreadingConfirmationKind = "retranslate" | "clear-translations";
 
+export type ProofreadingConfirmationAction =
+  | ProofreadingConfirmationKind
+  | "clear-translations-and-reset-status";
+
 export type ProofreadingPendingConfirmation = {
   kind: ProofreadingConfirmationKind; // 只有高风险操作进入确认流，状态设置走直接提交。
   target_row_ids: string[];
   preferred_row_id: string | null;
-  submitting: boolean;
+  submitting_action: ProofreadingConfirmationAction | null;
 };

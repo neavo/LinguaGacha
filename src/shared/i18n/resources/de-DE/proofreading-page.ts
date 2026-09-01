@@ -8,6 +8,7 @@ export const de_de_proofreading_page = {
     replace_all: "Alle ersetzen",
     retranslate: "Neu übersetzen",
     clear_translation: "Übersetzung löschen",
+    clear_and_reset_status: "Löschen und Status zurücksetzen",
     set_translation_status: "Übersetzungsstatus setzen",
     view_context: "Kontext anzeigen",
     back: "Zurück",
@@ -102,6 +103,8 @@ export const de_de_proofreading_page = {
     no_match: "Keine Übereinstimmungen gefunden",
     regex_invalid: "Ungültiger regulärer Ausdruck",
     clear_translation_success: "Übersetzungen für {COUNT} Einträge gelöscht",
+    clear_translation_and_reset_status_success:
+      "Übersetzungen für {COUNT} Einträge gelöscht und Status zurückgesetzt",
     set_status_success: "{COUNT} Einträge auf {STATUS} gesetzt",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_proofreading_page>;

@@ -113,16 +113,18 @@ describe("proofreading command planner", () => {
     });
   });
 
-  it("清空译文仍只打包用户目标和 revision", () => {
+  it.each([false, true])("清空译文显式打包状态重置意图：%s", (reset_status) => {
     expect(
       create_clear_translations_plan({
         section_revisions: { items: 4, proofreading: 2 },
         item_ids: [1],
+        reset_status,
       }),
     ).toEqual({
       changed_item_ids: [1],
       request_body: {
         item_ids: [1],
+        reset_status,
         expected_section_revisions: { items: 4, proofreading: 2 },
       },
     });

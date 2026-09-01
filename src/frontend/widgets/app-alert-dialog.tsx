@@ -15,6 +15,8 @@ type AppDialogPrimaryAction = AppDialogAction & {
   destructive?: boolean;
 };
 
+type AppDialogActionPosition = "primary" | "secondary";
+
 type AppDialogBaseProps = {
   open: boolean;
   title?: string;
@@ -22,13 +24,14 @@ type AppDialogBaseProps = {
   details?: ReactNode; // 动作弹窗可在无障碍描述之外承载结构化业务详情
   onClose: () => void;
   submitting?: boolean;
+  submittingAction?: AppDialogActionPosition; // 多动作弹窗由业务状态指定加载反馈归属
   submittingLabel?: string;
   submittingIcon?: boolean;
 };
 
 type AppConfirmDialogProps = Omit<
   AppDialogBaseProps,
-  "details" | "submittingLabel" | "submittingIcon"
+  "details" | "submittingAction" | "submittingLabel" | "submittingIcon"
 > & {
   onConfirm: () => void | Promise<void>;
   confirmDelay?: boolean; // 危险动作在开放确认前启用统一倒计时
@@ -93,6 +96,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
   const submitting = props.submitting ?? false;
   const submitting_icon = props.submittingIcon ?? true;
   const title = props.title ?? t("app.action.confirm");
+  const submitting_action = submitting ? (props.submittingAction ?? "primary") : null;
   const close_handled_ref = useRef(false); // 同一次关闭只向受控状态拥有者回流一次
   useLayoutEffect(() => {
     if (props.open) close_handled_ref.current = false;
@@ -163,7 +167,14 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
                   void props.secondaryAction?.onSelect();
                 }}
               >
-                {props.secondaryAction.label}
+                {submitting_action === "secondary" ? (
+                  <>
+                    {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
+                    {props.submittingLabel ?? t("app.action.loading")}
+                  </>
+                ) : (
+                  props.secondaryAction.label
+                )}
               </AppButton>
             )}
             <AppButton
@@ -176,7 +187,7 @@ export function AppActionDialog(props: AppActionDialogProps): JSX.Element {
                 void props.primaryAction.onSelect();
               }}
             >
-              {submitting ? (
+              {submitting_action === "primary" ? (
                 <>
                   {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
                   {props.submittingLabel ?? t("app.action.loading")}

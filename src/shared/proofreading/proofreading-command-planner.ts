@@ -24,6 +24,7 @@ export type ProofreadingCommandPlan = {
   request_body: {
     changes?: ProofreadingItemFieldUpdate[]; // 译文、译名与人工状态的统一字段更新
     item_ids?: number[]; // 批量替换或清空译文的目标 item 集合
+    reset_status?: boolean; // 清空译文时是否同时恢复未翻译状态
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
     replace_text?: string; // 批量替换目标文本
     is_regex?: boolean; // 批量替换是否使用正则语义
@@ -210,11 +211,13 @@ export function create_replace_all_plan(args: {
 export function create_clear_translations_plan(args: {
   section_revisions: ProjectDataSectionRevisions;
   item_ids: number[];
+  reset_status: boolean;
 }): ProofreadingCommandPlan {
   return {
     changed_item_ids: args.item_ids,
     request_body: {
       item_ids: args.item_ids,
+      reset_status: args.reset_status,
       expected_section_revisions: build_expected_revisions(args.section_revisions),
     },
   };

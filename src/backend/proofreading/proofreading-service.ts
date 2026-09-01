@@ -10,10 +10,16 @@ import {
 } from "../project/project-write-request";
 import { Item } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
-import type { ProjectChangeItemsPayload, ProjectWriteResult } from "../../shared/project-event";
+import type {
+  ProjectChangeItemFieldPatch,
+  ProjectChangeItemsPayload,
+  ProjectWriteResult,
+} from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
-import { clear_item_translation_fields } from "../../shared/item-text";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
+import {
+  apply_project_item_field_patch,
+  type ProjectItemWriteFields,
+} from "../../shared/project/project-item-field-patch";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
@@ -179,20 +185,27 @@ export class ProofreadingService {
     });
   }
 
-  /**
-   * 批量清空译文同时清空正文和姓名译文，保留 status 和 retry_count 供用户手动判定
-   */
+  /** 批量清空正文与姓名译文，并按用户意图决定是否恢复未翻译状态。 */
   public async clear_translations(request: JsonRecord): Promise<ProjectWriteResult> {
     return await this.runtime_gate.run_project_write(
       async () => await this.clear_translations_under_lease(request),
     );
   }
 
-  /** 在项目写租约内筛出实际含译文的目标并提交统一字段补丁。 */
+  /** 在项目写租约内按统一字段补丁筛出实际变化并原子提交。 */
   private async clear_translations_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
+    const reset_status = request["reset_status"];
+    if (typeof reset_status !== "boolean") {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "invalid_clear_translation_reset_status" },
+      });
+    }
+    const field_patch: ProjectChangeItemFieldPatch = reset_status
+      ? { dst: "", name_dst: null, status: "NONE", retry_count: 0 }
+      : { dst: "", name_dst: null };
     const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
     const changes: ProjectItemWriteChange[] = [];
     for (const item_id of item_ids) {
@@ -200,10 +213,8 @@ export class ProofreadingService {
       if (item === undefined) {
         continue;
       }
-      const next_item = clear_item_translation_fields(item);
-      if (are_proofreading_item_write_fields_equal(item, next_item)) {
-        continue;
-      }
+      const next_item = apply_project_item_field_patch(item, field_patch);
+      if (next_item === null) continue;
       changes.push({ item_id, current: item, next: next_item });
     }
     if (changes.length === 0) {
@@ -214,7 +225,7 @@ export class ProofreadingService {
       expectedSectionRevisions: expected_section_revisions,
       source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
       changes,
-      fieldPatch: { dst: "", name_dst: null },
+      fieldPatch: field_patch,
     });
   }
 

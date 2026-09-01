@@ -1,5 +1,6 @@
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type {
+  ProofreadingConfirmationAction,
   ProofreadingDialogState,
   ProofreadingPendingConfirmation,
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
@@ -115,6 +116,6 @@ export type UseProofreadingPageStateResult = {
     status: ProofreadingManualStatusCode,
     preferred_row_id?: string | null,
   ) => void;
-  confirm_pending_confirmation: () => Promise<void>;
+  confirm_pending_confirmation: (action: ProofreadingConfirmationAction) => Promise<void>;
   close_pending_confirmation: () => void;
 };
