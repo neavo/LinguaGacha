@@ -1,7 +1,7 @@
 import {
-  is_hangul_character,
-  is_kana_character,
+  classify_language_grapheme,
   normalize_language_code,
+  type TargetLanguageCode,
 } from "../../domain/language";
 import { check_similarity_by_jaccard } from "../utils/text-tool";
 
@@ -9,10 +9,7 @@ const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值只服务校对�
 
 const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给人工校对，不再继续用任务侧质量检查阻塞提交
 
-type TranslationResidueFragments = {
-  kana: string[]; // 只在源语言为日语时记录译文里的连续假名残留
-  hangeul: string[]; // 只在源语言为韩语时记录译文里的连续谚文残留
-};
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /**
  * 去重时保留首次出现顺序，便于日志和校对页展示稳定片段。
@@ -22,18 +19,18 @@ function unique_strings(values: string[]): string[] {
 }
 
 /**
- * 残留片段按连续正文字符聚合，供日志裁决和校对页定位使用同一字符口径。
+ * 外文残留只看目标语言允许的书写系统；字素簇保证基础文字与附标作为完整证据保留。
  */
-function collect_contiguous_residue_fragments(
-  text: string,
-  is_residue_character: (character: string) => boolean,
-): string[] {
+export function collect_foreign_char_residue_fragments(args: {
+  text: string;
+  targetLanguage: TargetLanguageCode;
+}): string[] {
   const fragments: string[] = [];
   let current_fragment = "";
 
-  for (const character of Array.from(text)) {
-    if (is_residue_character(character)) {
-      current_fragment += character;
+  for (const { segment } of GRAPHEME_SEGMENTER.segment(args.text)) {
+    if (classify_language_grapheme(segment, args.targetLanguage) === "residue") {
+      current_fragment += segment;
       continue;
     }
 
@@ -48,27 +45,6 @@ function collect_contiguous_residue_fragments(
   }
 
   return unique_strings(fragments);
-}
-
-/**
- * 源语言决定哪类残留有质量意义；未知语言和 ALL 不触发日/韩残留判断。
- */
-export function collect_translation_residue_fragments(args: {
-  text: string;
-  sourceLanguage: string;
-}): TranslationResidueFragments {
-  const source_language = normalize_language_code(args.sourceLanguage);
-
-  return {
-    kana:
-      source_language === "JA"
-        ? collect_contiguous_residue_fragments(args.text, is_kana_character)
-        : [],
-    hangeul:
-      source_language === "KO"
-        ? collect_contiguous_residue_fragments(args.text, is_hangul_character)
-        : [],
-  };
 }
 
 /**
@@ -97,15 +73,7 @@ export function is_translation_text_similar(left: string, right: string): boolea
 }
 
 /**
- * 目标中文判断只接受归一化语言码，避免前后端各自维护中文别名。
- */
-function is_chinese_target_language(targetLanguage: string): boolean {
-  const target_language = normalize_language_code(targetLanguage);
-  return target_language === "ZH" || target_language === "ZH-HANT";
-}
-
-/**
- * 相似度 issue 是质量裁决，不等同于 UI 的独立残留 warning；日/韩译中文时必须伴随对应残留。
+ * 相似度 issue 是独立质量裁决；日/韩译中文时沿用既有政策，要求同时出现非中文书写证据。
  */
 export function has_translation_similarity_issue(args: {
   src: string;
@@ -117,21 +85,20 @@ export function has_translation_similarity_issue(args: {
     return false;
   }
 
+  const target_language = normalize_language_code(args.targetLanguage);
   const source_language = normalize_language_code(args.sourceLanguage);
-  if (!is_chinese_target_language(args.targetLanguage)) {
+  if (target_language !== "ZH" && target_language !== "ZH-HANT") {
     return true;
   }
 
-  const residue_fragments = collect_translation_residue_fragments({
-    text: args.dst,
-    sourceLanguage: args.sourceLanguage,
-  });
-  if (source_language === "JA") {
-    return residue_fragments.kana.length > 0;
-  }
-  if (source_language === "KO") {
-    return residue_fragments.hangeul.length > 0;
+  if (source_language !== "JA" && source_language !== "KO") {
+    return true;
   }
 
-  return true;
+  return (
+    collect_foreign_char_residue_fragments({
+      text: args.dst,
+      targetLanguage: target_language,
+    }).length > 0
+  );
 }

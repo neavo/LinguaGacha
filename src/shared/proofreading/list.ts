@@ -180,12 +180,9 @@ export function create_proofreading_client_item(args: {
     retry_count: args.item.retry_count,
     warnings: [...args.warnings],
     warning_fragments_by_code: {
-      ...(args.warning_fragments_by_code.KANA === undefined
+      ...(args.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE === undefined
         ? {}
-        : { KANA: [...args.warning_fragments_by_code.KANA] }),
-      ...(args.warning_fragments_by_code.HANGEUL === undefined
-        ? {}
-        : { HANGEUL: [...args.warning_fragments_by_code.HANGEUL] }),
+        : { FOREIGN_CHAR_RESIDUE: [...args.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE] }),
       ...(args.warning_fragments_by_code.TEXT_PRESERVE === undefined
         ? {}
         : { TEXT_PRESERVE: [...args.warning_fragments_by_code.TEXT_PRESERVE] }),

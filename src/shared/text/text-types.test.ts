@@ -29,6 +29,12 @@ describe("text worker snapshots", () => {
     ).toThrowError(expect.objectContaining({ code: "language.unknown_source_language_code" }));
     expect(() =>
       TextProcessingConfigTool.from_api_value({
+        source_language: "ZH-HANT",
+        target_language: "ZH",
+      }),
+    ).toThrowError(expect.objectContaining({ code: "language.unknown_source_language_code" }));
+    expect(() =>
+      TextProcessingConfigTool.from_api_value({
         source_language: "JA",
         target_language: "INVALID",
       }),

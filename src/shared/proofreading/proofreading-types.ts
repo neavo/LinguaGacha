@@ -6,8 +6,7 @@ export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 
 // 真实校对警告的唯一词表。
 export const PROOFREADING_WARNING_CODES = [
-  "KANA",
-  "HANGEUL",
+  "FOREIGN_CHAR_RESIDUE",
   "TEXT_PRESERVE",
   "SIMILARITY",
   "GLOSSARY",
@@ -16,6 +15,14 @@ export const PROOFREADING_WARNING_CODES = [
 ] as const;
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
+
+// 只有携带可定位文本片段的 warning 才进入证据字段词表。
+export const PROOFREADING_WARNING_FRAGMENT_CODES = [
+  "FOREIGN_CHAR_RESIDUE",
+  "TEXT_PRESERVE",
+] as const satisfies readonly ProofreadingWarningCode[];
+
+export type ProofreadingWarningFragmentCode = (typeof PROOFREADING_WARNING_FRAGMENT_CODES)[number];
 
 export type ProofreadingWarningSummaryEntry = {
   code: ProofreadingWarningCode; // 真实 warning 类型
@@ -71,11 +78,9 @@ export const PROOFREADING_STATUS_ORDER = [
 
 export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
-export type ProofreadingWarningFragmentsByCode = {
-  KANA?: string[];
-  HANGEUL?: string[];
-  TEXT_PRESERVE?: string[];
-};
+export type ProofreadingWarningFragmentsByCode = Partial<
+  Record<ProofreadingWarningFragmentCode, string[]>
+>;
 
 export type ProofreadingFilterOptions = {
   outcomes: ProofreadingOutcomeCode[];

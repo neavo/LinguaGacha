@@ -238,6 +238,24 @@ describe("ProofreadingEditDialog", () => {
     ).toEqual(["2", "1"]);
   });
 
+  it("外文残留胶囊显示完整残留片段", async () => {
+    const rendered = await render_dialog({
+      item: {
+        ...create_proofreading_item(),
+        warnings: ["FOREIGN_CHAR_RESIDUE"],
+        warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["か\u3099", "OpenAI"] },
+        glossary_applications: [],
+      },
+    });
+
+    expect(rendered.textContent).toContain("proofreading_page.warning.foreign_char_residue");
+    expect(rendered.textContent).toContain(
+      "proofreading_page.tooltip.foreign_char_residue_fragments",
+    );
+    expect(rendered.textContent).toContain("か\u3099");
+    expect(rendered.textContent).toContain("OpenAI");
+  });
+
   it("文件栏按需显示 TRANS 内部路径", async () => {
     const rendered = await render_dialog({
       item: {

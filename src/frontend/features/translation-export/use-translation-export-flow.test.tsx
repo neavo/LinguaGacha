@@ -82,7 +82,7 @@ describe("useTranslationExportFlow", () => {
       warningSummary: {
         total_count: 3,
         entries: [
-          { code: "KANA", count: 1 },
+          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
           { code: "GLOSSARY", count: 2 },
         ],
       },
@@ -169,7 +169,10 @@ describe("useTranslationExportFlow", () => {
     await act(async () => {
       resolve_summary?.({
         projectPath: "E:/demo/sample.lg",
-        warningSummary: { total_count: 1, entries: [{ code: "KANA", count: 1 }] },
+        warningSummary: {
+          total_count: 1,
+          entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 1 }],
+        },
       });
     });
     expect(latest_flow?.state.phase).toBe("closed");

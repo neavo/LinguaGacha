@@ -40,8 +40,7 @@ export const zh_cn_proofreading_page = {
     duplicated: "重复文本",
   },
   warning: {
-    kana: "假名残留",
-    hangeul: "谚文残留",
+    foreign_char_residue: "外文残留",
     text_preserve: "文本保护失效",
     similarity: "相似度过高",
     glossary: "术语未落实",
@@ -60,8 +59,7 @@ export const zh_cn_proofreading_page = {
     glossary_applied_terms: "已落实",
     glossary_missing_terms: "未落实",
     text_preserve_failed: "未生效",
-    kana_fragments: "假名残留片段",
-    hangeul_fragments: "谚文残留片段",
+    foreign_char_residue_fragments: "外文残留片段",
   },
   filter: {
     translated_group: "翻译成功",

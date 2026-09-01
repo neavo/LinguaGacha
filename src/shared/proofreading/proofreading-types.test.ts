@@ -26,7 +26,7 @@ describe("proofreading types", () => {
       include_without_glossary_miss: true,
     };
     const cloned = clone_proofreading_filter_options(filters);
-    cloned.outcomes.push("KANA");
+    cloned.outcomes.push("FOREIGN_CHAR_RESIDUE");
     cloned.glossary_entry_ids[0] = "dirty";
 
     expect(filters.outcomes).toEqual(["GLOSSARY", "NONE", "PROCESSED", "ERROR"]);
@@ -38,22 +38,25 @@ describe("proofreading types", () => {
       "NO_WARNING",
     ]);
     expect(
-      resolve_proofreading_outcomes({ status: "PROCESSED", warnings: ["KANA", "GLOSSARY"] }),
-    ).toEqual(["KANA", "GLOSSARY"]);
+      resolve_proofreading_outcomes({
+        status: "PROCESSED",
+        warnings: ["FOREIGN_CHAR_RESIDUE", "GLOSSARY"],
+      }),
+    ).toEqual(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]);
     expect(resolve_proofreading_outcomes({ status: "ERROR", warnings: [] })).toEqual(["ERROR"]);
   });
 
   it("按固定类型顺序汇总成功译文的校对警告", () => {
     expect(
       build_proofreading_warning_summary([
-        { status: "PROCESSED", warnings: ["GLOSSARY", "KANA"] },
+        { status: "PROCESSED", warnings: ["GLOSSARY", "FOREIGN_CHAR_RESIDUE"] },
         { status: "PROCESSED", warnings: ["GLOSSARY", "GLOSSARY"] },
         { status: "ERROR", warnings: ["TEXT_PRESERVE"] },
       ]),
     ).toEqual({
       total_count: 3,
       entries: [
-        { code: "KANA", count: 1 },
+        { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
         { code: "GLOSSARY", count: 2 },
       ],
     });

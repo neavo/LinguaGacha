@@ -1,7 +1,22 @@
 import { AppError } from "../shared/error";
 
 type CharacterMatcher = (char: string) => boolean;
-type TextMatcher = (text: string) => boolean;
+
+const WRITING_SYSTEM_CODES = [
+  "HAN",
+  "KANA",
+  "HANGUL",
+  "LATIN",
+  "CYRILLIC",
+  "ARABIC",
+  "THAI",
+] as const;
+type WritingSystemCode = (typeof WRITING_SYSTEM_CODES)[number];
+
+type WritingSystemDefinition = {
+  matches_body_character: CharacterMatcher;
+  matches_auxiliary_character: CharacterMatcher;
+};
 
 export const ALL_LANGUAGE_CODE = "ALL"; // 特殊值：表示“任意原文语言”（关闭语言过滤）
 
@@ -53,17 +68,13 @@ export const LANGUAGE_CODES = TARGET_LANGUAGE_CODES;
 
 export type SourceLanguageCode = (typeof SOURCE_LANGUAGE_CODES)[number];
 export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
+export type ConfiguredSourceLanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode;
 // 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
 export type LanguageDisplayLocale = "zh" | "en" | "de";
 
-// 语言定义集中携带 CJK 标记和正文 matcher，调用方不直接拼 Unicode 规则
-export type LanguageDefinition = {
-  code: LanguageCode;
-  cjk: boolean;
-  matches_character: CharacterMatcher | null;
-  matches_text: TextMatcher | null;
-};
+// 语言定义只声明允许的书写系统，字符分类统一由书写系统词表负责。
+export type LanguageGraphemeClassification = "allowed" | "residue" | "neutral";
 
 // 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
 export const LANGUAGE_DISPLAY_NAMES: Record<
@@ -202,222 +213,258 @@ export function get_prompt_target_language_name(
   return get_language_display_name(language_code, locale);
 }
 
-const NON_BODY_LANGUAGE_CHARACTER_PATTERN = /[\s\p{N}\p{P}\p{S}\p{M}]/u; // 正文字符先排除空白、数字、标点、符号和组合标记
-const NON_STANDALONE_LANGUAGE_MARK_PATTERN = /\p{M}/u; // Unicode Mark 单独存在时只表达附着标记，不构成正文
+const LETTER_CHARACTER_PATTERN = /\p{L}/u;
+const MARK_CHARACTER_PATTERN = /\p{M}/u;
+const COMMON_OR_INHERITED_SCRIPT_PATTERN = /(?:\p{Script=Common}|\p{Script=Inherited})/u;
+const HAN_SCRIPT_PATTERN = /\p{Script_Extensions=Han}/u;
+const HIRAGANA_SCRIPT_PATTERN = /\p{Script_Extensions=Hiragana}/u;
+const KATAKANA_SCRIPT_PATTERN = /\p{Script_Extensions=Katakana}/u;
+const HANGUL_SCRIPT_PATTERN = /\p{Script_Extensions=Hangul}/u;
+const LATIN_SCRIPT_PATTERN = /\p{Script_Extensions=Latin}/u;
+const CYRILLIC_SCRIPT_PATTERN = /\p{Script_Extensions=Cyrillic}/u;
+const ARABIC_SCRIPT_PATTERN = /\p{Script_Extensions=Arabic}/u;
+const THAI_SCRIPT_PATTERN = /\p{Script_Extensions=Thai}/u;
 
-const HAN_CHARACTER_PATTERN = /\p{Script=Han}/u; // Han Script 单字符正文规则，覆盖汉字扩展区和兼容汉字
-const HIRAGANA_CHARACTER_PATTERN = /\p{Script=Hiragana}/u; // Hiragana Script 单字符规则，用于平假名残留和剥离
-const KATAKANA_CHARACTER_PATTERN = /\p{Script=Katakana}/u; // Katakana Script 单字符规则，包含全角和半角片假名
-const HANGUL_CHARACTER_PATTERN = /\p{Script=Hangul}/u; // Hangul Script 单字符规则，用于韩文正文和残留检测
-const CYRILLIC_CHARACTER_PATTERN = /\p{Script=Cyrillic}/u; // Cyrillic Script 单字符规则，避免误收 Glagolitic
-const ARABIC_CHARACTER_PATTERN = /\p{Script=Arabic}/u; // Arabic Script 单字符规则，数字和符号由正文排除规则剔除
-const THAI_CHARACTER_PATTERN = /\p{Script=Thai}/u; // Thai Script 单字符规则，泰文数字不作为正文
-const LATIN_CHARACTER_PATTERN = /\p{Script=Latin}/u; // Latin Script 单字符规则，拉丁语系共享粗过滤
-
-const HAN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Han}/u; // Han Script 整段命中规则，不带 g 避免 lastIndex 泄漏
-const HANGUL_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Hangul}/u; // Hangul Script 整段命中规则
-const CYRILLIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Cyrillic}/u; // Cyrillic Script 整段命中规则
-const ARABIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Arabic}/u; // Arabic Script 整段命中规则
-const THAI_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Thai}/u; // Thai Script 整段命中规则
-const LATIN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Latin}/u; // Latin Script 整段命中规则，非自然语言识别
-const JAPANESE_TEXT_PATTERN =
-  /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana})/u; // 日文整段规则：Han + Hiragana + Katakana
-const KOREAN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hangul})/u; // 韩文整段规则：Han + Hangul
-
-const NON_STANDALONE_LANGUAGE_CHARACTERS = new Set([
-  "ー", // 长音符不能独立表达正文，规则预过滤会单独消费
-  "・", // 全角中点不能独立表达正文
-  "･", // 半角中点不能独立表达正文
-  "ﾞ", // 半角浊点不能独立表达正文
-  "ﾟ", // 半角半浊点不能独立表达正文
+// 这些字符属于假名书写系统，但不能独立证明一段文本含有日文正文。
+const KANA_AUXILIARY_CHARACTERS = new Set([
+  "゙",
+  "゚",
+  "゛",
+  "゜",
+  "ー",
+  "〱",
+  "〲",
+  "〳",
+  "〴",
+  "〵",
+  "ｰ",
+  "ﾞ",
+  "ﾟ",
 ]);
+const ARABIC_AUXILIARY_CHARACTERS = new Set(["ـ"]); // Tatweel 是 Common Script 的阿拉伯书写延长线
 
-// 单字符正文判断统一收口排除项和 Script 检查，避免各语言分支自行组合
-function is_language_body_character(char: string, script_pattern: RegExp): boolean {
-  return !NON_BODY_LANGUAGE_CHARACTER_PATTERN.test(char) && script_pattern.test(char);
-}
-
-// 全量匹配沿用 Python all 的空字符串真值语义
-function all_matching_characters(text: string, matches_character: CharacterMatcher): boolean {
-  return [...text].every((char) => matches_character(char));
-}
-
-// 首尾剥离只移除边缘非目标字符，中间内容必须原样保留
-function strip_non_matching_characters(text: string, matches_character: CharacterMatcher): string {
-  const chars = [...text.trim()];
-  let start = 0;
-  let end = chars.length - 1;
-
-  while (start <= end && !matches_character(chars[start] ?? "")) {
-    start += 1;
-  }
-
-  while (end >= start && !matches_character(chars[end] ?? "")) {
-    end -= 1;
-  }
-
-  return start > end ? "" : chars.slice(start, end + 1).join("");
-}
-
-// 汉字正文判断覆盖 Unicode 当前运行时支持的 Han Script，包括扩展区和兼容汉字
-function is_han_character(char: string): boolean {
-  return is_language_body_character(char, HAN_CHARACTER_PATTERN);
-}
-
-// 拉丁语系共享 Latin Script 粗过滤，不区分具体自然语言
-function is_latin_character(char: string): boolean {
-  return is_language_body_character(char, LATIN_CHARACTER_PATTERN);
-}
-
-// 俄文按 Cyrillic Script 判断，避免误收 Glagolitic 等旧手写范围偏差
-function is_cyrillic_character(char: string): boolean {
-  return is_language_body_character(char, CYRILLIC_CHARACTER_PATTERN);
-}
-
-// 阿拉伯文按 Arabic Script 判断，数字和符号由正文排除规则统一剔除
-function is_arabic_character(char: string): boolean {
-  return is_language_body_character(char, ARABIC_CHARACTER_PATTERN);
-}
-
-// 泰文按 Thai Script 判断，泰文数字不再被当作正文字符
-function is_thai_character(char: string): boolean {
-  return is_language_body_character(char, THAI_CHARACTER_PATTERN);
-}
-
-// 谚文正文判断供韩文语言过滤、残留检查和 fixer 共用
-export function is_hangul_character(char: string): boolean {
-  return is_language_body_character(char, HANGUL_CHARACTER_PATTERN);
-}
-
-// 平假名正文判断排除不能独立成文的日文标记
-export function is_hiragana_character(char: string): boolean {
-  return is_language_body_character(char, HIRAGANA_CHARACTER_PATTERN);
-}
-
-// 片假名正文判断支持全角和半角片假名，但不把长音与中点当作正文
-export function is_katakana_character(char: string): boolean {
-  return is_language_body_character(char, KATAKANA_CHARACTER_PATTERN);
-}
-
-// 假名聚合入口供校对和 fixer 复用，不让调用方重复拼平假名/片假名判断
-export function is_kana_character(char: string): boolean {
-  return is_hiragana_character(char) || is_katakana_character(char);
-}
-
-// 非独立语言字符只服务“无正文价值”判断，不能单独触发语言正文命中
-export function is_non_standalone_language_character(char: string): boolean {
+/** Script_Extensions 只在字符本身是正文 Letter 时成立，附属字符由独立 matcher 处理。 */
+function matches_script_letter(
+  character: string,
+  script_pattern: RegExp,
+  excluded_characters?: ReadonlySet<string>,
+): boolean {
   return (
-    NON_STANDALONE_LANGUAGE_MARK_PATTERN.test(char) || NON_STANDALONE_LANGUAGE_CHARACTERS.has(char)
+    LETTER_CHARACTER_PATTERN.test(character) &&
+    script_pattern.test(character) &&
+    !(excluded_characters?.has(character) ?? false)
   );
 }
 
-// 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选
-export function has_cjk_language_character(text: string): boolean {
-  return JAPANESE_TEXT_PATTERN.test(text) || HANGUL_TEXT_PATTERN.test(text);
-}
+const WRITING_SYSTEM_DEFINITIONS: Readonly<Record<WritingSystemCode, WritingSystemDefinition>> =
+  Object.freeze({
+    HAN: {
+      matches_body_character: (character) => matches_script_letter(character, HAN_SCRIPT_PATTERN),
+      matches_auxiliary_character: () => false,
+    },
+    KANA: {
+      matches_body_character: (character) =>
+        matches_script_letter(character, HIRAGANA_SCRIPT_PATTERN, KANA_AUXILIARY_CHARACTERS) ||
+        matches_script_letter(character, KATAKANA_SCRIPT_PATTERN, KANA_AUXILIARY_CHARACTERS),
+      matches_auxiliary_character: (character) => KANA_AUXILIARY_CHARACTERS.has(character),
+    },
+    HANGUL: {
+      matches_body_character: (character) =>
+        matches_script_letter(character, HANGUL_SCRIPT_PATTERN),
+      matches_auxiliary_character: (character) =>
+        MARK_CHARACTER_PATTERN.test(character) && HANGUL_SCRIPT_PATTERN.test(character),
+    },
+    LATIN: {
+      matches_body_character: (character) => matches_script_letter(character, LATIN_SCRIPT_PATTERN),
+      matches_auxiliary_character: () => false,
+    },
+    CYRILLIC: {
+      matches_body_character: (character) =>
+        matches_script_letter(character, CYRILLIC_SCRIPT_PATTERN),
+      matches_auxiliary_character: () => false,
+    },
+    ARABIC: {
+      matches_body_character: (character) =>
+        matches_script_letter(character, ARABIC_SCRIPT_PATTERN, ARABIC_AUXILIARY_CHARACTERS),
+      matches_auxiliary_character: (character) =>
+        ARABIC_AUXILIARY_CHARACTERS.has(character) ||
+        (MARK_CHARACTER_PATTERN.test(character) && ARABIC_SCRIPT_PATTERN.test(character)),
+    },
+    THAI: {
+      matches_body_character: (character) => matches_script_letter(character, THAI_SCRIPT_PATTERN),
+      matches_auxiliary_character: (character) =>
+        MARK_CHARACTER_PATTERN.test(character) && THAI_SCRIPT_PATTERN.test(character),
+    },
+  });
 
-// 日文允许汉字或假名命中，符合原文混排的常见场景
-function is_ja_character(char: string): boolean {
-  return is_han_character(char) || is_kana_character(char);
-}
-
-// 韩文允许汉字或谚文命中，兼容含汉字词的韩文本地化文本
-function is_ko_character(char: string): boolean {
-  return is_han_character(char) || is_hangul_character(char);
-}
-
-// 定义表构造器保证单字符判断和整段命中规则成对登记
-function build_definition(
-  code: LanguageCode,
-  cjk: boolean,
-  matches_character: CharacterMatcher | null,
-  text_pattern: RegExp | null,
-): LanguageDefinition {
-  return {
-    code,
-    cjk,
-    matches_character,
-    matches_text: text_pattern === null ? null : (text) => text_pattern.test(text),
-  };
-}
-
-// 语言定义是运行态唯一正文规则表；拉丁语系只做 Latin Script 粗过滤，不做自然语言识别
-export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
-  ALL: build_definition("ALL", false, null, null), // 关闭语言过滤
-  ZH: build_definition("ZH", true, is_han_character, HAN_TEXT_PATTERN), // 中文只以 Han Script 正文命中
-  "ZH-HANT": build_definition("ZH-HANT", true, is_han_character, HAN_TEXT_PATTERN), // 繁中复用 Han Script，不按字符范围区分简繁
-  EN: build_definition("EN", false, is_latin_character, LATIN_TEXT_PATTERN), // 英文走 Latin Script 粗过滤
-  JA: build_definition("JA", true, is_ja_character, JAPANESE_TEXT_PATTERN), // 日文允许 Han + Kana 混排
-  KO: build_definition("KO", true, is_ko_character, KOREAN_TEXT_PATTERN), // 韩文允许 Han + Hangul 混排
-  RU: build_definition("RU", false, is_cyrillic_character, CYRILLIC_TEXT_PATTERN), // 俄文走 Cyrillic Script
-  AR: build_definition("AR", false, is_arabic_character, ARABIC_TEXT_PATTERN), // 阿拉伯文走 Arabic Script
-  DE: build_definition("DE", false, is_latin_character, LATIN_TEXT_PATTERN), // 德文走 Latin Script 粗过滤
-  FR: build_definition("FR", false, is_latin_character, LATIN_TEXT_PATTERN), // 法文走 Latin Script 粗过滤
-  PL: build_definition("PL", false, is_latin_character, LATIN_TEXT_PATTERN), // 波兰文走 Latin Script 粗过滤
-  ES: build_definition("ES", false, is_latin_character, LATIN_TEXT_PATTERN), // 西班牙文走 Latin Script 粗过滤
-  IT: build_definition("IT", false, is_latin_character, LATIN_TEXT_PATTERN), // 意大利文走 Latin Script 粗过滤
-  PT: build_definition("PT", false, is_latin_character, LATIN_TEXT_PATTERN), // 葡萄牙文走 Latin Script 粗过滤
-  HU: build_definition("HU", false, is_latin_character, LATIN_TEXT_PATTERN), // 匈牙利文走 Latin Script 粗过滤
-  TR: build_definition("TR", false, is_latin_character, LATIN_TEXT_PATTERN), // 土耳其文走 Latin Script 粗过滤
-  TH: build_definition("TH", false, is_thai_character, THAI_TEXT_PATTERN), // 泰文走 Thai Script，泰文数字不算正文
-  ID: build_definition("ID", false, is_latin_character, LATIN_TEXT_PATTERN), // 印尼文走 Latin Script 粗过滤
-  VI: build_definition("VI", false, is_latin_character, LATIN_TEXT_PATTERN), // 越南文走 Latin Script 粗过滤
+// 语言定义是语言与书写系统关系的唯一事实；共享文字由多个语言直接引用同一系统。
+const LANGUAGE_WRITING_SYSTEMS: Readonly<Record<LanguageCode, readonly WritingSystemCode[]>> = {
+  ALL: [],
+  ZH: ["HAN"],
+  "ZH-HANT": ["HAN"],
+  EN: ["LATIN"],
+  JA: ["HAN", "KANA"],
+  KO: ["HAN", "HANGUL"],
+  RU: ["CYRILLIC"],
+  AR: ["ARABIC"],
+  DE: ["LATIN"],
+  FR: ["LATIN"],
+  PL: ["LATIN"],
+  ES: ["LATIN"],
+  IT: ["LATIN"],
+  PT: ["LATIN"],
+  HU: ["LATIN"],
+  TR: ["LATIN"],
+  TH: ["THAI"],
+  ID: ["LATIN"],
+  VI: ["LATIN"],
 };
 
-export const CJK_LANGUAGE_CODES = new Set<LanguageCode>(["ZH", "ZH-HANT", "JA", "KO"]); // CJK 语言集合供 UI 和规则分支快速判断，不重复解释字符范围
+const CJK_WRITING_SYSTEMS = new Set<WritingSystemCode>(["HAN", "KANA", "HANGUL"]);
+
+/** Script_Extensions 可同时属于多个书写系统，调用方据此判断与目标语言是否有交集。 */
+function matching_writing_systems(
+  character: string,
+  matcher: keyof WritingSystemDefinition,
+): WritingSystemCode[] {
+  return WRITING_SYSTEM_CODES.filter((code) =>
+    WRITING_SYSTEM_DEFINITIONS[code][matcher](character),
+  );
+}
+
+/** 字符命中的任一书写系统被目标语言接受，即视为允许。 */
+function is_character_allowed_by_writing_systems(
+  character: string,
+  writing_systems: readonly WritingSystemCode[],
+  matcher: keyof WritingSystemDefinition,
+): boolean {
+  return matching_writing_systems(character, matcher).some((code) =>
+    writing_systems.includes(code),
+  );
+}
+
+// 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选。
+export function has_cjk_language_character(text: string): boolean {
+  return [...text].some(
+    (character) =>
+      WRITING_SYSTEM_DEFINITIONS.HAN.matches_body_character(character) ||
+      WRITING_SYSTEM_DEFINITIONS.KANA.matches_body_character(character) ||
+      WRITING_SYSTEM_DEFINITIONS.HANGUL.matches_body_character(character),
+  );
+}
+
+/**
+ * 任意书写系统的正文字符都能证明文本具有语言内容；Common / Inherited 附属字符不能独立成文。
+ */
+export function has_language_body_character(text: string): boolean {
+  return [...text].some((character) => {
+    if (matching_writing_systems(character, "matches_body_character").length > 0) {
+      return true;
+    }
+    return (
+      LETTER_CHARACTER_PATTERN.test(character) &&
+      !COMMON_OR_INHERITED_SCRIPT_PATTERN.test(character)
+    );
+  });
+}
 
 // 语言码入口统一大小写与空白处理，未知值显式返回 null
 export function normalize_language_code(value: string): LanguageCode | null {
   const normalized_value = value.trim().toUpperCase();
-  if (normalized_value in LANGUAGE_DEFINITIONS) {
+  if (normalized_value in LANGUAGE_WRITING_SYSTEMS) {
     return normalized_value as LanguageCode;
   }
 
   return null;
 }
 
+/** 源语言接受 ALL，但拒绝仅供目标侧使用的繁中变体。 */
+export function normalize_source_language_code(value: string): ConfiguredSourceLanguageCode | null {
+  const language_code = normalize_language_code(value);
+  return language_code !== null &&
+    (language_code === ALL_LANGUAGE_CODE ||
+      (SOURCE_LANGUAGE_CODES as readonly LanguageCode[]).includes(language_code))
+    ? (language_code as ConfiguredSourceLanguageCode)
+    : null;
+}
+
+/** 目标语言必须来自目标词表，因而不接受 ALL。 */
+export function normalize_target_language_code(value: string): TargetLanguageCode | null {
+  const language_code = normalize_language_code(value);
+  return language_code !== null &&
+    (TARGET_LANGUAGE_CODES as readonly LanguageCode[]).includes(language_code)
+    ? (language_code as TargetLanguageCode)
+    : null;
+}
+
 // 判断语言族时必须先归一化，避免小写配置让 CJK 分支失效
 export function is_cjk_language_code(value: string): boolean {
   const language_code = normalize_language_code(value);
-  return language_code !== null && CJK_LANGUAGE_CODES.has(language_code);
+  return (
+    language_code !== null &&
+    LANGUAGE_WRITING_SYSTEMS[language_code].some((code) => CJK_WRITING_SYSTEMS.has(code))
+  );
 }
 
 // 文本语言命中入口，ALL 语言永远返回 true 表示不过滤
 export function has_language_character(text: string, language_code: LanguageCode): boolean {
-  const matches_text = LANGUAGE_DEFINITIONS[language_code].matches_text;
-  if (matches_text === null) {
-    return true;
-  }
-
-  return matches_text(text);
+  return (
+    language_code === ALL_LANGUAGE_CODE ||
+    [...text].some((character) => is_language_character(character, language_code))
+  );
 }
 
 // 单字符语言判断入口对齐历史 TextBase.char
-export function is_language_character(char: string, language_code: LanguageCode): boolean {
-  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
-  if (matches_character === null) {
+export function is_language_character(character: string, language_code: LanguageCode): boolean {
+  if (language_code === ALL_LANGUAGE_CODE) {
     return true;
   }
 
-  return matches_character(char);
+  const writing_systems = LANGUAGE_WRITING_SYSTEMS[language_code];
+  return is_character_allowed_by_writing_systems(
+    character,
+    writing_systems,
+    "matches_body_character",
+  );
 }
 
-// 全量语言判断入口对齐历史 TextBase.all
-export function all_language_characters(text: string, language_code: LanguageCode): boolean {
-  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
-  if (matches_character === null) {
-    return true;
+/**
+ * 字素簇只回答目标语言是否允许；通用标点、符号、组合标记和格式字符保持中性。
+ */
+export function classify_language_grapheme(
+  grapheme: string,
+  language_code: TargetLanguageCode,
+): LanguageGraphemeClassification {
+  const writing_systems = LANGUAGE_WRITING_SYSTEMS[language_code];
+  let contains_allowed_language_element = false;
+
+  for (const character of grapheme) {
+    const body_systems = matching_writing_systems(character, "matches_body_character");
+    if (body_systems.length > 0) {
+      if (!body_systems.some((code) => writing_systems.includes(code))) {
+        return "residue";
+      }
+      contains_allowed_language_element = true;
+      continue;
+    }
+
+    const auxiliary_systems = matching_writing_systems(character, "matches_auxiliary_character");
+    if (auxiliary_systems.length > 0) {
+      if (!auxiliary_systems.some((code) => writing_systems.includes(code))) {
+        return "residue";
+      }
+      contains_allowed_language_element = true;
+      continue;
+    }
+
+    // 未登记但明确属于其它 Script 的字母也属于非目标文字；Common / Inherited 保持中性。
+    if (
+      LETTER_CHARACTER_PATTERN.test(character) &&
+      !COMMON_OR_INHERITED_SCRIPT_PATTERN.test(character)
+    ) {
+      return "residue";
+    }
   }
 
-  return all_matching_characters(text, matches_character);
-}
-
-// 语言边缘剥离入口对齐历史 TextBase.strip_non_target
-export function strip_non_language_characters(text: string, language_code: LanguageCode): string {
-  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
-  if (matches_character === null) {
-    return text.trim();
-  }
-
-  return strip_non_matching_characters(text, matches_character);
+  return contains_allowed_language_element ? "allowed" : "neutral";
 }
