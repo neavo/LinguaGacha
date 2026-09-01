@@ -153,7 +153,7 @@ export function create_text_keywords_matcher(args: {
       keywords: public_keywords,
       invalid_regex: null,
       match,
-      matches: (value) => match(value).length > 0,
+      matches: matcher.matches,
     };
   }
 
@@ -185,7 +185,7 @@ export function create_text_keywords_matcher(args: {
     keywords: public_keywords,
     invalid_regex: null,
     match,
-    matches: (value) => match(value).length > 0,
+    matches: (value) => patterns.some((pattern) => matches_text_pattern(value, pattern)),
   };
 }
 
@@ -215,7 +215,7 @@ export function normalize_text_keywords(args: {
  */
 export function matches_text_pattern(text: string, pattern: CompiledTextPattern): boolean {
   return pattern.kind === "literal"
-    ? pattern.matcher.match(text).length > 0
+    ? pattern.matcher.matches(text)
     : clone_text_pattern_regexp(pattern).test(text);
 }
 
@@ -305,6 +305,7 @@ function count_text_pattern_matches(text: string, pattern: CompiledTextPattern):
   return Array.from(text.matchAll(regexp)).length;
 }
 
+/** 按原文顺序选择互不重叠的字面量范围；非全局模式只保留首个。 */
 function select_literal_replacement_ranges(
   text: string,
   pattern: Extract<CompiledTextPattern, { kind: "literal" }>,
@@ -322,6 +323,7 @@ function select_literal_replacement_ranges(
   return selected;
 }
 
+/** 按原文 UTF-16 范围拼接替换结果，并原样保留未命中的片段。 */
 function replace_literal_ranges(text: string, ranges: TextRange[], replacement: string): string {
   let result = "";
   let offset = 0;

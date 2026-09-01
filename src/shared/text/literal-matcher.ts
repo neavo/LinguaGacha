@@ -16,6 +16,8 @@ export type LiteralPatternMatch = {
 
 export type LiteralMatcher = {
   readonly patterns: readonly LiteralPattern[];
+  /** 只判断是否存在任一命中，首个命中后立即停止。 */
+  matches: (text: string) => boolean;
   /** 按扫描顺序流式返回命中，避免调用方为计数或分组物化完整结果。 */
   scan: (text: string, visit: (key: string, range: TextRange) => void) => void;
   /** 按 pattern 顺序聚合每个身份的全部原文范围。 */
@@ -101,6 +103,12 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
 
   return {
     patterns: active_patterns,
+    matches(text) {
+      return (
+        (sensitive_matcher !== null && matches_aho_text(sensitive_matcher, text, true)) ||
+        (insensitive_matcher !== null && matches_aho_text(insensitive_matcher, text, false))
+      );
+    },
     scan,
     match(text) {
       const ranges_by_key = new Map<string, TextRange[]>();
@@ -115,6 +123,28 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
       });
     },
   };
+}
+
+/** 布尔匹配只生成规范化文本，不构造完整范围匹配所需的原文坐标。 */
+function matches_aho_text(matcher: AhoMatcher, text: string, case_sensitive: boolean): boolean {
+  const normalized_text = normalize_literal_text(text, case_sensitive);
+  let node_index = 0;
+  for (let index = 0; index < normalized_text.length; index += 1) {
+    node_index = advance_aho_matcher(matcher, node_index, normalized_text[index] ?? "");
+    if ((matcher.nodes[node_index]?.outputs.length ?? 0) > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 敏感与不敏感路径共用同一 failure-link 推进规则。 */
+function advance_aho_matcher(matcher: AhoMatcher, node_index: number, character: string): number {
+  let next_node_index = node_index;
+  while (next_node_index !== 0 && !matcher.nodes[next_node_index]?.next.has(character)) {
+    next_node_index = matcher.nodes[next_node_index]?.fail ?? 0;
+  }
+  return matcher.nodes[next_node_index]?.next.get(character) ?? 0;
 }
 
 /** 构建 failure link，使一次扫描同时保留后缀规则和重叠命中。 */
@@ -170,10 +200,7 @@ function collect_matches(
   const previous_range_by_pattern = new Map<number, TextRange>();
   for (let text_index = 0; text_index < input.text.length; text_index += 1) {
     const character = input.text[text_index] ?? "";
-    while (node_index !== 0 && !matcher.nodes[node_index]?.next.has(character)) {
-      node_index = matcher.nodes[node_index]?.fail ?? 0;
-    }
-    node_index = matcher.nodes[node_index]?.next.get(character) ?? 0;
+    node_index = advance_aho_matcher(matcher, node_index, character);
     for (const bucket_index of matcher.nodes[node_index]?.outputs ?? []) {
       const pattern_length = matcher.pattern_lengths[bucket_index] ?? 0;
       const folded_start = text_index - pattern_length + 1;

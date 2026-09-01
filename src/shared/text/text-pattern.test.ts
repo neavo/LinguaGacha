@@ -133,6 +133,7 @@ describe("text-pattern", () => {
 
     expect(matcher.keywords).toEqual(["Alice", "白之城", "骑士"]);
     expect(matcher.match("alice 是白之城骑士")).toEqual(["Alice", "白之城", "骑士"]);
+    expect(matcher.matches("alice 是白之城骑士")).toBe(true);
     expect(matcher.matches("无关文本")).toBe(false);
   });
 
