@@ -382,7 +382,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Primary:** 暖橙背景配暖米文字，只用于主操作。
 - **Hover / Focus:** hover 轻微改变当前语义面；按钮预留 1px 边框，focus-visible 把边框切换为 ring；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
-- **Shortcuts:** 常驻按钮把快捷键显示为紧随行为文案的键帽；Tooltip 不嵌套键帽，只使用完整的本地化纯文本“行为 · 快捷键”。
+- **Shortcuts:** 操作只在快捷键有效时显示键帽并声明 `aria-keyshortcuts`；Tooltip 使用动作或状态文案加右侧键帽，多行提示统一对齐。中点只分隔标题与当前值。
 - **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
 
 ### Dialogs
@@ -451,8 +451,8 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Agent Composer
 
-- **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，操作区最大宽 1120px，状态条空时不占位；状态行高 32px，输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距，操作表面最小高 102px。
-- **Editor:** CodeMirror 输入区最小高 64px、最大高 140px、13px / 1.5，超出后内部滚动；页脚最小高 24px，承接附件、模型、思考等级、上下文用量和发送操作。
+- **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，操作区最大宽 1120px，状态条空时不占位；状态行高 28px，输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距，操作表面最小高 106px。
+- **Editor:** CodeMirror 输入区最小高 64px、最大高 140px、13px / 1.5，超出后内部滚动；页脚与独立操作统一高 28px，发送、停止与跟随最新使用圆形，发送与换行快捷键由发送按钮 Tooltip 渐进展示，队列行内操作高 24px，承接附件、模型、思考等级、上下文用量和发送操作。
 - **Queue:** 输入队列在容器宽度 520px 以下隐藏附件列；输入队列和回到最新控件共享固定侧轨，进度状态条按自身内容关系布局。
 - **References / Attachments:** 技能与术语引用使用低透明暖橙 token，不退化为裸文本；图片与响应批注附件共享中性外壳，分别使用方形缩略图和紧凑行。
 - **Focus / Menus:** focus-within 只把边界切换为主色；引用候选菜单使用 popover、覆盖层阴影和高亮行，图片拖入只在输入器内部显示虚线临时覆盖层。
