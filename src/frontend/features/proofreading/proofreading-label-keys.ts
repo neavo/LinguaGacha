@@ -18,8 +18,7 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
 
 /** 校对页与跨页面警告摘要复用同一组标签。 */
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
-  KANA: "proofreading_page.warning.kana",
-  HANGEUL: "proofreading_page.warning.hangeul",
+  FOREIGN_CHAR_RESIDUE: "proofreading_page.warning.foreign_char_residue",
   TEXT_PRESERVE: "proofreading_page.warning.text_preserve",
   SIMILARITY: "proofreading_page.warning.similarity",
   GLOSSARY: "proofreading_page.warning.glossary",

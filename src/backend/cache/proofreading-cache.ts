@@ -31,9 +31,12 @@ import type { ProofreadingListWindow } from "../../shared/proofreading/proofread
 import type { QualitySlice, QualitySnapshot } from "../../shared/quality/quality-rule-snapshot";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheChange } from "./cache-change";
-import type { TextProcessingConfig } from "../../shared/text/text-types";
+import {
+  normalize_text_processing_config,
+  type TextProcessingConfig,
+} from "../../shared/text/text-types";
 
-const PROOFREADING_CACHE_VERSION = 2;
+const PROOFREADING_CACHE_VERSION = 3;
 
 export type ProofreadingCacheKey = {
   projectPath: string;
@@ -325,12 +328,12 @@ export class ProofreadingCache {
       throw new AppErrors.AppError("project.not_loaded");
     }
     const settings = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    const processingConfig: TextProcessingConfig = {
+    const processingConfig = normalize_text_processing_config({
       source_language: String(input.sourceLanguage ?? settings.source_language),
       target_language: String(input.targetLanguage ?? settings.target_language),
       clean_ruby: settings.clean_ruby,
       auto_process_prefix_suffix_preserved_text: settings.auto_process_prefix_suffix_preserved_text,
-    };
+    });
     const revisions = {
       files: Number(sectionRevisions.files ?? 0),
       items: Number(sectionRevisions.items ?? 0),

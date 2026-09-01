@@ -108,8 +108,14 @@ describe("ProofreadingFilterDialog", () => {
       },
       panel: {
         ...panel,
-        available_outcomes: ["NO_WARNING", "KANA", "ERROR", "NONE", "EXCLUDED"],
-        outcome_count_by_code: { NO_WARNING: 2, KANA: 1, ERROR: 3, NONE: 4, EXCLUDED: 5 },
+        available_outcomes: ["NO_WARNING", "FOREIGN_CHAR_RESIDUE", "ERROR", "NONE", "EXCLUDED"],
+        outcome_count_by_code: {
+          NO_WARNING: 2,
+          FOREIGN_CHAR_RESIDUE: 1,
+          ERROR: 3,
+          NONE: 4,
+          EXCLUDED: 5,
+        },
       },
     });
     const translated_group = rendered.querySelector(
@@ -129,7 +135,9 @@ describe("ProofreadingFilterDialog", () => {
     await act(async () => (translated_group as HTMLButtonElement | undefined)?.click());
 
     expect(on_change).toHaveBeenCalledWith(
-      expect.objectContaining({ outcomes: ["NO_WARNING", "ERROR", "NONE", "KANA"] }),
+      expect.objectContaining({
+        outcomes: ["NO_WARNING", "ERROR", "NONE", "FOREIGN_CHAR_RESIDUE"],
+      }),
     );
   });
 

@@ -8,6 +8,10 @@ import {
   AGENT_WORKSPACE_MAX_RESULT_BYTES,
 } from "../../shared/backend-runtime";
 import {
+  PROOFREADING_WARNING_CODES,
+  PROOFREADING_WARNING_FRAGMENT_CODES,
+} from "../../shared/proofreading/proofreading-types";
+import {
   AGENT_WORKSPACE_CONTRACT,
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_ITEM_FIELDS,
@@ -69,12 +73,23 @@ describe("Agent 工作区 contract", () => {
       path: AGENT_WORKSPACE_PATHS.warnings,
       format: "jsonl",
     });
-    expect(Object.keys(read_json_record(warnings["fields"]))).toEqual([
+    const warning_fields = read_json_record(warnings["fields"]);
+    expect(Object.keys(warning_fields)).toEqual([
       "item_id",
       "warnings",
       "warning_fragments_by_code",
       "glossary_applications",
     ]);
+    expect(read_json_record(warning_fields["warnings"])["values"]).toEqual([
+      ...PROOFREADING_WARNING_CODES,
+    ]);
+    expect(
+      Object.keys(
+        read_json_record(
+          read_json_record(warning_fields["warning_fragments_by_code"])["optional_fields"],
+        ),
+      ),
+    ).toEqual([...PROOFREADING_WARNING_FRAGMENT_CODES]);
 
     for (const kind of QUALITY_RULE_KINDS) {
       const entries = read_json_record(datasets[kind]);

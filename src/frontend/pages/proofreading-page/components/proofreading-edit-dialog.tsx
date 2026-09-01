@@ -123,20 +123,14 @@ function render_warning_tooltip_content(
   warning: string,
   t: ReturnType<typeof useI18n>["t"],
 ): JSX.Element | null {
-  if (warning === "KANA") {
-    const fragments = item.warning_fragments_by_code.KANA ?? [];
+  if (warning === "FOREIGN_CHAR_RESIDUE") {
+    const fragments = item.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE ?? [];
     return fragments.length === 0 ? null : (
       <div className="proofreading-page__dialog-badge-tooltip-copy">
-        {render_fragment_section(t("proofreading_page.tooltip.kana_fragments"), fragments)}
-      </div>
-    );
-  }
-
-  if (warning === "HANGEUL") {
-    const fragments = item.warning_fragments_by_code.HANGEUL ?? [];
-    return fragments.length === 0 ? null : (
-      <div className="proofreading-page__dialog-badge-tooltip-copy">
-        {render_fragment_section(t("proofreading_page.tooltip.hangeul_fragments"), fragments)}
+        {render_fragment_section(
+          t("proofreading_page.tooltip.foreign_char_residue_fragments"),
+          fragments,
+        )}
       </div>
     );
   }

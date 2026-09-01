@@ -46,7 +46,7 @@ function create_cache(): ProofreadingCache {
       data: {
         total_count: 3,
         entries: [
-          { code: "KANA", count: 1 },
+          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
           { code: "GLOSSARY", count: 2 },
         ],
       },
@@ -155,7 +155,7 @@ describe("ProofreadingQueryService", () => {
       warningSummary: {
         total_count: 3,
         entries: [
-          { code: "KANA", count: 1 },
+          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
           { code: "GLOSSARY", count: 2 },
         ],
       },

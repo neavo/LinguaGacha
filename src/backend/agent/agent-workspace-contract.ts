@@ -8,6 +8,7 @@ import {
 } from "../../shared/backend-runtime";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
+  PROOFREADING_WARNING_FRAGMENT_CODES,
   PROOFREADING_WARNING_CODES,
   type ProofreadingClientItem,
   type ProofreadingManualStatusCode,
@@ -176,11 +177,9 @@ const WARNING_FIELD_CONTRACT: JsonRecord = {
   warnings: { type: "enum_array", values: [...PROOFREADING_WARNING_CODES] },
   warning_fragments_by_code: {
     type: "object",
-    optional_fields: {
-      KANA: { type: "string_array" },
-      HANGEUL: { type: "string_array" },
-      TEXT_PRESERVE: { type: "string_array" },
-    },
+    optional_fields: Object.fromEntries(
+      PROOFREADING_WARNING_FRAGMENT_CODES.map((code) => [code, { type: "string_array" }]),
+    ),
   },
   glossary_applications: {
     type: "array",

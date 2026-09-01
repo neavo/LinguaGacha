@@ -7,12 +7,13 @@ import {
 } from "./proofreading-reader";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type { ItemNameField } from "../../domain/item";
+import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
 import type { TextProcessingConfig } from "../text/text-types";
 
 function create_processing_config(
-  source_language = "ja",
-  target_language = "zh-CN",
+  source_language: ConfiguredSourceLanguageCode = "JA",
+  target_language: TargetLanguageCode = "ZH",
 ): TextProcessingConfig {
   return {
     source_language,
@@ -187,7 +188,7 @@ describe("proofreading-reader", () => {
     });
 
     const combined = service.read_warning_page({
-      warning_types: ["GLOSSARY", "KANA"],
+      warning_types: ["GLOSSARY", "FOREIGN_CHAR_RESIDUE"],
       statuses: ["PROCESSED"],
       file_paths: ["b.txt"],
       keywords: ["magic"],
@@ -198,8 +199,8 @@ describe("proofreading-reader", () => {
     expect(combined.items).toHaveLength(1);
     expect(combined.items[0]).toMatchObject({
       item_id: 1,
-      warnings: expect.arrayContaining(["KANA", "GLOSSARY"]),
-      warning_fragments_by_code: { KANA: ["カナ"] },
+      warnings: expect.arrayContaining(["FOREIGN_CHAR_RESIDUE", "GLOSSARY"]),
+      warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["カナ"] },
     });
     expect(
       service

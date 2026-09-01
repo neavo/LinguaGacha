@@ -1,9 +1,3 @@
-import { CodeFixer } from "../../../../shared/fixer/code-fixer";
-import { EscapeFixer } from "../../../../shared/fixer/escape-fixer";
-import { HangeulFixer } from "../../../../shared/fixer/hangeul-fixer";
-import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
-import { NumberFixer } from "../../../../shared/fixer/number-fixer";
-import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
 import {
   apply_text_replacements,
   compile_text_replacements,
@@ -17,8 +11,9 @@ import {
   type TranslationPromptMode,
 } from "../translation-item";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
+import { restore_translation_line } from "./translation-output-restoration";
 
-/** Public item writeback produced after deterministic restoration and fixer passes. */
+/** Public item writeback produced after deterministic restoration stages. */
 export interface TranslationPostPipelineResult {
   dst: string; // Restored item body; its line count may follow the model on mismatch.
   name_dst?: string | null; // Present only when the source item carried an actor name.
@@ -50,47 +45,21 @@ export class TranslationPostPipeline {
       ? context.prepared_lines
           .map((prepared_line, index) => {
             if (prepared_line.state === "preserved") return prepared_line.raw_text;
-            let line = this.auto_fix(
-              context,
-              prepared_line.raw_text,
-              prepared_line.model_text,
-              (output_lines[index] ?? "").trim(),
-            );
+            let line = restore_translation_line({
+              restoration_text: prepared_line.restoration_text,
+              model_text: prepared_line.model_text,
+              translation: (output_lines[index] ?? "").trim(),
+              preserve_rule: context.preserve_rule,
+              source_language: this.config.source_language,
+              target_language: this.config.target_language,
+            });
             line = this.replace_post_translation(line);
             return `${prepared_line.leading_whitespace}${prepared_line.prefix_segments.join("")}${line}${prepared_line.suffix_segments.join("")}${prepared_line.trailing_whitespace}`;
           })
           .join("\n")
-      : output_lines
-          .map((line) => this.replace_post_translation(this.clean_output_line(line)))
-          .join("\n");
+      : output_lines.map((line) => this.replace_post_translation(line)).join("\n");
     if (mode !== "actor_text" || context.request_item?.actor_src === null) return { dst };
     return { dst, name_dst: normalize_translation_actor(decoded_item.actor_dst) };
-  }
-
-  /** Applies language-specific residue cleanup in mismatch fallback mode. */
-  private clean_output_line(line: string): string {
-    if (this.config.source_language === "JA") return KanaFixer.fix(line);
-    if (this.config.source_language === "KO") return HangeulFixer.fix(line);
-    return line;
-  }
-
-  /** Restores source punctuation, escapes, numbers, code and configured replacements. */
-  private auto_fix(
-    context: TranslationPrePipelineContext,
-    raw_src: string,
-    model_src: string,
-    dst: string,
-  ): string {
-    let result = this.clean_output_line(dst);
-    result = CodeFixer.fix(model_src, result, context.preserve_rule);
-    result = EscapeFixer.fix(raw_src, result);
-    result = NumberFixer.fix(raw_src, result);
-    return PunctuationFixer.fix(
-      raw_src,
-      result,
-      this.config.source_language,
-      this.config.target_language,
-    );
   }
 
   /** Applies the compiled post-translation replacement snapshot. */

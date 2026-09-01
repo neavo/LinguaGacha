@@ -6,6 +6,7 @@ import {
   evaluateProofreadingItem,
 } from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
+import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
 import type { TextProcessingConfig } from "../text/text-types";
 
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
@@ -21,8 +22,8 @@ function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapsh
 function evaluate(args: {
   src: string;
   dst: string;
-  sourceLanguage: string;
-  targetLanguage?: string;
+  sourceLanguage: ConfiguredSourceLanguageCode;
+  targetLanguage?: TargetLanguageCode;
   retry_count?: number;
   quality?: QualitySnapshot;
   name_src?: ItemNameField;
@@ -82,13 +83,44 @@ describe("proofreading-evaluator", () => {
     );
   });
 
-  it("按源语言识别假名和谚文残留", () => {
-    expect(evaluate({ src: "東京", dst: "東京あ", sourceLanguage: "JA" })?.warnings).toContain(
-      "KANA",
-    );
-    expect(evaluate({ src: "한국", dst: "한국한", sourceLanguage: "KO" })?.warnings).toContain(
-      "HANGEUL",
-    );
+  it("只按目标语言识别外文残留并保留完整片段", () => {
+    const item = evaluate({
+      src: "source",
+      dst: "中文か\u3099，OpenAI，текст",
+      sourceLanguage: "EN",
+      targetLanguage: "ZH",
+    });
+    expect(item?.warnings).toContain("FOREIGN_CHAR_RESIDUE");
+    expect(item?.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE).toEqual([
+      "か\u3099",
+      "OpenAI",
+      "текст",
+    ]);
+    expect(
+      evaluate({ src: "source", dst: "かな", sourceLanguage: "EN", targetLanguage: "JA" })
+        ?.warnings,
+    ).not.toContain("FOREIGN_CHAR_RESIDUE");
+  });
+
+  it("已保护片段不参与外文残留检查", () => {
+    const quality = create_quality({
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ entry_id: "placeholder", src: "\\{[^}]+\\}" }],
+      },
+    });
+
+    expect(
+      evaluate({
+        src: "{PLAYER}正文",
+        dst: "{OpenAI}译文",
+        sourceLanguage: "EN",
+        targetLanguage: "ZH",
+        quality,
+      })?.warnings,
+    ).not.toContain("FOREIGN_CHAR_RESIDUE");
   });
 
   it("识别文本保护、相似度、术语和重试阈值警告", () => {

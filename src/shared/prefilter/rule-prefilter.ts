@@ -1,5 +1,4 @@
-import { is_non_standalone_language_character } from "../../domain/language";
-import { is_punctuation_character } from "../utils/text-tool";
+import { has_language_body_character } from "../../domain/language";
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu; // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定
 
@@ -47,17 +46,9 @@ const RULE_PREFILTER_PATTERNS = [
   /^\{#file_time\}/iu,
 ];
 
-// 无正文价值行只允许由空白、数字、标点/符号和非独立语言字符组成
-
+// 书写系统正文是可翻译内容的最小稳定证据；附标、数字、标点、符号和控制字符不独立成文。
 function is_non_translatable_content_line(line: string): boolean {
-  return [...line].every((char) => {
-    return (
-      /\s/u.test(char) ||
-      /\p{N}/u.test(char) ||
-      is_punctuation_character(char) ||
-      is_non_standalone_language_character(char)
-    );
-  });
+  return !has_language_body_character(line);
 }
 
 /**

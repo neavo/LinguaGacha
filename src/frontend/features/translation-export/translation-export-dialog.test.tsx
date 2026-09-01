@@ -32,7 +32,7 @@ describe("TranslationExportDialog", () => {
         summary: {
           total_count: 3,
           entries: [
-            { code: "KANA", count: 1 },
+            { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
             { code: "GLOSSARY", count: 2 },
           ],
         },
@@ -43,7 +43,7 @@ describe("TranslationExportDialog", () => {
     expect(document.body.textContent).toContain(
       "workbench_page.translation_export.warning_description:3",
     );
-    expect(document.body.textContent).toContain("proofreading_page.warning.kana1");
+    expect(document.body.textContent).toContain("proofreading_page.warning.foreign_char_residue1");
     expect(document.body.textContent).toContain("proofreading_page.warning.glossary2");
     act(() =>
       document.body

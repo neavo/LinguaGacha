@@ -26,6 +26,22 @@ describe("TranslationPostPipeline", () => {
     expect(result).toBe("  \\n[1]你好\\n[2]  ");
   });
 
+  it("使用剥离物理结构后的源文恢复标点和圆圈数字", () => {
+    const { pre, post } = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
+      }),
+    );
+    const context = pre.process_item({
+      src: "  \\n[7]「①」\\n[8]  ",
+      text_type: "TXT",
+    });
+
+    expect(process_text(post, context, ['"1"'])).toBe("  \\n[7]「①」\\n[8]  ");
+  });
+
   it("空 item 返回空译后结果", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
 
@@ -196,7 +212,7 @@ describe("TranslationPostPipeline", () => {
     expect(process_text(post, context, ["<Q>一"])).toBe("<Q>一");
   });
 
-  it("只有代码修复改用模型源文，其余 fixer 仍读取原始源行", () => {
+  it("保护段使用模型源文，数字形式使用恢复源文", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
@@ -211,10 +227,23 @@ describe("TranslationPostPipeline", () => {
     expect(process_text(post, context, ["<Q>1"])).toBe("<Q>①");
   });
 
-  it("按源语言选择日文、韩文或无语言残留修复", () => {
+  it("行数不一致时不执行缺少逐行证据的自动恢复", () => {
+    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
+    const context = pre.process_item({ src: "①\n②", text_type: "TXT" });
+
+    const result = post.process_item(
+      context,
+      { request_index: 0, text_dst: "1", actor_dst: null },
+      "text",
+    );
+
+    expect(result.dst).toBe("1");
+  });
+
+  it("保留模型返回的语言字符并交给校对判断", () => {
     const cases = [
-      { source_language: "JA", dst: "AっB", expected: "AB" },
-      { source_language: "KO", dst: "A뿅B", expected: "AB" },
+      { source_language: "JA", dst: "AっB", expected: "AっB" },
+      { source_language: "KO", dst: "A뿅B", expected: "A뿅B" },
       { source_language: "EN", dst: "AっB뿅C", expected: "AっB뿅C" },
     ] as const;
 

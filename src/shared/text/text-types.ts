@@ -1,6 +1,12 @@
 import { QualityRuleSnapshotTool } from "../quality/quality-rule-snapshot";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import { ALL_LANGUAGE_CODE, normalize_language_code } from "../../domain/language";
+import {
+  ALL_LANGUAGE_CODE,
+  normalize_source_language_code,
+  normalize_target_language_code,
+  type ConfiguredSourceLanguageCode,
+  type TargetLanguageCode,
+} from "../../domain/language";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type { TextPreserveEntry, TextReplacementEntry } from "../../domain/quality";
 import { AppError } from "../error";
@@ -9,10 +15,40 @@ import { AppError } from "../error";
  * 文本处理只依赖的配置字段，字段名保持配置快照兼容
  */
 export interface TextProcessingConfig {
-  source_language: string; // 源/目标语言在快照恢复时完成归一与校验
-  target_language: string;
+  source_language: ConfiguredSourceLanguageCode; // 源/目标语言在快照恢复时完成归一与校验
+  target_language: TargetLanguageCode;
   clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
   auto_process_prefix_suffix_preserved_text: boolean; // 自动保护前后缀开关决定完全保护行是否仍进入翻译流程
+}
+
+/** 将外部设置收窄为翻译与校对共享的规范语言配置。 */
+export function normalize_text_processing_config(args: {
+  source_language: string;
+  target_language: string;
+  clean_ruby: boolean;
+  auto_process_prefix_suffix_preserved_text: boolean;
+}): TextProcessingConfig {
+  const source_language = normalize_source_language_code(args.source_language);
+  if (source_language === null) {
+    throw new AppError("language.unknown_source_language_code", {
+      public_details: { source_language: args.source_language },
+      diagnostic_context: { source_language: args.source_language },
+    });
+  }
+  const target_language = normalize_target_language_code(args.target_language);
+  if (target_language === null) {
+    throw new AppError(
+      args.target_language.trim().toUpperCase() === ALL_LANGUAGE_CODE
+        ? "language.unsupported_all_target_language"
+        : "language.invalid_target_language",
+    );
+  }
+  return {
+    source_language,
+    target_language,
+    clean_ruby: args.clean_ruby,
+    auto_process_prefix_suffix_preserved_text: args.auto_process_prefix_suffix_preserved_text,
+  };
 }
 
 /**
@@ -84,25 +120,11 @@ export class TextProcessingConfigTool {
    */
   public static from_api_value(value: JsonValue | undefined): TextProcessingConfig {
     const snapshot = normalize_setting_snapshot(value);
-    const source_language = normalize_language_code(snapshot.source_language);
-    if (source_language === null) {
-      throw new AppError("language.unknown_source_language_code", {
-        public_details: { source_language: snapshot.source_language },
-        diagnostic_context: { source_language: snapshot.source_language },
-      });
-    }
-    const target_language = normalize_language_code(snapshot.target_language);
-    if (target_language === ALL_LANGUAGE_CODE) {
-      throw new AppError("language.unsupported_all_target_language");
-    }
-    if (target_language === null) {
-      throw new AppError("language.invalid_target_language");
-    }
-    return {
-      source_language,
-      target_language,
+    return normalize_text_processing_config({
+      source_language: snapshot.source_language,
+      target_language: snapshot.target_language,
       clean_ruby: snapshot.clean_ruby,
       auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
-    };
+    });
   }
 }

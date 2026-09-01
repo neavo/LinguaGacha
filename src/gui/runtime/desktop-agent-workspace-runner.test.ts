@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runInThisContext } from "node:vm";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -531,6 +532,6 @@ function prepare_program_execution(): void {
     },
   );
   electron_mocks.execute_javascript.mockImplementationOnce(
-    async (script: string) => await (0, eval)(script),
+    (script: string) => runInThisContext(script) as Promise<string>,
   );
 }

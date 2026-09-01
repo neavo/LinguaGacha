@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_LANGUAGE_CODE,
+  classify_language_grapheme,
   get_prompt_source_language_name,
   get_prompt_target_language_name,
   has_cjk_language_character,
+  has_language_body_character,
   has_language_character,
   is_cjk_language_code,
-  is_hangul_character,
-  is_kana_character,
-  is_non_standalone_language_character,
   normalize_language_code,
+  normalize_source_language_code,
+  normalize_target_language_code,
 } from "./language";
 
 describe("语言规则", () => {
@@ -30,6 +31,8 @@ describe("语言规则", () => {
     expect(normalize_language_code(" zh-hant ")).toBe("ZH-HANT");
     expect(normalize_language_code("ZH_HANT")).toBeNull();
     expect(normalize_language_code("unknown")).toBeNull();
+    expect(normalize_source_language_code("ZH-HANT")).toBeNull();
+    expect(normalize_target_language_code("ALL")).toBeNull();
   });
 
   it("归一化后识别 CJK 语言分组", () => {
@@ -77,22 +80,25 @@ describe("语言规则", () => {
     expect(has_language_character("", ALL_LANGUAGE_CODE)).toBe(true);
   });
 
-  it("fixer 共用的假名和谚文判断排除非正文标记", () => {
-    for (const char of ["か", "カ", "ｶ"]) {
-      expect(is_kana_character(char)).toBe(true);
-    }
-    for (const char of ["ー", "・", "･", "゙", "゚", "ﾞ", "ﾟ"]) {
-      expect(is_kana_character(char)).toBe(false);
-    }
-    expect(is_hangul_character("한")).toBe(true);
-    expect(is_hangul_character("A")).toBe(false);
+  it("通用正文判断排除书写附属字符并接受未登记文字", () => {
+    expect(has_language_body_character("・･ー")).toBe(false);
+    expect(has_language_body_character("β")).toBe(true);
   });
 
-  it("规则预过滤将附着标记视为非独立语言字符", () => {
-    for (const char of ["ー", "゙", "\u064e", "\u0e48"]) {
-      expect(is_non_standalone_language_character(char)).toBe(true);
-    }
-    expect(is_non_standalone_language_character("カ")).toBe(false);
+  it("按完整字素簇区分目标文字、残留和中性内容", () => {
+    expect(classify_language_grapheme("か\u3099", "JA")).toBe("allowed");
+    expect(classify_language_grapheme("か\u3099", "ZH")).toBe("residue");
+    expect(classify_language_grapheme("َ", "AR")).toBe("allowed");
+    expect(classify_language_grapheme("่", "ZH")).toBe("residue");
+    expect(classify_language_grapheme("〮", "KO")).toBe("allowed");
+    expect(classify_language_grapheme("〮", "EN")).toBe("residue");
+    expect(classify_language_grapheme("́", "EN")).toBe("neutral");
+    expect(classify_language_grapheme("👩‍💻", "ZH")).toBe("neutral");
+  });
+
+  it("将未登记的其它语言文字识别为残留", () => {
+    expect(classify_language_grapheme("β", "ZH")).toBe("residue");
+    expect(classify_language_grapheme("א", "EN")).toBe("residue");
   });
 
   it("文本保护只在占位符包含 CJK 正文时命中", () => {

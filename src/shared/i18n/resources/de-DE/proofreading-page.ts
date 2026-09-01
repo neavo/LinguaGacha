@@ -43,8 +43,7 @@ export const de_de_proofreading_page = {
     duplicated: "Doppelter Text",
   },
   warning: {
-    kana: "Kana-Rückstand",
-    hangeul: "Hangeul-Rückstand",
+    foreign_char_residue: "Fremdsprachige Zeichen",
     text_preserve: "Textschutz fehlgeschlagen",
     similarity: "Hohe Ähnlichkeit",
     glossary: "Glossar nicht angewendet",
@@ -63,8 +62,7 @@ export const de_de_proofreading_page = {
     glossary_applied_terms: "Angewendet",
     glossary_missing_terms: "Nicht angewendet",
     text_preserve_failed: "Nicht angewendet",
-    kana_fragments: "Kana-Rückstandsfragmente",
-    hangeul_fragments: "Hangeul-Rückstandsfragmente",
+    foreign_char_residue_fragments: "Fremdsprachige Textstellen",
   },
   filter: {
     translated_group: "Übersetzt",

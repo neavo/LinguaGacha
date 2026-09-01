@@ -43,8 +43,7 @@ export const en_us_proofreading_page = {
     duplicated: "Duplicate Text",
   },
   warning: {
-    kana: "Kana Residue",
-    hangeul: "Hangeul Residue",
+    foreign_char_residue: "Foreign Character Residue",
     text_preserve: "Text Preserve Failed",
     similarity: "High Similarity",
     glossary: "Glossary Not Applied",
@@ -63,8 +62,7 @@ export const en_us_proofreading_page = {
     glossary_applied_terms: "Applied",
     glossary_missing_terms: "Not Applied",
     text_preserve_failed: "Not Applied",
-    kana_fragments: "Kana Residue Fragments",
-    hangeul_fragments: "Hangeul Residue Fragments",
+    foreign_char_residue_fragments: "Foreign Character Fragments",
   },
   filter: {
     translated_group: "Translated",

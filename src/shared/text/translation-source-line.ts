@@ -15,7 +15,10 @@ type PreparedTranslationSourceLineBase = {
 };
 
 export type PreparedTranslationSourceLine = PreparedTranslationSourceLineBase &
-  ({ state: "preserved"; model_text: null } | { state: "translatable"; model_text: string });
+  (
+    | { state: "preserved"; restoration_text: null; model_text: null }
+    | { state: "translatable"; restoration_text: string; model_text: string }
+  );
 
 /** 按翻译入口的既定顺序准备单行，并同时生成校对使用的源文投影。 */
 export function prepare_translation_source_line(args: {
@@ -30,6 +33,7 @@ export function prepare_translation_source_line(args: {
     line_index: args.line_index,
     raw_text: args.raw_text,
     state: "preserved",
+    restoration_text: null,
     model_text: null,
     prepared_text: args.raw_text,
     leading_whitespace: "",
@@ -75,6 +79,7 @@ export function prepare_translation_source_line(args: {
     line_index: args.line_index,
     raw_text: args.raw_text,
     state: "translatable",
+    restoration_text: text,
     model_text,
     prepared_text: `${leading_whitespace}${prefix_segments.join("")}${model_text}${suffix_segments.join("")}${trailing_whitespace}`,
     leading_whitespace,
