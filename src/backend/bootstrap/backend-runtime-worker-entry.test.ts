@@ -22,8 +22,27 @@ describe("Backend Runtime worker 入口", () => {
   });
 
   it.each([
-    ["appRoot", { builtinRoot: "E:/app.asar/builtin" }],
-    ["builtinRoot", { appRoot: "E:/app" }],
+    [
+      "appRoot",
+      {
+        builtinRoot: "E:/app.asar/builtin",
+        agentWorkspaceRuntime: {
+          denoExecutablePath: "E:/deno.exe",
+          runtimeEntryPath: "E:/runner.js",
+        },
+      },
+    ],
+    [
+      "builtinRoot",
+      {
+        appRoot: "E:/app",
+        agentWorkspaceRuntime: {
+          denoExecutablePath: "E:/deno.exe",
+          runtimeEntryPath: "E:/runner.js",
+        },
+      },
+    ],
+    ["agentWorkspaceRuntime", { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" }],
   ])("缺少 %s 时拒绝启动", async (field, worker_data) => {
     vi.doMock("node:worker_threads", () => ({
       default: { parentPort: {}, workerData: worker_data },
@@ -39,10 +58,24 @@ describe("Backend Runtime worker 入口", () => {
     vi.doMock("node:worker_threads", () => ({
       default: {
         parentPort: parent_port,
-        workerData: { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" },
+        workerData: {
+          appRoot: "E:/app",
+          builtinRoot: "E:/app.asar/builtin",
+          agentWorkspaceRuntime: {
+            denoExecutablePath: "E:/runtime/deno.exe",
+            runtimeEntryPath: "E:/runtime/runner.js",
+          },
+        },
       },
       parentPort: parent_port,
-      workerData: { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" },
+      workerData: {
+        appRoot: "E:/app",
+        builtinRoot: "E:/app.asar/builtin",
+        agentWorkspaceRuntime: {
+          denoExecutablePath: "E:/runtime/deno.exe",
+          runtimeEntryPath: "E:/runtime/runner.js",
+        },
+      },
     }));
 
     await import("./backend-runtime-worker-entry");
@@ -50,6 +83,10 @@ describe("Backend Runtime worker 入口", () => {
     expect(run_backend_runtime).toHaveBeenCalledWith({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
+      agentWorkspaceRuntime: {
+        denoExecutablePath: "E:/runtime/deno.exe",
+        runtimeEntryPath: "E:/runtime/runner.js",
+      },
       moduleUrl: expect.stringContaining("backend-runtime-worker-entry"),
       port: parent_port,
     });

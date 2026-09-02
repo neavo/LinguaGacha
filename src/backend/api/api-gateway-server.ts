@@ -8,6 +8,8 @@ import { record_app_error } from "../log/app-error-reporter";
 import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
 import type { LogEvent } from "../../shared/log";
 import type { BackendServices } from "../bootstrap/backend-services";
+import type { AgentService } from "../agent/agent-service";
+import type { ApiStreamHub } from "./api-stream-hub";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { BACKEND_API_HOST, build_backend_api_base_url } from "./api-base-url";
@@ -26,10 +28,12 @@ const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500; // 日志流 keepalive 短间隔�
 const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON 请求头，避免 renderer 依赖额外私有请求头
 
 /**
- * Gateway 启动参数由 BackendBootstrap 注入，路由层只消费已组装的 BackendServices。
+ * Gateway 启动参数由 GUI Backend 组合根注入，路由层只消费已组装的服务与传输端口。
  */
 export interface ApiGatewayServerOptions {
-  backendServices: BackendServices; // API、CLI 共用的服务组合根，Gateway 不再自行装配业务依赖
+  backendServices: BackendServices;
+  agentService: AgentService;
+  eventStream: ApiStreamHub;
 }
 
 /**
@@ -152,8 +156,10 @@ export class ApiGatewayServer {
     const route_context = {
       app,
       services,
+      agent: this.options.agentService,
       postJson: (path_name: string, handler: ApiJsonHandler) =>
         this.post_json(app, path_name, handler),
+      createEventStreamResponse: () => this.options.eventStream.create_stream_response(),
       createLogStreamResponse: () => this.create_log_stream_response(),
       readLogDetail: (body: JsonRecord) => this.read_log_detail(body),
       recordRendererError: (body: JsonRecord) => this.record_renderer_error(body),

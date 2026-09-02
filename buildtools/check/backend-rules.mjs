@@ -14,6 +14,7 @@ const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
 const AGENT_WEB_FETCH_RELATIVE_PATH = "src/backend/agent/agent-web-fetch.ts";
+const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
 /**
  * 后端边界规则只表达事实所有权和不能依赖代码审查维持的静态硬门闩。
@@ -24,6 +25,7 @@ export function create_backend_boundary_rules() {
     create_backend_api_dependency_rule(),
     create_backend_module_ownership_rule(),
     create_backend_outbound_network_rule(),
+    create_backend_services_dependency_rule(),
     create_cli_dependency_rule(),
     create_model_provider_sdk_rule(),
     create_llm_model_dependency_rule(),
@@ -34,6 +36,7 @@ export function create_backend_boundary_rules() {
   ];
 }
 
+/** 已拆散的旧聚合目录不能重新成为后端事实所有者。 */
 function create_backend_module_ownership_rule() {
   const removed_modules = new Set(["analysis", "toolbox", "translation", "workbench"]);
   return {
@@ -96,6 +99,7 @@ function create_backend_outbound_network_rule() {
   };
 }
 
+/** 业务与基础模块保持指向 API 适配层之外的单向依赖。 */
 function create_backend_api_dependency_rule() {
   return {
     name: "后端 API 依赖方向",
@@ -121,33 +125,53 @@ function create_backend_api_dependency_rule() {
   };
 }
 
+/** CLI 入口与其可达依赖都不能携带 GUI Agent、API 或底层存储实现。 */
 function create_cli_dependency_rule() {
   return {
     name: "CLI 后端依赖边界",
     check: (context) => {
       const errors = [];
-      const forbidden_roots = [
+      const forbidden_runtime_roots = [
+        path.join(context.project_root, "src", "backend", "agent"),
+        path.join(context.project_root, "src", "backend", "api"),
+      ];
+      const forbidden_direct_roots = [
         path.join(context.project_root, "src", "backend", "cache"),
         path.join(context.project_root, "src", "backend", "database"),
       ];
       const forbidden_files = [
-        path.join(context.project_root, "src", "backend", "api", "api-stream-hub"),
         path.join(context.project_root, "src", "backend", "project", "project-write-store"),
       ];
-      for (const file_path of context.files.filter(is_cli_production_source)) {
+      const source_by_module_path = index_source_module_paths(context.files);
+      const cli_files = context.files.filter(is_cli_production_source);
+      for (const file_path of cli_files) {
         const relative_path = context.relative_path(file_path);
         for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
           const target = resolve_relative_specifier(file_path, import_entry.specifier);
           if (
             target === null ||
-            (!forbidden_roots.some((root) => is_path_inside(target, root)) &&
+            (!forbidden_direct_roots.some((root) => is_path_inside(target, root)) &&
               !forbidden_files.some((forbidden) => target === forbidden))
           ) {
             continue;
           }
           errors.push({
             line: import_entry.line,
-            message: "CLI 只能消费类型化应用服务，不得依赖存储、缓存或 API stream",
+            message: "CLI 只能消费共享业务服务，不得依赖 Agent、API、存储或缓存实现",
+            relative_path,
+          });
+        }
+        const visited = new Set();
+        const reachable_forbidden = collect_reachable_forbidden_imports(
+          file_path,
+          context,
+          source_by_module_path,
+          forbidden_runtime_roots,
+          visited,
+        );
+        for (const forbidden of reachable_forbidden) {
+          errors.push({
+            message: `CLI 运行依赖不得到达 ${context.relative_path(forbidden)}`,
             relative_path,
           });
         }
@@ -157,6 +181,83 @@ function create_cli_dependency_rule() {
   };
 }
 
+/** 将 TypeScript 文件与目录 index 归一为相对 import 可解析的模块路径。 */
+function index_source_module_paths(files) {
+  const result = new Map();
+  for (const file_path of files.filter(is_typescript_source)) {
+    const without_extension = file_path.replace(/\.(?:ts|tsx)$/, "");
+    result.set(without_extension, file_path);
+    if (path.basename(without_extension) === "index") {
+      result.set(path.dirname(without_extension), file_path);
+    }
+  }
+  return result;
+}
+
+/** 沿仓库内相对 import 递归查找 CLI 可达的受限运行时目录。 */
+function collect_reachable_forbidden_imports(
+  file_path,
+  context,
+  source_by_module_path,
+  forbidden_roots,
+  visited,
+) {
+  if (visited.has(file_path)) return new Set();
+  visited.add(file_path);
+  const result = new Set();
+  for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+    const target = resolve_relative_specifier(file_path, import_entry.specifier);
+    if (target === null) continue;
+    if (forbidden_roots.some((root) => is_path_inside(target, root))) {
+      result.add(target);
+      continue;
+    }
+    const source_path = source_by_module_path.get(target);
+    if (source_path === undefined) continue;
+    for (const forbidden of collect_reachable_forbidden_imports(
+      source_path,
+      context,
+      source_by_module_path,
+      forbidden_roots,
+      visited,
+    )) {
+      result.add(forbidden);
+    }
+  }
+  return result;
+}
+
+/** 共享业务组合根不能反向携带只属于 GUI 的 Agent 或公开传输。 */
+function create_backend_services_dependency_rule() {
+  return {
+    name: "共享 Backend 组合根边界",
+    check: (context) => {
+      const errors = [];
+      const forbidden_roots = [
+        path.join(context.project_root, "src", "backend", "agent"),
+        path.join(context.project_root, "src", "backend", "api"),
+      ];
+      for (const file_path of context.files) {
+        const relative_path = context.relative_path(file_path);
+        if (relative_path !== BACKEND_SERVICES_RELATIVE_PATH) continue;
+        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+          const target = resolve_relative_specifier(file_path, import_entry.specifier);
+          if (target === null || !forbidden_roots.some((root) => is_path_inside(target, root))) {
+            continue;
+          }
+          errors.push({
+            line: import_entry.line,
+            message: "共享 BackendServices 不得依赖 GUI Agent 或 API 适配层",
+            relative_path,
+          });
+        }
+      }
+      return errors;
+    },
+  };
+}
+
+/** 供应商 SDK 与协议实现统一收口到 backend/llm。 */
 function create_model_provider_sdk_rule() {
   const provider_packages = new Set(["@anthropic-ai/sdk", "@google/genai", "openai"]);
   return {
@@ -181,6 +282,7 @@ function create_model_provider_sdk_rule() {
   };
 }
 
+/** LLM 传输层不能反向读取模型配置服务。 */
 function create_llm_model_dependency_rule() {
   return {
     name: "LLM 模型依赖方向",
@@ -206,6 +308,7 @@ function create_llm_model_dependency_rule() {
   };
 }
 
+/** 公开 API 路径与 POST 错误壳只在两个注册入口维护。 */
 function create_api_registration_boundary_rule() {
   return {
     name: "API 注册边界",
@@ -241,6 +344,7 @@ function create_api_registration_boundary_rule() {
   };
 }
 
+/** 后端生产磁盘 IO 统一经 NativeFs，便于平台语义和测试替换。 */
 function create_native_fs_boundary_rule() {
   return {
     name: "NativeFs 落点边界",
@@ -267,6 +371,7 @@ function create_native_fs_boundary_rule() {
   };
 }
 
+/** SQLite 连接生命周期只属于 database 与 migration。 */
 function create_sqlite_boundary_rule() {
   return {
     name: "SQLite 落点边界",
@@ -293,6 +398,7 @@ function create_sqlite_boundary_rule() {
   };
 }
 
+/** 错误定义表只保存结构策略，公开文案继续由 i18n 持有。 */
 function create_app_error_definition_rule() {
   return {
     name: "错误定义表边界",
@@ -318,6 +424,7 @@ function create_app_error_definition_rule() {
   };
 }
 
+/** SSE 公开 data 统一使用严格 JSON 序列化。 */
 function create_sse_json_boundary_rule() {
   return {
     name: "SSE JSON 序列化边界",
@@ -336,6 +443,7 @@ function create_sse_json_boundary_rule() {
   };
 }
 
+/** 选择参与后端边界检查的非测试 TypeScript 源码。 */
 function is_backend_production_source(file_path) {
   const backend_path = path.sep + "src" + path.sep + "backend" + path.sep;
   const native_path = path.sep + "src" + path.sep + "native" + path.sep;
@@ -349,6 +457,7 @@ function is_backend_production_source(file_path) {
   );
 }
 
+/** 业务与基础实现排除 API 和组合根适配目录。 */
 function is_backend_feature_source(file_path) {
   if (!is_backend_production_source(file_path)) {
     return false;
@@ -359,6 +468,7 @@ function is_backend_feature_source(file_path) {
   );
 }
 
+/** 选择 CLI 目录下的非测试 TypeScript 源码。 */
 function is_cli_production_source(file_path) {
   return (
     is_typescript_source(file_path) &&
@@ -367,6 +477,7 @@ function is_cli_production_source(file_path) {
   );
 }
 
+/** 选择模型配置领域的非测试 TypeScript 源码。 */
 function is_model_production_source(file_path) {
   return (
     is_typescript_source(file_path) &&
@@ -375,6 +486,7 @@ function is_model_production_source(file_path) {
   );
 }
 
+/** 选择 LLM 传输领域的非测试 TypeScript 源码。 */
 function is_llm_production_source(file_path) {
   return (
     is_typescript_source(file_path) &&
@@ -383,14 +495,17 @@ function is_llm_production_source(file_path) {
   );
 }
 
+/** 无尾分隔符歧义地判断目标是否位于根路径内。 */
 function is_path_inside(target, root) {
   return target === root || target.startsWith(root + path.sep);
 }
 
+/** 两个文件共同拥有公开 API 路径注册。 */
 function is_api_registration_path(relative_path) {
   return relative_path === API_GATEWAY_RELATIVE_PATH || relative_path === API_ROUTES_RELATIVE_PATH;
 }
 
+/** database 与 migration 是允许直接拥有 SQLite 的边界。 */
 function is_database_or_migration_path(relative_path) {
   return (
     relative_path.startsWith("src/backend/database/") ||
@@ -398,6 +513,7 @@ function is_database_or_migration_path(relative_path) {
   );
 }
 
+/** 只截取错误定义常量，避免同文件接口字段产生误报。 */
 function read_app_error_definition_block(content) {
   const start = content.indexOf("export const APP_ERROR_DEFINITIONS");
   if (start < 0) {

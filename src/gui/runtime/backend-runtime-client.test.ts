@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  BackendRuntimeAgentWorkspaceRunRequest,
-  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
   BackendRuntimeWorkerMessage,
@@ -70,8 +68,6 @@ const READY: BackendRuntimeReady = {
   apiBaseUrl: "http://127.0.0.1:4567",
   berserkerUpdateRootDir: "E:/userdata/berserker",
 };
-const VALID_WORKSPACE_SCRIPT = "return null;";
-
 describe("BackendRuntimeClient", () => {
   beforeEach(() => {
     worker_threads_mock.FakeWorker.instances.length = 0;
@@ -87,6 +83,10 @@ describe("BackendRuntimeClient", () => {
     expect(worker.worker_data).toEqual({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
+      agentWorkspaceRuntime: {
+        denoExecutablePath: "E:/runtime/deno.exe",
+        runtimeEntryPath: "E:/runtime/deno-runtime.js",
+      },
     });
 
     const language = client.readAppLanguage();
@@ -111,7 +111,7 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_output_folder, run_agent_workspace } = create_client();
+    const { client, resolve_proxy, open_output_folder } = create_client();
     const start = client.start();
     const worker = get_worker();
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
@@ -127,28 +127,10 @@ describe("BackendRuntimeClient", () => {
       requestId: "open-1",
       operation: { kind: "open_output_folder", path: "E:/output" },
     } satisfies BackendRuntimeWorkerMessage);
-    worker.emit("message", {
-      type: "host_request",
-      requestId: "workspace-1",
-      operation: {
-        kind: "run_agent_workspace",
-        request: {
-          workspacePath: "E:/workspace/run-1",
-          script: VALID_WORKSPACE_SCRIPT,
-        },
-      },
-    } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(3));
+    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(2));
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
     expect(open_output_folder).toHaveBeenCalledWith("E:/output");
-    expect(run_agent_workspace).toHaveBeenCalledWith(
-      {
-        workspacePath: "E:/workspace/run-1",
-        script: VALID_WORKSPACE_SCRIPT,
-      },
-      expect.any(AbortSignal),
-    );
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "proxy-1",
@@ -159,71 +141,6 @@ describe("BackendRuntimeClient", () => {
       requestId: "open-1",
       result: { ok: false, error: expect.objectContaining({ message: "无法打开目录" }) },
     });
-    expect(worker.posted_messages).toContainEqual({
-      type: "host_response",
-      requestId: "workspace-1",
-      result: {
-        ok: true,
-        data: { status: "success", result: { workspace_path: "E:/workspace/run-1" } },
-      },
-    });
-  });
-
-  it("按 requestId 取消工作区操作，并在 worker 退出时中止其余宿主操作", async () => {
-    const signals: AbortSignal[] = [];
-    const { client, run_agent_workspace, on_unexpected_exit } = create_client({
-      runAgentWorkspace: vi.fn((_, signal: AbortSignal) => {
-        signals.push(signal);
-        return new Promise<never>((_, reject) => {
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-        });
-      }),
-    });
-    const start = client.start();
-    const worker = get_worker();
-    worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
-    await start;
-    worker.emit("message", {
-      type: "host_request",
-      requestId: "workspace-1",
-      operation: {
-        kind: "run_agent_workspace",
-        request: {
-          workspacePath: "E:/workspace/one",
-          script: VALID_WORKSPACE_SCRIPT,
-        },
-      },
-    } satisfies BackendRuntimeWorkerMessage);
-    worker.emit("message", {
-      type: "host_request",
-      requestId: "workspace-2",
-      operation: {
-        kind: "run_agent_workspace",
-        request: {
-          workspacePath: "E:/workspace/two",
-          script: VALID_WORKSPACE_SCRIPT,
-        },
-      },
-    } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(run_agent_workspace).toHaveBeenCalledTimes(2));
-
-    worker.emit("message", {
-      type: "host_cancel",
-      requestId: "workspace-1",
-    } satisfies BackendRuntimeWorkerMessage);
-    expect(signals[0]?.aborted).toBe(true);
-    expect(signals[1]?.aborted).toBe(false);
-    await vi.waitFor(() =>
-      expect(worker.posted_messages).toContainEqual({
-        type: "host_response",
-        requestId: "workspace-1",
-        result: { ok: false, error: expect.any(Object) },
-      }),
-    );
-
-    worker.emit("exit", 1);
-    expect(signals[1]?.aborted).toBe(true);
-    expect(on_unexpected_exit).toHaveBeenCalledOnce();
   });
 
   it("ready 后意外退出会拒绝 pending 请求并上报一次", async () => {
@@ -291,36 +208,27 @@ describe("BackendRuntimeClient", () => {
   });
 });
 
-function create_client(overrides?: {
-  runAgentWorkspace?: (
-    request: BackendRuntimeAgentWorkspaceRunRequest,
-    signal: AbortSignal,
-  ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
-}) {
+function create_client() {
   const resolve_proxy = vi.fn(async () => "DIRECT");
   const open_output_folder = vi.fn(async () => {
     throw new Error("无法打开目录");
   });
   const on_unexpected_exit = vi.fn();
-  const run_agent_workspace =
-    overrides?.runAgentWorkspace ??
-    vi.fn(async (request: { workspacePath: string }) => ({
-      status: "success" as const,
-      result: { workspace_path: request.workspacePath },
-    }));
   return {
     client: new BackendRuntimeClient({
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
+      agentWorkspaceRuntime: {
+        denoExecutablePath: "E:/runtime/deno.exe",
+        runtimeEntryPath: "E:/runtime/deno-runtime.js",
+      },
       resolveProxy: resolve_proxy,
       openOutputFolder: open_output_folder,
-      runAgentWorkspace: run_agent_workspace,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
     open_output_folder,
-    run_agent_workspace,
     on_unexpected_exit,
   };
 }

@@ -15,7 +15,7 @@ it("GUI 宿主拒绝 Backend 实现依赖", () => {
     read_file: (target) =>
       target === allowed_file_path
         ? 'import { encode } from "../backend/api/api-base-url";'
-        : 'import { BackendBootstrap } from "../backend/bootstrap/backend-bootstrap";',
+        : 'import { GuiBackendBootstrap } from "../backend/bootstrap/gui-backend-bootstrap";',
   });
   expect(errors).toEqual([
     expect.objectContaining({

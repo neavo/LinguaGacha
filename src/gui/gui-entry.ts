@@ -2,6 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
+import type { AgentWorkspaceRuntimePaths } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
@@ -18,10 +19,6 @@ import {
 } from "./shell/renderer-process-diagnostics";
 import { DesktopUpdateService } from "./shell/desktop-update-service";
 import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
-import {
-  DesktopAgentWorkspaceRunner,
-  register_agent_workspace_scheme,
-} from "./runtime/desktop-agent-workspace-runner";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
@@ -32,7 +29,6 @@ export interface GuiEntryOptions {
  * 启动 Electron GUI 入口；模块导入本身不注册 Electron 事件，便于顶层 index 分发 CLI。
  */
 export function run_gui_entry(options: GuiEntryOptions): void {
-  register_agent_workspace_scheme();
   const desktop_bundle_dir = options.desktopBundleDir;
   configure_renderer_public_path(desktop_bundle_dir);
   configure_development_remote_debugging();
@@ -44,7 +40,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
   let backend_api_base_url: string | null = null; // Backend API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
   let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
-  let agent_workspace_runner: DesktopAgentWorkspaceRunner | null = null; // 模型脚本只进入独立 Chromium 沙箱
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
@@ -62,20 +57,19 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
   const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
+  const agent_workspace_runtime = resolve_agent_workspace_runtime_paths({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    projectRoot: process.cwd(),
+    platform: process.platform,
+  });
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
     builtinRoot: builtin_root,
+    agentWorkspaceRuntime: agent_workspace_runtime,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
-    runAgentWorkspace: async (request, signal) => {
-      if (agent_workspace_runner === null) {
-        throw new AppErrors.AppError("runtime.internal_invariant", {
-          diagnostic_context: { reason: "agent_workspace_runner_not_ready" },
-        });
-      }
-      return await agent_workspace_runner.run(request, signal);
-    },
     onUnexpectedExit: (error) => {
       try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
       void quit_app_after_backend_shutdown(1);
@@ -167,8 +161,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     try {
       await backend_runtime.stop();
     } finally {
-      agent_workspace_runner?.dispose();
-      agent_workspace_runner = null;
       app.exit(exit_code);
     }
   }
@@ -199,7 +191,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
-      agent_workspace_runner = new DesktopAgentWorkspaceRunner();
       const backend_start_result = await backend_runtime.start();
       backend_api_base_url = backend_start_result.apiBaseUrl;
       desktop_update_service = new DesktopUpdateService({
@@ -255,4 +246,21 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       }
     }
   });
+}
+
+/** 开发态与发布态都只解析固定 Deno 资产，不探测系统 PATH。 */
+export function resolve_agent_workspace_runtime_paths(args: {
+  packaged: boolean;
+  resourcesPath: string;
+  projectRoot: string;
+  platform: NodeJS.Platform;
+}): AgentWorkspaceRuntimePaths {
+  const executable_name = args.platform === "win32" ? "deno.exe" : "deno";
+  const root = args.packaged
+    ? path.join(args.resourcesPath, "deno")
+    : path.join(args.projectRoot, "resources", "deno");
+  return {
+    denoExecutablePath: path.join(root, executable_name),
+    runtimeEntryPath: path.join(root, "deno-runtime.js"),
+  };
 }

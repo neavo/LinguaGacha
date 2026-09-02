@@ -2,6 +2,7 @@ import child_process from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Arch } from "builder-util";
+import { install_packaged_deno_runtime } from "./deno-runtime.mjs";
 
 const WINDOWS_GO_TOOLS = [
   {
@@ -27,6 +28,7 @@ const WINDOWS_BERSERKER_TOOL = WINDOWS_GO_TOOLS[1];
  * electron-builder 打包后补齐 Windows 轻量 CLI 启动器和自动更新器。
  */
 export default async function after_pack(context) {
+  await install_packaged_deno_runtime(context);
   await install_windows_cli_launcher(context);
   await install_windows_berserker(context);
 }

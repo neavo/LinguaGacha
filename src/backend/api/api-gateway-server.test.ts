@@ -8,11 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
+import type { AgentService } from "../agent/agent-service";
 import { BackendServices } from "../bootstrap/backend-services";
 import { ProjectDatabase } from "../database/database-operations";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
+import { ApiStreamHub } from "./api-stream-hub";
 
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" };
 
@@ -213,6 +215,8 @@ describe("ApiGatewayServer", () => {
     const dispose = vi.fn(async () => undefined);
     const gateway = new ApiGatewayServer({
       backendServices: { dispose } as unknown as BackendServices,
+      agentService: create_agent_service_stub(),
+      eventStream: new ApiStreamHub(),
     });
 
     await gateway.stop();
@@ -248,17 +252,49 @@ describe("ApiGatewayServer", () => {
       appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
+      publishEvent: () => undefined,
       openOutputFolder: async () => undefined,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
-    backend_services.start();
-    const gateway = new ApiGatewayServer({ backendServices: backend_services });
+    const gateway = new ApiGatewayServer({
+      backendServices: backend_services,
+      agentService: create_agent_service_stub(),
+      eventStream: new ApiStreamHub(),
+    });
     cleanup_callbacks.push(
       () => database.close(),
       () => backend_services.dispose(),
       () => gateway.stop(),
     );
     return { gateway, backend_services };
+  }
+
+  function create_agent_service_stub(): AgentService {
+    return {
+      get_snapshot: vi.fn(() => ({
+        revision: 0,
+        state: "idle",
+        approvalMode: "manual",
+        pendingWriteApproval: null,
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        taskProgress: [],
+        contextTokens: null,
+      })),
+      send_message: vi.fn(),
+      set_approval_mode: vi.fn(),
+      approve_pending_write: vi.fn(),
+      reject_pending_write: vi.fn(),
+      update_queued_message: vi.fn(),
+      delete_queued_message: vi.fn(),
+      reorder_queued_messages: vi.fn(),
+      send_queued_message: vi.fn(),
+      revise_latest_round: vi.fn(),
+      continue_session: vi.fn(),
+      stop: vi.fn(),
+      reset: vi.fn(),
+    } as unknown as AgentService;
   }
 
   function create_app_root(): string {

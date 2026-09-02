@@ -479,21 +479,22 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             ...historyKeymap,
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged || update.selectionSet) {
+            const { docChanged, selectionSet, state, transactions } = update;
+            if (docChanged || selectionSet) {
               if (
-                update.docChanged &&
-                !update.transactions.every(
+                docChanged &&
+                !transactions.every(
                   (transaction) =>
                     transaction.annotation(input_history_navigation_annotation) === true,
                 )
               ) {
                 input_history_index_ref.current = null;
                 input_session_ref.current.write_draft({
-                  text: update.state.doc.toString(),
+                  text: state.doc.toString(),
                   attachments: draft_attachments_ref.current,
                 });
               }
-              emit_snapshot(update.state);
+              emit_snapshot(state);
             }
           }),
         ],

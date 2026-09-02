@@ -29,8 +29,6 @@ vi.mock("../engine/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
-import { AgentService } from "../agent/agent-service";
-import { WebSearchService } from "../agent/agent-web-search";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -46,6 +44,7 @@ function create_backend_services_options(): BackendServicesOptions {
       get_app_root: () => TEST_APP_ROOT,
       get_builtin_root: () => "E:/app.asar/builtin",
       get_user_data_dir: () => "E:/UserData",
+      get_agent_workspace_root_dir: () => "E:/UserData/agent/workspace",
     },
     metadata: {
       build_linguagacha_user_agent: vi.fn(() => "LinguaGacha/Test"),
@@ -62,6 +61,7 @@ function create_backend_services_options(): BackendServicesOptions {
       error: vi.fn(),
       info: vi.fn(),
     },
+    publishEvent: vi.fn(),
     openOutputFolder: vi.fn(),
     workerExecution: { kind: "in_process" },
   } as unknown as BackendServicesOptions;
@@ -73,35 +73,21 @@ describe("BackendServices", () => {
     planning_dispose_mock.mockClear();
   });
 
-  it("启动和释放时只管理组合根拥有的运行期资源", async () => {
+  it("释放时只管理共享业务根拥有的运行期资源", async () => {
     const options = create_backend_services_options();
-    options.agentWebFetch = vi.fn();
     const compute_worker_dispose = vi.spyOn(ComputeWorkerClient.prototype, "dispose");
-    const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
-    const web_search_dispose = vi.spyOn(WebSearchService.prototype, "dispose");
     const services = new BackendServices(options);
 
-    services.start();
-    services.start();
     await services.dispose();
 
-    expect(options.appSettingService.set_stream_publisher).toHaveBeenCalledTimes(2);
-    expect(options.appSettingService.set_stream_publisher).toHaveBeenLastCalledWith(null);
     expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
     expect(compute_worker_dispose).toHaveBeenCalledTimes(1);
-    expect(agent_dispose).toHaveBeenCalledTimes(1);
-    expect(web_search_dispose).toHaveBeenCalledTimes(1);
-    expect(agent_dispose.mock.invocationCallOrder[0]).toBeLessThan(
-      web_search_dispose.mock.invocationCallOrder[0]!,
-    );
     expect(options.metadata.build_linguagacha_user_agent).toHaveBeenCalledTimes(1);
     compute_worker_dispose.mockRestore();
-    agent_dispose.mockRestore();
-    web_search_dispose.mockRestore();
   });
 
-  it("把任务快照按公开 SSE envelope 发布", async () => {
+  it("把任务快照交给入口事件出口", async () => {
     let publish_snapshot: Parameters<TaskService["subscribe"]>[0] | undefined;
     const subscribe_spy = vi
       .spyOn(TaskService.prototype, "subscribe")
@@ -109,11 +95,11 @@ describe("BackendServices", () => {
         publish_snapshot = listener;
         return vi.fn();
       });
-    const services = new BackendServices(create_backend_services_options());
-    const reader = services.create_event_stream_response().body?.getReader();
+    const options = create_backend_services_options();
+    const services = new BackendServices(options);
+    vi.mocked(options.publishEvent).mockClear();
 
     expect(publish_snapshot).toBeDefined();
-    expect(reader).toBeDefined();
     await publish_snapshot?.({
       run_revision: 7,
       task_type: "translation",
@@ -134,18 +120,16 @@ describe("BackendServices", () => {
       },
       extras: { kind: "translation", scope: { kind: "all" } },
     });
-    const chunk = await reader?.read();
-
-    await reader?.cancel();
     await services.dispose();
     subscribe_spy.mockRestore();
 
-    const frame = new TextDecoder().decode(chunk?.value);
-    expect(frame).toContain("event: task.snapshot_changed");
-    expect(frame).toContain('data: {"task":{"run_revision":7');
+    expect(options.publishEvent).toHaveBeenCalledWith(
+      "task.snapshot_changed",
+      expect.objectContaining({ task: expect.objectContaining({ run_revision: 7 }) }),
+    );
   });
 
-  it("把统一运行时快照按公开 SSE envelope 发布", async () => {
+  it("把统一运行时快照交给入口事件出口", async () => {
     let publish_snapshot: Parameters<RuntimeOperationGate["subscribe"]>[0] | undefined;
     const subscribe_spy = vi
       .spyOn(RuntimeOperationGate.prototype, "subscribe")
@@ -153,21 +137,19 @@ describe("BackendServices", () => {
         publish_snapshot = listener;
         return vi.fn();
       });
-    const services = new BackendServices(create_backend_services_options());
-    const reader = services.create_event_stream_response().body?.getReader();
+    const options = create_backend_services_options();
+    const services = new BackendServices(options);
+    vi.mocked(options.publishEvent).mockClear();
 
     expect(publish_snapshot).toBeDefined();
-    expect(reader).toBeDefined();
     publish_snapshot?.({ revision: 3, owner: "agent" });
-    const chunk = await reader?.read();
 
-    await reader?.cancel();
     await services.dispose();
     subscribe_spy.mockRestore();
 
-    const frame = new TextDecoder().decode(chunk?.value);
-    expect(frame).toContain("event: runtime.snapshot_changed");
-    expect(frame).toContain('data: {"runtime":{"revision":3,"owner":"agent"}}');
+    expect(options.publishEvent).toHaveBeenCalledWith("runtime.snapshot_changed", {
+      runtime: { revision: 3, owner: "agent" },
+    });
   });
 
   it("设置更新在持久化前经过统一运行时门禁", async () => {

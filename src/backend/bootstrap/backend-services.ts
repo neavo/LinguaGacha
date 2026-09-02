@@ -1,15 +1,6 @@
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { AgentService } from "../agent/agent-service";
-import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
-import { WebSearchService } from "../agent/agent-web-search";
-import type { AgentWebPort } from "../agent/agent-web-tools";
-import {
-  AgentWorkspaceService,
-  type AgentWorkspaceRunPort,
-} from "../agent/agent-workspace-service";
-import { ApiStreamHub } from "../api/api-stream-hub";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
 import { TaskEngine } from "../engine/core/engine";
@@ -59,10 +50,17 @@ export interface BackendServicesOptions {
   appSettingService: AppSettingService; // 配置文件唯一读写入口
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
-  agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 使用宿主代理解析创建 Backend 抓取入口
-  agentWorkspaceRun?: AgentWorkspaceRunPort; // 只有 GUI runtime 提供 Electron 沙箱脚本端口
+  publishEvent: (topic: string, payload: JsonRecord) => void; // 入口层选择公开传输或无输出；业务服务不依赖 SSE
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
+}
+
+/** GUI 扩展与共享业务服务必须引用同一组状态拥有者。 */
+export interface BackendServiceState {
+  session: ProjectSessionState;
+  runtimeGate: RuntimeOperationGate;
+  cache: CacheManager;
+  writes: ProjectWriteStore;
 }
 
 export interface BackendAppServices {
@@ -103,21 +101,18 @@ export interface BackendFileServices {
 }
 
 /**
- * GUI API Gateway 与 CLI job 共享的服务组合根；状态拥有者只在这里装配。
+ * GUI 与 CLI 共享的业务服务组合根；状态拥有者只在这里装配。
  */
 export class BackendServices {
   private readonly app_setting_service: AppSettingService;
-  private readonly api_stream_hub = new ApiStreamHub();
   private readonly cache_manager: CacheManager;
   private readonly compute_worker_client: ComputeWorkerClient;
   private readonly task_runtime: TaskRuntime;
-  private readonly runtime_gate = new RuntimeOperationGate(); // task、Agent 与结构性写入共享的唯一门禁
+  private readonly runtime_gate = new RuntimeOperationGate(); // task、GUI Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
-  private readonly agent_web_search: WebSearchService | null; // 应用级多源搜索状态由组合根持有
   private task_stream_unsubscribe: (() => void) | null;
-  private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
-  private started = false; // start / dispose 只注册和释放一次跨服务订阅
+  private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止发布已关闭业务根的事件
 
   public readonly app: BackendAppServices;
   public readonly runtime: BackendRuntimeServices;
@@ -126,9 +121,9 @@ export class BackendServices {
   public readonly quality: BackendQualityServices;
   public readonly files: BackendFileServices;
   public readonly model: ModelService;
-  public readonly agent: AgentService;
   public readonly tasks: TaskService;
   public readonly logManager: LogManager;
+  public readonly state: BackendServiceState;
 
   /**
    * 只在这里装配状态拥有者与服务依赖，调用方不得二次 new 同类服务。
@@ -142,10 +137,6 @@ export class BackendServices {
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
-    this.agent_web_search =
-      options.agentWebFetch === undefined
-        ? null
-        : new WebSearchService(metadata.read_version_or_default());
     const llm_client = new LLMClient({ userAgent: user_agent });
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
@@ -161,7 +152,7 @@ export class BackendServices {
     const publish_project_change = (request: Parameters<typeof adapt_project_change>[0]) => {
       const event = adapt_project_change(request);
       if (event !== null) {
-        this.api_stream_hub.publish(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
+        options.publishEvent(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
       }
       return event;
     };
@@ -303,90 +294,34 @@ export class BackendServices {
       this.runtime_gate,
       this.logManager,
     );
-    // 工作区只有 Electron 沙箱端口存在时才装配，CLI 不建立不可执行的半套能力。
-    const agent_workspace =
-      options.agentWorkspaceRun === undefined
-        ? undefined
-        : new AgentWorkspaceService({
-            paths,
-            settings: this.app_setting_service,
-            sessionState: session_state,
-            cache: this.cache_manager,
-            proofreading: this.proofreading.query,
-            database: options.database,
-            runtimeGate: this.runtime_gate,
-            writeStore: write_store,
-            logManager: this.logManager,
-            run: options.agentWorkspaceRun,
-          });
-    // 搜索与安全抓取要么成组交给 Agent，要么整体缺失，不注册半套能力。
-    const agent_web: AgentWebPort | undefined =
-      options.agentWebFetch === undefined || this.agent_web_search === null
-        ? undefined
-        : { read: options.agentWebFetch, search: this.agent_web_search.search };
-    this.agent = new AgentService({
-      paths,
-      settings: this.app_setting_service,
-      userAgent: user_agent,
-      sessionState: session_state,
-      runtimeGate: this.runtime_gate,
-      web: agent_web,
-      workspace: agent_workspace,
-      logManager: this.logManager,
-      publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
-    });
     this.tasks = new TaskService(task_engine, this.task_runtime, session_state);
+    this.state = {
+      session: session_state,
+      runtimeGate: this.runtime_gate,
+      cache: this.cache_manager,
+      writes: write_store,
+    };
     this.task_stream_unsubscribe = this.tasks.subscribe((snapshot) => {
-      this.api_stream_hub.publish(TASK_SNAPSHOT_EVENT_TOPIC, {
+      options.publishEvent(TASK_SNAPSHOT_EVENT_TOPIC, {
         task: snapshot as unknown as JsonRecord,
       });
     });
     this.runtime_stream_unsubscribe = this.runtime_gate.subscribe((snapshot) => {
-      this.api_stream_hub.publish(RUNTIME_ACTIVITY_EVENT_TOPIC, {
+      options.publishEvent(RUNTIME_ACTIVITY_EVENT_TOPIC, {
         runtime: snapshot,
       });
     });
   }
 
   /**
-   * 连接设置事件发布器；其余状态订阅在构造期已固定。
-   */
-  public start(): void {
-    if (this.started) {
-      return;
-    }
-    this.started = true;
-    this.app_setting_service.set_stream_publisher(this.api_stream_hub);
-  }
-
-  /**
-   * API Gateway 只取得 SSE 响应，不接触 hub 或同进程订阅能力。
-   */
-  public create_event_stream_response(): Response {
-    return this.api_stream_hub.create_stream_response();
-  }
-
-  /**
    * 释放组合根拥有的运行态资源；数据库和日志由 Bootstrap 关闭。
    */
   public async dispose(): Promise<void> {
-    this.app_setting_service.set_stream_publisher(null);
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
     this.runtime_stream_unsubscribe?.();
     this.runtime_stream_unsubscribe = null;
     const errors: unknown[] = [];
-    try {
-      await this.agent.dispose();
-    } catch (error) {
-      errors.push(error);
-    }
-    try {
-      await this.agent_web_search?.dispose();
-    } catch (error) {
-      errors.push(error);
-    }
-    this.api_stream_hub.stop();
     try {
       await this.task_runtime.dispose();
     } catch (error) {
@@ -402,7 +337,6 @@ export class BackendServices {
         errors.push(result.reason);
       }
     }
-    this.started = false;
     if (errors.length > 0) {
       throw new AggregateError(errors, "Failed to close BackendServices resources.");
     }

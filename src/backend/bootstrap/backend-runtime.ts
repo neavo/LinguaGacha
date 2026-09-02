@@ -3,20 +3,21 @@ import { randomUUID } from "node:crypto";
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
 import type {
+  AgentWorkspaceRuntimePaths,
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
-  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeReady,
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 import { create_agent_web_fetch } from "../agent/agent-web-fetch";
+import { DenoAgentWorkspaceRunner } from "../agent/deno/runner";
 import { t_main_log } from "../log/log-text";
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
 } from "../worker/worker-execution";
-import { BackendBootstrap } from "./backend-bootstrap";
+import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
 
 /** runtime 只依赖 parentPort 的消息能力，不把完整 MessagePort API 泄漏进生命周期实现。 */
 export type BackendRuntimePort = {
@@ -33,7 +34,6 @@ type PendingHostRequest = {
   dispatched: boolean; // 已发给 main 的请求必须等待宿主清理回执
   cancelled: boolean; // 防止同一 signal 重复发送 host_cancel
   cancelReason?: unknown;
-  operation: BackendRuntimeHostOperation; // 工作区事务完成结果不能被普通取消覆盖
 };
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
@@ -41,6 +41,7 @@ export async function run_backend_runtime(args: {
   appRoot: string; // 安装根继续决定版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
+  agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
@@ -58,7 +59,6 @@ export async function run_backend_runtime(args: {
         signal,
         dispatched: false,
         cancelled: false,
-        operation,
       };
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
@@ -97,30 +97,29 @@ export async function run_backend_runtime(args: {
     pending_host_requests.clear();
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
+  const agent_workspace_runner = new DenoAgentWorkspaceRunner({
+    executablePath: args.agentWorkspaceRuntime.denoExecutablePath,
+    runtimeEntryPath: args.agentWorkspaceRuntime.runtimeEntryPath,
+  });
   // 普通模型请求与 web_fetch 共用同一宿主解析端口，避免两套代理事实漂移。
   const system_proxy_resolver = {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
-  const bootstrap = new BackendBootstrap({
+  const bootstrap = new GuiBackendBootstrap({
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
-    exposeApiGateway: true,
     systemProxyResolver: system_proxy_resolver,
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
     // 下载与内容限制留在 Backend，仅把每跳系统代理解析反向交给 Electron main。
     agentWebFetch: create_agent_web_fetch(system_proxy_resolver),
-    agentWorkspaceRun: async (request, signal) =>
-      (await call_host(
-        { kind: "run_agent_workspace", request },
-        signal,
-      )) as BackendRuntimeAgentWorkspaceRunResponse,
+    agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });
-  let start_result: Awaited<ReturnType<BackendBootstrap["start"]>> | null = null; // ready 前禁止控制消息读取服务
+  let start_result: Awaited<ReturnType<GuiBackendBootstrap["start"]>> | null = null; // ready 前禁止控制消息读取服务
 
   args.port.on("message", (message) => {
     if (message.type === "host_response") {
@@ -130,14 +129,7 @@ export async function run_backend_runtime(args: {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
         pending.signal.removeEventListener("abort", pending.abortListener);
       }
-      // 工作区事务可能在取消到达前完成提交；成功或失效结果都必须交给状态拥有者。
-      if (
-        pending.cancelled &&
-        message.result.ok &&
-        pending.operation.kind === "run_agent_workspace"
-      ) {
-        pending.resolve(message.result.data);
-      } else if (pending.cancelled) pending.reject(pending.cancelReason);
+      if (pending.cancelled) pending.reject(pending.cancelReason);
       else if (message.result.ok) pending.resolve(message.result.data);
       else pending.reject(to_error(message.result.error));
       return;
@@ -181,8 +173,8 @@ export async function run_backend_runtime(args: {
   };
 
   try {
+    await agent_workspace_runner.initialize();
     start_result = await bootstrap.start();
-    if (start_result.apiBaseUrl === null) throw new Error("GUI Backend API is not exposed.");
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,
       berserkerUpdateRootDir:

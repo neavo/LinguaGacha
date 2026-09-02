@@ -2,7 +2,7 @@ import type { FetchFunction } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebSearchService } from "./agent-web-search";
-import type { AgentWebSearchProvider } from "./agent-web-tools";
+import type { AgentWebSearchProvider } from "./tools/web";
 
 const TEST_CLIENT_VERSION = "1.2.3";
 

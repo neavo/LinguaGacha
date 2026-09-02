@@ -67,7 +67,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
-- Agent 磁盘工作区只是一次性只读快照和显式 change 准备区，不是 `.lg` 写入口。`AgentWorkspaceService` 以工程身份、epoch 与语言守卫快照边界，以对象指纹校验写入目标；普通 section revision 漂移不阻塞对象级 apply。
+- Agent 磁盘工作区承载可修改的工作资产和显式 change 准备；`AgentWorkspaceService` 以工程身份、epoch 与语言守卫快照边界，以对象指纹校验写入目标，普通 section revision 漂移不阻塞对象级 apply。工作资产生命周期与恢复语义归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、quality、prompt 尽可能一次提交。对象冲突形成逻辑部分成功；quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
 - 工作区无实际 change 时不写数据库、不推进 revision、不发布事件。数据库失败回滚本次事务全部事实与 revision；提交后 cache / 公开事件只依据 actual applied sections，后置同步失败按已提交处理并返回 reload 语义。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
@@ -87,7 +87,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
 - 模型能力优先采用项目内少量精确修正，否则读取 Pi 内置 catalog，两者均未命中时不猜测思考能力并使用 Agent 安全容量。配置 ID 优先精确匹配；变种 ID 只在字母数字分隔边界内取最长且唯一的 canonical ID。思考能力使用与当前协议适配的单一模板；容量聚合同 canonical ID 在全部 Pi catalog 中的记录并分别取最大 `contextWindow` 与 `maxTokens`，不改写真实请求 ID、归一后的 API URL 或请求头。应用修正只承载 Pi 缺失或落后的当前事实，Pi 更新并验证后直接删除对应修正。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态：供应商错误、长度截断和工具调用成为当前请求错误，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
-- 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendBootstrap` 在服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
+- 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。
 
 ## 5. 数据库与 `.lg` 存储

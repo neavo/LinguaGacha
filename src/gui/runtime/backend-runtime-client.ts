@@ -10,9 +10,8 @@ import {
 } from "../../shared/error";
 import type { LocaleKey } from "../../shared/i18n";
 import type {
+  AgentWorkspaceRuntimePaths,
   BackendRuntimeDiagnosticLevel,
-  BackendRuntimeAgentWorkspaceRunRequest,
-  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
@@ -42,13 +41,9 @@ export class BackendRuntimeClient {
       workerEntryUrl: URL;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
+      agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
-      /** main 在一次性 Chromium 沙箱中执行工作区脚本。 */
-      runAgentWorkspace: (
-        request: BackendRuntimeAgentWorkspaceRunRequest,
-        signal: AbortSignal,
-      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
       onUnexpectedExit: (error: Error) => void;
     },
   ) {}
@@ -60,7 +55,11 @@ export class BackendRuntimeClient {
     this.stopped = false;
     this.exit_handled = false;
     const worker = new Worker(this.options.workerEntryUrl, {
-      workerData: { appRoot: this.options.appRoot, builtinRoot: this.options.builtinRoot },
+      workerData: {
+        appRoot: this.options.appRoot,
+        builtinRoot: this.options.builtinRoot,
+        agentWorkspaceRuntime: this.options.agentWorkspaceRuntime,
+      },
     });
     this.worker = worker;
     this.start_promise = new Promise<BackendRuntimeReady>((resolve, reject) => {
@@ -177,9 +176,6 @@ export class BackendRuntimeClient {
           break;
         case "open_output_folder":
           data = await this.options.openOutputFolder(operation.path);
-          break;
-        case "run_agent_workspace":
-          data = await this.options.runAgentWorkspace(operation.request, controller.signal);
           break;
       }
       result = { ok: true, data };

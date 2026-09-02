@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
+import type { AgentService } from "../agent/agent-service";
 import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
 
@@ -267,6 +268,31 @@ function create_route_fixture() {
   }));
   const source_file_summary = { source_file_count: 1, format_hit_counts: { txt: 1 } };
   const summarize_source_files = vi.fn(() => source_file_summary);
+  const agent = {
+    get_snapshot: vi.fn(() => ({
+      revision: 0,
+      state: "idle",
+      approvalMode: "manual",
+      pendingWriteApproval: null,
+      entries: [],
+      skills: [],
+      inputQueue: { paused: false, canSendNow: false, items: [] },
+      taskProgress: [],
+      contextTokens: null,
+    })),
+    send_message,
+    set_approval_mode,
+    approve_pending_write,
+    reject_pending_write,
+    update_queued_message,
+    delete_queued_message,
+    reorder_queued_messages,
+    send_queued_message,
+    continue_session,
+    revise_latest_round,
+    stop,
+    reset,
+  } as unknown as AgentService;
   const services = {
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
@@ -287,42 +313,18 @@ function create_route_fixture() {
       })),
       update_selected_model_thinking_level,
     },
-    agent: {
-      get_snapshot: vi.fn(() => ({
-        revision: 0,
-        state: "idle",
-        approvalMode: "manual",
-        pendingWriteApproval: null,
-        entries: [],
-        skills: [],
-        inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
-        contextTokens: null,
-      })),
-      send_message,
-      set_approval_mode,
-      approve_pending_write,
-      reject_pending_write,
-      update_queued_message,
-      delete_queued_message,
-      reorder_queued_messages,
-      send_queued_message,
-      continue_session,
-      revise_latest_round,
-      stop,
-      reset,
-    },
     tasks: { start_task },
     runtime: {
       getSnapshot: vi.fn(() => ({ runtime: { revision: 0, owner: null } })),
     },
-    create_event_stream_response: vi.fn(),
   } as unknown as BackendServices;
 
   register_api_routes({
     app: { get } as unknown as Hono,
     services,
+    agent,
     postJson: post_json,
+    createEventStreamResponse: vi.fn(),
     createLogStreamResponse: vi.fn(),
     readLogDetail: vi.fn(),
     recordRendererError: vi.fn(),

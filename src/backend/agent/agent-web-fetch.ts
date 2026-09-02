@@ -8,7 +8,7 @@ import {
   type SystemProxyResolver,
   type SystemProxyRoute,
 } from "../network/system-proxy-http-client";
-import { AgentToolError } from "./agent-tool";
+import { AgentToolError } from "./tools/definition";
 
 // 固定网络资源预算，避免单次工具调用无限占用连接、内存或模型上下文。
 const WEB_FETCH_TIMEOUT_MS = 20_000;

@@ -1,0 +1,42 @@
+{
+  "version": "2.9.6",
+  "releaseBaseUrl": "https://github.com/denoland/deno/releases/download/v2.9.6",
+  "targets": {
+    "win32-x64": {
+      "asset": "deno-x86_64-pc-windows-msvc.zip",
+      "assetSha256": "15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11",
+      "binarySha256": "2ff9493dfa356be2975f477025ea770088e9e9cb2c83d983236d13561b96b7a6",
+      "binary": "deno.exe"
+    },
+    "win32-arm64": {
+      "asset": "deno-aarch64-pc-windows-msvc.zip",
+      "assetSha256": "acb014afe2299847764e232b4993e162e3946cdeec36603e3f1a0b548cd1ea55",
+      "binarySha256": "7259fbfaf9fb0d83551b7f85b38b3dc4d7c2c63cf05427b042fbf63bdcb6f778",
+      "binary": "deno.exe"
+    },
+    "darwin-x64": {
+      "asset": "deno-x86_64-apple-darwin.zip",
+      "assetSha256": "7d4524b82bcc557fe020a1a5b56956ed42b992ae5b28026e8ad5d17329533f5f",
+      "binarySha256": "ec9fbd8e8f5f6ca5ceb0ebe4a564636f2c698bf60e3187460ded400cc0147fd5",
+      "binary": "deno"
+    },
+    "darwin-arm64": {
+      "asset": "deno-aarch64-apple-darwin.zip",
+      "assetSha256": "213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472",
+      "binarySha256": "b3ac3bd206e48c26026cadd80c1367e96c149f9c66130952382a642b09fa8a71",
+      "binary": "deno"
+    },
+    "linux-x64": {
+      "asset": "deno-x86_64-unknown-linux-gnu.zip",
+      "assetSha256": "394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2",
+      "binarySha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+      "binary": "deno"
+    },
+    "linux-arm64": {
+      "asset": "deno-aarch64-unknown-linux-gnu.zip",
+      "assetSha256": "9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e",
+      "binarySha256": "d08d392418df53f4e6e88a08909c0e1bccbf9adcead7232df72b6ad6075ec416",
+      "binary": "deno"
+    }
+  }
+}

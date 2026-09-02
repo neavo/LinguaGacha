@@ -6,12 +6,8 @@ import {
 import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { is_json_record } from "../../domain/json";
-import { AgentToolError } from "./agent-tool";
-import type {
-  AgentWebSearchPort,
-  AgentWebSearchProvider,
-  AgentWebSearchResult,
-} from "./agent-web-tools";
+import { AgentToolError } from "./tools/definition";
+import type { AgentWebSearchPort, AgentWebSearchProvider, AgentWebSearchResult } from "./tools/web";
 
 const WEB_SEARCH_PROVIDER_TIMEOUT_MS = 8_000; // 单家只限制连接与调用，整次搜索服从调用方 signal
 const WEB_SEARCH_RESULT_LIMIT = 10; // 仅约束支持数量参数的供应商，不构成模型侧契约
