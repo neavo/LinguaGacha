@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { BackendServices } from "../../backend/bootstrap/backend-services";
+import type { AppSettingService } from "../../backend/app/app-setting-service";
+import type { TaskService } from "../../backend/engine/task-service";
+import type { TranslationFileExportService } from "../../backend/file/translation-file-export-service";
+import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
+import type { QualityRuleService } from "../../backend/quality/quality-rule-service";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
@@ -14,11 +18,31 @@ type CLIJobStatusReporter = Pick<
   "emit_started" | "emit_progress" | "emit_finished"
 >;
 
+/** CLI job 只消费当前命令所需的共享业务能力。 */
+export interface CLIJobServices {
+  app: {
+    settings: Pick<AppSettingService, "read_setting" | "set_transient_overrides">;
+  };
+  project: {
+    lifecycle: Pick<
+      ProjectLifecycleService,
+      "create_project_commit" | "apply_task_input" | "unload_project"
+    >;
+  };
+  tasks: Pick<TaskService, "subscribe" | "start_current_project_task">;
+  files: {
+    translationExport: Pick<TranslationFileExportService, "export_files_to_directory">;
+  };
+  quality: {
+    rules: Pick<QualityRuleService, "export_analysis_candidates_to_directory">;
+  };
+}
+
 /**
  * 执行文件进出型 CLI job，并隐藏内部临时 .lg 工程。
  */
 export async function run_cli_job(
-  backend_services: BackendServices,
+  backend_services: CLIJobServices,
   command: CLICommandOptions,
   status_reporter: CLIJobStatusReporter,
 ): Promise<void> {
@@ -109,7 +133,7 @@ function build_cli_default_preset_overrides(): JsonRecord {
  * 创建工程时写入命令语言参数，并保留当前应用设置里的预过滤开关。
  */
 function build_project_settings(
-  backend_services: BackendServices,
+  backend_services: CLIJobServices,
   command: CLICommandOptions,
 ): JsonRecord {
   return normalize_project_settings_snapshot({
@@ -152,7 +176,7 @@ function collect_resource_paths(command: CLICommandOptions): string[] {
  * 启动任务并订阅同一运行时快照直到终态，退出时始终撤销订阅。
  */
 async function start_and_wait_for_task(
-  backend_services: BackendServices,
+  backend_services: CLIJobServices,
   task_type: "translation" | "analysis",
   status_reporter: CLIJobStatusReporter,
 ): Promise<void> {

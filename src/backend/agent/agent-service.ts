@@ -56,15 +56,12 @@ import {
   load_agent_session_seed,
   type AgentSessionSeed,
 } from "./agent-session-seed";
-import { create_agent_skill_tools } from "./agent-skill-tools";
+import { create_agent_skill_tools } from "./tools/skill";
 import { AgentInputQueue } from "./agent-input-queue";
-import { AgentTaskProgress, create_agent_task_progress_tools } from "./agent-task-progress";
-import { create_agent_web_tools, type AgentWebPort } from "./agent-web-tools";
-import type { AgentWorkspacePort } from "./agent-workspace-service";
-import {
-  create_agent_workspace_tools,
-  type AgentWorkspaceApprovalPort,
-} from "./agent-workspace-tools";
+import { AgentTaskProgress, create_agent_task_progress_tools } from "./tools/task-progress";
+import { create_agent_web_tools, type AgentWebPort } from "./tools/web";
+import type { AgentWorkspacePort } from "./workspace/service";
+import { create_agent_workspace_tools, type AgentWorkspaceApprovalPort } from "./tools/workspace";
 import {
   format_agent_skill_invocation,
   format_agent_skills_for_system_prompt,
@@ -72,7 +69,7 @@ import {
   type AgentSkillDefinition,
 } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { AgentToolError, log_agent_tool_event, prepare_agent_tool } from "./agent-tool";
+import { AgentToolError, log_agent_tool_event, prepare_agent_tool } from "./tools/definition";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -185,7 +182,7 @@ type AgentServiceOptions = {
   sessionState: ProjectSessionState;
   runtimeGate: RuntimeOperationGate;
   web: AgentWebPort | undefined;
-  workspace?: AgentWorkspacePort;
+  workspace: AgentWorkspacePort;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -193,7 +190,7 @@ type AgentServiceOptions = {
 type AgentIncrementalEvent = Exclude<AgentSessionEventPayload, { type: "snapshot_seed" }>;
 
 type LoadedAgentResources = Readonly<{
-  /** 保留未拼接 skill catalog 的原文，reset 时可重建能力清单而不累积旧投影。 */
+  /** 保留未拼接 skill catalog 的稳定 System 前缀，reset 时重建能力清单而不累积旧投影。 */
   baseSystemPrompt: string;
   systemPrompt: string;
   sessionSeed: AgentSessionSeed;
@@ -210,7 +207,7 @@ export class AgentService {
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly web: AgentWebPort | undefined; // 缺失即不向模型注册 GUI 专属联网能力
-  private readonly workspace: AgentWorkspacePort | undefined; // 缺失即不注册 Electron 专属磁盘工作区
+  private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly task_progress = new AgentTaskProgress(); // 对话级队列；只有未完成标签进入公开会话投影
@@ -329,7 +326,7 @@ export class AgentService {
 
   /** 启动期原子加载必需的基础 Prompt、会话种子和初始 skill catalog。 */
   public async load_resources(): Promise<void> {
-    await this.workspace?.initialize();
+    await this.workspace.initialize();
     const base_system_prompt = load_agent_system_prompt(this.paths);
     const session_seed = load_agent_session_seed(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
@@ -602,7 +599,7 @@ export class AgentService {
       settlement?.catch(() => undefined),
       runtime === null ? undefined : this.close_runtime(runtime),
     ]);
-    await this.workspace?.reset_project(null);
+    await this.workspace.reset_project(null);
   }
 
   /** 在当前运行世代准备运行时；队列输入只在启动 round 前提交移除。 */
@@ -956,9 +953,7 @@ export class AgentService {
       noTools: "builtin",
       customTools: [
         ...create_agent_task_progress_tools(this.task_progress),
-        ...(this.workspace === undefined
-          ? []
-          : create_agent_workspace_tools(this.workspace, this.workspace_approval_port())),
+        ...create_agent_workspace_tools(this.workspace, this.workspace_approval_port()),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
@@ -1485,9 +1480,9 @@ export class AgentService {
     ])
       .then(async () => {
         if (scope === "project") {
-          await this.workspace?.reset_project(project_path);
+          await this.workspace.reset_project(project_path);
         } else {
-          await this.workspace?.reset_workspace();
+          await this.workspace.reset_workspace();
         }
         if (!this.disposed) {
           this.publish_snapshot_seed();

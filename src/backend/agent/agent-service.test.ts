@@ -18,7 +18,7 @@ import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
-import type { AgentWebPort, AgentWebSearchPort } from "./agent-web-tools";
+import type { AgentWebPort, AgentWebSearchPort } from "./tools/web";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 
@@ -160,7 +160,7 @@ vi.mock("./agent-system-prompt", () => ({
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
 import { AgentService } from "./agent-service";
-import type { AgentWorkspacePort } from "./agent-workspace-service";
+import type { AgentWorkspacePort } from "./workspace/service";
 
 /** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
 const fake_provider_streams: ProviderStreams = {
@@ -1506,21 +1506,27 @@ describe("AgentService", () => {
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
 
-  it("真实 Agent 仅注册产品工具并保留写入时间线", async () => {
-    const { service } = await create_service(true, undefined, null);
-    fake_agent_state.mode = "write";
+  it("真实 Agent 恒定注册工作区工具与运行时 System", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "success";
 
     await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
-    expect(fake_agent_state.tool_names.at(-1)).toEqual(["task_progress", "read_skill"]);
+    expect(fake_agent_state.tool_names.at(-1)).toEqual([
+      "task_progress",
+      "workspace_script",
+      "workspace_apply",
+      "read_skill",
+    ]);
+    expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
       "user_message",
-      "tool_call",
+      "assistant_message",
     ]);
   });
 
   it("task_progress 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
-    const { service, publish } = await create_service(true, undefined, null);
+    const { service, publish } = await create_service();
     fake_agent_state.mode = "progress_start";
 
     await service.send_message({ text: "开始长任务", attachments: [] });
@@ -2408,7 +2414,7 @@ describe("AgentService", () => {
   async function create_service(
     load_resources = true,
     web?: AgentWebPort,
-    workspace?: AgentWorkspacePort | null, // undefined 使用默认 fake，null 模拟宿主没有工作区端口
+    workspace?: AgentWorkspacePort,
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -2458,30 +2464,28 @@ describe("AgentService", () => {
       },
     };
     const effective_workspace =
-      workspace === null
-        ? undefined
-        : (workspace ??
-          ({
-            initialize: vi.fn(async () => undefined),
-            reset_workspace: vi.fn(async () => undefined),
-            reset_project: vi.fn(async () => undefined),
-            run_script: vi.fn(async () => {
-              await wait_for_held_tool();
-              return { items: read_items() };
-            }),
-            apply_workspace: vi.fn(async (request_approval) => {
-              await request_approval?.({
-                items: 1,
-                glossary: 0,
-                textPreserve: 0,
-                preReplacement: 0,
-                postReplacement: 0,
-                prompts: 0,
-              });
-              await wait_for_held_tool();
-              return { status: "applied" };
-            }),
-          } satisfies AgentWorkspacePort));
+      workspace ??
+      ({
+        initialize: vi.fn(async () => undefined),
+        reset_workspace: vi.fn(async () => undefined),
+        reset_project: vi.fn(async () => undefined),
+        run_script: vi.fn(async () => {
+          await wait_for_held_tool();
+          return { items: read_items() };
+        }),
+        apply_workspace: vi.fn(async (request_approval) => {
+          await request_approval?.({
+            items: 1,
+            glossary: 0,
+            textPreserve: 0,
+            preReplacement: 0,
+            postReplacement: 0,
+            prompts: 0,
+          });
+          await wait_for_held_tool();
+          return { status: "applied" };
+        }),
+      } satisfies AgentWorkspacePort);
 
     /** 把单个工具停在执行体内，分别验证普通工具与原子 apply 的 stop 语义。 */
     async function wait_for_held_tool(): Promise<void> {

@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
+import type { AgentService } from "../agent/agent-service";
 import type { ApiPostJsonRoute } from "./api-json";
 import { ok } from "./api-types";
 
@@ -11,7 +12,9 @@ import { ok } from "./api-types";
 export interface ApiRouteContext {
   app: Hono;
   services: BackendServices;
+  agent: AgentService;
   postJson: ApiPostJsonRoute;
+  createEventStreamResponse: () => Response;
   createLogStreamResponse: () => Response;
   readLogDetail: (body: JsonRecord) => JsonValue;
   recordRendererError: (body: JsonRecord) => JsonValue;
@@ -22,6 +25,7 @@ export interface ApiRouteContext {
  */
 export function register_api_routes(context: ApiRouteContext): void {
   const services = context.services;
+  const agent = context.agent;
 
   context.app.get("/api/health", (hono_context) =>
     hono_context.json(
@@ -54,29 +58,23 @@ export function register_api_routes(context: ApiRouteContext): void {
     lifecycle.get_open_alignment_preview(body),
   );
 
-  context.app.get("/api/events/stream", () => services.create_event_stream_response());
+  context.app.get("/api/events/stream", () => context.createEventStreamResponse());
   context.postJson("/api/runtime/snapshot", () => services.runtime.getSnapshot());
   context.app.get("/api/agent/snapshot", (hono_context) =>
-    hono_context.json(ok(services.agent.get_snapshot())),
+    hono_context.json(ok(agent.get_snapshot())),
   );
-  context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
-  context.postJson("/api/agent/approval-mode", (body) => services.agent.set_approval_mode(body));
-  context.postJson("/api/agent/approval/approve", (body) =>
-    services.agent.approve_pending_write(body),
-  );
-  context.postJson("/api/agent/approval/reject", (body) =>
-    services.agent.reject_pending_write(body),
-  );
-  context.postJson("/api/agent/queue/update", (body) => services.agent.update_queued_message(body));
-  context.postJson("/api/agent/queue/delete", (body) => services.agent.delete_queued_message(body));
-  context.postJson("/api/agent/queue/reorder", (body) =>
-    services.agent.reorder_queued_messages(body),
-  );
-  context.postJson("/api/agent/queue/send", (body) => services.agent.send_queued_message(body));
-  context.postJson("/api/agent/round/revise", (body) => services.agent.revise_latest_round(body));
-  context.postJson("/api/agent/continue", (body) => services.agent.continue_session(body));
-  context.postJson("/api/agent/stop", () => services.agent.stop());
-  context.postJson("/api/agent/reset", () => services.agent.reset());
+  context.postJson("/api/agent/message", (body) => agent.send_message(body));
+  context.postJson("/api/agent/approval-mode", (body) => agent.set_approval_mode(body));
+  context.postJson("/api/agent/approval/approve", (body) => agent.approve_pending_write(body));
+  context.postJson("/api/agent/approval/reject", (body) => agent.reject_pending_write(body));
+  context.postJson("/api/agent/queue/update", (body) => agent.update_queued_message(body));
+  context.postJson("/api/agent/queue/delete", (body) => agent.delete_queued_message(body));
+  context.postJson("/api/agent/queue/reorder", (body) => agent.reorder_queued_messages(body));
+  context.postJson("/api/agent/queue/send", (body) => agent.send_queued_message(body));
+  context.postJson("/api/agent/round/revise", (body) => agent.revise_latest_round(body));
+  context.postJson("/api/agent/continue", (body) => agent.continue_session(body));
+  context.postJson("/api/agent/stop", () => agent.stop());
+  context.postJson("/api/agent/reset", () => agent.reset());
 
   const project_content = services.project.content;
   const reset_preview = services.project.resetPreview;

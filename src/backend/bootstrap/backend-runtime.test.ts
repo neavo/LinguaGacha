@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BackendRuntimeHostOperation,
-  BackendRuntimeAgentWorkspaceRunRequest,
-  BackendRuntimeAgentWorkspaceRunResponse,
   BackendRuntimeMainMessage,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
@@ -19,7 +17,14 @@ const runtime_mocks = vi.hoisted(() => {
     error: vi.fn(),
     fatal: vi.fn(),
   };
-  class BackendBootstrap {
+  const runner_initialize = vi.fn(async () => undefined);
+  const runner_run = vi.fn(async () => ({ changed: 2 }));
+  class DenoAgentWorkspaceRunner {
+    constructor(_options: unknown) {}
+    initialize = runner_initialize;
+    run = runner_run;
+  }
+  class GuiBackendBootstrap {
     constructor(options: unknown) {
       constructor_options.push(options);
     }
@@ -27,10 +32,21 @@ const runtime_mocks = vi.hoisted(() => {
     start = start;
     stop = stop;
   }
-  return { BackendBootstrap, constructor_options, log_manager, start, stop };
+  return {
+    GuiBackendBootstrap,
+    DenoAgentWorkspaceRunner,
+    constructor_options,
+    log_manager,
+    runner_initialize,
+    runner_run,
+    start,
+    stop,
+  };
 });
 
-vi.mock("./backend-bootstrap", () => ({ BackendBootstrap: runtime_mocks.BackendBootstrap }));
+vi.mock("./gui-backend-bootstrap", () => ({
+  GuiBackendBootstrap: runtime_mocks.GuiBackendBootstrap,
+}));
 vi.mock("../agent/agent-web-fetch", () => ({
   create_agent_web_fetch:
     (resolver: {
@@ -40,6 +56,9 @@ vi.mock("../agent/agent-web-fetch", () => ({
       await resolver.resolveProxy(url, signal);
       return { url, contentType: "text/plain", body: new Uint8Array([111, 107]) };
     },
+}));
+vi.mock("../agent/deno/runner", () => ({
+  DenoAgentWorkspaceRunner: runtime_mocks.DenoAgentWorkspaceRunner,
 }));
 vi.mock("../worker/worker-execution", () => ({
   resolve_desktop_bundle_dir_from_module_url: () => "E:/app/dist-electron",
@@ -57,6 +76,8 @@ describe("run_backend_runtime", () => {
     runtime_mocks.log_manager.warning.mockClear();
     runtime_mocks.log_manager.error.mockClear();
     runtime_mocks.log_manager.fatal.mockClear();
+    runtime_mocks.runner_initialize.mockClear();
+    runtime_mocks.runner_run.mockClear();
     runtime_mocks.start.mockResolvedValue({
       apiBaseUrl: "http://127.0.0.1:4567",
       readAppLanguage: () => "EN",
@@ -77,6 +98,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
+      agentWorkspaceRuntime: runtime_paths(),
       port,
     });
 
@@ -93,10 +115,7 @@ describe("run_backend_runtime", () => {
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openOutputFolder: (path: string) => Promise<void>;
       agentWebFetch: AgentWebFetchPort;
-      agentWorkspaceRun: (
-        request: BackendRuntimeAgentWorkspaceRunRequest,
-        signal: AbortSignal,
-      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
+      agentWorkspaceRun: (request: unknown, signal: AbortSignal) => Promise<unknown>;
     };
     expect(bootstrap_options).toMatchObject({
       appRoot: "E:/app",
@@ -142,21 +161,20 @@ describe("run_backend_runtime", () => {
     });
     await expect(fetch).resolves.toEqual(fetch_response);
 
+    const workspace_signal = new AbortController().signal;
     const workspace = bootstrap_options.agentWorkspaceRun(
       {
         workspacePath: "E:/userdata/agent/workspace/run-1",
         script: "return { changed: 2 };",
       },
-      new AbortController().signal,
+      workspace_signal,
     );
-    const workspace_request = get_host_request(port, "run_agent_workspace");
-    expect(structuredClone(workspace_request)).toEqual(workspace_request);
-    port.emit({
-      type: "host_response",
-      requestId: workspace_request.requestId,
-      result: { ok: true, data: { status: "success", result: { changed: 2 } } },
-    });
-    await expect(workspace).resolves.toEqual({ status: "success", result: { changed: 2 } });
+    await expect(workspace).resolves.toEqual({ changed: 2 });
+    expect(runtime_mocks.runner_initialize).toHaveBeenCalledOnce();
+    expect(runtime_mocks.runner_run).toHaveBeenCalledWith(
+      { workspacePath: "E:/userdata/agent/workspace/run-1", script: "return { changed: 2 };" },
+      workspace_signal,
+    );
 
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({
@@ -187,6 +205,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
+      agentWorkspaceRuntime: runtime_paths(),
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -221,57 +240,13 @@ describe("run_backend_runtime", () => {
     await expect(fetch).rejects.toBe(reason);
   });
 
-  it.each([
-    ["已提交成功", { status: "success" as const, result: { changed: 1 } }],
-    [
-      "回滚失败",
-      {
-        status: "failed" as const,
-        workspaceState: "invalidated" as const,
-        failure: "transaction_failed" as const,
-        message: "工作区事务回滚失败。",
-      },
-    ],
-  ])("取消工作区操作后把%s结果交回服务处理", async (_case, completed) => {
-    const port = create_port();
-    await run_backend_runtime({
-      appRoot: "E:/app",
-      builtinRoot: "E:/app.asar/builtin",
-      moduleUrl: import.meta.url,
-      port,
-    });
-    const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      agentWorkspaceRun: (
-        request: BackendRuntimeAgentWorkspaceRunRequest,
-        signal: AbortSignal,
-      ) => Promise<BackendRuntimeAgentWorkspaceRunResponse>;
-    };
-    const controller = new AbortController();
-    const running = bootstrap_options.agentWorkspaceRun(
-      {
-        workspacePath: "E:/workspace/run-1",
-        script: "return null;",
-      },
-      controller.signal,
-    );
-    const request = get_host_request(port, "run_agent_workspace");
-    controller.abort(new Error("用户停止"));
-
-    port.emit({
-      type: "host_response",
-      requestId: request.requestId,
-      result: { ok: true, data: completed },
-    });
-
-    await expect(running).resolves.toEqual(completed);
-  });
-
   it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {
     const port = create_port();
     await run_backend_runtime({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
+      agentWorkspaceRuntime: runtime_paths(),
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -296,6 +271,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
+      agentWorkspaceRuntime: runtime_paths(),
       port,
     });
 
@@ -323,6 +299,10 @@ function create_port() {
     messages: BackendRuntimeWorkerMessage[];
     emit: (message: BackendRuntimeMainMessage) => void;
   };
+}
+
+function runtime_paths() {
+  return { denoExecutablePath: "E:/runtime/deno.exe", runtimeEntryPath: "E:/runtime/runner.js" };
 }
 
 function get_host_request(

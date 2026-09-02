@@ -7,6 +7,7 @@
 - CLI 只能由产品入口中的显式 `--cli` 触发，用户参数从 `--cli` 后开始读取；文件名、进程名或平台启动器名称不参与分发。
 - job 期间后端 console / window 日志关闭；人类可读启动提示和入口错误走 stderr，机器状态走 stdout JSONL。
 - CLI 完成导出后不自动打开输出目录。
+- CLI job 通过窄 `CLIJobServices` 契约消费类型化业务能力；组合根与资源生命周期归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 2. 命令协议
 

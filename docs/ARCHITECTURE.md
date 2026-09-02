@@ -16,23 +16,25 @@
 ## 2. 运行时拓扑
 
 - `src/index.ts` 是唯一产品入口，只按显式 `--cli` 分发 GUI 或 CLI；入口适配器显式注入安装根、只读内置资产根、桌面 bundle 与 `BackendWorkerExecution`，Backend 和 worker 不从当前目录反推这些边界。`builtin` 随主应用打进 `app.asar`。
-- GUI 的完整 Backend Runtime 运行在独立 `worker_thread`，其中拥有 `BackendBootstrap`、Gateway、服务、数据库、Agent、cache 与日志；Electron main 只拥有应用、窗口、IPC、shell 和更新器。renderer 仍通过本机 HTTP / SSE 消费 Gateway，不直接使用线程消息。
-- GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议：ready、stop、语言读取、宿主诊断，以及代理解析、打开输出目录和 Agent 工作区执行宿主回调。宿主操作以 requestId 隔离并发；worker 取消会中止 main 中对应操作，但已发出的工作区请求必须等待宿主完成清理，已提交成功或工作区失效结果继续交给状态拥有者，其余操作才以原始取消原因结算；runtime 关闭强制拒绝全部待处理请求。worker 意外退出直接结束应用，不回退同进程、不自动重启。
-- CLI 仍在当前进程通过 `BackendBootstrap` 组装 `BackendServices`，关闭 Gateway 并直接消费类型化服务与任务快照订阅。
+- GUI 的完整 Backend Runtime 运行在独立 `worker_thread`，其中由 `GuiBackendBootstrap` 组装共享资源、业务服务、Agent、事件流与 Gateway；Electron main 只拥有应用、窗口、IPC、shell 和更新器。renderer 仍通过本机 HTTP / SSE 消费 Gateway，不直接使用线程消息。
+- GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议和 `AgentWorkspaceRuntimePaths` 固定资产路径：ready、stop、语言读取、宿主诊断，以及代理解析和打开输出目录宿主回调。宿主操作以 requestId 隔离并发；worker 取消会中止 main 中对应操作，runtime 关闭强制拒绝全部待处理请求。Agent 工作区脚本由 Backend Runtime worker 直接启动受限 Deno 子进程，不经过 main。worker 意外退出直接结束应用，不回退同进程、不自动重启。
+- CLI 在当前进程线性创建 `BackendResources` 与 `BackendServices`，通过窄 `CLIJobServices` 消费类型化业务能力和任务快照订阅。
 - GUI Backend Runtime 在发布态固定运行于独立 `worker_thread`；work-unit、planning 和 compute 的正式执行统一注入 `worker_threads`，三者的 `in_process` 只允许测试或源码运行显式选择，不作为失败回退。
-- `BackendServices` 是 Gateway、CLI job 与任务引擎共用的组合根，运行期服务只在这里装配。
-- `BackendBootstrap` 是进程资源生命周期权威：start / stop 串行，GUI、CLI 的正常退出与首个错误退出统一等待同一 stop；启动顺序固定为日志与迁移 → 普通 HTTP transport → `BackendServices` → 可选 Gateway，关闭时严格逆序，单项失败不跳过后续释放。transport 的网络语义归 [`BACKEND.md`](BACKEND.md)。
+- `BackendResources` 统一拥有路径、迁移、设置、普通 HTTP transport、数据库与日志；`BackendServices` 统一拥有工程、任务、cache、模型、质量和文件能力，并向 GUI Agent 暴露同一组工程会话、运行门禁、cache 与唯一写入口。两者都不依赖 Agent 或 API 适配层。
+- Backend Runtime worker 在进入 `GuiBackendBootstrap` 前校验固定 Deno runtime；随后由 `GuiBackendBootstrap` 串行管理共享资源 → 业务服务 → Agent → Gateway 的启动和严格逆序关闭，单项失败不跳过后续释放。CLI 按 job 的线性生命周期逆序释放业务服务和共享资源。transport 的网络语义归 [`BACKEND.md`](BACKEND.md)。
 
 ```mermaid
 flowchart LR
     I["src/index.ts"] --> G["GUI 入口"]
     I --> C["CLI 入口"]
     G --> M["Electron main 宿主"]
-    M --> BG["Backend Runtime worker\nBackendBootstrap + Gateway"]
-    C --> BC["BackendBootstrap，无 Gateway"]
-    BG --> S["BackendServices"]
-    BC --> S
-    S --> E["TaskEngine"]
+    M --> BG["Backend Runtime worker\nGuiBackendBootstrap"]
+    C --> BC["BackendResources + BackendServices"]
+    BG --> GS["BackendServices"]
+    BG --> D["Agent + Deno Workspace + Gateway"]
+    BC --> CS["BackendServices"]
+    GS --> E["TaskEngine"]
+    CS --> E
     E --> W["worker_threads"]
     BG -->|"HTTP / SSE"| R["preload / renderer"]
     M --> R

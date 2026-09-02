@@ -26,35 +26,36 @@
 - Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。Pi `agent_start / agent_end` 与压缩事件共同决定公开 `canSendNow`，避免在异步预检、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
-- GUI Agent 在应用 userdata 中持有活动 UUID 数据快照及其同级 `task`、`sources`。task 绑定当前 Agent 对话、工程 epoch 与权威语言；三类目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
-- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时由完整生成的新快照替换旧快照。`workspace_script` 在普通 section revision 后重建数据快照；`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`scratch`、`task` 与 `sources` 都使用真实相对路径。task 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
+- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_script` 在普通 section revision 后刷新数据快照、空 change 文件和 `scratch`，保留相容的 `task`；reset 清除快照和 task 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 - 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。
-- 脚本文件事务共同提交 `changes`、`task` 与 `scratch`；脚本失败、取消和结果无效时恢复本次运行前的基线。
+- 每次 `workspace_script` 启动一个 Deno 子进程，跨调用状态只由文件承担。脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
 
 ## 3. 模型、资源与 skill
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用同 canonical ID 全部 Pi 记录的最大窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与已经确认可用的思考等级同步到既有 `AgentSession`，请求期保持该档位稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
 - Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注先进入 text prompt，规范 WebP 则直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次 assistant 请求之间统一自动压缩。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；`AgentService` 只把 SDK 压缩事件投影到公开时间线，成功后 token 仪表采用 SDK 对新模型历史的估算，失败保留原用量并沿用 SDK 后续请求语义。
-- 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
+- Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述，显式注入块只公开名称与正文；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。skill 正文声明的前置或条件组合技能统一由模型调用 `read_skill` 加载，组合本身不改变任务对象、范围或工作区权限。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
-- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、写入边界与决策交互格式；除有意重复该短准则的 `agent-charter` 外，skill 只补充领域判断、业务信息顺序、证据方法与停止条件。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、工作区工具编排、失败恢复、写入边界与决策交互格式；静态 Markdown 模板直接拥有完整的 Agent 工作区章节和顺序，资源加载器只在原位填充权限范围、模块限制与领域方法路由，形成跨会话字节稳定的基础 System 前缀，再在其后拼接会话 skill catalog。除有意重复该短准则的 `agent-charter` 外，skill 只补充领域概念、业务信息与工作资产归属、判断逻辑、证据方法和停止条件；仅当某个正式领域方法本身构成流程语义或结果契约时直接点名，不描述其调用参数、文件 API 或通用工具编排。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
 - `quality-rule-workflow` 技能拥有质量规则任务的范围、发现、账本、目标集合和提交，领域判断分别路由到 `glossary-rules` 与 `text-preserve-rules` 技能；任务内 `seed` 控制既有 glossary 条目的发现作用，随领域证据更新且不进入项目字段或运行时执行模型。`glossary-rules` 技能只提供术语领域结论，需要译名质量时加载并遵循 `writing-guide` 技能。
 - `translation-workflow` 技能统一拥有工程译文的两条路径：`translate` 处理没有译文的条目，`review` 处理已有译文的审校、修正和重译；两条路径共享自启发发现、业务单元、写入和核验，`translation-rules` 技能只提供 item 字段与译文领域结论，需要文本质量时加载并遵循 `writing-guide` 技能。领域规则不拥有 workflow 状态或流程入口。
 - 内置 skill 只补充各自任务的领域判断、证据方法与流程；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
 
 ## 4. 产品工具与宿主能力
 
-- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
+- 产品 JSON 工具统一由 `tools/definition` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `task_progress` 始终注册，管理当前对话中至多一个内存动态工作队列；`advance` 在完整校验后原子完成既有项并追加派生项，`finish` 拒绝遗留待办，显式 `cancel` 只清理进度而不回滚其它副作用。工具只向模型返回分阶段计数和有限待办，不保存领域事实、工程证据、百分比或完成判据；公开 Agent snapshot 与 SSE 另以 `taskProgress` 投影全部待办标签，空数组表示不展示，不公开标题、键、阶段或完成统计。
-- 工程数据工具由 `workspace_script` 与 `workspace_apply` 组成，并在 GUI Electron 沙箱端口存在时成组注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与提交协调。
-- `AGENT_WORKSPACE_API` 是固定 SDK 的代码权威；工具参数结构将脚本形式、SDK 和结果边界投影给模型；`workspace.contract` 拥有当前快照的 `datasets`、路径、字段、`limits`、`changes`、`effects`、`guidance` 与 `apply` 契约，其中 `warnings` 直接使用 shared 校对词表和证据字段。Electron runner 按 manifest 注入固定成员，领域技能提供范围、证据、任务原子性和停止条件。
-- `workspace_script` 按需建立或刷新完整只读快照、空变更清单文件和当前对话 `task`。`items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开。
-- JavaScript 异步脚本体在一次性 Chromium 沙箱中运行，宿主注入 `workspace` 并支持顶层 `await` 与 `return`。同一快照内的确定性数据流在一次脚本中完成，返回值通过 JSON 与结果字节门后提交文件事务。沙箱暴露私有工作区协议和声明目录；路径规范化、事务 overlay、回滚与快照失效共同保护宿主和项目基线。
-- `workspace.queryItems` 提供确定性筛选，`workspace.queryItemContexts` 提供邻近上下文，`workspace.groupQualityRuleEntries` 与 `workspace.deriveCommonLiteralRoots` 提供结构候选，`workspace.matchLiterals` 按正式连续字面语义扫描 `src` 与 `name_src`。发布方法获得冻结的读取面，正式字面匹配由 Electron main 私有 protocol 执行。
+- 工程数据工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与提交协调。
+- 每个工作区领域方法模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举方法集合，Deno 注入对象、System 能力路由和模型可见 TypeScript 协议均由该集合投影。未知参数在统一分发边界按 Schema 收窄，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。
+- `workspace.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；其中的标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。`workspace` 只提供冻结的 contract 与类型化领域方法，文件访问统一使用 Deno 标准 API。
+- `workspace_script` 按需建立或刷新完整只读快照、空变更清单文件和当前对话 `task`。`items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
+- TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时和结果上限；Deno 可读取完整工作区，只能写入 `changes`、`task` 与 `scratch`，且不能访问外部模块、网络、环境、系统信息、子进程或 FFI。stdout 只承载有界 JSON envelope，脚本诊断进入 stderr；超时或停止先终止进程并等待退出，再释放工作区串行边界。
+- Deno 二进制按 Windows、macOS、Linux 的 x64 与 ARM64 目标由单一版本 manifest 管理，发布压缩资产与解压后二进制分别携带 SHA-256；目标二进制校验通过时直接复用，否则校验压缩资产和二进制后安装。Runner 从该 manifest 读取期望版本并在应用启动时校验当前目标二进制。发布包只带当前目标资产，开发态使用项目构建缓存，二者都不查询系统 `PATH`；afterPack 只安装目标资产与已经生成的 runtime bundle。
 - `workspace_apply` 单次读取一个提交批次的显式变更清单，按对象 `fp` 与领域规则逐行处理；审批摘要只统计预演实际候选，事务回执只统计 actual applied。正常结果固定包含 `status`、`applied`、`rejected`、`destroyed` 与 `revisions`；status 为 `applied | partial | rejected | unchanged`。实际提交或目标事实漂移返回 `destroyed: true`，输入错误、无变化和回滚保留工作区。
 - Agent 先完成确定性处理，再按 System Prompt 的规模建议与领域边界组织固定范围内的开放式语义业务单元。完整范围原子性汇总全部业务单元，逐业务单元写入则依次提交并刷新事实；每次 `workspace_apply` 只提交一个批次。开放式语义批次先输出完整业务结果，手动模式由审批界面承接用户决定，工具返回后输出执行回执。用户只在范围、标准、任务原子性、写入策略或语义未决需要决定时介入。
 - GUI Agent 的 Web 能力以 `web_search` 与 `web_fetch` 成组注册，宿主抓取端口缺失时不注册假实现。`web_search` 通过固定的 Exa、Tavily、Firecrawl、AnySearch 与 Keenable 无凭据 MCP 工具实现统一查询 Schema 和错误契约，不动态投影远端工具；模型只提交自然语言查询，供应商协议或业务失败均进入同一回退链。应用级搜索服务从 Exa 开始，当前来源失败时环形尝试其余来源并将成功来源晋升为首选，该内存状态跨工程切换复用、应用重启后重置。五家会话均按需建立并复用，组合根在 Agent 之后统一释放；`web_fetch` 仍独立使用本地安全下载链路，不委托搜索供应商抓取正文。

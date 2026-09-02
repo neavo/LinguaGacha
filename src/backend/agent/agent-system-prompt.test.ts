@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_system_prompt } from "./agent-system-prompt";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./deno/policy";
+import { format_agent_workspace_method_routes } from "./methods/api-description";
 
 const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
@@ -18,12 +20,25 @@ afterEach(() => {
 });
 
 describe("Agent system prompt 加载与资源契约", () => {
-  it("从内置资源读取并裁剪首尾空白", () => {
+  it("从内置模板填充 Workspace 事实并裁剪首尾空白", () => {
     const paths = create_paths();
-    const lines = ["prompt-line-1", "prompt-line-2"];
-    write_system_prompt(paths, `\n  ${lines.join("\n")}  \n`);
+    write_system_prompt(paths, `\n  prompt-before\n${workspace_placeholders()}\nprompt-after  \n`);
 
-    expect(load_agent_system_prompt(paths, new NativeFs())).toBe(lines.join("\n"));
+    const prompt = load_agent_system_prompt(paths, new NativeFs());
+    const method_routes = format_agent_workspace_method_routes();
+
+    expect(prompt).toContain("prompt-before");
+    expect(prompt).toContain(method_routes);
+    for (const root of AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots) {
+      expect(prompt).toContain(`\`${root}/**\``);
+    }
+    for (const argument of AGENT_WORKSPACE_RUNTIME_POLICY.denoRestrictionArgs) {
+      expect(prompt).toContain(`\`${argument}\``);
+    }
+    expect(prompt).toContain("prompt-after");
+    expect(prompt).not.toContain("{{WORKSPACE_");
+    expect(prompt.indexOf("prompt-before")).toBeLessThan(prompt.indexOf(method_routes));
+    expect(prompt.indexOf(method_routes)).toBeLessThan(prompt.indexOf("prompt-after"));
   });
 
   it("资源缺失时保留原始读取异常", () => {
@@ -48,7 +63,28 @@ describe("Agent system prompt 加载与资源契约", () => {
       expect.objectContaining({ code: "file.invalid_structure" }),
     );
   });
+
+  it.each([
+    ["缺少", workspace_placeholders().replace("{{WORKSPACE_DENO_RESTRICTION_ARGS}}", "")],
+    ["重复", `${workspace_placeholders()}\n{{WORKSPACE_DENO_RESTRICTION_ARGS}}`],
+    ["未知", `${workspace_placeholders()}\n{{WORKSPACE_UNKNOWN}}`],
+  ])("Workspace 占位符%s时拒绝启动", (_label, content) => {
+    const paths = create_paths();
+    write_system_prompt(paths, content);
+
+    expect(() => load_agent_system_prompt(paths, new NativeFs())).toThrow(
+      expect.objectContaining({ code: "file.invalid_structure" }),
+    );
+  });
 });
+
+function workspace_placeholders(): string {
+  return [
+    "write {{WORKSPACE_WRITE_SCOPES}}",
+    "deno {{WORKSPACE_DENO_RESTRICTION_ARGS}}",
+    "{{WORKSPACE_METHOD_ROUTES}}",
+  ].join("\n");
+}
 
 /** 使用真实 AppPathService 解析资源位置，不在测试里复制路径规则。 */
 function create_paths(): AppPathService {

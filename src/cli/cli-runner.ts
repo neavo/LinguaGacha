@@ -1,7 +1,8 @@
 import { app, session } from "electron";
 import path from "node:path";
 
-import { BackendBootstrap } from "../backend/bootstrap/backend-bootstrap";
+import { BackendResources } from "../backend/bootstrap/backend-resources";
+import { BackendServices } from "../backend/bootstrap/backend-services";
 import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
 import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
@@ -9,7 +10,7 @@ import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { write_stdout } from "./cli-output";
 
 /**
- * 在无 GUI Gateway 的 BackendBootstrap 中执行 CLI 命令，并沿入口契约下传 worker_execution。
+ * 组装不含 Agent、SSE 与 Gateway 的 CLI Backend，并沿入口契约下传 worker_execution。
  */
 export async function run_cli_command(
   app_root: string,
@@ -17,37 +18,54 @@ export async function run_cli_command(
   worker_execution: BackendWorkerExecution,
 ): Promise<void> {
   await app.whenReady();
-  const bootstrap = new BackendBootstrap({
+  const resources = await BackendResources.start({
     appRoot: app_root,
     builtinRoot: path.join(app.getAppPath(), "builtin"),
-    exposeApiGateway: false,
     logTargets: { console: false, window: false },
     systemProxyResolver: {
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
-    openOutputFolder: async () => undefined,
-    workerExecution: worker_execution,
   });
+  let services: BackendServices | null = null;
+  const failures: unknown[] = [];
   try {
-    const start_result = await bootstrap.start();
+    services = new BackendServices({
+      paths: resources.paths,
+      metadata: resources.metadata,
+      appSettingService: resources.settings,
+      database: resources.database,
+      logManager: resources.logManager,
+      publishEvent: () => undefined,
+      openOutputFolder: async () => undefined,
+      workerExecution: worker_execution,
+    });
     await run_cli_job(
-      start_result.backendServices,
+      services,
       command,
       new CLIJsonStatusReporter({
         command: command.command,
         writeLine: write_stdout,
       }),
     );
-  } catch (operation_error) {
-    try {
-      await bootstrap.stop();
-    } catch (stop_error) {
-      throw new AggregateError(
-        [operation_error, stop_error],
-        "CLI execution failed and Backend cleanup also failed.",
-      );
-    }
-    throw operation_error;
+  } catch (error) {
+    failures.push(error);
   }
-  await bootstrap.stop();
+  await collect_failure(failures, async () => await services?.dispose());
+  await collect_failure(failures, async () => await resources.dispose());
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "CLI execution or Backend cleanup failed.");
+  }
+}
+
+/** CLI 收尾继续释放后续层级，并按发生顺序汇总异常。 */
+async function collect_failure(
+  failures: unknown[],
+  operation: () => void | Promise<void>,
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    failures.push(error);
+  }
 }

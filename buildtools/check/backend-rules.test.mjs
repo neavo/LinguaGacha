@@ -14,6 +14,7 @@ const EXPECTED_RULE_NAMES = new Set([
   "后端 API 依赖方向",
   "后端模块所有权",
   "后端出站网络边界",
+  "共享 Backend 组合根边界",
   "模型供应商边界",
   "错误定义表边界",
 ]);
@@ -25,6 +26,7 @@ describe("backend boundary rules", () => {
       "src/backend/api/api-routes.ts": 'app.post("/api/direct", handler);',
       "src/backend/api/api-stream-hub.ts": "const frame = `data: ${JSON.stringify(event)}`;",
       "src/backend/cache/store.ts": 'import "node:sqlite";',
+      "src/backend/bootstrap/backend-services.ts": 'import "../agent/agent-service";',
       "src/backend/llm/client.ts": 'import "../model/model-service";',
       "src/backend/model/catalog.ts": 'import OpenAI from "openai";',
       "src/backend/model/network.ts": [
@@ -36,7 +38,7 @@ describe("backend boundary rules", () => {
         'import "node:fs/promises";',
         'app.get("/api/quality", handler);',
       ].join("\n"),
-      "src/cli/main.ts": 'import "../backend/database/database-operations";',
+      "src/cli/main.ts": 'import "../backend/agent/agent-service";',
       "src/shared/error/app-error.ts": [
         'export const APP_ERROR_DEFINITIONS = { bad: { message: "visible" } };',
         "export interface AppErrorOptions {}",
@@ -81,6 +83,20 @@ describe("backend boundary rules", () => {
         relative_path: "src/cli/main.ts",
       }),
     ]);
+  });
+
+  it("拒绝 CLI 经中间服务传递依赖 Agent 或 API", () => {
+    const errors = run_rules({
+      "src/backend/feature/service.ts": 'import "../agent/agent-service";',
+      "src/cli/main.ts": 'import "../backend/feature/service";',
+    });
+
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        rule_name: "CLI 后端依赖边界",
+        relative_path: "src/cli/main.ts",
+      }),
+    );
   });
 });
 
