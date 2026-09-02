@@ -21,6 +21,7 @@ type DatabaseRow = Record<string, unknown>;
 
 // SQLite 的 IN 参数统一在数据库边界分块；业务批量大小不应复用这个存储安全值。
 const SQLITE_IN_CLAUSE_CHUNK_SIZE = 500;
+const SQLITE_AUTO_VACUUM_FULL = 1; // SQLite PRAGMA 用 1 表示 FULL，文件头查询与设置共享该协议值
 
 /** 让所有 IN 查询共享同一存储分块边界，避免调用方各自猜测 SQLite 参数容量。 */
 function for_each_sqlite_in_clause_chunk<T>(
@@ -113,6 +114,7 @@ function ensure_database_runtime_available(): void {
  */
 export class ProjectDatabase {
   private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // 只保存当前活跃连接，不再表达永久缓存
+  private readonly storage_maintenance_deferred_paths = new Set<string>(); // 当前实例内暂缓物理整理的工程路径
   private readonly native_fs: NativeFs; // 统一 .lg 文件、源 asset 和 SQLite 路径的原生 IO 策略
 
   /**
@@ -129,6 +131,7 @@ export class ProjectDatabase {
   public close(): void {
     const records = [...this.connection_records.values()];
     this.connection_records.clear();
+    this.storage_maintenance_deferred_paths.clear();
     const errors: unknown[] = [];
     for (const record of records) {
       try {
@@ -433,6 +436,7 @@ export class ProjectDatabase {
       db.exec("PRAGMA journal_mode=WAL");
       db.exec("PRAGMA synchronous=NORMAL");
       db.exec("PRAGMA busy_timeout=5000");
+      this.apply_project_storage_mode(normalized_path, db);
       // 每次首次打开都先跑 schema/writeback 迁移，让业务读写只面对当前 .lg 物理契约
       migration_orchestrator.run_project_database_migrations(db);
     } catch (open_error) {
@@ -455,6 +459,26 @@ export class ProjectDatabase {
     };
     this.connection_records.set(normalized_path, record);
     return record;
+  }
+
+  /**
+   * 将 .lg 物理回收模式统一为 FULL；整理暂缓不影响数据库事实读取，由后续实例重新尝试。
+   */
+  private apply_project_storage_mode(normalized_path: string, db: DatabaseSync): void {
+    if (this.storage_maintenance_deferred_paths.has(normalized_path)) {
+      return;
+    }
+    try {
+      const row = this.value_record(db.prepare("PRAGMA auto_vacuum").get());
+      if (row_number(row, "auto_vacuum") === SQLITE_AUTO_VACUUM_FULL) {
+        return;
+      }
+      db.exec("PRAGMA auto_vacuum=FULL");
+      db.exec("VACUUM");
+    } catch {
+      // 物理回收不改变业务数据语义；当前实例暂缓后续整理，让正常迁移继续判断工程是否可用。
+      this.storage_maintenance_deferred_paths.add(normalized_path);
+    }
   }
 
   /**
@@ -542,6 +566,7 @@ export class ProjectDatabase {
   private initialize_project(project_path: string, name: string): null {
     const normalized_path = path.resolve(project_path);
     this.close_project(normalized_path);
+    this.storage_maintenance_deferred_paths.delete(normalized_path);
     if (this.native_fs.exists(normalized_path)) {
       this.native_fs.unlink(normalized_path);
     }
