@@ -5,7 +5,7 @@ description: 对术语与文本保护规则进行提取或审校时使用。
 
 # 质量规则工作流
 
-## 技能协作
+## 技能加载
 
 - 任务涉及 glossary 时，加载并遵循 `glossary-rules` 技能。
 - 任务涉及 text_preserve 时，加载并遵循 `text-preserve-rules` 技能。

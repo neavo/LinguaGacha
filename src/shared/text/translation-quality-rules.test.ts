@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  collect_foreign_char_residue_fragments,
+  collect_foreign_residue_fragments,
   has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
   is_translation_text_similar,
@@ -10,7 +10,7 @@ import {
 describe("translation-quality-rules", () => {
   it("按目标语言收集连续外文残留片段并稳定去重", () => {
     expect(
-      collect_foreign_char_residue_fragments({
+      collect_foreign_residue_fragments({
         text: "甲かな乙カナかな，OpenAI，текст，한글，かな",
         targetLanguage: "ZH",
       }),
@@ -19,11 +19,20 @@ describe("translation-quality-rules", () => {
 
   it("保留残留字素簇中的附标并忽略通用中性内容", () => {
     expect(
-      collect_foreign_char_residue_fragments({
+      collect_foreign_residue_fragments({
         text: "か\u3099 ｶﾞ ゛ 123 👩‍💻",
         targetLanguage: "ZH",
       }),
     ).toEqual(["か\u3099", "ｶﾞ", "゛"]);
+  });
+
+  it("忽略孤立的单个拉丁字素并保留更强的残留证据", () => {
+    expect(
+      collect_foreign_residue_fragments({
+        text: "按 A/X 键，é，e\u0301，Ａ；AB；Aあ；한；β",
+        targetLanguage: "ZH",
+      }),
+    ).toEqual(["AB", "Aあ", "한", "β"]);
   });
 
   it.each([
@@ -36,7 +45,7 @@ describe("translation-quality-rules", () => {
     ["AR", "الْعَرَبِيَّةُـ"],
     ["TH", "ภาษาไทย่"],
   ] as const)("%s 允许自身书写系统：%s", (targetLanguage, text) => {
-    expect(collect_foreign_char_residue_fragments({ text, targetLanguage })).toEqual([]);
+    expect(collect_foreign_residue_fragments({ text, targetLanguage })).toEqual([]);
   });
 
   it.each([
@@ -48,7 +57,7 @@ describe("translation-quality-rules", () => {
     ["AR", "Latin"],
     ["TH", "Latin"],
   ] as const)("%s 报告其它书写系统：%s", (targetLanguage, text) => {
-    expect(collect_foreign_char_residue_fragments({ text, targetLanguage })).toEqual([text]);
+    expect(collect_foreign_residue_fragments({ text, targetLanguage })).toEqual([text]);
   });
 
   it("重试次数达到人工校对阈值后返回 true", () => {
@@ -66,6 +75,7 @@ describe("translation-quality-rules", () => {
   it.each([
     ["日译中无非中文文字时不报告", "東京", "東京", "JA", "ZH", false],
     ["日译中有非中文文字时报告", "東京", "東京あ", "JA", "ZH-HANT", true],
+    ["日译中孤立 Latin 不构成相似证据", "東京A", "東京A", "JA", "ZH", false],
     ["韩译中无非中文文字时不报告", "韓國", "韓國", "KO", "ZH", false],
     ["韩译中有非中文文字时报告", "韓國", "韓國한", "KO", "ZH", true],
     ["非日韩译中时相似即报告", "same text", "same text", "EN", "ZH", true],

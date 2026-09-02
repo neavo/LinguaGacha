@@ -24,7 +24,7 @@ import {
 import { prepare_translation_source_line } from "../text/translation-source-line";
 import type { TextProcessingConfig } from "../text/text-types";
 import {
-  collect_foreign_char_residue_fragments,
+  collect_foreign_residue_fragments,
   has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
 } from "../text/translation-quality-rules";
@@ -170,13 +170,13 @@ export function evaluateProofreadingItem(args: {
     if (split_text_lines(args.item.src).length !== split_text_lines(args.item.dst).length) {
       warnings.push("LINE_COUNT_MISMATCH");
     }
-    const foreign_char_fragments = collect_foreign_char_residue_fragments({
+    const foreign_residue_fragments = collect_foreign_residue_fragments({
       text: normalized_dst,
       targetLanguage: args.processingConfig.target_language,
     });
-    if (foreign_char_fragments.length > 0) {
+    if (foreign_residue_fragments.length > 0) {
       warnings.push("FOREIGN_CHAR_RESIDUE");
-      warning_fragments_by_code.FOREIGN_CHAR_RESIDUE = foreign_char_fragments;
+      warning_fragments_by_code.FOREIGN_CHAR_RESIDUE = foreign_residue_fragments;
     }
 
     const source_preserved_segments = collect_non_blank_segments_by_line(review_src, sample_rule);

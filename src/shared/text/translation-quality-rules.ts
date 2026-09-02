@@ -1,5 +1,5 @@
 import {
-  classify_language_grapheme,
+  classify_target_language_grapheme,
   normalize_language_code,
   type TargetLanguageCode,
 } from "../../domain/language";
@@ -12,39 +12,42 @@ const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给�
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /**
- * 去重时保留首次出现顺序，便于日志和校对页展示稳定片段。
+ * 外文残留按连续字素聚合；孤立 Latin 字素证据不足，其它单字素和连续片段继续报告。
  */
-function unique_strings(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
-/**
- * 外文残留只看目标语言允许的书写系统；字素簇保证基础文字与附标作为完整证据保留。
- */
-export function collect_foreign_char_residue_fragments(args: {
+export function collect_foreign_residue_fragments(args: {
   text: string;
   targetLanguage: TargetLanguageCode;
 }): string[] {
   const fragments: string[] = [];
   let current_fragment = "";
+  let current_grapheme_count = 0;
+  let current_has_other_residue = false;
+
+  // 片段结束时就地判断证据强度，不让过滤规则泄漏到调用方。
+  const flush_current_fragment = (): void => {
+    if (current_fragment !== "" && (current_grapheme_count > 1 || current_has_other_residue)) {
+      fragments.push(current_fragment);
+    }
+    current_fragment = "";
+    current_grapheme_count = 0;
+    current_has_other_residue = false;
+  };
 
   for (const { segment } of GRAPHEME_SEGMENTER.segment(args.text)) {
-    if (classify_language_grapheme(segment, args.targetLanguage) === "residue") {
+    const classification = classify_target_language_grapheme(segment, args.targetLanguage);
+    if (classification === "latin-residue" || classification === "other-residue") {
       current_fragment += segment;
+      current_grapheme_count += 1;
+      current_has_other_residue ||= classification === "other-residue";
       continue;
     }
 
-    if (current_fragment !== "") {
-      fragments.push(current_fragment);
-      current_fragment = "";
-    }
+    flush_current_fragment();
   }
 
-  if (current_fragment !== "") {
-    fragments.push(current_fragment);
-  }
+  flush_current_fragment();
 
-  return unique_strings(fragments);
+  return [...new Set(fragments)];
 }
 
 /**
@@ -96,7 +99,7 @@ export function has_translation_similarity_issue(args: {
   }
 
   return (
-    collect_foreign_char_residue_fragments({
+    collect_foreign_residue_fragments({
       text: args.dst,
       targetLanguage: target_language,
     }).length > 0
