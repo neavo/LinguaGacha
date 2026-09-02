@@ -52,41 +52,7 @@ export interface TransFilterEffectInput {
   parameter?: unknown; // 可选分区参数，只在已知结构下读取
 }
 
-/**
- * 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用。
- */
-export const BLACKLIST_EXTENSIONS = [
-  ".mp3", // 音频资源引用
-  ".wav", // 音频资源引用
-  ".ogg", // 音频资源引用
-  ".mid", // MIDI 音频资源引用
-  ".png", // 图片资源引用
-  ".jpg", // 图片资源引用
-  ".jpeg", // 图片资源引用
-  ".gif", // 图片资源引用
-  ".psd", // 图片工程源文件引用
-  ".webp", // 图片资源引用
-  ".heif", // 图片资源引用
-  ".heic", // 图片资源引用
-  ".avi", // 视频资源引用
-  ".mp4", // 视频资源引用
-  ".webm", // 视频资源引用
-  ".txt", // 外部文本资源路径
-  ".7z", // 压缩包资源引用
-  ".gz", // 压缩包资源引用
-  ".rar", // 压缩包资源引用
-  ".zip", // 压缩包资源引用
-  ".json", // 数据文件路径引用
-  ".sav", // 存档文件路径引用
-  ".mps", // RPG Maker 资源文件引用
-  ".ttf", // 字体资源引用
-  ".otf", // 字体资源引用
-  ".woff", // Web 字体资源引用
-] as const;
-
-/**
- * red/blue 是 trans 系列处理器共同的强制排除色标
- */
+/** red/blue 是 trans 系列处理器共同的格式规则跳过色标。 */
 export function has_color_block_tag(tag: string[]): boolean {
   return tag.some((value) => value === "red" || value === "blue");
 }
@@ -135,7 +101,7 @@ export function derive_trans_filter_effect(input: TransFilterEffectInput): Trans
   return {
     block,
     tag: derive_trans_filter_tag(input.tag, has_blocked_partition),
-    status: has_unblocked_partition ? "NONE" : "EXCLUDED",
+    status: has_unblocked_partition ? "NONE" : "RULE_SKIPPED",
     is_mixed_partition: is_mixed_block && can_generate_trans_partition_parameter(input.parameter),
   };
 }
@@ -147,9 +113,7 @@ function normalize_trans_filter_block(block: boolean[]): boolean[] {
   return block.length === 0 ? [false] : block;
 }
 
-/**
- * gold 表示命中过自动过滤；没有任何过滤时移除计算 gold，保留 red/blue 的人工排除语义
- */
+/** gold 表示本次计算命中过滤；未命中时移除 gold，并保留源格式的 red/blue 标签。 */
 function derive_trans_filter_tag(tag: string[], has_blocked_partition: boolean): string[] {
   if (has_blocked_partition) {
     return tag.some((value) => value === "red" || value === "blue" || value === "gold")
@@ -191,7 +155,7 @@ function has_trans_span_parameter(parameter_list: unknown[]): boolean {
 }
 
 /**
- * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤
+ * TRANS 默认处理器只按格式颜色标签过滤，文本资源引用由项目通用规则处理
  */
 export class NoneTransProcessor {
   /**
@@ -225,7 +189,7 @@ export class NoneTransProcessor {
     const dst = typeof data[1] === "string" ? data[1] : "";
 
     if (src === "") {
-      return { src, dst, tag, status: "EXCLUDED", skip_internal_filter: false };
+      return { src, dst, tag, status: "RULE_SKIPPED", skip_internal_filter: false };
     }
     if (tag.some((value) => value === "aqua")) {
       return { src, dst, tag, status: "NONE", skip_internal_filter: true };
@@ -249,13 +213,10 @@ export class NoneTransProcessor {
   }
 
   /**
-   * 默认过滤只看文本资源扩展名和 red/blue 标签，context 仅决定返回分区数量
+   * 默认过滤只看 red/blue 标签，context 仅决定返回分区数量
    */
-  public filter(src: string, _path_key: string, tag: string[], context: string[]): boolean[] {
+  public filter(_src: string, _path_key: string, tag: string[], context: string[]): boolean[] {
     const length = context.length > 0 ? context.length : 1;
-    if (BLACKLIST_EXTENSIONS.some((extension) => src.includes(extension))) {
-      return Array.from({ length }, () => true);
-    }
     return Array.from({ length }, () => has_color_block_tag(tag));
   }
 

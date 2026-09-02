@@ -17,7 +17,7 @@ describe("RPGMakerTransProcessor", () => {
       processor.check("data/Actors.json", ["ActorName", ""], [], ["MapInfos/1/name"]),
     ).toMatchObject({
       src: "ActorName",
-      status: "EXCLUDED",
+      status: "RULE_SKIPPED",
       tag: ["gold"],
     });
     expect(processor.check("data/Actors.json", ["Done", "已完成"], [], [])).toMatchObject({
@@ -39,7 +39,7 @@ describe("RPGMakerTransProcessor", () => {
       ),
     ).toMatchObject({
       src: "ShowMessage",
-      status: "EXCLUDED",
+      status: "RULE_SKIPPED",
       tag: ["gold"],
     });
     expect(
@@ -56,12 +56,12 @@ describe("RPGMakerTransProcessor", () => {
     });
   });
 
-  it("按资源扩展名、路径缓存、颜色标签和地址黑名单过滤分区", () => {
+  it("按路径缓存、颜色标签和地址黑名单过滤分区", () => {
     const processor = new RPGMakerTransProcessor({});
 
     expect(processor.filter("sound.mp3", "Map001.json", [], ["ctx1", "ctx2"])).toEqual([
-      true,
-      true,
+      false,
+      false,
     ]);
     expect(processor.filter("hello", "plugin.js", [], ["ctx1"])).toEqual([true]);
     expect(processor.filter("hello", "Map001.json", ["blue"], ["any"])).toEqual([true]);

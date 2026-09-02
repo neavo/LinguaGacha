@@ -1,16 +1,19 @@
-import { has_cjk_language_character } from "../../domain/language";
 import {
   normalize_text_preserve_mode,
   type TextPreserveEntry,
   type TextPreserveMode,
 } from "../../domain/quality";
+import base_text_preserve_entries from "../../../builtin/text_preserve/preset/base.json";
+import kag_text_preserve_entries from "../../../builtin/text_preserve/preset/kag.json";
+import renpy_text_preserve_entries from "../../../builtin/text_preserve/preset/renpy.json";
+import rpgmaker_text_preserve_entries from "../../../builtin/text_preserve/preset/rpgmaker.json";
+import wolf_text_preserve_entries from "../../../builtin/text_preserve/preset/wolf.json";
 
 export { normalize_text_preserve_mode };
 export type { TextPreserveMode };
 
 type TextPreservePatternDefinition = {
   source: string;
-  rejects_cjk_language_text: boolean;
 };
 
 type CompiledTextPreservePatternDefinition = TextPreservePatternDefinition & {
@@ -25,61 +28,24 @@ type TextPreserveMatch = {
   definition_index: number;
 };
 
-// NONE 规则是所有文本类型的最小保护集合，避免 `<br>` 和空白段参与差异检查
-const NONE_PATTERNS = [
-  { source: "<br>", rejects_cjk_language_text: false }, // 换行符 Line break
-  { source: "\\s", rejects_cjk_language_text: false }, // 空白符 Whitespace
-] as const;
-
-// Ren'Py/KAG 控制段内部若含中日韩正文，就不能当作可保护脚手架
-const RENPY_LIKE_PATTERNS = [
-  { source: "\\{[^\\{]*?\\}", rejects_cjk_language_text: true }, // `{=2.3}`
-  { source: "\\[[^\\[]*?\\]", rejects_cjk_language_text: true }, // `[renpy.version_only]`
-  ...NONE_PATTERNS,
-] as const;
-
-// RPGMaker/WOLF 共享控制码形态较多，集中在同一组规则避免校对页和任务侧漂移
-const RPGMAKER_LIKE_PATTERNS = [
-  { source: "<.+?:.+?>", rejects_cjk_language_text: false }, // `<sample:123>`
-  { source: "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)", rejects_cjk_language_text: false }, // `en(!s[123])` / `en(v[123] >= 1)`
-  { source: "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)", rejects_cjk_language_text: false }, // `if(!s[123])` / `if(v[123] >= 1)`
-  {
-    source: "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}", // `/c[xy123]` / `\bc[xy123]` / `<\bc[xy123]>` / `【/c[xy123]】`
-    rejects_cjk_language_text: false,
-  },
-  { source: "%\\d+", rejects_cjk_language_text: false }, // `%1` / `%2`
-  { source: "@\\d+", rejects_cjk_language_text: false }, // WOLF 角色 ID
-  { source: "\\\\[cus]db\\[.+?:.+?:.+?\\]", rejects_cjk_language_text: false }, // WOLF 数据库变量
-  { source: "\\\\f[rbi]", rejects_cjk_language_text: false }, // 文本重置、文本加粗、文本倾斜
-  { source: "\\\\[\\{\\}]", rejects_cjk_language_text: false }, // 字体放大、字体缩小
-  { source: "\\\\\\$", rejects_cjk_language_text: false }, // 打开金币框
-  { source: "\\\\\\.", rejects_cjk_language_text: false }, // 等待 0.25 秒
-  { source: "\\\\\\|", rejects_cjk_language_text: false }, // 等待 1.00 秒
-  { source: "\\\\!", rejects_cjk_language_text: false }, // 等待按钮按下
-  { source: "\\\\>", rejects_cjk_language_text: false }, // 在同一行显示文字
-  { source: "\\\\<", rejects_cjk_language_text: false }, // 取消显示所有文字
-  { source: "\\\\\\^", rejects_cjk_language_text: false }, // 显示文本后不需要等待
-  { source: "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])", rejects_cjk_language_text: false }, // `/C<>` / `\FS<>` / `/C[]` / `\FS[]` 中 `<>` / `[]` 前的部分
-  { source: "\\\\[a-z](?=[^a-z<>\\[\\]])", rejects_cjk_language_text: false }, // 单字母转义符
-  ...NONE_PATTERNS,
-] as const;
+// 预设文件同时服务编辑界面与运行时，避免规则内容形成第二套代码事实。
+const BASE_PATTERNS = create_text_preserve_pattern_definitions(base_text_preserve_entries);
 
 // 按 text_type 映射智能保护规则，任务 worker 和校对页必须共用同一张表
 const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
-  NONE: NONE_PATTERNS,
-  MD: NONE_PATTERNS,
-  KAG: RENPY_LIKE_PATTERNS,
-  RENPY: RENPY_LIKE_PATTERNS,
-  RPGMAKER: RPGMAKER_LIKE_PATTERNS,
-  WOLF: RPGMAKER_LIKE_PATTERNS,
+  NONE: [],
+  MD: [],
+  KAG: create_text_preserve_pattern_definitions(kag_text_preserve_entries),
+  RENPY: create_text_preserve_pattern_definitions(renpy_text_preserve_entries),
+  RPGMAKER: create_text_preserve_pattern_definitions(rpgmaker_text_preserve_entries),
+  WOLF: create_text_preserve_pattern_definitions(wolf_text_preserve_entries),
 } as const;
 
-/**
- * 文本保护规则用正则提取候选，再用语义谓词过滤候选，避免向下游泄漏语言正则实现
- */
+/** 文本保护规则按源位置和规则顺序裁决正则候选，统一提供提取与替换操作。 */
 export class TextPreserveRule {
   private readonly definitions: CompiledTextPreservePatternDefinition[];
 
+  /** 一次编译本轮规则，后续文本操作复用同一组正则。 */
   public constructor(definitions: readonly TextPreservePatternDefinition[]) {
     this.definitions = definitions.map(compile_text_preserve_pattern_definition);
   }
@@ -149,6 +115,7 @@ export class TextPreserveRule {
     return cursor === text.length;
   }
 
+  /** 收集全部候选后统一裁决重叠，避免规则遍历顺序改变文本顺序。 */
   private collect_sample_matches(text: string): TextPreserveMatch[] {
     const candidates: TextPreserveMatch[] = [];
     this.definitions.forEach((definition, definition_index) => {
@@ -157,7 +124,7 @@ export class TextPreserveRule {
       for (const match of text.matchAll(pattern)) {
         const value = match[0] ?? "";
         const index = match.index ?? -1;
-        if (value === "" || index < 0 || !this.accepts_match(value, definition)) {
+        if (value === "" || index < 0) {
           continue;
         }
         candidates.push({ value, index, definition_index });
@@ -167,6 +134,7 @@ export class TextPreserveRule {
     return this.remove_overlapping_matches(candidates);
   }
 
+  /** 从左向右连续消费行首保护段。 */
   private collect_prefix_matches(text: string): TextPreserveMatch[] {
     const matches: TextPreserveMatch[] = [];
     let cursor = 0;
@@ -181,6 +149,7 @@ export class TextPreserveRule {
     return matches;
   }
 
+  /** 从右向左连续消费行尾保护段，并恢复为原始顺序。 */
   private collect_suffix_matches(text: string): TextPreserveMatch[] {
     const matches: TextPreserveMatch[] = [];
     let end = text.length;
@@ -195,12 +164,14 @@ export class TextPreserveRule {
     return matches;
   }
 
+  /** 按规则优先级寻找当前边缘的首个非空白保护段。 */
   private find_edge_match(text: string, edge: "prefix" | "suffix"): TextPreserveMatch | null {
     for (const [definition_index, definition] of this.definitions.entries()) {
       const pattern = edge === "prefix" ? definition.prefix_pattern : definition.suffix_pattern;
       pattern.lastIndex = 0;
       const value = pattern.exec(text)?.[0] ?? "";
-      if (value === "" || !this.accepts_match(value, definition)) {
+      // 行首尾空白由调用链的空白字段独立保存，不能再次作为保护前后缀恢复。
+      if (value === "" || value.trim() === "") {
         continue;
       }
       return {
@@ -210,10 +181,6 @@ export class TextPreserveRule {
       };
     }
     return null;
-  }
-
-  private accepts_match(value: string, definition: TextPreservePatternDefinition): boolean {
-    return !definition.rejects_cjk_language_text || !has_cjk_language_character(value);
   }
 
   /** 同起点按规则顺序优先，随后丢弃与已选范围重叠的候选。 */
@@ -236,6 +203,7 @@ export class TextPreserveRule {
     return result;
   }
 
+  /** 按已裁决的非重叠区间替换文本。 */
   private replace_matches(
     text: string,
     matches: TextPreserveMatch[],
@@ -266,6 +234,14 @@ function compile_text_preserve_pattern_definition(
   };
 }
 
+/** 将预设条目收窄为匹配器所需的唯一字段。 */
+function create_text_preserve_pattern_definitions(
+  entries: readonly { src: string }[],
+): TextPreservePatternDefinition[] {
+  return entries.map((entry) => ({ source: entry.src }));
+}
+
+/** 根据模式选择智能预设或项目自定义附加规则。 */
 function resolve_text_preserve_pattern_definitions(args: {
   mode: string;
   text_type: string;
@@ -278,7 +254,6 @@ function resolve_text_preserve_pattern_definitions(args: {
   if (mode === "custom") {
     return args.entries.map((entry) => ({
       source: entry.src,
-      rejects_cjk_language_text: false,
     }));
   }
   const text_type = args.text_type.toUpperCase();
@@ -288,19 +263,16 @@ function resolve_text_preserve_pattern_definitions(args: {
   return TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE[key];
 }
 
-/**
- * 构造保护规则。返回 null 代表当前模式下没有任何保护规则
- */
+/** 构造由基础层和当前模式附加层组成的保护规则。 */
 export function build_text_preserve_rule(args: {
   mode: string;
   text_type: string;
   entries: readonly TextPreserveEntry[];
-}): TextPreserveRule | null {
-  const definitions = resolve_text_preserve_pattern_definitions(args);
-  if (definitions.length === 0) {
-    return null;
-  }
-  return new TextPreserveRule(definitions);
+}): TextPreserveRule {
+  return new TextPreserveRule([
+    ...BASE_PATTERNS,
+    ...resolve_text_preserve_pattern_definitions(args),
+  ]);
 }
 
 /**

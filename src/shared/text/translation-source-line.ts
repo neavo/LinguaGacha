@@ -1,7 +1,14 @@
 import { TextRubyCleaner } from "./text-ruby-cleaner";
 import type { TextProcessingConfig } from "./text-types";
-import type { TextPreserveRule } from "./text-preserve-rules";
+import {
+  collect_non_blank_text_preserve_segments,
+  type TextPreserveRule,
+} from "./text-preserve-rules";
 import { apply_text_replacements, type CompiledTextReplacements } from "./text-replacement-rules";
+import {
+  transform_projected_text_resource_references,
+  type TextResourceReferenceMapping,
+} from "./text-resource-reference";
 
 type PreparedTranslationSourceLineBase = {
   line_index: number;
@@ -28,24 +35,35 @@ export function prepare_translation_source_line(args: {
   config: Pick<TextProcessingConfig, "clean_ruby" | "auto_process_prefix_suffix_preserved_text">;
   preserve_rule: TextPreserveRule | null;
   pre_replacements: CompiledTextReplacements | null;
+  reference_mappings?: readonly TextResourceReferenceMapping[];
 }): PreparedTranslationSourceLine {
-  const preserved = (): PreparedTranslationSourceLine => ({
-    line_index: args.line_index,
-    raw_text: args.raw_text,
-    state: "preserved",
-    restoration_text: null,
-    model_text: null,
-    prepared_text: args.raw_text,
-    leading_whitespace: "",
-    trailing_whitespace: "",
-    prefix_segments: [],
-    suffix_segments: [],
-    samples: [],
-  });
+  /** 完全保护的行仍提供非空保护样例，但不会建立译后恢复状态。 */
+  const preserved = (): PreparedTranslationSourceLine => {
+    const samples =
+      args.preserve_rule === null
+        ? []
+        : collect_non_blank_text_preserve_segments(args.raw_text, args.preserve_rule);
+    return {
+      line_index: args.line_index,
+      raw_text: args.raw_text,
+      state: "preserved",
+      restoration_text: null,
+      model_text: null,
+      prepared_text: args.raw_text,
+      leading_whitespace: "",
+      trailing_whitespace: "",
+      prefix_segments: [],
+      suffix_segments: [],
+      samples,
+    };
+  };
 
   const text_type = args.text_type.toUpperCase();
+  const reference_mappings = args.reference_mappings ?? [];
   let text = args.config.clean_ruby
-    ? TextRubyCleaner.clean(args.raw_text, text_type)
+    ? transform_projected_text_resource_references(args.raw_text, reference_mappings, (value) =>
+        TextRubyCleaner.clean(value, text_type),
+      )
     : args.raw_text;
   if (text === "" || text.trim() === "") return preserved();
 
@@ -71,9 +89,18 @@ export function prepare_translation_source_line(args: {
     return preserved();
   }
 
+  const pre_replacements = args.pre_replacements;
   const model_text =
-    args.pre_replacements === null ? text : apply_text_replacements(text, args.pre_replacements);
-  const samples = args.preserve_rule?.collect(model_text) ?? [];
+    pre_replacements === null
+      ? text
+      : transform_projected_text_resource_references(text, reference_mappings, (value) =>
+          apply_text_replacements(value, pre_replacements),
+        );
+  const prepared_text = `${leading_whitespace}${prefix_segments.join("")}${model_text}${suffix_segments.join("")}${trailing_whitespace}`;
+  const samples =
+    args.preserve_rule === null
+      ? []
+      : collect_non_blank_text_preserve_segments(prepared_text, args.preserve_rule);
   if (text_type === "MD") samples.push("Markdown Code");
   return {
     line_index: args.line_index,
@@ -81,7 +108,7 @@ export function prepare_translation_source_line(args: {
     state: "translatable",
     restoration_text: text,
     model_text,
-    prepared_text: `${leading_whitespace}${prefix_segments.join("")}${model_text}${suffix_segments.join("")}${trailing_whitespace}`,
+    prepared_text,
     leading_whitespace,
     trailing_whitespace,
     prefix_segments,

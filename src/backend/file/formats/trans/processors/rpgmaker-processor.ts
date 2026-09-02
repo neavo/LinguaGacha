@@ -1,5 +1,5 @@
 import type { ItemTextType } from "../../../../../domain/item";
-import { BLACKLIST_EXTENSIONS, has_color_block_tag, NoneTransProcessor } from "../trans-processor";
+import { has_color_block_tag, NoneTransProcessor } from "../trans-processor";
 
 /**
  * RPG Maker .trans 在默认过滤上叠加路径和地址黑名单
@@ -26,16 +26,12 @@ export class RPGMakerTransProcessor extends NoneTransProcessor {
    * 路径黑名单按 file_key 缓存，地址黑名单逐 context 判断
    */
   public override filter(
-    src: string,
+    _src: string,
     path_key: string,
     tag: string[],
     context: string[],
   ): boolean[] {
     const length = context.length > 0 ? context.length : 1;
-    if (BLACKLIST_EXTENSIONS.some((extension) => src.includes(extension))) {
-      return Array.from({ length }, () => true);
-    }
-
     if (this.cached_path !== path_key) {
       this.cached_path = path_key;
       this.cached_path_blocked = RPGMakerTransProcessor.BLACKLIST_PATH.some((rule) =>

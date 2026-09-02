@@ -1,6 +1,6 @@
 import { Item } from "../../../../domain/item";
 import type { JsonValue } from "../../../../domain/json";
-import { is_translatable_text, looks_like_resource_path, sha1_hex } from "./lexer";
+import { is_translatable_text, looks_like_resource_reference, sha1_hex } from "./lexer";
 import {
   find_character_name_lit_index,
   find_dialogue_string_group,
@@ -120,7 +120,7 @@ export class RenpyExtractor {
       return [];
     }
     const value = stmt.literals[0]?.value ?? "";
-    if (looks_like_resource_path(value) || !is_translatable_text(value)) {
+    if (looks_like_resource_reference(value) || !is_translatable_text(value)) {
       return [];
     }
     return [{ role: "STRING", lit_index: 0 }];
@@ -144,14 +144,14 @@ export class RenpyExtractor {
     }
 
     const dialogue_value = stmt.literals[dialogue_index]?.value ?? "";
-    if (looks_like_resource_path(dialogue_value) || !is_translatable_text(dialogue_value)) {
+    if (looks_like_resource_reference(dialogue_value) || !is_translatable_text(dialogue_value)) {
       return [];
     }
 
     const slots: RenpySlot[] = [];
     if (name_index !== null) {
       const name_value = stmt.literals[name_index]?.value ?? "";
-      if (!looks_like_resource_path(name_value) && is_translatable_text(name_value)) {
+      if (!looks_like_resource_reference(name_value) && is_translatable_text(name_value)) {
         slots.push({ role: "NAME", lit_index: name_index });
       }
     }

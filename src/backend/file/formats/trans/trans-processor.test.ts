@@ -12,7 +12,7 @@ describe("derive_trans_filter_effect", () => {
     ).toEqual({
       block: [true],
       tag: ["keep", "gold"],
-      status: "EXCLUDED",
+      status: "RULE_SKIPPED",
       is_mixed_partition: false,
     });
 
@@ -65,7 +65,7 @@ describe("NoneTransProcessor", () => {
       src: "",
       dst: "",
       tag: [],
-      status: "EXCLUDED",
+      status: "RULE_SKIPPED",
       skip_internal_filter: false,
     });
     expect(processor.check("file.json", ["src", "src"], ["aqua"], ["ctx"])).toMatchObject({
@@ -87,10 +87,10 @@ describe("NoneTransProcessor", () => {
     });
   });
 
-  it("默认过滤器按资源扩展名和颜色标签排除文本", () => {
+  it("默认过滤器只按颜色标签排除文本", () => {
     const processor = new NoneTransProcessor({});
 
-    expect(processor.filter("a.mp3", "file.json", [], ["1", "2"])).toEqual([true, true]);
+    expect(processor.filter("a.mp3", "file.json", [], ["1", "2"])).toEqual([false, false]);
     expect(processor.filter("hello", "file.json", ["red"], ["1"])).toEqual([true]);
     expect(processor.filter("hello", "file.json", [], ["1", "2"])).toEqual([false, false]);
   });

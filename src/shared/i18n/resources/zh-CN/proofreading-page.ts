@@ -41,10 +41,10 @@ export const zh_cn_proofreading_page = {
   },
   warning: {
     foreign_char_residue: "外文残留",
-    text_preserve: "文本保护失效",
+    text_preserve: "文本保护未落实",
     similarity: "相似度过高",
     glossary: "术语未落实",
-    retry_threshold: "重试次数达阈值",
+    retry_threshold: "重试次数达到阈值",
     line_count_mismatch: "行数不一致",
   },
   glossary: {

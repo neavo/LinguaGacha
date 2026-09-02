@@ -135,7 +135,7 @@ describe("TranslationFileExportService", () => {
     expect(output_folder_opener.opened_paths).toEqual([]);
   });
 
-  it("导出时从项目 asset 恢复 Markdown 资源", async () => {
+  it("导出时直接写出 Markdown 块中的资源引用", async () => {
     const project_path = path.join(temp_dir, "mixed.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -154,8 +154,8 @@ describe("TranslationFileExportService", () => {
         },
         {
           id: 2,
-          src: "![封面](lg-resource:image/0)",
-          dst: "![Cover](lg-resource:image/0)",
+          src: "![封面](data:image/png;base64,AAAA)",
+          dst: "![Cover](data:image/png;base64,AAAA)",
           status: "PROCESSED",
           file_type: "MD_V2",
           file_path: "readme.md",

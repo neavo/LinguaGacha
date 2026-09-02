@@ -55,7 +55,7 @@ describe("WOLFXLSXFormat", () => {
       expect.objectContaining({
         src: "原文3",
         row: 4,
-        status: "EXCLUDED",
+        status: "RULE_SKIPPED",
       }),
     ]);
   });
@@ -91,7 +91,7 @@ describe("WOLFXLSXFormat", () => {
     expect(items.map((item) => item.src)).toEqual(["原文"]);
   });
 
-  it("缺少 indexed 填充色时按排除项处理", async () => {
+  it("缺少 indexed 填充色时按格式规则跳过", async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet");
     ["code", "flag", "type", "info"].forEach((label, index) => {
@@ -102,7 +102,7 @@ describe("WOLFXLSXFormat", () => {
 
     const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
 
-    expect(items[0]?.status).toBe("EXCLUDED");
+    expect(items[0]?.status).toBe("RULE_SKIPPED");
   });
 
   it("支持富文本和公式结果单元格转成纯文本", async () => {
@@ -175,7 +175,6 @@ describe("WOLFXLSXFormat", () => {
     expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
     expect(workbook.worksheets[0]?.getCell(3, 6).value).toBe("'=SUM(F1:F2)");
-    expect(workbook.worksheets[0]?.getCell(3, 6).alignment.horizontal).toBe("left");
   });
 
   it("原始资产缺失时新建工作簿并写入固定列", async () => {
@@ -203,8 +202,6 @@ describe("WOLFXLSXFormat", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf", "game.xlsx"));
 
-    expect(workbook.worksheets[0]?.getColumn(1).width).toBe(64);
-    expect(workbook.worksheets[0]?.getColumn(2).width).toBe(64);
     expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
   });

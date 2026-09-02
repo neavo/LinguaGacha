@@ -145,6 +145,45 @@ describe("TranslationPostPipeline", () => {
     expect(result).toEqual({ dst: "hi", name_dst: "爱丽丝" });
   });
 
+  it("在译后处理末尾恢复正文和姓名中的临时引用", () => {
+    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
+    const context = pre.process_item({
+      src: "查看 https://example.com/guide",
+      name_src: "data:image/png;base64,AAAA",
+      text_type: "TXT",
+    });
+
+    const result = post.process_item(
+      context,
+      { request_index: 0, text_dst: "请看 lg-uri/1", actor_dst: "lg-uri/0" },
+      "actor_text",
+    );
+
+    expect(result).toEqual({
+      dst: "请看 https://example.com/guide",
+      name_dst: "data:image/png;base64,AAAA",
+    });
+  });
+
+  it("译前和译后替换不改写临时引用", () => {
+    const { pre, post } = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        pre_replacement_enable: true,
+        pre_replacement_entries: [{ src: "uri", dst: "URI", regex: false, case_sensitive: true }],
+        post_replacement_enable: true,
+        post_replacement_entries: [{ src: "uri", dst: "URI", regex: false, case_sensitive: true }],
+      }),
+    );
+    const context = pre.process_item({
+      src: "uri https://example.com",
+      text_type: "TXT",
+    });
+
+    expect(context.request_item?.text_src).toBe("URI lg-uri/0");
+    expect(process_text(post, context, ["uri lg-uri/0"])).toBe("URI https://example.com");
+  });
+
   it("混合姓名请求不会把无姓名源行的模型 actor 写回姓名", () => {
     const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
     const context = pre.process_item(
@@ -238,6 +277,22 @@ describe("TranslationPostPipeline", () => {
     );
 
     expect(result.dst).toBe("1");
+  });
+
+  it("行数不一致时仍按 Item 恢复临时引用", () => {
+    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
+    const context = pre.process_item({
+      src: "第一行 https://example.com\n第二行",
+      text_type: "TXT",
+    });
+
+    const result = post.process_item(
+      context,
+      { request_index: 0, text_dst: "合并 lg-uri/0", actor_dst: null },
+      "text",
+    );
+
+    expect(result.dst).toBe("合并 https://example.com");
   });
 
   it("保留模型返回的语言字符并交给校对判断", () => {

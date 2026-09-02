@@ -4,7 +4,7 @@ import {
   build_skeleton,
   escape_renpy_string,
   is_translatable_text,
-  looks_like_resource_path,
+  looks_like_resource_reference,
   scan_double_quoted_literals,
 } from "./lexer";
 
@@ -19,8 +19,9 @@ describe("RenPy lexer", () => {
   });
 
   it("区分资源、占位和 RenPy 官方可翻译标记", () => {
-    expect(looks_like_resource_path("bg/scene.PNG")).toBe(true);
-    expect(looks_like_resource_path("{image=gui/icon.png}")).toBe(false);
+    expect(looks_like_resource_reference("bg/scene.PNG")).toBe(true);
+    expect(looks_like_resource_reference("https://example.com/scene")).toBe(true);
+    expect(looks_like_resource_reference("{image=gui/icon.png}")).toBe(false);
     expect(
       ["[player_name]", "{b}{/b}", "{#language name and font}", "{image=gui/icon.png}"].map(
         is_translatable_text,

@@ -34,7 +34,7 @@ describe("prepare_translation_source_line", () => {
       trailing_whitespace: "  ",
       prefix_segments: ["<A>"],
       suffix_segments: [],
-      samples: ["<Q>"],
+      samples: ["<A>", "<Q>"],
     });
   });
 });

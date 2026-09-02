@@ -53,6 +53,18 @@ describe("RenPy extractor", () => {
       }),
     );
   });
+
+  it("完整资源引用不生成 Item，带正文的引用仍保留", () => {
+    const items = extract([
+      "translate schinese strings:",
+      '    old "https://example.com/guide"',
+      '    new ""',
+      '    old "请看 https://example.com/guide"',
+      '    new ""',
+    ]);
+
+    expect(items.map((item) => item.src)).toEqual(["请看 https://example.com/guide"]);
+  });
 });
 
 function extract(lines: string[]): Item[] {

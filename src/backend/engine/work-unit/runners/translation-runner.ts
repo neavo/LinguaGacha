@@ -166,6 +166,7 @@ export class TranslationWorkUnitRunner {
   > {
     const activated = this.resolve_activated_glossary_entries(quality, items);
     const pipeline = new TranslationPrePipeline(config, quality);
+    const projected_precedings = pipeline.project_precedings(precedings);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     const request_items: TranslationRequestItem[] = [];
     for (const [item_index, item] of items.entries()) {
@@ -195,7 +196,7 @@ export class TranslationWorkUnitRunner {
     const prompt =
       api_format === "SakuraLLM"
         ? builder.generate_prompt_sakura(request_items[0]?.text_src ?? "")
-        : await builder.generate_prompt(request_items, mode, samples, precedings);
+        : await builder.generate_prompt(request_items, mode, samples, projected_precedings);
     return {
       done: false,
       request_items,

@@ -7,11 +7,11 @@ export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 // 真实校对警告的唯一词表。
 export const PROOFREADING_WARNING_CODES = [
   "FOREIGN_CHAR_RESIDUE",
-  "TEXT_PRESERVE",
   "SIMILARITY",
-  "GLOSSARY",
-  "RETRY_THRESHOLD",
   "LINE_COUNT_MISMATCH",
+  "GLOSSARY",
+  "TEXT_PRESERVE",
+  "RETRY_THRESHOLD",
 ] as const;
 
 export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];

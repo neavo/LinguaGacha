@@ -28,7 +28,7 @@ export class KVJSONFormat {
           row: items.length,
           file_type: "KVJSON",
           file_path: rel_path,
-          status: key === "" ? "EXCLUDED" : dst !== "" && dst !== key ? "PROCESSED" : "NONE",
+          status: key === "" ? "RULE_SKIPPED" : dst !== "" && dst !== key ? "PROCESSED" : "NONE",
         }),
       );
     }

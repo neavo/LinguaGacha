@@ -38,7 +38,7 @@ export class XLSXFormat {
           row,
           file_type: "XLSX",
           file_path: rel_path,
-          status: src === "" ? "EXCLUDED" : dst !== "" && src !== dst ? "PROCESSED" : "NONE",
+          status: src === "" ? "RULE_SKIPPED" : dst !== "" && src !== dst ? "PROCESSED" : "NONE",
         }),
       );
     }
