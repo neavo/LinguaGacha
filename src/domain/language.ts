@@ -74,7 +74,11 @@ export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | Targe
 export type LanguageDisplayLocale = "zh" | "en" | "de";
 
 // 语言定义只声明允许的书写系统，字符分类统一由书写系统词表负责。
-export type LanguageGraphemeClassification = "allowed" | "residue" | "neutral";
+type TargetLanguageGraphemeClassification =
+  | "allowed"
+  | "latin-residue"
+  | "other-residue"
+  | "neutral";
 
 // 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
 export const LANGUAGE_DISPLAY_NAMES: Record<
@@ -343,6 +347,19 @@ function is_character_allowed_by_writing_systems(
   );
 }
 
+/** 将已识别的书写系统归入目标语言允许、Latin 残留或其它残留。 */
+function classify_writing_systems_for_target(
+  matched_writing_systems: readonly WritingSystemCode[],
+  target_writing_systems: readonly WritingSystemCode[],
+): Exclude<TargetLanguageGraphemeClassification, "neutral"> {
+  if (matched_writing_systems.some((code) => target_writing_systems.includes(code))) {
+    return "allowed";
+  }
+  return matched_writing_systems.every((code) => code === "LATIN")
+    ? "latin-residue"
+    : "other-residue";
+}
+
 // 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选。
 export function has_cjk_language_character(text: string): boolean {
   return [...text].some(
@@ -429,31 +446,33 @@ export function is_language_character(character: string, language_code: Language
 }
 
 /**
- * 字素簇只回答目标语言是否允许；通用标点、符号、组合标记和格式字符保持中性。
+ * 字素簇按目标语言区分允许内容、Latin 残留、其它残留和中性内容。
  */
-export function classify_language_grapheme(
+export function classify_target_language_grapheme(
   grapheme: string,
   language_code: TargetLanguageCode,
-): LanguageGraphemeClassification {
+): TargetLanguageGraphemeClassification {
   const writing_systems = LANGUAGE_WRITING_SYSTEMS[language_code];
-  let contains_allowed_language_element = false;
+  let classification: TargetLanguageGraphemeClassification = "neutral";
 
   for (const character of grapheme) {
     const body_systems = matching_writing_systems(character, "matches_body_character");
-    if (body_systems.length > 0) {
-      if (!body_systems.some((code) => writing_systems.includes(code))) {
-        return "residue";
+    const matched_systems =
+      body_systems.length > 0
+        ? body_systems
+        : matching_writing_systems(character, "matches_auxiliary_character");
+    if (matched_systems.length > 0) {
+      const character_classification = classify_writing_systems_for_target(
+        matched_systems,
+        writing_systems,
+      );
+      if (character_classification === "other-residue") {
+        return character_classification;
       }
-      contains_allowed_language_element = true;
-      continue;
-    }
-
-    const auxiliary_systems = matching_writing_systems(character, "matches_auxiliary_character");
-    if (auxiliary_systems.length > 0) {
-      if (!auxiliary_systems.some((code) => writing_systems.includes(code))) {
-        return "residue";
+      // 字素簇分类优先级为其它残留、Latin 残留、允许文字、中性内容。
+      if (character_classification === "latin-residue" || classification === "neutral") {
+        classification = character_classification;
       }
-      contains_allowed_language_element = true;
       continue;
     }
 
@@ -462,9 +481,9 @@ export function classify_language_grapheme(
       LETTER_CHARACTER_PATTERN.test(character) &&
       !COMMON_OR_INHERITED_SCRIPT_PATTERN.test(character)
     ) {
-      return "residue";
+      return "other-residue";
     }
   }
 
-  return contains_allowed_language_element ? "allowed" : "neutral";
+  return classification;
 }

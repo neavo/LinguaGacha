@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # 故事角色扮演
 
-## 技能协作
+## 技能加载
 
 加载并遵循 `writing-guide` 技能。
 

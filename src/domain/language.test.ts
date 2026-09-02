@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_LANGUAGE_CODE,
-  classify_language_grapheme,
+  classify_target_language_grapheme,
   get_prompt_source_language_name,
   get_prompt_target_language_name,
   has_cjk_language_character,
@@ -86,19 +86,21 @@ describe("语言规则", () => {
   });
 
   it("按完整字素簇区分目标文字、残留和中性内容", () => {
-    expect(classify_language_grapheme("か\u3099", "JA")).toBe("allowed");
-    expect(classify_language_grapheme("か\u3099", "ZH")).toBe("residue");
-    expect(classify_language_grapheme("َ", "AR")).toBe("allowed");
-    expect(classify_language_grapheme("่", "ZH")).toBe("residue");
-    expect(classify_language_grapheme("〮", "KO")).toBe("allowed");
-    expect(classify_language_grapheme("〮", "EN")).toBe("residue");
-    expect(classify_language_grapheme("́", "EN")).toBe("neutral");
-    expect(classify_language_grapheme("👩‍💻", "ZH")).toBe("neutral");
+    expect(classify_target_language_grapheme("か\u3099", "JA")).toBe("allowed");
+    expect(classify_target_language_grapheme("か\u3099", "ZH")).toBe("other-residue");
+    expect(classify_target_language_grapheme("َ", "AR")).toBe("allowed");
+    expect(classify_target_language_grapheme("่", "ZH")).toBe("other-residue");
+    expect(classify_target_language_grapheme("〮", "KO")).toBe("allowed");
+    expect(classify_target_language_grapheme("〮", "EN")).toBe("other-residue");
+    expect(classify_target_language_grapheme("A", "ZH")).toBe("latin-residue");
+    expect(classify_target_language_grapheme("e\u0301", "ZH")).toBe("latin-residue");
+    expect(classify_target_language_grapheme("́", "EN")).toBe("neutral");
+    expect(classify_target_language_grapheme("👩‍💻", "ZH")).toBe("neutral");
   });
 
   it("将未登记的其它语言文字识别为残留", () => {
-    expect(classify_language_grapheme("β", "ZH")).toBe("residue");
-    expect(classify_language_grapheme("א", "EN")).toBe("residue");
+    expect(classify_target_language_grapheme("β", "ZH")).toBe("other-residue");
+    expect(classify_target_language_grapheme("א", "EN")).toBe("other-residue");
   });
 
   it("文本保护只在占位符包含 CJK 正文时命中", () => {
