@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parse_markdown_v2_document, restore_markdown_v2_resources } from "./md-v2-document";
+import { parse_markdown_v2_document } from "./md-v2-document";
 
 describe("Markdown V2 document", () => {
   it.each(["", "   \t", "\n"])("空白文档保留完整布局 %#", (text) => {
@@ -12,7 +12,7 @@ describe("Markdown V2 document", () => {
         before: text,
         src: "",
         after: "",
-        excluded: true,
+        rule_skipped: true,
       }),
     ]);
   });
@@ -58,7 +58,7 @@ describe("Markdown V2 document", () => {
     expect(rebuild(document.units)).toBe(text);
   });
 
-  it("表格保持单块，代码、HTML、frontmatter、分隔线和定义均排除", () => {
+  it("表格保持单块，代码、HTML、frontmatter、分隔线和定义均按结构规则跳过", () => {
     const text = [
       "---",
       "title: demo",
@@ -81,7 +81,7 @@ describe("Markdown V2 document", () => {
 
     const document = parse_markdown_v2_document(text);
 
-    expect(document.units.map((unit) => [unit.kind, unit.excluded])).toEqual([
+    expect(document.units.map((unit) => [unit.kind, unit.rule_skipped])).toEqual([
       ["yaml", true],
       ["table", false],
       ["code", true],
@@ -89,29 +89,29 @@ describe("Markdown V2 document", () => {
       ["thematicBreak", true],
       ["definition", true],
     ]);
-    expect(rebuild(document.units, document.resources)).toBe(text);
+    expect(rebuild(document.units)).toBe(text);
   });
 
-  it("排除 TOML frontmatter", () => {
+  it("TOML frontmatter 按结构规则跳过", () => {
     const document = parse_markdown_v2_document('+++\ntitle = "demo"\n+++\n\n正文');
 
-    expect(document.units.map((unit) => [unit.kind, unit.excluded])).toEqual([
+    expect(document.units.map((unit) => [unit.kind, unit.rule_skipped])).toEqual([
       ["toml", true],
       ["paragraph", false],
     ]);
   });
 
-  it("只含无 alt 图片的段落排除，图片 alt 与链接标签仍属于自然语言", () => {
+  it("只含无 alt 图片的段落按规则跳过，图片 alt 与链接标签仍属于自然语言", () => {
     const text = "![](empty.png)\n\n![插图](cover.png) 与 [说明](guide.md)";
 
     const document = parse_markdown_v2_document(text);
 
-    expect(document.units.map((unit) => unit.excluded)).toEqual([true, false]);
-    expect(document.units[1]?.src).toContain("![插图](lg-resource:image/1)");
-    expect(document.units[1]?.src).toContain("[说明](lg-resource:link/0)");
+    expect(document.units.map((unit) => unit.rule_skipped)).toEqual([true, false]);
+    expect(document.units[1]?.src).toContain("![插图](cover.png)");
+    expect(document.units[1]?.src).toContain("[说明](guide.md)");
   });
 
-  it("按资源类型独立编号并把 data URI 从块文本中移除", () => {
+  it("在块文本中原样保留 URI、Base64 data URI 和相对资源路径", () => {
     const data_uri = "data:image/png;base64,AAABBB";
     const text = [
       `[站点](https://example.com) ![图](${data_uri})`,
@@ -122,48 +122,8 @@ describe("Markdown V2 document", () => {
     ].join("\n");
 
     const document = parse_markdown_v2_document(text);
-    const item_text = document.units.map((unit) => unit.src).join("\n");
-
-    expect(item_text).not.toContain(data_uri);
-    expect([...document.resources]).toEqual([
-      ["lg-resource:link/0", "https://example.com"],
-      ["lg-resource:image/0", data_uri],
-      ["lg-resource:definition/0", "assets/manual.pdf"],
-    ]);
-    expect(rebuild(document.units, document.resources)).toBe(text);
-  });
-
-  it("destination 与标签重复时不猜测替换位置", () => {
-    const text = "[same](same)";
-
-    const document = parse_markdown_v2_document(text);
-
-    expect(document.units[0]?.src).toBe(text);
-    expect(document.resources.size).toBe(0);
-  });
-
-  it("宽松恢复只处理首个合法 destination token", () => {
-    const resources = new Map([
-      ["lg-resource:image/0", "data:image/png;base64,AAA"],
-      ["lg-resource:link/0", "https://example.com"],
-    ]);
-    const text = [
-      "![图](lg-resource:image/0)",
-      "![重复](lg-resource:image/0)",
-      "[改写](lg-resource:link/9)",
-      "普通 lg-resource:link/0",
-      "[链接](lg-resource:link/0)",
-    ].join("\n\n");
-
-    expect(restore_markdown_v2_resources(text, resources)).toBe(
-      [
-        "![图](data:image/png;base64,AAA)",
-        "![重复](lg-resource:image/0)",
-        "[改写](lg-resource:link/9)",
-        "普通 lg-resource:link/0",
-        "[链接](https://example.com)",
-      ].join("\n\n"),
-    );
+    expect(document.units.map((unit) => unit.src).join("\n")).toContain(data_uri);
+    expect(rebuild(document.units)).toBe(text);
   });
 
   it("产生按源顺序稳定、互不重叠且起始行唯一的块", () => {
@@ -181,11 +141,6 @@ describe("Markdown V2 document", () => {
   });
 });
 
-function rebuild(
-  units: ReturnType<typeof parse_markdown_v2_document>["units"],
-  resources: ReadonlyMap<string, string> = new Map(),
-): string {
-  return units
-    .map((unit) => unit.before + restore_markdown_v2_resources(unit.src, resources) + unit.after)
-    .join("");
+function rebuild(units: ReturnType<typeof parse_markdown_v2_document>["units"]): string {
+  return units.map((unit) => unit.before + unit.src + unit.after).join("");
 }

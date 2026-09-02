@@ -102,6 +102,17 @@ describe("proofreading-evaluator", () => {
     ).not.toContain("FOREIGN_CHAR_RESIDUE");
   });
 
+  it("资源引用不参与外文残留检查", () => {
+    expect(
+      evaluate({
+        src: "リンク https://example.com/image.png",
+        dst: "链接 https://example.com/image.png",
+        sourceLanguage: "JA",
+        targetLanguage: "ZH",
+      })?.warnings,
+    ).not.toContain("FOREIGN_CHAR_RESIDUE");
+  });
+
   it("已保护片段不参与外文残留检查", () => {
     const quality = create_quality({
       text_preserve: {

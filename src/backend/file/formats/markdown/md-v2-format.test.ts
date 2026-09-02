@@ -19,7 +19,7 @@ describe("MDV2Format", () => {
     );
   });
 
-  it("reader 生成块 Item、排除状态和布局 metadata", async () => {
+  it("reader 生成块 Item、规则跳过状态和布局 metadata", async () => {
     const format = new MDV2Format();
     const items = await format.read_from_stream(
       new TextEncoder().encode("# 标题\n\n正文第一行\n正文第二行\n\n```ts\ncode\n```\n"),
@@ -45,13 +45,13 @@ describe("MDV2Format", () => {
       expect.objectContaining({
         src: "```ts\ncode\n```",
         row: 5,
-        status: "EXCLUDED",
+        status: "RULE_SKIPPED",
         extra_field: { markdown: { before: "\n\n", after: "\n" } },
       }),
     ]);
   });
 
-  it("常规 data URI 不进入 Item JSON", async () => {
+  it("URI 和 Base64 data URI 原样进入块 Item", async () => {
     const format = new MDV2Format();
     const data_uri = "data:image/png;base64,AAAA";
 
@@ -60,11 +60,10 @@ describe("MDV2Format", () => {
       "cover.md",
     );
 
-    expect(JSON.stringify(items.map((item) => item.to_json()))).not.toContain(data_uri);
-    expect(items[0]?.src).toBe("![封面](lg-resource:image/0)");
+    expect(items[0]?.src).toBe(`![封面](${data_uri})`);
   });
 
-  it("writer 按 row/id 稳定排序、恢复资源并只写单语文件", async () => {
+  it("writer 按 row/id 稳定排序并只写单语文件", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-v2-"));
     const format = new MDV2Format();
     const source = "# 标题\n\n![封面](data:image/png;base64,AAAA)\n";
@@ -72,16 +71,12 @@ describe("MDV2Format", () => {
     items[0]!.id = 2;
     items[0]!.dst = "# 译题";
     items[1]!.id = 1;
-    items[1]!.dst = "![译图](lg-resource:image/0)";
+    items[1]!.dst = "![译图](data:image/png;base64,AAAA)";
 
-    await format.write_to_path(
-      [...items].reverse(),
-      {
-        translated_path: path.join(temp_dir.path, "translated"),
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-      () => Buffer.from(source),
-    );
+    await format.write_to_path([...items].reverse(), {
+      translated_path: path.join(temp_dir.path, "translated"),
+      bilingual_path: path.join(temp_dir.path, "bilingual"),
+    });
 
     expect(
       fs.readFileSync(path.join(temp_dir.path, "translated", "docs", "demo.md"), "utf-8"),
@@ -89,40 +84,7 @@ describe("MDV2Format", () => {
     expect(fs.existsSync(path.join(temp_dir.path, "bilingual", "docs", "demo.md"))).toBe(false);
   });
 
-  it("资源缺失、token 改写或重复时按当前译文宽松输出", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-v2-"));
-    const format = new MDV2Format();
-    const items = [
-      create_item({
-        id: 3,
-        row: 0,
-        src: "![图](lg-resource:image/0)",
-        dst: "![图](lg-resource:image/9)",
-        before: "",
-        after: "\n",
-      }),
-      create_item({
-        id: 4,
-        row: 1,
-        src: "[链接](lg-resource:link/0)",
-        dst: "[一](lg-resource:link/0) [二](lg-resource:link/0)",
-        before: "",
-        after: "",
-      }),
-    ];
-
-    await format.write_to_path(
-      items,
-      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
-      () => Buffer.from("![图](img.png)\n[链接](https://example.com)"),
-    );
-
-    expect(fs.readFileSync(path.join(temp_dir.path, "demo.md"), "utf-8")).toBe(
-      "![图](lg-resource:image/9)\n[一](https://example.com) [二](lg-resource:link/0)",
-    );
-  });
-
-  it("非法 metadata 与缺失 asset 不阻止写出 Item 文本", async () => {
+  it("非法 metadata 不阻止写出 Item 文本", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-v2-"));
     const format = new MDV2Format();
     const item = Item.from_json({
@@ -134,20 +96,19 @@ describe("MDV2Format", () => {
       extra_field: { markdown: { before: 1, after: null } },
     });
 
-    await format.write_to_path(
-      [item],
-      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
-      () => null,
-    );
+    await format.write_to_path([item], {
+      translated_path: temp_dir.path,
+      bilingual_path: path.join(temp_dir.path, "bilingual"),
+    });
 
     expect(fs.readFileSync(path.join(temp_dir.path, "demo.md"), "utf-8")).toBe("译文");
   });
 
-  it("文本级 writer 不依赖 file_type，source 缺失时直接保留当前译文", () => {
+  it("文本级 writer 不依赖 file_type", () => {
     const item = Item.from_json({
       id: 2,
-      src: "[原文](lg-resource:link/0)",
-      dst: "[译文](lg-resource:link/0)",
+      src: "[原文](https://example.com)",
+      dst: "[译文](https://example.com)",
       row: 0,
       file_type: "NONE",
       file_path: "demo.md",
@@ -155,23 +116,6 @@ describe("MDV2Format", () => {
       extra_field: { markdown: { before: "", after: "\n" } },
     });
 
-    expect(new MDV2Format().write_text([item], null)).toBe("[译文](lg-resource:link/0)\n");
+    expect(new MDV2Format().write_text([item])).toBe("[译文](https://example.com)\n");
   });
 });
-
-function create_item(input: {
-  id: number;
-  row: number;
-  src: string;
-  dst: string;
-  before: string;
-  after: string;
-}): Item {
-  return Item.from_json({
-    ...input,
-    file_type: "MD_V2",
-    file_path: "demo.md",
-    text_type: "MD",
-    extra_field: { markdown: { before: input.before, after: input.after } },
-  });
-}

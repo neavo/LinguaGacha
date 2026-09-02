@@ -18,7 +18,7 @@ describe("KVJSONFormat", () => {
     );
 
     expect(items.map((item) => [item.src, item.dst, item.status])).toEqual([
-      ["", "", "EXCLUDED"],
+      ["", "", "RULE_SKIPPED"],
       ["已翻", "已处理", "PROCESSED"],
       ["待翻", "", "NONE"],
     ]);

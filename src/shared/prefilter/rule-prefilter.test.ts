@@ -29,6 +29,12 @@ describe("rule-prefilter", () => {
     expect(should_skip_by_rule_prefilter("  MUSIC.MP3  ")).toBe(true);
   });
 
+  it("完整 URI 和 Base64 data URI 会过滤，混合正文继续翻译", () => {
+    expect(should_skip_by_rule_prefilter("https://example.com/guide?id=1")).toBe(true);
+    expect(should_skip_by_rule_prefilter("data:image/png;base64,AAAA")).toBe(true);
+    expect(should_skip_by_rule_prefilter("请查看 https://example.com/guide")).toBe(false);
+  });
+
   it("EV 编号完整匹配时过滤", () => {
     expect(should_skip_by_rule_prefilter("EV001")).toBe(true);
   });

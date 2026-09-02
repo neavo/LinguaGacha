@@ -1,33 +1,10 @@
-import path from "node:path";
 import { createHash } from "node:crypto";
 
 import type { RenpyStringLiteral } from "./types";
+import { remove_text_resource_references } from "../../../../shared/text/text-resource-reference";
 
 // 字符串占位符必须固定，解析器和写回器的骨架摘要才可互相校验。
 const SKELETON_PLACEHOLDER = '"{}"';
-
-// 资源扩展名沿用 RenPy 游戏常见资产类型，避免文件名被当成翻译文本。
-const RESOURCE_EXTENSIONS = new Set([
-  ".mp3",
-  ".ogg",
-  ".wav",
-  ".flac",
-  ".opus",
-  ".mp4",
-  ".webm",
-  ".avi",
-  ".mkv",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".webp",
-  ".gif",
-  ".bmp",
-  ".ttf",
-  ".otf",
-  ".woff",
-  ".woff2",
-]);
 
 /**
  * 分离行首缩进和代码体，写回器复用缩进写回目标行。
@@ -156,18 +133,18 @@ export function normalize_speaker_token(code: string): string {
 }
 
 /**
- * 资源路径字面量不进入翻译，避免图片、音频和字体文件名被误写。
+ * 完整资源引用字面量不进入翻译，避免 URI、Base64 和资源文件名被误写。
  */
-export function looks_like_resource_path(text: string): boolean {
+export function looks_like_resource_reference(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed === "") {
     return false;
   }
-  return RESOURCE_EXTENSIONS.has(path.extname(path.basename(trimmed)).toLowerCase());
+  return remove_text_resource_references(trimmed).trim() === "";
 }
 
 /**
- * 文本可翻译性过滤只排除纯占位、纯样式和资源路径，保留 RenPy 官方可翻译 image 标记。
+ * 文本可翻译性过滤只排除纯占位和纯样式，保留 RenPy 官方可翻译 image 标记。
  */
 export function is_translatable_text(text: string): boolean {
   const trimmed = text.trim();

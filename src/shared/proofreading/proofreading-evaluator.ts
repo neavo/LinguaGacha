@@ -42,6 +42,7 @@ import {
 } from "../quality/glossary";
 import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
 import { split_text_lines } from "../text/text-lines";
+import { remove_text_resource_references } from "../text/text-resource-reference";
 
 export type ProofreadingEvaluationContext = {
   glossary: CompiledGlossary; // 术语始终按原始 src/name_src 命中
@@ -83,11 +84,9 @@ const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
   "DUPLICATED",
 ]);
 
-/**
- * 构造文本保护失败片段时保留源/译两边差异，供编辑弹窗定位。
- */
 type ProofreadingPreservedSegment = { line_index: number; value: string };
 
+/** 构造文本保护失败片段时保留源/译两边差异，供编辑弹窗定位。 */
 function build_text_preserve_failed_fragments(args: {
   source_segments: ProofreadingPreservedSegment[];
   translation_segments: ProofreadingPreservedSegment[];
@@ -167,11 +166,12 @@ export function evaluateProofreadingItem(args: {
       )
       .join("\n");
     const normalized_dst = strip_preserved_segments_by_line(args.item.dst, sample_rule);
+    const natural_dst = remove_text_resource_references(normalized_dst);
     if (split_text_lines(args.item.src).length !== split_text_lines(args.item.dst).length) {
       warnings.push("LINE_COUNT_MISMATCH");
     }
     const foreign_residue_fragments = collect_foreign_residue_fragments({
-      text: normalized_dst,
+      text: natural_dst,
       targetLanguage: args.processingConfig.target_language,
     });
     if (foreign_residue_fragments.length > 0) {
@@ -196,8 +196,10 @@ export function evaluateProofreadingItem(args: {
 
     if (
       has_translation_similarity_issue({
-        src: strip_preserved_segments_by_line(review_src, sample_rule),
-        dst: normalized_dst,
+        src: remove_text_resource_references(
+          strip_preserved_segments_by_line(review_src, sample_rule),
+        ),
+        dst: natural_dst,
         sourceLanguage: args.processingConfig.source_language,
         targetLanguage: args.processingConfig.target_language,
       })

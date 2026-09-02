@@ -99,6 +99,29 @@ describe("TranslationPrePipeline", () => {
     expect(context.request_item?.actor_src).toBe("Alice");
   });
 
+  it("在 work unit 内按上文、姓名和正文顺序投影文本引用", () => {
+    const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
+    const precedings = pipeline.project_precedings([
+      { src: "上文 https://example.com", text_type: "TXT" },
+    ]);
+    const context = pipeline.process_item({
+      src: "查看 image.png",
+      name_src: "data:image/png;base64,AAAA",
+      text_type: "TXT",
+    });
+
+    expect(precedings[0]?.src).toBe("上文 lg-uri/0");
+    expect(context.request_item).toMatchObject({
+      text_src: "查看 lg-uri/2",
+      actor_src: "lg-uri/1",
+    });
+    expect(context.reference_mappings).toEqual([{ token: "lg-uri/2", value: "image.png" }]);
+    expect(context.actor_reference_mappings).toEqual([
+      { token: "lg-uri/1", value: "data:image/png;base64,AAAA" },
+    ]);
+    expect(context.samples).toEqual(["lg-uri/1", "lg-uri/2"]);
+  });
+
   it("空 item 会返回同一形状的空上下文", () => {
     const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
 
@@ -168,6 +191,7 @@ describe("TranslationPrePipeline", () => {
 
     expect(line_texts(fully_preserved)).toEqual([]);
     expect(fully_preserved.prepared_lines[0]?.state).toBe("preserved");
+    expect(fully_preserved.samples).toEqual(["<b>", "</b>"]);
     expect(line_texts(partially_preserved)).toEqual(["<b>hello</b>"]);
     expect(partially_preserved.prepared_lines[0]).toMatchObject({
       prefix_segments: [],

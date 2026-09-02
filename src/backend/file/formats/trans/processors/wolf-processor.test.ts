@@ -41,7 +41,11 @@ describe("WolfTransProcessor", () => {
         ],
       ),
     ).toEqual([false, true, true, false]);
-    expect(processor.filter("sound.mp3", "path", [], ["a", "b", "c"])).toEqual([true, true, true]);
+    expect(processor.filter("sound.mp3", "path", [], ["a", "b", "c"])).toEqual([
+      false,
+      false,
+      false,
+    ]);
     expect(processor.filter("hello", "path", ["red"], ["x/y"])).toEqual([true]);
     expect(processor.filter("hello", "path", [], [])).toEqual([false]);
   });

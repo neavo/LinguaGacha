@@ -220,6 +220,60 @@ describe("TranslationWorkUnitRunner", () => {
     expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
   });
 
+  it("按 work unit 顺序投影上文和请求引用并在提交前恢复", async () => {
+    const captured_requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client(
+        {
+          response_result:
+            '{"index":0,"actor":"lg-uri/1","text":"查看 lg-uri/2"}\n{"index":1,"actor":null,"text":"图片 lg-uri/3"}',
+        },
+        captured_requests,
+      ),
+    );
+    const unit = create_translation_unit({
+      model: { api_format: "OpenAI" },
+      items: [
+        {
+          id: 1,
+          src: "打开 https://example.com/guide",
+          name_src: "data:image/png;base64,AAAA",
+          dst: "",
+          status: "NONE",
+          text_type: "TXT",
+        },
+        {
+          id: 2,
+          src: "查看 image.png",
+          dst: "",
+          status: "NONE",
+          text_type: "TXT",
+        },
+      ],
+    });
+    unit.payload.precedings = [
+      { id: 9, src: "上文 https://previous.example", status: "PROCESSED", text_type: "TXT" },
+    ];
+
+    const result = await runner.execute_unit(unit, new AbortController().signal);
+
+    expect(captured_requests[0]?.messages[1]?.content).toContain("上文 lg-uri/0");
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      '{"index":0,"actor":"lg-uri/1","text":"打开 lg-uri/2"}',
+    );
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      items: [
+        {
+          dst: "查看 https://example.com/guide",
+          name_dst: "data:image/png;base64,AAAA",
+        },
+        { dst: "图片 image.png" },
+      ],
+    });
+  });
+
   it("术语只按预处理前的原始正文与姓名激活，并忽略空译文", async () => {
     const captured_requests: LLMRequestBody[] = [];
     const runner = new TranslationWorkUnitRunner(

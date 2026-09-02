@@ -346,14 +346,17 @@ export function compute_project_prefilter_write(
   const kvjson_items_by_path = new Map<string, ProjectItemViewRecord[]>();
 
   for (const item of item_index.values()) {
-    if (
-      item.status === "RULE_SKIPPED" ||
-      item.status === "LANGUAGE_SKIPPED" ||
-      item.status === "DUPLICATED"
-    ) {
+    const file_type = file_type_by_path.get(item.file_path);
+    if (item.status === "LANGUAGE_SKIPPED" || item.status === "DUPLICATED") {
       item.status = "NONE";
     }
-    if (input.mtool_optimizer_enable && file_type_by_path.get(item.file_path) === "KVJSON") {
+    // KVJSON 的 RULE_SKIPPED 可能来自可切换的 MTool 优化；先清理后由通用规则和当前开关重算。
+    if (item.status === "RULE_SKIPPED" && file_type === "KVJSON") {
+      item.status = "NONE";
+    } else if (item.status === "RULE_SKIPPED") {
+      rule_skipped += 1;
+    }
+    if (input.mtool_optimizer_enable && file_type === "KVJSON") {
       const current_group = kvjson_items_by_path.get(item.file_path);
       if (current_group === undefined) {
         kvjson_items_by_path.set(item.file_path, [item]);

@@ -77,6 +77,22 @@ describe("TaskPlanner", () => {
     expect(contexts.every((context) => context.precedings.length === 0)).toBe(true);
   });
 
+  it("翻译规划按短引用投影计算 token 指标", async () => {
+    const count_items = vi.fn(async (items: TaskTokenCountInput[]) =>
+      items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
+    );
+    const planner = create_planner(count_items);
+
+    await planner.build_translation_contexts(
+      [create_item({ id: 1, src: "查看 data:image/png;base64,AAAA", file_path: "a.txt" })],
+      { preceding_lines_threshold: 0 },
+      { threshold: { input_token_limit: 20 } },
+      new AbortController().signal,
+    );
+
+    expect(count_items.mock.calls[0]?.[0]?.[0]?.text).toBe("查看 lg-uri/0");
+  });
+
   it("分析规划只调度未完成且可分析的 item，并携带 checkpoint 状态", async () => {
     const count_items = vi.fn(async (items: TaskTokenCountInput[]) =>
       items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
@@ -133,6 +149,28 @@ describe("TaskPlanner", () => {
 
     const src_texts = contexts.flatMap((context) => context.items.map((item) => item.src_text));
     expect(src_texts).toEqual(["【虎鉄】台词一", "【虎鉄】台词二", "台词三", "台词四"]);
+  });
+
+  it("分析输入移除正文和姓名中的文本引用", async () => {
+    const planner = create_planner(async (items) =>
+      items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
+    );
+
+    const contexts = await planner.build_analysis_contexts(
+      [
+        create_item({
+          id: 1,
+          src: "介绍 https://example.com",
+          name_src: "avatar.png",
+          file_path: "a.txt",
+        }),
+      ],
+      [],
+      { threshold: { input_token_limit: 20 } },
+      new AbortController().signal,
+    );
+
+    expect(contexts[0]?.items[0]?.src_text).toBe("介绍");
   });
 
   it("翻译条目重试超过限制时由调用方标记错误并返回 forced_error_items", async () => {

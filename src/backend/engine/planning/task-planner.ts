@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import { is_task_skipped_item_status } from "../../../domain/task";
 import { read_json_integer, read_json_record, type MutableJsonRecord } from "../../../domain/json";
 import { read_item_name_text } from "../../../shared/item-name";
+import {
+  project_text_resource_references,
+  remove_text_resource_references,
+} from "../../../shared/text/text-resource-reference";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
   build_task_token_metric_cache_key,
@@ -319,12 +323,14 @@ export class TaskPlanner {
         continue;
       }
       seen_item_ids.add(item_id);
-      const src = String(item["src"] ?? "");
+      const raw_src = String(item["src"] ?? "");
+      // token 指标使用短投影，行数仍以原文为准，避免资源载荷改变切块成本。
+      const src = project_text_resource_references(raw_src).text;
       seeds.push({
         item_id,
         cache_key: build_task_token_metric_cache_key(src),
         src,
-        line_count: count_non_empty_source_lines(src),
+        line_count: count_non_empty_source_lines(raw_src),
       });
       if (index > 0 && index % HASH_YIELD_EVERY_ITEMS === 0) {
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -393,11 +399,11 @@ export class TaskPlanner {
    * 分析输入在规划期渲染姓名前缀，后续 worker 继续只消费纯文本快照。
    */
   private build_analysis_source_text(item: MutableJsonRecord): string {
-    const src = String(item["src"] ?? "").trim();
+    const src = remove_text_resource_references(String(item["src"] ?? "")).trim();
     if (src === "") {
       return "";
     }
-    const name = read_item_name_text(item["name_src"]).trim();
+    const name = remove_text_resource_references(read_item_name_text(item["name_src"])).trim();
     return name === "" ? src : `【${name}】${src}`;
   }
 

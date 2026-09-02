@@ -9,7 +9,7 @@ import { is_wolf_xlsx_sheet, load_xlsx_workbook, write_xlsx_workbook } from "./x
 
 const COL_SRC_TEXT = 6; // WOLF XLSX 的源文和译文列号来自旧固定实现
 const COL_DST_TEXT = 7;
-const FILL_COLOR_WHITELIST = new Set([9]); // 只有白色填充的源文列参与翻译，其它颜色被视为 WOLF 排除项
+const FILL_COLOR_WHITELIST = new Set([9]); // 只有白色填充的源文列参与翻译，其它颜色由 WOLF 格式规则跳过
 
 /**
  * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐旧实现
@@ -47,7 +47,7 @@ export class WOLFXLSXFormat {
           text_type: "WOLF",
           status:
             src === "" || !FILL_COLOR_WHITELIST.has(fill_index)
-              ? "EXCLUDED"
+              ? "RULE_SKIPPED"
               : dst !== "" && src !== dst
                 ? "PROCESSED"
                 : "NONE",

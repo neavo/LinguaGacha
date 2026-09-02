@@ -2,7 +2,6 @@ import { Item, is_item_status, type ItemStatus } from "../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
 import {
   parse_markdown_v2_document,
-  restore_markdown_v2_resources,
   type MarkdownV2Unit,
 } from "../../file/formats/markdown/md-v2-document";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
@@ -177,32 +176,17 @@ export class MarkdownV2BlockMigration {
     const source_document = parse_markdown_v2_document(legacy_src);
     const destination_document = parse_markdown_v2_document(legacy_dst);
     const destination_index = this.build_destination_index(destination_document.units);
-    const destination_resource_replacements = this.build_destination_resource_replacements(
-      source_document.resources,
-      destination_document.resources,
-    );
-
     return source_document.units.map((unit) => {
       const covered_items = items.filter(
         (item) => item.row >= unit.start_line && item.row <= unit.end_line,
       );
       const paired_destination = this.take_destination_unit(destination_index, unit);
-      const paired_destination_text =
-        paired_destination === null
-          ? null
-          : restore_markdown_v2_resources(
-              paired_destination.src,
-              destination_resource_replacements,
-            );
-      const fallback_destination = this.project_resource_tokens(
-        covered_items
-          .map((item, index) =>
-            index === 0 ? item.resolved_dst.slice(unit.start_column) : item.resolved_dst,
-          )
-          .join("\n"),
-        unit,
-        source_document.resources,
-      );
+      const paired_destination_text = paired_destination?.src ?? null;
+      const fallback_destination = covered_items
+        .map((item, index) =>
+          index === 0 ? item.resolved_dst.slice(unit.start_column) : item.resolved_dst,
+        )
+        .join("\n");
       const has_translation = covered_items.some(
         (item) =>
           item.dst !== "" || (item.status === "DUPLICATED" && item.resolved_dst !== item.src),
@@ -254,51 +238,10 @@ export class MarkdownV2BlockMigration {
     return `${unit.start_line.toString()}\u0000${unit.kind}`;
   }
 
-  /** 同 URL 的译文资源复用源 token，译文独有 URL 恢复为用户当前值。 */
-  private build_destination_resource_replacements(
-    source_resources: ReadonlyMap<string, string>,
-    destination_resources: ReadonlyMap<string, string>,
-  ): ReadonlyMap<string, string> {
-    const source_tokens_by_url = new Map<string, string[]>();
-    for (const [token, url] of source_resources) {
-      const tokens = source_tokens_by_url.get(url) ?? [];
-      tokens.push(token);
-      source_tokens_by_url.set(url, tokens);
-    }
-    return new Map(
-      [...destination_resources].map(([token, url]) => [
-        token,
-        source_tokens_by_url.get(url)?.shift() ?? url,
-      ]),
-    );
-  }
-
-  /** fallback 译文走同一 URL 对齐，只使用当前源块实际拥有的资源 token。 */
-  private project_resource_tokens(
-    text: string,
-    source_unit: MarkdownV2Unit,
-    source_resources: ReadonlyMap<string, string>,
-  ): string {
-    const destination_document = parse_markdown_v2_document(text);
-    const source_tokens = new Set(parse_markdown_v2_document(source_unit.src).resources.values());
-    const unit_source_resources = new Map(
-      [...source_resources].filter(([token]) => source_tokens.has(token)),
-    );
-    const replacements = this.build_destination_resource_replacements(
-      unit_source_resources,
-      destination_document.resources,
-    );
-    return destination_document.units
-      .map(
-        (unit) => unit.before + restore_markdown_v2_resources(unit.src, replacements) + unit.after,
-      )
-      .join("");
-  }
-
-  /** 按风险优先级聚合覆盖行状态，结构性排除始终优先。 */
+  /** 按风险优先级聚合覆盖行状态，结构规则跳过始终优先。 */
   private aggregate_status(unit: MarkdownV2Unit, items: LegacyMarkdownItem[]): ItemStatus {
-    if (unit.excluded) {
-      return "EXCLUDED";
+    if (unit.rule_skipped) {
+      return "RULE_SKIPPED";
     }
     if (items.some((item) => item.status === "ERROR")) {
       return "ERROR";

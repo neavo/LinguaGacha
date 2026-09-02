@@ -72,17 +72,17 @@ describe("MarkdownV2BlockMigration", () => {
         src: "```ts\nconst value = 1;\n```",
         dst: "```ts\nconst value = 2;\n```",
         row: 5,
-        status: "EXCLUDED",
+        status: "RULE_SKIPPED",
       }),
       expect.objectContaining({
         id: 10,
-        src: "![封面](lg-resource:image/0)",
+        src: `![封面](${data_uri})`,
         dst: "",
         row: 9,
         status: "NONE",
       }),
     ]);
-    expect(JSON.stringify(markdown_items)).not.toContain(data_uri);
+    expect(JSON.stringify(markdown_items)).toContain(data_uri);
     expect(fixture.items()).toContainEqual(expect.objectContaining({ id: 50, src: "保留" }));
     expect(fixture.meta()["translation_extras"]).toEqual({
       total_tokens: 42,
@@ -139,7 +139,7 @@ describe("MarkdownV2BlockMigration", () => {
     expect(items.at(-1)).toEqual(expect.objectContaining({ dst: "Repeated", id: 18 }));
   });
 
-  it("按 URL 身份保留重排链接和用户修改的 destination", () => {
+  it("原样保留重排链接和用户修改的 destination", () => {
     const fixture = create_database([
       legacy_item(1, 0, "# [甲](https://a.example) [乙](https://b.example)", {
         dst: "[B](https://b.example) [A](https://changed.example)",
@@ -153,7 +153,7 @@ describe("MarkdownV2BlockMigration", () => {
 
     expect(fixture.items()[0]).toEqual(
       expect.objectContaining({
-        dst: "[B](lg-resource:link/1) [A](https://changed.example)",
+        dst: "[B](https://b.example) [A](https://changed.example)",
       }),
     );
   });

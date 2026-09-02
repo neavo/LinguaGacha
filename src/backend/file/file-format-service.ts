@@ -192,7 +192,7 @@ export class FileFormatService {
   public async write_items(items: Item[], context: FileFormatWriteContext): Promise<void> {
     const { paths, asset_reader } = context;
     await this.txt.write_to_path(items, paths);
-    await this.md.write_to_path(items, paths, asset_reader);
+    await this.md.write_to_path(items, paths);
     await this.ass.write_to_path(items, paths);
     await this.srt.write_to_path(items, paths);
     await this.kvjson.write_to_path(items, paths);

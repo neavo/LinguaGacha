@@ -1,7 +1,6 @@
 import type { ItemTextType } from "../../../../../domain/item";
 import type { MutableJsonRecord } from "../../../../../domain/json";
 import {
-  BLACKLIST_EXTENSIONS,
   has_color_block_tag,
   NoneTransProcessor,
   string_array,
@@ -60,11 +59,6 @@ export class WolfTransProcessor extends NoneTransProcessor {
     tag: string[],
     context: string[],
   ): boolean[] {
-    const length = context.length > 0 ? context.length : 1;
-    if (BLACKLIST_EXTENSIONS.some((extension) => src.includes(extension))) {
-      return Array.from({ length }, () => true);
-    }
-
     if (context.length === 0) {
       return [has_color_block_tag(tag)];
     }

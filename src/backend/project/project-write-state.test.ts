@@ -89,6 +89,25 @@ describe("compute_project_prefilter_write", () => {
     });
   });
 
+  it("保留格式解析器产生的规则跳过状态", () => {
+    const result = compute_project_prefilter_write({
+      state: create_state([
+        create_item(1, {
+          src: "格式内部字段",
+          file_type: "WOLFXLSX",
+          status: "RULE_SKIPPED",
+        }),
+      ]),
+      source_language: "ZH",
+      target_language: "JA",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    });
+
+    expect(result.items["1"]?.status).toBe("RULE_SKIPPED");
+    expect(result.stats.rule_skipped).toBe(1);
+  });
+
   it("启用同文件重复过滤时只保留首个可翻译条目", () => {
     const result = compute_project_prefilter_write({
       state: create_state([create_item(1, { src: "同文" }), create_item(2, { src: "同文" })]),
