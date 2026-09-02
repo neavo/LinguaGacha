@@ -52,6 +52,26 @@ function has_project_sidecar(lg_path: string): boolean {
   return project_sidecar_paths(lg_path).some((sidecar_path) => fs.existsSync(sidecar_path));
 }
 
+/** 读取 SQLite 文件头中的自动回收模式，直接观察 .lg 物理契约。 */
+function read_auto_vacuum_mode(lg_path: string): number {
+  using db = new DatabaseSync(lg_path);
+  const row = db.prepare("PRAGMA auto_vacuum").get();
+  return Number(row?.["auto_vacuum"] ?? 0);
+}
+
+/** 构造使用旧物理模式的最小工程，供首次打开场景验证真实转换。 */
+function create_legacy_project(lg_path: string, name: string): void {
+  using db = new DatabaseSync(lg_path);
+  db.exec(`
+    PRAGMA auto_vacuum=NONE;
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+  db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
+    "name",
+    JsonTool.stringifyStrict(name),
+  );
+}
+
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-database-"));
   cleanup_databases = [];
@@ -78,6 +98,55 @@ describe("ProjectDatabase", () => {
       read_meta(database, lg_path, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY, []),
     ).toEqual(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS);
     expect(has_project_sidecar(lg_path)).toBe(false);
+  });
+
+  it("新建工程使用 FULL auto-vacuum", () => {
+    const database = create_database();
+    const lg_path = project_path("auto-vacuum-full.lg");
+
+    database.create_project(lg_path, "auto-vacuum-full");
+
+    expect(read_auto_vacuum_mode(lg_path)).toBe(1);
+  });
+
+  it("首次打开历史工程时回收空闲页并保留项目事实", () => {
+    const lg_path = project_path("legacy-auto-vacuum.lg");
+    create_legacy_project(lg_path, "legacy-auto-vacuum");
+    {
+      using db = new DatabaseSync(lg_path);
+      db.exec("CREATE TABLE retired_payload (data BLOB NOT NULL)");
+      db.prepare("INSERT INTO retired_payload (data) VALUES (?)").run(
+        Buffer.alloc(2 * 1024 * 1024, 0x41),
+      );
+      db.exec("DELETE FROM retired_payload");
+    }
+    const size_before_open = fs.statSync(lg_path).size;
+    const database = create_database();
+
+    expect(read_meta(database, lg_path, "name", "")).toBe("legacy-auto-vacuum");
+
+    expect(read_auto_vacuum_mode(lg_path)).toBe(1);
+    expect(fs.statSync(lg_path).size).toBeLessThan(size_before_open);
+    expect(has_project_sidecar(lg_path)).toBe(false);
+  });
+
+  it("物理整理失败时仍可读取历史工程", () => {
+    const lg_path = project_path("deferred-auto-vacuum.lg");
+    create_legacy_project(lg_path, "deferred-auto-vacuum");
+    const database = create_database();
+    const original_exec = DatabaseSync.prototype.exec;
+    let vacuum_failed = false;
+    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+      if (sql === "VACUUM") {
+        vacuum_failed = true;
+        throw new Error("vacuum unavailable");
+      }
+      return Reflect.apply(original_exec, this, [sql]) as void;
+    });
+
+    expect(read_meta(database, lg_path, "name", "")).toBe("deferred-auto-vacuum");
+    expect(vacuum_failed).toBe(true);
+    expect(read_auto_vacuum_mode(lg_path)).toBe(0);
   });
 
   it("普通 scoped 操作结束后不常驻 WAL 副文件", () => {
