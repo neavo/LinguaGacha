@@ -1,19 +1,21 @@
 import type { ItemStatus } from "../../domain/item";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
-import { coordinate_project_duplicate_statuses } from "./project-item-duplicates";
+import {
+  coordinate_project_duplicate_statuses,
+  type ProjectItemDuplicateIdentity,
+} from "./project-item-duplicates";
 import {
   apply_project_item_field_patch,
   build_project_item_field_patch,
   type ProjectItemWriteFields,
 } from "./project-item-update";
 
-export type ProjectItemWriteRecord = Omit<ProjectItemWriteFields, "status"> & {
-  item_id: number; // 数据库与公开事件共享的稳定身份
-  file_path: string; // 重复组文件边界
-  row_number: number; // 文件内确定性顺序
-  src: string; // 重复组原文键
-  status: ItemStatus; // 已归一的当前状态
-};
+export type ProjectItemWriteRecord = ProjectItemDuplicateIdentity &
+  Omit<ProjectItemWriteFields, "status"> & {
+    item_id: number; // 数据库与公开事件共享的稳定身份
+    row_number: number; // 文件内确定性顺序
+    status: ItemStatus; // 已归一的当前状态
+  };
 
 export type ProjectItemExplicitChange = Readonly<{
   item_id: number; // 显式意图目标
@@ -29,7 +31,7 @@ export type ProjectItemPlannedChange = Readonly<{
 }>;
 
 /**
- * 在事务快照上重放显式字段意图，再维护受影响同文组的被动状态，返回数据库需要的完整实际差异。
+ * 在事务快照上重放显式字段意图，再维护受影响重复组的被动状态，返回数据库需要的完整实际差异。
  */
 export function plan_project_item_changes(args: {
   items: readonly ProjectItemWriteRecord[];

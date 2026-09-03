@@ -135,6 +135,67 @@ describe("TranslationFileExportService", () => {
     expect(output_folder_opener.opened_paths).toEqual([]);
   });
 
+  it("MESSAGEJSON 导出只在相同可见角色间复用译文", async () => {
+    const project_path = path.join(temp_dir, "actors.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = create_database([
+      {
+        id: 1,
+        src: "あうぅ……。",
+        dst: "嗷呜……。",
+        name_src: "アビゲイル",
+        name_dst: "阿比盖尔",
+        status: "PROCESSED",
+        file_type: "MESSAGEJSON",
+        file_path: "actors.json",
+        text_type: "KAG",
+        row: 0,
+      },
+      {
+        id: 2,
+        src: "あうぅ……。",
+        dst: "",
+        name_src: "アビゲイル",
+        name_dst: null,
+        status: "DUPLICATED",
+        file_type: "MESSAGEJSON",
+        file_path: "actors.json",
+        text_type: "KAG",
+        row: 1,
+      },
+      {
+        id: 3,
+        src: "あうぅ……。",
+        dst: "",
+        name_src: "武藏",
+        name_dst: null,
+        status: "DUPLICATED",
+        file_type: "MESSAGEJSON",
+        file_path: "actors.json",
+        text_type: "KAG",
+        row: 2,
+      },
+    ]);
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(),
+      session_state,
+      create_output_folder_opener().open,
+      create_log_collector(),
+    );
+
+    await service.export_files();
+
+    expect(
+      JSON.parse(fs.readFileSync(path.join(temp_dir, "actors_译文", "actors.json"), "utf-8")),
+    ).toEqual([
+      { name: "阿比盖尔", message: "嗷呜……。" },
+      { name: "阿比盖尔", message: "嗷呜……。" },
+      { name: "武藏", message: "あうぅ……。" },
+    ]);
+  });
+
   it("导出时直接写出 Markdown 块中的资源引用", async () => {
     const project_path = path.join(temp_dir, "mixed.lg");
     const session_state = new ProjectSessionState();

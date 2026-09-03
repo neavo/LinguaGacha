@@ -5,13 +5,14 @@ import type { LogManager } from "../log/log-manager";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import { Item, type ItemStatus } from "../../domain/item";
-import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { Item, type ItemNameField } from "../../domain/item";
+import { is_json_record, type JsonRecord } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ExportPaths } from "./formats/file-format-shared";
+import { build_project_item_duplicate_key } from "../../shared/project/project-item-duplicates";
 
 /**
  * 导出层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域
@@ -64,7 +65,6 @@ export class TranslationFileExportService {
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
-      this.fill_duplicated_translations(items);
       const output_path = await this.write_export(project_path, items, "", config);
       await this.complete_export_success(config, output_path);
       return { accepted: true, output_path };
@@ -83,7 +83,6 @@ export class TranslationFileExportService {
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
-      this.fill_duplicated_translations(items);
       const paths = this.build_cli_export_paths(output_dir);
       await this.write_export_to_paths(project_path, items, paths, config);
       this.log_export_done(config, paths.translated_path);
@@ -107,7 +106,6 @@ export class TranslationFileExportService {
   ): Promise<JsonRecord> {
     const project_path = this.session_state.require_loaded_project_path();
     const config = this.app_setting_service.read_setting();
-    this.fill_duplicated_translations(items);
     this.log_export_start(config);
     try {
       const output_path = await this.write_export(project_path, items, suffix, config);
@@ -148,6 +146,7 @@ export class TranslationFileExportService {
     config: JsonRecord,
   ): Promise<void> {
     const setting_snapshot = normalize_setting_snapshot(config);
+    this.fill_duplicated_translations(items);
     const format_service = new FileFormatService(
       {
         target_language: setting_snapshot.target_language,
@@ -231,19 +230,19 @@ export class TranslationFileExportService {
   }
 
   /**
-   * DUPLICATED 条目复用同文件同原文的已处理译文，保持导出口径稳定
+   * DUPLICATED 条目按项目统一重复身份复用已处理译文。
    */
   private fill_duplicated_translations(items: Item[]): void {
-    const translation_by_file_src = new Map<string, { dst: string; name_dst: JsonValue }>();
+    const translations = new Map<string, { dst: string; name_dst: ItemNameField }>();
     for (const item of items) {
       if (item.status !== "PROCESSED") {
         continue;
       }
-      const key = this.file_src_key(item.file_path, item.src);
-      if (!translation_by_file_src.has(key)) {
-        translation_by_file_src.set(key, {
+      const key = build_project_item_duplicate_key(item);
+      if (!translations.has(key)) {
+        translations.set(key, {
           dst: item.dst,
-          name_dst: item.name_dst as JsonValue,
+          name_dst: item.name_dst,
         });
       }
     }
@@ -251,21 +250,14 @@ export class TranslationFileExportService {
       if (item.status !== "DUPLICATED") {
         continue;
       }
-      const translation = translation_by_file_src.get(this.file_src_key(item.file_path, item.src));
+      const translation = translations.get(build_project_item_duplicate_key(item));
       if (translation === undefined) {
         continue;
       }
       item.dst = translation.dst;
-      item.name_dst = translation.name_dst as string | string[] | null;
-      item.status = "PROCESSED" satisfies ItemStatus;
+      item.name_dst = translation.name_dst;
+      item.status = "PROCESSED";
     }
-  }
-
-  /**
-   * 重复译文只在同一文件内传播，避免跨文件同文案误覆盖
-   */
-  private file_src_key(file_path: string, src: string): string {
-    return `${file_path}\u0000${src}`;
   }
 
   /**

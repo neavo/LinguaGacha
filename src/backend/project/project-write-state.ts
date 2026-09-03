@@ -11,7 +11,10 @@ import {
 } from "../../domain/task";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
-import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
+import {
+  coordinate_project_duplicate_statuses,
+  type ProjectItemDuplicateIdentity,
+} from "../../shared/project/project-item-duplicates";
 
 type ProjectWriteFileRecord = {
   rel_path: string; // 项目内相对路径，用于按文件分组预过滤
@@ -23,15 +26,12 @@ export type ProjectWriteState = {
   items: Record<string, unknown>; // section 镜像，调用方需提供当前完整公开 DTO 集合
 };
 
-export type ProjectItemViewRecord = {
+export type ProjectItemViewRecord = ProjectItemDuplicateIdentity & {
   item_id: number; // 公开 item 主键，所有局部写入都以它定位数据库事实
-  file_path: string; // 项目内相对路径
   row_number: number; // 公开行号
-  src: string; // 原文
   dst: string; // 译文
   name_dst: ProjectItemPublicRecord["name_dst"]; // 角色译名
   status: ProjectItemPublicRecord["status"]; // 翻译状态
-  text_type: ProjectItemPublicRecord["text_type"]; // 文本规则类型
   retry_count: number; // 重试次数
   skip_internal_filter: boolean; // 是否绕过内部过滤
 };
@@ -40,7 +40,7 @@ export type ProjectPrefilterStats = {
   rule_skipped: number; // 规则预过滤跳过数量
   language_skipped: number; // 源语言预过滤跳过数量
   mtool_skipped: number; // MTool KVJSON 优化跳过数量
-  duplicated: number; // 同文件重复原文跳过数量
+  duplicated: number; // 重复项跳过数量
 };
 
 export type ProjectAnalysisWriteOutput = {
@@ -73,7 +73,7 @@ export type ProjectPrefilterWriteInput = {
   source_language: string; // 源语言预过滤口径
   target_language?: string; // 只写入 settings mirror，不参与预过滤判断
   mtool_optimizer_enable: boolean; // 是否启用 KVJSON 优化预过滤
-  skip_duplicate_source_text_enable: boolean; // 是否启用同文件重复原文过滤
+  skip_duplicate_source_text_enable: boolean; // 是否启用重复项过滤
 };
 
 /**
@@ -98,6 +98,7 @@ export function derive_project_item_view_record_from_public(
     file_path: item.file_path,
     row_number: item.row_number,
     src: item.src,
+    name_src: item.name_src,
     dst: item.dst,
     name_dst: item.name_dst,
     status: item.status,

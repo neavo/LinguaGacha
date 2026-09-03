@@ -344,7 +344,7 @@ export class ProjectWriteStore {
     });
   }
 
-  /** 人工 Item 意图与同文组被动状态在同一事务快照上规划并提交。 */
+  /** 人工 Item 意图与重复组被动状态在同一事务快照上规划并提交。 */
   public async apply_project_item_changes(request: {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
@@ -1312,7 +1312,7 @@ export class ProjectWriteStore {
     });
   }
 
-  /** 事务内完整读取并归一 Item，供局部意图和同文组协调共同使用。 */
+  /** 事务内完整读取并归一 Item，供局部意图和重复组协调共同使用。 */
   private read_item_write_records(project_path: string): ProjectItemWriteRecord[] {
     const raw_items = this.database.get_all_items(project_path);
     return Array.isArray(raw_items)
@@ -1326,6 +1326,8 @@ export class ProjectWriteStore {
               file_path: item.file_path,
               row_number: item.row,
               src: item.src,
+              name_src: item.name_src,
+              text_type: item.text_type,
               dst: item.dst,
               name_dst: item.name_dst,
               status: item.status,
@@ -1336,7 +1338,7 @@ export class ProjectWriteStore {
       : [];
   }
 
-  /** 将任务 artifact patch 还原为显式前后事实，再进入统一同文组写入规划。 */
+  /** 将任务 artifact patch 还原为显式前后事实，再进入统一重复组写入规划。 */
   private plan_item_patch_changes(
     project_path: string,
     meta: JsonRecord,

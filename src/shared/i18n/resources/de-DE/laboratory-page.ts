@@ -19,7 +19,7 @@ export const de_de_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Doppelten Quelltext überspringen",
       description:
-        "In einer Datei identischen Quelltext nur einmal übersetzen, <emphasis>Duplikate verwenden den übersetzten Text wieder</emphasis>, standardmäßig aktiviert",
+        "Einträge mit identischem Quelltext, Sprecher und identischen Textregeln in einer Datei nur einmal übersetzen, <emphasis>Duplikate verwenden den übersetzten Text wieder</emphasis>, standardmäßig aktiviert",
     },
   },
   feedback: {

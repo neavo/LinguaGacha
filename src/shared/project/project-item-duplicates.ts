@@ -1,13 +1,21 @@
-import type { ItemStatus } from "../../domain/item";
+import type { ItemNameField, ItemStatus, ItemTextType } from "../../domain/item";
+import { read_optional_item_name_text } from "../item-name";
 
-/** 重复协调只依赖稳定身份、同文组键和当前状态。 */
-export type ProjectDuplicateItem = Readonly<{
-  item_id: number; // 稳定条目身份与同一行号下的排序后备
+/** 重复关系由文件范围、正文和翻译实际使用的角色名与文本规则共同决定。 */
+export type ProjectItemDuplicateIdentity = Readonly<{
   file_path: string; // 重复关系不跨文件
-  row_number: number; // 文件内代表项排序
-  src: string; // 完全相同的原文组成重复组
-  status: ItemStatus; // 当前权威状态
+  src: string; // 完全相同的正文
+  name_src: ItemNameField; // 翻译管线只消费可见姓名槽位
+  text_type: ItemTextType; // 文本预处理规则身份
 }>;
+
+/** 重复协调只依赖稳定身份、重复组键和当前状态。 */
+export type ProjectDuplicateItem = ProjectItemDuplicateIdentity &
+  Readonly<{
+    item_id: number; // 稳定条目身份与同一行号下的排序后备
+    row_number: number; // 文件内代表项排序
+    status: ItemStatus; // 当前权威状态
+  }>;
 
 export type ProjectDuplicateStatusChange = Readonly<{
   item_id: number; // 实际需要改写的条目
@@ -20,7 +28,7 @@ type DuplicateGroup = {
 };
 
 /**
- * 同文件同原文只保留一个可翻译代表；已完成或最终失败的条目承担组代表，避免重复请求绕过重试语义。
+ * 每个重复组只保留一个可翻译代表；已完成或最终失败的条目承担组代表，避免重复请求绕过重试语义。
  * 协调器只维护 NONE 与 DUPLICATED，不覆盖人工、过滤或任务产生的其它状态。
  */
 export function coordinate_project_duplicate_statuses(
@@ -34,25 +42,18 @@ export function coordinate_project_duplicate_statuses(
       : new Set(
           items
             .filter((item) => affected_item_ids.has(item.item_id))
-            .map((item) => duplicate_group_key(item.file_path, item.src)),
+            .map(build_project_item_duplicate_key),
         );
-  const groups_by_file = new Map<string, Map<string, DuplicateGroup>>();
+  const groups = new Map<string, DuplicateGroup>();
   for (const item of items) {
-    if (
-      affected_group_keys !== null &&
-      !affected_group_keys.has(duplicate_group_key(item.file_path, item.src))
-    ) {
+    const key = build_project_item_duplicate_key(item);
+    if (affected_group_keys !== null && !affected_group_keys.has(key)) {
       continue;
     }
-    let groups_by_src = groups_by_file.get(item.file_path);
-    if (groups_by_src === undefined) {
-      groups_by_src = new Map<string, DuplicateGroup>();
-      groups_by_file.set(item.file_path, groups_by_src);
-    }
-    let group = groups_by_src.get(item.src);
+    let group = groups.get(key);
     if (group === undefined) {
       group = { candidates: [], has_anchor: false };
-      groups_by_src.set(item.src, group);
+      groups.set(key, group);
     }
     if (item.status === "NONE" || item.status === "DUPLICATED") {
       group.candidates.push(item);
@@ -62,22 +63,27 @@ export function coordinate_project_duplicate_statuses(
   }
 
   const changes: ProjectDuplicateStatusChange[] = [];
-  for (const groups_by_src of groups_by_file.values()) {
-    for (const group of groups_by_src.values()) {
-      group.candidates.sort(
-        (left, right) => left.row_number - right.row_number || left.item_id - right.item_id,
-      );
-      for (const [index, item] of group.candidates.entries()) {
-        const status: "NONE" | "DUPLICATED" =
-          !enabled || (!group.has_anchor && index === 0) ? "NONE" : "DUPLICATED";
-        if (item.status !== status) changes.push({ item_id: item.item_id, status });
-      }
+  for (const group of groups.values()) {
+    group.candidates.sort(
+      (left, right) => left.row_number - right.row_number || left.item_id - right.item_id,
+    );
+    for (const [index, item] of group.candidates.entries()) {
+      const status: "NONE" | "DUPLICATED" =
+        !enabled || (!group.has_anchor && index === 0) ? "NONE" : "DUPLICATED";
+      if (item.status !== status) changes.push({ item_id: item.item_id, status });
     }
   }
   return changes;
 }
 
-/** 使用不可出现在路径中的 NUL 分隔组键，避免字符串拼接歧义。 */
-function duplicate_group_key(file_path: string, src: string): string {
-  return `${file_path}\u0000${src}`;
+/**
+ * 构造预过滤、项目写入和导出共用的重复身份；姓名使用翻译管线实际消费的可见槽位。
+ */
+export function build_project_item_duplicate_key(item: ProjectItemDuplicateIdentity): string {
+  return JSON.stringify([
+    item.file_path,
+    item.src,
+    read_optional_item_name_text(item.name_src),
+    item.text_type,
+  ]);
 }

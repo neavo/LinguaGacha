@@ -48,6 +48,8 @@ function item(item_id: number, status: ItemStatus): ProjectItemWriteRecord {
     file_path: "script.txt",
     row_number: item_id - 1,
     src: "同文",
+    name_src: null,
+    text_type: "NONE",
     dst: "",
     name_dst: null,
     status,

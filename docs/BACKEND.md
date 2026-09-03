@@ -25,7 +25,7 @@
 |loaded 工程热读数据|`CacheManager`|工程热机、committed event、功能 query|
 |Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
 |项目事实提交|`ProjectWriteStore`|单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change`|
-|Item 状态值域与重复关系|`domain/item` / `ProjectWriteStore`|人工状态只含 `NONE`、`PROCESSED`、`EXCLUDED`；同文组协调器物化 `DUPLICATED`|
+|Item 状态值域与重复关系|`domain/item` / `ProjectWriteStore`|人工状态只含 `NONE`、`PROCESSED`、`EXCLUDED`；重复组协调器物化 `DUPLICATED`|
 |活动任务类型、translation scope、status、busy、`run_revision`、请求压力|`TaskRuntime`|任务命令、Engine 生命周期、项目会话切换|
 |任务 progress / analysis candidate count|`.lg` meta|`TaskProjectStore` 经 `ProjectWriteStore` 写入|
 |任务公开快照|`TaskRuntime.build_snapshot`|组合内存运行态与 `.lg` meta|
@@ -47,7 +47,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 功能 query 返回其结果依赖的 `sectionRevisions`；只有基于已消费快照形成的用户写入或预演提交才以这些 revision 做乐观锁。任务启动和面向当前项目事实的 reset 不携带 revision，由运行或项目写 lease 后读取当前事实；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
 - 文本源文件与需要重读原始 asset 的格式统一通过 shared 解码入口把 bytes 转成字符串，固定按 BOM、调用方声明编码、严格 UTF-8、传统编码探测的顺序裁决；无法确定或不支持的编码按文件解析失败处理。
-- 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态，重复协调按同一 `file_path` 与完全相同 `src` 维护物化的 `DUPLICATED`。
+- 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
 - 译文导出由 `TranslationFileExportService` 统一编排格式写回、asset 读取和输出目录语义。
 - 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源与分析候选只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
@@ -61,7 +61,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - `QualityRuleAnalysisCache` 是四类质量规则命中数、代表例句和字面包含父项的唯一后端分析缓存，供 GUI query 使用；缓存命中只读取缓存引用和轻量 revision，不复制 item、不重建文本组或计算内容签名。quality 变化同时失效统计与父项，item 变化只按受影响文本侧失效统计并保留父项；无法证明范围时失效全部统计。
 - 质量规则分析按不同 item 去重计算 `hits`，同一 item 内多字段、多次或重叠命中只计一次；术语读取原文字段，其余规则按生产语义逐行读取原文或译文。worker 在同一遍命中扫描中保留最多两个确定性 `examples`，不保存完整候选集，并按 item 顺序输出。
 - 质量规则结构分析只返回复用正式字面匹配语义的真实包含父项；完全等价和正则不形成父项，也不生成全局关系组或推断公共词根。
-- 客户端只提交用户意图和必要的设置镜像；canonical items、task extras、prefilter、重复组和 analysis 结果由后端计算。同文组中的 `PROCESSED` 或 `ERROR` 条目承担已有代表，否则按行号和 item 身份稳定保留一个 `NONE` 代表；协调只改写 `NONE` 与 `DUPLICATED`，关闭重复过滤时恢复全部重复项。
+- 客户端只提交用户意图和必要的设置镜像；canonical items、task extras、prefilter、重复组和 analysis 结果由后端计算。
+- 重复身份由同一 `file_path`、完全相同的 `src`、翻译管线消费的可见 `name_src` 与相同 `text_type` 组成；预过滤与项目写入协调按该身份维护物化的 `DUPLICATED`，导出按同一身份复用已处理译文。重复组中的 `PROCESSED` 或 `ERROR` 条目承担已有代表，否则按行号和 item 身份稳定保留一个 `NONE` 代表；协调只改写 `NONE` 与 `DUPLICATED`，关闭重复过滤时恢复全部重复项。
 - 快照派生写入在最终提交点完成 revision guard 与单 `.lg` 事务；当前事实 reset、任务 artifact 等写入不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
 - 项目事实事务提交后才把类型化 committed event 交给唯一缓存 handler，缓存完成后再发布公开 change。后置缓存或公开事件同步失败不会回滚已提交事务，统一转换为带 `committed: true`、提交后 section revisions 和重新加载动作的 `data.committed_sync_failed`；调用方不得重试该写入。常规增量维护失败由 `CacheManager` 标记为可恢复，并在后续 query 前从数据库重建。
@@ -69,7 +70,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
 - Agent 磁盘工作区承载可修改的工作资产和显式 change 准备；`AgentWorkspaceService` 以工程身份、epoch 与语言守卫快照边界，以对象指纹校验写入目标，普通 section revision 漂移不阻塞对象级 apply。工作资产生命周期与恢复语义归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、quality、prompt 尽可能一次提交。Item 显式变化与受影响同文组的被动变化形成同一实际变化集合，共同驱动写入、翻译统计、revision、cache 和 canonical delta；对象冲突形成逻辑部分成功，quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
+- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、quality、prompt 尽可能一次提交。Item 显式变化与受影响重复组的被动变化形成同一实际变化集合，共同驱动写入、翻译统计、revision、cache 和 canonical delta；对象冲突形成逻辑部分成功，quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
 - 工作区无实际 change 时不写数据库、不推进 revision、不发布事件。数据库失败回滚本次事务全部事实与 revision；提交后 cache / 公开事件只依据 actual applied sections，后置同步失败按已提交处理并返回 reload 语义。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 

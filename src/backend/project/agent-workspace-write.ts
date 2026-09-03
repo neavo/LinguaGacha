@@ -116,7 +116,7 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 }>;
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
-  items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与同文组协调
+  items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
   prompts: Partial<Record<PromptKind, string>>; // 本批涉及的提示词
   duplicateFilterEnabled: boolean; // 项目持久设置中的重复过滤口径
@@ -397,6 +397,8 @@ function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
       file_path: String(item["file_path"] ?? ""),
       row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
       src: String(item["src"] ?? ""),
+      name_src: Item.normalize_name_field(item["name_src"]),
+      text_type: Item.normalize_text_type(item["text_type"]),
       dst: String(item["dst"] ?? ""),
       name_dst: Item.normalize_name_field(item["name_dst"]),
       status: Item.normalize_status(item["status"]),
