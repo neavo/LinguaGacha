@@ -274,6 +274,7 @@ export class MarkdownV2BlockMigration {
         file_path: item.file_path,
         row_number: item.row,
         src: item.src,
+        name_src: item.name_src,
         dst: item.dst,
         name_dst: item.name_dst,
         status: item.status,

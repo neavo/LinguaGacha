@@ -16,7 +16,7 @@ export const zh_cn_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "跳过重复原文",
       description:
-        "同一文件中相同原文的条目只翻译一次，<emphasis>重复项会复用已翻译的译文</emphasis>，默认启用",
+        "同一文件中正文、角色名和文本规则均相同的条目只翻译一次，<emphasis>重复项会复用已翻译的译文</emphasis>，默认启用",
     },
   },
   feedback: {

@@ -16,7 +16,7 @@ describe("project item duplicate coordination", () => {
     ).toEqual([{ item_id: 3, status: "DUPLICATED" }]);
   });
 
-  it.each(["PROCESSED", "ERROR"] as const)("%s 条目承担同文组代表", (status) => {
+  it.each(["PROCESSED", "ERROR"] as const)("%s 条目承担重复组代表", (status) => {
     expect(
       coordinate_project_duplicate_statuses(
         [item(1, status), item(2, "NONE"), item(3, "DUPLICATED")],
@@ -51,6 +51,20 @@ describe("project item duplicate coordination", () => {
       ),
     ).toEqual([]);
   });
+
+  it("按可见角色名和文本规则区分重复组", () => {
+    expect(
+      coordinate_project_duplicate_statuses(
+        [
+          item(1, "NONE", 0, "script.txt", { name_src: "甲", text_type: "KAG" }),
+          item(2, "NONE", 1, "script.txt", { name_src: ["甲", "附加列"], text_type: "KAG" }),
+          item(3, "NONE", 2, "script.txt", { name_src: "乙", text_type: "KAG" }),
+          item(4, "NONE", 3, "script.txt", { name_src: "甲", text_type: "RENPY" }),
+        ],
+        true,
+      ),
+    ).toEqual([{ item_id: 2, status: "DUPLICATED" }]);
+  });
 });
 
 /** 构造只包含重复协调所需字段的测试条目。 */
@@ -59,6 +73,16 @@ function item(
   status: ItemStatus,
   row_number = item_id,
   file_path = "script.txt",
+  overrides: Partial<ProjectDuplicateItem> = {},
 ): ProjectDuplicateItem {
-  return { item_id, file_path, row_number, src: "同文", status };
+  return {
+    item_id,
+    file_path,
+    row_number,
+    src: "同文",
+    name_src: null,
+    text_type: "NONE",
+    status,
+    ...overrides,
+  };
 }

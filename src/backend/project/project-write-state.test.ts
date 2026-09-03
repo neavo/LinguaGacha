@@ -122,6 +122,27 @@ describe("compute_project_prefilter_write", () => {
     expect(result.stats.duplicated).toBe(1);
   });
 
+  it("角色或文本规则不同时分别保留可翻译条目", () => {
+    const result = compute_project_prefilter_write({
+      state: create_state([
+        create_item(1, { src: "同文", name_src: "甲", text_type: "KAG" }),
+        create_item(2, { src: "同文", name_src: "乙", text_type: "KAG" }),
+        create_item(3, { src: "同文", name_src: "甲", text_type: "RENPY" }),
+      ]),
+      source_language: "ZH",
+      target_language: "JA",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(Object.values(result.items).map((item) => item.status)).toEqual([
+      "NONE",
+      "NONE",
+      "NONE",
+    ]);
+    expect(result.stats.duplicated).toBe(0);
+  });
+
   it("关闭重复过滤时旧 DUPLICATED 会回到可处理状态", () => {
     const result = compute_project_prefilter_write({
       state: create_state([
