@@ -3,17 +3,28 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 import { is_json_record, type JsonValue } from "../../../domain/json";
 import { default_native_fs } from "../../../native/native-fs";
+import {
+  AGENT_TODO_ITEM_LIMIT,
+  AGENT_TODO_TEXT_LIMIT,
+  normalize_agent_todos,
+} from "../../../shared/agent-todo";
 import deno_runtime_manifest from "../../../../buildtools/builder/deno-runtime-manifest.json";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 
 const INITIALIZE_TIMEOUT_MS = 15_000;
 const STDERR_TAIL_BYTES = 32 * 1024;
-const STDOUT_PROTOCOL_BYTES = AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes + 8 * 1024;
+const STDOUT_PROTOCOL_BYTES =
+  AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes +
+  AGENT_TODO_ITEM_LIMIT * AGENT_TODO_TEXT_LIMIT * 4 +
+  8 * 1024; // JSON envelope 与 Unicode Todo 的最大 UTF-8 空间
 
 export type AgentWorkspaceRunRequest = Readonly<{
   workspacePath: string;
   script: string;
+  todos: readonly string[];
 }>;
+
+export type AgentWorkspaceRunResult = Readonly<{ result: JsonValue; todos: string[] }>;
 
 type ProcessResult = { code: number | null; stdout: Buffer; stderr: Buffer };
 
@@ -55,7 +66,10 @@ export class DenoAgentWorkspaceRunner {
   }
 
   /** 每次脚本启动一次 Deno；文件写入直接落入受限真实 Workspace。 */
-  public async run(request: AgentWorkspaceRunRequest, signal: AbortSignal): Promise<JsonValue> {
+  public async run(
+    request: AgentWorkspaceRunRequest,
+    signal: AbortSignal,
+  ): Promise<AgentWorkspaceRunResult> {
     signal.throwIfAborted();
     const workspace_path = path.resolve(request.workspacePath);
     const write_paths = AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.map((name) =>
@@ -76,7 +90,10 @@ export class DenoAgentWorkspaceRunner {
       executablePath: this.executable_path,
       args,
       cwd: workspace_path,
-      stdin: Buffer.from(JSON.stringify({ script: request.script }), "utf8"),
+      stdin: Buffer.from(
+        JSON.stringify({ script: request.script, todos: normalize_agent_todos(request.todos) }),
+        "utf8",
+      ),
       timeoutMs: AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs,
       stdoutLimit: STDOUT_PROTOCOL_BYTES,
       signal,
@@ -107,13 +124,19 @@ export class DenoAgentWorkspaceRunner {
           : { cause: new Error(result.stderr.toString("utf8")) },
       );
     }
-    if (Object.keys(envelope).length !== 2 || !("result" in envelope)) {
+    if (Object.keys(envelope).length !== 3 || !("result" in envelope) || !("todos" in envelope)) {
       throw runtime_failure(
         "Agent Workspace runtime returned an invalid success response.",
         result.stderr,
       );
     }
-    return envelope["result"] as JsonValue;
+    let todos: string[];
+    try {
+      todos = normalize_agent_todos(envelope["todos"]);
+    } catch (cause) {
+      throw runtime_failure("Agent Workspace runtime returned invalid Todo.", result.stderr, cause);
+    }
+    return { result: envelope["result"] as JsonValue, todos };
   }
 }
 

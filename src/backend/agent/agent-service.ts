@@ -58,10 +58,13 @@ import {
 import { create_agent_skill_tools } from "./tools/skill";
 import { create_agent_question_tools } from "./tools/question";
 import { AgentInputQueue } from "./agent-input-queue";
-import { AgentTaskProgress, create_agent_task_progress_tools } from "./tools/task-progress";
 import { create_agent_web_tools, type AgentWebPort } from "./tools/web";
 import type { AgentWorkspacePort } from "./workspace/service";
-import { create_agent_workspace_tools, type AgentWorkspaceApprovalPort } from "./tools/workspace";
+import {
+  create_agent_workspace_tools,
+  type AgentTodoPort,
+  type AgentWorkspaceApprovalPort,
+} from "./tools/workspace";
 import {
   format_agent_skill_invocation,
   format_agent_skills_for_system_prompt,
@@ -196,7 +199,7 @@ export class AgentService {
   private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
-  private readonly task_progress = new AgentTaskProgress(); // 对话级队列；只有未完成标签进入公开会话投影
+  private todos: string[] = []; // 对话级有序待办；Deno 脚本成功后才原子替换
   private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
   private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其固定期限
   private readonly unsubscribe_project_session: () => void;
@@ -264,7 +267,7 @@ export class AgentService {
           displayDescriptions: { ...displayDescriptions },
         })),
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
-      taskProgress: this.task_progress.read_pending_labels(),
+      todos: [...this.todos],
       contextTokens: this.context_tokens,
     };
   }
@@ -562,7 +565,7 @@ export class AgentService {
     this.disposed = true;
     this.clear_assistant_stream();
     this.decisions.reset();
-    this.task_progress.reset();
+    this.todos = [];
     this.input_queue.reset();
     this.runtime_generation += 1;
     this.unsubscribe_project_session();
@@ -930,12 +933,15 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
-        ...create_agent_task_progress_tools(this.task_progress),
         ...create_agent_question_tools({
           wait_for_answer: (tool_call_id, question, signal) =>
             this.decisions.wait_for_question(tool_call_id, question, signal),
         }),
-        ...create_agent_workspace_tools(this.workspace, this.workspace_approval_port()),
+        ...create_agent_workspace_tools({
+          workspace: this.workspace,
+          todo: this.todo_port(),
+          approval: this.workspace_approval_port(),
+        }),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
@@ -1186,13 +1192,6 @@ export class AgentService {
         status: event.isError ? "error" : "success",
         output: contentText(event.result.content, ""),
       });
-      // 工具成功终帧表示原子状态已提交；失败时保留旧投影。
-      if (!event.isError && running_entry.toolName === "task_progress") {
-        this.publish_event({
-          type: "task_progress",
-          taskProgress: this.task_progress.read_pending_labels(),
-        });
-      }
     }
   }
 
@@ -1448,7 +1447,7 @@ export class AgentService {
     this.latest_round_checkpoint = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
-    this.task_progress.reset();
+    this.todos = [];
     this.input_queue.reset();
     const reset = Promise.all([
       acceptance?.catch(() => undefined),
@@ -1581,6 +1580,24 @@ export class AgentService {
       resolve_app_locale(setting["app_language"]),
       "agent_runtime.message.continue",
     );
+  }
+
+  /** 只有仍绑定当前会话的 SDK runtime 可以提交成功结束的 Deno Todo。 */
+  private todo_port(): AgentTodoPort {
+    return {
+      read: () => [...this.todos],
+      write: (todos) => {
+        if (this.disposed || this.runtime === null) return;
+        if (
+          todos.length === this.todos.length &&
+          todos.every((item, index) => item === this.todos[index])
+        ) {
+          return;
+        }
+        this.todos = [...todos];
+        this.publish_event({ type: "todo", todos: [...this.todos] });
+      },
+    };
   }
 
   /** workspace_apply 的授权模式与用户决定在 AgentService 边界汇合。 */

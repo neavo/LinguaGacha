@@ -37,15 +37,22 @@ describe("DenoAgentWorkspaceRunner", () => {
     await initialized;
 
     const result = runner.run(
-      { workspacePath: "E:/workspace", script: "return { changed: 2 };" },
+      {
+        workspacePath: "E:/workspace",
+        script: "return { changed: 2 };",
+        todos: ["处理目标"],
+      },
       new AbortController().signal,
     );
     const stdin = read_stream(script.stdin);
-    script.stdout.end(JSON.stringify({ ok: true, result: { changed: 2 } }));
+    script.stdout.end(JSON.stringify({ ok: true, result: { changed: 2 }, todos: ["核验结果"] }));
     script.close(0);
 
-    await expect(result).resolves.toEqual({ changed: 2 });
-    await expect(stdin).resolves.toBe('{"script":"return { changed: 2 };"}');
+    await expect(result).resolves.toEqual({ result: { changed: 2 }, todos: ["核验结果"] });
+    expect(JSON.parse(await stdin)).toEqual({
+      script: "return { changed: 2 };",
+      todos: ["处理目标"],
+    });
     expect(process_mocks.spawn).toHaveBeenLastCalledWith(
       "E:\\runtime\\deno.exe",
       [
@@ -74,7 +81,7 @@ describe("DenoAgentWorkspaceRunner", () => {
     const child = fake_process();
     process_mocks.spawn.mockReturnValueOnce(child.child);
     const result = build_runner().run(
-      { workspacePath: "E:/workspace", script: "throw new Error();" },
+      { workspacePath: "E:/workspace", script: "throw new Error();", todos: [] },
       new AbortController().signal,
     );
     child.stdout.end(
@@ -100,7 +107,11 @@ describe("DenoAgentWorkspaceRunner", () => {
     const controller = new AbortController();
     const reason = new Error("stop");
     const result = build_runner().run(
-      { workspacePath: "E:/workspace", script: "await new Promise(() => {});" },
+      {
+        workspacePath: "E:/workspace",
+        script: "await new Promise(() => {});",
+        todos: [],
+      },
       controller.signal,
     );
     let settled = false;
@@ -125,7 +136,11 @@ describe("DenoAgentWorkspaceRunner", () => {
       .mockReturnValueOnce(large_child.child);
 
     const timed_out = build_runner().run(
-      { workspacePath: "E:/workspace", script: "await new Promise(() => {});" },
+      {
+        workspacePath: "E:/workspace",
+        script: "await new Promise(() => {});",
+        todos: [],
+      },
       new AbortController().signal,
     );
     await vi.advanceTimersByTimeAsync(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs);
@@ -134,10 +149,10 @@ describe("DenoAgentWorkspaceRunner", () => {
     await expect(timed_out).rejects.toThrow("timed out");
 
     const too_large = build_runner().run(
-      { workspacePath: "E:/workspace", script: "return null;" },
+      { workspacePath: "E:/workspace", script: "return null;", todos: [] },
       new AbortController().signal,
     );
-    large_child.stdout.write(Buffer.alloc(AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes * 2));
+    large_child.stdout.write(Buffer.alloc(AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes * 3));
     expect(large_child.kill).toHaveBeenCalledOnce();
     large_child.close(null);
     await expect(too_large).rejects.toThrow("too large");
@@ -148,11 +163,12 @@ describe("DenoAgentWorkspaceRunner", () => {
     ["空输出", { stdout: "", code: 0 }],
     ["坏 JSON", { stdout: "not-json", code: 0 }],
     ["坏 envelope", { stdout: "{}", code: 0 }],
+    ["坏 Todo", { stdout: '{"ok":true,"result":null,"todos":[" "]}', code: 0 }],
   ])("%s 作为 runtime execution failure", async (_label, outcome) => {
     const child = fake_process();
     process_mocks.spawn.mockReturnValueOnce(child.child);
     const result = build_runner().run(
-      { workspacePath: "E:/workspace", script: "return null;" },
+      { workspacePath: "E:/workspace", script: "return null;", todos: [] },
       new AbortController().signal,
     );
     child.stdout.end(outcome.stdout);

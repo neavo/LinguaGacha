@@ -115,7 +115,7 @@ export const en_us_agent_page = {
     error: "Failed",
     stopped: "Stopped",
   },
-  task_progress: { pending: "Pending items" },
+  todo: { pending: "Pending items" },
   tool: {
     details: "{tool} tool call details",
     input: "Input",

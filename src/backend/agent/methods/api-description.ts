@@ -1,5 +1,6 @@
 import type { TSchema } from "@earendil-works/pi-ai";
 
+import { AGENT_TODO_ITEM_LIMIT, AGENT_TODO_TEXT_LIMIT } from "../../../shared/agent-todo";
 import { AGENT_WORKSPACE_CONTRACT_SCHEMA, AGENT_WORKSPACE_ITEM_SCHEMA } from "../workspace/schema";
 import { AGENT_WORKSPACE_RUNTIME_METHODS } from "./registry";
 
@@ -21,6 +22,12 @@ export function format_agent_workspace_typescript_api(): string {
     ...aliases,
     "declare const workspace: Readonly<{",
     "  contract: WorkspaceContract;",
+    "  todo: Readonly<{",
+    "    /** 读取当前有序 Todo。 */",
+    "    read(): readonly string[];",
+    `    /** 设置脚本成功后提交的完整有序 Todo；最多 ${AGENT_TODO_ITEM_LIMIT.toString()} 项，每项为不超过 ${AGENT_TODO_TEXT_LIMIT.toString()} 字符的短行动标签。 */`,
+    "    write(todos: readonly string[]): void;",
+    "  }>;",
     ...methods,
     "}>;",
   ].join("\n");

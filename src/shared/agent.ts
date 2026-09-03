@@ -188,7 +188,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
-  taskProgress: string[]; // 当前动态队列的全部待办标签；空数组不占用固定展示位
+  todos: string[]; // 当前对话的有序待办；空数组不占用固定展示位
   contextTokens: number | null; // 当前模型可见历史的估算用量
 };
 
@@ -205,7 +205,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "approval_mode"; approvalMode: AgentApprovalMode }
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
-    | { type: "task_progress"; taskProgress: string[] }
+    | { type: "todo"; todos: string[] }
     | { type: "context_tokens"; contextTokens: number }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );

@@ -126,7 +126,7 @@ describe("register_api_routes", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       },
     });
@@ -277,7 +277,7 @@ function create_route_fixture() {
       entries: [],
       skills: [],
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      taskProgress: [],
+      todos: [],
       contextTokens: null,
     })),
     send_message,

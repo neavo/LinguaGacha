@@ -33,7 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 import {
   useAgentControls,
   useAgentInput,
-  useAgentProgress,
+  useAgentTodo,
   useAgentQueue,
   useAgentSessionActions,
   useAgentSkills,
@@ -45,7 +45,7 @@ import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens } from "./agent-mention";
-import { AgentTaskProgress } from "./agent-task-progress";
+import { AgentTodo } from "./agent-todo";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
 import "./agent-page.css";
@@ -94,7 +94,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { entries } = useAgentTimeline();
   const controls = useAgentControls();
   const { inputQueue } = useAgentQueue();
-  const { taskProgress } = useAgentProgress();
+  const { todos } = useAgentTodo();
   const { skills } = useAgentSkills();
   const input = useAgentInput();
   const agent_actions = useAgentSessionActions();
@@ -488,7 +488,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
 
   // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
-  const has_task_progress = taskProgress.length > 0;
+  const has_todo = todos.length > 0;
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
@@ -639,9 +639,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <div className="agent-page__bottom-region">
         <div className="agent-page__bottom-controls" inert={pending_decision !== null || undefined}>
           <div className="agent-page__status-zone">
-            {has_task_progress ? (
-              <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
-            ) : null}
+            {has_todo ? <AgentTodo todos={todos} running={is_running} /> : null}
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
                 <AgentInputQueue

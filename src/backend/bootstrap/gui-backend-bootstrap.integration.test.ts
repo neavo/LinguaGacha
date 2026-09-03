@@ -30,7 +30,7 @@ describe("GuiBackendBootstrap 集成", () => {
         contentType: "text/plain",
         body: new Uint8Array(),
       }),
-      agentWorkspaceRun: async () => ({}),
+      agentWorkspaceRun: async (request) => ({ result: null, todos: [...request.todos] }),
       openOutputFolder: async () => undefined,
       workerExecution: { kind: "in_process" },
     });

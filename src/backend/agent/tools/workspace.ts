@@ -18,6 +18,12 @@ export type AgentWorkspaceApprovalPort = {
   activate_auto: () => void;
 };
 
+/** AgentService 持有跨回合 Todo，脚本工具只协调调用前后的不可变快照。 */
+export type AgentTodoPort = {
+  read: () => string[];
+  write: (todos: readonly string[]) => void;
+};
+
 /** 工具 Schema 只说明当前可执行接口；跨步骤编排由 System Prompt 统一规定。 */
 const WORKSPACE_SCRIPT_API_DESCRIPTION = [
   `最长 ${(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000).toString()} 秒；显式 return 必须是可序列化 JSON，UTF-8 上限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes.toString()} 字节。`,
@@ -42,10 +48,11 @@ const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
 const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false });
 
 /** 工作区由单一服务持有，模型接口由脚本与提交批次组成。 */
-export function create_agent_workspace_tools(
-  workspace: AgentWorkspacePort,
-  approval: AgentWorkspaceApprovalPort,
-): ToolDefinition[] {
+export function create_agent_workspace_tools(options: {
+  workspace: AgentWorkspacePort;
+  todo: AgentTodoPort;
+  approval: AgentWorkspaceApprovalPort;
+}): ToolDefinition[] {
   return [
     defineTool({
       name: "workspace_script",
@@ -57,9 +64,16 @@ export function create_agent_workspace_tools(
         // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
         const effective_signal = signal ?? new AbortController().signal;
         effective_signal.throwIfAborted();
-        return agent_tool_result({
-          result: await workspace.run_script(params.script, effective_signal),
-        });
+        const execution = await options.workspace.run_script(
+          params.script,
+          options.todo.read(),
+          effective_signal,
+        );
+        // run_script 的协作者可能在取消后才结算；Todo 只提交仍有效的工具调用结果。
+        effective_signal.throwIfAborted();
+        const result = agent_tool_result({ result: execution.result });
+        options.todo.write(execution.todos);
+        return result;
       },
     }),
     defineTool({
@@ -73,15 +87,19 @@ export function create_agent_workspace_tools(
         signal?.throwIfAborted();
         // 只在当前批次批准并成功提交后切换后续批次，拒绝或失败保持手动模式。
         let switch_to_auto = false;
-        const result = await workspace.apply_workspace(
-          approval.read_mode() === "auto"
+        const result = await options.workspace.apply_workspace(
+          options.approval.read_mode() === "auto"
             ? undefined
             : async (summary) => {
-                const decision = await approval.wait_for_decision(tool_call_id, summary, signal);
+                const decision = await options.approval.wait_for_decision(
+                  tool_call_id,
+                  summary,
+                  signal,
+                );
                 switch_to_auto = decision.switch_to_auto;
               },
         );
-        if (switch_to_auto) approval.activate_auto();
+        if (switch_to_auto) options.approval.activate_auto();
         return agent_tool_result(result);
       },
     }),

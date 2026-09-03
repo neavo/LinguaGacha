@@ -11,7 +11,7 @@ import {
   AgentSessionStore,
   type AgentControlsSlice,
   type AgentInputSession,
-  type AgentProgressSlice,
+  type AgentTodoSlice,
   type AgentQueueSlice,
   type AgentSessionActions,
   type AgentSkillsSlice,
@@ -56,9 +56,9 @@ export function useAgentQueue(): AgentQueueSlice {
   return useSyncExternalStore(store.subscribe_queue, store.get_queue, store.get_queue);
 }
 
-export function useAgentProgress(): AgentProgressSlice {
+export function useAgentTodo(): AgentTodoSlice {
   const store = use_agent_store();
-  return useSyncExternalStore(store.subscribe_progress, store.get_progress, store.get_progress);
+  return useSyncExternalStore(store.subscribe_todo, store.get_todo, store.get_todo);
 }
 
 export function useAgentSkills(): AgentSkillsSlice {

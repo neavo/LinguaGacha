@@ -279,7 +279,7 @@ describe("ApiGatewayServer", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       })),
       send_message: vi.fn(),
