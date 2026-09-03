@@ -34,7 +34,7 @@ async function run_runtime_entry(): Promise<void> {
       contract: contract_value,
       iterateJsonl: iterate_jsonl,
     };
-    response = await execute_agent_workspace_script(request.script, read_port);
+    response = await execute_agent_workspace_script(request.script, read_port, request.todos);
   } catch (error) {
     response = {
       ok: false,

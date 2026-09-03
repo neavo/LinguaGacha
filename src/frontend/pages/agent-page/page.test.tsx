@@ -14,7 +14,7 @@ import {
 import type {
   AgentControlsSlice,
   AgentInputSession,
-  AgentProgressSlice,
+  AgentTodoSlice,
   AgentQueueSlice,
   AgentSessionActions,
   AgentSkillsSlice,
@@ -24,7 +24,7 @@ import type {
 type AgentPageState = AgentTimelineSlice &
   AgentControlsSlice &
   AgentQueueSlice &
-  AgentProgressSlice &
+  AgentTodoSlice &
   AgentSkillsSlice &
   AgentSessionActions & { input: AgentInputSession };
 
@@ -138,7 +138,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
     command: page_state.current.command,
   }),
   useAgentQueue: () => ({ inputQueue: page_state.current.inputQueue }),
-  useAgentProgress: () => ({ taskProgress: page_state.current.taskProgress }),
+  useAgentTodo: () => ({ todos: page_state.current.todos }),
   useAgentSkills: () => ({ skills: page_state.current.skills }),
   useAgentInput: () => page_state.current.input,
   useAgentSessionActions: () => page_state.current,
@@ -1105,7 +1105,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     ],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    taskProgress: overrides.taskProgress ?? [],
+    todos: overrides.todos ?? [],
     contextTokens: overrides.contextTokens ?? null,
     transport: "ready",
     command: null,

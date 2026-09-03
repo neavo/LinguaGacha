@@ -1,4 +1,5 @@
 import { is_json_record, type JsonRecord, type JsonValue } from "../../../domain/json";
+import { normalize_agent_todos } from "../../../shared/agent-todo";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import type { AgentWorkspaceRuntimeContract } from "../workspace/schema";
 import {
@@ -10,35 +11,50 @@ import {
 import { create_agent_workspace_method_context, type AgentWorkspaceReadPort } from "./data";
 
 export type AgentWorkspaceRuntimeResponse =
-  | { ok: true; result: JsonValue }
+  | { ok: true; result: JsonValue; todos: string[] }
   | { ok: false; message: string };
 
 export type AgentWorkspaceProgram = (workspace: AgentWorkspaceRuntimeApi) => Promise<unknown>;
 
 export type AgentWorkspaceRuntimeApi = Readonly<
-  { contract: AgentWorkspaceRuntimeContract } & AgentWorkspaceRuntimeMethods
+  {
+    contract: AgentWorkspaceRuntimeContract;
+    todo: Readonly<{
+      read: () => readonly string[];
+      write: (todos: readonly string[]) => void;
+    }>;
+  } & AgentWorkspaceRuntimeMethods
 >;
 
-/** 收窄 stdin 的唯一请求对象，不接受空脚本或协议外字段。 */
-export function read_agent_workspace_runtime_request(value: unknown): { script: string } {
-  if (!is_json_record(value) || Object.keys(value).length !== 1 || !("script" in value)) {
-    throw new Error("Runtime request must contain only script.");
+/** 收窄 stdin 的脚本与会话 Todo 基线，不接受协议外字段。 */
+export function read_agent_workspace_runtime_request(value: unknown): {
+  script: string;
+  todos: string[];
+} {
+  if (
+    !is_json_record(value) ||
+    Object.keys(value).length !== 2 ||
+    !("script" in value) ||
+    !("todos" in value)
+  ) {
+    throw new Error("Runtime request must contain script and todos.");
   }
   const script = value["script"];
   if (typeof script !== "string" || script.trim() === "") {
     throw new Error("Runtime script must be a non-empty string.");
   }
-  return { script };
+  return { script, todos: normalize_agent_todos(value["todos"]) };
 }
 
 /** 把脚本作为 TypeScript 异步函数体交给 Deno 原生模块加载器转译。 */
 export async function execute_agent_workspace_script(
   script: string,
   read_port: AgentWorkspaceReadPort,
+  initial_todos: readonly string[],
 ): Promise<AgentWorkspaceRuntimeResponse> {
   try {
     const program = await load_agent_workspace_program(script);
-    return await execute_agent_workspace_program(program, read_port);
+    return await execute_agent_workspace_program(program, read_port, initial_todos);
   } catch (error) {
     return { ok: false, message: error_message(error) };
   }
@@ -48,9 +64,17 @@ export async function execute_agent_workspace_script(
 export async function execute_agent_workspace_program(
   program: AgentWorkspaceProgram,
   read_port: AgentWorkspaceReadPort,
+  initial_todos: readonly string[] = [],
 ): Promise<AgentWorkspaceRuntimeResponse> {
   try {
-    const result = await program(create_workspace(read_port));
+    let todos = normalize_agent_todos(initial_todos);
+    const todo = Object.freeze({
+      read: (): readonly string[] => Object.freeze([...todos]),
+      write: (value: readonly string[]): void => {
+        todos = normalize_agent_todos(value);
+      },
+    });
+    const result = await program(create_workspace(read_port, todo));
     if (result === undefined) {
       return { ok: false, message: "工作区脚本必须显式返回 JSON 结果。" };
     }
@@ -71,7 +95,7 @@ export async function execute_agent_workspace_program(
         message: "脚本返回结果过大；请在工作区内完成聚合并只返回摘要。",
       };
     }
-    return { ok: true, result: JSON.parse(serialized) as JsonValue };
+    return { ok: true, result: JSON.parse(serialized) as JsonValue, todos: [...todos] };
   } catch (error) {
     return { ok: false, message: error_message(error) };
   }
@@ -98,7 +122,10 @@ async function load_agent_workspace_program(script: string): Promise<AgentWorksp
 }
 
 /** contract 与注册方法共同投影为脚本唯一全局端口。 */
-function create_workspace(read_port: AgentWorkspaceReadPort): AgentWorkspaceRuntimeApi {
+function create_workspace(
+  read_port: AgentWorkspaceReadPort,
+  todo: AgentWorkspaceRuntimeApi["todo"],
+): AgentWorkspaceRuntimeApi {
   const context = create_agent_workspace_method_context(read_port);
   const methods = Object.fromEntries(
     Object.entries(AGENT_WORKSPACE_RUNTIME_METHODS).map(([name]) => [
@@ -113,6 +140,7 @@ function create_workspace(read_port: AgentWorkspaceReadPort): AgentWorkspaceRunt
   ) as AgentWorkspaceRuntimeMethods;
   return deep_freeze({
     contract: deep_freeze(structuredClone(context.contract)),
+    todo,
     ...methods,
   });
 }
@@ -123,6 +151,7 @@ function require_method_args(value: unknown, name: string): JsonRecord {
   return value;
 }
 
+/** 递归冻结注入对象，避免脚本在单次调用内改写共享契约或方法容器。 */
 function deep_freeze<T>(value: T): T {
   if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deep_freeze(child);

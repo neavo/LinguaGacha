@@ -18,14 +18,14 @@
 |公开状态、完整 UI 时间线、会话生命周期与启动期资源|`AgentService`|Agent API、`agent.session_event`|
 |模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
-|模型对话级动态工作队列|`AgentService`|`task_progress`|
+|模型对话级有序 Todo|`AgentService`|`workspace.todo`、Agent API 与 `agent.session_event`|
 |当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|question / write approval resolve API 与 `agent.session_event`|
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
 |当前对话 `task`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
 - 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 统一持有普通问题或写入授权的五分钟期限、取消和一次性裁决；两类决定分别使用窄 resolve API，写入授权到期等同拒绝。决定受理时先清除 pending，再在下一事件循环恢复工具，不公开处理中状态；reset、工程切换和 dispose 取消当前等待。
 - 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；允许后续写入只在当前批次成功提交后切换为 `auto`，拒绝、超时或提交失败保持 `manual`。reset、工程切换和应用重启恢复为 `manual`。
-- Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease，等待用户决定也不释放；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定公开 `canSendNow`，避免在异步预检、用户决定、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
+- Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease，等待用户决定也不释放；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定公开 `canSendNow`，避免在异步预检、用户决定、压缩或结算窗口接受 steer。用户输入队列与 Todo 跨普通模型回合、stop、continue、模型失败和压缩保留，并在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`scratch`、`task` 与 `sources` 都使用真实相对路径。task 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
@@ -52,12 +52,12 @@
 
 - 产品 JSON 工具统一由 `tools/definition` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接执行过程中的单个有界决定。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一的有序固定选项；宿主提供自定义答案与取消。选择和自定义答案返回原工具轮次，取消或到期返回未回答，不追加公开 user 消息；完成后沿用普通工具条目与详情。
-- `task_progress` 始终注册，管理当前对话中至多一个内存动态工作队列；`advance` 在完整校验后原子完成既有项并追加派生项，`finish` 拒绝遗留待办，显式 `cancel` 只清理进度而不回滚其它副作用。工具只向模型返回分阶段计数和有限待办，不保存领域事实、工程证据、百分比或完成判据；公开 Agent snapshot 与 SSE 另以 `taskProgress` 投影全部待办标签，空数组表示不展示，不公开标题、键、阶段或完成统计。
+- 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据、百分比、完成历史或完成判据。每次 `workspace_script` 启动时以当前 Todo 初始化 `workspace.todo`；脚本通过同步 `read()` 读取不可变副本，通过同步 `write(todos)` 替换本次脚本副本。脚本成功时最终 Todo 随结果 envelope 返回并由 `AgentService` 原子提交，脚本失败、停止或超时保留调用前状态；公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
 - 工程数据工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与提交协调。
 - 每个工作区领域方法模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举方法集合，Deno 注入对象、System 能力路由和模型可见 TypeScript 协议均由该集合投影。未知参数在统一分发边界按 Schema 收窄，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。
-- `workspace.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；其中的标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。`workspace` 只提供冻结的 contract 与类型化领域方法，文件访问统一使用 Deno 标准 API。
+- `workspace.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；其中的标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。Deno 注入的 `workspace` 提供冻结 contract、Todo 与类型化领域方法，文件访问统一使用 Deno 标准 API。
 - `workspace_script` 按需建立或刷新完整只读快照、空变更清单文件和当前对话 `task`。`items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
-- TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时和结果上限；Deno 可读取完整工作区，只能写入 `changes`、`task` 与 `scratch`，且不能访问外部模块、网络、环境、系统信息、子进程或 FFI。stdout 只承载有界 JSON envelope，脚本诊断进入 stderr；超时或停止先终止进程并等待退出，再释放工作区串行边界。
+- TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时和结果上限；Deno 可读取完整工作区，只能写入 `changes`、`task` 与 `scratch`，且不能访问外部模块、网络、环境、系统信息、子进程或 FFI。stdin 一次性承载脚本与 Todo 基线，stdout 只承载结果与最终 Todo 的有界 JSON envelope，脚本诊断进入 stderr；超时或停止先终止进程并等待退出，再释放工作区串行边界。
 - Deno 二进制按 Windows、macOS、Linux 的 x64 与 ARM64 目标由单一版本 manifest 管理，发布压缩资产与解压后二进制分别携带 SHA-256；目标二进制校验通过时直接复用，否则校验压缩资产和二进制后安装。Runner 从该 manifest 读取期望版本并在应用启动时校验当前目标二进制。发布包只带当前目标资产，开发态使用项目构建缓存，二者都不查询系统 `PATH`；afterPack 只安装目标资产与已经生成的 runtime bundle。
 - `workspace_apply` 单次读取一个提交批次的显式变更清单，按对象 `fp` 与领域规则逐行处理；Item 预演与事务提交都把受影响同文组的被动状态变化计入 actual applied，审批摘要与回执使用该实际数量。正常结果固定包含 `status`、`applied`、`rejected`、`destroyed` 与 `revisions`；status 为 `applied | partial | rejected | unchanged`。实际提交或目标事实漂移返回 `destroyed: true`，输入错误、无变化和回滚保留工作区。
 - Agent 先完成确定性处理，再按 System Prompt 的规模建议与领域边界组织固定范围内的开放式语义业务单元。完整范围原子性汇总全部业务单元，逐业务单元写入则依次提交并刷新事实；每次 `workspace_apply` 只提交一个批次。开放式语义批次先输出完整业务结果，手动模式由审批界面承接用户决定，工具返回后输出执行回执。用户只在范围、标准、任务原子性、写入策略或语义未决需要决定时介入。
@@ -67,12 +67,12 @@
 ## 5. 前端消费
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
-- `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 token、`taskProgress` 待办标签、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、progress、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
+- `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 token、`todos`、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、todo、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
 - Agent Composer 底栏显示当前写入请求审批模式（`手动批准` / `自动批准`），通过只含两个选项的弹出菜单切换，当前项带勾选。`pendingDecision` 由 snapshot / SSE 同步；页面把局部决策层与底部控制区同域叠放，并一次性把控制区设为 inert，对话时间线仍可阅读。普通问题显示点击即提交的固定动作、带内嵌确认的自定义单行答案和右上角取消；写入授权显示三个点击即提交的固定动作。两者只接受显式控件操作，renderer 按后端 `expiresAt` 在第一项的右侧动作图标上展示期限进度，决定受理后立即关闭。写入摘要把结构化计数本地化为非零变更类别列表；审批模式仍由后端命令更新，页面不做本地乐观切换。
 - `AgentCompletionAttention` 在跨路由会话镜像中观察一次运行从 `running` 收束到最终 round `success | error` 的转换，并忽略 `stopped`、reset 与自动队列中间轮次；确认后只请求宿主注意力，不新增 Agent SSE 事件或通知正文。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有命令复用轻量 ack 与命令期 SSE revision 重放，删除、重排和立即发送的受理失败由页面解析为安全 Toast，队列原位编辑失败保留在编辑器旁，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空普通 Composer 草稿，空 continue 不改写草稿或历史；队列项与时间线条目各自在目标位置展开独立编辑器，成功后由页面显式替换 user 输入历史，assistant 修改不改写输入历史。
 - 页面持有活动原生选区、当前原位编辑目标，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；这些页面局部事实不进入 Agent snapshot、历史或发送协议。
-- 每轮最后一个成功 assistant 正文允许把单一原生选区和可选评论确认到当前消息草稿，不建立来源定位或第二套批注状态。`task_progress` 工具调用不渲染为时间线条目，页面在状态区固定展示 `taskProgress` 队首标签与最多 5 条输入队列；队列不使用内部滚动，达到上限时发送按钮显示容量提示并保持禁用，空数组不占位。
+- 每轮最后一个成功 assistant 正文允许把单一原生选区和可选评论确认到当前消息草稿，不建立来源定位或第二套批注状态。页面在状态区固定展示 Todo 队首与最多 5 条输入队列；Todo 与输入队列都不使用内部滚动，输入队列达到上限时发送按钮显示容量提示并保持禁用，空数组不占位。
 - 消息级“复制”与“编辑”共用当前可修订消息的操作区；复制仅对其中有正文的 user / assistant 开放且不改变会话状态，输入消息的保存并重试会重新运行最新 round。历史 user、assistant 与队列项各自在目标位置展开独立编辑器，失败时保留编辑内容。assistant 编辑隐藏附件与 marker 能力。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent round 运行态与 stop 命令不锁定普通草稿编辑；send、continue、revise、queue update 与 reset 受理期间相关编辑器只读。运行中有效普通草稿通过 message 入队，空草稿执行 stop；空闲且队列暂停时 Composer 统一执行 continue，可选草稿随请求追加队尾。压缩和 `workspace_apply` 期间仍允许有效普通草稿排队，但不可 stop。队列组件只消费后端顺序与能力快照，修改、删除、重排和立即发送均经页面调用 `AgentSessionProvider` 命令入口；steer user 不开放 round 的修改或重试操作。失败恢复仍由后端拥有，renderer 不监听终态补发命令。

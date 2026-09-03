@@ -625,7 +625,6 @@ describe("AgentTimeline", () => {
         '{"items":[{"item_id":1,"src":"Alice"}]}',
         1500,
       ),
-      tool_entry("progress-1", "task_progress", "success", '{"status":"active"}', 1700),
       tool_entry("tool-2", "read_skill", "error", "工具不存在", 1800),
       assistant_entry("assistant-2", "查询完成", "success", 2000),
     ]);
@@ -634,7 +633,6 @@ describe("AgentTimeline", () => {
     expect(visible_text.indexOf("workspace_script")).toBeLessThan(
       visible_text.indexOf("read_skill"),
     );
-    expect(visible_text).not.toContain("task_progress");
     const tools = view.querySelectorAll<HTMLButtonElement>(".agent-tool-entry");
     expect(tools[0]?.textContent).not.toContain("Alice");
     expect(tools[1]?.querySelector(".agent-status-mark--error")?.getAttribute("aria-label")).toBe(

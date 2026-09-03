@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
-import type { JsonRecord } from "../../domain/json";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
 import type { AgentWebPort, AgentWebSearchPort } from "./tools/web";
@@ -104,6 +104,9 @@ const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
 const FAKE_WORKSPACE_SCRIPT = "return { items: [] };";
+const FAKE_TODO_WRITE_SCRIPT = 'workspace.todo.write(["基础扫描"]); return null;';
+const FAKE_TODO_READ_SCRIPT = "return { todos: workspace.todo.read() };";
+const FAKE_TODO_CLEAR_SCRIPT = "workspace.todo.write([]); return null;";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -117,8 +120,9 @@ const fake_agent_state = vi.hoisted(() => ({
     | "streaming"
     | "thinking"
     | "tool_only"
-    | "progress_start"
-    | "progress_read"
+    | "todo_write"
+    | "todo_read"
+    | "todo_clear"
     | "invalid_tool"
     | "tool_compaction"
     | "tools",
@@ -369,23 +373,21 @@ function create_fake_response(context: Context): FauxResponseStep {
       { stopReason: "toolUse" },
     );
   }
-  if (fake_agent_state.mode === "progress_start") {
+  if (fake_agent_state.mode === "todo_write") {
     return fauxAssistantMessage(
-      fauxToolCall(
-        "task_progress",
-        {
-          action: "start",
-          title: "长任务",
-          items: [{ key: "seed", phase: "discover", label: "基础扫描" }],
-        },
-        { id: "progress-start" },
-      ),
+      fauxToolCall("workspace_script", { script: FAKE_TODO_WRITE_SCRIPT }, { id: "todo-write" }),
       { stopReason: "toolUse" },
     );
   }
-  if (fake_agent_state.mode === "progress_read") {
+  if (fake_agent_state.mode === "todo_read") {
     return fauxAssistantMessage(
-      fauxToolCall("task_progress", { action: "read" }, { id: "progress-read" }),
+      fauxToolCall("workspace_script", { script: FAKE_TODO_READ_SCRIPT }, { id: "todo-read" }),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "todo_clear") {
+    return fauxAssistantMessage(
+      fauxToolCall("workspace_script", { script: FAKE_TODO_CLEAR_SCRIPT }, { id: "todo-clear" }),
       { stopReason: "toolUse" },
     );
   }
@@ -1531,7 +1533,7 @@ describe("AgentService", () => {
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      taskProgress: [],
+      todos: [],
       contextTokens: null,
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
@@ -1544,7 +1546,6 @@ describe("AgentService", () => {
     await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
-      "task_progress",
       "ask_user",
       "workspace_script",
       "workspace_apply",
@@ -1557,36 +1558,40 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("task_progress 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
+  it("Deno Todo 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
     const { service, publish } = await create_service();
-    fake_agent_state.mode = "progress_start";
+    fake_agent_state.mode = "todo_write";
 
     await service.send_message({ text: "开始长任务", attachments: [] });
     await wait_for_idle(service);
-    expect(read_tool_output(service, "progress-start")).toMatchObject({
-      status: "active",
-      pending_count: 1,
-    });
-    expect(service.get_snapshot().taskProgress).toEqual(["基础扫描"]);
+    expect(service.get_snapshot().todos).toEqual(["基础扫描"]);
     expect(publish).toHaveBeenCalledWith(
       "agent.session_event",
-      expect.objectContaining({ type: "task_progress", taskProgress: ["基础扫描"] }),
+      expect.objectContaining({ type: "todo", todos: ["基础扫描"] }),
     );
 
-    fake_agent_state.mode = "progress_read";
-    await service.send_message({ text: "下一回合读取进度", attachments: [] });
+    fake_agent_state.mode = "todo_read";
+    await service.send_message({ text: "下一回合读取 Todo", attachments: [] });
     await wait_for_idle(service);
-    expect(read_tool_output(service, "progress-read")).toMatchObject({
-      status: "active",
-      pending_count: 1,
+    expect(read_tool_output(service, "todo-read")).toEqual({
+      result: { todos: ["基础扫描"] },
     });
 
+    fake_agent_state.mode = "todo_clear";
+    await service.send_message({ text: "完成剩余工作", attachments: [] });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().todos).toEqual([]);
+
+    fake_agent_state.mode = "todo_write";
+    await service.send_message({ text: "建立重置基线", attachments: [] });
+    await wait_for_idle(service);
     await service.reset();
-    expect(service.get_snapshot().taskProgress).toEqual([]);
-    await service.send_message({ text: "读取进度", attachments: [] });
+    expect(service.get_snapshot().todos).toEqual([]);
+    fake_agent_state.mode = "todo_read";
+    await service.send_message({ text: "读取 Todo", attachments: [] });
     await wait_for_idle(service);
 
-    expect(read_tool_output(service, "progress-read")).toEqual({ status: "idle" });
+    expect(read_tool_output(service, "todo-read")).toEqual({ result: { todos: [] } });
   });
 
   it("仅在宿主 Web 能力可用时成组注册搜索与抓取工具", async () => {
@@ -1614,7 +1619,7 @@ describe("AgentService", () => {
       initialize: vi.fn(async () => undefined),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
-      run_script: vi.fn(),
+      run_script: vi.fn(async (_script, todos) => ({ result: null, todos: [...todos] })),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
     const { service, session_state } = await create_service(true, undefined, workspace);
@@ -1624,7 +1629,7 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      ["task_progress", "ask_user", "workspace_script", "workspace_apply", "read_skill"].sort(),
+      ["ask_user", "workspace_script", "workspace_apply", "read_skill"].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -1714,13 +1719,13 @@ describe("AgentService", () => {
 
   it("停止会封口普通运行工具，迟到结果不能改写历史", async () => {
     const { service, runtime_gate } = await create_service();
-    fake_agent_state.mode = "tool_only";
+    fake_agent_state.mode = "todo_write";
     fake_agent_state.hold_tool_execution = true;
     await service.send_message({ text: "查询", attachments: [] });
     await vi.waitFor(() => {
       expect(service.get_snapshot().entries).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ kind: "tool_call", id: "tool-only", status: "running" }),
+          expect.objectContaining({ kind: "tool_call", id: "todo-write", status: "running" }),
         ]),
       );
     });
@@ -1731,7 +1736,7 @@ describe("AgentService", () => {
       expect.objectContaining({ kind: "user_message", status: "stopped" }),
       expect.objectContaining({
         kind: "tool_call",
-        id: "tool-only",
+        id: "todo-write",
         status: "stopped",
         output: null,
       }),
@@ -1740,6 +1745,7 @@ describe("AgentService", () => {
     fake_agent_state.release_tool_execution?.();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().entries).toEqual(stopped_entries);
+    expect(service.get_snapshot().todos).toEqual([]);
   });
 
   it("workspace_apply 运行期间拒绝停止，提交终帧仍成为唯一结果", async () => {
@@ -1834,7 +1840,7 @@ describe("AgentService", () => {
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
-      taskProgress: [],
+      todos: [],
       contextTokens: null,
     });
     await Promise.resolve();
@@ -2501,9 +2507,16 @@ describe("AgentService", () => {
         initialize: vi.fn(async () => undefined),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
-        run_script: vi.fn(async () => {
+        run_script: vi.fn<AgentWorkspacePort["run_script"]>(async (script, todos) => {
           await wait_for_held_tool();
-          return { items: read_items() };
+          if (script === FAKE_TODO_WRITE_SCRIPT) return { result: null, todos: ["基础扫描"] };
+          if (script === FAKE_TODO_READ_SCRIPT) {
+            const result: JsonValue = { todos: [...todos] };
+            return { result, todos: [...todos] };
+          }
+          if (script === FAKE_TODO_CLEAR_SCRIPT) return { result: null, todos: [] };
+          const result: JsonValue = { items: read_items() };
+          return { result, todos: [...todos] };
         }),
         apply_workspace: vi.fn(async (request_approval) => {
           await request_approval?.({

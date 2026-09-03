@@ -118,7 +118,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   );
 }
 
-/** user 条目是公开轮次边界；固定进度投影在分组前排除，避免产生空条目。 */
+/** user 条目是公开轮次边界，后续条目按后端顺序归入当前轮次。 */
 function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[] {
   const rounds: AgentRoundEntries[] = [];
   for (const entry of entries) {
@@ -130,7 +130,6 @@ function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[]
     if (round === undefined) {
       throw new Error(`Agent timeline entry ${entry.id} has no owning user round.`);
     }
-    if (entry.kind === "tool_call" && entry.toolName === "task_progress") continue;
     round.entries.push(entry);
   }
   return rounds;

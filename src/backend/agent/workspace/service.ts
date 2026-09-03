@@ -7,7 +7,6 @@ import {
   read_json_integer,
   read_json_record,
   type JsonRecord,
-  type JsonValue,
 } from "../../../domain/json";
 import { Prompt, PROMPT_KINDS, type PromptKind } from "../../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
@@ -55,7 +54,11 @@ import {
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
   project_agent_workspace_warning,
 } from "./contract";
-import { AgentWorkspaceScriptError, type AgentWorkspaceRunRequest } from "../deno/runner";
+import {
+  AgentWorkspaceScriptError,
+  type AgentWorkspaceRunRequest,
+  type AgentWorkspaceRunResult,
+} from "../deno/runner";
 import { prepare_agent_workspace_changes } from "./changes";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 
@@ -70,7 +73,7 @@ type AgentWorkspaceStoreResult = {
 export type AgentWorkspaceRunPort = (
   request: AgentWorkspaceRunRequest,
   signal: AbortSignal,
-) => Promise<JsonValue>;
+) => Promise<AgentWorkspaceRunResult>;
 
 type ActiveAgentWorkspace = {
   projectPath: string; // snapshot 建立时绑定的工程身份
@@ -278,7 +281,11 @@ export class AgentWorkspaceService {
   }
 
   /** 脚本直接修改可写工作目录；失败、超时和停止都保留已经完成的文件写入。 */
-  public async run_script(script: string, signal: AbortSignal): Promise<JsonValue> {
+  public async run_script(
+    script: string,
+    todos: readonly string[],
+    signal: AbortSignal,
+  ): Promise<AgentWorkspaceRunResult> {
     return await this.exclusive(async () => {
       let active = this.active;
       if (active === null || !this.read_freshness(active).snapshotFresh) {
@@ -286,7 +293,7 @@ export class AgentWorkspaceService {
         active = this.require_active();
       }
       try {
-        return await this.options.run({ workspacePath: this.root_path, script }, signal);
+        return await this.options.run({ workspacePath: this.root_path, script, todos }, signal);
       } catch (error) {
         if (signal.aborted) throw error;
         if (error instanceof AgentWorkspaceScriptError) {

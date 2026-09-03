@@ -25,6 +25,7 @@ import {
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
 } from "@shared/agent";
+import { normalize_agent_todos } from "@shared/agent-todo";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@shared/i18n/types";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -62,7 +63,7 @@ export type AgentControlsSlice = Readonly<{
 }>;
 
 export type AgentQueueSlice = Readonly<{ inputQueue: AgentInputQueueSnapshot }>;
-export type AgentProgressSlice = Readonly<{ taskProgress: readonly string[] }>;
+export type AgentTodoSlice = Readonly<{ todos: readonly string[] }>;
 export type AgentSkillsSlice = Readonly<{ skills: readonly AgentSkillSnapshot[] }>;
 
 export type AgentInputSession = {
@@ -89,7 +90,7 @@ export type AgentSessionActions = Readonly<{
   reconnect: () => void;
 }>;
 
-type StoreSlice = "timeline" | "controls" | "queue" | "progress" | "skills" | "input";
+type StoreSlice = "timeline" | "controls" | "queue" | "todo" | "skills" | "input";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 
@@ -105,7 +106,7 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
 const EMPTY_QUEUE: AgentQueueSlice = {
   inputQueue: { paused: false, canSendNow: false, items: [] },
 };
-const EMPTY_PROGRESS: AgentProgressSlice = { taskProgress: [] };
+const EMPTY_TODO: AgentTodoSlice = { todos: [] };
 const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
 /** renderer 侧唯一 Agent 会话镜像；所有公开事实先经过 revision 校验再进入切片。 */
@@ -113,7 +114,7 @@ export class AgentSessionStore {
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
-  private progress = EMPTY_PROGRESS;
+  private todo = EMPTY_TODO;
   private skills = EMPTY_SKILLS;
   private input: AgentInputSession;
   private revision = 0;
@@ -129,7 +130,7 @@ export class AgentSessionStore {
     timeline: new Set(),
     controls: new Set(),
     queue: new Set(),
-    progress: new Set(),
+    todo: new Set(),
     skills: new Set(),
     input: new Set(),
   };
@@ -161,7 +162,7 @@ export class AgentSessionStore {
   public readonly get_timeline = (): AgentTimelineSlice => this.timeline;
   public readonly get_controls = (): AgentControlsSlice => this.controls;
   public readonly get_queue = (): AgentQueueSlice => this.queue;
-  public readonly get_progress = (): AgentProgressSlice => this.progress;
+  public readonly get_todo = (): AgentTodoSlice => this.todo;
   public readonly get_skills = (): AgentSkillsSlice => this.skills;
   public readonly get_input = (): AgentInputSession => this.input;
 
@@ -171,8 +172,8 @@ export class AgentSessionStore {
     this.subscribe("controls", listener);
   public readonly subscribe_queue = (listener: Listener): (() => void) =>
     this.subscribe("queue", listener);
-  public readonly subscribe_progress = (listener: Listener): (() => void) =>
-    this.subscribe("progress", listener);
+  public readonly subscribe_todo = (listener: Listener): (() => void) =>
+    this.subscribe("todo", listener);
   public readonly subscribe_skills = (listener: Listener): (() => void) =>
     this.subscribe("skills", listener);
   public readonly subscribe_input = (listener: Listener): (() => void) =>
@@ -307,7 +308,7 @@ export class AgentSessionStore {
     this.revision = snapshot.revision;
     this.timeline = { entries: snapshot.entries };
     this.queue = { inputQueue: snapshot.inputQueue };
-    this.progress = { taskProgress: snapshot.taskProgress };
+    this.todo = { todos: snapshot.todos };
     this.skills = { skills: snapshot.skills };
     this.controls = {
       ...this.controls,
@@ -318,7 +319,7 @@ export class AgentSessionStore {
     };
     this.emit("timeline");
     this.emit("queue");
-    this.emit("progress");
+    this.emit("todo");
     this.emit("skills");
     this.emit("controls");
   }
@@ -357,9 +358,9 @@ export class AgentSessionStore {
         this.queue = { inputQueue: event.inputQueue };
         this.emit("queue");
         break;
-      case "task_progress":
-        this.progress = { taskProgress: event.taskProgress };
-        this.emit("progress");
+      case "todo":
+        this.todo = { todos: event.todos };
+        this.emit("todo");
         break;
       case "entry_upsert": {
         const entries = [...this.timeline.entries];
@@ -598,13 +599,13 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
   const input_queue = normalize_input_queue(record["inputQueue"]);
-  const task_progress = normalize_task_progress(record["taskProgress"]);
+  const todos = normalize_todos(record["todos"]);
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
   if (
     approval_mode === null ||
     pending_decision === undefined ||
     input_queue === null ||
-    task_progress === null ||
+    todos === null ||
     context_tokens === undefined
   ) {
     throw new TypeError("Agent snapshot is invalid.");
@@ -617,7 +618,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     entries,
     skills,
     inputQueue: input_queue,
-    taskProgress: task_progress,
+    todos,
     contextTokens: context_tokens,
   };
 }
@@ -652,11 +653,9 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
         ? null
         : { type: "input_queue", revision, inputQueue: input_queue };
     }
-    case "task_progress": {
-      const task_progress = normalize_task_progress(record["taskProgress"]);
-      return task_progress === null
-        ? null
-        : { type: "task_progress", revision, taskProgress: task_progress };
+    case "todo": {
+      const todos = normalize_todos(record["todos"]);
+      return todos === null ? null : { type: "todo", revision, todos };
     }
     case "context_tokens": {
       const context_tokens = normalize_context_tokens(record["contextTokens"]);
@@ -683,9 +682,13 @@ function normalize_optional_revision(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-function normalize_task_progress(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  return value.every((item) => typeof item === "string" && item.trim() !== "") ? [...value] : null;
+/** Todo 与后端、Deno 共用边界规则；非法帧交给 revision 恢复权威快照。 */
+function normalize_todos(value: unknown): string[] | null {
+  try {
+    return normalize_agent_todos(value);
+  } catch {
+    return null;
+  }
 }
 
 function normalize_input_queue(value: unknown): AgentInputQueueSnapshot | null {

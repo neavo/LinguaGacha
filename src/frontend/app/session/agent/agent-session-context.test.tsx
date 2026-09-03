@@ -23,7 +23,7 @@ import {
   AgentSessionProvider,
   useAgentControls,
   useAgentInput,
-  useAgentProgress,
+  useAgentTodo,
   useAgentQueue,
   useAgentSessionActions,
   useAgentSkills,
@@ -35,11 +35,11 @@ function useAgentSession() {
   const timeline = useAgentTimeline();
   const controls = useAgentControls();
   const queue = useAgentQueue();
-  const progress = useAgentProgress();
+  const todo = useAgentTodo();
   const skills = useAgentSkills();
   const input = useAgentInput();
   const actions = useAgentSessionActions();
-  return { ...timeline, ...controls, ...queue, ...progress, ...skills, input, ...actions };
+  return { ...timeline, ...controls, ...queue, ...todo, ...skills, input, ...actions };
 }
 
 /** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
@@ -350,7 +350,7 @@ describe("AgentSessionProvider", () => {
     expect(latest.contextTokens).toBe(31_488);
   });
 
-  it("用合法进度事件替换全部待办，并拒绝不完整标签", async () => {
+  it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -359,19 +359,19 @@ describe("AgentSessionProvider", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "task_progress",
-        taskProgress: ["读取工程", "检查章节", "汇总结果"],
+        type: "todo",
+        todos: ["读取工程", "检查章节", "汇总结果"],
       });
     });
-    expect(latest.taskProgress).toEqual(["读取工程", "检查章节", "汇总结果"]);
+    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "task_progress",
-        taskProgress: ["读取工程", " "],
+        type: "todo",
+        todos: ["读取工程", " "],
       });
     });
-    expect(latest.taskProgress).toEqual(["读取工程", "检查章节", "汇总结果"]);
+    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
   });
 
   it("用完整队列事件替换投影，并转发队列协议命令", async () => {
@@ -655,7 +655,7 @@ describe("AgentSessionProvider", () => {
         pendingDecision: null,
         entries: [],
         skills: [],
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       },
     ],
@@ -668,7 +668,7 @@ describe("AgentSessionProvider", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
       },
     ],
     [
@@ -679,7 +679,7 @@ describe("AgentSessionProvider", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       },
     ],
@@ -691,7 +691,7 @@ describe("AgentSessionProvider", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       },
     ],
@@ -711,7 +711,7 @@ describe("AgentSessionProvider", () => {
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
-        taskProgress: [],
+        todos: [],
         contextTokens: null,
       })
       .mockResolvedValueOnce(
@@ -739,7 +739,7 @@ describe("AgentSessionProvider", () => {
       pendingDecision: null,
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
-      taskProgress: [],
+      todos: [],
       contextTokens: null,
       skills: [
         TEST_SKILLS[0],
@@ -951,7 +951,7 @@ describe("AgentSessionProvider", () => {
       ],
       skills: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
-      taskProgress: [],
+      todos: [],
       contextTokens: null,
     });
     let latest!: ReturnType<typeof useAgentSession>;
@@ -1596,7 +1596,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     entries: [],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    taskProgress: [],
+    todos: [],
     contextTokens: null,
     ...overrides,
   };

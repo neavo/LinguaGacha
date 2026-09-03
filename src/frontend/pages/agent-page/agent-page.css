@@ -800,18 +800,18 @@
   margin-top: 8px;
 }
 
-.agent-task-progress,
+.agent-todo,
 .agent-input-queue {
   box-sizing: border-box;
   background: transparent;
 }
 
-.agent-task-progress {
+.agent-todo {
   border: var(--agent-status-border);
   border-radius: var(--ui-radius-card);
 }
 
-.agent-task-progress,
+.agent-todo,
 .agent-input-queue__item:not(.agent-input-queue__item--editing) {
   height: var(--agent-status-row-height);
   transition: background-color 120ms ease;
@@ -830,14 +830,14 @@
   min-width: 0;
 }
 
-.agent-task-progress:hover,
-.agent-task-progress:focus-visible,
+.agent-todo:hover,
+.agent-todo:focus-visible,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):hover,
 .agent-input-queue__item:not(.agent-input-queue__item--editing):focus-within {
   background: var(--accent);
 }
 
-.agent-task-progress {
+.agent-todo {
   /* 两侧状态信息按内容占宽，队首任务填充剩余空间并在不足时截断。 */
   display: flex;
   width: min(100%, 420px);
@@ -852,26 +852,26 @@
   line-height: 1;
 }
 
-.agent-task-progress:focus-visible {
+.agent-todo:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.agent-task-progress__lead {
+.agent-todo__lead {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
 }
 
-.agent-task-progress__label {
+.agent-todo__label {
   overflow: hidden;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agent-task-progress__item {
+.agent-todo__item {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -882,15 +882,15 @@
   white-space: nowrap;
 }
 
-.agent-task-progress__more {
+.agent-todo__more {
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-/* 浮层跟随真实触发器宽度；滚动只属于待办列表，不把箭头算入滚动溢出。 */
-.agent-task-progress__tooltip {
+/* 浮层跟随真实触发器宽度，并完整展示有界短待办。 */
+.agent-todo__tooltip {
   display: block;
   width: var(--anchor-width);
   max-width: var(--available-width);
@@ -900,14 +900,7 @@
   animation: none;
 }
 
-.agent-task-progress__viewport {
-  /* Popup 的上下内边距各 6px，列表预算扣除后仍服从碰撞高度。 */
-  max-height: max(0px, min(308px, calc(var(--available-height) - 12px)));
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.agent-task-progress__viewport ul {
+.agent-todo__tooltip ul {
   display: grid;
   gap: 4px;
   margin: 0;
@@ -915,7 +908,7 @@
   list-style: disc outside;
 }
 
-.agent-task-progress__viewport li {
+.agent-todo__tooltip li {
   overflow-wrap: anywhere;
 }
 

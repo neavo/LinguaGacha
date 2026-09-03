@@ -12,17 +12,52 @@ describe("Agent Workspace Deno runtime", () => {
       await Promise.resolve();
       return {
         keys: Object.keys(workspace).sort(),
-        frozen: Object.isFrozen(workspace.contract),
+        contract_frozen: Object.isFrozen(workspace.contract),
+        todo_frozen: Object.isFrozen(workspace.todo),
+        todo_snapshot_frozen: Object.isFrozen(workspace.todo.read()),
       };
     }, read_port());
 
     expect(response).toEqual({
       ok: true,
       result: {
-        keys: ["contract", ...Object.keys(AGENT_WORKSPACE_RUNTIME_METHODS)].sort(),
-        frozen: true,
+        keys: ["contract", "todo", ...Object.keys(AGENT_WORKSPACE_RUNTIME_METHODS)].sort(),
+        contract_frozen: true,
+        todo_frozen: true,
+        todo_snapshot_frozen: true,
       },
+      todos: [],
     });
+  });
+
+  it("在脚本内读取基线并以最终有序 Todo 返回写入", async () => {
+    await expect(
+      execute_agent_workspace_program(
+        async (workspace) => {
+          const before = workspace.todo.read();
+          workspace.todo.write([" 处理目标 ", "核验结果"]);
+          return { before, current: workspace.todo.read() };
+        },
+        read_port(),
+        ["发现目标", "处理目标"],
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      result: {
+        before: ["发现目标", "处理目标"],
+        current: ["处理目标", "核验结果"],
+      },
+      todos: ["处理目标", "核验结果"],
+    });
+  });
+
+  it("Todo 写入失败时整次脚本返回失败", async () => {
+    await expect(
+      execute_agent_workspace_program(async (workspace) => {
+        workspace.todo.write([" "]);
+        return null;
+      }, read_port()),
+    ).resolves.toMatchObject({ ok: false });
   });
 
   it.each([
@@ -48,7 +83,7 @@ describe("Agent Workspace Deno runtime", () => {
   it("保留原生 JSON 对象属性 undefined 省略语义", async () => {
     await expect(
       execute_agent_workspace_program(async () => ({ kept: 1, omitted: undefined }), read_port()),
-    ).resolves.toEqual({ ok: true, result: { kept: 1 } });
+    ).resolves.toEqual({ ok: true, result: { kept: 1 }, todos: [] });
   });
 
   it("领域方法通过只读文件端口读取真实 contract 路径", async () => {
@@ -81,13 +116,17 @@ describe("Agent Workspace Deno runtime", () => {
   });
 
   it("请求协议拒绝空脚本和额外字段", () => {
-    expect(read_agent_workspace_runtime_request({ script: "return null;" })).toEqual({
+    expect(
+      read_agent_workspace_runtime_request({ script: "return null;", todos: [" 待办 "] }),
+    ).toEqual({
       script: "return null;",
+      todos: ["待办"],
     });
-    expect(() => read_agent_workspace_runtime_request({ script: " " })).toThrow();
+    expect(() => read_agent_workspace_runtime_request({ script: " ", todos: [] })).toThrow();
     expect(() =>
-      read_agent_workspace_runtime_request({ script: "return null;", extra: true }),
+      read_agent_workspace_runtime_request({ script: "return null;", todos: [], extra: true }),
     ).toThrow();
+    expect(() => read_agent_workspace_runtime_request({ script: "return null;" })).toThrow();
   });
 });
 
