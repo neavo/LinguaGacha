@@ -15,7 +15,7 @@
     "types": ["electron-vite/node"]
   },
   "include": [
-    "buildtools/vite/*.ts",
+    "buildtools/**/*.ts",
     "src/*.test.ts",
     "src/backend",
     "src/cli",
