@@ -103,7 +103,6 @@ export const zh_cn_agent_page = {
     details: "{tool} 工具调用详情",
     input: "输入",
     output: "输出",
-    wrap: "自动换行",
   },
   round: {
     running: "处理中 {duration}",

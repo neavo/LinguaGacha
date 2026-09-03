@@ -113,7 +113,6 @@ export const en_us_agent_page = {
     details: "{tool} tool call details",
     input: "Input",
     output: "Output",
-    wrap: "Line wrapping",
   },
   round: {
     running: "Processing for {duration}",

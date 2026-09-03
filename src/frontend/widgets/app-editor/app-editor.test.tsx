@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,19 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => {
     },
   };
 });
+
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, string>) =>
+      params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
+  }),
+}));
+
+vi.mock("@frontend/shadcn/tooltip", () => ({
+  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipTrigger: (props: { render: ReactNode }) => <>{props.render}</>,
+  TooltipContent: (props: { children: ReactNode }) => <>{props.children}</>,
+}));
 
 function get_editor_content(container: HTMLElement): HTMLElement {
   const content = container.querySelector<HTMLElement>(".cm-content");
@@ -65,6 +78,7 @@ describe("AppEditor", () => {
     });
 
     expect(container.querySelector(".cm-content")?.textContent).toBe("Alice Bob");
+    expect(container.querySelector(".app-editor__wrap-action")).toBeNull();
   });
 
   it("只读状态同步 DOM 编辑语义并在切换时保留内容", async () => {
@@ -93,7 +107,7 @@ describe("AppEditor", () => {
     expect(content.getAttribute("contenteditable")).toBe("true");
   });
 
-  it("查看器固定只读和行号，并在切换换行时保留同一内容节点", async () => {
+  it("查看器内置换行控制并在切换时保留内容节点", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -105,7 +119,6 @@ describe("AppEditor", () => {
           value={'{"name":"Alice Smith"}'}
           syntax="json"
           aria_label="工具输出"
-          wrap_lines={false}
         />,
       );
     });
@@ -113,28 +126,79 @@ describe("AppEditor", () => {
     const editor = container.querySelector(".app-editor--viewer");
     const content = get_editor_content(container);
     expect(editor?.classList.contains("app-editor--readonly")).toBe(false);
-    expect(editor?.classList.contains("app-editor--wrap-lines")).toBe(false);
+    expect(editor?.classList.contains("app-editor--wrap-lines")).toBe(true);
     expect(content.getAttribute("contenteditable")).toBe("false");
     expect(content.getAttribute("tabindex")).toBe("0");
     expect(container.querySelector(".cm-lineNumbers")).not.toBeNull();
-    expect(container.querySelector(".cm-highlightSpace")).toBeNull();
     expect(container.querySelector(".cm-line span")).not.toBeNull();
+
+    const wrap_action = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.editor.line_wrap_target:工具输出"]',
+    );
+    expect(wrap_action?.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => wrap_action?.click());
+
+    expect(container.querySelector(".app-editor--wrap-lines")).toBeNull();
+    expect(wrap_action?.getAttribute("aria-pressed")).toBe("false");
+    expect(get_editor_content(container)).toBe(content);
+    expect(content.textContent).toBe('{"name":"Alice Smith"}');
+  });
+
+  it("正文切换换行时保留内容节点", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<AppEditor value="Alpha Beta" aria_label="正文编辑器" read_only={false} />);
+    });
+
+    const content = get_editor_content(container);
+    expect(container.querySelector(".app-editor--wrap-lines")).not.toBeNull();
+    const wrap_action = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.editor.line_wrap_target:正文编辑器"]',
+    );
+    await act(async () => wrap_action?.click());
+
+    expect(container.querySelector(".app-editor--wrap-lines")).toBeNull();
+    expect(get_editor_content(container)).toBe(content);
+
+    await act(async () => {
+      root?.render(<AppEditor value="Gamma Delta" aria_label="正文编辑器" read_only />);
+    });
+
+    expect(container.querySelector(".app-editor--wrap-lines")).toBeNull();
+    expect(get_editor_content(container)).toBe(content);
+    expect(content.textContent).toBe("Gamma Delta");
+  });
+
+  it("更新占位文案时保留同一内容节点", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <AppEditor value="" aria_label="JSON 编辑器" placeholder="输入 JSON" read_only={false} />,
+      );
+    });
+
+    const content = get_editor_content(container);
+    expect(container.querySelector(".cm-placeholder")?.textContent).toBe("输入 JSON");
 
     await act(async () => {
       root?.render(
         <AppEditor
-          variant="viewer"
-          value={'{"name":"Alice Smith"}'}
-          syntax="json"
-          aria_label="工具输出"
-          wrap_lines
+          value=""
+          aria_label="JSON 编辑器"
+          placeholder="JSON eingeben"
+          read_only={false}
         />,
       );
     });
 
-    expect(container.querySelector(".app-editor--wrap-lines")).not.toBeNull();
+    expect(container.querySelector(".cm-placeholder")?.textContent).toBe("JSON eingeben");
     expect(get_editor_content(container)).toBe(content);
-    expect(content.textContent).toBe('{"name":"Alice Smith"}');
   });
 
   it("关闭 Tab 缩进后把 Tab 交回浏览器焦点链路", async () => {

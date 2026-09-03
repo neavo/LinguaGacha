@@ -9,8 +9,8 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/card";
 import { Input } from "@frontend/shadcn/input";
-import { Textarea } from "@frontend/shadcn/textarea";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
@@ -35,6 +35,12 @@ type JsonParseResult =
 
 type SliderFieldName = "top_p" | "temperature";
 type AgentLimitFieldName = keyof ModelAgentConfig;
+type RequestJsonFieldName = "extra_headers" | "extra_body";
+
+type RequestJsonDraft = {
+  text: string;
+  invalid: boolean;
+};
 
 /** 两项 Agent 容量固定置于高级设置顶部并共享草稿流程。 */
 const AGENT_LIMIT_FIELDS = [
@@ -84,6 +90,24 @@ const SLIDER_FIELD_CONFIGS = [
   },
 ] as const satisfies readonly SliderFieldConfig[];
 
+/** 自定义请求 JSON 字段共用编辑、启用与展示配置。 */
+const REQUEST_JSON_FIELD_CONFIGS = [
+  {
+    field_name: "extra_headers",
+    enabled_field_name: "extra_headers_custom_enable",
+    title_key: "model_page.fields.extra_headers.title",
+    description_key: "model_page.fields.extra_headers.description",
+    placeholder_key: "model_page.fields.extra_headers.placeholder",
+  },
+  {
+    field_name: "extra_body",
+    enabled_field_name: "extra_body_custom_enable",
+    title_key: "model_page.fields.extra_body.title",
+    description_key: "model_page.fields.extra_body.description",
+    placeholder_key: "model_page.fields.extra_body.placeholder",
+  },
+] as const;
+
 /** 把用户输入收窄为 JSON object；空文本等价于空配置。 */
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim();
@@ -120,6 +144,22 @@ function format_request_json_text(value: Record<string, unknown>): string {
   } else {
     return JSON.stringify(value, null, 2);
   }
+}
+
+/** 从当前模型构造两个请求 JSON 编辑器的草稿。 */
+function create_request_json_drafts(
+  model: ModelEntrySnapshot | null,
+): Record<RequestJsonFieldName, RequestJsonDraft> {
+  return {
+    extra_headers: {
+      text: format_request_json_text(model?.request.extra_headers ?? {}),
+      invalid: false,
+    },
+    extra_body: {
+      text: format_request_json_text(model?.request.extra_body ?? {}),
+      invalid: false,
+    },
+  };
 }
 
 /** 从当前模型构造所有滑块的数值状态。 */
@@ -185,10 +225,9 @@ export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
 ): JSX.Element | null {
   const { t } = useI18n();
-  const [headers_text, set_headers_text] = useState("");
-  const [body_text, set_body_text] = useState("");
-  const [headers_error, set_headers_error] = useState(false);
-  const [body_error, set_body_error] = useState(false);
+  const [request_json_drafts, set_request_json_drafts] = useState(
+    create_request_json_drafts(props.model),
+  );
   const [agent_limit_draft, set_agent_limit_draft] = useState(
     create_agent_limit_draft(props.model),
   );
@@ -201,10 +240,7 @@ export function ModelAdvancedSettingsDialog(
 
   useEffect(() => {
     if (props.model !== null) {
-      set_headers_text(format_request_json_text(props.model.request.extra_headers));
-      set_body_text(format_request_json_text(props.model.request.extra_body));
-      set_headers_error(false);
-      set_body_error(false);
+      set_request_json_drafts(create_request_json_drafts(props.model));
       set_agent_limit_draft(create_agent_limit_draft(props.model));
     }
   }, [props.model]);
@@ -219,24 +255,23 @@ export function ModelAdvancedSettingsDialog(
   }
 
   const model = props.model;
-  // 关闭自定义字段或项目锁定时仍允许选择复制，但不允许编辑和失焦提交。
-  const headers_read_only = props.readonly || !model.request.extra_headers_custom_enable;
-  const body_read_only = props.readonly || !model.request.extra_body_custom_enable;
 
   /** 两个 JSON 编辑器共用同一解析、错误和提交语义。 */
-  function commit_request_json(
-    value: string,
-    field: "extra_headers" | "extra_body",
-    set_error: (next_error: boolean) => void,
-  ): void {
-    const parsed_result = parse_request_json_text(value);
-    set_error(!parsed_result.ok);
+  function commit_request_json(field_name: RequestJsonFieldName): void {
+    const parsed_result = parse_request_json_text(request_json_drafts[field_name].text);
+    set_request_json_drafts((previous_drafts) => ({
+      ...previous_drafts,
+      [field_name]: {
+        ...previous_drafts[field_name],
+        invalid: !parsed_result.ok,
+      },
+    }));
     if (!parsed_result.ok) {
       props.onJsonFormatError();
       return;
     }
 
-    void props.onPatch({ request: { [field]: parsed_result.value } });
+    void props.onPatch({ request: { [field_name]: parsed_result.value } });
   }
 
   /** 两项容量必须作为一组规范化和保存，避免产生瞬时非法组合。 */
@@ -395,103 +430,65 @@ export function ModelAdvancedSettingsDialog(
             );
           })}
 
-          <Card>
-            <CardContent className="model-page__advanced-card-content">
-              <div className="model-page__advanced-card-head">
-                <div className="model-page__advanced-card-copy">
-                  <CardTitle>{t("model_page.fields.extra_headers.title")}</CardTitle>
-                  <CardDescription>
-                    {t("model_page.fields.extra_headers.description")}
-                  </CardDescription>
-                </div>
+          {REQUEST_JSON_FIELD_CONFIGS.map((field_config) => {
+            const draft = request_json_drafts[field_config.field_name];
+            const enabled = model.request[field_config.enabled_field_name];
+            const read_only = props.readonly || !enabled;
 
-                <div className="model-page__advanced-inline-control">
-                  <BooleanSegmentedToggle
-                    aria_label={t("model_page.fields.extra_headers.title")}
-                    value={model.request.extra_headers_custom_enable}
-                    className="model-page__advanced-toggle-group"
-                    stretch
-                    disabled={props.readonly}
-                    on_value_change={(next_value) => {
-                      void props.onPatch({
-                        request: {
-                          extra_headers_custom_enable: next_value,
-                        },
-                      });
-                    }}
-                  />
-                </div>
-              </div>
+            return (
+              <Card key={field_config.field_name}>
+                <CardContent className="model-page__advanced-card-content">
+                  <div className="model-page__advanced-card-head">
+                    <div className="model-page__advanced-card-copy">
+                      <CardTitle>{t(field_config.title_key)}</CardTitle>
+                      <CardDescription>{t(field_config.description_key)}</CardDescription>
+                    </div>
 
-              <div className="model-page__request-editor">
-                <Textarea
-                  className="model-page__textarea"
-                  value={headers_text}
-                  readOnly={headers_read_only}
-                  aria-invalid={headers_error || undefined}
-                  placeholder={t("model_page.fields.extra_headers.placeholder")}
-                  onChange={(event) => {
-                    set_headers_text(event.target.value);
-                  }}
-                  onBlur={
-                    headers_read_only
-                      ? undefined
-                      : () => {
-                          commit_request_json(headers_text, "extra_headers", set_headers_error);
-                        }
-                  }
-                />
-              </div>
-            </CardContent>
-          </Card>
+                    <div className="model-page__advanced-inline-control">
+                      <BooleanSegmentedToggle
+                        aria_label={t(field_config.title_key)}
+                        value={enabled}
+                        className="model-page__advanced-toggle-group"
+                        stretch
+                        disabled={props.readonly}
+                        on_value_change={(next_value) => {
+                          void props.onPatch({
+                            request: {
+                              [field_config.enabled_field_name]: next_value,
+                            },
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
 
-          <Card>
-            <CardContent className="model-page__advanced-card-content">
-              <div className="model-page__advanced-card-head">
-                <div className="model-page__advanced-card-copy">
-                  <CardTitle>{t("model_page.fields.extra_body.title")}</CardTitle>
-                  <CardDescription>{t("model_page.fields.extra_body.description")}</CardDescription>
-                </div>
-
-                <div className="model-page__advanced-inline-control">
-                  <BooleanSegmentedToggle
-                    aria_label={t("model_page.fields.extra_body.title")}
-                    value={model.request.extra_body_custom_enable}
-                    className="model-page__advanced-toggle-group"
-                    stretch
-                    disabled={props.readonly}
-                    on_value_change={(next_value) => {
-                      void props.onPatch({
-                        request: {
-                          extra_body_custom_enable: next_value,
-                        },
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="model-page__request-editor">
-                <Textarea
-                  className="model-page__textarea"
-                  value={body_text}
-                  readOnly={body_read_only}
-                  aria-invalid={body_error || undefined}
-                  placeholder={t("model_page.fields.extra_body.placeholder")}
-                  onChange={(event) => {
-                    set_body_text(event.target.value);
-                  }}
-                  onBlur={
-                    body_read_only
-                      ? undefined
-                      : () => {
-                          commit_request_json(body_text, "extra_body", set_body_error);
-                        }
-                  }
-                />
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="model-page__request-editor">
+                    <AppEditor
+                      class_name="model-page__request-editor-control"
+                      syntax="json"
+                      value={draft.text}
+                      placeholder={t(field_config.placeholder_key)}
+                      aria_label={t(field_config.title_key)}
+                      read_only={read_only}
+                      invalid={draft.invalid}
+                      on_change={(next_value) => {
+                        set_request_json_drafts((previous_drafts) => ({
+                          ...previous_drafts,
+                          [field_config.field_name]: {
+                            text: next_value,
+                            invalid: false,
+                          },
+                        }));
+                      }}
+                      on_blur={
+                        read_only ? undefined : () => commit_request_json(field_config.field_name)
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </AppPageDialog>

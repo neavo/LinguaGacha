@@ -126,7 +126,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               description={t("model_page.fields.api_key.description")}
               action={
                 <Textarea
-                  className="model-page__textarea"
                   value={model.api_key}
                   readOnly={props.readonly}
                   placeholder={t("model_page.fields.api_key.placeholder")}

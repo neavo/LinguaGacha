@@ -175,10 +175,6 @@
   width: 100%;
 }
 
-.model-page__textarea {
-  width: 100%;
-}
-
 .model-page__setting-card-row--block .setting-card-row__content {
   align-items: stretch;
   flex-direction: column;
@@ -252,6 +248,12 @@
   flex-direction: column;
   gap: 10px;
   width: 100%;
+}
+
+.model-page__request-editor-control {
+  --app-editor-min-height: 160px;
+  --app-editor-scroller-min-height: 160px;
+  --app-editor-content-min-height: 160px;
 }
 
 .model-page__selector-body {

@@ -1,4 +1,5 @@
 .app-editor {
+  position: relative;
   width: 100%;
   min-width: 0;
   min-height: var(--app-editor-min-height, 0px);
@@ -13,6 +14,11 @@
     background-color 180ms ease,
     box-shadow 180ms ease,
     color 180ms ease;
+}
+
+.app-editor__mount {
+  height: 100%;
+  min-height: inherit;
 }
 
 .app-editor:has(.cm-editor.cm-focused) {
@@ -57,11 +63,17 @@
 
 .app-editor .cm-content {
   min-height: var(--app-editor-content-min-height, 100%);
-  padding: 8px;
+  padding-block: 8px 48px;
+  padding-inline: 8px;
   letter-spacing: 0.075em;
+  white-space: pre;
+  overflow-wrap: normal;
+  user-select: text;
+}
+
+.app-editor--wrap-lines .cm-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  user-select: text;
 }
 
 .app-editor .cm-lineWrapping {
@@ -135,13 +147,6 @@
 
 .app-editor--viewer .cm-content {
   letter-spacing: 0;
-  white-space: pre;
-  overflow-wrap: normal;
-}
-
-.app-editor--viewer.app-editor--wrap-lines .cm-content {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .app-editor--viewer .cm-cursor,
@@ -191,6 +196,46 @@
   line-height: 20px;
 }
 
+.app-editor .cm-placeholder {
+  color: var(--muted-foreground);
+}
+
+.app-editor__wrap-action {
+  position: absolute;
+  inset-inline-end: 10px;
+  bottom: 10px;
+  z-index: 2;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--popover) 78%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+  opacity: 0.64;
+  transition:
+    opacity 120ms ease-out,
+    color 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.app-editor__wrap-action:hover,
+.app-editor__wrap-action:focus-visible {
+  border-color: var(--border);
+  background: var(--popover);
+  color: var(--foreground);
+  opacity: 1;
+}
+
+.app-editor__wrap-action[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border) 60%);
+  background: color-mix(in srgb, var(--primary) 10%, var(--popover) 90%);
+  color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-editor__wrap-action {
+    transition: none;
+  }
+}
+
 .app-text-mark {
   cursor: help;
   text-decoration-line: underline;
@@ -203,16 +248,8 @@
   text-decoration-color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
 }
 
-.dark .app-text-mark--success {
-  text-decoration-color: color-mix(in srgb, #86efac 76%, var(--foreground) 24%);
-}
-
 .app-text-mark--warning {
   text-decoration-color: color-mix(in srgb, var(--ui-warning) 84%, var(--foreground) 16%);
-}
-
-.dark .app-text-mark--warning {
-  text-decoration-color: color-mix(in srgb, #fcd34d 82%, var(--foreground) 18%);
 }
 
 .cm-tooltip:has(.app-text-mark-tooltip) {

@@ -22,7 +22,6 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
         class_name="log-window-page__detail-editor"
         value={format_log_readable_text(props.detail)}
         aria_label={t("log_window_page.detail.title")}
-        wrap_lines
       />
     );
   }

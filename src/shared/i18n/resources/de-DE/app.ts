@@ -110,6 +110,9 @@ export const de_de_app = {
     disabled: "Deaktiviert",
     enabled: "Aktiviert",
   },
+  editor: {
+    line_wrap_target: "Zeilenumbruch für {TARGET}",
+  },
   tooltip: {
     value: "{TITLE} · {VALUE}",
   },
