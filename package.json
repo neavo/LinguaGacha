@@ -24,6 +24,7 @@
     "@babel/parser": "^8.0.4",
     "@base-ui/react": "^1.7.0",
     "@codemirror/commands": "^6.11.0",
+    "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",

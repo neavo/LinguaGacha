@@ -45,7 +45,9 @@ describe("AgentToolDetailDialog", () => {
   }
 
   it("完成工具默认只挂载格式化输出，并可切换到输入", async () => {
-    await render_dialog(tool_success('{"search":{"keywords":["Alice"]}}', '{"items":[]}'));
+    await render_dialog(
+      tool_success("web_search", '{"search":{"keywords":["Alice"]}}', '{"items":[]}'),
+    );
 
     const dialog = document.body.querySelector('[role="dialog"]');
     const tabs = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
@@ -71,7 +73,7 @@ describe("AgentToolDetailDialog", () => {
   });
 
   it("运行工具默认显示输入并启用换行，同 id 完成后保留当前面板和换行状态", async () => {
-    await render_dialog(tool_running('{"path":"SKILL.md"}'));
+    await render_dialog(tool_running("read_skill", '{"path":"SKILL.md"}'));
     const input_tab = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
       (tab) => tab.textContent === "agent_page.tool.input",
     );
@@ -95,7 +97,7 @@ describe("AgentToolDetailDialog", () => {
       document.body.querySelector(".agent-tool-detail__viewer.app-editor--wrap-lines"),
     ).toBeNull();
 
-    await render_dialog(tool_success('{"path":"SKILL.md"}', "完整正文。"));
+    await render_dialog(tool_success("read_skill", '{"path":"SKILL.md"}', "完整正文。"));
     expect(input_tab?.hasAttribute("data-active")).toBe(true);
     expect(wrap_button?.getAttribute("aria-pressed")).toBe("false");
     expect(
@@ -104,8 +106,34 @@ describe("AgentToolDetailDialog", () => {
     ).toContain("SKILL.md");
   });
 
+  it("workspace_script 输入直接显示保持原文的 TypeScript 脚本", async () => {
+    const script = "const contract = workspace.contract;\nreturn { limits: contract.limits };";
+    await render_dialog(tool_running("workspace_script", JSON.stringify({ script })));
+
+    const input = document.body.querySelector<HTMLElement>(
+      '.cm-content[aria-label="agent_page.tool.input"]',
+    );
+    expect(
+      [...(input?.querySelectorAll(".cm-line") ?? [])].map((line) => line.textContent),
+    ).toEqual(script.split("\n"));
+    expect(input?.querySelector(".cm-line span")).not.toBeNull();
+  });
+
+  it("workspace_script 输入包含其他字段时完整显示 JSON", async () => {
+    const input_value = { script: "return {};", timeout: 1 };
+    await render_dialog(tool_running("workspace_script", JSON.stringify(input_value)));
+
+    const input = document.body.querySelector<HTMLElement>(
+      '.cm-content[aria-label="agent_page.tool.input"]',
+    );
+    const input_text = [...(input?.querySelectorAll(".cm-line") ?? [])]
+      .map((line) => line.textContent)
+      .join("\n");
+    expect(JSON.parse(input_text)).toEqual(input_value);
+  });
+
   it("非 JSON 输出保持模型原文并使用纯文本查看器", async () => {
-    await render_dialog(tool_success("{}", "第一行\n第二行 <tag>"));
+    await render_dialog(tool_success("web_fetch", "{}", "第一行\n第二行 <tag>"));
 
     const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
     expect(
@@ -115,11 +143,11 @@ describe("AgentToolDetailDialog", () => {
   });
 });
 
-function tool_running(input: string): AgentToolEntry {
+function tool_running(tool_name: string, input: string): AgentToolEntry {
   return {
     kind: "tool_call",
     id: "tool-1",
-    toolName: "workspace_script",
+    toolName: tool_name,
     input,
     status: "running",
     output: null,
@@ -127,11 +155,11 @@ function tool_running(input: string): AgentToolEntry {
   };
 }
 
-function tool_success(input: string, output: string): AgentToolEntry {
+function tool_success(tool_name: string, input: string, output: string): AgentToolEntry {
   return {
     kind: "tool_call",
     id: "tool-1",
-    toolName: "workspace_script",
+    toolName: tool_name,
     input,
     status: "success",
     output,
