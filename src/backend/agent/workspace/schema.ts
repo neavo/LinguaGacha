@@ -1,13 +1,13 @@
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
 import {
+  ITEM_MANUAL_STATUSES,
   ITEM_STATUSES,
   ITEM_TEXT_TYPES,
   type ItemStatus,
   type ItemTextType,
 } from "../../../domain/item";
 import {
-  PROOFREADING_MANUAL_STATUS_CODES,
   PROOFREADING_WARNING_CODES,
   PROOFREADING_WARNING_FRAGMENT_CODES,
   type ProofreadingWarningCode,
@@ -149,7 +149,7 @@ export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
     fp: AGENT_WORKSPACE_FP_SCHEMA,
     dst: Type.Optional(Type.String()),
     name_dst: Type.Optional(Type.String()),
-    status: Type.Optional(literal_union(PROOFREADING_MANUAL_STATUS_CODES)),
+    status: Type.Optional(literal_union(ITEM_MANUAL_STATUSES)),
   },
   { additionalProperties: false },
 );

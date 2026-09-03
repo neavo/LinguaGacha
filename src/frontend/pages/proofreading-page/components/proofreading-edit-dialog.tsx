@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
+import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
@@ -13,9 +14,7 @@ import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import {
   format_proofreading_glossary_term,
-  PROOFREADING_MANUAL_STATUS_CODES,
   type ProofreadingItem,
-  type ProofreadingManualStatusCode,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -51,10 +50,7 @@ type ProofreadingEditDialogProps = {
   on_close_context: () => void;
   on_request_retranslate: (row_ids: string[]) => void;
   on_request_clear_translation: (row_ids: string[]) => void;
-  on_request_set_translation_status: (
-    row_ids: string[],
-    status: ProofreadingManualStatusCode,
-  ) => void;
+  on_request_set_translation_status: (row_ids: string[], status: ItemManualStatus) => void;
 };
 
 type ProofreadingBadgeTone = "neutral" | "success" | "warning" | "failure";
@@ -522,7 +518,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 />
                 <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
                   <AppDropdownMenuGroup>
-                    {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
+                    {ITEM_MANUAL_STATUSES.map((status) => (
                       <AppDropdownMenuItem
                         key={status}
                         onClick={() => {

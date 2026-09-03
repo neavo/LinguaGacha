@@ -27,7 +27,7 @@ import {
 } from "./list";
 import { AppError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
-import { apply_project_item_field_patch } from "../project/project-item-field-patch";
+import { apply_project_item_field_patch } from "../project/project-item-update";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import type { TextProcessingConfig } from "../text/text-types";
 import { create_text_keywords_matcher, type TextKeywordsMatcher } from "../text/text-pattern";

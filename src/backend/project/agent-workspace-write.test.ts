@@ -101,6 +101,36 @@ describe("Agent 工作区对象写入规则", () => {
     ]);
   });
 
+  it("Item 意图的预演包含同文组被动变化", () => {
+    const representative = { ...create_item(1), dst: "", status: "NONE", retry_count: 0 };
+    const duplicate = { ...create_item(2), dst: "", status: "DUPLICATED", retry_count: 0 };
+    const result = resolve_agent_workspace_writes({
+      batch: batch({
+        items: [
+          {
+            line: 1,
+            item_id: 1,
+            fp: item_fp(representative),
+            update: { status: "EXCLUDED" },
+          },
+        ],
+      }),
+      current: {
+        items: [representative, duplicate],
+        quality: {},
+        prompts: {},
+        duplicateFilterEnabled: true,
+      },
+    });
+
+    expect(result.applied.items).toEqual({ updated: 2 });
+    expect(result.itemChanges.map(({ item_id, next }) => [item_id, next.status])).toEqual([
+      [1, "EXCLUDED"],
+      [2, "NONE"],
+    ]);
+    expect(result.candidates.items).toHaveLength(1);
+  });
+
   it("prompt 同值去重、异值冲突并独立保留其它 kind", () => {
     const translation_fp = prompt_fp("translation", "旧翻译");
     const analysis_fp = prompt_fp("analysis", "旧分析");
@@ -308,8 +338,14 @@ describe("Agent 工作区对象写入规则", () => {
   });
 });
 
-function resolve(batch_value: AgentWorkspaceIntentBatch, current: AgentWorkspaceCurrentFacts) {
-  return resolve_agent_workspace_writes({ batch: batch_value, current });
+function resolve(
+  batch_value: AgentWorkspaceIntentBatch,
+  current: Omit<AgentWorkspaceCurrentFacts, "duplicateFilterEnabled">,
+) {
+  return resolve_agent_workspace_writes({
+    batch: batch_value,
+    current: { ...current, duplicateFilterEnabled: false },
+  });
 }
 
 function batch(args: {

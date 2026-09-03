@@ -1,4 +1,5 @@
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
+import type { ItemManualStatus } from "@domain/item";
 import type {
   ProofreadingConfirmationAction,
   ProofreadingDialogState,
@@ -14,7 +15,6 @@ import type {
   ProofreadingFilterOptions,
   ProofreadingFilterPanelState,
   ProofreadingItem,
-  ProofreadingManualStatusCode,
   ProofreadingSearchScope,
   ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
@@ -113,7 +113,7 @@ export type UseProofreadingPageStateResult = {
   request_clear_translation_row_ids: (row_ids: string[], preferred_row_id?: string | null) => void;
   request_set_translation_status_row_ids: (
     row_ids: string[],
-    status: ProofreadingManualStatusCode,
+    status: ItemManualStatus,
     preferred_row_id?: string | null,
   ) => void;
   confirm_pending_confirmation: (action: ProofreadingConfirmationAction) => Promise<void>;

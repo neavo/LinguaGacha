@@ -8,31 +8,20 @@ import {
   type ProjectExpectedSectionRevisions,
   type ProjectItemWriteChange,
 } from "../project/project-write-request";
-import { Item } from "../../domain/item";
+import { Item, is_item_manual_status, type ItemManualStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
-import type {
-  ProjectChangeItemFieldPatch,
-  ProjectChangeItemsPayload,
-  ProjectWriteResult,
-} from "../../shared/project-event";
+import type { ProjectChangeItemFieldPatch, ProjectWriteResult } from "../../shared/project-event";
 import { read_item_name_text } from "../../shared/item-name";
 import {
+  apply_project_item_manual_update,
   apply_project_item_field_patch,
+  type ProjectItemManualUpdate,
   type ProjectItemWriteFields,
-} from "../../shared/project/project-item-field-patch";
+} from "../../shared/project/project-item-update";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
-import {
-  PROOFREADING_MANUAL_STATUS_CODES,
-  type ProofreadingManualStatusCode,
-} from "../../shared/proofreading/proofreading-types";
 import * as AppErrors from "../../shared/error";
-import {
-  apply_proofreading_item_update,
-  are_proofreading_item_write_fields_equal,
-  type ProofreadingItemUpdateFields,
-} from "./proofreading-item-update";
 
-type ProofreadingItemUpdate = ProofreadingItemUpdateFields & {
+type ProofreadingItemUpdate = ProjectItemManualUpdate & {
   item_id: number;
 };
 
@@ -95,21 +84,13 @@ export class ProofreadingService {
           diagnostic_context: { reason: "item_not_found", item_id: update.item_id },
         });
       }
-      const next = apply_proofreading_item_update(current, update);
-      if (!are_proofreading_item_write_fields_equal(current, next)) {
-        changes.push({ item_id: update.item_id, current, next });
-      }
+      const next = apply_project_item_manual_update(current, update);
+      if (next !== null) changes.push({ item_id: update.item_id, current, next });
     }
     return await this.persist_changed_items(
       project_path,
       expected_section_revisions,
-      {
-        changes,
-        items_payload: {
-          payloadMode: "canonical-delta",
-          changedIds: changes.map((change) => change.item_id),
-        },
-      },
+      changes,
       source,
     );
   }
@@ -153,9 +134,10 @@ export class ProofreadingService {
         replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
       });
       if (dst_replace_result.count > 0 && dst_replace_result.text !== item["dst"]) {
-        next_item = apply_proofreading_item_update(next_item, {
-          dst: dst_replace_result.text,
-        });
+        next_item =
+          apply_project_item_manual_update(next_item, {
+            dst: dst_replace_result.text,
+          }) ?? next_item;
       }
 
       const current_name_dst = read_item_name_text(item["name_dst"]);
@@ -166,23 +148,16 @@ export class ProofreadingService {
         replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
       });
       if (name_replace_result.count > 0 && name_replace_result.text !== current_name_dst) {
-        next_item = apply_proofreading_item_update(next_item, {
-          name_dst: name_replace_result.text,
-        });
+        next_item =
+          apply_project_item_manual_update(next_item, {
+            name_dst: name_replace_result.text,
+          }) ?? next_item;
       }
 
-      if (are_proofreading_item_write_fields_equal(item, next_item)) {
-        continue;
-      }
+      if (next_item === item) continue;
       changes.push({ item_id, current: item, next: next_item });
     }
-    return await this.persist_changed_items(project_path, expected_section_revisions, {
-      changes,
-      items_payload: {
-        payloadMode: "canonical-delta",
-        changedIds: changes.map((change) => change.item_id),
-      },
-    });
+    return await this.persist_changed_items(project_path, expected_section_revisions, changes);
   }
 
   /** 批量清空正文与姓名译文，并按用户意图决定是否恢复未翻译状态。 */
@@ -220,12 +195,11 @@ export class ProofreadingService {
     if (changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    return await this.write_store.apply_proofreading_item_patch({
+    return await this.write_store.apply_project_item_changes({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
       source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
       changes,
-      fieldPatch: field_patch,
     });
   }
 
@@ -256,24 +230,17 @@ export class ProofreadingService {
   private async persist_changed_items(
     project_path: string,
     expected_section_revisions: ProjectExpectedSectionRevisions,
-    args: {
-      changes: ProjectItemWriteChange[];
-      items_payload: Pick<
-        ProjectChangeItemsPayload,
-        "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
-      >;
-    },
+    changes: ProjectItemWriteChange[],
     source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
   ): Promise<ProjectWriteResult> {
-    if (args.changes.length === 0) {
+    if (changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    return await this.write_store.apply_proofreading_bulk_patch({
+    return await this.write_store.apply_project_item_changes({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
       source,
-      changes: args.changes,
-      itemsPayload: args.items_payload,
+      changes,
     });
   }
 
@@ -424,13 +391,8 @@ export class ProofreadingService {
   /**
    * 人工状态菜单只暴露三种可写状态，其它计算状态不能从校对页直接写入
    */
-  private parse_manual_status_or_throw(value: JsonValue | undefined): ProofreadingManualStatusCode {
-    if (
-      typeof value === "string" &&
-      (PROOFREADING_MANUAL_STATUS_CODES as readonly string[]).includes(value)
-    ) {
-      return value as ProofreadingManualStatusCode;
-    }
+  private parse_manual_status_or_throw(value: JsonValue | undefined): ItemManualStatus {
+    if (is_item_manual_status(value)) return value;
 
     throw new AppErrors.AppError("request.validation_failed", {
       diagnostic_context: {

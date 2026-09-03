@@ -609,6 +609,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
           ]),
         ),
         prompts: { translation: "翻译正文", analysis: "分析正文" },
+        duplicateFilterEnabled: false,
       },
     });
     const destroyed =
@@ -669,6 +670,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     cache,
     proofreading: { query_warnings },
     database: {
+      get_all_meta: () => ({}),
       read_asset_content,
     },
     runtimeGate: { run_agent_project_write: runtime_gate },

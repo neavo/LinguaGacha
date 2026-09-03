@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import type { ItemManualStatus } from "@domain/item";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
   normalize_task_snapshot,
@@ -13,7 +14,6 @@ import {
   type ProofreadingCommandItemSnapshot,
   type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
-import type { ProofreadingManualStatusCode } from "@shared/proofreading/proofreading-types";
 import type {
   ProofreadingConfirmationAction,
   ProofreadingPendingConfirmation,
@@ -63,7 +63,7 @@ type UseProofreadingBatchActionsResult = {
   request_clear_translation_row_ids: (row_ids: string[], preferred_row_id?: string | null) => void;
   request_set_translation_status_row_ids: (
     row_ids: string[],
-    status: ProofreadingManualStatusCode,
+    status: ItemManualStatus,
     preferred_row_id?: string | null,
   ) => void;
   confirm_pending_confirmation: (action: ProofreadingConfirmationAction) => Promise<void>;
@@ -233,7 +233,7 @@ export function useProofreadingBatchActions(
   const submit_set_translation_status_row_ids = useCallback(
     async (
       row_ids: string[],
-      status: ProofreadingManualStatusCode,
+      status: ItemManualStatus,
       preferred_row_id: string | null,
     ): Promise<void> => {
       const target_item_ids = normalize_numeric_item_ids(row_ids);
@@ -298,11 +298,7 @@ export function useProofreadingBatchActions(
   );
 
   const request_set_translation_status_row_ids = useCallback(
-    (
-      row_ids: string[],
-      status: ProofreadingManualStatusCode,
-      preferred_row_id?: string | null,
-    ): void => {
+    (row_ids: string[], status: ItemManualStatus, preferred_row_id?: string | null): void => {
       if (!can_request_action(row_ids)) {
         return;
       }

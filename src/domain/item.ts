@@ -13,6 +13,9 @@ export const ITEM_STATUSES = [
   "DUPLICATED",
 ] as const;
 
+/** GUI 与 Agent 可以表达的人工状态；其余状态由项目写入或任务运行维护。 */
+export const ITEM_MANUAL_STATUSES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
+
 // 文件的类型
 export const ITEM_FILE_TYPES = [
   "NONE",
@@ -32,6 +35,7 @@ export const ITEM_FILE_TYPES = [
 export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"] as const; // 文本的实际类型
 
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
+export type ItemManualStatus = (typeof ITEM_MANUAL_STATUSES)[number];
 export type ItemFileType = (typeof ITEM_FILE_TYPES)[number];
 export type ItemTextType = (typeof ITEM_TEXT_TYPES)[number];
 export type ItemNameField = string | string[] | null;
@@ -73,6 +77,7 @@ export type ProjectItemPersistentRecord = JsonRecord & {
 };
 
 const ITEM_STATUS_SET = new Set<ItemStatus>(ITEM_STATUSES);
+const ITEM_MANUAL_STATUS_SET = new Set<ItemManualStatus>(ITEM_MANUAL_STATUSES);
 const ITEM_FILE_TYPE_SET = new Set<ItemFileType>(ITEM_FILE_TYPES);
 const ITEM_TEXT_TYPE_SET = new Set<ItemTextType>(ITEM_TEXT_TYPES);
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON"]);
@@ -266,6 +271,11 @@ export class Item {
 // item 状态从数据库、API 和任务进度多处流入，先判定再统计
 export function is_item_status(value: unknown): value is ItemStatus {
   return ITEM_STATUS_SET.has(value as ItemStatus);
+}
+
+/** 判断外部人工更新是否使用项目允许的状态意图。 */
+export function is_item_manual_status(value: unknown): value is ItemManualStatus {
+  return ITEM_MANUAL_STATUS_SET.has(value as ItemManualStatus);
 }
 
 // 文件格式只表示解析来源，不能用它替代文本规则语义

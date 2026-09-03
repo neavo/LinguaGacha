@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  apply_project_item_manual_update,
   apply_project_item_field_patch,
   build_project_item_field_patch,
   normalize_project_item_field_patch,
-} from "./project-item-field-patch";
+} from "./project-item-update";
 
 const BASE_ITEM = {
   dst: "旧译文",
@@ -14,7 +15,7 @@ const BASE_ITEM = {
 };
 
 describe("project item field patch", () => {
-  it("收窄四个校对可写字段并丢弃非法字段", () => {
+  it("收窄项目事件可传播字段并丢弃非法字段", () => {
     expect(
       normalize_project_item_field_patch({
         dst: "新译文",
@@ -32,7 +33,7 @@ describe("project item field patch", () => {
     });
   });
 
-  it("坏状态和空 patch 返回 null，让调用方走补读或空结果", () => {
+  it("坏状态和非对象不生成字段补丁", () => {
     expect(normalize_project_item_field_patch({ status: "BROKEN" })).toBeNull();
     expect(normalize_project_item_field_patch(null)).toBeNull();
   });
@@ -69,5 +70,54 @@ describe("project item field patch", () => {
 
   it("无变化时不生成空 patch", () => {
     expect(build_project_item_field_patch(BASE_ITEM, { ...BASE_ITEM })).toBeNull();
+  });
+});
+
+describe("project item manual update", () => {
+  it.each(["", "新译文"])("正文实际改为 %j 时完成条目并清除重试历史", (dst) => {
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, dst: "旧译文", status: "ERROR", retry_count: 3 },
+        { dst },
+      ),
+    ).toEqual({ ...BASE_ITEM, dst, status: "PROCESSED", retry_count: 0 });
+  });
+
+  it("相同非空译文可确认错误结果，纯 no-op 不清除重试历史", () => {
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, status: "ERROR", retry_count: 3 },
+        { dst: "旧译文" },
+      ),
+    ).toEqual({ ...BASE_ITEM, status: "PROCESSED", retry_count: 0 });
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, status: "PROCESSED", retry_count: 3 },
+        { dst: "旧译文" },
+      ),
+    ).toBeNull();
+  });
+
+  it("显式状态覆盖正文默认状态并清零重试", () => {
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, status: "ERROR", retry_count: 3 },
+        { dst: "新译文", status: "EXCLUDED" },
+      ),
+    ).toEqual({ ...BASE_ITEM, dst: "新译文", status: "EXCLUDED", retry_count: 0 });
+  });
+
+  it("只修改姓名译文时保留正文状态、重试历史和其它姓名槽位", () => {
+    expect(
+      apply_project_item_manual_update(
+        { ...BASE_ITEM, status: "ERROR", retry_count: 2 },
+        { name_dst: "新译名" },
+      ),
+    ).toEqual({
+      ...BASE_ITEM,
+      name_dst: ["新译名", "保留译名"],
+      status: "ERROR",
+      retry_count: 2,
+    });
   });
 });

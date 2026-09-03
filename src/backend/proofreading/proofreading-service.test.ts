@@ -158,7 +158,7 @@ describe("ProofreadingService", () => {
     });
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "既有译文", status: "PROCESSED", retry_count: 2 }),
+      create_project_item({ dst: "既有译文", status: "PROCESSED", retry_count: 0 }),
     ]);
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       total_line: 1,
@@ -520,12 +520,8 @@ describe("ProofreadingService", () => {
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
-        payloadMode: "field-patch",
+        payloadMode: "canonical-delta",
         changedIds: [1],
-        fieldPatch: {
-          dst: "",
-          name_dst: null,
-        },
       },
     });
   });
@@ -545,9 +541,8 @@ describe("ProofreadingService", () => {
       changes: [
         {
           items: {
-            payloadMode: "field-patch",
+            payloadMode: "canonical-delta",
             changedIds: [1],
-            fieldPatch: { dst: "", name_dst: null },
           },
         },
       ],
@@ -557,7 +552,7 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("清空并重置状态会恢复所有目标为未翻译并同步进度", async () => {
+  it("清空并重置状态会恢复待翻译代表、协调重复项并同步进度", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -584,10 +579,10 @@ describe("ProofreadingService", () => {
 
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ id: 1, dst: "", name_dst: null, status: "NONE", retry_count: 0 }),
-      create_project_item({ id: 2, status: "NONE", retry_count: 0 }),
+      create_project_item({ id: 2, status: "DUPLICATED", retry_count: 0 }),
     ]);
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
-      total_line: 2,
+      total_line: 1,
       processed_line: 0,
       error_line: 0,
       line: 0,
@@ -597,9 +592,8 @@ describe("ProofreadingService", () => {
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
-        payloadMode: "field-patch",
+        payloadMode: "canonical-delta",
         changedIds: [1, 2],
-        fieldPatch: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
       },
     });
   });
@@ -779,7 +773,7 @@ describe("ProofreadingService", () => {
     expect(read_meta(database, lg_path, "project_runtime_revision.items", 0)).toBe(0);
   });
 
-  it("未知 status 会归一为 NONE", async () => {
+  it("正文清空仍表示人工完成并收敛未知旧状态", async () => {
     const { database, service, lg_path } = create_service();
     database.set_items(lg_path, [
       create_project_item({
@@ -796,7 +790,7 @@ describe("ProofreadingService", () => {
     });
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ id: 1, src: "a", dst: "", status: "NONE" }),
+      create_project_item({ id: 1, src: "a", dst: "", status: "PROCESSED" }),
     ]);
   });
 

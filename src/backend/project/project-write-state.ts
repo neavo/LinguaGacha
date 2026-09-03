@@ -11,6 +11,7 @@ import {
 } from "../../domain/task";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
+import { coordinate_project_duplicate_statuses } from "../../shared/project/project-item-duplicates";
 
 type ProjectWriteFileRecord = {
   rel_path: string; // 项目内相对路径，用于按文件分组预过滤
@@ -342,7 +343,6 @@ export function compute_project_prefilter_write(
   let rule_skipped = 0;
   let language_skipped = 0;
   let mtool_skipped = 0;
-  let duplicated = 0;
   const kvjson_items_by_path = new Map<string, ProjectItemViewRecord[]>();
 
   for (const item of item_index.values()) {
@@ -406,19 +406,15 @@ export function compute_project_prefilter_write(
     }
   }
 
-  if (input.skip_duplicate_source_text_enable) {
-    const seen_src_by_file_path = new Map<string, Set<string>>();
-    for (const item of item_index.values()) {
-      const seen_src = seen_src_by_file_path.get(item.file_path) ?? new Set<string>();
-      if (item.status === "NONE" && seen_src.has(item.src)) {
-        item.status = "DUPLICATED";
-        duplicated += 1;
-      } else if (item.status === "NONE" || item.status === "PROCESSED") {
-        seen_src.add(item.src);
-      }
-      seen_src_by_file_path.set(item.file_path, seen_src);
-    }
+  const duplicate_changes = coordinate_project_duplicate_statuses(
+    [...item_index.values()],
+    input.skip_duplicate_source_text_enable,
+  );
+  for (const change of duplicate_changes) {
+    const item = item_index.get(change.item_id);
+    if (item !== undefined) item.status = change.status;
   }
+  const duplicated = [...item_index.values()].filter((item) => item.status === "DUPLICATED").length;
 
   const next_items: Record<string, ProjectItemPublicRecord> = {};
   for (const item of item_index.values()) {

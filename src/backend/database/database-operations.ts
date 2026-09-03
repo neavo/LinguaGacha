@@ -9,7 +9,7 @@ import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import { normalize_project_item_field_patch } from "../../shared/project/project-item-field-patch";
+import { normalize_project_item_field_patch } from "../../shared/project/project-item-update";
 import {
   read_json_record,
   type JsonRecord,

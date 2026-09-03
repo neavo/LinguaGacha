@@ -1,4 +1,5 @@
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
+import { Item } from "../../domain/item";
 import {
   is_json_record,
   read_json_integer,
@@ -8,10 +9,10 @@ import {
   type MutableJsonRecord,
 } from "../../domain/json";
 import { is_task_progress_status } from "../../domain/task";
+import { normalize_project_settings_snapshot } from "../../domain/setting";
 import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
 import type {
   ProjectChangeFilesPayload,
-  ProjectChangeItemFieldPatch,
   ProjectChangeItemsPayload,
   ProjectChangePayloadMode,
   ProjectDataSection,
@@ -19,8 +20,16 @@ import type {
   ProjectWriteResult,
 } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
-import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
+import {
+  apply_project_item_field_patch,
+  build_project_item_field_patch,
+} from "../../shared/project/project-item-update";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
+import {
+  plan_project_item_changes,
+  type ProjectItemPlannedChange,
+  type ProjectItemWriteRecord,
+} from "../../shared/project/project-item-write-planner";
 import { create_quality_rule_entry_id } from "../../shared/quality/quality-rule-entry";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
 import {
@@ -82,14 +91,15 @@ export type ProjectAssetWrite =
       path: string;
     };
 
+/** 单次项目事实提交的静态边界与事务内准备函数。 */
 type RuntimeCommitRequest = {
-  projectPath: string;
-  expectedSectionRevisions?: ProjectExpectedSectionRevisions;
+  projectPath: string; // 目标 .lg 项目
+  expectedSectionRevisions?: ProjectExpectedSectionRevisions; // 快照派生写入的乐观锁
   requireExpectedSectionRevisions: boolean; // 快照派生写入校验 revision，当前事实命令只读取事务内快照
-  revisionSections: ProjectDataSection[];
-  source: string;
-  updatedSections: ProjectDataSection[];
-  buildWrites: (context: ProjectWriteRevisionContext) => ProjectDatabaseWrite[];
+  revisionSections: ProjectDataSection[]; // 参与 revision 校验或推进的候选 section
+  source: string; // 公开事件来源
+  updatedSections: ProjectDataSection[]; // 静态已知的变化 section
+  prepare: (context: ProjectWriteRevisionContext) => RuntimePreparedChange; // 事务内生成实际写入
   items?: Pick<
     ProjectChangeItemsPayload,
     "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
@@ -101,8 +111,18 @@ type RuntimeCommitRequest = {
   sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
 };
 
+/** 事务内依据当前事实生成的数据库写入和实际事件载荷。 */
+type RuntimePreparedChange = {
+  writes: ProjectDatabaseWrite[]; // 事务内按序执行的数据库操作
+  updatedSections?: ProjectDataSection[]; // 事务内确定的实际变化 section
+  items?: RuntimeCommitRequest["items"]; // 实际 Item 事件载荷
+  files?: RuntimeCommitRequest["files"]; // 实际文件事件载荷
+  sections?: RuntimeCommitRequest["sections"]; // 其它 section 的显式载荷
+  sectionModes?: RuntimeCommitRequest["sectionModes"]; // 其它 section 的载荷模式
+};
+
 type RuntimeCommitOptions = {
-  publishPublic?: boolean;
+  publishPublic?: boolean; // settings-only 对齐只同步内部缓存
 };
 
 /**
@@ -119,6 +139,9 @@ type TranslationProgressCounters = {
   error_line: number;
   line: number;
 };
+
+/** Agent 预演与事务重算共用的领域结果。 */
+type AgentWorkspaceWriteOutcome = ReturnType<typeof resolve_agent_workspace_writes>;
 
 /**
  * loaded project 运行态事实的唯一语义写入口。
@@ -229,7 +252,7 @@ export class ProjectWriteStore {
           ) as unknown as JsonValue,
         },
       },
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [];
         if (success_checkpoints.length > 0 || error_checkpoints.length > 0) {
           writes.push((database) =>
@@ -255,7 +278,7 @@ export class ProjectWriteStore {
             } as unknown as JsonRecord),
           ...this.build_section_revision_writes(revision_context),
         );
-        return writes;
+        return { writes };
       },
     });
     return {
@@ -300,7 +323,7 @@ export class ProjectWriteStore {
                 data: request.sectionData as unknown as JsonValue,
               },
             },
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [
           (database) =>
             database.upsert_meta_entries(request.projectPath, meta as unknown as JsonRecord),
@@ -316,25 +339,21 @@ export class ProjectWriteStore {
           );
         }
         writes.push(...this.build_section_revision_writes(revision_context));
-        return writes;
+        return { writes };
       },
     });
   }
 
-  /**
-   * 校对统一字段 patch 使用局部 JSON 更新，并由后端发布 field-patch。
-   */
-  public async apply_proofreading_item_patch(request: {
+  /** 人工 Item 意图与同文组被动状态在同一事务快照上规划并提交。 */
+  public async apply_project_item_changes(request: {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: string;
     changes: ProjectItemWriteChange[];
-    fieldPatch: ProjectChangeItemFieldPatch;
   }): Promise<ProjectWriteResult> {
     if (request.changes.length === 0) {
       return this.empty_project_write_result();
     }
-    const changed_item_ids = request.changes.map((change) => change.item_id);
     return await this.commit_runtime_change({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
@@ -342,78 +361,25 @@ export class ProjectWriteStore {
       revisionSections: ["items", "proofreading"],
       source: request.source,
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "field-patch",
-        changedIds: changed_item_ids,
-        fieldPatch: request.fieldPatch,
-      },
-      buildWrites: (revision_context) => {
-        const translation_extras = this.has_translation_status_change(request.changes)
+      prepare: (revision_context) => {
+        const actual_changes = this.plan_item_changes(
+          request.projectPath,
+          revision_context.meta,
+          request.changes,
+        );
+        if (actual_changes.length === 0) return { writes: [], updatedSections: [] };
+        const translation_extras = this.has_translation_status_change(actual_changes)
           ? this.build_translation_extras_after_status_changes(
               request.projectPath,
               revision_context,
-              request.changes,
-            )
-          : null;
-        const writes: ProjectDatabaseWrite[] = [
-          (database) =>
-            database.patch_item_fields_by_ids(
-              request.projectPath,
-              changed_item_ids,
-              request.fieldPatch as unknown as JsonRecord,
-            ),
-        ];
-        if (translation_extras !== null) {
-          writes.push((database) =>
-            database.upsert_meta_entries(request.projectPath, {
-              translation_extras: translation_extras as unknown as JsonValue,
-            } as unknown as JsonRecord),
-          );
-        }
-        writes.push(...this.build_section_revision_writes(revision_context));
-        return writes;
-      },
-    });
-  }
-
-  /**
-   * 校对批量不同译文也只构造字段 patch，避免整行替换。
-   */
-  public async apply_proofreading_bulk_patch(request: {
-    projectPath: string;
-    expectedSectionRevisions: ProjectExpectedSectionRevisions;
-    source: string;
-    changes: ProjectItemWriteChange[];
-    itemsPayload: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
-  }): Promise<ProjectWriteResult> {
-    if (request.changes.length === 0) {
-      return this.empty_project_write_result();
-    }
-    const patches = request.changes.map((change) => ({
-      item_id: change.item_id,
-      patch: this.build_translation_patch_from_items(change.current, change.next),
-    }));
-    return await this.commit_runtime_change({
-      projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
-      requireExpectedSectionRevisions: true,
-      revisionSections: ["items", "proofreading"],
-      source: request.source,
-      updatedSections: ["items", "proofreading"],
-      items: request.itemsPayload,
-      buildWrites: (revision_context) => {
-        const translation_extras = this.has_translation_status_change(request.changes)
-          ? this.build_translation_extras_after_status_changes(
-              request.projectPath,
-              revision_context,
-              request.changes,
+              actual_changes,
             )
           : null;
         const writes: ProjectDatabaseWrite[] = [
           (database) =>
             database.patch_item_translation_fields(
               request.projectPath,
-              this.to_database_translation_patches(patches),
+              this.to_database_translation_patches(actual_changes),
             ),
         ];
         if (translation_extras !== null) {
@@ -424,7 +390,14 @@ export class ProjectWriteStore {
           );
         }
         writes.push(...this.build_section_revision_writes(revision_context));
-        return writes;
+        return {
+          writes,
+          updatedSections: ["items", "proofreading"],
+          items: {
+            payloadMode: "canonical-delta",
+            changedIds: actual_changes.map((change) => change.item_id),
+          },
+        };
       },
     });
   }
@@ -481,7 +454,7 @@ export class ProjectWriteStore {
       files: files_payload,
       sections: request.sections,
       sectionModes: request.sectionModes,
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [];
         for (const write of request.assetWrites ?? []) {
           writes.push(this.build_asset_write(request.projectPath, write));
@@ -506,7 +479,7 @@ export class ProjectWriteStore {
           );
         }
         writes.push(...this.build_section_revision_writes(revision_context));
-        return writes;
+        return { writes };
       },
     });
   }
@@ -527,10 +500,13 @@ export class ProjectWriteStore {
       source: "project_reorder_files",
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
-      buildWrites: (revision_context) => [
-        (database) => database.update_asset_sort_orders(request.projectPath, request.orderedPaths),
-        ...this.build_section_revision_writes(revision_context),
-      ],
+      prepare: (revision_context) => ({
+        writes: [
+          (database) =>
+            database.update_asset_sort_orders(request.projectPath, request.orderedPaths),
+          ...this.build_section_revision_writes(revision_context),
+        ],
+      }),
     });
   }
 
@@ -548,13 +524,15 @@ export class ProjectWriteStore {
         revisionSections: ["project"],
         source: "settings_alignment",
         updatedSections: ["project"],
-        buildWrites: () => [
-          (database) =>
-            database.upsert_meta_entries(
-              request.projectPath,
-              request.meta as unknown as JsonRecord,
-            ),
-        ],
+        prepare: () => ({
+          writes: [
+            (database) =>
+              database.upsert_meta_entries(
+                request.projectPath,
+                request.meta as unknown as JsonRecord,
+              ),
+          ],
+        }),
       },
       { publishPublic: false },
     );
@@ -603,7 +581,7 @@ export class ProjectWriteStore {
       revisionSections: ["analysis", "quality"],
       source: "analysis_glossary_import",
       updatedSections: request.updatedSections,
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [];
         if (request.qualityRule !== null) {
           const quality_rule = request.qualityRule;
@@ -636,7 +614,7 @@ export class ProjectWriteStore {
             ),
           ...this.build_section_revision_writes(revision_context, ["analysis"]),
         );
-        return writes;
+        return { writes };
       },
     });
   }
@@ -664,7 +642,7 @@ export class ProjectWriteStore {
       revisionSections: ["quality"],
       source: request.source,
       updatedSections: ["quality"],
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [];
         if (request.rule !== undefined) {
           const rule = request.rule;
@@ -688,7 +666,7 @@ export class ProjectWriteStore {
             get_section_revision(revision_context.meta, "quality") + 1,
           ),
         );
-        return writes;
+        return { writes };
       },
     });
   }
@@ -712,7 +690,7 @@ export class ProjectWriteStore {
       revisionSections: ["prompts"],
       source: "quality_prompt_save",
       updatedSections: ["prompts"],
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [
           (database) =>
             database.set_rule_text(request.projectPath, request.promptRuleType, request.text),
@@ -730,7 +708,7 @@ export class ProjectWriteStore {
             database.set_meta(request.projectPath, enabled_meta_key, enabled),
           );
         }
-        return writes;
+        return { writes };
       },
     });
   }
@@ -760,7 +738,7 @@ export class ProjectWriteStore {
       revisionSections: updated_sections,
       source: "project_task_input_apply",
       updatedSections: updated_sections,
-      buildWrites: (revision_context) => {
+      prepare: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [];
         const quality_revision = get_section_revision(revision_context.meta, "quality") + 1;
         for (const rule of request.input.quality_rules) {
@@ -800,7 +778,7 @@ export class ProjectWriteStore {
               database.set_meta(request.projectPath, storage.revision_meta_key, prompt_revision),
           );
         }
-        return writes;
+        return { writes };
       },
     });
   }
@@ -816,145 +794,181 @@ export class ProjectWriteStore {
     destroyed: boolean;
     sectionRevisions: ProjectDataSectionRevisions;
   }> {
-    const actual = this.database.transaction(request.projectPath, () => {
-      const current_meta = this.read_project_meta(request.projectPath);
-      const item_ids = [...new Set(request.batch.items.map((intent) => intent.item_id))];
-      const items = this.database.get_items_by_ids(request.projectPath, item_ids);
-      const quality_kinds = QUALITY_RULE_KINDS.filter((kind) => {
-        const intents = request.batch.quality[kind];
-        return intents.creates.length + intents.updates.length + intents.deletes.length > 0;
-      });
-      const quality = Object.fromEntries(
-        quality_kinds.map((kind) => {
-          const storage = resolve_project_quality_rule_storage(kind);
-          return [kind, this.database.get_rules(request.projectPath, storage.database_type)];
-        }),
-      ) as Record<QualityRuleKind, JsonValue>;
-      const prompt_kinds = [...new Set(request.batch.prompts.map((intent) => intent.kind))];
-      const prompts = Object.fromEntries(
-        prompt_kinds.map((kind) => {
-          const storage = resolve_project_prompt_storage(kind);
-          return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
-        }),
-      ) as Partial<Record<PromptKind, string>>;
-      const outcome = resolve_agent_workspace_writes({
-        batch: request.batch,
-        current: {
-          items: Array.isArray(items) ? items.filter(is_json_record) : [],
-          quality: Object.fromEntries(
-            quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
+    let actual: AgentWorkspaceWriteOutcome | null = null;
+    await this.commit_runtime_change({
+      projectPath: request.projectPath,
+      requireExpectedSectionRevisions: false,
+      revisionSections: [],
+      source: request.source,
+      updatedSections: [],
+      prepare: (revision_context) => {
+        const outcome = this.resolve_agent_workspace_changes(request, revision_context.meta);
+        actual = outcome;
+        const updated_sections = this.build_agent_updated_sections(outcome);
+        if (updated_sections.length === 0) return { writes: [], updatedSections: [] };
+        return {
+          writes: this.build_agent_workspace_writes(
+            request.projectPath,
+            revision_context,
+            outcome,
+            updated_sections,
           ),
-          prompts,
-        },
-        createQualityEntryId: create_quality_rule_entry_id,
-      });
-      if (!has_agent_workspace_applied_changes(outcome.applied)) return outcome;
-      const updated_sections: ProjectDataSection[] = [];
-      if (outcome.itemChanges.length > 0) updated_sections.push("items", "proofreading");
-      if (outcome.qualityChanges.length > 0) updated_sections.push("quality");
-      if (outcome.promptChanges.length > 0) updated_sections.push("prompts");
-      const item_patches = outcome.itemChanges.map((change) => ({
-        item_id: change.item_id,
-        patch: this.build_translation_patch_from_items(change.current, change.next),
-      }));
-      if (item_patches.length > 0)
-        this.database.patch_item_translation_fields(
-          request.projectPath,
-          this.to_database_translation_patches(item_patches),
-        );
-      if (item_patches.length > 0 && this.has_translation_status_change(outcome.itemChanges)) {
-        const translation_extras = this.build_translation_extras_after_status_changes(
-          request.projectPath,
-          { project_path: request.projectPath, meta: current_meta, sections: updated_sections },
-          outcome.itemChanges,
-        );
-        this.database.upsert_meta_entries(request.projectPath, {
-          translation_extras: translation_extras as unknown as JsonValue,
-        } as unknown as JsonRecord);
-      }
-      for (const change of outcome.qualityChanges) {
-        const storage = resolve_project_quality_rule_storage(change.kind);
-        this.database.set_rules(
-          request.projectPath,
-          storage.database_type,
-          change.entries as unknown as JsonValue[],
-        );
-      }
-      if (outcome.qualityChanges.length > 0) {
-        const quality_revision = get_section_revision(current_meta, "quality") + 1;
-        for (const kind of new Set(outcome.qualityChanges.map((change) => change.kind))) {
-          const storage = resolve_project_quality_rule_storage(kind);
-          this.database.set_meta(request.projectPath, storage.revision_meta_key, quality_revision);
-        }
-      }
-      for (const change of outcome.promptChanges) {
-        const storage = resolve_project_prompt_storage(change.kind);
-        this.database.set_rule_text(request.projectPath, storage.database_type, change.text);
-      }
-      if (outcome.promptChanges.length > 0) {
-        const prompt_revision = get_section_revision(current_meta, "prompts") + 1;
-        for (const kind of new Set(outcome.promptChanges.map((change) => change.kind))) {
-          const storage = resolve_project_prompt_storage(kind);
-          this.database.set_meta(request.projectPath, storage.revision_meta_key, prompt_revision);
-        }
-      }
-      for (const write of this.build_section_revision_writes({
-        project_path: request.projectPath,
-        meta: current_meta,
-        sections: updated_sections,
-      }))
-        write(this.database);
-      return outcome;
+          updatedSections: updated_sections,
+          ...(outcome.itemChanges.length === 0
+            ? {}
+            : {
+                items: {
+                  payloadMode: "canonical-delta",
+                  changedIds: outcome.itemChanges.map((change) => change.item_id),
+                },
+              }),
+        };
+      },
     });
-    const updated_sections: ProjectDataSection[] = [];
-    if (actual.itemChanges.length > 0) updated_sections.push("items", "proofreading");
-    if (actual.qualityChanges.length > 0) updated_sections.push("quality");
-    if (actual.promptChanges.length > 0) updated_sections.push("prompts");
-    if (updated_sections.length === 0)
-      return {
-        applied: {},
-        rejected: actual.rejected,
-        destroyed: actual.rejected.some(
+    if (actual === null) {
+      throw new AppErrors.AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "agent_workspace_outcome_missing" },
+      });
+    }
+    const outcome: AgentWorkspaceWriteOutcome = actual;
+    return {
+      applied: outcome.applied,
+      rejected: outcome.rejected,
+      destroyed:
+        has_agent_workspace_applied_changes(outcome.applied) ||
+        outcome.rejected.some(
           (rejection) =>
             rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
         ),
-        sectionRevisions: build_section_revisions_from_meta(
-          this.read_project_meta(request.projectPath),
-        ),
-      };
-    const change_request: ProjectWriteChangeRequest = {
-      projectPath: request.projectPath,
-      source: request.source,
-      updatedSections: updated_sections,
-      ...(actual.itemChanges.length === 0 ? {} : { items: { payloadMode: "section-invalidated" } }),
-    };
-    try {
-      await this.publish_app_events_for_committed_change(change_request);
-      this.publish_project_data_change(change_request);
-    } catch (cause) {
-      throw new AppErrors.AppError("data.committed_sync_failed", {
-        cause,
-        public_details: {
-          committed: true,
-          section_revisions: build_section_revisions_from_meta(
-            this.read_project_meta(request.projectPath),
-          ),
-          action: "reload_project",
-        },
-        diagnostic_context: {
-          reason: "project_committed_change_sync_failed",
-          source: request.source,
-        },
-      });
-    }
-    return {
-      applied: actual.applied,
-      rejected: actual.rejected,
-      destroyed: true,
       sectionRevisions: build_section_revisions_from_meta(
         this.read_project_meta(request.projectPath),
       ),
     };
+  }
+
+  /** Agent resolver 在项目事务内读取目标对象，确保指纹、派生状态与写入共享同一事实。 */
+  private resolve_agent_workspace_changes(
+    request: {
+      projectPath: string;
+      batch: AgentWorkspaceIntentBatch;
+    },
+    meta: JsonRecord,
+  ): AgentWorkspaceWriteOutcome {
+    const items =
+      request.batch.items.length === 0 ? [] : this.database.get_all_items(request.projectPath);
+    const quality_kinds = QUALITY_RULE_KINDS.filter((kind) => {
+      const intents = request.batch.quality[kind];
+      return intents.creates.length + intents.updates.length + intents.deletes.length > 0;
+    });
+    const quality = Object.fromEntries(
+      quality_kinds.map((kind) => {
+        const storage = resolve_project_quality_rule_storage(kind);
+        return [kind, this.database.get_rules(request.projectPath, storage.database_type)];
+      }),
+    ) as Record<QualityRuleKind, JsonValue>;
+    const prompt_kinds = [...new Set(request.batch.prompts.map((intent) => intent.kind))];
+    const prompts = Object.fromEntries(
+      prompt_kinds.map((kind) => {
+        const storage = resolve_project_prompt_storage(kind);
+        return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
+      }),
+    ) as Partial<Record<PromptKind, string>>;
+    return resolve_agent_workspace_writes({
+      batch: request.batch,
+      current: {
+        items: Array.isArray(items) ? items.filter(is_json_record) : [],
+        quality: Object.fromEntries(
+          quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
+        ),
+        prompts,
+        duplicateFilterEnabled: this.is_duplicate_filter_enabled(meta),
+      },
+      createQualityEntryId: create_quality_rule_entry_id,
+    });
+  }
+
+  /** 只有包含实际变化的 section 才参与 revision、缓存与公开事件。 */
+  private build_agent_updated_sections(outcome: AgentWorkspaceWriteOutcome): ProjectDataSection[] {
+    const sections: ProjectDataSection[] = [];
+    if (outcome.itemChanges.length > 0) sections.push("items", "proofreading");
+    if (outcome.qualityChanges.length > 0) sections.push("quality");
+    if (outcome.promptChanges.length > 0) sections.push("prompts");
+    return sections;
+  }
+
+  /** 将 Agent 的跨 section 实际结果编译为统一提交管线执行的数据库写集合。 */
+  private build_agent_workspace_writes(
+    project_path: string,
+    revision_context: ProjectWriteRevisionContext,
+    outcome: AgentWorkspaceWriteOutcome,
+    updated_sections: ProjectDataSection[],
+  ): ProjectDatabaseWrite[] {
+    const writes: ProjectDatabaseWrite[] = [];
+    if (outcome.itemChanges.length > 0) {
+      const item_patches = outcome.itemChanges.map((change) => ({
+        item_id: change.item_id,
+        patch: this.build_translation_patch_from_items(change.current, change.next),
+      }));
+      writes.push((database) =>
+        database.patch_item_translation_fields(
+          project_path,
+          this.to_database_translation_patches(item_patches),
+        ),
+      );
+      if (this.has_translation_status_change(outcome.itemChanges)) {
+        const translation_extras = this.build_translation_extras_after_status_changes(
+          project_path,
+          { ...revision_context, sections: updated_sections },
+          outcome.itemChanges,
+        );
+        writes.push((database) =>
+          database.upsert_meta_entries(project_path, {
+            translation_extras: translation_extras as unknown as JsonValue,
+          } as unknown as JsonRecord),
+        );
+      }
+    }
+    for (const change of outcome.qualityChanges) {
+      const storage = resolve_project_quality_rule_storage(change.kind);
+      writes.push((database) =>
+        database.set_rules(
+          project_path,
+          storage.database_type,
+          change.entries as unknown as JsonValue[],
+        ),
+      );
+    }
+    if (outcome.qualityChanges.length > 0) {
+      const quality_revision = get_section_revision(revision_context.meta, "quality") + 1;
+      for (const kind of new Set(outcome.qualityChanges.map((change) => change.kind))) {
+        const storage = resolve_project_quality_rule_storage(kind);
+        writes.push((database) =>
+          database.set_meta(project_path, storage.revision_meta_key, quality_revision),
+        );
+      }
+    }
+    for (const change of outcome.promptChanges) {
+      const storage = resolve_project_prompt_storage(change.kind);
+      writes.push((database) =>
+        database.set_rule_text(project_path, storage.database_type, change.text),
+      );
+    }
+    if (outcome.promptChanges.length > 0) {
+      const prompt_revision = get_section_revision(revision_context.meta, "prompts") + 1;
+      for (const kind of new Set(outcome.promptChanges.map((change) => change.kind))) {
+        const storage = resolve_project_prompt_storage(kind);
+        writes.push((database) =>
+          database.set_meta(project_path, storage.revision_meta_key, prompt_revision),
+        );
+      }
+    }
+    writes.push(
+      ...this.build_section_revision_writes({
+        ...revision_context,
+        sections: updated_sections,
+      }),
+    );
+    return writes;
   }
 
   /**
@@ -969,29 +983,36 @@ export class ProjectWriteStore {
   }): Promise<ProjectWriteSectionAck> {
     const patches = request.items;
     this.assert_patch_targets_exist(request.projectPath, patches);
-    const changed_item_ids = patches.map((patch) => patch.item_id);
+    let changed_item_ids: number[] = [];
     await this.commit_runtime_change({
       projectPath: request.projectPath,
       requireExpectedSectionRevisions: false,
       revisionSections: request.updatedSections,
       source: request.source,
       updatedSections: request.updatedSections,
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: changed_item_ids,
+      prepare: (revision_context) => {
+        const actual_changes = this.plan_item_patch_changes(
+          request.projectPath,
+          revision_context.meta,
+          patches,
+        );
+        changed_item_ids = actual_changes.map((change) => change.item_id);
+        return {
+          writes: [
+            (database) =>
+              database.patch_item_translation_fields(
+                request.projectPath,
+                this.to_database_translation_patches(actual_changes),
+              ),
+            (database) =>
+              database.upsert_meta_entries(request.projectPath, {
+                translation_extras: request.translationExtras as unknown as JsonValue,
+              } as unknown as JsonRecord),
+            ...this.build_section_revision_writes(revision_context),
+          ],
+          items: { payloadMode: "canonical-delta", changedIds: changed_item_ids },
+        };
       },
-      buildWrites: (revision_context) => [
-        (database) =>
-          database.patch_item_translation_fields(
-            request.projectPath,
-            this.to_database_translation_patches(patches),
-          ),
-        (database) =>
-          database.upsert_meta_entries(request.projectPath, {
-            translation_extras: request.translationExtras as unknown as JsonValue,
-          } as unknown as JsonRecord),
-        ...this.build_section_revision_writes(revision_context),
-      ],
     });
     return {
       changed_item_ids,
@@ -1006,6 +1027,14 @@ export class ProjectWriteStore {
     request: RuntimeCommitRequest,
     options: RuntimeCommitOptions = {},
   ): Promise<ProjectWriteResult> {
+    let prepared_change: RuntimePreparedChange = {
+      writes: [],
+      updatedSections: request.updatedSections,
+      items: request.items,
+      files: request.files,
+      sections: request.sections,
+      sectionModes: request.sectionModes,
+    };
     this.database.transaction(request.projectPath, () => {
       // guard、快照和写入必须共享同一个 BEGIN IMMEDIATE，不能给并发提交留下检查后窗口。
       const revision_context = request.requireExpectedSectionRevisions
@@ -1019,19 +1048,23 @@ export class ProjectWriteStore {
             meta: this.read_project_meta(request.projectPath),
             sections: request.revisionSections,
           };
-      const writes = request.buildWrites(revision_context);
-      for (const write of writes) {
+      prepared_change = { ...prepared_change, ...request.prepare(revision_context) };
+      for (const write of prepared_change.writes) {
         write(this.database);
       }
     });
+    const updated_sections = prepared_change.updatedSections ?? request.updatedSections;
+    if (updated_sections.length === 0) return this.empty_project_write_result();
     const change_request: ProjectWriteChangeRequest = {
       projectPath: request.projectPath,
       source: request.source,
-      updatedSections: request.updatedSections,
-      ...(request.items === undefined ? {} : { items: request.items }),
-      ...(request.files === undefined ? {} : { files: request.files }),
-      ...(request.sections === undefined ? {} : { sections: request.sections }),
-      ...(request.sectionModes === undefined ? {} : { sectionModes: request.sectionModes }),
+      updatedSections: updated_sections,
+      ...(prepared_change.items === undefined ? {} : { items: prepared_change.items }),
+      ...(prepared_change.files === undefined ? {} : { files: prepared_change.files }),
+      ...(prepared_change.sections === undefined ? {} : { sections: prepared_change.sections }),
+      ...(prepared_change.sectionModes === undefined
+        ? {}
+        : { sectionModes: prepared_change.sectionModes }),
     };
     // 事务已经提交；后续任一步失败都必须携带能够读取到的最新 revision，禁止调用方重试。
     let committed_section_revisions: ProjectDataSectionRevisions = {};
@@ -1266,8 +1299,74 @@ export class ProjectWriteStore {
     })) as unknown as JsonValue[];
   }
 
+  /** 从事务内完整 Item 快照生成显式与被动变化的唯一写入计划。 */
+  private plan_item_changes(
+    project_path: string,
+    meta: JsonRecord,
+    explicit_changes: readonly ProjectItemWriteChange[],
+  ): ProjectItemPlannedChange[] {
+    return plan_project_item_changes({
+      items: this.read_item_write_records(project_path),
+      explicit_changes,
+      duplicate_filter_enabled: this.is_duplicate_filter_enabled(meta),
+    });
+  }
+
+  /** 事务内完整读取并归一 Item，供局部意图和同文组协调共同使用。 */
+  private read_item_write_records(project_path: string): ProjectItemWriteRecord[] {
+    const raw_items = this.database.get_all_items(project_path);
+    return Array.isArray(raw_items)
+      ? raw_items.flatMap((value) => {
+          if (!is_json_record(value)) return [];
+          const item = Item.from_json(value);
+          if (item.id === undefined || item.id <= 0) return [];
+          return [
+            {
+              item_id: item.id,
+              file_path: item.file_path,
+              row_number: item.row,
+              src: item.src,
+              dst: item.dst,
+              name_dst: item.name_dst,
+              status: item.status,
+              retry_count: item.retry_count,
+            },
+          ];
+        })
+      : [];
+  }
+
+  /** 将任务 artifact patch 还原为显式前后事实，再进入统一同文组写入规划。 */
+  private plan_item_patch_changes(
+    project_path: string,
+    meta: JsonRecord,
+    patches: readonly TranslationItemPatch[],
+  ): ProjectItemPlannedChange[] {
+    const items = this.read_item_write_records(project_path);
+    const current_by_id = new Map(items.map((item) => [item.item_id, item]));
+    const explicit_changes = patches.flatMap((item_patch) => {
+      const current = current_by_id.get(item_patch.item_id);
+      if (current === undefined) return [];
+      const next = apply_project_item_field_patch(current, item_patch.patch);
+      return next === null ? [] : [{ item_id: item_patch.item_id, current, next }];
+    });
+    return plan_project_item_changes({
+      items,
+      explicit_changes,
+      duplicate_filter_enabled: this.is_duplicate_filter_enabled(meta),
+    });
+  }
+
+  /** 项目 meta 优先于旧 prefilter 镜像，读取当前重复过滤设置。 */
+  private is_duplicate_filter_enabled(meta: JsonRecord): boolean {
+    return normalize_project_settings_snapshot(
+      meta,
+      normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),
+    ).skip_duplicate_source_text_enable;
+  }
+
   /**
-   * 复用公开字段差异算法构造校对 patch，并拒绝无变化提交。
+   * 复用公开字段差异算法构造项目 Item patch，并拒绝无变化提交。
    */
   private build_translation_patch_from_items(
     current: Readonly<ProjectItemWriteFields>,
@@ -1276,7 +1375,7 @@ export class ProjectWriteStore {
     const patch = build_project_item_field_patch(current, next);
     if (patch === null) {
       throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "empty_proofreading_patch" },
+        diagnostic_context: { reason: "empty_project_item_patch" },
       });
     }
     return patch;

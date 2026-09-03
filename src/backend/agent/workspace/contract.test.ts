@@ -14,6 +14,12 @@ import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "./schema";
 describe("Agent 工作区 contract", () => {
   it("完整 contract 满足 Deno 与模型声明共用的外壳 Schema", () => {
     expect(Check(AGENT_WORKSPACE_CONTRACT_SCHEMA, AGENT_WORKSPACE_CONTRACT)).toBe(true);
+    expect(
+      read_json_record(read_json_record(AGENT_WORKSPACE_CONTRACT["effects"])["item_updates"]),
+    ).toMatchObject({
+      changed_dst: { status: "PROCESSED", retry_count: 0 },
+      duplicate_group: { status: "automatic", affected_values: ["NONE", "DUPLICATED"] },
+    });
   });
 
   it("数据集与变更路径互斥，并复用运行时结果上限", () => {

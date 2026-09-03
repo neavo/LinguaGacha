@@ -11,7 +11,10 @@ import {
 } from "../../../domain/json";
 import { Prompt, PROMPT_KINDS, type PromptKind } from "../../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import { normalize_setting_snapshot } from "../../../domain/setting";
+import {
+  normalize_project_settings_snapshot,
+  normalize_setting_snapshot,
+} from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary } from "../../../shared/agent";
 import { normalize_quality_rule_entries } from "../../../shared/quality/quality-rule-entry";
@@ -107,7 +110,7 @@ export class AgentWorkspaceService {
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      database: Pick<ProjectDatabase, "read_asset_content">;
+      database: Pick<ProjectDatabase, "get_all_meta" | "read_asset_content">;
       runtimeGate: {
         run_agent_project_write(
           operation: () => Promise<AgentWorkspaceStoreResult>,
@@ -336,6 +339,7 @@ export class AgentWorkspaceService {
           prompts: Object.fromEntries(
             Object.entries(project_workspace_prompts(this.options.cache.prompts.readBlock())),
           ),
+          duplicateFilterEnabled: this.read_duplicate_filter_enabled(active.projectPath),
         };
         preview = resolve_agent_workspace_writes({ batch: parsed.batch, current });
         all_rejected = normalize_workspace_rejections(
@@ -451,6 +455,15 @@ export class AgentWorkspaceService {
           read_json_integer(active.revisions[section], 0),
       );
     return { snapshotFresh: snapshot_fresh, taskCompatible: task_compatible };
+  }
+
+  /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
+  private read_duplicate_filter_enabled(project_path: string): boolean {
+    const meta = read_json_record(this.options.database.get_all_meta(project_path));
+    return normalize_project_settings_snapshot(
+      meta,
+      normalize_project_settings_snapshot(read_json_record(meta["prefilter_config"])),
+    ).skip_duplicate_source_text_enable;
   }
 
   /** apply 仍要求已有脚本准备出的活动快照。 */

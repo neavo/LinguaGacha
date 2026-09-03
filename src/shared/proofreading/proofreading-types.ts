@@ -62,9 +62,6 @@ export const PROOFREADING_OUTCOME_GROUPS = [
 // 运行时可能出现尚未进入内置词表的新检查结果，因此公开筛选值保留字符串扩展点。
 export type ProofreadingOutcomeCode = string;
 
-// 设置翻译状态菜单的唯一状态词表。
-export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
-
 // 同时服务排序和默认状态筛选。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
@@ -75,8 +72,6 @@ export const PROOFREADING_STATUS_ORDER = [
   "RULE_SKIPPED",
   "DUPLICATED",
 ] as const;
-
-export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
 export type ProofreadingWarningFragmentsByCode = Partial<
   Record<ProofreadingWarningFragmentCode, string[]>
