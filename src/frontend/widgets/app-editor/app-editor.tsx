@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { WrapText } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
@@ -8,10 +9,14 @@ import {
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  placeholder as editorPlaceholder,
 } from "@codemirror/view";
 
 import { useAppearance } from "@frontend/app/appearance/appearance-provider";
+import { useI18n } from "@frontend/app/locale/locale-provider";
 import { cn } from "@frontend/shadcn/classnames";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AppButton } from "@frontend/widgets/app-button";
 import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,
@@ -31,6 +36,7 @@ type AppEditorVariant = "document" | "field" | "viewer";
 type AppEditorBaseProps = {
   value: string;
   aria_label: string;
+  placeholder?: string;
   class_name?: string;
 };
 
@@ -59,7 +65,6 @@ type AppEditorFieldProps = AppEditorBaseProps &
 type AppEditorViewerProps = AppEditorBaseProps & {
   variant: "viewer";
   syntax?: AppEditorSyntax;
-  wrap_lines: boolean;
 };
 
 type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorViewerProps;
@@ -67,7 +72,6 @@ type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorVi
 type NormalizedAppEditorProps = AppEditorBaseProps & {
   variant: AppEditorVariant;
   syntax: AppEditorSyntax;
-  wrap_lines: boolean;
   read_only: boolean;
   invalid: boolean;
   aria_invalid: boolean;
@@ -83,6 +87,7 @@ const editor_readonly_compartment = new Compartment();
 const editor_syntax_compartment = new Compartment();
 const editor_variant_compartment = new Compartment();
 const editor_keymap_compartment = new Compartment();
+const editor_placeholder_compartment = new Compartment();
 const empty_app_text_marks: readonly AppTextMark[] = Object.freeze([]);
 
 /** 把互斥的公开形态收口为 CodeMirror 唯一运行配置。 */
@@ -103,7 +108,6 @@ function normalize_app_editor_props(props: AppEditorProps): NormalizedAppEditorP
     ...props,
     variant: props.variant ?? "document",
     syntax: props.variant === "field" ? "plain" : (props.syntax ?? "plain"),
-    wrap_lines: props.variant !== "field",
     invalid: props.invalid === true,
     aria_invalid: (props.aria_invalid ?? props.invalid) === true,
     indent_with_tab: props.indent_with_tab ?? true,
@@ -151,24 +155,26 @@ const field_editor_single_line_extension: Extension = [
   ),
 ];
 
-/** 三种形态在同一入口声明行号、空白标记与换行契约。 */
+/** 多行形态共享行号、空白标记与可切换换行，字段形态只保留单行约束。 */
 function resolve_app_editor_variant_extensions(
   variant: AppEditorVariant,
   wrap_lines: boolean,
 ): Extension[] {
-  switch (variant) {
-    case "field":
-      return [field_editor_single_line_extension];
-    case "viewer":
-      return [lineNumbers(), ...(wrap_lines ? [EditorView.lineWrapping] : [])];
-    case "document":
-      return [
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        app_editor_whitespace_extension,
-        EditorView.lineWrapping,
-      ];
+  if (variant === "field") {
+    return [field_editor_single_line_extension];
   }
+
+  return [
+    lineNumbers(),
+    app_editor_whitespace_extension,
+    ...(variant === "document" ? [highlightActiveLineGutter()] : []),
+    ...(wrap_lines ? [EditorView.lineWrapping] : []),
+  ];
+}
+
+/** 占位文案作为可重配扩展跟随当前语言与页面语义。 */
+function resolve_app_editor_placeholder_extension(placeholder: string | undefined): Extension {
+  return placeholder === undefined || placeholder === "" ? [] : editorPlaceholder(placeholder);
 }
 
 /** 外部值进入字段形态前先应用与事务一致的单行规则。 */
@@ -223,6 +229,7 @@ function create_editor_extensions(args: {
   syntax_extension: Extension;
   variant_extension: Extension;
   keymap_extension: Extension;
+  placeholder_extension: Extension;
   read_only: boolean;
   on_change: (next_value: string) => void;
   on_blur: () => void;
@@ -234,6 +241,7 @@ function create_editor_extensions(args: {
     editor_readonly_compartment.of(resolve_app_editor_readonly_extensions(args.read_only)),
     editor_syntax_compartment.of(args.syntax_extension),
     editor_variant_compartment.of(args.variant_extension),
+    editor_placeholder_compartment.of(args.placeholder_extension),
     app_editor_text_mark_field,
     create_app_editor_text_mark_hover_extension(args.marks_ref),
     drawSelection(),
@@ -258,10 +266,13 @@ function create_editor_extensions(args: {
 /** 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。 */
 export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolved_theme } = useAppearance();
+  const { t } = useI18n();
   const config = normalize_app_editor_props(props);
-  const { indent_with_tab, read_only, syntax, variant, wrap_lines } = config;
+  const { indent_with_tab, read_only, syntax, variant } = config;
+  const [wrap_lines, set_wrap_lines] = useState(true);
+  const wrap_lines_enabled = variant !== "field" && wrap_lines;
   const value = resolve_app_editor_value(props.value, variant);
-  const host_ref = useRef<HTMLDivElement | null>(null);
+  const editor_mount_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
   const on_change_ref = useRef(config.on_change);
   const on_blur_ref = useRef(config.on_blur);
@@ -273,8 +284,8 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const initial_read_only_ref = useRef(read_only);
   const initial_syntax_ref = useRef(syntax);
   const initial_variant_ref = useRef(variant);
-  const initial_wrap_lines_ref = useRef(wrap_lines);
   const initial_indent_with_tab_ref = useRef(indent_with_tab);
+  const initial_placeholder_ref = useRef(props.placeholder);
   const initial_marks_ref = useRef(normalize_app_text_marks(value.length, config.marks));
   const marks_ref = useRef<readonly AppTextMark[]>(initial_marks_ref.current);
   const initial_theme_extension_ref = useRef(
@@ -290,7 +301,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   }, [config.on_blur]);
 
   useEffect(() => {
-    if (host_ref.current === null) {
+    if (editor_mount_ref.current === null) {
       return;
     }
 
@@ -299,12 +310,12 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       extensions: create_editor_extensions({
         theme_extension: initial_theme_extension_ref.current,
         syntax_extension: resolve_app_editor_syntax_extensions(initial_syntax_ref.current),
-        variant_extension: resolve_app_editor_variant_extensions(
-          initial_variant_ref.current,
-          initial_wrap_lines_ref.current,
-        ),
+        variant_extension: resolve_app_editor_variant_extensions(initial_variant_ref.current, true),
         keymap_extension: editor_keymap_compartment.of(
           resolve_app_editor_keymap_extension(initial_indent_with_tab_ref.current),
+        ),
+        placeholder_extension: resolve_app_editor_placeholder_extension(
+          initial_placeholder_ref.current,
         ),
         read_only: initial_read_only_ref.current,
         on_change: (next_value) => {
@@ -320,7 +331,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     const editor_view = new EditorView({
       state: editor_state,
-      parent: host_ref.current,
+      parent: editor_mount_ref.current,
     });
 
     editor_view.contentDOM.setAttribute("aria-label", initial_aria_label_ref.current);
@@ -382,10 +393,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     editor_view.dispatch({
       effects: editor_variant_compartment.reconfigure(
-        resolve_app_editor_variant_extensions(variant, wrap_lines),
+        resolve_app_editor_variant_extensions(variant, wrap_lines_enabled),
       ),
     });
-  }, [variant, wrap_lines]);
+  }, [variant, wrap_lines_enabled]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -399,6 +410,19 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       ),
     });
   }, [indent_with_tab]);
+
+  useEffect(() => {
+    const editor_view = editor_view_ref.current;
+    if (editor_view === null) {
+      return;
+    }
+
+    editor_view.dispatch({
+      effects: editor_placeholder_compartment.reconfigure(
+        resolve_app_editor_placeholder_extension(props.placeholder),
+      ),
+    });
+  }, [props.placeholder]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
@@ -456,18 +480,50 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
   return (
     <div
-      ref={host_ref}
       data-invalid={config.invalid ? "true" : undefined}
       data-readonly={read_only ? "true" : undefined}
       className={cn(
         "app-editor",
         variant === "field" ? "app-editor--field" : undefined,
         variant === "viewer" ? "app-editor--viewer" : undefined,
-        wrap_lines ? "app-editor--wrap-lines" : undefined,
+        wrap_lines_enabled ? "app-editor--wrap-lines" : undefined,
         read_only && variant !== "viewer" ? "app-editor--readonly" : undefined,
         config.invalid ? "app-editor--invalid" : undefined,
         props.class_name,
       )}
-    />
+    >
+      {variant === "field" ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="app-editor__wrap-action"
+                aria-label={t("app.editor.line_wrap_target", { TARGET: props.aria_label })}
+                aria-pressed={wrap_lines}
+                onPointerDown={(event) => {
+                  // 指针切换只改变视图偏好，保持正文焦点并避免触发失焦提交。
+                  event.preventDefault();
+                }}
+                onClick={() => set_wrap_lines((current_value) => !current_value)}
+              >
+                <WrapText aria-hidden="true" />
+              </AppButton>
+            }
+          />
+          <TooltipContent side="left" sideOffset={8}>
+            <p>
+              {t("app.tooltip.value", {
+                TITLE: t("app.editor.line_wrap_target", { TARGET: props.aria_label }),
+                VALUE: t(wrap_lines ? "app.state.enabled" : "app.state.disabled"),
+              })}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+      <div ref={editor_mount_ref} className="app-editor__mount" />
+    </div>
   );
 }

@@ -1,12 +1,9 @@
-import { useMemo, useRef, useState } from "react";
-import { WrapText } from "lucide-react";
+import { useMemo, useRef } from "react";
 
 import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { AppButton } from "@frontend/widgets/app-button";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppEditorSyntax } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
@@ -22,19 +19,12 @@ type AgentToolDetailDialogProps = {
 /** 工具详情只挂载当前输入或输出面板，避免长载荷进入会话信息流 DOM。 */
 export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.Element {
   const { t } = useI18n();
-  const [wrap_lines, set_wrap_lines] = useState(true);
   const entry = props.entry;
   const initial_tab_ref = useRef<"input" | "output">(entry.output === null ? "input" : "output");
   const active = entry.status === "running";
   const duration = useAgentElapsed(entry.createdAt, active);
   const status_label = t(AGENT_STATUS_LABEL_KEYS[entry.status]);
   const title = t("agent_page.tool.details", { tool: entry.toolName });
-  const wrap_label = t("agent_page.tool.wrap");
-  const wrap_status = t("app.tooltip.value", {
-    TITLE: wrap_label,
-    VALUE: t(wrap_lines ? "app.state.enabled" : "app.state.disabled"),
-  });
-
   return (
     <AppPageDialog
       open
@@ -60,26 +50,6 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
             <TabsTrigger value="input">{t("agent_page.tool.input")}</TabsTrigger>
             <TabsTrigger value="output">{t("agent_page.tool.output")}</TabsTrigger>
           </TabsList>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <AppButton
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="agent-tool-detail__wrap-action"
-                  aria-label={wrap_label}
-                  aria-pressed={wrap_lines}
-                  onClick={() => set_wrap_lines((previous_value) => !previous_value)}
-                >
-                  <WrapText aria-hidden="true" />
-                </AppButton>
-              }
-            />
-            <TooltipContent side="bottom" sideOffset={8}>
-              <p>{wrap_status}</p>
-            </TooltipContent>
-          </Tooltip>
         </div>
         <TabsContent value="input" className="agent-tool-detail__panel">
           <AgentToolPayload
@@ -87,7 +57,6 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
             channel="input"
             content={entry.input}
             aria_label={t("agent_page.tool.input")}
-            wrap_lines={wrap_lines}
           />
         </TabsContent>
         <TabsContent value="output" className="agent-tool-detail__panel">
@@ -97,7 +66,6 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
             content={entry.output}
             fallback={status_label}
             aria_label={t("agent_page.tool.output")}
-            wrap_lines={wrap_lines}
           />
         </TabsContent>
       </Tabs>
@@ -112,7 +80,6 @@ function AgentToolPayload(props: {
   content: string | null;
   fallback?: string;
   aria_label: string;
-  wrap_lines: boolean;
 }): JSX.Element {
   const payload = useMemo(
     () =>
@@ -130,7 +97,6 @@ function AgentToolPayload(props: {
       value={payload.text}
       syntax={payload.syntax}
       aria_label={props.aria_label}
-      wrap_lines={props.wrap_lines}
       class_name="agent-tool-detail__viewer"
     />
   );

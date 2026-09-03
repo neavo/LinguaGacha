@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
@@ -14,18 +15,25 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   }),
 }));
 
-/** 通过原生 value setter 触发 React 受控 textarea 的 input 事件。 */
-function change_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
-  const value_descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
-  value_descriptor?.set?.call(textarea, value);
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-}
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
 
 /** 通过原生 value setter 触发 React 受控 input 的 input 事件。 */
 function change_input_value(input: HTMLInputElement, value: string): void {
   const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
   value_descriptor?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** 从公开可访问名称定位 CodeMirror，以真实编辑事务验证页面提交边界。 */
+function get_request_json_editor(label: string): EditorView {
+  const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`);
+  const editor = content === null ? null : EditorView.findFromDOM(content);
+  if (editor === null) {
+    throw new Error(`缺少请求 JSON 编辑器：${label}`);
+  }
+  return editor;
 }
 
 describe("ModelAdvancedSettingsDialog", () => {
@@ -44,6 +52,7 @@ describe("ModelAdvancedSettingsDialog", () => {
     document.body.append(container);
     root = createRoot(container);
     const on_patch = vi.fn(async () => {});
+    const on_json_format_error = vi.fn();
     const base_model = create_model_snapshot();
     const render_dialog = async (custom_enabled: boolean): Promise<void> => {
       await act(async () => {
@@ -53,6 +62,8 @@ describe("ModelAdvancedSettingsDialog", () => {
             model={create_model_snapshot({
               request: {
                 ...base_model.request,
+                extra_headers: {},
+                extra_body: {},
                 extra_headers_custom_enable: custom_enabled,
                 extra_body_custom_enable: custom_enabled,
               },
@@ -60,7 +71,7 @@ describe("ModelAdvancedSettingsDialog", () => {
             readonly={false}
             onPatch={on_patch}
             onAgentLimitsAdjusted={() => {}}
-            onJsonFormatError={() => {}}
+            onJsonFormatError={on_json_format_error}
             onClose={() => {}}
           />,
         );
@@ -68,28 +79,47 @@ describe("ModelAdvancedSettingsDialog", () => {
     };
 
     await render_dialog(false);
-    const readonly_json_fields = document.querySelectorAll("textarea[readonly]");
-    expect(readonly_json_fields.length).toBeGreaterThan(0);
-    for (const field of readonly_json_fields) {
-      expect(field).toHaveProperty("disabled", false);
-      field.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-    }
+    const readonly_headers = get_request_json_editor("model_page.fields.extra_headers.title");
+    const readonly_body = get_request_json_editor("model_page.fields.extra_body.title");
+    expect(readonly_headers.contentDOM.getAttribute("contenteditable")).toBe("false");
+    expect(readonly_body.contentDOM.getAttribute("contenteditable")).toBe("false");
+    readonly_headers.contentDOM.focus();
+    readonly_headers.contentDOM.blur();
+    readonly_body.contentDOM.focus();
+    readonly_body.contentDOM.blur();
     expect(on_patch).not.toHaveBeenCalled();
 
     await render_dialog(true);
-    const headers = document.querySelector(
-      'textarea[placeholder="model_page.fields.extra_headers.placeholder"]',
-    );
-    if (!(headers instanceof HTMLTextAreaElement)) {
-      throw new Error("自定义请求头输入框未挂载。");
-    }
-    expect(headers.readOnly).toBe(false);
-    await act(async () => change_textarea_value(headers, '{"X-Test":"ok"}'));
-    await act(async () => headers.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+    const headers = get_request_json_editor("model_page.fields.extra_headers.title");
+    expect(headers.contentDOM.getAttribute("contenteditable")).toBe("true");
+
+    await act(async () => {
+      headers.dispatch({
+        changes: { from: 0, to: headers.state.doc.length, insert: '{"X-Test":}' },
+      });
+    });
+    await act(async () => {
+      headers.contentDOM.focus();
+      headers.contentDOM.blur();
+    });
+    expect(on_json_format_error).toHaveBeenCalledOnce();
+    expect(headers.contentDOM.getAttribute("aria-invalid")).toBe("true");
+    expect(on_patch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      headers.dispatch({
+        changes: { from: 0, to: headers.state.doc.length, insert: '{"X-Test": "ok value"}' },
+      });
+    });
+    await act(async () => {
+      headers.contentDOM.focus();
+      headers.contentDOM.blur();
+    });
 
     expect(on_patch).toHaveBeenCalledWith({
-      request: { extra_headers: { "X-Test": "ok" } },
+      request: { extra_headers: { "X-Test": "ok value" } },
     });
+    expect(headers.contentDOM.getAttribute("aria-invalid")).toBe("false");
   });
 
   it("保留后端自动输出语义，并把不可用显式组合整组恢复自动", async () => {

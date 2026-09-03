@@ -113,7 +113,6 @@ export const de_de_agent_page = {
     details: "Werkzeugaufrufdetails für {tool}",
     input: "Eingabe",
     output: "Ausgabe",
-    wrap: "Zeilenumbruch",
   },
   round: {
     running: "Wird seit {duration} verarbeitet",

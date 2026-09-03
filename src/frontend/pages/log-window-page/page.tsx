@@ -391,7 +391,6 @@ export function LogWindowPage(): JSX.Element {
         class_name="log-window-page__detail-editor"
         value={fallback_value}
         aria_label={t("log_window_page.detail.title")}
-        wrap_lines
       />
     );
   }
