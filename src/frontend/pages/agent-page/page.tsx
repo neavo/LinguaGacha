@@ -39,7 +39,8 @@ import {
   useAgentSkills,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-session-context";
-import { AgentApprovalPanel } from "./agent-approval-panel";
+import { AgentQuestionDecision } from "./agent-question-decision";
+import { AgentWriteApprovalDecision } from "./agent-write-approval-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -286,22 +287,31 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [agent_actions, show_command_error],
   );
 
-  /** 审批面批准当前后端冻结的写入，错误沿用页面命令反馈。 */
-  const approve_pending_write = useCallback(
-    (switch_to_auto: boolean): void => {
-      void agent_actions.approvePendingWrite(switch_to_auto).catch((error: unknown) => {
-        show_command_error(error, "agent_page.error.approval_decision");
-      });
+  /** 用户决定只等待本地后端受理，后续执行结果继续由工具信息流表达。 */
+  const resolve_question = useCallback(
+    async (response: Parameters<typeof agent_actions.resolveQuestion>[0]): Promise<void> => {
+      try {
+        await agent_actions.resolveQuestion(response);
+      } catch (error) {
+        show_command_error(error, "agent_page.error.decision");
+        throw error;
+      }
     },
     [agent_actions, show_command_error],
   );
 
-  /** 审批面拒绝当前后端冻结的写入，保持模型工具失败语义。 */
-  const reject_pending_write = useCallback((): void => {
-    void agent_actions.rejectPendingWrite().catch((error: unknown) => {
-      show_command_error(error, "agent_page.error.approval_decision");
-    });
-  }, [agent_actions, show_command_error]);
+  /** 写入授权沿用同一受理反馈，但保持独立的权限值入口。 */
+  const resolve_write_approval = useCallback(
+    async (decision: Parameters<typeof agent_actions.resolveWriteApproval>[0]): Promise<void> => {
+      try {
+        await agent_actions.resolveWriteApproval(decision);
+      } catch (error) {
+        show_command_error(error, "agent_page.error.decision");
+        throw error;
+      }
+    },
+    [agent_actions, show_command_error],
+  );
 
   /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
@@ -481,8 +491,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const has_task_progress = taskProgress.length > 0;
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
-  const show_write_approval =
-    controls.pendingWriteApproval?.status === "waiting" && controls.command !== "approval_decision";
+  const pending_decision = controls.pendingDecision;
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
   const follow_latest_aria_shortcut =
@@ -627,53 +636,52 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div className="agent-page__status-zone">
-        {has_task_progress ? (
-          <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
-        ) : null}
-        {has_input_queue ? (
-          <div className="agent-page__status-queue-row">
-            <AgentInputQueue
-              queue={inputQueue}
-              disabled={
-                controls.command !== null ||
-                controls.pendingWriteApproval !== null ||
-                active_inline_edit !== null ||
-                unavailable_reason !== null ||
-                compacting
-              }
-              active_edit_item_id={
-                active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
-              }
-              render_item_editor={render_queue_editor}
-              on_edit={start_queue_edit}
-              on_delete={(id) =>
-                run_queue_command(
-                  () => agent_actions.deleteQueuedMessage(id),
-                  "agent_page.error.queue_delete",
-                )
-              }
-              on_reorder={(ids) =>
-                run_queue_command(
-                  () => agent_actions.reorderQueuedMessages(ids),
-                  "agent_page.error.queue_reorder",
-                )
-              }
-              on_send_now={(id) =>
-                run_queue_command(
-                  () => agent_actions.sendQueuedMessage(id),
-                  "agent_page.error.queue_send",
-                )
-              }
-            />
+      <div className="agent-page__bottom-region">
+        <div className="agent-page__bottom-controls" inert={pending_decision !== null || undefined}>
+          <div className="agent-page__status-zone">
+            {has_task_progress ? (
+              <AgentTaskProgress pending_labels={taskProgress} running={is_running} />
+            ) : null}
+            {has_input_queue ? (
+              <div className="agent-page__status-queue-row">
+                <AgentInputQueue
+                  queue={inputQueue}
+                  disabled={
+                    controls.command !== null ||
+                    active_inline_edit !== null ||
+                    unavailable_reason !== null ||
+                    compacting
+                  }
+                  active_edit_item_id={
+                    active_inline_edit?.kind === "queue" ? active_inline_edit.itemId : null
+                  }
+                  render_item_editor={render_queue_editor}
+                  on_edit={start_queue_edit}
+                  on_delete={(id) =>
+                    run_queue_command(
+                      () => agent_actions.deleteQueuedMessage(id),
+                      "agent_page.error.queue_delete",
+                    )
+                  }
+                  on_reorder={(ids) =>
+                    run_queue_command(
+                      () => agent_actions.reorderQueuedMessages(ids),
+                      "agent_page.error.queue_reorder",
+                    )
+                  }
+                  on_send_now={(id) =>
+                    run_queue_command(
+                      () => agent_actions.sendQueuedMessage(id),
+                      "agent_page.error.queue_send",
+                    )
+                  }
+                />
+              </div>
+            ) : null}
+            {follow_latest_control}
           </div>
-        ) : null}
-        {follow_latest_control}
-      </div>
 
-      {controls.pendingWriteApproval === null || show_write_approval ? (
-        <div className="agent-page__operation-zone">
-          {controls.pendingWriteApproval === null ? (
+          <div className="agent-page__operation-zone">
             <AgentComposer
               ref={composer_ref}
               locked={active_inline_edit !== null}
@@ -700,15 +708,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               on_stop={stop}
               on_reset={() => set_reset_dialog_open(true)}
             />
-          ) : (
-            <AgentApprovalPanel
-              summary={controls.pendingWriteApproval.summary}
-              on_approve={approve_pending_write}
-              on_reject={reject_pending_write}
-            />
-          )}
+          </div>
         </div>
-      ) : null}
+        {pending_decision?.kind === "question" ? (
+          <AgentQuestionDecision
+            key={pending_decision.id}
+            decision={pending_decision}
+            on_resolve={resolve_question}
+          />
+        ) : pending_decision?.kind === "write_approval" ? (
+          <AgentWriteApprovalDecision
+            key={pending_decision.id}
+            decision={pending_decision}
+            on_resolve={resolve_write_approval}
+          />
+        ) : null}
+      </div>
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}
         description={t("agent_page.confirm.thinking_off")}

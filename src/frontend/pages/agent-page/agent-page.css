@@ -2,6 +2,7 @@
   /* 工作区拥有外边界；页面根节点只管理尺寸、滚动和页内节奏。 */
   /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧。 */
   --agent-composer-max-width: 1120px;
+  --agent-decision-max-width: 720px;
   --agent-stream-width-offset: 48px;
   --agent-operation-surface-border-width: 1px;
   --agent-composer-padding-inline-end: 6px;
@@ -756,6 +757,22 @@
   white-space: nowrap;
 }
 
+.agent-page__bottom-region {
+  position: relative;
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.agent-page__bottom-controls {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--ui-page-pad-bottom);
+}
+
+.agent-page__bottom-controls[inert] {
+  user-select: none;
+}
+
 .agent-page__status-zone,
 .agent-page__operation-zone {
   display: flex;
@@ -1002,7 +1019,7 @@
   }
 }
 
-/* 输入与审批互斥切换时共享同一外框投影，内部布局由各自组件负责。 */
+/* 底部生产操作面使用稳定外框；用户决策层在其上方复用同一宽度基准。 */
 .agent-operation-surface {
   position: relative;
   box-sizing: border-box;
@@ -1267,73 +1284,337 @@
   gap: 8px;
 }
 
-.agent-approval {
+.agent-decision-layer {
+  position: absolute;
+  z-index: var(--ui-layer-overlay);
+  inset-inline: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  display: flex;
+  min-height: max(100%, 320px);
+  align-items: flex-end;
+}
+
+.agent-decision-shade {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding: 0 16px 16px;
+}
+
+.agent-decision-shade::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: rgb(0 0 0 / 10%);
+  backdrop-filter: blur(var(--blur-xs));
+  content: "";
+  mask-image: linear-gradient(to bottom, transparent 0, black 28%, black 100%);
+  pointer-events: none;
+}
+
+.agent-decision {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(100%, var(--agent-decision-max-width));
+  flex-direction: column;
+  padding: 10px 12px;
+  box-shadow: var(--ui-shadow-overlay);
+}
+
+.agent-decision:focus-within {
+  border-color: var(--border);
+}
+
+.agent-decision__header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: flex-start;
+  gap: 10px;
+  padding-inline: 4px;
+}
+
+.agent-decision__heading {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.agent-decision__title-line {
+  --agent-decision-title-size: 14px;
+
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-decision__title-icon {
+  width: var(--agent-decision-title-size);
+  height: var(--agent-decision-title-size);
+  flex: 0 0 var(--agent-decision-title-size);
+  color: var(--primary);
+}
+
+.agent-decision__prompt {
+  min-width: 0;
+  margin: 0;
+  color: var(--foreground);
+  font-size: var(--agent-decision-title-size);
+  font-weight: 500;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-write-summary {
+  display: flex;
+  margin: 0;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 0;
+  list-style: none;
+  white-space: normal;
+}
+
+.agent-write-summary__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.agent-write-summary__value {
+  color: var(--primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-decision__prompt:focus {
+  outline: none;
+}
+
+.agent-decision__description {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-decision__header-actions {
+  display: grid;
+  width: 24px;
+  min-height: 24px;
+  place-items: center;
+}
+
+.agent-decision__body {
+  margin-top: 8px;
+}
+
+.agent-decision__options {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
 }
 
-.agent-approval__description {
+.agent-decision-action {
   display: grid;
-  min-width: 0;
-  grid-template-columns: 14px minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-  margin: 0;
-  color: var(--foreground);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.agent-approval__description-icon {
-  display: grid;
-  width: 14px;
-  height: 1.5em;
-  place-items: center;
-  color: var(--primary);
-}
-
-.agent-approval__description-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.agent-approval__description-text {
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.agent-approval__change-count[data-changed="true"] {
-  color: var(--primary);
-}
-
-.agent-approval__actions {
-  display: flex;
   width: 100%;
-  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 34px;
+  grid-template-columns: max-content minmax(0, 1fr) 24px;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: auto;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: transparent;
+  color: var(--foreground);
+  padding: 6px 4px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.agent-approval__split {
-  display: inline-flex;
-  align-items: stretch;
-}
-
-.agent-approval__split > button:first-child {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.agent-approval__split > button:last-child {
-  border-left: 1px solid color-mix(in srgb, var(--primary-foreground) 30%, transparent);
+.agent-decision-action + .agent-decision-action {
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.agent-decision-action:hover {
+  background: var(--accent);
+}
+
+.agent-decision-action:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-decision-action__label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-decision-badge {
+  display: inline-flex;
+  min-width: 24px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ui-radius-pill);
+  background: var(--muted);
+  padding: 0 7px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.agent-decision-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: var(--ui-radius-pill);
+  background: var(--popover);
+  padding: 0;
+  color: var(--muted-foreground);
+}
+
+.agent-decision-icon > .agent-decision-action__arrow,
+.agent-decision-icon > svg:not(.agent-decision-progress) {
+  width: 13px;
+  height: 13px;
+}
+
+.agent-decision-action__icon {
+  position: relative;
+}
+
+.agent-decision-action__icon--deadline {
+  --agent-decision-deadline-color: var(--primary);
+
+  isolation: isolate;
+  border: 0;
+}
+
+.agent-decision-action__icon--deadline[data-warning="true"] {
+  --agent-decision-deadline-color: var(--ui-warning);
+}
+
+.agent-decision-action__icon--deadline::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border: 1.5px solid color-mix(in srgb, var(--agent-decision-deadline-color) 70%, transparent);
+  border-radius: inherit;
+  animation: agent-decision-deadline-pulse 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  content: "";
+  pointer-events: none;
+}
+
+.agent-decision-progress {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  fill: none;
+  pointer-events: none;
+  stroke-width: 1.5;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.agent-decision-progress__track {
+  stroke: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.agent-decision-progress__value {
+  stroke: var(--agent-decision-deadline-color);
+  stroke-dasharray: 100;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 1s linear,
+    stroke 120ms ease;
+}
+
+.agent-decision-action__arrow {
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes agent-decision-deadline-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+.agent-decision-action:hover .agent-decision-action__icon,
+.agent-decision-action:focus-visible .agent-decision-action__icon {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  color: var(--primary);
+}
+
+.agent-decision-custom {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-left: 4px;
+}
+
+.agent-decision-custom__field {
+  height: 30px;
+  border-radius: var(--ui-radius-button);
+}
+
+.agent-decision-custom__field input {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-decision-custom__submit:hover:not(:disabled),
+.agent-decision__cancel:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  color: var(--primary);
+}
+
+.agent-decision-custom__submit:disabled {
+  opacity: 0.45;
 }
 
 .agent-composer__reset,
@@ -1538,6 +1819,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .agent-decision-action__icon--deadline::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  .agent-decision-progress__value {
+    transition: none;
+  }
+
   .agent-status-mark--running {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
@@ -1557,6 +1847,7 @@
   .agent-thinking-entry__toggle,
   .agent-thinking-entry__content,
   .agent-tool-entry,
+  .agent-decision-action,
   .agent-composer__drop-overlay,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,

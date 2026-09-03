@@ -48,6 +48,8 @@ export type ScreenComponentProps = {
 type ScreenModule = {
   component: ComponentType<ScreenComponentProps>;
   title_key: LocaleKey;
+  /** 缺省页面使用 Shell 标准边距；沉浸式工作面显式占满 WorkspaceFrame。 */
+  workspace_layout?: "edge-to-edge";
 };
 
 export type ScreenRegistry = Partial<Record<RouteId, ScreenModule>>;

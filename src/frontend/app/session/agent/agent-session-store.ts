@@ -5,8 +5,10 @@ import type {
   AgentEntryStatus,
   AgentInputQueueSnapshot,
   AgentMessageInput,
-  AgentPendingWriteApproval,
+  AgentPendingDecision,
   AgentPendingWriteSummary,
+  AgentQuestion,
+  AgentQuestionResponse,
   AgentQueuedInput,
   AgentSessionEvent,
   AgentSessionSnapshot,
@@ -14,8 +16,11 @@ import type {
   AgentSkillDisplayDescriptions,
   AgentSkillSnapshot,
   AgentToolEntry,
+  AgentWriteApprovalDecision,
 } from "@shared/agent";
 import {
+  AGENT_QUESTION_OPTION_MAX,
+  AGENT_QUESTION_OPTION_MIN,
   AGENT_SESSION_EVENT_TOPIC,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
@@ -40,7 +45,7 @@ export type AgentCommand =
   | "queue_reorder"
   | "queue_send"
   | "approval_mode"
-  | "approval_decision"
+  | "decision"
   | null;
 
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
@@ -50,7 +55,7 @@ export type AgentTimelineSlice = Readonly<{ entries: readonly AgentEntry[] }>;
 export type AgentControlsSlice = Readonly<{
   state: AgentSessionState;
   approvalMode: AgentApprovalMode;
-  pendingWriteApproval: AgentPendingWriteApproval | null;
+  pendingDecision: AgentPendingDecision | null;
   contextTokens: number | null;
   transport: AgentTransportState;
   command: AgentCommand;
@@ -79,8 +84,8 @@ export type AgentSessionActions = Readonly<{
   stop: () => Promise<void>;
   reset: () => Promise<void>;
   setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
-  approvePendingWrite: (switch_to_auto: boolean) => Promise<void>;
-  rejectPendingWrite: () => Promise<void>;
+  resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
+  resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
   reconnect: () => void;
 }>;
 
@@ -92,7 +97,7 @@ const EMPTY_TIMELINE: AgentTimelineSlice = { entries: [] };
 const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
   approvalMode: "manual",
-  pendingWriteApproval: null,
+  pendingDecision: null,
   contextTokens: null,
   transport: "restoring",
   command: null,
@@ -147,8 +152,8 @@ export class AgentSessionStore {
       stop: this.stop,
       reset: this.reset,
       setApprovalMode: this.set_approval_mode,
-      approvePendingWrite: this.approve_pending_write,
-      rejectPendingWrite: this.reject_pending_write,
+      resolveQuestion: this.resolve_question,
+      resolveWriteApproval: this.resolve_write_approval,
       reconnect: this.reconnect,
     };
   }
@@ -237,7 +242,7 @@ export class AgentSessionStore {
     if (
       next.state === this.controls.state &&
       next.approvalMode === this.controls.approvalMode &&
-      next.pendingWriteApproval === this.controls.pendingWriteApproval &&
+      next.pendingDecision === this.controls.pendingDecision &&
       next.contextTokens === this.controls.contextTokens &&
       next.transport === this.controls.transport &&
       next.command === this.controls.command
@@ -308,7 +313,7 @@ export class AgentSessionStore {
       ...this.controls,
       state: snapshot.state,
       approvalMode: snapshot.approvalMode,
-      pendingWriteApproval: snapshot.pendingWriteApproval,
+      pendingDecision: snapshot.pendingDecision,
       contextTokens: snapshot.contextTokens,
     };
     this.emit("timeline");
@@ -342,8 +347,8 @@ export class AgentSessionStore {
       case "approval_mode":
         this.set_controls({ approvalMode: event.approvalMode });
         break;
-      case "pending_write_approval":
-        this.set_controls({ pendingWriteApproval: event.pendingWriteApproval });
+      case "pending_decision":
+        this.set_controls({ pendingDecision: event.pendingDecision });
         break;
       case "context_tokens":
         this.set_controls({ contextTokens: event.contextTokens });
@@ -516,22 +521,26 @@ export class AgentSessionStore {
     );
   };
 
-  private readonly approve_pending_write = async (switch_to_auto: boolean): Promise<void> => {
-    const pending = this.controls.pendingWriteApproval;
-    if (pending === null) return;
-    await this.execute_command("approval_decision", () =>
-      api_fetch<AgentCommandAck>("/api/agent/approval/approve", {
-        id: pending.id,
-        switchToAuto: switch_to_auto,
-      }),
+  /** 普通问题只向对应窄入口提交当前 pending 的身份与答案。 */
+  private readonly resolve_question = async (response: AgentQuestionResponse): Promise<void> => {
+    const pending = this.controls.pendingDecision;
+    if (pending?.kind !== "question") return;
+    await this.execute_command("decision", () =>
+      api_fetch<AgentCommandAck>("/api/agent/question/resolve", { id: pending.id, response }),
     );
   };
 
-  private readonly reject_pending_write = async (): Promise<void> => {
-    const pending = this.controls.pendingWriteApproval;
-    if (pending === null) return;
-    await this.execute_command("approval_decision", () =>
-      api_fetch<AgentCommandAck>("/api/agent/approval/reject", { id: pending.id }),
+  /** 写入授权与普通回答分离，避免 renderer 拼装混合载荷。 */
+  private readonly resolve_write_approval = async (
+    decision: AgentWriteApprovalDecision,
+  ): Promise<void> => {
+    const pending = this.controls.pendingDecision;
+    if (pending?.kind !== "write_approval") return;
+    await this.execute_command("decision", () =>
+      api_fetch<AgentCommandAck>("/api/agent/write-approval/resolve", {
+        id: pending.id,
+        decision,
+      }),
     );
   };
 
@@ -583,7 +592,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const revision = normalize_revision(record["revision"], "snapshot");
   const state = normalize_state(record["state"]);
   const approval_mode = normalize_approval_mode(record["approvalMode"]);
-  const pending_write_approval = normalize_pending_write_approval(record["pendingWriteApproval"]);
+  const pending_decision = normalize_pending_decision(record["pendingDecision"]);
   const entries = Array.isArray(record["entries"])
     ? record["entries"].flatMap(normalize_entry)
     : [];
@@ -593,7 +602,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const context_tokens = normalize_context_tokens(record["contextTokens"]);
   if (
     approval_mode === null ||
-    pending_write_approval === undefined ||
+    pending_decision === undefined ||
     input_queue === null ||
     task_progress === null ||
     context_tokens === undefined
@@ -604,7 +613,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     revision,
     state,
     approvalMode: approval_mode,
-    pendingWriteApproval: pending_write_approval,
+    pendingDecision: pending_decision,
     entries,
     skills,
     inputQueue: input_queue,
@@ -631,11 +640,11 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
         ? null
         : { type: "approval_mode", revision, approvalMode: approval_mode };
     }
-    case "pending_write_approval": {
-      const pending = normalize_pending_write_approval(record["pendingWriteApproval"]);
+    case "pending_decision": {
+      const pending = normalize_pending_decision(record["pendingDecision"]);
       return pending === undefined
         ? null
-        : { type: "pending_write_approval", revision, pendingWriteApproval: pending };
+        : { type: "pending_decision", revision, pendingDecision: pending };
     }
     case "input_queue": {
       const input_queue = normalize_input_queue(record["inputQueue"]);
@@ -820,20 +829,28 @@ function normalize_approval_mode(value: unknown): AgentApprovalMode | null {
   return value === "manual" || value === "auto" ? value : null;
 }
 
-function normalize_pending_write_approval(
-  value: unknown,
-): AgentPendingWriteApproval | null | undefined {
+/** 在不可信 snapshot / SSE 边界完整收窄两类 pending 决定。 */
+function normalize_pending_decision(value: unknown): AgentPendingDecision | null | undefined {
   if (value === null) return null;
   if (value === undefined || !is_json_record(value)) return undefined;
   const id = value["id"];
-  const status = value["status"];
+  const expires_at = value["expiresAt"];
   if (
     typeof id !== "string" ||
     id.trim() === "" ||
-    (status !== "waiting" && status !== "processing")
+    typeof expires_at !== "number" ||
+    !Number.isSafeInteger(expires_at) ||
+    expires_at < 0
   ) {
     return undefined;
   }
+  if (value["kind"] === "question") {
+    const question = normalize_question(value["question"]);
+    return question === null
+      ? undefined
+      : { kind: "question", id, expiresAt: expires_at, question };
+  }
+  if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];
   if (!is_json_record(raw_summary)) return undefined;
   const items = raw_summary["items"];
@@ -864,7 +881,52 @@ function normalize_pending_write_approval(
     postReplacement: post_replacement as number,
     prompts: prompts as number,
   };
-  return { id, status, summary };
+  return { kind: "write_approval", id, expiresAt: expires_at, summary };
+}
+
+/** 问题投影复核选项数量、文本与身份唯一性。 */
+function normalize_question(value: unknown): AgentQuestion | null {
+  if (!is_json_record(value) || typeof value["prompt"] !== "string") return null;
+  const prompt = value["prompt"].trim();
+  const description = value["description"];
+  if (description !== undefined && (typeof description !== "string" || description.trim() === "")) {
+    return null;
+  }
+  const raw_options = value["options"];
+  if (
+    prompt === "" ||
+    !Array.isArray(raw_options) ||
+    raw_options.length < AGENT_QUESTION_OPTION_MIN ||
+    raw_options.length > AGENT_QUESTION_OPTION_MAX
+  ) {
+    return null;
+  }
+  const ids = new Set<string>();
+  const options = raw_options.flatMap((candidate) => {
+    if (
+      !is_json_record(candidate) ||
+      typeof candidate["id"] !== "string" ||
+      typeof candidate["label"] !== "string"
+    ) {
+      return [];
+    }
+    const id = candidate["id"].trim();
+    const label = candidate["label"].trim();
+    if (id === "" || label === "" || ids.has(id)) {
+      return [];
+    }
+    ids.add(id);
+    return [{ id, label }];
+  });
+  const [first, second, third] = options;
+  if (first === undefined || second === undefined || options.length !== raw_options.length) {
+    return null;
+  }
+  const normalized_options: AgentQuestion["options"] =
+    third === undefined ? [first, second] : [first, second, third];
+  return description === undefined
+    ? { prompt, options: normalized_options }
+    : { prompt, description: description.trim(), options: normalized_options };
 }
 
 function normalize_skill(value: unknown): AgentSkillSnapshot[] {

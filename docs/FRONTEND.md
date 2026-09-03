@@ -35,13 +35,13 @@
 - 功能 query 的参数、结果窗口和缓存身份归消费页面所有；被多个当前页面复用的领域交互、API 适配与纯规则进入 `src/frontend/features/<capability>`，需要全量事实的搜索、统计、排序和写入计算仍由后端 query / command 提供。
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
 - 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。
-- `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
+- `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - 跨页面模型选择与所选模型思考配置由 `features/model-selection` 归一窄协议并持有页面生命周期 query / command；后端为每个模型公开生效 Agent 容量和可用思考档位，renderer 不按 API 格式或模型名再次推断。档位控件只列后端确认的值；空集合保持控件位置但禁用并显示“默认”及不支持提示。模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，写入消费共享 runtime 锁。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端分析结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
-- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、progress、skills 与 input 切片订阅；command、queue、task progress 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。Agent 会话恢复与连接世代规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、progress、skills 与 input 切片订阅；command、queue、task progress、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up，并统一承接手动入口与翻译完成提示的译文导出确认；导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。页面计算缓存、其它弹窗、导入和提交中状态默认随页面挂载与卸载。

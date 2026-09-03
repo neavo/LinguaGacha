@@ -15,7 +15,6 @@ export type AgentWorkspaceApprovalPort = {
     summary: AgentPendingWriteSummary,
     signal: AbortSignal | undefined,
   ) => Promise<{ switch_to_auto: boolean }>;
-  finish: (pending_id: string) => void;
   activate_auto: () => void;
 };
 
@@ -72,24 +71,18 @@ export function create_agent_workspace_tools(
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
-        // 只有手动模式建立 pending；自动模式保持原工具调用直通事务。
-        const pending_id: string | null = approval.read_mode() === "manual" ? tool_call_id : null;
         // 只在当前批次批准并成功提交后切换后续批次，拒绝或失败保持手动模式。
         let switch_to_auto = false;
-        try {
-          const result = await workspace.apply_workspace(
-            pending_id === null
-              ? undefined
-              : async (summary) => {
-                  const decision = await approval.wait_for_decision(tool_call_id, summary, signal);
-                  switch_to_auto = decision.switch_to_auto;
-                },
-          );
-          if (switch_to_auto) approval.activate_auto();
-          return agent_tool_result(result);
-        } finally {
-          if (pending_id !== null) approval.finish(pending_id);
-        }
+        const result = await workspace.apply_workspace(
+          approval.read_mode() === "auto"
+            ? undefined
+            : async (summary) => {
+                const decision = await approval.wait_for_decision(tool_call_id, summary, signal);
+                switch_to_auto = decision.switch_to_auto;
+              },
+        );
+        if (switch_to_auto) approval.activate_auto();
+        return agent_tool_result(result);
       },
     }),
   ];

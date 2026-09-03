@@ -22,8 +22,8 @@ const POST_PATHS = new Set([
   "/api/runtime/snapshot",
   "/api/agent/message",
   "/api/agent/approval-mode",
-  "/api/agent/approval/approve",
-  "/api/agent/approval/reject",
+  "/api/agent/question/resolve",
+  "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",
   "/api/agent/queue/delete",
   "/api/agent/queue/reorder",
@@ -122,7 +122,7 @@ describe("register_api_routes", () => {
         revision: 0,
         state: "idle",
         approvalMode: "manual",
-        pendingWriteApproval: null,
+        pendingDecision: null,
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -159,16 +159,16 @@ describe("register_api_routes", () => {
       },
     );
     expect(fixture.set_approval_mode).toHaveBeenCalledWith(approval_mode);
-    const pending = { id: "apply-1", switchToAuto: true };
-    await expect(
-      read_post_handler(fixture.post_json, "/api/agent/approval/approve")(pending),
-    ).resolves.toEqual({ revision: 7 });
-    expect(fixture.approve_pending_write).toHaveBeenCalledWith(pending);
-    const rejected = { id: "apply-1" };
-    await expect(
-      read_post_handler(fixture.post_json, "/api/agent/approval/reject")(rejected),
-    ).resolves.toEqual({ revision: 7 });
-    expect(fixture.reject_pending_write).toHaveBeenCalledWith(rejected);
+    const question = { id: "question-1", response: { kind: "option", optionId: "safe" } };
+    expect(read_post_handler(fixture.post_json, "/api/agent/question/resolve")(question)).toEqual({
+      revision: 7,
+    });
+    expect(fixture.resolve_question).toHaveBeenCalledWith(question);
+    const write = { id: "apply-1", decision: "allow_once" };
+    expect(
+      read_post_handler(fixture.post_json, "/api/agent/write-approval/resolve")(write),
+    ).toEqual({ revision: 7 });
+    expect(fixture.resolve_write_approval).toHaveBeenCalledWith(write);
     const queued = { id: "queue-1" };
     expect(read_post_handler(fixture.post_json, "/api/agent/queue/delete")(queued)).toEqual({
       revision: 7,
@@ -252,8 +252,8 @@ function create_route_fixture() {
   const acknowledgement = { revision: 7 };
   const send_message = vi.fn(async () => acknowledgement);
   const set_approval_mode = vi.fn(() => acknowledgement);
-  const approve_pending_write = vi.fn(async () => acknowledgement);
-  const reject_pending_write = vi.fn(async () => acknowledgement);
+  const resolve_question = vi.fn(() => acknowledgement);
+  const resolve_write_approval = vi.fn(() => acknowledgement);
   const revise_latest_round = vi.fn(async () => acknowledgement);
   const update_queued_message = vi.fn(() => acknowledgement);
   const delete_queued_message = vi.fn(() => acknowledgement);
@@ -273,7 +273,7 @@ function create_route_fixture() {
       revision: 0,
       state: "idle",
       approvalMode: "manual",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
       skills: [],
       inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -282,8 +282,8 @@ function create_route_fixture() {
     })),
     send_message,
     set_approval_mode,
-    approve_pending_write,
-    reject_pending_write,
+    resolve_question,
+    resolve_write_approval,
     update_queued_message,
     delete_queued_message,
     reorder_queued_messages,
@@ -338,8 +338,8 @@ function create_route_fixture() {
     reset,
     send_message,
     set_approval_mode,
-    approve_pending_write,
-    reject_pending_write,
+    resolve_question,
+    resolve_write_approval,
     send_queued_message,
     reorder_queued_messages,
     update_queued_message,

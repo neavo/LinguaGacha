@@ -31,8 +31,6 @@ import {
   type AgentAssistantMessageParts,
   type AgentApprovalMode,
   type AgentCommandAck,
-  type AgentPendingWriteApproval,
-  type AgentPendingWriteSummary,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
@@ -50,6 +48,7 @@ import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import { AgentDecisionCoordinator } from "./agent-decision";
 import { register_agent_model } from "./agent-model";
 import {
   append_agent_session_seed,
@@ -57,6 +56,7 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./tools/skill";
+import { create_agent_question_tools } from "./tools/question";
 import { AgentInputQueue } from "./agent-input-queue";
 import { AgentTaskProgress, create_agent_task_progress_tools } from "./tools/task-progress";
 import { create_agent_web_tools, type AgentWebPort } from "./tools/web";
@@ -115,20 +115,6 @@ type AgentRuntime = {
   session: AgentSession;
   unsubscribe: () => void;
   steer_ready: boolean; // Pi 已进入 agent loop 且当前不在压缩阶段
-};
-
-/** UI 对当前冻结差异的一次性决定；自动模式切换只在批准后生效。 */
-type WorkspaceApplyDecision = Readonly<{
-  approved: boolean;
-  switch_to_auto: boolean;
-}>;
-
-/** workspace_apply 在准备差异与工具终帧之间持有的单一审批状态。 */
-type PendingWorkspaceApply = {
-  id: string;
-  status: AgentPendingWriteApproval["status"];
-  summary: AgentPendingWriteSummary;
-  decide: (decision: WorkspaceApplyDecision) => void;
 };
 
 type AgentAssistantStreamBlock = {
@@ -212,6 +198,7 @@ export class AgentService {
   private readonly publish: AgentServiceOptions["publish"];
   private readonly task_progress = new AgentTaskProgress(); // 对话级队列；只有未完成标签进入公开会话投影
   private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
+  private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其固定期限
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
@@ -221,7 +208,6 @@ export class AgentService {
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
-  private pending_workspace_apply: PendingWorkspaceApply | null = null; // 当前唯一待审批写入
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private context_tokens: number | null = null; // 压缩终态优先采用 SDK 新历史估算，避免复用旧 usage
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
@@ -244,6 +230,14 @@ export class AgentService {
     this.workspace = options.workspace;
     this.log_manager = options.logManager;
     this.publish = options.publish;
+    this.decisions = new AgentDecisionCoordinator(() => {
+      if (this.disposed) return;
+      this.publish_event({
+        type: "pending_decision",
+        pendingDecision: this.decisions.read_pending(),
+      });
+      this.publish_input_queue();
+    });
     this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
       this.reset_session("project", change.loaded ? change.projectPath : null),
     );
@@ -255,14 +249,7 @@ export class AgentService {
       revision: this.revision,
       state: this.state,
       approvalMode: this.approval_mode,
-      pendingWriteApproval:
-        this.pending_workspace_apply === null
-          ? null
-          : {
-              id: this.pending_workspace_apply.id,
-              status: this.pending_workspace_apply.status,
-              summary: this.pending_workspace_apply.summary,
-            },
+      pendingDecision: this.decisions.read_pending(),
       entries: structuredClone(this.entries),
       skills: (this.resources?.skills ?? [])
         .filter(({ visible }) => visible)
@@ -288,7 +275,7 @@ export class AgentService {
     if (
       this.session_reset !== null ||
       this.find_open_workspace_apply_entry() !== undefined ||
-      this.pending_workspace_apply !== null
+      this.decisions.has_pending
     ) {
       throw new AppErrors.AppError("runtime.busy");
     }
@@ -300,28 +287,18 @@ export class AgentService {
     return this.get_acknowledgement();
   }
 
-  /** UI 批准当前冻结的 workspace_apply；确认决定后由工具继续结算。 */
-  public approve_pending_write(request: JsonRecord): AgentCommandAck {
-    const pending = this.require_pending_workspace_apply(request);
-    const switch_to_auto = request["switchToAuto"];
-    if (switch_to_auto !== undefined && typeof switch_to_auto !== "boolean") {
-      throw new AppErrors.AppError("request.validation_failed", {
-        diagnostic_context: { reason: "agent_approval_switch_invalid" },
-      });
-    }
-    return this.accept_pending_workspace_decision(pending, {
-      approved: true,
-      switch_to_auto: switch_to_auto === true,
-    });
+  /** 普通问题的决定只恢复 ask_user，不建立公开 user 消息。 */
+  public resolve_question(request: JsonRecord): AgentCommandAck {
+    this.assert_not_disposed();
+    this.decisions.resolve_question(request);
+    return this.get_acknowledgement();
   }
 
-  /** UI 拒绝当前冻结的 workspace_apply；确认决定后由工具生成稳定失败结果。 */
-  public reject_pending_write(request: JsonRecord): AgentCommandAck {
-    const pending = this.require_pending_workspace_apply(request);
-    return this.accept_pending_workspace_decision(pending, {
-      approved: false,
-      switch_to_auto: false,
-    });
+  /** 写入授权只恢复当前 workspace_apply，不接受普通问题答案。 */
+  public resolve_write_approval(request: JsonRecord): AgentCommandAck {
+    this.assert_not_disposed();
+    this.decisions.resolve_write_approval(request);
+    return this.get_acknowledgement();
   }
 
   /** 启动期原子加载必需的基础 Prompt、会话种子和初始 skill catalog。 */
@@ -346,7 +323,7 @@ export class AgentService {
     if (this.session_reset !== null) {
       throw new AppErrors.AppError("runtime.busy");
     }
-    if (this.pending_workspace_apply !== null) {
+    if (this.decisions.has_pending) {
       throw new AppErrors.AppError("runtime.busy");
     }
     const message = normalize_agent_message_input(request);
@@ -584,6 +561,7 @@ export class AgentService {
     if (this.disposed) return;
     this.disposed = true;
     this.clear_assistant_stream();
+    this.decisions.reset();
     this.task_progress.reset();
     this.input_queue.reset();
     this.runtime_generation += 1;
@@ -953,6 +931,10 @@ export class AgentService {
       noTools: "builtin",
       customTools: [
         ...create_agent_task_progress_tools(this.task_progress),
+        ...create_agent_question_tools({
+          wait_for_answer: (tool_call_id, question, signal) =>
+            this.decisions.wait_for_question(tool_call_id, question, signal),
+        }),
         ...create_agent_workspace_tools(this.workspace, this.workspace_approval_port()),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
@@ -1419,6 +1401,7 @@ export class AgentService {
 
   /** 只有 Pi agent loop 可接收 steer，空闲时则由共享 runtime gate 决定。 */
   private can_send_queued_now(): boolean {
+    if (this.decisions.has_pending) return false;
     if (this.state === "running") return this.runtime?.steer_ready === true;
     return this.runtime_gate.get_snapshot().owner === null;
   }
@@ -1459,12 +1442,7 @@ export class AgentService {
     this.runtime = null;
     this.state = "idle";
     this.approval_mode = "manual";
-    const pending_workspace_apply = this.pending_workspace_apply;
-    this.pending_workspace_apply = null;
-    if (pending_workspace_apply !== null) {
-      pending_workspace_apply.decide({ approved: false, switch_to_auto: false });
-      this.publish_pending_workspace_apply();
-    }
+    this.decisions.reset();
     this.entries = [];
     this.context_tokens = null;
     this.latest_round_checkpoint = null;
@@ -1605,95 +1583,26 @@ export class AgentService {
     );
   }
 
-  /** workspace_apply 的唯一审批门控；审批状态只属于 UI 控制面。 */
+  /** workspace_apply 的授权模式与用户决定在 AgentService 边界汇合。 */
   private workspace_approval_port(): AgentWorkspaceApprovalPort {
     return {
       read_mode: () => this.approval_mode,
-      wait_for_decision: (tool_call_id, summary, signal) =>
-        this.wait_for_workspace_approval(tool_call_id, summary, signal),
-      finish: (pending_id) => this.finish_workspace_approval(pending_id),
+      wait_for_decision: async (tool_call_id, summary, signal) => {
+        const decision = await this.decisions.wait_for_write_approval(
+          tool_call_id,
+          summary,
+          signal,
+        );
+        if (decision === "reject") {
+          throw new AgentToolError({ code: "approval_denied", action: "await_user" });
+        }
+        return { switch_to_auto: decision === "allow_session" };
+      },
       activate_auto: () => {
         this.approval_mode = "auto";
         this.publish_event({ type: "approval_mode", approvalMode: "auto" });
       },
     };
-  }
-
-  /** 创建一次性审批 promise，并让取消、reset 与 UI 决策共享同一决定入口。 */
-  private async wait_for_workspace_approval(
-    tool_call_id: string,
-    summary: AgentPendingWriteSummary,
-    signal: AbortSignal | undefined,
-  ): Promise<{ switch_to_auto: boolean }> {
-    if (this.pending_workspace_apply !== null) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    let decide!: (decision: WorkspaceApplyDecision) => void;
-    const decision = new Promise<WorkspaceApplyDecision>((resolve) => {
-      decide = resolve;
-    });
-    const pending: PendingWorkspaceApply = {
-      id: tool_call_id,
-      status: "waiting",
-      summary,
-      decide,
-    };
-    this.pending_workspace_apply = pending;
-    this.publish_pending_workspace_apply();
-    const on_abort = () => decide({ approved: false, switch_to_auto: false });
-    signal?.addEventListener("abort", on_abort, { once: true });
-    try {
-      const result = await decision;
-      if (!result.approved) {
-        throw new AgentToolError({ code: "approval_denied", action: "await_user" });
-      }
-      return { switch_to_auto: result.switch_to_auto };
-    } finally {
-      signal?.removeEventListener("abort", on_abort);
-    }
-  }
-
-  /** 工具终帧后清除审批状态，公开结果继续由工具条目表达。 */
-  private finish_workspace_approval(pending_id: string): void {
-    if (this.pending_workspace_apply?.id !== pending_id) return;
-    this.pending_workspace_apply = null;
-    this.publish_pending_workspace_apply();
-  }
-
-  /** 确认用户决定并先返回 processing 快照，下一事件循环再恢复可能同步写库的工具。 */
-  private accept_pending_workspace_decision(
-    pending: PendingWorkspaceApply,
-    decision: WorkspaceApplyDecision,
-  ): AgentCommandAck {
-    pending.status = "processing";
-    this.publish_pending_workspace_apply();
-    const acknowledgement = this.get_acknowledgement();
-    setImmediate(() => pending.decide(decision));
-    return acknowledgement;
-  }
-
-  /** 只允许当前等待态和同一工具调用 ID 参与审批，拒绝重复或过期命令。 */
-  private require_pending_workspace_apply(request: JsonRecord): PendingWorkspaceApply {
-    const pending = this.pending_workspace_apply;
-    if (pending === null || pending.status !== "waiting" || request["id"] !== pending.id) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
-    return pending;
-  }
-
-  /** 审批进入等待、处理中和完成态都通过同一 SSE 事件回流。 */
-  private publish_pending_workspace_apply(): void {
-    this.publish_event({
-      type: "pending_write_approval",
-      pendingWriteApproval:
-        this.pending_workspace_apply === null
-          ? null
-          : {
-              id: this.pending_workspace_apply.id,
-              status: this.pending_workspace_apply.status,
-              summary: this.pending_workspace_apply.summary,
-            },
-    });
   }
 
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
@@ -1712,7 +1621,7 @@ export class AgentService {
   /** 队列命令可与模型回合并行，但不能穿透 reset 关闭屏障。 */
   private assert_queue_command_available(): void {
     this.assert_not_disposed();
-    if (this.session_reset !== null || this.pending_workspace_apply !== null) {
+    if (this.session_reset !== null || this.decisions.has_pending) {
       throw new AppErrors.AppError("runtime.busy");
     }
   }
