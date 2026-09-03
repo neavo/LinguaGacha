@@ -18,6 +18,7 @@ export default defineConfig({
           enabled: true,
           include: [
             "@codemirror/commands",
+            "@codemirror/lang-javascript",
             "@codemirror/lang-json",
             "@codemirror/lang-markdown",
             "@codemirror/language",

@@ -1,5 +1,6 @@
 import { tags } from "@lezer/highlight";
 
+import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -24,7 +25,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
-export type AppEditorSyntax = "plain" | "markdown" | "json";
+export type AppEditorSyntax = "plain" | "markdown" | "json" | "typescript";
 export type AppTextMarkTone = "success" | "warning";
 
 export type AppTextMark = {
@@ -45,11 +46,14 @@ type MarkdownPalette = {
   separator: string;
 };
 
-type JsonPalette = {
+type CodePalette = {
   property: string;
   string: string;
   number: string;
-  literal: string;
+  keyword: string;
+  definition: string;
+  type: string;
+  comment: string;
 };
 
 type EditorPalette = {
@@ -60,7 +64,7 @@ type EditorPalette = {
   gutter_active_foreground: string;
   active_line_background: string;
   markdown: MarkdownPalette;
-  json: JsonPalette;
+  code: CodePalette;
 };
 
 // CodeMirror 主题不读取 DOM token，明暗 palette 在扩展创建时冻结并随主题重配。
@@ -81,11 +85,14 @@ const light_editor_palette: EditorPalette = {
     quote: "#6e7781",
     separator: "#9a6700",
   },
-  json: {
+  code: {
     property: "#0451a5",
     string: "#a31515",
     number: "#098658",
-    literal: "#0000ff",
+    keyword: "#0000ff",
+    definition: "#795e26",
+    type: "#267f99",
+    comment: "#008000",
   },
 };
 
@@ -106,11 +113,14 @@ const dark_editor_palette: EditorPalette = {
     quote: "#8b949e",
     separator: "#d7ba7d",
   },
-  json: {
+  code: {
     property: "#9cdcfe",
     string: "#ce9178",
     number: "#b5cea8",
-    literal: "#569cd6",
+    keyword: "#569cd6",
+    definition: "#dcdcaa",
+    type: "#4ec9b0",
+    comment: "#6a9955",
   },
 };
 
@@ -392,14 +402,20 @@ function create_markdown_highlight_extension(palette: EditorPalette): Extension 
   );
 }
 
-/** 按统一 palette 生成 JSON 语义高亮。 */
-function create_json_highlight_extension(palette: EditorPalette): Extension {
+/** JSON 与 TypeScript 共用代码语义色，保持语言之间的调色板一致。 */
+function create_code_highlight_extension(palette: EditorPalette): Extension {
   return syntaxHighlighting(
     HighlightStyle.define([
-      { tag: tags.propertyName, color: palette.json.property },
-      { tag: tags.string, color: palette.json.string },
-      { tag: tags.number, color: palette.json.number },
-      { tag: [tags.bool, tags.null], color: palette.json.literal },
+      {
+        tag: [tags.definition(tags.variableName), tags.function(tags.variableName)],
+        color: palette.code.definition,
+      },
+      { tag: tags.propertyName, color: palette.code.property },
+      { tag: tags.typeName, color: palette.code.type },
+      { tag: tags.string, color: palette.code.string },
+      { tag: tags.number, color: palette.code.number },
+      { tag: [tags.bool, tags.null, tags.keyword], color: palette.code.keyword },
+      { tag: tags.comment, color: palette.code.comment },
     ]),
   );
 }
@@ -415,8 +431,8 @@ export function resolve_app_editor_theme_extensions(
   if (syntax === "markdown") {
     return [base_theme, create_markdown_highlight_extension(palette)];
   }
-  if (syntax === "json") {
-    return [base_theme, create_json_highlight_extension(palette)];
+  if (syntax === "json" || syntax === "typescript") {
+    return [base_theme, create_code_highlight_extension(palette)];
   }
 
   return base_theme;
@@ -448,6 +464,8 @@ export function resolve_app_editor_syntax_extensions(syntax: AppEditorSyntax): E
   if (syntax === "json") {
     return json();
   }
-
+  if (syntax === "typescript") {
+    return javascript({ typescript: true });
+  }
   return [];
 }

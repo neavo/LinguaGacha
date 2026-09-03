@@ -1,14 +1,18 @@
 import { useMemo, useRef, useState } from "react";
 import { WrapText } from "lucide-react";
 
+import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
+import type { AppEditorSyntax } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
+
+type AgentToolPayloadChannel = "input" | "output";
 
 type AgentToolDetailDialogProps = {
   entry: AgentToolEntry;
@@ -79,6 +83,8 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
         </div>
         <TabsContent value="input" className="agent-tool-detail__panel">
           <AgentToolPayload
+            tool_name={entry.toolName}
+            channel="input"
             content={entry.input}
             aria_label={t("agent_page.tool.input")}
             wrap_lines={wrap_lines}
@@ -86,6 +92,8 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
         </TabsContent>
         <TabsContent value="output" className="agent-tool-detail__panel">
           <AgentToolPayload
+            tool_name={entry.toolName}
+            channel="output"
             content={entry.output}
             fallback={status_label}
             aria_label={t("agent_page.tool.output")}
@@ -99,14 +107,22 @@ export function AgentToolDetailDialog(props: AgentToolDetailDialogProps): JSX.El
 
 /** 当前标签页复用只读编辑器展示大载荷，不复制编辑与校验能力。 */
 function AgentToolPayload(props: {
+  tool_name: string;
+  channel: AgentToolPayloadChannel;
   content: string | null;
   fallback?: string;
   aria_label: string;
   wrap_lines: boolean;
 }): JSX.Element {
   const payload = useMemo(
-    () => resolve_tool_payload(props.content, props.fallback),
-    [props.content, props.fallback],
+    () =>
+      resolve_agent_tool_payload({
+        tool_name: props.tool_name,
+        channel: props.channel,
+        content: props.content,
+        fallback: props.fallback,
+      }),
+    [props.channel, props.content, props.fallback, props.tool_name],
   );
   return (
     <AppEditor
@@ -120,21 +136,43 @@ function AgentToolPayload(props: {
   );
 }
 
-/** JSON 载荷便于人工检查，非 JSON 正文保持模型实际收到的原文。 */
-function resolve_tool_payload(
-  payload: string | null,
-  fallback?: string,
-): { text: string; syntax: "json" | "plain" } {
-  if (payload === null) {
-    return { text: fallback ?? "", syntax: "plain" };
+/** JSON 载荷按语义格式化，工作区脚本输入直接展示实际执行的 TypeScript 正文。 */
+function resolve_agent_tool_payload(options: {
+  tool_name: string;
+  channel: AgentToolPayloadChannel;
+  content: string | null;
+  fallback?: string;
+}): { text: string; syntax: AppEditorSyntax } {
+  if (options.content === null) {
+    return { text: options.fallback ?? "", syntax: "plain" };
   }
 
+  let parsed: unknown;
   try {
-    return {
-      text: JSON.stringify(JSON.parse(payload) as unknown, null, 2) ?? payload,
-      syntax: "json",
-    };
+    parsed = JSON.parse(options.content) as unknown;
   } catch {
-    return { text: payload, syntax: "plain" };
+    return { text: options.content, syntax: "plain" };
   }
+
+  if (options.channel === "input" && options.tool_name === "workspace_script") {
+    const script = read_workspace_script(parsed);
+    if (script !== null) {
+      return { text: script, syntax: "typescript" };
+    }
+  }
+
+  return {
+    text: JSON.stringify(parsed, null, 2) ?? options.content,
+    syntax: "json",
+  };
+}
+
+/** 只在结构完整匹配当前工具契约时提取脚本，使显示内容覆盖调用的全部输入。 */
+function read_workspace_script(value: unknown): string | null {
+  if (!is_json_record(value) || Object.keys(value).length !== 1) {
+    return null;
+  }
+
+  const script = value["script"];
+  return typeof script === "string" && script.length > 0 ? script : null;
 }
