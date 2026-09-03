@@ -88,21 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260831 v0.117.4
-  - Adjusted builtin skill update logic
-
-- 20260830 v0.117.3
-  - Fixed the log page
-
-- 20260830 v0.117.2
-  - Adjustments and improvements [#823](../../issues/823) [#826](../../issues/826) [#828](../../issues/828) [#829](../../issues/829) [#830](../../issues/830) [#834](../../issues/834) [#836](../../issues/836) [#837](../../issues/837)
-
-- 20260827 v0.117.1
-  - Adjustments and improvements [#808](../../issues/808) [#810](../../issues/810) [#811](../../issues/811) [#812](../../issues/812) [#814](../../issues/814) [#815](../../issues/815) [#817](../../issues/817)
-
-- 20260825 v0.117.0
-  - `AGENT` - Auto write approval [#806](../../issues/806)
-  - Adjustments and improvements [#795](../../issues/795) [#797](../../issues/797) [#801](../../issues/801) [#804](../../issues/804)
+- 20260903 v0.118.0
+  - Refactored  `CodeAct` engine based on `Deno` [#851](../../issues/851)
+  - Fixes and improvements [#844](../../issues/844) [#845](../../issues/845) [#846](../../issues/846) [#847](../../issues/847) [#848](../../issues/848) [#849](../../issues/849) [#850](../../issues/850) [#852](../../issues/852)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
