@@ -1,4 +1,6 @@
 import path from "node:path";
+
+import { is_item_manual_status } from "../../../domain/item";
 import { is_json_record, type JsonRecord } from "../../../domain/json";
 import { PROMPT_KINDS, type PromptKind } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
@@ -11,7 +13,6 @@ import {
   AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
   AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
-  is_agent_workspace_manual_status,
 } from "./contract";
 import {
   AGENT_WORKSPACE_FP_LENGTH,
@@ -103,11 +104,7 @@ function parse_item(value: JsonRecord, line: number): Parsed<AgentWorkspaceItemU
   for (const field of AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS) {
     if (!Object.hasOwn(value, field)) continue;
     const field_value = value[field];
-    if (
-      field === "status"
-        ? !is_agent_workspace_manual_status(field_value)
-        : typeof field_value !== "string"
-    )
+    if (field === "status" ? !is_item_manual_status(field_value) : typeof field_value !== "string")
       return { rejection: reject("items", "update", line, "invalid_change", item_id) };
     update[field] = field_value;
   }

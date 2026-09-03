@@ -42,6 +42,33 @@ describe("Agent workspace change parser", () => {
     });
   });
 
+  it("Item 状态变更只接受人工状态", async () => {
+    const workspace = create_workspace();
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+      [
+        JSON.stringify({ item_id: 1, fp: "abcd", status: "NONE" }),
+        JSON.stringify({ item_id: 2, fp: "ghij", status: "DUPLICATED" }),
+      ].join("\n"),
+    );
+
+    const parsed = await prepare_agent_workspace_changes({
+      nativeFs: new NativeFs(),
+      workspacePath: workspace,
+    });
+
+    expect(parsed.batch.items).toEqual([
+      { line: 1, item_id: 1, fp: "abcd", update: { status: "NONE" } },
+    ]);
+    expect(parsed.rejected).toContainEqual({
+      scope: "items",
+      op: "update",
+      id: 2,
+      reason: "invalid_change",
+    });
+  });
+
   it("create 的未知字段只拒绝对应行", async () => {
     const workspace = create_workspace();
     write(

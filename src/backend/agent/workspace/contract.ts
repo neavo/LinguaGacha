@@ -3,11 +3,7 @@ import { Type, type TSchema } from "@earendil-works/pi-ai";
 import { read_json_integer, type JsonRecord } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import {
-  PROOFREADING_MANUAL_STATUS_CODES,
-  type ProofreadingClientItem,
-  type ProofreadingManualStatusCode,
-} from "../../../shared/proofreading/proofreading-types";
+import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
 import {
   AGENT_WORKSPACE_FP_LENGTH,
   AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
@@ -327,10 +323,15 @@ const agent_workspace_contract = {
   },
   effects: {
     item_updates: {
-      non_empty_dst: { status: "PROCESSED" },
-      empty_dst: { status: "preserve" },
+      changed_dst: { status: "PROCESSED", retry_count: 0 },
+      confirmed_error_dst: { status: "PROCESSED", retry_count: 0 },
       name_dst: { status: "preserve", retry_count: "preserve" },
       explicit_status: { precedence: "after_dst", retry_count: 0 },
+      duplicate_group: {
+        key: ["file_path", "src"],
+        status: "automatic",
+        affected_values: ["NONE", "DUPLICATED"],
+      },
     },
   },
   guidance: {
@@ -382,11 +383,4 @@ export function project_agent_workspace_warning(item: ProofreadingClientItem): J
       fields: application.fields.map((field) => ({ ...field })),
     })),
   } as JsonRecord;
-}
-
-/** 工作区主动状态更新只接受校对菜单暴露的人工状态。 */
-export function is_agent_workspace_manual_status(
-  value: unknown,
-): value is ProofreadingManualStatusCode {
-  return (PROOFREADING_MANUAL_STATUS_CODES as readonly unknown[]).includes(value);
 }

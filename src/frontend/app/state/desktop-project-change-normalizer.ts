@@ -13,7 +13,7 @@ import {
   type ProjectChangePayloadMode,
 } from "@shared/project-event";
 import type { JsonRecord } from "@domain/json";
-import { normalize_project_item_field_patch } from "@shared/project/project-item-field-patch";
+import { normalize_project_item_field_patch } from "@shared/project/project-item-update";
 
 /**
  * 后端 SSE 与同步写入共享的项目变更载荷，入口处必须立即转成运行态事件。

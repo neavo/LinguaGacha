@@ -9,7 +9,7 @@ import {
 } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
 import type { ProjectChangeItemFieldPatch, ProjectDataSection } from "../../shared/project-event";
-import type { ProjectItemWriteFields } from "../../shared/project/project-item-field-patch";
+import type { ProjectItemWriteFields } from "../../shared/project/project-item-update";
 
 export type ProjectExpectedSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 

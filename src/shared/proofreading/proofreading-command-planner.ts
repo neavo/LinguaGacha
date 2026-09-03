@@ -1,8 +1,8 @@
-import type { ItemNameField } from "../../domain/item";
+import type { ItemManualStatus, ItemNameField } from "../../domain/item";
 import type { ProjectDataSectionRevisions } from "../project-event";
 import { read_item_name_text } from "../item-name";
+import { apply_project_item_manual_update } from "../project/project-item-update";
 import { compile_text_pattern, replace_text_pattern } from "../text/text-pattern";
-import type { ProofreadingManualStatusCode } from "./proofreading-types";
 
 // 校对 planner 只打包用户意图；仅需预判变化的命令才读取 query 的轻量 item 快照。
 export type ProofreadingCommandItemSnapshot = {
@@ -36,7 +36,7 @@ export type ProofreadingItemFieldUpdate = {
   item_id: number;
   dst?: string;
   name_dst?: string;
-  status?: ProofreadingManualStatusCode;
+  status?: ItemManualStatus;
 };
 
 // 校对计划只按目标 id 读取当前动作相关 item，避免重新依赖前端项目事实镜像。
@@ -129,28 +129,14 @@ export function create_apply_item_changes_plan(args: {
   for (const requested of args.changes) {
     const current_item = read_store_item(args.snapshot, requested.item_id);
     if (current_item === undefined) continue;
-    const change: ProofreadingItemFieldUpdate = { item_id: requested.item_id };
-    // 后端会把非空 dst 默认置为 PROCESSED；这里仅预判该结果，避免漏掉显式覆盖状态。
-    let automatic_status = current_item.status;
-    if (requested.dst !== undefined && current_item.dst !== requested.dst) {
-      change.dst = requested.dst;
-      if (requested.dst !== "") automatic_status = "PROCESSED";
-    }
     if (
-      requested.name_dst !== undefined &&
-      read_item_name_text(current_item.name_dst) !== requested.name_dst
-    ) {
-      change.name_dst = requested.name_dst;
-    }
-    if (
-      requested.status !== undefined &&
-      (requested.status !== automatic_status || current_item.retry_count !== 0)
-    ) {
-      change.status = requested.status;
-    }
-    if (change.dst !== undefined || change.name_dst !== undefined || change.status !== undefined) {
-      changes.push(change);
-    }
+      apply_project_item_manual_update(
+        { ...current_item, name_dst: current_item.name_dst ?? null },
+        requested,
+      ) === null
+    )
+      continue;
+    changes.push({ ...requested });
   }
 
   if (changes.length === 0) return null;

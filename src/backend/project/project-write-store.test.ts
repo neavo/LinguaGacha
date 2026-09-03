@@ -95,14 +95,14 @@ describe("ProjectWriteStore", () => {
     ).rejects.toThrow("runtime.internal_invariant");
   });
 
-  it("校对字段 patch 会推进 proofreading revision 并更新翻译统计", async () => {
+  it("人工 Item 变化会推进 proofreading revision 并更新翻译统计", async () => {
     const { database, project_path, store, published_changes } = create_store("proofreading");
     seed_items(database, project_path);
     database.upsert_meta_entries(project_path, {
       translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 },
     });
 
-    await store.apply_proofreading_item_patch({
+    await store.apply_project_item_changes({
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
       source: "proofreading_apply_item_changes",
@@ -113,7 +113,6 @@ describe("ProjectWriteStore", () => {
           next: { dst: "校对译文", name_dst: null, status: "PROCESSED", retry_count: 0 },
         },
       ],
-      fieldPatch: { dst: "校对译文", status: "PROCESSED" },
     });
 
     expect(read_items(database, project_path)[0]).toMatchObject({
@@ -137,10 +136,82 @@ describe("ProjectWriteStore", () => {
       source: "proofreading_apply_item_changes",
       updatedSections: ["items", "proofreading"],
       items: {
-        payloadMode: "field-patch",
+        payloadMode: "canonical-delta",
         changedIds: [1],
-        fieldPatch: { dst: "校对译文", status: "PROCESSED" },
       },
+    });
+  });
+
+  it("重翻重复项后同步收敛同文组并保留任务重试结果", async () => {
+    const { database, project_path, store, published_changes } =
+      create_store("retranslation-duplicate");
+    seed_duplicate_items(database, project_path, 3);
+
+    const ack = await store.apply_retranslation_item_patches({
+      projectPath: project_path,
+      items: [
+        {
+          item_id: 2,
+          patch: { dst: "任务译文", status: "PROCESSED", retry_count: 3 },
+        },
+      ],
+      translationExtras: {
+        total_line: 1,
+        processed_line: 1,
+        error_line: 0,
+        line: 1,
+        total_tokens: 10,
+      },
+    });
+
+    expect(ack.changed_item_ids).toEqual([1, 2]);
+    expect(
+      read_items(database, project_path).map(({ id, status, retry_count }) => ({
+        id,
+        status,
+        retry_count,
+      })),
+    ).toEqual([
+      { id: 1, status: "DUPLICATED", retry_count: 0 },
+      { id: 2, status: "PROCESSED", retry_count: 3 },
+    ]);
+    expect(read_meta(database, project_path).translation_extras).toMatchObject({
+      total_line: 1,
+      processed_line: 1,
+      error_line: 0,
+      line: 1,
+      total_tokens: 10,
+    });
+    expect(published_changes.at(-1)).toMatchObject({
+      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+    });
+  });
+
+  it("人工状态变化与同文组晋升使用同一事务和事件", async () => {
+    const { database, project_path, store, published_changes } =
+      create_store("duplicate-coordination");
+    seed_duplicate_items(database, project_path);
+
+    await store.apply_project_item_changes({
+      projectPath: project_path,
+      expectedSectionRevisions: { items: 0, proofreading: 0 },
+      source: "proofreading_apply_item_changes",
+      changes: [
+        {
+          item_id: 1,
+          current: { dst: "", name_dst: null, status: "NONE", retry_count: 0 },
+          next: { dst: "", name_dst: null, status: "EXCLUDED", retry_count: 0 },
+        },
+      ],
+    });
+
+    expect(read_items(database, project_path).map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: 1, status: "EXCLUDED" },
+      { id: 2, status: "NONE" },
+    ]);
+    expect(published_changes.at(-1)).toMatchObject({
+      updatedSections: ["items", "proofreading"],
+      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
     });
   });
 
@@ -576,8 +647,73 @@ describe("ProjectWriteStore", () => {
       "public",
     ]);
     expect(project_event_handler.mock.calls[0]?.[0]).toMatchObject({
-      items: { payloadMode: "section-invalidated" },
+      items: { payloadMode: "canonical-delta", changedIds: [1] },
     });
+  });
+
+  it("Agent 提交按事务内同文组事实返回全部实际 Item 变化", async () => {
+    const { database, project_path, store, published_changes } = create_store(
+      "agent-duplicate-coordination",
+    );
+    seed_duplicate_items(database, project_path);
+    const representative = read_items(database, project_path)[0]!;
+
+    const ack = await store.apply_agent_workspace_changes({
+      projectPath: project_path,
+      source: "agent_workspace_apply",
+      batch: agent_batch({
+        items: [
+          {
+            line: 1,
+            item_id: 1,
+            fp: String(project_agent_workspace_item(representative)["fp"]),
+            update: { status: "EXCLUDED" },
+          },
+        ],
+        quality: {},
+        prompts: [],
+      }),
+    });
+
+    expect(ack.applied.items).toEqual({ updated: 2 });
+    expect(read_items(database, project_path).map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: 1, status: "EXCLUDED" },
+      { id: 2, status: "NONE" },
+    ]);
+    expect(published_changes.at(-1)).toMatchObject({
+      items: { payloadMode: "canonical-delta", changedIds: [1, 2] },
+    });
+  });
+
+  it("Agent 无实际变化时不推进 revision 或发布事件", async () => {
+    const project_event_handler = vi.fn();
+    const { database, project_path, store, published_changes } = create_store("agent-unchanged", {
+      projectEventHandler: project_event_handler,
+    });
+    seed_items(database, project_path);
+    const item = read_items(database, project_path)[0]!;
+
+    const ack = await store.apply_agent_workspace_changes({
+      projectPath: project_path,
+      source: "agent_workspace_apply",
+      batch: agent_batch({
+        items: [
+          {
+            line: 1,
+            item_id: 1,
+            fp: String(project_agent_workspace_item(item)["fp"]),
+            update: { dst: "" },
+          },
+        ],
+        quality: {},
+        prompts: [],
+      }),
+    });
+
+    expect(ack).toMatchObject({ applied: {}, rejected: [], destroyed: false });
+    expect(read_meta(database, project_path)).not.toHaveProperty("project_runtime_revision.items");
+    expect(project_event_handler).not.toHaveBeenCalled();
+    expect(published_changes).toEqual([]);
   });
 
   it("Agent 工作区任一中间写入失败会回滚全部事实与 revision 且不发布事件", async () => {
@@ -776,6 +912,37 @@ describe("ProjectWriteStore", () => {
         row: 7,
       },
     ]);
+  }
+
+  /** 为各写入入口提供同一组代表与被动重复事实，只让测试覆盖自身差异。 */
+  function seed_duplicate_items(
+    database: ProjectDatabase,
+    project_path: string,
+    duplicate_retry_count = 0,
+  ): void {
+    database.set_items(project_path, [
+      {
+        id: 1,
+        src: "同文",
+        dst: "",
+        name_dst: null,
+        status: "NONE",
+        retry_count: 0,
+        file_path: "demo.txt",
+        row: 0,
+      },
+      {
+        id: 2,
+        src: "同文",
+        dst: "",
+        name_dst: null,
+        status: "DUPLICATED",
+        retry_count: duplicate_retry_count,
+        file_path: "demo.txt",
+        row: 1,
+      },
+    ]);
+    database.set_meta(project_path, "skip_duplicate_source_text_enable", true);
   }
 
   function read_items(database: ProjectDatabase, project_path: string): MutableJsonRecord[] {

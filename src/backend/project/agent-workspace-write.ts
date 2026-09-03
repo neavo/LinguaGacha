@@ -14,10 +14,13 @@ import {
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
-  apply_proofreading_item_update,
-  are_proofreading_item_write_fields_equal,
-  type ProofreadingItemUpdateFields,
-} from "../proofreading/proofreading-item-update";
+  apply_project_item_manual_update,
+  type ProjectItemManualUpdate,
+} from "../../shared/project/project-item-update";
+import {
+  plan_project_item_changes,
+  type ProjectItemWriteRecord,
+} from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
 /** fp 以字符长度定义，使对象投影、change 校验与运行时 contract 共享同一格式。 */
@@ -67,7 +70,7 @@ export type AgentWorkspaceItemUpdateIntent = Readonly<{
   line: number;
   item_id: number;
   fp: string;
-  update: ProofreadingItemUpdateFields;
+  update: ProjectItemManualUpdate;
 }>;
 
 export type AgentWorkspacePromptUpdateIntent = Readonly<{
@@ -113,9 +116,10 @@ export type AgentWorkspaceIntentBatch = Readonly<{
 }>;
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
-  items: readonly JsonRecord[];
-  quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>;
-  prompts: Partial<Record<PromptKind, string>>;
+  items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与同文组协调
+  quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
+  prompts: Partial<Record<PromptKind, string>>; // 本批涉及的提示词
+  duplicateFilterEnabled: boolean; // 项目持久设置中的重复过滤口径
 }>;
 
 export type AgentWorkspaceQualitySummary = Readonly<{
@@ -213,6 +217,11 @@ export function resolve_agent_workspace_writes(args: {
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
   const item_result = resolve_items(args.batch.items, args.current.items);
+  const item_changes = plan_project_item_changes({
+    items: args.current.items.flatMap(to_item_write_record),
+    explicit_changes: item_result.changes,
+    duplicate_filter_enabled: args.current.duplicateFilterEnabled,
+  });
   const prompt_result = resolve_prompts(args.batch.prompts, args.current.prompts);
   const quality_results = QUALITY_RULE_KINDS.map((kind) =>
     resolve_quality_kind({
@@ -232,13 +241,11 @@ export function resolve_agent_workspace_writes(args: {
   ) as Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   const prompt_kinds = prompt_result.changes.map((change) => change.kind);
   return {
-    itemChanges: item_result.changes,
+    itemChanges: item_changes,
     qualityChanges: quality_changes,
     promptChanges: prompt_result.changes,
     applied: {
-      ...(item_result.changes.length === 0
-        ? {}
-        : { items: { updated: item_result.changes.length } }),
+      ...(item_changes.length === 0 ? {} : { items: { updated: item_changes.length } }),
       ...(quality_changes.length === 0 ? {} : { quality: quality_summary }),
       ...(prompt_kinds.length === 0 ? {} : { prompts: { updated: prompt_kinds } }),
     },
@@ -356,8 +363,8 @@ function resolve_items(
       rejected.push(item_rejection(item_id, "merge_conflict"));
       continue;
     }
-    const next = apply_proofreading_item_update(current as ItemWriteFacts, update);
-    if (are_proofreading_item_write_fields_equal(current as ItemWriteFacts, next)) continue;
+    const next = apply_project_item_manual_update(current as ItemWriteFacts, update);
+    if (next === null) continue;
     changes.push({
       item_id,
       current: pick_item_write_fields(current),
@@ -379,6 +386,24 @@ type ItemWriteFacts = JsonRecord & {
   status: string;
   retry_count: number;
 };
+
+/** 将公开或数据库 Item 投影成重复协调需要的完整写入事实。 */
+function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
+  const item_id = read_json_integer(item["item_id"] ?? item["id"], 0);
+  if (item_id <= 0) return [];
+  return [
+    {
+      item_id,
+      file_path: String(item["file_path"] ?? ""),
+      row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
+      src: String(item["src"] ?? ""),
+      dst: String(item["dst"] ?? ""),
+      name_dst: Item.normalize_name_field(item["name_dst"]),
+      status: Item.normalize_status(item["status"]),
+      retry_count: read_json_integer(item["retry_count"], 0),
+    },
+  ];
+}
 
 function pick_item_write_fields(item: JsonRecord): ProjectItemWriteChange["current"] {
   return {

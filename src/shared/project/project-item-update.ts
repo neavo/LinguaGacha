@@ -1,19 +1,34 @@
-import { Item, is_item_status, type ItemNameField, type ItemStatus } from "../../domain/item";
-import { are_item_name_fields_equal } from "../item-name";
+import {
+  Item,
+  is_item_status,
+  type ItemManualStatus,
+  type ItemNameField,
+  type ItemStatus,
+} from "../../domain/item";
+import { are_item_name_fields_equal, write_item_name_text } from "../item-name";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 
+/** 跨缓存与数据库传播的完整 Item 字段补丁词表。 */
 const PROJECT_ITEM_FIELD_PATCH_KEYS = ["dst", "name_dst", "status", "retry_count"] as const;
 
 type ProjectItemFieldPatchKey = (typeof PROJECT_ITEM_FIELD_PATCH_KEYS)[number];
 
-/** 项目 item 人工写入口共同依赖的完整字段事实。 */
+/** 项目 Item 字段写入共同依赖的完整事实。 */
 export type ProjectItemWriteFields = {
-  dst: string;
-  name_dst: ItemNameField;
-  status: string;
-  retry_count: number;
+  dst: string; // 正文译文
+  name_dst: ItemNameField; // 角色姓名译文
+  status: string; // 持久状态；读取旧项目时可能尚未归一
+  retry_count: number; // 自动翻译重试次数
 };
 
+/** GUI 与 Agent 共用的单条人工 Item 更新意图。 */
+export type ProjectItemManualUpdate = Readonly<{
+  dst?: string; // 人工确认的正文译文，允许空字符串
+  name_dst?: string; // 姓名第一个槽位的人工译文
+  status?: ItemManualStatus; // 最终人工状态意图
+}>;
+
+/** 差异构造允许消费尚未完成边界收窄的字段来源。 */
 type ProjectItemFieldPatchSource = {
   dst?: unknown;
   name_dst?: unknown;
@@ -21,6 +36,7 @@ type ProjectItemFieldPatchSource = {
   retry_count?: unknown;
 };
 
+/** 区分缺失字段与显式 null，供姓名字段 patch 使用。 */
 function has_own_field(
   value: ProjectItemFieldPatchSource,
   field: ProjectItemFieldPatchKey,
@@ -28,10 +44,12 @@ function has_own_field(
   return Object.hasOwn(value, field);
 }
 
+/** 收窄外部字段 patch 的普通对象外壳。 */
 function is_record(value: unknown): value is ProjectItemFieldPatchSource {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** 空 patch 不产生写入或事件。 */
 function is_project_item_field_patch_empty(
   patch: ProjectChangeItemFieldPatch | null | undefined,
 ): boolean {
@@ -96,6 +114,36 @@ export function apply_project_item_field_patch<TItem extends ProjectItemWriteFie
   }
 
   return touched ? next_item : null;
+}
+
+/**
+ * 将人工意图解释为最终字段事实。正文实际变化表示人工接受当前结果，统一完成状态并清除自动重试历史；
+ * 显式状态拥有最终优先级，姓名译文不改变正文任务状态。
+ */
+export function apply_project_item_manual_update<TItem extends ProjectItemWriteFields>(
+  current: TItem,
+  update: ProjectItemManualUpdate,
+): TItem | null {
+  const next: TItem = { ...current };
+  if (update.dst !== undefined) {
+    if (update.dst !== current.dst) {
+      next.dst = update.dst;
+      next.status = "PROCESSED";
+      next.retry_count = 0;
+    } else if (update.dst !== "" && current.status === "ERROR") {
+      // 相同非空译文可用于确认既有结果并结束错误态。
+      next.status = "PROCESSED";
+      next.retry_count = 0;
+    }
+  }
+  if (update.name_dst !== undefined) {
+    next.name_dst = write_item_name_text(next.name_dst, update.name_dst);
+  }
+  if (update.status !== undefined) {
+    next.status = update.status;
+    next.retry_count = 0;
+  }
+  return build_project_item_field_patch(current, next) === null ? null : next;
 }
 
 // 对比当前与下一状态生成最小字段 patch，姓名比较复用领域归一语义。

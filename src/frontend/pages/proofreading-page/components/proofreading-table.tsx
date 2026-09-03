@@ -13,15 +13,14 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
+import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
-  PROOFREADING_MANUAL_STATUS_CODES,
   type ProofreadingItem,
-  type ProofreadingManualStatusCode,
   type ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
@@ -78,7 +77,7 @@ type ProofreadingTableProps = {
   ) => void;
   on_request_set_translation_status_row_ids: (
     row_ids: string[],
-    status: ProofreadingManualStatusCode,
+    status: ItemManualStatus,
     preferred_row_id?: string | null,
   ) => void;
 };
@@ -444,7 +443,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                       {t("proofreading_page.action.set_translation_status")}
                     </AppContextMenuSubTrigger>
                     <AppContextMenuSubContent>
-                      {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
+                      {ITEM_MANUAL_STATUSES.map((status) => (
                         <AppContextMenuItem
                           key={status}
                           disabled={props.readonly}
