@@ -1119,11 +1119,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                     <p>{contextual_submit_label}</p>
                   ) : (
                     <>
-                      {can_submit ? (
-                        <ShortcutTooltipRow label={contextual_submit_label} shortcut="submit" />
-                      ) : (
-                        <p>{contextual_submit_label}</p>
-                      )}
+                      <ShortcutTooltipRow label={contextual_submit_label} shortcut="submit" />
                       {can_insert_newline ? (
                         <ShortcutTooltipRow
                           label={t("agent_page.input.newline")}

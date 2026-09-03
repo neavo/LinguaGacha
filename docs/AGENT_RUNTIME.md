@@ -4,10 +4,10 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、pending write approve / reject、continue、输入队列 update / delete / reorder / send、最新轮次 revise、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
+- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
 - 空闲且没有暂停队列时，message 建立新的公开轮次；运行时 message 进入当前会话最多保留 5 条的有界内存输入队列，达到上限后 renderer 禁止新增入队，AgentService 仍以共享上限拒绝越界请求。正常轮次成功后在同一运行 lease 内按 FIFO 续取，stop 或模型失败保留并暂停剩余队列。continue 原子追加可选消息、解除暂停，并按需恢复失败 round 或启动队首；空 continue 只表达继续意图。立即发送在空闲时启动选中 round，在运行时经 Pi `steer` 发送，并仅在对应 user `message_start` 后从 `sending` 提交为成功的 `delivery: steer` 条目；提交前失败、停止或取消恢复为 `queued`。普通 user 使用 `delivery: round`；只有 round 建立 SDK history checkpoint 和轮次终态，因而可作为 revise（包括以原输入重新运行）与失败 continue 的目标。
 - revise 目标为最新 round user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。continue 以隐藏“继续”消息续跑失败的原 user 轮次。两种操作都要求会话空闲，revision 另校验最新 round 输入或最终输出身份；更早轮次、steer 输入和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；round user、assistant 与 tool 条目携带 `running | success | error | stopped` 状态，steer user 只在成功提交后公开，上下文压缩条目只使用 `running | success | error`。
-- `AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、审批、revise、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
+- `AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、审批模式、revise、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
 - 时间线由 snapshot 与 revisioned `agent.session_event` 共同恢复本次 reset 以来的内存历史；连续的自动压缩尝试复用最近一次失败 entry。公开 assistant 条目只保留非空白的 text / thinking parts、合并相邻同类且至少包含一项；空投影不产生条目。公开快照只携带模型可见历史的估算 token；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开工具条目冻结规范化后的完整输入，并只在 SDK 工具终帧后携带模型实际收到的文本输出；公开协议不承载 SDK 原始参数引用、结构化 details、压缩诊断、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -19,11 +19,13 @@
 |模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
 |模型对话级动态工作队列|`AgentService`|`task_progress`|
-|工程写入审批模式与待审批提交|`AgentService`|approval mode、approve / reject API 与 `agent.session_event`|
+|当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|question / write approval resolve API 与 `agent.session_event`|
+|工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
 |当前对话 `task`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
-- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立待审批状态。待审批状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；approve / reject API 只确认当前决定并返回轻量 ack，`processing` 与终态由 revisioned SSE 事件表达，原始 `workspace_apply` 在下一事件循环继续提交或生成拒绝结果，工具终帧再清除 pending。审批命令受理与工程提交终态各自通过 snapshot / SSE 保持后端权威，任务目标决定结果形态、范围和判断标准；reset、工程切换和应用重启恢复为 `manual`。
-- Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。Pi `agent_start / agent_end` 与压缩事件共同决定公开 `canSendNow`，避免在异步预检、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
+- 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 统一持有普通问题或写入授权的五分钟期限、取消和一次性裁决；两类决定分别使用窄 resolve API，写入授权到期等同拒绝。决定受理时先清除 pending，再在下一事件循环恢复工具，不公开处理中状态；reset、工程切换和 dispose 取消当前等待。
+- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；允许后续写入只在当前批次成功提交后切换为 `auto`，拒绝、超时或提交失败保持 `manual`。reset、工程切换和应用重启恢复为 `manual`。
+- Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease，等待用户决定也不释放；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定公开 `canSendNow`，避免在异步预检、用户决定、压缩或结算窗口接受 steer。用户输入队列跨 round、stop 与模型失败保留，`task_progress` 跨普通模型回合、stop、continue 与压缩保留；两者都在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`scratch`、`task` 与 `sources` 都使用真实相对路径。task 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
@@ -41,7 +43,7 @@
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。skill 正文声明的前置或条件组合技能统一由模型调用 `read_skill` 加载，组合本身不改变任务对象、范围或工作区权限。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
-- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、工作区工具编排、失败恢复、写入边界与决策交互格式；静态 Markdown 模板直接拥有完整的 Agent 工作区章节和顺序，资源加载器只在原位填充权限范围、模块限制与领域方法路由，形成跨会话字节稳定的基础 System 前缀，再在其后拼接会话 skill catalog。除有意重复该短准则的 `agent-charter` 外，skill 只补充领域概念、业务信息与工作资产归属、判断逻辑、证据方法和停止条件；仅当某个正式领域方法本身构成流程语义或结果契约时直接点名，不描述其调用参数、文件 API 或通用工具编排。Agent 页面忠实消费模型 Markdown 与 Mermaid，不从标题或 emoji 反向推断领域状态。
+- System Prompt 统一拥有最高层任务准则、对外人格、任务阶段、视觉组织、跨任务术语前置、审查处置、工作区工具编排、失败恢复、写入边界与用户交互路由；静态 Markdown 模板直接拥有完整的 Agent 工作区章节和顺序，资源加载器只在原位填充权限范围、模块限制与领域方法路由，形成跨会话字节稳定的基础 System 前缀，再在其后拼接会话 skill catalog。除有意重复该短准则的 `agent-charter` 外，skill 只补充领域概念、业务信息与工作资产归属、判断逻辑、证据方法和停止条件；仅当某个正式领域方法本身构成流程语义或结果契约时直接点名，不描述其调用参数、文件 API 或通用工具编排。Agent 页面忠实消费模型 Markdown、Mermaid 与结构化决策状态，不从标题或 emoji 反向推断领域状态。
 - `quality-rule-workflow` 技能拥有质量规则任务的范围、发现、账本、目标集合和提交，领域判断分别路由到 `glossary-rules` 与 `text-preserve-rules` 技能；任务内 `seed` 控制既有 glossary 条目的发现作用，随领域证据更新且不进入项目字段或运行时执行模型。`glossary-rules` 技能只提供术语领域结论，需要译名质量时加载并遵循 `writing-guide` 技能。
 - `translation-workflow` 技能统一拥有工程译文的两条路径：`translate` 处理没有译文的条目，`review` 处理已有译文的审校、修正和重译；两条路径共享自启发发现、业务单元、写入和核验，`translation-rules` 技能只提供 item 字段与译文领域结论，需要文本质量时加载并遵循 `writing-guide` 技能。领域规则不拥有 workflow 状态或流程入口。
 - 内置 skill 只补充各自任务的领域判断、证据方法与流程；`roleplay` 的 task 资产不属于项目事实，具体参考文件、状态字段与迁移规则归各自 `SKILL.md`。
@@ -49,6 +51,7 @@
 ## 4. 产品工具与宿主能力
 
 - 产品 JSON 工具统一由 `tools/definition` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
+- `ask_user` 始终注册，承接执行过程中的单个有界决定。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一的有序固定选项；宿主提供自定义答案与取消。选择和自定义答案返回原工具轮次，取消或到期返回未回答，不追加公开 user 消息；完成后沿用普通工具条目与详情。
 - `task_progress` 始终注册，管理当前对话中至多一个内存动态工作队列；`advance` 在完整校验后原子完成既有项并追加派生项，`finish` 拒绝遗留待办，显式 `cancel` 只清理进度而不回滚其它副作用。工具只向模型返回分阶段计数和有限待办，不保存领域事实、工程证据、百分比或完成判据；公开 Agent snapshot 与 SSE 另以 `taskProgress` 投影全部待办标签，空数组表示不展示，不公开标题、键、阶段或完成统计。
 - 工程数据工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与提交协调。
 - 每个工作区领域方法模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举方法集合，Deno 注入对象、System 能力路由和模型可见 TypeScript 协议均由该集合投影。未知参数在统一分发边界按 Schema 收窄，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。
@@ -64,8 +67,8 @@
 ## 5. 前端消费
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
-- `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、模型可见历史 token、`taskProgress` 待办标签、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、progress、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
-- Agent Composer 底栏显示当前写入请求审批模式（`手动批准` / `自动批准`），通过只含两个选项的弹出菜单切换，当前项带勾选；待审批写入由 snapshot / SSE 独立同步，页面在输入器与独立审批面之间互斥挂载，审批面显示确定性变更摘要，并以 `Escape` 拒绝、`Enter` 允许当前写入，后续自动允许仍需从菜单显式选择。pending 不进入 Agent 时间线。Tooltip 显示简化的写入请求模式。模型选择触发器同时显示当前上下文使用率，思考档位保持独立控件。模式由 `AgentSessionProvider` 通过后端命令更新，页面不做本地乐观切换。
+- `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 token、`taskProgress` 待办标签、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、progress、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
+- Agent Composer 底栏显示当前写入请求审批模式（`手动批准` / `自动批准`），通过只含两个选项的弹出菜单切换，当前项带勾选。`pendingDecision` 由 snapshot / SSE 同步；页面把局部决策层与底部控制区同域叠放，并一次性把控制区设为 inert，对话时间线仍可阅读。普通问题显示点击即提交的固定动作、带内嵌确认的自定义单行答案和右上角取消；写入授权显示三个点击即提交的固定动作。两者只接受显式控件操作，renderer 按后端 `expiresAt` 在第一项的右侧动作图标上展示期限进度，决定受理后立即关闭。写入摘要把结构化计数本地化为非零变更类别列表；审批模式仍由后端命令更新，页面不做本地乐观切换。
 - `AgentCompletionAttention` 在跨路由会话镜像中观察一次运行从 `running` 收束到最终 round `success | error` 的转换，并忽略 `stopped`、reset 与自动队列中间轮次；确认后只请求宿主注意力，不新增 Agent SSE 事件或通知正文。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有命令复用轻量 ack 与命令期 SSE revision 重放，删除、重排和立即发送的受理失败由页面解析为安全 Toast，队列原位编辑失败保留在编辑器旁，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空普通 Composer 草稿，空 continue 不改写草稿或历史；队列项与时间线条目各自在目标位置展开独立编辑器，成功后由页面显式替换 user 输入历史，assistant 修改不改写输入历史。

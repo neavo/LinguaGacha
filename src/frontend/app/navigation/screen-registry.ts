@@ -53,6 +53,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   agent: {
     component: AgentPage,
     title_key: "agent_page.title",
+    workspace_layout: "edge-to-edge",
   },
   proofreading: {
     component: ProofreadingPage,

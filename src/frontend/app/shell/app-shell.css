@@ -34,7 +34,10 @@
   border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 92%, transparent);
   border-top-left-radius: 8px;
   background: transparent;
-  transition: padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.workspace-frame[data-layout="edge-to-edge"] {
+  padding: 0;
 }
 
 .page-shell,

@@ -560,7 +560,11 @@ function AppContent(): JSX.Element {
               on_profile_action={handle_profile_action}
             />
 
-            <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
+            <SidebarInset
+              className="workspace-frame"
+              data-layout={active_screen.workspace_layout}
+              aria-label={t(active_screen.title_key)}
+            >
               <AppNavigationProvider
                 selected_route={selected_route}
                 navigate_to_route={handle_select_route}

@@ -132,7 +132,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentControls: () => ({
     state: page_state.current.state,
     approvalMode: page_state.current.approvalMode,
-    pendingWriteApproval: page_state.current.pendingWriteApproval,
+    pendingDecision: page_state.current.pendingDecision,
     contextTokens: page_state.current.contextTokens,
     transport: page_state.current.transport,
     command: page_state.current.command,
@@ -710,10 +710,11 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("只在等待决定时显示审批面，决定后由信息流接管", async () => {
-    const pending_write_approval = {
+  it("待决浮层覆盖并冻结底部控制区", async () => {
+    const pending_write_decision = {
+      kind: "write_approval" as const,
       id: "apply-1",
-      status: "waiting" as const,
+      expiresAt: Date.now() + 300_000,
       summary: {
         items: 1,
         glossary: 0,
@@ -723,32 +724,26 @@ describe("AgentPage", () => {
         prompts: 0,
       },
     };
-    const view = await render_page({ pendingWriteApproval: pending_write_approval });
+    const view = await render_page({ pendingDecision: pending_write_decision });
 
-    expect(view.querySelector(".agent-approval")).not.toBeNull();
-    expect(view.querySelector(".agent-composer__editor")).toBeNull();
+    expect(view.querySelector(".agent-decision")).not.toBeNull();
+    expect(view.querySelector(".agent-composer__editor")).not.toBeNull();
+    const bottom_controls = view.querySelector(".agent-page__bottom-controls");
+    expect(bottom_controls?.hasAttribute("inert")).toBe(true);
 
-    await render_page({
-      command: "approval_decision",
-      pendingWriteApproval: pending_write_approval,
-    });
-    expect(view.querySelector(".agent-page__operation-zone")).toBeNull();
-
-    await render_page({
-      pendingWriteApproval: { ...pending_write_approval, status: "processing" },
-    });
-    expect(view.querySelector(".agent-page__operation-zone")).toBeNull();
-
-    await render_page({ pendingWriteApproval: null });
+    await render_page({ pendingDecision: null });
+    expect(view.querySelector(".agent-decision")).toBeNull();
+    expect(view.querySelector(".agent-page__bottom-controls")?.hasAttribute("inert")).toBe(false);
     expect(view.querySelector(".agent-composer__editor")).not.toBeNull();
   });
 
   it("写入决策失败显示对应恢复提示", async () => {
-    const approve_pending_write = vi.fn(() => Promise.reject(new Error("offline")));
+    const resolve_write_approval = vi.fn(() => Promise.reject(new Error("offline")));
     const view = await render_page({
-      pendingWriteApproval: {
+      pendingDecision: {
+        kind: "write_approval",
         id: "apply-1",
-        status: "waiting",
+        expiresAt: Date.now() + 300_000,
         summary: {
           items: 1,
           glossary: 0,
@@ -758,15 +753,19 @@ describe("AgentPage", () => {
           prompts: 0,
         },
       },
-      approvePendingWrite: approve_pending_write,
+      resolveWriteApproval: resolve_write_approval,
     });
-    const approve = view.querySelector<HTMLButtonElement>("button[aria-keyshortcuts='Enter']");
-    if (approve === null) throw new Error("缺少写入批准按钮");
+    const allow_once = [...view.querySelectorAll<HTMLButtonElement>(".agent-decision-action")].find(
+      (button) =>
+        button.querySelector(".agent-decision-action__label")?.textContent?.trim() ===
+        "agent_page.approval.allow_once",
+    );
+    if (allow_once === undefined) throw new Error("缺少单次写入选项");
 
-    await act(async () => approve.click());
+    await act(async () => allow_once.click());
     await act(async () =>
       vi.waitFor(() =>
-        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.approval_decision"),
+        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.decision"),
       ),
     );
   });
@@ -1099,7 +1098,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
     approvalMode: overrides.approvalMode ?? "manual",
-    pendingWriteApproval: null,
+    pendingDecision: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
       assistant_entry("assistant-1", "**变更方案**", "success", 1),
@@ -1127,8 +1126,8 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     stop: vi.fn(),
     reset: vi.fn(async () => undefined),
     setApprovalMode: vi.fn(async () => undefined),
-    approvePendingWrite: vi.fn(async () => undefined),
-    rejectPendingWrite: vi.fn(async () => undefined),
+    resolveQuestion: vi.fn(async () => undefined),
+    resolveWriteApproval: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,
   };

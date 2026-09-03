@@ -42,12 +42,51 @@ export type AgentPendingWriteSummary = Readonly<{
   prompts: number;
 }>;
 
-/** 待审批写入只属于 Composer 控制面，不进入 Agent 时间线或模型历史。 */
-export type AgentPendingWriteApproval = {
+/** ask_user 的固定选项；数组顺序只表达推荐展示顺序。 */
+export type AgentQuestionOption = JsonRecord & {
   id: string;
-  status: "waiting" | "processing";
-  summary: AgentPendingWriteSummary;
+  label: string;
 };
+
+/** 用户决定固定等待五分钟；后端裁决与 renderer 期限进度共用。 */
+export const AGENT_DECISION_TIMEOUT_MS = 5 * 60 * 1_000;
+
+/** 单题固定选项与自定义入口共同保持在四个可见选择以内。 */
+export const AGENT_QUESTION_OPTION_MIN = 2;
+export const AGENT_QUESTION_OPTION_MAX = 3;
+
+/** 单次工具调用只提出一个问题和二至三个固定选项，自定义答案由 renderer 提供。 */
+export type AgentQuestion = JsonRecord & {
+  prompt: string;
+  description?: string;
+  options:
+    | [AgentQuestionOption, AgentQuestionOption]
+    | [AgentQuestionOption, AgentQuestionOption, AgentQuestionOption];
+};
+
+/** Renderer 对当前问题的一次性决定；固定选项、自定义文本与取消互斥。 */
+export type AgentQuestionResponse = JsonRecord &
+  ({ kind: "option"; optionId: string } | { kind: "custom"; text: string } | { kind: "cancel" });
+
+/** 写入授权使用固定的三种结果，不与普通问题答案共用权限入口。 */
+export type AgentWriteApprovalDecision = "reject" | "allow_once" | "allow_session";
+
+/** 当前 Agent 回合至多持有一个需要用户介入的决定。 */
+export type AgentPendingDecision = JsonRecord &
+  (
+    | {
+        kind: "question";
+        id: string;
+        expiresAt: number;
+        question: AgentQuestion;
+      }
+    | {
+        kind: "write_approval";
+        id: string;
+        expiresAt: number;
+        summary: AgentPendingWriteSummary;
+      }
+  );
 
 /** 单条用户消息按输入顺序最多保留的图片数。 */
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
@@ -145,7 +184,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   revision: number;
   state: AgentSessionState;
   approvalMode: AgentApprovalMode;
-  pendingWriteApproval: AgentPendingWriteApproval | null;
+  pendingDecision: AgentPendingDecision | null;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
@@ -164,7 +203,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
     | { type: "approval_mode"; approvalMode: AgentApprovalMode }
-    | { type: "pending_write_approval"; pendingWriteApproval: AgentPendingWriteApproval | null }
+    | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "task_progress"; taskProgress: string[] }
     | { type: "context_tokens"; contextTokens: number }

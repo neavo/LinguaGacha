@@ -65,8 +65,10 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
   context.postJson("/api/agent/message", (body) => agent.send_message(body));
   context.postJson("/api/agent/approval-mode", (body) => agent.set_approval_mode(body));
-  context.postJson("/api/agent/approval/approve", (body) => agent.approve_pending_write(body));
-  context.postJson("/api/agent/approval/reject", (body) => agent.reject_pending_write(body));
+  context.postJson("/api/agent/question/resolve", (body) => agent.resolve_question(body));
+  context.postJson("/api/agent/write-approval/resolve", (body) =>
+    agent.resolve_write_approval(body),
+  );
   context.postJson("/api/agent/queue/update", (body) => agent.update_queued_message(body));
   context.postJson("/api/agent/queue/delete", (body) => agent.delete_queued_message(body));
   context.postJson("/api/agent/queue/reorder", (body) => agent.reorder_queued_messages(body));

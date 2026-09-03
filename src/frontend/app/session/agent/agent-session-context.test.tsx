@@ -478,10 +478,11 @@ describe("AgentSessionProvider", () => {
     expect(latest.approvalMode).toBe("manual");
   });
 
-  it("批准命令以 processing ack 承接写入并由工具终帧清空", async () => {
+  it("写入决定通过单一命令受理并立即清除 pending", async () => {
     const waiting = {
+      kind: "write_approval" as const,
       id: "apply-1",
-      status: "waiting" as const,
+      expiresAt: 300_000,
       summary: {
         items: 2,
         glossary: 1,
@@ -491,11 +492,11 @@ describe("AgentSessionProvider", () => {
         prompts: 0,
       },
     };
-    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingWriteApproval: waiting }));
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: waiting }));
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "pending_write_approval",
-        pendingWriteApproval: { ...waiting, status: "processing" },
+        type: "pending_decision",
+        pendingDecision: null,
       });
       return { revision: event_source.current_revision };
     });
@@ -505,34 +506,60 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
-    await act(async () => latest.approvePendingWrite(true));
-    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/approval/approve", {
+    await act(async () => latest.resolveWriteApproval("allow_session"));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/write-approval/resolve", {
       id: "apply-1",
-      switchToAuto: true,
+      decision: "allow_session",
     });
-    expect(latest.pendingWriteApproval).toEqual({
-      ...waiting,
-      status: "processing",
-    });
-
-    await act(async () =>
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "pending_write_approval",
-        pendingWriteApproval: null,
-      }),
-    );
-    expect(latest.pendingWriteApproval).toBeNull();
+    expect(latest.pendingDecision).toBeNull();
   });
 
-  it("畸形审批增量保持最近一次完整控制状态", async () => {
+  it("普通问题把结构化自定义答案提交到独立入口", async () => {
+    const pending = {
+      kind: "question" as const,
+      id: "question-1",
+      expiresAt: 300_000,
+      question: {
+        prompt: "选择范围",
+        description: "选择最符合本次任务的范围",
+        options: [
+          { id: "safe", label: "安全范围" },
+          { id: "complete", label: "完整范围" },
+        ] as [{ id: string; label: string }, { id: string; label: string }],
+      },
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.resolveQuestion({ kind: "custom", text: "按章节处理" }));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/question/resolve", {
+      id: "question-1",
+      response: { kind: "custom", text: "按章节处理" },
+    });
+    expect(latest.pendingDecision).toBeNull();
+  });
+
+  it("畸形决策增量保持最近一次完整控制状态", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
     const pending = {
+      kind: "write_approval" as const,
       id: "apply-1",
-      status: "waiting" as const,
+      expiresAt: 300_000,
       summary: {
         items: 1,
         glossary: 0,
@@ -549,27 +576,39 @@ describe("AgentSessionProvider", () => {
         approvalMode: "auto",
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "pending_write_approval",
-        pendingWriteApproval: pending,
+        type: "pending_decision",
+        pendingDecision: pending,
       });
     });
     expect(latest.approvalMode).toBe("auto");
-    expect(latest.pendingWriteApproval).toEqual(pending);
+    expect(latest.pendingDecision).toEqual(pending);
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "approval_mode" });
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_write_approval" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_decision" });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "pending_write_approval",
-        pendingWriteApproval: {
+        type: "pending_decision",
+        pendingDecision: {
           ...pending,
           summary: { ...pending.summary, items: 0 },
+        },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: {
+          kind: "question",
+          id: "question-1",
+          expiresAt: 300_000,
+          question: {
+            prompt: "选择范围",
+            options: [{ id: "only", label: "唯一选项" }],
+          },
         },
       });
     });
 
     expect(latest.approvalMode).toBe("auto");
-    expect(latest.pendingWriteApproval).toEqual(pending);
+    expect(latest.pendingDecision).toEqual(pending);
   });
 
   it("携带消息 continue 通过唯一入口受理并清空草稿", async () => {
@@ -613,7 +652,7 @@ describe("AgentSessionProvider", () => {
       {
         state: "idle",
         approvalMode: "manual",
-        pendingWriteApproval: null,
+        pendingDecision: null,
         entries: [],
         skills: [],
         taskProgress: [],
@@ -625,7 +664,7 @@ describe("AgentSessionProvider", () => {
       {
         state: "idle",
         approvalMode: "manual",
-        pendingWriteApproval: null,
+        pendingDecision: null,
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -636,7 +675,7 @@ describe("AgentSessionProvider", () => {
       "approvalMode",
       {
         state: "idle",
-        pendingWriteApproval: null,
+        pendingDecision: null,
         entries: [],
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -645,7 +684,7 @@ describe("AgentSessionProvider", () => {
       },
     ],
     [
-      "pendingWriteApproval",
+      "pendingDecision",
       {
         state: "idle",
         approvalMode: "manual",
@@ -697,7 +736,7 @@ describe("AgentSessionProvider", () => {
       revision: 0,
       state: "idle",
       approvalMode: "manual",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       taskProgress: [],
@@ -729,7 +768,7 @@ describe("AgentSessionProvider", () => {
       revision: 0,
       state: "idle",
       approvalMode: "manual",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [
         {
           kind: "tool_call",
@@ -1553,7 +1592,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     revision: 0,
     state: "idle",
     approvalMode: "manual",
-    pendingWriteApproval: null,
+    pendingDecision: null,
     entries: [],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },

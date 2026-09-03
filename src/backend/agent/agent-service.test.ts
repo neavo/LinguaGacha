@@ -16,7 +16,7 @@ import {
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
-import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
+import type { AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebFetchPort } from "./agent-web-fetch";
 import type { AgentWebPort, AgentWebSearchPort } from "./tools/web";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -108,6 +108,7 @@ const FAKE_WORKSPACE_SCRIPT = "return { items: [] };";
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
     | "success"
+    | "question"
     | "write"
     | "error"
     | "tools_error"
@@ -345,6 +346,23 @@ function create_fake_response(context: Context): FauxResponseStep {
       stopReason: "toolUse",
     });
   }
+  if (fake_agent_state.mode === "question") {
+    return fauxAssistantMessage(
+      fauxToolCall(
+        "ask_user",
+        {
+          prompt: "选择处理范围",
+          description: "选择接下来处理的内容",
+          options: [
+            { id: "safe", label: "安全范围" },
+            { id: "complete", label: "完整范围" },
+          ],
+        },
+        { id: "question-1" },
+      ),
+      { stopReason: "toolUse" },
+    );
+  }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
       fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
@@ -527,15 +545,15 @@ describe("AgentService", () => {
     );
   });
 
-  it("批准命令确认决定后由 processing 状态承接原工具调用", async () => {
+  it("写入决定受理后立即清除浮层并由原工具继续提交", async () => {
     const fixture = await create_service();
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
 
     await fixture.service.send_message({ text: "写入", attachments: [] });
     await vi.waitFor(() =>
-      expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
-        status: "waiting",
+      expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
+        kind: "write_approval",
         summary: {
           items: 1,
           glossary: 0,
@@ -546,8 +564,8 @@ describe("AgentService", () => {
         },
       }),
     );
-    const pending = fixture.service.get_snapshot().pendingWriteApproval;
-    if (pending === null) throw new Error("缺少待审批写入");
+    const pending = fixture.service.get_snapshot().pendingDecision;
+    if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
     expect(fixture.service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -558,26 +576,20 @@ describe("AgentService", () => {
       ]),
     );
 
-    let approval_ack: AgentCommandAck | null = null;
-    const approval = Promise.resolve(
-      fixture.service.approve_pending_write({ id: pending.id, switchToAuto: true }),
-    ).then((snapshot) => {
-      approval_ack = snapshot;
+    const approval_ack = fixture.service.resolve_write_approval({
+      id: pending.id,
+      decision: "allow_session",
     });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
     try {
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(approval_ack).toEqual({ revision: expect.any(Number) });
-      expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
-        id: pending.id,
-        status: "processing",
-      });
+      expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
     } finally {
       fake_agent_state.release_tool_execution?.();
-      await approval;
     }
     await wait_for_idle(fixture.service);
-    expect(fixture.service.get_snapshot().pendingWriteApproval).toBeNull();
+    expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
     expect(fixture.service.get_snapshot().approvalMode).toBe("auto");
     expect(fixture.service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
@@ -595,15 +607,13 @@ describe("AgentService", () => {
     fake_agent_state.mode = "write";
 
     await fixture.service.send_message({ text: "拒绝写入", attachments: [] });
-    await vi.waitFor(() =>
-      expect(fixture.service.get_snapshot().pendingWriteApproval).not.toBeNull(),
-    );
-    const pending = fixture.service.get_snapshot().pendingWriteApproval;
-    if (pending === null) throw new Error("缺少待审批写入");
+    await vi.waitFor(() => expect(fixture.service.get_snapshot().pendingDecision).not.toBeNull());
+    const pending = fixture.service.get_snapshot().pendingDecision;
+    if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
 
-    await fixture.service.reject_pending_write({ id: pending.id });
+    fixture.service.resolve_write_approval({ id: pending.id, decision: "reject" });
     await wait_for_idle(fixture.service);
-    expect(fixture.service.get_snapshot().pendingWriteApproval).toBeNull();
+    expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
     expect(fixture.service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -616,31 +626,21 @@ describe("AgentService", () => {
     );
   });
 
-  it("reset 在 processing 阶段隔离延迟决定", async () => {
+  it("reset 隔离仍在等待的写入决定", async () => {
     const fixture = await create_service();
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
 
     await fixture.service.send_message({ text: "写入后重置", attachments: [] });
     await vi.waitFor(() =>
-      expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
-        status: "waiting",
+      expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
+        kind: "write_approval",
       }),
     );
-    const pending = fixture.service.get_snapshot().pendingWriteApproval;
-    if (pending === null) throw new Error("缺少待审批写入");
-
-    expect(fixture.service.approve_pending_write({ id: pending.id, switchToAuto: false })).toEqual({
-      revision: expect.any(Number),
-    });
-    expect(fixture.service.get_snapshot().pendingWriteApproval).toMatchObject({
-      id: pending.id,
-      status: "processing",
-    });
     await expect(fixture.service.reset()).resolves.toEqual({ revision: expect.any(Number) });
     expect(fixture.service.get_snapshot()).toMatchObject({
       state: "idle",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -648,9 +648,40 @@ describe("AgentService", () => {
     expect(fake_agent_state.release_tool_execution).toBeNull();
     expect(fixture.service.get_snapshot()).toMatchObject({
       state: "idle",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
     });
+  });
+
+  it("ask_user 以结构化答案恢复同一工具轮次", async () => {
+    const fixture = await create_service();
+    fake_agent_state.mode = "question";
+
+    await fixture.service.send_message({ text: "开始", attachments: [] });
+    await vi.waitFor(() =>
+      expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
+        kind: "question",
+        question: { prompt: "选择处理范围" },
+      }),
+    );
+    const pending = fixture.service.get_snapshot().pendingDecision;
+    if (pending?.kind !== "question") throw new Error("缺少待回答问题");
+    expect(fixture.service.get_snapshot().inputQueue.canSendNow).toBe(false);
+
+    fixture.service.resolve_question({
+      id: pending.id,
+      response: { kind: "option", optionId: "complete" },
+    });
+    expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
+    await wait_for_idle(fixture.service);
+
+    expect(read_tool_output(fixture.service, "question-1")).toEqual({
+      outcome: "selected",
+      optionId: "complete",
+    });
+    expect(
+      fixture.service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
+    ).toHaveLength(1);
   });
 
   it("把纯图片作为 WebP 传给模型并原样写入公开时间线", async () => {
@@ -1496,7 +1527,7 @@ describe("AgentService", () => {
       revision: expect.any(Number),
       state: "idle",
       approvalMode: "manual",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
@@ -1514,6 +1545,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "task_progress",
+      "ask_user",
       "workspace_script",
       "workspace_apply",
       "read_skill",
@@ -1592,7 +1624,7 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      ["task_progress", "workspace_script", "workspace_apply", "read_skill"].sort(),
+      ["task_progress", "ask_user", "workspace_script", "workspace_apply", "read_skill"].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -1798,7 +1830,7 @@ describe("AgentService", () => {
       revision: expect.any(Number),
       state: "idle",
       approvalMode: "manual",
-      pendingWriteApproval: null,
+      pendingDecision: null,
       entries: [],
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
