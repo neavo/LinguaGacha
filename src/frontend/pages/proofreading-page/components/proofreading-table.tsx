@@ -384,7 +384,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           active_row_id={props.active_row_id}
           anchor_row_id={props.anchor_row_id}
           sort_state={props.sort_state}
-          drag_enabled={false}
           get_row_id={(item) => item.row_id}
           row_model={row_model}
           scroll_to_row={props.scroll_to_row ?? undefined}
@@ -392,7 +391,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_selection_change={props.on_selection_change}
           on_selection_error={props.on_selection_error}
           on_sort_change={props.on_sort_change}
-          on_reorder={() => {}}
           on_row_double_click={(payload) => {
             props.on_open_edit(payload.row_id);
           }}

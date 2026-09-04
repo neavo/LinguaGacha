@@ -1,12 +1,36 @@
-import { act } from "react";
+import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 
 const app_table_test_state = vi.hoisted(() => {
   return {
     virtual_item_indices: null as number[] | null,
     measure: vi.fn(),
     scrollToIndex: vi.fn(),
+    on_drag_start: null as ((event: DragStartEvent) => void) | null,
+    on_drag_end: null as ((event: DragEndEvent) => void) | null,
+  };
+});
+
+vi.mock("@dnd-kit/core", async (import_original) => {
+  const actual = await import_original<typeof import("@dnd-kit/core")>();
+  const mock_module = {
+    ...actual,
+    DndContext: (props: {
+      children?: ReactNode;
+      onDragStart?: (event: DragStartEvent) => void;
+      onDragEnd?: (event: DragEndEvent) => void;
+    }) => {
+      app_table_test_state.on_drag_start = props.onDragStart ?? null;
+      app_table_test_state.on_drag_end = props.onDragEnd ?? null;
+      return props.children;
+    },
+    DragOverlay: (props: { children?: ReactNode }) => props.children,
+  };
+  return {
+    ...mock_module,
+    default: mock_module,
   };
 });
 
@@ -151,11 +175,9 @@ function create_default_props(
       active_row_id={null}
       anchor_row_id={null}
       sort_state={null}
-      drag_enabled={false}
       get_row_id={(row) => row.id}
       on_selection_change={() => {}}
       on_sort_change={() => {}}
-      on_reorder={() => {}}
       {...overrides}
     />
   );
@@ -214,6 +236,33 @@ function create_rows(count: number): TestRow[] {
   });
 }
 
+function create_reorder_rows(): TestRow[] {
+  return [
+    { id: "a", label: "Alpha" },
+    { id: "b", label: "Beta" },
+    { id: "c", label: "Gamma" },
+  ];
+}
+
+function drag_table_row(active_row_id: string, over_row_id: string): void {
+  act(() => {
+    app_table_test_state.on_drag_start?.({ active: { id: active_row_id } } as DragStartEvent);
+  });
+  act(() => {
+    app_table_test_state.on_drag_end?.({
+      active: { id: active_row_id },
+      over: { id: over_row_id },
+    } as DragEndEvent);
+  });
+}
+
+function read_rendered_row_labels(container: HTMLDivElement): string[] {
+  return Array.from(container.querySelectorAll(".app-table__table--body .app-table__row")).map(
+    (row) =>
+      row.querySelector(".app-table__body-cell:not(.app-table__drag-cell)")?.textContent ?? "",
+  );
+}
+
 function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
   element.getBoundingClientRect = () => {
     return {
@@ -265,6 +314,8 @@ describe("AppTable row model", () => {
     app_table_test_state.virtual_item_indices = null;
     app_table_test_state.measure.mockClear();
     app_table_test_state.scrollToIndex.mockClear();
+    app_table_test_state.on_drag_start = null;
+    app_table_test_state.on_drag_end = null;
   });
 
   afterEach(() => {
@@ -310,6 +361,86 @@ describe("AppTable row model", () => {
       active_row_id: "a",
       anchor_row_id: "a",
     });
+  });
+
+  it("松手后立即呈现目标顺序，并由完成后的权威 rows 无缝接管", async () => {
+    const initial_rows = create_reorder_rows();
+    const persist = create_controlled_promise<void>();
+    let submitted_row_ids: string[] = [];
+
+    function ReorderFixture(): JSX.Element {
+      const [rows, set_rows] = useState(initial_rows);
+      return create_default_props({
+        rows,
+        columns: create_drag_columns(),
+        on_reorder: async (ordered_row_ids) => {
+          submitted_row_ids = ordered_row_ids;
+          await persist.promise;
+          const row_by_id = new Map(rows.map((row) => [row.id, row]));
+          set_rows(ordered_row_ids.map((row_id) => row_by_id.get(row_id)!));
+        },
+      });
+    }
+
+    const container = await mount(<ReorderFixture />);
+    drag_table_row("a", "c");
+
+    expect(submitted_row_ids).toEqual(["b", "c", "a"]);
+    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+    expect(container.textContent).toContain("不可拖拽");
+
+    await act(async () => {
+      persist.resolve();
+      await persist.promise;
+      await Promise.resolve();
+    });
+
+    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+  });
+
+  it("持久化失败后才恢复权威顺序", async () => {
+    const initial_rows = create_reorder_rows();
+    const persist = create_controlled_promise<void>();
+
+    function ReorderFixture(): JSX.Element {
+      return create_default_props({
+        rows: initial_rows,
+        columns: create_drag_columns(),
+        on_reorder: async () => {
+          await persist.promise;
+        },
+      });
+    }
+
+    const container = await mount(<ReorderFixture />);
+    drag_table_row("a", "c");
+
+    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+
+    await act(async () => {
+      persist.reject(new Error("save failed"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(read_rendered_row_labels(container)).toEqual(["Alpha", "Beta", "Gamma"]);
+  });
+
+  it("选中组内拖放没有改变顺序时不提交写入", async () => {
+    const on_reorder = vi.fn(async (_ordered_row_ids: string[]) => {});
+    await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        columns: create_drag_columns(),
+        selected_row_ids: ["b", "c"],
+        active_row_id: "b",
+        anchor_row_id: "b",
+        on_reorder,
+      }),
+    );
+    drag_table_row("b", "c");
+
+    expect(on_reorder).not.toHaveBeenCalled();
   });
 
   it("行内交互标记阻止点击和框选同时改变表格选区", async () => {
@@ -1016,7 +1147,7 @@ describe("AppTable row model", () => {
     });
   });
 
-  it("显式 row_model 下即使传入 drag_enabled 也会降级为不可拖拽", async () => {
+  it("显式 row_model 下即使提供重排回调也会降级为不可拖拽", async () => {
     const row_model: AppTableRowModel<TestRow> = {
       row_count: 1,
       loaded_row_ids: ["remote"],
@@ -1033,7 +1164,7 @@ describe("AppTable row model", () => {
       create_default_props({
         rows: [],
         columns: create_drag_columns(),
-        drag_enabled: true,
+        on_reorder: async () => {},
         row_model,
       }),
     );

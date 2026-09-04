@@ -68,7 +68,8 @@ import {
   type ProjectSessionTableSelectionState,
 } from "@frontend/app/session/project-session-ui-state-context";
 import {
-  reorder_selected_quality_rule_entries,
+  can_reorder_quality_rule_entries,
+  order_quality_rule_entries_by_id,
   resolve_quality_rule_insert_after_entry_id,
 } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
@@ -330,10 +331,7 @@ type UseGlossaryPageStateResult = {
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;
   toggle_case_sensitive_for_selected: (next_value: boolean) => Promise<void>;
-  reorder_selected_entries: (
-    active_entry_id: GlossaryEntryId,
-    over_entry_id: GlossaryEntryId,
-  ) => Promise<void>;
+  reorder_selected_entries: (ordered_entry_ids: GlossaryEntryId[]) => Promise<void>;
   query_entry_source_from_hit: (entry_id: GlossaryEntryId) => Promise<void>;
   search_entry_relations_from_hit: (entry_id: GlossaryEntryId) => void;
   save_dialog_entry: () => Promise<void>;
@@ -535,7 +533,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [visible_entry_ids]);
   const has_active_sort = sort_state.field !== null;
   const readonly = is_runtime_busy(runtime_snapshot);
-  const drag_disabled = readonly || has_active_filters || has_active_sort; // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用
+  const drag_disabled = !can_reorder_quality_rule_entries({
+    readonly,
+    has_active_query: has_active_filters || has_active_sort,
+    visible_entry_ids,
+    ordered_entry_ids: entry_ids,
+  });
   const hit_badge_by_entry_id = useMemo<Record<GlossaryEntryId, GlossaryHitBadgeState>>(() => {
     const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState> = {};
     if (!hit_ready && hit_state.entry_ids === null) {
@@ -973,25 +976,16 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   );
 
   const reorder_selected_entries = useCallback(
-    async (
-      current_active_entry_id: GlossaryEntryId,
-      over_entry_id: GlossaryEntryId,
-    ): Promise<void> => {
-      if (readonly || current_active_entry_id === over_entry_id) {
+    async (ordered_entry_ids: GlossaryEntryId[]): Promise<void> => {
+      if (drag_disabled) {
         return;
       }
 
-      const next_entries = reorder_selected_quality_rule_entries(
-        entries,
-        entry_ids,
-        selected_entry_ids,
-        current_active_entry_id,
-        over_entry_id,
-      );
+      const next_entries = order_quality_rule_entries_by_id(entries, entry_ids, ordered_entry_ids);
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
     },
-    [entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
+    [drag_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {

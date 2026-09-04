@@ -106,10 +106,7 @@ export type UseTextPreservePageStateResult = {
   set_default_preset: (virtual_id: string) => Promise<void>;
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;
-  reorder_selected_entries: (
-    active_entry_id: TextPreserveEntryId,
-    over_entry_id: TextPreserveEntryId,
-  ) => Promise<void>;
+  reorder_selected_entries: (ordered_entry_ids: TextPreserveEntryId[]) => Promise<void>;
   query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
   save_dialog_entry: () => Promise<void>;
   request_close_dialog: () => Promise<void>;

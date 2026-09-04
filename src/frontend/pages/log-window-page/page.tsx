@@ -484,11 +484,9 @@ export function LogWindowPage(): JSX.Element {
                 active_row_id={selection_state.active_row_id}
                 anchor_row_id={selection_state.anchor_row_id}
                 sort_state={null}
-                drag_enabled={false}
                 get_row_id={(event) => event.id}
                 on_selection_change={apply_log_selection}
                 on_sort_change={() => undefined}
-                on_reorder={() => undefined}
                 on_row_double_click={() => {
                   set_detail_expanded(true);
                 }}

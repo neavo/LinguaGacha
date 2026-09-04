@@ -37,7 +37,7 @@ type GlossaryTableProps = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_open_edit: (entry_id: GlossaryEntryId) => void;
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>;
-  on_reorder: (active_entry_id: GlossaryEntryId, over_entry_id: GlossaryEntryId) => Promise<void>;
+  on_reorder: (ordered_entry_ids: GlossaryEntryId[]) => Promise<void>;
   on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>;
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
 };
@@ -250,7 +250,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           active_row_id={props.active_entry_id}
           anchor_row_id={props.anchor_entry_id}
           sort_state={map_glossary_sort_state(props.sort_state)}
-          drag_enabled={!props.drag_disabled}
           get_row_id={(entry) => entry.entry_id}
           scroll_to_row={
             props.restore_scroll_entry_id === null
@@ -259,9 +258,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           }
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
-          on_reorder={(payload) => {
-            void props.on_reorder(payload.active_row_id, payload.over_row_id);
-          }}
+          on_reorder={props.drag_disabled ? undefined : props.on_reorder}
           on_row_double_click={(payload) => {
             props.on_open_edit(payload.row_id);
           }}
