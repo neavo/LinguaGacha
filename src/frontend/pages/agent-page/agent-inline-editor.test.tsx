@@ -135,8 +135,6 @@ describe("AgentInlineEditor", () => {
         <AgentInlineEditor
           target={target}
           skills={[]}
-          terms={[]}
-          term_hit_counts={{}}
           command={null}
           model_selection={model_selection}
           unavailable_reason={null}

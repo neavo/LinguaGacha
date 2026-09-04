@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { GlossaryEntry } from "@domain/quality";
 import { type AgentMessageInput, type AgentSkillSnapshot } from "@shared/agent";
 import type {
   AgentCommand,
@@ -27,8 +26,6 @@ export type AgentInlineEditTarget =
 type AgentInlineEditorProps = {
   target: AgentInlineEditTarget;
   skills: readonly AgentSkillSnapshot[];
-  terms: readonly GlossaryEntry[];
-  term_hit_counts: Readonly<Record<string, number>>;
   command: AgentCommand;
   model_selection: ModelSelectionController;
   unavailable_reason: "restoring" | "runtime_busy" | "settling" | null;
@@ -123,8 +120,6 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         on_cancel_edit={cancel_edit}
         locked={status !== "idle"}
         skills={props.skills}
-        terms={props.terms}
-        term_hit_counts={props.term_hit_counts}
         running={false}
         stop_disabled
         compacting={false}

@@ -27,15 +27,20 @@ export const de_de_agent_page = {
     },
   },
   input: {
-    placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
+    placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Befehl wählen …",
     edit_assistant_placeholder: "Modellantwort bearbeiten …",
     newline: "Neue Zeile",
     drop_images: "Loslassen, um Bilder hinzuzufügen",
   },
   mention: {
-    groups: { skills: "Skills", terms: "Begriffe" },
+    groups: { skills: "Skills", instructions: "Befehle" },
+    instructions: {
+      compact_context: {
+        title: "Kontext komprimieren",
+        unnecessary: "Der aktuelle Kontext ist klein und muss nicht komprimiert werden",
+      },
+    },
     no_matches: "Keine passenden Einträge …",
-    term_hits: "{count} Treffer",
   },
   annotation: {
     title: "Anmerkung",
@@ -143,7 +148,7 @@ export const de_de_agent_page = {
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
     approval_mode:
       "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
-    terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
+    compact: "Der Kontext konnte nicht komprimiert werden. Bitte erneut versuchen.",
   },
   unavailable: {
     restoring: "Sitzung wird wiederhergestellt",

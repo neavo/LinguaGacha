@@ -30,6 +30,7 @@ const POST_PATHS = new Set([
   "/api/agent/queue/send",
   "/api/agent/round/revise",
   "/api/agent/continue",
+  "/api/agent/context/compact",
   "/api/agent/stop",
   "/api/agent/reset",
   "/api/session/project/manifest",
@@ -127,7 +128,7 @@ describe("register_api_routes", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       },
     });
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
@@ -193,6 +194,10 @@ describe("register_api_routes", () => {
       read_post_handler(fixture.post_json, "/api/agent/continue")(continuation),
     ).resolves.toEqual({ revision: 7 });
     expect(fixture.continue_session).toHaveBeenCalledWith(continuation);
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/context/compact")({}),
+    ).resolves.toEqual({ revision: 7 });
+    expect(fixture.compact_context).toHaveBeenCalledWith();
     const revision = { entryId: "assistant-1", message: { text: "修订", attachments: [] } };
     await expect(
       read_post_handler(fixture.post_json, "/api/agent/round/revise")(revision),
@@ -260,6 +265,7 @@ function create_route_fixture() {
   const reorder_queued_messages = vi.fn(() => acknowledgement);
   const send_queued_message = vi.fn(async () => acknowledgement);
   const continue_session = vi.fn(async () => acknowledgement);
+  const compact_context = vi.fn(async () => acknowledgement);
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
@@ -278,7 +284,7 @@ function create_route_fixture() {
       skills: [],
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      contextTokens: null,
+      context: { tokens: null, compactable: false },
     })),
     send_message,
     set_approval_mode,
@@ -289,6 +295,7 @@ function create_route_fixture() {
     reorder_queued_messages,
     send_queued_message,
     continue_session,
+    compact_context,
     revise_latest_round,
     stop,
     reset,
@@ -333,6 +340,7 @@ function create_route_fixture() {
     get,
     post_json,
     continue_session,
+    compact_context,
     delete_queued_message,
     revise_latest_round,
     reset,

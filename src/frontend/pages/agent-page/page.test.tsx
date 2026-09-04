@@ -33,22 +33,6 @@ const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "task" | "agent" | null },
 }));
-const desktop_state = vi.hoisted(() => ({
-  current: {
-    project_snapshot: { loaded: true as boolean, path: "E:/demo/demo.lg" },
-    project_session_status: "ready",
-  },
-}));
-const quality_query_state = vi.hoisted(() => ({
-  entries: [] as Array<Record<string, unknown>>,
-  last_args: null as Record<string, unknown> | null,
-}));
-const quality_statistics_state = vi.hoisted(() => ({
-  current: {
-    entry_ids: [] as string[],
-    hits_by_entry_id: {} as Record<string, number>,
-  },
-}));
 const push_toast = vi.hoisted(() => vi.fn());
 /** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
 const model_agent_limits = vi.hoisted(() => ({
@@ -133,7 +117,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
     state: page_state.current.state,
     approvalMode: page_state.current.approvalMode,
     pendingDecision: page_state.current.pendingDecision,
-    contextTokens: page_state.current.contextTokens,
+    context: page_state.current.context,
     transport: page_state.current.transport,
     command: page_state.current.command,
   }),
@@ -144,34 +128,10 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSessionActions: () => page_state.current,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => desktop_state.current,
   useRuntimeSnapshot: () => runtime_state.current,
 }));
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
   useDesktopToast: () => ({ push_toast }),
-}));
-vi.mock("@frontend/app/session/quality-rule-statistics-context", () => ({
-  useQualityRuleStatistics: () => quality_statistics_state.current,
-}));
-vi.mock("@frontend/features/quality-rule-editor/use-quality-rule-query", () => ({
-  useQualityRuleQuery: (args: {
-    project_path: string;
-    default_slice: unknown;
-    normalize_slice: (
-      slice: { entries: Array<Record<string, unknown>> },
-      revision: number,
-    ) => unknown;
-  }) => {
-    quality_query_state.last_args = args as unknown as Record<string, unknown>;
-    return {
-      quality_slice:
-        args.project_path === ""
-          ? args.default_slice
-          : args.normalize_slice({ entries: quality_query_state.entries }, 1),
-      quality_loaded: args.project_path !== "",
-      refresh_quality_rule_snapshot: vi.fn(),
-    };
-  },
 }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
@@ -221,16 +181,6 @@ describe("AgentPage", () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
-    desktop_state.current = {
-      project_snapshot: { loaded: true, path: "E:/demo/demo.lg" },
-      project_session_status: "ready",
-    };
-    quality_query_state.entries = [];
-    quality_query_state.last_args = null;
-    quality_statistics_state.current = {
-      entry_ids: [],
-      hits_by_entry_id: {},
-    };
     push_toast.mockReset();
     model_agent_limits.context_window = 288_000;
     model_agent_limits.max_output_tokens = 32_000;
@@ -355,51 +305,57 @@ describe("AgentPage", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 
-  it("按当前工程接入规范术语，未加载工程与读取失败不阻断能力和发送", async () => {
-    quality_query_state.entries = [
-      {
-        entry_id: "alice",
-        src: " Alice ",
-        dst: " 爱丽丝 ",
-        info: " 主角 ",
-        case_sensitive: false,
-      },
-    ];
-    quality_statistics_state.current = {
-      entry_ids: ["alice"],
-      hits_by_entry_id: { alice: 7 },
-    };
+  it("从 mention 菜单选择压缩指令后立即执行且不发送消息", async () => {
+    const compactContext = vi.fn(async () => undefined);
     const send = vi.fn(async () => undefined);
-    const view = await render_page({ entries: [], send });
+    const view = await render_page({
+      context: { tokens: 64_000, compactable: true },
+      compactContext,
+      send,
+    });
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
       editor.dispatch({
-        changes: { from: 0, insert: "@" },
-        selection: EditorSelection.cursor(1),
+        changes: { from: 0, insert: "@compact" },
+        selection: EditorSelection.cursor(8),
       }),
     );
-    expect(
-      view.querySelector('[aria-labelledby="agent-mention-terms-label"]')?.textContent,
-    ).toContain("Alice爱丽丝 · 主角");
-    expect(quality_query_state.last_args).toMatchObject({
-      rule_type: "glossary",
-      project_path: "E:/demo/demo.lg",
-      session_ready: true,
-    });
+    const instruction = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    );
+    if (instruction === null) throw new Error("缺少压缩指令");
+    expect(instruction.querySelector("small")).toBeNull();
 
-    const on_load_error = quality_query_state.last_args?.["on_load_error"];
-    if (typeof on_load_error !== "function") throw new Error("缺少术语错误出口");
-    await act(async () => on_load_error(new Error("load failed")));
-    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.terms_load");
+    await act(async () => instruction.click());
+    expect(editor.state.doc.toString()).toBe("");
+    expect(compactContext).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+  });
 
-    desktop_state.current = {
-      project_snapshot: { loaded: false, path: "" },
-      project_session_status: "ready",
-    };
-    await render_page({ entries: [], send });
-    expect(quality_query_state.last_args).toMatchObject({ project_path: "" });
-    expect(view.querySelector('[aria-labelledby="agent-mention-terms-label"]')).toBeNull();
+  it("只为空闲且无需压缩的指令显示简短说明", async () => {
+    const view = await render_page({ context: { tokens: 1_000, compactable: false } });
+    const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
+    if (editor === null) throw new Error("缺少 Composer");
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 0, insert: "@compact" },
+        selection: EditorSelection.cursor(8),
+      }),
+    );
+    const idle_instruction = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    );
+    expect(idle_instruction?.disabled).toBe(true);
+    expect(idle_instruction?.querySelector("small")).not.toBeNull();
+
+    runtime_state.current = { revision: 1, owner: "task" };
+    await render_page({ context: { tokens: 1_000, compactable: false } });
+    const busy_instruction = view.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+    );
+    expect(busy_instruction?.disabled).toBe(true);
+    expect(busy_instruction?.querySelector("small")).toBeNull();
   });
 
   it("恢复失败时显示单一重试入口并重新连接", async () => {
@@ -1069,7 +1025,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: overrides.todos ?? [],
-    contextTokens: overrides.contextTokens ?? null,
+    context: overrides.context ?? { tokens: null, compactable: false },
     transport: "ready",
     command: null,
     input: {
@@ -1086,6 +1042,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     reorderQueuedMessages: vi.fn(async () => undefined),
     sendQueuedMessage: vi.fn(async () => undefined),
     continue: vi.fn(async () => undefined),
+    compactContext: vi.fn(async () => undefined),
     stop: vi.fn(),
     reset: vi.fn(async () => undefined),
     setApprovalMode: vi.fn(async () => undefined),

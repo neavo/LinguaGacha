@@ -1779,9 +1779,13 @@
   user-select: text;
 }
 
-.agent-mention-menu button:hover,
-.agent-mention-menu button[data-highlight="true"] {
+.agent-mention-menu button:not(:disabled):hover,
+.agent-mention-menu button:not(:disabled)[data-highlight="true"] {
   background: var(--accent);
+}
+
+.agent-mention-menu button:disabled {
+  opacity: 0.45;
 }
 
 .agent-mention-menu button:focus-visible {
@@ -1807,6 +1811,10 @@
 .agent-mention-menu strong {
   font-size: 12px;
   font-weight: 500;
+}
+
+.agent-mention-menu button:not(:has(small)) strong {
+  grid-column: 2 / -1;
 }
 
 .agent-mention-menu small {

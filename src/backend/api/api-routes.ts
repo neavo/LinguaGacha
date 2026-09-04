@@ -75,6 +75,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/queue/send", (body) => agent.send_queued_message(body));
   context.postJson("/api/agent/round/revise", (body) => agent.revise_latest_round(body));
   context.postJson("/api/agent/continue", (body) => agent.continue_session(body));
+  context.postJson("/api/agent/context/compact", () => agent.compact_context());
   context.postJson("/api/agent/stop", () => agent.stop());
   context.postJson("/api/agent/reset", () => agent.reset());
 

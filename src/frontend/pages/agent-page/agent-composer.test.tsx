@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { GlossaryEntry } from "@domain/quality";
 import {
   AGENT_MESSAGE_IMAGE_LIMIT,
   type AgentMessageAttachment,
@@ -27,6 +26,7 @@ type RenderComposerOptions = Partial<
     | "command"
     | "compacting"
     | "context_tokens"
+    | "instructions"
     | "inline_role"
     | "locked"
     | "on_cancel_edit"
@@ -39,8 +39,7 @@ type RenderComposerOptions = Partial<
     | "queue_full"
     | "running"
     | "stop_disabled"
-    | "term_hit_counts"
-    | "terms"
+    | "skills"
     | "unavailable_reason"
   >
 > & {
@@ -94,18 +93,6 @@ const skills = [
   },
 ];
 
-const terms: GlossaryEntry[] = [
-  { entry_id: "alice", src: "Alice Smith", dst: "爱丽丝", info: "女主角", case_sensitive: false },
-  { entry_id: "bob", src: "Bob", dst: "鲍勃", info: "", case_sensitive: false },
-  { entry_id: "carol", src: "Carol", dst: "", info: "反派角色", case_sensitive: false },
-  { entry_id: "delta", src: "Delta", dst: "", info: "角色", case_sensitive: false },
-  { entry_id: "echo", src: "Echo", dst: "", info: "角色", case_sensitive: false },
-  { entry_id: "foxtrot", src: "Foxtrot", dst: "", info: "角色", case_sensitive: false },
-  { entry_id: "golf", src: "Golf", dst: "", info: "角色", case_sensitive: false },
-  { src: "", dst: "空源", info: "角色", case_sensitive: false },
-];
-const term_hit_counts = { alice: 7, bob: 2, carol: 0, delta: 1, echo: 3 };
-
 describe("AgentComposer", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -120,9 +107,21 @@ describe("AgentComposer", () => {
     image_mocks.normalize_agent_images.mockClear();
   });
 
-  it("选择能力和术语插入字面量，活动索引跨分组连续移动", async () => {
+  it("选择技能插入 marker，选择压缩指令则移除筛选文本并立即执行", async () => {
     const on_send = vi.fn();
-    const view = await render_composer({ on_send });
+    const on_compact = vi.fn();
+    const view = await render_composer({
+      on_send,
+      instructions: [
+        {
+          id: "compact_context",
+          title: "压缩上下文",
+          description: "",
+          disabled: false,
+          execute: on_compact,
+        },
+      ],
+    });
     const editor = get_editor(view);
     const content = editor.contentDOM;
 
@@ -133,37 +132,49 @@ describe("AgentComposer", () => {
       "@skill(glossary-audit)",
     );
 
-    await set_document(editor, "@", 1);
-    await dispatch_key(content, "ArrowDown");
-    await dispatch_key(content, "ArrowDown");
-    expect(content.getAttribute("aria-activedescendant")).toBe("agent-mention-option-2");
+    await set_document(editor, "前 @compact 后", 10);
     await dispatch_key(content, "Enter");
-    expect(editor.state.doc.toString()).toBe("@term(Alice Smith) ");
-    expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(
-      "@term(Alice Smith)",
-    );
-
-    await set_document(editor, "@Bob", 4);
-    const option = await wait_for_element(view, '[role="option"]');
-    const mouse_down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
-    expect(option.dispatchEvent(mouse_down)).toBe(false);
-    await act(async () => option.click());
-    expect(editor.state.doc.toString()).toBe("@term(Bob) ");
-    await click_send(view);
-    expect(on_send).toHaveBeenCalledWith({ text: "@term(Bob)", attachments: [] });
+    expect(editor.state.doc.toString()).toBe("前  后");
+    expect(on_compact).toHaveBeenCalledOnce();
+    expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("方向键导航到深层候选时把活动项滚入菜单可视区域", async () => {
+  it("禁用的压缩指令保持筛选文本且不可触发", async () => {
+    const on_compact = vi.fn();
+    const view = await render_composer({
+      instructions: [
+        {
+          id: "compact_context",
+          title: "压缩上下文",
+          description: "当前上下文较少，无需压缩",
+          disabled: true,
+          execute: on_compact,
+        },
+      ],
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "@compact", 8);
+    const option = (await wait_for_element(view, '[role="option"]')) as HTMLButtonElement;
+
+    expect(option.disabled).toBe(true);
+    await dispatch_key(editor.contentDOM, "Enter");
+    expect(editor.state.doc.toString()).toBe("@compact");
+    expect(on_compact).not.toHaveBeenCalled();
+  });
+
+  it("方向键导航到深层技能候选时把活动项滚入菜单可视区域", async () => {
     const scroll_into_view = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
       .mockImplementation(() => undefined);
     try {
       const view = await render_composer({
-        terms: Array.from({ length: 24 }, (_, index) => ({
-          src: `Character ${index.toString()}`,
-          dst: `角色 ${index.toString()}`,
-          info: "角色",
-          case_sensitive: false,
+        skills: Array.from({ length: 24 }, (_, index) => ({
+          name: `skill-${index.toString()}`,
+          displayDescriptions: {
+            "zh-CN": `角色能力 ${index.toString()}`,
+            "en-US": "",
+            "de-DE": "",
+          },
         })),
       });
       const editor = get_editor(view);
@@ -183,10 +194,10 @@ describe("AgentComposer", () => {
     }
   });
 
-  it("已知 marker 在输入框中整块显示和删除，底层仍保留原始文本", async () => {
+  it("技能 marker 在输入框中整块显示和删除，底层仍保留原始文本", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
-    const marker = "@term(Alice Smith)";
+    const marker = "@skill(glossary-audit)";
     await set_document(editor, marker, marker.length);
 
     expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(marker);
@@ -782,9 +793,8 @@ describe("AgentComposer", () => {
             inline_role={options.inline_role}
             on_cancel_edit={options.on_cancel_edit}
             locked={options.locked}
-            skills={skills}
-            terms={options.terms ?? terms}
-            term_hit_counts={options.term_hit_counts ?? term_hit_counts}
+            skills={options.skills ?? skills}
+            instructions={options.instructions}
             running={options.running ?? false}
             stop_disabled={options.stop_disabled ?? false}
             compacting={options.compacting ?? false}

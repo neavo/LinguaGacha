@@ -27,15 +27,20 @@ export const zh_cn_agent_page = {
     },
   },
   input: {
-    placeholder: "描述任务，或输入 @ 选择技能或术语 …",
+    placeholder: "描述任务，或输入 @ 选择技能或指令 …",
     edit_assistant_placeholder: "修改模型回复 …",
     newline: "换行",
     drop_images: "松开以添加图片",
   },
   mention: {
-    groups: { skills: "技能", terms: "术语" },
+    groups: { skills: "技能", instructions: "指令" },
+    instructions: {
+      compact_context: {
+        title: "压缩上下文",
+        unnecessary: "当前上下文较少，无需压缩",
+      },
+    },
     no_matches: "没有匹配的项目 …",
-    term_hits: "{count} 次",
   },
   annotation: {
     title: "批注",
@@ -131,7 +136,7 @@ export const zh_cn_agent_page = {
     stop: "停止失败，请重试。",
     reset: "新任务创建失败，请重试。",
     approval_mode: "写入请求审批模式更新失败，请重试。",
-    terms_load: "术语加载失败，技能选择与消息发送仍可使用。",
+    compact: "上下文压缩失败，请重试。",
   },
   unavailable: {
     restoring: "正在恢复会话",
