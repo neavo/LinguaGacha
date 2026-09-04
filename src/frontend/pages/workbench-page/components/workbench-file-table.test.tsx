@@ -64,7 +64,7 @@ describe("WorkbenchFileTable", () => {
           on_selection_change={() => {}}
           on_prepare_entry_action={() => {}}
           on_reset={() => {}}
-          on_reorder={() => {}}
+          on_reorder={async () => {}}
         />,
       );
     });

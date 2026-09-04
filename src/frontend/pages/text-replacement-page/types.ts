@@ -105,10 +105,7 @@ export type UseTextReplacementPageStateResult = {
   delete_selected_entries: () => Promise<void>;
   toggle_regex_for_selected: (next_value: boolean) => Promise<void>;
   toggle_case_sensitive_for_selected: (next_value: boolean) => Promise<void>;
-  reorder_selected_entries: (
-    active_entry_id: TextReplacementEntryId,
-    over_entry_id: TextReplacementEntryId,
-  ) => Promise<void>;
+  reorder_selected_entries: (ordered_entry_ids: TextReplacementEntryId[]) => Promise<void>;
   query_entry_source: (entry_id: TextReplacementEntryId) => Promise<void>;
   search_entry_relations_from_hit: (entry_id: TextReplacementEntryId) => void;
   save_dialog_entry: () => Promise<void>;

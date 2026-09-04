@@ -26,7 +26,7 @@ type WorkbenchFileTableProps = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_prepare_entry_action: (entry_id: string) => void;
   on_reset: (entry_id: string) => void;
-  on_reorder: (ordered_entry_ids: string[]) => void;
+  on_reorder: (ordered_entry_ids: string[]) => Promise<void>;
 };
 
 /**
@@ -81,8 +81,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   const sorted_entries = useMemo(() => {
     return sort_workbench_entries(props.entries, sort_state);
   }, [props.entries, sort_state]);
-  const drag_enabled = !props.readonly && sort_state === null; // 为什么：排序视图展示的是临时顺序，不再等于工程真实文件顺序，此时继续拖拽会误导用户
-
   const columns = useMemo<AppTableColumn<WorkbenchFileEntry>[]>(() => {
     return [
       {
@@ -198,13 +196,11 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           active_row_id={props.active_entry_id}
           anchor_row_id={props.anchor_entry_id}
           sort_state={sort_state}
-          drag_enabled={drag_enabled}
           get_row_id={(entry) => entry.rel_path}
           on_selection_change={props.on_selection_change}
           on_sort_change={set_sort_state}
-          on_reorder={(payload) => {
-            props.on_reorder(payload.ordered_row_ids);
-          }}
+          // 排序视图是临时顺序，不等于工程真实顺序，因此只在原始顺序下开放拖拽。
+          on_reorder={props.readonly || sort_state !== null ? undefined : props.on_reorder}
           render_row_context_menu={(payload) => {
             return (
               <WorkbenchTableContextMenuContent

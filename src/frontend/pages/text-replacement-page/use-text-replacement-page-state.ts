@@ -76,7 +76,8 @@ import {
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
 import {
-  reorder_selected_quality_rule_entries,
+  can_reorder_quality_rule_entries,
+  order_quality_rule_entries_by_id,
   resolve_quality_rule_insert_after_entry_id,
 } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import {
@@ -531,7 +532,12 @@ export function useTextReplacementPageState(
   }, [visible_entry_ids]);
 
   const readonly = is_runtime_busy(runtime_snapshot);
-  const drag_disabled = readonly || has_active_filters || sort_state !== null;
+  const drag_disabled = !can_reorder_quality_rule_entries({
+    readonly,
+    has_active_query: has_active_filters || sort_state !== null,
+    visible_entry_ids,
+    ordered_entry_ids: entry_ids,
+  });
 
   const hit_badge_by_entry_id = useMemo<
     Record<TextReplacementEntryId, TextReplacementHitBadgeState>
@@ -937,25 +943,16 @@ export function useTextReplacementPageState(
   );
 
   const reorder_selected_entries = useCallback(
-    async (
-      current_active_entry_id: TextReplacementEntryId,
-      over_entry_id: TextReplacementEntryId,
-    ): Promise<void> => {
-      if (readonly || drag_disabled || current_active_entry_id === over_entry_id) {
+    async (ordered_entry_ids: TextReplacementEntryId[]): Promise<void> => {
+      if (drag_disabled) {
         return;
       }
 
-      const next_entries = reorder_selected_quality_rule_entries(
-        entries,
-        entry_ids,
-        selected_entry_ids,
-        current_active_entry_id,
-        over_entry_id,
-      );
+      const next_entries = order_quality_rule_entries_by_id(entries, entry_ids, ordered_entry_ids);
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
     },
-    [drag_disabled, entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
+    [drag_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
   const query_entry_source = useCallback(

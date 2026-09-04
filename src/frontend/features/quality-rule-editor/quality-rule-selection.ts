@@ -1,8 +1,3 @@
-import {
-  build_app_table_reordered_row_ids,
-  resolve_app_table_drag_group_row_ids,
-} from "@frontend/widgets/app-table/app-table-dnd";
-
 type QualityRuleBooleanMenuState = "enabled" | "disabled" | "mixed";
 
 /**
@@ -16,6 +11,20 @@ export function are_quality_rule_entry_ids_equal(
     left_entry_ids === right_entry_ids ||
     (left_entry_ids.length === right_entry_ids.length &&
       left_entry_ids.every((entry_id, index) => entry_id === right_entry_ids[index]))
+  );
+}
+
+/** 查询控件与防抖结果可能短暂错位，仅在可见结果完整反映权威顺序时开放重排。 */
+export function can_reorder_quality_rule_entries(args: {
+  readonly: boolean;
+  has_active_query: boolean;
+  visible_entry_ids: readonly string[];
+  ordered_entry_ids: readonly string[];
+}): boolean {
+  return (
+    !args.readonly &&
+    !args.has_active_query &&
+    are_quality_rule_entry_ids_equal(args.visible_entry_ids, args.ordered_entry_ids)
   );
 }
 
@@ -55,29 +64,15 @@ export function resolve_quality_rule_boolean_menu_state<Entry, Id extends string
   return common_value === undefined ? "mixed" : common_value ? "enabled" : "disabled";
 }
 
-/**
- * 拖动选中组时保持组内原顺序，并按拖动方向插入目标行前后。
- */
-export function reorder_selected_quality_rule_entries<Entry>(
+/** 按表格已经裁决的最终身份顺序投影规则条目。 */
+export function order_quality_rule_entries_by_id<Entry>(
   entries: Entry[],
+  current_entry_ids: readonly string[],
   ordered_entry_ids: readonly string[],
-  selected_entry_ids: readonly string[],
-  active_entry_id: string,
-  over_entry_id: string,
 ): Entry[] {
-  const moving_entry_ids = resolve_app_table_drag_group_row_ids({
-    selection_mode: "multiple",
-    active_row_id: active_entry_id,
-    selected_row_ids: [...selected_entry_ids],
-  });
-  const reordered_entry_ids = build_app_table_reordered_row_ids({
-    ordered_row_ids: [...ordered_entry_ids],
-    moving_row_ids: moving_entry_ids,
-    over_row_id: over_entry_id,
-  });
   const entry_by_id = new Map(
-    ordered_entry_ids.map((entry_id, index) => [entry_id, entries[index]]),
+    current_entry_ids.map((entry_id, index) => [entry_id, entries[index]]),
   );
 
-  return reordered_entry_ids.map((entry_id) => entry_by_id.get(entry_id)!);
+  return ordered_entry_ids.map((entry_id) => entry_by_id.get(entry_id)!);
 }

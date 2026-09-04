@@ -25,14 +25,6 @@ type AppTableSortActionLabels = {
   clear: string;
 };
 
-type AppTableReorderChange<Row> = {
-  active_row_id: string;
-  over_row_id: string;
-  active_row_ids: string[];
-  ordered_row_ids: string[];
-  rows: Row[];
-};
-
 export type AppTableRowEvent<Row> = {
   row: Row;
   row_id: string;
@@ -123,7 +115,6 @@ export type AppTableProps<Row> = {
   active_row_id: string | null;
   anchor_row_id: string | null;
   sort_state: AppTableSortState | null;
-  drag_enabled: boolean;
   get_row_id: (row: Row, index: number) => string;
   row_model?: AppTableRowModel<Row>;
   // scroll_to_row 主动把目标行滚入视口，不改变表格选区或键盘焦点。
@@ -134,7 +125,8 @@ export type AppTableProps<Row> = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error?: (error: unknown) => void;
   on_sort_change: (payload: AppTableSortState | null) => void;
-  on_reorder: (payload: AppTableReorderChange<Row>) => void | Promise<void>;
+  // 回调存在即开放拖拽；表格维持临时顺序直到页面完成持久化与权威数据刷新。
+  on_reorder?: (ordered_row_ids: string[]) => Promise<void>;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
   render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
   box_selection_enabled?: boolean;

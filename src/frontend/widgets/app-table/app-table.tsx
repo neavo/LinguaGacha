@@ -151,9 +151,32 @@ function create_array_row_model<Row>(
     resolve_row_index: (row_id) => row_index_by_id.get(row_id),
   };
 }
+
+/** 用待提交身份顺序投影最新 rows；集合已变化时放弃临时顺序。 */
+function materialize_pending_rows<Row>(
+  source_row_model: AppTableRowModel<Row>,
+  ordered_row_ids: string[],
+): Row[] | null {
+  if (ordered_row_ids.length !== source_row_model.row_count) {
+    return null;
+  }
+
+  const ordered_rows: Row[] = [];
+  for (const row_id of ordered_row_ids) {
+    const row_index = source_row_model.resolve_row_index(row_id);
+    const row = row_index === undefined ? undefined : source_row_model.get_row_at_index(row_index);
+    if (row === undefined) {
+      return null;
+    }
+    ordered_rows.push(row);
+  }
+  return ordered_rows;
+}
+
 function use_array_row_model<Row>(
   rows: Row[],
   get_row_id: (row: Row, index: number) => string,
+  pending_ordered_row_ids: string[] | null,
 ): AppTableRowModel<Row> {
   const get_row_id_ref = useRef(get_row_id);
 
@@ -162,8 +185,19 @@ function use_array_row_model<Row>(
   }, [get_row_id]);
 
   return useMemo(() => {
-    return create_array_row_model(rows, (row, index) => get_row_id_ref.current(row, index));
-  }, [rows]);
+    const source_row_model = create_array_row_model(rows, (row, index) =>
+      get_row_id_ref.current(row, index),
+    );
+    if (pending_ordered_row_ids === null) {
+      return source_row_model;
+    }
+
+    const pending_rows = materialize_pending_rows(source_row_model, pending_ordered_row_ids);
+    if (pending_rows === null) {
+      return source_row_model;
+    }
+    return create_array_row_model(pending_rows, (row, index) => get_row_id_ref.current(row, index));
+  }, [pending_ordered_row_ids, rows]);
 }
 
 function resolve_visible_sortable_row_ids(args: {
@@ -445,7 +479,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     active_row_id,
     anchor_row_id,
     sort_state,
-    drag_enabled: drag_enabled_prop,
     get_row_id,
     row_model: row_model_prop,
     scroll_to_row,
@@ -497,11 +530,13 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const [viewport_height, set_viewport_height] = useState(row_height);
   const [active_drag_row_id, set_active_drag_row_id] = useState<string | null>(null);
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null);
+  // 松手后用目标身份顺序接管展示，持久化结束再交还页面传入的权威数据。
+  const [pending_ordered_row_ids, set_pending_ordered_row_ids] = useState<string[] | null>(null);
   const [selection_box_active, set_selection_box_active] = useState(false);
   const [selection_preview_state, set_selection_preview_state] =
     useState<AppTableSelectionState | null>(null);
 
-  const array_row_model = use_array_row_model(rows, get_row_id);
+  const array_row_model = use_array_row_model(rows, get_row_id, pending_ordered_row_ids);
   const row_model = row_model_prop ?? array_row_model;
   const row_count = row_model.row_count;
   const row_ids = row_model.loaded_row_ids;
@@ -548,7 +583,11 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     return new Set(rendered_selection_state.selected_row_ids);
   }, [rendered_selection_state.selected_row_ids]);
   const drag_column_present = columns.some((column) => column.kind === "drag");
-  const drag_enabled = drag_enabled_prop && drag_column_present && drag_model_enabled;
+  const drag_enabled =
+    on_reorder !== undefined &&
+    pending_ordered_row_ids === null &&
+    drag_column_present &&
+    drag_model_enabled;
   const box_selection_enabled =
     selection_mode === "multiple" && box_selection_enabled_prop === true;
   const active_drag_row = useMemo(() => {
@@ -1646,7 +1685,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     const current_active_drag_row_id = active_drag_row_id;
     reset_drag_state();
 
-    if (!drag_enabled || current_active_drag_row_id === null || over_row_id === null) {
+    if (
+      !drag_enabled ||
+      on_reorder === undefined ||
+      current_active_drag_row_id === null ||
+      over_row_id === null
+    ) {
       return;
     }
 
@@ -1664,16 +1708,15 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       moving_row_ids: active_row_ids,
       over_row_id,
     });
+    if (ordered_row_ids.every((row_id, index) => row_id === row_ids[index])) {
+      return;
+    }
 
-    void Promise.resolve(
-      on_reorder({
-        active_row_id: current_active_drag_row_id,
-        over_row_id,
-        active_row_ids,
-        ordered_row_ids,
-        rows,
-      }),
-    );
+    set_pending_ordered_row_ids(ordered_row_ids);
+    const settle_reorder = (): void => {
+      set_pending_ordered_row_ids(null);
+    };
+    void on_reorder(ordered_row_ids).then(settle_reorder, settle_reorder);
   }
 
   const render_colgroup = (): JSX.Element => {
@@ -1882,7 +1925,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                 </SortableContext>
               </TableBody>
             </Table>
-            <DragOverlay>{overlay}</DragOverlay>
+            {/* 本地顺序已在松手时接管展示，无需叠加回落动画。 */}
+            <DragOverlay dropAnimation={null}>{overlay}</DragOverlay>
           </DndContext>
         </ScrollArea>
         {selection_box_active ? (
