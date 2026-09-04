@@ -1,11 +1,13 @@
 import path from "node:path";
 
 import {
+  BACKGROUND_CONTEXT,
   err,
   FileError,
   loadSkills,
   ok,
   toError,
+  type Context,
   type FileErrorCode,
   type FileInfo,
   type Result,
@@ -61,7 +63,7 @@ export async function load_agent_skills(
     const sources = [paths.get_agent_user_skill_dir(), paths.get_agent_builtin_skill_dir()];
     const skills = new Map<string, AgentSkillDefinition>();
     for (const source of sources) {
-      const result = await loadSkills(execution_env, source);
+      const result = await loadSkills(execution_env, source, BACKGROUND_CONTEXT);
       for (const diagnostic of result.diagnostics) log_skill_diagnostic(log_manager, diagnostic);
       const invalid_paths = new Set(
         result.diagnostics
@@ -224,10 +226,12 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
   /** 把 Pi 的文本读取协议适配为应用文件读取，并保留中止与错误语义。 */
   public override async readTextFile(
     file_path: string,
-    abort_signal?: AbortSignal,
+    context: Context,
   ): Promise<Result<string, FileError>> {
     const resolved_path = this.resolve_path(file_path);
-    if (abort_signal?.aborted) return err(new FileError("aborted", "aborted", resolved_path));
+    if (context.abortSignal?.aborted) {
+      return err(new FileError("aborted", "aborted", resolved_path));
+    }
     try {
       return ok(this.native_fs.read_text_file(resolved_path));
     } catch (error) {
@@ -236,8 +240,14 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
   }
 
   /** 将应用文件状态投影成 Pi 识别的普通文件或目录。 */
-  public override async fileInfo(file_path: string): Promise<Result<FileInfo, FileError>> {
+  public override async fileInfo(
+    file_path: string,
+    context: Context,
+  ): Promise<Result<FileInfo, FileError>> {
     const resolved_path = this.resolve_path(file_path);
+    if (context.abortSignal?.aborted) {
+      return err(new FileError("aborted", "aborted", resolved_path));
+    }
     try {
       const stats = this.native_fs.stat(resolved_path);
       const kind = stats.isFile() ? "file" : stats.isDirectory() ? "directory" : null;
@@ -259,15 +269,17 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
   /** 枚举 skill 目录时忽略符号链接，避免第三方扫描越过目录树。 */
   public override async listDir(
     directory: string,
-    abort_signal?: AbortSignal,
+    context: Context,
   ): Promise<Result<FileInfo[], FileError>> {
     const resolved_path = this.resolve_path(directory);
-    if (abort_signal?.aborted) return err(new FileError("aborted", "aborted", resolved_path));
+    if (context.abortSignal?.aborted) {
+      return err(new FileError("aborted", "aborted", resolved_path));
+    }
     try {
       const file_infos: FileInfo[] = [];
       for (const entry of this.native_fs.read_dirents(resolved_path)) {
         if (entry.isSymbolicLink()) continue;
-        const result = await this.fileInfo(path.join(resolved_path, entry.name));
+        const result = await this.fileInfo(path.join(resolved_path, entry.name), context);
         if (!result.ok) return result;
         file_infos.push(result.value);
       }
