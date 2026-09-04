@@ -56,16 +56,16 @@ import {
   load_agent_session_seed,
   type AgentSessionSeed,
 } from "./agent-session-seed";
-import { create_agent_skill_tools } from "./tools/skill";
-import { create_agent_question_tools } from "./tools/question";
+import { create_agent_skill_tools } from "./model-tools/skill";
+import { create_agent_question_tools } from "./model-tools/question";
 import { AgentInputQueue } from "./agent-input-queue";
-import { create_agent_web_tools, type AgentWebPort } from "./tools/web";
+import { create_agent_web_search_tool, type AgentWebSearchPort } from "./model-tools/web-search";
 import type { AgentWorkspacePort } from "./workspace/service";
 import {
   create_agent_workspace_tools,
   type AgentTodoPort,
   type AgentWorkspaceApprovalPort,
-} from "./tools/workspace";
+} from "./model-tools/workspace";
 import {
   format_agent_skill_invocation,
   format_agent_skills_for_system_prompt,
@@ -73,7 +73,7 @@ import {
   type AgentSkillDefinition,
 } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { AgentToolError, log_agent_tool_event, prepare_agent_tool } from "./tools/definition";
+import { AgentToolError, log_agent_tool_event, prepare_agent_tool } from "./model-tools/definition";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -171,7 +171,7 @@ type AgentServiceOptions = {
   userAgent: string;
   sessionState: ProjectSessionState;
   runtimeGate: RuntimeOperationGate;
-  web: AgentWebPort | undefined;
+  webSearch: AgentWebSearchPort | undefined;
   workspace: AgentWorkspacePort;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
@@ -196,7 +196,7 @@ export class AgentService {
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
-  private readonly web: AgentWebPort | undefined; // 缺失即不向模型注册 GUI 专属联网能力
+  private readonly web_search: AgentWebSearchPort | undefined; // 缺失即不向模型注册 GUI 专属搜索能力
   private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
@@ -230,7 +230,7 @@ export class AgentService {
     this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
-    this.web = options.web;
+    this.web_search = options.webSearch;
     this.workspace = options.workspace;
     this.log_manager = options.logManager;
     this.publish = options.publish;
@@ -999,7 +999,7 @@ export class AgentService {
           approval: this.workspace_approval_port(),
         }),
         ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
-        ...(this.web === undefined ? [] : create_agent_web_tools(this.web)),
+        ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,

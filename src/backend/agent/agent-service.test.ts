@@ -17,8 +17,7 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
-import type { AgentWebFetchPort } from "./agent-web-fetch";
-import type { AgentWebPort, AgentWebSearchPort } from "./tools/web";
+import type { AgentWebSearchPort } from "./model-tools/web-search";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 
@@ -104,9 +103,9 @@ const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
 const FAKE_WORKSPACE_SCRIPT = "return { items: [] };";
-const FAKE_TODO_WRITE_SCRIPT = 'workspace.todo.write(["基础扫描"]); return null;';
-const FAKE_TODO_READ_SCRIPT = "return { todos: workspace.todo.read() };";
-const FAKE_TODO_CLEAR_SCRIPT = "workspace.todo.write([]); return null;";
+const FAKE_TODO_WRITE_SCRIPT = 'ws.todo.write(["基础扫描"]); return null;';
+const FAKE_TODO_READ_SCRIPT = "return { todos: ws.todo.read() };";
+const FAKE_TODO_CLEAR_SCRIPT = "ws.todo.write([]); return null;";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -1627,24 +1626,17 @@ describe("AgentService", () => {
     expect(read_tool_output(service, "todo-read")).toEqual({ result: { todos: [] } });
   });
 
-  it("仅在宿主 Web 能力可用时成组注册搜索与抓取工具", async () => {
-    const web_fetch = vi.fn<AgentWebFetchPort>(async (url) => ({
-      url,
-      contentType: "text/plain",
-      body: new TextEncoder().encode("正文"),
-    }));
+  it("仅在宿主搜索能力可用时注册 web_search", async () => {
     const web_search = vi.fn<AgentWebSearchPort>(async () => ({
       provider: "exa",
       text: "搜索结果",
     }));
-    const { service } = await create_service(true, { read: web_fetch, search: web_search });
+    const { service } = await create_service(true, web_search);
 
     await service.send_message({ text: "读取网页", attachments: [] });
     await wait_for_idle(service);
 
-    expect(fake_agent_state.tool_names.at(-1)).toEqual(
-      expect.arrayContaining(["web_search", "web_fetch"]),
-    );
+    expect(fake_agent_state.tool_names.at(-1)).toContain("web_search");
   });
 
   it("Electron 工作区端口随两个工具注册，并区分会话与工程 reset", async () => {
@@ -2613,7 +2605,7 @@ describe("AgentService", () => {
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
   async function create_service(
     load_resources = true,
-    web?: AgentWebPort,
+    web_search?: AgentWebSearchPort,
     workspace?: AgentWorkspacePort,
   ): Promise<{
     service: AgentService;
@@ -2724,7 +2716,7 @@ describe("AgentService", () => {
       userAgent: "LinguaGacha/Test",
       sessionState: session_state,
       runtimeGate: runtime_gate,
-      web,
+      webSearch: web_search,
       workspace: effective_workspace,
       logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,

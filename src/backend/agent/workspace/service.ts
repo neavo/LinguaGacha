@@ -58,7 +58,7 @@ import {
   AgentWorkspaceScriptError,
   type AgentWorkspaceRunRequest,
   type AgentWorkspaceRunResult,
-} from "../deno/runner";
+} from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 

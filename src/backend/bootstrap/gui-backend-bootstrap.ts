@@ -1,7 +1,5 @@
 import { AgentService } from "../agent/agent-service";
-import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
-import { WebSearchService } from "../agent/agent-web-search";
-import type { AgentWebPort } from "../agent/tools/web";
+import { WebSearchService } from "../agent/web-search-service";
 import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "../agent/workspace/service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
@@ -22,7 +20,6 @@ export interface GuiBackendBootstrapOptions {
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
   systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
-  agentWebFetch: AgentWebFetchPort; // 受控网页下载边界
   agentWorkspaceRun: AgentWorkspaceRunPort; // 固定 Deno runner 端口
   openOutputFolder: OutputFolderOpener; // Electron main 副作用端口
   workerExecution: BackendWorkerExecution; // 正式 worker_threads 与测试执行策略
@@ -116,17 +113,13 @@ export class GuiBackendBootstrap {
         logManager: resources.logManager,
         run: this.options.agentWorkspaceRun,
       });
-      const web: AgentWebPort = {
-        read: this.options.agentWebFetch,
-        search: web_search.search,
-      };
       const agent = new AgentService({
         paths: resources.paths,
         settings: resources.settings,
         userAgent: resources.metadata.build_linguagacha_user_agent(),
         sessionState: services.state.session,
         runtimeGate: services.state.runtimeGate,
-        web,
+        webSearch: web_search.search,
         workspace,
         logManager: resources.logManager,
         publish: (topic, payload) => event_stream.publish(topic, payload),

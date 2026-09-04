@@ -1,8 +1,8 @@
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { AppPathService } from "../app/app-path-service";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./deno/policy";
-import { format_agent_workspace_method_routes } from "./methods/api-description";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./workspace/runtime/policy";
+import { format_agent_workspace_tool_routes } from "./workspace/runtime/tool/api-description";
 
 type AgentSystemPromptPaths = Pick<AppPathService, "get_agent_system_prompt_path">;
 type AgentSystemPromptNativeFs = Pick<NativeFs, "read_text_file">;
@@ -35,11 +35,8 @@ function fill_workspace_runtime_placeholders(template: string, file_path: string
   const policy = AGENT_WORKSPACE_RUNTIME_POLICY;
   const replacements = new Map([
     ["{{WORKSPACE_WRITE_SCOPES}}", policy.writeRoots.map((root) => `\`${root}/**\``).join("、")],
-    [
-      "{{WORKSPACE_DENO_RESTRICTION_ARGS}}",
-      policy.denoRestrictionArgs.map((argument) => `\`${argument}\``).join("、"),
-    ],
-    ["{{WORKSPACE_METHOD_ROUTES}}", format_agent_workspace_method_routes()],
+    ["{{WORKSPACE_DENO_ARGS}}", policy.denoArgs.map((argument) => `\`${argument}\``).join("、")],
+    ["{{WORKSPACE_TOOL_ROUTES}}", format_agent_workspace_tool_routes()],
   ]);
   let result = template;
   for (const [placeholder, value] of replacements) {

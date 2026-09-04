@@ -10,8 +10,7 @@ import type {
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
-import { create_agent_web_fetch } from "../agent/agent-web-fetch";
-import { DenoAgentWorkspaceRunner } from "../agent/deno/runner";
+import { DenoAgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { t_main_log } from "../log/log-text";
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -97,15 +96,16 @@ export async function run_backend_runtime(args: {
     pending_host_requests.clear();
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
-  const agent_workspace_runner = new DenoAgentWorkspaceRunner({
-    executablePath: args.agentWorkspaceRuntime.denoExecutablePath,
-    runtimeEntryPath: args.agentWorkspaceRuntime.runtimeEntryPath,
-  });
-  // 普通模型请求与 web_fetch 共用同一宿主解析端口，避免两套代理事实漂移。
+  // 普通模型请求与 Deno fetch 共用同一宿主解析端口，避免两套代理事实漂移。
   const system_proxy_resolver = {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
+  const agent_workspace_runner = new DenoAgentWorkspaceRunner({
+    executablePath: args.agentWorkspaceRuntime.denoExecutablePath,
+    runtimeEntryPath: args.agentWorkspaceRuntime.runtimeEntryPath,
+    systemProxyResolver: system_proxy_resolver,
+  });
   const bootstrap = new GuiBackendBootstrap({
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
@@ -113,8 +113,6 @@ export async function run_backend_runtime(args: {
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
-    // 下载与内容限制留在 Backend，仅把每跳系统代理解析反向交给 Electron main。
-    agentWebFetch: create_agent_web_fetch(system_proxy_resolver),
     agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),

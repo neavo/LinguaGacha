@@ -13,7 +13,7 @@ const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
-const AGENT_WEB_FETCH_RELATIVE_PATH = "src/backend/agent/agent-web-fetch.ts";
+const WORKSPACE_PROXY_FETCH_RELATIVE_PATH = "src/backend/agent/workspace/runtime/proxy-fetch.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
 /**
@@ -59,12 +59,8 @@ function create_backend_module_ownership_rule() {
   };
 }
 
-/** 低层 Undici 只归正式传输所有者，Backend Runtime 与 CLI 的 fetch 只能由系统代理 Client 安装。 */
+/** Undici 归正式 Backend transport；全局 fetch 仅由 Backend 与 Workspace Deno 的系统代理入口安装。 */
 function create_backend_outbound_network_rule() {
-  const network_owners = new Set([
-    SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH,
-    AGENT_WEB_FETCH_RELATIVE_PATH,
-  ]);
   return {
     name: "后端出站网络边界",
     check: (context) => {
@@ -75,21 +71,24 @@ function create_backend_outbound_network_rule() {
       )) {
         const relative_path = context.relative_path(file_path);
         const content = context.read_file(file_path);
-        if (!network_owners.has(relative_path)) {
+        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
           for (const import_entry of find_import_specifiers(content)) {
             if (import_entry.specifier !== "undici") {
               continue;
             }
             errors.push({
               line: import_entry.line,
-              message: "Undici 传输只能由 system-proxy-http-client 或 agent-web-fetch 拥有",
+              message: "Undici 传输只能由 system-proxy-http-client 拥有",
               relative_path,
             });
           }
         }
-        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
+        if (
+          relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH &&
+          relative_path !== WORKSPACE_PROXY_FETCH_RELATIVE_PATH
+        ) {
           const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
-            return "Backend Runtime 与 CLI 的 fetch 只能由 system-proxy-http-client 安装";
+            return "全局 fetch 只能由 Backend 或 Workspace Deno 的系统代理传输安装";
           });
           errors.push(...matches.map((match) => ({ ...match, relative_path })));
         }

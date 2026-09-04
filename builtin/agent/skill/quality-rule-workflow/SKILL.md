@@ -167,7 +167,7 @@ description: 对术语与文本保护规则进行提取或审校时使用。
 
 ## 8. 结构关系与发现最终化
 
-对象登记后、逐项判断前，使用 `workspace.groupQualityRuleEntries` 按规则类型执行规范结构分组。glossary 的发现分组以独立候选和 `seed: true` 既有条目为对象；`seed: false` 条目通过正式匹配参与参考、覆盖、冲突和边界核验，不作为同类发现分组的种子。结构关系用于安排共同核验、暴露覆盖或边界线索；语义身份、必要性和最终合并由领域证据独立确定。
+对象登记后、逐项判断前，使用 `ws.tool.groupQualityRuleEntries` 按规则类型执行规范结构分组。glossary 的发现分组以独立候选和 `seed: true` 既有条目为对象；`seed: false` 条目通过正式匹配参与参考、覆盖、冲突和边界核验，不作为同类发现分组的种子。结构关系用于安排共同核验、暴露覆盖或边界线索；语义身份、必要性和最终合并由领域证据独立确定。
 
 - 按 `next_offset` 消费全部分页；每组最多 16 个对象；
 - 拆分超大 component 时保留 `component_ids`，并把 `cross_group_relations` 回流相关对象；
