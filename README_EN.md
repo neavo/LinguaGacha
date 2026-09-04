@@ -88,9 +88,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260903 v0.118.0
-  - Refactored  `CodeAct` engine based on `Deno` [#851](../../issues/851)
-  - Fixes and improvements [#844](../../issues/844) [#845](../../issues/845) [#846](../../issues/846) [#847](../../issues/847) [#848](../../issues/848) [#849](../../issues/849) [#850](../../issues/850) [#852](../../issues/852)
+- 20260904 v0.119.0
+  - `AGENT` - Manual context compaction [#856](../../issues/856)
+  - `AGENT` - New selection/approval tools [#857](../../issues/857)
+  - Fixes and improvements [#854](../../issues/845) [#855](../../issues/855)  [#858](../../issues/858)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`

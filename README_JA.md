@@ -87,9 +87,10 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260903 v0.118.0
-  - `Deno` をベースに `CodeAct` エンジンをリファクタリング [#851](../../issues/851)
-  - 修正と改善 [#844](../../issues/844) [#845](../../issues/845) [#846](../../issues/846) [#847](../../issues/847) [#848](../../issues/848) [#849](../../issues/849) [#850](../../issues/850) [#852](../../issues/852)
+- 20260904 v0.119.0
+  - `AGENT` - 手動コンテキスト圧縮 [#856](../../issues/856)
+  - `AGENT` - 新しい選択・承認ツール [#857](../../issues/857)
+  - 修正と改善 [#854](../../issues/845) [#855](../../issues/855)  [#858](../../issues/858)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します

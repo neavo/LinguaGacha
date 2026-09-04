@@ -87,9 +87,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260903 v0.118.0
-  - 基于 `Deno` 重构 `CodeAct` 引擎 [#851](../../issues/851)
-  - 修复与改进 [#844](../../issues/844) [#845](../../issues/845) [#846](../../issues/846) [#847](../../issues/847) [#848](../../issues/848) [#849](../../issues/849) [#850](../../issues/850) [#852](../../issues/852)
+- 20260904 v0.119.0
+  - `AGENT` - 手动上下文压缩 [#856](../../issues/856)
+  - `AGENT` - 新的选择/审批工具 [#857](../../issues/857)
+  - 修复与改进 [#854](../../issues/845) [#855](../../issues/855)  [#858](../../issues/858)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
