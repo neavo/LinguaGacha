@@ -1,9 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AGENT_DECISION_TIMEOUT_MS } from "../../shared/agent";
 import { AgentDecisionCoordinator } from "./agent-decision";
-
-afterEach(() => vi.useRealTimers());
 
 describe("AgentDecisionCoordinator", () => {
   it("公开问题并以用户选择原子结束等待", async () => {

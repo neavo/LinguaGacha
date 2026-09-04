@@ -449,7 +449,10 @@ describe("desktop-api", () => {
     });
   });
 
-  it("check_github_release_update 在版本未升高时返回 null", async () => {
+  it.each([
+    ["版本未升高", "v1.2.3"],
+    ["release tag 无法解析", "nightly"],
+  ] as const)("check_github_release_update 在%s时返回 null", async (_case, tag_name) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -457,28 +460,8 @@ describe("desktop-api", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            tag_name: "v1.2.3",
-            html_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.3",
-          }),
-        } as Response;
-      }),
-    );
-
-    const { check_github_release_update } = await import("./desktop-api");
-
-    await expect(check_github_release_update("1.2.3")).resolves.toBeNull();
-  });
-
-  it("check_github_release_update 忽略无法解析版本的 release tag", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            tag_name: "nightly",
-            html_url: "https://github.com/neavo/LinguaGacha/releases/tag/nightly",
+            tag_name,
+            html_url: `https://github.com/neavo/LinguaGacha/releases/tag/${tag_name}`,
           }),
         } as Response;
       }),

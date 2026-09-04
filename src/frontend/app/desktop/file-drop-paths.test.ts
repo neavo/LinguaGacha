@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   has_path_drop_payload,
@@ -20,8 +20,6 @@ function create_data_transfer(args: {
 }
 
 describe("file drop paths", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("优先读取桌面桥返回的全部本地文件路径", () => {
     const files = [new File([], "a.lg"), new File([], "b.lg")];
     const get_path_for_file = vi

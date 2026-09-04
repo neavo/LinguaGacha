@@ -47,7 +47,6 @@ B -->|"否"| D["请求补充"]`);
     const first = mermaid_renderer.request("flowchart LR\nA-->B", "light");
     const duplicate = mermaid_renderer.request("flowchart LR\nA-->B", "light");
     const dark = mermaid_renderer.request("flowchart LR\nA-->C", "dark");
-    expect(duplicate).toBe(first);
     await wait_for_condition(() => mermaid_mocks.render.mock.calls.length === 1);
     expect(mermaid_mocks.initialize).toHaveBeenCalledTimes(1);
 

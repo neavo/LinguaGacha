@@ -76,6 +76,7 @@ describe("preload desktop bridge", () => {
       throw new Error("preload 未暴露 desktop bridge。");
     }
 
+    expect(electron_mock.exposed_name).toBe(DESKTOP_BRIDGE_GLOBAL_NAME);
     expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:7788");
     expect(bridge.getPathForFile({} as File)).toBe("E:/demo/source.txt");
     bridge.setTitleBarTheme("dark");
@@ -240,12 +241,5 @@ describe("preload desktop bridge", () => {
       IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
       listener,
     );
-  });
-
-  it("使用固定全局名暴露 API", async () => {
-    await import_preload_with_backend_api_arg();
-
-    expect(electron_mock.exposed_name).toBe(DESKTOP_BRIDGE_GLOBAL_NAME);
-    expect(electron_mock.exposed_api).not.toBeNull();
   });
 });

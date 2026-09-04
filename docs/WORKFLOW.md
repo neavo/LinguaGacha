@@ -28,6 +28,8 @@ npm run check
 npm run format -- --check
 ```
 
+Vitest 按运行环境分为 `node` 与 `renderer` 两个项目：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 专属初始化。全量验证运行 `npm test`；影响面明确时使用 `npm test -- --project node` 或 `npm test -- --project renderer`，并继续通过测试文件路径收窄目标。
+
 格式检查失败时运行 `npm run format` 修复相关文件，再重新执行 `npm run format -- --check`。
 `npm run check` 同时禁止生产异常使用中文非 i18n 字面量，以及按 `Error.message` 文本建立控制流。
 

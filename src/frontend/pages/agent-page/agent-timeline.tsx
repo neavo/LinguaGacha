@@ -136,7 +136,7 @@ function group_agent_rounds(entries: readonly AgentEntry[]): AgentRoundEntries[]
 }
 
 /** 只重建含变更 entry 的 round；其余 round 与内部 entries 数组保持身份。 */
-export function build_agent_rounds(
+function build_agent_rounds(
   previous: readonly AgentRoundEntries[],
   entries: readonly AgentEntry[],
 ): AgentRoundEntries[] {

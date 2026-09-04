@@ -16,6 +16,7 @@
 /dist-electron
 /release
 /dist-ssr
+/.vitest
 *.local
 *.tsbuildinfo
 npm-debug.log*

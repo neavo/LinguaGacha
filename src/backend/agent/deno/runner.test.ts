@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import deno_runtime_manifest from "../../../../buildtools/builder/deno-runtime-manifest.json";
 
 const process_mocks = vi.hoisted(() => ({ spawn: vi.fn(), stat: vi.fn() }));
@@ -20,8 +20,6 @@ describe("DenoAgentWorkspaceRunner", () => {
     process_mocks.spawn.mockReset();
     process_mocks.stat.mockReset().mockReturnValue({ isFile: () => true });
   });
-  afterEach(() => vi.useRealTimers());
-
   it("用固定权限参数、cwd 与唯一 stdin 请求执行 runtime", async () => {
     const version = fake_process();
     const script = fake_process();

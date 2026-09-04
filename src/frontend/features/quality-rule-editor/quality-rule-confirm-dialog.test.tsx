@@ -7,7 +7,7 @@ import type { QualityRuleConfirmState } from "./quality-rule-confirm-state";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string) => `${key}:{COUNT}`,
   }),
 }));
 
@@ -51,6 +51,8 @@ describe("QualityRuleConfirmDialog", () => {
       );
     });
 
-    expect(container?.textContent).toBe("quality_rule_editor.confirm.delete_selection.description");
+    expect(container?.textContent).toBe(
+      "quality_rule_editor.confirm.delete_selection.description:3",
+    );
   });
 });

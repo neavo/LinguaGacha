@@ -1,8 +1,8 @@
 import { Tiktoken } from "js-tiktoken/lite";
 import o200k_base from "js-tiktoken/ranks/o200k_base";
 
-export const TOKEN_COUNTER_CACHE_CAPACITY = 8192; // 短文本缓存容量对齐旧版全局 LRU，但只保留运行期服务内缓存
-export const TOKEN_COUNTER_CACHEABLE_TEXT_MAX_LENGTH = 2048; // 超过该长度的文本直接计数，避免长文本挤占重复短句缓存
+const TOKEN_COUNTER_CACHE_CAPACITY = 8192; // 短文本缓存容量对齐旧版全局 LRU，但只保留运行期服务内缓存
+const TOKEN_COUNTER_CACHEABLE_TEXT_MAX_LENGTH = 2048; // 超过该长度的文本直接计数，避免长文本挤占重复短句缓存
 
 /**
  * TaskEngine 只依赖窄计数接口，tokenizer 细节不能扩散到 item、数据库或公开 DTO
@@ -17,7 +17,7 @@ export interface TokenCounter {
 /**
  * 底层 tokenizer 适配器，测试可用轻量假实现观察缓存行为
  */
-export interface TokenCounterEncoder {
+interface TokenCounterEncoder {
   /**
    * 暴露 tokenizer 的 token 序列，CachedTokenCounter 只消费长度
    */
@@ -27,7 +27,7 @@ export interface TokenCounterEncoder {
 /**
  * 带短文本 LRU 的 token 计数器，缓存生命周期跟随 TaskEngine 运行实例
  */
-export class CachedTokenCounter implements TokenCounter {
+class CachedTokenCounter implements TokenCounter {
   private readonly encoder: TokenCounterEncoder; // 唯一真实计数来源，缓存只复用它的历史结果
   private readonly cache = new Map<string, number>(); // 用 Map 插入顺序表达 LRU，不把状态写入 item 对象
 
