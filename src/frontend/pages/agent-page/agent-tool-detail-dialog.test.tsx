@@ -91,7 +91,7 @@ describe("AgentToolDetailDialog", () => {
   });
 
   it("workspace_script 输入直接显示保持原文的 TypeScript 脚本", async () => {
-    const script = "const contract = workspace.contract;\nreturn { limits: contract.limits };";
+    const script = "const contract = ws.contract;\nreturn { limits: contract.limits };";
     await render_dialog(tool_running("workspace_script", JSON.stringify({ script })));
 
     const input = document.body.querySelector<HTMLElement>(
@@ -117,7 +117,7 @@ describe("AgentToolDetailDialog", () => {
   });
 
   it("非 JSON 输出保持模型原文并使用纯文本查看器", async () => {
-    await render_dialog(tool_success("web_fetch", "{}", "第一行\n第二行 <tag>"));
+    await render_dialog(tool_success("web_search", "{}", "第一行\n第二行 <tag>"));
 
     const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
     expect(

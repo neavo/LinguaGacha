@@ -78,7 +78,7 @@ vi.mock("../api/api-stream-hub", () => ({
     }
   },
 }));
-vi.mock("../agent/agent-web-search", () => ({
+vi.mock("../agent/web-search-service", () => ({
   WebSearchService: class {
     public readonly search = vi.fn();
     public constructor() {
@@ -265,7 +265,6 @@ function create_options() {
     appRoot: "E:/app",
     builtinRoot: "E:/app.asar/builtin",
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
-    agentWebFetch: vi.fn(),
     agentWorkspaceRun: vi.fn(),
     openOutputFolder: vi.fn(),
     workerExecution: { kind: "in_process" as const },

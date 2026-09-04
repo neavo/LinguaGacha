@@ -5,13 +5,13 @@ import type {
   BackendRuntimeMainMessage,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
-import type { AgentWebFetchPort } from "../agent/agent-web-fetch";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
 const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
   const stop = vi.fn(async () => undefined);
   const constructor_options: unknown[] = [];
+  const runner_constructor_options: unknown[] = [];
   const log_manager = {
     warning: vi.fn(),
     error: vi.fn(),
@@ -20,7 +20,9 @@ const runtime_mocks = vi.hoisted(() => {
   const runner_initialize = vi.fn(async () => undefined);
   const runner_run = vi.fn(async () => ({ changed: 2 }));
   class DenoAgentWorkspaceRunner {
-    constructor(_options: unknown) {}
+    constructor(options: unknown) {
+      runner_constructor_options.push(options);
+    }
     initialize = runner_initialize;
     run = runner_run;
   }
@@ -38,6 +40,7 @@ const runtime_mocks = vi.hoisted(() => {
     constructor_options,
     log_manager,
     runner_initialize,
+    runner_constructor_options,
     runner_run,
     start,
     stop,
@@ -47,17 +50,7 @@ const runtime_mocks = vi.hoisted(() => {
 vi.mock("./gui-backend-bootstrap", () => ({
   GuiBackendBootstrap: runtime_mocks.GuiBackendBootstrap,
 }));
-vi.mock("../agent/agent-web-fetch", () => ({
-  create_agent_web_fetch:
-    (resolver: {
-      resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>;
-    }): AgentWebFetchPort =>
-    async (url, signal) => {
-      await resolver.resolveProxy(url, signal);
-      return { url, contentType: "text/plain", body: new Uint8Array([111, 107]) };
-    },
-}));
-vi.mock("../agent/deno/runner", () => ({
+vi.mock("../agent/workspace/runtime/runner", () => ({
   DenoAgentWorkspaceRunner: runtime_mocks.DenoAgentWorkspaceRunner,
 }));
 vi.mock("../worker/worker-execution", () => ({
@@ -71,6 +64,7 @@ vi.mock("../log/log-text", () => ({ t_main_log: (key: string) => `translated:${k
 describe("run_backend_runtime", () => {
   beforeEach(() => {
     runtime_mocks.constructor_options.length = 0;
+    runtime_mocks.runner_constructor_options.length = 0;
     runtime_mocks.start.mockReset();
     runtime_mocks.stop.mockClear();
     runtime_mocks.log_manager.warning.mockClear();
@@ -114,7 +108,6 @@ describe("run_backend_runtime", () => {
       builtinRoot: string;
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openOutputFolder: (path: string) => Promise<void>;
-      agentWebFetch: AgentWebFetchPort;
       agentWorkspaceRun: (request: unknown, signal: AbortSignal) => Promise<unknown>;
     };
     expect(bootstrap_options).toMatchObject({
@@ -129,6 +122,9 @@ describe("run_backend_runtime", () => {
       result: { ok: true, data: "PROXY 127.0.0.1:7890" },
     });
     await expect(proxy).resolves.toBe("PROXY 127.0.0.1:7890");
+    expect(runtime_mocks.runner_constructor_options[0]).toMatchObject({
+      systemProxyResolver: bootstrap_options.systemProxyResolver,
+    });
 
     const open = bootstrap_options.openOutputFolder("E:/output");
     const open_request = get_host_request(port, "open_output_folder");
@@ -138,28 +134,6 @@ describe("run_backend_runtime", () => {
       result: { ok: false, error: { message: "无法打开目录" } },
     });
     await expect(open).rejects.toThrow("无法打开目录");
-
-    const fetch_controller = new AbortController();
-    const fetch = bootstrap_options.agentWebFetch(
-      "https://example.com/article",
-      fetch_controller.signal,
-    );
-    const fetch_request = get_host_request(port, "resolve_proxy");
-    expect(fetch_request.operation).toEqual({
-      kind: "resolve_proxy",
-      url: "https://example.com/article",
-    });
-    const fetch_response = {
-      url: "https://example.com/article",
-      contentType: "text/plain",
-      body: new Uint8Array([111, 107]),
-    };
-    port.emit({
-      type: "host_response",
-      requestId: fetch_request.requestId,
-      result: { ok: true, data: "DIRECT" },
-    });
-    await expect(fetch).resolves.toEqual(fetch_response);
 
     const workspace_signal = new AbortController().signal;
     const workspace = bootstrap_options.agentWorkspaceRun(
@@ -208,15 +182,18 @@ describe("run_backend_runtime", () => {
       agentWorkspaceRuntime: runtime_paths(),
       port,
     });
-    const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      agentWebFetch: AgentWebFetchPort;
+    const runner_options = runtime_mocks.runner_constructor_options[0] as {
+      systemProxyResolver: { resolveProxy: (url: string, signal: AbortSignal) => Promise<string> };
     };
     const controller = new AbortController();
     const reason = new Error("用户停止 Agent");
-    const fetch = bootstrap_options.agentWebFetch("https://example.com", controller.signal);
+    const proxy = runner_options.systemProxyResolver.resolveProxy(
+      "https://example.com",
+      controller.signal,
+    );
     const request = get_host_request(port, "resolve_proxy");
     let settled = false;
-    void fetch.then(
+    void proxy.then(
       () => {
         settled = true;
       },
@@ -237,7 +214,7 @@ describe("run_backend_runtime", () => {
         result: { ok: true, data: null },
       }),
     ).not.toThrow();
-    await expect(fetch).rejects.toBe(reason);
+    await expect(proxy).rejects.toBe(reason);
   });
 
   it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {

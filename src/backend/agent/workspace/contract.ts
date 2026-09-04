@@ -18,7 +18,7 @@ import {
   AGENT_WORKSPACE_WARNING_SCHEMA,
   type AgentWorkspaceRuntimeContract,
 } from "./schema";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../deno/policy";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./runtime/policy";
 
 export {
   AGENT_WORKSPACE_ITEM_FIELDS,

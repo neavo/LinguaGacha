@@ -39,7 +39,7 @@ Vitest 按运行环境分为 `node` 与 `renderer` 两个项目：后端、CLI�
 |单域源码行为|运行离改动最近的 `*.test.ts`、`*.test.tsx` 或 `*.test.mjs`|
 |跨目录、跨前后端或共享契约|运行双方相关测试；影响面无法可靠收窄时执行 `npm test`|
 |GUI / preload / native / Backend Runtime worker|运行相关单测和 `npm run check`；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试；构建入口变化时执行 `npm run build`；只有视觉或原生交互证据确有需要时才执行 `npm run dev`|
-|Agent 磁盘工作区或 Deno runner|运行 `src/backend/agent/workspace/`、`deno/`、`methods/` 与 `tools/` 下相关 `*.test.ts`，以及受影响的 Backend Runtime 和 main 路径测试；运行真实 Deno smoke 验证 TypeScript 加载、权限与文件边界；组合根、资源路径或打包资产变化时补真实 Electron smoke|
+|Agent 磁盘工作区或 Deno runtime|运行 `src/backend/agent/workspace/` 与 `model-tools/` 下相关 `*.test.ts`，以及受影响的 Backend Runtime 和 main 路径测试；运行真实 Deno smoke 验证 TypeScript 加载、权限、文件边界、系统代理和流式网页转换；组合根、资源路径或打包资产变化时补真实 Electron smoke|
 |前端视觉、CSS、可见文案|运行相关页面或组件测试，核对当前设计输入与既有视觉证据，必要时 Electron 真机检查|
 |Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
 |构建、Vite、electron-builder、afterPack、发布资产|`npm run build`；检查 Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致，Deno runtime 是无外部 import 的单文件，manifest 同时校验发布资产与目标二进制且复用有效安装，afterPack 安装当前目标 Deno 与 runtime bundle，并测试、构建对应 Go module|

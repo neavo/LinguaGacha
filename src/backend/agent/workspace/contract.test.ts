@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Check } from "typebox/value";
 
 import { read_json_record, type JsonRecord } from "../../../domain/json";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../deno/policy";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./runtime/policy";
 import {
   AGENT_WORKSPACE_CONTRACT,
   project_agent_workspace_item,

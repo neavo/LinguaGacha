@@ -30,7 +30,7 @@ import {
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
   AGENT_WORKSPACE_TASK_ROOT,
 } from "./contract";
-import { AgentWorkspaceScriptError } from "../deno/runner";
+import { AgentWorkspaceScriptError } from "./runtime/runner";
 
 const VALID_WORKSPACE_SCRIPT = "return null;";
 

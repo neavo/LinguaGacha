@@ -32,11 +32,9 @@ export class SystemProxyHttpClient {
     }
     const url = read_request_url(input);
     const signal = init?.signal ?? undefined;
-    const dispatcher = is_loopback_hostname(url.hostname)
-      ? this.direct_dispatcher
-      : this.resolve_dispatcher(
-          parse_system_proxy_route(await this.resolver.resolveProxy(url.href, signal)),
-        );
+    const dispatcher = this.resolve_dispatcher(
+      await resolve_system_proxy_route(this.resolver, url.href, signal),
+    );
     return (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
       ...(init as Parameters<typeof undici_fetch>[1]),
       dispatcher,
@@ -108,6 +106,17 @@ export function parse_system_proxy_route(proxy_rules: string): SystemProxyRoute 
     }
   }
   throw new Error("System proxy returned no supported route.");
+}
+
+/** Electron session 是系统路线权威；本机端点保持直连，其余 URL 每次读取当前代理事实。 */
+export async function resolve_system_proxy_route(
+  resolver: SystemProxyResolver,
+  url: string,
+  signal?: AbortSignal,
+): Promise<SystemProxyRoute> {
+  const target = new URL(url);
+  if (is_loopback_hostname(target.hostname)) return { kind: "direct" };
+  return parse_system_proxy_route(await resolver.resolveProxy(target.href, signal));
 }
 
 /** fetch 同时接受 URL 文本、URL 和 Request，这里统一为代理解析所需的 URL。 */

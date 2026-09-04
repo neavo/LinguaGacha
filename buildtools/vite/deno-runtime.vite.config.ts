@@ -11,7 +11,7 @@ export default defineConfig({
     emptyOutDir: false,
     minify: false,
     rolldownOptions: {
-      input: project_path("src/backend/agent/deno/entry.ts"),
+      input: project_path("src/backend/agent/workspace/runtime/entry.ts"),
       output: {
         entryFileNames: "deno-runtime.js",
         codeSplitting: false,

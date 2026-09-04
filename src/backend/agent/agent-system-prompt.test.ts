@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./deno/policy";
-import { format_agent_workspace_method_routes } from "./methods/api-description";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./workspace/runtime/policy";
+import { format_agent_workspace_tool_routes } from "./workspace/runtime/tool/api-description";
 
 const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
@@ -25,14 +25,14 @@ describe("Agent system prompt 加载与资源契约", () => {
     write_system_prompt(paths, `\n  prompt-before\n${workspace_placeholders()}\nprompt-after  \n`);
 
     const prompt = load_agent_system_prompt(paths, new NativeFs());
-    const method_routes = format_agent_workspace_method_routes();
+    const method_routes = format_agent_workspace_tool_routes();
 
     expect(prompt).toContain("prompt-before");
     expect(prompt).toContain(method_routes);
     for (const root of AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots) {
       expect(prompt).toContain(`\`${root}/**\``);
     }
-    for (const argument of AGENT_WORKSPACE_RUNTIME_POLICY.denoRestrictionArgs) {
+    for (const argument of AGENT_WORKSPACE_RUNTIME_POLICY.denoArgs) {
       expect(prompt).toContain(`\`${argument}\``);
     }
     expect(prompt).toContain("prompt-after");
@@ -65,8 +65,8 @@ describe("Agent system prompt 加载与资源契约", () => {
   });
 
   it.each([
-    ["缺少", workspace_placeholders().replace("{{WORKSPACE_DENO_RESTRICTION_ARGS}}", "")],
-    ["重复", `${workspace_placeholders()}\n{{WORKSPACE_DENO_RESTRICTION_ARGS}}`],
+    ["缺少", workspace_placeholders().replace("{{WORKSPACE_DENO_ARGS}}", "")],
+    ["重复", `${workspace_placeholders()}\n{{WORKSPACE_DENO_ARGS}}`],
     ["未知", `${workspace_placeholders()}\n{{WORKSPACE_UNKNOWN}}`],
   ])("Workspace 占位符%s时拒绝启动", (_label, content) => {
     const paths = create_paths();
@@ -81,8 +81,8 @@ describe("Agent system prompt 加载与资源契约", () => {
 function workspace_placeholders(): string {
   return [
     "write {{WORKSPACE_WRITE_SCOPES}}",
-    "deno {{WORKSPACE_DENO_RESTRICTION_ARGS}}",
-    "{{WORKSPACE_METHOD_ROUTES}}",
+    "deno {{WORKSPACE_DENO_ARGS}}",
+    "{{WORKSPACE_TOOL_ROUTES}}",
   ].join("\n");
 }
 
