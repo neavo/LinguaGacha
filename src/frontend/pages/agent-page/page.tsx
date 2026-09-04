@@ -39,8 +39,7 @@ import {
   useAgentSkills,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-session-context";
-import { AgentQuestionDecision } from "./agent-question-decision";
-import { AgentWriteApprovalDecision } from "./agent-write-approval-decision";
+import { AgentDecisionLayer } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -283,32 +282,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       void agent_actions.setApprovalMode(approval_mode).catch((error: unknown) => {
         show_command_error(error, "agent_page.error.approval_mode");
       });
-    },
-    [agent_actions, show_command_error],
-  );
-
-  /** 用户决定只等待本地后端受理，后续执行结果继续由工具信息流表达。 */
-  const resolve_question = useCallback(
-    async (response: Parameters<typeof agent_actions.resolveQuestion>[0]): Promise<void> => {
-      try {
-        await agent_actions.resolveQuestion(response);
-      } catch (error) {
-        show_command_error(error, "agent_page.error.decision");
-        throw error;
-      }
-    },
-    [agent_actions, show_command_error],
-  );
-
-  /** 写入授权沿用同一受理反馈，但保持独立的权限值入口。 */
-  const resolve_write_approval = useCallback(
-    async (decision: Parameters<typeof agent_actions.resolveWriteApproval>[0]): Promise<void> => {
-      try {
-        await agent_actions.resolveWriteApproval(decision);
-      } catch (error) {
-        show_command_error(error, "agent_page.error.decision");
-        throw error;
-      }
     },
     [agent_actions, show_command_error],
   );
@@ -708,19 +681,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             />
           </div>
         </div>
-        {pending_decision?.kind === "question" ? (
-          <AgentQuestionDecision
-            key={pending_decision.id}
-            decision={pending_decision}
-            on_resolve={resolve_question}
-          />
-        ) : pending_decision?.kind === "write_approval" ? (
-          <AgentWriteApprovalDecision
-            key={pending_decision.id}
-            decision={pending_decision}
-            on_resolve={resolve_write_approval}
-          />
-        ) : null}
+        <AgentDecisionLayer
+          decision={pending_decision}
+          on_resolve_question={agent_actions.resolveQuestion}
+          on_resolve_write_approval={agent_actions.resolveWriteApproval}
+        />
       </div>
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}

@@ -710,7 +710,7 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("待决浮层覆盖并冻结底部控制区", async () => {
+  it("待决状态同步冻结底部控制区", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -726,48 +726,11 @@ describe("AgentPage", () => {
     };
     const view = await render_page({ pendingDecision: pending_write_decision });
 
-    expect(view.querySelector(".agent-decision")).not.toBeNull();
-    expect(view.querySelector(".agent-composer__editor")).not.toBeNull();
     const bottom_controls = view.querySelector(".agent-page__bottom-controls");
     expect(bottom_controls?.hasAttribute("inert")).toBe(true);
 
     await render_page({ pendingDecision: null });
-    expect(view.querySelector(".agent-decision")).toBeNull();
     expect(view.querySelector(".agent-page__bottom-controls")?.hasAttribute("inert")).toBe(false);
-    expect(view.querySelector(".agent-composer__editor")).not.toBeNull();
-  });
-
-  it("写入决策失败显示对应恢复提示", async () => {
-    const resolve_write_approval = vi.fn(() => Promise.reject(new Error("offline")));
-    const view = await render_page({
-      pendingDecision: {
-        kind: "write_approval",
-        id: "apply-1",
-        expiresAt: Date.now() + 300_000,
-        summary: {
-          items: 1,
-          glossary: 0,
-          textPreserve: 0,
-          preReplacement: 0,
-          postReplacement: 0,
-          prompts: 0,
-        },
-      },
-      resolveWriteApproval: resolve_write_approval,
-    });
-    const allow_once = [...view.querySelectorAll<HTMLButtonElement>(".agent-decision-action")].find(
-      (button) =>
-        button.querySelector(".agent-decision-action__label")?.textContent?.trim() ===
-        "agent_page.approval.allow_once",
-    );
-    if (allow_once === undefined) throw new Error("缺少单次写入选项");
-
-    await act(async () => allow_once.click());
-    await act(async () =>
-      vi.waitFor(() =>
-        expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.decision"),
-      ),
-    );
   });
 
   it("压缩失败后保留普通 round 操作与新消息发送", async () => {

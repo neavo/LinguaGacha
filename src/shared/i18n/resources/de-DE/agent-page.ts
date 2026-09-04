@@ -143,7 +143,6 @@ export const de_de_agent_page = {
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
     approval_mode:
       "Der Genehmigungsmodus für Schreibanfragen konnte nicht aktualisiert werden. Bitte erneut versuchen.",
-    decision: "Die Entscheidung konnte nicht übermittelt werden. Bitte erneut versuchen.",
     terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
   },
   unavailable: {
