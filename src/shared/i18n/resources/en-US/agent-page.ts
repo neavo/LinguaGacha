@@ -141,7 +141,6 @@ export const en_us_agent_page = {
     stop: "The task could not be stopped. Try again.",
     reset: "A new task could not be created. Try again.",
     approval_mode: "The write request approval mode could not be updated. Try again.",
-    decision: "The decision could not be submitted. Try again.",
     terms_load: "Terms could not be loaded. Skills and messaging are still available.",
   },
   unavailable: {

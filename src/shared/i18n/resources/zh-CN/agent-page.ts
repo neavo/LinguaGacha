@@ -131,7 +131,6 @@ export const zh_cn_agent_page = {
     stop: "停止失败，请重试。",
     reset: "新任务创建失败，请重试。",
     approval_mode: "写入请求审批模式更新失败，请重试。",
-    decision: "用户决定未能提交，请重试。",
     terms_load: "术语加载失败，技能选择与消息发送仍可使用。",
   },
   unavailable: {
