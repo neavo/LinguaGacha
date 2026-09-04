@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AgentWebFetchPort, AgentWebFetchResponse } from "../agent-web-fetch";
 import {
@@ -20,8 +20,6 @@ type WebSearchToolResult = {
 };
 
 describe("Agent web_fetch 工具", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("使用真实 Linkedom 与 Defuddle 把 HTML 主体转换为 Markdown", async () => {
     vi.stubGlobal("getComputedStyle", undefined);
     const result = await execute_with_response({

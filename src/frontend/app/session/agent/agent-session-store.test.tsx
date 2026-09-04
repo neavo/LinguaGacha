@@ -1,0 +1,1559 @@
+import { act, StrictMode, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  AGENT_SESSION_EVENT_TOPIC,
+  type AgentEntry,
+  type AgentEntryStatus,
+  type AgentMessageAttachment,
+  type AgentSessionSnapshot,
+} from "@shared/agent";
+import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
+
+const desktop_api_mocks = vi.hoisted(() => ({
+  api_get: vi.fn(),
+  api_fetch: vi.fn(),
+  open_event_stream: vi.fn(),
+}));
+
+vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
+
+import {
+  AgentSessionProvider,
+  useAgentControls,
+  useAgentInput,
+  useAgentTodo,
+  useAgentQueue,
+  useAgentSessionActions,
+  useAgentSkills,
+  useAgentTimeline,
+} from "./agent-session-context";
+
+/** 测试探针聚合公开切片，生产代码不再暴露会随任意字段变化的完整 controller。 */
+function useAgentSession() {
+  const timeline = useAgentTimeline();
+  const controls = useAgentControls();
+  const queue = useAgentQueue();
+  const todo = useAgentTodo();
+  const skills = useAgentSkills();
+  const input = useAgentInput();
+  const actions = useAgentSessionActions();
+  return { ...timeline, ...controls, ...queue, ...todo, ...skills, input, ...actions };
+}
+
+/** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
+const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
+  {
+    name: "glossary-audit",
+    displayDescriptions: {
+      "zh-CN": "审校术语",
+      "en-US": "Review glossary",
+      "de-DE": "Glossar prüfen",
+    },
+  },
+  {
+    name: "corpus-search",
+    displayDescriptions: {
+      "zh-CN": "检索语料",
+      "en-US": "Search corpus",
+      "de-DE": "Korpus durchsuchen",
+    },
+  },
+];
+
+/** 只实现页面状态测试需要的订阅、重连与 JSON 发帧表面。 */
+class FakeEventSource {
+  public onopen: (() => void) | null = null;
+  public onerror: (() => void) | null = null;
+  private readonly listeners = new Map<string, EventListener>();
+  private revision = 0;
+
+  public get current_revision(): number {
+    return this.revision;
+  }
+
+  /** 页面每个 topic 只注册一个监听器，后注册值可直接替换。 */
+  public addEventListener(type: string, listener: EventListener): void {
+    this.listeners.set(type, listener);
+  }
+
+  /** fake 不持有外部资源，关闭保持无副作用。 */
+  public close(): void {}
+
+  /** 通过真实 MessageEvent.data 形状投递 JSON 载荷。 */
+  public emit(type: string, payload: unknown): void {
+    let next = payload;
+    if (type === AGENT_SESSION_EVENT_TOPIC && typeof payload === "object" && payload !== null) {
+      const record = payload as Record<string, unknown>;
+      const explicit_revision = record["revision"];
+      if (typeof explicit_revision === "number") this.revision = explicit_revision;
+      else {
+        this.revision += 1;
+        next = { ...record, revision: this.revision };
+      }
+    }
+    this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(next) }));
+  }
+
+  /** 绕过 JSON 编码以验证损坏帧的恢复路径。 */
+  public emit_raw(type: string, data: string): void {
+    this.listeners.get(type)?.(new MessageEvent(type, { data }));
+  }
+
+  /** 模拟 EventSource 重连后的 open 通知。 */
+  public emit_open(): void {
+    this.onopen?.();
+  }
+}
+
+describe("AgentSessionStore", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+  let event_source: FakeEventSource;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    event_source = new FakeEventSource();
+    desktop_api_mocks.api_get.mockReset().mockResolvedValue(
+      agent_snapshot({
+        state: "idle",
+        entries: [assistant_entry("assistant-1", "已恢复", "success", 1)],
+        skills: TEST_SKILLS,
+      }),
+    );
+    desktop_api_mocks.api_fetch
+      .mockReset()
+      .mockImplementation(async () => ({ revision: event_source.current_revision }));
+    desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
+  });
+
+  it("StrictMode effect 重放后仍能完成会话恢复", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    function Probe(): null {
+      latest = useAgentSession();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () =>
+      root?.render(
+        <StrictMode>
+          <AgentSessionProvider>
+            <Probe />
+          </AgentSessionProvider>
+        </StrictMode>,
+      ),
+    );
+
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已恢复", "success", 1)]);
+  });
+
+  afterEach(async () => {
+    if (root !== null) await act(async () => root?.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+  });
+
+  it("按 id 覆盖完整条目并保留首次出现的真实顺序", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-2", "第一段", "running", 2),
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: {
+          kind: "assistant_message",
+          id: "assistant-2",
+          parts: [
+            { kind: "thinking", text: "检查" },
+            { kind: "text", text: "第一段第二段" },
+          ],
+          status: "success",
+          createdAt: 2,
+        },
+      });
+    });
+
+    expect(latest.entries.map((entry) => entry.id)).toEqual(["assistant-1", "assistant-2"]);
+    expect(latest.entries.at(-1)).toMatchObject({
+      parts: [
+        { kind: "thinking", text: "检查" },
+        { kind: "text", text: "第一段第二段" },
+      ],
+      status: "success",
+    });
+  });
+
+  it("丢弃旧 revision，并在缺口时用完整快照恢复", async () => {
+    desktop_api_mocks.api_get
+      .mockReset()
+      .mockResolvedValueOnce(agent_snapshot())
+      .mockResolvedValueOnce(
+        agent_snapshot({ revision: 3, context: { tokens: 300, compactable: true } }),
+      );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        revision: 1,
+        context: { tokens: 100, compactable: false },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        revision: 1,
+        context: { tokens: 200, compactable: true },
+      });
+    });
+    expect(latest.context).toEqual({ tokens: 100, compactable: false });
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        revision: 3,
+        context: { tokens: 300, compactable: true },
+      });
+    });
+    await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.context).toEqual({ tokens: 300, compactable: true });
+  });
+
+  it("只接纳合法上下文用量事件，非法帧不覆盖当前值", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: { tokens: 31_488, compactable: true },
+      });
+    });
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: { tokens: -1, compactable: true },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: { tokens: 1.5, compactable: false },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: null,
+      });
+    });
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
+  });
+
+  it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "todo",
+        todos: ["读取工程", "检查章节", "汇总结果"],
+      });
+    });
+    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "todo",
+        todos: ["读取工程", " "],
+      });
+    });
+    expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
+  });
+
+  it("用完整队列事件替换投影，并转发队列协议命令", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const item = {
+      id: "queue-1",
+      text: "稍后处理",
+      attachments: [],
+      status: "queued" as const,
+      createdAt: 1,
+    };
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "input_queue",
+        inputQueue: { paused: true, canSendNow: true, items: [item] },
+      });
+    });
+    expect(latest.inputQueue).toEqual({ paused: true, canSendNow: true, items: [item] });
+    latest.input.write_draft({ text: "普通草稿", attachments: [] });
+
+    await act(async () => {
+      await latest.updateQueuedMessage(item.id, { text: "修改后", attachments: [] });
+      await latest.deleteQueuedMessage(item.id);
+      await latest.reorderQueuedMessages([item.id]);
+      await latest.sendQueuedMessage(item.id);
+    });
+    expect(desktop_api_mocks.api_fetch.mock.calls).toEqual([
+      ["/api/agent/queue/update", { id: item.id, message: { text: "修改后", attachments: [] } }],
+      ["/api/agent/queue/delete", { id: item.id }],
+      ["/api/agent/queue/reorder", { ids: [item.id] }],
+      ["/api/agent/queue/send", { id: item.id }],
+    ]);
+    expect(latest.input.read_draft()).toEqual({ text: "普通草稿", attachments: [] });
+    expect(latest.input.read_history()).toEqual([]);
+  });
+
+  it("运行中仍受理普通发送并在 ack 后清空草稿", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ state: "running" }));
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({
+        state: "running",
+        inputQueue: {
+          paused: false,
+          canSendNow: false,
+          items: [
+            {
+              id: "queue-1",
+              text: "排队",
+              attachments: [],
+              status: "queued",
+              createdAt: 1,
+            },
+          ],
+        },
+      }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "排队", attachments: [] });
+
+    await act(async () => latest.send({ text: "排队", attachments: [] }));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      text: "排队",
+      attachments: [],
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+  });
+
+  it("写入审批模式通过后端命令更新并由快照回流", async () => {
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "auto",
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.setApprovalMode("auto"));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/approval-mode", {
+      approvalMode: "auto",
+    });
+    expect(latest.approvalMode).toBe("auto");
+
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "manual",
+      }),
+    );
+    expect(latest.approvalMode).toBe("manual");
+  });
+
+  it("压缩回执应用命令期间收到的公开 running 条目", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ context: { tokens: 64_000, compactable: true } }),
+    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: {
+          kind: "context_compaction",
+          id: "manual-compaction",
+          status: "running",
+          createdAt: 1,
+        },
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.compactContext());
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/context/compact");
+    expect(latest.entries).toEqual([
+      {
+        kind: "context_compaction",
+        id: "manual-compaction",
+        status: "running",
+        createdAt: 1,
+      },
+    ]);
+    expect(latest.command).toBeNull();
+  });
+
+  it("写入决定通过单一命令受理并立即清除 pending", async () => {
+    const waiting = {
+      kind: "write_approval" as const,
+      id: "apply-1",
+      expiresAt: 300_000,
+      summary: {
+        items: 2,
+        glossary: 1,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
+      },
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: waiting }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.resolveWriteApproval("allow_session"));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/write-approval/resolve", {
+      id: "apply-1",
+      decision: "allow_session",
+    });
+    expect(latest.pendingDecision).toBeNull();
+  });
+
+  it("普通问题把结构化自定义答案提交到独立入口", async () => {
+    const pending = {
+      kind: "question" as const,
+      id: "question-1",
+      expiresAt: 300_000,
+      question: {
+        prompt: "选择范围",
+        description: "选择最符合本次任务的范围",
+        options: [
+          { id: "safe", label: "安全范围" },
+          { id: "complete", label: "完整范围" },
+        ] as [{ id: string; label: string }, { id: string; label: string }],
+      },
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.resolveQuestion({ kind: "custom", text: "按章节处理" }));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/question/resolve", {
+      id: "question-1",
+      response: { kind: "custom", text: "按章节处理" },
+    });
+    expect(latest.pendingDecision).toBeNull();
+  });
+
+  it("畸形决策增量保持最近一次完整控制状态", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const pending = {
+      kind: "write_approval" as const,
+      id: "apply-1",
+      expiresAt: 300_000,
+      summary: {
+        items: 1,
+        glossary: 0,
+        textPreserve: 0,
+        preReplacement: 0,
+        postReplacement: 0,
+        prompts: 0,
+      },
+    };
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "approval_mode",
+        approvalMode: "auto",
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: pending,
+      });
+    });
+    expect(latest.approvalMode).toBe("auto");
+    expect(latest.pendingDecision).toEqual(pending);
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "approval_mode" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_decision" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: {
+          ...pending,
+          summary: { ...pending.summary, items: 0 },
+        },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: {
+          kind: "question",
+          id: "question-1",
+          expiresAt: 300_000,
+          question: {
+            prompt: "选择范围",
+            options: [{ id: "only", label: "唯一选项" }],
+          },
+        },
+      });
+    });
+
+    expect(latest.approvalMode).toBe("auto");
+    expect(latest.pendingDecision).toEqual(pending);
+  });
+
+  it("携带消息 continue 通过唯一入口受理并清空草稿", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({
+        inputQueue: {
+          paused: true,
+          canSendNow: true,
+          items: [
+            {
+              id: "queue-1",
+              text: "已有消息",
+              attachments: [],
+              status: "queued",
+              createdAt: 1,
+            },
+          ],
+        },
+      }),
+    );
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "追加消息", attachments: [] });
+
+    await act(async () => latest.continue({ text: "追加消息", attachments: [] }));
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {
+      message: { text: "追加消息", attachments: [] },
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.read_history()).toEqual(["追加消息"]);
+  });
+
+  it.each([
+    [
+      "inputQueue",
+      {
+        state: "idle",
+        approvalMode: "manual",
+        pendingDecision: null,
+        entries: [],
+        skills: [],
+        todos: [],
+        context: { tokens: null, compactable: false },
+      },
+    ],
+    [
+      "context",
+      {
+        state: "idle",
+        approvalMode: "manual",
+        pendingDecision: null,
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        todos: [],
+      },
+    ],
+    [
+      "approvalMode",
+      {
+        state: "idle",
+        pendingDecision: null,
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        todos: [],
+        context: { tokens: null, compactable: false },
+      },
+    ],
+    [
+      "pendingDecision",
+      {
+        state: "idle",
+        approvalMode: "manual",
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        todos: [],
+        context: { tokens: null, compactable: false },
+      },
+    ],
+  ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
+    desktop_api_mocks.api_get.mockResolvedValue(snapshot);
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("restore_failed"));
+  });
+
+  it("拒绝旧会话终态，并允许用户按当前协议重新恢复", async () => {
+    desktop_api_mocks.api_get
+      .mockResolvedValueOnce({
+        state: "complete",
+        entries: [],
+        skills: [],
+        inputQueue: { paused: false, canSendNow: false, items: [] },
+        todos: [],
+        context: { tokens: null, compactable: false },
+      })
+      .mockResolvedValueOnce(
+        agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
+      );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("restore_failed"));
+    expect(latest.entries).toEqual([]);
+    await latest.send({ text: "不可发送", attachments: [] });
+    expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+
+    await act(async () => latest.reconnect());
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.entries).toEqual([assistant_entry("assistant-current", "已恢复", "success", 2)]);
+  });
+
+  it("skill 清单只接纳完整的新 UI 描述协议", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue({
+      revision: 0,
+      state: "idle",
+      approvalMode: "manual",
+      pendingDecision: null,
+      entries: [],
+      inputQueue: { paused: false, canSendNow: true, items: [] },
+      todos: [],
+      context: { tokens: null, compactable: false },
+      skills: [
+        TEST_SKILLS[0],
+        { name: "legacy", description: "旧描述" },
+        {
+          name: "incomplete",
+          displayDescriptions: { "zh-CN": "不完整", "en-US": "Incomplete" },
+        },
+        {
+          name: "blank",
+          displayDescriptions: { "zh-CN": "空白", "en-US": "Blank", "de-DE": " " },
+        },
+      ],
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    expect(latest.skills).toEqual([TEST_SKILLS[0]]);
+  });
+
+  it("只接纳字段完整且值域合法的时间线条目", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue({
+      revision: 0,
+      state: "idle",
+      approvalMode: "manual",
+      pendingDecision: null,
+      entries: [
+        {
+          kind: "tool_call",
+          id: "running",
+          toolName: "read_skill",
+          input: '{"path":"SKILL.md"}',
+          status: "running",
+          output: null,
+          createdAt: 1,
+        },
+        {
+          kind: "tool_call",
+          id: "success",
+          toolName: "workspace_script",
+          input: '{"script":"return []"}',
+          status: "success",
+          output: '{"items":[]}',
+          createdAt: 2,
+        },
+        {
+          kind: "tool_call",
+          id: "unknown",
+          toolName: "missing_tool",
+          input: "{}",
+          status: "error",
+          output: "工具不存在",
+          createdAt: 3,
+        },
+        {
+          kind: "tool_call",
+          id: "legacy",
+          toolName: "test_tool",
+          status: "success",
+          detail: "旧协议不得兼容",
+          createdAt: 4,
+        },
+        {
+          kind: "tool_call",
+          id: "invalid",
+          toolName: "test_tool",
+          input: "{}",
+          status: "success",
+          output: { entries: [] },
+          createdAt: 5,
+        },
+        {
+          kind: "tool_call",
+          id: "invalid-running-output",
+          toolName: "workspace_script",
+          input: "{}",
+          status: "running",
+          output: "不应存在",
+          createdAt: 6,
+        },
+        {
+          kind: "tool_call",
+          id: "invalid-success-output",
+          toolName: "workspace_script",
+          input: "{}",
+          status: "success",
+          output: null,
+          createdAt: 7,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-new",
+          parts: [
+            { kind: "thinking", text: "检查" },
+            { kind: "thinking", text: "\n完成" },
+            { kind: "text", text: "结论" },
+          ],
+          status: "success",
+          createdAt: 6,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-legacy",
+          text: "旧协议不得兼容",
+          status: "success",
+          createdAt: 7,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-unknown",
+          parts: [{ kind: "reasoning", text: "未知类型" }],
+          status: "success",
+          createdAt: 8,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-invalid-text",
+          parts: [{ kind: "thinking", text: { value: "非法正文" } }],
+          status: "success",
+          createdAt: 9,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-whitespace",
+          parts: [
+            { kind: "thinking", text: " \n " },
+            { kind: "text", text: "\t" },
+          ],
+          status: "success",
+          createdAt: 9,
+        },
+        {
+          kind: "user_message",
+          id: "user-new",
+          delivery: "round",
+          text: "@skill(glossary-audit) 审校",
+          attachments: [
+            ...image_attachments("webp-image"),
+            { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
+          ],
+          status: "success",
+          createdAt: 10,
+          endedAt: 12,
+        },
+        {
+          kind: "user_message",
+          id: "user-steer",
+          delivery: "steer",
+          text: "立即补充",
+          attachments: [],
+          status: "success",
+          createdAt: 11,
+          endedAt: 11,
+        },
+        {
+          kind: "user_message",
+          id: "user-invalid-steer",
+          delivery: "steer",
+          text: "尚未提交",
+          attachments: [],
+          status: "running",
+          createdAt: 11,
+          endedAt: null,
+        },
+        {
+          kind: "user_message",
+          id: "user-missing-ended-at",
+          delivery: "round",
+          text: "缺少结束时间",
+          attachments: [],
+          status: "success",
+          createdAt: 11,
+        },
+        {
+          kind: "user_message",
+          id: "user-invalid-ended-at",
+          delivery: "round",
+          text: "非法结束时间",
+          attachments: [],
+          status: "success",
+          createdAt: 12,
+          endedAt: "13",
+        },
+        {
+          kind: "user_message",
+          id: "user-float-ended-at",
+          delivery: "round",
+          text: "浮点结束时间",
+          attachments: [],
+          status: "success",
+          createdAt: 13,
+          endedAt: 13.5,
+        },
+        {
+          kind: "context_compaction",
+          id: "compaction-success",
+          status: "success",
+          createdAt: 14,
+        },
+        {
+          kind: "context_compaction",
+          id: "compaction-stopped",
+          status: "stopped",
+          createdAt: 15,
+        },
+      ],
+      skills: [],
+      inputQueue: { paused: false, canSendNow: true, items: [] },
+      todos: [],
+      context: { tokens: null, compactable: false },
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    expect(latest.entries).toEqual([
+      {
+        kind: "tool_call",
+        id: "running",
+        toolName: "read_skill",
+        input: '{"path":"SKILL.md"}',
+        status: "running",
+        output: null,
+        createdAt: 1,
+      },
+      {
+        kind: "tool_call",
+        id: "success",
+        toolName: "workspace_script",
+        input: '{"script":"return []"}',
+        status: "success",
+        output: '{"items":[]}',
+        createdAt: 2,
+      },
+      {
+        kind: "tool_call",
+        id: "unknown",
+        toolName: "missing_tool",
+        input: "{}",
+        status: "error",
+        output: "工具不存在",
+        createdAt: 3,
+      },
+      {
+        kind: "assistant_message",
+        id: "assistant-new",
+        parts: [
+          { kind: "thinking", text: "检查\n完成" },
+          { kind: "text", text: "结论" },
+        ],
+        status: "success",
+        createdAt: 6,
+      },
+      {
+        kind: "user_message",
+        id: "user-new",
+        delivery: "round",
+        text: "@skill(glossary-audit) 审校",
+        attachments: [
+          ...image_attachments("webp-image"),
+          { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
+        ],
+        status: "success",
+        createdAt: 10,
+        endedAt: 12,
+      },
+      {
+        kind: "user_message",
+        id: "user-steer",
+        delivery: "steer",
+        text: "立即补充",
+        attachments: [],
+        status: "success",
+        createdAt: 11,
+        endedAt: 11,
+      },
+      {
+        kind: "context_compaction",
+        id: "compaction-success",
+        status: "success",
+        createdAt: 14,
+      },
+    ]);
+  });
+
+  it("先订阅再恢复 snapshot，重连后重新读取权威状态", async () => {
+    let resolve_seed!: (value: unknown) => void;
+    desktop_api_mocks.api_get
+      .mockReset()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolve_seed = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        agent_snapshot({
+          revision: 2,
+          state: "idle",
+          entries: [assistant_entry("assistant-1", "重连已恢复", "success", 1)],
+        }),
+      );
+    const texts: string[] = [];
+    let latest!: ReturnType<typeof useAgentSession>;
+
+    await render_probe(() => {
+      const state = useAgentSession();
+      latest = state;
+      useEffect(() => {
+        const entry = state.entries.at(-1);
+        texts.push(
+          entry?.kind === "assistant_message"
+            ? entry.parts
+                .filter((part) => part.kind === "text")
+                .map((part) => part.text)
+                .join("")
+            : "",
+        );
+      }, [state.entries]);
+    });
+    await wait_for(() => expect(desktop_api_mocks.open_event_stream).toHaveBeenCalledOnce());
+    event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+      type: "entry_upsert",
+      entry: assistant_entry("assistant-1", "订阅期条目", "running", 1),
+    });
+    await act(async () => {
+      resolve_seed(agent_snapshot({ state: "running" }));
+    });
+    await wait_for(() => expect(texts.at(-1)).toBe("订阅期条目"));
+
+    await act(async () => event_source.onerror?.());
+    expect(latest.transport).toBe("disconnected");
+    expect(texts.at(-1)).toBe("订阅期条目");
+
+    await act(async () => {
+      event_source.emit_open();
+      event_source.emit_open();
+    });
+    await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
+    await wait_for(() => expect(texts.at(-1)).toBe("重连已恢复"));
+    expect(latest.transport).toBe("ready");
+  });
+
+  it("损坏帧触发权威 snapshot 自愈而不永久停在断线态", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    desktop_api_mocks.api_get.mockResolvedValueOnce(
+      agent_snapshot({
+        revision: 2,
+        entries: [assistant_entry("assistant-recovered", "已校正", "success", 2)],
+      }),
+    );
+
+    await act(async () => event_source.emit_raw(AGENT_SESSION_EVENT_TOPIC, "{"));
+    await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    expect(latest.entries).toEqual([
+      assistant_entry("assistant-recovered", "已校正", "success", 2),
+    ]);
+  });
+
+  it("发送规范文本，受理后原子记录历史并清空草稿", async () => {
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({
+        state: "running",
+        skills: TEST_SKILLS,
+      }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
+
+    await act(async () => {
+      await latest.send({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      text: "请处理 @skill(corpus-search)",
+      attachments: [],
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.read_history()).toEqual(["请处理 @skill(corpus-search)"]);
+    expect(
+      JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
+    ).toEqual(latest.input.read_history());
+    expect(latest.input.revision).toBe(1);
+  });
+
+  it("纯图片受理后清空完整草稿且不写入文本历史", async () => {
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "", attachments: image_attachments("webp-image") });
+
+    await act(async () => {
+      await latest.send({ text: "", attachments: image_attachments("webp-image") });
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
+      text: "",
+      attachments: image_attachments("webp-image"),
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.read_history()).toEqual([]);
+  });
+
+  it("以原输入修订轮次表示重试，且不改写输入历史或草稿", async () => {
+    window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["历史消息"]));
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({
+      text: "正在编辑的新任务",
+      attachments: image_attachments("webp-draft"),
+    });
+
+    await act(async () => {
+      await latest.reviseLatestRound("user-1", { text: "历史消息", attachments: [] });
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
+      entryId: "user-1",
+      message: { text: "历史消息", attachments: [] },
+    });
+    expect(latest.input.read_draft()).toEqual({
+      text: "正在编辑的新任务",
+      attachments: image_attachments("webp-draft"),
+    });
+    expect(latest.input.read_history()).toEqual(["历史消息"]);
+    expect(latest.input.revision).toBe(0);
+    expect(latest.command).toBeNull();
+  });
+
+  it("历史修订不占用普通草稿，输入历史由编辑器成功回写", async () => {
+    window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(["旧消息"]));
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ entries: [user_entry("user-1", "旧消息", ["old-image"])] }),
+    );
+    desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot());
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "普通草稿", attachments: image_attachments("draft-image") });
+
+    await act(async () => {
+      await latest.reviseLatestRound("user-1", { text: "新消息", attachments: [] });
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/round/revise", {
+      entryId: "user-1",
+      message: { text: "新消息", attachments: [] },
+    });
+    expect(latest.input.read_draft()).toEqual({
+      text: "普通草稿",
+      attachments: image_attachments("draft-image"),
+    });
+    expect(latest.input.read_history()).toEqual(["旧消息"]);
+    act(() => latest.input.replace_history("旧消息", "新消息"));
+    expect(latest.input.read_history()).toEqual(["新消息"]);
+  });
+
+  it("消费页面卸载后仍保留完整草稿", async () => {
+    let latest: ReturnType<typeof useAgentSession> | null = null;
+    function Probe(): null {
+      latest = useAgentSession();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const render_visible = async (visible: boolean): Promise<void> => {
+      await act(async () =>
+        root?.render(<AgentSessionProvider>{visible ? <Probe /> : null}</AgentSessionProvider>),
+      );
+    };
+
+    await render_visible(true);
+    await wait_for(() => expect(latest?.transport).toBe("ready"));
+    latest!.input.write_draft({
+      text: "检查 @skill(glossary-audit)",
+      attachments: [
+        ...image_attachments("webp-image"),
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复",
+          comment: "跨页面保留",
+        },
+      ],
+    });
+
+    await render_visible(false);
+    latest = null;
+    await render_visible(true);
+
+    const restored_session = latest as ReturnType<typeof useAgentSession> | null;
+    expect(restored_session?.input.read_draft()).toEqual({
+      text: "检查 @skill(glossary-audit)",
+      attachments: [
+        ...image_attachments("webp-image"),
+        {
+          kind: "response_annotation",
+          selectedText: "旧回复",
+          comment: "跨页面保留",
+        },
+      ],
+    });
+  });
+
+  it("发送 ack 晚于 SSE 时先应用 ack 再重放增量", async () => {
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    let result!: Promise<void>;
+    await act(async () => {
+      result = latest.send({ text: "继续", attachments: [] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-2", "SSE 新消息", "running", 2),
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: { tokens: 200, compactable: true },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "session_state",
+        state: "running",
+      });
+      resolve_send({ revision: event_source.current_revision });
+      await result;
+    });
+
+    expect(latest.state).toBe("running");
+    expect(latest.entries).toEqual([
+      assistant_entry("assistant-1", "已恢复", "success", 1),
+      assistant_entry("assistant-2", "SSE 新消息", "running", 2),
+    ]);
+    expect(latest.context).toEqual({ tokens: 200, compactable: true });
+  });
+
+  it("非法命令 ack 不吞掉排队事件或锁死后续命令", async () => {
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    let first!: Promise<void>;
+    await act(async () => {
+      first = latest.send({ text: "继续", attachments: [] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context",
+        context: { tokens: 200, compactable: true },
+      });
+      resolve_send({ state: "running", entries: [], skills: [] });
+      await expect(first).rejects.toBeInstanceOf(TypeError);
+    });
+
+    expect(latest.context).toEqual({ tokens: 200, compactable: true });
+
+    desktop_api_mocks.api_fetch.mockImplementation(async () => ({
+      revision: event_source.current_revision,
+    }));
+    await act(async () => {
+      await latest.send({ text: "再次继续", attachments: [] });
+    });
+  });
+
+  it("同一帧重复发送只受理第一个请求", async () => {
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = latest.send({ text: "第一次", attachments: [] });
+      second = latest.send({ text: "第二次", attachments: [] });
+      await Promise.resolve();
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+    await second;
+    await act(async () => {
+      resolve_send({ revision: event_source.current_revision });
+      await first;
+    });
+    await first;
+  });
+
+  it("发送失败向页面回传错误并保留草稿与快照", async () => {
+    const offline = new Error("offline");
+    desktop_api_mocks.api_fetch.mockRejectedValue(offline);
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.write_draft({ text: "重试草稿", attachments: [] });
+
+    await act(async () => {
+      await expect(latest.send({ text: "重试", attachments: [] })).rejects.toBe(offline);
+    });
+    expect(latest.input.read_draft()).toEqual({ text: "重试草稿", attachments: [] });
+    expect(latest.input.read_history()).toEqual([]);
+    expect(latest.input.revision).toBe(0);
+  });
+
+  it("停止成功后应用空闲快照", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({
+        state: "running",
+        entries: [assistant_entry("assistant-1", "处理中", "running", 1)],
+      }),
+    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-1", "已停止", "stopped", 1),
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "session_state", state: "idle" });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => {
+      await latest.stop();
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/stop");
+    expect(latest.state).toBe("idle");
+    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已停止", "stopped", 1)]);
+  });
+
+  it("停止失败时向页面回传错误并保留运行快照", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({
+        state: "running",
+        entries: [assistant_entry("assistant-1", "处理中", "running", 1)],
+      }),
+    );
+    const offline = new Error("offline");
+    desktop_api_mocks.api_fetch.mockRejectedValue(offline);
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const previous_entries = latest.entries;
+
+    await act(async () => {
+      await expect(latest.stop()).rejects.toBe(offline);
+    });
+
+    expect(latest.state).toBe("running");
+    expect(latest.entries).toEqual(previous_entries);
+  });
+
+  it("统一 continue 命令应用后端决定的压缩运行条目", async () => {
+    const failed_compaction = {
+      kind: "context_compaction" as const,
+      id: "compaction-1",
+      status: "error" as const,
+      createdAt: 1,
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [failed_compaction] }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: { ...failed_compaction, status: "running" },
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.continue());
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {});
+    expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
+    expect(latest.command).toBeNull();
+  });
+
+  it("重置期间公开命令状态，并在成功后应用权威空快照", async () => {
+    let resolve_reset!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_reset = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    let result!: Promise<void>;
+    await act(async () => {
+      result = latest.reset();
+      await Promise.resolve();
+    });
+    expect(latest.command).toBe("reset");
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
+
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        revision: 1,
+        snapshot: agent_snapshot({ revision: 1, skills: TEST_SKILLS.slice(0, 1) }),
+      });
+      resolve_reset({ revision: 1 });
+      await result;
+    });
+    expect(latest).toMatchObject({
+      state: "idle",
+      entries: [],
+      skills: TEST_SKILLS.slice(0, 1),
+      command: null,
+    });
+  });
+
+  it("重置失败向页面回传错误并保留当前快照", async () => {
+    const offline = new Error("offline");
+    desktop_api_mocks.api_fetch.mockRejectedValue(offline);
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    const previous_entries = latest.entries;
+
+    await act(async () => {
+      await expect(latest.reset()).rejects.toBe(offline);
+    });
+
+    expect(latest.entries).toEqual(previous_entries);
+    expect(latest.command).toBeNull();
+  });
+
+  /** 探针只暴露 Hook 的公开返回值，不读取或注入内部 setter。 */
+  async function render_probe(use_probe: () => void): Promise<void> {
+    function Probe(): null {
+      use_probe();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        <AgentSessionProvider>
+          <Probe />
+        </AgentSessionProvider>,
+      ),
+    );
+  }
+});
+
+function assistant_entry(
+  id: string,
+  text: string,
+  status: AgentEntryStatus,
+  createdAt: number,
+): Extract<AgentEntry, { kind: "assistant_message" }> {
+  return {
+    kind: "assistant_message" as const,
+    id,
+    parts: [{ kind: "text" as const, text }],
+    status,
+    createdAt,
+  };
+}
+
+function user_entry(id: string, text: string, images: string[] = []) {
+  return {
+    kind: "user_message" as const,
+    id,
+    delivery: "round" as const,
+    text,
+    attachments: image_attachments(...images),
+    status: "success" as const,
+    createdAt: 1,
+    endedAt: 2,
+  };
+}
+
+function image_attachments(...images: string[]): AgentMessageAttachment[] {
+  return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
+}
+
+function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
+  return {
+    revision: 0,
+    state: "idle",
+    approvalMode: "manual",
+    pendingDecision: null,
+    entries: [],
+    skills: [],
+    inputQueue: { paused: false, canSendNow: false, items: [] },
+    todos: [],
+    context: { tokens: null, compactable: false },
+    ...overrides,
+  };
+}
+
+async function wait_for(assertion: () => void): Promise<void> {
+  await act(async () => await vi.waitFor(assertion));
+}

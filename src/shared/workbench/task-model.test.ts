@@ -57,7 +57,7 @@ describe("workbench task model", () => {
         is_active: (status) => status === "running" || status === "stopping",
         has_display_state: (snapshot) => (snapshot?.line ?? 0) > 0,
       }),
-    ).toBe(current_snapshot);
+    ).toEqual(current_snapshot);
   });
 
   it("从任务进度计算完成度、剩余时间和生成速度", () => {

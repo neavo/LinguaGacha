@@ -5,7 +5,7 @@ import {
   type ProviderStreams,
   type StreamOptions,
 } from "@earendil-works/pi-ai";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { LLMClient } from "./llm-client";
@@ -52,10 +52,6 @@ beforeEach(() => {
   api_mocks.anthropic.mockReset();
   api_mocks.google.mockReset();
   api_mocks.streamSimple.mockReset();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("LLMClient", () => {

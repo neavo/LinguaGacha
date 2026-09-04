@@ -1,8 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { LogAppendBuffer } from "./log-append-buffer";
-
-afterEach(() => vi.useRealTimers());
 
 describe("LogAppendBuffer", () => {
   it("在同一时间窗内批量刷出日志", () => {
