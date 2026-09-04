@@ -27,15 +27,20 @@ export const en_us_agent_page = {
     },
   },
   input: {
-    placeholder: "Describe a task, or type @ to select a skill or term …",
+    placeholder: "Describe a task, or type @ to select a skill or instruction …",
     edit_assistant_placeholder: "Edit the model response …",
     newline: "New line",
     drop_images: "Release to add images",
   },
   mention: {
-    groups: { skills: "Skills", terms: "Terms" },
+    groups: { skills: "Skills", instructions: "Instructions" },
+    instructions: {
+      compact_context: {
+        title: "Compact context",
+        unnecessary: "The current context is small and does not need compaction",
+      },
+    },
     no_matches: "No matching items …",
-    term_hits: "{count} Hits",
   },
   annotation: {
     title: "Annotation",
@@ -141,7 +146,7 @@ export const en_us_agent_page = {
     stop: "The task could not be stopped. Try again.",
     reset: "A new task could not be created. Try again.",
     approval_mode: "The write request approval mode could not be updated. Try again.",
-    terms_load: "Terms could not be loaded. Skills and messaging are still available.",
+    compact: "The context could not be compacted. Try again.",
   },
   unavailable: {
     restoring: "Restoring the session",

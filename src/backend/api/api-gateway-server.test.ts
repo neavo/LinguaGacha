@@ -280,7 +280,7 @@ describe("ApiGatewayServer", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       })),
       send_message: vi.fn(),
       set_approval_mode: vi.fn(),
@@ -292,6 +292,7 @@ describe("ApiGatewayServer", () => {
       send_queued_message: vi.fn(),
       revise_latest_round: vi.fn(),
       continue_session: vi.fn(),
+      compact_context: vi.fn(),
       stop: vi.fn(),
       reset: vi.fn(),
     } as unknown as AgentService;

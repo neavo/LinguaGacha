@@ -26,6 +26,12 @@ export type AgentAssistantMessageParts = [
 /** 会话只表达当前是否占用运行时；每轮与每个条目的结果由自身 status 持有。 */
 export type AgentSessionState = "idle" | "running";
 
+/** 当前模型可见历史及其是否存在可压缩的旧段。 */
+export type AgentContextSnapshot = JsonRecord & {
+  tokens: number | null; // 尚未建立模型历史时为 null
+  compactable: boolean; // 后端按当前 SDK 历史判定手动压缩入口是否可用
+};
+
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
@@ -189,7 +195,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   skills: AgentSkillSnapshot[];
   inputQueue: AgentInputQueueSnapshot;
   todos: string[]; // 当前对话的有序待办；空数组不占用固定展示位
-  contextTokens: number | null; // 当前模型可见历史的估算用量
+  context: AgentContextSnapshot;
 };
 
 /** 写命令只确认后端受理到的事件边界，公开事实继续由事件同步。 */
@@ -206,7 +212,7 @@ export type AgentSessionEventPayload = JsonRecord &
     | { type: "pending_decision"; pendingDecision: AgentPendingDecision | null }
     | { type: "input_queue"; inputQueue: AgentInputQueueSnapshot }
     | { type: "todo"; todos: string[] }
-    | { type: "context_tokens"; contextTokens: number }
+    | { type: "context"; context: AgentContextSnapshot }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 
@@ -304,11 +310,6 @@ export function normalize_agent_revision_request(value: unknown): AgentRevisionR
 /** 生成不会随 UI locale 改变的显式能力 marker。 */
 export function format_agent_skill_reference(name: string): string {
   return `@skill(${name})`;
-}
-
-/** 生成只供模型阅读、不触发宿主解析的术语 marker。 */
-export function format_agent_term_reference(src: string): string {
-  return `@term(${src})`;
 }
 
 /** 找出未被反斜线转义的 marker；重叠时由较长 marker 优先占用范围。 */

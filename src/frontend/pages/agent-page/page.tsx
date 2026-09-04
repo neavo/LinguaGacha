@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import type { ModelThinkingLevel } from "@domain/model";
-import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   format_agent_skill_reference,
@@ -11,18 +10,14 @@ import {
   type AgentMessageInput,
   type AgentQueuedInput,
 } from "@shared/agent";
-import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import {
   read_selected_model,
   useModelSelection,
 } from "@frontend/features/model-selection/use-model-selection";
-import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
-import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -43,7 +38,7 @@ import { AgentDecisionLayer } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
-import { create_agent_mention_tokens } from "./agent-mention";
+import { create_agent_mention_tokens, type AgentMentionInstruction } from "./agent-mention";
 import { AgentTodo } from "./agent-todo";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
@@ -67,29 +62,15 @@ const FEATURED_AGENT_SKILLS = [
     Icon: ScanText,
   },
 ] as const;
-/** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
-const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
-
 /** 同一个系统确认框承接首条发送与已有对话关闭思考两个用户动作。 */
 type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
   | { kind: "disable_thinking" };
 
-/** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
-function normalize_agent_terms(
-  slice: QualityRuleQuerySlice<"glossary"> | undefined,
-): GlossaryEntry[] {
-  return normalize_quality_rule_entries(
-    QualityRule.from_json("glossary"),
-    slice?.entries ?? [],
-  ) as GlossaryEntry[];
-}
-
 /** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { project_snapshot, project_session_status = "ready" } = useDesktopState();
   const { entries } = useAgentTimeline();
   const controls = useAgentControls();
   const { inputQueue } = useAgentQueue();
@@ -133,33 +114,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     allow_in_text_editing: true,
     on_trigger: toggle_follow_latest,
   });
-  const handle_terms_load_error = useCallback((): void => {
-    push_toast("error", t("agent_page.error.terms_load"));
-  }, [push_toast, t]);
-  const { quality_slice: terms } = useQualityRuleQuery({
-    rule_type: "glossary",
-    project_path: project_snapshot.loaded ? project_snapshot.path : "",
-    session_ready: project_session_status === "ready",
-    default_slice: EMPTY_AGENT_TERMS,
-    normalize_slice: normalize_agent_terms,
-    on_load_error: handle_terms_load_error,
-  });
-  const term_statistics = useQualityRuleStatistics("glossary");
-  // 只展示已完成统计的命中数，避免把尚未计算的术语误报为零命中。
-  const term_hit_counts = useMemo<Readonly<Record<string, number>>>(() => {
-    return Object.fromEntries(
-      (term_statistics.entry_ids ?? []).map((entry_id) => [
-        entry_id,
-        term_statistics.hits_by_entry_id[entry_id] ?? 0,
-      ]),
-    );
-  }, [term_statistics.entry_ids, term_statistics.hits_by_entry_id]);
-  const available_terms =
-    project_snapshot.loaded && project_session_status === "ready" ? terms : EMPTY_AGENT_TERMS;
-  const mention_tokens = useMemo(
-    () => create_agent_mention_tokens(skills, available_terms),
-    [available_terms, skills],
-  );
+  const mention_tokens = useMemo(() => create_agent_mention_tokens(skills), [skills]);
   const is_running = controls.state === "running";
   // apply 一旦进入公开 running 工具帧就不可取消；后端仍保留同一权威守卫。
   const workspace_apply_running = entries.some(
@@ -171,6 +126,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const agent_restoring = controls.transport === "restoring";
   const last_compaction = entries.findLast((entry) => entry.kind === "context_compaction");
   const compacting = last_compaction?.status === "running";
+  // 宿主指令只在会话已恢复、命令已收束且共享运行时空闲时开放；可压缩性直接采用后端事实。
+  const instruction_ready =
+    controls.transport === "ready" &&
+    controls.state === "idle" &&
+    controls.command === null &&
+    runtime_snapshot.owner === null;
+  const compact_available = instruction_ready && controls.context.compactable;
   // 暂停队列复用 Composer 的 continue 提交，不建立独立恢复控件。
   const can_continue_queue = !is_running && inputQueue.paused && inputQueue.items.length > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
@@ -286,6 +248,26 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [agent_actions, show_command_error],
   );
 
+  /** Mention 指令直接调用宿主压缩；筛选文本由 Composer 在动作前移除。 */
+  const compact_context = useCallback((): void => {
+    void agent_actions.compactContext().catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.compact");
+    });
+  }, [agent_actions, show_command_error]);
+  /** 主 Composer 的宿主指令目录；动作不进入消息正文或原位编辑器。 */
+  const instructions: readonly AgentMentionInstruction[] = [
+    {
+      id: "compact_context",
+      title: t("agent_page.mention.instructions.compact_context.title"),
+      description:
+        instruction_ready && !controls.context.compactable
+          ? t("agent_page.mention.instructions.compact_context.unnecessary")
+          : "",
+      disabled: !compact_available,
+      execute: compact_context,
+    },
+  ];
+
   /** 发送失败保留确认框；模型更新沿用通用控制器自身的错误提示与恢复。 */
   const confirm_pending_thinking_off_action = async (): Promise<void> => {
     const action = pending_thinking_off_action;
@@ -373,8 +355,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         <AgentInlineEditor
           target={target}
           skills={skills}
-          terms={available_terms}
-          term_hit_counts={term_hit_counts}
           command={controls.command}
           model_selection={model_selection}
           unavailable_reason={unavailable_reason}
@@ -387,14 +367,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     },
     [
       controls.command,
-      available_terms,
       cancel_inline_edit,
       complete_inline_edit,
       handle_inline_image_error,
       model_selection,
       save_inline_edit,
       skills,
-      term_hit_counts,
       unavailable_reason,
     ],
   );
@@ -657,8 +635,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               ref={composer_ref}
               locked={active_inline_edit !== null}
               skills={skills}
-              terms={available_terms}
-              term_hit_counts={term_hit_counts}
+              instructions={instructions}
               running={is_running}
               stop_disabled={workspace_apply_running}
               compacting={compacting}
@@ -667,7 +644,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               can_continue_queue={can_continue_queue}
               queue_full={queue_full}
               can_reset={!agent_restoring && entries.length > 0}
-              context_tokens={controls.contextTokens}
+              context_tokens={controls.context.tokens}
               approval_mode={controls.approvalMode}
               approval_mode_disabled={workspace_apply_running}
               model_selection={model_selection}

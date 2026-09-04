@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   find_agent_reference_ranges,
   format_agent_skill_reference,
-  format_agent_term_reference,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
@@ -111,23 +110,19 @@ describe("Agent 用户消息协议", () => {
     expect(normalize_agent_revision_request({ entryId: "assistant-1" })).toBeNull();
   });
 
-  it("生成固定能力 marker 与原样 Unicode 术语 marker", () => {
+  it("生成固定能力 marker", () => {
     expect(format_agent_skill_reference("glossary-review")).toBe("@skill(glossary-review)");
-    for (const term of ["エリス", "爱丽丝", "Alice Smith", "(hero) ✨"]) {
-      expect(format_agent_term_reference(term)).toBe(`@term(${term})`);
-    }
   });
 
   it("按长 marker 优先解析未转义引用，并保留偶数反斜线后的真实引用", () => {
     expect(
-      find_agent_reference_ranges(String.raw`\@skill(review) \\@skill(review) @term(Alice))`, [
-        "@skill(review)",
-        "@term(Alice)",
-        "@term(Alice))",
-      ]),
+      find_agent_reference_ranges(
+        String.raw`\@skill(review) \\@skill(review) @skill(review-long)`,
+        ["@skill(review)", "@skill(review-long)"],
+      ),
     ).toEqual([
       { from: 18, to: 32, marker: "@skill(review)" },
-      { from: 33, to: 46, marker: "@term(Alice))" },
+      { from: 33, to: 52, marker: "@skill(review-long)" },
     ]);
   });
 });

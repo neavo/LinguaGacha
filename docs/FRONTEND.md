@@ -41,7 +41,7 @@
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端分析结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
-- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、progress、skills 与 input 切片订阅；command、queue、task progress、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills 与 input 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up，并统一承接手动入口与翻译完成提示的译文导出确认；导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。页面计算缓存、其它弹窗、导入和提交中状态默认随页面挂载与卸载。

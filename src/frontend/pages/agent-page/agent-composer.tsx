@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   ArrowUp,
-  BookA,
   Brain,
   Boxes,
   ChevronDown,
@@ -10,6 +9,7 @@ import {
   MessageSquarePlus,
   ShieldCheck,
   ShieldQuestionMark,
+  Shrink,
   Sparkles,
   Square,
 } from "lucide-react";
@@ -38,7 +38,6 @@ import {
 
 import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
-import type { GlossaryEntry } from "@domain/quality";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   AGENT_MESSAGE_IMAGE_LIMIT,
@@ -89,6 +88,7 @@ import {
   create_agent_mention_tokens,
   find_agent_mention_ranges,
   type AgentMentionCandidate,
+  type AgentMentionInstruction,
   type AgentMentionToken,
 } from "./agent-mention";
 import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
@@ -125,8 +125,7 @@ type AgentComposerProps = {
   on_cancel_edit?: () => void;
   locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
-  terms: readonly GlossaryEntry[];
-  term_hit_counts: Readonly<Record<string, number>>;
+  instructions?: readonly AgentMentionInstruction[];
   running: boolean;
   stop_disabled: boolean; // 当前原子阶段只禁用 stop，不锁定草稿编辑
   compacting: boolean;
@@ -173,7 +172,7 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
-/** mention 配置与 Decoration 都可由当前能力、术语和纯文本正文重建。 */
+/** mention 配置与 Decoration 都可由当前技能和纯文本正文重建。 */
 const set_mention_tokens_effect = StateEffect.define<readonly AgentMentionToken[]>();
 const mention_token_config_field = StateField.define<readonly AgentMentionToken[]>({
   create: () => [],
@@ -260,19 +259,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const mention_query_text = snapshot.query?.text;
   const candidate_groups =
     assistant_editing || mention_query_text === undefined
-      ? { skills: [], terms: [] }
+      ? { skills: [], instructions: [] }
       : create_agent_mention_candidates({
           query: mention_query_text,
           locale,
           skills: props.skills,
-          terms: props.terms,
-          term_hit_counts: props.term_hit_counts,
-          format_term_hits: (count) =>
-            t("agent_page.mention.term_hits", { count: count.toString() }),
+          instructions: props.instructions ?? [],
         });
   const matching_skills = candidate_groups.skills;
-  const matching_terms = candidate_groups.terms;
-  const matching_candidates = [...matching_skills, ...matching_terms];
+  const matching_instructions = candidate_groups.instructions;
+  const matching_candidates = [...matching_skills, ...matching_instructions];
   const editor_read_only =
     locked ||
     props.command === "send" ||
@@ -523,10 +519,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   useEffect(() => {
     view_ref.current?.dispatch({
-      effects: set_mention_tokens_effect.of(create_agent_mention_tokens(props.skills, props.terms)),
+      effects: set_mention_tokens_effect.of(create_agent_mention_tokens(props.skills)),
       annotations: input_session_sync_annotations,
     });
-  }, [props.skills, props.terms]);
+  }, [props.skills]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -585,11 +581,22 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [mention_query_text, menu_index, menu_open]);
 
-  /** 用一次事务把当前 @ 查询替换成字面量 marker 与结束空格。 */
+  /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
   const select_candidate = (candidate: AgentMentionCandidate): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_mention_query(view.state);
     if (view === null || query === null) return;
+    if (candidate.kind === "instruction") {
+      if (candidate.disabled) return;
+      view.dispatch({
+        changes: { from: query.from, to: query.to, insert: "" },
+        selection: EditorSelection.cursor(query.from),
+      });
+      set_menu_suppressed(false);
+      candidate.execute();
+      view.focus();
+      return;
+    }
     const text = `${candidate.insertText} `;
     view.dispatch({
       changes: { from: query.from, to: query.to, insert: text },
@@ -762,16 +769,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               {matching_skills.map((candidate, index) => render_candidate(candidate, index))}
             </div>
           )}
-          {matching_terms.length > 0 && (
+          {matching_instructions.length > 0 && (
             <div
               className="agent-mention-menu__group"
               role="group"
-              aria-labelledby="agent-mention-terms-label"
+              aria-labelledby="agent-mention-instructions-label"
             >
-              <div id="agent-mention-terms-label" className="agent-mention-menu__group-label">
-                {t("agent_page.mention.groups.terms")}
+              <div
+                id="agent-mention-instructions-label"
+                className="agent-mention-menu__group-label"
+              >
+                {t("agent_page.mention.groups.instructions")}
               </div>
-              {matching_terms.map((candidate, index) =>
+              {matching_instructions.map((candidate, index) =>
                 render_candidate(candidate, matching_skills.length + index),
               )}
             </div>
@@ -1139,7 +1149,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   /** 两个分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
   function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
-    const Icon = candidate.kind === "skill" ? Sparkles : BookA;
+    const Icon = candidate.kind === "skill" ? Sparkles : Shrink;
     return (
       <button
         id={`agent-mention-option-${index.toString()}`}
@@ -1147,6 +1157,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         type="button"
         role="option"
         aria-selected={index === menu_index}
+        disabled={candidate.kind === "instruction" && candidate.disabled}
         data-highlight={index === menu_index}
         tabIndex={-1}
         onMouseDown={(event) => event.preventDefault()}

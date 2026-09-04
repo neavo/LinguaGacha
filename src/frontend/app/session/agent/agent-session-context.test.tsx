@@ -230,7 +230,9 @@ describe("AgentSessionProvider", () => {
     desktop_api_mocks.api_get
       .mockReset()
       .mockResolvedValueOnce(agent_snapshot())
-      .mockResolvedValueOnce(agent_snapshot({ revision: 3, contextTokens: 300 }));
+      .mockResolvedValueOnce(
+        agent_snapshot({ revision: 3, context: { tokens: 300, compactable: true } }),
+      );
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
       latest = useAgentSession();
@@ -239,28 +241,28 @@ describe("AgentSessionProvider", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
+        type: "context",
         revision: 1,
-        contextTokens: 100,
+        context: { tokens: 100, compactable: false },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
+        type: "context",
         revision: 1,
-        contextTokens: 200,
+        context: { tokens: 200, compactable: true },
       });
     });
-    expect(latest.contextTokens).toBe(100);
+    expect(latest.context).toEqual({ tokens: 100, compactable: false });
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
+        type: "context",
         revision: 3,
-        contextTokens: 300,
+        context: { tokens: 300, compactable: true },
       });
     });
     await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    expect(latest.contextTokens).toBe(300);
+    expect(latest.context).toEqual({ tokens: 300, compactable: true });
   });
 
   it("command 更新只通知 controls 订阅者", async () => {
@@ -327,27 +329,27 @@ describe("AgentSessionProvider", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: 31_488,
+        type: "context",
+        context: { tokens: 31_488, compactable: true },
       });
     });
-    expect(latest.contextTokens).toBe(31_488);
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: -1,
+        type: "context",
+        context: { tokens: -1, compactable: true },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: 1.5,
+        type: "context",
+        context: { tokens: 1.5, compactable: false },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: null,
+        type: "context",
+        context: null,
       });
     });
-    expect(latest.contextTokens).toBe(31_488);
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
   });
 
   it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
@@ -476,6 +478,42 @@ describe("AgentSessionProvider", () => {
       }),
     );
     expect(latest.approvalMode).toBe("manual");
+  });
+
+  it("压缩回执应用命令期间收到的公开 running 条目", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ context: { tokens: 64_000, compactable: true } }),
+    );
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: {
+          kind: "context_compaction",
+          id: "manual-compaction",
+          status: "running",
+          createdAt: 1,
+        },
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.compactContext());
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/context/compact");
+    expect(latest.entries).toEqual([
+      {
+        kind: "context_compaction",
+        id: "manual-compaction",
+        status: "running",
+        createdAt: 1,
+      },
+    ]);
+    expect(latest.command).toBeNull();
   });
 
   it("写入决定通过单一命令受理并立即清除 pending", async () => {
@@ -656,11 +694,11 @@ describe("AgentSessionProvider", () => {
         entries: [],
         skills: [],
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       },
     ],
     [
-      "contextTokens",
+      "context",
       {
         state: "idle",
         approvalMode: "manual",
@@ -680,7 +718,7 @@ describe("AgentSessionProvider", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       },
     ],
     [
@@ -692,7 +730,7 @@ describe("AgentSessionProvider", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       },
     ],
   ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
@@ -712,7 +750,7 @@ describe("AgentSessionProvider", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        contextTokens: null,
+        context: { tokens: null, compactable: false },
       })
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
@@ -740,7 +778,7 @@ describe("AgentSessionProvider", () => {
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
-      contextTokens: null,
+      context: { tokens: null, compactable: false },
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -952,7 +990,7 @@ describe("AgentSessionProvider", () => {
       skills: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
-      contextTokens: null,
+      context: { tokens: null, compactable: false },
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -1292,8 +1330,8 @@ describe("AgentSessionProvider", () => {
         entry: assistant_entry("assistant-2", "SSE 新消息", "running", 2),
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: 200,
+        type: "context",
+        context: { tokens: 200, compactable: true },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "session_state",
@@ -1308,7 +1346,7 @@ describe("AgentSessionProvider", () => {
       assistant_entry("assistant-1", "已恢复", "success", 1),
       assistant_entry("assistant-2", "SSE 新消息", "running", 2),
     ]);
-    expect(latest.contextTokens).toBe(200);
+    expect(latest.context).toEqual({ tokens: 200, compactable: true });
   });
 
   it("非法命令 ack 不吞掉排队事件或锁死后续命令", async () => {
@@ -1332,14 +1370,14 @@ describe("AgentSessionProvider", () => {
     });
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_tokens",
-        contextTokens: 200,
+        type: "context",
+        context: { tokens: 200, compactable: true },
       });
       resolve_send({ state: "running", entries: [], skills: [] });
       await expect(first).rejects.toBeInstanceOf(TypeError);
     });
 
-    expect(latest.contextTokens).toBe(200);
+    expect(latest.context).toEqual({ tokens: 200, compactable: true });
 
     desktop_api_mocks.api_fetch.mockImplementation(async () => ({
       revision: event_source.current_revision,
@@ -1597,7 +1635,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
-    contextTokens: null,
+    context: { tokens: null, compactable: false },
     ...overrides,
   };
 }

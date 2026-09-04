@@ -24,15 +24,12 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => ({
 import { AgentTimeline, build_agent_rounds } from "./agent-timeline";
 import { create_agent_mention_tokens } from "./agent-mention";
 
-const MENTION_TOKENS = create_agent_mention_tokens(
-  [
-    {
-      name: "glossary-audit",
-      displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "" },
-    },
-  ],
-  [{ src: "Alice", dst: "爱丽丝", info: "", case_sensitive: false }],
-);
+const MENTION_TOKENS = create_agent_mention_tokens([
+  {
+    name: "glossary-audit",
+    displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "" },
+  },
+]);
 type ScrollMetrics = {
   top: number;
   height: number;

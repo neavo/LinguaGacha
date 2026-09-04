@@ -1,6 +1,7 @@
 import type {
   AgentApprovalMode,
   AgentCommandAck,
+  AgentContextSnapshot,
   AgentEntry,
   AgentEntryStatus,
   AgentInputQueueSnapshot,
@@ -39,6 +40,7 @@ export type AgentCommand =
   | "send"
   | "revise"
   | "continue"
+  | "compact"
   | "stop"
   | "reset"
   | "queue_update"
@@ -57,7 +59,7 @@ export type AgentControlsSlice = Readonly<{
   state: AgentSessionState;
   approvalMode: AgentApprovalMode;
   pendingDecision: AgentPendingDecision | null;
-  contextTokens: number | null;
+  context: AgentContextSnapshot;
   transport: AgentTransportState;
   command: AgentCommand;
 }>;
@@ -82,6 +84,7 @@ export type AgentSessionActions = Readonly<{
   reorderQueuedMessages: (ids: readonly string[]) => Promise<void>;
   sendQueuedMessage: (id: string) => Promise<void>;
   continue: (message?: AgentMessageInput) => Promise<void>;
+  compactContext: () => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<void>;
   setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
@@ -99,7 +102,7 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
   approvalMode: "manual",
   pendingDecision: null,
-  contextTokens: null,
+  context: { tokens: null, compactable: false },
   transport: "restoring",
   command: null,
 };
@@ -150,6 +153,7 @@ export class AgentSessionStore {
       reorderQueuedMessages: this.reorder_queued_messages,
       sendQueuedMessage: this.send_queued_message,
       continue: this.continue_session,
+      compactContext: this.compact_context,
       stop: this.stop,
       reset: this.reset,
       setApprovalMode: this.set_approval_mode,
@@ -244,7 +248,8 @@ export class AgentSessionStore {
       next.state === this.controls.state &&
       next.approvalMode === this.controls.approvalMode &&
       next.pendingDecision === this.controls.pendingDecision &&
-      next.contextTokens === this.controls.contextTokens &&
+      next.context.tokens === this.controls.context.tokens &&
+      next.context.compactable === this.controls.context.compactable &&
       next.transport === this.controls.transport &&
       next.command === this.controls.command
     ) {
@@ -315,7 +320,7 @@ export class AgentSessionStore {
       state: snapshot.state,
       approvalMode: snapshot.approvalMode,
       pendingDecision: snapshot.pendingDecision,
-      contextTokens: snapshot.contextTokens,
+      context: snapshot.context,
     };
     this.emit("timeline");
     this.emit("queue");
@@ -351,8 +356,8 @@ export class AgentSessionStore {
       case "pending_decision":
         this.set_controls({ pendingDecision: event.pendingDecision });
         break;
-      case "context_tokens":
-        this.set_controls({ contextTokens: event.contextTokens });
+      case "context":
+        this.set_controls({ context: event.context });
         break;
       case "input_queue":
         this.queue = { inputQueue: event.inputQueue };
@@ -507,6 +512,20 @@ export class AgentSessionStore {
     );
   };
 
+  /** 只把已恢复且后端标记可压缩的空闲会话送入命令串行入口。 */
+  private readonly compact_context = async (): Promise<void> => {
+    if (
+      this.controls.transport !== "ready" ||
+      this.controls.state !== "idle" ||
+      !this.controls.context.compactable
+    ) {
+      return;
+    }
+    await this.execute_command("compact", () =>
+      api_fetch<AgentCommandAck>("/api/agent/context/compact"),
+    );
+  };
+
   private readonly stop = async (): Promise<void> => {
     if (this.controls.state !== "running") return;
     await this.execute_command("stop", () => api_fetch<AgentCommandAck>("/api/agent/stop"));
@@ -600,13 +619,13 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
   const input_queue = normalize_input_queue(record["inputQueue"]);
   const todos = normalize_todos(record["todos"]);
-  const context_tokens = normalize_context_tokens(record["contextTokens"]);
+  const context = normalize_context(record["context"]);
   if (
     approval_mode === null ||
     pending_decision === undefined ||
     input_queue === null ||
     todos === null ||
-    context_tokens === undefined
+    context === null
   ) {
     throw new TypeError("Agent snapshot is invalid.");
   }
@@ -619,7 +638,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     skills,
     inputQueue: input_queue,
     todos,
-    contextTokens: context_tokens,
+    context,
   };
 }
 
@@ -657,11 +676,9 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       const todos = normalize_todos(record["todos"]);
       return todos === null ? null : { type: "todo", revision, todos };
     }
-    case "context_tokens": {
-      const context_tokens = normalize_context_tokens(record["contextTokens"]);
-      return context_tokens === null || context_tokens === undefined
-        ? null
-        : { type: "context_tokens", revision, contextTokens: context_tokens };
+    case "context": {
+      const context = normalize_context(record["context"]);
+      return context === null ? null : { type: "context", revision, context };
     }
     case "entry_upsert": {
       const entry = normalize_entry(record["entry"])[0];
@@ -727,6 +744,13 @@ function normalize_input_queue(value: unknown): AgentInputQueueSnapshot | null {
 function normalize_context_tokens(value: unknown): number | null | undefined {
   if (value === null) return null;
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** 同时验证上下文估算与能力位，避免 renderer 从部分载荷自行推断。 */
+function normalize_context(value: unknown): AgentContextSnapshot | null {
+  if (!is_json_record(value) || typeof value["compactable"] !== "boolean") return null;
+  const tokens = normalize_context_tokens(value["tokens"]);
+  return tokens === undefined ? null : { tokens, compactable: value["compactable"] };
 }
 
 function normalize_entry(value: unknown): AgentEntry[] {

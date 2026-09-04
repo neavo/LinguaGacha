@@ -31,6 +31,7 @@ import {
   type AgentAssistantMessageParts,
   type AgentApprovalMode,
   type AgentCommandAck,
+  type AgentContextSnapshot,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageInput,
@@ -205,14 +206,14 @@ export class AgentService {
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
-  private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与尾部恢复
-  private runtime_settlement: Promise<void> | null = null; // SDK idle 未覆盖 preflight，统一纳入关闭屏障
+  private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与异步操作启动
+  private runtime_settlement: Promise<void> | null = null; // 后台模型与压缩操作统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
-  private context_tokens: number | null = null; // 压缩终态优先采用 SDK 新历史估算，避免复用旧 usage
+  private context: AgentContextSnapshot = { tokens: null, compactable: false }; // 模型历史估算与手动压缩能力的同源快照
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
   private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null; // 固定窗口唯一发布计时器
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
@@ -268,7 +269,7 @@ export class AgentService {
         })),
       inputQueue: this.input_queue.read_snapshot(this.can_send_queued_now()),
       todos: [...this.todos],
-      contextTokens: this.context_tokens,
+      context: structuredClone(this.context),
     };
   }
 
@@ -515,6 +516,31 @@ export class AgentService {
     }
   }
 
+  /** 空闲会话以当前模型配置压缩旧历史；运行互斥与可压缩性都由后端复核。 */
+  public async compact_context(): Promise<AgentCommandAck> {
+    this.assert_not_disposed();
+    if (this.session_reset !== null || this.state !== "idle" || this.decisions.has_pending) {
+      throw new AppErrors.AppError("runtime.busy");
+    }
+    if (!this.context.compactable) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "agent_context_not_compactable" },
+      });
+    }
+    this.session_state.require_loaded_project_path();
+    const runtime = this.runtime;
+    if (runtime === null) {
+      throw new AppErrors.AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "agent_compaction_runtime_missing" },
+      });
+    }
+    const runtime_lease = this.runtime_gate.begin_runtime("agent");
+    this.runtime_lease = runtime_lease;
+    return await this.track_operation_acceptance(
+      this.accept_context_compaction(runtime, runtime_lease),
+    );
+  }
+
   /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
   public async reset(): Promise<AgentCommandAck> {
     this.assert_not_disposed();
@@ -618,7 +644,7 @@ export class AgentService {
         }
         if (created) {
           this.runtime = runtime;
-          this.publish_context_tokens(estimateContextTokens(runtime.session.messages).tokens);
+          this.publish_context(estimateContextTokens(runtime.session.messages).tokens);
         }
       } catch (error) {
         if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
@@ -632,12 +658,8 @@ export class AgentService {
         this.publish_input_queue();
       }
       const prompt = this.start_round(runtime, generation, message, selected_skills, runtime_lease);
-      this.runtime_settlement = prompt;
+      this.track_runtime_settlement(prompt);
       prompt_started = true;
-      const clear_prompt = () => {
-        if (this.runtime_settlement === prompt) this.runtime_settlement = null;
-      };
-      void prompt.then(clear_prompt, clear_prompt);
       return this.get_acknowledgement();
     } finally {
       if (!prompt_started) this.finish_runtime(runtime_lease);
@@ -715,12 +737,8 @@ export class AgentService {
         runtime_lease,
         revision.prefix,
       );
-      this.runtime_settlement = prompt;
+      this.track_runtime_settlement(prompt);
       prompt_started = true;
-      const clear_prompt = () => {
-        if (this.runtime_settlement === prompt) this.runtime_settlement = null;
-      };
-      void prompt.then(clear_prompt, clear_prompt);
       return this.get_acknowledgement();
     } finally {
       if (!prompt_started) this.finish_runtime(runtime_lease);
@@ -733,7 +751,7 @@ export class AgentService {
     else runtime.session.sessionManager.createBranchedSession(leaf_id);
     runtime.session.agent.state.messages =
       runtime.session.sessionManager.buildSessionContext().messages;
-    this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
+    this.context = this.read_context(runtime.session);
   }
 
   /** 人工修改的 assistant 是零 usage 的正常历史消息，不触发供应商请求。 */
@@ -778,7 +796,7 @@ export class AgentService {
     };
     this.entries = [...structuredClone(prefix), entry];
     this.latest_output_checkpoint = { entry_id: entry.id, leaf_id: checkpoint_leaf };
-    this.context_tokens = estimateContextTokens(runtime.session.messages).tokens;
+    this.context = this.read_context(runtime.session);
     this.state = "idle";
     this.publish_snapshot_seed();
   }
@@ -798,15 +816,53 @@ export class AgentService {
         });
       }
       const continuation = this.run_continue(runtime, generation, runtime_lease);
-      this.runtime_settlement = continuation;
+      this.track_runtime_settlement(continuation);
       continuation_started = true;
-      const clear_continuation = () => {
-        if (this.runtime_settlement === continuation) this.runtime_settlement = null;
-      };
-      void continuation.then(clear_continuation, clear_continuation);
       return this.get_acknowledgement();
     } finally {
       if (!continuation_started) this.finish_runtime(runtime_lease);
+    }
+  }
+
+  /** 手动压缩独占共享运行时，但不建立模型 round 或改变公开会话状态。 */
+  private async accept_context_compaction(
+    runtime: AgentRuntime,
+    runtime_lease: RuntimeLease,
+  ): Promise<AgentCommandAck> {
+    let compaction_started = false;
+    try {
+      const generation = this.runtime_generation;
+      await this.update_runtime_model(runtime, this.settings.read_setting());
+      if (
+        !this.runtime_is_current(runtime, generation) ||
+        this.state !== "idle" ||
+        !this.context.compactable
+      ) {
+        throw new AppErrors.AppError("request.validation_failed", {
+          diagnostic_context: { reason: "agent_compaction_invalidated" },
+        });
+      }
+      this.begin_context_compaction();
+      const compaction = this.run_context_compaction(runtime, runtime_lease);
+      this.track_runtime_settlement(compaction);
+      compaction_started = true;
+      return this.get_acknowledgement();
+    } finally {
+      if (!compaction_started) this.finish_runtime(runtime_lease);
+    }
+  }
+
+  /** 手动压缩在后台结算，公开终态与诊断继续由统一压缩事件拥有。 */
+  private async run_context_compaction(
+    runtime: AgentRuntime,
+    runtime_lease: RuntimeLease,
+  ): Promise<void> {
+    try {
+      await runtime.session.compact();
+    } catch {
+      // AgentSession.compact 在拒绝前已同步发布 compaction_end，公开失败与诊断由该事件收束。
+    } finally {
+      this.finish_runtime(runtime_lease);
     }
   }
 
@@ -1071,20 +1127,7 @@ export class AgentService {
   /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
   private handle_agent_event(event: PiAgentSessionEvent): void {
     if (event.type === "compaction_start") {
-      if (this.runtime !== null) this.runtime.steer_ready = false;
-      this.publish_input_queue();
-      const compaction = this.find_latest_compaction_entry();
-      if (compaction?.status === "running") return;
-      this.upsert_entry(
-        compaction?.status === "error"
-          ? { ...compaction, status: "running" }
-          : {
-              kind: "context_compaction",
-              id: uuidv7(),
-              status: "running",
-              createdAt: Date.now(),
-            },
-      );
+      this.begin_context_compaction();
       return;
     }
     if (event.type === "compaction_end") {
@@ -1103,7 +1146,7 @@ export class AgentService {
           context: { reason: event.reason, error: event.errorMessage },
         });
       }
-      if (success) this.publish_context_tokens(result.estimatedTokensAfter);
+      if (success) this.publish_context(result.estimatedTokensAfter);
       return;
     }
     if (event.type === "agent_start" || event.type === "turn_start") {
@@ -1159,7 +1202,7 @@ export class AgentService {
         );
         this.pending_assistant_checkpoint = null;
       }
-      this.publish_context_tokens();
+      this.publish_context();
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -1315,6 +1358,24 @@ export class AgentService {
     );
   }
 
+  /** 自动与手动压缩共用同一个公开开始事实；重复 SDK start 保持幂等。 */
+  private begin_context_compaction(): void {
+    const compaction = this.find_latest_compaction_entry();
+    if (compaction?.status === "running") return;
+    if (this.runtime !== null) this.runtime.steer_ready = false;
+    this.publish_input_queue();
+    this.upsert_entry(
+      compaction?.status === "error"
+        ? { ...compaction, status: "running" }
+        : {
+            kind: "context_compaction",
+            id: uuidv7(),
+            status: "running",
+            createdAt: Date.now(),
+          },
+    );
+  }
+
   /** 连续自动压缩尝试复用最近一次失败条目，时间线始终只有一个诊断位置。 */
   private find_latest_compaction_entry():
     | Extract<AgentEntry, { kind: "context_compaction" }>
@@ -1368,19 +1429,23 @@ export class AgentService {
     }
   }
 
-  /** 普通模型消息使用最新 usage；压缩成功则由事件直接提供新历史估算。 */
-  private read_context_tokens(): number | null {
-    const session = this.runtime?.session;
-    return session === undefined ? null : estimateContextTokens(session.messages).tokens;
+  /** 压缩可用性与 token 估算由同一后端快照发布，renderer 不重建 SDK 历史规则。 */
+  private read_context(session: AgentSession, tokens?: number): AgentContextSnapshot {
+    const context_tokens = tokens ?? estimateContextTokens(session.messages).tokens;
+    // Pi 拒绝立即重复压缩以避免用摘要再次替换同一段历史，公开能力保持同一边界。
+    const last_entry = session.sessionManager.getBranch().at(-1);
+    return {
+      tokens: context_tokens,
+      compactable: context_tokens > AGENT_KEEP_RECENT_TOKENS && last_entry?.type !== "compaction",
+    };
   }
 
-  /** 每次模型历史变化后发布与 snapshot 同形的 token 估算。 */
-  private publish_context_tokens(tokens?: number): void {
-    const context_tokens = tokens ?? this.read_context_tokens();
-    if (context_tokens !== null) {
-      this.context_tokens = context_tokens;
-      this.publish_event({ type: "context_tokens", contextTokens: context_tokens });
-    }
+  /** 每次模型历史变化后发布完整上下文快照。 */
+  private publish_context(tokens?: number): void {
+    const session = this.runtime?.session;
+    if (session === undefined) return;
+    this.context = this.read_context(session, tokens);
+    this.publish_event({ type: "context", context: structuredClone(this.context) });
   }
 
   /** 状态未变化时不发布重复 SSE。 */
@@ -1443,7 +1508,7 @@ export class AgentService {
     this.approval_mode = "manual";
     this.decisions.reset();
     this.entries = [];
-    this.context_tokens = null;
+    this.context = { tokens: null, compactable: false };
     this.latest_round_checkpoint = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
@@ -1515,6 +1580,15 @@ export class AgentService {
     } finally {
       if (this.operation_acceptance === acceptance) this.operation_acceptance = null;
     }
+  }
+
+  /** 当前唯一后台运行持有关闭屏障，并按 Promise 身份清除自身。 */
+  private track_runtime_settlement(settlement: Promise<void>): void {
+    this.runtime_settlement = settlement;
+    const clear_settlement = () => {
+      if (this.runtime_settlement === settlement) this.runtime_settlement = null;
+    };
+    void settlement.then(clear_settlement, clear_settlement);
   }
 
   /** 同时清除本地引用和共享 owner；迟到 lease 由 gate 身份校验忽略。 */
