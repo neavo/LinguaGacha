@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Test"
-  short_description: "项目测试规范"
-  default_prompt: "使用 $project-test 按当前仓库约定新增、修复、审查或整理自动化测试"
+  short_description: "设计与整理行为测试，诊断失败和不稳定性并评估测试维护价值"
+  default_prompt: "使用 $project-test 按当前仓库约定新增、修复或整理测试，或审查测试覆盖与稳定性。"
