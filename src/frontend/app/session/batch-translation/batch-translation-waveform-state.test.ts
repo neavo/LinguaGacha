@@ -4,7 +4,7 @@ import {
   advance_task_waveform_state,
   create_empty_task_waveform_state,
   has_unsettled_task_waveform_tail,
-} from "@frontend/app/session/batch-translation/workbench-task-waveform-state";
+} from "@frontend/app/session/batch-translation/batch-translation-waveform-state";
 
 describe("task waveform", () => {
   it("生成量增长产生可见波形，任务结束后自然衰减直至静止", () => {

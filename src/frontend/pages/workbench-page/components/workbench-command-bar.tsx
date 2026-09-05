@@ -1,17 +1,14 @@
+import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import type { TranslationWorkbenchTask } from "@frontend/app/session/batch-translation/use-translation-workbench-task";
+import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { TranslationTaskActionKind } from "@shared/workbench/batch-translation";
+import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
-import type {
-  WorkbenchStats,
-  WorkbenchTranslationSummaryDisplay,
-  WorkbenchTranslationViewState,
-} from "@frontend/pages/workbench-page/types";
+import type { WorkbenchStats } from "@frontend/pages/workbench-page/types";
 import { WorkbenchTranslationMenu } from "@frontend/pages/workbench-page/components/workbench-translation-menu";
-import { WorkbenchTranslationSummary } from "@frontend/pages/workbench-page/components/workbench-translation-summary";
+import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -22,9 +19,7 @@ import {
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
-  translation_workbench_task: TranslationWorkbenchTask;
-  active_workbench_task_view: WorkbenchTranslationViewState;
-  active_workbench_task_summary: WorkbenchTranslationSummaryDisplay;
+  batch_translation_task: BatchTranslationTask;
   translation_stats: WorkbenchStats;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
@@ -51,12 +46,13 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const { t } = useI18n();
   const model_selection = useModelSelection();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
-    props.translation_workbench_task.task_confirm_state?.kind ?? null;
+    props.batch_translation_task.task_confirm_state?.kind ?? null;
   // 摘要卡只认识统一的打开意图，实际详情面板由当前任务会话决定。
-  const handle_open_task_detail = props.translation_workbench_task.open_translation_detail_sheet;
-  const task_summary_auto_open_key = props.active_workbench_task_summary.show_spinner
-    ? "translation"
-    : null;
+  const handle_open_task_detail = props.batch_translation_task.open_translation_detail_sheet;
+  const summary = build_translation_task_summary_display(
+    props.batch_translation_task.translation_task_metrics,
+    t,
+  );
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_delete_selected_files;
   const actions: CommandAction[] = [
@@ -108,16 +104,16 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <>
           <CommandBarGroup>
             <WorkbenchTranslationMenu
-              active={props.translation_workbench_task.translation_task_metrics.active}
+              active={props.batch_translation_task.translation_task_metrics.active}
               workbench_stats={props.translation_stats}
-              disabled={props.translation_workbench_task.translation_task_menu_disabled}
-              busy={props.translation_workbench_task.translation_task_menu_busy}
+              disabled={props.batch_translation_task.translation_task_menu_disabled}
+              busy={props.batch_translation_task.translation_task_menu_busy}
               model_selection={model_selection}
               active_task_action_kind={active_translation_task_action_kind}
               on_start_or_continue={
-                props.translation_workbench_task.request_start_or_continue_translation
+                props.batch_translation_task.request_start_or_continue_translation
               }
-              on_request_reset={props.translation_workbench_task.request_task_action_confirmation}
+              on_request_reset={props.batch_translation_task.request_task_action_confirmation}
             />
           </CommandBarGroup>
           <CommandBarSeparator />
@@ -145,11 +141,9 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         </>
       }
       hint={
-        <WorkbenchTranslationSummary
+        <BatchTranslationSummary
           class_name="workbench-page__task-summary"
-          display={props.active_workbench_task_summary}
-          can_open={props.active_workbench_task_view.can_open_detail}
-          auto_open_key={task_summary_auto_open_key}
+          display={summary}
           on_open={handle_open_task_detail}
         />
       }

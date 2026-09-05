@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   build_task_waveform_columns,
   TASK_WAVEFORM_VISIBLE_POINTS,
-} from "@frontend/app/session/batch-translation/workbench-task-waveform-state";
+} from "@frontend/app/session/batch-translation/batch-translation-waveform-state";
 
-type WorkbenchTranslationWaveformProps = {
+type BatchTranslationWaveformProps = {
   history: number[];
 };
 
@@ -17,9 +17,8 @@ const WAVEFORM_FONT_SIZE_PX = 6;
 const WAVEFORM_CANVAS_WIDTH = WAVEFORM_COLUMN_COUNT * WAVEFORM_COLUMN_STEP_PX;
 const WAVEFORM_CANVAS_HEIGHT = WAVEFORM_ROW_COUNT * WAVEFORM_ROW_STEP_PX;
 
-export function WorkbenchTranslationWaveform(
-  props: WorkbenchTranslationWaveformProps,
-): JSX.Element {
+/** 按设备像素比绘制会话采样的波形，颜色沿用当前主题。 */
+export function BatchTranslationWaveform(props: BatchTranslationWaveformProps): JSX.Element {
   const canvas_ref = useRef<HTMLCanvasElement | null>(null);
 
   const column_heights = useMemo(() => {
@@ -70,8 +69,8 @@ export function WorkbenchTranslationWaveform(
   }, [column_heights]);
 
   return (
-    <div className="workbench-task__waveform">
-      <canvas ref={canvas_ref} className="workbench-task__waveform-canvas" aria-hidden="true" />
+    <div className="batch-translation__waveform">
+      <canvas ref={canvas_ref} className="batch-translation__waveform-canvas" aria-hidden="true" />
     </div>
   );
 }

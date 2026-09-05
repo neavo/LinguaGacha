@@ -1,6 +1,8 @@
 import type { BatchTranslationSnapshot } from "@domain/batch-translation";
-import { create_empty_batch_translation_snapshot } from "@shared/workbench/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+import {
+  create_empty_batch_translation_snapshot,
+  normalize_batch_translation_snapshot,
+} from "@shared/batch-translation/batch-translation";
 
 /** renderer 当前批量翻译事实的唯一镜像，HTTP 和 SSE 共用 revision 接收规则。 */
 export function createBatchTranslationSnapshotStore() {
@@ -22,6 +24,7 @@ export function createBatchTranslationSnapshotStore() {
     },
   };
 }
+/** 停止收尾期间由后端状态锁定重复操作。 */
 export function is_task_stopping(snapshot: Pick<BatchTranslationSnapshot, "status">): boolean {
   return snapshot.status === "stopping";
 }

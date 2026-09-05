@@ -6,7 +6,6 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@domain/item";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 
-import type { TranslationWorkbenchTask } from "@frontend/app/session/batch-translation/use-translation-workbench-task";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
 import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
@@ -39,8 +38,6 @@ type RuntimeFixture = {
   runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 };
 
-type TranslationWorkbenchTaskFixture = TranslationWorkbenchTask;
-
 type WorkbenchPickerFixture = {
   pickWorkbenchFilePath: ReturnType<typeof vi.fn<() => Promise<DesktopPathPickResult>>>;
 };
@@ -70,10 +67,6 @@ function create_test_items(
 // 可变容器让模块级 mock 在不重复注册模块的前提下读取每个用例的运行态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
-};
-
-const translation_runtime_fixture: { current: TranslationWorkbenchTaskFixture } = {
-  current: create_translation_workbench_task_fixture(),
 };
 
 const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
@@ -290,37 +283,6 @@ function create_workbench_query_response(stats?: { translation?: WorkbenchQueryS
   };
 }
 
-function create_translation_workbench_task_fixture(): TranslationWorkbenchTaskFixture {
-  return {
-    translation_task_display_snapshot: null,
-    translation_task_metrics: {
-      active: false,
-      stopping: false,
-      completion_percent: 0,
-      processed_count: 0,
-      failed_count: 0,
-      elapsed_seconds: 0,
-      remaining_seconds: 0,
-      average_generation_speed: 0,
-      input_tokens: 0,
-      reasoning_tokens: 0,
-      output_tokens: 0,
-      request_in_flight_count: 0,
-    },
-    translation_waveform_history: [],
-    translation_detail_sheet_open: false,
-    task_confirm_state: null,
-    translation_task_menu_disabled: false,
-    translation_task_menu_busy: false,
-    open_translation_detail_sheet: vi.fn(),
-    close_translation_detail_sheet: vi.fn(),
-    request_start_or_continue_translation: vi.fn(async () => {}),
-    request_task_action_confirmation: vi.fn(),
-    confirm_task_action: vi.fn(async () => {}),
-    close_task_action_confirmation: vi.fn(),
-  };
-}
-
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -415,7 +377,6 @@ describe("useWorkbenchPageState", () => {
     root = null;
     latest_state = null;
     runtime_fixture.current = create_runtime_fixture();
-    translation_runtime_fixture.current = create_translation_workbench_task_fixture();
 
     toast_fixture.current = create_toast_fixture();
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockReset();
@@ -424,9 +385,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   function WorkbenchProbe(): JSX.Element | null {
-    latest_state = useWorkbenchPageState({
-      translationWorkbenchTask: translation_runtime_fixture.current,
-    });
+    latest_state = useWorkbenchPageState();
     return null;
   }
 
@@ -546,19 +505,10 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("运行中翻译统计仍只按后端 query items.status 计算", async () => {
-    translation_runtime_fixture.current = {
-      ...translation_runtime_fixture.current,
-      translation_task_metrics: {
-        ...translation_runtime_fixture.current.translation_task_metrics,
-        active: true,
-        completion_percent: 88,
-        processed_count: 99,
-        failed_count: 10,
-      },
-    };
-
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "batch_translation" },
+      task_snapshot: { status: "running" },
       project_store: {
         getState: () => {
           return {
@@ -606,65 +556,9 @@ describe("useWorkbenchPageState", () => {
       skipped_count: 2,
       completion_percent: 20,
     });
-    expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("88.00%");
-
-    expect(latest_state?.stats).toMatchObject({
-      total_items: 5,
-      completed_count: 1,
-      failed_count: 1,
-      pending_count: 1,
-      skipped_count: 2,
-      completion_percent: 20,
-    });
-  });
-
-  it("任务详情时间指标使用时分秒格式且不展示单位", async () => {
-    translation_runtime_fixture.current = {
-      ...translation_runtime_fixture.current,
-      translation_task_metrics: {
-        ...translation_runtime_fixture.current.translation_task_metrics,
-        active: true,
-        elapsed_seconds: 87864.8,
-        remaining_seconds: 3723.2,
-      },
-    };
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      runtime_snapshot: { revision: 1, owner: "batch_translation" },
-      task_snapshot: {
-        status: "running",
-      },
-    };
-
-    await render_hook();
-
-    expect(latest_state?.active_workbench_task_detail?.metric_entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "elapsed",
-          value_text: "24:24:24",
-          unit_text: "",
-        }),
-        expect.objectContaining({
-          key: "remaining-time",
-          value_text: "01:02:03",
-          unit_text: "",
-        }),
-      ]),
-    );
   });
 
   it("翻译统计会在 items 信号后继续按后端 query 状态刷新", async () => {
-    translation_runtime_fixture.current = {
-      ...translation_runtime_fixture.current,
-      translation_task_metrics: {
-        ...translation_runtime_fixture.current.translation_task_metrics,
-        active: true,
-        completion_percent: 88,
-        processed_count: 99,
-        failed_count: 10,
-      },
-    };
     await render_hook();
 
     let items_revision = 1;

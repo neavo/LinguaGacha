@@ -2,11 +2,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WorkbenchTranslationSummary } from "@frontend/pages/workbench-page/components/workbench-translation-summary";
-import type { WorkbenchTranslationSummaryDisplay } from "@frontend/pages/workbench-page/types";
+import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
+import type { BatchTranslationSummaryDisplay } from "@frontend/features/batch-translation/batch-translation-display";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
-const running_display: WorkbenchTranslationSummaryDisplay = {
+const running_display: BatchTranslationSummaryDisplay = {
   status_text: "翻译中",
   trailing_text: "12 Line/s",
   tone: "warning",
@@ -15,15 +15,15 @@ const running_display: WorkbenchTranslationSummaryDisplay = {
 };
 
 type RenderSummaryProps = {
-  can_open?: boolean;
-  auto_open_key?: string | null;
+  active?: boolean;
   on_open?: () => void;
 };
 
-describe("WorkbenchTranslationSummary", () => {
+describe("BatchTranslationSummary", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
+  /** 以任务活跃态驱动摘要，观察提示与详情入口。 */
   async function render_summary(props: RenderSummaryProps = {}): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -32,10 +32,8 @@ describe("WorkbenchTranslationSummary", () => {
     await act(async () => {
       root?.render(
         <TooltipProvider>
-          <WorkbenchTranslationSummary
-            display={running_display}
-            can_open={props.can_open ?? true}
-            auto_open_key={props.auto_open_key ?? null}
+          <BatchTranslationSummary
+            display={{ ...running_display, show_spinner: props.active ?? false }}
             on_open={props.on_open ?? vi.fn()}
           />
         </TooltipProvider>,
@@ -55,21 +53,16 @@ describe("WorkbenchTranslationSummary", () => {
     root = null;
   });
 
-  it("收到自动打开键后展示详情提示", async () => {
-    await render_summary({ auto_open_key: "translation" });
-
-    expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
-  });
-
-  it("自动打开键为空时不主动展示详情提示", async () => {
-    await render_summary({ auto_open_key: null });
+  it("空闲时等待用户打开详情提示", async () => {
+    await render_summary();
 
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
   });
 
-  it("点击胶囊时关闭提示并打开详情", async () => {
+  it("任务活跃时提示详情入口，点击后收起提示并打开详情", async () => {
     const on_open = vi.fn();
-    await render_summary({ auto_open_key: "translation", on_open });
+    await render_summary({ active: true, on_open });
+    expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
 
     const trigger = container?.querySelector("button");
     expect(trigger).not.toBeNull();

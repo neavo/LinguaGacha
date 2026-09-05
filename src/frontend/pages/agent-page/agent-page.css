@@ -586,20 +586,28 @@
   height: 8px;
   flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
-  background: var(--muted-foreground);
+  --agent-status-color: var(--muted-foreground);
+  background: var(--agent-status-color);
+}
+
+.agent-status-mark--pending {
+  --agent-status-color: var(--primary);
 }
 
 .agent-status-mark--running {
-  background: var(--primary);
   animation: agent-status-mark-pulse 1s ease-out infinite;
 }
 
 .agent-status-mark--success {
-  background: var(--ui-success);
+  --agent-status-color: var(--ui-success);
+}
+
+.agent-status-mark--warning {
+  --agent-status-color: var(--ui-warning);
 }
 
 .agent-status-mark--error {
-  background: var(--ui-failure);
+  --agent-status-color: var(--ui-failure);
 }
 
 .agent-thinking-entry__content {
@@ -738,7 +746,8 @@
   height: 8px;
   flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
-  background: var(--primary);
+  --agent-status-color: var(--primary);
+  background: var(--agent-status-color);
 }
 
 .agent-round-footer[data-running="true"] .agent-round-footer__activity {
@@ -1843,14 +1852,15 @@
   user-select: text;
 }
 
+/* 直接读取状态色令牌，让 Chromium 连续插值阴影颜色与扩散半径。 */
 @keyframes agent-status-mark-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--agent-status-color) 55%, transparent);
   }
 
   70%,
   100% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 0%, transparent);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--agent-status-color) 0%, transparent);
   }
 }
 
@@ -1874,19 +1884,15 @@
     transition: none;
   }
 
-  .agent-status-mark--running {
+  .agent-status-mark--running,
+  .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-status-color) 35%, transparent);
   }
 
   .agent-round-footer__running,
   .agent-round-footer__result {
     transition: none;
-  }
-
-  .agent-round-footer[data-running="true"] .agent-round-footer__activity {
-    animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
   }
 
   .agent-thinking-entry__toggle::before,
@@ -1900,4 +1906,16 @@
   .agent-composer {
     transition: none;
   }
+}
+
+/* 对称列让摘要相对状态条居中；橙色标记占用左列。 */
+.agent-todo--translation {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 12px;
+  cursor: pointer;
+}
+
+.agent-todo__speed {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
 }

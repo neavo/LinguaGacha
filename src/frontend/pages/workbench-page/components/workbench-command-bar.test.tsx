@@ -81,7 +81,7 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   };
 
   return {
-    translation_workbench_task: {
+    batch_translation_task: {
       translation_task_display_snapshot: null,
       translation_task_metrics,
       translation_waveform_history: [],
@@ -97,16 +97,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
       close_task_action_confirmation: () => {},
     },
 
-    active_workbench_task_view: {
-      can_open_detail: false,
-    },
-    active_workbench_task_summary: {
-      status_text: "idle",
-      trailing_text: null,
-      tone: "neutral",
-      show_spinner: false,
-      detail_tooltip_text: "idle",
-    },
     translation_stats: stats,
 
     can_edit_files: true,
@@ -180,7 +170,7 @@ describe("WorkbenchCommandBar", () => {
     await act(async () => find_button("translation-task").click());
 
     expect(
-      props.translation_workbench_task.request_start_or_continue_translation,
+      props.batch_translation_task.request_start_or_continue_translation,
     ).toHaveBeenCalledOnce();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });

@@ -4,6 +4,7 @@ import {
   normalize_translation_scope,
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
+  type BatchTranslationStopSource,
   type BatchTranslationResult,
   type BatchTranslationScope,
   type BatchTranslationSnapshot,
@@ -13,6 +14,18 @@ import type { ProjectDataReader } from "../project/project-data-reader";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
+
+/** 停止后的收尾失败同时携带取消事实与原始异常，供调用方落实用户意图。 */
+export class BatchTranslationCompletionError extends Error {
+  /** 将终态与原始收尾失败绑定到同一完成链。 */
+  public constructor(
+    public readonly result: BatchTranslationResult,
+    cause: unknown,
+  ) {
+    super("Batch translation completion failed after cancellation.", { cause });
+    this.name = "BatchTranslationCompletionError";
+  }
+}
 
 export const BATCH_TRANSLATION_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500;
 export type BatchTranslationRunHandle = Readonly<{
@@ -28,6 +41,7 @@ type ActiveRun = {
   previous: BatchTranslationSnapshot;
   ready: Promise<void>;
   attached: boolean;
+  stop_source?: BatchTranslationStopSource; // 首次取消决定来源，属于当前 run
   resolve: (result: BatchTranslationResult) => void;
   reject: (error: unknown) => void;
 };
@@ -62,6 +76,7 @@ export class BatchTranslationRuntime {
       this.snapshot = {
         ...this.snapshot,
         status: "idle",
+        stop_source: undefined,
         scope: { kind: "all" },
         request_in_flight_count: 0,
       };
@@ -130,9 +145,7 @@ export class BatchTranslationRuntime {
       signal: controller.signal,
       completion,
     });
-    const abort = () => controller.abort();
-    parent?.addEventListener("abort", abort, { once: true });
-    if (parent?.aborted) abort();
+    const abort = () => this.cancel_run(run, "parent");
     const run: ActiveRun = {
       handle,
       controller,
@@ -144,6 +157,8 @@ export class BatchTranslationRuntime {
       ready: Promise.resolve(),
       attached: false,
     };
+    parent?.addEventListener("abort", abort, { once: true });
+    if (parent?.aborted) abort();
     this.active_run = run;
     this.completions.add(completion);
     // 首次异步发布前登记 completion，dispose 与同步停止均覆盖预约阶段。
@@ -154,6 +169,7 @@ export class BatchTranslationRuntime {
     this.snapshot = {
       ...this.snapshot,
       status: "requested",
+      stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
       request_in_flight_count: 0,
     };
@@ -214,9 +230,21 @@ export class BatchTranslationRuntime {
           status: "error",
           progress: Object.freeze(this.read_progress()),
         });
+        // 最后一次异步收尾后冻结结果；此刻之前受理的停止都属于本轮。
+        result = Object.freeze({
+          ...result,
+          status:
+            result.status === "error"
+              ? "error"
+              : run.stop_source === undefined
+                ? result.status
+                : "stopped",
+          ...(run.stop_source === undefined ? {} : { stop_source: run.stop_source }),
+        });
         this.snapshot = {
           ...this.snapshot,
           status: result.status,
+          stop_source: run.stop_source,
           request_in_flight_count: 0,
           scope: { kind: "all" },
           progress: { ...result.progress },
@@ -234,13 +262,25 @@ export class BatchTranslationRuntime {
         errors.push(error);
       }
     }
-    if (errors.length > 0)
-      run.reject(
+    if (errors.length > 0) {
+      const cause =
         errors.length === 1
           ? errors[0]
-          : new AggregateError(errors, "Batch translation completion failed."),
+          : new AggregateError(errors, "Batch translation completion failed.");
+      run.reject(
+        run.stop_source !== undefined
+          ? new BatchTranslationCompletionError(
+              Object.freeze({
+                status: "error",
+                stop_source: run.stop_source,
+                // 预约尚未执行时沿用前置进度，停止事实仍随完成链返回。
+                progress: result?.progress ?? Object.freeze({ ...run.previous.progress }),
+              }),
+              cause,
+            )
+          : cause,
       );
-    else if (result !== undefined) run.resolve(result);
+    } else if (result !== undefined) run.resolve(result);
     else run.reject(new AppError("runtime.internal_invariant"));
   }
   /** 按 run 身份拦截迟到的提交与进度。 */
@@ -253,7 +293,11 @@ export class BatchTranslationRuntime {
     status: "running" | "stopping",
   ): Promise<void> {
     if (!this.is_current(handle.run_id)) return;
-    this.snapshot = { ...this.snapshot, status: handle.signal.aborted ? "stopping" : status };
+    this.snapshot = {
+      ...this.snapshot,
+      status: handle.signal.aborted ? "stopping" : status,
+      stop_source: this.active_run?.stop_source,
+    };
     try {
       await this.publish_snapshot();
     } catch (error) {
@@ -266,9 +310,16 @@ export class BatchTranslationRuntime {
     const run = this.active_run;
     if (run === null || !["requested", "running", "stopping"].includes(this.snapshot.status))
       return false;
-    run.controller.abort();
+    if (run.stop_source !== undefined) return false;
+    this.cancel_run(run, "user");
     await this.publish_status(run.handle, "stopping");
     return true;
+  }
+  /** 取消来源先于信号冻结，父取消和重复请求共同遵循首次受理语义。 */
+  private cancel_run(run: ActiveRun, source: BatchTranslationStopSource): void {
+    if (run.stop_source !== undefined) return;
+    run.stop_source = source;
+    run.controller.abort();
   }
   /** 已提交条目退出重翻范围，并立即发布持久进度。 */
   public async publish_progress(
@@ -350,10 +401,13 @@ export class BatchTranslationRuntime {
     this.disposed = true;
     this.unsubscribe_session();
     const run = this.active_run;
-    run?.controller.abort();
+    if (run !== null) this.cancel_run(run, "shutdown");
     if (run !== null && !run.attached) {
       run.attached = true;
-      void this.complete_run(run, async () => ({ status: "idle", progress: this.read_progress() }));
+      void this.complete_run(run, async () => ({
+        status: "stopped",
+        progress: this.read_progress(),
+      }));
     }
     await Promise.allSettled(this.completions);
     this.clear_pressure_timer();

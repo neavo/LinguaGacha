@@ -16,7 +16,7 @@ import type {
   ProjectChangeEventPayload,
 } from "@frontend/app/state/project-event-pipeline";
 import { type BatchTranslationSnapshot } from "@domain/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
 import { normalize_runtime_activity_snapshot } from "@frontend/app/state/runtime-activity-store";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";

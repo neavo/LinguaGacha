@@ -79,7 +79,7 @@ export class BatchTranslationRunner {
     handle: BatchTranslationRunHandle,
     command: BatchTranslationStartCommand,
   ): Promise<BatchTranslationResult> {
-    let final_status: "done" | "idle" | "error" = "done";
+    let final_status: "done" | "stopped" | "error" = "done";
     let app_language: unknown = "ZH";
     let progress = this.task_runtime.read_progress();
     const infrastructure_errors: unknown[] = [];
@@ -134,10 +134,10 @@ export class BatchTranslationRunner {
       });
       await pipeline.run(contexts);
       if (handle.signal.aborted) {
-        final_status = "idle";
+        final_status = "stopped";
       }
     } catch (error) {
-      final_status = handle.signal.aborted ? "idle" : "error";
+      final_status = handle.signal.aborted ? "stopped" : "error";
       if (!handle.signal.aborted) {
         try {
           this.log_replay.task_error(

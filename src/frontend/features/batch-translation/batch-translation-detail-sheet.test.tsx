@@ -2,12 +2,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WorkbenchTranslationDetailSheet } from "@frontend/pages/workbench-page/components/workbench-translation-detail-sheet";
-import type { WorkbenchTranslationDetailDisplay } from "@frontend/pages/workbench-page/types";
+import { BatchTranslationDetailSheet } from "@frontend/features/batch-translation/batch-translation-detail-sheet";
+import type { BatchTranslationDetailDisplay } from "@frontend/features/batch-translation/batch-translation-display";
 
-const running_display: WorkbenchTranslationDetailDisplay = {
-  title: "翻译任务",
-  description: "正在处理当前项目",
+const running_display: BatchTranslationDetailDisplay = {
   waveform_title: "速度趋势",
   metrics_title: "任务指标",
   completion_percent_text: "42%",
@@ -21,13 +19,14 @@ const running_display: WorkbenchTranslationDetailDisplay = {
   waveform_history: [1, 3, 2],
 };
 
-describe("WorkbenchTranslationDetailSheet", () => {
+describe("BatchTranslationDetailSheet", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
+  /** 挂载真实侧栏并从 DOM 触发停止动作。 */
   async function render_sheet(
     props: {
-      display?: WorkbenchTranslationDetailDisplay;
+      display?: BatchTranslationDetailDisplay;
       on_request_stop_confirmation?: () => void;
     } = {},
   ): Promise<void> {
@@ -37,7 +36,7 @@ describe("WorkbenchTranslationDetailSheet", () => {
 
     await act(async () => {
       root?.render(
-        <WorkbenchTranslationDetailSheet
+        <BatchTranslationDetailSheet
           open={true}
           display={props.display ?? running_display}
           on_close={vi.fn()}

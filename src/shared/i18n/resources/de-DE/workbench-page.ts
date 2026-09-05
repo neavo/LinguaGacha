@@ -35,61 +35,6 @@ export const de_de_workbench_page = {
     start_translation: "Übersetzung starten",
     reset_task_all: "Alle Daten zurücksetzen",
     reset_task_failed: "Fehlgeschlagene Daten zurücksetzen",
-    stop_task: "Stopp",
-  },
-  task: {
-    menu: {
-      progress: "Fortschritt",
-    },
-    summary: {
-      empty: "Inaktiv",
-      stopping: "Wird gestoppt",
-      detail_tooltip: "Zum Anzeigen der Details klicken",
-    },
-    detail: {
-      elapsed_time: "Verstrichene Zeit",
-      remaining_time: "Verbleibende Zeit",
-      average_speed: "Durchschnittsgeschwindigkeit",
-      input_tokens: "Eingabe-Token",
-      reasoning_tokens: "Denk-Token",
-      output_tokens: "Ausgabe-Token",
-    },
-    feedback: {
-      done: "Abgeschlossen …",
-      stopped: "Gestoppt …",
-    },
-  },
-
-  translation_task: {
-    menu: {
-      tooltip: "Quelltext in die Zielsprache übersetzen",
-    },
-    summary: {
-      running: "Wird übersetzt",
-    },
-    detail: {
-      title: "Übersetzungsdetails",
-      description: "Aktuelle Übersetzungsstatistiken anzeigen.",
-      waveform_title: "Echtzeit-Geschwindigkeit",
-      metrics_title: "Statistiken",
-
-      active_requests: "Echtzeit-Aufgaben",
-    },
-    confirm: {
-      reset_all_description:
-        "Übersetzungsfortschritt für das gesamte Projekt wirklich zurücksetzen …?",
-      reset_failed_description: "Fehlgeschlagene Übersetzungseinträge wirklich zurücksetzen …?",
-      generate_description: "Derzeit verfügbare Übersetzungsdateien wirklich erstellen …?",
-      stop_description: "Aktuelle Übersetzungsaufgabe wirklich stoppen …?",
-    },
-    feedback: {
-      refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe.",
-      start_failed: "Fehler beim Starten der Übersetzungsaufgabe.",
-      stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe.",
-
-      reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts.",
-      reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge.",
-    },
   },
   translation_export: {
     checking: "Korrekturwarnungen werden geprüft …",

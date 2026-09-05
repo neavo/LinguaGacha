@@ -1,3 +1,4 @@
+import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -126,6 +127,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "tool_compaction"
     | "tools",
   batch_mode: false,
+  batch_retries: 0,
   abort_count: 0,
   system_prompts: [] as string[],
   prompts: [] as string[],
@@ -292,7 +294,8 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   const after_tool_call = context.messages.at(-1)?.role === "toolResult";
   if (fake_agent_state.batch_mode) {
-    return after_tool_call
+    const retry = after_tool_call && fake_agent_state.batch_retries-- > 0;
+    return after_tool_call && !retry
       ? fauxAssistantMessage("翻译完成")
       : fauxAssistantMessage(
           fauxToolCall("run_batch_translation", {}, { id: "batch-translation" }),
@@ -483,6 +486,7 @@ describe("AgentService", () => {
 
   beforeEach(() => {
     fake_agent_state.batch_mode = false;
+    fake_agent_state.batch_retries = 0;
     fake_agent_state.mode = "success";
     fake_agent_state.abort_count = 0;
     fake_agent_state.system_prompts = [];
@@ -2601,6 +2605,55 @@ describe("AgentService", () => {
     );
   });
 
+  it.each([false, true])(
+    "用户停止后同轮重复调用保留结果，后续用户轮次可继续，收尾失败=%s",
+    async (cleanup_failed) => {
+      fake_agent_state.batch_mode = true;
+      fake_agent_state.batch_retries = 2;
+      const progress = {
+        start_time: 0,
+        time: 0,
+        total_line: 2,
+        line: 1,
+        processed_line: 1,
+        error_line: 0,
+        total_tokens: 0,
+        total_input_tokens: 0,
+        total_reasoning_tokens: 0,
+        total_output_tokens: 0,
+      };
+      const run = vi.fn(async () => {
+        const result = {
+          status: cleanup_failed ? ("error" as const) : ("stopped" as const),
+          stop_source: "user" as const,
+          progress,
+        };
+        if (cleanup_failed)
+          throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
+        return result;
+      });
+      const { service, log_error } = await create_service(true, undefined, undefined, {
+        run_under_agent: run,
+      });
+      await service.send_message({ text: "翻译工程", attachments: [] });
+      await wait_for_idle(service);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(read_tool_output(service, "batch-translation")).toMatchObject({
+        status: cleanup_failed ? "error" : "stopped",
+        stop_source: "user",
+      });
+      if (cleanup_failed) {
+        expect(log_error).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ error: expect.any(BatchTranslationCompletionError) }),
+        );
+      }
+      await service.send_message({ text: "继续翻译", attachments: [] });
+      await wait_for_idle(service);
+      expect(run).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each(["complete", "stop", "reset", "dispose"] as const)(
     "批量工具阻塞真实 SDK 回合并正确处理 %s",
     async (action) => {
@@ -2617,7 +2670,7 @@ describe("AgentService", () => {
           signal = parent;
           await pending;
           return {
-            status: parent.aborted ? "idle" : "done",
+            status: parent.aborted ? "stopped" : "done",
             progress: {
               start_time: 0,
               time: 0,

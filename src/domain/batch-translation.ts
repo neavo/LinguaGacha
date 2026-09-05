@@ -3,6 +3,7 @@ export const BATCH_TRANSLATION_RUN_STATUSES = [
   "requested",
   "running",
   "stopping",
+  "stopped",
   "done",
   "error",
 ] as const; // Engine 运行态状态机唯一值域
@@ -20,6 +21,9 @@ export const TASK_SKIPPED_ITEM_STATUSES = [
   "LANGUAGE_SKIPPED",
   "DUPLICATED",
 ] as const;
+
+export const BATCH_TRANSLATION_STOP_SOURCES = ["user", "parent", "shutdown"] as const;
+export type BatchTranslationStopSource = (typeof BATCH_TRANSLATION_STOP_SOURCES)[number];
 
 export type BatchTranslationRunStatus = (typeof BATCH_TRANSLATION_RUN_STATUSES)[number];
 export type BatchTranslationStartMode = (typeof BATCH_TRANSLATION_START_MODES)[number];
@@ -89,15 +93,18 @@ export function normalize_batch_translation_progress(value: unknown): BatchTrans
   };
 }
 
+/** 持久化进度读取时将缺失、负数与非有限值归零。 */
 function read_non_negative_number(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+/** 条目与 token 计数沿用非负整数口径。 */
 function read_non_negative_integer(value: unknown): number {
   return Math.trunc(read_non_negative_number(value));
 }
 
+/** 保留合法条目 ID 的首次出现顺序。 */
 function normalize_translation_item_ids(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
@@ -149,13 +156,15 @@ export function clone_translation_scope(scope: BatchTranslationScope): BatchTran
 export type BatchTranslationSnapshot = {
   revision: number;
   status: BatchTranslationRunStatus;
+  stop_source?: BatchTranslationStopSource; // 本轮首次受理的取消来源，收尾失败也保留
   request_in_flight_count: number;
   progress: BatchTranslationProgress;
   scope: BatchTranslationScope;
 };
 
 export type BatchTranslationResult = Readonly<{
-  status: "done" | "idle" | "error";
+  status: "done" | "stopped" | "error";
+  stop_source?: BatchTranslationStopSource;
   progress: Readonly<BatchTranslationProgress>;
 }>;
 

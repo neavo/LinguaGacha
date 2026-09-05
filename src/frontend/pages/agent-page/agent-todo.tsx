@@ -20,7 +20,7 @@ export function AgentTodo(props: AgentTodoProps): JSX.Element | null {
           <div className="agent-todo" role="status" tabIndex={0}>
             <span className="agent-todo__lead">
               <span
-                className={`agent-status-mark${props.running ? " agent-status-mark--running" : ""}`}
+                className={`agent-status-mark${props.running ? " agent-status-mark--pending agent-status-mark--running" : ""}`}
                 aria-hidden="true"
               />
               <span className="agent-todo__label">{t("agent_page.todo.pending")}</span>

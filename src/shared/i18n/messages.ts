@@ -1,3 +1,6 @@
+import { de_de_batch_translation } from "./resources/de-DE/batch-translation";
+import { en_us_batch_translation } from "./resources/en-US/batch-translation";
+import { zh_cn_batch_translation } from "./resources/zh-CN/batch-translation";
 import { de_de_agent_page } from "./resources/de-DE/agent-page";
 import { de_de_agent_runtime } from "./resources/de-DE/agent-runtime";
 import { de_de_app } from "./resources/de-DE/app";
@@ -93,6 +96,7 @@ export const zh_cn_messages = {
   ts_conversion_page: zh_cn_ts_conversion_page,
   translation_prompt_page: zh_cn_translation_prompt_page,
   workbench_page: zh_cn_workbench_page,
+  batch_translation: zh_cn_batch_translation,
 } as const;
 
 export const en_us_messages = {
@@ -119,6 +123,7 @@ export const en_us_messages = {
   ts_conversion_page: en_us_ts_conversion_page,
   translation_prompt_page: en_us_translation_prompt_page,
   workbench_page: en_us_workbench_page,
+  batch_translation: en_us_batch_translation,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;
 
 export const de_de_messages = {
@@ -145,4 +150,5 @@ export const de_de_messages = {
   ts_conversion_page: de_de_ts_conversion_page,
   translation_prompt_page: de_de_translation_prompt_page,
   workbench_page: de_de_workbench_page,
+  batch_translation: de_de_batch_translation,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;

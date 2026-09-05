@@ -9,6 +9,7 @@ import { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectDatabase } from "../database/database-operations";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 
+/** 用内存数据库与真实运行门禁验证完成链。 */
 function setup() {
   const database = new ProjectDatabase();
   const gate = new RuntimeOperationGate();
@@ -19,6 +20,7 @@ function setup() {
   );
   return { runtime, gate, database };
 }
+/** 显式控制执行和发布的收尾时机。 */
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => {
@@ -63,6 +65,99 @@ describe("批量翻译完成链", () => {
     expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [4] });
     await runtime.dispose();
     await next.completion;
+    database.close();
+  });
+  it("用户停止在收尾前公开来源，重复停止与父取消保留首次来源", async () => {
+    const { runtime, gate, database } = setup();
+    const parent = new AbortController();
+    const lease = gate.begin_runtime("agent");
+    const work = deferred<ReturnType<typeof result>>();
+    const handle = runtime.begin_under_agent({ kind: "all" }, lease, parent.signal);
+    await runtime.execute(handle, () => work.promise);
+    expect(await runtime.request_stop()).toBe(true);
+    expect(await runtime.build_snapshot()).toMatchObject({
+      status: "stopping",
+      stop_source: "user",
+    });
+    expect(await runtime.request_stop()).toBe(false);
+    parent.abort();
+    work.resolve(result());
+    expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "user" });
+    expect(await runtime.build_snapshot()).toMatchObject({
+      status: "stopped",
+      stop_source: "user",
+    });
+    expect(await runtime.request_stop()).toBe(false);
+    gate.finish_runtime(lease);
+    const next = runtime.begin_standalone({ kind: "all" });
+    expect((await runtime.build_snapshot()).stop_source).toBeUndefined();
+    await runtime.execute(next, async () => result());
+    expect((await next.completion).stop_source).toBeUndefined();
+    await runtime.dispose();
+    database.close();
+  });
+  it("执行已返回但压力发布仍在收尾时受理的停止进入同一最终结果", async () => {
+    const { runtime, database } = setup();
+    const work = deferred<ReturnType<typeof result>>();
+    const publishing = deferred<void>();
+    const release = deferred<void>();
+    runtime.subscribe((snapshot) => {
+      if (snapshot.status === "requested" && snapshot.request_in_flight_count > 0) {
+        publishing.resolve();
+        return release.promise;
+      }
+    });
+    const handle = runtime.begin_standalone({ kind: "all" });
+    await runtime.execute(handle, () => work.promise);
+    runtime.change_request_in_flight_count(handle, 1);
+    work.resolve(result());
+    await publishing.promise;
+    expect(await runtime.request_stop()).toBe(true);
+    release.resolve();
+    expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "user" });
+    await runtime.dispose();
+    database.close();
+  });
+  it("用户停止后的收尾失败保留停止来源并结算失败", async () => {
+    const { runtime, database } = setup();
+    const work = deferred<ReturnType<typeof result>>();
+    const failure = new Error("cleanup failed");
+    const handle = runtime.begin_standalone({ kind: "all" });
+    await runtime.execute(handle, async () => {
+      await work.promise;
+      throw failure;
+    });
+    await runtime.request_stop();
+    work.resolve(result());
+    await expect(handle.completion).rejects.toMatchObject({
+      cause: failure,
+      result: { status: "error", stop_source: "user" },
+    });
+    expect(await runtime.build_snapshot()).toMatchObject({ status: "error", stop_source: "user" });
+    await runtime.dispose();
+    database.close();
+  });
+  it("用户在预约发布期间停止，发布失败仍携带停止结果", async () => {
+    const { runtime, database } = setup();
+    const release = deferred<void>();
+    const failure = new Error("reservation failed");
+    runtime.subscribe(async (snapshot) => {
+      if (snapshot.status === "requested") {
+        await release.promise;
+        throw failure;
+      }
+    });
+    const handle = runtime.begin_standalone({ kind: "all" });
+    const runner = vi.fn(async () => result());
+    const execution = runtime.execute(handle, runner);
+    await runtime.request_stop();
+    release.resolve();
+    await expect(execution).rejects.toMatchObject({
+      cause: failure,
+      result: { status: "error", stop_source: "user" },
+    });
+    expect(runner).not.toHaveBeenCalled();
+    await runtime.dispose();
     database.close();
   });
   it("预约发布失败恢复前置状态并结算 rejection，随后可以启动", async () => {
@@ -136,10 +231,11 @@ describe("批量翻译完成链", () => {
     const work = deferred<ReturnType<typeof result>>();
     await runtime.execute(handle, () => work.promise);
     parent.abort();
+    expect(await runtime.request_stop()).toBe(false);
     expect(handle.signal.aborted).toBe(true);
     expect(() => runtime.begin_standalone({ kind: "all" })).toThrow();
     work.resolve(result());
-    await handle.completion;
+    expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "parent" });
     expect(gate.get_snapshot().owner).toBe("agent");
     gate.finish_runtime(lease);
     await runtime.dispose();
@@ -176,7 +272,7 @@ describe("批量翻译完成链", () => {
     const handle = runtime.begin_standalone({ kind: "all" });
     await runtime.dispose();
     expect(handle.signal.aborted).toBe(true);
-    expect((await handle.completion).status).toBe("idle");
+    expect(await handle.completion).toMatchObject({ status: "stopped", stop_source: "shutdown" });
     expect(gate.get_snapshot().owner).toBeNull();
     database.close();
   });

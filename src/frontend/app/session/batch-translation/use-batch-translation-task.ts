@@ -22,21 +22,17 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import {
-  resolve_task_terminal_transition,
-  useTerminalPromptSuppression,
-} from "@frontend/app/session/batch-translation/terminal-prompt-suppression";
-import { should_open_translation_export_followup } from "@shared/workbench/task-completion-followup";
-import { resolve_workbench_generated_tokens } from "@shared/workbench/batch-translation";
+import { resolve_batch_translation_generated_tokens } from "@shared/batch-translation/batch-translation";
 
 import {
   advance_task_waveform_state,
   create_empty_task_waveform_state,
   has_unsettled_task_waveform_tail,
   TASK_WAVEFORM_SAMPLE_INTERVAL_MS,
-} from "@frontend/app/session/batch-translation/workbench-task-waveform-state";
+} from "@frontend/app/session/batch-translation/batch-translation-waveform-state";
 import {
   clone_translation_task_snapshot,
+  should_open_translation_export_followup,
   create_empty_batch_translation_snapshot,
   has_translation_task_progress,
   resolve_translation_task_display_snapshot,
@@ -45,21 +41,17 @@ import {
   type TranslationTaskConfirmState,
   type BatchTranslationMetrics,
   type BatchTranslationPayload,
-} from "@shared/workbench/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
-
-type TranslationTaskCommandPayload = {
-  batch_translation?: Partial<BatchTranslationSnapshot>;
-};
+} from "@shared/batch-translation/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
 // 翻译任务写入的诊断名由 renderer 会话拥有，desktop 层只负责提交与互斥。
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
-type TranslationWorkbenchTaskOptions = {
+type BatchTranslationTaskOptions = {
   onRequestExport: () => void; // 全量翻译自然完成后交给跨路由导出流程
 };
 
-export type TranslationWorkbenchTask = {
+export type BatchTranslationTask = {
   translation_task_display_snapshot: BatchTranslationSnapshot | null;
   translation_task_metrics: BatchTranslationMetrics;
   translation_waveform_history: number[];
@@ -75,17 +67,7 @@ export type TranslationWorkbenchTask = {
   close_task_action_confirmation: () => void;
 };
 
-/**
- * 每次确认都创建独立提交态，避免复用上一次动作的 busy 状态。
- */
-function create_task_confirm_state(kind: TranslationTaskActionKind): TranslationTaskConfirmState {
-  return {
-    kind,
-    open: true,
-    submitting: false,
-  };
-}
-
+/** 定点任务收尾会清空 scope，导出判断保留本轮已观察到的定点范围。 */
 function resolve_active_translation_completion_scope(args: {
   active_scope: BatchTranslationScope | null;
   next_scope: BatchTranslationScope;
@@ -104,9 +86,9 @@ function resolve_active_translation_completion_scope(args: {
 /**
  * 拥有翻译任务菜单、确认框、终态提示和完成范围的 renderer 会话状态。
  */
-export function useTranslationWorkbenchTask(
-  options: TranslationWorkbenchTaskOptions,
-): TranslationWorkbenchTask {
+export function useBatchTranslationTask(
+  options: BatchTranslationTaskOptions,
+): BatchTranslationTask {
   const { onRequestExport } = options;
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -132,11 +114,6 @@ export function useTranslationWorkbenchTask(
   );
   const active_translation_completion_scope_ref = useRef<BatchTranslationScope | null>(null);
   const translation_waveform_state_ref = useRef(create_empty_task_waveform_state());
-  const {
-    clear_terminal_prompt_suppression,
-    consume_terminal_prompt_suppression,
-    suppress_next_terminal_prompt,
-  } = useTerminalPromptSuppression();
   const translation_task_display_snapshot = useMemo(() => {
     return resolve_translation_task_display_snapshot({
       current_snapshot: translation_task_snapshot,
@@ -192,7 +169,7 @@ export function useTranslationWorkbenchTask(
       {
         active: translation_task_active,
         now_seconds: next_now_seconds,
-        total_generated_tokens: resolve_workbench_generated_tokens(next_metrics),
+        total_generated_tokens: resolve_batch_translation_generated_tokens(next_metrics),
       },
     );
     translation_waveform_state_ref.current = next_waveform_state;
@@ -202,7 +179,6 @@ export function useTranslationWorkbenchTask(
   });
 
   const clear_translation_task_state = useCallback((): void => {
-    clear_terminal_prompt_suppression();
     translation_completion_scope_ref.current = { kind: "all" };
     active_translation_completion_scope_ref.current = null;
 
@@ -212,7 +188,7 @@ export function useTranslationWorkbenchTask(
     set_translation_waveform_history([]);
     set_translation_detail_sheet_open(false);
     set_task_confirm_state(null);
-  }, [clear_terminal_prompt_suppression, clear_translation_waveform_sampling]);
+  }, [clear_translation_waveform_sampling]);
 
   const apply_translation_task_snapshot = useCallback(
     (next_snapshot: BatchTranslationSnapshot): void => {
@@ -244,7 +220,6 @@ export function useTranslationWorkbenchTask(
         set_last_translation_task_snapshot(null);
         clear_translation_waveform_sampling();
         set_translation_waveform_history([]);
-        set_translation_detail_sheet_open(false);
       }
     },
     [clear_translation_waveform_sampling],
@@ -267,11 +242,7 @@ export function useTranslationWorkbenchTask(
     } catch (error) {
       push_toast(
         "error",
-        resolve_visible_error_message(
-          error,
-          t,
-          t("workbench_page.translation_task.feedback.refresh_failed"),
-        ),
+        resolve_visible_error_message(error, t, t("batch_translation.feedback.refresh_failed")),
       );
     }
   }, [
@@ -280,7 +251,6 @@ export function useTranslationWorkbenchTask(
     push_toast,
     sync_runtime_task_snapshot,
     t,
-    task_snapshot,
   ]);
 
   const open_translation_detail_sheet = useCallback((): void => {
@@ -300,10 +270,9 @@ export function useTranslationWorkbenchTask(
 
     const should_continue =
       resolve_batch_translation_start_mode(task_snapshot.progress) === "continue";
-    clear_terminal_prompt_suppression();
 
     try {
-      const task_payload = await api_fetch<TranslationTaskCommandPayload>(
+      const task_payload = await api_fetch<BatchTranslationPayload>(
         "/api/batch-translation/start",
         {
           mode: should_continue ? "continue" : "new",
@@ -321,15 +290,10 @@ export function useTranslationWorkbenchTask(
     } catch (error) {
       push_toast(
         "error",
-        resolve_visible_error_message(
-          error,
-          t,
-          t("workbench_page.translation_task.feedback.start_failed"),
-        ),
+        resolve_visible_error_message(error, t, t("batch_translation.feedback.start_failed")),
       );
     }
   }, [
-    clear_terminal_prompt_suppression,
     push_toast,
     sync_runtime_task_snapshot,
     t,
@@ -339,7 +303,7 @@ export function useTranslationWorkbenchTask(
   ]);
 
   const request_task_action_confirmation = useCallback((kind: TranslationTaskActionKind): void => {
-    set_task_confirm_state(create_task_confirm_state(kind));
+    set_task_confirm_state({ kind, submitting: false });
   }, []);
 
   const close_task_action_confirmation = useCallback((): void => {
@@ -374,12 +338,11 @@ export function useTranslationWorkbenchTask(
 
     try {
       if (task_confirm_state.kind === "stop-translation") {
-        const task_payload = await api_fetch<TranslationTaskCommandPayload>(
+        const task_payload = await api_fetch<BatchTranslationPayload>(
           "/api/batch-translation/stop",
           {},
         );
         const next_snapshot = normalize_batch_translation_snapshot(task_payload);
-        suppress_next_terminal_prompt("manual-stop");
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
       } else {
@@ -409,12 +372,12 @@ export function useTranslationWorkbenchTask(
         set_task_confirm_state(null);
       }
     } catch (error) {
-      let fallback_message = t("workbench_page.translation_task.feedback.stop_failed");
+      let fallback_message = t("batch_translation.feedback.stop_failed");
 
       if (task_confirm_state.kind === "reset-all") {
-        fallback_message = t("workbench_page.translation_task.feedback.reset_all_failed");
+        fallback_message = t("batch_translation.feedback.reset_all_failed");
       } else if (task_confirm_state.kind === "reset-failed") {
-        fallback_message = t("workbench_page.translation_task.feedback.reset_failed_failed");
+        fallback_message = t("batch_translation.feedback.reset_failed_failed");
       }
 
       push_toast("error", resolve_visible_error_message(error, t, fallback_message));
@@ -436,7 +399,6 @@ export function useTranslationWorkbenchTask(
     settings_snapshot.mtool_optimizer_enable,
     settings_snapshot.source_language,
     settings_snapshot.skip_duplicate_source_text_enable,
-    suppress_next_terminal_prompt,
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,
@@ -479,27 +441,17 @@ export function useTranslationWorkbenchTask(
     }
 
     // 为什么：提示只应该响应一次真实的生命周期跃迁，不能被首屏初始状态读取或快照重刷重复触发
-    const terminal_transition = resolve_task_terminal_transition({
-      previous_status,
-      next_status,
-      has_result: has_translation_task_progress(translation_task_display_snapshot),
-      is_active_status: is_active_batch_translation_status,
-    });
-
-    if (terminal_transition.feedback !== null) {
-      push_toast("success", t(`workbench_page.task.feedback.${terminal_transition.feedback}`));
+    if (is_active_batch_translation_status(previous_status)) {
+      if (next_status === "done" || next_status === "stopped") {
+        push_toast("success", t(`batch_translation.feedback.${next_status}`));
+      }
     }
-
-    const terminal_prompt_suppressed =
-      terminal_transition.prompt_boundary && consume_terminal_prompt_suppression();
 
     if (
       !translation_dialog_open &&
-      !terminal_prompt_suppressed &&
       should_open_translation_export_followup({
         previous_status,
         next_status,
-        has_result: has_translation_task_progress(translation_task_display_snapshot),
         scope: translation_completion_scope_ref.current,
       })
     ) {
@@ -507,11 +459,9 @@ export function useTranslationWorkbenchTask(
     }
   }, [
     project_snapshot.loaded,
-    consume_terminal_prompt_suppression,
     push_toast,
     t,
     translation_dialog_open,
-    translation_task_display_snapshot,
     translation_task_snapshot.status,
     onRequestExport,
   ]);
@@ -531,13 +481,7 @@ export function useTranslationWorkbenchTask(
     };
   }, [should_animate_translation_waveform]);
 
-  useEffect(() => {
-    if (!can_open_translation_detail_sheet) {
-      set_translation_detail_sheet_open(false);
-    }
-  }, [can_open_translation_detail_sheet]);
-
-  return useMemo<TranslationWorkbenchTask>(() => {
+  return useMemo<BatchTranslationTask>(() => {
     return {
       translation_task_display_snapshot,
       translation_task_metrics,

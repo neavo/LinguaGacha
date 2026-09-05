@@ -1,6 +1,6 @@
 import { BrushCleaning, Paintbrush, Play, ScanText } from "lucide-react";
 
-import "@frontend/pages/workbench-page/components/workbench-task.css";
+import "@frontend/features/batch-translation/batch-translation.css";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { ModelSelectionMenu } from "@frontend/features/model-selection/model-selection-menu";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
@@ -22,7 +22,7 @@ import {
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import { SegmentedProgress } from "@frontend/widgets/segmented-progress/segmented-progress";
-import type { TranslationTaskActionKind } from "@shared/workbench/batch-translation";
+import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
 type WorkbenchTaskResetKind = "reset-all" | "reset-failed";
 
@@ -64,17 +64,17 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
           )}
         />
         <TooltipContent side="top" sideOffset={8}>
-          <p>{t(`workbench_page.translation_task.menu.tooltip`)}</p>
+          <p>{t(`batch_translation.menu.tooltip`)}</p>
         </TooltipContent>
       </Tooltip>
 
-      <AppDropdownMenuContent align="start" className="workbench-task__menu">
-        <div className="workbench-task__menu-progress">
-          <div className="workbench-task__menu-progress-head">
-            <span className="workbench-task__menu-progress-label">
-              {t("workbench_page.task.menu.progress")}
+      <AppDropdownMenuContent align="start" className="batch-translation__menu">
+        <div className="batch-translation__menu-progress">
+          <div className="batch-translation__menu-progress-head">
+            <span className="batch-translation__menu-progress-label">
+              {t("batch_translation.menu.progress")}
             </span>
-            <span className="workbench-task__menu-progress-value">
+            <span className="batch-translation__menu-progress-value">
               {progress_percent.toFixed(2)}%
             </span>
           </div>

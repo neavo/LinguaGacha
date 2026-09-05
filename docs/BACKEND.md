@@ -76,10 +76,10 @@ project, files, items, quality, prompts, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`request_in_flight_count`、`progress` 与 `scope`；`requested | running | stopping` 唯一决定活跃态。
+- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`request_in_flight_count`、`progress` 与 `scope`，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
 - `BatchTranslationService` 收窄命令并确认 loaded 工程。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。
 - `BatchTranslationRunner` 按 translation 用途冻结模型和设置，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。`new | continue | reset` 在内部保持同一值域，定点重翻仍使用去重保序的非空 items scope。
-- Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、主动停止与执行失败分别为 `done`、`idle`、`error`；已提交译文保留。基础设施异常拒绝 completion，多个收尾错误保留原始原因；dispose 等待同一完成链。
+- Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
 - 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`index`、`text`，actor 模式再加 `actor`），`text` 可包含换行；SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文。worker 内部才保留逐行准备与恢复事实。响应按 item index 独立裁决，唯一匹配的非空译文独立提交，缺失、重复、未知或空白正文只影响对应 item；请求失败、零有效译文、部分有效和全部有效分别形成 error、error、warning 和 info 结果日志，结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。

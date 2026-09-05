@@ -17,7 +17,7 @@ import {
 } from "@frontend/app/state/desktop-project-change-types";
 import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import { type BatchTranslationSnapshot } from "@domain/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
 import {
   createRuntimeActivityStore,

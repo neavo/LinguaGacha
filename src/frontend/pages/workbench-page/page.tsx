@@ -5,7 +5,6 @@ import { WorkbenchCommandBar } from "@frontend/pages/workbench-page/components/w
 import { WorkbenchDialogs } from "@frontend/pages/workbench-page/components/workbench-dialogs";
 import { WorkbenchFileTable } from "@frontend/pages/workbench-page/components/workbench-file-table";
 import { WorkbenchStatsSection } from "@frontend/pages/workbench-page/components/workbench-stats-section";
-import { WorkbenchTranslationDetailSheet } from "@frontend/pages/workbench-page/components/workbench-translation-detail-sheet";
 import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import "@frontend/pages/workbench-page/workbench-page.css";
 
@@ -16,10 +15,8 @@ type WorkbenchPageProps = {
 // 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
-  const { translation_workbench_task, translation_export } = useBatchTranslationSession();
-  const workbench_state = useWorkbenchPageState({
-    translationWorkbenchTask: translation_workbench_task,
-  });
+  const { batch_translation_task, translation_export } = useBatchTranslationSession();
+  const workbench_state = useWorkbenchPageState();
 
   return (
     <div className="workbench-page page-shell page-shell--full">
@@ -49,9 +46,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         />
       </FileDropZone>
       <WorkbenchCommandBar
-        translation_workbench_task={workbench_state.translation_workbench_task}
-        active_workbench_task_view={workbench_state.active_workbench_task_view}
-        active_workbench_task_summary={workbench_state.active_workbench_task_summary}
+        batch_translation_task={batch_translation_task}
         translation_stats={workbench_state.translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
@@ -76,18 +71,6 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         }}
         on_close={workbench_state.close_dialog}
       />
-      {workbench_state.active_workbench_task_detail !== null ? (
-        <WorkbenchTranslationDetailSheet
-          open={workbench_state.translation_workbench_task.translation_detail_sheet_open}
-          display={workbench_state.active_workbench_task_detail}
-          on_close={workbench_state.translation_workbench_task.close_translation_detail_sheet}
-          on_request_stop_confirmation={() => {
-            workbench_state.translation_workbench_task.request_task_action_confirmation(
-              "stop-translation",
-            );
-          }}
-        />
-      ) : null}
     </div>
   );
 }

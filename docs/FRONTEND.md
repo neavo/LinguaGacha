@@ -44,7 +44,7 @@
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills 与 input 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
-- `BatchTranslationSessionProvider` 拥有翻译历史展示、波形、完成提示抑制和跨路由 follow-up，并统一承接手动入口与翻译完成提示的译文导出确认；导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。页面计算缓存、其它弹窗、导入和提交中状态默认随页面挂载与卸载。
+- `BatchTranslationSessionProvider` 拥有翻译历史、波形、动作确认、唯一详情侧栏与导出流程；侧栏跨路由保留，随工程切换或关闭清空。完成反馈消费后端终态，导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。`features/batch-translation` 提供共享摘要、详情、格式化与样式；详情消费任务进度，工作台统计消费工程事实。Agent 在翻译活跃时展示摘要，终态恢复 Todo。页面计算缓存、其它弹窗、导入和提交中状态随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。

@@ -12,7 +12,8 @@ export function create_agent_batch_translation_tool(
   return defineTool({
     name: "run_batch_translation",
     label: "批量翻译",
-    description: "开始或继续当前工程的全量翻译，等待本轮运行结束后返回状态与累计进度摘要。",
+    description:
+      "开始或继续当前工程的全量翻译，等待本轮运行结束后返回状态与累计进度摘要。stop_source 为 user 表示用户主动停止；此时汇报已提交结果并结束当前工作，等待用户明确要求继续。",
     parameters: PARAMETERS,
     executionMode: "sequential",
     execute: async (_id, _params, signal) =>

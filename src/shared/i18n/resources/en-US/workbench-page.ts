@@ -34,60 +34,6 @@ export const en_us_workbench_page = {
     start_translation: "Start Translation",
     reset_task_all: "Reset All Data",
     reset_task_failed: "Reset Failed Data",
-    stop_task: "Stop",
-  },
-  task: {
-    menu: {
-      progress: "Progress",
-    },
-    summary: {
-      empty: "Idle",
-      stopping: "Stopping",
-      detail_tooltip: "Click to view details",
-    },
-    detail: {
-      elapsed_time: "Elapsed Time",
-      remaining_time: "Remaining Time",
-      average_speed: "Average Speed",
-      input_tokens: "Input Tokens",
-      reasoning_tokens: "Reasoning Tokens",
-      output_tokens: "Output Tokens",
-    },
-    feedback: {
-      done: "Completed …",
-      stopped: "Stopped …",
-    },
-  },
-
-  translation_task: {
-    menu: {
-      tooltip: "Translate source text into the target language",
-    },
-    summary: {
-      running: "Translating",
-    },
-    detail: {
-      title: "Translation Details",
-      description: "Review current translation statistics.",
-      waveform_title: "Real-time Speed",
-      metrics_title: "Statistics",
-
-      active_requests: "Real Time Tasks",
-    },
-    confirm: {
-      reset_all_description: "Confirm resetting the translation progress for the entire project …?",
-      reset_failed_description: "Confirm resetting failed translation entries …?",
-      generate_description: "Confirm generating currently available translation files …?",
-      stop_description: "Confirm stopping the current translation task …?",
-    },
-    feedback: {
-      refresh_failed: "Failed to refresh the translation task.",
-      start_failed: "Failed to start the translation task.",
-      stop_failed: "Failed to stop the translation task.",
-
-      reset_all_failed: "Failed to reset all translation progress.",
-      reset_failed_failed: "Failed to reset failed translation entries.",
-    },
   },
   translation_export: {
     checking: "Checking proofreading warnings …",

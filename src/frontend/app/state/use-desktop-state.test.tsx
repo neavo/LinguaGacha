@@ -1,4 +1,4 @@
-import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";

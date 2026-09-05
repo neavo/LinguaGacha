@@ -30,60 +30,6 @@ export const zh_cn_workbench_page = {
     start_translation: "开始翻译",
     reset_task_all: "重置所有数据",
     reset_task_failed: "重置失败数据",
-    stop_task: "停止",
-  },
-  task: {
-    menu: {
-      progress: "进度",
-    },
-    summary: {
-      empty: "无任务",
-      stopping: "停止中",
-      detail_tooltip: "点击查看详情",
-    },
-    detail: {
-      elapsed_time: "累计时间",
-      remaining_time: "剩余时间",
-      average_speed: "平均速度",
-      input_tokens: "输入 Token",
-      reasoning_tokens: "思考 Token",
-      output_tokens: "输出 Token",
-    },
-    feedback: {
-      done: "已完成 …",
-      stopped: "已停止 …",
-    },
-  },
-
-  translation_task: {
-    menu: {
-      tooltip: "将原文翻译为目标语言",
-    },
-    summary: {
-      running: "翻译中",
-    },
-    detail: {
-      title: "翻译详情",
-      description: "查看当前翻译的实时统计。",
-      waveform_title: "实时速度",
-      metrics_title: "统计信息",
-
-      active_requests: "实时任务数",
-    },
-    confirm: {
-      reset_all_description: "是否确认重置整个项目的翻译进度 …?",
-      reset_failed_description: "是否确认重置失败的翻译条目 …?",
-      generate_description: "是否确认生成当前可用译文 …?",
-      stop_description: "是否确认停止当前翻译任务 …?",
-    },
-    feedback: {
-      refresh_failed: "翻译任务状态刷新失败",
-      start_failed: "启动翻译任务失败",
-      stop_failed: "停止翻译任务失败",
-
-      reset_all_failed: "重置全部翻译失败",
-      reset_failed_failed: "重置失败条目失败",
-    },
   },
   translation_export: {
     checking: "正在检查校对警告 …",

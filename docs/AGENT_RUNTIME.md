@@ -50,7 +50,7 @@
 
 ## 4. 产品工具与宿主能力
 
-- `run_batch_translation` 是零参数顺序工具，使用当前 round 的 Agent lease 调用共享 `BatchTranslationService`，等待完整收尾后返回终态与累计进度。工具取消单向传给翻译 run，Agent lease 在 SDK settle 后释放；后续工作区操作重新加载工程快照。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
+- `run_batch_translation` 是零参数顺序工具，以当前 round 的 Agent lease 调用共享 `BatchTranslationService`，等待收尾后返回终态与累计进度；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
 - 产品 JSON 工具统一由 `model-tools/definition` 生成同源的模型正文与 `details`；TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接执行过程中的单个有界决定。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一的有序固定选项；宿主提供自定义答案与取消。选择和自定义答案返回原工具轮次，取消或到期返回未回答，不追加公开 user 消息；完成后沿用普通工具条目与详情。

@@ -1,3 +1,8 @@
+vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
+  useBatchTranslationSession: () => ({
+    batch_translation_task: { translation_task_metrics: { active: false } },
+  }),
+}));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

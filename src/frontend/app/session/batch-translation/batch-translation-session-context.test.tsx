@@ -7,12 +7,12 @@ import {
   useBatchTranslationSession,
 } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 
-import type { TranslationWorkbenchTask } from "@frontend/app/session/batch-translation/use-translation-workbench-task";
+import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 
 const task_runtime_mock = vi.hoisted(() => {
   return {
-    translation_workbench_task: null as TranslationWorkbenchTask | null,
+    batch_translation_task: null as BatchTranslationTask | null,
 
     translation_export: null as TranslationExportFlow | null,
   };
@@ -26,14 +26,14 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@frontend/app/session/batch-translation/use-translation-workbench-task", () => {
+vi.mock("@frontend/app/session/batch-translation/use-batch-translation-task", () => {
   return {
-    useTranslationWorkbenchTask: (_options: { onRequestExport: () => void }) => {
-      if (task_runtime_mock.translation_workbench_task === null) {
+    useBatchTranslationTask: (_options: { onRequestExport: () => void }) => {
+      if (task_runtime_mock.batch_translation_task === null) {
         throw new Error("缺少翻译任务运行态夹具。");
       }
 
-      return task_runtime_mock.translation_workbench_task;
+      return task_runtime_mock.batch_translation_task;
     },
   };
 });
@@ -116,9 +116,9 @@ vi.mock(
   },
 );
 
-function create_translation_workbench_task_fixture(
-  overrides: Partial<TranslationWorkbenchTask> = {},
-): TranslationWorkbenchTask {
+function create_batch_translation_task_fixture(
+  overrides: Partial<BatchTranslationTask> = {},
+): BatchTranslationTask {
   return {
     translation_task_display_snapshot: null,
     translation_task_metrics: {
@@ -167,7 +167,7 @@ function create_translation_export_fixture(
 
 function StateProbe(props: {
   onState: (state: {
-    translation_workbench_task: TranslationWorkbenchTask;
+    batch_translation_task: BatchTranslationTask;
 
     translation_export: TranslationExportFlow;
   }) => void;
@@ -181,7 +181,7 @@ describe("BatchTranslationSessionProvider", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
-    task_runtime_mock.translation_workbench_task = create_translation_workbench_task_fixture();
+    task_runtime_mock.batch_translation_task = create_batch_translation_task_fixture();
 
     task_runtime_mock.translation_export = create_translation_export_fixture();
   });
@@ -196,7 +196,7 @@ describe("BatchTranslationSessionProvider", () => {
     container?.remove();
     container = null;
     root = null;
-    task_runtime_mock.translation_workbench_task = null;
+    task_runtime_mock.batch_translation_task = null;
 
     task_runtime_mock.translation_export = null;
   });
@@ -223,17 +223,40 @@ describe("BatchTranslationSessionProvider", () => {
     expect(dialog).not.toBeNull();
   });
 
+  it("任务侧栏随 session 挂载，页面切换继续显示并使用共享停止动作", async () => {
+    const task = task_runtime_mock.batch_translation_task!;
+    task.translation_detail_sheet_open = true;
+    task.translation_task_metrics.active = true;
+    task.translation_task_metrics.completion_percent = 25;
+    await render_provider(<div>Agent 页面</div>);
+    expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.body.textContent).toContain("25.00%");
+    await act(async () =>
+      root?.render(
+        <BatchTranslationSessionProvider>
+          <div>工作台页面</div>
+        </BatchTranslationSessionProvider>,
+      ),
+    );
+    expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    const stop = [...document.body.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("batch_translation.action.stop"),
+    );
+    await act(async () => stop?.click());
+    expect(task.request_task_action_confirmation).toHaveBeenCalledWith("stop-translation");
+  });
+
   it("向子节点暴露同一份常驻任务运行态", async () => {
     const observed_states: Array<{
-      translation_workbench_task: TranslationWorkbenchTask;
+      batch_translation_task: BatchTranslationTask;
 
       translation_export: TranslationExportFlow;
     }> = [];
 
     await render_provider(<StateProbe onState={(state) => observed_states.push(state)} />);
 
-    expect(observed_states.at(-1)?.translation_workbench_task).toBe(
-      task_runtime_mock.translation_workbench_task,
+    expect(observed_states.at(-1)?.batch_translation_task).toBe(
+      task_runtime_mock.batch_translation_task,
     );
 
     expect(observed_states.at(-1)?.translation_export).toBe(task_runtime_mock.translation_export);

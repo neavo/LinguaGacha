@@ -1,3 +1,5 @@
+import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
+import type { BatchTranslationResult } from "../../domain/batch-translation";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { create_agent_batch_translation_tool } from "./model-tools/batch-translation";
 import {
@@ -215,6 +217,7 @@ export class AgentService {
   private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与异步操作启动
   private runtime_settlement: Promise<void> | null = null; // 后台模型与压缩操作统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
+  private user_stopped_translation: BatchTranslationResult | null = null; // 用户停止结果在当前 round 内暂停翻译能力
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
@@ -822,6 +825,7 @@ export class AgentService {
           diagnostic_context: { reason: "agent_continue_invalidated" },
         });
       }
+      this.user_stopped_translation = null;
       const continuation = this.run_continue(runtime, generation, runtime_lease);
       this.track_runtime_settlement(continuation);
       continuation_started = true;
@@ -896,6 +900,7 @@ export class AgentService {
     message: AgentMessageInput,
     replacement_prefix?: readonly AgentEntry[],
   ): void {
+    this.user_stopped_translation = null;
     const entry: AgentEntry = {
       kind: "user_message",
       id: uuidv7(),
@@ -999,7 +1004,29 @@ export class AgentService {
         create_agent_batch_translation_tool(async (signal) => {
           const lease = this.runtime_lease;
           if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
-          return await this.batch_translation.run_under_agent(lease, signal);
+          if (this.user_stopped_translation !== null) return this.user_stopped_translation;
+          const generation = this.runtime_generation;
+          try {
+            const result = await this.batch_translation.run_under_agent(lease, signal);
+            if (generation === this.runtime_generation && result.stop_source === "user") {
+              this.user_stopped_translation = result;
+            }
+            return result;
+          } catch (error) {
+            if (error instanceof BatchTranslationCompletionError) {
+              if (generation === this.runtime_generation && error.result.stop_source === "user") {
+                this.user_stopped_translation = error.result;
+              }
+              // 翻译边界投影取消事实；原始收尾异常进入本地诊断。
+              this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
+                source: "agent",
+                error,
+                context: { tool_name: "run_batch_translation" },
+              });
+              throw new AgentToolError({ code: "tool_failed", ...error.result }, error);
+            }
+            throw error;
+          }
         }),
         ...create_agent_question_tools({
           wait_for_answer: (tool_call_id, question, signal) =>
@@ -1522,6 +1549,7 @@ export class AgentService {
     this.entries = [];
     this.context = { tokens: null, compactable: false };
     this.latest_round_checkpoint = null;
+    this.user_stopped_translation = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
     this.todos = [];

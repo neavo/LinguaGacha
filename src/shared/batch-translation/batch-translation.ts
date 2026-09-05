@@ -4,7 +4,9 @@ import {
   clone_translation_scope,
   is_active_batch_translation_status,
   BATCH_TRANSLATION_RUN_STATUSES,
+  BATCH_TRANSLATION_STOP_SOURCES,
   type BatchTranslationSnapshot,
+  type BatchTranslationScope,
   type BatchTranslationRunStatus,
 } from "../../domain/batch-translation";
 export type BatchTranslationMetrics = {
@@ -23,7 +25,7 @@ export type BatchTranslationMetrics = {
 };
 
 /** 将已归一的互斥思考与输出计数恢复为模型完整生成量。 */
-export function resolve_workbench_generated_tokens(
+export function resolve_batch_translation_generated_tokens(
   metrics: Pick<BatchTranslationMetrics, "reasoning_tokens" | "output_tokens">,
 ): number {
   return metrics.reasoning_tokens + metrics.output_tokens;
@@ -54,7 +56,7 @@ export function resolve_translation_task_display_snapshot(args: {
   last_snapshot: BatchTranslationSnapshot | null;
 }): BatchTranslationSnapshot | null {
   if (
-    is_active_batch_translation_status(args.current_snapshot.status) ||
+    args.current_snapshot.status !== "idle" ||
     has_translation_task_progress(args.current_snapshot)
   ) {
     return args.current_snapshot;
@@ -98,7 +100,10 @@ export function resolve_translation_task_metrics(args: {
       : Math.max(0, snapshot.progress.time);
   const output_tokens = Math.max(0, snapshot.progress.total_output_tokens);
   const reasoning_tokens = Math.max(0, snapshot.progress.total_reasoning_tokens);
-  const generated_tokens = resolve_workbench_generated_tokens({ reasoning_tokens, output_tokens });
+  const generated_tokens = resolve_batch_translation_generated_tokens({
+    reasoning_tokens,
+    output_tokens,
+  });
   return {
     active,
     stopping: snapshot.status === "stopping",
@@ -143,7 +148,6 @@ export function resolve_translation_task_metrics(args: {
 export type TranslationTaskActionKind = "reset-all" | "reset-failed" | "stop-translation";
 export type TranslationTaskConfirmState = {
   kind: TranslationTaskActionKind;
-  open: boolean;
   submitting: boolean;
 };
 export type BatchTranslationPayload = { batch_translation?: Partial<BatchTranslationSnapshot> };
@@ -168,6 +172,9 @@ export function normalize_batch_translation_snapshot(
   return {
     revision: Math.max(0, Number(raw.revision) || 0),
     status,
+    ...(raw.stop_source !== undefined && BATCH_TRANSLATION_STOP_SOURCES.includes(raw.stop_source)
+      ? { stop_source: raw.stop_source }
+      : {}),
     request_in_flight_count: Math.max(0, Number(raw.request_in_flight_count) || 0),
     progress: normalize_batch_translation_progress(raw.progress),
     scope: normalize_translation_scope(raw.scope),
@@ -182,4 +189,17 @@ export function clone_translation_task_snapshot(
     progress: { ...snapshot.progress },
     scope: clone_translation_scope(snapshot.scope),
   };
+}
+
+/** 全量任务从活跃态自然完成后承接导出流程。 */
+export function should_open_translation_export_followup(args: {
+  previous_status: string;
+  next_status: string;
+  scope: BatchTranslationScope;
+}): boolean {
+  return (
+    args.scope.kind === "all" &&
+    is_active_batch_translation_status(args.previous_status) &&
+    args.next_status === "done"
+  );
 }

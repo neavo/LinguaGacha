@@ -69,7 +69,7 @@ export function TranslationExportDialog(props: TranslationExportDialogProps): JS
     return (
       <AppConfirmDialog
         open
-        description={t("workbench_page.translation_task.confirm.generate_description")}
+        description={t("batch_translation.confirm.generate_description")}
         submitting={submitting}
         onConfirm={props.confirm_export}
         onClose={props.close}

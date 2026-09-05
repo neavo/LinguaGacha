@@ -41,14 +41,14 @@ const TASK_WAVEFORM_IDLE_RISE_LIMIT = 0.08;
 const TASK_WAVEFORM_IDLE_FALL_LIMIT = 0.06;
 const TASK_WAVEFORM_DISPLAY_SPIKE_LIMIT = 0.08;
 
-type WorkbenchTranslationWaveformObservation = {
+type BatchTranslationWaveformObservation = {
   time_seconds: number; // 最近一次采样时间，用来计算滑动窗口吞吐
   total_generated_tokens: number; // 累计思考与输出 token，只读事实，不承载页面计算状态
 };
 
-export type WorkbenchTranslationWaveformState = {
+export type BatchTranslationWaveformState = {
   history: number[]; // 已归一化到 0..1 的可绘制视觉样本，值已预留上下边界余量
-  observations: WorkbenchTranslationWaveformObservation[]; // 只保留短窗口内的累计 token 观察值
+  observations: BatchTranslationWaveformObservation[]; // 只保留短窗口内的累计 token 观察值
   smoothed_speed: number; // 经过窗口吞吐和 EMA 后的视觉速度
   reference_speed: number; // 慢变速度参照，用来判断当前速度水平而不直接拉满高度
   trend_level: number; // -1..1 的加速 / 减速趋势，负责表达爬坡和回落方向
@@ -56,14 +56,14 @@ export type WorkbenchTranslationWaveformState = {
   last_sample_time_seconds: number | null; // 上一次推进状态机的时间
 };
 
-export type WorkbenchTranslationWaveformSample = {
+export type BatchTranslationWaveformSample = {
   active: boolean; // 当前任务是否仍在运行，决定采样还是收尾衰减
   now_seconds: number; // 当前采样时间，调用方负责提供单调时间
   total_generated_tokens: number; // 当前累计思考与输出 token
 };
 
 // 创建空状态，供新任务、项目切换或无进度快照重置波形。
-export function create_empty_task_waveform_state(): WorkbenchTranslationWaveformState {
+export function create_empty_task_waveform_state(): BatchTranslationWaveformState {
   return {
     history: [],
     observations: [],
@@ -119,9 +119,9 @@ function append_task_waveform_sample(args: {
 
 // 维护短时间观察窗口，时间倒退时丢弃旧窗口避免跨任务或系统时钟异常污染采样。
 function append_task_waveform_observation(
-  observations: WorkbenchTranslationWaveformObservation[],
-  next_observation: WorkbenchTranslationWaveformObservation,
-): WorkbenchTranslationWaveformObservation[] {
+  observations: BatchTranslationWaveformObservation[],
+  next_observation: BatchTranslationWaveformObservation,
+): BatchTranslationWaveformObservation[] {
   const previous_observation = observations.at(-1);
   const ordered_observations =
     previous_observation === undefined ||
@@ -210,7 +210,7 @@ function ease_task_waveform_level(speed_level: number): number {
 
 // 用累计生成 token 的短窗口差值估计吞吐，避免单个 SSE 间隔决定整帧高度。
 function resolve_window_generation_speed(
-  observations: WorkbenchTranslationWaveformObservation[],
+  observations: BatchTranslationWaveformObservation[],
 ): number {
   const first_observation = observations[0];
   const last_observation = observations.at(-1);
@@ -386,9 +386,9 @@ function resolve_task_waveform_visual_sample(args: {
 
 // 推进波形状态机：活跃期采样累计 token，非活跃期只推进衰减尾巴。
 export function advance_task_waveform_state(
-  state: WorkbenchTranslationWaveformState,
-  sample: WorkbenchTranslationWaveformSample,
-): WorkbenchTranslationWaveformState {
+  state: BatchTranslationWaveformState,
+  sample: BatchTranslationWaveformSample,
+): BatchTranslationWaveformState {
   const now_seconds = Number.isFinite(sample.now_seconds)
     ? sample.now_seconds
     : (state.last_sample_time_seconds ?? 0) + TASK_WAVEFORM_SAMPLE_INTERVAL_MS / 1000;

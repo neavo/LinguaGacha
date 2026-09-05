@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import {
   create_empty_batch_translation_snapshot,
+  should_open_translation_export_followup,
   normalize_batch_translation_snapshot,
   clone_translation_task_snapshot,
   resolve_translation_task_display_snapshot,
@@ -9,6 +10,19 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
+  it("停止来源随 HTTP 归一与快照复制保留", () => {
+    const snapshot = normalize_batch_translation_snapshot({
+      batch_translation: {
+        ...create_empty_batch_translation_snapshot(),
+        status: "stopped",
+        stop_source: "user",
+      },
+    });
+    expect(clone_translation_task_snapshot(snapshot)).toMatchObject({
+      status: "stopped",
+      stop_source: "user",
+    });
+  });
   it("进度与 scope 在读取边界归一化，克隆隔离引用", () => {
     const snapshot = normalize_batch_translation_snapshot({
       batch_translation: {
@@ -71,5 +85,22 @@ describe("批量翻译展示", () => {
       reasoning_tokens: 20,
       output_tokens: 30,
     });
+  });
+});
+
+describe("全量翻译完成导出", () => {
+  it.each([
+    ["完整翻译从运行态完成时打开生成译文确认", "running", "done", "all", true],
+    ["校对页局部重翻完成时不打开生成译文确认", "running", "done", "items", false],
+    ["用户主动停止翻译后不打开生成译文确认", "stopping", "stopped", "all", false],
+    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "all", false],
+  ] as const)("%s", (_name, previous_status, next_status, scope_kind, expected) => {
+    expect(
+      should_open_translation_export_followup({
+        previous_status,
+        next_status,
+        scope: scope_kind === "items" ? { kind: "items", item_ids: [2, 1] } : { kind: "all" },
+      }),
+    ).toBe(expected);
   });
 });
