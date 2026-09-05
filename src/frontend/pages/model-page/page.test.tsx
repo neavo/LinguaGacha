@@ -30,13 +30,7 @@ vi.mock("@frontend/pages/model-page/components/model-item-chip", () => ({
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-advanced-settings-dialog", () => ({
-  ModelAdvancedSettingsDialog: (props: { onAgentLimitsAdjusted: () => void }) => (
-    <button
-      type="button"
-      aria-label="agent-limits-adjusted"
-      onClick={props.onAgentLimitsAdjusted}
-    />
-  ),
+  ModelAdvancedSettingsDialog: () => null,
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-basic-settings-dialog", () => ({
@@ -73,6 +67,8 @@ function create_model_page_state() {
   return {
     open_dialog,
     state: {
+      load_status: "ready",
+      refresh_snapshot: vi.fn(),
       snapshot: { models: [model] },
       readonly: false,
       grouped_categories: [
@@ -129,7 +125,7 @@ describe("ModelPage", () => {
     push_toast_mock.mockReset();
   });
 
-  it("配置动作携带对应类型与模型标识，且不再提供旧激活入口", async () => {
+  it("配置动作携带对应类型与模型标识", async () => {
     const { open_dialog, state } = create_model_page_state();
     use_model_page_state_mock.mockReturnValue(state);
     container = document.createElement("div");
@@ -161,32 +157,5 @@ describe("ModelPage", () => {
       ["task", "model-openai-1"],
       ["advanced", "model-openai-1"],
     ]);
-    expect(
-      [...container.querySelectorAll("button")].some(
-        (button) => button.textContent?.trim() === "model_page.action.activate",
-      ),
-    ).toBe(false);
-  });
-
-  it("Agent 最大输出自动调整时显示本地化警告", async () => {
-    const { state } = create_model_page_state();
-    use_model_page_state_mock.mockReturnValue(state);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(<ModelPage is_sidebar_collapsed={false} />);
-    });
-
-    await act(async () => {
-      container
-        ?.querySelector<HTMLButtonElement>('button[aria-label="agent-limits-adjusted"]')
-        ?.click();
-    });
-
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "warning",
-      "model_page.feedback.agent_limits_adjusted",
-    );
   });
 });

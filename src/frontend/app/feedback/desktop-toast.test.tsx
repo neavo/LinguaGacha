@@ -13,7 +13,8 @@ const sonner_mock = vi.hoisted(() => {
     vi.fn(() => "progress-toast-id"),
     {
       success: vi.fn(() => "success-toast-id"),
-      info: vi.fn(() => "info-toast-id"),
+      info: vi.fn(() => 1),
+      getToasts: vi.fn(() => [{ id: 1 }, { id: "desktop-progress-toast" }]),
       warning: vi.fn(() => "warning-toast-id"),
       error: vi.fn(() => "error-toast-id"),
       dismiss: vi.fn(),
@@ -70,25 +71,22 @@ describe("useDesktopToast", () => {
     return toast_api;
   }
 
-  it("普通和常驻通知按 kind 分派，并固定常驻选项", () => {
-    read_toast_api().push_toast("info", "普通通知");
-    read_toast_api().push_persistent_toast("warning", "常驻通知");
-
-    expect(sonner_mock.toast.info).toHaveBeenCalledWith("普通通知");
-    expect(sonner_mock.toast.warning).toHaveBeenCalledWith("常驻通知", {
-      duration: Number.POSITIVE_INFINITY,
-      closeButton: true,
-    });
-  });
-
   it("只允许当前进度通知 owner 更新和关闭", async () => {
     let first_id: string | number;
     let current_id: string | number;
     await act(async () => {
       first_id = read_toast_api().push_progress_toast({
         message: "第一项",
+        presentation: "modal",
         progress_percent: 10,
       });
+    });
+    await act(async () => {
+      const notice = read_toast_api().push_toast("info", "普通通知");
+      read_toast_api().dismiss_toast(notice);
+    });
+    expect(container.querySelector(".cn-progress-toast-modal-layer")).not.toBeNull();
+    await act(async () => {
       current_id = read_toast_api().push_progress_toast({
         message: "第二项",
         progress_percent: 20,
@@ -106,14 +104,14 @@ describe("useDesktopToast", () => {
         message: "当前更新",
         progress_percent: 80,
       });
-      read_toast_api().dismiss_toast(current_id!);
+      read_toast_api().dismiss_toast();
     });
     expect(sonner_mock.toast).toHaveBeenCalledWith(
       "当前更新",
       expect.objectContaining({ id: "desktop-progress-toast" }),
     );
 
-    await act(async () => vi.advanceTimersByTimeAsync(1500));
+    await act(async () => vi.runOnlyPendingTimersAsync());
     expect(sonner_mock.toast.dismiss).toHaveBeenCalledWith("desktop-progress-toast");
   });
 

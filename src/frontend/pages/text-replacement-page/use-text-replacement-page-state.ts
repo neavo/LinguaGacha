@@ -234,7 +234,7 @@ function create_empty_dialog_state(): TextReplacementDialogState {
     insert_after_entry_id: null,
     draft_entry: clone_entry(EMPTY_ENTRY),
     saving: false,
-    validation_message: null,
+    invalid: false,
   };
 }
 
@@ -351,7 +351,12 @@ export function useTextReplacementPageState(
     },
     [push_toast, t],
   );
-  const { quality_slice, quality_loaded, refresh_quality_rule_snapshot } = useQualityRuleQuery({
+  const {
+    quality_slice,
+    quality_status,
+    reload_quality_rule_snapshot,
+    refresh_quality_rule_snapshot,
+  } = useQualityRuleQuery({
     rule_type: config.rule_type,
     project_path: project_snapshot.loaded ? project_snapshot.path : "",
     session_ready: project_session_status === "ready",
@@ -710,7 +715,7 @@ export function useTextReplacementPageState(
   }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, hit_ready]);
 
   useQualityRuleSelectionPruning({
-    loaded: quality_loaded,
+    loaded: quality_status === "ready",
     selected_entry_ids,
     active_entry_id,
     selection_anchor_entry_id,
@@ -797,7 +802,7 @@ export function useTextReplacementPageState(
       insert_after_entry_id,
       draft_entry: clone_entry(EMPTY_ENTRY),
       saving: false,
-      validation_message: null,
+      invalid: false,
     });
   }, [clear_selection_state, readonly, resolve_create_insert_after_entry_id]);
 
@@ -822,24 +827,46 @@ export function useTextReplacementPageState(
         insert_after_entry_id: null,
         draft_entry: clone_entry(target_entry),
         saving: false,
-        validation_message: null,
+        invalid: false,
       });
     },
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
-  const update_dialog_draft = useCallback((patch: Partial<TextReplacementEntryDraft>): void => {
-    set_dialog_state((previous_state) => {
-      return {
-        ...previous_state,
-        validation_message: null,
-        draft_entry: {
-          ...previous_state.draft_entry,
-          ...patch,
-        },
-      };
-    });
-  }, []);
+  const validate_entry = useCallback(
+    (entry: TextReplacementEntryDraft): string | null => {
+      if (entry.src === "") {
+        return t("quality_rule_editor.feedback.source_required");
+      }
+
+      if (!entry.regex) {
+        return null;
+      }
+
+      try {
+        compile_text_replacements([entry]);
+        return null;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "";
+        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
+      }
+    },
+    [t],
+  );
+
+  const update_dialog_draft = useCallback(
+    (patch: Partial<TextReplacementEntryDraft>): void => {
+      set_dialog_state((previous_state) => {
+        const draft_entry = { ...previous_state.draft_entry, ...patch };
+        return {
+          ...previous_state,
+          invalid: previous_state.invalid && validate_entry(normalize_entry(draft_entry)) !== null,
+          draft_entry,
+        };
+      });
+    },
+    [validate_entry],
+  );
 
   const commit_remove_entry_ids = useCallback(
     async (target_entry_ids: TextReplacementEntryId[]): Promise<boolean> => {
@@ -1356,27 +1383,6 @@ export function useTextReplacementPageState(
     }
   }, [apply_settings_snapshot, config, push_toast, readonly, refresh_preset_menu, t]);
 
-  const validate_entry = useCallback(
-    (entry: TextReplacementEntry): string | null => {
-      if (entry.src === "") {
-        return t("quality_rule_editor.feedback.source_required");
-      }
-
-      if (!entry.regex) {
-        return null;
-      }
-
-      try {
-        compile_text_replacements([entry]);
-        return null;
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "";
-        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
-      }
-    },
-    [t],
-  );
-
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
     if (readonly) {
       return false;
@@ -1393,7 +1399,7 @@ export function useTextReplacementPageState(
       set_dialog_state((previous_state) => {
         return {
           ...previous_state,
-          validation_message,
+          invalid: true,
         };
       });
       push_toast("error", validation_message);
@@ -1403,7 +1409,7 @@ export function useTextReplacementPageState(
     set_dialog_state((previous_state) => ({
       ...previous_state,
       saving: true,
-      validation_message: null,
+      invalid: false,
     }));
 
     const next_entries =
@@ -1433,7 +1439,7 @@ export function useTextReplacementPageState(
     const reopen_dialog_state: TextReplacementDialogState = {
       ...current_dialog_state,
       saving: false,
-      validation_message: null,
+      invalid: false,
     };
     set_dialog_state(create_empty_dialog_state());
 
@@ -1651,6 +1657,8 @@ export function useTextReplacementPageState(
   ]);
 
   return {
+    quality_status,
+    reload_quality_rule_snapshot,
     title_key: config.title_key,
     enabled,
     entries,

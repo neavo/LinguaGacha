@@ -7,6 +7,7 @@ import type {
 } from "@frontend/app/session/agent/agent-session-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 
@@ -28,7 +29,7 @@ type AgentInlineEditorProps = {
   skills: readonly AgentSkillSnapshot[];
   command: AgentCommand;
   model_selection: ModelSelectionController;
-  unavailable_reason: "restoring" | "runtime_busy" | "settling" | null;
+  unavailable_reason: "restoring" | "runtime_busy" | "settling" | "disconnected" | null;
   on_save: (message: AgentMessageInput) => Promise<void>;
   on_saved: (message: AgentMessageInput) => void;
   on_cancel: () => void;
@@ -42,11 +43,11 @@ const EMPTY_INPUT_HISTORY: readonly string[] = [];
  */
 export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const { t } = useI18n();
+  const { push_toast } = useDesktopToast();
   const composer_ref = useRef<AgentComposerHandle | null>(null);
   const draft_ref = useRef<AgentMessageInput>(structuredClone(props.target.message));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent session 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
-  const [error, set_error] = useState<string | null>(null);
 
   const read_draft = useCallback((): AgentMessageInput => draft_ref.current, []);
   const write_draft = useCallback((message: AgentMessageInput): void => {
@@ -79,22 +80,20 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
     async (message: AgentMessageInput): Promise<void> => {
       // 受理失败不关闭编辑器，确保用户可以直接修正并再次提交原草稿。
       set_status("saving");
-      set_error(null);
       try {
         await props.on_save(message);
         props.on_saved(message);
       } catch (caught_error) {
-        set_error(resolve_visible_error_message(caught_error, t, t(error_key)));
+        push_toast("error", resolve_visible_error_message(caught_error, t, t(error_key)));
         set_status("idle");
       }
     },
-    [error_key, props.on_save, props.on_saved, t],
+    [error_key, props.on_save, props.on_saved, push_toast, t],
   );
 
   const submit = useCallback(
     (message: AgentMessageInput): void => {
       if (status !== "idle") return;
-      set_error(null);
       void save(message);
     },
     [save, status],
@@ -136,11 +135,6 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         on_stop={async () => undefined}
         on_reset={() => undefined}
       />
-      {error === null ? null : (
-        <p className="agent-inline-editor__error" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

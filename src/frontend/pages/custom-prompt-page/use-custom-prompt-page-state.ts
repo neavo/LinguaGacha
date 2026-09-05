@@ -75,6 +75,10 @@ export function useCustomPromptPageState(
     update_enabled,
     replace_prompt_text,
     flush_prompt_change,
+    load_status,
+    reload_prompt,
+    save_status,
+    discard_prompt_change,
   } = useCustomPromptEditorState(variant);
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -562,7 +566,6 @@ export function useCustomPromptPageState(
   ]);
 
   return {
-    title_key: config.title_key,
     header_title_key: config.header_title_key,
     header_description_key: config.header_description_key,
     template,
@@ -576,6 +579,10 @@ export function useCustomPromptPageState(
     update_prompt_text,
     update_enabled,
     flush_prompt_change,
+    load_status,
+    reload_prompt,
+    save_status,
+    discard_prompt_change,
     import_prompt_from_picker,
     export_prompt_from_picker,
     open_preset_menu,

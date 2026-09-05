@@ -1,3 +1,10 @@
+import {
+  AppDropdownMenu,
+  AppDropdownMenuTrigger,
+  AppDropdownMenuContent,
+  AppDropdownMenuItem,
+} from "@frontend/widgets/app-dropdown-menu";
+import type { PromptSaveStatus } from "@frontend/pages/custom-prompt-page/types";
 import { FileDown, FileUp } from "lucide-react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -13,7 +20,9 @@ import {
 } from "@frontend/widgets/command-bar/command-bar";
 
 type CustomPromptCommandBarProps = {
-  title_key: LocaleKey;
+  save_status: PromptSaveStatus;
+  on_retry_save: () => void;
+  on_discard_save: () => void;
   header_title_key: LocaleKey;
   header_description_key: LocaleKey;
   enabled: boolean;
@@ -34,6 +43,7 @@ type CustomPromptCommandBarProps = {
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
 
+/** 组合提示词保存状态、预设与启用操作。 */
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
@@ -46,6 +56,33 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
     <CommandBar
       actions={
         <>
+          <CommandBarGroup>
+            <AppDropdownMenu>
+              <AppDropdownMenuTrigger
+                render={
+                  <AppButton
+                    variant="ghost"
+                    size="toolbar"
+                    className="custom-prompt-page__save-status"
+                    disabled={props.save_status === "saved" || props.save_status === "saving"}
+                  >
+                    <span className="truncate" role="status">
+                      {t(`custom_prompt_page.save.${props.save_status}`)}
+                    </span>
+                  </AppButton>
+                }
+              />
+              <AppDropdownMenuContent>
+                <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_retry_save}>
+                  {t("app.action.retry")}
+                </AppDropdownMenuItem>
+                <AppDropdownMenuItem onClick={props.on_discard_save}>
+                  {t("custom_prompt_page.save.discard")}
+                </AppDropdownMenuItem>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          </CommandBarGroup>
+          <CommandBarSeparator />
           <CommandBarGroup>
             <AppButton
               variant="ghost"

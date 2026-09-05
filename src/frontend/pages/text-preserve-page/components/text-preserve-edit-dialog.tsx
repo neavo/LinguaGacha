@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type {
@@ -5,7 +6,7 @@ import type {
   TextPreserveEntryDraft,
 } from "@frontend/pages/text-preserve-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
-import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
+import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
@@ -15,13 +16,18 @@ type TextPreserveEditDialogProps = {
   entry: TextPreserveEntryDraft;
   saving: boolean;
   readonly: boolean;
-  validation_message: string | null;
+  invalid: boolean;
   on_change: (patch: Partial<TextPreserveEntryDraft>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
+/** 组合保护规则字段、校验定位与保存操作。 */
 export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
+  const editor_ref = useRef<AppEditorHandle>(null);
+  useEffect(() => {
+    if (props.open && props.invalid && !props.readonly) editor_ref.current?.focus();
+  }, [props.open, props.invalid, props.readonly]);
   const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
@@ -30,6 +36,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
     action: "save",
     enabled: props.open && !disabled,
     on_trigger: () => {
+      if (props.invalid) editor_ref.current?.focus();
       void props.on_save();
     },
   });
@@ -61,6 +68,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
             size="sm"
             disabled={disabled}
             onClick={() => {
+              if (props.invalid) editor_ref.current?.focus();
               void props.on_save();
             }}
           >
@@ -79,21 +87,17 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                   {t("quality_rule_editor.fields.rule")}
                 </span>
                 <AppEditor
+                  ref={editor_ref}
                   class_name="text-preserve-page__dialog-editor"
                   value={props.entry.src}
                   aria_label={t("quality_rule_editor.fields.rule")}
                   read_only={disabled}
-                  invalid={props.validation_message !== null}
+                  invalid={props.invalid}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
                   }}
                 />
-                {props.validation_message === null ? null : (
-                  <span className="text-preserve-page__dialog-error">
-                    {props.validation_message}
-                  </span>
-                )}
               </label>
 
               <label className="text-preserve-page__dialog-section">

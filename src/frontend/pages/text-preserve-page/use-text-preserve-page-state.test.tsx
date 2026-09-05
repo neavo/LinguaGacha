@@ -718,13 +718,15 @@ describe("useTextPreservePageState", () => {
       await latest_state?.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.validation_message).toContain(
-      "quality_rule_editor.feedback.regex_invalid",
-    );
+    expect(latest_state?.dialog_state.invalid).toBe(true);
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       expect.stringContaining("quality_rule_editor.feedback.regex_invalid"),
     );
     expect(api_fetch_mock).not.toHaveBeenCalled();
+    await act(async () => latest_state?.update_dialog_draft({ info: "修正说明" }));
+    expect(latest_state?.dialog_state.invalid).toBe(true);
+    await act(async () => latest_state?.update_dialog_draft({ src: "valid" }));
+    expect(latest_state?.dialog_state.invalid).toBe(false);
   });
 });

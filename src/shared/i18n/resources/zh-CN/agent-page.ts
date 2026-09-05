@@ -123,6 +123,7 @@ export const zh_cn_agent_page = {
     stopped: "已停止 · {duration}",
   },
   error: {
+    decision: "决定提交失败，请重试。",
     restore: "会话恢复失败，请重试。",
     connection: "连接中断，正在等待重连。",
     send: "发送失败，草稿已保留。",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
+import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles } from "lucide-react";
 
 import type { ModelThinkingLevel } from "@domain/model";
 import {
@@ -138,13 +138,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
-    agent_restoring || controls.transport === "restore_failed"
-      ? "restoring"
-      : agent_settling
-        ? "settling"
-        : runtime_snapshot.owner === "batch_translation"
-          ? "runtime_busy"
-          : null;
+    controls.transport === "disconnected"
+      ? "disconnected"
+      : agent_restoring || controls.transport === "restore_failed"
+        ? "restoring"
+        : agent_settling
+          ? "settling"
+          : runtime_snapshot.owner === "batch_translation"
+            ? "runtime_busy"
+            : null;
 
   // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
   useEffect(() => {
@@ -484,12 +486,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         onScroll={(event) => handle_conversation_scroll(event.currentTarget)}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
-          {controls.transport === "disconnected" && (
-            <div className="agent-page__connection-status" role="status">
-              <WifiOff aria-hidden="true" />
-              <span>{t("agent_page.error.connection")}</span>
-            </div>
-          )}
           {controls.transport === "restore_failed" ? (
             <div className="agent-page__empty" role="alert">
               <div className="agent-page__empty-intro">

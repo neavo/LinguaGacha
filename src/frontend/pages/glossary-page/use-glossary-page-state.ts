@@ -14,7 +14,10 @@ import {
   pick_quality_rule_import_path,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
-import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
+import {
+  useQualityRuleQuery,
+  type QualityRuleQueryStatus,
+} from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
@@ -289,6 +292,8 @@ function build_glossary_hit_state_from_cache(
 }
 
 type UseGlossaryPageStateResult = {
+  quality_status: QualityRuleQueryStatus;
+  reload_quality_rule_snapshot: () => void;
   enabled: boolean;
   filtered_entries: GlossaryVisibleEntry[];
   filter_state: GlossaryFilterState;
@@ -373,7 +378,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [push_toast, t],
   );
-  const { quality_slice, quality_loaded, refresh_quality_rule_snapshot } = useQualityRuleQuery({
+  const {
+    quality_slice,
+    quality_status,
+    reload_quality_rule_snapshot,
+    refresh_quality_rule_snapshot,
+  } = useQualityRuleQuery({
     rule_type: "glossary",
     project_path: project_snapshot.loaded ? project_snapshot.path : "",
     session_ready: project_session_status === "ready",
@@ -743,7 +753,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     reset_table_state,
   });
   useQualityRuleSelectionPruning({
-    loaded: quality_loaded,
+    loaded: quality_status === "ready",
     selected_entry_ids,
     active_entry_id,
     selection_anchor_entry_id,
@@ -1582,6 +1592,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   return useMemo<UseGlossaryPageStateResult>(() => {
     return {
+      quality_status,
+      reload_quality_rule_snapshot,
       enabled,
       filtered_entries,
       filter_state,

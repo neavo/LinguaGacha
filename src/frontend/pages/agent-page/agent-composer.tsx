@@ -12,6 +12,7 @@ import {
   Shrink,
   Sparkles,
   Square,
+  WifiOff,
 } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -114,8 +115,8 @@ export type AgentComposerHandle = {
   focus: () => void;
 };
 
-/** 互斥于发送的新命令原因；三种状态都允许继续编辑本地草稿。 */
-type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
+/** 命令不可用时仍允许编辑本地草稿。 */
+type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disconnected";
 
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
@@ -150,6 +151,7 @@ type AgentComposerProps = {
 /** 命令不可用原因同时驱动禁用态和提示，禁止平行布尔量产生矛盾组合。 */
 const AGENT_UNAVAILABLE_REASON_KEYS = Object.freeze({
   restoring: "agent_page.unavailable.restoring",
+  disconnected: "agent_page.error.connection",
   runtime_busy: "agent_page.unavailable.runtime_busy",
   settling: "agent_page.unavailable.settling",
 } satisfies Readonly<Record<AgentUnavailableReason, LocaleKey>>);
@@ -874,6 +876,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 )}
               </TooltipContent>
             </Tooltip>
+          ) : null}
+          {!inline && props.unavailable_reason === "disconnected" ? (
+            <span
+              className="agent-composer__connection-status"
+              role="status"
+              title={t("agent_page.error.connection")}
+            >
+              <WifiOff className="size-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{t("agent_page.error.connection")}</span>
+            </span>
           ) : null}
           {!inline ? (
             <AppDropdownMenu>

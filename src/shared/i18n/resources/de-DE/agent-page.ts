@@ -133,6 +133,7 @@ export const de_de_agent_page = {
     stopped: "Gestoppt · {duration}",
   },
   error: {
+    decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen.",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",

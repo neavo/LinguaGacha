@@ -380,10 +380,10 @@ describe("AgentPage", () => {
     expect(reconnect).toHaveBeenCalledOnce();
   });
 
-  it("断线状态只在连接提示中公开", async () => {
+  it("断线状态在输入工具栏展示并暂停发送", async () => {
     const view = await render_page({ transport: "disconnected" });
 
-    expect(view.querySelector('.agent-page__connection-status[role="status"]')).not.toBeNull();
+    expect(view.querySelector('.agent-composer__connection-status[role="status"]')).not.toBeNull();
     expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
   });
 
@@ -922,13 +922,11 @@ describe("AgentPage", () => {
         ?.click(),
     );
     await vi.waitFor(() =>
-      expect(view.querySelector(".agent-inline-editor__error")).not.toBeNull(),
+      expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.edit"),
     );
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
-    expect(view.querySelector(".agent-inline-editor__error")?.textContent).toContain(
-      "agent_page.error.edit",
-    );
+    expect(push_toast).toHaveBeenCalledTimes(1);
   });
 
   it("队列项原位修改并调用队列更新入口", async () => {

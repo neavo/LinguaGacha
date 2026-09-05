@@ -1,6 +1,8 @@
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
+export type PromptSaveStatus = "saved" | "pending" | "saving" | "error";
+
 export type CustomPromptTemplate = {
   default_text: string;
   prefix_text: string;
@@ -27,7 +29,10 @@ export type CustomPromptConfirmState =
     };
 
 export type UseCustomPromptPageStateResult = {
-  title_key: LocaleKey;
+  load_status: "loading" | "ready" | "error";
+  reload_prompt: () => Promise<void>;
+  save_status: PromptSaveStatus;
+  discard_prompt_change: () => void;
   header_title_key: LocaleKey;
   header_description_key: LocaleKey;
   template: CustomPromptTemplate;

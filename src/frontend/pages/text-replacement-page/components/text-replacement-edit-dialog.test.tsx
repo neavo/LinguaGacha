@@ -73,7 +73,7 @@ describe("TextReplacementEditDialog", () => {
           entry={{ src: "hero", dst: "勇者", regex: false, case_sensitive: true }}
           saving={false}
           readonly={false}
-          validation_message={null}
+          invalid={false}
           on_change={on_change}
           on_save={vi.fn(async () => undefined)}
           on_close={vi.fn(async () => undefined)}

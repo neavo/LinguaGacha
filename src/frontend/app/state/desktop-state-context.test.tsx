@@ -480,6 +480,26 @@ describe("DesktopStateProvider", () => {
     });
   }
 
+  it("初始化失败保留失败状态，重试后应用完整快照", async () => {
+    let state: ReturnType<typeof useDesktopState> | null = null;
+    function InitialProbe(): null {
+      state = useDesktopState();
+      return null;
+    }
+    install_runtime_api_mock();
+    api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
+    await mount_runtime(create_event_source_stub().event_source, <InitialProbe />);
+    expect((state as ReturnType<typeof useDesktopState> | null)?.initial_state_status).toBe(
+      "error",
+    );
+    await act(async () => {
+      await (state as ReturnType<typeof useDesktopState> | null)?.load_initial_state();
+    });
+    expect((state as ReturnType<typeof useDesktopState> | null)?.initial_state_status).toBe(
+      "ready",
+    );
+  });
+
   it("初始状态直接采用后端运行时 owner，不从任务快照推导", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();

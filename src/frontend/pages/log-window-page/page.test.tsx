@@ -330,6 +330,24 @@ describe("LogWindowPage", () => {
     return button;
   }
 
+  it("详情读取失败后直接重试当前日志", async () => {
+    await mount_page();
+    read_log_detail_mock.mockRejectedValueOnce(new Error("offline"));
+    await emit_logs(build_log_event("重试日志", { id: "log-1", sequence: 1 }));
+    await act(async () => {
+      container
+        ?.querySelector('[data-log-row-id="log-1"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container?.textContent).toContain("log_window_page.detail.failed");
+    const retry = [...container!.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "app.action.retry",
+    )!;
+    await act(async () => retry.click());
+    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
+    expect(container?.textContent).toContain("完整详情：log-1");
+  });
+
   it("在 StrictMode 重新挂载 effect 后仍会接收日志事件", async () => {
     await mount_page();
 

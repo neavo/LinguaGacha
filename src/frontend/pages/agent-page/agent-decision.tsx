@@ -12,6 +12,7 @@ import { ArrowRight, CircleQuestionMark, Save, X, type LucideIcon } from "lucide
 import type { AgentTranslationResponse } from "@shared/agent";
 import { ModelSelectionOptions } from "@frontend/features/model-selection/model-selection-menu";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -125,27 +126,29 @@ export function AgentDecisionLayer(props: {
   );
 }
 
-/** 翻译决定直接提交当前接入点或菜单选择，错误留在原决定中重试。 */
+/** 翻译决定提交接入点选择，失败后恢复当前决定的操作入口。 */
 function AgentTranslationDecision(props: {
   decision: Extract<AgentPendingDecision, { kind: "batch_translation" }>;
   title_ref: RefObject<HTMLHeadingElement | null>;
   on_resolve: (id: string, response: AgentTranslationResponse) => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
+  const { push_toast } = useDesktopToast();
   const [submitting, set_submitting] = useState(false);
   const submitting_ref = useRef(false); // React 提交前也只发送一次决定
-  const [error, set_error] = useState<string | null>(null);
 
   /** 同一决定只发送一次在途请求，保存失败后恢复操作。 */
   async function submit(response: AgentTranslationResponse): Promise<void> {
     if (submitting_ref.current) return;
     submitting_ref.current = true;
     set_submitting(true);
-    set_error(null);
     try {
       await props.on_resolve(props.decision.id, response);
     } catch (failure) {
-      set_error(resolve_visible_error_message(failure, t, t("app.model.selection.update_failed")));
+      push_toast(
+        "error",
+        resolve_visible_error_message(failure, t, t("agent_page.error.decision")),
+      );
     } finally {
       submitting_ref.current = false;
       set_submitting(false);
@@ -205,11 +208,6 @@ function AgentTranslationDecision(props: {
               </AppDropdownMenuContent>
             </AppDropdownMenu>
           </div>
-          {error === null ? null : (
-            <p className="agent-decision__error" role="alert">
-              {error}
-            </p>
-          )}
         </>
       )}
     </AgentDecisionFrame>

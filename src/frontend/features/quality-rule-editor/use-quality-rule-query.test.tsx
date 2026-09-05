@@ -85,14 +85,14 @@ describe("quality rule query lifecycle", () => {
     expect(read_quality_rule_snapshot_mock).not.toHaveBeenCalled();
     expect(current_state).toMatchObject({
       quality_slice: DEFAULT_SLICE,
-      quality_loaded: false,
+      quality_status: "idle",
     });
 
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
     expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(1);
     expect(current_state).toMatchObject({
       quality_slice: { enabled: false, section_revision: 3 },
-      quality_loaded: true,
+      quality_status: "ready",
     });
 
     project_change_signal = {
@@ -112,14 +112,31 @@ describe("quality rule query lifecycle", () => {
     expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(2);
   });
 
-  it("初次查询失败时只交给页面错误出口", async () => {
+  it("首次失败提供重试，已有快照刷新失败时保留内容并通知", async () => {
     const error = new Error("load failed");
     read_quality_rule_snapshot_mock.mockRejectedValue(error);
-
     await act(async () => root.render(<QueryProbe project_path="E:/demo/demo.lg" />));
+    expect(current_state?.quality_status).toBe("error");
+    expect(on_load_error).not.toHaveBeenCalled();
 
-    expect(on_load_error).toHaveBeenCalledWith(error);
-    expect(current_state?.quality_loaded).toBe(false);
+    read_quality_rule_snapshot_mock.mockResolvedValue({
+      projectPath: "E:/demo/demo.lg",
+      sectionRevisions: { quality: 7 },
+      qualityRule: { enabled: false },
+    });
+    await act(async () => current_state?.reload_quality_rule_snapshot());
+    expect(current_state).toMatchObject({
+      quality_status: "ready",
+      quality_slice: { enabled: false, section_revision: 7 },
+    });
+
+    read_quality_rule_snapshot_mock.mockRejectedValue(error);
+    await act(async () => current_state?.reload_quality_rule_snapshot());
+    expect(current_state).toMatchObject({
+      quality_status: "ready",
+      quality_slice: { enabled: false, section_revision: 7 },
+    });
+    expect(on_load_error).toHaveBeenCalledExactlyOnceWith(error);
   });
 
   it("项目切换后不接纳旧项目的迟到响应", async () => {
@@ -142,7 +159,10 @@ describe("quality rule query lifecycle", () => {
     await act(async () => root.render(<QueryProbe project_path="E:/old/old.lg" />));
     await vi.waitFor(() => expect(read_quality_rule_snapshot_mock).toHaveBeenCalledTimes(1));
     await act(async () => root.render(<QueryProbe project_path="E:/new/new.lg" />));
-    expect(current_state).toMatchObject({ quality_slice: DEFAULT_SLICE, quality_loaded: false });
+    expect(current_state).toMatchObject({
+      quality_slice: DEFAULT_SLICE,
+      quality_status: "loading",
+    });
 
     await act(async () =>
       resolve_old({
@@ -151,7 +171,10 @@ describe("quality rule query lifecycle", () => {
         qualityRule: { enabled: true },
       }),
     );
-    expect(current_state).toMatchObject({ quality_slice: DEFAULT_SLICE, quality_loaded: false });
+    expect(current_state).toMatchObject({
+      quality_slice: DEFAULT_SLICE,
+      quality_status: "loading",
+    });
 
     await act(async () =>
       resolve_new({
@@ -162,7 +185,7 @@ describe("quality rule query lifecycle", () => {
     );
     expect(current_state).toMatchObject({
       quality_slice: { enabled: false, section_revision: 4 },
-      quality_loaded: true,
+      quality_status: "ready",
     });
   });
 
@@ -173,7 +196,7 @@ describe("quality rule query lifecycle", () => {
       qualityRule: { enabled: true },
     });
     await act(async () => root.render(<QueryProbe project_path="E:/old/old.lg" />));
-    await vi.waitFor(() => expect(current_state?.quality_loaded).toBe(true));
+    await vi.waitFor(() => expect(current_state?.quality_status).toBe("ready"));
 
     let resolve_refresh!: (value: unknown) => void;
     read_quality_rule_snapshot_mock.mockImplementationOnce(
@@ -206,7 +229,7 @@ describe("quality rule query lifecycle", () => {
     });
     expect(current_state).toMatchObject({
       quality_slice: { enabled: false, section_revision: 4 },
-      quality_loaded: true,
+      quality_status: "ready",
     });
   });
 });

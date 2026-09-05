@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { CaseSensitive, Regex } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -8,7 +9,7 @@ import type {
 } from "@frontend/pages/text-replacement-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
-import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
+import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
@@ -18,13 +19,18 @@ type TextReplacementEditDialogProps = {
   entry: TextReplacementEntryDraft;
   saving: boolean;
   readonly: boolean;
-  validation_message: string | null;
+  invalid: boolean;
   on_change: (patch: Partial<TextReplacementEntryDraft>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
+/** 组合替换规则字段、匹配选项与校验定位。 */
 export function TextReplacementEditDialog(props: TextReplacementEditDialogProps): JSX.Element {
   const { t } = useI18n();
+  const editor_ref = useRef<AppEditorHandle>(null);
+  useEffect(() => {
+    if (props.open && props.invalid && !props.readonly) editor_ref.current?.focus();
+  }, [props.open, props.invalid, props.readonly]);
   const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
@@ -33,6 +39,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
     action: "save",
     enabled: props.open && !disabled,
     on_trigger: () => {
+      if (props.invalid) editor_ref.current?.focus();
       void props.on_save();
     },
   });
@@ -64,6 +71,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
             size="sm"
             disabled={disabled}
             onClick={() => {
+              if (props.invalid) editor_ref.current?.focus();
               void props.on_save();
             }}
           >
@@ -82,21 +90,17 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   {t("quality_rule_editor.fields.source")}
                 </span>
                 <AppEditor
+                  ref={editor_ref}
                   class_name="text-replacement-page__dialog-editor"
                   value={props.entry.src}
                   aria_label={t("quality_rule_editor.fields.source")}
                   read_only={disabled}
-                  invalid={props.validation_message !== null}
+                  invalid={props.invalid}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
                   }}
                 />
-                {props.validation_message === null ? null : (
-                  <span className="text-replacement-page__dialog-error">
-                    {props.validation_message}
-                  </span>
-                )}
               </label>
 
               <label className="text-replacement-page__dialog-section">

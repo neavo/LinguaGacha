@@ -166,8 +166,3 @@
 .text-preserve-page__dialog-editor {
   min-height: 0;
 }
-
-.text-preserve-page__dialog-error {
-  font-size: 12px;
-  color: var(--destructive);
-}

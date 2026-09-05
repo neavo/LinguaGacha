@@ -124,3 +124,7 @@
   content: "";
   margin-top: 2px;
 }
+
+.custom-prompt-page__save-status {
+  width: 128px;
+}

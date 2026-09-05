@@ -57,6 +57,7 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
+    initial_load_failed: "Could not load app data. Please try again.",
     export_success: "Data exported …",
     import_success: "Data imported …",
     save_success: "Saved …",

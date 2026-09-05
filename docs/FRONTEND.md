@@ -12,6 +12,7 @@
 - Electron main 只在 Backend Runtime ready 后创建窗口并注入本次运行的 API base URL；`desktop-api.ts` 直接使用该地址处理响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求，`/api/health` 只读取版本元数据，不作为其它请求的前置门禁。renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
 - Agent 页面只通过 Backend API 与 SSE 消费公开会话；工作区运行时属于 Agent 后端边界，其权限与生命周期归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `DesktopApiError` 是 API 与本地网络失败的统一错误，只承载 `code`、`details` 和可选 cause；用户可见文案键由稳定 `code` 推导并以 `details` 填参。页面只在确有恢复分支时按类型或 `code` 判断，不解析原始异常文本。
+- 操作失败由提交控制器负责恢复和一次通知，统一使用错误文案解析与 Toast 入口；持续状态归草稿、连接或任务拥有者。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
 - 日志列表只保存 `log.appended` 轻量事件，选中后由 `desktop-api.ts` 严格归一当前进程详情；普通页面、toast 和空状态不展示调用栈或原始异常。
 - 持久化 `AppLanguage` 只在 `src/domain/app-language.ts` 投影为 renderer `Locale`，React Provider 只消费已解析的 locale。
@@ -20,7 +21,7 @@
 ## 2. 主窗口运行态
 
 - `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 batch translation、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
-- 初始状态并行读取设置、项目 snapshot、任务 snapshot 与 runtime snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
+- `DesktopStateProvider.load_initial_state` 统一初始化与重试，读取后端现有会话的设置、项目、任务和运行态快照；请求世代隔离迟到响应，`initial_state_status` 为 `ready` 后挂载工作区会话与页面。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `BatchTranslationSnapshotStore` 独占 renderer 当前批量翻译快照，HTTP 与 SSE 共用同形载荷并按 `revision` 丢弃旧帧；Hook 通过 `useBatchTranslationSnapshot` 直接消费，不保存或回写本地当前快照。metrics 随快照与显示时钟计算，输入、思考和输出 token 保持互斥累计口径。
 - `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置和任务启动统一按 `owner !== null` 锁定；Agent 页在 batch_translation owner 下同样锁定，但 Agent owner 期间允许当前会话内存输入排队，并仅按 Agent snapshot 的 `canSendNow` 开放 Pi steer。reset、round 修订和模型选择 / 思考档位仍要求共享运行时空闲。批量翻译活跃态由 status 派生。
@@ -33,9 +34,11 @@
 
 - 前端实体和值对象从 `src/domain` 导入，跨运行时纯规则和协议词表从 `src/shared` 导入；最终项目事实计算只属于后端。
 - 功能 query 的参数、结果窗口和缓存身份归消费页面所有；被多个当前页面复用的领域交互、API 适配与纯规则进入 `src/frontend/features/<capability>`，需要全量事实的搜索、统计、排序和写入计算仍由后端 query / command 提供。
+- 首次查询失败由内容区提供重试；已有快照刷新失败时保留内容并通知。规则页共用 `useQualityRuleQuery` 的请求入口和项目隔离；`AppContentState` 负责展示。
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
 - 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。普通翻译启动以 Store 当前权威进度选择 new 或 continue，历史展示快照只服务显示。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
+- `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿，卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - `features/model-selection` 持有页面生命周期的模型 query / command，运行占用变化触发重查并隔离迟到响应；数据不进入 `DesktopStateProvider` 或 SSE。接入点选项以受控值展示分类与标记，激活回调由消费方绑定命令；Agent 翻译决定契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。后端公开各模型生效 Agent 容量与可用思考档位，renderer 直接消费；空档位集合保留禁用控件并显示默认值及提示，普通配置写入消费共享 runtime 锁。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。

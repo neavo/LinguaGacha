@@ -13,6 +13,11 @@ type MockComposerProps = {
   on_cancel_edit?: () => void;
 };
 
+const push_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast }),
+}));
+
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string) => key,
@@ -99,9 +104,7 @@ describe("AgentInlineEditor", () => {
     });
     const failed_view = render_editor(failed_save, vi.fn(), on_cancel);
     await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-send]")?.click());
-    expect(failed_view.querySelector('[role="alert"]')?.textContent).toContain(
-      "agent_page.error.edit",
-    );
+    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.edit");
     await act(async () => failed_view.querySelector<HTMLButtonElement>("[data-cancel]")?.click());
     expect(on_cancel).toHaveBeenCalledOnce();
   });

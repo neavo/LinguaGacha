@@ -57,6 +57,8 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    initial_load_failed:
+      "Die Anwendungsdaten konnten nicht geladen werden. Bitte erneut versuchen.",
     export_success: "Daten exportiert …",
     import_success: "Daten importiert …",
     save_success: "Gespeichert …",

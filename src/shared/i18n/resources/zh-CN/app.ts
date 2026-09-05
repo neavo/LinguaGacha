@@ -55,6 +55,7 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
+    initial_load_failed: "应用数据加载失败，请重试。",
     export_success: "数据已导出 …",
     import_success: "数据已导入 …",
     save_success: "已保存 …",

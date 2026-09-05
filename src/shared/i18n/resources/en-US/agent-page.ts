@@ -133,6 +133,7 @@ export const en_us_agent_page = {
     stopped: "Stopped · {duration}",
   },
   error: {
+    decision: "Could not submit your decision. Please try again.",
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",

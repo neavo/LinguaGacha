@@ -9,6 +9,11 @@ import type {
   AgentTranslationResponse,
 } from "@shared/agent";
 
+const push_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast }),
+}));
+
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: "zh-CN",
@@ -43,7 +48,7 @@ describe("AgentDecisionLayer", () => {
     await render_decision(root, translation_decision(), undefined, undefined, resolve);
     expect(resolve).not.toHaveBeenCalled();
     await act(async () => action(container, "batch_translation.setup.current").click());
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.decision");
     await act(async () => action(container, "batch_translation.setup.current").click());
     expect(resolve).toHaveBeenNthCalledWith(2, "translation", {
       kind: "provider",

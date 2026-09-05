@@ -2,28 +2,19 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-const shortcut_mock = vi.hoisted(() => vi.fn());
-
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => ({
-  useActionShortcut: shortcut_mock,
+  useActionShortcut: () => undefined,
 }));
-vi.mock("@frontend/widgets/app-editor/app-editor", () => ({
-  AppEditor: (props: {
-    value: string;
-    aria_label: string;
-    read_only: boolean;
-    invalid?: boolean;
-  }) => (
-    <textarea
-      aria-label={props.aria_label}
-      aria-invalid={props.invalid || undefined}
-      readOnly={props.read_only}
-      value={props.value}
-    />
-  ),
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
+vi.mock("@frontend/shadcn/tooltip", () => ({
+  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipTrigger: (props: { render: ReactNode }) => <>{props.render}</>,
+  TooltipContent: () => null,
 }));
 vi.mock("@frontend/widgets/app-page-dialog", () => ({
   AppPageDialog: (props: {
@@ -44,41 +35,37 @@ vi.mock("@frontend/widgets/interactions/shortcut-kbd", () => ({ ShortcutKbd: () 
 import { TextPreserveEditDialog } from "./text-preserve-edit-dialog";
 
 describe("TextPreserveEditDialog", () => {
-  it("显示规则校验错误，并在只读时保留字段但禁用保存", async () => {
-    const on_save = vi.fn(async () => undefined);
+  it("校验失败后将焦点定位到规则编辑器", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
-
-    await act(async () => {
+    const render = (invalid: boolean) =>
       root.render(
         <TextPreserveEditDialog
           open
           mode="edit"
-          entry={{ src: "\\U00110000", info: "非法转义" }}
+          entry={{ src: "[", info: "规则" }}
           saving={false}
-          readonly
-          validation_message="转义序列无效"
+          readonly={false}
+          invalid={invalid}
           on_change={vi.fn()}
-          on_save={on_save}
-          on_close={vi.fn(async () => undefined)}
+          on_save={async () => undefined}
+          on_close={async () => undefined}
         />,
       );
-    });
-
-    const rule = container.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="quality_rule_editor.fields.rule"]',
-    );
-    expect(rule?.readOnly).toBe(true);
-    expect(rule?.getAttribute("aria-invalid")).toBe("true");
-    expect(container.querySelector(".text-preserve-page__dialog-error")).not.toBeNull();
-    expect(find_button(container, "app.action.save")?.disabled).toBe(true);
-    expect(shortcut_mock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "save", enabled: false }),
-    );
-
-    await act(async () => root.unmount());
-    container.remove();
+    try {
+      await act(async () => render(false));
+      find_button(container, "app.action.save")?.focus();
+      await act(async () => render(true));
+      const rule = container.querySelector(
+        '.cm-content[aria-label="quality_rule_editor.fields.rule"]',
+      );
+      expect(document.activeElement).toBe(rule);
+      expect(rule?.getAttribute("aria-invalid")).toBe("true");
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 });
 

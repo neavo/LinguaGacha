@@ -361,6 +361,8 @@ describe("useCustomPromptEditorState", () => {
       "custom_prompt_page.feedback.save_failed",
     );
 
+    expect(latest_state).toMatchObject({ prompt_text: "失败版本", save_status: "error" });
+
     await act(async () => {
       latest_state?.update_prompt_text("重试版本");
       vi.advanceTimersByTime(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
@@ -368,6 +370,7 @@ describe("useCustomPromptEditorState", () => {
       await Promise.resolve();
     });
 
+    expect(latest_state?.save_status).toBe("saved");
     expect(get_save_payloads()).toEqual([
       expect.objectContaining({
         expected_section_revisions: {
@@ -491,12 +494,16 @@ describe("useCustomPromptEditorState", () => {
     ]);
   });
 
-  it("页面卸载时立即提交尚未到期的防抖草稿", async () => {
+  it("离页前等待当前草稿保存后完成卸载", async () => {
     await render_probe();
     await act(async () => {
       latest_state?.update_prompt_text("离页前草稿");
     });
 
+    await act(async () => {
+      expect(await latest_state?.flush_prompt_change()).toBe(true);
+    });
+    expect(latest_state?.save_status).toBe("saved");
     await act(async () => {
       root?.unmount();
       await Promise.resolve();
@@ -509,6 +516,35 @@ describe("useCustomPromptEditorState", () => {
         text: "离页前草稿",
       }),
     ]);
+  });
+
+  it("撤销未保存改动恢复成功快照并取消延迟保存", async () => {
+    await render_probe();
+    await act(async () => {
+      latest_state?.update_prompt_text("临时草稿");
+    });
+    expect(latest_state?.save_status).toBe("pending");
+    await act(async () => {
+      latest_state?.discard_prompt_change();
+      await vi.advanceTimersByTimeAsync(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
+    });
+    expect(latest_state).toMatchObject({ prompt_text: query_text, save_status: "saved" });
+    expect(get_save_payloads()).toEqual([]);
+  });
+
+  it("首次读取失败时提供重试并在恢复前锁定写入", async () => {
+    query_handler = async () => {
+      throw new Error("offline");
+    };
+    await render_probe();
+    expect(latest_state).toMatchObject({ load_status: "error", readonly: true });
+    query_handler = null;
+    await act(async () => latest_state?.reload_prompt());
+    expect(latest_state).toMatchObject({
+      load_status: "ready",
+      readonly: false,
+      prompt_text: query_text,
+    });
   });
 
   it("项目切换后忽略旧 query 的迟到结果", async () => {
