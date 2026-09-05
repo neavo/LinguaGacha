@@ -75,9 +75,6 @@ function create_cache_read_port(options: {
     prompts: {
       readBlock: () => ({}),
     },
-    analysis: {
-      readBlock: () => ({}),
-    },
   };
 }
 
@@ -135,7 +132,7 @@ function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange 
     quality: { mode: "keep" },
     prompts: { mode: "keep" },
     settings: { mode: "keep" },
-    analysis: { mode: "keep" },
+
     ...overrides,
   };
 }

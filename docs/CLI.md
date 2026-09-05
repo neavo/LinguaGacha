@@ -16,22 +16,19 @@
 |命令|必填参数|可选资源|产物|
 |---|---|---|---|
 |`translate`|`--input` 可重复、`--output-dir`、`--source-language`、`--target-language`|`--prompt .txt`、`--glossary .json/.xlsx`、`--pre-replacement .json/.xlsx`、`--post-replacement .json/.xlsx`、`--text-preserve .json/.xlsx`|译文写入 `--output-dir`，双语文件写入固定 `bilingual/` 子目录|
-|`analyze`|`--input` 可重复、`--output-dir`、`--source-language`、`--target-language`|`--prompt .txt`|生成 `glossary.json` 与 `glossary.xlsx`|
 
 - `--input` 保留传入顺序；支持格式、路径身份和去重继续由文件域处理。
 - 源语言允许 `ALL`，目标语言不允许 `ALL`，两者都走共享语言值域归一。
 - 解析阶段校验参数形状和资源扩展名，输入与资源的真实存在性在 job 边界统一校验。
-- 翻译专属资源传给 `analyze` 属于 usage 错误，不静默忽略。
 - 成功、help、version 返回 `0`，运行期错误返回 `1`，usage 错误返回 `2`。
 
 ## 3. 临时工程与设置
 
 - 每个 job 独占一个临时 `.lg`；无论成功、任务失败还是导出失败，都撤销 transient 设置、卸载工程并删除临时目录。
-- CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词和分析提示词的默认预设；只有命令行资源写入本次工程。
-- 未被上述覆盖的对应任务用途模型选择、并发、提示词增强、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
+- CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词的默认预设；只有命令行资源写入本次工程。
+- 未被上述覆盖的 translation 用途模型选择、并发、提示词增强、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
 - `build_cli_task_input` 只把显式资源解析成项目领域输入，统一由 `ProjectLifecycleService.apply_task_input` 写入；CLI 不接触 database、meta 或 revision。
-- `translate` 启动全量翻译后复用译文导出服务；`analyze` 启动全量分析后从候选池导出术语文件。
-- job 通过 `TaskService.subscribe` 订阅同进程完整任务快照并等待终态，不依赖 API stream、轮询或第二套任务生命周期。
+- job 通过 `BatchTranslationService.subscribe` 显示进度，等待当前 run 的 completion 后按终态导出；基础设施异常进入 CLI 错误出口，收尾始终撤销订阅。
 
 ## 4. 输出协议
 

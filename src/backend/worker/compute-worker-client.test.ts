@@ -51,7 +51,7 @@ vi.mock("node:worker_threads", () => ({
  */
 function create_quality_task(pattern: string): ComputeWorkerTask {
   return {
-    type: "quality_rule_analysis",
+    type: "quality_rule_statistics",
     input: {
       ...prepare_quality_statistics_task_input({
         rule_key: "glossary",

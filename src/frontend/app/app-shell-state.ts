@@ -26,7 +26,6 @@ const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "pre-translation-replacement",
   "post-translation-replacement",
   "translation-prompt",
-  "analysis-prompt",
   "laboratory",
   "toolbox",
 ]);

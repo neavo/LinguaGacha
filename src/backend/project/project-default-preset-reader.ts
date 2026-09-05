@@ -8,7 +8,7 @@ import { NativeFs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { Prompt, type PromptKind } from "../../domain/prompt";
+import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import {
   QualityRule,
   type QualityRuleEntry,
@@ -31,12 +31,6 @@ const QUALITY_DEFAULT_PRESET_DISPLAY_NAMES: Record<QualityRuleKind, string> = {
   text_preserve: "文本保护",
   pre_replacement: "译前替换",
   post_replacement: "译后替换",
-};
-
-// 提示词日志名独立于数据库物理类型，避免日志文案反向污染领域模型。
-const PROMPT_DEFAULT_PRESET_DISPLAY_NAMES: Record<PromptKind, string> = {
-  translation: "翻译提示词",
-  analysis: "分析提示词",
 };
 
 /**
@@ -77,7 +71,7 @@ export class ProjectDefaultPresetReader {
   public read(): ProjectDefaultPresetInput {
     const config = this.app_setting_service.read_setting();
     const quality_rules: ProjectQualityRuleInput[] = [];
-    const prompts: ProjectPromptInput[] = [];
+    let translation_prompt: ProjectPromptInput | null = null;
     const loaded_names: string[] = [];
 
     // 质量规则从领域模型派生目录与设置 key，输出只保留公开 kind 和领域值。
@@ -103,31 +97,30 @@ export class ProjectDefaultPresetReader {
     }
 
     // 提示词默认预设与质量规则走同一容错策略，单项失败不阻断工程创建。
-    for (const prompt of Prompt.all()) {
+    {
+      const prompt = TRANSLATION_PROMPT;
       const virtual_id = this.string_value(config[prompt.default_preset_setting_key]);
-      if (virtual_id === "") {
-        continue;
-      }
-      try {
-        const text = this.read_prompt_preset(prompt, virtual_id);
-        prompts.push(this.build_prompt_input(prompt, text));
-        loaded_names.push(PROMPT_DEFAULT_PRESET_DISPLAY_NAMES[prompt.kind]);
-      } catch (error) {
-        this.log_non_blocking_warning(
-          t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
-          error,
-          {
-            task_type: prompt.kind,
-            virtual_id,
-          },
-        );
-      }
+      if (virtual_id !== "")
+        try {
+          const text = this.read_prompt_preset(virtual_id);
+          translation_prompt = { text, enabled: true };
+          loaded_names.push("翻译提示词");
+        } catch (error) {
+          this.log_non_blocking_warning(
+            t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
+            error,
+            {
+              prompt_kind: prompt.store_key,
+              virtual_id,
+            },
+          );
+        }
     }
 
     return {
       text_preserve_mode: DEFAULT_TEXT_PRESERVE_MODE,
       quality_rules,
-      prompts,
+      translation_prompt,
       loaded_names,
     };
   }
@@ -164,8 +157,8 @@ export class ProjectDefaultPresetReader {
   /**
    * 读取提示词预设正文，统一去掉 BOM 与首尾空白。
    */
-  private read_prompt_preset(prompt: Prompt, virtual_id: string): string {
-    const preset_path = this.resolve_prompt_preset_path(prompt, virtual_id);
+  private read_prompt_preset(virtual_id: string): string {
+    const preset_path = this.resolve_prompt_preset_path(virtual_id);
     return this.native_fs
       .read_text_file(preset_path)
       .replace(/^\uFEFF/u, "")
@@ -188,24 +181,13 @@ export class ProjectDefaultPresetReader {
   /**
    * 解析提示词预设虚拟 ID 到真实路径。
    */
-  private resolve_prompt_preset_path(prompt: Prompt, virtual_id: string): string {
+  private resolve_prompt_preset_path(virtual_id: string): string {
     return resolve_preset_file({
       virtual_id,
-      extension: prompt.preset_extension,
-      builtin_directory: this.paths.get_prompt_builtin_preset_dir(prompt.kind),
-      user_directory: this.paths.get_prompt_user_preset_dir(prompt.kind),
+      extension: TRANSLATION_PROMPT.preset_extension,
+      builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
+      user_directory: this.paths.get_prompt_user_preset_dir(),
     }).file_path;
-  }
-
-  /**
-   * 将提示词模型收窄为生命周期可直接写入的显式输入。
-   */
-  private build_prompt_input(prompt: Prompt, text: string): ProjectPromptInput {
-    return {
-      kind: prompt.kind,
-      text,
-      enabled: true,
-    };
   }
 
   /**

@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
+import type { QualityRuleStatisticsCache } from "../cache/quality-rule-statistics-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import { QualityStatisticsService } from "./quality-statistics-service";
 
-function create_cache(): Pick<QualityRuleAnalysisCache, "read"> {
+function create_cache(): Pick<QualityRuleStatisticsCache, "read"> {
   return {
     read: vi.fn(async () => ({
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 1, quality: 2 },
-      analysis: {
+      statistics: {
         entry_ids: ["hp"],
         hits_by_entry_id: { hp: 1 },
         examples_by_entry_id: { hp: ["HP +10"] },

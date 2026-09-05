@@ -63,24 +63,8 @@ function ensure_current_schema(db: DatabaseSync): void {
         type TEXT NOT NULL,
         data TEXT NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS analysis_item_checkpoint (
-        item_id INTEGER PRIMARY KEY,
-        status TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        error_count INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS analysis_candidate_aggregate (
-        src TEXT PRIMARY KEY,
-        dst_votes TEXT NOT NULL,
-        info_votes TEXT NOT NULL,
-        observation_count INTEGER NOT NULL,
-        first_seen_at TEXT NOT NULL,
-        last_seen_at TEXT NOT NULL,
-        case_sensitive INTEGER NOT NULL
-      );
       CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path);
       CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type);
-      CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status);
   `);
 }
 

@@ -1,14 +1,13 @@
+import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
-import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+
 import {
-  is_task_skipped_item_status,
-  normalize_task_progress_snapshot,
-  type TaskProgressSnapshot,
+  type BatchTranslationProgress,
   TASK_PROGRESS_STATUSES,
-} from "../../domain/task";
+} from "../../domain/batch-translation";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
 import {
@@ -43,15 +42,8 @@ export type ProjectPrefilterStats = {
   duplicated: number; // 重复项跳过数量
 };
 
-export type ProjectAnalysisWriteOutput = {
-  extras: Record<string, unknown>; // 当前分析进度保留字段，新建和 reset 默认从空对象开始
-  candidate_count: number; // 当前候选术语数，预过滤不会生成候选
-  status_summary: Record<string, unknown>; // 分析视角的可处理、已处理和失败行数摘要
-};
-
 export type ProjectPrefilterWriteOutput = {
   items: Record<string, ProjectItemPublicRecord>; // 预过滤后的完整公开 item 集合
-  analysis: ProjectAnalysisWriteOutput; // 重置后的分析计算事实
   translation_extras: Record<string, unknown>; // 按最终 item 状态重建的翻译进度 meta
   project_settings: {
     source_language: string; // 写回 settings mirror 的源语言
@@ -118,36 +110,10 @@ export function clone_project_item_view_record(item: ProjectItemViewRecord): Pro
 }
 
 /**
- * 从任务快照提取可持久化进度字段，排除任务生命周期专用字段。
- */
-function build_translation_extras(task_snapshot: Record<string, unknown>): Record<string, unknown> {
-  const progress = task_snapshot.progress;
-  if (is_json_record(progress)) {
-    return { ...progress };
-  }
-  const translation_extras: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(task_snapshot)) {
-    if (
-      key === "task_type" ||
-      key === "status" ||
-      key === "busy" ||
-      key === "request_in_flight_count" ||
-      key === "analysis_candidate_count" ||
-      key === "extras" ||
-      key === "progress"
-    ) {
-      continue;
-    }
-    translation_extras[key] = value;
-  }
-  return translation_extras;
-}
-
-/**
  * 构造空闲翻译任务快照，供 reset 或无历史进度时作为统计基底。
  */
 export function create_empty_translation_task_snapshot(): Record<string, unknown> {
-  const progress: TaskProgressSnapshot = {
+  const progress: BatchTranslationProgress = {
     line: 0,
     total_line: 0,
     processed_line: 0,
@@ -160,17 +126,15 @@ export function create_empty_translation_task_snapshot(): Record<string, unknown
     start_time: 0,
   };
   return {
-    task_type: "translation",
     status: "idle",
-    busy: false,
     request_in_flight_count: 0,
     progress,
-    extras: { kind: "translation", scope: { kind: "all" } },
+    scope: { kind: "all" },
   };
 }
 
 /**
- * 按最终 item 状态重建翻译进度 meta；任务生命周期仍由 TaskSnapshot 管理。
+ * 按最终 item 状态重建翻译进度 meta；任务生命周期仍由 BatchTranslationSnapshot 管理。
  */
 export function build_translation_extras_from_items(args: {
   task_snapshot: Record<string, unknown>;
@@ -192,82 +156,15 @@ export function build_translation_extras_from_items(args: {
     }
   }
 
-  const translation_extras = build_translation_extras(args.task_snapshot);
+  const translation_extras = {
+    ...normalize_batch_translation_progress(args.task_snapshot.progress ?? args.task_snapshot),
+  };
   translation_extras.processed_line = processed_line;
   translation_extras.error_line = error_line;
   translation_extras.total_line = total_line;
   translation_extras.line = processed_line + error_line;
 
   return translation_extras;
-}
-
-/**
- * 分析 reset 的默认统计只纳入非空、非跳过条目。
- */
-export function build_analysis_status_summary(
-  items: Iterable<ProjectItemViewRecord>,
-): Record<string, unknown> {
-  let total_line = 0;
-  for (const item of items) {
-    if (item.src.trim() === "" || is_task_skipped_item_status(item.status)) {
-      continue;
-    }
-    total_line += 1;
-  }
-
-  return {
-    total_line,
-    processed_line: 0,
-    error_line: 0,
-    line: 0,
-  };
-}
-
-/**
- * 将保留的计时、token 统计与当前状态摘要合并为持久进度。
- */
-export function build_analysis_progress_snapshot(args: {
-  extras: Record<string, unknown>;
-  status_summary: Record<string, unknown>;
-}): Record<string, unknown> {
-  const snapshot: TaskProgressSnapshot = {
-    start_time: 0.0,
-    time: 0.0,
-    total_line: 0,
-    line: 0,
-    processed_line: 0,
-    error_line: 0,
-    total_tokens: 0,
-    total_input_tokens: 0,
-    total_reasoning_tokens: 0,
-    total_output_tokens: 0,
-  };
-  Object.assign(snapshot, args.extras);
-  return normalize_task_progress_snapshot({
-    ...snapshot,
-    total_line: args.status_summary.total_line ?? 0,
-    line: args.status_summary.line ?? 0,
-    processed_line: args.status_summary.processed_line ?? 0,
-    error_line: args.status_summary.error_line ?? 0,
-  });
-}
-
-/** 公开 analysis delta 与持久进度共用同一归一化结果。 */
-export function build_analysis_section_delta(
-  extras: Record<string, unknown>,
-  candidate_count: number,
-): JsonRecord {
-  const snapshot = normalize_task_progress_snapshot(extras);
-  return {
-    extras: snapshot as unknown as JsonValue,
-    candidate_count: Math.max(0, Math.trunc(candidate_count)),
-    status_summary: {
-      total_line: snapshot.total_line,
-      processed_line: snapshot.processed_line,
-      error_line: snapshot.error_line,
-      line: snapshot.line,
-    },
-  };
 }
 
 /**
@@ -448,11 +345,7 @@ export function compute_project_prefilter_write(
 
   return {
     items: next_items,
-    analysis: {
-      extras: {},
-      candidate_count: 0,
-      status_summary: build_analysis_status_summary(item_index.values()),
-    },
+
     translation_extras,
     project_settings: {
       source_language: input.source_language,

@@ -15,10 +15,9 @@ import type {
   ProjectEventPipeline,
   ProjectChangeEventPayload,
 } from "@frontend/app/state/project-event-pipeline";
-import {
-  normalize_task_snapshot,
-  type TaskSnapshot,
-} from "@frontend/app/state/task-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+
 import { normalize_runtime_activity_snapshot } from "@frontend/app/state/runtime-activity-store";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { record_renderer_diagnostics_event } from "@frontend/app/diagnostics/renderer-error-reporter";
@@ -28,7 +27,6 @@ import {
   RUNTIME_ACTIVITY_EVENT_TOPIC,
   type RuntimeActivitySnapshot,
 } from "@shared/runtime-activity";
-import { is_task_type } from "@domain/task";
 
 type SettingsChangedEventPayload = {
   keys?: unknown;
@@ -38,7 +36,7 @@ type SettingsChangedEventPayload = {
 type DesktopEventStreamOptions = {
   schedulerRef: MutableRefObject<DesktopRefreshScheduler | null>;
   applySettingsSnapshot: (payload: SettingsSnapshotPayload) => void;
-  applyTaskSnapshot: (snapshot: TaskSnapshot) => void;
+  applyTaskSnapshot: (snapshot: BatchTranslationSnapshot) => void;
   applyRuntimeSnapshot: (snapshot: RuntimeActivitySnapshot) => void;
   refreshSettings: () => Promise<unknown>;
   refreshRuntime: () => Promise<unknown>;
@@ -84,11 +82,11 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       let payload: Record<string, unknown> = {};
       try {
         payload = parse_event_payload(event);
-        const task_snapshot = normalize_task_snapshot(payload);
+        const task_snapshot = normalize_batch_translation_snapshot(payload);
         // task 面包屑先于调度分支记录，保证崩溃发生在 enqueue/flush 之间时仍有最新进度。
         record_renderer_diagnostics_event({
-          topic: "task.snapshot_changed",
-          task: summarize_task_snapshot_for_diagnostics(task_snapshot),
+          topic: "batch_translation.snapshot_changed",
+          batch_translation: summarize_task_snapshot_for_diagnostics(task_snapshot),
         });
         if (should_apply_task_snapshot_immediately(task_snapshot)) {
           refresh_scheduler.flush();
@@ -101,13 +99,13 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
         report_state_error(error, {
           source: "sse",
           triggeringEvent: {
-            topic: "task.snapshot_changed",
-            task: payload,
+            topic: "batch_translation.snapshot_changed",
+            batch_translation: payload,
           },
           context: { stage: "handle_task_snapshot_changed" },
         });
         void refresh_task_after_state_error("task_snapshot_event_failed", {
-          topic: "task.snapshot_changed",
+          topic: "batch_translation.snapshot_changed",
         });
       }
     }
@@ -202,7 +200,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           });
         }),
         refresh_task_after_state_error("event_stream_reconnected", {
-          topic: "task.snapshot_changed",
+          topic: "batch_translation.snapshot_changed",
         }),
         refresh_project_state_after_error("event_stream_reconnected", {
           topic: PROJECT_CHANGE_EVENT_TOPIC,
@@ -225,7 +223,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           opened_once = true;
         };
         event_source.addEventListener(
-          "task.snapshot_changed",
+          "batch_translation.snapshot_changed",
           handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
@@ -289,20 +287,10 @@ function handle_scheduler_flush_error(
     return;
   }
 
-  const failed_task_type = context.taskSnapshot?.task_type;
-  void recovery.refresh_task_after_state_error(
-    "scheduler_task_snapshot_failed",
-    triggering_event,
-    is_task_type(failed_task_type) ? failed_task_type : undefined,
-  );
+  void recovery.refresh_task_after_state_error("scheduler_task_snapshot_failed", triggering_event);
 }
 
 // 终态快照必须解除交互等待，不能被普通 500ms 合帧窗口延迟
-function should_apply_task_snapshot_immediately(snapshot: TaskSnapshot): boolean {
-  return (
-    !snapshot.busy ||
-    snapshot.status === "idle" ||
-    snapshot.status === "done" ||
-    snapshot.status === "error"
-  );
+function should_apply_task_snapshot_immediately(snapshot: BatchTranslationSnapshot): boolean {
+  return snapshot.status === "idle" || snapshot.status === "done" || snapshot.status === "error";
 }

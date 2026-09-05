@@ -84,7 +84,7 @@ describe("MarkdownV2BlockMigration", () => {
     ]);
     expect(JSON.stringify(markdown_items)).toContain(data_uri);
     expect(fixture.items()).toContainEqual(expect.objectContaining({ id: 50, src: "保留" }));
-    expect(fixture.meta()["translation_extras"]).toEqual({
+    expect(fixture.meta()["translation_extras"]).toMatchObject({
       total_tokens: 42,
       time: 7,
       processed_line: 2,
@@ -92,10 +92,8 @@ describe("MarkdownV2BlockMigration", () => {
       total_line: 4,
       line: 2,
     });
-    expect(fixture.meta()).toMatchObject({ analysis_extras: {}, analysis_candidate_count: 0 });
-    expect(fixture.database.delete_analysis_item_checkpoints).toHaveBeenCalledWith("demo.lg");
-    expect(fixture.database.clear_analysis_candidate_aggregates).toHaveBeenCalledWith("demo.lg");
-    expect(fixture.bumped_sections).toEqual([["files", "items", "analysis"]]);
+
+    expect(fixture.bumped_sections).toEqual([["files", "items"]]);
     expect(migration.build_writes("demo.lg")).toEqual([]);
     expect(fixture.items().every((item) => item["file_type"] !== "MD")).toBe(true);
   });

@@ -7,18 +7,16 @@ import {
   summarize_scheduler_error_context,
   summarize_task_snapshot_for_diagnostics,
 } from "./desktop-diagnostics";
-import type { TaskSnapshot } from "./task-snapshot-store";
+import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
 
 /**
  * 构造最小 task snapshot，验证诊断摘要不会携带 extras 大对象。
  */
-function create_task_snapshot(): TaskSnapshot {
+function create_task_snapshot(): BatchTranslationSnapshot {
   return {
-    run_revision: 7,
-    task_type: "translation",
+    revision: 7,
     status: "running",
-    busy: true,
     request_in_flight_count: 2,
     progress: {
       line: 5,
@@ -32,7 +30,7 @@ function create_task_snapshot(): TaskSnapshot {
       time: 12,
       start_time: 3,
     },
-    extras: { kind: "translation", scope: { kind: "all" } },
+    scope: { kind: "all" },
   };
 }
 
@@ -84,9 +82,7 @@ describe("desktop state diagnostics", () => {
 
     expect(summarize_task_snapshot_for_diagnostics(create_task_snapshot())).toEqual({
       runRevision: 7,
-      taskType: "translation",
       status: "running",
-      busy: true,
       requestInFlightCount: 2,
       progress: {
         line: 5,

@@ -11,7 +11,7 @@ import { require_project_expected_section_revisions } from "../project/project-w
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { resolve_prompt_template_language } from "../../domain/app-language";
 import { is_json_record } from "../../domain/json";
-import { Prompt } from "../../domain/prompt";
+import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
@@ -37,31 +37,29 @@ export class QualityPromptService {
   ) {}
 
   /**
-   * 读取单个任务类型的提示词切片。
+   * 读取当前工程翻译提示词切片。
    */
-  public read(request: JsonRecord): JsonRecord {
+  public read(_request: JsonRecord): JsonRecord {
     const project_path = this.session_state.require_loaded_project_path();
-    const task_type = Prompt.from_json(request["task_type"]).kind;
     const prompts_block = this.cache.prompts.readBlock();
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
-      prompt: this.normalize_record(prompts_block[task_type]) as unknown as JsonValue,
+      prompt: this.normalize_record(
+        prompts_block[TRANSLATION_PROMPT.store_key],
+      ) as unknown as JsonValue,
     };
   }
 
   /**
    * 读取随应用语言变化的提示词模板。
    */
-  public get_template(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
+  public get_template(_request: JsonRecord): JsonRecord {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     const prompt_language = resolve_prompt_template_language(config.app_language);
-    const template_dir = this.paths.get_prompt_template_dir(task_type, prompt_language);
+    const template_dir = this.paths.get_prompt_template_dir(prompt_language);
     const fill_template_section = (text: string): string => {
-      return task_type === "translation"
-        ? fill_translation_output_format_placeholder(text, "text", prompt_language)
-        : text;
+      return fill_translation_output_format_placeholder(text, "text", prompt_language);
     };
     return {
       template: {
@@ -84,7 +82,7 @@ export class QualityPromptService {
   public async save(request: JsonRecord): Promise<ProjectWriteResult> {
     return await this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, ["expected_revision"]);
-      const prompt = Prompt.from_json(request["task_type"]);
+      const prompt = TRANSLATION_PROMPT;
       const project_path = this.session_state.require_loaded_project_path();
       return await this.write_store.save_prompt({
         projectPath: project_path,
@@ -115,7 +113,7 @@ export class QualityPromptService {
    * 导出当前工程提示词。
    */
   public async export(request: JsonRecord): Promise<JsonRecord> {
-    const prompt = Prompt.from_json(request["task_type"]);
+    const prompt = TRANSLATION_PROMPT;
     const project_path = this.session_state.require_loaded_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
     const text = this.database.get_rule_text(project_path, prompt.database_type);
@@ -126,17 +124,16 @@ export class QualityPromptService {
   /**
    * 列出内置和用户提示词预设。
    */
-  public list_presets(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
+  public list_presets(_request: JsonRecord): JsonRecord {
     return {
       builtin_presets: this.list_preset_items(
         "builtin",
-        this.paths.get_prompt_builtin_preset_dir(task_type),
-        this.paths.get_prompt_builtin_preset_relative_dir(task_type),
+        this.paths.get_prompt_builtin_preset_dir(),
+        this.paths.get_prompt_builtin_preset_relative_dir(),
       ) as unknown as JsonValue,
       user_presets: this.list_preset_items(
         "user",
-        this.paths.get_prompt_user_preset_dir(task_type),
+        this.paths.get_prompt_user_preset_dir(),
       ) as unknown as JsonValue,
     };
   }
@@ -145,10 +142,9 @@ export class QualityPromptService {
    * 读取提示词预设。
    */
   public read_preset(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
     return {
       text: this.read_text_file(
-        this.resolve_prompt_preset_file(task_type, String(request["virtual_id"] ?? "")).file_path,
+        this.resolve_prompt_preset_file(String(request["virtual_id"] ?? "")).file_path,
       ),
     };
   }
@@ -157,8 +153,7 @@ export class QualityPromptService {
    * 保存用户提示词预设。
    */
   public save_preset(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
-    const directory = this.paths.get_prompt_user_preset_dir(task_type);
+    const directory = this.paths.get_prompt_user_preset_dir();
     this.native_fs.make_dir(directory);
     const preset_file = resolve_preset_file({
       virtual_id: `user:${this.normalize_preset_name(String(request["name"] ?? ""))}.txt`,
@@ -174,15 +169,11 @@ export class QualityPromptService {
    * 重命名用户提示词预设。
    */
   public rename_preset(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
-    const current_file = this.resolve_prompt_preset_file(
-      task_type,
-      String(request["virtual_id"] ?? ""),
-    );
+    const current_file = this.resolve_prompt_preset_file(String(request["virtual_id"] ?? ""));
     if (current_file.source !== "user") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const directory = this.paths.get_prompt_user_preset_dir(task_type);
+    const directory = this.paths.get_prompt_user_preset_dir();
     const new_file = resolve_preset_file({
       virtual_id: `user:${this.normalize_preset_name(String(request["new_name"] ?? ""))}.txt`,
       extension: ".txt",
@@ -197,11 +188,7 @@ export class QualityPromptService {
    * 删除用户提示词预设。
    */
   public delete_preset(request: JsonRecord): JsonRecord {
-    const task_type = Prompt.from_json(request["task_type"]).kind;
-    const preset_file = this.resolve_prompt_preset_file(
-      task_type,
-      String(request["virtual_id"] ?? ""),
-    );
+    const preset_file = this.resolve_prompt_preset_file(String(request["virtual_id"] ?? ""));
     if (preset_file.source !== "user") {
       throw new AppErrors.AppError("request.validation_failed");
     }
@@ -265,16 +252,13 @@ export class QualityPromptService {
     };
   }
 
-  /** 按 task_type 解析内置 / 用户预设文件。 */
-  private resolve_prompt_preset_file(
-    task_type: string,
-    virtual_id: string,
-  ): ReturnType<typeof resolve_preset_file> {
+  /** 按虚拟 ID 解析翻译提示词预设文件。 */
+  private resolve_prompt_preset_file(virtual_id: string): ReturnType<typeof resolve_preset_file> {
     return resolve_preset_file({
       virtual_id,
       extension: ".txt",
-      builtin_directory: this.paths.get_prompt_builtin_preset_dir(task_type),
-      user_directory: this.paths.get_prompt_user_preset_dir(task_type),
+      builtin_directory: this.paths.get_prompt_builtin_preset_dir(),
+      user_directory: this.paths.get_prompt_user_preset_dir(),
     });
   }
 

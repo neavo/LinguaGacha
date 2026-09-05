@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
+import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import {
   DESKTOP_RUNTIME_REFRESH_INTERVAL_MS,
   DesktopRefreshScheduler,
@@ -14,7 +14,7 @@ describe("DesktopRefreshScheduler", () => {
 
   it("同一窗口内旧 task snapshot 后到也只应用最高 revision", async () => {
     vi.useFakeTimers();
-    const applied_tasks: TaskSnapshot[] = [];
+    const applied_tasks: BatchTranslationSnapshot[] = [];
     const scheduler = new DesktopRefreshScheduler({
       applyTaskSnapshot: (snapshot) => {
         applied_tasks.push(snapshot);
@@ -139,12 +139,10 @@ describe("DesktopRefreshScheduler", () => {
 function noop_flush_error_handler(): void {}
 
 // 构造最小可用 task snapshot，方便断言调度器只保留最新运行态
-function create_task_snapshot(line: number): TaskSnapshot {
+function create_task_snapshot(line: number): BatchTranslationSnapshot {
   return {
-    run_revision: line,
-    task_type: "translation",
+    revision: line,
     status: "running",
-    busy: true,
     request_in_flight_count: line,
     progress: {
       line,
@@ -158,7 +156,7 @@ function create_task_snapshot(line: number): TaskSnapshot {
       time: 0,
       start_time: 0,
     },
-    extras: { kind: "translation", scope: { kind: "all" } },
+    scope: { kind: "all" },
   };
 }
 

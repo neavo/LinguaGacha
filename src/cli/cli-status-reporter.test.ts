@@ -44,15 +44,15 @@ describe("CLIJsonStatusReporter", () => {
   });
 
   it("失败结束时自动补 started 并只暴露错误消息", () => {
-    const { events, reporter } = create_reporter("analyze");
+    const { events, reporter } = create_reporter("translate");
 
     reporter.emit_finished("error", new Error("导出失败"));
 
     expect(events).toEqual([
-      { type: "started", command: "analyze", timestamp: TIMESTAMP },
+      { type: "started", command: "translate", timestamp: TIMESTAMP },
       {
         type: "finished",
-        command: "analyze",
+        command: "translate",
         status: "error",
         timestamp: TIMESTAMP,
         error: { message: "导出失败" },

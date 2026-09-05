@@ -103,7 +103,7 @@ describe("Agent workspace change parser", () => {
       AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
       [
         JSON.stringify({ kind: "translation", fp: "abcd", text: "正文" }),
-        JSON.stringify({ kind: "analysis", fp: "abcde", text: "正文" }),
+        JSON.stringify({ kind: "translation", fp: "abcde", text: "正文" }),
       ].join("\n"),
     );
     write(
@@ -134,7 +134,7 @@ describe("Agent workspace change parser", () => {
     expect(parsed.rejected).toContainEqual({
       scope: "prompts",
       op: "update",
-      kind: "analysis",
+      kind: "translation",
       reason: "invalid_change",
     });
   });

@@ -152,8 +152,7 @@ type DefaultPresetSettingKey =
   | "text_preserve_default_preset"
   | "pre_translation_replacement_default_preset"
   | "post_translation_replacement_default_preset"
-  | "translation_custom_prompt_default_preset"
-  | "analysis_custom_prompt_default_preset";
+  | "translation_custom_prompt_default_preset";
 
 /**
  * 设置字段到本地化名称的映射，用于汇总已加载默认预设。
@@ -263,10 +262,6 @@ const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
   {
     settings_key: "translation_custom_prompt_default_preset",
     name_key: "project_page.create.default_presets.translation_prompt",
-  },
-  {
-    settings_key: "analysis_custom_prompt_default_preset",
-    name_key: "project_page.create.default_presets.analysis_prompt",
   },
 ];
 
@@ -761,9 +756,7 @@ function resolve_project_loading_stage_message(
   if (stage === "prompts") {
     return t("project_page.loading_stages.prompts");
   }
-  if (stage === "analysis") {
-    return t("project_page.loading_stages.analysis");
-  }
+
   if (stage === "proofreading") {
     return t("project_page.loading_stages.proofreading");
   }
@@ -795,7 +788,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     set_project_session_status,
     refresh_project_snapshot,
     refresh_settings,
-    refresh_task,
+    refresh_batch_translation,
   } = useDesktopState();
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
     useDesktopToast();
@@ -1176,7 +1169,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: created_project_path,
             name: extract_stem(extract_file_name(created_project_path)),
           });
-          await Promise.all([refresh_recent_projects(), refresh_task()]);
+          await Promise.all([refresh_recent_projects(), refresh_batch_translation()]);
         },
       });
       if (loaded_default_preset_names.length > 0) {
@@ -1256,7 +1249,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               project_settings: alignment_settings,
               expected_section_revisions: {
                 items: Number(section_revisions.items ?? 0),
-                analysis: Number(section_revisions.analysis ?? 0),
               },
             });
             did_align_project_settings = true;
@@ -1272,7 +1264,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: project_to_open.path,
             name: project_to_open.name,
           });
-          await Promise.all([refresh_recent_projects(), refresh_task()]);
+          await Promise.all([refresh_recent_projects(), refresh_batch_translation()]);
         },
       });
       if (did_align_project_settings) {

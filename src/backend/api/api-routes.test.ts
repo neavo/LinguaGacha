@@ -75,11 +75,6 @@ const POST_PATHS = new Set([
   "/api/quality/prompts/presets/save",
   "/api/quality/prompts/presets/rename",
   "/api/quality/prompts/presets/delete",
-  "/api/analysis/glossary-import/preview",
-  "/api/analysis/reset",
-  "/api/analysis/reset-preview",
-  "/api/analysis/candidates/list",
-  "/api/analysis/glossary/import",
   "/api/translation/files/export",
   "/api/toolbox/ts-conversion/files/export",
   "/api/settings/app",
@@ -96,9 +91,9 @@ const POST_PATHS = new Set([
   "/api/models/reorder",
   "/api/models/list-available",
   "/api/models/test",
-  "/api/tasks/start",
-  "/api/tasks/stop",
-  "/api/tasks/snapshot",
+  "/api/batch-translation/start",
+  "/api/batch-translation/stop",
+  "/api/batch-translation/snapshot",
 ]);
 
 describe("register_api_routes", () => {
@@ -134,7 +129,7 @@ describe("register_api_routes", () => {
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
       ok: true,
       data: {
-        model_selection: { translation: "a", analysis: "b", agent: "c" },
+        model_selection: { translation: "a", agent: "c" },
         models: [],
       },
     });
@@ -145,7 +140,7 @@ describe("register_api_routes", () => {
     const task = { task_type: "translation" };
     const message: JsonRecord = { text: "@skill(glossary-audit) 审校" };
 
-    expect(read_post_handler(fixture.post_json, "/api/tasks/start")(task)).toEqual({
+    expect(read_post_handler(fixture.post_json, "/api/batch-translation/start")(task)).toEqual({
       accepted: true,
     });
     expect(fixture.start_task).toHaveBeenCalledWith(task);
@@ -315,12 +310,12 @@ function create_route_fixture() {
     files: { preview: {}, translationExport: {}, tsConversionExport: {} },
     model: {
       get_selection_snapshot: vi.fn(() => ({
-        model_selection: { translation: "a", analysis: "b", agent: "c" },
+        model_selection: { translation: "a", agent: "c" },
         models: [],
       })),
       update_selected_model_thinking_level,
     },
-    tasks: { start_task },
+    batchTranslation: { start: start_task },
     runtime: {
       getSnapshot: vi.fn(() => ({ runtime: { revision: 0, owner: null } })),
     },

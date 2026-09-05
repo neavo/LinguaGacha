@@ -2,10 +2,9 @@ import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  normalize_task_snapshot,
-  type TaskSnapshot,
-} from "@frontend/app/state/task-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
@@ -36,7 +35,7 @@ type ProofreadingProjectWriteRunner = (args: {
 
 type RetranslateTaskAck = {
   accepted?: boolean;
-  task?: Partial<TaskSnapshot> & Record<string, unknown>;
+  batch_translation?: Partial<BatchTranslationSnapshot> & Record<string, unknown>;
 };
 
 type UseProofreadingBatchActionsOptions = {
@@ -46,8 +45,8 @@ type UseProofreadingBatchActionsOptions = {
   dialog_open: boolean;
   list_revisions: ProjectDataSectionRevisions; // 当前校对列表已经消费的项目、质量和校对事实锁
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingCommandItemSnapshot[]>;
-  task_snapshot: TaskSnapshot;
-  sync_task_snapshot: (snapshot: TaskSnapshot) => void;
+  task_snapshot: BatchTranslationSnapshot;
+  sync_task_snapshot: (snapshot: BatchTranslationSnapshot) => void;
   run_project_write: ProofreadingProjectWriteRunner;
   set_is_writing: (next_is_writing: boolean) => void;
   resolve_preferred_row_id: (preferred_row_id?: string | null) => string | null;
@@ -91,37 +90,6 @@ function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
   return item_ids;
 }
 
-function build_retranslate_task_snapshot(args: {
-  ack: RetranslateTaskAck;
-  current_task_snapshot: TaskSnapshot;
-  requested_item_ids: number[];
-}): TaskSnapshot {
-  const task_payload = args.ack.task ?? {};
-  const normalized_snapshot = normalize_task_snapshot({ task: task_payload });
-  const normalized_scope =
-    normalized_snapshot.extras.kind === "translation" ? normalized_snapshot.extras.scope : null;
-  const item_scope =
-    normalized_scope?.kind === "items" && normalized_scope.item_ids.length > 0
-      ? normalized_scope
-      : { kind: "items" as const, item_ids: args.requested_item_ids };
-
-  // 启动回执允许只返回增量字段；缺失字段按“已请求重翻指定条目”的前端运行态语义补齐。
-  return {
-    ...normalized_snapshot,
-    run_revision:
-      task_payload.run_revision === undefined
-        ? args.current_task_snapshot.run_revision
-        : normalized_snapshot.run_revision,
-    task_type: task_payload.task_type === undefined ? "translation" : normalized_snapshot.task_type,
-    status: task_payload.status === undefined ? "requested" : normalized_snapshot.status,
-    busy: task_payload.busy === undefined ? true : normalized_snapshot.busy,
-    extras: {
-      kind: "translation",
-      scope: item_scope,
-    },
-  };
-}
-
 // 校对页批量动作的唯一归宿：高风险动作先确认，状态设置保持直接提交。
 export function useProofreadingBatchActions(
   options: UseProofreadingBatchActionsOptions,
@@ -163,18 +131,11 @@ export function useProofreadingBatchActions(
       remember_preferred_row_id(resolve_preferred_row_id(preferred_row_id));
       set_is_writing(true);
       try {
-        const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start", {
-          task_type: "translation",
+        const ack = await api_fetch<RetranslateTaskAck>("/api/batch-translation/start", {
           mode: "new",
           scope: { kind: "items", item_ids },
         });
-        sync_task_snapshot(
-          build_retranslate_task_snapshot({
-            ack,
-            current_task_snapshot: task_snapshot,
-            requested_item_ids: item_ids,
-          }),
-        );
+        sync_task_snapshot(normalize_batch_translation_snapshot(ack));
         if (dialog_open) {
           close_edit_dialog();
         }

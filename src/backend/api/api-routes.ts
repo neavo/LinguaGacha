@@ -140,20 +140,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/quality/prompts/presets/rename", (body) => prompts.rename_preset(body));
   context.postJson("/api/quality/prompts/presets/delete", (body) => prompts.delete_preset(body));
 
-  context.postJson("/api/analysis/glossary-import/preview", (body) =>
-    quality_rules.prepare_analysis_glossary_import(body),
-  );
-  context.postJson("/api/analysis/reset", (body) => project_content.reset_analysis(body));
-  context.postJson("/api/analysis/reset-preview", (body) =>
-    reset_preview.preview_analysis_reset(body),
-  );
-  context.postJson("/api/analysis/candidates/list", () =>
-    services.project.readAnalysisCandidates(),
-  );
-  context.postJson("/api/analysis/glossary/import", (body) =>
-    quality_rules.import_analysis_glossary(body),
-  );
-
   context.postJson("/api/translation/files/export", () =>
     services.files.translationExport.export_files(),
   );
@@ -188,8 +174,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/models/list-available", (body) => models.list_available_models(body));
   context.postJson("/api/models/test", (body) => models.test_model(body));
 
-  const tasks = services.tasks;
-  context.postJson("/api/tasks/start", (body) => tasks.start_task(body));
-  context.postJson("/api/tasks/stop", (body) => tasks.stop_task(body));
-  context.postJson("/api/tasks/snapshot", (body) => tasks.get_task_snapshot(body));
+  const batch_translation = services.batchTranslation;
+  context.postJson("/api/batch-translation/start", (body) => batch_translation.start(body));
+  context.postJson("/api/batch-translation/stop", () => batch_translation.stop());
+  context.postJson("/api/batch-translation/snapshot", () => batch_translation.get_snapshot());
 }

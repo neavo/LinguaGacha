@@ -79,8 +79,6 @@ describe("text worker snapshots", () => {
       post_replacement_entries: [],
       translation_prompt_enable: true,
       translation_prompt: "翻译提示",
-      analysis_prompt_enable: false,
-      analysis_prompt: "",
     });
   });
 });

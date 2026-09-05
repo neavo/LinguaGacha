@@ -35,9 +35,6 @@ export const en_us_workbench_page = {
     reset_task_all: "Reset All Data",
     reset_task_failed: "Reset Failed Data",
     stop_task: "Stop",
-    analysis_task: "Analysis",
-    start_analysis: "Start Analysis",
-    import_analysis_glossary: "Import Candidate Terms",
   },
   task: {
     menu: {
@@ -61,45 +58,7 @@ export const en_us_workbench_page = {
       stopped: "Stopped …",
     },
   },
-  analysis_task: {
-    menu: {
-      tooltip: "Extract terms from source text",
-    },
-    migration: {
-      description:
-        "The classic Analysis task workflow will be removed soon. We recommend using AGENT to generate the glossary automatically. Continue anyway …?",
-    },
-    summary: {
-      running: "Analyzing",
-    },
-    detail: {
-      title: "Analysis Details",
-      description: "View live statistics for the current analysis.",
-      waveform_title: "Live Speed",
-      metrics_title: "Metrics",
 
-      active_requests: "Active Requests",
-      candidate_count: "Candidate Terms",
-    },
-    confirm: {
-      reset_all_description: "Confirm resetting the analysis progress for the entire project …?",
-      reset_failed_description: "Confirm resetting failed analysis progress …?",
-      import_glossary_description: "Confirm importing candidate terms into the glossary …?",
-      stop_description: "Confirm stopping the current analysis task …?",
-    },
-    feedback: {
-      refresh_failed: "Failed to refresh analysis task state",
-      start_failed: "Failed to start analysis task",
-      stop_failed: "Failed to stop analysis task",
-
-      reset_all_failed: "Failed to reset all analysis progress",
-      reset_failed_failed: "Failed to reset failed analysis progress",
-      import_loading_toast: "Importing candidate terms and refreshing proofreading cache …",
-      import_failed: "Failed to import candidate terms",
-      import_success: "Imported {COUNT} candidate terms",
-      agent_draft_preserved: "The existing AGENT draft was preserved.",
-    },
-  },
   translation_task: {
     menu: {
       tooltip: "Translate source text into the target language",

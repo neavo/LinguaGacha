@@ -23,8 +23,8 @@ function useDesktopStateStores() {
 }
 
 /** 只订阅完整任务快照。 */
-export function useTaskSnapshot() {
-  const store = useDesktopStateStores().task;
+export function useBatchTranslationSnapshot() {
+  const store = useDesktopStateStores().batch_translation;
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }
 
@@ -41,6 +41,6 @@ export function useProjectChangeSignal() {
 }
 
 /** 返回 task store 的稳定写入口，供命令 ack 与 SSE 同步。 */
-export function useSyncTaskSnapshot() {
-  return useDesktopStateStores().task.applySnapshot;
+export function useSyncBatchTranslationSnapshot() {
+  return useDesktopStateStores().batch_translation.applySnapshot;
 }

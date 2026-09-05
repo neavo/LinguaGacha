@@ -9,9 +9,8 @@ describe("ApiStreamHub", () => {
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
 
-    api_stream_hub.publish("task.snapshot_changed", {
+    api_stream_hub.publish("batch_translation.snapshot_changed", {
       task: {
-        task_type: "translation",
         status: "running",
       },
     });
@@ -21,7 +20,7 @@ describe("ApiStreamHub", () => {
     api_stream_hub.stop();
 
     const frame = new TextDecoder().decode(chunk?.value);
-    expect(frame).toContain("event: task.snapshot_changed");
+    expect(frame).toContain("event: batch_translation.snapshot_changed");
     expect(frame).toContain('"status":"running"');
   });
 });

@@ -40,7 +40,6 @@ export type CacheChange = {
   quality: CacheBlockChange;
   prompts: CacheBlockChange;
   settings: CacheBlockChange;
-  analysis: CacheBlockChange;
 };
 
 // 对应缓存块保持现状。
@@ -72,7 +71,6 @@ export function create_cache_change(event: ProjectEvent): CacheChange {
       quality: KEEP,
       prompts: KEEP,
       settings: KEEP,
-      analysis: KEEP,
     };
   }
 
@@ -84,7 +82,6 @@ export function create_cache_change(event: ProjectEvent): CacheChange {
     quality: event.type === "project.quality.changed" ? FULL : KEEP,
     prompts: event.type === "project.prompts.changed" ? FULL : KEEP,
     settings: event.type === "project.settings.changed" ? FULL : KEEP,
-    analysis: event.type === "project.analysis.changed" ? FULL : KEEP,
   };
 }
 

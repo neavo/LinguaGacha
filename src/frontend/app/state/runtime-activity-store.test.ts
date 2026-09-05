@@ -9,8 +9,8 @@ import {
 describe("runtime-activity-store", () => {
   it("把不可信载荷收窄为合法运行时快照", () => {
     expect(
-      normalize_runtime_activity_snapshot({ runtime: { revision: 3, owner: "task" } }),
-    ).toEqual({ revision: 3, owner: "task" });
+      normalize_runtime_activity_snapshot({ runtime: { revision: 3, owner: "batch_translation" } }),
+    ).toEqual({ revision: 3, owner: "batch_translation" });
     expect(
       normalize_runtime_activity_snapshot({
         runtime: { revision: "3", owner: "invalid" },

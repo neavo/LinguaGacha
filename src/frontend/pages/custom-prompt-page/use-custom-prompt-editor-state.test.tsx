@@ -27,7 +27,7 @@ type RuntimeFixture = {
     app_language: string;
   };
   commit_project_write: ReturnType<typeof vi.fn>;
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 };
 
 type SaveHandler = (body: Record<string, unknown>, save_index: number) => Promise<void> | void;

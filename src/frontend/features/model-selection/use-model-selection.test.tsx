@@ -112,7 +112,7 @@ function Probe(): JSX.Element {
       <span>{`${controller.snapshot.model_selection.translation}:${selected?.thinking_level ?? "OFF"}:${controller.updating.toString()}`}</span>
       <button onClick={() => void controller.select_model("translation", "preset")}>same</button>
       <button onClick={() => void controller.select_model("translation", "openai")}>change</button>
-      <button onClick={() => void controller.select_model("analysis", "openai")}>other</button>
+      <button onClick={() => void controller.select_model("agent", "openai")}>other</button>
       <button onClick={() => void controller.update_thinking_level("translation", "HIGH")}>
         thinking
       </button>
@@ -122,7 +122,7 @@ function Probe(): JSX.Element {
 
 function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"): unknown {
   return {
-    model_selection: { translation: selected, analysis: "preset", agent: "preset" },
+    model_selection: { translation: selected, agent: "preset" },
     models: [
       {
         id: "preset",

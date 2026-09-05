@@ -4,7 +4,7 @@ export type WorkbenchPlannerSettings = {
   skip_duplicate_source_text_enable: boolean; // 后端同文件重复原文过滤开关
 };
 
-type WorkbenchCommandSection = "files" | "items" | "analysis";
+type WorkbenchCommandSection = "files" | "items";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
 type WorkbenchPlannerFileRecord = {
@@ -149,16 +149,16 @@ export function create_workbench_reset_file_plan(args: {
   }
 
   return {
-    updatedSections: ["items", "analysis"],
+    updatedSections: ["items"],
     requestBody: {
       rel_paths: [target_rel_path],
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),
+      expected_section_revisions: build_expected_revisions(args.state, ["items"]),
     },
   };
 }
 
-// 删除文件只提交目标路径集合，文件删除、items 过滤和分析重置由后端事务完成。
+// 删除文件只提交目标路径集合，文件删除、items 过滤和翻译进度更新由后端事务完成。
 export function create_workbench_delete_files_plan(args: {
   state: WorkbenchCommandPlanningState;
   rel_paths: string[];
@@ -171,15 +171,11 @@ export function create_workbench_delete_files_plan(args: {
   }
 
   return {
-    updatedSections: ["files", "items", "analysis"],
+    updatedSections: ["files", "items"],
     requestBody: {
       rel_paths: target_rel_paths,
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, [
-        "files",
-        "items",
-        "analysis",
-      ]),
+      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
     },
   };
 }
@@ -315,17 +311,13 @@ export function create_workbench_import_files_plan(args: {
   });
 
   return {
-    updatedSections: ["files", "items", "analysis"],
+    updatedSections: ["files", "items"],
     requestBody: {
       files,
       conflict_action: args.conflict_action,
       inheritance_mode: args.inheritance_mode ?? "none",
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, [
-        "files",
-        "items",
-        "analysis",
-      ]),
+      expected_section_revisions: build_expected_revisions(args.state, ["files", "items"]),
     },
   };
 }

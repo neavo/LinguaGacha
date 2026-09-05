@@ -3,10 +3,9 @@ import os from "node:os";
 import path from "node:path";
 
 import type { AppSettingService } from "../../backend/app/app-setting-service";
-import type { TaskService } from "../../backend/engine/task-service";
+import type { BatchTranslationService } from "../../backend/batch-translation/batch-translation-service";
 import type { TranslationFileExportService } from "../../backend/file/translation-file-export-service";
 import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
-import type { QualityRuleService } from "../../backend/quality/quality-rule-service";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
@@ -29,12 +28,9 @@ export interface CLIJobServices {
       "create_project_commit" | "apply_task_input" | "unload_project"
     >;
   };
-  tasks: Pick<TaskService, "subscribe" | "start_current_project_task">;
+  batchTranslation: Pick<BatchTranslationService, "subscribe" | "start_current_project">;
   files: {
     translationExport: Pick<TranslationFileExportService, "export_files_to_directory">;
-  };
-  quality: {
-    rules: Pick<QualityRuleService, "export_analysis_candidates_to_directory">;
   };
 }
 
@@ -70,15 +66,8 @@ export async function run_cli_job(
     });
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    if (command.command === "translate") {
-      await start_and_wait_for_task(backend_services, "translation", status_reporter);
-      await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
-    } else {
-      await start_and_wait_for_task(backend_services, "analysis", status_reporter);
-      await backend_services.quality.rules.export_analysis_candidates_to_directory(
-        command.outputDir,
-      );
-    }
+    await start_and_wait_for_translation(backend_services, status_reporter);
+    await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
   } catch (error) {
     failures.push(error);
   }
@@ -125,7 +114,6 @@ function build_cli_default_preset_overrides(): JsonRecord {
     pre_translation_replacement_default_preset: "",
     post_translation_replacement_default_preset: "",
     translation_custom_prompt_default_preset: "",
-    analysis_custom_prompt_default_preset: "",
   };
 }
 
@@ -172,41 +160,21 @@ function collect_resource_paths(command: CLICommandOptions): string[] {
   ].filter((item): item is string => item !== null);
 }
 
-/**
- * 启动任务并订阅同一运行时快照直到终态，退出时始终撤销订阅。
- */
-async function start_and_wait_for_task(
-  backend_services: CLIJobServices,
-  task_type: "translation" | "analysis",
-  status_reporter: CLIJobStatusReporter,
+/** 快照仅负责展示，本轮 completion 覆盖运行和全部资源收尾。 */
+async function start_and_wait_for_translation(
+  services: CLIJobServices,
+  reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  let resolve_wait: (() => void) | null = null;
-  let reject_wait: ((error: Error) => void) | null = null;
-  const wait_promise = new Promise<void>((resolve, reject) => {
-    resolve_wait = resolve;
-    reject_wait = reject;
-  });
-  const unsubscribe = backend_services.tasks.subscribe((snapshot) => {
-    if (snapshot.task_type !== task_type) {
-      return;
-    }
-    status_reporter.emit_progress(snapshot);
-    if (snapshot.status === "done") {
-      resolve_wait?.();
-    } else if (snapshot.status === "error") {
-      reject_wait?.(
-        new Error(`${task_type === "translation" ? "Translation" : "Analysis"} task failed`),
-      );
-    }
-  });
-
+  const unsubscribe = services.batchTranslation.subscribe((snapshot) =>
+    reporter.emit_progress(snapshot),
+  );
   try {
-    await backend_services.tasks.start_current_project_task(
-      task_type === "translation"
-        ? { task_type, mode: "new", scope: { kind: "all" } }
-        : { task_type, mode: "new" },
-    );
-    await wait_promise;
+    const handle = await services.batchTranslation.start_current_project({
+      mode: "new",
+      scope: { kind: "all" },
+    });
+    const result = await handle.completion;
+    if (result.status !== "done") throw new Error("Translation task failed");
   } finally {
     unsubscribe();
   }

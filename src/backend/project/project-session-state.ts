@@ -14,7 +14,7 @@ export type ProjectSessionChangeListener = (
 ) => void | Promise<void>;
 
 /**
- * 当前 loaded 工程身份的唯一内存所有者；GUI / CLI / TaskRuntime 共用同一会话世代。
+ * 当前 loaded 工程身份的唯一内存所有者；GUI / CLI / BatchTranslationRuntime 共用同一会话世代。
  */
 export class ProjectSessionState {
   private project_path = "";

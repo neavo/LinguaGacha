@@ -53,7 +53,7 @@ describe("设置快照", () => {
       [legacy_key]: "legacy",
       model_selection: {
         translation: " translation-model ",
-        analysis: 42,
+
         agent: "agent-model",
         unknown: "ignored",
       },
@@ -61,7 +61,7 @@ describe("设置快照", () => {
 
     expect(setting["model_selection"]).toEqual({
       translation: "translation-model",
-      analysis: "",
+
       agent: "agent-model",
     });
     expect(setting).not.toHaveProperty(legacy_key);

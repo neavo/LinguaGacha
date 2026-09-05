@@ -35,11 +35,6 @@ function TranslationPromptScreen(props: ScreenComponentProps): ReturnType<typeof
   return createElement(CustomPromptPage, { ...props, variant: "translation" });
 }
 
-// 将通用提示词页面固定为分析提示词入口。
-function AnalysisPromptScreen(props: ScreenComponentProps): ReturnType<typeof createElement> {
-  return createElement(CustomPromptPage, { ...props, variant: "analysis" });
-}
-
 // 导航 route 到页面组件与标题 key 的唯一映射。
 export const SCREEN_REGISTRY: ScreenRegistry = {
   "project-home": {
@@ -91,10 +86,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     component: TranslationPromptScreen,
     title_key: "translation_prompt_page.title",
   },
-  "analysis-prompt": {
-    component: AnalysisPromptScreen,
-    title_key: "analysis_prompt_page.title",
-  },
+
   laboratory: {
     component: LaboratoryPage,
     title_key: "laboratory_page.title",

@@ -7,7 +7,7 @@ import { AppNavigationProvider } from "@frontend/app/navigation/navigation-conte
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
 import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-context";
-import { WorkbenchTasksSessionProvider } from "@frontend/app/session/workbench-tasks/workbench-tasks-session-context";
+import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
 import {
   api_fetch,
@@ -21,7 +21,10 @@ import {
   summarize_task_snapshot_for_diagnostics,
 } from "@frontend/app/state/desktop-diagnostics";
 import { update_renderer_diagnostics_context } from "@frontend/app/diagnostics/renderer-error-reporter";
-import { useDesktopState, useTaskSnapshot } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useBatchTranslationSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
@@ -572,11 +575,11 @@ function AppContent(): JSX.Element {
                 <AgentSessionProvider>
                   <AgentCompletionAttention />
                   <ProjectSessionUiStateProvider>
-                    <WorkbenchTasksSessionProvider>
+                    <BatchTranslationSessionProvider>
                       <QualityRuleStatisticsProvider>
                         <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
                       </QualityRuleStatisticsProvider>
-                    </WorkbenchTasksSessionProvider>
+                    </BatchTranslationSessionProvider>
                   </ProjectSessionUiStateProvider>
                 </AgentSessionProvider>
               </AppNavigationProvider>
@@ -624,7 +627,7 @@ function RendererDiagnosticsSync(props: {
   project_path: string;
   project_session_status: "idle" | "warming" | "ready";
 }): null {
-  const task_snapshot = useTaskSnapshot();
+  const task_snapshot = useBatchTranslationSnapshot();
   const { route, project_loaded, project_path, project_session_status } = props;
   useEffect(() => {
     update_renderer_diagnostics_context({

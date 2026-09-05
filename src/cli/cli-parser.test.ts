@@ -14,18 +14,6 @@ const VALID_TRANSLATE_ARGV = [
   "zh-hant",
 ] as const;
 
-const VALID_ANALYZE_ARGV = [
-  "analyze",
-  "--input",
-  "script.txt",
-  "--output-dir",
-  "out",
-  "--source-language",
-  "ALL",
-  "--target-language",
-  "ZH",
-] as const;
-
 describe("parse_cli_args", () => {
   it("无参数和命令级 --help 都返回帮助请求", () => {
     expect(parse_cli_args([])).toEqual({ kind: "help" });
@@ -71,19 +59,8 @@ describe("parse_cli_args", () => {
     });
   });
 
-  it("解析 analyze 的 ALL 源语言与外部提示词", () => {
-    expect(parse_cli_args([...VALID_ANALYZE_ARGV, "--prompt", "analysis.txt"])).toMatchObject({
-      kind: "command",
-      command: {
-        command: "analyze",
-        sourceLanguage: "ALL",
-        targetLanguage: "ZH",
-        resources: {
-          promptPath: "analysis.txt",
-          glossaryPath: null,
-        },
-      },
-    });
+  it("analyze 是未知命令", () => {
+    expect(() => parse_cli_args(["analyze"])).toThrow("Unknown command: analyze");
   });
 
   it.each([
@@ -94,10 +71,6 @@ describe("parse_cli_args", () => {
     ],
     [["translate", "--input", "--output-dir"], "Missing value for --input"],
     [[...VALID_TRANSLATE_ARGV, "--bad", "x"], "Unknown option: --bad"],
-    [
-      [...VALID_ANALYZE_ARGV, "--glossary", "g.json"],
-      "--glossary is only supported by the translate command",
-    ],
     [[...VALID_TRANSLATE_ARGV, "--prompt", "prompt.md"], "--prompt only supports .txt files"],
     [
       [...VALID_TRANSLATE_ARGV, "--text-preserve", "rules.csv"],

@@ -10,7 +10,7 @@ import type { ComputeWorkerTask } from "./compute-worker-task";
 
 function create_task(): ComputeWorkerTask {
   return {
-    type: "quality_rule_analysis",
+    type: "quality_rule_statistics",
     input: {
       ...prepare_quality_statistics_task_input({
         rule_key: "glossary",
@@ -74,7 +74,7 @@ describe("Compute worker entry", () => {
         ok: false,
         error: expect.objectContaining({
           message: "Compute worker task was cancelled.",
-          context: { worker_task_type: "quality_rule_analysis" },
+          context: { worker_task_type: "quality_rule_statistics" },
         }),
       }),
     );

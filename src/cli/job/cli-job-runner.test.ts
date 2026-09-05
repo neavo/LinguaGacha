@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import type { TaskSnapshot } from "../../backend/engine/protocol/task-snapshot";
+import type { BatchTranslationSnapshot } from "../../domain/batch-translation";
 import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
 import { build_cli_task_input } from "./cli-task-input";
@@ -53,7 +53,6 @@ describe("run_cli_job", () => {
     await expect(run_promise).resolves.toBeUndefined();
 
     expect(harness.start_task).toHaveBeenCalledWith({
-      task_type: "translation",
       mode: "new",
       scope: { kind: "all" },
     });
@@ -82,7 +81,7 @@ describe("run_cli_job", () => {
           pre_translation_replacement_default_preset: "",
           post_translation_replacement_default_preset: "",
           translation_custom_prompt_default_preset: "",
-          analysis_custom_prompt_default_preset: "",
+
           output_folder_open_on_finish: false,
           source_language: "JA",
           target_language: "ZH",
@@ -97,29 +96,11 @@ describe("run_cli_job", () => {
     ).toEqual(["started", "progress", "progress", "finished:done"]);
     expect(
       harness.status_reporter.emit_progress.mock.calls.map(
-        ([snapshot]) => (snapshot as TaskSnapshot).status,
+        ([snapshot]) => (snapshot as BatchTranslationSnapshot).status,
       ),
     ).toEqual(["running", "done"]);
     expect(harness.subscriber_count()).toBe(0);
     expect_temp_project_removed(harness.created_project_paths);
-  });
-
-  it("分析终态触发分析任务与术语导出", async () => {
-    const paths = create_cli_paths();
-    const harness = create_backend_services_harness();
-    const run_promise = run_cli_job(
-      harness.backend_services,
-      create_command(paths, { command: "analyze" }),
-      harness.status_reporter,
-    );
-
-    await wait_for_task_start(harness, run_promise);
-    await harness.emit_snapshot("done");
-    await expect(run_promise).resolves.toBeUndefined();
-
-    expect(harness.start_task).toHaveBeenCalledWith({ task_type: "analysis", mode: "new" });
-    expect(harness.export_analysis_candidates).toHaveBeenCalledWith(paths.output_dir);
-    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
   });
 
   it("任务失败时撤销订阅、设置覆盖与非空临时工程", async () => {
@@ -127,10 +108,10 @@ describe("run_cli_job", () => {
     const harness = create_backend_services_harness();
     const run_promise = run_cli_job(
       harness.backend_services,
-      create_command(paths, { command: "analyze" }),
+      create_command(paths, { command: "translate" }),
       harness.status_reporter,
     );
-    const rejection = expect(run_promise).rejects.toThrow("Analysis task failed");
+    const rejection = expect(run_promise).rejects.toThrow("Translation task failed");
 
     await wait_for_task_start(harness, run_promise);
     await harness.emit_snapshot("error");
@@ -141,7 +122,7 @@ describe("run_cli_job", () => {
     expect(harness.subscriber_count()).toBe(0);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
       "error",
-      expect.objectContaining({ message: "Analysis task failed" }),
+      expect.objectContaining({ message: "Translation task failed" }),
     );
     expect_temp_project_removed(harness.created_project_paths);
   });
@@ -202,7 +183,7 @@ describe("run_cli_job", () => {
     const harness = create_backend_services_harness({ unloadFailure: unload_failure });
     const run_promise = run_cli_job(
       harness.backend_services,
-      create_command(paths, { command: "analyze" }),
+      create_command(paths, { command: "translate" }),
       harness.status_reporter,
     );
     const command_error_promise = run_promise.catch((error: unknown) => error);
@@ -213,7 +194,7 @@ describe("run_cli_job", () => {
 
     expect(command_error).toBeInstanceOf(AggregateError);
     expect((command_error as AggregateError).errors).toEqual([
-      expect.objectContaining({ message: "Analysis task failed" }),
+      expect.objectContaining({ message: "Translation task failed" }),
       unload_failure,
     ]);
     expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", command_error);
@@ -224,8 +205,20 @@ describe("run_cli_job", () => {
 function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
-  const task_listeners = new Set<(snapshot: Readonly<TaskSnapshot>) => void | Promise<void>>();
-  let active_task_type: "translation" | "analysis" | null = null;
+  const task_listeners = new Set<
+    (snapshot: Readonly<BatchTranslationSnapshot>) => void | Promise<void>
+  >();
+  let started = false;
+  let finish!: (result: {
+    status: "done" | "idle" | "error";
+    progress: BatchTranslationSnapshot["progress"];
+  }) => void;
+  const completion = new Promise<{
+    status: "done" | "idle" | "error";
+    progress: BatchTranslationSnapshot["progress"];
+  }>((resolve) => {
+    finish = resolve;
+  });
   let resolve_task_started: () => void = () => undefined;
   const task_started = new Promise<void>((resolve) => {
     resolve_task_started = resolve;
@@ -256,24 +249,17 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
       throw failures.unloadFailure;
     }
   });
-  const start_task = vi.fn(async (request: { task_type: "translation" | "analysis" }) => {
+  const start_task = vi.fn(async (_request: unknown) => {
     events.push("start");
-    active_task_type = request.task_type;
+    started = true;
     resolve_task_started();
-    return create_task_snapshot(request.task_type, "requested");
+    return { run_id: "test", signal: new AbortController().signal, completion };
   });
   const export_files_to_directory = vi.fn(async (output_dir: string) => {
     events.push("translation_export");
     return {
       output_path: path.join(output_dir, "translated"),
       bilingual_output_path: path.join(output_dir, "bilingual"),
-    };
-  });
-  const export_analysis_candidates = vi.fn(async (output_dir: string) => {
-    events.push("analysis_export");
-    return {
-      json_path: path.join(output_dir, "glossary.json"),
-      xlsx_path: path.join(output_dir, "glossary.xlsx"),
     };
   });
 
@@ -293,10 +279,11 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         lifecycle: { apply_task_input, create_project_commit, unload_project },
       },
       files: { translationExport: { export_files_to_directory } },
-      quality: { rules: { export_analysis_candidates_to_directory: export_analysis_candidates } },
-      tasks: {
-        start_current_project_task: start_task,
-        subscribe: (listener: (snapshot: Readonly<TaskSnapshot>) => void | Promise<void>) => {
+      batchTranslation: {
+        start_current_project: start_task,
+        subscribe: (
+          listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void | Promise<void>,
+        ) => {
           events.push("subscribe");
           task_listeners.add(listener);
           return () => {
@@ -310,7 +297,6 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     created_project_paths,
     create_project_commit,
     events,
-    export_analysis_candidates,
     export_files_to_directory,
     set_transient_overrides,
     start_task,
@@ -319,14 +305,16 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
     task_started,
     unload_project,
     emit_snapshot: async (
-      status: TaskSnapshot["status"],
-      progress: Partial<TaskSnapshot["progress"]> = {},
+      status: BatchTranslationSnapshot["status"],
+      progress: Partial<BatchTranslationSnapshot["progress"]> = {},
     ): Promise<void> => {
-      if (active_task_type === null) {
+      if (!started) {
         throw new Error("任务尚未启动");
       }
-      const snapshot = create_task_snapshot(active_task_type, status, progress);
+      const snapshot = create_task_snapshot(status, progress);
       await Promise.all([...task_listeners].map(async (listener) => await listener(snapshot)));
+      if (status === "done" || status === "idle" || status === "error")
+        finish({ status, progress: snapshot.progress });
     },
   };
 }
@@ -344,15 +332,12 @@ async function wait_for_task_start(
 }
 
 function create_task_snapshot(
-  task_type: "translation" | "analysis",
-  status: TaskSnapshot["status"],
-  progress: Partial<TaskSnapshot["progress"]> = {},
-): TaskSnapshot {
+  status: BatchTranslationSnapshot["status"],
+  progress: Partial<BatchTranslationSnapshot["progress"]> = {},
+): BatchTranslationSnapshot {
   return {
-    run_revision: 1,
-    task_type,
+    revision: 1,
     status,
-    busy: status !== "done" && status !== "error",
     request_in_flight_count: 0,
     progress: {
       line: 0,
@@ -367,10 +352,7 @@ function create_task_snapshot(
       start_time: 0,
       ...progress,
     },
-    extras:
-      task_type === "analysis"
-        ? { kind: "analysis", candidate_count: 0 }
-        : { kind: "translation", scope: { kind: "all" } },
+    scope: { kind: "all" },
   };
 }
 

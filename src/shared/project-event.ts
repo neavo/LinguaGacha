@@ -9,7 +9,6 @@ export const PROJECT_DATA_SECTIONS = [
   "items",
   "quality",
   "prompts",
-  "analysis",
   "proofreading",
 ] as const;
 

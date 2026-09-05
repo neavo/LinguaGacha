@@ -1,4 +1,3 @@
-import { de_de_analysis_prompt_page } from "./resources/de-DE/analysis-prompt-page";
 import { de_de_agent_page } from "./resources/de-DE/agent-page";
 import { de_de_agent_runtime } from "./resources/de-DE/agent-runtime";
 import { de_de_app } from "./resources/de-DE/app";
@@ -22,7 +21,6 @@ import { de_de_toolbox_page } from "./resources/de-DE/toolbox-page";
 import { de_de_ts_conversion_page } from "./resources/de-DE/ts-conversion-page";
 import { de_de_translation_prompt_page } from "./resources/de-DE/translation-prompt-page";
 import { de_de_workbench_page } from "./resources/de-DE/workbench-page";
-import { en_us_analysis_prompt_page } from "./resources/en-US/analysis-prompt-page";
 import { en_us_agent_page } from "./resources/en-US/agent-page";
 import { en_us_agent_runtime } from "./resources/en-US/agent-runtime";
 import { en_us_app } from "./resources/en-US/app";
@@ -46,7 +44,6 @@ import { en_us_toolbox_page } from "./resources/en-US/toolbox-page";
 import { en_us_ts_conversion_page } from "./resources/en-US/ts-conversion-page";
 import { en_us_translation_prompt_page } from "./resources/en-US/translation-prompt-page";
 import { en_us_workbench_page } from "./resources/en-US/workbench-page";
-import { zh_cn_analysis_prompt_page } from "./resources/zh-CN/analysis-prompt-page";
 import { zh_cn_agent_page } from "./resources/zh-CN/agent-page";
 import { zh_cn_agent_runtime } from "./resources/zh-CN/agent-runtime";
 import { zh_cn_app } from "./resources/zh-CN/app";
@@ -76,7 +73,6 @@ export const zh_cn_messages = {
   agent_page: zh_cn_agent_page,
   agent_runtime: zh_cn_agent_runtime,
   app: zh_cn_app,
-  analysis_prompt_page: zh_cn_analysis_prompt_page,
   basic_settings_page: zh_cn_basic_settings_page,
   custom_prompt_page: zh_cn_custom_prompt_page,
   expert_settings_page: zh_cn_expert_settings_page,
@@ -103,7 +99,6 @@ export const en_us_messages = {
   agent_page: en_us_agent_page,
   agent_runtime: en_us_agent_runtime,
   app: en_us_app,
-  analysis_prompt_page: en_us_analysis_prompt_page,
   basic_settings_page: en_us_basic_settings_page,
   custom_prompt_page: en_us_custom_prompt_page,
   expert_settings_page: en_us_expert_settings_page,
@@ -130,7 +125,6 @@ export const de_de_messages = {
   agent_page: de_de_agent_page,
   agent_runtime: de_de_agent_runtime,
   app: de_de_app,
-  analysis_prompt_page: de_de_analysis_prompt_page,
   basic_settings_page: de_de_basic_settings_page,
   custom_prompt_page: de_de_custom_prompt_page,
   expert_settings_page: de_de_expert_settings_page,

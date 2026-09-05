@@ -18,10 +18,10 @@ export default defineConfig({
           ),
           "compute-worker-entry": project_path("src/backend/worker/compute-worker-entry.ts"),
           "planning-worker-entry": project_path(
-            "src/backend/engine/planning/planning-worker-entry.ts",
+            "src/backend/batch-translation/planning/planning-worker-entry.ts",
           ),
           "work-unit-worker-entry": project_path(
-            "src/backend/engine/work-unit/work-unit-worker-entry.ts",
+            "src/backend/batch-translation/work-unit/work-unit-worker-entry.ts",
           ),
         },
         output: {

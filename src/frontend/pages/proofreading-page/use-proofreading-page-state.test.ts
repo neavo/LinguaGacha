@@ -1,3 +1,7 @@
+import {
+  normalize_batch_translation_progress,
+  type BatchTranslationSnapshot,
+} from "@domain/batch-translation";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,20 +36,13 @@ type RuntimeFixture = {
     loaded: boolean;
     path: string;
   };
-  task_snapshot: {
-    busy: boolean;
-    task_type?: string;
-    extras?: {
-      kind: "translation";
-      scope: { kind: "all" } | { kind: "items"; item_ids: number[] };
-    };
-  };
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  task_snapshot: import("@domain/batch-translation").BatchTranslationSnapshot;
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   project_change_signal: ProjectChangeSignal;
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
-  refresh_task: ReturnType<typeof vi.fn>;
+  refresh_batch_translation: ReturnType<typeof vi.fn>;
 };
 
 // 只保留校对页查找意图，避免页面测试依赖真实导航容器。
@@ -179,9 +176,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
     useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
-    useTaskSnapshot: () => runtime_fixture.current.task_snapshot,
+    useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
-    useSyncTaskSnapshot: () => runtime_fixture.current.sync_task_snapshot,
+    useSyncBatchTranslationSnapshot: () => runtime_fixture.current.sync_task_snapshot,
   };
 });
 
@@ -261,11 +258,6 @@ function create_quality_store_payload(): Record<string, unknown> {
         text: "",
         revision: 0,
       },
-      analysis: {
-        enabled: false,
-        text: "",
-        revision: 0,
-      },
     },
   };
 }
@@ -282,9 +274,12 @@ function create_runtime_fixture(): RuntimeFixture {
       path: "E:/demo/sample.lg",
     },
     task_snapshot: {
-      busy: false,
-      task_type: "idle",
-      extras: { kind: "translation", scope: { kind: "all" } },
+      revision: 0,
+      status: "idle",
+      request_in_flight_count: 0,
+      progress: normalize_batch_translation_progress({}),
+
+      scope: { kind: "all" },
     },
     runtime_snapshot: { revision: 0, owner: null },
     sync_task_snapshot: vi.fn((snapshot) => {
@@ -304,7 +299,7 @@ function create_runtime_fixture(): RuntimeFixture {
       },
     ),
     refresh_project_state: vi.fn(async () => {}),
-    refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
+    refresh_batch_translation: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
@@ -792,7 +787,7 @@ describe("useProofreadingPageState", () => {
       latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
     });
     expect(latest_state?.pending_confirmation).toBeNull();
-    expect(api_fetch).not.toHaveBeenCalledWith("/api/tasks/start", expect.anything());
+    expect(api_fetch).not.toHaveBeenCalledWith("/api/batch-translation/start", expect.anything());
   });
 
   it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
@@ -2556,10 +2551,8 @@ describe("useProofreadingPageState", () => {
     await render_hook();
     vi.mocked(api_fetch).mockResolvedValueOnce({
       accepted: true,
-      task: {
-        task_type: "translation",
+      batch_translation: {
         status: "requested",
-        busy: true,
       },
     });
 
@@ -2570,8 +2563,7 @@ describe("useProofreadingPageState", () => {
       await latest_state?.confirm_pending_confirmation("retranslate");
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
+    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
       mode: "new",
       scope: { kind: "items", item_ids: [1] },
     });
@@ -2602,10 +2594,8 @@ describe("useProofreadingPageState", () => {
     );
     vi.mocked(api_fetch).mockResolvedValueOnce({
       accepted: true,
-      task: {
-        task_type: "translation",
+      batch_translation: {
         status: "requested",
-        busy: true,
       },
     });
 
@@ -2616,8 +2606,7 @@ describe("useProofreadingPageState", () => {
       await latest_state?.confirm_pending_confirmation("retranslate");
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
+    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
       mode: "new",
       scope: { kind: "items", item_ids: [1] },
     });
@@ -2638,15 +2627,7 @@ describe("useProofreadingPageState", () => {
 
     const retranslate_deferred = create_deferred<{
       accepted: boolean;
-      task: {
-        task_type: string;
-        status: string;
-        busy: boolean;
-        extras?: {
-          kind: "translation";
-          scope: { kind: "items"; item_ids: Array<number | string> };
-        };
-      };
+      batch_translation: Partial<BatchTranslationSnapshot>;
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -2674,26 +2655,22 @@ describe("useProofreadingPageState", () => {
     await act(async () => {
       retranslate_deferred.resolve({
         accepted: true,
-        task: {
-          task_type: "translation",
+        batch_translation: {
           status: "requested",
-          busy: true,
+          scope: { kind: "items", item_ids: [2, 1] },
         },
       });
       await confirm_promise;
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
+    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
       mode: "new",
       scope: { kind: "items", item_ids: [2, 1] },
     });
     expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
-        task_type: "translation",
         status: "requested",
-        busy: true,
-        extras: { kind: "translation", scope: { kind: "items", item_ids: [2, 1] } },
+        scope: { kind: "items", item_ids: [2, 1] },
       }),
     );
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
@@ -2718,9 +2695,7 @@ describe("useProofreadingPageState", () => {
 
     const retranslate_deferred = create_deferred<{
       accepted: boolean;
-      task: {
-        task_type: string;
-      };
+      batch_translation: Partial<BatchTranslationSnapshot>;
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 

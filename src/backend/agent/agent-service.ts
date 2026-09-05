@@ -1,4 +1,5 @@
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import { create_agent_batch_translation_tool } from "./model-tools/batch-translation";
 import {
   contentText,
   InMemoryCredentialStore,
@@ -166,6 +167,10 @@ type AgentServicePaths = Pick<
 >;
 
 type AgentServiceOptions = {
+  batchTranslation: Pick<
+    import("../batch-translation/batch-translation-service").BatchTranslationService,
+    "run_under_agent"
+  >;
   paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
   userAgent: string;
@@ -191,6 +196,7 @@ type LoadedAgentResources = Readonly<{
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
+  private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
   private readonly user_agent: string;
@@ -225,6 +231,7 @@ export class AgentService {
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
   public constructor(options: AgentServiceOptions) {
+    this.batch_translation = options.batchTranslation;
     this.paths = options.paths;
     this.settings = options.settings;
     this.user_agent = options.userAgent;
@@ -989,6 +996,11 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
+        create_agent_batch_translation_tool(async (signal) => {
+          const lease = this.runtime_lease;
+          if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
+          return await this.batch_translation.run_under_agent(lease, signal);
+        }),
         ...create_agent_question_tools({
           wait_for_answer: (tool_call_id, question, signal) =>
             this.decisions.wait_for_question(tool_call_id, question, signal),

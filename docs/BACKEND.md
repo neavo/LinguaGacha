@@ -8,9 +8,9 @@
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview、`/api/session/source-files/summary` 和打开前 settings alignment 是可以接收显式路径的生命周期例外。source-files summary 只按共享互斥扩展名目录递归发现并去重，返回文件总数与各格式命中数，不读取内容或向 renderer 公开文件路径。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
-- 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `task | agent | null`。
-- 通用质量规则由切片 query / update 读写，分析术语导入等复合 workflow 保留独立命令；校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
-- 模型管理 API 只负责配置 CRUD；任务入口按 `translation`、`analysis` 或 `agent` 用途读取窄选项并更新单项选择。选项只携带显示身份与解析后的非敏感 Agent 容量，不公开自动配置、密钥、请求覆盖或生成参数。
+- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
+- 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
+- 模型管理 API 只负责配置 CRUD；任务入口按 `translation` 或 `agent` 用途读取窄选项并更新单项选择。选项只携带显示身份与解析后的非敏感 Agent 容量，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：结构化任务摘要拥有用户可见结果，其纯文本投影省略 `LogError.message`，调用栈和上下文作为诊断事实保留；文件和控制台从正文生成纯文本投影，`log.appended` 只携带轻量预览，每次日志流连接先回放当前进程 ring buffer 供 renderer 去重补漏，详情 query 只查询同一详情池且不回扫历史文件。`source: agent-tool` 的完整严格 JSON 正文是 file-only 特例，不进入控制台或日志窗口、不使用会裁剪的 context，并沿用每日文件及最近三个日期文件的轮转。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
@@ -26,9 +26,9 @@
 |Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
 |项目事实提交|`ProjectWriteStore`|单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change`|
 |Item 状态值域与重复关系|`domain/item` / `ProjectWriteStore`|人工状态只含 `NONE`、`PROCESSED`、`EXCLUDED`；重复组协调器物化 `DUPLICATED`|
-|活动任务类型、translation scope、status、busy、`run_revision`、请求压力|`TaskRuntime`|任务命令、Engine 生命周期、项目会话切换|
-|任务 progress / analysis candidate count|`.lg` meta|`TaskProjectStore` 经 `ProjectWriteStore` 写入|
-|任务公开快照|`TaskRuntime.build_snapshot`|组合内存运行态与 `.lg` meta|
+|活动 run、scope、status、revision、请求压力和 completion|`BatchTranslationRuntime`|批量翻译命令、Runner 生命周期和项目会话切换|
+|累计翻译进度|`.lg` 的翻译进度 meta|`BatchTranslationProjectStore` 经 `ProjectWriteStore` 写入|
+|批量翻译公开快照|`BatchTranslationRuntime.build_snapshot`|内存运行态与当前工程累计进度|
 |`.lg` 物理 workflow|`ProjectDatabase`|类型化读写方法、`transaction(projectPath, callback)`|
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
@@ -40,7 +40,7 @@
 项目数据 section 固定为：
 
 ```text
-project, files, items, quality, prompts, analysis, proofreading
+project, files, items, quality, prompts, proofreading
 ```
 
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
@@ -50,18 +50,18 @@ project, files, items, quality, prompts, analysis, proofreading
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
 - 译文导出由 `TranslationFileExportService` 统一编排格式写回、asset 读取和输出目录语义。
-- 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源与分析候选只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
+- 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - `builtin/text_preserve/preset/*.json` 是内置文本保护规则的唯一内容来源；`base.json` 在所有模式下启用，其余预设按 `text_type` 提供智能规则，`custom` 叠加项目规则。翻译与校对复用同一逐行源文准备顺序。
-- 翻译规划以短引用计算 token 指标；work unit 将资源引用按输入顺序投影为 `lg-uri/<n>`，由基础规则保护并在译后按内存映射恢复。分析与校对在自然语言判断前移除资源引用；投影和映射不进入 Item、项目存储或跨线程协议。
+- 翻译规划以短引用计算 token 指标；work unit 将资源引用按输入顺序投影为 `lg-uri/<n>`，由基础规则保护并在译后按内存映射恢复。校对在自然语言判断前移除资源引用；投影和映射不进入 Item、项目存储或跨线程协议。
 - 外文残留按目标语言允许的书写系统检查剥离保护片段后的译文，以完整 Unicode 字素簇保留附标；仅含一个 Latin 字素的残留片段不触发警告。校对 worker 与 cache identity 携带完整文本处理配置，增量评估沿用全量同步冻结的配置。
 - 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算。list query 可用稳定 `row_id` 锚定首次返回窗口，并复用视图反向索引一次返回目标附近行；上下文与按 ID 读取只查询共享评估运行态，不创建或替换该视图。
 - 校对筛选以 `outcomes` 作为唯一翻译结果维度：条目按“翻译成功 / 尚未完成 / 无需翻译”三组互斥归类，成功条目再投影为无警告或一个以上检查结果；筛选面板与列表查询共用该投影。
 - 校对缓存的热查询只比较项目、epoch、revision 与处理配置组成的轻量身份；完整 items / quality 同步输入只在身份未命中时构造。
-- `QualityRuleAnalysisCache` 是四类质量规则命中数、代表例句和字面包含父项的唯一后端分析缓存，供 GUI query 使用；缓存命中只读取缓存引用和轻量 revision，不复制 item、不重建文本组或计算内容签名。quality 变化同时失效统计与父项，item 变化只按受影响文本侧失效统计并保留父项；无法证明范围时失效全部统计。
-- 质量规则分析按不同 item 去重计算 `hits`，同一 item 内多字段、多次或重叠命中只计一次；术语读取原文字段，其余规则按生产语义逐行读取原文或译文。worker 在同一遍命中扫描中保留最多两个确定性 `examples`，不保存完整候选集，并按 item 顺序输出。
+- `QualityRuleStatisticsCache` 是四类质量规则命中数、代表例句和字面包含父项的唯一后端统计缓存，供 GUI query 使用；缓存命中只读取缓存引用和轻量 revision，不复制 item、不重建文本组或计算内容签名。quality 变化同时失效统计与父项，item 变化只按受影响文本侧失效统计并保留父项；无法证明范围时失效全部统计。
+- 质量规则统计按不同 item 去重计算 `hits`，同一 item 内多字段、多次或重叠命中只计一次；术语读取原文字段，其余规则按生产语义逐行读取原文或译文。worker 在同一遍命中扫描中保留最多两个确定性 `examples`，不保存完整候选集，并按 item 顺序输出。
 - 质量规则结构分析只返回复用正式字面匹配语义的真实包含父项；完全等价和正则不形成父项，也不生成全局关系组或推断公共词根。
-- 客户端只提交用户意图和必要的设置镜像；canonical items、task extras、prefilter、重复组和 analysis 结果由后端计算。
+- 客户端只提交用户意图和必要的设置镜像；canonical items、翻译进度、prefilter 和重复组由后端计算。
 - 重复身份由同一 `file_path`、完全相同的 `src`、翻译管线消费的可见 `name_src` 与相同 `text_type` 组成；预过滤与项目写入协调按该身份维护物化的 `DUPLICATED`，导出按同一身份复用已处理译文。重复组中的 `PROCESSED` 或 `ERROR` 条目承担已有代表，否则按行号和 item 身份稳定保留一个 `NONE` 代表；协调只改写 `NONE` 与 `DUPLICATED`，关闭重复过滤时恢复全部重复项。
 - 快照派生写入在最终提交点完成 revision guard 与单 `.lg` 事务；当前事实 reset、任务 artifact 等写入不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
@@ -76,16 +76,15 @@ project, files, items, quality, prompts, analysis, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- `TaskService` 只负责命令 JSON 收窄、task / mode / scope 归一和 Engine 命令转交；启动命令不携带 `expected_section_revisions`。`TaskRuntime.begin` 原子取得共享运行 lease，成为任务受理的唯一并发边界；`TaskEngine` 随后读取当前工程事实，并在每轮 run 开始时按 translation / analysis 用途解析模型，与限流、提示词配置一起冻结到运行上下文。行级重翻和 CLI 复用同一任务入口，不另建模型选择旁路。
-- Agent、任务或结构性项目写入占用共享门禁时，任务启动统一返回 `runtime.busy`；取得 task lease 后立即进入 busy，Engine 启动失败时恢复前置状态并释放 lease。
-- 所有任务命令 ack 都通过 `TaskRuntime.build_snapshot` 重新读取当前事实，避免旧命令意图覆盖更晚的终态。
-- 每次成功 load / unload 都推进 `ProjectSessionState` 的内部会话世代；生命周期返回前，`TaskRuntime` 重置为新会话的 idle、推进 `run_revision` 并发布快照，因此旧工程迟到帧严格早于新工程事实。
-- 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
-- `TaskRuntime` 拥有任务取消、终态和 Engine completion，并以当前 active run 派生 task snapshot 的 `busy`。`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
+- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`request_in_flight_count`、`progress` 与 `scope`；`requested | running | stopping` 唯一决定活跃态。
+- `BatchTranslationService` 收窄命令并确认 loaded 工程。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。
+- `BatchTranslationRunner` 按 translation 用途冻结模型和设置，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。`new | continue | reset` 在内部保持同一值域，定点重翻仍使用去重保序的非空 items scope。
+- Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、主动停止与执行失败分别为 `done`、`idle`、`error`；已提交译文保留。基础设施异常拒绝 completion，多个收尾错误保留原始原因；dispose 等待同一完成链。
+- 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`index`、`text`，actor 模式再加 `actor`），`text` 可包含换行；SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文。worker 内部才保留逐行准备与恢复事实。响应按 item index 独立裁决，唯一匹配的非空译文独立提交，缺失、重复、未知或空白正文只影响对应 item；请求失败、零有效译文、部分有效和全部有效分别形成 error、error、warning 和 info 结果日志，结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
-- 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
+- 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
 - 模型能力优先采用项目内少量精确修正，否则读取 Pi 内置 catalog，两者均未命中时不猜测思考能力并使用 Agent 安全容量。配置 ID 优先精确匹配；变种 ID 只在字母数字分隔边界内取最长且唯一的 canonical ID。思考能力使用与当前协议适配的单一模板；容量聚合同 canonical ID 在全部 Pi catalog 中的记录并分别取最大 `contextWindow` 与 `maxTokens`，不改写真实请求 ID、归一后的 API URL 或请求头。应用修正只承载 Pi 缺失或落后的当前事实，Pi 更新并验证后直接删除对应修正。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态：供应商错误、长度截断和工具调用成为当前请求错误，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
@@ -101,3 +100,4 @@ project, files, items, quality, prompts, analysis, proofreading
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
 - 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
+- 当前 schema 创建 items、assets、rules 与 meta；历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。

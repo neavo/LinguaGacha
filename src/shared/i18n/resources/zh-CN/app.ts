@@ -327,9 +327,6 @@ export const zh_cn_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "未提取到术语",
-    analysis_task_result: "分析结果：",
-    analysis_task_source_texts: "分析输入：",
     api_gateway_started: "API Gateway 已启动 - {BASE_URL}",
     api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",

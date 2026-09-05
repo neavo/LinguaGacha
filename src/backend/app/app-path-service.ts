@@ -1,3 +1,4 @@
+import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";
@@ -231,21 +232,11 @@ export class AppPathService {
   }
 
   /**
-   * 将提示词任务类型映射为目录名，避免资源路径出现第二套命名
-   */
-  public get_prompt_task_dir_name(task_type: string): string {
-    if (task_type !== "translation" && task_type !== "analysis") {
-      throw new AppErrors.AppError("runtime.internal_invariant");
-    }
-    return `${task_type}_prompt`;
-  }
-
-  /**
    * 返回提示词模板目录，保持模板读取路径集中
    */
-  public get_prompt_template_dir(task_type: string, language: string): string {
+  public get_prompt_template_dir(language: string): string {
     return this.get_builtin_path(
-      this.get_prompt_task_dir_name(task_type),
+      TRANSLATION_PROMPT.directory_name,
       TEMPLATE_DIR_NAME,
       language.toLowerCase(),
     );
@@ -254,25 +245,22 @@ export class AppPathService {
   /**
    * 返回内置提示词预设目录，保持提示词资源入口集中
    */
-  public get_prompt_builtin_preset_dir(task_type: string): string {
-    return this.get_builtin_path(this.get_prompt_task_dir_name(task_type), PRESET_DIR_NAME);
+  public get_prompt_builtin_preset_dir(): string {
+    return this.get_builtin_path(TRANSLATION_PROMPT.directory_name, PRESET_DIR_NAME);
   }
 
   /**
    * 返回内置提示词相对目录，用于生成稳定虚拟 id
    */
-  public get_prompt_builtin_preset_relative_dir(task_type: string): string {
-    return this.get_builtin_relative_path(
-      this.get_prompt_task_dir_name(task_type),
-      PRESET_DIR_NAME,
-    );
+  public get_prompt_builtin_preset_relative_dir(): string {
+    return this.get_builtin_relative_path(TRANSLATION_PROMPT.directory_name, PRESET_DIR_NAME);
   }
 
   /**
    * 返回用户提示词预设目录，保持用户预设写入集中
    */
-  public get_prompt_user_preset_dir(task_type: string): string {
-    return this.get_user_data_path(this.get_prompt_task_dir_name(task_type));
+  public get_prompt_user_preset_dir(): string {
+    return this.get_user_data_path(TRANSLATION_PROMPT.directory_name);
   }
 
   /**

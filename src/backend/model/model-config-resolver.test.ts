@@ -15,25 +15,23 @@ describe("model-config-resolver", () => {
     const config = {
       model_selection: {
         translation: "model-1",
-        analysis: "model-2",
+
         agent: "model-3",
       },
       models: [{ id: "model-1" }, { id: "model-2" }, { id: "model-3" }],
     };
 
     expect(resolve_model_for_usage(config, "translation")?.["id"]).toBe("model-1");
-    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-2");
     expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-3");
   });
 
   it("用途选择缺失或失效时回退到首个可用模型", () => {
     const config = {
-      model_selection: { translation: "missing", analysis: "", agent: "model-2" },
+      model_selection: { translation: "missing", agent: "model-2" },
       models: [{ id: "model-1" }, { id: "model-2" }],
     };
 
     expect(resolve_model_for_usage(config, "translation")).toMatchObject({ id: "model-1" });
-    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-1");
     expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-2");
   });
 

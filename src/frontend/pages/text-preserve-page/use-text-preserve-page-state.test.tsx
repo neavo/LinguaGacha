@@ -56,16 +56,8 @@ let run_state = {
       enabled: false,
       revision: 0,
     },
-    analysis: {
-      text: "",
-      enabled: false,
-      revision: 0,
-    },
   },
-  analysis: {
-    candidate_count: 0,
-    candidate_aggregate: {},
-  },
+
   proofreading: {
     revision: 0,
   },
@@ -74,7 +66,6 @@ let run_state = {
     sections: {
       items: 1,
       quality: 1,
-      analysis: 0,
     },
   },
 };
@@ -160,7 +151,7 @@ const project_store = {
 };
 
 let current_hit_cache: QualityRuleStatisticsCacheSnapshot;
-let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 

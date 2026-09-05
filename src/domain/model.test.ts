@@ -133,13 +133,13 @@ describe("Model", () => {
     expect(
       normalize_model_selection({
         translation: " translation-model ",
-        analysis: 7,
+
         agent: "agent-model",
         unknown: "ignored",
       }),
     ).toEqual({
       translation: "translation-model",
-      analysis: "",
+
       agent: "agent-model",
     });
   });

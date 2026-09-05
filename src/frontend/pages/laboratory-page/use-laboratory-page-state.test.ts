@@ -12,7 +12,7 @@ import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-labo
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   project_snapshot: {
     loaded: boolean;
   };
@@ -225,7 +225,6 @@ describe("useLaboratoryPageState", () => {
         return {
           sectionRevisions: {
             items: 0,
-            analysis: 0,
           },
         } as never;
       }

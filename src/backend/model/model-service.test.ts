@@ -146,7 +146,7 @@ describe("ModelService 配置管理", () => {
     ]);
     expect(selection.model_selection).toEqual({
       translation: "preset-1",
-      analysis: "preset-1",
+
       agent: "preset-1",
     });
   });
@@ -255,14 +255,14 @@ describe("ModelService 配置管理", () => {
     ]);
 
     const snapshot = read_selection_snapshot(
-      service.select_model({ usage: "analysis", model_id: "openai-a" }),
+      service.select_model({ usage: "agent", model_id: "openai-a" }),
     );
     const management = read_request_model_snapshot(service.get_snapshot());
 
     expect(snapshot.model_selection).toEqual({
       translation: "preset",
-      analysis: "openai-a",
-      agent: "preset",
+
+      agent: "openai-a",
     });
     expect(snapshot.models[0]).toEqual({
       id: "preset",
@@ -388,7 +388,7 @@ describe("ModelService 配置管理", () => {
     expect(() => service.select_model({ usage: "unknown", model_id: "openai" })).toThrow(
       "request.validation_failed",
     );
-    expect(() => service.select_model({ usage: "analysis", model_id: "missing" })).toThrow(
+    expect(() => service.select_model({ usage: "agent", model_id: "missing" })).toThrow(
       "model.not_found",
     );
 
@@ -402,7 +402,7 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
     ]);
     service.select_model({ usage: "translation", model_id: "openai-a" });
-    service.select_model({ usage: "analysis", model_id: "openai-a" });
+    service.select_model({ usage: "agent", model_id: "openai-a" });
     service.select_model({ usage: "agent", model_id: "preset" });
 
     const management_snapshot = read_request_model_snapshot(
@@ -412,7 +412,7 @@ describe("ModelService 配置管理", () => {
 
     expect(selection.model_selection).toEqual({
       translation: "openai-b",
-      analysis: "openai-b",
+
       agent: "preset",
     });
     expect(management_snapshot.models.map((model) => model["id"])).not.toContain("openai-a");
@@ -425,15 +425,15 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
     ]);
     service.select_model({ usage: "translation", model_id: "google" });
-    service.select_model({ usage: "analysis", model_id: "openai" });
+    service.select_model({ usage: "agent", model_id: "openai" });
 
     service.delete_model({ model_id: "google" });
     const selection = read_selection_snapshot(service.get_selection_snapshot());
 
     expect(selection.model_selection).toEqual({
       translation: "preset",
-      analysis: "openai",
-      agent: "preset",
+
+      agent: "openai",
     });
   });
 
@@ -904,7 +904,7 @@ function read_request_model_snapshot(response: JsonRecord): {
 }
 
 function read_selection_snapshot(response: JsonRecord): {
-  model_selection: { translation: string; analysis: string; agent: string };
+  model_selection: { translation: string; agent: string };
   models: Array<JsonRecord>;
 } {
   const selection = response["model_selection"];
@@ -915,7 +915,7 @@ function read_selection_snapshot(response: JsonRecord): {
   return {
     model_selection: {
       translation: String(selection["translation"] ?? ""),
-      analysis: String(selection["analysis"] ?? ""),
+
       agent: String(selection["agent"] ?? ""),
     },
     models: Array.isArray(models)

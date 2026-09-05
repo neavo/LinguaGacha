@@ -36,9 +36,6 @@ export const de_de_workbench_page = {
     reset_task_all: "Alle Daten zurücksetzen",
     reset_task_failed: "Fehlgeschlagene Daten zurücksetzen",
     stop_task: "Stopp",
-    analysis_task: "Analyse",
-    start_analysis: "Analyse starten",
-    import_analysis_glossary: "Kandidatenbegriffe importieren",
   },
   task: {
     menu: {
@@ -62,46 +59,7 @@ export const de_de_workbench_page = {
       stopped: "Gestoppt …",
     },
   },
-  analysis_task: {
-    menu: {
-      tooltip: "Begriffe aus dem Quelltext extrahieren",
-    },
-    migration: {
-      description:
-        "Der klassische Analyse-Workflow wird demnächst entfernt. Wir empfehlen, das Glossar automatisch mit AGENT zu erstellen. Trotzdem fortfahren …?",
-    },
-    summary: {
-      running: "Wird analysiert",
-    },
-    detail: {
-      title: "Analysedetails",
-      description: "Live-Statistiken für die aktuelle Analyse anzeigen.",
-      waveform_title: "Live-Geschwindigkeit",
-      metrics_title: "Metriken",
 
-      active_requests: "Aktive Anfragen",
-      candidate_count: "Kandidatenbegriffe",
-    },
-    confirm: {
-      reset_all_description: "Analysefortschritt für das gesamte Projekt wirklich zurücksetzen …?",
-      reset_failed_description: "Fehlgeschlagenen Analysefortschritt wirklich zurücksetzen …?",
-      import_glossary_description: "Kandidatenbegriffe wirklich ins Glossar importieren …?",
-      stop_description: "Aktuelle Analyseaufgabe wirklich stoppen …?",
-    },
-    feedback: {
-      refresh_failed: "Fehler beim Aktualisieren des Analyseaufgabenstatus",
-      start_failed: "Fehler beim Starten der Analyseaufgabe",
-      stop_failed: "Fehler beim Stoppen der Analyseaufgabe",
-
-      reset_all_failed: "Fehler beim Zurücksetzen des gesamten Analysefortschritts",
-      reset_failed_failed: "Fehler beim Zurücksetzen des fehlgeschlagenen Analysefortschritts",
-      import_loading_toast:
-        "Kandidatenbegriffe werden importiert und Korrektur-Cache aktualisiert …",
-      import_failed: "Fehler beim Importieren der Kandidatenbegriffe",
-      import_success: "{COUNT} Kandidatenbegriffe importiert",
-      agent_draft_preserved: "Der vorhandene AGENT-Entwurf wurde beibehalten.",
-    },
-  },
   translation_task: {
     menu: {
       tooltip: "Quelltext in die Zielsprache übersetzen",

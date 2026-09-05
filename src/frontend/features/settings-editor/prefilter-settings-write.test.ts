@@ -10,7 +10,7 @@ describe("apply_prefilter_settings_write", () => {
   it("提交设置镜像和 section revision 锁", async () => {
     api_fetch_mock.mockImplementation(async (path: string) =>
       path === "/api/workbench/snapshot"
-        ? { sectionRevisions: { items: 3, analysis: 4 } }
+        ? { sectionRevisions: { items: 3 } }
         : { accepted: true, changes: [] },
     );
     const commit_project_write = vi.fn(async (request) => await request.run());
@@ -38,7 +38,7 @@ describe("apply_prefilter_settings_write", () => {
         mtool_optimizer_enable: true,
         skip_duplicate_source_text_enable: false,
       },
-      expected_section_revisions: { items: 3, analysis: 4 },
+      expected_section_revisions: { items: 3 },
     });
   });
 });

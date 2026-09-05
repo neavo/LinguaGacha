@@ -29,17 +29,14 @@ import {
 import type { ProjectWriteResult } from "../../shared/project-event";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import {
-  build_analysis_progress_snapshot,
-  build_analysis_status_summary,
   build_item_view_map,
   build_public_item_map,
   build_translation_extras_from_items,
   compute_project_prefilter_write,
   create_empty_translation_task_snapshot,
-  derive_project_item_view_record,
   type ProjectPrefilterWriteOutput,
 } from "./project-write-state";
-import { is_task_skipped_item_status, normalize_task_progress_snapshot } from "../../domain/task";
+
 import * as AppErrors from "../../shared/error";
 import { t_main_log } from "../log/log-text";
 
@@ -116,12 +113,7 @@ export class ProjectContentService {
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async () => {
-      this.assert_no_legacy_fields(request, [
-        "items",
-        "translation_extras",
-        "prefilter_config",
-        "analysis_extras",
-      ]);
+      this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
       const file_commands = this.normalize_import_file_commands(request["files"]);
       if (file_commands.length === 0) {
@@ -253,13 +245,12 @@ export class ProjectContentService {
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["files", "items", "analysis"],
+        revisionSections: ["files", "items"],
         source: "project_import_files",
-        updatedSections: ["files", "items", "analysis"],
+        updatedSections: ["files", "items"],
         assetWrites: asset_writes,
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
-        resetAnalysis: true,
       });
       this.log_project_import_parse_failures(parse_result.failed_files);
       return this.with_parse_failures(write_result, parse_result.failed_files);
@@ -267,17 +258,12 @@ export class ProjectContentService {
   }
 
   /**
-   * 重置指定工作台文件的条目事实，并清空分析状态
+   * 重置指定工作台文件的条目事实，并重建翻译进度
    */
   public async reset_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async () => {
-      this.assert_no_legacy_fields(request, [
-        "items",
-        "translation_extras",
-        "prefilter_config",
-        "analysis_extras",
-      ]);
+      this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
@@ -307,28 +293,22 @@ export class ProjectContentService {
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["items", "analysis"],
+        revisionSections: ["items"],
         source: "project_reset_files",
-        updatedSections: ["items", "analysis"],
+        updatedSections: ["items"],
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
-        resetAnalysis: true,
       });
     });
   }
 
   /**
-   * 删除工作台文件与对应条目，并清空分析状态
+   * 删除工作台文件与对应条目，并重建翻译进度
    */
   public async delete_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     return this.runtime_gate.run_project_write(async () => {
-      this.assert_no_legacy_fields(request, [
-        "items",
-        "translation_extras",
-        "prefilter_config",
-        "analysis_extras",
-      ]);
+      this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
       if (rel_paths.length === 0) {
         throw new AppErrors.AppError("request.validation_failed");
@@ -359,16 +339,15 @@ export class ProjectContentService {
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["files", "items", "analysis"],
+        revisionSections: ["files", "items"],
         source: "project_delete_files",
-        updatedSections: ["files", "items", "analysis"],
+        updatedSections: ["files", "items"],
         assetWrites: rel_paths.map((rel_path) => ({
           kind: "delete",
           path: rel_path,
         })),
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
-        resetAnalysis: true,
       });
     });
   }
@@ -393,7 +372,7 @@ export class ProjectContentService {
   }
 
   /**
-   * 写入项目设置镜像；prefiltered_items 模式同时替换条目与分析计算状态
+   * 写入项目设置镜像；prefiltered_items 模式同时替换条目与翻译进度
    */
   public async align_settings(request: JsonRecord): Promise<ProjectWriteResult> {
     const mode = String(request["mode"] ?? "").toLowerCase();
@@ -423,15 +402,14 @@ export class ProjectContentService {
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["items", "analysis"],
+        revisionSections: ["items"],
         source: "settings_alignment",
-        updatedSections: ["items", "analysis"],
+        updatedSections: ["items"],
         items: build_project_item_persistent_records(write_output.items),
         meta: {
           ...settings_meta,
           ...this.build_prefilter_reset_meta(settings, write_output),
         },
-        resetAnalysis: true,
       });
     });
   }
@@ -474,12 +452,11 @@ export class ProjectContentService {
         return await this.write_store.replace_project_items_and_files({
           projectPath: project_path,
           requireExpectedSectionRevisions: false,
-          revisionSections: ["items", "analysis"],
+          revisionSections: ["items"],
           source: "translation_reset",
-          updatedSections: ["items", "analysis"],
+          updatedSections: ["items"],
           items: build_project_item_persistent_records(write_output.items),
           meta: this.build_prefilter_reset_meta(settings, write_output),
-          resetAnalysis: true,
         });
       }
       if (mode === "failed") {
@@ -501,29 +478,6 @@ export class ProjectContentService {
         });
       }
       throw new AppErrors.AppError("request.validation_failed");
-    });
-  }
-
-  /**
-   * 提交分析重置结果；项目写 lease 内按当前事实执行 all 或 failed 语义
-   */
-  public async reset_analysis(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
-    const mode = String(request["mode"] ?? "").toLowerCase();
-    this.assert_no_legacy_fields(request, ["analysis_extras", "expected_section_revisions"]);
-    return this.runtime_gate.run_project_write(async () => {
-      const analysis_extras = this.build_analysis_reset_extras(project_path, mode);
-      if (mode !== "all" && mode !== "failed") {
-        throw new AppErrors.AppError("request.validation_failed");
-      }
-      return await this.write_store.reset_analysis_state({
-        projectPath: project_path,
-        requireExpectedSectionRevisions: false,
-        source: "analysis_reset",
-        mode,
-        analysisExtras: analysis_extras as MutableJsonRecord,
-        ...(mode === "all" ? { analysisCandidateCount: 0 } : {}),
-      });
     });
   }
 
@@ -798,7 +752,7 @@ export class ProjectContentService {
   }
 
   /**
-   * 预过滤类写入固定重置分析计算事实，并写入当前项目设置镜像
+   * 预过滤类写入重建条目状态与翻译进度，并写入当前项目设置镜像
    */
   private build_prefilter_reset_meta(
     settings: ProjectWriteSettings,
@@ -811,11 +765,6 @@ export class ProjectContentService {
       skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
       prefilter_config: output.prefilter_config as unknown as JsonValue,
       translation_extras: output.translation_extras as unknown as JsonValue,
-      analysis_extras: build_analysis_progress_snapshot({
-        extras: output.analysis.extras,
-        status_summary: output.analysis.status_summary,
-      }) as unknown as JsonValue,
-      analysis_candidate_count: output.analysis.candidate_count,
     };
   }
 
@@ -1073,100 +1022,6 @@ export class ProjectContentService {
         ...diagnostic_context,
       },
     });
-  }
-
-  /**
-   * 分析重置的最终 progress 由当前 items、checkpoint 和既有 meta 计算
-   */
-  private build_analysis_reset_extras(project_path: string, mode: string): Record<string, unknown> {
-    const status_summary =
-      mode === "failed"
-        ? this.build_failed_analysis_status_summary(project_path)
-        : build_analysis_status_summary(
-            Object.values(this.to_public_item_record(this.get_all_items(project_path))).flatMap(
-              (item) => {
-                const view_item = derive_project_item_view_record(item);
-                return view_item === null ? [] : [view_item];
-              },
-            ),
-          );
-    const preserved_extras =
-      mode === "failed"
-        ? this.pick_preserved_analysis_extras(
-            normalize_task_progress_snapshot({
-              ...read_json_record(this.get_all_meta(project_path)["analysis_extras"]),
-            }),
-          )
-        : {};
-    return build_analysis_progress_snapshot({
-      extras: preserved_extras,
-      status_summary,
-    });
-  }
-
-  /**
-   * failed 模式只删除失败 checkpoint，已成功 checkpoint 继续计入 processed
-   */
-  private build_failed_analysis_status_summary(project_path: string): Record<string, unknown> {
-    const checkpoints = this.get_analysis_checkpoints(project_path);
-    let total_line = 0;
-    let processed_line = 0;
-    for (const item of this.get_all_items(project_path)) {
-      const view_item = derive_project_item_view_record(item);
-      if (
-        view_item === null ||
-        view_item.src.trim() === "" ||
-        is_task_skipped_item_status(view_item.status)
-      ) {
-        continue;
-      }
-      total_line += 1;
-      if (checkpoints.get(view_item.item_id) === "PROCESSED") {
-        processed_line += 1;
-      }
-    }
-    return {
-      total_line,
-      processed_line,
-      error_line: 0,
-      line: processed_line,
-    };
-  }
-
-  /**
-   * failed 分析重置保留累计耗时与 token，行级统计随后由当前 checkpoint 覆盖
-   */
-  private pick_preserved_analysis_extras(extras: Record<string, unknown>): Record<string, unknown> {
-    return {
-      start_time: extras.start_time ?? 0.0,
-      time: extras.time ?? 0.0,
-      total_tokens: extras.total_tokens ?? 0,
-      total_input_tokens: extras.total_input_tokens ?? 0,
-      total_reasoning_tokens: extras.total_reasoning_tokens ?? 0,
-      total_output_tokens: extras.total_output_tokens ?? 0,
-    };
-  }
-
-  /**
-   * 读取分析 checkpoint 状态，过滤掉未知状态避免污染 reset 统计
-   */
-  private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.get_analysis_item_checkpoints(project_path);
-    const checkpoints = new Map<number, string>();
-    if (!Array.isArray(value)) {
-      return checkpoints;
-    }
-    for (const row of value) {
-      if (!is_json_record(row)) {
-        continue;
-      }
-      const item_id = this.read_number(row["item_id"], 0);
-      const status = String(row["status"] ?? "");
-      if (item_id > 0 && (status === "PROCESSED" || status === "ERROR")) {
-        checkpoints.set(item_id, status);
-      }
-    }
-    return checkpoints;
   }
 
   /**

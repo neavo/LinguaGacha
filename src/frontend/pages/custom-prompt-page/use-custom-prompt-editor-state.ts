@@ -138,19 +138,15 @@ export function useCustomPromptEditorState(
   const readonly_ref = useRef(readonly);
 
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
-    const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {
-      task_type: config.task_type,
-    });
+    const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {});
     return normalize_prompt_template(payload.template);
-  }, [config.task_type]);
+  }, []);
 
   const fetch_prompt_snapshot = useCallback(async (): Promise<{
     slice: PromptSlice;
     prompts_revision: number;
   }> => {
-    const payload = await api_fetch<PromptQueryPayload>("/api/quality/prompts/view", {
-      task_type: config.task_type,
-    });
+    const payload = await api_fetch<PromptQueryPayload>("/api/quality/prompts/view", {});
     return {
       slice: {
         text: String(payload.prompt?.text ?? ""),
@@ -158,7 +154,7 @@ export function useCustomPromptEditorState(
       },
       prompts_revision: read_prompts_revision(payload.sectionRevisions?.prompts),
     };
-  }, [config.task_type]);
+  }, []);
 
   const commit_captured_slice = useCallback(
     async (
@@ -169,10 +165,8 @@ export function useCustomPromptEditorState(
       try {
         const result = await commit_project_write({
           operation: CUSTOM_PROMPT_SAVE_WRITE,
-          task_type: config.task_type,
           run: async () => {
             return await api_fetch<ProjectWriteResultPayload>("/api/quality/prompts/save", {
-              task_type: config.task_type,
               expected_section_revisions: {
                 prompts: prompts_revision_ref.current,
               },
@@ -223,7 +217,7 @@ export function useCustomPromptEditorState(
         return false;
       }
     },
-    [commit_project_write, config.task_type, fetch_prompt_snapshot, push_toast, t],
+    [commit_project_write, fetch_prompt_snapshot, push_toast, t],
   );
 
   const drain_prompt_change = useCallback(async (): Promise<boolean> => {
@@ -343,7 +337,6 @@ export function useCustomPromptEditorState(
       }
     })();
   }, [
-    config.task_type,
     debounced_prompt_save,
     fetch_prompt_snapshot,
     fetch_prompt_template,

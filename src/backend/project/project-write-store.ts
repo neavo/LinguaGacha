@@ -8,9 +8,9 @@ import {
   type JsonValue,
   type MutableJsonRecord,
 } from "../../domain/json";
-import { is_task_progress_status } from "../../domain/task";
+import { is_task_progress_status } from "../../domain/batch-translation";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
-import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
+
 import type {
   ProjectChangeFilesPayload,
   ProjectChangeItemsPayload,
@@ -32,22 +32,13 @@ import {
 } from "../../shared/project/project-item-write-planner";
 import { create_quality_rule_entry_id } from "../../shared/quality/quality-rule-entry";
 import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
-import {
-  build_analysis_section_delta,
-  create_empty_translation_task_snapshot,
-} from "./project-write-state";
+import { create_empty_translation_task_snapshot } from "./project-write-state";
 import type {
   ProjectChangePublisher,
   ProjectWriteChangeRequest,
 } from "./project-write-event-adapter";
 import type { ProjectExpectedSectionRevisions } from "./project-write-request";
-import type {
-  AnalysisCheckpointWrite,
-  AnalysisGlossaryWrite,
-  AnalysisProgressWrite,
-  ProjectItemWriteChange,
-  TranslationItemPatch,
-} from "./project-write-request";
+import type { ProjectItemWriteChange, TranslationItemPatch } from "./project-write-request";
 import {
   resolve_project_prompt_storage,
   resolve_project_quality_rule_storage,
@@ -64,7 +55,7 @@ import {
 import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
-type RevisionBackedSection = "files" | "items" | "analysis" | "proofreading";
+type RevisionBackedSection = "files" | "items" | "proofreading";
 type ProjectWriteRevisionContext = {
   project_path: string;
   meta: MutableJsonRecord;
@@ -210,140 +201,6 @@ export class ProjectWriteStore {
     this.database.upsert_meta_entries(request.projectPath, request.meta as unknown as JsonRecord);
   }
 
-  /**
-   * 分析 artifact 写入 checkpoint、候选聚合和进度，并发布轻量 analysis 增量。
-   */
-  public async commit_analysis_artifacts(request: {
-    projectPath: string;
-    successCheckpoints: AnalysisCheckpointWrite[];
-    errorCheckpoints: AnalysisCheckpointWrite[];
-    glossaryEntries: AnalysisGlossaryWrite[];
-    progressSnapshot: AnalysisProgressWrite | null;
-  }): Promise<MutableJsonRecord> {
-    const project_path = request.projectPath;
-    const success_checkpoints = request.successCheckpoints;
-    const error_checkpoints = this.build_error_checkpoint_rows(
-      project_path,
-      request.errorCheckpoints,
-    );
-    const glossary_entries = request.glossaryEntries;
-    const progress_snapshot: MutableJsonRecord | null =
-      request.progressSnapshot === null ? null : { ...request.progressSnapshot };
-    const meta = this.read_project_meta(project_path);
-    const candidate_result = this.build_next_candidate_rows(
-      project_path,
-      glossary_entries,
-      read_json_integer(meta["analysis_candidate_count"], 0),
-    );
-    await this.commit_runtime_change({
-      projectPath: project_path,
-      requireExpectedSectionRevisions: false,
-      revisionSections: ["analysis"],
-      source: "analysis_batch_update",
-      updatedSections: ["analysis"],
-      sections: {
-        analysis: {
-          payloadMode: "canonical-delta",
-          data: build_analysis_section_delta(
-            progress_snapshot ?? {
-              ...read_json_record(meta["analysis_extras"]),
-            },
-            candidate_result.count,
-          ) as unknown as JsonValue,
-        },
-      },
-      prepare: (revision_context) => {
-        const writes: ProjectDatabaseWrite[] = [];
-        if (success_checkpoints.length > 0 || error_checkpoints.length > 0) {
-          writes.push((database) =>
-            database.upsert_analysis_item_checkpoints(project_path, [
-              ...success_checkpoints,
-              ...error_checkpoints,
-            ] as unknown as JsonValue[]),
-          );
-        }
-        if (candidate_result.rows.length > 0) {
-          writes.push((database) =>
-            database.upsert_analysis_candidate_aggregates(
-              project_path,
-              candidate_result.rows as unknown as JsonValue[],
-            ),
-          );
-        }
-        writes.push(
-          (database) =>
-            database.upsert_meta_entries(project_path, {
-              ...(progress_snapshot === null ? {} : { analysis_extras: progress_snapshot }),
-              analysis_candidate_count: candidate_result.count,
-            } as unknown as JsonRecord),
-          ...this.build_section_revision_writes(revision_context),
-        );
-        return { writes };
-      },
-    });
-    return {
-      inserted_count: glossary_entries.length,
-      analysis_candidate_count: candidate_result.count,
-      section_revisions: this.build_section_revisions(project_path, ["analysis"]),
-    };
-  }
-
-  /**
-   * 分析状态重置统一清理 checkpoint、候选与 progress meta。
-   */
-  public async reset_analysis_state(request: {
-    projectPath: string;
-    expectedSectionRevisions?: ProjectExpectedSectionRevisions;
-    requireExpectedSectionRevisions: boolean;
-    source: string;
-    mode: "all" | "failed";
-    analysisExtras: MutableJsonRecord;
-    analysisCandidateCount?: number;
-    sectionData?: MutableJsonRecord;
-  }): Promise<ProjectWriteResult> {
-    const meta: MutableJsonRecord = {
-      analysis_extras: request.analysisExtras as unknown as JsonValue,
-    };
-    if (request.analysisCandidateCount !== undefined) {
-      meta["analysis_candidate_count"] = Math.max(0, Math.trunc(request.analysisCandidateCount));
-    }
-    return await this.commit_runtime_change({
-      projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
-      requireExpectedSectionRevisions: request.requireExpectedSectionRevisions,
-      revisionSections: ["analysis"],
-      source: request.source,
-      updatedSections: ["analysis"],
-      sections:
-        request.sectionData === undefined
-          ? undefined
-          : {
-              analysis: {
-                payloadMode: "canonical-delta",
-                data: request.sectionData as unknown as JsonValue,
-              },
-            },
-      prepare: (revision_context) => {
-        const writes: ProjectDatabaseWrite[] = [
-          (database) =>
-            database.upsert_meta_entries(request.projectPath, meta as unknown as JsonRecord),
-        ];
-        if (request.mode === "all") {
-          writes.push(
-            (database) => database.delete_analysis_item_checkpoints(request.projectPath),
-            (database) => database.clear_analysis_candidate_aggregates(request.projectPath),
-          );
-        } else {
-          writes.push((database) =>
-            database.delete_analysis_item_checkpoints(request.projectPath, "ERROR"),
-          );
-        }
-        writes.push(...this.build_section_revision_writes(revision_context));
-        return { writes };
-      },
-    });
-  }
-
   /** 人工 Item 意图与重复组被动状态在同一事务快照上规划并提交。 */
   public async apply_project_item_changes(request: {
     projectPath: string;
@@ -403,7 +260,7 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 工作台结构性写入集中提交 asset、items、meta 与分析清理；当前事实命令须显式关闭 revision guard。
+   * 工作台结构性写入集中提交 asset、items 与 meta；当前事实命令须显式关闭 revision guard。
    */
   public async replace_project_items_and_files(
     request: {
@@ -414,7 +271,7 @@ export class ProjectWriteStore {
       assetWrites?: ProjectAssetWrite[];
       items?: MutableJsonRecord[];
       meta?: MutableJsonRecord;
-      resetAnalysis?: boolean;
+
       itemsPayload?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
       filesPayload?: Pick<
         ProjectChangeFilesPayload,
@@ -472,12 +329,7 @@ export class ProjectWriteStore {
             ),
           );
         }
-        if (request.resetAnalysis === true) {
-          writes.push(
-            (database) => database.delete_analysis_item_checkpoints(request.projectPath),
-            (database) => database.clear_analysis_candidate_aggregates(request.projectPath),
-          );
-        }
+
         writes.push(...this.build_section_revision_writes(revision_context));
         return { writes };
       },
@@ -555,66 +407,6 @@ export class ProjectWriteStore {
       items: request.items,
       meta: {
         translation_extras: request.translationExtras as unknown as JsonValue,
-      },
-    });
-  }
-
-  /**
-   * 分析候选导入同时处理 quality 和 analysis 的 revision 语义。
-   */
-  public async import_analysis_glossary(request: {
-    projectPath: string;
-    expectedSectionRevisions: ProjectExpectedSectionRevisions;
-    qualityRule: {
-      databaseType: string;
-      entries: MutableJsonRecord[];
-      revisionKey: string;
-    } | null;
-    consumedCandidateSrcs: string[];
-    analysisCandidateCount: number;
-    updatedSections: ProjectDataSection[];
-  }): Promise<ProjectWriteResult> {
-    return await this.commit_runtime_change({
-      projectPath: request.projectPath,
-      expectedSectionRevisions: request.expectedSectionRevisions,
-      requireExpectedSectionRevisions: true,
-      revisionSections: ["analysis", "quality"],
-      source: "analysis_glossary_import",
-      updatedSections: request.updatedSections,
-      prepare: (revision_context) => {
-        const writes: ProjectDatabaseWrite[] = [];
-        if (request.qualityRule !== null) {
-          const quality_rule = request.qualityRule;
-          writes.push(
-            (database) =>
-              database.set_rules(
-                request.projectPath,
-                quality_rule.databaseType,
-                quality_rule.entries as unknown as JsonValue[],
-              ),
-            (database) =>
-              database.set_meta(
-                request.projectPath,
-                quality_rule.revisionKey,
-                get_section_revision(revision_context.meta, "quality") + 1,
-              ),
-          );
-        }
-        writes.push(
-          (database) =>
-            database.delete_analysis_candidate_aggregates_by_srcs(
-              request.projectPath,
-              request.consumedCandidateSrcs,
-            ),
-          (database) =>
-            database.set_meta(
-              request.projectPath,
-              "analysis_candidate_count",
-              request.analysisCandidateCount,
-            ),
-          ...this.build_section_revision_writes(revision_context, ["analysis"]),
-        );
-        return { writes };
       },
     });
   }
@@ -725,7 +517,7 @@ export class ProjectWriteStore {
     if (request.input.quality_rules.length > 0) {
       updated_sections.push("quality");
     }
-    if (request.input.prompts.length > 0) {
+    if (request.input.translation_prompt !== null) {
       updated_sections.push("prompts");
     }
     if (updated_sections.length === 0) {
@@ -767,8 +559,9 @@ export class ProjectWriteStore {
           );
         }
         const prompt_revision = get_section_revision(revision_context.meta, "prompts") + 1;
-        for (const prompt of request.input.prompts) {
-          const storage = resolve_project_prompt_storage(prompt.kind);
+        if (request.input.translation_prompt !== null) {
+          const prompt = request.input.translation_prompt;
+          const storage = resolve_project_prompt_storage();
           writes.push(
             (database) =>
               database.set_rule_text(request.projectPath, storage.database_type, prompt.text),
@@ -869,7 +662,7 @@ export class ProjectWriteStore {
     const prompt_kinds = [...new Set(request.batch.prompts.map((intent) => intent.kind))];
     const prompts = Object.fromEntries(
       prompt_kinds.map((kind) => {
-        const storage = resolve_project_prompt_storage(kind);
+        const storage = resolve_project_prompt_storage();
         return [kind, this.database.get_rule_text(request.projectPath, storage.database_type)];
       }),
     ) as Partial<Record<PromptKind, string>>;
@@ -948,15 +741,15 @@ export class ProjectWriteStore {
       }
     }
     for (const change of outcome.promptChanges) {
-      const storage = resolve_project_prompt_storage(change.kind);
+      const storage = resolve_project_prompt_storage();
       writes.push((database) =>
         database.set_rule_text(project_path, storage.database_type, change.text),
       );
     }
     if (outcome.promptChanges.length > 0) {
       const prompt_revision = get_section_revision(revision_context.meta, "prompts") + 1;
-      for (const kind of new Set(outcome.promptChanges.map((change) => change.kind))) {
-        const storage = resolve_project_prompt_storage(kind);
+      {
+        const storage = resolve_project_prompt_storage();
         writes.push((database) =>
           database.set_meta(project_path, storage.revision_meta_key, prompt_revision),
         );
@@ -1150,10 +943,7 @@ export class ProjectWriteStore {
   private filter_revision_backed_sections(sections: ProjectDataSection[]): RevisionBackedSection[] {
     return sections.filter(
       (section): section is RevisionBackedSection =>
-        section === "files" ||
-        section === "items" ||
-        section === "analysis" ||
-        section === "proofreading",
+        section === "files" || section === "items" || section === "proofreading",
     );
   }
 
@@ -1229,14 +1019,7 @@ export class ProjectWriteStore {
         scope: "prompts-full",
       });
     }
-    if (request.updatedSections.includes("analysis")) {
-      events.push({
-        ...common,
-        type: "project.analysis.changed",
-        sections: request.sections,
-        scope: "analysis-full",
-      });
-    }
+
     if (request.updatedSections.includes("project")) {
       events.push({ ...common, type: "project.settings.changed" });
     }
@@ -1505,149 +1288,6 @@ export class ProjectWriteStore {
       error_line,
       line: processed_line + error_line,
     };
-  }
-
-  /**
-   * 只合并本批触及的候选 src，并用前后局部计数修正全局候选数。
-   */
-  private build_next_candidate_rows(
-    project_path: string,
-    glossary_entries: AnalysisGlossaryWrite[],
-    current_count: number,
-  ): { rows: MutableJsonRecord[]; count: number } {
-    const normalized_entries = glossary_entries.filter((entry) => {
-      const src = entry.src.trim();
-      const dst = entry.dst.trim();
-      return src !== "" && dst !== "";
-    });
-    if (normalized_entries.length === 0) {
-      return { rows: [], count: Math.max(0, current_count) };
-    }
-    const touched_srcs = [...new Set(normalized_entries.map((entry) => entry.src.trim()))];
-    const aggregate = new Map<string, MutableJsonRecord>();
-    for (const row of this.get_candidate_aggregate_by_srcs(project_path, touched_srcs)) {
-      const src = String(row["src"] ?? "").trim();
-      if (src !== "") {
-        aggregate.set(src, {
-          ...row,
-          dst_votes: this.normalize_vote_map(row["dst_votes"]),
-          info_votes: this.normalize_vote_map(row["info_votes"]),
-        });
-      }
-    }
-    const previous_touched_count = this.count_candidate_entries([...aggregate.values()]);
-    const now = new Date().toISOString();
-    for (const entry of normalized_entries) {
-      const src = entry.src.trim();
-      const dst = entry.dst.trim();
-      if (src === "" || dst === "") {
-        continue;
-      }
-      const current =
-        aggregate.get(src) ??
-        ({
-          src,
-          dst_votes: {},
-          info_votes: {},
-          observation_count: 0,
-          first_seen_at: now,
-          last_seen_at: now,
-          case_sensitive: entry.case_sensitive,
-        } as MutableJsonRecord);
-      const dst_votes = this.normalize_vote_map(current["dst_votes"]);
-      const info_votes = this.normalize_vote_map(current["info_votes"]);
-      const info = entry.info.trim();
-      dst_votes[dst] = read_json_integer(dst_votes[dst] as JsonValue, 0) + 1;
-      if (info !== "") {
-        info_votes[info] = read_json_integer(info_votes[info] as JsonValue, 0) + 1;
-      }
-      current["dst_votes"] = dst_votes as unknown as JsonValue;
-      current["info_votes"] = info_votes as unknown as JsonValue;
-      current["observation_count"] = read_json_integer(current["observation_count"], 0) + 1;
-      current["last_seen_at"] = now;
-      current["case_sensitive"] = Boolean(current["case_sensitive"]) || entry.case_sensitive;
-      aggregate.set(src, current);
-    }
-    const rows = [...aggregate.values()];
-    const next_touched_count = this.count_candidate_entries(rows);
-    return {
-      rows,
-      count: Math.max(0, current_count - previous_touched_count + next_touched_count),
-    };
-  }
-
-  /**
-   * 复用候选聚合规则统计可展示条目数。
-   */
-  private count_candidate_entries(rows: MutableJsonRecord[]): number {
-    return count_analysis_glossary_candidates(rows);
-  }
-
-  /**
-   * 丢弃空文本和非正票数，并合并归一化后的同名票项。
-   */
-  private normalize_vote_map(value: JsonValue | undefined): Record<string, number> {
-    if (!is_json_record(value)) {
-      return {};
-    }
-    const result: Record<string, number> = {};
-    for (const [key, raw_votes] of Object.entries(value)) {
-      const text = String(key).trim();
-      const votes = read_json_integer(raw_votes, 0);
-      if (text !== "" && votes > 0) {
-        result[text] = (result[text] ?? 0) + votes;
-      }
-    }
-    return result;
-  }
-
-  /**
-   * 错误 checkpoint 基于旧 ERROR 记录递增 error_count，并刷新提交时间。
-   */
-  private build_error_checkpoint_rows(
-    project_path: string,
-    rows: AnalysisCheckpointWrite[],
-  ): MutableJsonRecord[] {
-    const existing = new Map<number, MutableJsonRecord>();
-    for (const row of this.get_analysis_checkpoints(project_path)) {
-      existing.set(read_json_integer(row["item_id"], 0), row);
-    }
-    const now = new Date().toISOString();
-    return rows.map((row) => {
-      const item_id = row.item_id;
-      const previous = existing.get(item_id);
-      const previous_error_count =
-        previous?.["status"] === "ERROR" ? read_json_integer(previous["error_count"], 0) : 0;
-      return {
-        ...row,
-        status: "ERROR",
-        updated_at: now,
-        error_count: previous_error_count + 1,
-      };
-    });
-  }
-
-  /**
-   * 从 database JSON 结果中过滤并复制合法 checkpoint 记录。
-   */
-  private get_analysis_checkpoints(project_path: string): MutableJsonRecord[] {
-    const value = this.database.get_analysis_item_checkpoints(project_path);
-    return Array.isArray(value)
-      ? value.filter((row): row is JsonRecord => is_json_record(row)).map((row) => ({ ...row }))
-      : [];
-  }
-
-  /**
-   * 只读取本批 src 的候选聚合，并隔离数据库返回引用。
-   */
-  private get_candidate_aggregate_by_srcs(
-    project_path: string,
-    srcs: string[],
-  ): MutableJsonRecord[] {
-    const value = this.database.get_analysis_candidate_aggregates_by_srcs(project_path, srcs);
-    return Array.isArray(value)
-      ? value.filter((row): row is JsonRecord => is_json_record(row)).map((row) => ({ ...row }))
-      : [];
   }
 
   /**

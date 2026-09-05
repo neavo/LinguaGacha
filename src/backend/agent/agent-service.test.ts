@@ -125,6 +125,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "invalid_tool"
     | "tool_compaction"
     | "tools",
+  batch_mode: false,
   abort_count: 0,
   system_prompts: [] as string[],
   prompts: [] as string[],
@@ -290,6 +291,14 @@ function create_fake_response(context: Context): FauxResponseStep {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
   const after_tool_call = context.messages.at(-1)?.role === "toolResult";
+  if (fake_agent_state.batch_mode) {
+    return after_tool_call
+      ? fauxAssistantMessage("翻译完成")
+      : fauxAssistantMessage(
+          fauxToolCall("run_batch_translation", {}, { id: "batch-translation" }),
+          { stopReason: "toolUse" },
+        );
+  }
   if (fake_agent_state.mode === "tool_compaction") {
     if (after_tool_call) {
       return fauxAssistantMessage(
@@ -473,6 +482,7 @@ describe("AgentService", () => {
   const services: AgentService[] = [];
 
   beforeEach(() => {
+    fake_agent_state.batch_mode = false;
     fake_agent_state.mode = "success";
     fake_agent_state.abort_count = 0;
     fake_agent_state.system_prompts = [];
@@ -1578,6 +1588,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
+      "run_batch_translation",
       "ask_user",
       "workspace_script",
       "workspace_apply",
@@ -1654,7 +1665,13 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      ["ask_user", "workspace_script", "workspace_apply", "read_skill"].sort(),
+      [
+        "run_batch_translation",
+        "ask_user",
+        "workspace_script",
+        "workspace_apply",
+        "read_skill",
+      ].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -2489,7 +2506,7 @@ describe("AgentService", () => {
     expect(snapshot.inputQueue).toMatchObject({ paused: true, items: [{ text: "第二轮" }] });
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
-    const task_lease = runtime_gate.begin_runtime("task");
+    const task_lease = runtime_gate.begin_runtime("batch_translation");
     await expect(service.continue_session({})).rejects.toThrow("runtime.busy");
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
@@ -2584,6 +2601,68 @@ describe("AgentService", () => {
     );
   });
 
+  it.each(["complete", "stop", "reset", "dispose"] as const)(
+    "批量工具阻塞真实 SDK 回合并正确处理 %s",
+    async (action) => {
+      fake_agent_state.batch_mode = true;
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      let signal: AbortSignal | undefined;
+      let received_lease: import("../runtime-operation-gate").RuntimeLease | undefined;
+      const { service, runtime_gate } = await create_service(true, undefined, undefined, {
+        run_under_agent: async (lease, parent) => {
+          received_lease = lease;
+          signal = parent;
+          await pending;
+          return {
+            status: parent.aborted ? "idle" : "done",
+            progress: {
+              start_time: 0,
+              time: 0,
+              line: 2,
+              total_line: 2,
+              processed_line: 2,
+              error_line: 0,
+              total_tokens: 0,
+              total_input_tokens: 0,
+              total_reasoning_tokens: 0,
+              total_output_tokens: 0,
+            },
+          };
+        },
+      });
+      await service.send_message({ text: "翻译当前工程", attachments: [] });
+      await vi.waitFor(() => expect(signal).toBeDefined());
+      expect(fake_agent_state.model_call_count).toBe(1);
+      expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      runtime_gate.assert_current_runtime(received_lease!, "agent");
+      let closing: Promise<unknown> | undefined;
+      if (action !== "complete") {
+        closing = Promise.resolve(
+          action === "stop"
+            ? service.stop()
+            : action === "reset"
+              ? service.reset()
+              : service.dispose(),
+        );
+        await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+        expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      }
+      finish();
+      await closing;
+      await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+      if (action === "complete") {
+        expect(fake_agent_state.model_call_count).toBe(2);
+        expect(read_tool_output(service, "batch-translation")).toMatchObject({
+          status: "done",
+          progress: { line: 2 },
+        });
+      }
+    },
+  );
+
   it("资源未加载时拒绝启动模型回合", async () => {
     const { service } = await create_service(false);
 
@@ -2594,7 +2673,7 @@ describe("AgentService", () => {
 
   it("普通任务占用运行时期间拒绝 Agent 消息", async () => {
     const { service, runtime_gate } = await create_service();
-    const lease = runtime_gate.begin_runtime("task");
+    const lease = runtime_gate.begin_runtime("batch_translation");
 
     await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
       "runtime.busy",
@@ -2607,6 +2686,10 @@ describe("AgentService", () => {
     load_resources = true,
     web_search?: AgentWebSearchPort,
     workspace?: AgentWorkspacePort,
+    batch_translation?: Pick<
+      import("../batch-translation/batch-translation-service").BatchTranslationService,
+      "run_under_agent"
+    >,
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -2631,7 +2714,7 @@ describe("AgentService", () => {
         setting_read_count += 1;
         return {
           app_language,
-          model_selection: { translation: "active", analysis: "active", agent: agent_model_id },
+          model_selection: { translation: "active", agent: agent_model_id },
           models: [
             {
               id: "active",
@@ -2703,6 +2786,23 @@ describe("AgentService", () => {
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
+      batchTranslation: batch_translation ?? {
+        run_under_agent: async () => ({
+          status: "done",
+          progress: {
+            start_time: 0,
+            time: 0,
+            line: 0,
+            total_line: 0,
+            processed_line: 0,
+            error_line: 0,
+            total_tokens: 0,
+            total_input_tokens: 0,
+            total_reasoning_tokens: 0,
+            total_output_tokens: 0,
+          },
+        }),
+      },
       paths: {
         get_app_root: () => skill_test_fixture.app_root,
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,

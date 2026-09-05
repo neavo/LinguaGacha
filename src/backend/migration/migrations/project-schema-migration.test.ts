@@ -20,15 +20,7 @@ describe("run_project_schema_migration", () => {
 
     run_project_schema_migration(db);
 
-    expect(read_table_names(db)).toEqual([
-      "analysis_candidate_aggregate",
-      "analysis_item_checkpoint",
-      "assets",
-      "items",
-      "meta",
-      "rules",
-      "sqlite_sequence",
-    ]);
+    expect(read_table_names(db)).toEqual(["assets", "items", "meta", "rules", "sqlite_sequence"]);
     expect(read_meta_number(db, "schema_version")).toBe(PROJECT_DATABASE_SCHEMA_VERSION);
   });
 

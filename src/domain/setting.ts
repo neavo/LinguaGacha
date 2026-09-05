@@ -52,7 +52,7 @@ export type SettingSnapshot = {
   pre_translation_replacement_default_preset: string;
   post_translation_replacement_default_preset: string;
   translation_custom_prompt_default_preset: string;
-  analysis_custom_prompt_default_preset: string;
+
   recent_projects: RecentProjectSetting[];
 };
 
@@ -85,7 +85,6 @@ export const SETTING_KEYS = [
   "pre_translation_replacement_default_preset",
   "post_translation_replacement_default_preset",
   "translation_custom_prompt_default_preset",
-  "analysis_custom_prompt_default_preset",
   "recent_projects",
 ] as const;
 
@@ -125,11 +124,11 @@ export const DEFAULT_SETTING: JsonRecord = {
   pre_translation_replacement_default_preset: "",
   post_translation_replacement_default_preset: "",
   translation_custom_prompt_default_preset: "",
-  analysis_custom_prompt_default_preset: "",
+
   recent_projects: [],
   model_selection: {
     translation: "",
-    analysis: "",
+
     agent: "",
   },
   models: null,
@@ -359,11 +358,7 @@ export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
       "translation_custom_prompt_default_preset",
       { preserve_case: true },
     ),
-    analysis_custom_prompt_default_preset: read_string_setting(
-      record["analysis_custom_prompt_default_preset"],
-      "analysis_custom_prompt_default_preset",
-      { preserve_case: true },
-    ),
+
     recent_projects: normalize_recent_project_settings(record["recent_projects"]),
   };
 }

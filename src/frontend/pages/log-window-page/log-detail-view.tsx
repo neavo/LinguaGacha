@@ -44,86 +44,49 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
         </section>
       )}
 
-      {content.kind === "translation_result" ? (
-        <section className="log-detail-view__result">
-          <ol className="log-detail-view__items">
-            {content.pairs.map((pair, index) => (
-              <li key={index} className="log-detail-view__item">
-                <span className="log-detail-view__item-index">#{String(index + 1)}</span>
-                <dl className="log-detail-view__translation-pair">
-                  <div className="log-detail-view__field">
-                    <dt>{t("log_window_page.detail.content.source_text")}</dt>
-                    <dd className="log-detail-view__text">
-                      {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
-                        <Badge
-                          variant="secondary"
-                          title={pair.actor_src}
-                          className="log-detail-view__name-badge"
-                        >
-                          <span className="log-detail-view__name-badge-label">
-                            {pair.actor_src}
-                          </span>
-                        </Badge>
-                      ) : null}
-                      <span>{pair.src}</span>
-                    </dd>
-                  </div>
-                  <div className="log-detail-view__field log-detail-view__field--dst">
-                    <dt>{t("log_window_page.detail.content.translated_text")}</dt>
-                    <dd className="log-detail-view__text">
-                      {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
-                        <Badge
-                          variant="secondary"
-                          title={pair.actor_dst}
-                          className="log-detail-view__name-badge"
-                        >
-                          <span className="log-detail-view__name-badge-label">
-                            {pair.actor_dst}
-                          </span>
-                        </Badge>
-                      ) : null}
-                      <span>{pair.dst}</span>
-                    </dd>
-                  </div>
-                </dl>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : (
-        <section className="log-detail-view__result">
-          {content.terms.length === 0 ? (
-            <p className="log-detail-view__empty-result">{content.empty_result_text}</p>
-          ) : (
-            <ol className="log-detail-view__items">
-              {content.terms.map((term, index) => (
-                <li key={index} className="log-detail-view__item">
-                  <span className="log-detail-view__item-index">#{String(index + 1)}</span>
-                  <dl className="log-detail-view__term">
-                    <div className="log-detail-view__field">
-                      <dt>{t("log_window_page.detail.content.source_term")}</dt>
-                      <dd className="log-detail-view__text">{term.src}</dd>
-                    </div>
-                    <div className="log-detail-view__field log-detail-view__field--dst">
-                      <dt>{t("log_window_page.detail.content.translated_term")}</dt>
-                      <dd className="log-detail-view__text">{term.dst}</dd>
-                    </div>
-                    {term.info === "" ? null : (
-                      <div className="log-detail-view__field log-detail-view__term-info">
-                        <dt>{t("log_window_page.detail.content.term_info")}</dt>
-                        <dd className="log-detail-view__text">{term.info}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-      )}
+      <section className="log-detail-view__result">
+        <ol className="log-detail-view__items">
+          {content.pairs.map((pair, index) => (
+            <li key={index} className="log-detail-view__item">
+              <span className="log-detail-view__item-index">#{String(index + 1)}</span>
+              <dl className="log-detail-view__translation-pair">
+                <div className="log-detail-view__field">
+                  <dt>{t("log_window_page.detail.content.source_text")}</dt>
+                  <dd className="log-detail-view__text">
+                    {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
+                      <Badge
+                        variant="secondary"
+                        title={pair.actor_src}
+                        className="log-detail-view__name-badge"
+                      >
+                        <span className="log-detail-view__name-badge-label">{pair.actor_src}</span>
+                      </Badge>
+                    ) : null}
+                    <span>{pair.src}</span>
+                  </dd>
+                </div>
+                <div className="log-detail-view__field log-detail-view__field--dst">
+                  <dt>{t("log_window_page.detail.content.translated_text")}</dt>
+                  <dd className="log-detail-view__text">
+                    {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
+                      <Badge
+                        variant="secondary"
+                        title={pair.actor_dst}
+                        className="log-detail-view__name-badge"
+                      >
+                        <span className="log-detail-view__name-badge-label">{pair.actor_dst}</span>
+                      </Badge>
+                    ) : null}
+                    <span>{pair.dst}</span>
+                  </dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ol>
+      </section>
 
-      {content.sections.length > 0 ||
-      (content.kind === "analysis_result" && content.srcs.length > 0) ? (
+      {content.sections.length > 0 ? (
         <div className="log-detail-view__process">
           {content.sections.map((section, index) => (
             <section key={`${index.toString()}:${section.title}`}>
@@ -131,16 +94,6 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
               <pre>{section.text}</pre>
             </section>
           ))}
-          {content.kind === "analysis_result" && content.srcs.length > 0 ? (
-            <section>
-              <h3>{content.src_title}</h3>
-              <ol className="log-detail-view__sources">
-                {content.srcs.map((text, index) => (
-                  <li key={index}>{text}</li>
-                ))}
-              </ol>
-            </section>
-          ) : null}
         </div>
       ) : null}
     </div>

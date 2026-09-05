@@ -272,7 +272,7 @@ async function create_model_runtime(): Promise<ModelRuntime> {
 /** 构造只包含 Agent 模型解析所需字段的设置快照。 */
 function build_config(api_format: ModelApiFormat, overrides: JsonRecord = {}): JsonRecord {
   return {
-    model_selection: { translation: "translation", analysis: "analysis", agent: "active" },
+    model_selection: { translation: "translation", agent: "active" },
     models: [
       {
         id: "active",

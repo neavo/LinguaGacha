@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data-reader";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -198,7 +198,7 @@ describe("QualityRuleService", () => {
   it("任务 busy 时拒绝全部质量项目写但不阻塞预设文件 IO", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service } = create_workbench_service(database, "task");
+    const { service } = create_workbench_service(database, "batch_translation");
     const project_writes = [
       () =>
         service.update({
@@ -211,12 +211,6 @@ describe("QualityRuleService", () => {
           rule_type: "glossary",
           meta: { enabled: false },
           expected_section_revisions: { quality: 0 },
-        }),
-      () =>
-        service.import_analysis_glossary({
-          entries: [],
-          consumed_candidate_srcs: [],
-          expected_section_revisions: { quality: 0, analysis: 0 },
         }),
     ];
 
@@ -331,54 +325,6 @@ describe("QualityRuleService", () => {
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
-  it("CLI 分析导出从候选池生成 glossary.json 与 glossary.xlsx", async () => {
-    const database = new ProjectDatabase();
-    cleanup_databases.push(database);
-    const { service, lg_path } = create_workbench_service(database);
-    const output_dir = path.join(path.dirname(lg_path), "analysis-out");
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "姫",
-        dst_votes: { 公主: 1, 姬: 3 },
-        info_votes: { 角色名: 2 },
-        observation_count: 4,
-        first_seen_at: "2026-05-16T00:00:00.000Z",
-        last_seen_at: "2026-05-16T00:02:00.000Z",
-        case_sensitive: true,
-      },
-      {
-        src: "\\N[1]",
-        dst_votes: { "\\N[1]": 1 },
-        info_votes: { 控制码: 1 },
-        observation_count: 1,
-        first_seen_at: "2026-05-16T00:03:00.000Z",
-        last_seen_at: "2026-05-16T00:03:00.000Z",
-        case_sensitive: false,
-      },
-      {
-        src: "王",
-        dst_votes: { 王: 2 },
-        info_votes: { 特殊概念: 2 },
-        observation_count: 2,
-        first_seen_at: "2026-05-16T00:04:00.000Z",
-        last_seen_at: "2026-05-16T00:04:00.000Z",
-        case_sensitive: false,
-      },
-    ]);
-
-    const result = await service.export_analysis_candidates_to_directory(output_dir);
-    const json_path = String(result["json_path"] ?? "");
-    const xlsx_path = String(result["xlsx_path"] ?? "");
-    const entries = JSON.parse(fs.readFileSync(json_path, "utf-8")) as JsonValue[];
-
-    expect(result).toMatchObject({ entry_count: 2 });
-    expect(entries).toEqual([
-      { src: "\\N[1]", dst: "\\N[1]", info: "控制码", regex: false, case_sensitive: false },
-      { src: "姫", dst: "姬", info: "角色名", regex: false, case_sensitive: true },
-    ]);
-    expect(fs.existsSync(xlsx_path)).toBe(true);
-  });
-
   it("读取当前质量规则切片与 revision", () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
@@ -389,106 +335,14 @@ describe("QualityRuleService", () => {
         enabled: true,
         entries: [{ entry_id: "00000", src: "HP", dst: "生命值" }],
       },
-      sectionRevisions: { quality: 0, analysis: 0 },
+      sectionRevisions: { quality: 0 },
     });
-  });
-
-  it("分析术语导入写入变化规则并消费候选池", async () => {
-    const database = new ProjectDatabase();
-    cleanup_databases.push(database);
-    const { service, lg_path } = create_workbench_service(database);
-    database.set_rules(lg_path, "glossary", [
-      {
-        entry_id: "alice",
-        src: "艾琳",
-        dst: "Eileen",
-        info: "旧名",
-        regex: false,
-        case_sensitive: true,
-      },
-    ]);
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "艾琳",
-        dst_votes: { Erin: 1 },
-        info_votes: { 角色名: 1 },
-        observation_count: 1,
-        first_seen_at: "t",
-        last_seen_at: "t",
-        case_sensitive: true,
-      },
-    ]);
-
-    const result = await service.import_analysis_glossary({
-      entries: [
-        {
-          entry_id: "alice",
-          src: "艾琳",
-          dst: "Erin",
-          info: "角色名",
-          regex: false,
-          case_sensitive: true,
-        },
-      ],
-      consumed_candidate_srcs: ["艾琳"],
-      expected_section_revisions: { quality: 0, analysis: 0 },
-    });
-
-    expect(result).toMatchObject({
-      accepted: true,
-      changes: [{ updatedSections: ["quality", "analysis"] }],
-    });
-    expect(database.get_rules(lg_path, "glossary")).toEqual([
-      { entry_id: "alice", src: "艾琳", dst: "Erin", info: "角色名", case_sensitive: true },
-    ]);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
-  });
-
-  it("分析术语导入未改变规则时只推进 analysis revision", async () => {
-    const database = new ProjectDatabase();
-    cleanup_databases.push(database);
-    const { service, lg_path } = create_workbench_service(database);
-    const glossary_entries = [
-      {
-        entry_id: "alice",
-        src: "艾琳",
-        dst: "Erin",
-        info: "角色名",
-        regex: false,
-        case_sensitive: true,
-      },
-    ];
-    database.set_rules(lg_path, "glossary", glossary_entries);
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "艾琳",
-        dst_votes: { Erin: 1 },
-        info_votes: { 角色名: 1 },
-        observation_count: 1,
-        first_seen_at: "t",
-        last_seen_at: "t",
-        case_sensitive: true,
-      },
-    ]);
-
-    const result = await service.import_analysis_glossary({
-      entries: glossary_entries,
-      consumed_candidate_srcs: ["艾琳"],
-      expected_section_revisions: { quality: 0, analysis: 0 },
-    });
-
-    expect(result).toMatchObject({
-      accepted: true,
-      changes: [{ sectionRevisions: { analysis: 1 }, updatedSections: ["analysis"] }],
-    });
-    expect(database.get_rules(lg_path, "glossary")).toEqual(glossary_entries);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
 
   /**
    * 构造只依赖预设文件 IO 的质量规则服务，数据库边界在这些用例中不参与。
    */
-  function create_service(runtime_owner: "task" | "agent" | null = null): {
+  function create_service(runtime_owner: "batch_translation" | "agent" | null = null): {
     service: QualityRuleService;
     app_root: string;
   } {
@@ -503,7 +357,6 @@ describe("QualityRuleService", () => {
     const database = null as unknown as ProjectDatabase;
     const service = new QualityRuleService(
       paths,
-      database,
       new ProjectSessionState(),
       new ProjectWriteStore(database, vi.fn(), null),
       create_runtime_gate(runtime_owner),
@@ -517,7 +370,7 @@ describe("QualityRuleService", () => {
    */
   function create_workbench_service(
     database: ProjectDatabase,
-    runtime_owner: "task" | "agent" | null = null,
+    runtime_owner: "batch_translation" | "agent" | null = null,
   ): {
     service: QualityRuleService;
     lg_path: string;
@@ -541,7 +394,6 @@ describe("QualityRuleService", () => {
     return {
       service: new QualityRuleService(
         paths,
-        database,
         session_state,
         new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
         runtime_gate,
@@ -582,7 +434,7 @@ describe("QualityRuleService", () => {
     };
   }
 
-  function create_runtime_gate(owner: "task" | "agent" | null): RuntimeOperationGate {
+  function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
     const gate = new RuntimeOperationGate();
     if (owner !== null) gate.begin_runtime(owner);
     return gate;
@@ -590,7 +442,7 @@ describe("QualityRuleService", () => {
 
   function create_cache(): CacheReadPort {
     return {
-      readSectionRevisions: () => ({ quality: 0, analysis: 0 }),
+      readSectionRevisions: () => ({ quality: 0 }),
       quality: {
         readBlock: () => ({
           glossary: {

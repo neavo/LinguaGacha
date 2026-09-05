@@ -1,3 +1,4 @@
+import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
@@ -8,21 +9,18 @@ import {
 } from "@frontend/app/state/desktop-state-context";
 import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
 import { createRuntimeActivityStore } from "@frontend/app/state/runtime-activity-store";
-import {
-  createTaskSnapshotStore,
-  normalize_task_snapshot,
-} from "@frontend/app/state/task-snapshot-store";
+import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
 import {
   useProjectChangeSignal,
   useRuntimeSnapshot,
-  useSyncTaskSnapshot,
-  useTaskSnapshot,
+  useSyncBatchTranslationSnapshot,
+  useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 
 describe("desktop state hooks", () => {
   it("从各自 store 读取快照并通过 task 写入口更新任务", async () => {
     const stores: DesktopStateStores = {
-      task: createTaskSnapshotStore(),
+      batch_translation: createBatchTranslationSnapshotStore(),
       runtime: createRuntimeActivityStore(),
       projectChange: createProjectChangeSignalStore(),
     };
@@ -45,7 +43,9 @@ describe("desktop state hooks", () => {
 
     await act(async () => {
       observed.syncTask(
-        normalize_task_snapshot({ task: { run_revision: 1, status: "running", busy: true } }),
+        normalize_batch_translation_snapshot({
+          batch_translation: { revision: 1, status: "running" },
+        }),
       );
       stores.runtime.applySnapshot({ revision: 2, owner: "agent" });
       stores.projectChange.applySnapshot({
@@ -56,7 +56,7 @@ describe("desktop state hooks", () => {
       });
     });
 
-    expect(observed.task).toMatchObject({ run_revision: 1, status: "running", busy: true });
+    expect(observed.batch_translation).toMatchObject({ revision: 1, status: "running" });
     expect(observed.runtime).toEqual({ revision: 2, owner: "agent" });
     expect(observed.projectChange).toMatchObject({ seq: 3, updated_sections: ["items"] });
 
@@ -66,9 +66,9 @@ describe("desktop state hooks", () => {
 
 function useDesktopStateProbe() {
   return {
-    task: useTaskSnapshot(),
+    batch_translation: useBatchTranslationSnapshot(),
     runtime: useRuntimeSnapshot(),
     projectChange: useProjectChangeSignal(),
-    syncTask: useSyncTaskSnapshot(),
+    syncTask: useSyncBatchTranslationSnapshot(),
   };
 }

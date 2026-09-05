@@ -15,11 +15,10 @@ import {
   type ProjectChangeEventForState,
   type ProjectStage,
 } from "@frontend/app/state/desktop-project-change-types";
-import {
-  createTaskSnapshotStore,
-  normalize_task_snapshot,
-  type TaskSnapshot,
-} from "@frontend/app/state/task-snapshot-store";
+import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/workbench/batch-translation";
+
 import {
   createRuntimeActivityStore,
   normalize_runtime_activity_snapshot,
@@ -41,7 +40,6 @@ import {
   type SettingSnapshot,
 } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
-import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { AppError } from "@shared/error";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
@@ -90,7 +88,7 @@ type DesktopStateContextValue = {
   commit_project_write: ProjectWriteCommitter;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
-  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>;
+  refresh_batch_translation: () => Promise<BatchTranslationSnapshot>;
   refresh_runtime: () => Promise<RuntimeActivitySnapshot>;
 };
 
@@ -105,11 +103,7 @@ type ProjectSnapshotPayload = {
 };
 
 type TaskSnapshotPayload = {
-  task?: Partial<TaskSnapshot>;
-};
-
-type TaskSnapshotRequest = {
-  task_type?: TaskType; // 显式 task_type 用于任务页刷新，避免空闲态按后端默认类型误判
+  batch_translation?: Partial<BatchTranslationSnapshot>;
 };
 
 type ProjectManifestPayload = {
@@ -128,7 +122,7 @@ const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 export type DesktopStateStores = {
-  task: ReturnType<typeof createTaskSnapshotStore>;
+  batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
   projectChange: ReturnType<typeof createProjectChangeSignalStore>;
 };
@@ -244,8 +238,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
-  const task_snapshot_store_ref = useRef(createTaskSnapshotStore());
-  const sync_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
+  const task_snapshot_store_ref = useRef(createBatchTranslationSnapshotStore());
+  const sync_task_snapshot = useCallback((snapshot: BatchTranslationSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
   }, []);
   const runtime_snapshot_store_ref = useRef(createRuntimeActivityStore()); // Provider 生命周期内唯一镜像
@@ -254,7 +248,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   }, []);
   const project_change_store_ref = useRef(createProjectChangeSignalStore());
   const state_stores_ref = useRef<DesktopStateStores>({
-    task: task_snapshot_store_ref.current,
+    batch_translation: task_snapshot_store_ref.current,
     runtime: runtime_snapshot_store_ref.current,
     projectChange: project_change_store_ref.current,
   });
@@ -439,17 +433,13 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     return next_snapshot;
   }, [sync_project_snapshot]);
 
-  // 任务页主动刷新时要绑定任务类型；全局初始状态读取才允许交给后端推断当前快照类型
-  const refresh_task = useCallback(
-    async (task_type?: TaskType): Promise<TaskSnapshot> => {
-      const request: TaskSnapshotRequest = task_type === undefined ? {} : { task_type };
-      const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", request);
-      const next_snapshot = normalize_task_snapshot(payload);
-      sync_task_snapshot(next_snapshot);
-      return next_snapshot;
-    },
-    [sync_task_snapshot],
-  );
+  // 主动刷新与初始化共用批量翻译快照，并由 Store 裁决 revision
+  const refresh_batch_translation = useCallback(async (): Promise<BatchTranslationSnapshot> => {
+    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {});
+    const next_snapshot = normalize_batch_translation_snapshot(payload);
+    sync_task_snapshot(next_snapshot);
+    return next_snapshot;
+  }, [sync_task_snapshot]);
 
   /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
   const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
@@ -664,7 +654,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       project_loaded: project_snapshot.loaded,
       project_path: project_snapshot.path,
       refresh_project_state,
-      refresh_task,
+      refresh_batch_translation,
     });
 
   // HTTP 写入结果与 SSE 共用同一项目事件入口，保持事件顺序和去重语义一致。
@@ -694,7 +684,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
           api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
-          api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {}),
+          api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {}),
           api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
         ]);
         if (cancelled) {
@@ -703,7 +693,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
         apply_settings_snapshot(next_settings);
         sync_project_snapshot(normalize_project_snapshot(next_project));
-        sync_task_snapshot(normalize_task_snapshot(next_task));
+        sync_task_snapshot(normalize_batch_translation_snapshot(next_task));
         sync_runtime_snapshot(normalize_runtime_activity_snapshot(next_runtime));
         set_initial_state_error(null);
         set_initial_state_ready(true);
@@ -824,7 +814,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       commit_project_write,
       update_app_language,
       refresh_settings,
-      refresh_task,
+      refresh_batch_translation,
       refresh_runtime,
     };
   }, [
@@ -841,7 +831,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     refresh_project_snapshot,
     refresh_project_state,
     refresh_settings,
-    refresh_task,
+    refresh_batch_translation,
     refresh_runtime,
     update_app_language,
   ]);

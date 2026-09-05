@@ -19,7 +19,6 @@ export const en_us_project_page = {
       pre_translation_replacement: "Pre-translation Replacement",
       post_translation_replacement: "Post-translation Replacement",
       translation_prompt: "Translation Prompt",
-      analysis_prompt: "Analysis Prompt",
     },
     action: "Create Project",
   },
@@ -58,7 +57,7 @@ export const en_us_project_page = {
     items: "Loading project items …",
     quality: "Loading quality rules …",
     prompts: "Loading prompt settings …",
-    analysis: "Loading analysis results …",
+
     proofreading: "Loading proofreading view …",
     task: "Loading task status …",
   },

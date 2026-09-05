@@ -9,11 +9,9 @@ function build_global_help_text(executable_name: string): string {
   --version              显示版本 | Show version
 
 命令 | Commands:
-  analyze                执行分析任务 | Run analysis task
   translate              执行翻译任务 | Run translation task
 
 示例 | Samples:
-  ${executable_name} analyze   --input <文件或目录 | file-or-dir> --output-dir <目录 | dir> --source-language <语言码 | code> --target-language <语言码 | code>
   ${executable_name} translate --input <文件或目录 | file-or-dir> --output-dir <目录 | dir> --source-language <语言码 | code> --target-language <语言码 | code>
 
 更多说明 | More Info:
@@ -26,9 +24,8 @@ function build_global_help_text(executable_name: string): string {
 /**
  * 构造单命令帮助文本，只暴露该命令实际支持的文件进出参数。
  */
-function build_command_help_text(command: CLICommandName, executable_name: string): string {
-  if (command === "translate") {
-    return `用法 | Usage:
+function build_command_help_text(executable_name: string): string {
+  return `用法 | Usage:
   ${executable_name} translate --input <文件或目录 | file-or-dir> --output-dir <目录 | dir> --source-language <语言码 | code> --target-language <语言码 | code>
 
 参数 | Options:
@@ -50,26 +47,6 @@ function build_command_help_text(command: CLICommandName, executable_name: strin
   https://github.com/neavo/LinguaGacha/wiki/CLIModeEN
 
 `;
-  }
-
-  return `用法 | Usage:
-  ${executable_name} analyze --input <文件或目录 | file-or-dir> --output-dir <目录 | dir> --source-language <语言码 | code> --target-language <语言码 | code>
-
-参数 | Options:
-  --input                必填，可重复；文件或目录 | Required, repeatable; file or directory
-  --output-dir           必填；输出 glossary 文件的目录 | Required; directory for glossary files
-  --source-language      必填；允许 ALL | Required; allows ALL
-  --target-language      必填；不允许 ALL | Required; does not allow ALL
-  --prompt               可选；.txt 分析提示词 | Optional; .txt analysis prompt
-
-示例 | Sample:
-  ${executable_name} analyze --input ./game --output-dir ./glossary --source-language JA --target-language ZH
-
-更多说明 | More Info:
-  https://github.com/neavo/LinguaGacha/wiki/CLIMode
-  https://github.com/neavo/LinguaGacha/wiki/CLIModeEN
-
-`;
 }
 
 /**
@@ -82,7 +59,7 @@ export function build_cli_help(
   const executable_name = resolve_cli_executable_name(platform);
   return command === undefined
     ? build_global_help_text(executable_name)
-    : build_command_help_text(command, executable_name);
+    : build_command_help_text(executable_name);
 }
 
 /**

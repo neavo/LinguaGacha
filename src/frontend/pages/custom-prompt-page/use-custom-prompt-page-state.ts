@@ -98,9 +98,7 @@ export function useCustomPromptPageState(
   }, [project_snapshot.loaded, project_snapshot.path]);
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const preset_payload = await api_fetch<PromptPresetPayload>("/api/quality/prompts/presets", {
-      task_type: config.task_type,
-    });
+    const preset_payload = await api_fetch<PromptPresetPayload>("/api/quality/prompts/presets", {});
     const default_virtual_id = String(settings_snapshot[config.default_preset_settings_key] ?? "");
 
     set_preset_items(
@@ -110,7 +108,7 @@ export function useCustomPromptPageState(
         default_virtual_id,
       ),
     );
-  }, [config.default_preset_settings_key, config.task_type, settings_snapshot]);
+  }, [config.default_preset_settings_key, settings_snapshot]);
 
   const commit_prompt_text = useCallback(
     async (
@@ -151,7 +149,6 @@ export function useCustomPromptPageState(
       }
 
       const payload = await api_fetch<PromptImportPayload>("/api/quality/prompts/import", {
-        task_type: config.task_type,
         path: selected_path,
       });
       await import_prompt_text(String(payload.text ?? ""));
@@ -161,7 +158,7 @@ export function useCustomPromptPageState(
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.import_failed")),
       );
     }
-  }, [config.task_type, import_prompt_text, push_toast, readonly, t]);
+  }, [import_prompt_text, push_toast, readonly, t]);
 
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -176,7 +173,6 @@ export function useCustomPromptPageState(
       }
 
       await api_fetch("/api/quality/prompts/export", {
-        task_type: config.task_type,
         path: selected_path,
       });
       push_toast("success", t("app.feedback.export_success"));
@@ -186,7 +182,7 @@ export function useCustomPromptPageState(
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.export_failed")),
       );
     }
-  }, [config.task_type, flush_prompt_change, push_toast, t]);
+  }, [flush_prompt_change, push_toast, t]);
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
@@ -207,7 +203,6 @@ export function useCustomPromptPageState(
 
       try {
         const payload = await api_fetch<{ text?: string }>("/api/quality/prompts/presets/read", {
-          task_type: config.task_type,
           virtual_id,
         });
         const succeeded = await import_prompt_text(String(payload.text ?? ""));
@@ -221,7 +216,7 @@ export function useCustomPromptPageState(
         );
       }
     },
-    [config.task_type, import_prompt_text, push_toast, readonly, t],
+    [import_prompt_text, push_toast, readonly, t],
   );
 
   const request_reset_prompt = useCallback((): void => {
@@ -295,7 +290,6 @@ export function useCustomPromptPageState(
 
       try {
         await api_fetch("/api/quality/prompts/presets/save", {
-          task_type: config.task_type,
           name: normalized_name,
           text: normalize_prompt_text(prompt_text),
         });
@@ -310,7 +304,7 @@ export function useCustomPromptPageState(
         return false;
       }
     },
-    [config.task_type, prompt_text, push_toast, readonly, refresh_preset_menu, t],
+    [prompt_text, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const rename_preset = useCallback(
@@ -329,7 +323,6 @@ export function useCustomPromptPageState(
         const payload = await api_fetch<{ item?: CustomPromptPresetItem }>(
           "/api/quality/prompts/presets/rename",
           {
-            task_type: config.task_type,
             virtual_id,
             new_name: normalized_name,
           },
@@ -484,7 +477,6 @@ export function useCustomPromptPageState(
     async (virtual_id: string): Promise<boolean> => {
       try {
         await api_fetch("/api/quality/prompts/presets/delete", {
-          task_type: config.task_type,
           virtual_id,
         });
         const target_preset = preset_items.find((item) => item.virtual_id === virtual_id);

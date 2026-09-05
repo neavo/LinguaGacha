@@ -77,16 +77,8 @@ const run_state = {
       enabled: false,
       revision: 0,
     },
-    analysis: {
-      text: "",
-      enabled: false,
-      revision: 0,
-    },
   },
-  analysis: {
-    candidate_count: 0,
-    candidate_aggregate: {},
-  },
+
   proofreading: {
     revision: 0,
   },
@@ -94,7 +86,6 @@ const run_state = {
     projectRevision: 1,
     sections: {
       quality: 1,
-      analysis: 0,
     },
   },
 };
@@ -214,7 +205,7 @@ function create_glossary_quality(
 }
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
-let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 

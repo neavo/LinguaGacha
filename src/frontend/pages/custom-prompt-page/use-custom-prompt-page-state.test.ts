@@ -15,11 +15,10 @@ type RuntimeFixture = {
   settings_snapshot: {
     app_language: string;
     translation_custom_prompt_default_preset: string;
-    analysis_custom_prompt_default_preset: string;
   };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_write: ReturnType<typeof vi.fn>;
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 };
 
 type ToastFixture = {
@@ -77,7 +76,6 @@ function create_runtime_fixture(): RuntimeFixture {
     settings_snapshot: {
       app_language: "ZH",
       translation_custom_prompt_default_preset: "builtin/default.txt",
-      analysis_custom_prompt_default_preset: "",
     },
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => payload),
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
@@ -301,12 +299,8 @@ describe("useCustomPromptPageState", () => {
 
     await render_hook();
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/template", {
-      task_type: "translation",
-    });
-    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/view", {
-      task_type: "translation",
-    });
+    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/template", {});
+    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/view", {});
     expect(latest_state?.template).toEqual({
       default_text: "默认提示词",
       prefix_text: "前缀",
@@ -476,7 +470,6 @@ describe("useCustomPromptPageState", () => {
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/presets/delete", {
-      task_type: "translation",
       virtual_id: "user:待删除.txt",
     });
     expect(latest_state?.confirm_state).toEqual({ kind: null });
@@ -515,7 +508,6 @@ describe("useCustomPromptPageState", () => {
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/presets/save", {
-      task_type: "translation",
       name: "重复",
       text: "项目提示词",
     });

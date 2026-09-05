@@ -28,7 +28,7 @@ export function normalize_runtime_activity_snapshot(
       typeof revision === "number" && Number.isSafeInteger(revision) && revision >= 0
         ? revision
         : 0,
-    owner: owner === "task" || owner === "agent" ? owner : null,
+    owner: owner === "batch_translation" || owner === "agent" ? owner : null,
   };
 }
 

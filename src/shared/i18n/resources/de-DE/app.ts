@@ -340,9 +340,6 @@ export const de_de_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "Keine Begriffe extrahiert",
-    analysis_task_result: "Analyseergebnis:",
-    analysis_task_source_texts: "Analyse-Eingabe:",
     api_gateway_started: "API Gateway gestartet - {BASE_URL}",
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",

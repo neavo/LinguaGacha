@@ -19,7 +19,6 @@ export const de_de_project_page = {
       pre_translation_replacement: "Ersetzung vor Übersetzung",
       post_translation_replacement: "Ersetzung nach Übersetzung",
       translation_prompt: "Übersetzungs-Prompt",
-      analysis_prompt: "Analyse-Prompt",
     },
     action: "Projekt erstellen",
   },
@@ -58,7 +57,7 @@ export const de_de_project_page = {
     items: "Projekteinträge werden geladen …",
     quality: "Qualitätsregeln werden geladen …",
     prompts: "Prompt-Einstellungen werden geladen …",
-    analysis: "Analyseergebnisse werden geladen …",
+
     proofreading: "Korrekturansicht wird geladen …",
     task: "Aufgabenstatus wird geladen …",
   },

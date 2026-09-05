@@ -1,1 +1,0 @@
-Task goal is to extract terms from the source text and translate them into {target_language}:

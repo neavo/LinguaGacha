@@ -26,27 +26,6 @@ describe("log 基础模型", () => {
       sections: [{ title: "思考", text: "过程" }],
       pairs: [{ src: "原文", dst: "译文", actor_src: null, actor_dst: "译名" }],
     });
-    expect(
-      read_log_content({
-        kind: "analysis_result",
-        summary: ["完成"],
-        sections: [],
-        src_title: "输入",
-        srcs: ["原词"],
-        result_title: "结果",
-        empty_result_text: "无结果",
-        terms: [{ src: "猫", dst: "cat", info: "动物" }],
-      }),
-    ).toEqual({
-      kind: "analysis_result",
-      summary: ["完成"],
-      sections: [],
-      src_title: "输入",
-      srcs: ["原词"],
-      result_title: "结果",
-      empty_result_text: "无结果",
-      terms: [{ src: "猫", dst: "cat", info: "动物" }],
-    });
   });
 
   it("拒绝旧 message、未知 kind 和缺失字段", () => {

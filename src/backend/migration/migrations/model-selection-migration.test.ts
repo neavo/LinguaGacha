@@ -30,7 +30,7 @@ describe("model_selection_migration", () => {
       models: [{ id: "legacy-model" }, { id: "other-model" }],
       model_selection: {
         translation: "legacy-model",
-        analysis: "legacy-model",
+
         agent: "legacy-model",
       },
     });
@@ -45,7 +45,7 @@ describe("model_selection_migration", () => {
       activate_model_id: "legacy-model",
       model_selection: {
         translation: "translation-model",
-        analysis: "",
+
         agent: "agent-model",
         unknown: "ignored",
       },
@@ -56,7 +56,7 @@ describe("model_selection_migration", () => {
     expect(read_config(context.paths.get_config_path())).toEqual({
       model_selection: {
         translation: "translation-model",
-        analysis: "legacy-model",
+
         agent: "agent-model",
       },
     });

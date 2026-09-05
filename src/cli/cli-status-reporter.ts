@@ -1,6 +1,6 @@
 import type { CLICommandName } from "./cli-parser";
 import type { JsonRecord, JsonValue } from "../domain/json";
-import type { TaskRunStatus } from "../domain/task";
+import type { BatchTranslationRunStatus } from "../domain/batch-translation";
 import { JsonTool } from "../shared/utils/json-tool";
 
 type NowProvider = () => Date;
@@ -30,7 +30,7 @@ interface CLIProgressInput {
  * CLI JSONL 状态状态事件输出器；它只输出 started / progress / finished 三类机器协议事件。
  */
 export class CLIJsonStatusReporter {
-  private readonly command: CLICommandName; // 外部协议唯一任务标识，task_type 不再重复输出
+  private readonly command: CLICommandName; // 外部协议的命令标识
   private readonly now: NowProvider; // 注入用于测试稳定时间戳，不读取全局时间
   private readonly write_line: JsonLineWriter; // stdout 的窄写入口，便于 CLI 入口统一替换
   private started = false; // 防止异常路径重复写开始事件
@@ -86,7 +86,7 @@ export class CLIJsonStatusReporter {
   /**
    * 输出最终态；成功和失败都由同一事件表达，进程退出码仍由 CLI 入口负责。
    */
-  public emit_finished(status: TaskRunStatus | "error", error?: unknown): void {
+  public emit_finished(status: BatchTranslationRunStatus | "error", error?: unknown): void {
     if (this.finished) {
       return;
     }
@@ -135,7 +135,7 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
 }
 
 /**
- * 将内部 TaskProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
+ * 将内部 BatchTranslationProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
  */
 export function build_cli_progress_stats(progress: JsonRecord): CLIProgressStats {
   const total = Math.max(0, read_progress_count(progress["total_line"]));

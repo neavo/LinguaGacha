@@ -31,7 +31,7 @@ type AgentPageState = AgentTimelineSlice &
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
 const runtime_state = vi.hoisted(() => ({
-  current: { revision: 0, owner: null as "task" | "agent" | null },
+  current: { revision: 0, owner: null as "batch_translation" | "agent" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
 /** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
@@ -142,7 +142,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     ...actual,
     useModelSelection: () => ({
       snapshot: {
-        model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+        model_selection: { translation: "preset", agent: "agent" },
         models: [
           {
             id: "agent",
@@ -349,7 +349,7 @@ describe("AgentPage", () => {
     expect(idle_instruction?.disabled).toBe(true);
     expect(idle_instruction?.querySelector("small")).not.toBeNull();
 
-    runtime_state.current = { revision: 1, owner: "task" };
+    runtime_state.current = { revision: 1, owner: "batch_translation" };
     await render_page({ context: { tokens: 1_000, compactable: false } });
     const busy_instruction = view.querySelector<HTMLButtonElement>(
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',

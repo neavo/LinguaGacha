@@ -26,7 +26,7 @@ import {
 type QualityStatisticsQueryResponse = {
   projectPath: string; // 后端确认的项目身份，用于丢弃迟到旧项目结果。
   statistics: {
-    entry_ids: string[]; // 后端完成分析时的完整规则身份
+    entry_ids: string[]; // 后端完成统计时的完整规则身份
     hits_by_entry_id: Record<string, number>; // 每条规则命中的不同 item 数
     subset_parents_by_entry_id: Record<string, string[]>; // 字面量真实包含父文本
   };

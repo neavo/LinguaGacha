@@ -40,6 +40,7 @@ const resources = {
   dispose: mocks.resource_dispose,
 };
 const services = {
+  batchTranslation: { marker: "batch-translation" },
   state: shared_state,
   proofreading: { query: { marker: "proofreading" } },
   app: { marker: "app" },
@@ -168,6 +169,7 @@ describe("GuiBackendBootstrap", () => {
       writeStore: shared_state.writes,
     });
     expect(mocks.agent_options[0]).toMatchObject({
+      batchTranslation: services.batchTranslation,
       sessionState: shared_state.session,
       runtimeGate: shared_state.runtimeGate,
     });

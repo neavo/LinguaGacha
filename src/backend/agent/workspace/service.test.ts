@@ -83,7 +83,6 @@ describe("AgentWorkspaceService", () => {
     ]);
     expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.prompts))).toEqual({
       translation: { fp: expect.any(String), text: "翻译正文" },
-      analysis: { fp: expect.any(String), text: "分析正文" },
     });
     for (const kind of QUALITY_RULE_KINDS) {
       expect(
@@ -551,9 +550,10 @@ async function run_workspace_script(fixture: ReturnType<typeof create_fixture>):
 function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const workspace_root = path.join(temp_dir, "workspaces");
   const revisions = Object.fromEntries(
-    ["project", "files", "items", "quality", "prompts", "analysis", "proofreading"].map(
-      (section) => [section, 1],
-    ),
+    ["project", "files", "items", "quality", "prompts", "proofreading"].map((section) => [
+      section,
+      1,
+    ]),
   ) as ProjectDataSectionRevisions;
   const snapshot = {
     projectPath: "test.lg",
@@ -579,10 +579,9 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     prompts: {
       readBlock: () => ({
         translation: { enabled: true, text: "翻译正文" },
-        analysis: { enabled: true, text: "分析正文" },
       }),
     },
-    analysis: { readBlock: () => ({}) },
+
     readSectionRevisions: () => ({ ...snapshot.sectionRevisions }),
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
@@ -601,7 +600,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
             read_json_record(quality[kind])["entries"] as JsonRecord[],
           ]),
         ),
-        prompts: { translation: "翻译正文", analysis: "分析正文" },
+        prompts: { translation: "翻译正文" },
         duplicateFilterEnabled: false,
       },
     });

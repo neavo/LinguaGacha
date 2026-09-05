@@ -225,7 +225,7 @@ describe("useDesktopEventStream", () => {
     const event_stream = create_event_source_stub();
     const refresh_settings = vi.fn(async () => undefined);
     const refresh_runtime = vi.fn(async () => undefined);
-    const refresh_task = vi.fn(async () => undefined);
+    const refresh_batch_translation = vi.fn(async () => undefined);
     const refresh_project = vi.fn(async () => undefined);
     open_event_stream_mock.mockReturnValue(event_stream.event_source);
     render_event_stream(
@@ -234,12 +234,12 @@ describe("useDesktopEventStream", () => {
         refreshRuntime: refresh_runtime,
         recovery: {
           report_state_error: vi.fn(),
-          refresh_task_after_state_error: refresh_task,
+          refresh_task_after_state_error: refresh_batch_translation,
           refresh_project_state_after_error: refresh_project,
         },
       }),
     );
-    await wait_for_condition(() => event_stream.has_listener("task.snapshot_changed"));
+    await wait_for_condition(() => event_stream.has_listener("batch_translation.snapshot_changed"));
 
     event_stream.open();
     await act(async () => {
@@ -247,14 +247,14 @@ describe("useDesktopEventStream", () => {
     });
     expect(refresh_settings).not.toHaveBeenCalled();
     expect(refresh_runtime).not.toHaveBeenCalled();
-    expect(refresh_task).not.toHaveBeenCalled();
+    expect(refresh_batch_translation).not.toHaveBeenCalled();
     expect(refresh_project).not.toHaveBeenCalled();
 
     event_stream.open();
     await wait_for_condition(() => refresh_settings.mock.calls.length === 1);
 
     expect(refresh_runtime).toHaveBeenCalledOnce();
-    expect(refresh_task).toHaveBeenCalledOnce();
+    expect(refresh_batch_translation).toHaveBeenCalledOnce();
     expect(refresh_project).toHaveBeenCalledOnce();
   });
 });

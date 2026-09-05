@@ -1,7 +1,5 @@
 import path from "node:path";
-import { isDeepStrictEqual } from "node:util";
 
-import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { CacheReadPort } from "../cache/cache-types";
 import { AppPathService, resolve_preset_file } from "../app/app-path-service";
@@ -10,11 +8,8 @@ import { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
-import type { ProjectDataSection, ProjectWriteResult } from "../../shared/project-event";
-import {
-  build_analysis_glossary_entry_from_candidate,
-  count_analysis_glossary_candidates,
-} from "../../shared/analysis-candidate";
+import type { ProjectWriteResult } from "../../shared/project-event";
+
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import { is_json_record, read_json_record } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
@@ -23,10 +18,7 @@ import {
   export_quality_rule_entries_to_files,
   load_quality_rule_entries_from_file,
 } from "./quality-rule-file-io";
-import {
-  prepare_analysis_glossary_import_from_cache,
-  to_analysis_glossary_import_prepare_payload,
-} from "./quality-rule-analysis-glossary-import";
+
 import {
   create_quality_rule_entries,
   normalize_quality_rule_entries,
@@ -35,12 +27,10 @@ import {
 const DEFAULT_QUALITY_RULE_UPDATE_SOURCE = "quality_rule_update";
 
 /**
- * 封装质量规则 CRUD、分析术语导入、预设 IO 和 revision 对齐。
+ * 封装质量规则 CRUD、预设 IO 和 revision 对齐。
  */
 export class QualityRuleService {
-  private readonly paths: AppPathService; // 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径
-
-  private readonly database: ProjectDatabase; // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写
+  private readonly paths: AppPathService; // 质量规则预设目录与虚拟路径的解析入口
 
   private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
@@ -48,7 +38,7 @@ export class QualityRuleService {
 
   private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
 
-  private readonly cache: CacheReadPort; // 查询与分析导入准备只读取当前 loaded 工程热事实
+  private readonly cache: CacheReadPort; // 查询只读取当前 loaded 工程热事实
 
   private readonly native_fs: NativeFs; // 规则、提示词预设和导入导出的唯一文件 IO 入口
 
@@ -57,7 +47,6 @@ export class QualityRuleService {
    */
   public constructor(
     paths: AppPathService,
-    database: ProjectDatabase,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
     runtime_gate: RuntimeOperationGate,
@@ -65,7 +54,7 @@ export class QualityRuleService {
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
-    this.database = database;
+
     this.session_state = session_state;
     this.write_store = write_store;
     this.runtime_gate = runtime_gate;
@@ -85,70 +74,6 @@ export class QualityRuleService {
       sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
       qualityRule: this.normalize_record(quality_block[rule_type]) as unknown as JsonValue,
     };
-  }
-
-  /**
-   * 从后端候选、规则和 item 快照生成可提交的分析术语导入计划。
-   */
-  public prepare_analysis_glossary_import(request: JsonRecord): JsonRecord {
-    const project_path = this.session_state.require_loaded_project_path();
-    const section_revisions = this.cache.readSectionRevisions();
-    const prepared_import = prepare_analysis_glossary_import_from_cache({
-      quality_block: this.cache.quality.readBlock(),
-      items: this.cache.items.readItems(),
-      section_revisions,
-      candidate_aggregate: read_json_record(request["candidate_aggregate"]),
-      action: this.read_analysis_glossary_import_action(request["action"]),
-    });
-    return {
-      projectPath: project_path,
-      sectionRevisions: section_revisions as unknown as JsonValue,
-      prepared_import: to_analysis_glossary_import_prepare_payload(prepared_import),
-    };
-  }
-
-  /**
-   * 提交分析术语导入，同时推进真实发生变化的 quality / analysis revision。
-   */
-  public async import_analysis_glossary(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.runtime_gate.run_project_write(async () => {
-      const project_path = this.session_state.require_loaded_project_path();
-      this.assert_no_legacy_fields(request, [
-        "analysis_candidate_count",
-        "expected_glossary_revision",
-      ]);
-      const next_rules = this.normalize_rule_entries("glossary", request["entries"]);
-      const current_rules = this.normalize_rule_entries(
-        "glossary",
-        this.database.get_rules(project_path, QualityRule.from_json("glossary").database_type),
-      );
-      const quality_changed = !isDeepStrictEqual(current_rules, next_rules);
-      const updated_sections: ProjectDataSection[] = quality_changed
-        ? ["quality", "analysis"]
-        : ["analysis"];
-      const consumed_candidate_srcs = this.normalize_string_list(
-        request["consumed_candidate_srcs"],
-      );
-      return await this.write_store.import_analysis_glossary({
-        projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
-        qualityRule: quality_changed
-          ? {
-              databaseType: QualityRule.from_json("glossary").database_type,
-              entries: next_rules,
-              revisionKey: QualityRule.from_json("glossary").revision_meta_key,
-            }
-          : null,
-        consumedCandidateSrcs: consumed_candidate_srcs,
-        analysisCandidateCount: this.count_remaining_analysis_candidates(
-          project_path,
-          consumed_candidate_srcs,
-        ),
-        updatedSections: updated_sections,
-      });
-    });
   }
 
   /**
@@ -222,24 +147,6 @@ export class QualityRuleService {
     const base_path = this.without_extension(file_path);
     await this.export_rules_to_files(base_path, entries);
     return { path: `${base_path}.json`.replace(/\\/g, "/") };
-  }
-
-  /**
-   * CLI 分析导出直接从当前工程候选池生成 glossary.json 与 glossary.xlsx。
-   */
-  public async export_analysis_candidates_to_directory(output_dir: string): Promise<JsonRecord> {
-    const project_path = this.session_state.require_loaded_project_path();
-    const output_base_path = path.join(path.resolve(output_dir), "glossary");
-    this.native_fs.make_dir(path.dirname(output_base_path));
-    const entries = this.build_glossary_entries_from_candidates(
-      this.read_analysis_candidate_aggregates(project_path),
-    );
-    await this.export_rules_to_files(output_base_path, entries);
-    return {
-      json_path: `${output_base_path}.json`.replace(/\\/g, "/"),
-      xlsx_path: `${output_base_path}.xlsx`.replace(/\\/g, "/"),
-      entry_count: entries.length,
-    };
   }
 
   /**
@@ -438,15 +345,6 @@ export class QualityRuleService {
     }
   }
 
-  /** 归一待导出的单条候选规则字段，不分配项目身份。 */
-  private normalize_rule_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
-    try {
-      return QualityRule.from_json(rule_type).normalize_entry(entry) as JsonRecord;
-    } catch (cause) {
-      throw new AppErrors.AppError("request.validation_failed", { cause });
-    }
-  }
-
   /**
    * 缺失规则切片按空记录返回，由页面使用领域默认值补齐。
    */
@@ -455,78 +353,10 @@ export class QualityRuleService {
   }
 
   /**
-   * 分析术语导入只接受 skip / overwrite。
-   */
-  private read_analysis_glossary_import_action(value: JsonValue | undefined): "skip" | "overwrite" {
-    if (value === undefined || value === null || value === "overwrite") {
-      return "overwrite";
-    }
-    if (value === "skip") {
-      return "skip";
-    }
-    throw new AppErrors.AppError("request.validation_failed", {
-      diagnostic_context: { reason: "invalid_analysis_glossary_import_action" },
-    });
-  }
-
-  /**
-   * 路径与候选主键列表只保留非空字符串。
-   */
-  private normalize_string_list(value: JsonValue | undefined): string[] {
-    return Array.isArray(value)
-      ? value.map((entry) => String(entry).trim()).filter((entry) => entry !== "")
-      : [];
-  }
-
-  /**
-   * 候选数只根据当前数据库聚合与本次消费主键计算。
-   */
-  private count_remaining_analysis_candidates(
-    project_path: string,
-    consumed_candidate_srcs: string[],
-  ): number {
-    const consumed = new Set(consumed_candidate_srcs);
-    return count_analysis_glossary_candidates(
-      this.read_analysis_candidate_aggregates(project_path).filter(
-        (row) => !consumed.has(String(row["src"] ?? "").trim()),
-      ),
-    );
-  }
-
-  /**
    * 按扩展名读取规则文件，保持导入格式分发集中
    */
   private async load_rules_from_file(file_path: string): Promise<unknown[]> {
     return load_quality_rule_entries_from_file(file_path, this.native_fs);
-  }
-
-  /**
-   * 读取分析候选聚合行，保持 CLI 导出不直接拼 SQL。
-   */
-  private read_analysis_candidate_aggregates(project_path: string): JsonRecord[] {
-    const value = this.database.get_analysis_candidate_aggregates(project_path);
-    return Array.isArray(value)
-      ? value
-          .filter((entry): entry is JsonRecord => is_json_record(entry))
-          .map((entry) => ({
-            ...entry,
-          }))
-      : [];
-  }
-
-  /**
-   * 从候选投票池生成可导出的术语条目，沿用共享候选术语口径。
-   */
-  private build_glossary_entries_from_candidates(candidates: JsonRecord[]): JsonRecord[] {
-    const entries: JsonRecord[] = [];
-    for (const candidate of candidates) {
-      const entry = build_analysis_glossary_entry_from_candidate(candidate);
-      if (entry === null) {
-        continue;
-      }
-      entries.push(this.normalize_rule_entry("glossary", entry as unknown as JsonRecord));
-    }
-    return entries;
   }
 
   /**

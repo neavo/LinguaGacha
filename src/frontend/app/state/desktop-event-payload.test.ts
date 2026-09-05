@@ -27,13 +27,13 @@ describe("desktop-event-payload", () => {
       normalize_section_revisions({
         items: "2",
         quality: 3,
-        task: 4,
+        batch_translation: 4,
         prompts: Number.NaN,
       }),
     ).toEqual({
       items: 2,
       quality: 3,
     });
-    expect(normalize_section_revisions({ task: 1 })).toBeUndefined();
+    expect(normalize_section_revisions({ batch_translation: 1 })).toBeUndefined();
   });
 });

@@ -79,13 +79,7 @@ describe("EpubRubyBlockTextMigration", () => {
         src_digest: expect.any(String),
       }),
     );
-    expect(write_names).toEqual([
-      "setItems",
-      "deleteAnalysisItemCheckpoints",
-      "clearAnalysisCandidateAggregates",
-      "upsertMetaEntries",
-      "bumpSectionRevisions",
-    ]);
+    expect(write_names).toEqual(["setItems", "bumpSectionRevisions"]);
   });
 
   it("旧 EPUB asset 缺失时不生成运行时兼容写回", async () => {

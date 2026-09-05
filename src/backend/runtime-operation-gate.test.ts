@@ -10,7 +10,7 @@ describe("RuntimeOperationGate", () => {
 
     const lease = gate.begin_runtime("agent");
     expect(gate.get_snapshot()).toEqual({ revision: 1, owner: "agent" });
-    expect(() => gate.begin_runtime("task")).toThrow("runtime.busy");
+    expect(() => gate.begin_runtime("batch_translation")).toThrow("runtime.busy");
     gate.finish_runtime(lease);
 
     expect(gate.get_snapshot()).toEqual({ revision: 2, owner: null });
@@ -30,12 +30,12 @@ describe("RuntimeOperationGate", () => {
         }),
     );
 
-    expect(() => gate.begin_runtime("task")).toThrow("runtime.busy");
+    expect(() => gate.begin_runtime("batch_translation")).toThrow("runtime.busy");
     await expect(gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
     release_write();
     await running_write;
 
-    const runtime_lease = gate.begin_runtime("task");
+    const runtime_lease = gate.begin_runtime("batch_translation");
     await expect(gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
     gate.finish_runtime(runtime_lease);
   });
@@ -63,7 +63,7 @@ describe("RuntimeOperationGate", () => {
 
   it("迟到清理不能释放后续运行租约", () => {
     const gate = new RuntimeOperationGate();
-    const stale_lease = gate.begin_runtime("task");
+    const stale_lease = gate.begin_runtime("batch_translation");
     gate.finish_runtime(stale_lease);
     const current_lease = gate.begin_runtime("agent");
 

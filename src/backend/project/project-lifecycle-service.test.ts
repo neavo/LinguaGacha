@@ -71,7 +71,7 @@ describe("ProjectLifecycleService", () => {
     await expect(
       service.apply_task_input({
         quality_rules: [],
-        prompts: [],
+        translation_prompt: null,
       }),
     ).rejects.toThrow("runtime.busy");
     await expect(service.unload_project()).rejects.toThrow("runtime.busy");
@@ -188,7 +188,6 @@ describe("ProjectLifecycleService", () => {
           project_runtime_revision: null,
           "project_runtime_revision.files": 2,
           "project_runtime_revision.items": 3,
-          "project_runtime_revision.analysis": 4,
         },
         asset_records: [{ path: "script.txt", sort_order: 0 }],
         items: [
@@ -214,7 +213,7 @@ describe("ProjectLifecycleService", () => {
     expect(result["preview"]).toEqual(
       expect.objectContaining({
         action: "prefiltered_items",
-        section_revisions: { files: 2, items: 3, analysis: 4 },
+        section_revisions: { files: 2, items: 3 },
       }),
     );
   });
@@ -268,7 +267,6 @@ describe("ProjectLifecycleService", () => {
           mtool_optimizer_enable: true,
           skip_duplicate_source_text_enable: true,
         },
-        analysis_candidate_count: 0,
       });
     } finally {
       database.close();
@@ -693,7 +691,7 @@ describe("ProjectLifecycleService", () => {
 
   function create_runtime_gate(busy: boolean): RuntimeOperationGate {
     const gate = new RuntimeOperationGate();
-    if (busy) gate.begin_runtime("task");
+    if (busy) gate.begin_runtime("batch_translation");
     return gate;
   }
 

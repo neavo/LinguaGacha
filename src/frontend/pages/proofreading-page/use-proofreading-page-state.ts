@@ -14,8 +14,8 @@ import {
   useDesktopState,
   useProjectChangeSignal,
   useRuntimeSnapshot,
-  useSyncTaskSnapshot,
-  useTaskSnapshot,
+  useSyncBatchTranslationSnapshot,
+  useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -84,11 +84,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
   const { dismiss_toast, push_progress_toast, push_toast } = useDesktopToast();
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
-  const { settings_snapshot, project_snapshot, commit_project_write, refresh_task } =
+  const { settings_snapshot, project_snapshot, commit_project_write, refresh_batch_translation } =
     useDesktopState();
-  const task_snapshot = useTaskSnapshot();
+  const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
-  const sync_task_snapshot = useSyncTaskSnapshot();
+  const sync_task_snapshot = useSyncBatchTranslationSnapshot();
   const project_change_signal = useProjectChangeSignal();
   const table_ui_state = useProjectSessionTableUiState<
     ProofreadingViewFilterState,
@@ -216,18 +216,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [visible_items]);
   const readonly = is_runtime_busy(runtime_snapshot);
   const retranslating_row_ids = useMemo(() => {
-    if (
-      task_snapshot.task_type !== "translation" ||
-      task_snapshot.extras.kind !== "translation" ||
-      task_snapshot.extras.scope.kind !== "items"
-    ) {
+    if (task_snapshot.scope.kind !== "items") {
       return [];
     }
 
-    return task_snapshot.extras.scope.item_ids.map((item_id) => {
+    return task_snapshot.scope.item_ids.map((item_id) => {
       return build_proofreading_row_id(item_id);
     });
-  }, [task_snapshot.extras, task_snapshot.task_type]);
+  }, [task_snapshot.scope]);
   const invalid_regex_message =
     list_view.invalid_regex_message === null
       ? null
@@ -404,7 +400,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
             return await api_fetch<ProjectWriteResultPayload>(args.path, write_plan.request_body);
           },
         });
-        await refresh_task();
+        await refresh_batch_translation();
 
         if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
           // 成功数量只消费后端规范化事实，避免候选目标把部分变化或 no-op 计为已变更。
@@ -425,7 +421,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_is_writing(false);
       }
     },
-    [commit_project_write, handle_api_error, push_toast, refresh_task, t],
+    [commit_project_write, handle_api_error, push_toast, refresh_batch_translation, t],
   );
 
   const resolve_preferred_row_id = useCallback(

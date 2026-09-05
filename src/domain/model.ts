@@ -26,7 +26,7 @@ export const MODEL_TYPES: readonly ModelType[] = Object.freeze(
 );
 
 /** 配置、API 与运行时共用的模型执行用途。 */
-export const MODEL_USAGES = ["translation", "analysis", "agent"] as const;
+export const MODEL_USAGES = ["translation", "agent"] as const;
 
 export const MODEL_API_FORMATS = [
   "OpenAI",
@@ -315,7 +315,6 @@ export function normalize_model_selection(value: unknown): ModelSelection {
   const record = read_json_record(value);
   return {
     translation: read_model_selection_id(record["translation"]),
-    analysis: read_model_selection_id(record["analysis"]),
     agent: read_model_selection_id(record["agent"]),
   };
 }

@@ -31,9 +31,6 @@ export const zh_cn_workbench_page = {
     reset_task_all: "重置所有数据",
     reset_task_failed: "重置失败数据",
     stop_task: "停止",
-    analysis_task: "分析",
-    start_analysis: "开始分析",
-    import_analysis_glossary: "导入候选术语",
   },
   task: {
     menu: {
@@ -57,44 +54,7 @@ export const zh_cn_workbench_page = {
       stopped: "已停止 …",
     },
   },
-  analysis_task: {
-    menu: {
-      tooltip: "从原文中提取术语",
-    },
-    migration: {
-      description: "经典分析任务流程即将移除，推荐使用 AGENT 自动生成术语表，是否确认继续 …?",
-    },
-    summary: {
-      running: "分析中",
-    },
-    detail: {
-      title: "分析详情",
-      description: "查看当前分析的实时统计。",
-      waveform_title: "实时速度",
-      metrics_title: "统计信息",
 
-      active_requests: "实时任务数",
-      candidate_count: "候选术语",
-    },
-    confirm: {
-      reset_all_description: "是否确认重置整个项目的分析进度 …?",
-      reset_failed_description: "是否确认重置失败的分析进度 …?",
-      import_glossary_description: "是否确认将候选术语导入术语表 …?",
-      stop_description: "是否确认停止当前分析任务 …?",
-    },
-    feedback: {
-      refresh_failed: "分析任务状态刷新失败",
-      start_failed: "启动分析任务失败",
-      stop_failed: "停止分析任务失败",
-
-      reset_all_failed: "重置全部分析失败",
-      reset_failed_failed: "重置失败分析进度失败",
-      import_loading_toast: "正在导入候选术语并刷新校对缓存 …",
-      import_failed: "导入候选术语失败",
-      import_success: "已导入 {COUNT} 条候选术语",
-      agent_draft_preserved: "AGENT 中已有草稿，已保留原内容。",
-    },
-  },
   translation_task: {
     menu: {
       tooltip: "将原文翻译为目标语言",

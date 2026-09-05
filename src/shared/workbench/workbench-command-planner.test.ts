@@ -22,7 +22,6 @@ function create_state(): WorkbenchCommandPlanningState {
     section_revisions: {
       files: 1,
       items: 2,
-      analysis: 3,
     },
   };
 }
@@ -102,7 +101,6 @@ describe("workbench command planner", () => {
       expected_section_revisions: {
         files: 1,
         items: 2,
-        analysis: 3,
       },
     });
   });
@@ -199,7 +197,6 @@ describe("workbench command planner", () => {
       project_settings: SETTINGS,
       expected_section_revisions: {
         items: 2,
-        analysis: 3,
       },
     });
   });
@@ -217,7 +214,6 @@ describe("workbench command planner", () => {
       expected_section_revisions: {
         files: 1,
         items: 2,
-        analysis: 3,
       },
     });
   });

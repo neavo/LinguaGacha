@@ -92,13 +92,7 @@ export class EpubRubyBlockTextMigration {
             replacement_payloads,
           ),
         );
-        database.delete_analysis_item_checkpoints(project_path);
-        database.clear_analysis_candidate_aggregates(project_path);
-        database.upsert_meta_entries(project_path, {
-          analysis_extras: {},
-          analysis_candidate_count: 0,
-        });
-        database.bump_section_revisions(project_path, ["items", "analysis"]);
+        database.bump_section_revisions(project_path, ["items"]);
       },
     ];
   }

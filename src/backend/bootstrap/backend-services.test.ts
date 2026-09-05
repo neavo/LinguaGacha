@@ -7,9 +7,9 @@ const { work_unit_dispose_mock, planning_dispose_mock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../engine/work-unit/work-unit-worker-pool", () => {
+vi.mock("../batch-translation/work-unit/translation-worker-pool", () => {
   return {
-    WorkUnitWorkerPool: class {
+    TranslationWorkerPool: class {
       public async dispose(): Promise<void> {
         await work_unit_dispose_mock();
       }
@@ -17,7 +17,7 @@ vi.mock("../engine/work-unit/work-unit-worker-pool", () => {
   };
 });
 
-vi.mock("../engine/planning/planning-worker-pool", () => {
+vi.mock("../batch-translation/planning/planning-worker-pool", () => {
   return {
     PlanningWorkerPool: class {
       public async dispose(): Promise<void> {
@@ -29,8 +29,8 @@ vi.mock("../engine/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
-import { TaskService } from "../engine/task-service";
-import { TaskRuntime } from "../engine/task-runtime";
+import { BatchTranslationService } from "../batch-translation/batch-translation-service";
+import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { AppError } from "../../shared/error";
@@ -88,9 +88,9 @@ describe("BackendServices", () => {
   });
 
   it("把任务快照交给入口事件出口", async () => {
-    let publish_snapshot: Parameters<TaskService["subscribe"]>[0] | undefined;
+    let publish_snapshot: Parameters<BatchTranslationService["subscribe"]>[0] | undefined;
     const subscribe_spy = vi
-      .spyOn(TaskService.prototype, "subscribe")
+      .spyOn(BatchTranslationService.prototype, "subscribe")
       .mockImplementation((listener) => {
         publish_snapshot = listener;
         return vi.fn();
@@ -101,10 +101,8 @@ describe("BackendServices", () => {
 
     expect(publish_snapshot).toBeDefined();
     await publish_snapshot?.({
-      run_revision: 7,
-      task_type: "translation",
+      revision: 7,
       status: "running",
-      busy: true,
       request_in_flight_count: 2,
       progress: {
         line: 1,
@@ -118,14 +116,14 @@ describe("BackendServices", () => {
         time: 1,
         start_time: 2,
       },
-      extras: { kind: "translation", scope: { kind: "all" } },
+      scope: { kind: "all" },
     });
     await services.dispose();
     subscribe_spy.mockRestore();
 
     expect(options.publishEvent).toHaveBeenCalledWith(
-      "task.snapshot_changed",
-      expect.objectContaining({ task: expect.objectContaining({ run_revision: 7 }) }),
+      "batch_translation.snapshot_changed",
+      expect.objectContaining({ batch_translation: expect.objectContaining({ revision: 7 }) }),
     );
   });
 
@@ -174,7 +172,7 @@ describe("BackendServices", () => {
       release_task_runtime = resolve;
     });
     const dispose_spy = vi
-      .spyOn(TaskRuntime.prototype, "dispose")
+      .spyOn(BatchTranslationRuntime.prototype, "dispose")
       .mockImplementation(async () => await task_runtime_dispose);
     const services = new BackendServices(create_backend_services_options());
 

@@ -65,8 +65,6 @@ export interface TextQualitySnapshot {
   post_replacement_entries: TextReplacementEntry[];
   translation_prompt_enable: boolean; // prompt 字段来自提示词设置页，PromptBuilder 负责与资源模板合并
   translation_prompt: string;
-  analysis_prompt_enable: boolean;
-  analysis_prompt: string;
 }
 
 /**
@@ -105,8 +103,6 @@ export class TextQualitySnapshotTool {
       post_replacement_entries: snapshot.post_replacement_entries,
       translation_prompt_enable: snapshot.translation_prompt_enable,
       translation_prompt: snapshot.translation_prompt,
-      analysis_prompt_enable: snapshot.analysis_prompt_enable,
-      analysis_prompt: snapshot.analysis_prompt,
     };
   }
 }

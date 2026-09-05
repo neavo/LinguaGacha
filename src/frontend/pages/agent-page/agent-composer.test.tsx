@@ -739,7 +739,7 @@ describe("AgentComposer", () => {
     const view = await render_composer({
       model_selection: {
         snapshot: {
-          model_selection: { translation: "agent", analysis: "agent", agent: "agent" },
+          model_selection: { translation: "agent", agent: "agent" },
           models: [
             {
               id: "agent",
@@ -808,7 +808,7 @@ describe("AgentComposer", () => {
             approval_mode_disabled={options.approval_mode_disabled ?? false}
             model_selection={{
               snapshot: {
-                model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+                model_selection: { translation: "preset", agent: "agent" },
                 models: [
                   {
                     id: "agent",

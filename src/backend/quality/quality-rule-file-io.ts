@@ -29,7 +29,7 @@ export async function load_quality_rule_entries_from_file(
 }
 
 /**
- * 同时导出 JSON 和 Excel 规则文件，保持 CLI 分析导出与 GUI 导出格式一致。
+ * 同时导出 JSON 和 Excel 规则文件，保持质量规则外部文件格式一致。
  */
 export async function export_quality_rule_entries_to_files(
   base_path: string,

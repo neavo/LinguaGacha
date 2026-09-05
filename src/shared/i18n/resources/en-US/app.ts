@@ -332,9 +332,6 @@ export const en_us_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "No terms extracted",
-    analysis_task_result: "Analysis Result:",
-    analysis_task_source_texts: "Analysis Input:",
     api_gateway_started: "API Gateway started - {BASE_URL}",
     api_test_fail: "API test failed …",
     api_test_key: "Testing Key:",

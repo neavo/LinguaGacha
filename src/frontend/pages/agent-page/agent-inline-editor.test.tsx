@@ -122,7 +122,7 @@ describe("AgentInlineEditor", () => {
     root = createRoot(container);
     const model_selection: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", analysis: "", agent: "" },
+        model_selection: { translation: "", agent: "" },
         models: [],
       },
       loading: false,

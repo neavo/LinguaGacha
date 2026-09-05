@@ -1,7 +1,6 @@
 import type {
   ProjectChangeFilesPayload,
   ProjectChangeItemsPayload,
-  ProjectChangeSectionPayload,
   ProjectDataSection,
   ProjectDataSectionRevisions,
 } from "../../shared/project-event";
@@ -13,8 +12,7 @@ export type ProjectEventType =
   | "project.items.changed"
   | "project.quality.changed"
   | "project.prompts.changed"
-  | "project.settings.changed"
-  | "project.analysis.changed";
+  | "project.settings.changed";
 
 // 标识写入来源，用于缓存诊断和 after-commit 事件追踪。
 export type ProjectEventSource =
@@ -75,13 +73,6 @@ export type ProjectSettingsChangedEvent = BaseProjectEvent<"project.settings.cha
   changedKeys?: string[];
 };
 
-// 汇总分析候选或分析状态的刷新范围。
-export type ProjectAnalysisChangedEvent = BaseProjectEvent<"project.analysis.changed"> & {
-  affectedSections: ProjectDataSection[];
-  sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
-  scope?: "analysis-partial" | "analysis-full";
-};
-
 // Backend 内部事件总线唯一事件联合类型。
 export type ProjectEvent =
   | ProjectOpenedForCacheEvent
@@ -89,8 +80,7 @@ export type ProjectEvent =
   | ProjectItemsChangedEvent
   | ProjectQualityChangedEvent
   | ProjectPromptsChangedEvent
-  | ProjectSettingsChangedEvent
-  | ProjectAnalysisChangedEvent;
+  | ProjectSettingsChangedEvent;
 
 /**
  * 创建工程热机事件；affectedSections 固定为全量项目 section，避免加载期漏热缓存。
@@ -104,15 +94,7 @@ export function create_project_opened_for_cache_event(args: {
     type: "project.opened_for_cache",
     projectPath: args.projectPath,
     source: args.source ?? "project_lifecycle",
-    affectedSections: [
-      "project",
-      "files",
-      "items",
-      "quality",
-      "prompts",
-      "analysis",
-      "proofreading",
-    ],
+    affectedSections: ["project", "files", "items", "quality", "prompts", "proofreading"],
     sectionRevisions: { ...args.sectionRevisions },
   };
 }

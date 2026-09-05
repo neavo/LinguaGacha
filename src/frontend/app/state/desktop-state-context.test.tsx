@@ -14,7 +14,7 @@ import {
   useDesktopState,
   useProjectChangeSignal,
   useRuntimeSnapshot,
-  useTaskSnapshot,
+  useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 
 const { api_fetch_mock, open_event_stream_mock, report_renderer_error_mock } = vi.hoisted(() => {
@@ -49,13 +49,16 @@ type RuntimeSnapshot = {
   taskProcessedLine: number;
   taskOutputTokens: number;
   taskRequestInFlightCount: number;
-  runtimeOwner: "task" | "agent" | null;
+  runtimeOwner: "batch_translation" | "agent" | null;
   sourceLanguage: string;
 };
 
 type StateHandle = Pick<
   ReturnType<typeof useDesktopState>,
-  "refresh_project_snapshot" | "refresh_project_state" | "refresh_task" | "commit_project_write"
+  | "refresh_project_snapshot"
+  | "refresh_project_state"
+  | "refresh_batch_translation"
+  | "commit_project_write"
 >;
 
 type StateHandleRef = StateHandle | null;
@@ -142,9 +145,7 @@ function resolve_state_workbench_change_signal(signal: {
   updated_sections: string[];
   results: ProjectChangeSignal["results"];
 }): { seq: number; reason: string; file_full_replace: boolean } | null {
-  return signal.updated_sections.some((section) =>
-    ["project", "files", "items", "analysis"].includes(section),
-  )
+  return signal.updated_sections.some((section) => ["project", "files", "items"].includes(section))
     ? {
         seq: signal.seq,
         reason: signal.reason,
@@ -158,7 +159,7 @@ function RuntimeProbe(props: {
 }): JSX.Element | null {
   const state = useDesktopState();
   const project_change_signal = useProjectChangeSignal();
-  const task_snapshot = useTaskSnapshot();
+  const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
   const workbench_signal = useMemo(
     () => resolve_state_workbench_change_signal(project_change_signal),
@@ -357,18 +358,8 @@ function create_default_project_sections(
         enabled: false,
         revision: 0,
       },
-      analysis: {
-        text: "",
-        enabled: false,
-        revision: 0,
-      },
     },
-    analysis: {
-      extras: {},
-      candidate_count: 0,
-      candidate_aggregate: {},
-      status_summary: {},
-    },
+
     proofreading: {
       revision: 0,
     },
@@ -410,8 +401,8 @@ function create_project_read_response(
 type RuntimeApiMockOptions = {
   settings?: Record<string, unknown>;
   project_path?: string;
-  task?: Record<string, unknown>;
-  runtime_owner?: "task" | "agent" | null;
+  batch_translation?: Record<string, unknown>;
+  runtime_owner?: "batch_translation" | "agent" | null;
   project_read?: {
     projectRevision?: number;
     sectionRevisions?: Record<string, number>;
@@ -421,34 +412,30 @@ type RuntimeApiMockOptions = {
 
 function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
   const project_path = options.project_path ?? "E:/demo/demo.lg";
-  api_fetch_mock.mockImplementation(
-    async (path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH", ...options.settings } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: project_path, loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: options.task ?? {
-            task_type: body?.["task_type"] ?? "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-      if (path === "/api/runtime/snapshot") {
-        return { runtime: { revision: 0, owner: options.runtime_owner ?? null } };
-      }
+  api_fetch_mock.mockImplementation(async (path: string): Promise<Record<string, unknown>> => {
+    if (path === "/api/settings/app") {
+      return { settings: { app_language: "ZH", ...options.settings } };
+    }
+    if (path === "/api/session/project/snapshot") {
+      return { project: { path: project_path, loaded: true } };
+    }
+    if (path === "/api/batch-translation/snapshot") {
+      return {
+        batch_translation: options.batch_translation ?? {
+          status: "idle",
+        },
+      };
+    }
+    if (path === "/api/runtime/snapshot") {
+      return { runtime: { revision: 0, owner: options.runtime_owner ?? null } };
+    }
 
-      const project_read_response = create_project_read_response(path, options.project_read);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-      throw new Error(`未预期的请求：${path}`);
-    },
-  );
+    const project_read_response = create_project_read_response(path, options.project_read);
+    if (project_read_response !== null) {
+      return project_read_response;
+    }
+    throw new Error(`未预期的请求：${path}`);
+  });
 }
 
 describe("设置快照归一", () => {
@@ -498,7 +485,7 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
     install_runtime_api_mock({
       runtime_owner: "agent",
-      task: { task_type: "translation", status: "idle", busy: false },
+      batch_translation: { status: "idle" },
     });
 
     await mount_runtime(
@@ -541,7 +528,6 @@ describe("DesktopStateProvider", () => {
         "items",
         "quality",
         "prompts",
-        "analysis",
         "proofreading",
       ],
       proofreadingItemIds: [],
@@ -581,7 +567,6 @@ describe("DesktopStateProvider", () => {
       await expect(
         state_handle?.commit_project_write({
           operation: "glossary.entries_save",
-          task_type: "translation",
           run: async () => {
             throw new Error("write boom");
           },
@@ -603,7 +588,6 @@ describe("DesktopStateProvider", () => {
           stage: "commit_project_write",
           operation: "glossary.entries_save",
           phase: "request",
-          taskType: "translation",
         }),
       }),
     );
@@ -618,7 +602,6 @@ describe("DesktopStateProvider", () => {
           recovery: "project_state",
           operation: "glossary.entries_save",
           phase: "request",
-          taskType: "translation",
         }),
       }),
     );
@@ -641,12 +624,10 @@ describe("DesktopStateProvider", () => {
       if (state_handle === null) {
         throw new Error("运行时句柄未准备好。");
       }
-      await state_handle.refresh_task("analysis");
+      await state_handle.refresh_batch_translation();
     });
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/snapshot", {
-      task_type: "analysis",
-    });
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-translation/snapshot", {});
   });
 
   it("source_language 设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
@@ -697,12 +678,11 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
 
     install_runtime_api_mock({
-      task: {
-        task_type: "translation",
+      batch_translation: {
         status: "running",
-        busy: true,
+
         progress: { line: 0, total_line: 5 },
-        extras: { kind: "translation", scope: { kind: "all" } },
+        scope: { kind: "all" },
       },
     });
 
@@ -717,22 +697,21 @@ describe("DesktopStateProvider", () => {
     });
     await wait_for_condition(() => {
       return event_stream.event_source.addEventListener.mock.calls.some(
-        (call) => call[0] === "task.snapshot_changed",
+        (call) => call[0] === "batch_translation.snapshot_changed",
       );
     });
 
     await act(async () => {
-      event_stream.emit("task.snapshot_changed", {
-        task: {
-          task_type: "translation",
+      event_stream.emit("batch_translation.snapshot_changed", {
+        batch_translation: {
           status: "running",
-          busy: true,
+
           progress: {
             line: 2,
             total_line: 5,
             processed_line: 2,
           },
-          extras: { kind: "translation", scope: { kind: "all" } },
+          scope: { kind: "all" },
         },
       });
       await Promise.resolve();
@@ -746,11 +725,10 @@ describe("DesktopStateProvider", () => {
     });
 
     await act(async () => {
-      event_stream.emit("task.snapshot_changed", {
-        task: {
-          task_type: "translation",
+      event_stream.emit("batch_translation.snapshot_changed", {
+        batch_translation: {
           status: "running",
-          busy: true,
+
           progress: {
             line: 4,
             total_line: 5,
@@ -758,7 +736,7 @@ describe("DesktopStateProvider", () => {
             total_output_tokens: 12,
           },
           request_in_flight_count: 3,
-          extras: { kind: "translation", scope: { kind: "all" } },
+          scope: { kind: "all" },
         },
       });
       await Promise.resolve();
@@ -862,138 +840,6 @@ describe("DesktopStateProvider", () => {
       proofreadingReason: "quality_rule_update",
       proofreadingMode: "full",
       taskStatus: "idle",
-    });
-  });
-
-  it("analysis 项目变更会触发工作台刷新信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-
-    install_runtime_api_mock({
-      task: { task_type: "analysis", status: "idle", busy: false },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
-    );
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.workbenchSeq === 1;
-    });
-
-    await act(async () => {
-      event_stream.emit("project.data_changed", {
-        source: "analysis_task_done",
-        projectPath: "E:/demo/demo.lg",
-        projectRevision: 2,
-        updatedSections: ["analysis"],
-        sectionRevisions: { analysis: 2 },
-        sections: {
-          analysis: {
-            payloadMode: "canonical-delta",
-            data: {
-              status_summary: {
-                total_line: 2,
-                processed_line: 1,
-                error_line: 0,
-                line: 1,
-              },
-            },
-          },
-        },
-      });
-      event_stream.emit("task.snapshot_changed", {
-        task: {
-          task_type: "analysis",
-          status: "done",
-          busy: false,
-          progress: {},
-          extras: { kind: "analysis", candidate_count: 1 },
-        },
-      });
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.workbenchSeq === 2;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      workbenchSeq: 2,
-      workbenchReason: "analysis_task_done",
-      taskStatus: "done",
-    });
-  });
-
-  it("项目 write 结果里的 analysis 变更会触发工作台刷新信号", async () => {
-    const snapshots: RuntimeSnapshot[] = [];
-    const event_stream = create_event_source_stub();
-    let state_handle: StateHandleRef = null;
-
-    install_runtime_api_mock({
-      task: { task_type: "analysis", status: "idle", busy: false },
-    });
-
-    await mount_runtime(
-      event_stream.event_source,
-      <>
-        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
-        <StateHandleProbe onState={(state) => (state_handle = state)} />
-      </>,
-    );
-
-    await wait_for_condition(() => {
-      return state_handle !== null && snapshots.at(-1)?.workbenchSeq === 1;
-    });
-
-    await act(async () => {
-      if (state_handle === null) {
-        throw new Error("运行时句柄未准备好。");
-      }
-
-      await state_handle.commit_project_write({
-        operation: "workbench.analysis_reset",
-        task_type: "analysis",
-        run: async () => ({
-          accepted: true,
-          changes: [
-            {
-              eventId: "analysis-write-1",
-              source: "analysis_reset_all",
-              projectPath: "E:/demo/demo.lg",
-              projectRevision: 2,
-              updatedSections: ["analysis"],
-              sectionRevisions: {
-                analysis: 2,
-              },
-              sections: {
-                analysis: {
-                  payloadMode: "canonical-delta",
-                  data: {
-                    status_summary: {
-                      total_line: 2,
-                      processed_line: 0,
-                      error_line: 0,
-                      line: 0,
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        }),
-      });
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => {
-      return snapshots.at(-1)?.workbenchSeq === 2;
-    });
-
-    expect(snapshots.at(-1)).toMatchObject({
-      workbenchSeq: 2,
-      workbenchReason: "analysis_reset_all",
     });
   });
 
@@ -1552,8 +1398,8 @@ describe("DesktopStateProvider", () => {
       if (path === "/api/session/project/snapshot") {
         return { project: { path: project_path, loaded: true } };
       }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
+      if (path === "/api/batch-translation/snapshot") {
+        return { batch_translation: { status: "idle" } };
       }
       if (path === "/api/runtime/snapshot") {
         return { runtime: { revision: 0, owner: null } };
@@ -1561,7 +1407,7 @@ describe("DesktopStateProvider", () => {
       if (project_path === "E:/demo/next.lg") {
         const project_read_response = create_project_read_response(path, {
           projectRevision: 10,
-          sectionRevisions: { project: 10, files: 10, items: 10, analysis: 10 },
+          sectionRevisions: { project: 10, files: 10, items: 10 },
           sections: create_default_project_sections({
             project: { path: "E:/demo/next.lg", loaded: true },
             files: {
@@ -1584,7 +1430,7 @@ describe("DesktopStateProvider", () => {
 
       const project_read_response = create_project_read_response(path, {
         projectRevision: 1,
-        sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
+        sectionRevisions: { project: 1, files: 1, items: 1 },
         sections: create_default_project_sections({
           project: { path: "E:/demo/old.lg", loaded: true },
         }),
@@ -1641,7 +1487,7 @@ describe("DesktopStateProvider", () => {
     install_runtime_api_mock({
       project_read: {
         projectRevision: 1,
-        sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
+        sectionRevisions: { project: 1, files: 1, items: 1 },
       },
     });
 
@@ -1732,11 +1578,9 @@ describe("DesktopStateProvider", () => {
           },
         },
       });
-      event_stream.emit("task.snapshot_changed", {
-        task: {
-          task_type: "translation",
+      event_stream.emit("batch_translation.snapshot_changed", {
+        batch_translation: {
           status: "running",
-          busy: true,
         },
       });
       await Promise.resolve();

@@ -1,0 +1,34 @@
+import type { TranslationTokenCountInput, TranslationTokenCountResult } from "./token-metric-cache";
+import type { LogError } from "../../../shared/error";
+
+/**
+ * planning worker 的 token 计算请求；id 只服务线程消息匹配，不进入任务事实。
+ */
+export interface PlanningCountTokensMessage {
+  id: string;
+  type: "count_tokens";
+  items: TranslationTokenCountInput[];
+}
+
+/**
+ * planning worker 的取消请求；取消只影响对应消息，不关闭整个 worker。
+ */
+export interface PlanningCancelMessage {
+  id: string;
+  type: "cancel";
+}
+
+/**
+ * 主线程发给 planning worker 的全部消息形状。
+ */
+export type PlanningWorkerIncomingMessage = PlanningCountTokensMessage | PlanningCancelMessage;
+
+/**
+ * planning worker 返回的成功或失败结果，错误诊断必须保持结构化。
+ */
+export interface PlanningWorkerOutgoingMessage {
+  id: string;
+  ok: boolean;
+  data?: TranslationTokenCountResult[];
+  error?: LogError;
+}

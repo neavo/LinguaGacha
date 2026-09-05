@@ -80,23 +80,6 @@ describe("ProjectResetPreviewService", () => {
       expect.objectContaining({ id: 1, src: "alpha", file_path: "a.txt", row: 0 }),
     ]);
   });
-
-  it("分析 failed 预演按删除 ERROR checkpoint 后的摘要返回", async () => {
-    const { database, lg_path, service } = create_service();
-    database.set_items(lg_path, [
-      { id: 1, src: "A", status: "NONE" },
-      { id: 2, src: "B", status: "NONE" },
-      { id: 3, src: "C", status: "EXCLUDED" },
-    ]);
-    database.upsert_analysis_item_checkpoints(lg_path, [
-      { item_id: 1, status: "PROCESSED" },
-      { item_id: 2, status: "ERROR" },
-    ]);
-
-    await expect(service.preview_analysis_reset({ mode: "failed" })).resolves.toEqual({
-      status_summary: { total_line: 2, processed_line: 1, error_line: 0, line: 1 },
-    });
-  });
 });
 
 /**

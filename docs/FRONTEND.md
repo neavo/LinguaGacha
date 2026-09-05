@@ -19,11 +19,11 @@
 
 ## 2. 主窗口运行态
 
-- `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 task、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
+- `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 batch translation、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
 - 初始状态并行读取设置、项目 snapshot、任务 snapshot 与 runtime snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
-- `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task progress 分别携带累计输入、思考与输出 token，工作台详情使用相同三段口径，思考与输出的互斥计数之和统一驱动生成速度与波形。消费方通过 `useTaskSnapshot` 精确订阅，task 不进入项目 query 或页面计算缓存。
-- `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置和任务启动统一按 `owner !== null` 锁定；Agent 页在 task owner 下同样锁定，但 Agent owner 期间允许当前会话内存输入排队，并仅按 Agent snapshot 的 `canSendNow` 开放 Pi steer。reset、round 修订和模型选择 / 思考档位仍要求共享运行时空闲。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
+- `BatchTranslationSnapshotStore` 独占 renderer 当前批量翻译快照，HTTP 与 SSE 共用同形载荷并按 `revision` 丢弃旧帧；Hook 通过 `useBatchTranslationSnapshot` 直接消费，不保存或回写本地当前快照。metrics 随快照与显示时钟计算，输入、思考和输出 token 保持互斥累计口径。
+- `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置和任务启动统一按 `owner !== null` 锁定；Agent 页在 batch_translation owner 下同样锁定，但 Agent owner 期间允许当前会话内存输入排队，并仅按 Agent snapshot 的 `canSendNow` 开放 Pi steer。reset、round 修订和模型选择 / 思考档位仍要求共享运行时空闲。批量翻译活跃态由 status 派生。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
@@ -34,17 +34,17 @@
 - 前端实体和值对象从 `src/domain` 导入，跨运行时纯规则和协议词表从 `src/shared` 导入；最终项目事实计算只属于后端。
 - 功能 query 的参数、结果窗口和缓存身份归消费页面所有；被多个当前页面复用的领域交互、API 适配与纯规则进入 `src/frontend/features/<capability>`，需要全量事实的搜索、统计、排序和写入计算仍由后端 query / command 提供。
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
-- 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。
+- 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。普通翻译启动以 Store 当前权威进度选择 new 或 continue，历史展示快照只服务显示。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - 跨页面模型选择与所选模型思考配置由 `features/model-selection` 归一窄协议并持有页面生命周期 query / command；后端为每个模型公开生效 Agent 容量和可用思考档位，renderer 不按 API 格式或模型名再次推断。档位控件只列后端确认的值；空集合保持控件位置但禁用并显示“默认”及不支持提示。模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，写入消费共享 runtime 锁。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
-- `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端分析结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
+- `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端质量统计结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills 与 input 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
-- `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up，并统一承接手动入口与翻译完成提示的译文导出确认；导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。页面计算缓存、其它弹窗、导入和提交中状态默认随页面挂载与卸载。
+- `BatchTranslationSessionProvider` 拥有翻译历史展示、波形、完成提示抑制和跨路由 follow-up，并统一承接手动入口与翻译完成提示的译文导出确认；导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。页面计算缓存、其它弹窗、导入和提交中状态默认随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。

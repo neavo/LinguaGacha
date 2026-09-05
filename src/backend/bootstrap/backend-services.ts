@@ -3,13 +3,13 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
-import { TaskEngine } from "../engine/core/engine";
-import { PlanningWorkerPool } from "../engine/planning/planning-worker-pool";
-import { TaskPlanner } from "../engine/planning/task-planner";
-import { TaskProjectStore } from "../engine/task-project-store";
-import { TaskRuntime } from "../engine/task-runtime";
-import { TaskService } from "../engine/task-service";
-import { WorkUnitWorkerPool } from "../engine/work-unit/work-unit-worker-pool";
+import { BatchTranslationRunner } from "../batch-translation/core/batch-translation-runner";
+import { PlanningWorkerPool } from "../batch-translation/planning/planning-worker-pool";
+import { TranslationPlanner } from "../batch-translation/planning/translation-planner";
+import { BatchTranslationProjectStore } from "../batch-translation/batch-translation-project-store";
+import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
+import { BatchTranslationService } from "../batch-translation/batch-translation-service";
+import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
 import { FilePreviewService } from "../file/file-preview-service";
 import { TsConversionExportService } from "../file/ts-conversion-export-service";
 import {
@@ -42,7 +42,7 @@ import {
   type RuntimeActivitySnapshot,
 } from "../../shared/runtime-activity";
 
-const TASK_SNAPSHOT_EVENT_TOPIC = "task.snapshot_changed";
+const BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC = "batch_translation.snapshot_changed";
 
 export interface BackendServicesOptions {
   paths: AppPathService; // 启动阶段解析出的应用根与数据根权威
@@ -77,7 +77,7 @@ export interface BackendRuntimeServices {
 export interface BackendProjectServices {
   lifecycle: ProjectLifecycleService;
   readManifest: () => JsonRecord;
-  readAnalysisCandidates: () => JsonRecord;
+
   summary: ProjectSummaryService;
   content: ProjectContentService;
   resetPreview: ProjectResetPreviewService;
@@ -107,9 +107,9 @@ export class BackendServices {
   private readonly app_setting_service: AppSettingService;
   private readonly cache_manager: CacheManager;
   private readonly compute_worker_client: ComputeWorkerClient;
-  private readonly task_runtime: TaskRuntime;
+  private readonly task_runtime: BatchTranslationRuntime;
   private readonly runtime_gate = new RuntimeOperationGate(); // task、GUI Agent 与结构性写入共享的唯一门禁
-  private readonly work_unit_worker_pool: WorkUnitWorkerPool;
+  private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
   private task_stream_unsubscribe: (() => void) | null;
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止发布已关闭业务根的事件
@@ -121,7 +121,7 @@ export class BackendServices {
   public readonly quality: BackendQualityServices;
   public readonly files: BackendFileServices;
   public readonly model: ModelService;
-  public readonly tasks: TaskService;
+  public readonly batchTranslation: BatchTranslationService;
   public readonly logManager: LogManager;
   public readonly state: BackendServiceState;
 
@@ -162,7 +162,7 @@ export class BackendServices {
       publish_project_change,
     );
 
-    this.task_runtime = new TaskRuntime(session_state, data_reader, this.runtime_gate);
+    this.task_runtime = new BatchTranslationRuntime(session_state, data_reader, this.runtime_gate);
     const lifecycle = new ProjectLifecycleService(
       options.database,
       this.runtime_gate,
@@ -181,7 +181,7 @@ export class BackendServices {
       this.logManager,
     );
 
-    this.work_unit_worker_pool = new WorkUnitWorkerPool({
+    this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
       execution: options.workerExecution,
       llmClient: llm_client,
@@ -189,9 +189,9 @@ export class BackendServices {
     this.planning_worker_pool = new PlanningWorkerPool({
       execution: options.workerExecution,
     });
-    const task_engine = new TaskEngine({
+    const task_engine = new BatchTranslationRunner({
       builtinRoot: paths.get_builtin_root(),
-      taskStore: new TaskProjectStore(
+      taskStore: new BatchTranslationProjectStore(
         options.database,
         session_state,
         this.cache_manager,
@@ -199,7 +199,7 @@ export class BackendServices {
       ),
       taskRuntime: this.task_runtime,
       executorClient: this.work_unit_worker_pool,
-      taskPlanner: new TaskPlanner({
+      taskPlanner: new TranslationPlanner({
         planningWorkerPool: this.planning_worker_pool,
       }),
       AppSettingService: this.app_setting_service,
@@ -223,8 +223,7 @@ export class BackendServices {
     this.project = {
       lifecycle,
       readManifest: () => data_reader.build_manifest(session_state.snapshot()),
-      readAnalysisCandidates: () =>
-        data_reader.build_analysis_candidate_payload(session_state.require_loaded_project_path()),
+
       summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(
         options.database,
@@ -255,7 +254,6 @@ export class BackendServices {
     };
     const quality_rules = new QualityRuleService(
       paths,
-      options.database,
       session_state,
       write_store,
       this.runtime_gate,
@@ -274,7 +272,7 @@ export class BackendServices {
       ),
       statistics: new QualityStatisticsService({
         sessionState: session_state,
-        cache: this.cache_manager.qualityAnalysis,
+        cache: this.cache_manager.qualityStatistics,
       }),
     };
     this.files = {
@@ -294,16 +292,20 @@ export class BackendServices {
       this.runtime_gate,
       this.logManager,
     );
-    this.tasks = new TaskService(task_engine, this.task_runtime, session_state);
+    this.batchTranslation = new BatchTranslationService(
+      task_engine,
+      this.task_runtime,
+      session_state,
+    );
     this.state = {
       session: session_state,
       runtimeGate: this.runtime_gate,
       cache: this.cache_manager,
       writes: write_store,
     };
-    this.task_stream_unsubscribe = this.tasks.subscribe((snapshot) => {
-      options.publishEvent(TASK_SNAPSHOT_EVENT_TOPIC, {
-        task: snapshot as unknown as JsonRecord,
+    this.task_stream_unsubscribe = this.batchTranslation.subscribe((snapshot) => {
+      options.publishEvent(BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC, {
+        batch_translation: snapshot as unknown as JsonRecord,
       });
     });
     this.runtime_stream_unsubscribe = this.runtime_gate.subscribe((snapshot) => {

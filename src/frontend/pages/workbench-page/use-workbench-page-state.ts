@@ -4,10 +4,11 @@ import {
   useDesktopState,
   useProjectChangeSignal,
   useRuntimeSnapshot,
-  useTaskSnapshot,
+  useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
-import { is_task_stopping } from "@frontend/app/state/task-snapshot-store";
+import { is_task_stopping } from "@frontend/app/state/batch-translation-snapshot-store";
+
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import {
@@ -18,8 +19,7 @@ import {
   type WorkbenchCommandPlanningState,
   type WorkbenchCommandPlan,
 } from "@shared/workbench/workbench-command-planner";
-import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
-import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
+import type { TranslationWorkbenchTask } from "@frontend/app/session/batch-translation/use-translation-workbench-task";
 import {
   type ProjectWriteOperation,
   type ProjectWriteResultPayload,
@@ -32,25 +32,23 @@ import {
   close_dialog_state,
   useWorkbenchImportFilesFlow,
 } from "@frontend/pages/workbench-page/use-workbench-import-files-flow";
-import type { AnalysisTaskMetrics } from "@shared/workbench/analysis-task";
 import type { RendererErrorContextInput } from "@shared/error";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
-import type { TranslationTaskMetrics } from "@shared/workbench/translation-task";
+import type { BatchTranslationMetrics } from "@shared/workbench/batch-translation";
+
 import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
 import { resolveProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import type {
-  WorkbenchTaskDetailDisplay,
+  WorkbenchTranslationDetailDisplay,
   WorkbenchDialogState,
   WorkbenchFileEntry,
-  WorkbenchTaskMetricEntry,
+  WorkbenchTranslationMetricEntry,
   WorkbenchSnapshot,
   WorkbenchSnapshotEntry,
   WorkbenchStats,
-  WorkbenchStatsMode,
-  WorkbenchTaskKind,
-  WorkbenchTaskSummaryDisplay,
-  WorkbenchTaskTone,
-  WorkbenchTaskViewState,
+  WorkbenchTranslationSummaryDisplay,
+  WorkbenchTranslationTone,
+  WorkbenchTranslationViewState,
 } from "@frontend/pages/workbench-page/types";
 
 // 缓存尚未就绪时使用零值统计，避免把旧项目进度带入新会话。
@@ -69,19 +67,13 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
   total_items: 0,
   translation_stats: EMPTY_WORKBENCH_STATS,
-  analysis_stats: EMPTY_WORKBENCH_STATS,
   entries: [],
 };
 
 // 页面缓存只有消费完这些 section revision 才能标记为 ready。
-const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
+const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items"];
 // 工作台列表 query 的项目事实依赖范围。
-const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
-  "project",
-  "files",
-  "items",
-  "analysis",
-];
+const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = ["project", "files", "items"];
 // 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
@@ -244,56 +236,12 @@ function resolve_workbench_selection_after_snapshot(args: {
   };
 }
 
-/** 收窄 session 中恢复出的任务类型字符串。 */
-function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
-  return value === "translation" || value === "analysis";
-}
-
-/**
- * 依次按运行中任务、最近任务、唯一可展示任务和页面回退值选择当前任务。
- */
-function resolve_active_workbench_task_kind(args: {
-  running_task_kind: WorkbenchTaskKind | null;
-  recent_task_kind: WorkbenchTaskKind | null;
-  fallback_task_kind: WorkbenchTaskKind | null;
-  has_translation_display: boolean;
-  has_analysis_display: boolean;
-}): WorkbenchTaskKind | null {
-  if (args.running_task_kind !== null) {
-    return args.running_task_kind;
-  }
-
-  if (args.recent_task_kind === "translation" && args.has_translation_display) {
-    return "translation";
-  }
-  if (args.recent_task_kind === "analysis" && args.has_analysis_display) {
-    return "analysis";
-  }
-
-  if (args.has_translation_display && !args.has_analysis_display) {
-    return "translation";
-  }
-  if (args.has_analysis_display && !args.has_translation_display) {
-    return "analysis";
-  }
-
-  if (
-    args.fallback_task_kind !== null &&
-    ((args.fallback_task_kind === "translation" && args.has_translation_display) ||
-      (args.fallback_task_kind === "analysis" && args.has_analysis_display))
-  ) {
-    return args.fallback_task_kind;
-  }
-
-  return null;
-}
-
 /**
  * 将秒数截断并限制为非负值，统一输出 HH:MM:SS。
  */
 function format_duration_value(
   seconds: number,
-): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
+): Pick<WorkbenchTranslationMetricEntry, "value_text" | "unit_text"> {
   const normalized_seconds = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(normalized_seconds / 60 / 60);
   const minutes = Math.floor((normalized_seconds % (60 * 60)) / 60);
@@ -315,7 +263,7 @@ function format_duration_value(
 function format_compact_metric_value(
   value: number,
   base_unit: string,
-): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
+): Pick<WorkbenchTranslationMetricEntry, "value_text" | "unit_text"> {
   if (value < 1000) {
     return {
       value_text: value.toFixed(0),
@@ -337,11 +285,11 @@ function format_compact_metric_value(
 }
 
 /**
- * 按每秒千 token 阈值统一翻译与分析任务的速度单位。
+ * 按每秒千 token 阈值选择翻译速度单位。
  */
 function format_speed_value(
   value: number,
-): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
+): Pick<WorkbenchTranslationMetricEntry, "value_text" | "unit_text"> {
   if (value < 1000) {
     return {
       value_text: value.toFixed(2),
@@ -368,7 +316,7 @@ function resolve_task_tone(args: {
   active: boolean;
   stopping: boolean;
   emphasized_when_idle?: boolean;
-}): WorkbenchTaskTone {
+}): WorkbenchTranslationTone {
   if (args.stopping) {
     return "warning";
   }
@@ -381,8 +329,8 @@ function resolve_task_tone(args: {
 }
 
 function resolve_percent_tone(
-  metrics: Pick<TranslationTaskMetrics, "active" | "stopping">,
-): WorkbenchTaskTone {
+  metrics: Pick<BatchTranslationMetrics, "active" | "stopping">,
+): WorkbenchTranslationTone {
   return resolve_task_tone({
     active: metrics.active,
     stopping: metrics.stopping,
@@ -393,9 +341,9 @@ function resolve_percent_tone(
  * 按详情面板的固定顺序投影翻译任务指标。
  */
 function build_translation_task_metric_entries(
-  metrics: TranslationTaskMetrics,
+  metrics: BatchTranslationMetrics,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskMetricEntry[] {
+): WorkbenchTranslationMetricEntry[] {
   return [
     {
       key: "elapsed",
@@ -435,61 +383,10 @@ function build_translation_task_metric_entries(
   ];
 }
 
-/**
- * 按详情面板的固定顺序投影分析任务指标，并追加候选词数量。
- */
-function build_analysis_task_metric_entries(
-  metrics: AnalysisTaskMetrics,
-  t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskMetricEntry[] {
-  return [
-    {
-      key: "elapsed",
-      label: t("workbench_page.task.detail.elapsed_time"),
-      ...format_duration_value(metrics.elapsed_seconds),
-    },
-    {
-      key: "remaining-time",
-      label: t("workbench_page.task.detail.remaining_time"),
-      ...format_duration_value(metrics.remaining_seconds),
-    },
-    {
-      key: "speed",
-      label: t("workbench_page.task.detail.average_speed"),
-      ...format_speed_value(metrics.average_generation_speed),
-    },
-    {
-      key: "input-tokens",
-      label: t("workbench_page.task.detail.input_tokens"),
-      ...format_compact_metric_value(metrics.input_tokens, "T"),
-    },
-    {
-      key: "reasoning-tokens",
-      label: t("workbench_page.task.detail.reasoning_tokens"),
-      ...format_compact_metric_value(metrics.reasoning_tokens, "T"),
-    },
-    {
-      key: "output-tokens",
-      label: t("workbench_page.task.detail.output_tokens"),
-      ...format_compact_metric_value(metrics.output_tokens, "T"),
-    },
-    {
-      key: "active-requests",
-      label: t("workbench_page.analysis_task.detail.active_requests"),
-      ...format_compact_metric_value(metrics.request_in_flight_count, "Task"),
-    },
-    {
-      key: "candidate-count",
-      label: t("workbench_page.analysis_task.detail.candidate_count"),
-      ...format_compact_metric_value(metrics.candidate_count, "Term"),
-    },
-  ];
-}
-
 /** 无可展示任务时的摘要占位。 */
 function build_empty_task_summary_display(
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryDisplay {
+): WorkbenchTranslationSummaryDisplay {
   return {
     status_text: t("workbench_page.task.summary.empty"),
     trailing_text: null,
@@ -503,9 +400,9 @@ function build_empty_task_summary_display(
  * 将翻译任务运行态投影为命令栏摘要，空闲时不显示历史速度。
  */
 function build_translation_task_summary_display(
-  metrics: TranslationTaskMetrics,
+  metrics: BatchTranslationMetrics,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryDisplay {
+): WorkbenchTranslationSummaryDisplay {
   let status_text = t("workbench_page.task.summary.empty");
   if (metrics.stopping) {
     status_text = t("workbench_page.task.summary.stopping");
@@ -528,43 +425,13 @@ function build_translation_task_summary_display(
 }
 
 /**
- * 将分析任务运行态投影为命令栏摘要，空闲时不显示历史速度。
- */
-function build_analysis_task_summary_display(
-  metrics: AnalysisTaskMetrics,
-  t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryDisplay {
-  let status_text = t("workbench_page.task.summary.empty");
-  if (metrics.stopping) {
-    status_text = t("workbench_page.task.summary.stopping");
-  } else if (metrics.active) {
-    status_text = t("workbench_page.analysis_task.summary.running");
-  }
-  const show_runtime = metrics.active || metrics.stopping;
-
-  return {
-    status_text,
-    trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
-    tone: resolve_task_tone({
-      active: metrics.active,
-      stopping: metrics.stopping,
-    }),
-    show_spinner: show_runtime,
-    detail_tooltip_text: t("workbench_page.task.summary.detail_tooltip"),
-  };
-}
-
-/**
  * 运行或停止中信任任务快照；空闲后回落到项目事实统计。
  */
 function resolve_task_detail_progress_percent(args: {
-  metrics: Pick<
-    TranslationTaskMetrics | AnalysisTaskMetrics,
-    "active" | "stopping" | "completion_percent"
-  >;
+  metrics: Pick<BatchTranslationMetrics, "active" | "stopping" | "completion_percent">;
   workbench_stats: WorkbenchStats;
 }): number {
-  // 任务详情运行中展示 TaskSnapshot 进度；空闲态才回落到项目事实统计，避免新任务沿用旧百分比。
+  // 任务详情运行中展示 BatchTranslationSnapshot 进度；空闲态才回落到项目事实统计，避免新任务沿用旧百分比。
   return args.metrics.active || args.metrics.stopping
     ? args.metrics.completion_percent
     : args.workbench_stats.completion_percent;
@@ -574,11 +441,11 @@ function resolve_task_detail_progress_percent(args: {
  * 将翻译任务快照组装成详情面板契约，停止中禁用重复停止。
  */
 function build_translation_task_detail_display(args: {
-  metrics: TranslationTaskMetrics;
+  metrics: BatchTranslationMetrics;
   progress_percent: number;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
-}): WorkbenchTaskDetailDisplay {
+}): WorkbenchTranslationDetailDisplay {
   return {
     title: args.t("workbench_page.translation_task.detail.title"),
     description: args.t("workbench_page.translation_task.detail.description"),
@@ -587,31 +454,6 @@ function build_translation_task_detail_display(args: {
     completion_percent_text: `${args.progress_percent.toFixed(2)}%`,
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
-    stop_button_label: args.metrics.stopping
-      ? args.t("workbench_page.task.summary.stopping")
-      : args.t("workbench_page.action.stop_task"),
-    stop_disabled: !args.metrics.active || args.metrics.stopping,
-    waveform_history: args.waveform_history,
-  };
-}
-
-/**
- * 将分析任务快照组装成详情面板契约，停止中禁用重复停止。
- */
-function build_analysis_task_detail_display(args: {
-  metrics: AnalysisTaskMetrics;
-  progress_percent: number;
-  waveform_history: number[];
-  t: ReturnType<typeof useI18n>["t"];
-}): WorkbenchTaskDetailDisplay {
-  return {
-    title: args.t("workbench_page.analysis_task.detail.title"),
-    description: args.t("workbench_page.analysis_task.detail.description"),
-    waveform_title: args.t("workbench_page.analysis_task.detail.waveform_title"),
-    metrics_title: args.t("workbench_page.analysis_task.detail.metrics_title"),
-    completion_percent_text: `${args.progress_percent.toFixed(2)}%`,
-    percent_tone: resolve_percent_tone(args.metrics),
-    metric_entries: build_analysis_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
       ? args.t("workbench_page.task.summary.stopping")
       : args.t("workbench_page.action.stop_task"),
@@ -629,13 +471,10 @@ export type UseWorkbenchPageStateResult = {
   file_op_running: boolean;
   stats: WorkbenchStats;
   translation_stats: WorkbenchStats;
-  analysis_stats: WorkbenchStats;
-  stats_mode: WorkbenchStatsMode;
   translation_workbench_task: TranslationWorkbenchTask;
-  analysis_workbench_task: AnalysisWorkbenchTask;
-  active_workbench_task_view: WorkbenchTaskViewState;
-  active_workbench_task_summary: WorkbenchTaskSummaryDisplay;
-  active_workbench_task_detail: WorkbenchTaskDetailDisplay | null;
+  active_workbench_task_view: WorkbenchTranslationViewState;
+  active_workbench_task_summary: WorkbenchTranslationSummaryDisplay;
+  active_workbench_task_detail: WorkbenchTranslationDetailDisplay | null;
   entries: WorkbenchFileEntry[];
   selected_entry_ids: string[];
   active_entry_id: string | null;
@@ -647,7 +486,6 @@ export type UseWorkbenchPageStateResult = {
   can_close_project: boolean;
   dialog_state: WorkbenchDialogState;
   refresh_snapshot: () => Promise<WorkbenchSnapshot>;
-  toggle_stats_mode: () => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   prepare_entry_action: (entry_id: string) => void;
   request_add_file: () => Promise<void>;
@@ -664,8 +502,7 @@ export type UseWorkbenchPageStateResult = {
 };
 
 type UseWorkbenchPageStateOptions = {
-  translationWorkbenchTask: TranslationWorkbenchTask; // 常驻任务会话由 WorkbenchTasksSessionProvider 持有
-  analysisWorkbenchTask: AnalysisWorkbenchTask; // 页面只消费任务状态，不拥有任务完成意图
+  translationWorkbenchTask: TranslationWorkbenchTask; // 常驻任务会话由 BatchTranslationSessionProvider 持有
 };
 
 /**
@@ -679,16 +516,15 @@ export function useWorkbenchPageState(
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const raw_translation_workbench_task = options.translationWorkbenchTask;
-  const raw_analysis_workbench_task = options.analysisWorkbenchTask;
   const {
     project_snapshot,
     commit_project_write,
-    refresh_task,
+    refresh_batch_translation,
     refresh_project_snapshot,
     settings_snapshot,
   } = useDesktopState();
   const project_change_signal = useProjectChangeSignal();
-  const task_snapshot = useTaskSnapshot();
+  const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([]);
@@ -704,9 +540,6 @@ export function useWorkbenchPageState(
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
   const [is_write_running, set_is_write_running] = useState(false);
-  const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
-    useState<WorkbenchTaskKind | null>(null);
-  const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
   const previous_workbench_change_seq_ref = useRef(0);
   const previous_project_loaded_ref = useRef(false);
   const workbench_change_seq = useMemo(() => {
@@ -893,8 +726,6 @@ export function useWorkbenchPageState(
       if (previous_project_loaded || previous_project_path !== "") {
         clear_workbench_snapshot_state();
         set_cache_status("idle");
-        set_recent_workbench_task_kind(null);
-        set_stats_mode("translation");
       }
       return;
     }
@@ -902,8 +733,6 @@ export function useWorkbenchPageState(
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       clear_workbench_snapshot_state();
       set_cache_status("refreshing");
-      set_recent_workbench_task_kind(null);
-      set_stats_mode("translation");
       previous_workbench_change_seq_ref.current =
         workbench_change_seq ?? previous_workbench_change_seq_ref.current;
       void refresh_snapshot();
@@ -939,156 +768,24 @@ export function useWorkbenchPageState(
     workbench_change_seq,
   ]);
 
-  const running_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
-    if (!task_snapshot.busy) {
-      return null;
-    }
-
-    if (is_workbench_task_kind(task_snapshot.task_type)) {
-      return task_snapshot.task_type;
-    }
-
-    return null;
-  }, [task_snapshot.busy, task_snapshot.task_type]);
-
-  const fallback_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
-    if (is_workbench_task_kind(task_snapshot.task_type)) {
-      return task_snapshot.task_type;
-    }
-
-    return null;
-  }, [task_snapshot.task_type]);
-
-  useEffect(() => {
-    if (running_workbench_task_kind !== null) {
-      set_stats_mode(running_workbench_task_kind); // 为什么：任务一旦开始，顶部卡片就该马上切到对应语义，避免统计视角和底部状态栏互相打架
-    }
-  }, [running_workbench_task_kind]);
-
-  const toggle_stats_mode = useCallback((): void => {
-    set_stats_mode((previous_mode) => {
-      return previous_mode === "translation" ? "analysis" : "translation";
-    });
-  }, []);
-
-  const stats = useMemo<WorkbenchStats>(() => {
-    return stats_mode === "analysis" ? snapshot.analysis_stats : snapshot.translation_stats;
-  }, [snapshot.analysis_stats, snapshot.translation_stats, stats_mode]);
-
-  const has_translation_display =
-    raw_translation_workbench_task.translation_task_display_snapshot !== null;
-  const has_analysis_display = raw_analysis_workbench_task.analysis_task_display_snapshot !== null;
-
-  const active_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
-    return resolve_active_workbench_task_kind({
-      running_task_kind: running_workbench_task_kind,
-      recent_task_kind: recent_workbench_task_kind,
-      fallback_task_kind: fallback_workbench_task_kind,
-      has_translation_display,
-      has_analysis_display,
-    });
-  }, [
-    fallback_workbench_task_kind,
-    has_analysis_display,
-    has_translation_display,
-    recent_workbench_task_kind,
-    running_workbench_task_kind,
-  ]);
-
-  const display_workbench_task_kind = active_workbench_task_kind ?? "translation";
-
-  const active_workbench_task_view = useMemo<WorkbenchTaskViewState>(() => {
-    return {
-      task_kind: display_workbench_task_kind,
-      can_open_detail: true,
-    };
-  }, [display_workbench_task_kind]);
-
-  const active_workbench_task_summary = useMemo<WorkbenchTaskSummaryDisplay>(() => {
-    if (active_workbench_task_kind === "translation") {
-      return build_translation_task_summary_display(
-        raw_translation_workbench_task.translation_task_metrics,
-        t,
-      );
-    }
-
-    if (active_workbench_task_kind === "analysis") {
-      return build_analysis_task_summary_display(
-        raw_analysis_workbench_task.analysis_task_metrics,
-        t,
-      );
-    }
-
-    return build_empty_task_summary_display(t);
-  }, [
-    active_workbench_task_kind,
-    raw_analysis_workbench_task.analysis_task_metrics,
-    raw_translation_workbench_task.translation_task_metrics,
+  const stats = snapshot.translation_stats;
+  const active_workbench_task_view = { can_open_detail: true };
+  const active_workbench_task_summary =
+    raw_translation_workbench_task.translation_task_display_snapshot === null
+      ? build_empty_task_summary_display(t)
+      : build_translation_task_summary_display(
+          raw_translation_workbench_task.translation_task_metrics,
+          t,
+        );
+  const active_workbench_task_detail = build_translation_task_detail_display({
+    metrics: raw_translation_workbench_task.translation_task_metrics,
+    progress_percent: resolve_task_detail_progress_percent({
+      metrics: raw_translation_workbench_task.translation_task_metrics,
+      workbench_stats: snapshot.translation_stats,
+    }),
+    waveform_history: raw_translation_workbench_task.translation_waveform_history,
     t,
-  ]);
-
-  const active_workbench_task_detail = useMemo<WorkbenchTaskDetailDisplay | null>(() => {
-    // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标
-    if (display_workbench_task_kind === "translation") {
-      return build_translation_task_detail_display({
-        metrics: raw_translation_workbench_task.translation_task_metrics,
-        progress_percent: resolve_task_detail_progress_percent({
-          metrics: raw_translation_workbench_task.translation_task_metrics,
-          workbench_stats: snapshot.translation_stats,
-        }),
-        waveform_history: raw_translation_workbench_task.translation_waveform_history,
-        t,
-      });
-    }
-
-    if (display_workbench_task_kind === "analysis") {
-      return build_analysis_task_detail_display({
-        metrics: raw_analysis_workbench_task.analysis_task_metrics,
-        progress_percent: resolve_task_detail_progress_percent({
-          metrics: raw_analysis_workbench_task.analysis_task_metrics,
-          workbench_stats: snapshot.analysis_stats,
-        }),
-        waveform_history: raw_analysis_workbench_task.analysis_waveform_history,
-        t,
-      });
-    }
-
-    return null;
-  }, [
-    display_workbench_task_kind,
-    raw_analysis_workbench_task.analysis_task_metrics,
-    raw_analysis_workbench_task.analysis_waveform_history,
-    raw_translation_workbench_task.translation_task_metrics,
-    raw_translation_workbench_task.translation_waveform_history,
-    snapshot.analysis_stats.completion_percent,
-    snapshot.translation_stats.completion_percent,
-    t,
-  ]);
-
-  useEffect(() => {
-    if (running_workbench_task_kind !== null) {
-      set_recent_workbench_task_kind(running_workbench_task_kind);
-    }
-  }, [running_workbench_task_kind]);
-
-  useEffect(() => {
-    if (active_workbench_task_view.task_kind === "translation") {
-      raw_analysis_workbench_task.close_analysis_detail_sheet();
-      return;
-    }
-
-    if (active_workbench_task_view.task_kind === "analysis") {
-      raw_translation_workbench_task.close_translation_detail_sheet();
-      return;
-    }
-
-    raw_translation_workbench_task.close_translation_detail_sheet();
-    raw_analysis_workbench_task.close_analysis_detail_sheet();
-  }, [
-    active_workbench_task_view.task_kind,
-    raw_analysis_workbench_task,
-    raw_translation_workbench_task,
-  ]);
+  });
 
   const readonly =
     !project_snapshot.loaded ||
@@ -1144,7 +841,7 @@ export function useWorkbenchPageState(
             return await request(plan.requestBody);
           },
         });
-        await refresh_task();
+        await refresh_batch_translation();
         await refresh_snapshot();
         return payload;
       } catch (error) {
@@ -1154,7 +851,7 @@ export function useWorkbenchPageState(
         set_is_write_running(false);
       }
     },
-    [commit_project_write, refresh_snapshot, refresh_task],
+    [commit_project_write, refresh_snapshot, refresh_batch_translation],
   );
 
   const import_files_flow = useWorkbenchImportFilesFlow({
@@ -1362,7 +1059,7 @@ export function useWorkbenchPageState(
           set_file_op_running(false);
           set_entries([]);
           apply_selection_state(create_empty_selection_state());
-          await refresh_task();
+          await refresh_batch_translation();
           set_dialog_state(close_dialog_state());
         } finally {
           set_is_write_running(false);
@@ -1401,25 +1098,7 @@ export function useWorkbenchPageState(
     set_dialog_state(close_dialog_state());
   }
 
-  const translation_workbench_task = useMemo<TranslationWorkbenchTask>(() => {
-    return {
-      ...raw_translation_workbench_task,
-      open_translation_detail_sheet: () => {
-        raw_analysis_workbench_task.close_analysis_detail_sheet();
-        raw_translation_workbench_task.open_translation_detail_sheet();
-      },
-    };
-  }, [raw_analysis_workbench_task, raw_translation_workbench_task]);
-
-  const analysis_workbench_task = useMemo<AnalysisWorkbenchTask>(() => {
-    return {
-      ...raw_analysis_workbench_task,
-      open_analysis_detail_sheet: () => {
-        raw_translation_workbench_task.close_translation_detail_sheet();
-        raw_analysis_workbench_task.open_analysis_detail_sheet();
-      },
-    };
-  }, [raw_analysis_workbench_task, raw_translation_workbench_task]);
+  const translation_workbench_task = raw_translation_workbench_task;
 
   return {
     cache_status,
@@ -1430,10 +1109,7 @@ export function useWorkbenchPageState(
     file_op_running,
     stats,
     translation_stats: snapshot.translation_stats,
-    analysis_stats: snapshot.analysis_stats,
-    stats_mode,
     translation_workbench_task,
-    analysis_workbench_task,
     active_workbench_task_view,
     active_workbench_task_summary,
     active_workbench_task_detail,
@@ -1448,7 +1124,6 @@ export function useWorkbenchPageState(
     can_close_project,
     dialog_state,
     refresh_snapshot,
-    toggle_stats_mode,
     apply_table_selection,
     prepare_entry_action,
     request_add_file,

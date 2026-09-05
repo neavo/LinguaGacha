@@ -49,7 +49,7 @@ describe("ModelSelectionMenu", () => {
     const select_model = vi.fn(async () => undefined);
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "openai", analysis: "", agent: "" },
+        model_selection: { translation: "openai", agent: "" },
         models: [
           {
             id: "preset",
@@ -90,7 +90,7 @@ describe("ModelSelectionMenu", () => {
   it("当前选择失效时仍可打开菜单恢复到可用模型", () => {
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "missing", analysis: "", agent: "" },
+        model_selection: { translation: "missing", agent: "" },
         models: [
           {
             id: "openai",
@@ -121,7 +121,7 @@ describe("ModelSelectionMenu", () => {
     const update_thinking_level = vi.fn(async () => undefined);
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", analysis: "", agent: "openai" },
+        model_selection: { translation: "", agent: "openai" },
         models: [
           {
             id: "openai",
@@ -156,7 +156,7 @@ describe("ModelSelectionMenu", () => {
   it("当前模型不可配置思考档位时不渲染选项", () => {
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", analysis: "", agent: "sakura" },
+        model_selection: { translation: "", agent: "sakura" },
         models: [
           {
             id: "sakura",

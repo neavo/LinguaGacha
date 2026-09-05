@@ -59,11 +59,11 @@ describe("AppPathService", () => {
     expect(service.get_quality_rule_builtin_preset_relative_dir("glossary")).toBe(
       "builtin/glossary/preset",
     );
-    expect(service.get_prompt_template_dir("translation", "ZH")).toBe(
+    expect(service.get_prompt_template_dir("ZH")).toBe(
       path.join(builtin_root, "translation_prompt", "template", "zh"),
     );
-    expect(service.get_prompt_builtin_preset_relative_dir("analysis")).toBe(
-      "builtin/analysis_prompt/preset",
+    expect(service.get_prompt_builtin_preset_relative_dir()).toBe(
+      "builtin/translation_prompt/preset",
     );
   });
 
@@ -87,20 +87,6 @@ describe("AppPathService", () => {
 
     expect(appimage_service.get_data_root()).toBe(home_data_root);
     expect(blocked_service.get_data_root()).toBe(home_data_root);
-  });
-
-  it("未知提示词任务类型不会生成资源路径", () => {
-    const app_root = create_temp_root("linguagacha-path-invalid-prompt-");
-    const service = new AppPathService({
-      appRoot: app_root,
-      builtinRoot: path.join(app_root, "builtin"),
-      env: {},
-      platform: "win32",
-    });
-
-    expect(() => service.get_prompt_template_dir("proofreading", "zh")).toThrow(
-      "runtime.internal_invariant",
-    );
   });
 });
 

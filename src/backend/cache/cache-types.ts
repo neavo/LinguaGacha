@@ -44,9 +44,7 @@ export interface CacheReadPort {
   readonly prompts: {
     readBlock(): JsonRecord;
   };
-  readonly analysis: {
-    readBlock(): JsonRecord;
-  };
+
   readSectionRevisions(): ProjectDataSectionRevisions;
   snapshot(): CacheSnapshot;
 }

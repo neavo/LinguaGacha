@@ -25,10 +25,7 @@ describe("build_cli_task_input", () => {
       pre_replacement: { kind: "pre_replacement", entries: [], enabled: false, mode: null },
       post_replacement: { kind: "post_replacement", entries: [], enabled: false, mode: null },
     });
-    expect(input.prompts).toEqual([
-      { kind: "translation", text: "", enabled: false },
-      { kind: "analysis", text: "", enabled: false },
-    ]);
+    expect(input.translation_prompt).toEqual({ text: "", enabled: false });
   });
 
   it("按资源类型构建翻译规则并清理提示词 BOM 与空白", async () => {
@@ -70,24 +67,7 @@ describe("build_cli_task_input", () => {
         expect(entry.entry_id).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}$/u);
       }
     }
-    expect(input.prompts).toEqual([
-      { kind: "translation", text: "自定义翻译提示词", enabled: true },
-      { kind: "analysis", text: "", enabled: false },
-    ]);
-  });
-
-  it("分析命令只把外部提示词写入分析槽位", async () => {
-    const root = create_temp_root();
-    const prompt_path = write_file(root, "analysis.txt", "自定义分析提示词");
-
-    const input = await build_cli_task_input(
-      create_command("analyze", { promptPath: prompt_path }),
-    );
-
-    expect(input.prompts).toEqual([
-      { kind: "translation", text: "", enabled: false },
-      { kind: "analysis", text: "自定义分析提示词", enabled: true },
-    ]);
+    expect(input.translation_prompt).toEqual({ text: "自定义翻译提示词", enabled: true });
   });
 
   it("质量规则资源含非法正则时拒绝构造任务输入", async () => {

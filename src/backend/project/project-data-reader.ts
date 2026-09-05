@@ -1,6 +1,6 @@
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
-import { Prompt } from "../../domain/prompt";
+import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   collect_project_item_missing_public_fields,
@@ -36,12 +36,9 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
     );
   }
   if (section === "prompts") {
-    return Math.max(
-      ...Prompt.all().map((prompt) => read_revision_meta(meta[prompt.revision_meta_key])),
-      0,
-    );
+    return read_revision_meta(meta[TRANSLATION_PROMPT.revision_meta_key]);
   }
-  if (section === "files" || section === "items" || section === "analysis") {
+  if (section === "files" || section === "items") {
     return read_revision_meta(meta[`project_runtime_revision.${section}`]);
   }
   if (section === "proofreading") {
@@ -256,63 +253,20 @@ export class ProjectDataReader {
    * 提示词块按公开顶层字段输出，任务快照和项目 query 共用同一 DTO
    */
   public build_prompts_block(project_path: string, meta: JsonRecord): JsonRecord {
-    return Object.fromEntries(
-      Prompt.all().map((prompt) => [
-        prompt.kind,
-        {
-          revision: get_section_revision(meta, "prompts"),
-          enabled: Boolean(meta[prompt.enabled_meta_key] ?? false),
-          text: this.get_rule_text(project_path, prompt.database_type),
-        },
-      ]),
-    ) as JsonRecord;
+    return {
+      [TRANSLATION_PROMPT.store_key]: {
+        revision: get_section_revision(meta, "prompts"),
+        enabled: Boolean(meta[TRANSLATION_PROMPT.enabled_meta_key] ?? false),
+        text: this.get_rule_text(project_path, TRANSLATION_PROMPT.database_type),
+      },
+    };
   }
 
   /**
    * 工程未加载时仍返回固定提示词形状，避免前端为未加载态写特殊解析分支
    */
   public build_empty_prompts_block(): JsonRecord {
-    return Object.fromEntries(
-      Prompt.all().map((prompt) => [prompt.kind, { revision: 0, enabled: false, text: "" }]),
-    ) as JsonRecord;
-  }
-
-  /**
-   * analysis block 只公开轻量运行态；候选明细由按需 API 读取，避免常规刷新扫描大候选池。
-   */
-  public build_analysis_block(meta: JsonRecord): JsonRecord {
-    const extras = { ...read_json_record(meta["analysis_extras"]) };
-    return {
-      extras,
-      candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
-      status_summary: this.build_analysis_status_summary_from_extras(extras),
-    };
-  }
-
-  /**
-   * 术语导入和 CLI 预览按需读取完整候选池，避免普通项目刷新承载大对象。
-   */
-  public build_analysis_candidate_payload(project_path: string): JsonRecord {
-    const meta = this.get_all_meta(project_path);
-    const section_revisions = this.build_section_revisions(meta);
-    return {
-      projectPath: project_path,
-      candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
-      candidate_aggregate: this.build_candidate_aggregate(project_path),
-      projectRevision: Math.max(...Object.values(section_revisions), 0),
-      sectionRevisions: section_revisions as unknown as JsonValue,
-    };
-  }
-
-  /**
-   * 工程未加载时输出零值摘要，保持分析页初始化输入稳定
-   */
-  public build_empty_analysis_block(): JsonRecord {
-    return {
-      extras: {},
-      candidate_count: 0,
-      status_summary: { total_line: 0, processed_line: 0, error_line: 0, line: 0 },
-    };
+    return { [TRANSLATION_PROMPT.store_key]: { revision: 0, enabled: false, text: "" } };
   }
 
   /**
@@ -356,20 +310,6 @@ export class ProjectDataReader {
    */
   public empty_items_snapshot(): ProjectDataItemsSnapshot {
     return { item_records: [], records_by_path: new Map() };
-  }
-
-  /**
-   * 分析覆盖率来自任务提交的 analysis_extras，读取层不在读取路径重新扫描 item 表。
-   */
-  public build_analysis_status_summary_from_extras(extras: JsonRecord): JsonRecord {
-    const processed_line = read_json_integer(extras["processed_line"], 0);
-    const error_line = read_json_integer(extras["error_line"], 0);
-    return {
-      total_line: read_json_integer(extras["total_line"], 0),
-      processed_line,
-      error_line,
-      line: read_json_integer(extras["line"], processed_line + error_line),
-    };
   }
 
   /**
@@ -443,11 +383,7 @@ export class ProjectDataReader {
         ? this.build_empty_prompts_block()
         : this.build_prompts_block(args.projectPath, args.meta);
     }
-    if (args.section === "analysis") {
-      return args.projectPath === ""
-        ? this.build_empty_analysis_block()
-        : this.build_analysis_block(args.meta);
-    }
+
     return this.build_proofreading_block(args.meta);
   }
 
@@ -472,75 +408,6 @@ export class ProjectDataReader {
           : rule.normalize_mode(meta[rule.mode_meta_key]),
       revision: get_section_revision(meta, "quality"),
     };
-  }
-
-  /**
-   * 候选聚合以 src 为 key 输出公开快照
-   */
-  private build_candidate_aggregate(project_path: string): JsonRecord {
-    const rows = this.database.get_analysis_candidate_aggregates(project_path);
-    if (!Array.isArray(rows)) {
-      return {};
-    }
-    const aggregate: JsonRecord = {};
-    for (const row of rows) {
-      const entry = this.normalize_candidate_aggregate_entry(row);
-      if (entry !== null) {
-        aggregate[String(entry["src"])] = entry;
-      }
-    }
-    return aggregate;
-  }
-
-  /**
-   * 候选池单项要过滤空 src 和无译文票数项，避免导入术语预演看到不可用候选
-   */
-  private normalize_candidate_aggregate_entry(value: JsonValue): JsonRecord | null {
-    if (!is_json_record(value)) {
-      return null;
-    }
-    const src = String(value["src"] ?? "").trim();
-    const dst_votes = this.normalize_vote_map(value["dst_votes"]);
-    if (src === "" || Object.keys(dst_votes).length === 0) {
-      return null;
-    }
-    const info_votes = this.normalize_vote_map(value["info_votes"]);
-    const observation_vote_count = Object.values(dst_votes).reduce<number>(
-      (sum, count) => sum + read_json_integer(count, 0),
-      0,
-    );
-    return {
-      src,
-      dst_votes,
-      info_votes,
-      observation_count: Math.max(
-        read_json_integer(value["observation_count"], 0),
-        observation_vote_count,
-        1,
-      ),
-      first_seen_at: String(value["first_seen_at"] ?? ""),
-      last_seen_at: String(value["last_seen_at"] ?? ""),
-      case_sensitive: Boolean(value["case_sensitive"] ?? false),
-      first_seen_index: read_json_integer(value["first_seen_index"], 0),
-    };
-  }
-
-  /**
-   * 票数 map 合并重复 key 并剔除非正票数，保持候选池排序和 winner 选择稳定
-   */
-  private normalize_vote_map(value: JsonValue | undefined): JsonRecord {
-    if (!is_json_record(value)) {
-      return {};
-    }
-    const votes: JsonRecord = {};
-    for (const [raw_key, raw_value] of Object.entries(value)) {
-      const key = raw_key.trim();
-      const count = read_json_integer(raw_value, 0);
-      if (key !== "" && count > 0) {
-        votes[key] = count + read_json_integer(votes[key], 0);
-      }
-    }
-    return votes;
   }
 
   /**

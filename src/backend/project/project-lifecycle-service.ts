@@ -32,7 +32,6 @@ import type { ProjectSourceFileSummary } from "../../shared/project-source-forma
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
-  build_analysis_progress_snapshot,
   compute_project_prefilter_write,
   create_empty_translation_task_snapshot,
   type ProjectPrefilterWriteOutput,
@@ -291,8 +290,9 @@ export class ProjectLifecycleService {
       }
       this.database.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
     }
-    for (const prompt of input.prompts) {
-      const storage = resolve_project_prompt_storage(prompt.kind);
+    if (input.translation_prompt !== null) {
+      const prompt = input.translation_prompt;
+      const storage = resolve_project_prompt_storage();
       this.database.set_rule_text(project_path, storage.database_type, prompt.text);
       this.database.set_meta(project_path, storage.enabled_meta_key, prompt.enabled);
       this.database.set_meta(project_path, storage.revision_meta_key, INITIAL_PRESET_REVISION);
@@ -309,7 +309,6 @@ export class ProjectLifecycleService {
       "items",
       "translation_extras",
       "prefilter_config",
-      "analysis_extras",
       "parsed_items",
       "file_record",
     ]) {
@@ -593,11 +592,6 @@ export class ProjectLifecycleService {
       skip_duplicate_source_text_enable: args.project_settings.skip_duplicate_source_text_enable,
       prefilter_config: args.prefilter_output.prefilter_config as unknown as JsonValue,
       translation_extras: args.prefilter_output.translation_extras as unknown as JsonValue,
-      analysis_extras: build_analysis_progress_snapshot({
-        extras: args.prefilter_output.analysis.extras,
-        status_summary: args.prefilter_output.analysis.status_summary,
-      }) as unknown as JsonValue,
-      analysis_candidate_count: args.prefilter_output.analysis.candidate_count,
     };
   }
 
@@ -608,7 +602,6 @@ export class ProjectLifecycleService {
     return {
       files: get_section_revision(meta, "files"),
       items: get_section_revision(meta, "items"),
-      analysis: get_section_revision(meta, "analysis"),
     };
   }
 

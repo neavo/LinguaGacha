@@ -55,17 +55,13 @@ export class MarkdownV2BlockMigration {
         const next_items = replace_project_file_items(latest_items, replacements);
         database.set_items(project_path, next_items);
         const meta = read_json_record(database.get_all_meta(project_path));
-        database.delete_analysis_item_checkpoints(project_path);
-        database.clear_analysis_candidate_aggregates(project_path);
         database.upsert_meta_entries(project_path, {
           translation_extras: build_translation_extras_from_items({
             task_snapshot: read_json_record(meta["translation_extras"]),
             items: this.build_item_views(next_items),
           }) as JsonValue,
-          analysis_extras: {},
-          analysis_candidate_count: 0,
         });
-        database.bump_section_revisions(project_path, ["files", "items", "analysis"]);
+        database.bump_section_revisions(project_path, ["files", "items"]);
       },
     ];
   }

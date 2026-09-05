@@ -12,7 +12,7 @@ import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types
 import { FileCache } from "./file-cache";
 import { ItemCache } from "./item-cache";
 import { ProofreadingCache } from "./proofreading-cache";
-import { QualityRuleAnalysisCache } from "./quality-rule-analysis-cache";
+import { QualityRuleStatisticsCache } from "./quality-rule-statistics-cache";
 
 /**
  * CacheManager 内部的小型数据块缓存；只隔离顶层对象，嵌套 JSON 按不可变值使用。
@@ -50,9 +50,9 @@ export class CacheManager implements CacheReadPort {
   public readonly files = new FileCache(() => this.recover_if_needed());
   public readonly quality = new ProjectDataBlockCache(() => this.recover_if_needed());
   public readonly prompts = new ProjectDataBlockCache(() => this.recover_if_needed());
-  public readonly analysis = new ProjectDataBlockCache(() => this.recover_if_needed());
+
   public readonly proofreading: ProofreadingCache;
-  public readonly qualityAnalysis: QualityRuleAnalysisCache;
+  public readonly qualityStatistics: QualityRuleStatisticsCache;
 
   /**
    * 构造所有子缓存，并把可恢复读取钩子下发给轻量 block 缓存。
@@ -71,7 +71,7 @@ export class CacheManager implements CacheReadPort {
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
     });
-    this.qualityAnalysis = new QualityRuleAnalysisCache({
+    this.qualityStatistics = new QualityRuleStatisticsCache({
       cache: this,
       workerClient: options.workerClient,
     });
@@ -102,8 +102,7 @@ export class CacheManager implements CacheReadPort {
     this.files.clear();
     this.quality.clear();
     this.prompts.clear();
-    this.analysis.clear();
-    this.qualityAnalysis.clear();
+    this.qualityStatistics.clear();
     this.section_revisions = {};
   }
 
@@ -176,7 +175,6 @@ export class CacheManager implements CacheReadPort {
     const files_block = this.data_reader.build_files_record_block(project_path, items_snapshot);
     const quality_block = this.data_reader.build_quality_block(project_path, meta);
     const prompts_block = this.data_reader.build_prompts_block(project_path, meta);
-    const analysis_block = this.data_reader.build_analysis_block(meta);
     const section_revisions = this.data_reader.build_section_revisions(meta);
     this.project_path = project_path;
     this.epoch += 1;
@@ -184,8 +182,7 @@ export class CacheManager implements CacheReadPort {
     this.files.replace(files_block);
     this.quality.replace(quality_block);
     this.prompts.replace(prompts_block);
-    this.analysis.replace(analysis_block);
-    this.qualityAnalysis.clear();
+    this.qualityStatistics.clear();
     this.section_revisions = section_revisions;
     this.freshness = "fresh";
   }
@@ -231,9 +228,6 @@ export class CacheManager implements CacheReadPort {
     if (change.prompts.mode === "full") {
       this.prompts.replace(this.data_reader.build_prompts_block(change.projectPath, meta_reader()));
     }
-    if (change.analysis.mode === "full") {
-      this.analysis.replace(this.data_reader.build_analysis_block(meta_reader()));
-    }
   }
 
   /**
@@ -244,7 +238,7 @@ export class CacheManager implements CacheReadPort {
     next_section_revisions: ProjectDataSectionRevisions,
   ): Promise<void> {
     await this.proofreading.applyChange(change, next_section_revisions);
-    this.qualityAnalysis.applyChange(change);
+    this.qualityStatistics.applyChange(change);
   }
 
   /**
