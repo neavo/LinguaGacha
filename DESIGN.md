@@ -29,6 +29,7 @@ colors:
   dark-background: "#111318"
   dark-foreground: "#eef1f5"
   dark-card: "#171a20"
+  dark-popover: "#171a20"
   dark-primary: "#f49a51"
   dark-primary-foreground: "#2b1b0f"
   dark-secondary: "#20242b"
@@ -126,7 +127,7 @@ components:
     height: "{spacing.control-height}"
     padding: "0 10px"
   button-outline:
-    backgroundColor: "transparent"
+    backgroundColor: "{colors.background}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.button}"
     height: "{spacing.control-height}"
@@ -144,6 +145,12 @@ components:
     rounded: "{rounded.button}"
     height: "{spacing.toolbar-button-height}"
     padding: "0 8px"
+  button-link:
+    backgroundColor: "transparent"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.button}"
+    height: "{spacing.control-height}"
+    padding: "0 10px"
   badge-brand:
     backgroundColor: "color-mix(in srgb, {colors.primary} 14%, transparent)"
     textColor: "{colors.primary}"
@@ -151,25 +158,25 @@ components:
     rounded: "{rounded.pill}"
     height: "20px"
     padding: "2px 8px"
-  badge-status:
-    backgroundColor: "{colors.muted}"
-    textColor: "{colors.foreground}"
+  badge-secondary:
+    backgroundColor: "{colors.secondary}"
+    textColor: "{colors.secondary-foreground}"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
     height: "20px"
     padding: "2px 8px"
   card-default:
-    backgroundColor: "{colors.card}"
+    backgroundColor: "var(--ui-card-default-surface)"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "{spacing.card-padding}"
   card-panel:
-    backgroundColor: "{colors.card}"
+    backgroundColor: "var(--ui-card-panel-surface)"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "{spacing.panel-padding}"
   card-table:
-    backgroundColor: "{colors.card}"
+    backgroundColor: "var(--ui-card-table-surface)"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "0"
@@ -180,13 +187,13 @@ components:
     height: "{spacing.control-height}"
     padding: "4px 10px"
   editor-default:
-    backgroundColor: "{colors.popover}"
+    backgroundColor: "color-mix(in srgb, {colors.popover} 90%, {colors.background} 10%)"
     textColor: "{colors.foreground}"
     typography: "{typography.body}"
     rounded: "{rounded.card}"
-    padding: "8px"
+    padding: "8px 8px 48px"
   sidebar-item-active:
-    backgroundColor: "{colors.sidebar-accent}"
+    backgroundColor: "color-mix(in srgb, {colors.sidebar-accent} 82%, transparent)"
     textColor: "{colors.foreground}"
     height: "{spacing.sidebar-item-height}"
     padding: "0 14px 0 22px"
@@ -197,7 +204,7 @@ components:
     height: "{spacing.app-table-row-height}"
     padding: "0 12px"
   command-bar:
-    backgroundColor: "{colors.card}"
+    backgroundColor: "var(--ui-card-toolbar-surface)"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     height: "{spacing.toolbar-height}"
@@ -222,7 +229,6 @@ components:
     rounded: "{rounded.card}"
     padding: "6px 6px 5px 12px"
   file-drop-overlay:
-    backgroundColor: "{colors.accent}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.card}"
     padding: "24px"
@@ -237,6 +243,8 @@ components:
 LinguaGacha 像一台可靠的本地炼金台：固定标题栏和侧栏围住工作区，紧凑命令区、稳定表格、编辑器与对话时间线承接反复操作。萌感来自小尺寸图标、温和状态文案、暖橙选择轨和轻微反馈；极客感来自等宽倾向字体、清楚的数据密度与可追踪的工作流。
 
 视觉服务翻译、配置、校对、文件处理、Agent 协作和系统详情阅读，不制造网页式浏览动线。长链路过程以状态行、可展开思考、工具详情和结构化结果逐层显露，不把系统行为伪装成普通聊天内容。全局 token 与主题入口位于 `src/frontend/index.css`，基础控件由 `src/frontend/shadcn/` 承接；widgets、features 与 pages 只消费 token，并在各自所有权内组合视觉、布局和状态。
+
+本记录按当前源码中的 token、控件和页面样式同步。基础视觉证据见 [`src/frontend/index.css`](src/frontend/index.css)、[`src/frontend/shadcn/`](src/frontend/shadcn/) 与 [`src/frontend/app/shell/`](src/frontend/app/shell/)；Agent 的局部布局和状态样式见 [`agent-page.css`](src/frontend/pages/agent-page/agent-page.css)。
 
 **Key Characteristics:**
 
@@ -382,6 +390,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Primary:** 暖橙背景配暖米文字，只用于主操作。
 - **Hover / Focus:** hover 轻微改变当前语义面；按钮预留 1px 边框，focus-visible 把边框切换为 ring；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
+- **Variant Surfaces:** outline 浅色态使用 background 底色与 border 边界，暗色态使用 input 的 30% 混色面；ghost 保持透明默认面，link 使用主色文字与悬停下划线。前置 token 表记录浅色默认态，主题混色与交互状态由当前控件及配套设计数据承接。
 - **Shortcuts:** 操作只在快捷键有效时显示键帽并声明 `aria-keyshortcuts`；Tooltip 使用动作或状态文案加右侧键帽，多行提示统一对齐。中点只分隔标题与当前值。
 - **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
 
@@ -394,6 +403,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 ### Chips
 
 - **Style:** 徽标高 20px、999px 胶囊圆角、12px 字号和 8px 水平内边距；品牌徽标使用低透明暖橙底与主色文字。
+- **Variants:** default 使用主色实底，brand 使用 14% 主色底，secondary 使用次级面与次级前景；destructive、outline、ghost 与 link 按各自语义表达错误、边界、弱提示或链接。
 - **State:** 选中、筛选和状态徽标必须辅以文字、图标或明确语义，禁止只依赖颜色。
 
 ### Tabs
@@ -432,6 +442,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 ### Editor
 
 - **Style:** 编辑器使用 13px 字号、1.7 行高、4px 圆角、1px 边框和 popover 混合背景。
+- **Content Space:** 默认正文区顶部与两侧内边距为 8px，底部为 48px，为末行编辑保留空间；单行字段与只读查看器采用各自的内容布局。
 - **Whitespace:** 空格、全角空格和制表符高亮细腻可见，服务校对与格式保留；普通编辑器内容允许 0.075em 字距，单行字段恢复为 0em。
 - **Readonly / Viewer / Invalid:** 只读态降低前景与背景对比并隐藏光标；viewer 恢复 0em 字距并按原始内容决定换行；无效态使用 failure 色但保持文本可读。
 
@@ -448,14 +459,16 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Message Roles:** 用户消息右对齐、最大宽 75%，使用紧凑 muted 气泡；暗色主题可混入 22% 主色。助手回答保持无外框的开放 Markdown，不配头像列或对称气泡。
 - **Markdown:** 正文使用 13px / 1.65 并填满 1072px 消息列，不对子元素二次限宽；一级、二级标题复用 16px Headline 与 14px Title，三级到六级标题使用紧凑 13px Body；代码、表格和 Mermaid 图使用 popover 面与 1px 边界承载。带显式语言标记的普通代码块在顶边显示原始标记的弱层级语言标签，不推断或维护别名映射；完整消息中的 Mermaid 直接在信息流内展示，并提供可选的 `xl` 预览模态页，模态页复用已生成 SVG 而不重复渲染；流式 Mermaid、无语言和未知语言代码块保持可复制的纯文本回退，完整 Mermaid 只有解析或渲染失败时才显示源码回退。
 - **Process Entries:** 普通工具、思考、上下文压缩与失败恢复行保持紧凑、可扫描的状态语义。Todo 只在输入器上方的紧凑状态条展示队首；标签与余项计数按内容占宽，队首获得状态条的剩余空间并在空间不足时截断，整条触发的 Tooltip 完整承载全部待办。运行态使用暖橙弧段圆环，减少动态效果时保留弧段但停止旋转。
+- **Message Actions / Media:** 可修订消息的复制与编辑位于消息旁的紧凑操作区，编辑在原消息位置展开，失败信息留在编辑器旁。图片与 Mermaid 共用 `xl` 媒体预览，支持缩放、拖动和重置视图；按钮与键盘操作共同承接查看过程。
 
 ### Agent Composer
 
 - **Structure:** 输入器与动态待办状态条共用对话工作面底部组合区，操作区最大宽 1120px，状态条空时不占位；状态行高 28px，输入器使用 4px 圆角、1px 边界、popover 背景与紧凑内边距，操作表面最小高 106px。
 - **Editor:** CodeMirror 输入区最小高 64px、最大高 140px、13px / 1.5，超出后内部滚动；页脚与独立操作统一高 28px，发送、停止与跟随最新使用圆形，发送与换行快捷键由发送按钮 Tooltip 渐进展示，队列行内操作高 24px，承接附件、模型、思考等级、上下文用量和发送操作。
 - **Queue:** 输入队列在容器宽度 520px 以下隐藏附件列；输入队列和回到最新控件共享固定侧轨，Todo 状态条按自身内容关系布局。
-- **References / Attachments:** 技能与术语引用使用低透明暖橙 token，不退化为裸文本；图片与响应批注附件共享中性外壳，分别使用方形缩略图和紧凑行。
-- **Focus / Menus:** focus-within 只把边界切换为主色；引用候选菜单使用 popover、覆盖层阴影和高亮行，图片拖入只在输入器内部显示虚线临时覆盖层。
+- **References / Attachments:** 已知技能引用在输入器、引导与时间线中使用低透明暖橙整块标记；图片与响应批注附件共享中性外壳，分别使用方形缩略图和紧凑行。
+- **Focus / Menus:** focus-within 只把边界切换为主色；`@` 候选菜单按「技能 / 指令」分组，使用 popover、覆盖层阴影和连续的键盘候选顺序。技能选中后插入正文标记，指令选中后立即执行；当前上下文压缩指令随会话可用性禁用，禁用行降低至 45% 不透明度，无说明时标题占满剩余列。图片拖入只在输入器内部显示虚线临时覆盖层。
+- **Approval Mode:** 页脚以盾牌图标呈现「手动批准 / 自动批准」，弹出菜单只展示这两个模式并勾选当前项；状态随后端确认更新，Tooltip 同时说明写入请求与当前模式。
 
 ### Agent Decision
 
