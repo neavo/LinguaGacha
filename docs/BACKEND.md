@@ -19,7 +19,7 @@
 |状态 / 边界|拥有者|唯一写入口 / 读出口|
 |---|---|---|
 |应用设置、最近工程、语言|`AppSettingService`|设置 API、CLI transient overrides、`settings.changed`|
-|模型集合、配置与按用途选择|`ModelService`|模型 API；经 `AppSettingService` 持久化到应用设置|
+|模型集合、配置与按用途选择|`ModelService`|模型 API 与 Agent 翻译决定；经 `AppSettingService` 持久化到应用设置|
 |普通任务 / Agent 活动所有者与项目写互斥|`RuntimeOperationGate`|运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed`|
 |loaded 工程身份|`ProjectSessionState`|`ProjectLifecycleService`|
 |loaded 工程热读数据|`CacheManager`|工程热机、committed event、功能 query|
@@ -33,7 +33,7 @@
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
 
-`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，设置和模型配置写入也必须先确认运行时空闲。Agent 只能在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；冲突统一返回 `runtime.busy`。
+`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，普通设置和模型配置写入必须先确认运行时空闲；Agent 翻译决定通过真实当前 lease 的窄入口保存翻译用途的接入点选择，模型校验与持久化仍归 `ModelService`。Agent 只能在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；冲突统一返回 `runtime.busy`。
 
 ## 3. 项目读取与写入
 
@@ -76,9 +76,9 @@ project, files, items, quality, prompts, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`request_in_flight_count`、`progress` 与 `scope`，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
-- `BatchTranslationService` 收窄命令并确认 loaded 工程。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。
-- `BatchTranslationRunner` 按 translation 用途冻结模型和设置，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。`new | continue | reset` 在内部保持同一值域，定点重翻仍使用去重保序的非空 items scope。
+- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`request_in_flight_count`、`progress` 与 `scope`，可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
+- `BatchTranslationService` 收窄命令并确认 loaded 工程，在运行 lease 内准备单次执行上下文：普通入口按 translation 用途读取模型，Agent 入口采用用户决定解析出的模型配置，设置与模型在交给 Runner 时隔离引用。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。
+- `BatchTranslationRunner` 消费 Service 提供的执行上下文，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。`new | continue | reset` 在内部保持同一值域，定点重翻仍使用去重保序的非空 items scope。Runner 从执行上下文投影 `config` 并登记到 Runtime；新运行预约和工程切换清空配置，终态保留，工程重开只恢复累计进度。
 - Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
 - 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。

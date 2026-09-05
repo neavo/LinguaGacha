@@ -1,3 +1,6 @@
+import type { BatchTranslationRunContext } from "./batch-translation-runner-options";
+import { Model } from "../../../domain/model";
+import { normalize_setting_snapshot } from "../../../domain/setting";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import {
   normalize_batch_translation_progress,
@@ -61,14 +64,10 @@ describe("BatchTranslationRunner", () => {
         execute_unit: async () => create_translation_worker_result([create_pending_item()], 1, 2),
       },
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
     await done.promise;
 
     expect(committed_batches).toHaveLength(1);
@@ -91,44 +90,45 @@ describe("BatchTranslationRunner", () => {
     });
   });
 
-  it("翻译与分析分别冻结对应用途选择的模型", async () => {
-    const resolved_model_ids: string[] = [];
-    const task_planner = {
-      build_translation_contexts: async (_items: unknown, _config: unknown, model: JsonRecord) => {
-        resolved_model_ids.push(String(model["id"] ?? ""));
-        return [];
+  it("Runner 将指定模型传给规划器，并发布同源任务摘要", async () => {
+    const model_ids: string[] = [];
+    const done = create_status_waiter("done");
+    const task_runtime = create_task_runtime(done.listener);
+    const task_engine = new BatchTranslationRunner({
+      builtinRoot: create_template_root(),
+      taskStore: create_task_store(),
+      taskRuntime: task_runtime,
+      executorClient: create_unused_executor(),
+      logManager: create_log_manager(),
+      taskPlanner: {
+        build_translation_contexts: async (_items, _config, model) => {
+          model_ids.push(String(model.id));
+          return [];
+        },
+        build_translation_retry_plan: async () => ({ retry_contexts: [], forced_error_items: [] }),
       },
-    } as unknown as TranslationPlanner;
-    const setting_service = create_setting_service(1, 512, {
-      model_selection: {
-        translation: "translation-model",
-
-        agent: "translation-model",
-      },
-      models: [
-        { id: "translation-model", threshold: { concurrency_limit: 1 } },
-        { id: "analysis-model", threshold: { concurrency_limit: 1 } },
-      ],
     });
-
-    {
-      const done = create_status_waiter("done");
-      const task_runtime = create_task_runtime(done.listener);
-      const task_engine = new BatchTranslationRunner({
-        builtinRoot: create_template_root(),
-        taskStore: create_task_store(),
-        taskRuntime: task_runtime,
-        executorClient: create_unused_executor(),
-        taskPlanner: task_planner,
-        AppSettingService: setting_service,
-        logManager: create_log_manager(),
-      });
-      const command: BatchTranslationStartCommand = { mode: "new", scope: { kind: "all" } };
-      await start_task(task_engine, task_runtime, command);
-      await done.promise;
-    }
-
-    expect(resolved_model_ids).toEqual(["translation-model"]);
+    const run_context = {
+      ...create_run_context(),
+      model: {
+        ...Model.from_json(
+          { id: "chosen", name: "已选择接入点", model_id: "translation-model" },
+          "chosen",
+        ),
+      },
+    };
+    await start_task(
+      task_engine,
+      task_runtime,
+      { mode: "new", scope: { kind: "all" } },
+      run_context,
+    );
+    await done.promise;
+    expect(model_ids).toEqual(["chosen"]);
+    expect((await task_runtime.build_snapshot()).config).toMatchObject({
+      model_name: "已选择接入点",
+      model_id: "translation-model",
+    });
   });
 
   it("翻译启动后首次进度快照使用本轮初始进度而不是旧 meta", async () => {
@@ -175,14 +175,10 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
     await done.promise;
 
     expect(lease_release_count).toBe(1);
@@ -225,14 +221,10 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
     await lease_released;
     await wait_until(
       async () =>
@@ -253,6 +245,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const failed_once_ids = new Set<number>();
     const task_runtime = create_task_runtime(done.listener);
+    const run_context = create_run_context(2);
     const task_engine = new BatchTranslationRunner({
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -295,14 +288,18 @@ describe("BatchTranslationRunner", () => {
         },
       },
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(2),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(
+      task_engine,
+      task_runtime,
+      {
+        mode: "new",
+        scope: { kind: "all" },
+      },
+      run_context,
+    );
     await done.promise;
 
     expect(committed_items).toHaveLength(2);
@@ -314,6 +311,7 @@ describe("BatchTranslationRunner", () => {
     const executed_batches: number[][] = []; // 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
+    const run_context = create_run_context(1, 16);
     const task_engine = new BatchTranslationRunner({
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
@@ -347,14 +345,18 @@ describe("BatchTranslationRunner", () => {
         },
       },
       taskPlanner: create_test_task_planner(1),
-      AppSettingService: create_setting_service(1, 16),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(
+      task_engine,
+      task_runtime,
+      {
+        mode: "new",
+        scope: { kind: "all" },
+      },
+      run_context,
+    );
     await done.promise;
 
     expect(executed_batches).toEqual([[1, 2]]);
@@ -365,6 +367,9 @@ describe("BatchTranslationRunner", () => {
     const logs: string[] = [];
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
+    const run_context = create_run_context(1, 512, {
+      prompt_enhancement_enable: false,
+    });
     const task_engine = new BatchTranslationRunner({
       builtinRoot: builtin_root,
       taskStore: create_task_store({
@@ -376,16 +381,18 @@ describe("BatchTranslationRunner", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(1, 512, {
-        prompt_enhancement_enable: false,
-      }),
       logManager: create_log_manager(logs),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(
+      task_engine,
+      task_runtime,
+      {
+        mode: "new",
+        scope: { kind: "all" },
+      },
+      run_context,
+    );
     await done.promise;
 
     expect(logs.join("\n")).toContain("翻译前缀\n翻译正文 中文\n\n翻译后缀");
@@ -424,14 +431,10 @@ describe("BatchTranslationRunner", () => {
         },
       },
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, {
-      mode: "new",
-      scope: { kind: "all" },
-    });
+    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
     await execution_started;
 
     let dispose_completed = false;
@@ -520,16 +523,18 @@ describe("BatchTranslationRunner", () => {
     return runtime;
   }
 
+  /** 通过真实运行态预约任务，默认使用独立的执行配置。 */
   async function start_task(
     task_engine: BatchTranslationRunner,
     task_runtime: BatchTranslationRuntime,
     command: BatchTranslationStartCommand,
+    run_context: BatchTranslationRunContext = create_run_context(),
   ): Promise<void> {
     const handle = task_runtime.begin_standalone(command.scope);
-    await task_runtime.execute(handle, () => task_engine.run(handle, command));
+    await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context));
   }
 
-  // wait_until 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /** 等待终态发布失败后的异步资源释放。 */
   async function wait_until(predicate: () => boolean | Promise<boolean>): Promise<void> {
     for (let index = 0; index < 10; index += 1) {
       if (await predicate()) {
@@ -589,11 +594,11 @@ describe("BatchTranslationRunner", () => {
   /**
    * 构造模型阈值快照，input_token_limit 参数用于切块预算边界测试
    */
-  function create_setting_service(
+  function create_run_context(
     concurrency_limit = 1,
     input_token_limit = 512,
     setting_overrides: JsonRecord = {},
-  ): BatchTranslationRunnerOptions["AppSettingService"] {
+  ): BatchTranslationRunContext {
     const model = {
       id: "model-1",
       threshold: {
@@ -602,15 +607,8 @@ describe("BatchTranslationRunner", () => {
       },
     };
     return {
-      read_setting: () => ({
-        model_selection: {
-          translation: "model-1",
-
-          agent: "model-1",
-        },
-        models: [model],
-        ...setting_overrides,
-      }),
+      config_snapshot: normalize_setting_snapshot(setting_overrides),
+      model: { ...Model.from_json(model, model.id) },
     };
   }
 

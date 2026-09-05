@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BatchTranslationDetailSheet } from "@frontend/features/batch-translation/batch-translation-detail-sheet";
 import type { BatchTranslationDetailDisplay } from "@frontend/features/batch-translation/batch-translation-display";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const running_display: BatchTranslationDetailDisplay = {
+  provider: null,
   waveform_title: "速度趋势",
   metrics_title: "任务指标",
   completion_percent_text: "42%",
@@ -36,12 +38,14 @@ describe("BatchTranslationDetailSheet", () => {
 
     await act(async () => {
       root?.render(
-        <BatchTranslationDetailSheet
-          open={true}
-          display={props.display ?? running_display}
-          on_close={vi.fn()}
-          on_request_stop_confirmation={props.on_request_stop_confirmation ?? vi.fn()}
-        />,
+        <TooltipProvider>
+          <BatchTranslationDetailSheet
+            open={true}
+            display={props.display ?? running_display}
+            on_close={vi.fn()}
+            on_request_stop_confirmation={props.on_request_stop_confirmation ?? vi.fn()}
+          />
+        </TooltipProvider>,
       );
     });
   }
@@ -72,5 +76,42 @@ describe("BatchTranslationDetailSheet", () => {
     });
 
     expect(on_request_stop_confirmation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["hover", "focus"] as const)("接入点通过 %s 显示完整配置信息", async (interaction) => {
+    const name = "翻译专用接入点的完整配置名称";
+    const model = "provider/translation-model-long-name";
+    await render_sheet({
+      display: {
+        ...running_display,
+        provider: { label: "接入点", name, model, thinking: "高" },
+      },
+    });
+    const first = document.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]')!;
+    await act(async () => {
+      if (interaction === "focus") {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        first.focus();
+      } else {
+        first.dispatchEvent(
+          new MouseEvent("mouseenter", { bubbles: true, clientX: 10, clientY: 10 }),
+        );
+        first.dispatchEvent(
+          new MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 10 }),
+        );
+        first.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, clientX: 10, clientY: 10 }),
+        );
+      }
+    });
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull(),
+      );
+    });
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip?.textContent).toContain(name);
+    expect(tooltip?.textContent).toContain(model);
+    expect(tooltip?.textContent).toContain("高");
   });
 });

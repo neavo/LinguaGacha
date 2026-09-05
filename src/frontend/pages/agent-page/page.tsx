@@ -661,6 +661,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           decision={pending_decision}
           on_resolve_question={agent_actions.resolveQuestion}
           on_resolve_write_approval={agent_actions.resolveWriteApproval}
+          on_resolve_translation={agent_actions.resolveTranslation}
         />
       </div>
       <AppConfirmDialog

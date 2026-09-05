@@ -1,4 +1,10 @@
 export const zh_cn_batch_translation = {
+  setup: {
+    title: "执行批量翻译",
+    description: "请选择批量翻译任务使用的接入点",
+    current: "使用当前 AGENT 接入点",
+    other: "选择其他接入点",
+  },
   menu: {
     progress: "进度",
     tooltip: "将原文翻译为目标语言",
@@ -10,6 +16,7 @@ export const zh_cn_batch_translation = {
     running: "翻译中",
   },
   detail: {
+    provider: "接入点",
     elapsed_time: "累计时间",
     remaining_time: "剩余时间",
     average_speed: "平均速度",

@@ -115,6 +115,7 @@ export class GuiBackendBootstrap {
       });
       const agent = new AgentService({
         batchTranslation: services.batchTranslation,
+        models: services.model,
         paths: resources.paths,
         settings: resources.settings,
         userAgent: resources.metadata.build_linguagacha_user_agent(),

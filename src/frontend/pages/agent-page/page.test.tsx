@@ -1053,6 +1053,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     setApprovalMode: vi.fn(async () => undefined),
     resolveQuestion: vi.fn(async () => undefined),
     resolveWriteApproval: vi.fn(async () => undefined),
+    resolveTranslation: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,
   };

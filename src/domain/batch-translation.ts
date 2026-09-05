@@ -1,3 +1,32 @@
+import { is_model_thinking_level, type ModelThinkingLevel } from "./model";
+
+/** 从本次执行配置投影的非敏感摘要，跨续跑保留各自实际采用的值。 */
+export type BatchTranslationConfig = Readonly<{
+  model_name: string;
+  model_id: string;
+  thinking_level: ModelThinkingLevel | null;
+  source_language: string;
+  target_language: string;
+}>;
+
+/** 运行配置在尚未解析、工程重开或新运行预约时可以缺失。 */
+export function normalize_batch_translation_config(
+  value: unknown,
+): BatchTranslationConfig | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const { model_name, model_id, thinking_level, source_language, target_language } = record;
+  if (
+    typeof model_name !== "string" ||
+    typeof model_id !== "string" ||
+    typeof source_language !== "string" ||
+    typeof target_language !== "string" ||
+    (thinking_level !== null && !is_model_thinking_level(thinking_level))
+  )
+    return undefined;
+  return { model_name, model_id, thinking_level, source_language, target_language };
+}
+
 export const BATCH_TRANSLATION_RUN_STATUSES = [
   "idle",
   "requested",
@@ -154,6 +183,7 @@ export function clone_translation_scope(scope: BatchTranslationScope): BatchTran
 }
 
 export type BatchTranslationSnapshot = {
+  config?: BatchTranslationConfig;
   revision: number;
   status: BatchTranslationRunStatus;
   stop_source?: BatchTranslationStopSource; // 本轮首次受理的取消来源，收尾失败也保留

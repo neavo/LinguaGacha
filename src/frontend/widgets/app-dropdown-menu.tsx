@@ -1,9 +1,11 @@
-import type { ComponentProps } from "react";
+import { useRef, type ComponentProps } from "react";
+import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
 
 import { cn } from "@frontend/shadcn/classnames";
 import {
+  APP_MENU_POSITIONER_CLASS_NAME,
   APP_MENU_SUBMENU_SIDE_OFFSET,
   APP_MENU_VIEWPORT_PADDING,
   should_keep_submenu_open,
@@ -18,8 +20,11 @@ type AppDropdownMenuContentProps = DropdownMenuPrimitive.Popup.Props &
   };
 
 // 本文件只为 Base UI 菜单原语补充应用级 data-slot、尺寸和视觉约定，不持有业务状态。
-function AppDropdownMenu(props: DropdownMenuPrimitive.Root.Props): JSX.Element {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+function AppDropdownMenu({ actionsRef, ...props }: DropdownMenuPrimitive.Root.Props): JSX.Element {
+  const local_actions = useRef<DropdownMenuPrimitive.Root.Actions | null>(null);
+  const actions = actionsRef ?? local_actions;
+  useWindowDeactivation(() => actions.current?.close());
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} actionsRef={actions} />;
 }
 
 function AppDropdownMenuTrigger({
@@ -49,7 +54,7 @@ function AppDropdownMenuContent({
         sideOffset={sideOffset}
         align={align}
         side={side}
-        className="isolate z-(--ui-layer-popover)"
+        className={APP_MENU_POSITIONER_CLASS_NAME}
       >
         <DropdownMenuPrimitive.Popup
           data-slot="dropdown-menu-content"
@@ -268,7 +273,7 @@ function AppDropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Positioner
-        className="isolate z-(--ui-layer-popover)"
+        className={APP_MENU_POSITIONER_CLASS_NAME}
         collisionPadding={APP_MENU_VIEWPORT_PADDING}
         sideOffset={APP_MENU_SUBMENU_SIDE_OFFSET}
       >

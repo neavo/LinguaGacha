@@ -1,3 +1,4 @@
+import { Model } from "../../domain/model";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +35,12 @@ function setup(loaded = true, line = 0) {
     { run } as unknown as BatchTranslationRunner,
     runtime,
     session,
+    {
+      read_setting: () => ({
+        models: [{ id: "translation" }],
+        model_selection: { translation: "translation" },
+      }),
+    },
   );
   return { service, runtime, gate, run };
 }
@@ -52,6 +59,7 @@ describe("批量翻译服务", () => {
       mode: "new",
       scope: { kind: "items", item_ids: [2, 1] },
     });
+    expect(run.mock.calls[0]?.[2].model.id).toBe("translation");
   });
   it.each<import("../../domain/json").JsonRecord>([
     {},
@@ -85,12 +93,24 @@ describe("批量翻译服务", () => {
     });
     const lease = gate.begin_runtime("agent");
     const completed = vi.fn();
-    const result = service.run_under_agent(lease, new AbortController().signal).then((value) => {
-      completed();
-      return value;
-    });
+    const inherited = Model.from_json(
+      { id: "agent", model_id: "agent-model", thinking: { level: "HIGH" } },
+      "agent",
+    );
+    const result = service
+      .run_under_agent(lease, new AbortController().signal, inherited)
+      .then((value) => {
+        completed();
+        return value;
+      });
     await vi.waitFor(() => expect(run).toHaveBeenCalled());
     expect(completed).not.toHaveBeenCalled();
+    expect(run.mock.calls[0]?.[2].model).toMatchObject({
+      id: "agent",
+      model_id: "agent-model",
+      thinking: { level: "HIGH" },
+    });
+    expect(run.mock.calls[0]?.[2].model.thinking).not.toBe(inherited.thinking);
     expect(run.mock.calls[0]?.[1]).toEqual({
       mode: line > 0 ? "continue" : "new",
       scope: { kind: "all" },
@@ -218,17 +238,16 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
           logs: [],
         }),
       },
-      AppSettingService: {
-        read_setting: () => ({
-          source_language: "EN",
-          target_language: "ZH",
-          model_selection: { translation: "fake" },
-          models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
-        }),
-      },
       logManager: { append: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
     });
-    const service = new BatchTranslationService(runner, runtime, session);
+    const service = new BatchTranslationService(runner, runtime, session, {
+      read_setting: () => ({
+        source_language: "EN",
+        target_language: "ZH",
+        model_selection: { translation: "fake" },
+        models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
+      }),
+    });
     const handle = await service.start_current_project({ mode: "new", scope: { kind: "all" } });
     expect(await handle.completion).toMatchObject({
       status: "done",

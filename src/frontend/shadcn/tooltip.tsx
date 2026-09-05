@@ -4,54 +4,53 @@ import * as React from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "@frontend/shadcn/classnames";
+import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 
 const tooltipContentClassName =
   "relative box-border flex w-max min-w-0 max-w-[min(320px,var(--available-width))] items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background origin-(--transform-origin) whitespace-normal break-words [overflow-wrap:anywhere] has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 const tooltipArrowClassName =
   "relative block h-1.5 w-3 overflow-clip data-[side=bottom]:top-[-6px] data-[side=left]:right-[-9px] data-[side=left]:rotate-90 data-[side=right]:left-[-9px] data-[side=right]:-rotate-90 data-[side=top]:bottom-[-6px] data-[side=top]:rotate-180 before:absolute before:bottom-0 before:left-1/2 before:h-[calc(6px*sqrt(2))] before:w-[calc(6px*sqrt(2))] before:bg-foreground before:content-[''] before:[transform:translate(-50%,50%)_rotate(45deg)]";
-const TOOLTIP_WINDOW_DEACTIVATED = "linguagacha:tooltip-window-deactivated";
+const TooltipWindowContext = React.createContext(false);
+const TooltipHandleContext = React.createContext<{
+  handle: NonNullable<TooltipPrimitive.Root.Props["handle"]>;
+  disabled: boolean;
+} | null>(null);
 
-type TooltipWindowContext = { suppressed: React.RefObject<boolean>; revision: number };
-const TooltipWindowContext = React.createContext<TooltipWindowContext | null>(null);
-
+/** 窗口失活后暂停提示，新的键盘或指针操作恢复交互。 */
 function TooltipProvider({
   delay = 0,
   children,
   ...props
 }: TooltipPrimitive.Provider.Props): JSX.Element {
-  const suppressed = React.useRef(false);
-  const [revision, set_revision] = React.useState(0);
+  const [suppressed, set_suppressed] = React.useState(false);
+  const pointer = React.useRef<{ x: number; y: number } | null>(null);
+  useWindowDeactivation(() => set_suppressed(true));
 
   React.useEffect(() => {
-    // 窗口或页面可见性切换时关闭当前提示，并让触发器重挂载，避免静止指针再次打开提示。
-    const suppress = (): void => {
-      suppressed.current = true;
-      set_revision((current) => current + 1);
-      document.dispatchEvent(new Event(TOOLTIP_WINDOW_DEACTIVATED));
-    };
     const release = (): void => {
-      suppressed.current = false;
+      set_suppressed(false);
+    };
+    // 恢复窗口可能重复发送原位置的指针事件，坐标变化才重新启用悬停。
+    const move = (event: PointerEvent): void => {
+      const previous = pointer.current;
+      pointer.current = { x: event.clientX, y: event.clientY };
+      if (previous === null || previous.x !== event.clientX || previous.y !== event.clientY)
+        release();
     };
 
-    window.addEventListener("blur", suppress);
-    window.addEventListener("focus", suppress);
-    window.addEventListener("pointermove", release, true);
+    window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerdown", release, true);
     window.addEventListener("keydown", release, true);
-    document.addEventListener("visibilitychange", suppress);
 
     return () => {
-      window.removeEventListener("blur", suppress);
-      window.removeEventListener("focus", suppress);
-      window.removeEventListener("pointermove", release, true);
+      window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerdown", release, true);
       window.removeEventListener("keydown", release, true);
-      document.removeEventListener("visibilitychange", suppress);
     };
   }, []);
 
   return (
-    <TooltipWindowContext.Provider value={{ suppressed, revision }}>
+    <TooltipWindowContext.Provider value={suppressed}>
       <TooltipPrimitive.Provider delay={delay} {...props}>
         {children}
       </TooltipPrimitive.Provider>
@@ -59,34 +58,60 @@ function TooltipProvider({
   );
 }
 
-function Tooltip({ actionsRef, onOpenChange, ...props }: TooltipPrimitive.Root.Props): JSX.Element {
-  const window_context = React.useContext(TooltipWindowContext);
-  const local_actions = React.useRef<TooltipPrimitive.Root.Actions | null>(null);
-  React.useEffect(() => {
-    const close = (): void => local_actions.current?.close();
-    document.addEventListener(TOOLTIP_WINDOW_DEACTIVATED, close);
-    return () => document.removeEventListener(TOOLTIP_WINDOW_DEACTIVATED, close);
-  }, []);
+/** 共享 handle 保持触发器身份，并承接窗口关闭与悬停恢复。 */
+function Tooltip({ disabled, handle, ...props }: TooltipPrimitive.Root.Props): JSX.Element {
+  const suppressed = React.useContext(TooltipWindowContext);
+  const [local_handle] = React.useState(() => TooltipPrimitive.createHandle());
+  const tooltip_handle = handle ?? local_handle;
+  useWindowDeactivation(() => tooltip_handle.close());
 
   return (
-    <TooltipPrimitive.Root
-      {...props}
-      actionsRef={actionsRef ?? local_actions}
-      onOpenChange={(open, details) => {
-        if (open && window_context?.suppressed.current) {
-          details.cancel();
-          return;
-        }
-        onOpenChange?.(open, details);
-      }}
-    />
+    <TooltipHandleContext.Provider value={{ handle: tooltip_handle, disabled: Boolean(disabled) }}>
+      <TooltipPrimitive.Root {...props} handle={tooltip_handle} disabled={disabled || suppressed} />
+    </TooltipHandleContext.Provider>
   );
 }
 
-function TooltipTrigger({ children, ...props }: TooltipPrimitive.Trigger.Props): JSX.Element {
-  const window_context = React.useContext(TooltipWindowContext);
+/** 为同一触发器内的恢复移动补足悬停入口，保留消费方事件处理。 */
+function TooltipTrigger({
+  children,
+  handle,
+  id,
+  disabled,
+  onMouseMove,
+  ...props
+}: TooltipPrimitive.Trigger.Props): JSX.Element {
+  const inherited = React.useContext(TooltipHandleContext);
+  const suppressed = React.useContext(TooltipWindowContext);
+  const generated_id = React.useId();
+  const trigger_id = id ?? generated_id;
+  const tooltip_handle = handle ?? inherited?.handle;
+  const resume_hover = React.useRef(false);
+  if (suppressed) resume_hover.current = true;
   return (
-    <TooltipPrimitive.Trigger key={window_context?.revision} data-slot="tooltip-trigger" {...props}>
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      {...props}
+      id={trigger_id}
+      handle={tooltip_handle}
+      disabled={disabled}
+      onMouseMove={(event) => {
+        onMouseMove?.(event);
+        // 恢复后在同一触发器内移动可能没有 mouseenter，公开 handle 可恢复悬停且保留定位锚点。
+        if (
+          resume_hover.current &&
+          !suppressed &&
+          !disabled &&
+          !inherited?.disabled &&
+          !event.defaultPrevented &&
+          event.target instanceof Element &&
+          event.target.closest('[data-slot="tooltip-trigger"]') === event.currentTarget
+        ) {
+          resume_hover.current = false;
+          tooltip_handle?.open(trigger_id);
+        }
+      }}
+    >
       {children}
     </TooltipPrimitive.Trigger>
   );

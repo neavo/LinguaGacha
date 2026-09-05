@@ -68,6 +68,7 @@ function BatchTranslationDialogsLayer(): JSX.Element {
         }
         open={batch_translation_task.translation_detail_sheet_open}
         display={build_translation_task_detail_display({
+          config: batch_translation_task.translation_task_display_snapshot?.config,
           metrics: batch_translation_task.translation_task_metrics,
           waveform_history: batch_translation_task.translation_waveform_history,
           t,

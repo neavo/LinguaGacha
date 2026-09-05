@@ -37,6 +37,45 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it("Agent lease 内保存翻译接入点并采用该接入点的思考配置", async () => {
+    const { service, runtime_gate, app_setting_service } = await create_model_service([
+      create_model({ id: "a", model_id: "gpt-5", api_format: "OpenAIResponses" }),
+      create_model({
+        id: "b",
+        model_id: "gpt-5",
+        api_format: "OpenAIResponses",
+        thinking: { level: "HIGH" },
+      }),
+    ]);
+    service.get_selection_snapshot();
+    const original = app_setting_service.read_setting();
+    const save = vi.spyOn(app_setting_service, "save_setting");
+    const lease = runtime_gate.begin_runtime("agent");
+    const choice = "b";
+    expect(() => service.select_translation_model_under_agent({ owner: "agent" }, choice)).toThrow(
+      "runtime.busy",
+    );
+    expect(() => service.select_translation_model_under_agent(lease, "missing")).toThrow(
+      "model.not_found",
+    );
+    expect(save).not.toHaveBeenCalled();
+    save.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    expect(() => service.select_translation_model_under_agent(lease, choice)).toThrow("disk full");
+    expect(app_setting_service.read_setting()).toEqual(original);
+    save.mockClear();
+    const chosen = service.select_translation_model_under_agent(lease, choice);
+    expect(save).toHaveBeenCalledOnce();
+    const selection = service.read_selection_snapshot();
+    expect(selection.model_selection.translation).toBe("b");
+    expect(chosen.thinking.level).toBe("HIGH");
+    expect(app_setting_service.read_setting()["models"]).toEqual(original["models"]);
+    expect(selection.model_selection.agent).toBe(
+      (original["model_selection"] as JsonRecord)["agent"],
+    );
+    runtime_gate.finish_runtime(lease);
+  });
   it("快照初始化保留用户模型并补齐缺失预设和自定义类型", async () => {
     stub_random_ids(
       "00000000-0000-4000-8000-000000000001",

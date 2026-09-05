@@ -13,7 +13,11 @@ export function AgentTaskStatus(props: {
   const { batch_translation_task: task } = useBatchTranslationSession();
   const metrics = task.translation_task_metrics;
   if (!metrics.active) return <AgentTodo {...props} />;
-  const display = build_translation_task_summary_display(metrics, t);
+  const display = build_translation_task_summary_display(
+    metrics,
+    t,
+    task.translation_task_display_snapshot?.config,
+  );
   return (
     <Tooltip>
       <TooltipTrigger
@@ -34,7 +38,7 @@ export function AgentTaskStatus(props: {
           </button>
         }
       />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent side="top" sideOffset={8} className="whitespace-pre-line">
         {display.detail_tooltip_text}
       </TooltipContent>
     </Tooltip>

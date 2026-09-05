@@ -18,6 +18,7 @@ import type {
   AgentSkillSnapshot,
   AgentToolEntry,
   AgentWriteApprovalDecision,
+  AgentTranslationResponse,
 } from "@shared/agent";
 import {
   AGENT_QUESTION_OPTION_MAX,
@@ -27,6 +28,7 @@ import {
   normalize_agent_message_input,
 } from "@shared/agent";
 import { normalize_agent_todos } from "@shared/agent-todo";
+import { normalize_model_selection_snapshot } from "@shared/model-selection";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@shared/i18n/types";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -90,6 +92,7 @@ export type AgentSessionActions = Readonly<{
   setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
   resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
   resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
+  resolveTranslation: (id: string, response: AgentTranslationResponse) => Promise<void>;
   reconnect: () => void;
 }>;
 
@@ -159,6 +162,7 @@ export class AgentSessionStore {
       setApprovalMode: this.set_approval_mode,
       resolveQuestion: this.resolve_question,
       resolveWriteApproval: this.resolve_write_approval,
+      resolveTranslation: this.resolve_translation,
       reconnect: this.reconnect,
     };
   }
@@ -550,6 +554,16 @@ export class AgentSessionStore {
     );
   };
 
+  /** 提交页面捕获的决定身份，迟到点击由后端拒绝。 */
+  private readonly resolve_translation = async (
+    id: string,
+    response: AgentTranslationResponse,
+  ): Promise<void> => {
+    await this.execute_command("decision", () =>
+      api_fetch<AgentCommandAck>("/api/agent/translation/resolve", { id, response }),
+    );
+  };
+
   /** 写入授权与普通回答分离，避免 renderer 拼装混合载荷。 */
   private readonly resolve_write_approval = async (
     decision: AgentWriteApprovalDecision,
@@ -856,7 +870,7 @@ function normalize_approval_mode(value: unknown): AgentApprovalMode | null {
   return value === "manual" || value === "auto" ? value : null;
 }
 
-/** 在不可信 snapshot / SSE 边界完整收窄两类 pending 决定。 */
+/** 在 snapshot / SSE 边界按种类收窄用户决定。 */
 function normalize_pending_decision(value: unknown): AgentPendingDecision | null | undefined {
   if (value === null) return null;
   if (value === undefined || !is_json_record(value)) return undefined;
@@ -876,6 +890,25 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
     return question === null
       ? undefined
       : { kind: "question", id, expiresAt: expires_at, question };
+  }
+  if (value["kind"] === "batch_translation") {
+    const translation = value["translation"];
+    if (
+      !is_json_record(translation) ||
+      !Array.isArray(translation["providers"]) ||
+      typeof translation["currentProviderId"] !== "string" ||
+      translation["currentProviderId"].trim() === ""
+    )
+      return undefined;
+    return {
+      kind: "batch_translation",
+      id,
+      expiresAt: expires_at,
+      translation: {
+        providers: normalize_model_selection_snapshot({ models: translation["providers"] }).models,
+        currentProviderId: translation["currentProviderId"],
+      },
+    };
   }
   if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];

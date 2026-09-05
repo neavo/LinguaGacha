@@ -1,10 +1,12 @@
-import type { JsonRecord } from "../../domain/json";
+import { is_json_record, type JsonRecord } from "../../domain/json";
+import type { Model } from "../../domain/model";
 import type {
   AgentPendingDecision,
   AgentPendingWriteSummary,
   AgentQuestion,
   AgentQuestionResponse,
   AgentWriteApprovalDecision,
+  AgentTranslationRequest,
 } from "../../shared/agent";
 import { AGENT_DECISION_TIMEOUT_MS } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
@@ -17,7 +19,11 @@ export type AgentQuestionResult = JsonRecord &
     | { outcome: "unanswered"; reason: "cancelled" | "expired" }
   );
 
-/** 两类决定共用的计时与取消资源；各自结果仍保持窄类型。 */
+export type AgentTranslationDecisionResult =
+  | { status: "accepted"; model: Model }
+  | { status: "not_started"; reason: "cancelled" | "expired" };
+
+/** 决定共用的计时与取消资源；各自结果保持窄类型。 */
 type PendingDecisionLifecycle = {
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -35,7 +41,13 @@ type PendingWriteApproval = PendingDecisionLifecycle & {
   resolve: (decision: AgentWriteApprovalDecision) => void;
 };
 
-type PendingDecision = PendingQuestion | PendingWriteApproval;
+type PendingTranslation = PendingDecisionLifecycle & {
+  public: Extract<AgentPendingDecision, { kind: "batch_translation" }>;
+  resolve: (result: AgentTranslationDecisionResult) => void;
+  accept: (provider_id: string) => Model; // 同步解析并保存后端配置，失败保留当前决定
+};
+
+type PendingDecision = PendingQuestion | PendingWriteApproval | PendingTranslation;
 
 /**
  * 单个 Agent 会话的用户决策协调器；统一拥有期限、竞态、取消与公开 pending 状态。
@@ -109,6 +121,71 @@ export class AgentDecisionCoordinator {
       this.pending = pending;
       this.on_change();
     });
+  }
+
+  /** 翻译启动决定复用固定期限和上游取消生命周期。 */
+  public wait_for_translation(
+    tool_call_id: string,
+    translation: AgentTranslationRequest,
+    signal: AbortSignal,
+    accept: PendingTranslation["accept"],
+  ): Promise<AgentTranslationDecisionResult> {
+    this.assert_available(signal);
+    return new Promise((resolve, reject) => {
+      let pending!: PendingTranslation;
+      const on_abort = () => this.abort(pending);
+      const timer = setTimeout(
+        () => this.settle(pending, { status: "not_started", reason: "expired" }),
+        AGENT_DECISION_TIMEOUT_MS,
+      );
+      pending = {
+        public: {
+          kind: "batch_translation",
+          id: tool_call_id,
+          expiresAt: Date.now() + AGENT_DECISION_TIMEOUT_MS,
+          translation: structuredClone(translation),
+        },
+        resolve,
+        accept,
+        reject,
+        timer,
+        signal,
+        on_abort,
+      };
+      signal.addEventListener("abort", on_abort, { once: true });
+      this.pending = pending;
+      this.on_change();
+    });
+  }
+
+  /** 同步保存成功才结算决定；失败保留等待与原始期限供用户重试。 */
+  public resolve_translation(request: JsonRecord): void {
+    const pending = this.require_pending(request, "batch_translation");
+    if (Date.now() >= pending.public.expiresAt) {
+      this.settle(pending, { status: "not_started", reason: "expired" });
+      throw new AppErrors.AppError("runtime.busy");
+    }
+    pending.signal?.throwIfAborted();
+    const response = request["response"];
+    if (!is_json_record(response)) throw validation_error("agent_translation_response_invalid");
+    if (response["kind"] === "cancel") {
+      if (Object.keys(response).length !== 1)
+        throw validation_error("agent_translation_response_invalid");
+      this.settle(pending, { status: "not_started", reason: "cancelled" });
+      return;
+    }
+    if (
+      response["kind"] !== "provider" ||
+      Object.keys(response).length !== 2 ||
+      typeof response["providerId"] !== "string" ||
+      !pending.public.translation.providers.some(
+        (provider) => provider.id === response["providerId"],
+      )
+    ) {
+      throw validation_error("agent_translation_response_invalid");
+    }
+    const model = pending.accept(response["providerId"]);
+    this.settle(pending, { status: "accepted", model });
   }
 
   /** 仅当前普通问题接受结构化回答，过期身份不会影响现有等待。 */

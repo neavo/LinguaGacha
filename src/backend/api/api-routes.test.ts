@@ -23,6 +23,7 @@ const POST_PATHS = new Set([
   "/api/agent/message",
   "/api/agent/approval-mode",
   "/api/agent/question/resolve",
+  "/api/agent/translation/resolve",
   "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",
   "/api/agent/queue/delete",

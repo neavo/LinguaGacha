@@ -1,3 +1,6 @@
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => ({ owner: null }),
+}));
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

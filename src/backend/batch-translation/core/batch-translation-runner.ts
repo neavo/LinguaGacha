@@ -1,10 +1,8 @@
-import { Model } from "../../../domain/model";
-import type { TranslationModelSnapshot } from "../protocol/work-unit";
+import { resolve_model_capability } from "../../llm/model-capability";
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
 import type { TextTaskItemRecord } from "../../../shared/text/text-types";
 import crypto from "node:crypto";
 
-import { resolve_model_for_usage } from "../../model/model-config-resolver";
 import type { BatchTranslationRunHandle } from "../batch-translation-runtime";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
@@ -18,6 +16,7 @@ import type { BatchTranslationProgress } from "../../../domain/batch-translation
 import type {
   TranslationWorkUnitResult,
   BatchTranslationRunnerOptions,
+  BatchTranslationRunContext,
 } from "./batch-translation-runner-options";
 import type {
   TranslationCommitEntry,
@@ -31,8 +30,7 @@ import { TranslationLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 import { type MutableJsonRecord } from "../../../domain/json";
 
-import { normalize_setting_snapshot, type SettingSnapshot } from "../../../domain/setting";
-import * as AppErrors from "../../../shared/error";
+import { normalize_setting_snapshot } from "../../../domain/setting";
 import { read_task_item_status } from "../translation-item";
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
@@ -40,11 +38,6 @@ const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译
 const TRANSLATION_RETRY_LIMIT = 3; // 单条翻译在拆分后最多重试三次。
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt
-// 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更
-interface BatchTranslationRunContext {
-  config_snapshot: SettingSnapshot; // 本轮设置只读快照，提示词和 runner 共用
-  model: TranslationModelSnapshot; // 本轮激活模型，避免设置热变更切换请求资源
-}
 
 /**
  * Backend Runtime 与 CLI 共用的翻译调度、限流、重试和提交循环
@@ -55,7 +48,6 @@ export class BatchTranslationRunner {
   private readonly task_runtime: BatchTranslationRunnerOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
-  private readonly app_setting_service: BatchTranslationRunnerOptions["AppSettingService"]; // 每轮启动时读取一次设置与模型快照
   private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
   private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
@@ -68,7 +60,6 @@ export class BatchTranslationRunner {
     this.task_runtime = options.taskRuntime;
     this.executor_client = options.executorClient;
     this.task_planner = options.taskPlanner;
-    this.app_setting_service = options.AppSettingService;
     this.log_replay = new TranslationLogReplay(options.logManager);
   }
 
@@ -78,6 +69,7 @@ export class BatchTranslationRunner {
   public async run(
     handle: BatchTranslationRunHandle,
     command: BatchTranslationStartCommand,
+    run_context: BatchTranslationRunContext,
   ): Promise<BatchTranslationResult> {
     let final_status: "done" | "stopped" | "error" = "done";
     let app_language: unknown = "ZH";
@@ -92,7 +84,16 @@ export class BatchTranslationRunner {
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:translation`,
       );
-      const run_context = this.resolve_task_run_context();
+      await this.task_runtime.publish_config(handle, {
+        model_name: run_context.model.name,
+        model_id: run_context.model.model_id,
+        thinking_level:
+          resolve_model_capability(run_context.model).available_thinking_levels.length === 0
+            ? null
+            : run_context.model.thinking.level,
+        source_language: String(run_context.config_snapshot["source_language"]),
+        target_language: String(run_context.config_snapshot["target_language"]),
+      });
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
       await this.log_task_run_start(run_context, quality_snapshot, app_language);
@@ -425,19 +426,6 @@ export class BatchTranslationRunner {
       return;
     }
     this.task_store.update_translation_progress(progress);
-  }
-
-  /**
-   * 按任务用途读取当前配置和模型，作为一次 run 的不可变快照
-   */
-  private resolve_task_run_context(): BatchTranslationRunContext {
-    const settings = this.app_setting_service.read_setting();
-    const config_snapshot = normalize_setting_snapshot(settings);
-    const model = resolve_model_for_usage(settings, "translation");
-    if (model === null) {
-      throw new AppErrors.AppError("model.not_found");
-    }
-    return { config_snapshot, model: { ...Model.from_json(model, "") } };
   }
 
   /**

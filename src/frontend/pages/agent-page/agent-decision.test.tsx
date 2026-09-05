@@ -6,6 +6,7 @@ import type {
   AgentPendingDecision,
   AgentQuestionResponse,
   AgentWriteApprovalDecision,
+  AgentTranslationResponse,
 } from "@shared/agent";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
@@ -32,6 +33,63 @@ describe("AgentDecisionLayer", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+  });
+
+  it("当前接入点点击即提交，保存失败后在原决定重试", async () => {
+    const resolve = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockResolvedValue(undefined);
+    await render_decision(root, translation_decision(), undefined, undefined, resolve);
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => action(container, "batch_translation.setup.current").click());
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await act(async () => action(container, "batch_translation.setup.current").click());
+    expect(resolve).toHaveBeenNthCalledWith(2, "translation", {
+      kind: "provider",
+      providerId: "a",
+    });
+  });
+
+  it("没有其他接入点时禁用菜单入口，取消提交明确决定", async () => {
+    const decision = translation_decision();
+    decision.translation.providers = [];
+    const resolve = vi.fn(async () => undefined);
+    await render_decision(root, decision, undefined, undefined, resolve);
+    expect(action(container, "batch_translation.setup.other").disabled).toBe(true);
+    const cancel = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="agent_page.decision.cancel"]',
+    )!;
+    await act(async () => cancel.click());
+    expect(resolve).toHaveBeenCalledWith("translation", { kind: "cancel" });
+  });
+
+  it("菜单收起后继续等待，选定接入点才提交翻译决定", async () => {
+    const resolve = vi.fn(async () => undefined);
+    await render_decision(root, translation_decision(), undefined, undefined, resolve);
+    const trigger = action(container, "batch_translation.setup.other");
+    await act(async () => trigger.click());
+    expect(document.querySelector('[data-slot="dropdown-menu-content"][data-open]')).not.toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () =>
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
+    expect(container.textContent).toContain("batch_translation.setup.current");
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => trigger.click());
+    await act(async () =>
+      document.querySelector<HTMLDivElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
+    );
+    const provider = document.querySelector<HTMLDivElement>(
+      '[data-slot="dropdown-menu-radio-item"]',
+    );
+    expect(provider?.textContent).toContain("模型 A");
+    expect(provider?.getAttribute("aria-checked")).toBe("true");
+    expect(
+      document.querySelector('[data-slot="dropdown-menu-sub-trigger"][aria-current="true"]'),
+    ).not.toBeNull();
+    await act(async () => provider!.click());
+    expect(resolve).toHaveBeenCalledWith("translation", { kind: "provider", providerId: "a" });
   });
 
   it("关联问题说明并提交固定选项", async () => {
@@ -123,6 +181,10 @@ async function render_decision(
   decision: AgentPendingDecision | null,
   on_resolve_question: (response: AgentQuestionResponse) => void = () => undefined,
   on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void = () => undefined,
+  on_resolve_translation: (
+    id: string,
+    response: AgentTranslationResponse,
+  ) => Promise<void> = async () => undefined,
 ): Promise<void> {
   await act(async () =>
     root.render(
@@ -131,6 +193,7 @@ async function render_decision(
           decision={decision}
           on_resolve_question={on_resolve_question}
           on_resolve_write_approval={on_resolve_write_approval}
+          on_resolve_translation={on_resolve_translation}
         />
       </TooltipProvider>,
     ),
@@ -160,4 +223,26 @@ function action(container: HTMLElement, label: string): HTMLButtonElement {
   );
   if (result === undefined) throw new Error(`缺少 ${label} 选项`);
   return result;
+}
+
+/** 提供一个可从快捷动作或分类菜单确认的翻译决定。 */
+function translation_decision(): Extract<AgentPendingDecision, { kind: "batch_translation" }> {
+  return {
+    kind: "batch_translation",
+    id: "translation",
+    expiresAt: Date.now() + 300_000,
+    translation: {
+      currentProviderId: "a",
+      providers: [
+        {
+          id: "a",
+          name: "模型 A",
+          type: "PRESET",
+          agent_limits: { context_window: 128000, max_output_tokens: 32000 },
+          thinking_level: "HIGH",
+          available_thinking_levels: ["LOW", "HIGH"],
+        },
+      ],
+    },
+  };
 }

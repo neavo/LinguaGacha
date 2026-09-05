@@ -1484,13 +1484,13 @@
     color 120ms ease;
 }
 
-.agent-decision-action + .agent-decision-action {
+.agent-decision__options > .agent-decision-action ~ .agent-decision-action {
   border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
 
-.agent-decision-action:hover {
+.agent-decision-action:not(:disabled):hover {
   background: var(--accent);
 }
 
@@ -1616,7 +1616,7 @@
   }
 }
 
-.agent-decision-action:hover .agent-decision-action__icon,
+.agent-decision-action:not(:disabled):hover .agent-decision-action__icon,
 .agent-decision-action:focus-visible .agent-decision-action__icon {
   border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
   color: var(--primary);
@@ -1918,4 +1918,14 @@
 .agent-todo__speed {
   margin-left: 8px;
   font-variant-numeric: tabular-nums;
+}
+
+.agent-decision-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.agent-decision__error {
+  margin-top: 8px;
+  color: var(--destructive);
+  font-size: 12px;
 }

@@ -60,7 +60,7 @@ export function BatchTranslationSummary(props: BatchTranslationSummaryProps): JS
           </button>
         }
       />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent side="top" sideOffset={8} className="whitespace-pre-line">
         <p>{props.display.detail_tooltip_text}</p>
       </TooltipContent>
     </Tooltip>

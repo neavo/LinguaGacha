@@ -66,6 +66,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/message", (body) => agent.send_message(body));
   context.postJson("/api/agent/approval-mode", (body) => agent.set_approval_mode(body));
   context.postJson("/api/agent/question/resolve", (body) => agent.resolve_question(body));
+  context.postJson("/api/agent/translation/resolve", (body) => agent.resolve_translation(body));
   context.postJson("/api/agent/write-approval/resolve", (body) =>
     agent.resolve_write_approval(body),
   );

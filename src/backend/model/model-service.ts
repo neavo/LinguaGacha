@@ -33,7 +33,8 @@ import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ModelSelectionSnapshot } from "../../shared/model-selection";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -65,7 +66,7 @@ export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
-  private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入只允许在统一运行态空闲时发生
+  private readonly runtime_gate: RuntimeOperationGate; // 普通模型写入要求空闲；翻译决定写入校验当前 Agent lease
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
 
@@ -97,8 +98,21 @@ export class ModelService {
   }
 
   /** 读取任务入口直接控制所需的非敏感模型摘要。 */
-  public get_selection_snapshot(): JsonRecord {
+  public get_selection_snapshot(): ModelSelectionSnapshot {
     return this.build_selection_snapshot(this.load_setting_with_models(true));
+  }
+
+  /** Agent 运行中读取已配置候选，编辑前的准备阶段只生成快照。 */
+  public read_selection_snapshot(): ModelSelectionSnapshot {
+    return this.build_selection_snapshot(this.app_setting_service.read_setting());
+  }
+
+  /** 当前 Agent 决定保存翻译接入点，并返回所选接入点的独立配置。 */
+  public select_translation_model_under_agent(lease: RuntimeLease, model_id: string): Model {
+    this.runtime_gate.assert_current_runtime(lease, "agent");
+    const config = this.update_selection("translation", model_id);
+    const models = read_config_model_records(config);
+    return Model.from_json(models[this.find_model_index_or_raise(models, model_id)], model_id);
   }
 
   /**
@@ -134,14 +148,7 @@ export class ModelService {
     this.runtime_gate.assert_runtime_idle();
     const usage = this.read_model_usage(request["usage"]);
     const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
-    const config = this.load_setting_with_models(false);
-    const models = read_config_model_records(config);
-    this.find_model_index_or_raise(models, model_id);
-    config["models"] = models as unknown as JsonValue;
-    const selection = normalize_model_selection(config["model_selection"]);
-    selection[usage] = model_id;
-    config["model_selection"] = selection;
-    return this.build_selection_snapshot(this.persist_config(config));
+    return this.build_selection_snapshot(this.update_selection(usage, model_id));
   }
 
   /** 按用途原子更新当前模型的全局思考档位，避免调用方提交过期模型 ID。 */
@@ -158,10 +165,21 @@ export class ModelService {
     const models = read_config_model_records(config);
     const selection = normalize_model_selection(config["model_selection"]);
     const index = this.find_model_index_or_raise(models, selection[usage]);
-    const model = models[index] ?? {};
-    models[index] = this.apply_patch(model, { thinking: { level: thinking_level } });
+    models[index] = this.apply_patch(models[index] ?? {}, { thinking: { level: thinking_level } });
     config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
+  }
+
+  /** 普通选择与 Agent 决定共用模型校验和按用途持久化。 */
+  private update_selection(usage: ModelUsage, model_id: string): JsonRecord {
+    const config = this.load_setting_with_models(false);
+    const models = read_config_model_records(config);
+    const selection = normalize_model_selection(config["model_selection"]);
+    this.find_model_index_or_raise(models, model_id);
+    selection[usage] = model_id;
+    config["models"] = models as unknown as JsonValue;
+    config["model_selection"] = selection;
+    return this.persist_config(config);
   }
 
   /**
@@ -756,7 +774,7 @@ export class ModelService {
   }
 
   /** 生成任务入口需要的窄快照，只公开模型选择与直接控制所需的非敏感配置。 */
-  private build_selection_snapshot(config: JsonRecord): JsonRecord {
+  private build_selection_snapshot(config: JsonRecord): ModelSelectionSnapshot {
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
       models: read_config_model_records(config).map((model) => {

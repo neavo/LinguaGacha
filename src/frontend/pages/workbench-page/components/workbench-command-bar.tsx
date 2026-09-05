@@ -52,6 +52,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const summary = build_translation_task_summary_display(
     props.batch_translation_task.translation_task_metrics,
     t,
+    props.batch_translation_task.translation_task_display_snapshot?.config,
   );
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_delete_selected_files;

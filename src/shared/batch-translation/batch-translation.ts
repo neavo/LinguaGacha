@@ -1,5 +1,6 @@
 import {
   normalize_batch_translation_progress,
+  normalize_batch_translation_config,
   normalize_translation_scope,
   clone_translation_scope,
   is_active_batch_translation_status,
@@ -166,11 +167,13 @@ export function normalize_batch_translation_snapshot(
   payload: BatchTranslationPayload,
 ): BatchTranslationSnapshot {
   const raw = payload.batch_translation ?? {};
+  const config = normalize_batch_translation_config(raw.config);
   const status = BATCH_TRANSLATION_RUN_STATUSES.includes(raw.status as BatchTranslationRunStatus)
     ? (raw.status as BatchTranslationRunStatus)
     : "idle";
   return {
     revision: Math.max(0, Number(raw.revision) || 0),
+    ...(config === undefined ? {} : { config }),
     status,
     ...(raw.stop_source !== undefined && BATCH_TRANSLATION_STOP_SOURCES.includes(raw.stop_source)
       ? { stop_source: raw.stop_source }
@@ -187,6 +190,7 @@ export function clone_translation_task_snapshot(
   return {
     ...snapshot,
     progress: { ...snapshot.progress },
+    ...(snapshot.config === undefined ? {} : { config: { ...snapshot.config } }),
     scope: clone_translation_scope(snapshot.scope),
   };
 }

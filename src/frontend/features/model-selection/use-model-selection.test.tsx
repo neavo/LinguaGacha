@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelThinkingLevel } from "@domain/model";
 import { useModelSelection } from "./use-model-selection";
 
+const runtime = vi.hoisted(() => ({ owner: null as "agent" | null }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => runtime,
+}));
+
 const api = vi.hoisted(() => ({ get: vi.fn(), fetch: vi.fn() }));
 const push_toast = vi.hoisted(() => vi.fn());
 const translate = vi.hoisted(() => (key: string) => key);
@@ -31,6 +36,7 @@ describe("useModelSelection", () => {
     api.get.mockReset();
     api.fetch.mockReset();
     push_toast.mockReset();
+    runtime.owner = null;
   });
 
   it("不提交当前模型、阻止并发且只在后端回包后更新", async () => {
@@ -90,6 +96,26 @@ describe("useModelSelection", () => {
     await wait_for_text(container, "preset:OFF:false");
 
     expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
+  });
+
+  it("运行结束后刷新持久化选择，并隔离运行期间的迟到查询", async () => {
+    api.get.mockResolvedValueOnce(snapshot("preset"));
+    const container = await render_probe();
+    let stale!: (value: unknown) => void;
+    api.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          stale = resolve;
+        }),
+    );
+    runtime.owner = "agent";
+    await act(async () => roots[0]!.render(<Probe />));
+    api.get.mockResolvedValueOnce(snapshot("openai"));
+    runtime.owner = null;
+    await act(async () => roots[0]!.render(<Probe />));
+    await wait_for_text(container, "openai:OFF:false");
+    await act(async () => stale(snapshot("preset")));
+    expect(container.textContent).toContain("openai:OFF:false");
   });
 
   async function render_probe(): Promise<HTMLDivElement> {

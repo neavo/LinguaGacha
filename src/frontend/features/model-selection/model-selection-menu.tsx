@@ -16,6 +16,7 @@ import {
 } from "@frontend/widgets/app-dropdown-menu";
 import { read_selected_model, type ModelSelectionController } from "./use-model-selection";
 import { MODEL_THINKING_LEVEL_LABEL_KEY, MODEL_TYPE_TITLE_KEY } from "./model-selection-meta";
+import type { ModelSelectionOption } from "@shared/model-selection";
 
 type ModelSelectionMenuProps = {
   controller: ModelSelectionController;
@@ -49,17 +50,34 @@ export function ModelSelectionMenu(props: ModelSelectionMenuProps): JSX.Element 
 
 /** Agent 底栏按钮已承担当前模型入口，因此只复用分类与模型两层。 */
 export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.Element {
+  return (
+    <ModelSelectionOptions
+      models={props.controller.snapshot.models}
+      value={props.controller.snapshot.model_selection[props.usage]}
+      disabled={Boolean(props.disabled) || props.controller.loading || props.controller.updating}
+      on_select={(id) => {
+        void props.controller.select_model(props.usage, id);
+      }}
+    />
+  );
+}
+
+/** 模型选项只表达选择；消费方决定暂存还是立即保存。 */
+export function ModelSelectionOptions(props: {
+  models: readonly ModelSelectionOption[];
+  value: string;
+  disabled?: boolean;
+  on_select: (model_id: string) => void;
+}): JSX.Element {
   const { t } = useI18n();
-  const selected_id = props.controller.snapshot.model_selection[props.usage];
-  const selected = props.controller.snapshot.models.find((model) => model.id === selected_id);
-  const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
+  const selected_id = props.value;
+  const selected = props.models.find((model) => model.id === selected_id);
+  const disabled = Boolean(props.disabled);
 
   return (
     <>
       {MODEL_TYPES.map((model_type) => {
-        const models = props.controller.snapshot.models.filter(
-          (model) => model.type === model_type,
-        );
+        const models = props.models.filter((model) => model.type === model_type);
         const current_category = selected?.type === model_type;
         const CategoryIcon = current_category ? CircleCheck : Circle;
         return (
@@ -72,14 +90,14 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
               <span>{t(MODEL_TYPE_TITLE_KEY[model_type])}</span>
             </AppDropdownMenuSubTrigger>
             <AppDropdownMenuSubContent>
-              <AppDropdownMenuRadioGroup
-                value={selected_id}
-                onValueChange={(model_id) => {
-                  void props.controller.select_model(props.usage, model_id);
-                }}
-              >
+              <AppDropdownMenuRadioGroup value={selected_id}>
                 {models.map((model) => (
-                  <AppDropdownMenuRadioItem key={model.id} value={model.id} disabled={disabled}>
+                  <AppDropdownMenuRadioItem
+                    key={model.id}
+                    value={model.id}
+                    disabled={disabled}
+                    onClick={() => props.on_select(model.id)}
+                  >
                     <span className="max-w-72 truncate">{model.name || model.id}</span>
                   </AppDropdownMenuRadioItem>
                 ))}
@@ -92,7 +110,7 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
   );
 }
 
-/** 当前用途模型的思考档位；消费页面可以在通用写入口前处理页面私有交互。 */
+/** 当前用途模型的思考档位；消费页面可在保存前处理页面私有确认。 */
 export function ModelThinkingLevelOptions(
   props: ModelThinkingLevelOptionsProps,
 ): JSX.Element | null {
@@ -100,23 +118,19 @@ export function ModelThinkingLevelOptions(
   const selected = read_selected_model(props.controller, props.usage);
   if (selected === null || selected.available_thinking_levels.length === 0) return null;
   const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
-
   return (
     <AppDropdownMenuRadioGroup
       value={selected.thinking_level}
-      onValueChange={(thinking_level) => {
-        if (is_model_thinking_level(thinking_level)) {
-          if (props.on_thinking_level_change === undefined) {
-            void props.controller.update_thinking_level(props.usage, thinking_level);
-          } else {
-            props.on_thinking_level_change(thinking_level);
-          }
-        }
+      onValueChange={(level) => {
+        if (!is_model_thinking_level(level)) return;
+        if (props.on_thinking_level_change === undefined) {
+          void props.controller.update_thinking_level(props.usage, level);
+        } else props.on_thinking_level_change(level);
       }}
     >
-      {selected.available_thinking_levels.map((thinking_level) => (
-        <AppDropdownMenuRadioItem key={thinking_level} value={thinking_level} disabled={disabled}>
-          {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
+      {selected.available_thinking_levels.map((level) => (
+        <AppDropdownMenuRadioItem key={level} value={level} disabled={disabled}>
+          {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
         </AppDropdownMenuRadioItem>
       ))}
     </AppDropdownMenuRadioGroup>

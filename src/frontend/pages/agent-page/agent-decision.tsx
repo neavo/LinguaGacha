@@ -1,6 +1,22 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+  type ComponentPropsWithRef,
+} from "react";
 import { ArrowRight, CircleQuestionMark, Save, X, type LucideIcon } from "lucide-react";
+import type { AgentTranslationResponse } from "@shared/agent";
+import { ModelSelectionOptions } from "@frontend/features/model-selection/model-selection-menu";
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuTrigger,
+} from "@frontend/widgets/app-dropdown-menu";
 
 import {
   AGENT_DECISION_TIMEOUT_MS,
@@ -17,6 +33,7 @@ import {
   InputGroupInput,
 } from "@frontend/shadcn/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 
 const AGENT_DECISION_WARNING_REMAINING_PERCENT = 25; // 最后四分之一期限切换为警告语义
@@ -54,6 +71,7 @@ export function AgentDecisionLayer(props: {
   decision: AgentPendingDecision | null;
   on_resolve_question: (response: AgentQuestionResponse) => void;
   on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void;
+  on_resolve_translation: (id: string, response: AgentTranslationResponse) => Promise<void>;
 }): JSX.Element {
   // Base UI 在离场结束前保持 Popup 挂载，最后一次决定为这段动画保留完整内容。
   const visible_decision_ref = useRef<AgentPendingDecision | null>(props.decision);
@@ -91,12 +109,110 @@ export function AgentDecisionLayer(props: {
                   title_ref={title_ref}
                   on_resolve={props.on_resolve_write_approval}
                 />
+              ) : visible_decision?.kind === "batch_translation" ? (
+                <AgentTranslationDecision
+                  key={visible_decision.id}
+                  decision={visible_decision}
+                  title_ref={title_ref}
+                  on_resolve={props.on_resolve_translation}
+                />
               ) : null}
             </DialogPrimitive.Popup>
           </DialogPrimitive.Viewport>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
     </>
+  );
+}
+
+/** 翻译决定直接提交当前接入点或菜单选择，错误留在原决定中重试。 */
+function AgentTranslationDecision(props: {
+  decision: Extract<AgentPendingDecision, { kind: "batch_translation" }>;
+  title_ref: RefObject<HTMLHeadingElement | null>;
+  on_resolve: (id: string, response: AgentTranslationResponse) => Promise<void>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const [submitting, set_submitting] = useState(false);
+  const submitting_ref = useRef(false); // React 提交前也只发送一次决定
+  const [error, set_error] = useState<string | null>(null);
+
+  /** 同一决定只发送一次在途请求，保存失败后恢复操作。 */
+  async function submit(response: AgentTranslationResponse): Promise<void> {
+    if (submitting_ref.current) return;
+    submitting_ref.current = true;
+    set_submitting(true);
+    set_error(null);
+    try {
+      await props.on_resolve(props.decision.id, response);
+    } catch (failure) {
+      set_error(resolve_visible_error_message(failure, t, t("app.model.selection.update_failed")));
+    } finally {
+      submitting_ref.current = false;
+      set_submitting(false);
+    }
+  }
+
+  return (
+    <AgentDecisionFrame
+      title={t("batch_translation.setup.title")}
+      TitleIcon={CircleQuestionMark}
+      title_ref={props.title_ref}
+      description={t("batch_translation.setup.description")}
+      expires_at={props.decision.expiresAt}
+      on_cancel={() => {
+        void submit({ kind: "cancel" });
+      }}
+      cancel_disabled={submitting}
+    >
+      {(deadline) => (
+        <>
+          <div className="agent-decision__options" aria-busy={submitting}>
+            <AgentDecisionAction
+              ordinal={1}
+              label={t("batch_translation.setup.current")}
+              deadline={deadline}
+              disabled={submitting || deadline.remaining_seconds === 0}
+              onClick={() => {
+                void submit({
+                  kind: "provider",
+                  providerId: props.decision.translation.currentProviderId,
+                });
+              }}
+            />
+            <AppDropdownMenu>
+              <AppDropdownMenuTrigger
+                render={
+                  <AgentDecisionAction
+                    ordinal={2}
+                    label={t("batch_translation.setup.other")}
+                    disabled={
+                      submitting ||
+                      deadline.remaining_seconds === 0 ||
+                      props.decision.translation.providers.length === 0
+                    }
+                  />
+                }
+              />
+              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                <ModelSelectionOptions
+                  models={props.decision.translation.providers}
+                  value={props.decision.translation.currentProviderId}
+                  disabled={submitting}
+                  on_select={(providerId) => {
+                    void submit({ kind: "provider", providerId });
+                  }}
+                />
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          </div>
+          {error === null ? null : (
+            <p className="agent-decision__error" role="alert">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </AgentDecisionFrame>
   );
 }
 
@@ -128,7 +244,7 @@ function AgentQuestionDecision(props: {
               ordinal={index + 1}
               label={option.label}
               deadline={index === 0 ? deadline : undefined}
-              on_select={() => props.on_resolve({ kind: "option", optionId: option.id })}
+              onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
             />
           ))}
           <div className="agent-decision-custom">
@@ -196,7 +312,7 @@ function AgentWriteDecision(props: {
               ordinal={index + 1}
               label={t(key)}
               deadline={index === 0 ? deadline : undefined}
-              on_select={() => props.on_resolve(value)}
+              onClick={() => props.on_resolve(value)}
             />
           ))}
         </div>
@@ -214,6 +330,7 @@ function AgentDecisionFrame(props: {
   expires_at: number;
   children: (deadline: AgentDecisionDeadline) => ReactNode;
   on_cancel?: () => void;
+  cancel_disabled?: boolean;
 }): JSX.Element {
   const { t } = useI18n();
   const [remaining_seconds, set_remaining_seconds] = useState(() =>
@@ -243,7 +360,11 @@ function AgentDecisionFrame(props: {
         <div className="agent-decision__heading">
           <div className="agent-decision__title-line">
             <props.TitleIcon className="agent-decision__title-icon" aria-hidden="true" />
-            <DialogPrimitive.Title ref={props.title_ref} className="agent-decision__prompt">
+            <DialogPrimitive.Title
+              ref={props.title_ref}
+              tabIndex={-1}
+              className="agent-decision__prompt"
+            >
               {props.title}
             </DialogPrimitive.Title>
           </div>
@@ -265,6 +386,7 @@ function AgentDecisionFrame(props: {
                     variant="ghost"
                     aria-label={t("agent_page.decision.cancel")}
                     onClick={props.on_cancel}
+                    disabled={props.cancel_disabled}
                   >
                     <X aria-hidden="true" />
                   </AppButton>
@@ -281,33 +403,38 @@ function AgentDecisionFrame(props: {
 }
 
 /** 决策动作统一承载序号、标签和可选期限进度。 */
-function AgentDecisionAction(props: {
+function AgentDecisionAction({
+  ordinal,
+  label,
+  deadline,
+  className,
+  ...button_props
+}: ComponentPropsWithRef<"button"> & {
   ordinal: number;
   label: string;
   deadline?: AgentDecisionDeadline;
-  on_select: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const remaining_label =
-    props.deadline === undefined
+    deadline === undefined
       ? null
       : t("agent_page.decision.remaining", {
-          time: format_remaining_time(props.deadline.remaining_seconds),
+          time: format_remaining_time(deadline.remaining_seconds),
         });
   return (
-    <button type="button" className="agent-decision-action" onClick={props.on_select}>
+    <button type="button" {...button_props} className={cn("agent-decision-action", className)}>
       <span className="agent-decision-badge" aria-hidden="true">
-        {props.ordinal}
+        {ordinal}
       </span>
-      <span className="agent-decision-action__label">{props.label}</span>
+      <span className="agent-decision-action__label">{label}</span>
       <span
         className={`agent-decision-icon agent-decision-action__icon${
-          props.deadline === undefined ? "" : " agent-decision-action__icon--deadline"
+          deadline === undefined ? "" : " agent-decision-action__icon--deadline"
         }`}
-        data-warning={props.deadline?.warning ? "true" : undefined}
-        aria-hidden={props.deadline === undefined ? "true" : undefined}
+        data-warning={deadline?.warning ? "true" : undefined}
+        aria-hidden={deadline === undefined ? "true" : undefined}
       >
-        {props.deadline === undefined ? null : (
+        {deadline === undefined ? null : (
           <svg className="agent-decision-progress" viewBox="0 0 24 24" aria-hidden="true">
             <circle className="agent-decision-progress__track" cx="12" cy="12" r="10.75" />
             <circle
@@ -316,7 +443,7 @@ function AgentDecisionAction(props: {
               cy="12"
               r="10.75"
               pathLength="100"
-              style={{ strokeDashoffset: 100 - props.deadline.remaining_percent }}
+              style={{ strokeDashoffset: 100 - deadline.remaining_percent }}
             />
           </svg>
         )}

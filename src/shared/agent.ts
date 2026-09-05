@@ -1,5 +1,15 @@
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "./i18n/types";
+import type { ModelSelectionOption } from "./model-selection";
+
+export type AgentTranslationResponse = JsonRecord &
+  ({ kind: "provider"; providerId: string } | { kind: "cancel" });
+
+/** 完整候选与本轮默认接入点由后端提供，执行配置留在后端。 */
+export type AgentTranslationRequest = JsonRecord & {
+  providers: ModelSelectionOption[];
+  currentProviderId: string;
+};
 
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
@@ -91,6 +101,12 @@ export type AgentPendingDecision = JsonRecord &
         id: string;
         expiresAt: number;
         summary: AgentPendingWriteSummary;
+      }
+    | {
+        kind: "batch_translation";
+        id: string;
+        expiresAt: number;
+        translation: AgentTranslationRequest;
       }
   );
 

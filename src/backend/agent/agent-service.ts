@@ -1,7 +1,10 @@
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
-import type { BatchTranslationResult } from "../../domain/batch-translation";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
-import { create_agent_batch_translation_tool } from "./model-tools/batch-translation";
+import { Model } from "../../domain/model";
+import {
+  create_agent_batch_translation_tool,
+  type AgentBatchTranslationResult,
+} from "./model-tools/batch-translation";
 import {
   contentText,
   InMemoryCredentialStore,
@@ -120,6 +123,7 @@ function select_agent_skills(
 
 type AgentRuntime = {
   session: AgentSession;
+  model_config: Model; // 随 SDK 成功换模同步的应用配置；工具捕获独立副本作为继承来源
   unsubscribe: () => void;
   steer_ready: boolean; // Pi 已进入 agent loop 且当前不在压缩阶段
 };
@@ -173,6 +177,10 @@ type AgentServiceOptions = {
     import("../batch-translation/batch-translation-service").BatchTranslationService,
     "run_under_agent"
   >;
+  models: Pick<
+    import("../model/model-service").ModelService,
+    "read_selection_snapshot" | "select_translation_model_under_agent"
+  >;
   paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
   userAgent: string;
@@ -201,6 +209,7 @@ export class AgentService {
   private readonly batch_translation: AgentServiceOptions["batchTranslation"];
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
+  private readonly models: AgentServiceOptions["models"];
   private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
@@ -217,7 +226,7 @@ export class AgentService {
   private operation_acceptance: Promise<AgentCommandAck> | null = null; // 串行覆盖建会话、换模与异步操作启动
   private runtime_settlement: Promise<void> | null = null; // 后台模型与压缩操作统一纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
-  private user_stopped_translation: BatchTranslationResult | null = null; // 用户停止结果在当前 round 内暂停翻译能力
+  private translation_paused_result: AgentBatchTranslationResult | null = null; // 用户取消、超时或停止在当前 round 内暂停翻译能力
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
@@ -237,6 +246,7 @@ export class AgentService {
     this.batch_translation = options.batchTranslation;
     this.paths = options.paths;
     this.settings = options.settings;
+    this.models = options.models;
     this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.runtime_gate = options.runtimeGate;
@@ -312,6 +322,13 @@ export class AgentService {
   public resolve_write_approval(request: JsonRecord): AgentCommandAck {
     this.assert_not_disposed();
     this.decisions.resolve_write_approval(request);
+    return this.get_acknowledgement();
+  }
+
+  /** 当前翻译决定先保存共享设置，再恢复原工具调用。 */
+  public resolve_translation(request: JsonRecord): AgentCommandAck {
+    this.assert_not_disposed();
+    this.decisions.resolve_translation(request);
     return this.get_acknowledgement();
   }
 
@@ -825,7 +842,7 @@ export class AgentService {
           diagnostic_context: { reason: "agent_continue_invalidated" },
         });
       }
-      this.user_stopped_translation = null;
+      this.translation_paused_result = null;
       const continuation = this.run_continue(runtime, generation, runtime_lease);
       this.track_runtime_settlement(continuation);
       continuation_started = true;
@@ -900,7 +917,7 @@ export class AgentService {
     message: AgentMessageInput,
     replacement_prefix?: readonly AgentEntry[],
   ): void {
-    this.user_stopped_translation = null;
+    this.translation_paused_result = null;
     const entry: AgentEntry = {
       kind: "user_message",
       id: uuidv7(),
@@ -961,6 +978,7 @@ export class AgentService {
     await runtime.session.setModel(resolved_model.model);
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
     runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
+    runtime.model_config = resolved_model.model_config;
   }
 
   /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
@@ -1001,21 +1019,52 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
-        create_agent_batch_translation_tool(async (signal) => {
+        create_agent_batch_translation_tool(async (signal, tool_call_id) => {
           const lease = this.runtime_lease;
           if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
-          if (this.user_stopped_translation !== null) return this.user_stopped_translation;
+          if (this.translation_paused_result !== null) return this.translation_paused_result;
           const generation = this.runtime_generation;
           try {
-            const result = await this.batch_translation.run_under_agent(lease, signal);
+            this.session_state.require_loaded_project_path();
+            const current_model = Model.from_json(
+              runtime.model_config.to_json(),
+              runtime.model_config.id,
+            );
+            const decision = await this.decisions.wait_for_translation(
+              tool_call_id,
+              {
+                providers: this.models.read_selection_snapshot().models,
+                currentProviderId: current_model.id,
+              },
+              signal,
+              (provider_id) => {
+                // 决定身份由协调器校验，真实 lease 和本轮快照限定保存与继承的边界。
+                this.runtime_gate.assert_current_runtime(lease, "agent");
+                const model = this.models.select_translation_model_under_agent(lease, provider_id);
+                return provider_id === current_model.id ? current_model : model;
+              },
+            );
+            signal.throwIfAborted();
+            this.runtime_gate.assert_current_runtime(lease, "agent");
+            if (generation !== this.runtime_generation)
+              throw new AppErrors.AppError("runtime.cancelled");
+            if (decision.status === "not_started") {
+              this.translation_paused_result = decision;
+              return decision;
+            }
+            const result = await this.batch_translation.run_under_agent(
+              lease,
+              signal,
+              decision.model,
+            );
             if (generation === this.runtime_generation && result.stop_source === "user") {
-              this.user_stopped_translation = result;
+              this.translation_paused_result = result;
             }
             return result;
           } catch (error) {
             if (error instanceof BatchTranslationCompletionError) {
               if (generation === this.runtime_generation && error.result.stop_source === "user") {
-                this.user_stopped_translation = error.result;
+                this.translation_paused_result = error.result;
               }
               // 翻译边界投影取消事实；原始收尾异常进入本地诊断。
               this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
@@ -1046,6 +1095,7 @@ export class AgentService {
     });
     const runtime: AgentRuntime = {
       session,
+      model_config: resolved_model.model_config,
       unsubscribe: () => undefined,
       steer_ready: false,
     };
@@ -1549,7 +1599,7 @@ export class AgentService {
     this.entries = [];
     this.context = { tokens: null, compactable: false };
     this.latest_round_checkpoint = null;
-    this.user_stopped_translation = null;
+    this.translation_paused_result = null;
     this.latest_output_checkpoint = null;
     this.pending_assistant_checkpoint = null;
     this.todos = [];

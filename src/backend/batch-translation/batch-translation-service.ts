@@ -5,6 +5,11 @@ import type {
   BatchTranslationRunHandle,
 } from "./batch-translation-runtime";
 import type { RuntimeLease } from "../runtime-operation-gate";
+import type { AppSettingService } from "../app/app-setting-service";
+import type { BatchTranslationRunContext } from "./core/batch-translation-runner-options";
+import { Model } from "../../domain/model";
+import { normalize_setting_snapshot } from "../../domain/setting";
+import { resolve_model_for_usage } from "../model/model-config-resolver";
 import { AppError } from "../../shared/error";
 import {
   is_json_record,
@@ -28,6 +33,7 @@ export class BatchTranslationService {
     private readonly runner: BatchTranslationRunner,
     private readonly runtime: BatchTranslationRuntime,
     private readonly session: ProjectSessionState,
+    private readonly settings: Pick<AppSettingService, "read_setting">,
   ) {}
   /** 转接共享运行态的快照订阅。 */
   public subscribe(listener: BatchTranslationSnapshotListener): () => void {
@@ -48,13 +54,16 @@ export class BatchTranslationService {
   ): Promise<BatchTranslationRunHandle> {
     this.session.require_loaded_project_path();
     const handle = this.runtime.begin_standalone(command.scope);
-    await this.runtime.execute(handle, () => this.runner.run(handle, command));
+    await this.runtime.execute(handle, () =>
+      this.runner.run(handle, command, this.read_run_context()),
+    );
     return handle;
   }
-  /** 按工程累计进度选择模式，并在当前 Agent round 等待完成。 */
+  /** 当前 Agent lease 内启动，并等待本轮完整收尾。 */
   public async run_under_agent(
     lease: RuntimeLease,
     signal: AbortSignal,
+    model: Model,
   ): Promise<BatchTranslationResult> {
     this.session.require_loaded_project_path();
     const command: BatchTranslationStartCommand = {
@@ -62,9 +71,22 @@ export class BatchTranslationService {
       scope: { kind: "all" },
     };
     const handle = this.runtime.begin_under_agent(command.scope, lease, signal);
-    await this.runtime.execute(handle, () => this.runner.run(handle, command));
+    await this.runtime.execute(handle, () =>
+      this.runner.run(handle, command, this.read_run_context(model)),
+    );
     return await handle.completion;
   }
+  /** 运行 lease 内统一准备设置与模型，跨入 Runner 时隔离嵌套配置引用。 */
+  private read_run_context(model?: Model): BatchTranslationRunContext {
+    const settings = this.settings.read_setting();
+    const raw_model = model?.to_json() ?? resolve_model_for_usage(settings, "translation");
+    if (raw_model === null) throw new AppError("model.not_found");
+    return {
+      config_snapshot: normalize_setting_snapshot(settings),
+      model: { ...Model.from_json(raw_model, "") },
+    };
+  }
+
   /** 请求停止并回传权威快照。 */
   public async stop(): Promise<MutableJsonRecord> {
     const accepted = await this.runtime.request_stop();

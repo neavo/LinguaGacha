@@ -203,6 +203,11 @@
   gap: 0;
 }
 
+.batch-translation__metric[data-slot="tooltip-trigger"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .batch-translation__metric-label {
   overflow-wrap: anywhere;
   color: color-mix(in srgb, var(--foreground) 92%, var(--primary) 8%);
@@ -257,4 +262,25 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   gap: 10px;
+}
+
+.batch-translation__provider {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.batch-translation__provider > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-translation__provider > span:first-child {
+  color: var(--foreground);
+  font-weight: 500;
 }

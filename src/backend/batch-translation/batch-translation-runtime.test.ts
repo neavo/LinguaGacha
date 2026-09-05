@@ -34,6 +34,33 @@ const result = () => ({
 });
 
 describe("批量翻译完成链", () => {
+  it("本轮配置隔离引用并保留终态，新运行从空配置开始", async () => {
+    const { runtime, database } = setup();
+    const handle = runtime.begin_standalone({ kind: "all" });
+    const config = {
+      model_name: "翻译模型",
+      model_id: "test-model",
+      thinking_level: "HIGH" as const,
+      source_language: "JA",
+      target_language: "ZH",
+    };
+    await runtime.execute(handle, async () => {
+      await runtime.publish_config(handle, config);
+      config.model_name = "后来改名";
+      return result();
+    });
+    await handle.completion;
+    const snapshot = await runtime.build_snapshot();
+    expect(snapshot.config?.model_name).toBe("翻译模型");
+    expect(snapshot.config?.thinking_level).toBe("HIGH");
+    const next = runtime.begin_standalone({ kind: "all" });
+    await runtime.publish_config(handle, config);
+    expect((await runtime.build_snapshot()).config).toBeUndefined();
+    await runtime.execute(next, async () => result());
+    await next.completion;
+    await runtime.dispose();
+    database.close();
+  });
   afterEach(() => vi.useRealTimers());
   it("压力按发布窗口合并且终态前冲刷，迟到进度不覆盖新运行", async () => {
     vi.useFakeTimers();

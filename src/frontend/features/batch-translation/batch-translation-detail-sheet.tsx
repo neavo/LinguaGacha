@@ -5,6 +5,7 @@ import { cn } from "@frontend/shadcn/classnames";
 import type { BatchTranslationDetailDisplay } from "@frontend/features/batch-translation/batch-translation-display";
 import { BatchTranslationWaveform } from "@frontend/features/batch-translation/batch-translation-waveform";
 import { AppButton } from "@frontend/widgets/app-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
   Sheet,
   SheetContent,
@@ -69,6 +70,33 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
                   </h3>
                 </div>
                 <div className="batch-translation__metrics-grid">
+                  {props.display.provider === null ? null : (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <article className="batch-translation__metric" tabIndex={0}>
+                            <div className="batch-translation__metric-head">
+                              <span className="batch-translation__metric-label">
+                                {props.display.provider.label}
+                              </span>
+                            </div>
+                            <div className="batch-translation__provider">
+                              <span>{props.display.provider.name}</span>
+                              <span>{props.display.provider.model}</span>
+                              <span>{props.display.provider.thinking}</span>
+                            </div>
+                          </article>
+                        }
+                      />
+                      <TooltipContent side="left" sideOffset={8}>
+                        <div className="min-w-0 space-y-1 text-left">
+                          <p>{props.display.provider.name}</p>
+                          <p>{props.display.provider.model}</p>
+                          <p>{props.display.provider.thinking}</p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   {props.display.metric_entries.map((entry) => (
                     <article key={entry.key} className="batch-translation__metric">
                       <div className="batch-translation__metric-head">

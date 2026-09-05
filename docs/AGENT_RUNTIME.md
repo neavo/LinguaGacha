@@ -4,7 +4,7 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
+- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、翻译设置 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含 renderer 生成的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
 - 空闲且没有暂停队列时，message 建立新的公开轮次；运行时 message 进入当前会话最多保留 5 条的有界内存输入队列，达到上限后 renderer 禁止新增入队，AgentService 仍以共享上限拒绝越界请求。正常轮次成功后在同一运行 lease 内按 FIFO 续取，stop 或模型失败保留并暂停剩余队列。continue 原子追加可选消息、解除暂停，并按需恢复失败 round 或启动队首；空 continue 只表达继续意图。立即发送在空闲时启动选中 round，在运行时经 Pi `steer` 发送，并仅在对应 user `message_start` 后从 `sending` 提交为成功的 `delivery: steer` 条目；提交前失败、停止或取消恢复为 `queued`。普通 user 使用 `delivery: round`；只有 round 建立 SDK history checkpoint 和轮次终态，因而可作为 revise（包括以原输入重新运行）与失败 continue 的目标。
 - revise 目标为最新 round user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。continue 以隐藏“继续”消息续跑失败的原 user 轮次。两种操作都要求会话空闲，revision 另校验最新 round 输入或最终输出身份；更早轮次、steer 输入和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；round user、assistant 与 tool 条目携带 `running | success | error | stopped` 状态，steer user 只在成功提交后公开，上下文压缩条目只使用 `running | success | error`。
 - `AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、审批模式、revise、手动压缩、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；手动压缩在 `context_compaction` running 条目发布后返回 ack，最终 success / error 由后续增量事件结算。完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
@@ -19,11 +19,12 @@
 |模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
 |模型对话级有序 Todo|`AgentService`|`ws.todo`、Agent API 与 `agent.session_event`|
-|当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|question / write approval resolve API 与 `agent.session_event`|
+|当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
 |当前对话 `task`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
-- 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 统一持有普通问题或写入授权的五分钟期限、取消和一次性裁决；两类决定分别使用窄 resolve API，写入授权到期等同拒绝。决定受理时先清除 pending，再在下一事件循环恢复工具，不公开处理中状态；reset、工程切换和 dispose 取消当前等待。
+- 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 统一持有普通问题、写入授权或翻译设置的五分钟期限、取消和一次性裁决，各自使用窄 resolve API。写入授权到期等同拒绝；翻译决定同步解析执行配置并保存接入点选择，失败保留决定和原期限，成功才清除 pending，并在下一事件循环把后端私有配置交回工具。reset、工程切换和 dispose 取消当前等待。
+- `run_batch_translation` 空参数调用建立接入点决定，公开完整候选与本轮 Agent 配置 ID，回答为 `provider + providerId` 或 `cancel`。当前 ID 继承成功建会话或换模时保留的独立模型配置及生效思考档位，其他 ID 使用自身保存配置；确认仅持久化 translation 用途选择。恢复工具时校验取消信号、当前 lease 与会话世代，再交给共享批量翻译入口。取消或到期返回 `not_started`；该结果与用户停止结果均在当前 round 复用，新的 user round 或显式 continue 恢复翻译能力。
 - 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；允许后续写入只在当前批次成功提交后切换为 `auto`，拒绝、超时或提交失败保持 `manual`。reset、工程切换和应用重启恢复为 `manual`。
 - Agent 运行时完全内存化。消息受理到当前 round 及其自动 FIFO 链最终 settle 期间持续持有 [`RuntimeOperationGate`](BACKEND.md) 的同一运行 lease，等待用户决定也不释放；Pi 在单个 SDK run 内拥有工具循环、阈值压缩与压缩后的继续执行。手动压缩只在稳定空闲且存在可压缩旧段时受理，以独立 Agent lease 更新当前模型配置、发布 running 条目并在后台调用同一 SDK 压缩入口，不建立公开 round；ack 返回后 settlement 继续持有 lease，reset、工程切换和 dispose 的关闭屏障等待其退出。Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定公开 `canSendNow`，避免在异步预检、用户决定、压缩或结算窗口接受 steer。用户输入队列与 Todo 跨普通模型回合、stop、continue、模型失败和压缩保留，并在 reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订分别使用写入模型历史前记录的 SDK leaf 裁剪活动路径；裁剪保留此前模型历史，但不回滚已经发生的外部副作用。
 - continue 从受理到失败 round 恢复或队首启动持有同一运行 lease，失败时重新暂停剩余队列；失败 user 原位恢复并保留既有公开条目与模型历史，不追加公开“继续”user。stop 同步封口当前 round 后异步取消 SDK，lease 到最终 settle 才释放。压缩和 `workspace_apply` 不可 stop；reset、工程切换和 dispose 通过关闭屏障隔离旧会话。
@@ -70,7 +71,7 @@
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
 - `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 `context`、`todos`、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、todo、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
-- Agent Composer 底栏显示当前写入请求审批模式（`手动批准` / `自动批准`），通过只含两个选项的弹出菜单切换，当前项带勾选。`pendingDecision` 由 snapshot / SSE 同步；页面把局部决策层与底部控制区同域叠放，并一次性把控制区设为 inert，对话时间线仍可阅读。普通问题显示点击即提交的固定动作、带内嵌确认的自定义单行答案和右上角取消；写入授权显示三个点击即提交的固定动作。两者只接受显式控件操作，renderer 按后端 `expiresAt` 在第一项的右侧动作图标上展示期限进度，决定受理后立即关闭。写入摘要把结构化计数本地化为非零变更类别列表；审批模式仍由后端命令更新，页面不做本地乐观切换。
+- Agent Composer 通过菜单切换写入审批模式，更新以后台命令为准。页面在底部控制区叠放 `pendingDecision` 并将控制区设为 inert，时间线仍可阅读；各类决定只接受显式操作，共用后端 `expiresAt` 的期限进度，受理后关闭。普通问题提供固定动作、自定义答案与取消；写入授权提供三种权限动作，摘要按非零变更类别本地化。翻译决定可直接使用当前接入点，或从完整分类菜单选定即提交，已选项同样可启动；收起菜单继续等待，提交期间禁用动作，失败保留原决定及错误。
 - `AgentCompletionAttention` 在跨路由会话镜像中观察一次运行从 `running` 收束到最终 round `success | error` 的转换，并忽略 `stopped`、reset 与自动队列中间轮次；确认后只请求宿主注意力，不新增 Agent SSE 事件或通知正文。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有命令复用轻量 ack 与命令期 SSE revision 重放，删除、重排和立即发送的受理失败由页面解析为安全 Toast，队列原位编辑失败保留在编辑器旁，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空普通 Composer 草稿，空 continue 不改写草稿或历史；队列项与时间线条目各自在目标位置展开独立编辑器，成功后由页面显式替换 user 输入历史，assistant 修改不改写输入历史。

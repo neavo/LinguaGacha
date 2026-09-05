@@ -1,5 +1,7 @@
 import type { useI18n } from "@frontend/app/locale/locale-provider";
 import type { BatchTranslationMetrics } from "@shared/batch-translation/batch-translation";
+import type { BatchTranslationConfig } from "@domain/batch-translation";
+import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 export type BatchTranslationTone = "neutral" | "success" | "warning";
 
 export type BatchTranslationMetricEntry = {
@@ -24,6 +26,7 @@ export type BatchTranslationSummaryDisplay = {
  * BatchTranslationDetailDisplay 是详情抽屉消费的完整任务展示数据。
  */
 export type BatchTranslationDetailDisplay = {
+  provider: BatchTranslationProviderDisplay | null;
   waveform_title: string;
   metrics_title: string;
   completion_percent_text: string;
@@ -32,6 +35,14 @@ export type BatchTranslationDetailDisplay = {
   stop_button_label: string;
   stop_disabled: boolean;
   waveform_history: number[];
+};
+
+/** 接入点的三行文本直接来自本次运行快照。 */
+type BatchTranslationProviderDisplay = {
+  label: string;
+  name: string;
+  model: string;
+  thinking: string;
 };
 
 /**
@@ -141,11 +152,6 @@ function build_translation_task_metric_entries(
       ...format_duration_value(metrics.remaining_seconds),
     },
     {
-      key: "speed",
-      label: t("batch_translation.detail.average_speed"),
-      ...format_speed_value(metrics.average_generation_speed),
-    },
-    {
       key: "input-tokens",
       label: t("batch_translation.detail.input_tokens"),
       ...format_compact_metric_value(metrics.input_tokens, "T"),
@@ -161,6 +167,11 @@ function build_translation_task_metric_entries(
       ...format_compact_metric_value(metrics.output_tokens, "T"),
     },
     {
+      key: "speed",
+      label: t("batch_translation.detail.average_speed"),
+      ...format_speed_value(metrics.average_generation_speed),
+    },
+    {
       key: "active-requests",
       label: t("batch_translation.detail.active_requests"),
       ...format_compact_metric_value(metrics.request_in_flight_count, "Task"),
@@ -174,6 +185,7 @@ function build_translation_task_metric_entries(
 export function build_translation_task_summary_display(
   metrics: BatchTranslationMetrics,
   t: ReturnType<typeof useI18n>["t"],
+  config?: BatchTranslationConfig,
 ): BatchTranslationSummaryDisplay {
   let status_text = t("batch_translation.summary.empty");
   if (metrics.stopping) {
@@ -183,13 +195,22 @@ export function build_translation_task_summary_display(
   }
 
   const show_runtime = metrics.active || metrics.stopping;
+  const provider = build_translation_provider(config, t);
 
   return {
     status_text,
     trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
     tone: resolve_task_tone(metrics),
     show_spinner: show_runtime,
-    detail_tooltip_text: t("batch_translation.summary.detail_tooltip"),
+    detail_tooltip_text: [
+      ...(provider === null
+        ? []
+        : [
+            `${t("app.model.selection.label")}: ${provider.name}`,
+            `${t("app.model.thinking_level.label")}: ${provider.thinking}`,
+          ]),
+      t("batch_translation.summary.detail_tooltip"),
+    ].join("\n"),
   };
 }
 
@@ -197,11 +218,13 @@ export function build_translation_task_summary_display(
  * 将翻译任务快照组装成详情面板契约，停止中禁用重复停止。
  */
 export function build_translation_task_detail_display(args: {
+  config?: BatchTranslationConfig;
   metrics: BatchTranslationMetrics;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
 }): BatchTranslationDetailDisplay {
   return {
+    provider: build_translation_provider(args.config, args.t),
     waveform_title: args.t("batch_translation.detail.waveform_title"),
     metrics_title: args.t("batch_translation.detail.metrics_title"),
     completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
@@ -212,5 +235,23 @@ export function build_translation_task_detail_display(args: {
       : args.t("batch_translation.action.stop"),
     stop_disabled: !args.metrics.active || args.metrics.stopping,
     waveform_history: args.waveform_history,
+  };
+}
+
+/** 当前运行配置直接投影显示；模型重命名与后续设置变化由各自快照隔离。 */
+function build_translation_provider(
+  config: BatchTranslationConfig | undefined,
+  t: ReturnType<typeof useI18n>["t"],
+): BatchTranslationProviderDisplay | null {
+  if (config === undefined) return null;
+  return {
+    label: t("batch_translation.detail.provider"),
+    name: config.model_name || config.model_id,
+    model: config.model_id,
+    thinking: t(
+      config.thinking_level === null
+        ? "app.model.thinking_level.default"
+        : MODEL_THINKING_LEVEL_LABEL_KEY[config.thinking_level],
+    ),
   };
 }

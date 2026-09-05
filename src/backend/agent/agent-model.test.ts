@@ -155,6 +155,11 @@ describe("Agent 模型注册", () => {
       reasoning: true,
     });
     expect(resolved.thinkingLevel).toBe("xhigh");
+    expect(resolved.model_config).toMatchObject({
+      id: "active",
+      model_id: "gpt-5.5",
+      thinking: { level: "XHIGH" },
+    });
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 Responses streamSimple");
@@ -219,6 +224,7 @@ describe("Agent 模型注册", () => {
 
     expect(resolved.model.reasoning).toBe(false);
     expect(resolved.thinkingLevel).toBe("off");
+    expect(resolved.model_config.thinking.level).toBe("OFF");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     expect(provider_config?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
     if (provider_config?.streamSimple === undefined) {

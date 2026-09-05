@@ -202,7 +202,6 @@ export class BackendServices {
       taskPlanner: new TranslationPlanner({
         planningWorkerPool: this.planning_worker_pool,
       }),
-      AppSettingService: this.app_setting_service,
       logManager: this.logManager,
     });
 
@@ -296,6 +295,7 @@ export class BackendServices {
       task_engine,
       this.task_runtime,
       session_state,
+      this.app_setting_service,
     );
     this.state = {
       session: session_state,

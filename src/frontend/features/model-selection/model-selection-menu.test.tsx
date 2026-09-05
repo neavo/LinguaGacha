@@ -6,6 +6,7 @@ import type { ModelSelectionController } from "./use-model-selection";
 import { ModelSelectionMenu, ModelThinkingLevelOptions } from "./model-selection-menu";
 
 const menu_state = vi.hoisted(() => ({
+  item_actions: new Map<string, (() => void) | undefined>(),
   on_value_change: null as ((value: string) => void) | null,
 }));
 
@@ -37,11 +38,18 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
       </div>
     );
   },
-  AppDropdownMenuRadioItem: (props: { children: ReactNode; value: string }) => (
-    <div role="radio" data-value={props.value}>
-      {props.children}
-    </div>
-  ),
+  AppDropdownMenuRadioItem: (props: {
+    children: ReactNode;
+    value: string;
+    onClick?: () => void;
+  }) => {
+    menu_state.item_actions.set(props.value, props.onClick);
+    return (
+      <div role="radio" data-value={props.value}>
+        {props.children}
+      </div>
+    );
+  },
 }));
 
 describe("ModelSelectionMenu", () => {
@@ -83,7 +91,9 @@ describe("ModelSelectionMenu", () => {
     expect(document.querySelector('button[aria-current="true"]')).not.toBeNull();
     expect(document.querySelector('[role="radiogroup"][data-value="openai"]')).not.toBeNull();
     expect(document.querySelector('[role="radio"][data-value="preset"]')).not.toBeNull();
-    menu_state.on_value_change?.("preset");
+    menu_state.item_actions.get("preset")?.();
+    menu_state.item_actions.get("openai")?.();
+    expect(select_model).toHaveBeenCalledWith("translation", "openai");
     expect(select_model).toHaveBeenCalledWith("translation", "preset");
   });
 

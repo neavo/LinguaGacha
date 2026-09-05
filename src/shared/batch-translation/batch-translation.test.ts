@@ -10,6 +10,21 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
+  it("运行配置经传输与历史复制保留，缺失配置保持为空", () => {
+    const config = {
+      model_name: "执行模型",
+      model_id: "model",
+      thinking_level: "HIGH" as const,
+      source_language: "JA",
+      target_language: "ZH",
+    };
+    const snapshot = normalize_batch_translation_snapshot({ batch_translation: { config } });
+    const cloned = clone_translation_task_snapshot(snapshot);
+    config.model_name = "新默认模型";
+    expect(cloned.config?.model_name).toBe("执行模型");
+    expect(cloned.config).not.toBe(snapshot.config);
+    expect(normalize_batch_translation_snapshot({}).config).toBeUndefined();
+  });
   it("停止来源随 HTTP 归一与快照复制保留", () => {
     const snapshot = normalize_batch_translation_snapshot({
       batch_translation: {

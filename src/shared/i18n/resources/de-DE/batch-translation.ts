@@ -1,6 +1,12 @@
 import { zh_cn_batch_translation } from "../zh-CN/batch-translation";
 import type { LocaleMessageSchema } from "../../types";
 export const de_de_batch_translation = {
+  setup: {
+    title: "Stapelübersetzung ausführen",
+    description: "Wählen Sie einen Anbieter für die Stapelübersetzung",
+    current: "Aktuellen Agent-Anbieter verwenden",
+    other: "Anderen Anbieter auswählen",
+  },
   menu: {
     progress: "Fortschritt",
     tooltip: "Quelltext in die Zielsprache übersetzen",
@@ -12,6 +18,7 @@ export const de_de_batch_translation = {
     running: "Wird übersetzt",
   },
   detail: {
+    provider: "Anbieter",
     elapsed_time: "Verstrichene Zeit",
     remaining_time: "Verbleibende Zeit",
     average_speed: "Durchschnittsgeschwindigkeit",

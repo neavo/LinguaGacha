@@ -128,6 +128,50 @@ describe("AgentSessionStore", () => {
     desktop_api_mocks.open_event_stream.mockReset().mockReturnValue(event_source);
   });
 
+  it("恢复翻译决定并经专用命令提交，保存失败时继续保留等待", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: {
+          kind: "batch_translation",
+          id: "translation",
+          expiresAt: Date.now() + 300000,
+          translation: { currentProviderId: "a", providers: [] },
+        },
+      }),
+    );
+    expect(latest.pendingDecision).toMatchObject({
+      kind: "batch_translation",
+      translation: { currentProviderId: "a", providers: [] },
+    });
+    const response = { kind: "provider" as const, providerId: "a" };
+    desktop_api_mocks.api_fetch.mockRejectedValueOnce(new Error("save failed"));
+    await act(async () => {
+      await expect(latest.resolveTranslation("translation", response)).rejects.toThrow(
+        "save failed",
+      );
+    });
+    expect(latest.pendingDecision?.id).toBe("translation");
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      return { revision: event_source.current_revision };
+    });
+    await act(async () => latest.resolveTranslation("translation", response));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenLastCalledWith("/api/agent/translation/resolve", {
+      id: "translation",
+      response,
+    });
+    expect(latest.pendingDecision).toBeNull();
+  });
+
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     function Probe(): null {

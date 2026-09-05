@@ -13,6 +13,7 @@ import {
 import type { ProjectDataReader } from "../project/project-data-reader";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import type { BatchTranslationConfig } from "../../domain/batch-translation";
 import { AppError } from "../../shared/error";
 
 /** 停止后的收尾失败同时携带取消事实与原始异常，供调用方落实用户意图。 */
@@ -76,6 +77,7 @@ export class BatchTranslationRuntime {
       this.snapshot = {
         ...this.snapshot,
         status: "idle",
+        config: undefined,
         stop_source: undefined,
         scope: { kind: "all" },
         request_in_flight_count: 0,
@@ -104,6 +106,7 @@ export class BatchTranslationRuntime {
     return {
       ...this.snapshot,
       progress: this.read_progress(),
+      ...(this.snapshot.config === undefined ? {} : { config: { ...this.snapshot.config } }),
       scope: clone_translation_scope(this.snapshot.scope),
     };
   }
@@ -169,6 +172,7 @@ export class BatchTranslationRuntime {
     this.snapshot = {
       ...this.snapshot,
       status: "requested",
+      config: undefined,
       stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
       request_in_flight_count: 0,
@@ -177,6 +181,16 @@ export class BatchTranslationRuntime {
     void run.ready.catch(() => undefined); // 原始拒绝由 execute 的完成链消费。
     return handle;
   }
+  /** 配置由 Runner 从执行快照投影，并归属于当前 run。 */
+  public async publish_config(
+    handle: BatchTranslationRunHandle,
+    config: BatchTranslationConfig,
+  ): Promise<void> {
+    if (!this.is_current(handle.run_id)) return;
+    this.snapshot = { ...this.snapshot, config: Object.freeze({ ...config }) };
+    await this.publish_snapshot();
+  }
+
   /** 同步接管预约；运行结果和收尾始终通过 handle.completion 读取。 */
   public async execute(
     handle: BatchTranslationRunHandle,
