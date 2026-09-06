@@ -1,69 +1,66 @@
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
-
-const shortcut_mock = vi.hoisted(() => vi.fn());
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => ({
-  useActionShortcut: shortcut_mock,
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/widgets/app-editor/app-editor", () => ({
-  AppEditor: (props: {
-    value: string;
-    aria_label: string;
-    read_only: boolean;
-    invalid?: boolean;
-  }) => (
-    <textarea
-      aria-label={props.aria_label}
-      aria-invalid={props.invalid || undefined}
-      readOnly={props.read_only}
-      defaultValue={props.value}
-    />
-  ),
-}));
-vi.mock("@frontend/widgets/app-page-dialog", () => ({
-  AppPageDialog: (props: {
-    open: boolean;
-    title: ReactNode;
-    children: ReactNode;
-    footer: ReactNode;
-  }) =>
-    props.open ? (
-      <section aria-label={String(props.title)}>
-        {props.children}
-        <footer>{props.footer}</footer>
-      </section>
-    ) : null,
-}));
-vi.mock("@frontend/widgets/boolean-segmented-toggle", () => ({
-  BooleanSegmentedToggle: (props: {
-    aria_label: string;
-    value: boolean;
-    disabled: boolean;
-    on_value_change: (value: boolean) => void;
-  }) => (
-    <button
-      type="button"
-      aria-label={props.aria_label}
-      disabled={props.disabled}
-      onClick={() => props.on_value_change(!props.value)}
-    />
-  ),
-}));
-vi.mock("@frontend/widgets/interactions/shortcut-kbd", () => ({ ShortcutKbd: () => null }));
 
 import { TextReplacementEditDialog } from "./text-replacement-edit-dialog";
 
 describe("TextReplacementEditDialog", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it.each(["quality_rule_editor.fields.source", "text_replacement_page.fields.replacement"])(
+    "点击 %s 正文与标题时保持换行设置",
+    async (label) => {
+      await act(async () => {
+        root.render(
+          <TextReplacementEditDialog
+            open
+            mode="edit"
+            entry={{ src: "hero", dst: "勇者", regex: false, case_sensitive: true }}
+            saving={false}
+            readonly={false}
+            invalid={false}
+            on_change={vi.fn()}
+            on_save={vi.fn(async () => undefined)}
+            on_close={vi.fn(async () => undefined)}
+          />,
+        );
+      });
+
+      const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)!;
+      const section = content.closest(".text-replacement-page__dialog-section")!;
+      const wrap_action = section.querySelector<HTMLButtonElement>("button[aria-pressed]")!;
+      const initial_wrap_state = wrap_action.getAttribute("aria-pressed");
+
+      await act(async () => content.querySelector<HTMLElement>(".cm-line")!.click());
+      expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
+      await act(async () =>
+        section.querySelector<HTMLElement>(".text-replacement-page__dialog-section-title")!.click(),
+      );
+      expect(wrap_action.getAttribute("aria-pressed")).toBe(initial_wrap_state);
+    },
+  );
+
   it("通过独立规则控件更新正则与大小写状态", async () => {
     const on_change = vi.fn();
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
 
     await act(async () => {
       root.render(
@@ -81,27 +78,20 @@ describe("TextReplacementEditDialog", () => {
       );
     });
 
-    expect(
-      container.querySelector('textarea[aria-label="quality_rule_editor.fields.source"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('textarea[aria-label="text_replacement_page.fields.replacement"]'),
-    ).not.toBeNull();
     await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('button[aria-label="text_replacement_page.rule.regex"]')
-        ?.click();
-      container
+      document
         .querySelector<HTMLButtonElement>(
-          'button[aria-label="text_replacement_page.rule.case_sensitive"]',
+          '[aria-label="text_replacement_page.rule.regex"] button[aria-pressed="false"]',
+        )
+        ?.click();
+      document
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="text_replacement_page.rule.case_sensitive"] button[aria-pressed="false"]',
         )
         ?.click();
     });
 
     expect(on_change).toHaveBeenCalledWith({ regex: true });
     expect(on_change).toHaveBeenCalledWith({ case_sensitive: false });
-
-    await act(async () => root.unmount());
-    container.remove();
   });
 });

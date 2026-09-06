@@ -31,7 +31,6 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
   useEffect(() => {
     if (props.open && props.invalid && !props.readonly) editor_ref.current?.focus();
   }, [props.open, props.invalid, props.readonly]);
-  const save_label = t("app.action.save");
   const disabled = props.readonly || props.saving;
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
@@ -75,7 +74,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
               void props.on_save();
             }}
           >
-            {save_label}
+            {t("app.action.save")}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </AppButton>
         </>
@@ -85,7 +84,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
         <div className="text-replacement-page__dialog-form">
           <div className="text-replacement-page__dialog-main-panel">
             <div className="text-replacement-page__dialog-main-panel-content">
-              <label className="text-replacement-page__dialog-section">
+              <div className="text-replacement-page__dialog-section">
                 <span className="text-replacement-page__dialog-section-title font-medium">
                   {t("quality_rule_editor.fields.source")}
                 </span>
@@ -101,9 +100,9 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                     props.on_change({ src: next_value });
                   }}
                 />
-              </label>
+              </div>
 
-              <label className="text-replacement-page__dialog-section">
+              <div className="text-replacement-page__dialog-section">
                 <span className="text-replacement-page__dialog-section-title font-medium">
                   {t("text_replacement_page.fields.replacement")}
                 </span>
@@ -117,7 +116,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                     props.on_change({ dst: next_value });
                   }}
                 />
-              </label>
+              </div>
             </div>
           </div>
 
