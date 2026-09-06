@@ -19,10 +19,10 @@ type GlossaryEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
+/** 组合规则草稿字段，保存与关闭交由页面状态拥有者处理。 */
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("app.action.save");
-  const disabled = props.readonly || props.saving;
+  const disabled = props.readonly || props.saving; // 编辑与保存共用只读、提交中的锁定条件。
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
   useActionShortcut({
@@ -63,7 +63,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               void props.on_save();
             }}
           >
-            {save_label}
+            {t("app.action.save")}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </AppButton>
         </>
@@ -73,7 +73,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
         <div className="glossary-page__dialog-form">
           <div className="glossary-page__dialog-main-panel">
             <div className="glossary-page__dialog-main-panel-content">
-              <label className="glossary-page__dialog-section">
+              <div className="glossary-page__dialog-section">
                 <span className="glossary-page__dialog-section-title font-medium">
                   {t("quality_rule_editor.fields.source")}
                 </span>
@@ -87,9 +87,9 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                     props.on_change({ src: next_value });
                   }}
                 />
-              </label>
+              </div>
 
-              <label className="glossary-page__dialog-section">
+              <div className="glossary-page__dialog-section">
                 <span className="glossary-page__dialog-section-title font-medium">
                   {t("glossary_page.fields.translation")}
                 </span>
@@ -103,9 +103,9 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                     props.on_change({ dst: next_value });
                   }}
                 />
-              </label>
+              </div>
 
-              <label className="glossary-page__dialog-section glossary-page__dialog-section--description">
+              <div className="glossary-page__dialog-section glossary-page__dialog-section--description">
                 <span className="glossary-page__dialog-section-title font-medium">
                   {t("glossary_page.fields.description")}
                 </span>
@@ -119,7 +119,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                     props.on_change({ info: next_value });
                   }}
                 />
-              </label>
+              </div>
             </div>
           </div>
 

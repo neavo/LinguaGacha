@@ -20,10 +20,10 @@ type TextPreserveEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
+/** 组合规则草稿字段，保存与关闭交由页面状态拥有者处理。 */
 export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("app.action.save");
-  const disabled = props.readonly || props.saving;
+  const disabled = props.readonly || props.saving; // 编辑与保存共用只读、提交中的锁定条件。
   const title = props.mode === "create" ? t("app.action.create") : t("app.action.edit");
 
   useActionShortcut({
@@ -64,7 +64,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
               void props.on_save();
             }}
           >
-            {save_label}
+            {t("app.action.save")}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </AppButton>
         </>
@@ -74,7 +74,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
         <div className="text-preserve-page__dialog-form">
           <div className="text-preserve-page__dialog-main-panel">
             <div className="text-preserve-page__dialog-main-panel-content">
-              <label className="text-preserve-page__dialog-section">
+              <div className="text-preserve-page__dialog-section">
                 <span className="text-preserve-page__dialog-section-title font-medium">
                   {t("quality_rule_editor.fields.rule")}
                 </span>
@@ -94,9 +94,9 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                     {props.validation_message}
                   </span>
                 )}
-              </label>
+              </div>
 
-              <label className="text-preserve-page__dialog-section">
+              <div className="text-preserve-page__dialog-section">
                 <span className="text-preserve-page__dialog-section-title font-medium">
                   {t("text_preserve_page.fields.note")}
                 </span>
@@ -110,7 +110,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                     props.on_change({ info: next_value });
                   }}
                 />
-              </label>
+              </div>
             </div>
           </div>
         </div>
