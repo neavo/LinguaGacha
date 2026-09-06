@@ -27,8 +27,9 @@ export const zh_cn_agent_page = {
     suggestions: {
       capabilities: "介绍你的能力",
       roleplay: "开始角色扮演",
-      quality_rule_workflow: "帮我提取术语",
-      translation_workflow: "帮我审校译文",
+      extract_terminology: "帮我提取术语",
+      translate_full_text: "帮我翻译全文",
+      review_translation: "帮我审校译文",
     },
   },
   input: {

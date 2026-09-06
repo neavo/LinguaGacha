@@ -139,7 +139,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       return;
     }
     agent_input.write_draft({
-      text: `${t("agent_page.empty.suggestions.translation_workflow")} ${format_agent_skill_reference("translation-workflow")}`,
+      text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_skill_reference("translation-workflow")}`,
       attachments: [],
     });
     request_generation_ref.current += 1;

@@ -27,8 +27,9 @@ export const en_us_agent_page = {
     suggestions: {
       capabilities: "Introduce your capabilities",
       roleplay: "Start roleplay",
-      quality_rule_workflow: "Help me extract terminology",
-      translation_workflow: "Translate or review my text",
+      extract_terminology: "Help me extract terminology",
+      translate_full_text: "Help me translate the full text",
+      review_translation: "Help me review the translation",
     },
   },
   input: {

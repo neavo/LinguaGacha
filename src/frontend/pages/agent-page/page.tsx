@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles } from "lucide-react";
+import {
+  ArrowDownToLine,
+  Bot,
+  Drama,
+  Languages,
+  ListChecks,
+  ScanText,
+  Sparkles,
+} from "lucide-react";
 
 import type { ModelThinkingLevel } from "@domain/model";
 import {
@@ -45,21 +53,26 @@ import { useAgentFollowLatest } from "./agent-scroll";
 import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
-/** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
-const FEATURED_AGENT_SKILLS = [
+/** 空会话任务入口按配置顺序展示，关联技能加载后可用；多个任务可共用技能。 */
+const AGENT_TASK_SUGGESTIONS = [
   {
-    name: "roleplay",
+    skillName: "roleplay",
     suggestionKey: "agent_page.empty.suggestions.roleplay",
     Icon: Drama,
   },
   {
-    name: "quality-rule-workflow",
-    suggestionKey: "agent_page.empty.suggestions.quality_rule_workflow",
+    skillName: "quality-rule-workflow",
+    suggestionKey: "agent_page.empty.suggestions.extract_terminology",
     Icon: ListChecks,
   },
   {
-    name: "translation-workflow",
-    suggestionKey: "agent_page.empty.suggestions.translation_workflow",
+    skillName: "translation-workflow",
+    suggestionKey: "agent_page.empty.suggestions.translate_full_text",
+    Icon: Languages,
+  },
+  {
+    skillName: "translation-workflow",
+    suggestionKey: "agent_page.empty.suggestions.review_translation",
     Icon: ScanText,
   },
 ] as const;
@@ -68,8 +81,7 @@ type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
   | { kind: "disable_thinking" };
 
-/** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
-/** 组合会话快照与交互入口，页面持有原位编辑等临时界面状态。 */
+/** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -432,6 +444,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   }, [agent_actions, show_command_error]);
 
+  /** 时间线批注写入普通 Composer 草稿，由用户继续编辑和发送。 */
   const add_response_annotation = useCallback(
     (annotation: Parameters<AgentComposerHandle["add_response_annotation"]>[0]): void => {
       composer_ref.current?.add_response_annotation(annotation);
@@ -529,16 +542,16 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     {t("agent_page.empty.suggestions.capabilities")}
                   </span>
                 </button>
-                {FEATURED_AGENT_SKILLS.filter((featured) =>
-                  skills.some((skill) => skill.name === featured.name),
-                ).map(({ name, suggestionKey, Icon }) => (
+                {AGENT_TASK_SUGGESTIONS.filter((suggestion) =>
+                  skills.some((skill) => skill.name === suggestion.skillName),
+                ).map(({ skillName, suggestionKey, Icon }) => (
                   <button
-                    key={name}
+                    key={suggestionKey}
                     type="button"
                     className="agent-page__suggestion"
                     onClick={() =>
                       composer_ref.current?.write_draft(
-                        `${t(suggestionKey)} ${format_agent_skill_reference(name)}`,
+                        `${t(suggestionKey)} ${format_agent_skill_reference(skillName)}`,
                       )
                     }
                   >
@@ -546,7 +559,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     <span className="agent-page__suggestion-label">
                       {t(suggestionKey)}{" "}
                       <span className="agent-mention-token">
-                        <span>{format_agent_skill_reference(name)}</span>
+                        <span>{format_agent_skill_reference(skillName)}</span>
                       </span>
                     </span>
                   </button>

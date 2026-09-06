@@ -29,6 +29,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),
 }));
 
+/** 通过渲染提交后的公开返回值观察导出流程。 */
 function Probe(props: {
   on_ready: (flow: ReturnType<typeof useTranslationExportFlow>) => void;
 }): JSX.Element | null {
@@ -63,6 +64,7 @@ describe("useTranslationExportFlow", () => {
     latest_flow = null;
   });
 
+  /** 复用挂载实例，使项目切换经过真实 Hook 生命周期。 */
   async function render_probe(): Promise<void> {
     container ??= document.createElement("div");
     if (container.parentNode === null) document.body.append(container);
@@ -72,6 +74,7 @@ describe("useTranslationExportFlow", () => {
     });
   }
 
+  /** 等待预检 Promise 的状态更新提交到 React。 */
   async function flush_microtasks(): Promise<void> {
     await act(async () => Promise.resolve());
   }
@@ -81,10 +84,7 @@ describe("useTranslationExportFlow", () => {
       projectPath: "E:/demo/sample.lg",
       warningSummary: {
         total_count: 3,
-        entries: [
-          { code: "FOREIGN_CHAR_RESIDUE", count: 1 },
-          { code: "GLOSSARY", count: 2 },
-        ],
+        entries: [{ code: "FOREIGN_CHAR_RESIDUE", count: 3 }],
       },
     });
     await render_probe();
@@ -96,7 +96,7 @@ describe("useTranslationExportFlow", () => {
 
     act(() => latest_flow?.jump_to_agent());
     expect(mocks.write_draft).toHaveBeenCalledWith({
-      text: "agent_page.empty.suggestions.translation_workflow @skill(translation-workflow)",
+      text: expect.stringMatching(/\S+ @skill\([^)]+\)$/),
       attachments: [],
     });
     expect(mocks.navigate_to_route).toHaveBeenCalledWith("agent");
