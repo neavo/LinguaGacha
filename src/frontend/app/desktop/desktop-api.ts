@@ -27,20 +27,10 @@ type ApiEnvelope<data_type> = {
   error?: Partial<ApiErrorPayload>;
 };
 
-type HealthPayload = {
-  status?: string;
-  service?: string;
-  version?: string;
-};
-
 type GithubReleasePayload = {
   tag_name?: unknown;
   html_url?: unknown;
   assets?: unknown;
-};
-
-export type BackendMetadata = {
-  version: string;
 };
 
 export type GithubReleaseUpdate = {
@@ -57,16 +47,11 @@ type SemanticVersion = {
 
 export type DesktopLocalErrorCode =
   | "missing_backend_api_base_url"
-  | "backend_metadata_unavailable"
   | "http_error"
   | "network_failed";
 
 export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
 
-// CORE API HEALTH PATH 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
-const BACKEND_API_HEALTH_PATH = "/api/health";
-// CORE API SERVICE NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
-const BACKEND_API_SERVICE_NAME = "linguagacha-backend";
 const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
 /**
@@ -163,20 +148,6 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
-function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | null {
-  const version = payload.version?.trim();
-  if (
-    payload.status !== "ok" ||
-    payload.service !== BACKEND_API_SERVICE_NAME ||
-    version === undefined ||
-    version === ""
-  ) {
-    return null;
-  }
-
-  return { version };
-}
-
 function parse_semantic_version(value: string): SemanticVersion | null {
   const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (version_match === null) {
@@ -236,18 +207,6 @@ function normalize_github_release_update(
       `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
     ),
   };
-}
-
-/** 健康检查只读取 Backend 身份与版本，不参与其它请求的连接决策。 */
-export async function get_backend_metadata(): Promise<BackendMetadata> {
-  const metadata = normalize_backend_metadata(
-    await api_get<HealthPayload>(BACKEND_API_HEALTH_PATH),
-  );
-  if (metadata === null) {
-    throw DesktopApiError.local("backend_metadata_unavailable");
-  }
-
-  return metadata;
 }
 
 export async function check_github_release_update(

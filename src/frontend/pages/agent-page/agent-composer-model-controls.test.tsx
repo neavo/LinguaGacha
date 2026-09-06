@@ -72,20 +72,16 @@ describe("AgentComposerModelControls", () => {
     expect(controller.select_agent_batch_translation_model).toHaveBeenLastCalledWith(null);
   });
 
-  it.each(["running", "loading", "updating"] as const)(
-    "%s 时模型入口使用共同禁用状态",
-    async (state) => {
-      controller.loading = state === "loading";
-      controller.updating = state === "updating";
-      await render(state === "running");
-      expect(trigger().disabled).toBe(true);
-      expect(
-        container.querySelector<HTMLButtonElement>(
-          'button[aria-label^="app.model.selection.label"]',
-        )?.disabled,
-      ).toBe(true);
-    },
-  );
+  it.each(["loading", "updating"] as const)("%s 时模型入口使用共同禁用状态", async (state) => {
+    controller.loading = state === "loading";
+    controller.updating = state === "updating";
+    await render();
+    expect(trigger().disabled).toBe(true);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[aria-label^="app.model.selection.label"]')
+        ?.disabled,
+    ).toBe(true);
+  });
 
   it("所选模型没有可用思考档位时保留可聚焦的禁用入口", async () => {
     await render();
@@ -97,14 +93,29 @@ describe("AgentComposerModelControls", () => {
     expect(thinking?.parentElement?.tabIndex).toBe(0);
   });
 
-  /** 复用同一组件实例观察保存回包及公共禁用状态。 */
-  async function render(disabled = false): Promise<void> {
+  it("切换模型选择后仍按当前会话容量显示上下文用量", async () => {
     await act(async () =>
       root.render(
         <TooltipProvider>
           <AgentComposerModelControls
             controller={controller}
-            disabled={disabled}
+            context_tokens={64_000}
+            context_limits={{ context_window: 256_000, max_output_tokens: 32_000 }}
+          />
+        </TooltipProvider>,
+      ),
+    );
+    expect(container.querySelector(".agent-composer__model-context")?.textContent).toBe("25.0%");
+  });
+
+  /** 复用同一组件实例观察保存回包及公共禁用状态。 */
+  async function render(): Promise<void> {
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <AgentComposerModelControls
+            context_limits={null}
+            controller={controller}
             context_tokens={0}
           />
         </TooltipProvider>,

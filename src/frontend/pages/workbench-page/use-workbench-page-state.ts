@@ -4,10 +4,8 @@ import {
   useDesktopState,
   useProjectChangeSignal,
   useRuntimeSnapshot,
-  useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
-import { is_task_stopping } from "@frontend/app/state/batch-translation-snapshot-store";
 
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -40,7 +38,6 @@ import type {
   WorkbenchDialogState,
   WorkbenchFileEntry,
   WorkbenchSnapshot,
-  WorkbenchSnapshotEntry,
   WorkbenchStats,
 } from "@frontend/pages/workbench-page/types";
 
@@ -78,10 +75,6 @@ type WorkbenchQueryResponse = {
   snapshot: WorkbenchSnapshot;
 };
 
-function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
-  return entries.map((entry) => ({ ...entry }));
-}
-
 type WorkbenchSelectionState = {
   selected_entry_ids: string[];
   active_entry_id: string | null;
@@ -102,6 +95,7 @@ function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
   return Array.from(new Set(entry_ids));
 }
 
+/** 有序选择相同才复用原状态，保留范围选择顺序。 */
 function are_workbench_entry_ids_equal(
   left_entry_ids: string[],
   right_entry_ids: string[],
@@ -245,7 +239,6 @@ export type UseWorkbenchPageStateResult = {
   readonly: boolean;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
-  can_generate_translation: boolean;
   can_close_project: boolean;
   dialog_state: WorkbenchDialogState;
   refresh_snapshot: () => Promise<WorkbenchSnapshot>;
@@ -276,10 +269,9 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     settings_snapshot,
   } = useDesktopState();
   const project_change_signal = useProjectChangeSignal();
-  const task_snapshot = useBatchTranslationSnapshot();
   const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
-  const [entries, set_entries] = useState<WorkbenchFileEntry[]>([]);
+  const entries = snapshot.entries; // 文件列表直接消费页面快照，选择状态单独维护
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
     "idle",
   );
@@ -366,7 +358,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     snapshot_ref.current = EMPTY_SNAPSHOT;
     set_snapshot(EMPTY_SNAPSHOT);
     set_file_op_running(false);
-    set_entries([]);
     apply_selection_state(create_empty_selection_state());
     set_dialog_state(close_dialog_state());
     set_is_refreshing(false);
@@ -374,17 +365,15 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     set_settled_project_path("");
   }, [apply_selection_state]);
 
-  const apply_refreshed_entries = useCallback(
+  /** 刷新文件事实后按旧相邻行位置恢复选择。 */
+  const apply_refreshed_selection = useCallback(
     (next_snapshot: WorkbenchSnapshot, preferred_active_entry_id: string | null): void => {
       const previous_entries = entries_ref.current;
       const previous_selection_state = selection_state_ref.current;
-      const next_entries = map_snapshot_entries(next_snapshot.entries);
-
-      set_entries(next_entries);
       apply_selection_state(
         resolve_workbench_selection_after_snapshot({
           previous_entries,
-          next_entries,
+          next_entries: next_snapshot.entries,
           previous_selection_state,
           preferred_active_entry_id,
         }),
@@ -416,7 +405,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
 
         snapshot_ref.current = next_snapshot;
         set_snapshot(next_snapshot);
-        apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
+        apply_refreshed_selection(next_snapshot, preferred_active_entry_id);
         set_file_op_running(false);
         set_cache_status("ready");
         set_consumed_revisions(response.sectionRevisions);
@@ -444,7 +433,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       }
     },
     [
-      apply_refreshed_entries,
+      apply_refreshed_selection,
       clear_workbench_snapshot_state,
       project_snapshot.loaded,
       project_snapshot.path,
@@ -538,12 +527,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     can_edit_files &&
     selected_delete_target_rel_paths.length > 0 &&
     selected_delete_target_rel_paths.length < entries.length;
-  // 为什么：生成当前可用译文允许翻译运行中触发，但停止收尾和结构写入中必须保持单入口
-  const can_generate_translation =
-    project_snapshot.loaded &&
-    !file_op_running &&
-    !is_write_running &&
-    !is_task_stopping(task_snapshot);
   const can_close_project =
     project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !is_write_running;
 
@@ -662,6 +645,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
   const request_add_file_from_path = import_files_flow.request_add_file_from_path;
 
+  /** 文件选择与拖入共用导入流程。 */
   async function request_add_file(): Promise<void> {
     if (readonly) {
       return;
@@ -674,9 +658,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     await request_add_files_from_paths(result.paths);
   }
 
-  /**
-   * 触发当前界面反馈行为。
-   */
+  /** 将拖入文件的问题映射为可见提示。 */
   function notify_add_file_drop_issue(issue: WorkbenchAddFileDropIssue): void {
     push_toast(
       "warning",
@@ -684,6 +666,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     );
   }
 
+  /** 关闭工程先进入确认状态。 */
   function request_close_project(): void {
     set_dialog_state({
       kind: "close-project",
@@ -693,6 +676,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     });
   }
 
+  /** 冻结待重置文件，交由确认入口提交。 */
   function request_reset_file(entry_id: string): void {
     set_dialog_state({
       kind: "reset-file",
@@ -702,6 +686,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     });
   }
 
+  /** 删除动作读取最新选择，复用最后文件保护。 */
   function request_delete_selected_files(): void {
     request_delete_entries(selection_state_ref.current.selected_entry_ids);
   }
@@ -734,6 +719,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     [entries.length, get_workbench_planning_state, push_toast, readonly, run_project_file_write, t],
   );
 
+  /** 统一提交当前确认动作，失败保留弹窗供重试。 */
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (current_dialog_state.kind === null || current_dialog_state.submitting) {
@@ -791,7 +777,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
           await refresh_project_snapshot();
           set_snapshot(EMPTY_SNAPSHOT);
           set_file_op_running(false);
-          set_entries([]);
           apply_selection_state(create_empty_selection_state());
           await refresh_batch_translation();
           set_dialog_state(close_dialog_state());
@@ -816,10 +801,12 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     }
   }
 
+  /** 页面确认回调只表达完成，导入流程自行消费其布尔处理结果。 */
   async function secondary_dialog(): Promise<void> {
     await import_files_flow.secondary_dialog();
   }
 
+  /** 导入流程优先消费关闭动作，提交期间保留弹窗。 */
   function close_dialog(): void {
     if (import_files_flow.close_dialog()) {
       return;
@@ -848,7 +835,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     readonly,
     can_edit_files,
     can_delete_selected_files,
-    can_generate_translation,
     can_close_project,
     dialog_state,
     refresh_snapshot,

@@ -58,6 +58,7 @@ type WorkbenchQueryStats = {
 
 type ApiRouteResponder = unknown | ((body: Record<string, unknown>) => unknown | Promise<unknown>);
 
+/** 为文件列表提供独立条目事实。 */
 function create_test_items(
   items: Record<string, ProjectItemPublicRecord> = {},
 ): ReadonlyMap<number, ProjectItemPublicRecord> {
@@ -122,6 +123,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
+/** 模拟后端分区变更信号。 */
 function create_project_change_signal(
   seq: number,
   options: {
@@ -160,6 +162,7 @@ function create_project_change_signal(
   };
 }
 
+/** 隔离共享状态，按测试场景控制运行占用。 */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
@@ -205,12 +208,14 @@ function create_project_write_result() {
   };
 }
 
+/** 按请求顺序安排后端响应。 */
 function enqueue_api_response(path: string, responder: ApiRouteResponder): void {
   const queue = api_route_queues.get(path) ?? [];
   queue.push(responder);
   api_route_queues.set(path, queue);
 }
 
+/** 分发文件操作与查询的预定响应。 */
 function setup_api_fetch_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body = {}) => {
     const queue = api_route_queues.get(path);
@@ -283,6 +288,7 @@ function create_workbench_query_response(stats?: { translation?: WorkbenchQueryS
   };
 }
 
+/** 记录可见反馈，保持测试与消息宿主解耦。 */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -292,6 +298,7 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
+/** 提供项目状态写入口及刷新回调。 */
 function create_project_store_state(items: Record<string, ProjectItemPublicRecord>) {
   return {
     project: {
@@ -330,6 +337,7 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
   };
 }
 
+/** 构造文件操作所需的条目事实。 */
 function create_project_item(args: {
   item_id: number;
   src?: string;
@@ -384,17 +392,20 @@ describe("useWorkbenchPageState", () => {
     api_route_queues.clear();
   });
 
+  /** 订阅工作台 Hook 供行为断言消费。 */
   function WorkbenchProbe(): JSX.Element | null {
     latest_state = useWorkbenchPageState();
     return null;
   }
 
+  /** 等待 React 与异步回包完成当前提交。 */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
     });
   }
 
+  /** 重复渲染同一 Hook 实例，保留刷新竞态场景。 */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -758,34 +769,5 @@ describe("useWorkbenchPageState", () => {
         },
       }),
     );
-  });
-
-  it("翻译任务运行中允许生成当前可用译文", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      runtime_snapshot: { revision: 1, owner: "batch_translation" },
-      task_snapshot: {
-        status: "running",
-      },
-    };
-    await render_hook();
-
-    expect(latest_state?.readonly).toBe(true);
-    expect(latest_state?.can_edit_files).toBe(false);
-    expect(latest_state?.can_generate_translation).toBe(true);
-  });
-
-  it("任务停止收尾中禁止生成译文", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      runtime_snapshot: { revision: 1, owner: "batch_translation" },
-      task_snapshot: {
-        status: "stopping",
-      },
-    };
-    await render_hook();
-
-    expect(latest_state?.can_generate_translation).toBe(false);
-    expect(latest_state?.dialog_state.kind).toBeNull();
   });
 });

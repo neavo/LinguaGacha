@@ -54,7 +54,7 @@ export class RuntimeOperationGate {
     this.publish_snapshot();
   }
 
-  /** 设置与模型配置等同步写入口在提交前复用同一空闲检查。 */
+  /** 设置与模型管理等同步写入口在提交前复用同一空闲检查。 */
   public assert_runtime_idle(): void {
     if (this.active_runtime !== null) throw new AppErrors.AppError("runtime.busy");
   }

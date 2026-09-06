@@ -102,7 +102,7 @@ const EMPTY_CONTROLS: AgentControlsSlice = {
   state: "idle",
   approvalMode: "manual",
   pendingDecision: null,
-  context: { tokens: null, compactable: false },
+  context: { tokens: null, compactable: false, limits: null },
   transport: "restoring",
   command: null,
 };
@@ -255,6 +255,8 @@ export class AgentSessionStore {
       next.pendingDecision === this.controls.pendingDecision &&
       next.context.tokens === this.controls.context.tokens &&
       next.context.compactable === this.controls.context.compactable &&
+      next.context.limits?.context_window === this.controls.context.limits?.context_window &&
+      next.context.limits?.max_output_tokens === this.controls.context.limits?.max_output_tokens &&
       next.transport === this.controls.transport &&
       next.command === this.controls.command
     ) {
@@ -768,7 +770,26 @@ function normalize_context_tokens(value: unknown): number | null | undefined {
 function normalize_context(value: unknown): AgentContextSnapshot | null {
   if (!is_json_record(value) || typeof value["compactable"] !== "boolean") return null;
   const tokens = normalize_context_tokens(value["tokens"]);
-  return tokens === undefined ? null : { tokens, compactable: value["compactable"] };
+  if (tokens === undefined) return null;
+  const limits = value["limits"];
+  if (limits === null) return { tokens, compactable: value["compactable"], limits: null };
+  if (!is_json_record(limits)) return null;
+  const context_window = limits["context_window"];
+  const max_output_tokens = limits["max_output_tokens"];
+  if (
+    typeof context_window !== "number" ||
+    !Number.isSafeInteger(context_window) ||
+    context_window <= 0 ||
+    typeof max_output_tokens !== "number" ||
+    !Number.isSafeInteger(max_output_tokens) ||
+    max_output_tokens <= 0
+  )
+    return null;
+  return {
+    tokens,
+    compactable: value["compactable"],
+    limits: { context_window, max_output_tokens },
+  };
 }
 
 /** 按条目种类收窄消息及生命周期字段，无效条目交由上层判定。 */

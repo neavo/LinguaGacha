@@ -132,7 +132,6 @@ export class ModelService {
    * 更新指定执行用途的模型选择
    */
   public select_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const usage = this.read_model_usage(request["usage"]);
     const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
     return this.build_selection_snapshot(this.update_selection(usage, model_id));
@@ -140,7 +139,6 @@ export class ModelService {
 
   /** Agent 批量翻译偏好与其它模型选择共用持久化出口，null 表示动态跟随。 */
   public select_agent_batch_translation_model(request: JsonRecord): ModelSelectionSnapshot {
-    this.runtime_gate.assert_runtime_idle();
     const value = request["model_id"];
     if (value !== null && (typeof value !== "string" || value.trim() === "")) {
       throw new AppErrors.AppError("request.validation_failed", {
@@ -159,7 +157,6 @@ export class ModelService {
 
   /** 按用途原子更新当前模型的全局思考档位，避免调用方提交过期模型 ID。 */
   public update_selected_model_thinking_level(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const usage = this.read_model_usage(request["usage"]);
     const thinking_level = request["thinking_level"];
     if (!is_model_thinking_level(thinking_level)) {

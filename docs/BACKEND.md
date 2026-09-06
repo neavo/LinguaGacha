@@ -33,7 +33,7 @@
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
 
-`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，普通设置和模型配置写入必须先确认运行时空闲，模型校验与持久化归 `ModelService`。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
+`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，普通设置与模型管理写入必须先确认运行时空闲；模型选择、Agent 批量翻译模型偏好和所选模型思考档位允许在运行中保存，模型校验与持久化统一归 `ModelService`，执行入口冻结所用配置。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
 
 ## 3. 项目读取与写入
 

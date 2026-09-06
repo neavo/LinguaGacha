@@ -8,8 +8,16 @@ import type {
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
-import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
+import { AgentMessageEditor, type AgentMessageEditorHandle } from "./agent-message-editor";
+import { AppButton } from "@frontend/widgets/app-button";
+import { LoaderCircle } from "lucide-react";
+import { ShortcutKbd, ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  tooltip_trigger_target,
+} from "@frontend/shadcn/tooltip";
 
 export type AgentInlineEditTarget =
   | {
@@ -28,7 +36,6 @@ type AgentInlineEditorProps = {
   target: AgentInlineEditTarget;
   skills: readonly AgentSkillSnapshot[];
   command: AgentCommand;
-  model_selection: ModelSelectionController;
   unavailable_reason: "restoring" | "runtime_busy" | "settling" | "disconnected" | null;
   on_save: (message: AgentMessageInput) => Promise<void>;
   on_saved: (message: AgentMessageInput) => void;
@@ -44,7 +51,7 @@ const EMPTY_INPUT_HISTORY: readonly string[] = [];
 export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const composer_ref = useRef<AgentComposerHandle | null>(null);
+  const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
   const draft_ref = useRef<AgentMessageInput>(structuredClone(props.target.message));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent session 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
@@ -99,6 +106,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
     [save, status],
   );
 
+  const read_only = status !== "idle" || props.command !== null;
   const title_key: LocaleKey =
     props.target.kind === "queue"
       ? "agent_page.editing.queue"
@@ -112,28 +120,68 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
       data-role={props.target.kind === "queue" ? "queue" : props.target.role}
     >
       <div className="agent-inline-editor__title">{t(title_key)}</div>
-      <AgentComposer
+      <AgentMessageEditor
         ref={composer_ref}
         presentation="inline"
-        inline_role={props.target.kind === "queue" ? "user" : props.target.role}
-        on_cancel_edit={cancel_edit}
-        locked={status !== "idle"}
+        role={props.target.kind === "queue" ? "user" : props.target.role}
+        on_cancel={cancel_edit}
+        read_only={read_only}
         skills={props.skills}
-        running={false}
-        stop_disabled
-        compacting={false}
-        unavailable_reason={props.unavailable_reason}
-        command={props.command}
-        can_continue_queue={false}
-        queue_full={false}
-        can_reset={false}
-        context_tokens={null}
-        model_selection={props.model_selection}
         input_session={input_session}
-        on_send={submit}
+        on_submit={submit}
         on_image_error={props.on_image_error}
-        on_stop={async () => undefined}
-        on_reset={() => undefined}
+        render_actions={({ has_content, image_processing }) => {
+          const can_submit =
+            !read_only && props.unavailable_reason === null && has_content && !image_processing;
+          return {
+            can_submit,
+            submit: (
+              <>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={read_only}
+                  aria-label={t("app.action.cancel")}
+                  aria-keyshortcuts={read_only ? undefined : "Escape"}
+                  onClick={cancel_edit}
+                >
+                  {t("app.action.cancel")}
+                  <ShortcutKbd action="cancel" />
+                </AppButton>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={tooltip_trigger_target(
+                      <AppButton
+                        className="agent-composer__inline-submit"
+                        type="submit"
+                        size="sm"
+                        disabled={!can_submit}
+                        aria-label={t("app.action.save")}
+                        aria-busy={status === "saving" || undefined}
+                        aria-keyshortcuts={can_submit ? "Enter" : undefined}
+                      >
+                        {status === "saving" ? (
+                          <LoaderCircle className="animate-spin" aria-hidden="true" />
+                        ) : null}
+                        <span>{t("app.action.save")}</span>
+                        {can_submit ? (
+                          <ShortcutKbd
+                            action="submit"
+                            className="bg-background/18 text-primary-foreground"
+                          />
+                        ) : null}
+                      </AppButton>,
+                    )}
+                  />
+                  <TooltipContent side="top" sideOffset={8}>
+                    <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            ),
+          };
+        }}
       />
     </div>
   );

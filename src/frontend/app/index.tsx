@@ -1,3 +1,4 @@
+import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-context";
 import { PageLeaveProvider, usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -14,7 +15,6 @@ import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rul
 import {
   api_fetch,
   check_github_release_update,
-  get_backend_metadata,
   open_external_url,
   type GithubReleaseUpdate,
 } from "@frontend/app/desktop/desktop-api";
@@ -87,18 +87,6 @@ function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
 
-/** 版本元数据可用时将其并入应用标题。 */
-function format_app_titlebar_title(app_name: string, version: string | null): string {
-  const normalized_version = version?.trim();
-  if (normalized_version === undefined || normalized_version === "") {
-    return app_name;
-  }
-
-  const version_label =
-    normalized_version.match(/^v/iu) === null ? `v${normalized_version}` : normalized_version;
-  return `${app_name} ${version_label}`;
-}
-
 type LogWindowSettingsPayload = {
   settings?: {
     app_language?: unknown;
@@ -127,7 +115,7 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
   );
-  const [app_version, set_app_version] = useState<string | null>(null);
+  const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
   });
@@ -141,7 +129,6 @@ function AppContent(): JSX.Element {
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
   const app_title = t("app.metadata.app_name");
-  const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
   const update_release = read_update_release(update_dialog_state);
   const update_release_url = update_release?.release_url ?? null;
   useEffect(() => {
@@ -149,30 +136,6 @@ function AppContent(): JSX.Element {
   }, [is_sidebar_collapsed]);
 
   useEffect(() => {
-    let is_disposed = false;
-
-    void get_backend_metadata()
-      .then((metadata) => {
-        if (!is_disposed) {
-          set_app_version(metadata.version);
-        }
-      })
-      .catch(() => {
-        if (!is_disposed) {
-          set_app_version(null);
-        }
-      });
-
-    return () => {
-      is_disposed = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (app_version === null) {
-      return;
-    }
-
     let is_disposed = false;
 
     void check_github_release_update(app_version).then((release_update) => {
@@ -563,7 +526,7 @@ function AppContent(): JSX.Element {
             } as CSSProperties
           }
         >
-          <AppTitlebar title={app_titlebar_title} />
+          <AppTitlebar title={app_title} />
           <section className="shell-body">
             <AppSidebar
               groups={visible_navigation_groups}
@@ -602,11 +565,13 @@ function AppContent(): JSX.Element {
                   <AgentSessionProvider>
                     <AgentCompletionAttention />
                     <ProjectSessionUiStateProvider>
-                      <BatchTranslationSessionProvider>
-                        <QualityRuleStatisticsProvider>
-                          <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                        </QualityRuleStatisticsProvider>
-                      </BatchTranslationSessionProvider>
+                      <TranslationExportProvider>
+                        <BatchTranslationSessionProvider>
+                          <QualityRuleStatisticsProvider>
+                            <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                          </QualityRuleStatisticsProvider>
+                        </BatchTranslationSessionProvider>
+                      </TranslationExportProvider>
                     </ProjectSessionUiStateProvider>
                   </AgentSessionProvider>
                 </AppNavigationProvider>

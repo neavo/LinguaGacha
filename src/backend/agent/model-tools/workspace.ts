@@ -14,8 +14,8 @@ export type AgentWorkspaceApprovalPort = {
     tool_call_id: string,
     summary: AgentPendingWriteSummary,
     signal: AbortSignal | undefined,
-  ) => Promise<{ switch_to_auto: boolean }>;
-  activate_auto: () => void;
+  ) => Promise<{ auto_revision: number | null }>;
+  activate_auto: (mode_revision: number) => void;
 };
 
 /** AgentService 持有跨回合 Todo，脚本工具只协调调用前后的不可变快照。 */
@@ -81,8 +81,8 @@ export function create_agent_workspace_tools(options: {
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
-        // 只在当前批次批准并成功提交后切换后续批次，拒绝或失败保持手动模式。
-        let switch_to_auto = false;
+        // 批次成功后请求更新审批模式，用户后续选择由 AgentService 仲裁。
+        let auto_revision: number | null = null;
         const result = await options.workspace.apply_workspace(
           options.approval.read_mode() === "auto"
             ? undefined
@@ -92,10 +92,10 @@ export function create_agent_workspace_tools(options: {
                   summary,
                   signal,
                 );
-                switch_to_auto = decision.switch_to_auto;
+                auto_revision = decision.auto_revision;
               },
         );
-        if (switch_to_auto) options.approval.activate_auto();
+        if (auto_revision !== null) options.approval.activate_auto(auto_revision);
         return agent_tool_result(result);
       },
     }),

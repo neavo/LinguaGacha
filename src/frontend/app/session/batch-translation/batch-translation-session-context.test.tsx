@@ -2,19 +2,15 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  BatchTranslationSessionProvider,
-  useBatchTranslationSession,
-} from "@frontend/app/session/batch-translation/batch-translation-session-context";
+import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 
 import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
-import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 
 const task_runtime_mock = vi.hoisted(() => {
   return {
     batch_translation_task: null as BatchTranslationTask | null,
 
-    translation_export: null as TranslationExportFlow | null,
+    request_export: vi.fn(),
   };
 });
 
@@ -38,26 +34,9 @@ vi.mock("@frontend/app/session/batch-translation/use-batch-translation-task", ()
   };
 });
 
-vi.mock("@frontend/features/translation-export/use-translation-export-flow", () => {
-  return {
-    useTranslationExportFlow: () => {
-      if (task_runtime_mock.translation_export === null) {
-        throw new Error("缺少译文导出流程夹具。");
-      }
-      return task_runtime_mock.translation_export;
-    },
-  };
-});
-
-vi.mock("@frontend/features/translation-export/translation-export-dialog", () => {
-  return {
-    TranslationExportDialog: (props: TranslationExportFlow) => {
-      return props.state.phase === "closed" ? null : (
-        <div data-testid="translation-export-dialog" />
-      );
-    },
-  };
-});
+vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
+  useTranslationExport: () => ({ request_export: task_runtime_mock.request_export }),
+}));
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
   return {
@@ -116,6 +95,7 @@ vi.mock(
   },
 );
 
+/** 隔离后台任务，测试常驻侧栏的组合与回调。 */
 function create_batch_translation_task_fixture(
   overrides: Partial<BatchTranslationTask> = {},
 ): BatchTranslationTask {
@@ -150,32 +130,6 @@ function create_batch_translation_task_fixture(
   };
 }
 
-function create_translation_export_fixture(
-  overrides: Partial<TranslationExportFlow> = {},
-): TranslationExportFlow {
-  return {
-    state: { phase: "closed" },
-    can_request_export: true,
-    request_export: vi.fn(),
-    retry_check: vi.fn(),
-    confirm_export: vi.fn(async () => {}),
-    jump_to_agent: vi.fn(),
-    close: vi.fn(),
-    ...overrides,
-  };
-}
-
-function StateProbe(props: {
-  onState: (state: {
-    batch_translation_task: BatchTranslationTask;
-
-    translation_export: TranslationExportFlow;
-  }) => void;
-}): JSX.Element | null {
-  props.onState(useBatchTranslationSession());
-  return null;
-}
-
 describe("BatchTranslationSessionProvider", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -183,7 +137,7 @@ describe("BatchTranslationSessionProvider", () => {
   beforeEach(() => {
     task_runtime_mock.batch_translation_task = create_batch_translation_task_fixture();
 
-    task_runtime_mock.translation_export = create_translation_export_fixture();
+    task_runtime_mock.request_export.mockClear();
   });
 
   afterEach(async () => {
@@ -197,10 +151,9 @@ describe("BatchTranslationSessionProvider", () => {
     container = null;
     root = null;
     task_runtime_mock.batch_translation_task = null;
-
-    task_runtime_mock.translation_export = null;
   });
 
+  /** 用页面替换观察 session 的持续挂载。 */
   async function render_provider(children: ReactNode): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -211,18 +164,6 @@ describe("BatchTranslationSessionProvider", () => {
     });
   }
 
-  it("不挂载工作台页面时仍会渲染统一译文导出确认", async () => {
-    task_runtime_mock.translation_export = create_translation_export_fixture({
-      state: { phase: "ready", summary: { total_count: 0, entries: [] } },
-    });
-
-    await render_provider(<div data-testid="non-workbench-page" />);
-
-    const dialog = container?.querySelector('[data-testid="translation-export-dialog"]');
-    expect(container?.querySelector('[data-testid="non-workbench-page"]')).not.toBeNull();
-    expect(dialog).not.toBeNull();
-  });
-
   it("任务侧栏随 session 挂载，页面切换继续显示并使用共享停止动作", async () => {
     const task = task_runtime_mock.batch_translation_task!;
     task.translation_detail_sheet_open = true;
@@ -230,7 +171,6 @@ describe("BatchTranslationSessionProvider", () => {
     task.translation_task_metrics.completion_percent = 25;
     await render_provider(<div>Agent 页面</div>);
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-    expect(document.body.textContent).toContain("25.00%");
     await act(async () =>
       root?.render(
         <BatchTranslationSessionProvider>
@@ -244,21 +184,5 @@ describe("BatchTranslationSessionProvider", () => {
     );
     await act(async () => stop?.click());
     expect(task.request_task_action_confirmation).toHaveBeenCalledWith("stop-translation");
-  });
-
-  it("向子节点暴露同一份常驻任务运行态", async () => {
-    const observed_states: Array<{
-      batch_translation_task: BatchTranslationTask;
-
-      translation_export: TranslationExportFlow;
-    }> = [];
-
-    await render_provider(<StateProbe onState={(state) => observed_states.push(state)} />);
-
-    expect(observed_states.at(-1)?.batch_translation_task).toBe(
-      task_runtime_mock.batch_translation_task,
-    );
-
-    expect(observed_states.at(-1)?.translation_export).toBe(task_runtime_mock.translation_export);
   });
 });

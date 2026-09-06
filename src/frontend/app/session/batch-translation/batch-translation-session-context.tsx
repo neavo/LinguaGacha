@@ -10,15 +10,10 @@ import {
 import type { TranslationTaskConfirmState } from "@shared/batch-translation/batch-translation";
 
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
-import { TranslationExportDialog } from "@frontend/features/translation-export/translation-export-dialog";
-import {
-  useTranslationExportFlow,
-  type TranslationExportFlow,
-} from "@frontend/features/translation-export/use-translation-export-flow";
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 
 type BatchTranslationSessionContextValue = {
   batch_translation_task: BatchTranslationTask; // 常驻监听翻译任务完成意图
-  translation_export: TranslationExportFlow; // 手动与任务完成提示共用唯一导出流程
 };
 
 // 当前项目的任务交互随应用 session 常驻。
@@ -49,7 +44,7 @@ function resolve_translation_task_confirm_description(
 // 应用级详情先挂载，动作确认在同一浮层层级中覆盖详情。
 function BatchTranslationDialogsLayer(): JSX.Element {
   const { t } = useI18n();
-  const { batch_translation_task, translation_export } = useBatchTranslationSession();
+  const { batch_translation_task } = useBatchTranslationSession();
   const translation_confirm_description = useMemo(() => {
     return resolve_translation_task_confirm_description(
       batch_translation_task.task_confirm_state,
@@ -87,15 +82,13 @@ function BatchTranslationDialogsLayer(): JSX.Element {
         onConfirm={batch_translation_task.confirm_task_action}
         onClose={batch_translation_task.close_task_action_confirmation}
       />
-
-      <TranslationExportDialog {...translation_export} />
     </>
   );
 }
 
 // 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
 export function BatchTranslationSessionProvider(props: { children: ReactNode }): JSX.Element {
-  const translation_export = useTranslationExportFlow();
+  const translation_export = useTranslationExport();
   // 翻译任务常驻于 session 内，确保离开工作台后任务完成确认不丢失。
   const batch_translation_task = useBatchTranslationTask({
     onRequestExport: translation_export.request_export,
@@ -103,9 +96,8 @@ export function BatchTranslationSessionProvider(props: { children: ReactNode }):
   const context_value = useMemo<BatchTranslationSessionContextValue>(() => {
     return {
       batch_translation_task,
-      translation_export,
     };
-  }, [translation_export, batch_translation_task]);
+  }, [batch_translation_task]);
 
   return (
     <BatchTranslationSessionContext.Provider value={context_value}>

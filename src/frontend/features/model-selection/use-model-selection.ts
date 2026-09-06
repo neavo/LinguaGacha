@@ -32,18 +32,21 @@ export function useModelSelection(): ModelSelectionController {
   const [snapshot, set_snapshot] = useState<ModelSelectionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [updating, set_updating] = useState(false);
+  const settings_revision_ref = useRef(0); // 保存设置使此前发出的查询失效
   const updating_ref = useRef(false); // React 提交 updating 前也要阻止同一帧重复命令
 
   useEffect(() => {
+    if (updating_ref.current) return;
     let mounted = true;
+    const settings_revision = settings_revision_ref.current;
     void api_get<unknown>("/api/models/selection")
       .then((payload) => {
-        if (!mounted) return;
+        if (!mounted || settings_revision !== settings_revision_ref.current) return;
         const next = normalize_model_selection_snapshot(payload);
         set_snapshot(next);
       })
       .catch((error: unknown) => {
-        if (mounted) {
+        if (mounted && settings_revision === settings_revision_ref.current) {
           push_toast(
             "error",
             resolve_visible_error_message(error, t, t("app.model.selection.load_failed")),
@@ -63,6 +66,7 @@ export function useModelSelection(): ModelSelectionController {
     async (path: string, request: Record<string, string | null>): Promise<void> => {
       if (updating_ref.current) return;
       updating_ref.current = true;
+      settings_revision_ref.current += 1;
       set_updating(true);
       try {
         const payload = await api_fetch<unknown>(path, request);

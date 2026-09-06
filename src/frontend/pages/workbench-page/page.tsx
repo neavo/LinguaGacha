@@ -1,3 +1,4 @@
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
@@ -15,7 +16,8 @@ type WorkbenchPageProps = {
 // 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
-  const { batch_translation_task, translation_export } = useBatchTranslationSession();
+  const { batch_translation_task } = useBatchTranslationSession();
+  const translation_export = useTranslationExport();
   const workbench_state = useWorkbenchPageState();
 
   return (
@@ -50,9 +52,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         translation_stats={workbench_state.translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
-        can_generate_translation={
-          workbench_state.can_generate_translation && translation_export.can_request_export
-        }
+        can_generate_translation={translation_export.can_request_export}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
           void workbench_state.request_add_file();

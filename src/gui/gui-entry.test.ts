@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const ready: BackendRuntimeReady = {
     apiBaseUrl: "http://127.0.0.1:4567",
     berserkerUpdateRootDir: "E:/userdata/berserker",
+    appVersion: "1.2.3",
   };
   const backend_start = vi.fn(async () => ready);
   const backend_stop = vi.fn(async () => undefined);
@@ -165,7 +166,7 @@ describe("run_gui_entry", () => {
     );
     expect(mocks.cleanup_updates).toHaveBeenCalledOnce();
     expect(mocks.create_log_window_host).toHaveBeenCalledWith(
-      expect.objectContaining({ backendApiBaseUrl: "http://127.0.0.1:4567" }),
+      expect.objectContaining({ backendApiBaseUrl: "http://127.0.0.1:4567", appVersion: "1.2.3" }),
     );
     expect(mocks.register_ipc).toHaveBeenCalledOnce();
     const ipc_options = mocks.register_ipc.mock.calls[0]?.[0] as {

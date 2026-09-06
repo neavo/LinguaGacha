@@ -671,6 +671,32 @@ describe("AgentService", () => {
     },
   );
 
+  it("审批等待与提交期间的新模式优先于旧批次成功回写", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "write";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "写入", attachments: [] });
+    await vi.waitFor(() => expect(service.get_snapshot().pendingDecision).not.toBeNull());
+    const pending = service.get_snapshot().pendingDecision!;
+    service.set_approval_mode({ approvalMode: "auto" });
+    expect(service.get_snapshot().pendingDecision?.id).toBe(pending.id);
+    service.resolve_write_approval({ id: pending.id, decision: "allow_session" });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    service.set_approval_mode({ approvalMode: "manual" });
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().approvalMode).toBe("manual");
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          toolName: "workspace_apply",
+          status: "success",
+        }),
+      ]),
+    );
+  });
+
   it("拒绝手动写入后以工具失败结束", async () => {
     const fixture = await create_service();
     fake_agent_state.mode = "write";
@@ -1096,7 +1122,11 @@ describe("AgentService", () => {
 
   it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
     const { service, publish } = await create_service();
-    expect(service.get_snapshot().context).toEqual({ tokens: null, compactable: false });
+    expect(service.get_snapshot().context).toEqual({
+      tokens: null,
+      compactable: false,
+      limits: null,
+    });
 
     await service.send_message({ text: "x".repeat(400), attachments: [] });
     await wait_for_idle(service);
@@ -1107,7 +1137,11 @@ describe("AgentService", () => {
     expect(context_events[0]).toEqual({
       type: "context",
       revision: expect.any(Number),
-      context: { tokens: expect.any(Number), compactable: false },
+      context: {
+        tokens: expect.any(Number),
+        compactable: false,
+        limits: { context_window: expect.any(Number), max_output_tokens: expect.any(Number) },
+      },
     });
     expect(service.get_snapshot().context.tokens).toEqual(expect.any(Number));
     expect(service.get_snapshot().context.tokens ?? 0).toBeGreaterThan(0);
@@ -1116,7 +1150,11 @@ describe("AgentService", () => {
     );
 
     await expect(service.reset()).resolves.toEqual({ revision: expect.any(Number) });
-    expect(service.get_snapshot().context).toEqual({ tokens: null, compactable: false });
+    expect(service.get_snapshot().context).toEqual({
+      tokens: null,
+      compactable: false,
+      limits: null,
+    });
     expect(publish).toHaveBeenLastCalledWith(
       "agent.session_event",
       expect.objectContaining({ type: "snapshot_seed", snapshot: service.get_snapshot() }),
@@ -1603,7 +1641,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
@@ -1910,7 +1948,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -2269,7 +2307,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toMatchObject({
       state: "idle",
       entries: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     expect(runtime_gate.get_snapshot().owner).toBeNull();
   });
@@ -2476,8 +2514,8 @@ describe("AgentService", () => {
     expect(fake_agent_state.prompts.at(-1)).toBe("下一轮");
   });
 
-  it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {
-    const { service, read_setting_count } = await create_service();
+  it("同一事件循环的第二条消息异步拒绝", async () => {
+    const { service } = await create_service();
     fake_agent_state.mode = "pending";
 
     const first = service.send_message({ text: "第一轮", attachments: [] });
@@ -2486,29 +2524,30 @@ describe("AgentService", () => {
     await expect(second).rejects.toThrow("runtime.busy");
     await expect(first).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot().state).toBe("running");
-    expect(read_setting_count()).toBe(1);
     expect(service.get_snapshot().entries).toEqual([expect.objectContaining({ text: "第一轮" })]);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
   });
 
-  it("运行中消息按 FIFO 排队并在同一 lease 内自动续轮", async () => {
-    const { service, read_setting_count } = await create_service();
+  it("运行中消息按 FIFO 排队并在出队时采用模型设置", async () => {
+    const { service, select_agent_model } = await create_service();
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "第一轮", attachments: [] });
 
     await service.send_message({ text: "第二轮", attachments: [] });
     await service.send_message({ text: "第三轮", attachments: [] });
-    expect(read_setting_count()).toBe(1);
     expect(service.get_snapshot().inputQueue.items.map((item) => item.text)).toEqual([
       "第二轮",
       "第三轮",
     ]);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    select_agent_model("next");
+    expect(fake_agent_state.model_ids).toEqual(["test-model"]);
     fake_agent_state.mode = "success";
     fake_agent_state.release_pending?.();
     await wait_for_idle(service);
 
+    expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model", "next-model"]);
     expect(fake_agent_state.prompts.slice(-3)).toEqual(["第一轮", "第二轮", "第三轮"]);
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
     expect(
@@ -2517,6 +2556,27 @@ describe("AgentService", () => {
         .entries.filter((entry) => entry.kind === "user_message")
         .map((entry) => entry.text),
     ).toEqual(["第一轮", "第二轮", "第三轮"]);
+  });
+
+  it("队列轮次换模失败时记录该轮失败并暂停剩余输入", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    await service.send_message({ text: "第二轮", attachments: [] });
+    await service.send_message({ text: "第三轮", attachments: [] });
+    fake_agent_state.auth_configured = false;
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "user_message", text: "第二轮", status: "error" }),
+      ]),
+    );
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ text: "第三轮" }],
+    });
   });
 
   it("停止会保留并暂停队列", async () => {
@@ -2815,7 +2875,6 @@ describe("AgentService", () => {
     log_append: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     set_app_language: (app_language: AppLanguage) => void;
-    read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
     select_batch_translation_model: (model_id: string | null) => void;
     session_state: ProjectSessionState;
@@ -2826,10 +2885,8 @@ describe("AgentService", () => {
     let agent_model_id: "active" | "next" = "active";
     let batch_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
-    let setting_read_count = 0;
     const settings = {
       read_setting: () => {
-        setting_read_count += 1;
         return {
           app_language,
           model_selection: {
@@ -2949,7 +3006,6 @@ describe("AgentService", () => {
       set_app_language: (next_app_language) => {
         app_language = next_app_language;
       },
-      read_setting_count: () => setting_read_count,
       runtime_gate,
       select_batch_translation_model: (id) => {
         batch_model_id = id;

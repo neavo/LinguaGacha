@@ -4,13 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentMessageInput } from "@shared/agent";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
-import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 
 type MockComposerProps = {
   input_session: AgentInputSession;
-  locked?: boolean;
-  on_send: (message: AgentMessageInput) => void;
-  on_cancel_edit?: () => void;
+  read_only?: boolean;
+  on_submit: (message: AgentMessageInput) => void;
+  on_cancel?: () => void;
 };
 
 const push_toast = vi.hoisted(() => vi.fn());
@@ -28,18 +27,18 @@ vi.mock("@frontend/app/feedback/visible-error-message", () => ({
   resolve_visible_error_message: (_error: unknown, _t: unknown, fallback: string) => fallback,
 }));
 
-vi.mock("./agent-composer", () => ({
-  AgentComposer: (props: MockComposerProps) => (
-    <div data-locked={props.locked ? "true" : "false"}>
+vi.mock("./agent-message-editor", () => ({
+  AgentMessageEditor: (props: MockComposerProps) => (
+    <div data-read_only={props.read_only ? "true" : "false"}>
       <span data-draft>{props.input_session.read_draft().text}</span>
       <button
         type="button"
         data-send
-        onClick={() => props.on_send({ text: "新内容", attachments: [] })}
+        onClick={() => props.on_submit({ text: "新内容", attachments: [] })}
       >
         send
       </button>
-      <button type="button" data-cancel disabled={props.locked} onClick={props.on_cancel_edit}>
+      <button type="button" data-cancel disabled={props.read_only} onClick={props.on_cancel}>
         cancel
       </button>
     </div>
@@ -88,7 +87,7 @@ describe("AgentInlineEditor", () => {
     const view = render_editor(on_save, on_saved, on_cancel);
 
     await act(async () => view.querySelector<HTMLButtonElement>("[data-send]")?.click());
-    expect(view.querySelector<HTMLDivElement>("[data-locked]")?.dataset.locked).toBe("true");
+    expect(view.querySelector<HTMLDivElement>("[data-read_only]")?.dataset.read_only).toBe("true");
     await act(async () => view.querySelector<HTMLButtonElement>("[data-cancel]")?.click());
     expect(on_cancel).not.toHaveBeenCalled();
 
@@ -109,6 +108,7 @@ describe("AgentInlineEditor", () => {
     expect(on_cancel).toHaveBeenCalledOnce();
   });
 
+  /** 隔离正文编辑，观察保存失败与取消的生命周期。 */
   function render_editor(
     on_save: (message: AgentMessageInput) => Promise<void>,
     on_saved: (message: AgentMessageInput) => void,
@@ -123,24 +123,12 @@ describe("AgentInlineEditor", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    const model_selection: ModelSelectionController = {
-      snapshot: {
-        model_selection: { translation: "", agent: "", agent_batch_translation: null },
-        models: [],
-      },
-      loading: false,
-      updating: false,
-      select_model: async () => undefined,
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
-      update_thinking_level: async () => undefined,
-    };
     act(() => {
       root?.render(
         <AgentInlineEditor
           target={target}
           skills={[]}
           command={null}
-          model_selection={model_selection}
           unavailable_reason={null}
           on_save={on_save}
           on_saved={on_saved}

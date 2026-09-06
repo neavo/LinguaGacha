@@ -1,0 +1,867 @@
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+  type ReactNode,
+} from "react";
+import { ImagePlus, LoaderCircle, Shrink, Sparkles } from "lucide-react";
+
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import {
+  Annotation,
+  Compartment,
+  EditorSelection,
+  EditorState,
+  StateEffect,
+  StateField,
+  Transaction,
+  type Extension,
+  type TransactionSpec,
+} from "@codemirror/state";
+import {
+  Decoration,
+  EditorView,
+  WidgetType,
+  drawSelection,
+  keymap,
+  placeholder,
+  type DecorationSet,
+} from "@codemirror/view";
+
+import {
+  AGENT_MESSAGE_IMAGE_LIMIT,
+  type AgentMessageAttachment,
+  type AgentMessageInput,
+  type AgentResponseAnnotationAttachment,
+  type AgentSkillSnapshot,
+} from "@shared/agent";
+import { useAppearance } from "@frontend/app/appearance/appearance-provider";
+import { useI18n } from "@frontend/app/locale/locale-provider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  tooltip_trigger_target,
+} from "@frontend/shadcn/tooltip";
+import { AppButton } from "@frontend/widgets/app-button";
+import {
+  resolve_app_editor_readonly_extensions,
+  resolve_app_editor_theme_extensions,
+} from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import {
+  create_agent_mention_candidates,
+  create_agent_mention_tokens,
+  find_agent_mention_ranges,
+  type AgentMentionCandidate,
+  type AgentMentionInstruction,
+  type AgentMentionToken,
+} from "./agent-mention";
+import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
+import { AgentMessageAttachments } from "./agent-message-attachments";
+
+/** 光标前当前 @ 查询范围。 */
+type MentionQuery = {
+  from: number;
+  to: number;
+  text: string;
+};
+
+/** React 只持有渲染所需投影，正文仍由 EditorState 唯一拥有。 */
+type EditorSnapshot = {
+  text: string;
+  query: MentionQuery | null;
+};
+
+/** 页面只能写入草稿并请求聚焦，正文与光标所有权仍留在 CodeMirror。 */
+export type AgentMessageEditorHandle = {
+  write_draft: (text: string) => void;
+  add_response_annotation: (annotation: AgentResponseAnnotationAttachment) => void;
+  focus: () => void;
+};
+
+type AgentEditorState = { has_content: boolean; image_processing: boolean };
+
+type AgentMessageEditorProps = {
+  ref?: Ref<AgentMessageEditorHandle>;
+  presentation?: "composer" | "inline";
+  role?: "user" | "assistant";
+  read_only: boolean;
+  skills: readonly AgentSkillSnapshot[];
+  instructions?: readonly AgentMentionInstruction[];
+  input_session: AgentInputSession;
+  on_submit: (message: AgentMessageInput) => void;
+  on_cancel?: () => void;
+  on_image_error: () => void;
+  /** 消费方统一决定按钮与提交权限，包含只读、内容和图片处理条件。 */
+  render_actions: (state: AgentEditorState) => {
+    can_submit: boolean;
+    actions?: ReactNode;
+    submit: ReactNode;
+  };
+};
+
+const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
+  text: "",
+  query: null,
+};
+/** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
+const input_history_navigation_annotation = Annotation.define<boolean>();
+const input_history_navigation_annotations = [
+  Transaction.addToHistory.of(false),
+  input_history_navigation_annotation.of(true),
+];
+/** Session 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
+const input_session_sync_annotations = [Transaction.addToHistory.of(false)];
+
+// 三个 Compartment 只承接运行期配置，不参与草稿事实。
+const theme_compartment = new Compartment();
+const read_only_compartment = new Compartment();
+const placeholder_compartment = new Compartment();
+
+/** mention 配置与 Decoration 都可由当前技能和纯文本正文重建。 */
+const set_mention_tokens_effect = StateEffect.define<readonly AgentMentionToken[]>();
+const mention_token_config_field = StateField.define<readonly AgentMentionToken[]>({
+  create: () => [],
+  /** 技能配置仅随显式 effect 替换，普通编辑沿用当前配置。 */
+  update(tokens, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(set_mention_tokens_effect)) return effect.value;
+    }
+    return tokens;
+  },
+});
+const mention_tokens_field = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  /** 正文或技能集合改变时重建 marker 装饰，其余事务复用结果。 */
+  update(tokens, transaction) {
+    let config = transaction.startState.field(mention_token_config_field);
+    let config_changed = false;
+    for (const effect of transaction.effects) {
+      if (!effect.is(set_mention_tokens_effect)) continue;
+      config = effect.value;
+      config_changed = true;
+    }
+    if (!transaction.docChanged && !config_changed) return tokens;
+    return create_mention_token_decorations(transaction.newDoc.toString(), config);
+  },
+  /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
+  provide(field) {
+    return [
+      EditorView.decorations.from(field),
+      EditorView.atomicRanges.of((view) => view.state.field(field)),
+    ];
+  },
+});
+const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
+
+/** 主输入与原位编辑共享正文、附件和键盘交互，按草稿 revision 同步 CodeMirror。 */
+export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element {
+  const { locale, t } = useI18n();
+  const { resolved_theme } = useAppearance();
+  const inline = props.presentation === "inline";
+  const assistant_editing = props.role === "assistant";
+  const placeholder_text = t(
+    assistant_editing
+      ? "agent_page.input.edit_assistant_placeholder"
+      : "agent_page.input.placeholder",
+  );
+  const host_ref = useRef<HTMLDivElement | null>(null);
+  const file_input_ref = useRef<HTMLInputElement | null>(null);
+  const menu_ref = useRef<HTMLDivElement | null>(null);
+  const view_ref = useRef<EditorView | null>(null);
+  const submit_ref = useRef<() => void>(() => undefined);
+  // CodeMirror 扩展只创建一次，ref 保证 Escape 调用最新的页面取消入口。
+  const cancel_edit_ref = useRef(props.on_cancel);
+  const select_candidate_ref = useRef<(candidate: AgentMentionCandidate) => void>(() => undefined);
+  const menu_open_ref = useRef(false);
+  const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
+  const menu_index_ref = useRef(0);
+  const last_query_key_ref = useRef("");
+  // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
+  const input_session_ref = useRef(props.input_session);
+  const input_history_index_ref = useRef<number | null>(null);
+  // 附件 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
+  const draft_attachments_ref = useRef(
+    structuredClone(props.input_session.read_draft().attachments),
+  );
+  const image_processing_ref = useRef(false);
+  const image_drag_depth_ref = useRef(0);
+  const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
+  const [draft_attachments, set_draft_attachments] = useState<AgentMessageAttachment[]>(() => [
+    ...draft_attachments_ref.current,
+  ]);
+  const [image_processing, set_image_processing] = useState(false);
+  const [image_drop_active, set_image_drop_active] = useState(false);
+  const [menu_index_value, set_menu_index] = useState(0);
+  const [menu_suppressed, set_menu_suppressed] = useState(false);
+
+  const mention_query_text = snapshot.query?.text;
+  const candidate_groups =
+    assistant_editing || mention_query_text === undefined
+      ? { skills: [], instructions: [] }
+      : create_agent_mention_candidates({
+          query: mention_query_text,
+          locale,
+          skills: props.skills,
+          instructions: props.instructions ?? [],
+        });
+  const matching_skills = candidate_groups.skills;
+  const matching_instructions = candidate_groups.instructions;
+  const matching_candidates = [...matching_skills, ...matching_instructions];
+  const editor_read_only = props.read_only;
+  const menu_open =
+    !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
+  const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
+  const has_sendable_content =
+    snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
+  const actions = props.render_actions({ has_content: has_sendable_content, image_processing });
+  const image_count = draft_attachments.reduce(
+    (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
+    0,
+  );
+  const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
+  // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
+  const initial_editor_read_only_ref = useRef(editor_read_only);
+  const input_revision = props.input_session.revision;
+
+  menu_open_ref.current = menu_open;
+  matching_candidates_ref.current = matching_candidates;
+  menu_index_ref.current = menu_index;
+  input_session_ref.current = props.input_session;
+  cancel_edit_ref.current = editor_read_only ? undefined : props.on_cancel;
+
+  useEffect(() => {
+    const host = host_ref.current;
+    if (host === null) return;
+    // 单次读取编辑器事实，再同步 React 消费的派生状态。
+    const emit_snapshot = (state: EditorState): void => {
+      const next = read_editor_snapshot(state);
+      const query_key =
+        next.query === null
+          ? ""
+          : `${next.query.from.toString()}:${next.query.to.toString()}:${next.query.text}`;
+      if (query_key !== last_query_key_ref.current) {
+        last_query_key_ref.current = query_key;
+        set_menu_index(0);
+        set_menu_suppressed(false);
+      }
+      set_snapshot(next);
+    };
+    const editor = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        extensions: [
+          theme_compartment.of(resolve_app_editor_theme_extensions(resolved_theme, "plain")),
+          read_only_compartment.of(
+            resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
+          ),
+          placeholder_compartment.of(placeholder(placeholder_text)),
+          mention_token_extension,
+          drawSelection(),
+          history(),
+          EditorView.lineWrapping,
+          EditorView.domEventHandlers({
+            blur: () => set_menu_suppressed(true),
+            keydown: (event) => event.key === "Enter" && event.isComposing,
+          }),
+          keymap.of([
+            {
+              key: "ArrowDown",
+              run: (view) =>
+                inline
+                  ? false
+                  : menu_open_ref.current
+                    ? navigate_mention_menu(1)
+                    : navigate_input_history(view, "newer"),
+            },
+            {
+              key: "ArrowUp",
+              run: (view) =>
+                inline
+                  ? false
+                  : menu_open_ref.current
+                    ? navigate_mention_menu(-1)
+                    : navigate_input_history(view, "older"),
+            },
+            {
+              key: "Escape",
+              run: () => {
+                if (menu_open_ref.current) {
+                  set_menu_suppressed(true);
+                  return true;
+                }
+                const cancel_edit = cancel_edit_ref.current;
+                if (!inline || cancel_edit === undefined) return false;
+                cancel_edit();
+                return true;
+              },
+            },
+            {
+              key: "Enter",
+              run: (view) => {
+                if (view.composing) return true;
+                const candidate = matching_candidates_ref.current[menu_index_ref.current];
+                if (menu_open_ref.current && candidate !== undefined) {
+                  select_candidate_ref.current(candidate);
+                } else submit_ref.current();
+                return true;
+              },
+            },
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
+          EditorView.updateListener.of((update) => {
+            const { docChanged, selectionSet, state, transactions } = update;
+            if (docChanged || selectionSet) {
+              if (
+                docChanged &&
+                !transactions.every(
+                  (transaction) =>
+                    transaction.annotation(input_history_navigation_annotation) === true,
+                )
+              ) {
+                input_history_index_ref.current = null;
+                input_session_ref.current.write_draft({
+                  text: state.doc.toString(),
+                  attachments: draft_attachments_ref.current,
+                });
+              }
+              emit_snapshot(state);
+            }
+          }),
+        ],
+      }),
+    });
+    editor.contentDOM.setAttribute("aria-label", placeholder_text);
+    editor.contentDOM.setAttribute("aria-multiline", "true");
+    editor.contentDOM.setAttribute("spellcheck", "false");
+    view_ref.current = editor;
+    emit_snapshot(editor.state);
+    return () => {
+      editor.destroy();
+      view_ref.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const view = view_ref.current;
+    if (view === null) return;
+    input_history_index_ref.current = null;
+    const draft = input_session_ref.current.read_draft();
+    draft_attachments_ref.current = structuredClone(draft.attachments);
+    set_draft_attachments([...draft_attachments_ref.current]);
+    write_agent_message_text(view, draft.text, input_session_sync_annotations);
+  }, [input_revision]);
+
+  useEffect(() => {
+    view_ref.current?.dispatch({
+      effects: set_mention_tokens_effect.of(create_agent_mention_tokens(props.skills)),
+      annotations: input_session_sync_annotations,
+    });
+  }, [props.skills]);
+
+  useEffect(() => {
+    view_ref.current?.dispatch({
+      effects: theme_compartment.reconfigure(
+        resolve_app_editor_theme_extensions(resolved_theme, "plain"),
+      ),
+    });
+  }, [resolved_theme]);
+
+  useEffect(() => {
+    const view = view_ref.current;
+    if (view === null) return;
+    view.dispatch({
+      effects: read_only_compartment.reconfigure(
+        resolve_app_editor_readonly_extensions(editor_read_only),
+      ),
+    });
+  }, [editor_read_only]);
+
+  useEffect(() => {
+    const view = view_ref.current;
+    if (view === null) return;
+    view.dispatch({
+      effects: placeholder_compartment.reconfigure(placeholder(placeholder_text)),
+    });
+    view.contentDOM.setAttribute("aria-label", placeholder_text);
+  }, [placeholder_text]);
+
+  useEffect(() => {
+    const content = view_ref.current?.contentDOM;
+    if (content === undefined) return;
+    content.setAttribute("role", "combobox");
+    content.setAttribute("aria-haspopup", "listbox");
+    content.setAttribute("aria-expanded", menu_open ? "true" : "false");
+    if (menu_open) {
+      content.setAttribute("aria-controls", "agent-mention-menu");
+      if (matching_candidates[menu_index] === undefined) {
+        content.removeAttribute("aria-activedescendant");
+      } else {
+        content.setAttribute(
+          "aria-activedescendant",
+          `agent-mention-option-${menu_index.toString()}`,
+        );
+      }
+    } else {
+      content.removeAttribute("aria-controls");
+      content.removeAttribute("aria-activedescendant");
+    }
+  }, [matching_candidates, menu_index, menu_open]);
+
+  useEffect(() => {
+    if (!menu_open) return;
+    // aria-activedescendant 不会移动 DOM 焦点，必须显式保持键盘活动项可见。
+    menu_ref.current
+      ?.querySelector<HTMLElement>(`#agent-mention-option-${menu_index.toString()}`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [mention_query_text, menu_index, menu_open]);
+
+  /** 技能写入 marker；指令移除筛选文本后立即执行，不进入消息或草稿历史。 */
+  const select_candidate = (candidate: AgentMentionCandidate): void => {
+    const view = view_ref.current;
+    const query = view === null ? null : find_mention_query(view.state);
+    if (view === null || query === null) return;
+    if (candidate.kind === "instruction") {
+      if (candidate.disabled) return;
+      view.dispatch({
+        changes: { from: query.from, to: query.to, insert: "" },
+        selection: EditorSelection.cursor(query.from),
+      });
+      set_menu_suppressed(false);
+      candidate.execute();
+      view.focus();
+      return;
+    }
+    const text = `${candidate.insertText} `;
+    view.dispatch({
+      changes: { from: query.from, to: query.to, insert: text },
+      selection: EditorSelection.cursor(query.from + text.length),
+    });
+    set_menu_suppressed(false);
+    view.focus();
+  };
+  select_candidate_ref.current = select_candidate;
+
+  /** 同步更新异步判定、可见附件与跨路由草稿，唯一数组同时拥有混排顺序。 */
+  const write_draft_attachments = useCallback((attachments: AgentMessageAttachment[]): void => {
+    draft_attachments_ref.current = attachments;
+    set_draft_attachments(attachments);
+    input_session_ref.current.write_draft({
+      text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.read_draft().text,
+      attachments,
+    });
+  }, []);
+
+  /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
+  const append_image_files = async (files: Iterable<File>): Promise<void> => {
+    if (assistant_editing || image_processing_ref.current) return;
+    const current_image_count = draft_attachments_ref.current.filter(
+      (attachment) => attachment.kind === "image",
+    ).length;
+    const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - current_image_count;
+    if (remaining_slots <= 0) return;
+    const input_files = Array.from(files).slice(0, remaining_slots);
+    if (input_files.length === 0) return;
+    image_processing_ref.current = true;
+    set_image_processing(true);
+    try {
+      const images = await normalize_agent_images(input_files);
+      const current = draft_attachments_ref.current;
+      const available_slots =
+        AGENT_MESSAGE_IMAGE_LIMIT -
+        current.filter((attachment) => attachment.kind === "image").length;
+      write_draft_attachments([
+        ...current,
+        ...images
+          .slice(0, available_slots)
+          .map<AgentMessageAttachment>((webpBase64) => ({ kind: "image", webpBase64 })),
+      ]);
+    } catch {
+      props.on_image_error();
+    } finally {
+      image_processing_ref.current = false;
+      set_image_processing(false);
+    }
+  };
+
+  /** 嵌套元素产生的 dragenter / dragleave 通过深度归零后统一关闭遮罩。 */
+  const reset_image_drop = (): void => {
+    image_drag_depth_ref.current = 0;
+    set_image_drop_active(false);
+  };
+
+  /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
+  const remove_attachment = (index: number): void => {
+    write_draft_attachments(
+      draft_attachments_ref.current.filter((_, attachment_index) => attachment_index !== index),
+    );
+  };
+
+  /** 附件组件只提交用户意图，Composer 仍在当前权威草稿中按原索引写入。 */
+  const update_annotation = (index: number, comment: string): void => {
+    const current = draft_attachments_ref.current;
+    const annotation = current[index];
+    if (annotation?.kind !== "response_annotation") return;
+    write_draft_attachments(
+      current.map((attachment, attachment_index) =>
+        attachment_index === index ? { ...annotation, comment } : attachment,
+      ),
+    );
+  };
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      /** 外部草稿替换退出历史导航，并遵循当前编辑锁。 */
+      write_draft(text) {
+        const view = view_ref.current;
+        if (view === null || editor_read_only) return;
+        input_history_index_ref.current = null;
+        write_agent_message_text(view, text);
+        view.focus();
+      },
+      /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
+      add_response_annotation(annotation) {
+        if (editor_read_only || assistant_editing) return;
+        write_draft_attachments([...draft_attachments_ref.current, structuredClone(annotation)]);
+        view_ref.current?.focus();
+      },
+      /** 页面动作完成后将焦点交回当前编辑器。 */
+      focus() {
+        view_ref.current?.focus();
+      },
+    }),
+    [assistant_editing, editor_read_only, write_draft_attachments],
+  );
+
+  /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
+  const submit = (): void => {
+    const view = view_ref.current;
+    if (view === null || !actions.can_submit) return;
+    const text = view.state.doc.toString().trim();
+    props.on_submit({ text, attachments: structuredClone(draft_attachments_ref.current) });
+  };
+  submit_ref.current = submit;
+
+  return (
+    <form
+      className={`agent-operation-surface agent-composer${inline ? " agent-composer--inline" : ""}`}
+      data-image-drop-active={image_drop_active && !editor_read_only ? "true" : undefined}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      onPaste={(event) => {
+        if (editor_read_only || assistant_editing || event.clipboardData.files.length === 0) return;
+        event.preventDefault();
+        void append_image_files(event.clipboardData.files);
+      }}
+      onDragEnter={(event) => {
+        if (
+          editor_read_only ||
+          assistant_editing ||
+          !Array.from(event.dataTransfer.types).includes("Files")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        if (image_limit_reached) return;
+        image_drag_depth_ref.current += 1;
+        set_image_drop_active(true);
+      }}
+      onDragOver={(event) => {
+        if (
+          editor_read_only ||
+          assistant_editing ||
+          !Array.from(event.dataTransfer.types).includes("Files")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = image_limit_reached ? "none" : "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        image_drag_depth_ref.current = Math.max(0, image_drag_depth_ref.current - 1);
+        if (image_drag_depth_ref.current === 0) set_image_drop_active(false);
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        reset_image_drop();
+        if (!editor_read_only && !assistant_editing)
+          void append_image_files(event.dataTransfer.files);
+      }}
+    >
+      {menu_open && (
+        <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
+          {matching_skills.length > 0 && (
+            <div
+              className="agent-mention-menu__group"
+              role="group"
+              aria-labelledby="agent-mention-skills-label"
+            >
+              <div id="agent-mention-skills-label" className="agent-mention-menu__group-label">
+                {t("agent_page.mention.groups.skills")}
+              </div>
+              {matching_skills.map((candidate, index) => render_candidate(candidate, index))}
+            </div>
+          )}
+          {matching_instructions.length > 0 && (
+            <div
+              className="agent-mention-menu__group"
+              role="group"
+              aria-labelledby="agent-mention-instructions-label"
+            >
+              <div
+                id="agent-mention-instructions-label"
+                className="agent-mention-menu__group-label"
+              >
+                {t("agent_page.mention.groups.instructions")}
+              </div>
+              {matching_instructions.map((candidate, index) =>
+                render_candidate(candidate, matching_skills.length + index),
+              )}
+            </div>
+          )}
+          {matching_candidates.length === 0 && (
+            <p className="agent-mention-menu__empty">{t("agent_page.mention.no_matches")}</p>
+          )}
+        </div>
+      )}
+      {!assistant_editing && draft_attachments.length > 0 ? (
+        /* 权威草稿 revision 变化时重建局部展开态，避免旧索引指向新附件。 */
+        <AgentMessageAttachments
+          key={input_revision}
+          mode="draft"
+          attachments={draft_attachments}
+          disabled={editor_read_only || image_processing}
+          on_update_annotation={update_annotation}
+          on_remove={remove_attachment}
+        />
+      ) : null}
+      <div className="agent-composer__editor">
+        <div ref={host_ref} className="agent-composer__input" />
+      </div>
+      <input
+        ref={file_input_ref}
+        className="agent-composer__file-input"
+        type="file"
+        accept={AGENT_IMAGE_FILE_ACCEPT}
+        multiple
+        tabIndex={-1}
+        onChange={(event) => {
+          void append_image_files(event.currentTarget.files ?? []);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="agent-composer__drop-overlay" aria-hidden={!image_drop_active}>
+        {t("agent_page.input.drop_images")}
+      </div>
+      <div className="agent-composer__footer">
+        <div className="agent-composer__footer-actions">
+          {!assistant_editing ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={tooltip_trigger_target(
+                  <AppButton
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    className="agent-composer__image-trigger"
+                    disabled={editor_read_only || image_processing || image_limit_reached}
+                    aria-label={t("agent_page.action.add_image")}
+                    onClick={() => file_input_ref.current?.click()}
+                  >
+                    {image_processing ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ImagePlus aria-hidden="true" />
+                    )}
+                  </AppButton>,
+                )}
+              />
+              <TooltipContent side="top" sideOffset={8}>
+                <p>{t("agent_page.action.add_image")}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          {actions.actions}
+        </div>
+        <div className="agent-composer__footer-end">{actions.submit}</div>
+      </div>
+    </form>
+  );
+
+  /** 两个分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
+  function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
+    const Icon = candidate.kind === "skill" ? Sparkles : Shrink;
+    return (
+      <button
+        id={`agent-mention-option-${index.toString()}`}
+        key={candidate.key}
+        type="button"
+        role="option"
+        aria-selected={index === menu_index}
+        disabled={candidate.kind === "instruction" && candidate.disabled}
+        data-highlight={index === menu_index}
+        tabIndex={-1}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => select_candidate(candidate)}
+      >
+        <Icon aria-hidden="true" />
+        <strong>{candidate.title}</strong>
+        {candidate.description !== "" && <small>{candidate.description}</small>}
+      </button>
+    );
+  }
+
+  /** 菜单有候选时循环选择；零结果时把方向键交还 CodeMirror。 */
+  function navigate_mention_menu(delta: 1 | -1): boolean {
+    if (!menu_open_ref.current || matching_candidates_ref.current.length === 0) return false;
+    set_menu_index(
+      (current) =>
+        (current + delta + matching_candidates_ref.current.length) %
+        matching_candidates_ref.current.length,
+    );
+    return true;
+  }
+
+  /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
+  function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
+    const input_history = input_session_ref.current.read_history();
+    if (view.composing || view.state.readOnly) return false;
+    const current_index = input_history_index_ref.current;
+
+    if (current_index === null) {
+      if (direction === "newer" || input_history.length === 0 || !can_start_input_history(view)) {
+        return false;
+      }
+      const next_index = input_history.length - 1;
+      input_history_index_ref.current = next_index;
+      write_agent_message_text(
+        view,
+        input_history[next_index]!,
+        input_history_navigation_annotations,
+      );
+      return true;
+    }
+
+    const next_index = current_index + (direction === "older" ? -1 : 1);
+    if (next_index < 0) return true;
+    if (next_index >= input_history.length) {
+      input_history_index_ref.current = null;
+      write_agent_message_text(
+        view,
+        input_session_ref.current.read_draft().text,
+        input_history_navigation_annotations,
+      );
+      return true;
+    }
+    input_history_index_ref.current = next_index;
+    write_agent_message_text(
+      view,
+      input_history[next_index]!,
+      input_history_navigation_annotations,
+    );
+    return true;
+  }
+}
+
+/** 视觉顶部由 CodeMirror 判断，原生覆盖软换行。 */
+function can_start_input_history(view: EditorView): boolean {
+  const selection = view.state.selection;
+  if (selection.ranges.length !== 1 || !selection.main.empty) return false;
+  return view.moveToLineBoundary(selection.main, false, true).head === 0;
+}
+
+/** 用单次事务同步纯文本正文与末尾光标。 */
+function write_agent_message_text(
+  view: EditorView,
+  text: string,
+  annotations?: TransactionSpec["annotations"],
+): void {
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+    selection: EditorSelection.cursor(text.length),
+    annotations,
+  });
+}
+
+/** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */
+function read_editor_snapshot(state: EditorState): EditorSnapshot {
+  return {
+    text: state.doc.toString().trim(),
+    query: find_mention_query(state),
+  };
+}
+
+/** 只把光标前当前单词视为查询，不扫描整篇正文。 */
+function find_mention_query(state: EditorState): MentionQuery | null {
+  const selection = state.selection.main;
+  if (!selection.empty) return null;
+  const line = state.doc.lineAt(selection.head);
+  const before = state.doc.sliceString(line.from, selection.head);
+  const match = before.match(/(^|\s)@([^\s@]*)$/u);
+  if (match === null) return null;
+  const from = selection.head - match[0].length + match[1].length;
+  const token = state.field(mention_tokens_field).iter(from);
+  if (token.value !== null && token.from < selection.head && token.to > from) return null;
+  return { from, to: selection.head, text: match[2] ?? "" };
+}
+
+/** 把已知 marker 投影成原子视觉块，底层文档仍保留完整稳定协议。 */
+function create_mention_token_decorations(
+  text: string,
+  tokens: readonly AgentMentionToken[],
+): DecorationSet {
+  return Decoration.set(
+    find_agent_mention_ranges(text, tokens).map((range) =>
+      Decoration.replace({
+        widget: new MentionTokenWidget(range.marker),
+        inclusive: false,
+      }).range(range.from, range.to),
+    ),
+    true,
+  );
+}
+
+/** 输入框中的 mention 视觉块；光标只能停在完整 marker 两侧。 */
+class MentionTokenWidget extends WidgetType {
+  private static readonly CURSOR_GAP_PX = 1;
+  private readonly marker: string;
+
+  /** marker 既是显示文本，也是底层纯文本协议的原始值。 */
+  public constructor(marker: string) {
+    super();
+    this.marker = marker;
+  }
+
+  /** 相同 marker 复用既有 DOM，避免普通编辑事务造成视觉闪动。 */
+  public override eq(widget: WidgetType): boolean {
+    return widget instanceof MentionTokenWidget && widget.marker === this.marker;
+  }
+
+  /** 创建与时间线共用样式的紧凑块。 */
+  public override toDOM(): HTMLElement {
+    const token = document.createElement("span");
+    const text = document.createElement("span");
+    token.className = "agent-mention-token";
+    text.textContent = this.marker;
+    token.append(text);
+    return token;
+  }
+
+  /** 把 marker 两侧文档位置映射到视觉块边界。 */
+  public override coordsAt(dom: HTMLElement, pos: number) {
+    const rect = dom.getBoundingClientRect();
+    const x = pos === 0 ? rect.left : rect.right + MentionTokenWidget.CURSOR_GAP_PX;
+    return { left: x, right: x, top: rect.top, bottom: rect.bottom };
+  }
+}

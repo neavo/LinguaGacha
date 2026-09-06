@@ -233,10 +233,12 @@ describe("ApiGatewayServer", () => {
     await expect(gateway.stop()).resolves.toBeUndefined();
   });
 
+  /** 为生命周期测试创建可自动释放的网关。 */
   function create_gateway(): ApiGatewayServer {
     return create_gateway_fixture(create_app_root(), new ProjectDatabase()).gateway;
   }
 
+  /** 组合真实后端服务，隔离 Agent 与宿主能力。 */
   function create_gateway_fixture(
     app_root: string,
     database: ProjectDatabase,
@@ -269,6 +271,7 @@ describe("ApiGatewayServer", () => {
     return { gateway, backend_services };
   }
 
+  /** 网关测试只模拟公开 Agent 协议。 */
   function create_agent_service_stub(): AgentService {
     return {
       get_snapshot: vi.fn(() => ({
@@ -280,7 +283,7 @@ describe("ApiGatewayServer", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       })),
       send_message: vi.fn(),
       set_approval_mode: vi.fn(),
@@ -298,6 +301,7 @@ describe("ApiGatewayServer", () => {
     } as unknown as AgentService;
   }
 
+  /** 每个网关使用独立临时根目录。 */
   function create_app_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gateway-test-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "9.8.7", "utf-8");
@@ -305,6 +309,7 @@ describe("ApiGatewayServer", () => {
     return app_root;
   }
 
+  /** 登记日志释放，避免网关测试残留文件句柄。 */
   function create_log_manager(app_root: string): LogManager {
     const log_manager = new LogManager({
       consoleWriter: () => undefined,
@@ -315,6 +320,7 @@ describe("ApiGatewayServer", () => {
     return log_manager;
   }
 
+  /** 消费日志完成回调，避免测试依赖磁盘写入。 */
   function create_memory_file_writer(): FileLogWriter {
     return {
       write: () => undefined,
@@ -324,6 +330,7 @@ describe("ApiGatewayServer", () => {
     };
   }
 
+  /** 通过真实 HTTP 边界提交 JSON。 */
   async function post_json(
     base_url: string,
     path_name: string,
@@ -336,6 +343,7 @@ describe("ApiGatewayServer", () => {
     });
   }
 
+  /** 收到目标帧即关闭流，并以超时结束失效订阅。 */
   async function read_http_stream_until(
     url: string,
     expected_text: string,

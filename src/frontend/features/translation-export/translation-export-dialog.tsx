@@ -8,7 +8,7 @@ import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-d
 
 type TranslationExportDialogProps = Pick<
   TranslationExportFlow,
-  "state" | "retry_check" | "confirm_export" | "jump_to_agent" | "close"
+  "state" | "retry_check" | "confirm_export" | "jump_to_agent" | "can_jump_to_agent" | "close"
 >;
 
 /** 提交中继续展示提交前内容，避免弹窗在导出受理后跳版。 */
@@ -102,10 +102,14 @@ export function TranslationExportDialog(props: TranslationExportDialogProps): JS
         label: t("app.action.continue_task"),
         onSelect: props.confirm_export,
       }}
-      secondaryAction={{
-        label: t("app.action.go_to_agent"),
-        onSelect: props.jump_to_agent,
-      }}
+      secondaryAction={
+        props.can_jump_to_agent
+          ? {
+              label: t("app.action.go_to_agent"),
+              onSelect: props.jump_to_agent,
+            }
+          : undefined
+      }
       onClose={props.close}
     />
   );

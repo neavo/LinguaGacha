@@ -139,6 +139,25 @@ describe("useModelSelection", () => {
     expect(container.textContent).toContain("openai:OFF:false");
   });
 
+  it("运行中保存设置后，较早查询不能覆盖已确认的选择", async () => {
+    api.get.mockResolvedValueOnce(snapshot("preset"));
+    const container = await render_probe();
+    let resolve_stale = (_value: unknown): void => undefined;
+    api.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_stale = resolve;
+        }),
+    );
+    runtime.owner = "agent";
+    await act(async () => roots[0]!.render(<Probe />));
+    api.fetch.mockResolvedValueOnce(snapshot("openai"));
+    await act(async () => find_button(container, "change").click());
+    await act(async () => resolve_stale(snapshot("preset")));
+    expect(container.textContent).toContain("openai:OFF:false");
+  });
+
+  /** 登记根实例供卸载，等待模型查询提交。 */
   async function render_probe(): Promise<HTMLDivElement> {
     const container = document.createElement("div");
     document.body.append(container);
@@ -149,6 +168,7 @@ describe("useModelSelection", () => {
   }
 });
 
+/** 通过可点击入口观察模型控制器的公开状态。 */
 function Probe(): JSX.Element {
   const controller = useModelSelection();
   const selected = controller.snapshot.models.find(
@@ -174,6 +194,7 @@ function Probe(): JSX.Element {
   );
 }
 
+/** 构造后端窄回包，覆盖用途与思考档位。 */
 function snapshot(
   selected: string,
   thinking_level: ModelThinkingLevel = "OFF",
@@ -206,6 +227,7 @@ function snapshot(
   };
 }
 
+/** 按探针动作名定位交互入口。 */
 function find_button(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll("button")].find(
     (candidate) => candidate.textContent === label,
@@ -214,6 +236,7 @@ function find_button(container: HTMLElement, label: string): HTMLButtonElement {
   return button;
 }
 
+/** 等待异步保存回包反映到可见状态。 */
 async function wait_for_text(container: HTMLElement, text: string): Promise<void> {
   await act(async () => {
     await vi.waitFor(() => expect(container.textContent).toContain(text));

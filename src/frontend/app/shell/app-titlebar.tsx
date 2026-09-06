@@ -10,6 +10,8 @@ type AppTitlebarProps = {
 
 export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
   const { state, toggleSidebar } = useSidebar();
+  const version = window.desktopApp.appVersion;
+  const version_label = /^v/iu.test(version) ? version : `v${version}`;
   const shell_info = window.desktopApp.shell; // 标题栏安全区统一来自 preload 暴露的桌面壳层信息，避免渲染层再猜平台细节
   const SidebarToggleIcon = state === "expanded" ? PanelLeftClose : PanelLeftOpen;
 
@@ -33,7 +35,9 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
             <SidebarToggleIcon size={18} aria-hidden="true" />
           </button>
           <div className="topbar__brand">
-            <strong className="font-medium">{props.title}</strong>
+            <strong className="font-medium">
+              {props.title} {version_label}
+            </strong>
           </div>
         </div>
       </div>

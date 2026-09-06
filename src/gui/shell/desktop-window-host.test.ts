@@ -300,6 +300,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: desktop_bundle_dir,
       backendApiBaseUrl: "http://127.0.0.1:4567",
+      appVersion: "1.2.3",
       rendererDiagnostics: create_renderer_diagnostics_stub(),
       recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => false,
@@ -320,7 +321,10 @@ describe("桌面窗口宿主", () => {
         preload: path.join(desktop_bundle_dir, "preload.mjs"),
         contextIsolation: true,
         nodeIntegration: false,
-        additionalArguments: [build_backend_api_base_url_argument("http://127.0.0.1:4567")],
+        additionalArguments: [
+          build_backend_api_base_url_argument("http://127.0.0.1:4567"),
+          "--app-version=1.2.3",
+        ],
         sandbox: false,
       },
     });
@@ -345,6 +349,7 @@ describe("桌面窗口宿主", () => {
     const host = create_log_window_host({
       desktopBundleDir: desktop_bundle_dir,
       backendApiBaseUrl: "http://127.0.0.1:6789",
+      appVersion: "1.2.3",
       rendererDiagnostics: create_renderer_diagnostics_stub(),
       recordHostDiagnostic: record_host_diagnostic,
     });
@@ -374,6 +379,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       backendApiBaseUrl: "http://127.0.0.1:4567",
+      appVersion: "1.2.3",
       rendererDiagnostics: create_renderer_diagnostics_stub(),
       recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,
@@ -439,6 +445,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       backendApiBaseUrl: "http://127.0.0.1:4567",
+      appVersion: "1.2.3",
       rendererDiagnostics: renderer_diagnostics,
       recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,
@@ -483,6 +490,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       backendApiBaseUrl: "http://127.0.0.1:4567",
+      appVersion: "1.2.3",
       rendererDiagnostics: create_renderer_diagnostics_stub(),
       recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,

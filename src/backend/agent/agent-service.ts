@@ -154,7 +154,7 @@ type AgentRevision = {
 
 /** 新输入与隐藏续跑共用模型执行主链，但只有前者创建公开 user 轮次。 */
 type AgentModelRequest =
-  | { kind: "prompt"; text: string; images: readonly string[] }
+  | { kind: "prompt" | "queued"; text: string; images: readonly string[] }
   | { kind: "continue" };
 
 type AgentAssistantStreamDelta = Extract<
@@ -223,9 +223,10 @@ export class AgentService {
   private translation_paused_result: BatchTranslationResult | null = null; // 用户停止后在当前 round 内暂停翻译能力
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
+  private approval_mode_revision = 0; // 显式设置优先于较早批次提交后的自动模式回写
   private approval_mode: AgentApprovalMode = "manual"; // 当前任务的工程写入审批策略
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
-  private context: AgentContextSnapshot = { tokens: null, compactable: false }; // 模型历史估算与手动压缩能力的同源快照
+  private context: AgentContextSnapshot = { tokens: null, compactable: false, limits: null }; // 模型历史估算与手动压缩能力的同源快照
   private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
   private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null; // 固定窗口唯一发布计时器
   private latest_round_checkpoint: AgentHistoryCheckpoint | null = null; // 最新 user 轮次写入前的位置
@@ -289,14 +290,9 @@ export class AgentService {
   /** 更新当前 Agent 任务的写入请求审批模式；reset、工程切换和应用重启都会回到手动。 */
   public set_approval_mode(request: JsonRecord): AgentCommandAck {
     this.assert_not_disposed();
-    if (
-      this.session_reset !== null ||
-      this.find_open_workspace_apply_entry() !== undefined ||
-      this.decisions.has_pending
-    ) {
-      throw new AppErrors.AppError("runtime.busy");
-    }
+    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
     const approval_mode = read_agent_approval_mode(request);
+    this.approval_mode_revision += 1;
     if (this.approval_mode !== approval_mode) {
       this.approval_mode = approval_mode;
       this.publish_event({ type: "approval_mode", approvalMode: approval_mode });
@@ -965,6 +961,7 @@ export class AgentService {
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
     runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
     runtime.model_config = resolved_model.model_config;
+    this.publish_context();
   }
 
   /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
@@ -1083,6 +1080,10 @@ export class AgentService {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     let next_request: AgentModelRequest | null = null;
     try {
+      // 普通入口已在受理前完成预检；FIFO 在实际出队执行时采用新设置，失败归入该轮终态。
+      if (request.kind === "queued")
+        await this.update_runtime_model(runtime, this.settings.read_setting());
+      if (!this.prompt_is_current(runtime, generation)) return;
       if (request.kind === "continue") await this.send_continue(runtime);
       else await this.send_prompt(runtime, generation, request.text, request.images);
       if (this.prompt_is_current(runtime, generation)) {
@@ -1114,7 +1115,7 @@ export class AgentService {
           const resources = this.require_resources();
           this.start_round_entry(runtime, next);
           next_request = {
-            kind: "prompt",
+            kind: "queued",
             text: build_agent_prompt(next, select_agent_skills(resources.skills, next.text)),
             images: read_agent_message_images(next),
           };
@@ -1492,6 +1493,13 @@ export class AgentService {
     const last_entry = session.sessionManager.getBranch().at(-1);
     return {
       tokens: context_tokens,
+      limits:
+        session.model === undefined
+          ? null
+          : {
+              context_window: session.model.contextWindow,
+              max_output_tokens: session.model.maxTokens,
+            },
       compactable: context_tokens > AGENT_KEEP_RECENT_TOKENS && last_entry?.type !== "compaction",
     };
   }
@@ -1562,9 +1570,10 @@ export class AgentService {
     this.runtime = null;
     this.state = "idle";
     this.approval_mode = "manual";
+    this.approval_mode_revision += 1;
     this.decisions.reset();
     this.entries = [];
-    this.context = { tokens: null, compactable: false };
+    this.context = { tokens: null, compactable: false, limits: null };
     this.latest_round_checkpoint = null;
     this.translation_paused_result = null;
     this.latest_output_checkpoint = null;
@@ -1737,6 +1746,7 @@ export class AgentService {
     return {
       read_mode: () => this.approval_mode,
       wait_for_decision: async (tool_call_id, summary, signal) => {
+        const mode_revision = this.approval_mode_revision;
         const decision = await this.decisions.wait_for_write_approval(
           tool_call_id,
           summary,
@@ -1745,9 +1755,10 @@ export class AgentService {
         if (decision === "reject") {
           throw new AgentToolError({ code: "approval_denied", action: "await_user" });
         }
-        return { switch_to_auto: decision === "allow_session" };
+        return { auto_revision: decision === "allow_session" ? mode_revision : null };
       },
-      activate_auto: () => {
+      activate_auto: (mode_revision) => {
+        if (mode_revision !== this.approval_mode_revision) return;
         this.approval_mode = "auto";
         this.publish_event({ type: "approval_mode", approvalMode: "auto" });
       },

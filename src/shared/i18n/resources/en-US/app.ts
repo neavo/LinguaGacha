@@ -278,9 +278,6 @@ export const en_us_app = {
       missing_backend_api_base_url: {
         message: "Backend API URL is not configured …",
       },
-      backend_metadata_unavailable: {
-        message: "Backend metadata is unavailable …",
-      },
       http_error: {
         message: "Request failed: {PATH} …",
       },

@@ -1,5 +1,6 @@
+import type { ModelAgentLimits } from "@domain/model-agent";
 import type { ReactNode } from "react";
-import { Boxes, Brain, ChevronDown, Circle, CircleCheck, Languages } from "lucide-react";
+import { BookOpenText, Boxes, Brain, ChevronDown, Circle, CircleCheck } from "lucide-react";
 import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -31,13 +32,12 @@ import {
 /** 输入底栏的模型选择、上下文用量和思考档位共用一个配置控制器。 */
 export function AgentComposerModelControls(props: {
   controller: ModelSelectionController;
-  disabled: boolean;
   context_tokens: number | null;
+  context_limits: ModelAgentLimits | null;
   on_thinking_level_change?: (level: ModelThinkingLevel) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const model_controls_disabled =
-    props.disabled || props.controller.loading || props.controller.updating;
+  const model_controls_disabled = props.controller.loading || props.controller.updating;
   const selected_model = read_selected_model(props.controller, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
@@ -54,14 +54,15 @@ export function AgentComposerModelControls(props: {
         : t("app.model.thinking_level.default");
   const model_selection_label = t("app.model.selection.label");
   const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}`;
-  // 后端只拥有历史 token；容量跟随当前选择，并会在下一次模型操作前同步到既有会话。
+  // 已有会话使用实际容量，选择变化只影响下一次模型操作。
+  const limits = props.context_limits ?? selected_model?.agent_limits;
   const context_usage =
-    selected_model === null
+    limits === undefined
       ? null
       : format_context_usage({
           tokens: props.context_tokens ?? 0,
-          contextWindow: selected_model.agent_limits.context_window,
-          maxTokens: selected_model.agent_limits.max_output_tokens,
+          contextWindow: limits.context_window,
+          maxTokens: limits.max_output_tokens,
         });
 
   const batch_model_id = props.controller.snapshot.model_selection.agent_batch_translation;
@@ -107,7 +108,7 @@ export function AgentComposerModelControls(props: {
         <ModelSelectionCategories
           controller={props.controller}
           usage="agent"
-          disabled={props.disabled}
+          disabled={model_controls_disabled}
         />
       </ModelMenuButton>
       {selected_thinking_label !== null && (
@@ -147,7 +148,7 @@ export function AgentComposerModelControls(props: {
             <ModelThinkingLevelOptions
               controller={props.controller}
               usage="agent"
-              disabled={props.disabled}
+              disabled={model_controls_disabled}
               on_thinking_level_change={props.on_thinking_level_change}
             />
           </AppDropdownMenuContent>
@@ -157,7 +158,7 @@ export function AgentComposerModelControls(props: {
       <ModelMenuButton
         disabled={model_controls_disabled}
         label={`${batch_tooltip}: ${batch_label}`}
-        icon={<Languages aria-hidden="true" />}
+        icon={<BookOpenText aria-hidden="true" />}
         name={batch_label}
         tooltip={<p>{batch_tooltip}</p>}
       >

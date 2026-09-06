@@ -274,9 +274,6 @@ export const zh_cn_app = {
       missing_backend_api_base_url: {
         message: "Backend API 地址未配置 …",
       },
-      backend_metadata_unavailable: {
-        message: "Backend 元信息不可用 …",
-      },
       http_error: {
         message: "请求失败：{PATH} …",
       },

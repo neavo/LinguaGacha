@@ -171,6 +171,7 @@ function build_workspace_port(): AgentWorkspacePort {
   };
 }
 
+/** 隔离工具调用期间的 Todo 副本与最终提交。 */
 function build_todo_port(
   todos: string[] = [],
 ): AgentTodoPort & { write: ReturnType<typeof vi.fn<(todos: readonly string[]) => void>> } {
@@ -184,7 +185,7 @@ function build_todo_port(
 function build_approval_port(): AgentWorkspaceApprovalPort {
   return {
     read_mode: () => "auto",
-    wait_for_decision: vi.fn(async () => ({ switch_to_auto: false })),
+    wait_for_decision: vi.fn(async () => ({ auto_revision: null })),
     activate_auto: vi.fn(),
   };
 }

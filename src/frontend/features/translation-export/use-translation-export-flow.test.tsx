@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   push_toast: vi.fn(),
   navigate_to_route: vi.fn(),
   write_draft: vi.fn(),
+  read_draft: vi.fn(() => ({ text: "", attachments: [] })),
+  selected_route: "workbench",
   project_snapshot: { loaded: true, path: "E:/demo/sample.lg" },
 }));
 
@@ -20,10 +22,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => ({ navigate_to_route: mocks.navigate_to_route }),
+  useAppNavigation: () => ({
+    navigate_to_route: mocks.navigate_to_route,
+    selected_route: mocks.selected_route,
+  }),
 }));
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentInput: () => ({ write_draft: mocks.write_draft }),
+  useAgentInput: () => ({ write_draft: mocks.write_draft, read_draft: mocks.read_draft }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ project_snapshot: mocks.project_snapshot }),
@@ -50,6 +55,8 @@ describe("useTranslationExportFlow", () => {
     mocks.push_toast.mockReset();
     mocks.navigate_to_route.mockReset();
     mocks.write_draft.mockReset();
+    mocks.read_draft.mockReturnValue({ text: "", attachments: [] });
+    mocks.selected_route = "workbench";
     mocks.project_snapshot.loaded = true;
     mocks.project_snapshot.path = "E:/demo/sample.lg";
   });
@@ -79,7 +86,7 @@ describe("useTranslationExportFlow", () => {
     await act(async () => Promise.resolve());
   }
 
-  it("读取警告摘要后覆盖 AGENT 草稿并跳转", async () => {
+  it("读取警告摘要后为空草稿填入审校建议并跳转", async () => {
     mocks.api_fetch.mockResolvedValueOnce({
       projectPath: "E:/demo/sample.lg",
       warningSummary: {
@@ -101,6 +108,53 @@ describe("useTranslationExportFlow", () => {
     });
     expect(mocks.navigate_to_route).toHaveBeenCalledWith("agent");
     expect(latest_flow?.state.phase).toBe("closed");
+  });
+
+  it("跳转保留已有草稿，AGENT 页面隐藏重复导航", async () => {
+    mocks.read_draft.mockReturnValue({ text: "用户未发送的内容", attachments: [] });
+    mocks.api_fetch.mockResolvedValue({
+      projectPath: mocks.project_snapshot.path,
+      warningSummary: { total_count: 1, entries: [] },
+    });
+    await render_probe();
+    act(() => latest_flow?.request_export());
+    await flush_microtasks();
+    act(() => latest_flow?.jump_to_agent());
+    expect(mocks.write_draft).not.toHaveBeenCalled();
+    expect(mocks.navigate_to_route).toHaveBeenCalledWith("agent");
+    mocks.selected_route = "agent";
+    await render_probe();
+    expect(latest_flow?.can_jump_to_agent).toBe(false);
+  });
+
+  it("工程切换后，旧导出失败不会恢复旧确认框", async () => {
+    let reject_export = (_error: Error): void => undefined;
+    mocks.api_fetch
+      .mockResolvedValueOnce({
+        projectPath: mocks.project_snapshot.path,
+        warningSummary: { total_count: 0, entries: [] },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            reject_export = reject;
+          }),
+      );
+    await render_probe();
+    act(() => latest_flow?.request_export());
+    await flush_microtasks();
+    let exporting: Promise<void> | undefined;
+    act(() => {
+      exporting = latest_flow?.confirm_export();
+    });
+    mocks.project_snapshot.path = "E:/demo/next.lg";
+    await render_probe();
+    await act(async () => {
+      reject_export(new Error("old export failed"));
+      await exporting;
+    });
+    expect(latest_flow?.state.phase).toBe("closed");
+    expect(mocks.push_toast).not.toHaveBeenCalled();
   });
 
   it("无警告确认后只调用一次唯一导出接口", async () => {

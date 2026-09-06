@@ -1,3 +1,4 @@
+import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "./i18n/types";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
@@ -28,6 +29,7 @@ export type AgentSessionState = "idle" | "running";
 /** 当前模型可见历史及其是否存在可压缩的旧段。 */
 export type AgentContextSnapshot = JsonRecord & {
   tokens: number | null; // 尚未建立模型历史时为 null
+  limits: ModelAgentLimits | null; // 当前会话实际容量，独立于下一轮模型选择
   compactable: boolean; // 后端按当前 SDK 历史判定手动压缩入口是否可用
 };
 

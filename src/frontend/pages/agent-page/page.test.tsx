@@ -170,6 +170,9 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     }),
   };
 });
+vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
+  useTranslationExport: () => ({ can_request_export: true, request_export: vi.fn() }),
+}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
@@ -318,7 +321,7 @@ describe("AgentPage", () => {
     const compactContext = vi.fn(async () => undefined);
     const send = vi.fn(async () => undefined);
     const view = await render_page({
-      context: { tokens: 64_000, compactable: true },
+      context: { tokens: 64_000, compactable: true, limits: null },
       compactContext,
       send,
     });
@@ -343,7 +346,9 @@ describe("AgentPage", () => {
   });
 
   it("只为空闲且无需压缩的指令显示简短说明", async () => {
-    const view = await render_page({ context: { tokens: 1_000, compactable: false } });
+    const view = await render_page({
+      context: { tokens: 1_000, compactable: false, limits: null },
+    });
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
@@ -359,7 +364,7 @@ describe("AgentPage", () => {
     expect(idle_instruction?.querySelector("small")).not.toBeNull();
 
     runtime_state.current = { revision: 1, owner: "batch_translation" };
-    await render_page({ context: { tokens: 1_000, compactable: false } });
+    await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
     const busy_instruction = view.querySelector<HTMLButtonElement>(
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
     );
@@ -378,7 +383,7 @@ describe("AgentPage", () => {
 
     expect(alert).not.toBeNull();
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
-      true,
+      false,
     );
     await act(async () => retry_button.click());
     expect(reconnect).toHaveBeenCalledOnce();
@@ -388,18 +393,19 @@ describe("AgentPage", () => {
     const view = await render_page({ transport: "disconnected" });
 
     expect(view.querySelector('.agent-composer__connection-status[role="status"]')).not.toBeNull();
-    expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
     runtime_state.current = { revision: 1, owner: "agent" };
     const view = await render_page({ state: "idle" });
-    const model = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    const editor = EditorView.findFromDOM(view.querySelector(".cm-content")!)!;
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
 
-    expect(model?.disabled).toBe(true);
+    expect(submit?.disabled).toBe(true);
     runtime_state.current = { revision: 2, owner: null };
     await render_page({ state: "idle" });
-    expect(model?.disabled).toBe(false);
+    expect(submit?.disabled).toBe(false);
   });
 
   it("页面挂载时默认激活跟随最新并归底", async () => {
@@ -675,7 +681,7 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("选择期间收起操作区并在恢复后保留草稿、编辑实例和跟随状态", async () => {
+  it("待决审批期间保持输入和底栏可用并保留草稿、编辑实例和跟随状态", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -708,17 +714,16 @@ describe("AgentPage", () => {
     });
     await render_page({ input, send, pendingDecision: pending_write_decision });
     const body = view.querySelector(".agent-page__composer-slot")!;
-    expect(body.hasAttribute("inert")).toBe(true);
+    expect(body.hasAttribute("inert")).toBe(false);
     const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
-    expect(follow_button.closest("[inert]")).toBe(view.querySelector(".agent-page__status-zone"));
+    expect(follow_button.closest("[inert]")).toBeNull();
     expect(follow_button.getAttribute("aria-pressed")).toBe("true");
-    expect(document.activeElement).toBe(view.querySelector(".agent-decision__prompt"));
-    await act(async () => {
-      view
-        .querySelector("form")!
-        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(send).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(host);
+    expect(editor.state.readOnly).toBe(false);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__export")?.disabled).toBe(false);
+    expect(
+      view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")?.disabled,
+    ).toBe(false);
     await render_page({ input, send, pendingDecision: null });
     expect(body.hasAttribute("inert")).toBe(false);
     expect(EditorView.findFromDOM(host)).toBe(editor);
@@ -1066,7 +1071,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
-    context: { tokens: null, compactable: false },
+    context: { tokens: null, compactable: false, limits: null },
     transport: "ready",
     command: null,
     input: {

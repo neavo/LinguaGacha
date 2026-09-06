@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  BookOpenText,
   Bot,
   Drama,
-  Languages,
   ListChecks,
   ScanText,
   Sparkles,
@@ -50,7 +50,6 @@ import { create_agent_mention_tokens, type AgentMentionInstruction } from "./age
 import { AgentTaskStatus } from "./agent-task-status";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
-import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
 /** 空会话任务入口按配置顺序展示，关联技能加载后可用；多个任务可共用技能。 */
@@ -68,7 +67,7 @@ const AGENT_TASK_SUGGESTIONS = [
   {
     skillName: "translation-workflow",
     suggestionKey: "agent_page.empty.suggestions.translate_full_text",
-    Icon: Languages,
+    Icon: BookOpenText,
   },
   {
     skillName: "translation-workflow",
@@ -368,7 +367,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           target={target}
           skills={skills}
           command={controls.command}
-          model_selection={model_selection}
           unavailable_reason={unavailable_reason}
           on_save={save_inline_edit}
           on_saved={cancel_inline_edit}
@@ -381,7 +379,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       controls.command,
       cancel_inline_edit,
       handle_inline_image_error,
-      model_selection,
       save_inline_edit,
       skills,
       unavailable_reason,
@@ -456,7 +453,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
-  const input_transition = useAgentInputTransition(pending_decision, composer_ref);
+
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
   const follow_latest_aria_shortcut =
@@ -595,13 +592,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div ref={input_transition.region_ref} className="agent-page__bottom-region">
-        <div ref={input_transition.area_ref} className="agent-page__input-area">
-          <div
-            ref={input_transition.status_ref}
-            className="agent-page__status-zone"
-            inert={input_transition.locked || undefined}
-          >
+      <div className="agent-page__bottom-region">
+        <div className="agent-page__input-area">
+          <div className="agent-page__status-zone">
             <AgentTaskStatus todos={todos} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
@@ -643,28 +636,19 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           </div>
 
           <div className="agent-page__operation-zone">
-            <div
-              ref={input_transition.decision_ref}
-              className="agent-page__decision-slot"
-              inert={pending_decision === null || undefined}
-            >
-              {input_transition.visible_decision === null ? null : (
+            <div className="agent-page__decision-slot">
+              {pending_decision === null ? null : (
                 <AgentDecision
-                  decision={input_transition.visible_decision}
-                  title_ref={input_transition.title_ref}
+                  decision={pending_decision}
                   on_resolve_question={agent_actions.resolveQuestion}
                   on_resolve_write_approval={agent_actions.resolveWriteApproval}
                 />
               )}
             </div>
-            <div
-              ref={input_transition.composer_slot_ref}
-              className="agent-page__composer-slot"
-              inert={input_transition.locked || undefined}
-            >
+            <div className="agent-page__composer-slot">
               <AgentComposer
                 ref={composer_ref}
-                locked={active_inline_edit !== null || input_transition.locked}
+                locked={active_inline_edit !== null}
                 skills={skills}
                 instructions={instructions}
                 running={is_running}
@@ -675,9 +659,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 can_continue_queue={can_continue_queue}
                 queue_full={queue_full}
                 can_reset={!agent_restoring && entries.length > 0}
-                context_tokens={controls.context.tokens}
+                context={controls.context}
                 approval_mode={controls.approvalMode}
-                approval_mode_disabled={workspace_apply_running}
                 model_selection={model_selection}
                 input_session={input}
                 on_send={submit_message}

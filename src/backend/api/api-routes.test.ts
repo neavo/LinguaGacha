@@ -124,7 +124,7 @@ describe("register_api_routes", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       },
     });
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
@@ -280,7 +280,7 @@ function create_route_fixture() {
       skills: [],
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     })),
     send_message,
     set_approval_mode,

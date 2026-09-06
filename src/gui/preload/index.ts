@@ -1,5 +1,6 @@
 import { ipcRenderer, contextBridge, webUtils } from "electron";
 import path from "node:path";
+import { resolve_app_version_from_argv } from "../bridge/app-version";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
@@ -39,6 +40,7 @@ let next_update_download_request_id = 0; // preload 本地递增，避免进度�
 const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround"; // Electron 43 上游修复落地后连同读写逻辑一起删除
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
+  appVersion: resolve_app_version_from_argv(process.argv),
   shell: DESKTOP_SHELL_INFO,
   backendApi: {
     baseUrl: BACKEND_API_BASE_URL,

@@ -2,7 +2,6 @@
   /* 工作区拥有外边界；页面根节点只管理尺寸、滚动和页内节奏。 */
   /* 输入区是宽度基准；信息流在其内侧固定收窄 24px/侧。 */
   --agent-composer-max-width: 1120px;
-  --agent-decision-max-width: 720px;
   --agent-stream-width-offset: 48px;
   --agent-operation-surface-border-width: 1px;
   --agent-composer-padding-inline-end: 6px;
@@ -750,18 +749,10 @@
   padding: var(--ui-page-gap) 0 var(--ui-page-pad-bottom);
 }
 
-.agent-page__bottom-region[data-transitioning] {
-  overflow: clip;
-}
-
 .agent-page__input-area {
   width: min(calc(100% - 32px), var(--agent-composer-max-width));
   flex: 0 0 auto;
   margin: 0 auto;
-}
-
-.agent-page__bottom-region[data-decision="true"] .agent-page__input-area {
-  width: min(calc(100% - 32px), var(--agent-decision-max-width));
 }
 
 .agent-page__status-zone {
@@ -783,35 +774,32 @@
   margin-top: 8px;
 }
 
-.agent-page__decision-slot {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  height: 0;
-  overflow: clip;
-  visibility: hidden;
-  opacity: 0;
+.agent-page__decision-slot:empty {
+  display: none;
 }
 
-.agent-page__bottom-region[data-decision="true"] .agent-page__decision-slot {
-  height: auto;
-  visibility: visible;
-  opacity: 1;
+.agent-page__decision-slot:not(:empty) {
+  margin-bottom: 8px;
+  max-height: min(40vh, 360px);
+  overflow-y: auto;
+  animation: agent-decision-enter 160ms ease-out;
 }
 
-.agent-page__bottom-region[data-decision="true"] .agent-page__status-zone,
-.agent-page__bottom-region[data-decision="true"] .agent-page__composer-slot {
-  min-height: 0;
-  height: 0;
-  overflow: clip;
-  visibility: hidden;
-  opacity: 0;
+@keyframes agent-decision-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.agent-page__bottom-region[data-transitioning] .agent-page__status-zone,
-.agent-page__bottom-region[data-transitioning] .agent-page__composer-slot {
-  min-height: 0;
-  overflow: clip;
+@media (prefers-reduced-motion: reduce) {
+  .agent-page__decision-slot:not(:empty) {
+    animation: none;
+  }
 }
 
 .agent-todo,
@@ -1580,6 +1568,7 @@
   opacity: 0.45;
 }
 
+.agent-composer__export,
 .agent-composer__reset,
 .agent-composer__model-trigger,
 .agent-composer__thinking-trigger,
@@ -1589,6 +1578,7 @@
   font-size: 12px;
 }
 
+.agent-composer__export,
 .agent-composer__reset,
 .agent-composer__thinking-trigger {
   flex: 0 0 auto;
