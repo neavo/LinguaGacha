@@ -24,20 +24,16 @@ export type AgentTodoPort = {
   write: (todos: readonly string[]) => void;
 };
 
-/** 工具 Schema 只说明当前可执行接口；跨步骤编排由 System Prompt 统一规定。 */
-const WORKSPACE_SCRIPT_API_DESCRIPTION = [
-  `最长 ${(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000).toString()} 秒；显式 return 必须是可序列化 JSON，UTF-8 上限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes.toString()} 字节。`,
-  format_agent_workspace_typescript_api(),
-  "业务路径与字段以 ws.contract 为准。示例：const meta = JSON.parse(await Deno.readTextFile(ws.contract.datasets.project_meta.path)); return { counts: meta.counts };",
-].join("\n");
-/** 模型提交一次性异步函数体，由受限 Deno 进程执行。 */
+/** Schema 提供脚本接口与运行限制；执行范式及示例由 System Prompt 统一规定。 */
 const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
   {
     script: Type.String({
       minLength: 1,
       description: [
         "TypeScript 异步函数体；宿主注入只读接口对象 ws，支持顶层 await 和显式 return。",
-        WORKSPACE_SCRIPT_API_DESCRIPTION,
+        `最长 ${(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000).toString()} 秒；显式 return 必须是可序列化 JSON，UTF-8 上限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes.toString()} 字节。`,
+        format_agent_workspace_typescript_api(),
+        "业务路径与字段以 ws.contract 为准。",
       ].join("\n"),
     }),
   },
