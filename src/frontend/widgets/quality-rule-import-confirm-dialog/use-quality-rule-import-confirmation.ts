@@ -11,11 +11,6 @@ import {
   type QualityRuleImportRuleType,
 } from "@shared/quality/quality-rule-import";
 
-// 导入完成后页面菜单交互的通用控制项。
-export type QualityRuleImportApplyOptions = {
-  close_preset_menu: boolean;
-};
-
 // 一次导入尝试的最终可观察结果。
 export type QualityRuleDuplicateResolutionResult = "saved" | "pending" | "failed";
 
@@ -59,10 +54,7 @@ type UseQualityRuleImportConfirmationResult<TEntry extends JsonRecord, TApplyOpt
 /**
  * 质量规则导入确认 hook 统一处理重复预览、用户选择和确认期间事实变化。
  */
-export function useQualityRuleImportConfirmation<
-  TEntry extends JsonRecord,
-  TApplyOptions = QualityRuleImportApplyOptions,
->(
+export function useQualityRuleImportConfirmation<TEntry extends JsonRecord, TApplyOptions>(
   options: UseQualityRuleImportConfirmationOptions<TEntry, TApplyOptions>,
 ): UseQualityRuleImportConfirmationResult<TEntry, TApplyOptions> {
   const { rule_type, apply_entries } = options;
@@ -77,6 +69,7 @@ export function useQualityRuleImportConfirmation<
     TApplyOptions
   > | null>(null);
 
+  /** 按规则类型计算重复项预览。 */
   const build_preview = useCallback(
     (plan: QualityRuleDuplicateResolutionPlan<TEntry>) => {
       return preview_quality_rule_import({
@@ -88,6 +81,7 @@ export function useQualityRuleImportConfirmation<
     [rule_type],
   );
 
+  /** 重复项进入确认流程，其余结果直接提交。 */
   const persist_entries_with_duplicate_resolution = useCallback(
     async (
       create_plan: QualityRuleDuplicateResolutionPlanFactory<TEntry>,
@@ -118,6 +112,7 @@ export function useQualityRuleImportConfirmation<
     [apply_entries, build_preview],
   );
 
+  /** 空闲时关闭确认并释放待处理计划。 */
   const close_import_duplicate_confirm = useCallback((): void => {
     if (import_confirm_state.submitting) {
       return;
@@ -126,11 +121,13 @@ export function useQualityRuleImportConfirmation<
     set_import_confirm_state(create_empty_quality_rule_import_confirm_state());
   }, [import_confirm_state.submitting]);
 
+  /** 随页面生命周期清空待确认导入。 */
   const reset_import_confirmation = useCallback((): void => {
     set_pending_import(null);
     set_import_confirm_state(create_empty_quality_rule_import_confirm_state());
   }, []);
 
+  /** 确认时重算规则事实，再应用跳过或覆盖选择。 */
   const apply_pending_import_action = useCallback(
     async (action: QualityRuleImportAction): Promise<void> => {
       if (pending_import === null) {
@@ -191,10 +188,12 @@ export function useQualityRuleImportConfirmation<
     [apply_entries, build_preview, pending_import],
   );
 
+  /** 按最新预览提交跳过重复项的结果。 */
   const import_duplicate_skip = useCallback(async (): Promise<void> => {
     await apply_pending_import_action("skip");
   }, [apply_pending_import_action]);
 
+  /** 按最新预览提交覆盖重复项的结果。 */
   const import_duplicate_overwrite = useCallback(async (): Promise<void> => {
     await apply_pending_import_action("overwrite");
   }, [apply_pending_import_action]);

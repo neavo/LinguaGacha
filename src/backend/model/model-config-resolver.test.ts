@@ -8,32 +8,48 @@ import {
   read_config_model_preset_records,
   read_config_model_records,
   resolve_model_for_usage,
+  resolve_agent_batch_translation_model,
 } from "./model-config-resolver";
 
+import { Model } from "../../domain/model";
+
 describe("model-config-resolver", () => {
-  it("三个用途分别解析命中的模型", () => {
+  it("跟随使用当前生效配置，固定选择同一 ID 时仍使用保存配置", () => {
+    const agent_model = Model.from_json({ id: "a", thinking: { level: "LOW" } }, "a");
+    const config = {
+      model_selection: { agent: "b", agent_batch_translation: null as string | null },
+      models: [{ id: "a", thinking: { level: "HIGH" } }],
+    };
+    expect(resolve_agent_batch_translation_model(config, agent_model).thinking.level).toBe("LOW");
+    config.model_selection.agent_batch_translation = "a";
+    expect(resolve_agent_batch_translation_model(config, agent_model).thinking.level).toBe("HIGH");
+    config.model_selection.agent_batch_translation = "missing";
+    expect(() => resolve_agent_batch_translation_model(config, agent_model)).toThrow(
+      "model.not_found",
+    );
+  });
+
+  it("执行用途分别解析命中的模型", () => {
     const config = {
       model_selection: {
         translation: "model-1",
-        analysis: "model-2",
+
         agent: "model-3",
       },
       models: [{ id: "model-1" }, { id: "model-2" }, { id: "model-3" }],
     };
 
     expect(resolve_model_for_usage(config, "translation")?.["id"]).toBe("model-1");
-    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-2");
     expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-3");
   });
 
   it("用途选择缺失或失效时回退到首个可用模型", () => {
     const config = {
-      model_selection: { translation: "missing", analysis: "", agent: "model-2" },
+      model_selection: { translation: "missing", agent: "model-2" },
       models: [{ id: "model-1" }, { id: "model-2" }],
     };
 
     expect(resolve_model_for_usage(config, "translation")).toMatchObject({ id: "model-1" });
-    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-1");
     expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-2");
   });
 

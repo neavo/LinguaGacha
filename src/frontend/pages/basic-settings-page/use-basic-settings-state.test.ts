@@ -12,7 +12,7 @@ import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-b
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -190,7 +190,6 @@ describe("useBasicSettingsState", () => {
         return {
           sectionRevisions: {
             items: 0,
-            analysis: 0,
           },
         } as never;
       }

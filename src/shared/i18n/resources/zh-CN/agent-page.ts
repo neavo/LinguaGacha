@@ -1,4 +1,9 @@
 export const zh_cn_agent_page = {
+  batch_translation_model: {
+    follow: "保持一致",
+    follow_option: "与 AGENT 模型保持一致",
+    tooltip: "批量翻译工具使用的模型",
+  },
   title: "AGENT",
   thinking: "思考过程",
   thinking_active: "正在思考",
@@ -22,8 +27,9 @@ export const zh_cn_agent_page = {
     suggestions: {
       capabilities: "介绍你的能力",
       roleplay: "开始角色扮演",
-      quality_rule_workflow: "帮我提取术语",
-      translation_workflow: "帮我审校译文",
+      extract_terminology: "帮我提取术语",
+      translate_full_text: "帮我翻译全文",
+      review_translation: "帮我审校译文",
     },
   },
   input: {
@@ -55,8 +61,7 @@ export const zh_cn_agent_page = {
   approval: {
     manual: "手动批准",
     auto: "自动批准",
-    tooltip_manual: "写入请求 - 手动批准",
-    tooltip_auto: "写入请求 - 自动批准",
+    tooltip: "写入权限审批模式",
     title: "正在写入工程数据",
     summary: {
       items: "文本数据 {count} 条",
@@ -123,6 +128,7 @@ export const zh_cn_agent_page = {
     stopped: "已停止 · {duration}",
   },
   error: {
+    decision: "决定提交失败，请重试。",
     restore: "会话恢复失败，请重试。",
     connection: "连接中断，正在等待重连。",
     send: "发送失败，草稿已保留。",

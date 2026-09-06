@@ -1,3 +1,4 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/glossary-page/glossary-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -21,6 +22,7 @@ const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<GlossaryFilterScope, LocaleKey>;
 
 const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "info"];
+/** 组装术语表的查询状态、列表与编辑操作。 */
 export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -50,6 +52,22 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
         label: t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
       };
     });
+
+  if (glossary_page_state.quality_status !== "ready") {
+    return (
+      <div className="glossary-page page-shell page-shell--full">
+        {glossary_page_state.quality_status === "error" ? (
+          <AppContentState
+            status="error"
+            message={t("glossary_page.feedback.load_failed")}
+            on_retry={glossary_page_state.reload_quality_rule_snapshot}
+          />
+        ) : (
+          <AppContentState status="loading" message={t("app.action.loading")} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="glossary-page page-shell page-shell--full">

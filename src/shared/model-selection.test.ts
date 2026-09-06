@@ -8,7 +8,7 @@ describe("模型选择快照", () => {
       normalize_model_selection_snapshot({
         model_selection: {
           translation: " translation-model ",
-          analysis: 7,
+
           agent: "agent-model",
           unknown: "ignored",
         },
@@ -40,8 +40,9 @@ describe("模型选择快照", () => {
     ).toEqual({
       model_selection: {
         translation: "translation-model",
-        analysis: "",
+
         agent: "agent-model",
+        agent_batch_translation: null,
       },
       models: [
         {

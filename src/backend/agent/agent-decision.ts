@@ -6,7 +6,11 @@ import type {
   AgentQuestionResponse,
   AgentWriteApprovalDecision,
 } from "../../shared/agent";
-import { AGENT_DECISION_TIMEOUT_MS } from "../../shared/agent";
+import {
+  AGENT_DECISION_TIMEOUT_MS,
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
+  AGENT_WRITE_APPROVAL_DEFAULT,
+} from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 
 /** ask_user 返回模型轮次的结构化结果，不进入公开 user 消息。 */
@@ -14,10 +18,10 @@ export type AgentQuestionResult = JsonRecord &
   (
     | { outcome: "selected"; optionId: string }
     | { outcome: "custom"; text: string }
-    | { outcome: "unanswered"; reason: "cancelled" | "expired" }
+    | { outcome: "cancelled" }
   );
 
-/** 两类决定共用的计时与取消资源；各自结果仍保持窄类型。 */
+/** 决定共用的计时与取消资源；各自结果保持窄类型。 */
 type PendingDecisionLifecycle = {
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -71,12 +75,13 @@ export class AgentDecisionCoordinator {
     };
     return new Promise<AgentQuestionResult>((resolve, reject) => {
       let pending!: PendingQuestion;
+      // 上游取消经同一裁决入口释放计时器与 pending。
       const on_abort = () => this.abort(pending);
       const timer = setTimeout(
         () =>
           this.settle(pending, {
-            outcome: "unanswered",
-            reason: "expired",
+            outcome: "selected",
+            optionId: public_decision.question.options[AGENT_QUESTION_DEFAULT_OPTION_INDEX].id,
           }),
         AGENT_DECISION_TIMEOUT_MS,
       );
@@ -87,7 +92,7 @@ export class AgentDecisionCoordinator {
     });
   }
 
-  /** 发布写入授权，并把超时归一为拒绝。 */
+  /** 发布写入授权，到期采用共享默认结果，允许当前批次写入。 */
   public wait_for_write_approval(
     tool_call_id: string,
     summary: AgentPendingWriteSummary,
@@ -102,8 +107,12 @@ export class AgentDecisionCoordinator {
     };
     return new Promise<AgentWriteApprovalDecision>((resolve, reject) => {
       let pending!: PendingWriteApproval;
+      // 上游取消经同一裁决入口释放计时器与 pending。
       const on_abort = () => this.abort(pending);
-      const timer = setTimeout(() => this.settle(pending, "reject"), AGENT_DECISION_TIMEOUT_MS);
+      const timer = setTimeout(
+        () => this.settle(pending, AGENT_WRITE_APPROVAL_DEFAULT),
+        AGENT_DECISION_TIMEOUT_MS,
+      );
       pending = { public: public_decision, resolve, reject, timer, signal, on_abort };
       signal?.addEventListener("abort", on_abort, { once: true });
       this.pending = pending;
@@ -218,7 +227,7 @@ function normalize_question_response(
 
 /** 把公开回答协议投影为模型可见的稳定工具结果。 */
 function question_result(response: AgentQuestionResponse): AgentQuestionResult {
-  if (response.kind === "cancel") return { outcome: "unanswered", reason: "cancelled" };
+  if (response.kind === "cancel") return { outcome: "cancelled" };
   if (response.kind === "custom") return { outcome: "custom", text: response.text };
   return { outcome: "selected", optionId: response.optionId };
 }

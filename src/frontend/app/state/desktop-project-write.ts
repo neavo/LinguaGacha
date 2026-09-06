@@ -8,7 +8,6 @@ import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-pro
 import { summarize_project_change_for_diagnostics } from "@frontend/app/state/desktop-diagnostics";
 import type { DesktopRecoveryActions } from "@frontend/app/state/desktop-recovery";
 import { AppError, type LogErrorContextInput, type RendererErrorContextInput } from "@shared/error";
-import type { TaskType } from "@domain/task";
 
 export type ProjectWriteResultPayload = {
   accepted?: unknown;
@@ -30,7 +29,6 @@ export type ProjectWriteCommitRequest<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
   operation: ProjectWriteOperation; // 页面业务意图到诊断语义的显式词表
-  task_type?: TaskType; // 仅用于任务相关写入的诊断归因
   run: () => Promise<TPayload>; // 只提交后端写入，运行态负责归一化和回灌
   prepare?: (args: { payload: TPayload; write_result: ProjectWriteResult }) => void | Promise<void>; // 在回灌前登记页面计算状态，避免依赖 React 调度竞态
 };
@@ -181,7 +179,6 @@ function summarize_project_write_trigger_for_diagnostics(
 function build_project_write_recovery_context(
   request: {
     operation: ProjectWriteOperation;
-    task_type?: TaskType;
   },
   phase: ProjectWriteCommitPhase,
 ): RendererErrorContextInput {
@@ -190,8 +187,6 @@ function build_project_write_recovery_context(
     operation: request.operation,
     phase,
   };
-  if (request.task_type !== undefined) {
-    recovery_context.taskType = request.task_type;
-  }
+
   return recovery_context;
 }

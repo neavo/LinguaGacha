@@ -1,4 +1,9 @@
 export const de_de_agent_page = {
+  batch_translation_model: {
+    follow: "Wie AGENT",
+    follow_option: "AGENT-Modell verwenden",
+    tooltip: "Modell für das Stapelübersetzungswerkzeug",
+  },
   title: "AGENT",
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
@@ -22,8 +27,9 @@ export const de_de_agent_page = {
     suggestions: {
       capabilities: "Stell deine Fähigkeiten vor",
       roleplay: "Rollenspiel starten",
-      quality_rule_workflow: "Hilf mir, Begriffe zu extrahieren",
-      translation_workflow: "Übersetze oder prüfe meine Texte",
+      extract_terminology: "Hilf mir, Begriffe zu extrahieren",
+      translate_full_text: "Hilf mir, den gesamten Text zu übersetzen",
+      review_translation: "Hilf mir, die Übersetzung zu prüfen",
     },
   },
   input: {
@@ -55,8 +61,7 @@ export const de_de_agent_page = {
   approval: {
     manual: "Manuelle Genehmigung",
     auto: "Automatische Genehmigung",
-    tooltip_manual: "Schreibanfrage - Manuelle Genehmigung",
-    tooltip_auto: "Schreibanfrage - Automatische Genehmigung",
+    tooltip: "Genehmigungsmodus für Schreibzugriffe",
     title: "Projektdaten werden geschrieben",
     summary: {
       items: "{count} Texteinträge",
@@ -133,6 +138,7 @@ export const de_de_agent_page = {
     stopped: "Gestoppt · {duration}",
   },
   error: {
+    decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen.",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",

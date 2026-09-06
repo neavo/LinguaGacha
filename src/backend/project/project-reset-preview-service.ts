@@ -4,7 +4,7 @@ import { FileFormatService } from "../file/file-format-service";
 import { Item } from "../../domain/item";
 import { is_json_record, read_json_integer } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { is_task_skipped_item_status } from "../../domain/task";
+
 import * as AppErrors from "../../shared/error";
 import { ProjectSessionState } from "./project-session-state";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -76,42 +76,6 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 分析 failed reset 的预演只移除 ERROR checkpoint，不触碰候选池或 item 事实
-   */
-  public async preview_analysis_reset(request: JsonRecord): Promise<JsonRecord> {
-    const mode = String(request["mode"] ?? "").toLowerCase();
-    if (mode !== "failed") {
-      throw new AppErrors.AppError("request.validation_failed");
-    }
-    const project_path = await this.require_idle_project_path();
-    const checkpoints = this.get_analysis_checkpoints(project_path);
-    let total_line = 0;
-    let processed_line = 0;
-    for (const item of this.get_all_items(project_path)) {
-      const status = this.normalize_item_status(item["status"]);
-      if (is_task_skipped_item_status(status)) {
-        continue;
-      }
-      const item_id = read_json_integer(item["id"], 0);
-      if (item_id <= 0 || String(item["src"] ?? "").trim() === "") {
-        continue;
-      }
-      total_line += 1;
-      if (checkpoints.get(item_id) === "PROCESSED") {
-        processed_line += 1;
-      }
-    }
-    return {
-      status_summary: {
-        total_line,
-        processed_line,
-        error_line: 0,
-        line: processed_line,
-      },
-    };
-  }
-
-  /**
    * reset 预演和真实 reset 一样要求工程已加载且后台任务空闲
    */
   private async require_idle_project_path(): Promise<string> {
@@ -142,7 +106,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 分析预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象
+   * 重置预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.get_all_items(project_path);
@@ -208,28 +172,6 @@ export class ProjectResetPreviewService {
       return null;
     }
     return `${file_path}\u0000${row}`;
-  }
-
-  /**
-   * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度
-   */
-  private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.get_analysis_item_checkpoints(project_path);
-    const checkpoints = new Map<number, string>();
-    if (!Array.isArray(value)) {
-      return checkpoints;
-    }
-    for (const row of value) {
-      if (!is_json_record(row)) {
-        continue;
-      }
-      const item_id = read_json_integer(row["item_id"], 0);
-      const status = String(row["status"] ?? "");
-      if (item_id > 0 && (status === "PROCESSED" || status === "ERROR")) {
-        checkpoints.set(item_id, status);
-      }
-    }
-    return checkpoints;
   }
 
   /**

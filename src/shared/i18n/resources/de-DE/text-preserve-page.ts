@@ -47,10 +47,8 @@ export const de_de_text_preserve_page = {
       "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     preset_name_required: "Name der Voreinstellung darf nicht leer sein",
 
-    default_preset_cleared: "Standard-Voreinstellung gelöscht …",
     unknown_error: "Der Vorgang ist fehlgeschlagen. Bitte versuchen Sie es später erneut.",
 
-    reset_success: "Zurücksetzen abgeschlossen …",
     mode_refresh_pending:
       "Der Textschutz-Modus wurde aktualisiert und der Korrektur-Cache wird noch aktualisiert. Bitte überprüfen Sie es in Kürze erneut.",
   },

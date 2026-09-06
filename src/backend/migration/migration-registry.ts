@@ -1,5 +1,4 @@
 import type { MigrationDescriptor } from "./migration-types";
-import { analysis_checkpoint_status_migration } from "./migrations/analysis-checkpoint-status-migration";
 import { epub_ruby_block_text_migration } from "./migrations/epub-ruby-block-text-migration";
 import { legacy_default_config_migration } from "./migrations/legacy-default-config-migration";
 import { markdown_v2_block_migration } from "./migrations/markdown-v2-block-migration";
@@ -30,7 +29,6 @@ export const MIGRATIONS: readonly MigrationDescriptor[] = [
   project_item_stable_metadata_migration,
   trans_item_metadata_migration,
   project_item_public_contract_migration,
-  analysis_checkpoint_status_migration,
   text_preserve_mode_migration,
   quality_default_meta_migration,
   translation_prompt_legacy_slot_migration,

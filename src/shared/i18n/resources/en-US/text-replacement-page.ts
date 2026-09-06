@@ -36,7 +36,5 @@ export const en_us_text_replacement_page = {
     preset_failed: "Failed to load replacement presets.",
 
     query_failed: "Failed to query replacement rule.",
-
-    reset_success: "Reset complete …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

@@ -152,7 +152,7 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
     post_translation_replacement_default_preset: "",
     text_preserve_default_preset: "",
     translation_custom_prompt_default_preset: "",
-    analysis_custom_prompt_default_preset: "",
+
     recent_projects: [],
     ...overrides,
   };
@@ -166,7 +166,7 @@ function create_desktop_runtime_fixture(settings_overrides: Record<string, unkno
     refresh_project_snapshot: vi.fn(),
     set_project_session_status: vi.fn(),
     refresh_settings: vi.fn(async () => {}),
-    refresh_task: vi.fn(async () => {}),
+    refresh_batch_translation: vi.fn(async () => {}),
   };
 }
 

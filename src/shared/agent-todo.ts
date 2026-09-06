@@ -1,4 +1,4 @@
-export const AGENT_TODO_ITEM_LIMIT = 4; // 有界阶段导航，防止 Todo 取代领域工作资产
+export const AGENT_TODO_ITEM_LIMIT = 20; // 有界阶段导航，防止 Todo 取代领域工作资产
 export const AGENT_TODO_TEXT_LIMIT = 64; // 短标签只表达动作与对象，不承载证据或结论
 
 /** 收窄跨进程 Todo，并复制为可由当前状态所有者安全持有的值。 */

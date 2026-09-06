@@ -1,18 +1,36 @@
 import { Type, type Static } from "@earendil-works/pi-ai";
 
-import type { JsonRecord } from "../../../../../domain/json";
+import { Check } from "typebox/value";
+import { normalize_literal_text } from "../../../../../shared/text/literal-matcher";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../policy";
+import { describe_agent_workspace_schema_error } from "../../validation";
 import { define_agent_workspace_data_tool, type AgentWorkspaceDataToolContext } from "./data-tool";
 
 const pagination = {
-  offset: Type.Optional(Type.Integer({ minimum: 0 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1 })),
+  offset: Type.Optional(
+    Type.Integer({
+      minimum: 0,
+      default: 0,
+      description: "目标筛选后的组偏移；后续页使用 next_offset。",
+    }),
+  ),
+  limit: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageMax,
+      default: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageDefault,
+      description: "本页最多返回的组数。",
+    }),
+  ),
 };
 
 const relation_schema = Type.Union([
   Type.Object(
     {
       reason: Type.Union([Type.Literal("equivalent"), Type.Literal("contains")]),
-      entry_ids: Type.Array(Type.String()),
+      entry_ids: Type.Array(Type.String(), {
+        description: "关系涉及的对象；contains 按 [包含者, 被包含者] 排列。",
+      }),
     },
     { additionalProperties: false },
   ),
@@ -46,27 +64,52 @@ const cross_group_relation_schema = Type.Union([
   ),
 ]);
 
-const parameters = Type.Object(
-  {
-    kind: Type.Union([Type.Literal("glossary"), Type.Literal("text_preserve")]),
-    entries: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            entry_id: Type.Optional(Type.String()),
-            id: Type.Optional(Type.String()),
-            src: Type.String(),
-            case_sensitive: Type.Optional(Type.Boolean()),
-          },
-          { additionalProperties: true },
-        ),
-      ),
-    ),
-    target_entry_ids: Type.Optional(Type.Array(Type.String())),
-    ...pagination,
-  },
-  { additionalProperties: false },
+const entry_fields = {
+  id: Type.String({
+    minLength: 1,
+    pattern: "\\S",
+    description: "完整分析集合中唯一的对象身份；当前工程条目沿用快照 id。",
+  }),
+  src: Type.String({ minLength: 1, pattern: "\\S", description: "对象的完整原文或正则源码。" }),
+};
+const glossary_entry_schema = Type.Object(
+  { ...entry_fields, case_sensitive: Type.Boolean() },
+  { additionalProperties: true },
 );
+const preserve_entry_schema = Type.Object(entry_fields, { additionalProperties: true });
+const entries_description =
+  "省略时读取该类型当前全部规则；提供时以此数组作为完整分析集合，空数组表示空集合。";
+const target_fields = {
+  target_entry_ids: Type.Optional(
+    Type.Array(Type.String({ minLength: 1, pattern: "\\S" }), {
+      uniqueItems: true,
+      description: "在完整集合分析后筛选涉及这些目标的组；省略取全部，空数组返回零组。",
+    }),
+  ),
+  ...pagination,
+};
+const parameters = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal("glossary"),
+      entries: Type.Optional(
+        Type.Array(glossary_entry_schema, { description: entries_description }),
+      ),
+      ...target_fields,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("text_preserve"),
+      entries: Type.Optional(
+        Type.Array(preserve_entry_schema, { description: entries_description }),
+      ),
+      ...target_fields,
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 const result = Type.Object(
   {
@@ -86,15 +129,23 @@ const result = Type.Object(
         { additionalProperties: false },
       ),
     ),
-    cross_group_relations: Type.Array(cross_group_relation_schema),
+    cross_group_relations: Type.Array(cross_group_relation_schema, {
+      description: "至少涉及本页一个组的跨组关系，分页间可能重复。",
+    }),
     missing_target_entry_ids: Type.Array(Type.String()),
-    next_offset: Type.Optional(Type.Integer({ minimum: 0 })),
+    next_offset: Type.Optional(
+      Type.Integer({ minimum: 0, description: "存在下一页时返回；省略表示本次目标组已遍历完毕。" }),
+    ),
   },
-  { additionalProperties: false },
+  {
+    additionalProperties: false,
+    description:
+      "强关系仅保留连接 component 所需的边；缺少直接边不能排除关系。text_preserve 的强关系只检测相同正则源码。total_entry_count 与 total_component_count 覆盖完整输入；total_target_entry_count 为存在的目标数，total_group_count 为目标筛选后的全部组数，groups 为当前页。",
+  },
 );
 
 type GroupableQualityKind = "glossary" | "text_preserve";
-type RuleEntry = { entry_id: string; src: string; case_sensitive: boolean };
+type RuleEntry = { id: string; src: string; case_sensitive: boolean };
 type StrongReason = "equivalent" | "contains";
 type StrongRelation = { reason: StrongReason; entry_indexes: [number, number] };
 type Component = { entry_indexes: number[] };
@@ -122,25 +173,21 @@ const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "graphem
  * 关系只负责共同审查，不证明语义相同、规则必要或可以合并。
  */
 export const groupQualityRuleEntries = define_agent_workspace_data_tool({
-  useWhen: "为 glossary 或 text_preserve 对象生成规范结构审查组",
-  description: "为 glossary 或 text_preserve 对象生成规范结构审查组，不替代语义判断。",
+  description:
+    "为 glossary 或 text_preserve 对象生成共同审查的结构组；关系用于组织证据，最终语义判断由模型完成。",
   parameters,
   result,
+  /** 完整集合先分析，再按目标和分页投影关联组及跨组证据。 */
   async execute(context, args) {
     const kind = args.kind;
-    const entries = await readEntries(context, args.entries, kind);
+    const entries = await readEntries(context, args);
     const targetEntryIds = readTargetEntryIds(args.target_entry_ids, entries);
     const offset = args.offset ?? 0;
     const limit = args.limit ?? context.contract.limits.query_page_default;
-    if (limit > context.contract.limits.query_page_max) {
-      throw new Error(
-        `limit must be an integer from 1 to ${context.contract.limits.query_page_max.toString()}`,
-      );
-    }
 
     const analysis = analyzeRelations(entries, kind);
-    const entryIdSet = new Set(entries.map((entry) => entry.entry_id));
-    const requestedTargetIds = targetEntryIds ?? entries.map((entry) => entry.entry_id);
+    const entryIdSet = new Set(entries.map((entry) => entry.id));
+    const requestedTargetIds = targetEntryIds ?? entries.map((entry) => entry.id);
     const missingTargetEntryIds = requestedTargetIds.filter((entryId) => !entryIdSet.has(entryId));
     const existingTargetIds = requestedTargetIds.filter((entryId) => entryIdSet.has(entryId));
     const targetEntryIdSet = new Set(existingTargetIds);
@@ -169,53 +216,40 @@ export const groupQualityRuleEntries = define_agent_workspace_data_tool({
   },
 });
 
-/** 读取现有规则或候选投影，并收口两种来源共享的最小字段校验。 */
+/** 显式输入已由注册边界校验；快照来源在此按相同条目 Schema 收窄。 */
 async function readEntries(
   context: AgentWorkspaceDataToolContext,
-  suppliedEntries: unknown,
-  kind: GroupableQualityKind,
+  args: Static<typeof parameters>,
 ): Promise<RuleEntry[]> {
-  const values: unknown[] = [];
-  if (suppliedEntries !== undefined) {
-    if (!Array.isArray(suppliedEntries)) throw new Error("entries must be an array");
-    values.push(...suppliedEntries);
+  const values: RuleEntry[] = [];
+  if (args.entries !== undefined) {
+    if (args.kind === "glossary") values.push(...args.entries);
+    else values.push(...args.entries.map((entry) => ({ ...entry, case_sensitive: false })));
   } else {
-    for await (const entry of context.data.quality(kind)) values.push(entry);
-  }
-
-  const entryIds = new Set<string>();
-  return values.map((value, index) => {
-    const record = readRecord(value, `entries[${index.toString()}]`);
-    const entryId = readNonEmptyString(
-      record.entry_id ?? record.id,
-      `entries[${index.toString()}].entry_id`,
-    );
-    if (entryIds.has(entryId)) throw new Error(`Duplicate entry_id: ${entryId}`);
-    entryIds.add(entryId);
-    const src = readNonEmptyString(record.src, `entries[${index.toString()}].src`);
-    let caseSensitive = false;
-    if (kind === "glossary") {
-      if (typeof record.case_sensitive !== "boolean") {
-        throw new Error(`entries[${index.toString()}].case_sensitive must be a boolean`);
+    for await (const entry of context.data.quality(args.kind)) {
+      if (args.kind === "glossary" && Check(glossary_entry_schema, entry)) values.push(entry);
+      else if (args.kind === "text_preserve" && Check(preserve_entry_schema, entry))
+        values.push({ ...entry, case_sensitive: false });
+      else {
+        const schema = args.kind === "glossary" ? glossary_entry_schema : preserve_entry_schema;
+        const error = describe_agent_workspace_schema_error(schema, entry);
+        throw new Error(`${args.kind} snapshot ${error.path}: ${error.message}`);
       }
-      caseSensitive = record.case_sensitive;
     }
-    return { entry_id: entryId, src, case_sensitive: caseSensitive };
-  });
+  }
+  const ids = new Set<string>();
+  for (const entry of values) {
+    if (ids.has(entry.id)) throw new Error(`Duplicate id: ${entry.id}`);
+    ids.add(entry.id);
+  }
+  return values;
 }
 
 /** 目标按输入条目顺序稳定排列；缺失 ID 留到结果中报告。 */
-function readTargetEntryIds(value: unknown, entries: RuleEntry[]): string[] | null {
+function readTargetEntryIds(value: string[] | undefined, entries: RuleEntry[]): string[] | null {
   if (value === undefined) return null;
-  const target_entry_ids = value as string[];
-  if (
-    new Set(target_entry_ids).size !== target_entry_ids.length ||
-    target_entry_ids.some((entryId) => entryId.trim() === "")
-  ) {
-    throw new Error("target_entry_ids must be an array of unique non-empty strings");
-  }
-  const inputOrder = new Map(entries.map((entry, index) => [entry.entry_id, index]));
-  return [...target_entry_ids].toSorted((left, right) => {
+  const inputOrder = new Map(entries.map((entry, index) => [entry.id, index]));
+  return [...value].toSorted((left, right) => {
     const leftIndex = inputOrder.get(left) ?? Number.MAX_SAFE_INTEGER;
     const rightIndex = inputOrder.get(right) ?? Number.MAX_SAFE_INTEGER;
     return leftIndex - rightIndex || compareText(left, right);
@@ -257,6 +291,7 @@ function analyzeRelations(
   );
   const crossGroupRelations: CrossGroupRelation[] = [];
 
+  // 强边经 union-find 唯一化，弱锚点按 component 集合唯一化；每条关系只分发一次。
   for (const edge of strong.edges) {
     distributeRelation(
       relationFromStrongEdge(edge, entries),
@@ -270,9 +305,7 @@ function analyzeRelations(
     const relation: PublicRelation = {
       reason: "shared_root",
       root: anchor.root,
-      entry_ids: anchor.representative_entry_indexes.map(
-        (entryIndex) => entries[entryIndex].entry_id,
-      ),
+      entry_ids: anchor.representative_entry_indexes.map((entryIndex) => entries[entryIndex].id),
     };
     distributeRelation(
       relation,
@@ -290,11 +323,11 @@ function analyzeRelations(
       component_ids: group.component_indexes.map((componentIndex) =>
         stableId("component", componentIndex),
       ),
-      entry_ids: group.entry_indexes.map((entryIndex) => entries[entryIndex].entry_id),
+      entry_ids: group.entry_indexes.map((entryIndex) => entries[entryIndex].id),
       target_entry_ids: [],
-      relations: dedupeRelations(internalRelationsByGroupId.get(group.group_id) ?? []),
+      relations: internalRelationsByGroupId.get(group.group_id)!,
     })),
-    cross_group_relations: dedupeRelations(crossGroupRelations),
+    cross_group_relations: crossGroupRelations,
   };
 }
 
@@ -321,7 +354,7 @@ function findLiteralRelations(entries: RuleEntry[]): StrongRelation[] {
   const insensitiveByText = new Map<string, number[]>();
   entries.forEach((entry, index) => {
     const target = entry.case_sensitive ? sensitiveByText : insensitiveByText;
-    const text = normalizeLiteral(entry.src, entry.case_sensitive);
+    const text = normalize_literal_text(entry.src, entry.case_sensitive);
     const indexes = target.get(text) ?? [];
     indexes.push(index);
     target.set(text, indexes);
@@ -334,7 +367,7 @@ function findLiteralRelations(entries: RuleEntry[]): StrongRelation[] {
       [false, insensitiveByText],
     ];
     for (const [caseSensitive, candidatesByText] of buckets) {
-      const graphemes = segmentGraphemes(normalizeLiteral(parent.src, caseSensitive));
+      const graphemes = segmentGraphemes(normalize_literal_text(parent.src, caseSensitive));
       for (let start = 0; start < graphemes.length; start += 1) {
         let text = "";
         for (let end = start; end < graphemes.length; end += 1) {
@@ -427,7 +460,7 @@ function buildWeakAnchors(
     ) {
       return;
     }
-    const graphemes = segmentGraphemes(normalizeLiteral(entry.src, false));
+    const graphemes = segmentGraphemes(normalize_literal_text(entry.src, false));
     if (graphemes.length < MIN_SHARED_ROOT_GRAPHEMES) return;
     const roots = new Set();
     for (let start = 0; start <= graphemes.length - MIN_SHARED_ROOT_GRAPHEMES; start += 1) {
@@ -607,20 +640,8 @@ function distributeRelation(
 function relationFromStrongEdge(edge: StrongRelation, entries: RuleEntry[]): PublicRelation {
   return {
     reason: edge.reason,
-    entry_ids: edge.entry_indexes.map((entryIndex) => entries[entryIndex]?.entry_id ?? ""),
+    entry_ids: edge.entry_indexes.map((entryIndex) => entries[entryIndex]?.id ?? ""),
   };
-}
-
-/** 多条发现路径可能产生同一关系，按稳定序列化键去重且保留首次顺序。 */
-function dedupeRelations<Relation extends PublicRelation | CrossGroupRelation>(
-  relations: Relation[],
-): Relation[] {
-  const byKey = new Map<string, Relation>();
-  for (const relation of relations) {
-    const key = JSON.stringify(relation);
-    if (!byKey.has(key)) byKey.set(key, relation);
-  }
-  return [...byKey.values()];
 }
 
 /** 建立按规模合并的 union-find，返回的 parents 供 component 投影复用。 */
@@ -633,6 +654,7 @@ function createUnionFind(size: number): {
   const find = createFind(parents);
   return {
     parents,
+    /** 已连通时返回 false，使调用方只保留连接 component 必需的边。 */
     union(left, right) {
       let leftRoot = find(left);
       let rightRoot = find(right);
@@ -697,14 +719,6 @@ function relationRank(reason: StrongReason | "shared_root"): number {
   return reason === "equivalent" ? 0 : reason === "contains" ? 1 : 2;
 }
 
-/** 统一 NFKC 和大小写折叠，并补齐 JS 小写在 ß 与希腊尾形上的差异。 */
-function normalizeLiteral(text: string, caseSensitive: boolean): string {
-  const normalized = text.normalize("NFKC");
-  return caseSensitive
-    ? normalized
-    : normalized.replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLowerCase().replaceAll("ς", "σ");
-}
-
 /** 将字符串分成用户可见字符，所有长度和片段计算共用此入口。 */
 function segmentGraphemes(text: string): string[] {
   return [...GRAPHEME_SEGMENTER.segment(text)].map((segment) => segment.segment);
@@ -725,20 +739,4 @@ function stableId(prefix: string, index: number): string {
 /** 避免 locale 环境影响数据工具的稳定顺序。 */
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-/** 统一拒绝 null、数组和非对象输入。 */
-function readRecord(value: unknown, name: string): JsonRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be an object`);
-  }
-  return value as JsonRecord;
-}
-
-/** 统一校验数据工具输入的身份和源码字段，但保留原始字符串内容。 */
-function readNonEmptyString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${name} must be a non-empty string`);
-  }
-  return value;
 }

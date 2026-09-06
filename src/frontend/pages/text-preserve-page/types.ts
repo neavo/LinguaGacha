@@ -1,3 +1,4 @@
+import type { QualityRuleQueryStatus } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import type { QualityRuleConfirmState } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
@@ -27,7 +28,7 @@ export type TextPreserveDialogState = {
   insert_after_entry_id: TextPreserveEntryId | null;
   draft_entry: TextPreserveEntryDraft;
   saving: boolean;
-  validation_message: string | null;
+  invalid: boolean;
 };
 
 export type TextPreserveFilterScope = "all" | "src" | "info";
@@ -61,6 +62,8 @@ export type TextPreserveVisibleEntry = {
 type TextPreserveSortState = AppTableSortState | null;
 
 export type UseTextPreservePageStateResult = {
+  quality_status: QualityRuleQueryStatus;
+  reload_quality_rule_snapshot: () => void;
   title_key: LocaleKey;
   mode: TextPreserveMode;
   mode_updating: boolean;

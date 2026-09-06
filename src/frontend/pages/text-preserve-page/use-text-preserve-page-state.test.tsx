@@ -56,16 +56,8 @@ let run_state = {
       enabled: false,
       revision: 0,
     },
-    analysis: {
-      text: "",
-      enabled: false,
-      revision: 0,
-    },
   },
-  analysis: {
-    candidate_count: 0,
-    candidate_aggregate: {},
-  },
+
   proofreading: {
     revision: 0,
   },
@@ -74,7 +66,6 @@ let run_state = {
     sections: {
       items: 1,
       quality: 1,
-      analysis: 0,
     },
   },
 };
@@ -160,7 +151,7 @@ const project_store = {
 };
 
 let current_hit_cache: QualityRuleStatisticsCacheSnapshot;
-let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
@@ -631,7 +622,7 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
-    expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.feature_state_changed");
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
 
   it("在模式切换进行中忽略后续重复点击", async () => {
@@ -727,13 +718,15 @@ describe("useTextPreservePageState", () => {
       await latest_state?.save_dialog_entry();
     });
 
-    expect(latest_state?.dialog_state.validation_message).toContain(
-      "quality_rule_editor.feedback.regex_invalid",
-    );
+    expect(latest_state?.dialog_state.invalid).toBe(true);
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       expect.stringContaining("quality_rule_editor.feedback.regex_invalid"),
     );
     expect(api_fetch_mock).not.toHaveBeenCalled();
+    await act(async () => latest_state?.update_dialog_draft({ info: "修正说明" }));
+    expect(latest_state?.dialog_state.invalid).toBe(true);
+    await act(async () => latest_state?.update_dialog_draft({ src: "valid" }));
+    expect(latest_state?.dialog_state.invalid).toBe(false);
   });
 });

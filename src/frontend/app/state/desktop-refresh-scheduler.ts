@@ -1,11 +1,11 @@
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
 
 // 渲染进程运行态刷新固定为每秒 2 帧，兼顾任务进度流畅度和 React 重渲染成本。
 export const DESKTOP_RUNTIME_REFRESH_INTERVAL_MS = 500;
 
 type DesktopRefreshSchedulerOptions = {
-  applyTaskSnapshot: (snapshot: TaskSnapshot) => void; // flush 阶段唯一写入 TaskSnapshotStore 的回调
+  applyTaskSnapshot: (snapshot: BatchTranslationSnapshot) => void; // flush 阶段唯一写入 BatchTranslationSnapshotStore 的回调
   applyProjectChangeBatch: (events: readonly ProjectChangeEventForState[]) => void; // flush 阶段唯一批量发布项目变更信号的回调
   shouldApplyProjectChange?: (event: ProjectChangeEventForState) => boolean; // flush 前过滤旧 project revision
   onFlushError: (error: unknown, context: DesktopRefreshSchedulerErrorContext) => void; // 调度器内部异常由运行态统一记录和恢复
@@ -14,14 +14,14 @@ type DesktopRefreshSchedulerOptions = {
 export type DesktopRefreshSchedulerErrorContext = {
   phase: "project_change_batch" | "task_snapshot";
   projectChanges: readonly ProjectChangeEventForState[];
-  taskSnapshot: TaskSnapshot | null;
+  taskSnapshot: BatchTranslationSnapshot | null;
 };
 
 /**
  * 渲染进程运行态刷新调度器，统一合并 task snapshot 与可批量 project change
  */
 export class DesktopRefreshScheduler {
-  private readonly apply_task_snapshot: (snapshot: TaskSnapshot) => void; // 只在 flush 时覆盖 TaskSnapshotStore
+  private readonly apply_task_snapshot: (snapshot: BatchTranslationSnapshot) => void; // 只在 flush 时覆盖 BatchTranslationSnapshotStore
 
   private readonly apply_project_change_batch: (
     events: readonly ProjectChangeEventForState[],
@@ -34,7 +34,7 @@ export class DesktopRefreshScheduler {
     context: DesktopRefreshSchedulerErrorContext,
   ) => void;
 
-  private pending_task_snapshot: TaskSnapshot | null = null; // 同一窗口保留最高 revision；相同 revision 仍允许后到的按类型查询覆盖
+  private pending_task_snapshot: BatchTranslationSnapshot | null = null; // 同一窗口保留最高 revision，相同 revision 接受后到快照
 
   private readonly pending_project_changes: ProjectChangeEventForState[] = []; // project change 必须按到达顺序批量发布
 
@@ -55,13 +55,13 @@ export class DesktopRefreshScheduler {
   /**
    * 记录最新 task snapshot；运行中高频进度和请求压力由下一次 flush 合并到一帧
    */
-  public enqueue_task_snapshot(snapshot: TaskSnapshot): void {
+  public enqueue_task_snapshot(snapshot: BatchTranslationSnapshot): void {
     if (this.disposed) {
       return;
     }
     if (
       this.pending_task_snapshot === null ||
-      snapshot.run_revision >= this.pending_task_snapshot.run_revision
+      snapshot.revision >= this.pending_task_snapshot.revision
     ) {
       this.pending_task_snapshot = snapshot;
     }
@@ -130,7 +130,7 @@ export class DesktopRefreshScheduler {
    */
   private flush_project_changes(
     projectChanges: ProjectChangeEventForState[],
-    taskSnapshot: TaskSnapshot | null,
+    taskSnapshot: BatchTranslationSnapshot | null,
   ): void {
     if (projectChanges.length === 0) {
       return;
@@ -156,7 +156,7 @@ export class DesktopRefreshScheduler {
    * task snapshot 与 project change 相互独立；project 批次失败也不阻断最新任务状态落地。
    */
   private flush_task_snapshot(
-    taskSnapshot: TaskSnapshot | null,
+    taskSnapshot: BatchTranslationSnapshot | null,
     projectChanges: readonly ProjectChangeEventForState[],
   ): void {
     if (taskSnapshot === null) {

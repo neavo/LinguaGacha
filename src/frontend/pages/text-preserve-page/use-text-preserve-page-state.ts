@@ -228,7 +228,7 @@ function create_empty_dialog_state(): TextPreserveDialogState {
     insert_after_entry_id: null,
     draft_entry: clone_entry(EMPTY_ENTRY),
     saving: false,
-    validation_message: null,
+    invalid: false,
   };
 }
 
@@ -275,6 +275,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     commit_project_write,
   } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
+  /** 将查询失败交给页面反馈入口。 */
   const handle_quality_rule_load_error = useCallback(
     (error: unknown): void => {
       push_toast(
@@ -284,7 +285,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [push_toast, t],
   );
-  const { quality_slice, quality_loaded, refresh_quality_rule_snapshot } = useQualityRuleQuery({
+  const {
+    quality_slice,
+    quality_status,
+    reload_quality_rule_snapshot,
+    refresh_quality_rule_snapshot,
+  } = useQualityRuleQuery({
     rule_type: TEXT_PRESERVE_RULE_TYPE,
     project_path: project_snapshot.loaded ? project_snapshot.path : "",
     session_ready: project_session_status === "ready",
@@ -295,7 +301,19 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const mode = project_snapshot.loaded ? quality_slice.mode : DEFAULT_MODE;
   const entries = project_snapshot.loaded ? quality_slice.entries : [];
   const [mode_updating, set_mode_updating] = useState(false);
-  const [preset_items, set_preset_items] = useState<TextPreservePresetItem[]>([]);
+  const [preset_snapshot, set_preset_snapshot] = useState<TextPreservePresetPayload>({
+    builtin_presets: [],
+    user_presets: [],
+  });
+  const preset_items = useMemo(
+    () =>
+      decorate_preset_items(
+        preset_snapshot.builtin_presets,
+        preset_snapshot.user_presets,
+        String(settings_snapshot[TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY] ?? ""),
+      ),
+    [preset_snapshot, settings_snapshot],
+  );
   const [preset_menu_open, set_preset_menu_open] = useState(false);
   const table_ui_state = useProjectSessionTableUiState<
     TextPreserveFilterState,
@@ -361,6 +379,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]));
   }, [entry_ids]);
 
+  /** 以当前活动行或选区确定新增位置。 */
   const resolve_create_insert_after_entry_id = useCallback((): TextPreserveEntryId | null => {
     return resolve_quality_rule_insert_after_entry_id(
       active_entry_id,
@@ -372,6 +391,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return new Set(hit_state.entry_ids ?? []);
   }, [hit_state.entry_ids]);
 
+  /** 按当前规则与筛选排序构建结果成员。 */
   const build_result_snapshot = useCallback(
     (
       next_filter_state: TextPreserveFilterState,
@@ -400,6 +420,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [entries, entry_ids, hit_ready, hit_state],
   );
+  /** 为结果控制器提供当前筛选排序快照。 */
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
@@ -506,6 +527,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const clear_selection_state = table_ui_state.clear_selection_state;
 
+  /** 按统一错误契约解析文本保护操作失败。 */
   const push_action_error_toast = useCallback(
     (error: unknown): void => {
       push_toast("error", resolve_visible_error_message(error, t, unknown_error_message));
@@ -513,6 +535,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [push_toast, unknown_error_message],
   );
 
+  /** 通过统一写入口保存规则，并按策略刷新结果成员。 */
   const save_entries_snapshot = useCallback(
     async (
       next_entries: TextPreserveEntry[],
@@ -563,22 +586,20 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 保存导入结果，并按文件或预设来源更新界面。 */
   const apply_import_entries = useCallback(
-    async (
-      next_entries: TextPreserveEntry[],
-      options: {
-        close_preset_menu: boolean;
-      },
-    ): Promise<boolean> => {
+    async (next_entries: TextPreserveEntry[], source: "import" | "preset"): Promise<boolean> => {
       const saved = await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
       if (!saved) {
         return false;
       }
 
       clear_selection_state();
-      push_toast("success", t("app.feedback.import_success"));
+      if (source === "import") {
+        push_toast("success", t("app.feedback.import_success"));
+      }
 
-      if (options.close_preset_menu) {
+      if (source === "preset") {
         set_preset_menu_open(false);
       }
 
@@ -587,10 +608,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [clear_selection_state, push_toast, save_entries_snapshot, t],
   );
 
+  /** 复制当前规则，供导入确认重新计算。 */
   const get_import_existing_entries = useCallback((): TextPreserveEntry[] => {
     return entries_ref.current.map((entry) => clone_entry(entry));
   }, []);
-  const import_confirmation = useQualityRuleImportConfirmation<TextPreserveEntry>({
+  const import_confirmation = useQualityRuleImportConfirmation<
+    TextPreserveEntry,
+    "import" | "preset"
+  >({
     rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
     apply_entries: apply_import_entries,
   });
@@ -602,6 +627,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     close_import_duplicate_confirm,
   } = import_confirmation;
 
+  /** 刷新预设条目，默认标记由当前设置计算。 */
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<TextPreservePresetPayload>(
       "/api/quality/rules/presets",
@@ -609,18 +635,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         rule_type: TEXT_PRESERVE_RULE_TYPE,
       },
     );
-    const default_virtual_id = String(
-      settings_snapshot[TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY] ?? "",
-    );
-
-    set_preset_items(
-      decorate_preset_items(
-        preset_payload.builtin_presets,
-        preset_payload.user_presets,
-        default_virtual_id,
-      ),
-    );
-  }, [settings_snapshot]);
+    set_preset_snapshot(preset_payload);
+  }, []);
 
   useQualityRuleTableSessionReset({
     project_identity: project_snapshot.loaded ? project_snapshot.path : "",
@@ -638,7 +654,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, hit_ready]);
 
   useQualityRuleSelectionPruning({
-    loaded: quality_loaded,
+    loaded: quality_status === "ready",
     selected_entry_ids,
     active_entry_id,
     selection_anchor_entry_id,
@@ -663,6 +679,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     resolve_sort_state: normalize_text_preserve_sort_state,
   });
 
+  /** 串行切换保护模式，并等待质量快照刷新。 */
   const update_mode = useCallback(
     async (next_mode: TextPreserveMode): Promise<void> => {
       const previous_mode = mode_ref.current;
@@ -697,13 +714,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             snapshot_committed = true;
           },
         });
-        push_toast(
-          "success",
-          t("app.feedback.feature_state_changed", {
-            TITLE: t("text_preserve_page.title"),
-            STATE: t(`text_preserve_page.mode.options.${next_mode}`),
-          }),
-        );
       } catch (error) {
         if (snapshot_committed && error instanceof ModalProgressToastTimeoutError) {
           push_toast("warning", t("text_preserve_page.feedback.mode_refresh_pending"));
@@ -727,6 +737,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 初始化新增草稿并记录插入位置。 */
   const open_create_dialog = useCallback((): void => {
     if (readonly) {
       return;
@@ -742,10 +753,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       insert_after_entry_id,
       draft_entry: clone_entry(EMPTY_ENTRY),
       saving: false,
-      validation_message: null,
+      invalid: false,
     });
   }, [clear_selection_state, readonly, resolve_create_insert_after_entry_id]);
 
+  /** 按目标身份准备可编辑草稿。 */
   const open_edit_dialog = useCallback(
     (entry_id: TextPreserveEntryId): void => {
       const target_index = entry_index_by_id.get(entry_id);
@@ -767,25 +779,46 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         insert_after_entry_id: null,
         draft_entry: clone_entry(target_entry),
         saving: false,
-        validation_message: null,
+        invalid: false,
       });
     },
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
-  const update_dialog_draft = useCallback((patch: Partial<TextPreserveEntryDraft>): void => {
-    set_dialog_state((previous_state) => {
-      return {
-        ...previous_state,
-        validation_message: null,
-        draft_entry: {
-          ...previous_state.draft_entry,
-          ...patch,
-        },
-      };
-    });
-  }, []);
+  /** 在提交前校验规则并反馈字段错误。 */
+  const validate_entry = useCallback(
+    (entry: TextPreserveEntryDraft): string | null => {
+      if (entry.src === "") {
+        return null;
+      }
 
+      try {
+        build_text_preserve_rule({ mode: "custom", text_type: "NONE", entries: [entry] });
+        return null;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "";
+        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
+      }
+    },
+    [t],
+  );
+
+  /** 更新本地草稿并保留弹窗操作上下文。 */
+  const update_dialog_draft = useCallback(
+    (patch: Partial<TextPreserveEntryDraft>): void => {
+      set_dialog_state((previous_state) => {
+        const draft_entry = { ...previous_state.draft_entry, ...patch };
+        return {
+          ...previous_state,
+          invalid: previous_state.invalid && validate_entry(normalize_entry(draft_entry)) !== null,
+          draft_entry,
+        };
+      });
+    },
+    [validate_entry],
+  );
+
+  /** 按稳定条目身份删除，并在失败时恢复选择。 */
   const commit_remove_entry_ids = useCallback(
     async (target_entry_ids: TextPreserveEntryId[]): Promise<boolean> => {
       if (target_entry_ids.length === 0) {
@@ -825,6 +858,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 收集当前选区并请求删除确认。 */
   const delete_selected_entries = useCallback(async (): Promise<void> => {
     if (readonly || selected_entry_ids.length === 0) {
       return;
@@ -841,6 +875,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     });
   }, [readonly, selected_entry_ids]);
 
+  /** 按拖动结果保存规则顺序。 */
   const reorder_selected_entries = useCallback(
     async (ordered_entry_ids: TextPreserveEntryId[]): Promise<void> => {
       if (drag_disabled) {
@@ -854,6 +889,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [drag_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
+  /** 用所选规则发起校对页查找。 */
   const query_entry_source = useCallback(
     async (entry_id: TextPreserveEntryId): Promise<void> => {
       const target_index = entry_index_by_id.get(entry_id);
@@ -883,6 +919,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 读取文件并通过重复项确认流程提交规则。 */
   const import_entries_from_path = useCallback(
     async (path: string): Promise<void> => {
       try {
@@ -898,15 +935,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return;
         }
 
-        await persist_entries_with_duplicate_resolution(
-          () => {
-            return create_quality_rule_duplicate_resolution_plan({
-              existing_entries: get_import_existing_entries(),
-              incoming_entries: imported_entries,
-            });
-          },
-          { close_preset_menu: false },
-        );
+        await persist_entries_with_duplicate_resolution(() => {
+          return create_quality_rule_duplicate_resolution_plan({
+            existing_entries: get_import_existing_entries(),
+            incoming_entries: imported_entries,
+          });
+        }, "import");
       } catch (error) {
         push_action_error_toast(error);
       }
@@ -921,6 +955,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 把宿主文件选择结果交给规则导入入口。 */
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
     if (readonly) {
       return;
@@ -934,6 +969,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     await import_entries_from_path(selected_path);
   }, [import_entries_from_path, readonly]);
 
+  /** 导出规则并反馈文件操作结果。 */
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
       const exported = await export_quality_rule_entries({
@@ -951,6 +987,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
   }, [entries, push_action_error_toast, push_toast, t]);
 
+  /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
       await refresh_preset_menu();
@@ -961,6 +998,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
   }, [push_action_error_toast, refresh_preset_menu]);
 
+  /** 提交所选预设，成功后关闭菜单。 */
   const apply_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       if (readonly) {
@@ -976,15 +1014,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           },
         );
         const incoming_entries = payload.entries.map(clone_entry);
-        await persist_entries_with_duplicate_resolution(
-          () => {
-            return create_quality_rule_duplicate_resolution_plan({
-              existing_entries: get_import_existing_entries(),
-              incoming_entries,
-            });
-          },
-          { close_preset_menu: true },
-        );
+        await persist_entries_with_duplicate_resolution(() => {
+          return create_quality_rule_duplicate_resolution_plan({
+            existing_entries: get_import_existing_entries(),
+            incoming_entries,
+          });
+        }, "preset");
       } catch (error) {
         push_action_error_toast(error);
       }
@@ -997,6 +1032,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 重置规则前记录待确认操作。 */
   const request_reset_entries = useCallback((): void => {
     if (readonly) {
       return;
@@ -1013,6 +1049,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     });
   }, [readonly]);
 
+  /** 为当前内容打开预设命名流程。 */
   const request_save_preset = useCallback((): void => {
     if (readonly) {
       return;
@@ -1027,6 +1064,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     });
   }, [readonly]);
 
+  /** 记录预设身份和当前名称供重命名。 */
   const request_rename_preset = useCallback(
     (preset_item: TextPreservePresetItem): void => {
       if (readonly) {
@@ -1044,6 +1082,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [readonly],
   );
 
+  /** 删除确认只保存目标身份。 */
   const request_delete_preset = useCallback(
     (preset_item: TextPreservePresetItem): void => {
       if (readonly) {
@@ -1063,6 +1102,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [readonly],
   );
 
+  /** 校验名称并写入当前内容，完成后刷新预设列表。 */
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
       if (readonly) {
@@ -1086,7 +1126,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1096,6 +1135,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [entries, push_action_error_toast, push_toast, readonly, refresh_preset_menu, t],
   );
 
+  /** 重命名后同步默认项引用并刷新列表。 */
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
       if (readonly) {
@@ -1126,7 +1166,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.renamed"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1144,6 +1183,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
+  /** 通过设置回包推进默认标记。 */
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       if (readonly) {
@@ -1156,22 +1196,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           build_default_preset_update_payload(virtual_id),
         );
         apply_settings_snapshot(payload);
-        await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_action_error_toast(error);
       }
     },
-    [
-      apply_settings_snapshot,
-      push_action_error_toast,
-      push_toast,
-      readonly,
-      refresh_preset_menu,
-      t,
-    ],
+    [apply_settings_snapshot, push_action_error_toast, readonly],
   );
 
+  /** 清除默认引用，由设置快照更新菜单。 */
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     if (readonly) {
       return;
@@ -1183,37 +1215,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         build_default_preset_update_payload(""),
       );
       apply_settings_snapshot(payload);
-      await refresh_preset_menu();
-      push_toast("success", t("text_preserve_page.feedback.default_preset_cleared"));
     } catch (error) {
       push_action_error_toast(error);
     }
-  }, [
-    push_action_error_toast,
-    push_toast,
-    readonly,
-    refresh_preset_menu,
-    apply_settings_snapshot,
-    t,
-  ]);
+  }, [push_action_error_toast, readonly, apply_settings_snapshot]);
 
-  const validate_entry = useCallback(
-    (entry: TextPreserveEntry): string | null => {
-      if (entry.src === "") {
-        return null;
-      }
-
-      try {
-        build_text_preserve_rule({ mode: "custom", text_type: "NONE", entries: [entry] });
-        return null;
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "";
-        return `${t("quality_rule_editor.feedback.regex_invalid")}: ${detail}`;
-      }
-    },
-    [t],
-  );
-
+  /** 校验并提交弹窗草稿，失败时恢复编辑入口。 */
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
     if (readonly) {
       return false;
@@ -1230,7 +1237,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       set_dialog_state((previous_state) => {
         return {
           ...previous_state,
-          validation_message,
+          invalid: true,
         };
       });
       push_toast("error", validation_message);
@@ -1240,7 +1247,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_dialog_state((previous_state) => ({
       ...previous_state,
       saving: true,
-      validation_message: null,
+      invalid: false,
     }));
 
     const next_entries =
@@ -1270,7 +1277,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     const reopen_dialog_state: TextPreserveDialogState = {
       ...current_dialog_state,
       saving: false,
-      validation_message: null,
+      invalid: false,
     };
     set_dialog_state(create_empty_dialog_state());
 
@@ -1279,7 +1286,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       dialog_state.mode === "create" ? REBUILD_RESULT_REFRESH : PRESERVE_RESULT_REFRESH,
     );
     if (saved) {
-      push_toast("success", t("app.feedback.save_success"));
       return true;
     }
 
@@ -1294,26 +1300,30 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     push_toast,
     readonly,
     save_entries_snapshot,
-    t,
     validate_entry,
   ]);
 
+  /** 提交当前草稿并恢复操作状态。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry();
   }, [persist_dialog_entry]);
 
+  /** 关闭编辑入口并清空本地弹窗状态。 */
   const request_close_dialog = useCallback(async (): Promise<void> => {
     set_dialog_state(create_empty_dialog_state());
   }, []);
 
+  /** 释放本轮待确认操作。 */
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_quality_rule_confirm_state());
   }, []);
 
+  /** 关闭命名流程并清空提交状态。 */
   const close_preset_input_dialog = useCallback((): void => {
     set_preset_input_state(create_empty_preset_input_state());
   }, []);
 
+  /** 保留操作目标，只更新待提交名称。 */
   const update_preset_input_value = useCallback((next_value: string): void => {
     set_preset_input_state((previous_state) => {
       return {
@@ -1323,6 +1333,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     });
   }, []);
 
+  /** 按保存或重命名意图校验重名并推进确认流程。 */
   const submit_preset_input = useCallback(async (): Promise<void> => {
     if (readonly || !preset_input_state.open || preset_input_state.mode === null) {
       return;
@@ -1389,6 +1400,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
   }, [preset_input_state, preset_items, push_toast, readonly, rename_preset, save_preset, t]);
 
+  /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {
     if (readonly) {
       return false;
@@ -1400,11 +1412,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     clear_selection_state();
-    push_toast("success", t("text_preserve_page.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
-  }, [clear_selection_state, push_toast, readonly, save_entries_snapshot, t]);
+  }, [clear_selection_state, readonly, save_entries_snapshot]);
 
+  /** 执行已确认的操作，失败时恢复确认界面的可操作状态。 */
   const confirm_pending_action = useCallback(async (): Promise<void> => {
     if (readonly || !confirm_state.open || confirm_state.kind === null) {
       return;
@@ -1442,7 +1454,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("preset_editor.feedback.deleted"));
           succeeded = true;
         }
       } catch (error) {
@@ -1469,7 +1480,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     commit_remove_entry_ids,
     confirm_state,
     preset_items,
-    push_toast,
     push_action_error_toast,
     refresh_preset_menu,
     reset_entries,
@@ -1477,10 +1487,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     save_preset,
     selected_entry_ids,
     apply_settings_snapshot,
-    t,
   ]);
 
   return {
+    quality_status,
+    reload_quality_rule_snapshot,
     title_key: TEXT_PRESERVE_TITLE_KEY,
     mode,
     mode_updating,

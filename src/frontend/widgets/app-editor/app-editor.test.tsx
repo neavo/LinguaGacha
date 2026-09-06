@@ -1,8 +1,8 @@
-import { act, type ReactNode } from "react";
+import { act, createRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
+import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 
 vi.mock("@frontend/app/appearance/appearance-provider", () => {
   return {
@@ -82,26 +82,33 @@ describe("AppEditor", () => {
   });
 
   it("只读状态同步 DOM 编辑语义并在切换时保留内容", async () => {
+    const editor_ref = createRef<AppEditorHandle>();
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only={false} />);
+      root?.render(
+        <AppEditor ref={editor_ref} value="Alpha" aria_label="切换编辑器" read_only={false} />,
+      );
     });
 
     const content = get_editor_content(container);
+    await act(async () => editor_ref.current?.focus());
+    expect(document.activeElement).toBe(content);
     expect(content.getAttribute("contenteditable")).toBe("true");
 
     await act(async () => {
-      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only />);
+      root?.render(<AppEditor ref={editor_ref} value="Alpha" aria_label="切换编辑器" read_only />);
     });
 
     expect(content.getAttribute("contenteditable")).toBe("false");
     expect(content.textContent).toBe("Alpha");
 
     await act(async () => {
-      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only={false} />);
+      root?.render(
+        <AppEditor ref={editor_ref} value="Alpha" aria_label="切换编辑器" read_only={false} />,
+      );
     });
 
     expect(content.getAttribute("contenteditable")).toBe("true");

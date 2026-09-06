@@ -131,22 +131,19 @@ describe("Agent 工作区对象写入规则", () => {
     expect(result.candidates.items).toHaveLength(1);
   });
 
-  it("prompt 同值去重、异值冲突并独立保留其它 kind", () => {
+  it("prompt 异值更新冲突并保留原值", () => {
     const translation_fp = prompt_fp("translation", "旧翻译");
-    const analysis_fp = prompt_fp("analysis", "旧分析");
     const result = resolve(
       batch({
         prompts: [
-          { line: 1, kind: "translation", fp: translation_fp, text: "新翻译" },
-          { line: 2, kind: "translation", fp: translation_fp, text: "另一个翻译" },
-          { line: 3, kind: "analysis", fp: analysis_fp, text: "新分析" },
-          { line: 4, kind: "analysis", fp: analysis_fp, text: "新分析" },
+          { kind: "translation", line: 1, fp: translation_fp, text: "新翻译" },
+          { kind: "translation", line: 2, fp: translation_fp, text: "另一个翻译" },
         ],
       }),
-      { items: [], quality: {}, prompts: { translation: "旧翻译", analysis: "旧分析" } },
+      { items: [], quality: {}, prompts: { translation: "旧翻译" } },
     );
 
-    expect(result.promptChanges).toEqual([{ kind: "analysis", text: "新分析" }]);
+    expect(result.promptChanges).toEqual([]);
     expect(result.rejected).toContainEqual({
       scope: "prompts",
       op: "update",

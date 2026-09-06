@@ -62,21 +62,26 @@ describe("preload desktop bridge", () => {
   });
 
   /**
-   * 带 Backend API 启动参数加载 preload 模块，模拟 main 创建窗口时的真实 argv。
+   * 带 API 地址与版本启动参数加载 preload 模块，模拟 main 创建窗口时的真实 argv。
    */
-  async function import_preload_with_backend_api_arg(): Promise<void> {
-    process.argv = [...original_argv.slice(0, 2), "--backend-api-base-url=http://127.0.0.1:7788"];
+  async function import_preload_with_startup_args(): Promise<void> {
+    process.argv = [
+      ...original_argv.slice(0, 2),
+      "--backend-api-base-url=http://127.0.0.1:7788",
+      "--app-version=1.2.3",
+    ];
     await import("./index");
   }
 
   it("向 renderer 暴露受控桌面桥接 API", async () => {
-    await import_preload_with_backend_api_arg();
+    await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
     }
 
     expect(electron_mock.exposed_name).toBe(DESKTOP_BRIDGE_GLOBAL_NAME);
+    expect(bridge.appVersion).toBe("1.2.3");
     expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:7788");
     expect(bridge.getPathForFile({} as File)).toBe("E:/demo/source.txt");
     bridge.setTitleBarTheme("dark");
@@ -121,7 +126,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("所有路径选择共用浏览器本地最近目录且取消时不覆盖", async () => {
-    await import_preload_with_backend_api_arg();
+    await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
@@ -150,7 +155,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("浏览器本地存储不可用时仍正常完成路径选择", async () => {
-    await import_preload_with_backend_api_arg();
+    await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
@@ -177,7 +182,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("下载更新只转发同一 request id 的进度并在完成后解绑监听", async () => {
-    await import_preload_with_backend_api_arg();
+    await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
@@ -223,7 +228,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("关闭请求订阅返回对应解除函数", async () => {
-    await import_preload_with_backend_api_arg();
+    await import_preload_with_startup_args();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");

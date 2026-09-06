@@ -33,7 +33,5 @@ export const zh_cn_text_replacement_page = {
     preset_failed: "替换页预设加载失败",
 
     query_failed: "替换页查询失败",
-
-    reset_success: "已重置 …",
   },
 } as const;

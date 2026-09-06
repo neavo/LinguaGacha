@@ -94,7 +94,6 @@ describe("useWorkbenchImportFilesFlow", () => {
         expected_section_revisions: {
           files: 1,
           items: 2,
-          analysis: 3,
         },
       },
     ]);
@@ -378,7 +377,6 @@ function create_project_store_state(): WorkbenchCommandPlanningState {
     section_revisions: {
       files: 1,
       items: 2,
-      analysis: 3,
     },
   };
 }

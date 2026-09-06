@@ -320,13 +320,12 @@ describe("ProjectDatabase", () => {
     const { database, lg_path } = create_database_project("section-revision");
 
     expect(
-      database.bump_section_revisions(lg_path, ["items", "files", "items", "project", "analysis"]),
-    ).toEqual({ items: 1, files: 1, analysis: 1 });
+      database.bump_section_revisions(lg_path, ["items", "files", "items", "project"]),
+    ).toEqual({ items: 1, files: 1 });
     expect(database.bump_section_revisions(lg_path, ["items"])).toEqual({ items: 2 });
     expect(database.get_all_meta(lg_path)).toMatchObject({
       "project_runtime_revision.items": 2,
       "project_runtime_revision.files": 1,
-      "project_runtime_revision.analysis": 1,
     });
   });
 
@@ -467,102 +466,6 @@ describe("ProjectDatabase", () => {
         extra_field: { speaker: "春" },
       },
     ]);
-  });
-
-  it("保存分析断点和候选聚合后可按状态与原文读取当前事实", () => {
-    const { database, lg_path } = create_database_project("analysis");
-
-    database.upsert_analysis_item_checkpoints(lg_path, [
-      { item_id: 1, status: "pending", updated_at: "2026-05-16T00:00:00.000Z", error_count: 0 },
-      { item_id: 2, status: "failed", updated_at: "2026-05-16T00:01:00.000Z", error_count: 2 },
-    ]);
-    database.upsert_analysis_item_checkpoints(lg_path, [
-      { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
-    ]);
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "姫",
-        dst_votes: { princess: 2 },
-        info_votes: { name: 1 },
-        observation_count: 2,
-        first_seen_at: "2026-05-16T00:00:00.000Z",
-        last_seen_at: "2026-05-16T00:02:00.000Z",
-        case_sensitive: true,
-      },
-      {
-        src: "王",
-        dst_votes: { king: 1 },
-        info_votes: {},
-        observation_count: 1,
-        first_seen_at: "2026-05-16T00:03:00.000Z",
-        last_seen_at: "2026-05-16T00:03:00.000Z",
-        case_sensitive: false,
-      },
-    ]);
-
-    expect(database.get_analysis_item_checkpoints(lg_path)).toEqual([
-      { item_id: 1, status: "pending", updated_at: "2026-05-16T00:00:00.000Z", error_count: 0 },
-      { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
-    ]);
-    expect(database.delete_analysis_item_checkpoints(lg_path, "pending")).toBe(1);
-    expect(database.get_analysis_item_checkpoints(lg_path)).toEqual([
-      { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
-    ]);
-    expect(
-      database.get_analysis_candidate_aggregates_by_srcs(lg_path, [" 姫 ", "", "missing"]),
-    ).toEqual([
-      {
-        src: "姫",
-        dst_votes: { princess: 2 },
-        info_votes: { name: 1 },
-        observation_count: 2,
-        first_seen_at: "2026-05-16T00:00:00.000Z",
-        last_seen_at: "2026-05-16T00:02:00.000Z",
-        case_sensitive: true,
-      },
-    ]);
-
-    database.delete_analysis_candidate_aggregates_by_srcs(lg_path, [" 姫 ", "", "missing", "姫"]);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([
-      {
-        src: "王",
-        dst_votes: { king: 1 },
-        info_votes: {},
-        observation_count: 1,
-        first_seen_at: "2026-05-16T00:03:00.000Z",
-        last_seen_at: "2026-05-16T00:03:00.000Z",
-        case_sensitive: false,
-      },
-    ]);
-
-    database.clear_analysis_candidate_aggregates(lg_path);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
-  });
-
-  it("候选原文超过单条 SQL 参数容量时仍可完整查询和删除", () => {
-    const { database, lg_path } = create_database_project("large-analysis-candidates");
-    const candidate_count = 32_767;
-    const srcs = Array.from({ length: candidate_count }, (_, index) => `候选-${index}`);
-    database.upsert_analysis_candidate_aggregates(
-      lg_path,
-      srcs.map((src) => ({
-        src,
-        dst_votes: { 译文: 1 },
-        info_votes: {},
-        observation_count: 1,
-        first_seen_at: "2026-08-25T00:00:00.000Z",
-        last_seen_at: "2026-08-25T00:00:00.000Z",
-        case_sensitive: false,
-      })),
-    );
-
-    expect(database.get_analysis_candidate_aggregates_by_srcs(lg_path, srcs)).toHaveLength(
-      candidate_count,
-    );
-
-    database.delete_analysis_candidate_aggregates_by_srcs(lg_path, srcs);
-
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
 
   it("兼容读取旧压缩 asset bytes", () => {

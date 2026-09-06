@@ -20,7 +20,7 @@ describe("project change signal section helpers", () => {
   it.each([
     [create_signal({ seq: 0 }), ["items"] as const, null],
     [create_signal({ seq: 7 }), ["items"] as const, 7],
-    [create_signal({ updated_sections: ["analysis"] }), ["quality"] as const, null],
+    [create_signal({ updated_sections: ["prompts"] }), ["quality"] as const, null],
   ])("只返回非零且命中目标 section 的变更序号", (signal, sections, expected) => {
     expect(resolveProjectChangeSeqForSections(signal, sections)).toBe(expected);
   });
@@ -29,7 +29,7 @@ describe("project change signal section helpers", () => {
     expect(
       hasProjectChangeSections(
         create_signal({
-          updated_sections: ["analysis", "quality"],
+          updated_sections: ["prompts", "quality"],
         }),
         ["items", "quality"],
       ),

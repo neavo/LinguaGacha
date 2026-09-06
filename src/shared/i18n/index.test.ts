@@ -19,24 +19,16 @@ describe("shared i18n", () => {
   });
 
   it("按 locale 解析消息并替换参数", () => {
-    expect(format_i18n_message("zh-CN", "app.feedback.feature_enabled", { TITLE: "术语表" })).toBe(
-      "术语表已启用 …",
+    const message = format_i18n_message("zh-CN", "app.tooltip.value", {
+      TITLE: "术语表",
+      VALUE: "已启用",
+    });
+    expect(message).toContain("术语表");
+    expect(message).toContain("已启用");
+    expect(read_message_placeholders(message)).toEqual([]);
+    expect(create_text_resolver("de-DE")("app.action.confirm")).toBe(
+      MESSAGE_MAP_BY_LOCALE["de-DE"].get("app.action.confirm"),
     );
-    expect(
-      create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
-    ).toBe("Glossar aktiviert …");
-  });
-
-  it.each(["zh-CN", "en-US", "de-DE"] as const)("%s 区分开关选项与当前状态", (locale) => {
-    const t = create_text_resolver(locale);
-    const option = t("app.toggle.option.enabled");
-    const state = t("app.state.enabled");
-    const title = t("agent_page.action.follow_latest");
-    const tooltip = t("app.tooltip.value", { TITLE: title, VALUE: state });
-
-    expect(option).not.toBe(state);
-    expect(tooltip).toContain(title);
-    expect(tooltip).toContain(state);
   });
 });
 

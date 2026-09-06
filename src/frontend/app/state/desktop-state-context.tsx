@@ -15,11 +15,10 @@ import {
   type ProjectChangeEventForState,
   type ProjectStage,
 } from "@frontend/app/state/desktop-project-change-types";
-import {
-  createTaskSnapshotStore,
-  normalize_task_snapshot,
-  type TaskSnapshot,
-} from "@frontend/app/state/task-snapshot-store";
+import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
+
 import {
   createRuntimeActivityStore,
   normalize_runtime_activity_snapshot,
@@ -41,7 +40,6 @@ import {
   type SettingSnapshot,
 } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
-import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { AppError } from "@shared/error";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
@@ -74,8 +72,8 @@ const EMPTY_PROJECT_STATE_IDENTITY: ProjectStateIdentity = {
 };
 
 type DesktopStateContextValue = {
-  initial_state_ready: boolean;
-  initial_state_error: string | null;
+  initial_state_status: "loading" | "ready" | "error";
+  load_initial_state: () => Promise<void>;
   settings_snapshot: SettingsSnapshot;
   project_snapshot: ProjectSnapshot;
   project_session_status: ProjectSessionStatus;
@@ -90,7 +88,7 @@ type DesktopStateContextValue = {
   commit_project_write: ProjectWriteCommitter;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
-  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>;
+  refresh_batch_translation: () => Promise<BatchTranslationSnapshot>;
   refresh_runtime: () => Promise<RuntimeActivitySnapshot>;
 };
 
@@ -105,11 +103,7 @@ type ProjectSnapshotPayload = {
 };
 
 type TaskSnapshotPayload = {
-  task?: Partial<TaskSnapshot>;
-};
-
-type TaskSnapshotRequest = {
-  task_type?: TaskType; // 显式 task_type 用于任务页刷新，避免空闲态按后端默认类型误判
+  batch_translation?: Partial<BatchTranslationSnapshot>;
 };
 
 type ProjectManifestPayload = {
@@ -128,16 +122,18 @@ const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 export type DesktopStateStores = {
-  task: ReturnType<typeof createTaskSnapshotStore>;
+  batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
   runtime: ReturnType<typeof createRuntimeActivityStore>;
   projectChange: ReturnType<typeof createProjectChangeSignalStore>;
 };
 export const DesktopStateStoresContext = createContext<DesktopStateStores | null>(null);
 
+/** 将设置回包交给领域归一入口。 */
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   return normalize_setting_snapshot(payload.settings);
 }
 
+/** 将后端项目载荷收口为主窗口项目快照。 */
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
   const snapshot = payload.project ?? {};
   return {
@@ -146,12 +142,14 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
+/** 汇总写入回流涉及的 section，用于页面刷新信号。 */
 function collect_project_apply_result_sections(
   results: readonly ProjectChangeApplyResult[],
 ): ProjectStage[] {
   return [...new Set(results.flatMap((result) => result.updatedSections))];
 }
 
+/** 为合并写入选择统一刷新原因。 */
 function resolve_project_apply_result_reason(results: readonly ProjectChangeApplyResult[]): string {
   const reasons = [...new Set(results.map((result) => result.source || "project_change"))];
   return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
@@ -236,16 +234,19 @@ function create_project_change_apply_result(
   return result;
 }
 
+/** 拥有主窗口初始化、权威快照同步和项目写入回流。 */
 export function DesktopStateProvider(props: { children: ReactNode }): JSX.Element {
-  const [initial_state_ready, set_initial_state_ready] = useState(false);
-  const [initial_state_error, set_initial_state_error] = useState<string | null>(null);
+  const [initial_state_status, set_initial_state_status] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const initial_request_ref = useRef(0); // 重试或卸载后，仅当前初始化请求可以应用快照。
   const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
     normalize_settings_snapshot({}),
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
-  const task_snapshot_store_ref = useRef(createTaskSnapshotStore());
-  const sync_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
+  const task_snapshot_store_ref = useRef(createBatchTranslationSnapshotStore());
+  const sync_task_snapshot = useCallback((snapshot: BatchTranslationSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
   }, []);
   const runtime_snapshot_store_ref = useRef(createRuntimeActivityStore()); // Provider 生命周期内唯一镜像
@@ -254,7 +255,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   }, []);
   const project_change_store_ref = useRef(createProjectChangeSignalStore());
   const state_stores_ref = useRef<DesktopStateStores>({
-    task: task_snapshot_store_ref.current,
+    batch_translation: task_snapshot_store_ref.current,
     runtime: runtime_snapshot_store_ref.current,
     projectChange: project_change_store_ref.current,
   });
@@ -439,17 +440,13 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     return next_snapshot;
   }, [sync_project_snapshot]);
 
-  // 任务页主动刷新时要绑定任务类型；全局初始状态读取才允许交给后端推断当前快照类型
-  const refresh_task = useCallback(
-    async (task_type?: TaskType): Promise<TaskSnapshot> => {
-      const request: TaskSnapshotRequest = task_type === undefined ? {} : { task_type };
-      const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", request);
-      const next_snapshot = normalize_task_snapshot(payload);
-      sync_task_snapshot(next_snapshot);
-      return next_snapshot;
-    },
-    [sync_task_snapshot],
-  );
+  // 主动刷新与初始化共用批量翻译快照，并由 Store 裁决 revision
+  const refresh_batch_translation = useCallback(async (): Promise<BatchTranslationSnapshot> => {
+    const payload = await api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {});
+    const next_snapshot = normalize_batch_translation_snapshot(payload);
+    sync_task_snapshot(next_snapshot);
+    return next_snapshot;
+  }, [sync_task_snapshot]);
 
   /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
   const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
@@ -664,7 +661,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       project_loaded: project_snapshot.loaded,
       project_path: project_snapshot.path,
       refresh_project_state,
-      refresh_task,
+      refresh_batch_translation,
     });
 
   // HTTP 写入结果与 SSE 共用同一项目事件入口，保持事件顺序和去重语义一致。
@@ -685,55 +682,49 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     },
   });
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load_initial_state(): Promise<void> {
-      try {
-        // Backend API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”，否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的旧应用状态一起清空
-        const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
-          api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
-          api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
-          api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {}),
-          api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
-        ]);
-        if (cancelled) {
-          return;
-        }
-
-        apply_settings_snapshot(next_settings);
-        sync_project_snapshot(normalize_project_snapshot(next_project));
-        sync_task_snapshot(normalize_task_snapshot(next_task));
-        sync_runtime_snapshot(normalize_runtime_activity_snapshot(next_runtime));
-        set_initial_state_error(null);
-        set_initial_state_ready(true);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        const message = error instanceof Error ? error.message : "桌面运行时初始化失败。";
-        report_state_error(error, {
-          source: "state-recovery",
-          context: { stage: "load_initial_state" },
-        });
-        set_initial_state_error(message);
-        set_initial_state_ready(true);
-      }
+  /** 初始化与重试共用权威快照读取和应用入口。 */
+  const load_initial_state = useCallback(async (): Promise<void> => {
+    const token = ++initial_request_ref.current;
+    set_initial_state_status("loading");
+    try {
+      const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
+        api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
+        api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
+        api_fetch<TaskSnapshotPayload>("/api/batch-translation/snapshot", {}),
+        api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
+      ]);
+      if (token !== initial_request_ref.current) return;
+      // 四份载荷先完成归一，再通过各状态拥有者一起应用。
+      const project = normalize_project_snapshot(next_project);
+      const task = normalize_batch_translation_snapshot(next_task);
+      const runtime = normalize_runtime_activity_snapshot(next_runtime);
+      apply_settings_snapshot(next_settings);
+      sync_project_snapshot(project);
+      sync_task_snapshot(task);
+      sync_runtime_snapshot(runtime);
+      set_initial_state_status("ready");
+    } catch (error) {
+      if (token !== initial_request_ref.current) return;
+      report_state_error(error, {
+        source: "state-recovery",
+        context: { stage: "load_initial_state" },
+      });
+      set_initial_state_status("error");
     }
-
-    void load_initial_state();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     apply_settings_snapshot,
     report_state_error,
     sync_project_snapshot,
-    sync_runtime_snapshot,
     sync_task_snapshot,
+    sync_runtime_snapshot,
   ]);
+
+  useEffect(() => {
+    void load_initial_state();
+    return () => {
+      initial_request_ref.current += 1;
+    };
+  }, [load_initial_state]);
 
   useEffect(() => {
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
@@ -744,6 +735,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
     let cancelled = false;
 
+    /** 当前工程身份进入加载链路，完成后回流页面刷新信号。 */
     async function refresh_loaded_project_state(): Promise<void> {
       try {
         await refresh_project_state();
@@ -808,8 +800,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
   const context_value = useMemo<DesktopStateContextValue>(() => {
     return {
-      initial_state_ready,
-      initial_state_error,
+      initial_state_status,
+      load_initial_state,
       settings_snapshot,
       project_snapshot,
       project_session_status,
@@ -824,12 +816,12 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       commit_project_write,
       update_app_language,
       refresh_settings,
-      refresh_task,
+      refresh_batch_translation,
       refresh_runtime,
     };
   }, [
-    initial_state_ready,
-    initial_state_error,
+    initial_state_status,
+    load_initial_state,
     settings_snapshot,
     project_snapshot,
     project_session_status,
@@ -841,7 +833,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     refresh_project_snapshot,
     refresh_project_state,
     refresh_settings,
-    refresh_task,
+    refresh_batch_translation,
     refresh_runtime,
     update_app_language,
   ]);

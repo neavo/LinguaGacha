@@ -1,6 +1,6 @@
+import type { ModelAgentLimits } from "../domain/model-agent";
 import type { JsonRecord } from "../domain/json";
 import type { Locale } from "./i18n/types";
-
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
@@ -29,6 +29,7 @@ export type AgentSessionState = "idle" | "running";
 /** 当前模型可见历史及其是否存在可压缩的旧段。 */
 export type AgentContextSnapshot = JsonRecord & {
   tokens: number | null; // 尚未建立模型历史时为 null
+  limits: ModelAgentLimits | null; // 当前会话实际容量，独立于下一轮模型选择
   compactable: boolean; // 后端按当前 SDK 历史判定手动压缩入口是否可用
 };
 
@@ -48,7 +49,7 @@ export type AgentPendingWriteSummary = Readonly<{
   prompts: number;
 }>;
 
-/** ask_user 的固定选项；数组顺序只表达推荐展示顺序。 */
+/** ask_user 的固定选项；按推荐顺序排列，第一项同时为到期默认答案。 */
 export type AgentQuestionOption = JsonRecord & {
   id: string;
   label: string;
@@ -56,6 +57,9 @@ export type AgentQuestionOption = JsonRecord & {
 
 /** 用户决定固定等待五分钟；后端裁决与 renderer 期限进度共用。 */
 export const AGENT_DECISION_TIMEOUT_MS = 5 * 60 * 1_000;
+
+/** 普通问题的到期默认项；后端裁决与 renderer 期限标记共用。 */
+export const AGENT_QUESTION_DEFAULT_OPTION_INDEX = 0;
 
 /** 单题固定选项与自定义入口共同保持在四个可见选择以内。 */
 export const AGENT_QUESTION_OPTION_MIN = 2;
@@ -76,6 +80,9 @@ export type AgentQuestionResponse = JsonRecord &
 
 /** 写入授权使用固定的三种结果，不与普通问题答案共用权限入口。 */
 export type AgentWriteApprovalDecision = "reject" | "allow_once" | "allow_session";
+
+/** 写入授权到期采用的结果；后端裁决与 renderer 倒计时标记共用。 */
+export const AGENT_WRITE_APPROVAL_DEFAULT = "allow_once" satisfies AgentWriteApprovalDecision;
 
 /** 当前 Agent 回合至多持有一个需要用户介入的决定。 */
 export type AgentPendingDecision = JsonRecord &

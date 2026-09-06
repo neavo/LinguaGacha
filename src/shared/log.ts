@@ -38,13 +38,6 @@ export type LogTranslationPair = {
   actor_dst?: string | null; // 字段存在表示角色模式，null 表示该行没有译名
 };
 
-/** 分析结果中的单条术语映射。 */
-export type LogAnalysisTerm = {
-  src: string; // 原术语
-  dst: string; // 目标术语
-  info: string; // 可为空的补充说明
-};
-
 /** 日志正文的跨进程判别联合；文件、控制台和列表只消费它的纯文本投影。 */
 export type LogContent =
   | {
@@ -56,16 +49,6 @@ export type LogContent =
       summary: string[]; // 统计、状态和重试摘要
       sections: LogTextSection[]; // 模型响应过程
       pairs: LogTranslationPair[]; // 按输入顺序排列的翻译对照
-    }
-  | {
-      kind: "analysis_result";
-      summary: string[]; // 统计与状态摘要
-      sections: LogTextSection[]; // 模型响应过程
-      src_title: string; // 分析输入标题
-      srcs: string[]; // 实际送入分析的文本
-      result_title: string; // 分析结果标题
-      empty_result_text: string; // terms 为空时的任务语言文案
-      terms: LogAnalysisTerm[]; // 有效术语结果
     };
 
 export interface LogDetail {
@@ -122,33 +105,7 @@ export function read_log_content(value: unknown): LogContent | null {
         ? null
         : { kind: "translation_result", summary, sections, pairs };
     }
-    case "analysis_result": {
-      const summary = read_string_array(content["summary"]);
-      const sections = read_text_sections(content["sections"]);
-      const srcs = read_string_array(content["srcs"]);
-      const terms = read_analysis_terms(content["terms"]);
-      if (
-        summary === null ||
-        sections === null ||
-        srcs === null ||
-        terms === null ||
-        typeof content["src_title"] !== "string" ||
-        typeof content["result_title"] !== "string" ||
-        typeof content["empty_result_text"] !== "string"
-      ) {
-        return null;
-      }
-      return {
-        kind: "analysis_result",
-        summary,
-        sections,
-        src_title: content["src_title"],
-        srcs,
-        result_title: content["result_title"],
-        empty_result_text: content["empty_result_text"],
-        terms,
-      };
-    }
+
     default:
       return null;
   }
@@ -166,7 +123,7 @@ export function format_log_content_text(content: LogContent): string {
     ...content.summary,
     ...content.sections.map((section) => `${section.title}\n${section.text}`),
   ];
-  if (content.kind === "translation_result") {
+  {
     const pair_lines: string[] = [];
     content.pairs.forEach((pair, index) => {
       pair_lines.push(`[${String(index + 1)}]`);
@@ -182,20 +139,6 @@ export function format_log_content_text(content: LogContent): string {
     if (pair_lines.length > 0) {
       rows.push(pair_lines.join("\n"));
     }
-  } else {
-    if (content.srcs.length > 0) {
-      rows.push(`${content.src_title}\n${content.srcs.map((text) => `SRC: ${text}`).join("\n")}`);
-    }
-    const term_lines = content.terms.map((term) => {
-      return term.info === ""
-        ? `TERM: ${term.src} -> ${term.dst}`
-        : `TERM: ${term.src} -> ${term.dst} #${term.info}`;
-    });
-    rows.push(
-      `${content.result_title}\n${
-        term_lines.length > 0 ? term_lines.join("\n") : content.empty_result_text
-      }`,
-    );
   }
 
   return `${rows.filter((row) => row.trim() !== "").join("\n\n")}\n`;
@@ -270,25 +213,4 @@ function read_translation_pairs(value: unknown): LogTranslationPair[] | null {
     });
   }
   return pairs;
-}
-
-/** 严格读取分析术语列表。 */
-function read_analysis_terms(value: unknown): LogAnalysisTerm[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const terms: LogAnalysisTerm[] = [];
-  for (const item of value) {
-    const term = read_record(item);
-    if (
-      term === null ||
-      typeof term["src"] !== "string" ||
-      typeof term["dst"] !== "string" ||
-      typeof term["info"] !== "string"
-    ) {
-      return null;
-    }
-    terms.push({ src: term["src"], dst: term["dst"], info: term["info"] });
-  }
-  return terms;
 }

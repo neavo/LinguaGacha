@@ -1,5 +1,5 @@
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
-import type { QualityRuleAnalysisCache } from "../cache/quality-rule-analysis-cache";
+import type { QualityRuleStatisticsCache } from "../cache/quality-rule-statistics-cache";
 import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import { is_quality_rule_kind, type QualityRuleKind } from "../../domain/quality";
@@ -9,14 +9,14 @@ import { is_quality_rule_kind, type QualityRuleKind } from "../../domain/quality
  */
 export class QualityStatisticsService {
   private readonly session_state: ProjectSessionState; // 统一拒绝空会话查询
-  private readonly cache: Pick<QualityRuleAnalysisCache, "read">; // 只消费统一分析缓存的读出口
+  private readonly cache: Pick<QualityRuleStatisticsCache, "read">; // 只消费统一统计缓存的读出口
 
   /**
    * 注入会话守卫和统计缓存，不持有数据库写能力。
    */
   public constructor(options: {
     sessionState: ProjectSessionState;
-    cache: Pick<QualityRuleAnalysisCache, "read">;
+    cache: Pick<QualityRuleStatisticsCache, "read">;
   }) {
     this.session_state = options.sessionState;
     this.cache = options.cache;
@@ -32,9 +32,9 @@ export class QualityStatisticsService {
     return {
       projectPath: result.projectPath,
       statistics: {
-        entry_ids: result.analysis.entry_ids,
-        hits_by_entry_id: result.analysis.hits_by_entry_id,
-        subset_parents_by_entry_id: result.analysis.subset_parents_by_entry_id,
+        entry_ids: result.statistics.entry_ids,
+        hits_by_entry_id: result.statistics.hits_by_entry_id,
+        subset_parents_by_entry_id: result.statistics.subset_parents_by_entry_id,
       } as unknown as JsonValue,
     };
   }

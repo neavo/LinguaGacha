@@ -43,25 +43,33 @@ describe("AppTitlebar", () => {
     root = null;
   });
 
-  it("展示宿主标题栏方位，并由菜单按钮切换侧栏", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+  it.each(["1.2.3", "v1.2.3"])(
+    "首帧展示宿主版本 %s 与标题栏方位，并由菜单按钮切换侧栏",
+    async (version) => {
+      Object.defineProperty(window, "desktopApp", {
+        configurable: true,
+        value: create_desktop_bridge_api_mock({ appVersion: version }),
+      });
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
 
-    await act(async () => {
-      root?.render(<AppTitlebar title="LinguaGacha" />);
-    });
+      await act(async () => {
+        root?.render(<AppTitlebar title="LinguaGacha" />);
+      });
 
-    expect(container.querySelector("header")?.dataset.titlebarControlSide).toBe("right");
-    const toggle_button = container.querySelector<HTMLButtonElement>(".topbar__menu-button");
-    if (toggle_button === null) {
-      throw new Error("缺少侧栏切换按钮。");
-    }
+      expect(container.querySelector("strong")?.textContent).toBe("LinguaGacha v1.2.3");
+      expect(container.querySelector("header")?.dataset.titlebarControlSide).toBe("right");
+      const toggle_button = container.querySelector<HTMLButtonElement>(".topbar__menu-button");
+      if (toggle_button === null) {
+        throw new Error("缺少侧栏切换按钮。");
+      }
 
-    await act(async () => {
-      toggle_button.click();
-    });
+      await act(async () => {
+        toggle_button.click();
+      });
 
-    expect(sidebar_mock.toggle_sidebar).toHaveBeenCalledTimes(1);
-  });
+      expect(sidebar_mock.toggle_sidebar).toHaveBeenCalledTimes(1);
+    },
+  );
 });

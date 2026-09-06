@@ -43,28 +43,6 @@
   flex-direction: column;
 }
 
-.agent-page__connection-status {
-  display: flex;
-  width: min(calc(100% - 32px - var(--agent-stream-width-offset)), var(--agent-stream-max-width));
-  align-items: center;
-  gap: 8px;
-  margin: 16px auto 0;
-  border: 1px solid color-mix(in srgb, var(--ui-warning) 34%, var(--border));
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--ui-warning) 7%, var(--card));
-  padding: 8px 12px;
-  color: var(--foreground);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.agent-page__connection-status > svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  color: var(--ui-warning);
-}
-
 .agent-page__empty {
   display: flex;
   flex: 1;
@@ -586,20 +564,28 @@
   height: 8px;
   flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
-  background: var(--muted-foreground);
+  --agent-status-color: var(--muted-foreground);
+  background: var(--agent-status-color);
+}
+
+.agent-status-mark--pending {
+  --agent-status-color: var(--primary);
 }
 
 .agent-status-mark--running {
-  background: var(--primary);
-  animation: agent-status-mark-pulse 1s ease-out infinite;
+  --agent-status-color: var(--primary);
 }
 
 .agent-status-mark--success {
-  background: var(--ui-success);
+  --agent-status-color: var(--ui-success);
+}
+
+.agent-status-mark--warning {
+  --agent-status-color: var(--ui-warning);
 }
 
 .agent-status-mark--error {
-  background: var(--ui-failure);
+  --agent-status-color: var(--ui-failure);
 }
 
 .agent-thinking-entry__content {
@@ -738,11 +724,8 @@
   height: 8px;
   flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
-  background: var(--primary);
-}
-
-.agent-round-footer[data-running="true"] .agent-round-footer__activity {
-  animation: agent-status-mark-pulse 1s ease-out infinite;
+  --agent-status-color: var(--primary);
+  background: var(--agent-status-color);
 }
 
 .agent-round-footer__line {
@@ -759,45 +742,76 @@
 
 .agent-page__bottom-region {
   position: relative;
+  box-sizing: border-box;
+  display: flex;
   flex: 0 0 auto;
-  isolation: isolate;
-}
-
-.agent-page__bottom-controls {
-  display: flex;
   flex-direction: column;
-  padding-bottom: var(--ui-page-pad-bottom);
+  justify-content: flex-end;
+  padding: var(--ui-page-gap) 0 var(--ui-page-pad-bottom);
 }
 
-.agent-page__bottom-controls[inert] {
-  user-select: none;
+.agent-page__bottom-region[data-transitioning] {
+  overflow: clip;
 }
 
-.agent-page__status-zone,
-.agent-page__operation-zone {
-  display: flex;
+.agent-page__input-area {
   width: min(calc(100% - 32px), var(--agent-composer-max-width));
   flex: 0 0 auto;
-  flex-direction: column;
   margin: 0 auto;
 }
 
+.agent-page__bottom-region[data-decision="true"] .agent-page__input-area {
+  width: min(calc(100% - 32px), var(--agent-decision-max-width));
+}
+
 .agent-page__status-zone {
+  position: relative;
   --agent-status-row-height: 28px;
   /* 对称侧轨为跟随按钮保留间隔，并让队列相对输入器保持居中。 */
   --agent-status-side-rail: 36px;
   --agent-status-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 
+  display: flex;
+  flex-direction: column;
   container-type: inline-size;
   gap: 8px;
-  margin-top: var(--ui-page-gap);
   min-height: var(--agent-status-row-height);
-  position: relative;
 }
 
 .agent-page__operation-zone {
   container-type: inline-size;
   margin-top: 8px;
+}
+
+.agent-page__decision-slot {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.agent-page__bottom-region[data-decision="true"] .agent-page__decision-slot {
+  height: auto;
+  visibility: visible;
+  opacity: 1;
+}
+
+.agent-page__bottom-region[data-decision="true"] .agent-page__status-zone,
+.agent-page__bottom-region[data-decision="true"] .agent-page__composer-slot {
+  min-height: 0;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.agent-page__bottom-region[data-transitioning] .agent-page__status-zone,
+.agent-page__bottom-region[data-transitioning] .agent-page__composer-slot {
+  min-height: 0;
+  overflow: clip;
 }
 
 .agent-todo,
@@ -889,11 +903,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 浮层跟随真实触发器宽度，并完整展示有界短待办。 */
+/* 浮层受可用高度约束，列表独立滚动，让浮层箭头保留在滚动区域外。 */
 .agent-todo__tooltip {
-  display: block;
+  display: flex;
+  max-height: var(--available-height);
   width: var(--anchor-width);
   max-width: var(--available-width);
+  flex-direction: column;
+  align-items: stretch;
   overflow: visible;
   line-height: 1.5;
   white-space: normal;
@@ -902,10 +919,18 @@
 
 .agent-todo__tooltip ul {
   display: grid;
+  min-height: 0;
   gap: 4px;
   margin: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding-inline-start: 16px;
   list-style: disc outside;
+}
+
+.agent-todo__tooltip ul:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
 }
 
 .agent-todo__tooltip li {
@@ -1012,12 +1037,10 @@
   }
 }
 
-/* 底部生产操作面使用稳定外框；用户决策层在其上方复用同一宽度基准。 */
+/* 底部操作面共用边界与背景，内容高度由各自布局拥有。 */
 .agent-operation-surface {
   position: relative;
   box-sizing: border-box;
-  /* 固定槽位覆盖编辑器、操作条和既有内边距，避免输入与审批切换时跳动。 */
-  min-height: 106px;
   flex: 0 0 auto;
   margin: 0;
   border: var(--agent-operation-surface-border-width, 1px) solid var(--border);
@@ -1027,6 +1050,7 @@
 }
 
 .agent-composer {
+  min-height: 106px;
   padding: 6px var(--agent-composer-padding-inline-end, 6px) 5px 12px;
 }
 
@@ -1041,13 +1065,6 @@
   color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 500;
-}
-
-.agent-inline-editor__error {
-  margin: 6px 0 0;
-  color: var(--ui-failure);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .agent-composer--inline {
@@ -1075,7 +1092,7 @@
 }
 
 .agent-page__follow-control {
-  /* 跟随控件由状态区统一拥有，始终贴齐状态区右下角。 */
+  /* 跟随控件贴齐状态区右下角，并随状态区共同收起。 */
   position: absolute;
   inset-inline-end: calc(
     var(--agent-operation-surface-border-width) + var(--agent-composer-padding-inline-end)
@@ -1093,7 +1110,7 @@
   color: var(--primary);
 }
 
-.agent-operation-surface:focus-within {
+.agent-composer:focus-within {
   border-color: var(--primary);
 }
 
@@ -1267,6 +1284,7 @@
 }
 
 .agent-composer__footer-actions {
+  flex-wrap: wrap;
   flex: 1 1 auto;
   gap: 2px;
 }
@@ -1277,85 +1295,11 @@
   gap: 8px;
 }
 
-/* Portal 留在 Agent 页面定位域；透明区域继续允许阅读和滚动时间线。 */
-.agent-decision-portal {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.agent-decision-layer {
-  position: absolute;
-  z-index: var(--ui-layer-overlay);
-  inset: auto 0 0;
-  box-sizing: border-box;
-  display: flex;
-  min-height: max(100%, 320px);
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 16px 16px;
-  pointer-events: none;
-}
-
-.agent-decision-shade {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  backdrop-filter: blur(var(--blur-xs));
-  mask-image: linear-gradient(to bottom, transparent 0, black 28%, black 100%);
-  opacity: 1;
-  pointer-events: none;
-  transition: opacity 180ms ease-out;
-}
-
-.agent-decision-shade[data-starting-style],
-.agent-decision-shade[data-ending-style] {
-  opacity: 0;
-}
-
-.agent-decision-shade[data-ending-style] {
-  transition-duration: 120ms;
-  transition-timing-function: ease-in;
-}
-
 .agent-decision {
-  position: relative;
-  z-index: 1;
   display: flex;
-  width: min(100%, var(--agent-decision-max-width));
+  width: 100%;
   flex-direction: column;
   padding: 10px 12px;
-  box-shadow: var(--ui-shadow-overlay);
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-  transition:
-    opacity 180ms ease-out,
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 160ms ease;
-}
-
-.agent-decision[data-starting-style] {
-  opacity: 0;
-  transform: translateY(16px);
-}
-
-.agent-decision[data-ending-style] {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(8px);
-  transition-duration: 150ms;
-  transition-timing-function: ease-in;
-}
-
-.agent-decision[data-starting-style],
-.agent-decision[data-ending-style] {
-  will-change: opacity, transform;
-}
-
-.agent-decision:focus-within {
-  border-color: var(--border);
 }
 
 .agent-decision__header {
@@ -1401,13 +1345,13 @@
 }
 
 .agent-write-summary {
-  display: flex;
+  display: block;
   margin: 0;
-  flex-wrap: wrap;
-  gap: 2px 14px;
   padding: 0;
   list-style: none;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-write-summary__item {
@@ -1415,6 +1359,10 @@
   align-items: baseline;
   gap: 4px;
   white-space: nowrap;
+}
+
+.agent-write-summary__item + .agent-write-summary__item {
+  margin-inline-start: 14px;
 }
 
 .agent-write-summary__value {
@@ -1475,13 +1423,13 @@
     color 120ms ease;
 }
 
-.agent-decision-action + .agent-decision-action {
+.agent-decision__options > .agent-decision-action ~ .agent-decision-action {
   border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
 
-.agent-decision-action:hover {
+.agent-decision-action:not(:disabled):hover {
   background: var(--accent);
 }
 
@@ -1552,12 +1500,12 @@
 }
 
 .agent-decision-action__icon--deadline::before {
+  --agent-status-color: var(--agent-decision-deadline-color);
+
   position: absolute;
   z-index: 0;
   inset: 0;
-  border: 1.5px solid color-mix(in srgb, var(--agent-decision-deadline-color) 70%, transparent);
   border-radius: inherit;
-  animation: agent-decision-deadline-pulse 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   content: "";
   pointer-events: none;
 }
@@ -1594,20 +1542,7 @@
   z-index: 2;
 }
 
-@keyframes agent-decision-deadline-pulse {
-  0% {
-    opacity: 0.55;
-    transform: scale(0.92);
-  }
-
-  75%,
-  100% {
-    opacity: 0;
-    transform: scale(1.32);
-  }
-}
-
-.agent-decision-action:hover .agent-decision-action__icon,
+.agent-decision-action:not(:disabled):hover .agent-decision-action__icon,
 .agent-decision-action:focus-visible .agent-decision-action__icon {
   border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
   color: var(--primary);
@@ -1645,6 +1580,7 @@
   opacity: 0.45;
 }
 
+.agent-composer__export,
 .agent-composer__reset,
 .agent-composer__model-trigger,
 .agent-composer__thinking-trigger,
@@ -1654,6 +1590,7 @@
   font-size: 12px;
 }
 
+.agent-composer__export,
 .agent-composer__reset,
 .agent-composer__thinking-trigger {
   flex: 0 0 auto;
@@ -1843,28 +1780,26 @@
   user-select: text;
 }
 
+/* 状态点与决定按钮共享扩散节奏，光环从各自主体边缘向外展开。 */
+.agent-status-mark--running,
+.agent-round-footer[data-running="true"] .agent-round-footer__activity,
+.agent-decision-action__icon--deadline::before {
+  animation: agent-status-mark-pulse 1s ease-out infinite;
+}
+
+/* 直接读取状态色令牌，让 Chromium 连续插值阴影颜色与扩散半径。 */
 @keyframes agent-status-mark-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--agent-status-color) 55%, transparent);
   }
 
   70%,
   100% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 0%, transparent);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--agent-status-color) 0%, transparent);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-decision-shade,
-  .agent-decision {
-    transition-duration: 100ms;
-  }
-
-  .agent-decision[data-starting-style],
-  .agent-decision[data-ending-style] {
-    transform: none;
-  }
-
   .agent-decision-action__icon--deadline::before {
     animation: none;
     opacity: 0;
@@ -1874,19 +1809,15 @@
     transition: none;
   }
 
-  .agent-status-mark--running {
+  .agent-status-mark--running,
+  .agent-round-footer[data-running="true"] .agent-round-footer__activity {
     animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-status-color) 35%, transparent);
   }
 
   .agent-round-footer__running,
   .agent-round-footer__result {
     transition: none;
-  }
-
-  .agent-round-footer[data-running="true"] .agent-round-footer__activity {
-    animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
   }
 
   .agent-thinking-entry__toggle::before,
@@ -1900,4 +1831,25 @@
   .agent-composer {
     transition: none;
   }
+}
+
+/* 对称列让摘要相对状态条居中；橙色标记占用左列。 */
+.agent-todo--translation {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 12px;
+  cursor: pointer;
+}
+
+.agent-todo__speed {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-composer__connection-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--ui-warning);
+  font-size: 12px;
 }

@@ -1,7 +1,7 @@
 import type { JsonRecord } from "../domain/json";
 
 /** 普通任务与 Agent 共享的运行占用类型。 */
-export type RuntimeActivityOwner = "task" | "agent";
+export type RuntimeActivityOwner = "batch_translation" | "agent";
 
 /** 后端与 renderer 共享的轻量运行占用快照。 */
 export type RuntimeActivitySnapshot = Readonly<

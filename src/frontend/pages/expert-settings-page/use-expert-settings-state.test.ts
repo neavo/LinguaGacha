@@ -7,7 +7,7 @@ import { useExpertSettingsState } from "./use-expert-settings-state";
 
 const commit_update = vi.fn(async () => null);
 const runtime = {
-  owner: null as "task" | "agent" | null,
+  owner: null as "batch_translation" | "agent" | null,
 };
 const snapshot: ExpertSettingsSnapshot = {
   preceding_lines_threshold: 3,

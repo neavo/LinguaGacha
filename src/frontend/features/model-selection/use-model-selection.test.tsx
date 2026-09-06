@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelThinkingLevel } from "@domain/model";
 import { useModelSelection } from "./use-model-selection";
 
+const runtime = vi.hoisted(() => ({ owner: null as "agent" | null }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useRuntimeSnapshot: () => runtime,
+}));
+
 const api = vi.hoisted(() => ({ get: vi.fn(), fetch: vi.fn() }));
 const push_toast = vi.hoisted(() => vi.fn());
 const translate = vi.hoisted(() => (key: string) => key);
@@ -31,6 +36,7 @@ describe("useModelSelection", () => {
     api.get.mockReset();
     api.fetch.mockReset();
     push_toast.mockReset();
+    runtime.owner = null;
   });
 
   it("不提交当前模型、阻止并发且只在后端回包后更新", async () => {
@@ -65,6 +71,27 @@ describe("useModelSelection", () => {
     expect(container.textContent).toContain("openai:OFF:false");
   });
 
+  it("批量翻译选择以保存结果回显，失败保留跟随并允许重试", async () => {
+    api.get.mockResolvedValue(snapshot("preset"));
+    api.fetch.mockRejectedValueOnce(new Error("offline"));
+    const container = await render_probe();
+    await act(async () => find_button(container, "batch").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+      model_id: "openai",
+    });
+    expect(container.querySelector("output")?.textContent).toBe("follow");
+    expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
+    api.fetch.mockResolvedValueOnce(snapshot("preset", "OFF", "openai"));
+    await act(async () => find_button(container, "batch").click());
+    expect(container.querySelector("output")?.textContent).toBe("openai");
+    api.fetch.mockResolvedValueOnce(snapshot("preset"));
+    await act(async () => find_button(container, "follow").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+      model_id: null,
+    });
+    expect(container.querySelector("output")?.textContent).toBe("follow");
+  });
+
   it("更新当前用途模型的思考档位并消费统一窄回包", async () => {
     api.get.mockResolvedValue(snapshot("preset"));
     api.fetch.mockResolvedValue(snapshot("preset", "HIGH"));
@@ -92,6 +119,45 @@ describe("useModelSelection", () => {
     expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
   });
 
+  it("运行结束后刷新持久化选择，并隔离运行期间的迟到查询", async () => {
+    api.get.mockResolvedValueOnce(snapshot("preset"));
+    const container = await render_probe();
+    let stale!: (value: unknown) => void;
+    api.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          stale = resolve;
+        }),
+    );
+    runtime.owner = "agent";
+    await act(async () => roots[0]!.render(<Probe />));
+    api.get.mockResolvedValueOnce(snapshot("openai"));
+    runtime.owner = null;
+    await act(async () => roots[0]!.render(<Probe />));
+    await wait_for_text(container, "openai:OFF:false");
+    await act(async () => stale(snapshot("preset")));
+    expect(container.textContent).toContain("openai:OFF:false");
+  });
+
+  it("运行中保存设置后，较早查询不能覆盖已确认的选择", async () => {
+    api.get.mockResolvedValueOnce(snapshot("preset"));
+    const container = await render_probe();
+    let resolve_stale = (_value: unknown): void => undefined;
+    api.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_stale = resolve;
+        }),
+    );
+    runtime.owner = "agent";
+    await act(async () => roots[0]!.render(<Probe />));
+    api.fetch.mockResolvedValueOnce(snapshot("openai"));
+    await act(async () => find_button(container, "change").click());
+    await act(async () => resolve_stale(snapshot("preset")));
+    expect(container.textContent).toContain("openai:OFF:false");
+  });
+
+  /** 登记根实例供卸载，等待模型查询提交。 */
   async function render_probe(): Promise<HTMLDivElement> {
     const container = document.createElement("div");
     document.body.append(container);
@@ -102,6 +168,7 @@ describe("useModelSelection", () => {
   }
 });
 
+/** 通过可点击入口观察模型控制器的公开状态。 */
 function Probe(): JSX.Element {
   const controller = useModelSelection();
   const selected = controller.snapshot.models.find(
@@ -109,10 +176,17 @@ function Probe(): JSX.Element {
   );
   return (
     <div>
+      <output>{controller.snapshot.model_selection.agent_batch_translation ?? "follow"}</output>
+      <button onClick={() => void controller.select_agent_batch_translation_model("openai")}>
+        batch
+      </button>
+      <button onClick={() => void controller.select_agent_batch_translation_model(null)}>
+        follow
+      </button>
       <span>{`${controller.snapshot.model_selection.translation}:${selected?.thinking_level ?? "OFF"}:${controller.updating.toString()}`}</span>
       <button onClick={() => void controller.select_model("translation", "preset")}>same</button>
       <button onClick={() => void controller.select_model("translation", "openai")}>change</button>
-      <button onClick={() => void controller.select_model("analysis", "openai")}>other</button>
+      <button onClick={() => void controller.select_model("agent", "openai")}>other</button>
       <button onClick={() => void controller.update_thinking_level("translation", "HIGH")}>
         thinking
       </button>
@@ -120,9 +194,18 @@ function Probe(): JSX.Element {
   );
 }
 
-function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"): unknown {
+/** 构造后端窄回包，覆盖用途与思考档位。 */
+function snapshot(
+  selected: string,
+  thinking_level: ModelThinkingLevel = "OFF",
+  batch_model_id: string | null = null,
+): unknown {
   return {
-    model_selection: { translation: selected, analysis: "preset", agent: "preset" },
+    model_selection: {
+      translation: selected,
+      agent: "preset",
+      agent_batch_translation: batch_model_id,
+    },
     models: [
       {
         id: "preset",
@@ -144,6 +227,7 @@ function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"):
   };
 }
 
+/** 按探针动作名定位交互入口。 */
 function find_button(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll("button")].find(
     (candidate) => candidate.textContent === label,
@@ -152,6 +236,7 @@ function find_button(container: HTMLElement, label: string): HTMLButtonElement {
   return button;
 }
 
+/** 等待异步保存回包反映到可见状态。 */
 async function wait_for_text(container: HTMLElement, text: string): Promise<void> {
   await act(async () => {
     await vi.waitFor(() => expect(container.textContent).toContain(text));

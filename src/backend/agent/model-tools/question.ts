@@ -2,6 +2,7 @@ import { Type, type Static } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import {
+  AGENT_DECISION_TIMEOUT_MS,
   AGENT_QUESTION_OPTION_MAX,
   AGENT_QUESTION_OPTION_MIN,
   type AgentQuestion,
@@ -21,17 +22,26 @@ export type AgentQuestionPort = {
 
 const QUESTION_OPTION_PARAMETERS = Type.Object(
   {
-    id: Type.String({ minLength: 1 }),
-    label: Type.String({ minLength: 1 }),
+    id: Type.String({ minLength: 1, description: "当前问题内唯一的选项标识。" }),
+    label: Type.String({
+      minLength: 1,
+      description: "可直接采用的行动或结果，选项之间含义明确不同。",
+    }),
   },
   { additionalProperties: false },
 );
 
 const ASK_USER_PARAMETERS = Type.Object(
   {
-    prompt: Type.String({ minLength: 1 }),
-    description: Type.Optional(Type.String({ minLength: 1 })),
+    prompt: Type.String({ minLength: 1, description: "完整说明需要用户决定的问题。" }),
+    description: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description: "各选项共用的简短背景或判断标准，省略问题中已有的信息。",
+      }),
+    ),
     options: Type.Array(QUESTION_OPTION_PARAMETERS, {
+      description: "身份唯一、按推荐顺序排列的固定答案。",
       minItems: AGENT_QUESTION_OPTION_MIN,
       maxItems: AGENT_QUESTION_OPTION_MAX,
     }),
@@ -77,8 +87,11 @@ export function create_agent_question_tools(question: AgentQuestionPort): ToolDe
     defineTool({
       name: "ask_user",
       label: "询问用户",
-      description:
-        "正在执行的任务需要一个有界决定时提出一个完整问题。description 可统一说明背景或判断标准；提供二至三个按推荐顺序排列、点击即可采用的固定答案，界面另提供简短自定义答案和取消。五分钟内未回答会结束当前决定。",
+      description: [
+        "需要用户确定可用简短选项表达的范围、处理策略或偏好时调用。宿主同时提供自定义文本与取消。",
+        `${(AGENT_DECISION_TIMEOUT_MS / 60_000).toString()} 分钟到期未选时采用第一项。`,
+        "返回 outcome: selected 与 optionId，或 outcome: custom 与 text；手动取消返回 outcome: cancelled，此时暂停依赖该决定的动作，依据后续输入恢复。",
+      ].join("\n\n"),
       executionMode: "sequential",
       parameters: ASK_USER_PARAMETERS,
       execute: async (tool_call_id, params, signal) => {

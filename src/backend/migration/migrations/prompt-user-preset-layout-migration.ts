@@ -30,7 +30,7 @@ export const prompt_user_preset_layout_migration: MigrationDescriptor = {
    * 启动期先创建当前目录，再从旧语言目录迁入 `.txt` 用户预设。
    */
   run_startup(context: StartupMigrationContext): void {
-    const destination_dir = context.paths.get_prompt_user_preset_dir("translation");
+    const destination_dir = context.paths.get_prompt_user_preset_dir();
     default_native_fs.make_dir(destination_dir);
     for (const source_dir of get_legacy_prompt_user_preset_dirs(context)) {
       relocate_directory_items(

@@ -17,9 +17,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 }));
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import { AgentDecisionLayer } from "./agent-decision";
+import { AgentDecision } from "./agent-decision";
 
-describe("AgentDecisionLayer", () => {
+describe("AgentDecision", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -38,10 +38,12 @@ describe("AgentDecisionLayer", () => {
     const on_resolve_question = vi.fn();
     await render_decision(root, question_decision(), on_resolve_question);
     const safe = action(container, "安全范围");
-    const dialog = container.querySelector('[role="dialog"]');
-    const description = container.querySelector<HTMLElement>(".agent-decision__description");
+    expect(safe.querySelector(".agent-decision-progress")).not.toBeNull();
+    expect(action(container, "完整范围").querySelector(".agent-decision-progress")).toBeNull();
+    const region = container.querySelector<HTMLElement>(".agent-decision")!;
+    const description = container.querySelector<HTMLElement>(".agent-decision__description")!;
 
-    expect(dialog?.getAttribute("aria-describedby")).toBe(description?.id);
+    expect(region.getAttribute("aria-describedby")).toBe(description.id);
     await act(async () => safe.click());
     expect(on_resolve_question).toHaveBeenCalledWith({ kind: "option", optionId: "safe" });
   });
@@ -84,7 +86,7 @@ describe("AgentDecisionLayer", () => {
     expect(on_resolve_question).toHaveBeenCalledWith({ kind: "cancel" });
   });
 
-  it("写入授权只展示非零摘要并提交所选权限", async () => {
+  it("写入授权在选项二显示倒计时并提交本次写入权限", async () => {
     const on_resolve_write_approval = vi.fn();
     await render_decision(
       root,
@@ -106,8 +108,16 @@ describe("AgentDecisionLayer", () => {
     );
     const actions = [...container.querySelectorAll<HTMLButtonElement>(".agent-decision-action")];
 
-    expect(actions).toHaveLength(3);
-    expect(container.querySelectorAll(".agent-write-summary__item")).toHaveLength(3);
+    expect(
+      actions.map((button) => button.querySelector(".agent-decision-action__label")?.textContent),
+    ).toEqual([
+      "agent_page.approval.reject",
+      "agent_page.approval.allow_once",
+      "agent_page.approval.allow_session",
+    ]);
+    expect(actions.filter((button) => button.querySelector(".agent-decision-progress"))).toEqual([
+      actions[1],
+    ]);
     expect(
       [...container.querySelectorAll(".agent-write-summary__value")].map(
         (value) => value.textContent,
@@ -118,16 +128,17 @@ describe("AgentDecisionLayer", () => {
   });
 });
 
+/** 在真实 Tooltip 宿主中渲染决定，裁决回调由各场景观察。 */
 async function render_decision(
   root: Root,
-  decision: AgentPendingDecision | null,
+  decision: AgentPendingDecision,
   on_resolve_question: (response: AgentQuestionResponse) => void = () => undefined,
   on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void = () => undefined,
 ): Promise<void> {
   await act(async () =>
     root.render(
       <TooltipProvider>
-        <AgentDecisionLayer
+        <AgentDecision
           decision={decision}
           on_resolve_question={on_resolve_question}
           on_resolve_write_approval={on_resolve_write_approval}
@@ -137,6 +148,7 @@ async function render_decision(
   );
 }
 
+/** 固定选项与说明共同覆盖问题的提交和标题关联。 */
 function question_decision(): AgentPendingDecision {
   return {
     kind: "question",
@@ -153,6 +165,7 @@ function question_decision(): AgentPendingDecision {
   };
 }
 
+/** 按可见动作标签定位选项，保留失败时的业务语义。 */
 function action(container: HTMLElement, label: string): HTMLButtonElement {
   const result = [...container.querySelectorAll<HTMLButtonElement>(".agent-decision-action")].find(
     (candidate) =>

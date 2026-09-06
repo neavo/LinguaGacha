@@ -1,5 +1,6 @@
 import type { Static } from "@earendil-works/pi-ai";
 import { Check } from "typebox/value";
+import { describe_agent_workspace_schema_error } from "../../validation";
 
 import type { JsonRecord, JsonValue } from "../../../../../domain/json";
 import { deriveCommonLiteralRoots } from "./derive-common-literal-roots";
@@ -11,7 +12,7 @@ import type {
   AnyAgentWorkspaceDataToolDefinition,
 } from "./data-tool";
 
-/** 名称集合只在此列举；Schema、说明与实现分别由对应数据工具模块完整拥有。 */
+/** 显式引用模块类型，使导出声明不依赖 SDK 内嵌 TypeBox 的安装路径。 */
 export const AGENT_WORKSPACE_DATA_TOOLS: Readonly<{
   queryItemContexts: typeof queryItemContexts;
   groupQualityRuleEntries: typeof groupQualityRuleEntries;
@@ -40,7 +41,8 @@ export async function execute_agent_workspace_data_tool(
 ): Promise<JsonValue> {
   const tool = AGENT_WORKSPACE_DATA_TOOLS[name] as AnyAgentWorkspaceDataToolDefinition;
   if (!Check(tool.parameters, args)) {
-    throw new Error(`${name} args do not match the declared schema`);
+    const error = describe_agent_workspace_schema_error(tool.parameters, args);
+    throw new Error(`${name} ${error.path}: ${error.message}`);
   }
   const result = await tool.execute(context, args as never);
   if (!Check(tool.result, result)) {

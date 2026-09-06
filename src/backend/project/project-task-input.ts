@@ -1,4 +1,4 @@
-import { Prompt, type PromptKind } from "../../domain/prompt";
+import { TRANSLATION_PROMPT } from "../../domain/prompt";
 import {
   QualityRule,
   type QualityRuleEntry,
@@ -31,14 +31,13 @@ export type ProjectQualityRuleInput =
     };
 
 export type ProjectPromptInput = {
-  kind: PromptKind; // 提示词业务类型
   text: string; // 提示词正文
   enabled: boolean; // 是否启用该提示词
 };
 
 export type ProjectTaskInput = {
   quality_rules: ProjectQualityRuleInput[]; // 初始化或 CLI 注入的质量规则
-  prompts: ProjectPromptInput[]; // 初始化或 CLI 注入的提示词
+  translation_prompt: ProjectPromptInput | null; // 初始化或 CLI 注入的翻译提示词
 };
 
 /**
@@ -104,8 +103,8 @@ export function resolve_project_quality_rule_storage(
 /**
  * project 内部唯一的提示词领域值到物理存储映射。
  */
-export function resolve_project_prompt_storage(kind: PromptKind): ProjectPromptStorage {
-  const prompt = Prompt.from_json(kind);
+export function resolve_project_prompt_storage(): ProjectPromptStorage {
+  const prompt = TRANSLATION_PROMPT;
   return {
     database_type: prompt.database_type,
     enabled_meta_key: prompt.enabled_meta_key,

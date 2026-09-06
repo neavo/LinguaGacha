@@ -29,7 +29,7 @@ export interface LLMRequestResult {
   input_tokens: number; // token 计数用于任务统计，缺失时由客户端归零
   reasoning_tokens: number; // 供应商报告的思考 token 子集，缺失时归零
   output_tokens: number; // 只表示扣除思考后的输出 token
-  cancelled: boolean; // 以下布尔标记保留请求事实，TaskEngine 决定如何重试
+  cancelled: boolean; // 以下布尔标记保留请求事实，BatchTranslationRunner 决定如何重试
   timeout: boolean;
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
 }

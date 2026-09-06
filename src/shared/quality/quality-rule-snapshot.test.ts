@@ -33,11 +33,6 @@ describe("quality rule snapshot", () => {
           text: "translation-prompt",
           revision: 4,
         },
-        analysis: {
-          enabled: false,
-          text: "",
-          revision: "5",
-        },
       },
     });
 
@@ -50,7 +45,6 @@ describe("quality rule snapshot", () => {
     expect(snapshot.translation_prompt).toBe("translation-prompt");
     expect(snapshot.pre_replacement_revision).toBe(0);
     expect(snapshot.post_replacement_revision).toBe(0);
-    expect(snapshot.analysis_prompt_revision).toBe(5);
   });
 
   it("坏规则事实显式失败", () => {
@@ -130,11 +124,6 @@ describe("quality rule snapshot", () => {
           text: "prompt",
           enabled: true,
           revision: 7,
-        },
-        analysis: {
-          text: "",
-          enabled: false,
-          revision: 0,
         },
       },
     });

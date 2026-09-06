@@ -86,14 +86,7 @@ describe("ProjectSummaryService", () => {
         create_item({ id: 4, src: "分析失败", status: "NONE" }),
       ],
       [{ path: "script.txt", sort_order: 0 }],
-      {
-        analysis_extras: {
-          total_line: 3,
-          processed_line: 2,
-          error_line: 1,
-          line: 3,
-        },
-      },
+      {},
     );
 
     const result = service.read();
@@ -103,36 +96,6 @@ describe("ProjectSummaryService", () => {
         translation_stats: {
           total_items: 4,
           completed_count: 1,
-          skipped_count: 1,
-          completion_percent: 50,
-        },
-        analysis_stats: {
-          total_items: 4,
-          completed_count: 2,
-          failed_count: 1,
-          pending_count: 0,
-          skipped_count: 1,
-          completion_percent: 75,
-        },
-      },
-    });
-  });
-
-  it("项目摘要在旧工程缺少分析进度时按 item 口径回退", async () => {
-    const { service } = await create_service([
-      create_item({ id: 1, src: "待分析", status: "NONE" }),
-      create_item({ id: 2, src: "已跳过", status: "EXCLUDED" }),
-    ]);
-
-    const result = service.read();
-
-    expect(result).toMatchObject({
-      snapshot: {
-        analysis_stats: {
-          total_items: 2,
-          completed_count: 0,
-          failed_count: 0,
-          pending_count: 1,
           skipped_count: 1,
           completion_percent: 50,
         },

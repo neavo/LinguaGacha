@@ -63,7 +63,7 @@ function create_service(task_busy = false): {
 
 function create_runtime_gate(busy: boolean): RuntimeOperationGate {
   const gate = new RuntimeOperationGate();
-  if (busy) gate.begin_runtime("task");
+  if (busy) gate.begin_runtime("batch_translation");
   return gate;
 }
 

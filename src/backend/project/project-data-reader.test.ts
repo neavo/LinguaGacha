@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
-import type { JsonValue } from "../../domain/json";
+
 import {
   build_section_revisions_from_meta,
   get_section_revision,
@@ -18,7 +18,6 @@ type ProjectDataDatabase = Pick<
   | "get_items_by_ids"
   | "get_rules"
   | "get_rule_text"
-  | "get_analysis_candidate_aggregates"
 >;
 
 function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabase {
@@ -41,19 +40,17 @@ describe("project section revision", () => {
     const meta = {
       "project_runtime_revision.files": -1,
       "project_runtime_revision.items": "9.7",
-      "project_runtime_revision.analysis": 4,
+
       "proofreading_revision.proofreading": "6.2",
       "quality_rule_revision.glossary": 2,
       "quality_rule_revision.text_preserve": "5.9",
       "quality_rule_revision.pre_replacement": "坏值",
       "quality_rule_revision.post_replacement": 3,
       "quality_prompt_revision.translation": "8.8",
-      "quality_prompt_revision.analysis": Number.NaN,
     };
 
     expect(get_section_revision(meta, "files")).toBe(0);
     expect(get_section_revision(meta, "items")).toBe(9);
-    expect(get_section_revision(meta, "analysis")).toBe(4);
     expect(get_section_revision(meta, "proofreading")).toBe(6);
     expect(get_section_revision(meta, "quality:glossary")).toBe(2);
     expect(get_section_revision(meta, "quality")).toBe(5);
@@ -67,7 +64,7 @@ describe("project section revision", () => {
       build_section_revisions_from_meta({
         "project_runtime_revision.files": 3,
         "project_runtime_revision.items": 9,
-        "project_runtime_revision.analysis": 4,
+
         "proofreading_revision.proofreading": 6,
         "quality_rule_revision.glossary": 2,
         "quality_prompt_revision.translation": 8,
@@ -78,7 +75,7 @@ describe("project section revision", () => {
       items: 9,
       quality: 2,
       prompts: 8,
-      analysis: 4,
+
       proofreading: 6,
     });
   });
@@ -112,7 +109,7 @@ describe("ProjectDataReader", () => {
       create_database_stub({
         get_all_meta: () => ({
           translation_prompt_enable: true,
-          analysis_prompt_enable: false,
+
           "quality_prompt_revision.translation": 4,
         }),
         get_rule_text: (_project_path, rule_type) =>
@@ -132,11 +129,7 @@ describe("ProjectDataReader", () => {
       enabled: true,
       text: "翻译提示词",
     });
-    expect(prompts["analysis"]).toEqual({
-      revision: 4,
-      enabled: false,
-      text: "分析提示词",
-    });
+
     expect(prompts["translation"]).not.toHaveProperty("meta");
     expect(prompts["translation"]).not.toHaveProperty("task_type");
   });
@@ -226,94 +219,5 @@ describe("ProjectDataReader", () => {
       },
     ]);
     expect(get_items_by_ids).toHaveBeenCalledWith("E:/demo/demo.lg", [2, 3]);
-  });
-
-  it("analysis section 只从 meta 构建轻量进度", () => {
-    const get_analysis_candidate_aggregates = vi.fn(() => {
-      throw new Error("不应扫描候选池");
-    });
-    const get_all_items = vi.fn(() => {
-      throw new Error("不应扫描 items");
-    });
-    const service = new ProjectDataReader(
-      create_database_stub({
-        get_all_meta: () => ({
-          analysis_extras: {
-            total_line: 8,
-            processed_line: 3,
-            error_line: 1,
-            line: 4,
-          },
-          analysis_candidate_count: 2,
-        }),
-        get_all_items,
-        get_analysis_candidate_aggregates,
-      }),
-    );
-
-    const payload = service.build_section_payloads({
-      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
-      sections: ["analysis"],
-    });
-    const sections = payload["sections"] as Record<string, Record<string, unknown>>;
-
-    expect(sections["analysis"]).toEqual({
-      extras: {
-        total_line: 8,
-        processed_line: 3,
-        error_line: 1,
-        line: 4,
-      },
-      candidate_count: 2,
-      status_summary: {
-        total_line: 8,
-        processed_line: 3,
-        error_line: 1,
-        line: 4,
-      },
-    });
-    expect(get_all_items).not.toHaveBeenCalled();
-    expect(get_analysis_candidate_aggregates).not.toHaveBeenCalled();
-  });
-
-  it("analysis 候选载荷只在按需入口读取完整候选池", () => {
-    const service = new ProjectDataReader(
-      create_database_stub({
-        get_all_meta: () => ({
-          analysis_candidate_count: 1,
-          "project_runtime_revision.analysis": 6,
-        }),
-        get_analysis_candidate_aggregates: () =>
-          [
-            {
-              src: "魔法",
-              dst_votes: { magic: 2 },
-              info_votes: { 术语: 1 },
-              observation_count: 2,
-              first_seen_at: "2026-01-01T00:00:00.000Z",
-              last_seen_at: "2026-01-02T00:00:00.000Z",
-              case_sensitive: true,
-              first_seen_index: 3,
-            },
-            { src: "", dst_votes: { empty: 1 }, info_votes: { 术语: 1 } },
-          ] as JsonValue,
-      }),
-    );
-
-    expect(service.build_analysis_candidate_payload("E:/demo/demo.lg")).toMatchObject({
-      projectPath: "E:/demo/demo.lg",
-      candidate_count: 1,
-      projectRevision: 6,
-      sectionRevisions: { analysis: 6 },
-      candidate_aggregate: {
-        魔法: {
-          src: "魔法",
-          dst_votes: { magic: 2 },
-          info_votes: { 术语: 1 },
-          observation_count: 2,
-          first_seen_index: 3,
-        },
-      },
-    });
   });
 });

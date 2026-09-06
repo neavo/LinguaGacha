@@ -1,3 +1,4 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import { ChevronDown, ChevronUp, ListStart, Maximize2, Minimize2, ScrollText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
@@ -81,6 +82,7 @@ function scroll_log_table_to_top(): void {
 
 /** 日志窗口只持有轻量事件，详情按选中项读取并在当前筛选结果内导航。 */
 export function LogWindowPage(): JSX.Element {
+  const [detail_request, set_detail_request] = useState(0); // 同一选中日志的显式重试序号。
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
   const [events, set_events] = useState<LogEvent[]>([]);
@@ -210,6 +212,7 @@ export function LogWindowPage(): JSX.Element {
 
   // 详情区无论展开与否都支持方向键导航，但不抢占输入控件和组合键。
   useEffect(() => {
+    /** 将窗口方向键映射到相邻日志记录。 */
     function handle_log_navigation_keydown(event: KeyboardEvent): void {
       if (
         selected_event_id === null ||
@@ -281,7 +284,7 @@ export function LogWindowPage(): JSX.Element {
     return () => {
       disposed = true;
     };
-  }, [selected_event_id]);
+  }, [selected_event_id, detail_request]);
 
   // 筛选或容量裁剪移除活动行时清空选区，并恢复到跟随模式。
   useEffect(() => {
@@ -378,8 +381,13 @@ export function LogWindowPage(): JSX.Element {
           fallback_value = t("log_window_page.detail.unavailable");
           break;
         case "failed":
-          fallback_value = t("log_window_page.detail.failed");
-          break;
+          return (
+            <AppContentState
+              status="error"
+              message={t("log_window_page.detail.failed")}
+              on_retry={() => set_detail_request((request) => request + 1)}
+            />
+          );
         case "ready":
           return <LogDetailView detail={detail_state.detail} />;
       }

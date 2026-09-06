@@ -11,10 +11,10 @@ import {
 } from "../../shared/text/ts-conversion";
 import type { TextPreserveEntry } from "../../domain/quality";
 import {
-  run_quality_rule_analysis_worker_task,
-  type QualityRuleAnalysisWorkerTaskInput,
-  type QualityRuleAnalysisWorkerTaskResult,
-} from "./tasks/quality-rule-analysis-worker-task";
+  run_quality_rule_statistics_worker_task,
+  type QualityRuleStatisticsWorkerTaskInput,
+  type QualityRuleStatisticsWorkerTaskResult,
+} from "./tasks/quality-rule-statistics-worker-task";
 
 type TsConversionWorkerTaskInput = {
   items: TsConversionItem[];
@@ -26,25 +26,25 @@ type TsConversionWorkerTaskInput = {
 };
 
 export type ComputeWorkerTaskInputByType = {
-  quality_rule_analysis: QualityRuleAnalysisWorkerTaskInput;
+  quality_rule_statistics: QualityRuleStatisticsWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
   proofreading_sync: ProofreadingSyncInput;
 };
 
 export type ComputeWorkerTaskResultByType = {
-  quality_rule_analysis: QualityRuleAnalysisWorkerTaskResult;
+  quality_rule_statistics: QualityRuleStatisticsWorkerTaskResult;
   ts_conversion: TsConversionConvertedItem[];
   proofreading_sync: ProofreadingEvaluatedSlice;
 };
 
-export type ComputeWorkerTaskType = keyof ComputeWorkerTaskInputByType;
+export type ComputeWorkerTaskName = keyof ComputeWorkerTaskInputByType;
 
 export type ComputeWorkerTask = {
-  [TType in ComputeWorkerTaskType]: {
+  [TType in ComputeWorkerTaskName]: {
     type: TType;
     input: ComputeWorkerTaskInputByType[TType];
   };
-}[ComputeWorkerTaskType];
+}[ComputeWorkerTaskName];
 
 export type ComputeWorkerTaskResult<TTask extends ComputeWorkerTask> =
   ComputeWorkerTaskResultByType[TTask["type"]];
@@ -54,8 +54,8 @@ export async function run_compute_worker_task<TTask extends ComputeWorkerTask>(
   task: TTask,
 ): Promise<ComputeWorkerTaskResult<TTask>> {
   switch (task.type) {
-    case "quality_rule_analysis":
-      return run_quality_rule_analysis_worker_task(task.input) as ComputeWorkerTaskResult<TTask>;
+    case "quality_rule_statistics":
+      return run_quality_rule_statistics_worker_task(task.input) as ComputeWorkerTaskResult<TTask>;
     case "ts_conversion":
       return build_ts_conversion_converted_items(task.input) as ComputeWorkerTaskResult<TTask>;
     case "proofreading_sync":

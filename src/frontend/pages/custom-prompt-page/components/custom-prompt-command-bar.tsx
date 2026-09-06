@@ -1,6 +1,6 @@
 import { FileDown, FileUp } from "lucide-react";
 
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-provider";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -13,9 +13,6 @@ import {
 } from "@frontend/widgets/command-bar/command-bar";
 
 type CustomPromptCommandBarProps = {
-  title_key: LocaleKey;
-  header_title_key: LocaleKey;
-  header_description_key: LocaleKey;
   enabled: boolean;
   preset_items: PresetItem[];
   preset_menu_open: boolean;
@@ -34,11 +31,12 @@ type CustomPromptCommandBarProps = {
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
 
+/** 组合提示词导入导出、预设与启用操作。 */
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
   const toggle_tooltip_title = t("app.tooltip.value", {
-    TITLE: t(props.header_title_key),
+    TITLE: t("custom_prompt_page.title"),
     VALUE: t(toggle_state_key),
   });
 
@@ -93,7 +91,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             render={
               <div className="custom-prompt-page__toggle-cluster">
                 <BooleanSegmentedToggle
-                  aria_label={t(props.header_title_key)}
+                  aria_label={t("custom_prompt_page.title")}
                   value={props.enabled}
                   disabled={props.readonly}
                   on_value_change={(next_value) => {
@@ -116,7 +114,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
               <div
                 className="custom-prompt-page__toggle-tooltip-html text-background/90"
                 dangerouslySetInnerHTML={{
-                  __html: t(props.header_description_key),
+                  __html: t("custom_prompt_page.header.description_html"),
                 }}
               />
             </div>

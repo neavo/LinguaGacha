@@ -77,16 +77,8 @@ const run_state = {
       enabled: false,
       revision: 0,
     },
-    analysis: {
-      text: "",
-      enabled: false,
-      revision: 0,
-    },
   },
-  analysis: {
-    candidate_count: 0,
-    candidate_aggregate: {},
-  },
+
   proofreading: {
     revision: 0,
   },
@@ -94,7 +86,6 @@ const run_state = {
     projectRevision: 1,
     sections: {
       quality: 1,
-      analysis: 0,
     },
   },
 };
@@ -214,7 +205,7 @@ function create_glossary_quality(
 }
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
-let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+let runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
@@ -657,7 +648,7 @@ describe("useGlossaryPageState", () => {
     });
   });
 
-  it("启用和禁用成功后显示对应状态提醒", async () => {
+  it("启用和禁用成功后更新开关并静默完成", async () => {
     await mount_probe();
     api_fetch_mock.mockResolvedValueOnce(
       create_quality_write_result({
@@ -678,7 +669,7 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.enabled).toBe(false);
-    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_disabled");
+    expect(push_toast_mock).not.toHaveBeenCalled();
 
     api_fetch_mock.mockResolvedValueOnce(
       create_quality_write_result({
@@ -699,7 +690,7 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.enabled).toBe(true);
-    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_enabled");
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
 
   it("开关写入失败时不显示成功提醒", async () => {

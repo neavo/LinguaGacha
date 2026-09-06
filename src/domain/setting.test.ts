@@ -47,13 +47,13 @@ describe("设置快照", () => {
     );
   });
 
-  it("完整设置只保留三个模型用途并丢弃旧激活字段", () => {
+  it("完整设置规范化模型选择并丢弃旧激活字段", () => {
     const legacy_key = ["activate", "model", "id"].join("_");
     const setting = Setting.from_json({
       [legacy_key]: "legacy",
       model_selection: {
         translation: " translation-model ",
-        analysis: 42,
+
         agent: "agent-model",
         unknown: "ignored",
       },
@@ -61,8 +61,9 @@ describe("设置快照", () => {
 
     expect(setting["model_selection"]).toEqual({
       translation: "translation-model",
-      analysis: "",
+
       agent: "agent-model",
+      agent_batch_translation: null,
     });
     expect(setting).not.toHaveProperty(legacy_key);
   });

@@ -28,7 +28,7 @@ export function format_agent_workspace_typescript_api(): string {
     "  todo: Readonly<{",
     "    /** 读取当前有序 Todo。 */",
     "    read(): readonly string[];",
-    `    /** 设置脚本成功后提交的完整有序 Todo；最多 ${AGENT_TODO_ITEM_LIMIT.toString()} 项，每项为不超过 ${AGENT_TODO_TEXT_LIMIT.toString()} 字符的短行动标签。 */`,
+    `    /** 设置脚本成功后提交的完整有序 Todo；最多 ${AGENT_TODO_ITEM_LIMIT.toString()} 项，每项为不超过 ${AGENT_TODO_TEXT_LIMIT.toString()} 字符的短行动标签，首尾空白裁剪后须非空；空数组清空 Todo。 */`,
     "    write(todos: readonly string[]): void;",
     "  }>;",
     "  tool: Readonly<WorkspaceHtmlTools & {",
@@ -38,58 +38,99 @@ export function format_agent_workspace_typescript_api(): string {
   ].join("\n");
 }
 
-/** 从数据工具注册表生成 System 中唯一的能力路由清单。 */
-export function format_agent_workspace_tool_routes(): string {
-  return Object.entries(AGENT_WORKSPACE_DATA_TOOLS)
-    .map(([name, tool]) => `- ${tool.useWhen}：\`ws.tool.${name}\``)
-    .join("\n");
-}
+const SCHEMA_CONSTRAINTS = {
+  minimum: "最小值",
+  maximum: "最大值",
+  minItems: "最少项数",
+  maxItems: "最多项数",
+  minLength: "最短字符数",
+  maxLength: "最长字符数",
+  minProperties: "最少字段数",
+  pattern: "字符串格式",
+  default: "省略时",
+  uniqueItems: "元素唯一",
+} as const;
+const SUPPORTED_SCHEMA_KEYS = new Set([
+  "type",
+  "const",
+  "anyOf",
+  "allOf",
+  "items",
+  "properties",
+  "required",
+  "additionalProperties",
+  "patternProperties",
+  "description",
+  ...Object.keys(SCHEMA_CONSTRAINTS),
+]);
 
-/** 将当前使用到的 TypeBox 子集渲染为内联 TypeScript，并复用命名 Schema。 */
-function render_schema(schema: TSchema, expanding = new Set<TSchema>()): string {
+/** 仅渲染项目实际使用的 Schema 子集；新增结构须同时补全模型声明。 */
+function render_schema(schema: TSchema, expanding = new Set<TSchema>(), annotate = true): string {
+  const unsupported = Object.keys(schema).find((key) => !SUPPORTED_SCHEMA_KEYS.has(key));
+  if (unsupported !== undefined)
+    throw new Error(`Unsupported Agent Workspace schema keyword: ${unsupported}`);
+  const comment = annotate ? schema_comment(schema) : "";
   const named = NAMED_SCHEMAS.get(schema);
-  if (named !== undefined && !expanding.has(schema)) return named;
+  if (named !== undefined && !expanding.has(schema)) return `${comment}${named}`;
   const value = schema as unknown as Record<string, unknown>;
-  if ("const" in value) return JSON.stringify(value.const);
-  if (Array.isArray(value.anyOf)) {
-    return value.anyOf
-      .map((entry: unknown) => render_schema(entry as TSchema, expanding))
-      .join(" | ");
+  if ("const" in value) return `${comment}${JSON.stringify(value.const)}`;
+  for (const [keyword, operator] of [
+    ["anyOf", " | "],
+    ["allOf", " & "],
+  ] as const) {
+    const branches = value[keyword];
+    if (Array.isArray(branches)) {
+      if (value.type !== undefined)
+        throw new Error("Workspace schema compositions must use explicit complete branches.");
+      return `${comment}(${branches.map((entry: unknown) => render_schema(entry as TSchema, expanding)).join(operator)})`;
+    }
   }
-  if (Array.isArray(value.allOf)) {
-    return value.allOf
-      .map((entry: unknown) => render_schema(entry as TSchema, expanding))
-      .join(" & ");
-  }
-  if (value.type === "string") return "string";
-  if (value.type === "number" || value.type === "integer") return "number";
-  if (value.type === "boolean") return "boolean";
-  if (value.type === "null") return "null";
-  if (value.type === "array") {
-    const item = render_schema(value.items as TSchema, expanding);
-    return `Array<${item}>`;
-  }
+  if (value.type === "string" || value.type === "boolean" || value.type === "null")
+    return `${comment}${value.type}`;
+  if (value.type === "number" || value.type === "integer") return `${comment}number`;
+  if (value.type === "array")
+    return `${comment}Array<${render_schema(value.items as TSchema, expanding)}>`;
   if (value.type === "object") {
-    if (value.additionalProperties === true) return "Record<string, unknown>";
-    if (typeof value.additionalProperties === "object" && value.additionalProperties !== null) {
-      return `Record<string, ${render_schema(value.additionalProperties as TSchema, expanding)}>`;
-    }
-    const pattern = value.patternProperties as Record<string, TSchema> | undefined;
-    if (pattern !== undefined) {
-      const value = Object.values(pattern)[0];
-      return value === undefined
-        ? "Record<string, unknown>"
-        : `Record<string, ${render_schema(value, expanding)}>`;
-    }
     const properties = (value.properties ?? {}) as Record<string, TSchema>;
     const required = new Set(Array.isArray(value.required) ? (value.required as string[]) : []);
-    const fields = Object.entries(properties).map(([name, property]) => {
-      const marker = required.has(name) ? "" : "?";
-      return `${render_property_name(name)}${marker}: ${render_schema(property, expanding)}`;
-    });
-    return fields.length === 0 ? "Record<string, never>" : `{ ${fields.join("; ")} }`;
+    const fields = Object.entries(properties).map(
+      ([name, property]) =>
+        `${schema_comment(property)}${render_property_name(name)}${required.has(name) ? "" : "?"}: ${render_schema(property, expanding, false)}`,
+    );
+    const pattern = value.patternProperties as Record<string, TSchema> | undefined;
+    if (pattern !== undefined) {
+      const entries = Object.entries(pattern);
+      // Type.Record(Type.String(), ...) 使用唯一的任意字符串键模式。
+      if (entries.length !== 1 || entries[0]?.[0] !== "^.*$")
+        throw new Error("Unsupported Workspace record key pattern.");
+      fields.push(`[key: string]: ${render_schema(entries[0][1], expanding)}`);
+    }
+    if (value.additionalProperties === true) fields.push("[key: string]: unknown");
+    else if (
+      typeof value.additionalProperties === "object" &&
+      value.additionalProperties !== null
+    ) {
+      fields.push(
+        `[key: string]: ${render_schema(value.additionalProperties as TSchema, expanding)}`,
+      );
+    }
+    return `${comment}${fields.length === 0 ? "Record<string, never>" : `{ ${fields.join("; ")} }`}`;
   }
   throw new Error("Unsupported Agent Workspace schema in model description.");
+}
+
+/** 字段语义与无法由 TypeScript 表达的结构约束随声明一起交给模型。 */
+function schema_comment(schema: TSchema): string {
+  const value = schema as unknown as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof value.description === "string") parts.push(value.description);
+  if (value.type === "integer") parts.push("整数");
+  for (const [key, label] of Object.entries(SCHEMA_CONSTRAINTS)) {
+    if (value[key] !== undefined) parts.push(`${label}: ${JSON.stringify(value[key])}`);
+  }
+  if (value.additionalProperties === false) parts.push("仅接受声明字段");
+  // 转义注释结束符，避免字段说明中的文本改变生成声明的语法。
+  return parts.length === 0 ? "" : `/** ${parts.join("；").replaceAll("*/", "*\\/")} */ `;
 }
 
 /** 标识符键保持简洁，其余属性名使用 JSON 字符串语法。 */

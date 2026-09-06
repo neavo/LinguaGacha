@@ -2,7 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
-import type { AgentWorkspaceRuntimePaths } from "../shared/backend-runtime";
+import type { AgentWorkspaceRuntimePaths, BackendRuntimeReady } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
@@ -38,7 +38,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   let win: BrowserWindow | null = null; // 主窗口是桌面宿主的唯一工作台窗口，关闭后引用必须归零，避免 IPC 误用失效窗口
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
-  let backend_api_base_url: string | null = null; // Backend API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
+  let backend_ready: BackendRuntimeReady | null = null; // main 持有固定启动快照，首次创建与重建窗口共用
   let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
@@ -91,25 +91,27 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   };
 
   /**
-   * 窗口只能在 Backend API ready 后创建，避免 preload 暴露不可用的 API 地址。
+   * 窗口在 Backend ready 后创建，API 地址与版本共用该启动快照。
    */
-  function require_backend_api_base_url(): string {
-    if (backend_api_base_url === null) {
+  function require_backend_ready(): BackendRuntimeReady {
+    if (backend_ready === null) {
       throw new AppErrors.AppError("runtime.internal_invariant", {
-        diagnostic_context: { reason: "backend_api_base_url_not_ready" },
+        diagnostic_context: { reason: "backend_runtime_not_ready" },
       });
     }
 
-    return backend_api_base_url;
+    return backend_ready;
   }
 
   /**
    * 创建主工作台窗口，并把窗口关闭后的跨宿主联动留在入口层。
    */
   function create_main_window_for_runtime(): void {
+    const ready = require_backend_ready();
     win = create_main_window({
       desktopBundleDir: desktop_bundle_dir,
-      backendApiBaseUrl: require_backend_api_base_url(),
+      backendApiBaseUrl: ready.apiBaseUrl,
+      appVersion: ready.appVersion,
       rendererDiagnostics: renderer_process_diagnostics,
       shouldBypassCloseConfirmation: () => {
         return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
@@ -192,7 +194,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   app.whenReady().then(async () => {
     try {
       const backend_start_result = await backend_runtime.start();
-      backend_api_base_url = backend_start_result.apiBaseUrl;
+      backend_ready = backend_start_result;
       desktop_update_service = new DesktopUpdateService({
         appRoot: app_root,
         updateRootDir: backend_start_result.berserkerUpdateRootDir,
@@ -205,6 +207,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       log_window_host = create_log_window_host({
         desktopBundleDir: desktop_bundle_dir,
         backendApiBaseUrl: backend_start_result.apiBaseUrl,
+        appVersion: backend_start_result.appVersion,
         rendererDiagnostics: renderer_process_diagnostics,
         recordHostDiagnostic: record_host_diagnostic,
       });
@@ -218,7 +221,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       create_main_window_for_runtime();
     } catch (error) {
       try {
-        if (backend_api_base_url === null) {
+        if (backend_ready === null) {
           process.stderr.write(
             `[startup] ${error instanceof Error ? error.message : String(error)}\n`,
           );

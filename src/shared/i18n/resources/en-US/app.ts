@@ -57,16 +57,12 @@ export const en_us_app = {
     select_folder: "Select Folder",
   },
   feedback: {
+    initial_load_failed: "Could not load app data. Please try again.",
     export_success: "Data exported …",
     import_success: "Data imported …",
-    save_success: "Saved …",
-    reset_success: "Reset …",
     no_valid_data: "No valid data …",
     update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings …",
-    feature_enabled: "{TITLE} enabled …",
-    feature_disabled: "{TITLE} disabled …",
-    feature_state_changed: "{TITLE} changed to {STATE} …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -277,9 +273,6 @@ export const en_us_app = {
       missing_backend_api_base_url: {
         message: "Backend API URL is not configured …",
       },
-      backend_metadata_unavailable: {
-        message: "Backend metadata is unavailable …",
-      },
       http_error: {
         message: "Request failed: {PATH} …",
       },
@@ -332,9 +325,6 @@ export const en_us_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "No terms extracted",
-    analysis_task_result: "Analysis Result:",
-    analysis_task_source_texts: "Analysis Input:",
     api_gateway_started: "API Gateway started - {BASE_URL}",
     api_test_fail: "API test failed …",
     api_test_key: "Testing Key:",

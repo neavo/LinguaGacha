@@ -6,6 +6,7 @@ import type { ModelSelectionController } from "./use-model-selection";
 import { ModelSelectionMenu, ModelThinkingLevelOptions } from "./model-selection-menu";
 
 const menu_state = vi.hoisted(() => ({
+  item_actions: new Map<string, (() => void) | undefined>(),
   on_value_change: null as ((value: string) => void) | null,
 }));
 
@@ -37,11 +38,18 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
       </div>
     );
   },
-  AppDropdownMenuRadioItem: (props: { children: ReactNode; value: string }) => (
-    <div role="radio" data-value={props.value}>
-      {props.children}
-    </div>
-  ),
+  AppDropdownMenuRadioItem: (props: {
+    children: ReactNode;
+    value: string;
+    onClick?: () => void;
+  }) => {
+    menu_state.item_actions.set(props.value, props.onClick);
+    return (
+      <div role="radio" data-value={props.value}>
+        {props.children}
+      </div>
+    );
+  },
 }));
 
 describe("ModelSelectionMenu", () => {
@@ -49,7 +57,7 @@ describe("ModelSelectionMenu", () => {
     const select_model = vi.fn(async () => undefined);
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "openai", analysis: "", agent: "" },
+        model_selection: { translation: "openai", agent: "", agent_batch_translation: null },
         models: [
           {
             id: "preset",
@@ -72,6 +80,7 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model,
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 
@@ -83,14 +92,16 @@ describe("ModelSelectionMenu", () => {
     expect(document.querySelector('button[aria-current="true"]')).not.toBeNull();
     expect(document.querySelector('[role="radiogroup"][data-value="openai"]')).not.toBeNull();
     expect(document.querySelector('[role="radio"][data-value="preset"]')).not.toBeNull();
-    menu_state.on_value_change?.("preset");
+    menu_state.item_actions.get("preset")?.();
+    menu_state.item_actions.get("openai")?.();
+    expect(select_model).toHaveBeenCalledWith("translation", "openai");
     expect(select_model).toHaveBeenCalledWith("translation", "preset");
   });
 
   it("当前选择失效时仍可打开菜单恢复到可用模型", () => {
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "missing", analysis: "", agent: "" },
+        model_selection: { translation: "missing", agent: "", agent_batch_translation: null },
         models: [
           {
             id: "openai",
@@ -105,6 +116,7 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 
@@ -121,7 +133,7 @@ describe("ModelSelectionMenu", () => {
     const update_thinking_level = vi.fn(async () => undefined);
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", analysis: "", agent: "openai" },
+        model_selection: { translation: "", agent: "openai", agent_batch_translation: null },
         models: [
           {
             id: "openai",
@@ -136,6 +148,7 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level,
     };
 
@@ -156,7 +169,7 @@ describe("ModelSelectionMenu", () => {
   it("当前模型不可配置思考档位时不渲染选项", () => {
     const controller: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", analysis: "", agent: "sakura" },
+        model_selection: { translation: "", agent: "sakura", agent_batch_translation: null },
         models: [
           {
             id: "sakura",
@@ -171,6 +184,7 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 

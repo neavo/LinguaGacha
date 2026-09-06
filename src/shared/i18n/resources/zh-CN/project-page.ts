@@ -16,7 +16,6 @@ export const zh_cn_project_page = {
       pre_translation_replacement: "译前替换",
       post_translation_replacement: "译后替换",
       translation_prompt: "翻译提示词",
-      analysis_prompt: "分析提示词",
     },
     action: "创建工程",
   },
@@ -54,7 +53,7 @@ export const zh_cn_project_page = {
     items: "正在加载项目条目 …",
     quality: "正在加载质量规则 …",
     prompts: "正在加载提示词配置 …",
-    analysis: "正在加载分析结果 …",
+
     proofreading: "正在加载校对视图 …",
     task: "正在加载任务状态 …",
   },

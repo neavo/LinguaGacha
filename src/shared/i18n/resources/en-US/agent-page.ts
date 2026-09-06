@@ -1,4 +1,9 @@
 export const en_us_agent_page = {
+  batch_translation_model: {
+    follow: "Follow Agent",
+    follow_option: "Use the AGENT model",
+    tooltip: "Model used by the batch translation tool",
+  },
   title: "AGENT",
   thinking: "Thinking",
   thinking_active: "Thinking",
@@ -22,8 +27,9 @@ export const en_us_agent_page = {
     suggestions: {
       capabilities: "Introduce your capabilities",
       roleplay: "Start roleplay",
-      quality_rule_workflow: "Help me extract terminology",
-      translation_workflow: "Translate or review my text",
+      extract_terminology: "Help me extract terminology",
+      translate_full_text: "Help me translate the full text",
+      review_translation: "Help me review the translation",
     },
   },
   input: {
@@ -55,8 +61,7 @@ export const en_us_agent_page = {
   approval: {
     manual: "Manual approval",
     auto: "Automatic approval",
-    tooltip_manual: "Write request - Manual approval",
-    tooltip_auto: "Write request - Automatic approval",
+    tooltip: "Write permission approval mode",
     title: "Writing project data",
     summary: {
       items: "{count} text entries",
@@ -133,6 +138,7 @@ export const en_us_agent_page = {
     stopped: "Stopped · {duration}",
   },
   error: {
+    decision: "Could not submit your decision. Please try again.",
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",

@@ -1,3 +1,7 @@
+import { Model as AppModel } from "../../domain/model";
+import { normalize_batch_translation_progress } from "../../domain/batch-translation";
+import { resolve_model_for_usage } from "../model/model-config-resolver";
+import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -125,6 +129,8 @@ const fake_agent_state = vi.hoisted(() => ({
     | "invalid_tool"
     | "tool_compaction"
     | "tools",
+  batch_mode: false,
+  batch_retries: 0,
   abort_count: 0,
   system_prompts: [] as string[],
   prompts: [] as string[],
@@ -281,7 +287,17 @@ function register_fake_agent_model(
       api: fake_provider_streams,
     }),
   );
-  return { model, thinkingLevel: "off" as const };
+  return {
+    model,
+    thinkingLevel: "off" as const,
+    model_config: AppModel.from_json(
+      {
+        ...resolve_model_for_usage(config, "agent"),
+        thinking: { level: "OFF" },
+      },
+      String(selected),
+    ),
+  };
 }
 
 /** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
@@ -290,6 +306,19 @@ function create_fake_response(context: Context): FauxResponseStep {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
   const after_tool_call = context.messages.at(-1)?.role === "toolResult";
+  if (fake_agent_state.batch_mode) {
+    const retry = after_tool_call && fake_agent_state.batch_retries-- > 0;
+    return after_tool_call && !retry
+      ? fauxAssistantMessage("翻译完成")
+      : fauxAssistantMessage(
+          fauxToolCall(
+            "run_batch_translation",
+            { scope: { kind: "all" }, include_errors: false },
+            { id: "batch-translation" },
+          ),
+          { stopReason: "toolUse" },
+        );
+  }
   if (fake_agent_state.mode === "tool_compaction") {
     if (after_tool_call) {
       return fauxAssistantMessage(
@@ -473,6 +502,8 @@ describe("AgentService", () => {
   const services: AgentService[] = [];
 
   beforeEach(() => {
+    fake_agent_state.batch_mode = false;
+    fake_agent_state.batch_retries = 0;
     fake_agent_state.mode = "success";
     fake_agent_state.abort_count = 0;
     fake_agent_state.system_prompts = [];
@@ -577,53 +608,85 @@ describe("AgentService", () => {
     );
   });
 
-  it("写入决定受理后立即清除浮层并由原工具继续提交", async () => {
-    const fixture = await create_service();
+  it.each([
+    ["allow_once", "manual"],
+    ["allow_session", "auto"],
+  ] as const)(
+    "写入决定 %s 受理后清除浮层并提交，审批模式为 %s",
+    async (decision, approval_mode) => {
+      const fixture = await create_service();
+      fake_agent_state.mode = "write";
+      fake_agent_state.hold_tool_execution = true;
+
+      await fixture.service.send_message({ text: "写入", attachments: [] });
+      await vi.waitFor(() =>
+        expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
+          kind: "write_approval",
+          summary: {
+            items: 1,
+            glossary: 0,
+            textPreserve: 0,
+            preReplacement: 0,
+            postReplacement: 0,
+            prompts: 0,
+          },
+        }),
+      );
+      const pending = fixture.service.get_snapshot().pendingDecision;
+      if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
+      expect(fixture.service.get_snapshot().entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "tool_call",
+            toolName: "workspace_apply",
+            status: "running",
+          }),
+        ]),
+      );
+
+      const approval_ack = fixture.service.resolve_write_approval({
+        id: pending.id,
+        decision,
+      });
+      await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(approval_ack).toEqual({ revision: expect.any(Number) });
+        expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
+      } finally {
+        fake_agent_state.release_tool_execution?.();
+      }
+      await wait_for_idle(fixture.service);
+      expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
+      expect(fixture.service.get_snapshot().approvalMode).toBe(approval_mode);
+      expect(fixture.service.get_snapshot().entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "tool_call",
+            toolName: "workspace_apply",
+            status: "success",
+          }),
+        ]),
+      );
+    },
+  );
+
+  it("审批等待与提交期间的新模式优先于旧批次成功回写", async () => {
+    const { service } = await create_service();
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_execution = true;
-
-    await fixture.service.send_message({ text: "写入", attachments: [] });
-    await vi.waitFor(() =>
-      expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
-        kind: "write_approval",
-        summary: {
-          items: 1,
-          glossary: 0,
-          textPreserve: 0,
-          preReplacement: 0,
-          postReplacement: 0,
-          prompts: 0,
-        },
-      }),
-    );
-    const pending = fixture.service.get_snapshot().pendingDecision;
-    if (pending?.kind !== "write_approval") throw new Error("缺少待审批写入");
-    expect(fixture.service.get_snapshot().entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "tool_call",
-          toolName: "workspace_apply",
-          status: "running",
-        }),
-      ]),
-    );
-
-    const approval_ack = fixture.service.resolve_write_approval({
-      id: pending.id,
-      decision: "allow_session",
-    });
+    await service.send_message({ text: "写入", attachments: [] });
+    await vi.waitFor(() => expect(service.get_snapshot().pendingDecision).not.toBeNull());
+    const pending = service.get_snapshot().pendingDecision!;
+    service.set_approval_mode({ approvalMode: "auto" });
+    expect(service.get_snapshot().pendingDecision?.id).toBe(pending.id);
+    service.resolve_write_approval({ id: pending.id, decision: "allow_session" });
     await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
-    try {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      expect(approval_ack).toEqual({ revision: expect.any(Number) });
-      expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
-    } finally {
-      fake_agent_state.release_tool_execution?.();
-    }
-    await wait_for_idle(fixture.service);
-    expect(fixture.service.get_snapshot().pendingDecision).toBeNull();
-    expect(fixture.service.get_snapshot().approvalMode).toBe("auto");
-    expect(fixture.service.get_snapshot().entries).toEqual(
+    service.set_approval_mode({ approvalMode: "manual" });
+    fake_agent_state.release_tool_execution?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().approvalMode).toBe("manual");
+    expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: "tool_call",
@@ -1059,7 +1122,11 @@ describe("AgentService", () => {
 
   it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
     const { service, publish } = await create_service();
-    expect(service.get_snapshot().context).toEqual({ tokens: null, compactable: false });
+    expect(service.get_snapshot().context).toEqual({
+      tokens: null,
+      compactable: false,
+      limits: null,
+    });
 
     await service.send_message({ text: "x".repeat(400), attachments: [] });
     await wait_for_idle(service);
@@ -1070,7 +1137,11 @@ describe("AgentService", () => {
     expect(context_events[0]).toEqual({
       type: "context",
       revision: expect.any(Number),
-      context: { tokens: expect.any(Number), compactable: false },
+      context: {
+        tokens: expect.any(Number),
+        compactable: false,
+        limits: { context_window: expect.any(Number), max_output_tokens: expect.any(Number) },
+      },
     });
     expect(service.get_snapshot().context.tokens).toEqual(expect.any(Number));
     expect(service.get_snapshot().context.tokens ?? 0).toBeGreaterThan(0);
@@ -1079,7 +1150,11 @@ describe("AgentService", () => {
     );
 
     await expect(service.reset()).resolves.toEqual({ revision: expect.any(Number) });
-    expect(service.get_snapshot().context).toEqual({ tokens: null, compactable: false });
+    expect(service.get_snapshot().context).toEqual({
+      tokens: null,
+      compactable: false,
+      limits: null,
+    });
     expect(publish).toHaveBeenLastCalledWith(
       "agent.session_event",
       expect.objectContaining({ type: "snapshot_seed", snapshot: service.get_snapshot() }),
@@ -1566,7 +1641,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
@@ -1578,6 +1653,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
+      "run_batch_translation",
       "ask_user",
       "workspace_script",
       "workspace_apply",
@@ -1654,7 +1730,13 @@ describe("AgentService", () => {
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      ["ask_user", "workspace_script", "workspace_apply", "read_skill"].sort(),
+      [
+        "run_batch_translation",
+        "ask_user",
+        "workspace_script",
+        "workspace_apply",
+        "read_skill",
+      ].sort(),
     );
     await service.reset();
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
@@ -1866,7 +1948,7 @@ describe("AgentService", () => {
       skills: skill_test_fixture.snapshots,
       inputQueue: { paused: false, canSendNow: false, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -2225,7 +2307,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toMatchObject({
       state: "idle",
       entries: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     expect(runtime_gate.get_snapshot().owner).toBeNull();
   });
@@ -2432,8 +2514,8 @@ describe("AgentService", () => {
     expect(fake_agent_state.prompts.at(-1)).toBe("下一轮");
   });
 
-  it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {
-    const { service, read_setting_count } = await create_service();
+  it("同一事件循环的第二条消息异步拒绝", async () => {
+    const { service } = await create_service();
     fake_agent_state.mode = "pending";
 
     const first = service.send_message({ text: "第一轮", attachments: [] });
@@ -2442,29 +2524,30 @@ describe("AgentService", () => {
     await expect(second).rejects.toThrow("runtime.busy");
     await expect(first).resolves.toEqual({ revision: expect.any(Number) });
     expect(service.get_snapshot().state).toBe("running");
-    expect(read_setting_count()).toBe(1);
     expect(service.get_snapshot().entries).toEqual([expect.objectContaining({ text: "第一轮" })]);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
   });
 
-  it("运行中消息按 FIFO 排队并在同一 lease 内自动续轮", async () => {
-    const { service, read_setting_count } = await create_service();
+  it("运行中消息按 FIFO 排队并在出队时采用模型设置", async () => {
+    const { service, select_agent_model } = await create_service();
     fake_agent_state.mode = "pending";
     await service.send_message({ text: "第一轮", attachments: [] });
 
     await service.send_message({ text: "第二轮", attachments: [] });
     await service.send_message({ text: "第三轮", attachments: [] });
-    expect(read_setting_count()).toBe(1);
     expect(service.get_snapshot().inputQueue.items.map((item) => item.text)).toEqual([
       "第二轮",
       "第三轮",
     ]);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    select_agent_model("next");
+    expect(fake_agent_state.model_ids).toEqual(["test-model"]);
     fake_agent_state.mode = "success";
     fake_agent_state.release_pending?.();
     await wait_for_idle(service);
 
+    expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model", "next-model"]);
     expect(fake_agent_state.prompts.slice(-3)).toEqual(["第一轮", "第二轮", "第三轮"]);
     expect(service.get_snapshot().inputQueue.items).toEqual([]);
     expect(
@@ -2473,6 +2556,27 @@ describe("AgentService", () => {
         .entries.filter((entry) => entry.kind === "user_message")
         .map((entry) => entry.text),
     ).toEqual(["第一轮", "第二轮", "第三轮"]);
+  });
+
+  it("队列轮次换模失败时记录该轮失败并暂停剩余输入", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    await service.send_message({ text: "第二轮", attachments: [] });
+    await service.send_message({ text: "第三轮", attachments: [] });
+    fake_agent_state.auth_configured = false;
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "user_message", text: "第二轮", status: "error" }),
+      ]),
+    );
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ text: "第三轮" }],
+    });
   });
 
   it("停止会保留并暂停队列", async () => {
@@ -2489,7 +2593,7 @@ describe("AgentService", () => {
     expect(snapshot.inputQueue).toMatchObject({ paused: true, items: [{ text: "第二轮" }] });
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().inputQueue.canSendNow).toBe(true);
-    const task_lease = runtime_gate.begin_runtime("task");
+    const task_lease = runtime_gate.begin_runtime("batch_translation");
     await expect(service.continue_session({})).rejects.toThrow("runtime.busy");
     expect(service.get_snapshot().inputQueue).toMatchObject({
       paused: true,
@@ -2584,6 +2688,157 @@ describe("AgentService", () => {
     );
   });
 
+  it.each([null, "next"])("批量翻译按保存偏好 %s 直接执行并跟随下一轮主模型", async (model_id) => {
+    fake_agent_state.batch_mode = true;
+    const run = vi.fn<
+      import("../batch-translation/batch-translation-service").BatchTranslationService["run_under_agent"]
+    >(async () => ({ status: "done", progress: normalize_batch_translation_progress({}) }));
+    const { service, select_agent_model, select_batch_translation_model } = await create_service(
+      true,
+      undefined,
+      undefined,
+      { run_under_agent: run },
+    );
+    select_batch_translation_model(model_id);
+    await service.send_message({ text: "执行翻译", attachments: [] });
+    await wait_for_idle(service);
+    expect(run).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.any(AbortSignal),
+      expect.objectContaining(
+        model_id === null
+          ? { id: "active", model_id: "test-model", api_key: "secret", thinking: { level: "OFF" } }
+          : {
+              id: "next",
+              model_id: "next-model",
+              api_key: "next-secret",
+              thinking: { level: "HIGH" },
+            },
+      ),
+      { scope: { kind: "all" }, include_errors: false },
+    );
+    expect(service.get_snapshot().pendingDecision).toBeNull();
+    select_agent_model("next");
+    await service.send_message({ text: "继续翻译", attachments: [] });
+    await wait_for_idle(service);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls.at(-1)?.[2]).toMatchObject({ id: "next" });
+  });
+
+  it.each([false, true])(
+    "用户停止后同轮重复调用保留结果，后续用户轮次可继续，收尾失败=%s",
+    async (cleanup_failed) => {
+      fake_agent_state.batch_mode = true;
+      fake_agent_state.batch_retries = 2;
+      const progress = {
+        start_time: 0,
+        time: 0,
+        total_line: 2,
+        line: 1,
+        processed_line: 1,
+        error_line: 0,
+        total_tokens: 0,
+        total_input_tokens: 0,
+        total_reasoning_tokens: 0,
+        total_output_tokens: 0,
+      };
+      const run = vi.fn(async () => {
+        const result = {
+          status: cleanup_failed ? ("error" as const) : ("stopped" as const),
+          stop_source: "user" as const,
+          progress,
+        };
+        if (cleanup_failed)
+          throw new BatchTranslationCompletionError(result, new Error("cleanup failed"));
+        return result;
+      });
+      const { service, log_error } = await create_service(true, undefined, undefined, {
+        run_under_agent: run,
+      });
+      await service.send_message({ text: "翻译工程", attachments: [] });
+
+      await wait_for_idle(service);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(read_tool_output(service, "batch-translation")).toMatchObject({
+        status: cleanup_failed ? "error" : "stopped",
+        stop_source: "user",
+      });
+      if (cleanup_failed) {
+        expect(log_error).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ error: expect.any(BatchTranslationCompletionError) }),
+        );
+      }
+      await service.send_message({ text: "继续翻译", attachments: [] });
+
+      await wait_for_idle(service);
+      expect(run).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(["complete", "stop", "reset", "dispose"] as const)(
+    "批量工具阻塞真实 SDK 回合并正确处理 %s",
+    async (action) => {
+      fake_agent_state.batch_mode = true;
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      let signal: AbortSignal | undefined;
+      let received_lease: import("../runtime-operation-gate").RuntimeLease | undefined;
+      const { service, runtime_gate } = await create_service(true, undefined, undefined, {
+        run_under_agent: async (lease, parent) => {
+          received_lease = lease;
+          signal = parent;
+          await pending;
+          return {
+            status: parent.aborted ? "stopped" : "done",
+            progress: {
+              start_time: 0,
+              time: 0,
+              line: 2,
+              total_line: 2,
+              processed_line: 2,
+              error_line: 0,
+              total_tokens: 0,
+              total_input_tokens: 0,
+              total_reasoning_tokens: 0,
+              total_output_tokens: 0,
+            },
+          };
+        },
+      });
+      await service.send_message({ text: "翻译当前工程", attachments: [] });
+
+      await vi.waitFor(() => expect(signal).toBeDefined());
+      expect(fake_agent_state.model_call_count).toBe(1);
+      expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      runtime_gate.assert_current_runtime(received_lease!, "agent");
+      let closing: Promise<unknown> | undefined;
+      if (action !== "complete") {
+        closing = Promise.resolve(
+          action === "stop"
+            ? service.stop()
+            : action === "reset"
+              ? service.reset()
+              : service.dispose(),
+        );
+        await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+        expect(runtime_gate.get_snapshot().owner).toBe("agent");
+      }
+      finish();
+      await closing;
+      await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+      if (action === "complete") {
+        expect(fake_agent_state.model_call_count).toBe(2);
+        expect(read_tool_output(service, "batch-translation")).toMatchObject({
+          status: "done",
+          progress: { line: 2 },
+        });
+      }
+    },
+  );
+
   it("资源未加载时拒绝启动模型回合", async () => {
     const { service } = await create_service(false);
 
@@ -2594,7 +2849,7 @@ describe("AgentService", () => {
 
   it("普通任务占用运行时期间拒绝 Agent 消息", async () => {
     const { service, runtime_gate } = await create_service();
-    const lease = runtime_gate.begin_runtime("task");
+    const lease = runtime_gate.begin_runtime("batch_translation");
 
     await expect(service.send_message({ text: "开始", attachments: [] })).rejects.toThrow(
       "runtime.busy",
@@ -2607,6 +2862,10 @@ describe("AgentService", () => {
     load_resources = true,
     web_search?: AgentWebSearchPort,
     workspace?: AgentWorkspacePort,
+    batch_translation?: Pick<
+      import("../batch-translation/batch-translation-service").BatchTranslationService,
+      "run_under_agent"
+    >,
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -2616,26 +2875,30 @@ describe("AgentService", () => {
     log_append: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     set_app_language: (app_language: AppLanguage) => void;
-    read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
+    select_batch_translation_model: (model_id: string | null) => void;
     session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
     await session_state.mark_loaded("test.lg");
     const read_items = vi.fn<() => JsonRecord[]>(() => []);
     let agent_model_id: "active" | "next" = "active";
+    let batch_model_id: string | null = null;
     let app_language: AppLanguage = "ZH";
-    let setting_read_count = 0;
     const settings = {
       read_setting: () => {
-        setting_read_count += 1;
         return {
           app_language,
-          model_selection: { translation: "active", analysis: "active", agent: agent_model_id },
+          model_selection: {
+            translation: "active",
+            agent: agent_model_id,
+            agent_batch_translation: batch_model_id,
+          },
           models: [
             {
               id: "active",
               name: "Test",
+              thinking: { level: "OFF" },
               api_format: "OpenAI",
               api_url: "https://example.test/v1",
               api_key: "secret",
@@ -2645,6 +2908,7 @@ describe("AgentService", () => {
             {
               id: "next",
               name: "Next",
+              thinking: { level: "HIGH" },
               api_format: "OpenAI",
               api_url: "https://example.test/v1",
               api_key: "next-secret",
@@ -2703,6 +2967,12 @@ describe("AgentService", () => {
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
+      batchTranslation: batch_translation ?? {
+        run_under_agent: async () => ({
+          status: "done",
+          progress: normalize_batch_translation_progress({}),
+        }),
+      },
       paths: {
         get_app_root: () => skill_test_fixture.app_root,
         get_agent_builtin_skill_dir: () => skill_test_fixture.skill_root,
@@ -2736,8 +3006,10 @@ describe("AgentService", () => {
       set_app_language: (next_app_language) => {
         app_language = next_app_language;
       },
-      read_setting_count: () => setting_read_count,
       runtime_gate,
+      select_batch_translation_model: (id) => {
+        batch_model_id = id;
+      },
       session_state,
     };
   }

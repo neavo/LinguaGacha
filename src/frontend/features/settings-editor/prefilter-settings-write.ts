@@ -31,7 +31,6 @@ export async function apply_prefilter_settings_write(args: {
         project_settings: args.settings,
         expected_section_revisions: {
           items: snapshot.sectionRevisions?.items ?? 0,
-          analysis: snapshot.sectionRevisions?.analysis ?? 0,
         },
       });
     },

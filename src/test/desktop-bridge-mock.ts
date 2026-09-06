@@ -5,9 +5,10 @@ import { resolve_desktop_shell_info } from "../gui/shell/shell-contract";
 export const DESKTOP_BRIDGE_TEST_BASE_URL = "http://127.0.0.1:38191";
 
 export type DesktopBridgeApiMockOverrides = {
+  appVersion?: string;
   shell?: Partial<DesktopShellInfo>;
   backendApi?: Partial<DesktopBackendApiInfo>;
-  methods?: Partial<Omit<DesktopBridgeApi, "shell" | "backendApi">>;
+  methods?: Partial<Omit<DesktopBridgeApi, "shell" | "backendApi" | "appVersion">>;
 };
 
 // renderer 测试统一从这里生成 window.desktopApp，避免桥接契约在多个测试里手写漂移
@@ -24,6 +25,7 @@ export function create_desktop_bridge_api_mock(
   };
 
   return {
+    appVersion: overrides.appVersion ?? "1.2.3",
     shell,
     backendApi,
     getPathForFile: () => "",

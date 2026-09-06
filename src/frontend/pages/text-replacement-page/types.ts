@@ -1,3 +1,4 @@
+import type { QualityRuleQueryStatus } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import type { QualityRuleConfirmState } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
@@ -22,7 +23,7 @@ export type TextReplacementDialogState = {
   insert_after_entry_id: TextReplacementEntryId | null;
   draft_entry: TextReplacementEntryDraft;
   saving: boolean;
-  validation_message: string | null;
+  invalid: boolean;
 };
 
 export type TextReplacementFilterScope = "all" | "src" | "dst";
@@ -58,6 +59,8 @@ export type TextReplacementVisibleEntry = {
 type TextReplacementSortState = AppTableSortState | null;
 
 export type UseTextReplacementPageStateResult = {
+  quality_status: QualityRuleQueryStatus;
+  reload_quality_rule_snapshot: () => void;
   title_key: LocaleKey;
   enabled: boolean;
   entries: TextReplacementEntry[];

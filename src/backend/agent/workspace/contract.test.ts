@@ -1,14 +1,13 @@
+import {
+  project_agent_workspace_item,
+  project_agent_workspace_quality_entry,
+} from "../../project/agent-workspace-write";
 import { describe, expect, it } from "vitest";
 import { Check } from "typebox/value";
 
 import { read_json_record, type JsonRecord } from "../../../domain/json";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./runtime/policy";
-import {
-  AGENT_WORKSPACE_CONTRACT,
-  project_agent_workspace_item,
-  project_agent_workspace_quality_entry,
-  project_agent_workspace_warning,
-} from "./contract";
+import { AGENT_WORKSPACE_CONTRACT, project_agent_workspace_warning } from "./contract";
 import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "./schema";
 
 describe("Agent 工作区 contract", () => {

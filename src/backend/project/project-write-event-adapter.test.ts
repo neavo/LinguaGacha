@@ -24,27 +24,19 @@ describe("adapt_project_change", () => {
   it("为 loaded 工程补齐行级失效与小 section canonical payload", () => {
     const { database, project_path, session_state } = create_project();
     database.set_meta(project_path, "project_runtime_revision.items", 2);
-    database.set_meta(project_path, "project_runtime_revision.analysis", 3);
-    database.set_meta(project_path, "analysis_candidate_count", 4);
 
     const event = adapt_project_change(database, session_state, {
       projectPath: project_path,
       source: "test",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items"],
     });
 
     expect(event).toMatchObject({
       source: "test",
       projectPath: project_path,
-      projectRevision: 3,
-      sectionRevisions: { items: 2, analysis: 3 },
+      projectRevision: 2,
+      sectionRevisions: { items: 2 },
       items: { payloadMode: "section-invalidated" },
-      sections: {
-        analysis: {
-          payloadMode: "canonical-delta",
-          data: expect.objectContaining({ candidate_count: 4 }),
-        },
-      },
     });
   });
 

@@ -6,7 +6,7 @@ import type { LocaleKey } from "@shared/i18n";
 
 describe("resolve_visible_error_message", () => {
   it("按 DesktopApiError code 和 details 解析本地化展示文案", () => {
-    const error = DesktopApiError.local("network_failed", { path: "/api/tasks/start" });
+    const error = DesktopApiError.local("network_failed", { path: "/api/batch-translation/start" });
 
     const message = resolve_visible_error_message(
       error,
@@ -17,7 +17,7 @@ describe("resolve_visible_error_message", () => {
       "操作失败",
     );
 
-    expect(message).toBe("网络请求失败：/api/tasks/start");
+    expect(message).toBe("网络请求失败：/api/batch-translation/start");
   });
 
   it("普通 Error 不直接穿透为用户可见文案", () => {

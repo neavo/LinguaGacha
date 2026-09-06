@@ -64,13 +64,7 @@ describe("ProjectDefaultPresetReader", () => {
           mode: null,
         },
       ],
-      prompts: [
-        {
-          kind: "translation",
-          text: "翻译提示词",
-          enabled: true,
-        },
-      ],
+      translation_prompt: { text: "翻译提示词", enabled: true },
       loaded_names: ["术语表", "翻译提示词"],
     });
     expect(log_manager.info).toHaveBeenCalledWith("已自动加载默认预设：术语表 | 翻译提示词 …", {
@@ -122,7 +116,7 @@ describe("ProjectDefaultPresetReader", () => {
     expect(input).toEqual({
       text_preserve_mode: "smart",
       quality_rules: [],
-      prompts: [],
+      translation_prompt: null,
       loaded_names: [],
     });
     expect(log_manager.warning).toHaveBeenCalledWith(

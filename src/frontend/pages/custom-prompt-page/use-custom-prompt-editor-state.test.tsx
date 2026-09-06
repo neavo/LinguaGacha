@@ -8,10 +8,11 @@ import {
   useCustomPromptEditorState,
 } from "@frontend/pages/custom-prompt-page/use-custom-prompt-editor-state";
 
-const { api_fetch_mock, push_toast_mock, translate } = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, dismiss_toast_mock, translate } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
+    dismiss_toast_mock: vi.fn(),
     translate: (key: string, params?: Record<string, string>) => {
       return params?.TITLE === undefined ? key : `${key}:${params.TITLE}`;
     },
@@ -27,7 +28,7 @@ type RuntimeFixture = {
     app_language: string;
   };
   commit_project_write: ReturnType<typeof vi.fn>;
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 };
 
 type SaveHandler = (body: Record<string, unknown>, save_index: number) => Promise<void> | void;
@@ -62,6 +63,7 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
+      dismiss_toast: dismiss_toast_mock,
     }),
   };
 });
@@ -128,7 +130,7 @@ function create_query_payload(): Record<string, unknown> {
 }
 
 function Probe(): JSX.Element | null {
-  const state = useCustomPromptEditorState("translation");
+  const state = useCustomPromptEditorState();
 
   useEffect(() => {
     latest_state = state;
@@ -153,7 +155,8 @@ describe("useCustomPromptEditorState", () => {
     save_index = 0;
     save_in_flight = 0;
     max_save_in_flight = 0;
-    push_toast_mock.mockReset();
+    push_toast_mock.mockReset().mockImplementation(() => push_toast_mock.mock.calls.length);
+    dismiss_toast_mock.mockReset();
     api_fetch_mock.mockReset();
     api_fetch_mock.mockImplementation(async (path: string, body: Record<string, unknown> = {}) => {
       if (path === "/api/quality/prompts/template") {
@@ -359,7 +362,15 @@ describe("useCustomPromptEditorState", () => {
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       "custom_prompt_page.feedback.save_failed",
+      expect.objectContaining({
+        label: "custom_prompt_page.save.discard",
+        onClick: expect.any(Function),
+      }),
     );
+    expect(push_toast_mock).toHaveBeenCalledTimes(1);
+
+    expect(latest_state).toMatchObject({ prompt_text: "失败版本" });
+    const old_action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
 
     await act(async () => {
       latest_state?.update_prompt_text("重试版本");
@@ -368,6 +379,12 @@ describe("useCustomPromptEditorState", () => {
       await Promise.resolve();
     });
 
+    expect(dismiss_toast_mock).toHaveBeenCalledWith(1);
+    await act(async () => {
+      latest_state?.update_prompt_text("后续草稿");
+      old_action.onClick();
+    });
+    expect(latest_state?.prompt_text).toBe("后续草稿");
     expect(get_save_payloads()).toEqual([
       expect.objectContaining({
         expected_section_revisions: {
@@ -491,12 +508,15 @@ describe("useCustomPromptEditorState", () => {
     ]);
   });
 
-  it("页面卸载时立即提交尚未到期的防抖草稿", async () => {
+  it("离页前等待当前草稿保存后完成卸载", async () => {
     await render_probe();
     await act(async () => {
       latest_state?.update_prompt_text("离页前草稿");
     });
 
+    await act(async () => {
+      expect(await latest_state?.flush_prompt_change()).toBe(true);
+    });
     await act(async () => {
       root?.unmount();
       await Promise.resolve();
@@ -509,6 +529,73 @@ describe("useCustomPromptEditorState", () => {
         text: "离页前草稿",
       }),
     ]);
+  });
+
+  it("离页保存失败保留草稿，通知中撤销后恢复成功基线并可离页", async () => {
+    await render_probe();
+    await act(async () => {
+      latest_state?.update_prompt_text("已保存版本");
+    });
+    await act(async () => {
+      expect(await latest_state?.flush_prompt_change()).toBe(true);
+    });
+    save_handler = () => {
+      throw new Error("offline");
+    };
+    await act(async () => {
+      latest_state?.update_prompt_text("临时草稿");
+    });
+    await act(async () => {
+      expect(await latest_state?.flush_prompt_change()).toBe(false);
+    });
+    expect(latest_state?.prompt_text).toBe("临时草稿");
+    expect(push_toast_mock).toHaveBeenCalledTimes(1);
+    const action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
+    await act(async () => {
+      action.onClick();
+      expect(await latest_state?.flush_prompt_change()).toBe(true);
+      await vi.advanceTimersByTimeAsync(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
+    });
+    expect(latest_state?.prompt_text).toBe("已保存版本");
+    expect(get_save_payloads()).toHaveLength(2);
+  });
+
+  it("切换项目后旧保存通知关闭，撤销回调不会修改新项目草稿", async () => {
+    await render_probe();
+    save_handler = () => {
+      throw new Error("offline");
+    };
+    await act(async () => {
+      latest_state?.update_prompt_text("旧项目草稿");
+    });
+    await act(async () => {
+      expect(await latest_state?.flush_prompt_change()).toBe(false);
+    });
+    const old_action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
+    runtime_fixture.project_snapshot.path = "E:/demo/next.lg";
+    query_text = "新项目正文";
+    await render_probe();
+    expect(dismiss_toast_mock).toHaveBeenCalledWith(1);
+    await act(async () => {
+      latest_state?.update_prompt_text("新项目草稿");
+      old_action.onClick();
+    });
+    expect(latest_state?.prompt_text).toBe("新项目草稿");
+  });
+
+  it("首次读取失败时提供重试并在恢复前锁定写入", async () => {
+    query_handler = async () => {
+      throw new Error("offline");
+    };
+    await render_probe();
+    expect(latest_state).toMatchObject({ load_status: "error", readonly: true });
+    query_handler = null;
+    await act(async () => latest_state?.reload_prompt());
+    expect(latest_state).toMatchObject({
+      load_status: "ready",
+      readonly: false,
+      prompt_text: query_text,
+    });
   });
 
   it("项目切换后忽略旧 query 的迟到结果", async () => {

@@ -37,6 +37,36 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it("批量翻译偏好独立保存，失败可重试，删除模型恢复跟随", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({ id: "a", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+    ]);
+    const original = service.get_selection_snapshot().model_selection;
+    expect(original.agent_batch_translation).toBeNull();
+    expect(() => service.select_agent_batch_translation_model({ model_id: "missing" })).toThrow(
+      "model.not_found",
+    );
+    const save = vi.spyOn(app_setting_service, "save_setting");
+    save.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    expect(() => service.select_agent_batch_translation_model({ model_id: "b" })).toThrow(
+      "disk full",
+    );
+    expect(app_setting_service.read_setting()["model_selection"]).toEqual(original);
+    const selected = service.select_agent_batch_translation_model({ model_id: "b" });
+    expect(selected.model_selection).toEqual({ ...original, agent_batch_translation: "b" });
+    expect(app_setting_service.read_setting()["model_selection"]).toEqual(selected.model_selection);
+    expect(
+      service.select_agent_batch_translation_model({ model_id: null }).model_selection
+        .agent_batch_translation,
+    ).toBeNull();
+    service.select_agent_batch_translation_model({ model_id: "b" });
+    service.delete_model({ model_id: "b" });
+    expect(service.get_selection_snapshot().model_selection.agent_batch_translation).toBeNull();
+  });
+
   it("快照初始化保留用户模型并补齐缺失预设和自定义类型", async () => {
     stub_random_ids(
       "00000000-0000-4000-8000-000000000001",
@@ -146,7 +176,7 @@ describe("ModelService 配置管理", () => {
     ]);
     expect(selection.model_selection).toEqual({
       translation: "preset-1",
-      analysis: "preset-1",
+
       agent: "preset-1",
     });
   });
@@ -255,14 +285,14 @@ describe("ModelService 配置管理", () => {
     ]);
 
     const snapshot = read_selection_snapshot(
-      service.select_model({ usage: "analysis", model_id: "openai-a" }),
+      service.select_model({ usage: "agent", model_id: "openai-a" }),
     );
     const management = read_request_model_snapshot(service.get_snapshot());
 
     expect(snapshot.model_selection).toEqual({
       translation: "preset",
-      analysis: "openai-a",
-      agent: "preset",
+
+      agent: "openai-a",
     });
     expect(snapshot.models[0]).toEqual({
       id: "preset",
@@ -388,7 +418,7 @@ describe("ModelService 配置管理", () => {
     expect(() => service.select_model({ usage: "unknown", model_id: "openai" })).toThrow(
       "request.validation_failed",
     );
-    expect(() => service.select_model({ usage: "analysis", model_id: "missing" })).toThrow(
+    expect(() => service.select_model({ usage: "agent", model_id: "missing" })).toThrow(
       "model.not_found",
     );
 
@@ -402,7 +432,7 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
     ]);
     service.select_model({ usage: "translation", model_id: "openai-a" });
-    service.select_model({ usage: "analysis", model_id: "openai-a" });
+    service.select_model({ usage: "agent", model_id: "openai-a" });
     service.select_model({ usage: "agent", model_id: "preset" });
 
     const management_snapshot = read_request_model_snapshot(
@@ -412,7 +442,7 @@ describe("ModelService 配置管理", () => {
 
     expect(selection.model_selection).toEqual({
       translation: "openai-b",
-      analysis: "openai-b",
+
       agent: "preset",
     });
     expect(management_snapshot.models.map((model) => model["id"])).not.toContain("openai-a");
@@ -425,15 +455,15 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
     ]);
     service.select_model({ usage: "translation", model_id: "google" });
-    service.select_model({ usage: "analysis", model_id: "openai" });
+    service.select_model({ usage: "agent", model_id: "openai" });
 
     service.delete_model({ model_id: "google" });
     const selection = read_selection_snapshot(service.get_selection_snapshot());
 
     expect(selection.model_selection).toEqual({
       translation: "preset",
-      analysis: "openai",
-      agent: "preset",
+
+      agent: "openai",
     });
   });
 
@@ -644,14 +674,31 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("任务或 Agent 运行期间拒绝全部模型配置写入", async () => {
+  it.each(["agent", "batch_translation"] as const)(
+    "%s 运行中允许保存下次模型选择和思考档位",
+    async (owner) => {
+      const { service, runtime_gate } = await create_model_service([
+        create_model({ id: "a", type: "CUSTOM_OPENAI" }),
+        create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+      ]);
+      const lease = runtime_gate.begin_runtime(owner);
+      service.select_model({ usage: "agent", model_id: "b" });
+      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" });
+      service.select_agent_batch_translation_model({ model_id: "a" });
+      const snapshot = service.get_selection_snapshot();
+      expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });
+      expect(snapshot.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");
+      expect(runtime_gate.get_snapshot().owner).toBe(owner);
+      runtime_gate.finish_runtime(lease);
+    },
+  );
+
+  it("运行期间模型管理保持互斥", async () => {
     const { service, runtime_gate } = await create_model_service([create_model({})]);
     runtime_gate.begin_runtime("agent");
 
     for (const operation of [
       () => service.update_model({}),
-      () => service.select_model({}),
-      () => service.update_selected_model_thinking_level({}),
       () => service.add_model({}),
       () => service.delete_model({}),
       () => service.reset_preset_model({}),
@@ -799,9 +846,11 @@ async function create_model_service(
     log_entries === undefined
       ? undefined
       : {
+          /** 记录模型操作的公开日志。 */
           info(message: string, payload?: Record<string, unknown>): void {
             log_entries.push({ level: "info", message, payload });
           },
+          /** 保留模型修复警告供断言。 */
           warning(message: string, payload?: Record<string, unknown>): void {
             log_entries.push({ level: "warning", message, payload });
           },
@@ -827,6 +876,7 @@ async function create_model_service(
   };
 }
 
+/** 构造可调模型输入，使断言独立于内置预设。 */
 function create_model(overrides: Partial<JsonRecord>): JsonRecord {
   return {
     api_format: "OpenAI",
@@ -849,6 +899,7 @@ function create_model(overrides: Partial<JsonRecord>): JsonRecord {
   };
 }
 
+/** 临时目录中的预设供真实加载入口消费。 */
 async function write_model_presets(app_root: string, presets: ModelPresetFiles): Promise<void> {
   const preset_dir = path.join(app_root, "builtin", "model", "preset");
   await mkdir(preset_dir, { recursive: true });
@@ -868,6 +919,7 @@ async function write_model_presets(app_root: string, presets: ModelPresetFiles):
   );
 }
 
+/** 以真实响应对象模拟远端模型目录。 */
 function json_response(body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     headers: { "Content-Type": "application/json" },
@@ -875,6 +927,7 @@ function json_response(body: Record<string, unknown>): Response {
   });
 }
 
+/** 提供自定义模型初始化所需的最小字段。 */
 function create_template(name: string, api_format: string): JsonRecord {
   return {
     api_format,
@@ -885,6 +938,7 @@ function create_template(name: string, api_format: string): JsonRecord {
   };
 }
 
+/** 收窄完整回包，缺少协议字段时直接暴露夹具问题。 */
 function read_request_model_snapshot(response: JsonRecord): {
   models: Array<JsonRecord>;
 } {
@@ -903,8 +957,9 @@ function read_request_model_snapshot(response: JsonRecord): {
   };
 }
 
+/** 按公开选择回包读取模型及用途。 */
 function read_selection_snapshot(response: JsonRecord): {
-  model_selection: { translation: string; analysis: string; agent: string };
+  model_selection: { translation: string; agent: string };
   models: Array<JsonRecord>;
 } {
   const selection = response["model_selection"];
@@ -915,7 +970,7 @@ function read_selection_snapshot(response: JsonRecord): {
   return {
     model_selection: {
       translation: String(selection["translation"] ?? ""),
-      analysis: String(selection["analysis"] ?? ""),
+
       agent: String(selection["agent"] ?? ""),
     },
     models: Array.isArray(models)
@@ -927,12 +982,14 @@ function read_selection_snapshot(response: JsonRecord): {
   };
 }
 
+/** 比较同类模型的公开顺序。 */
 function read_request_model_ids_by_type(models: Array<JsonRecord>, model_type: string): string[] {
   return models
     .filter((model) => String(model["type"] ?? "") === model_type)
     .map((model) => String(model["id"] ?? ""));
 }
 
+/** 固定新建模型身份，使顺序断言可重复。 */
 function stub_random_ids(...ids: string[]): void {
   const queue = [...ids];
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
