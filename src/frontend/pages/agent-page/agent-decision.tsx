@@ -1,9 +1,9 @@
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowRight, CircleQuestionMark, Save, X, type LucideIcon } from "lucide-react";
-
+import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
+import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import {
   AGENT_DECISION_TIMEOUT_MS,
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
+  AGENT_WRITE_APPROVAL_DEFAULT,
   type AgentPendingDecision,
   type AgentPendingWriteSummary,
   type AgentQuestionResponse,
@@ -49,61 +49,34 @@ type AgentDecisionDeadline = Readonly<{
   warning: boolean;
 }>;
 
-/** 将后端唯一待决事实投影为贴近底部操作区的局部动作模态面。 */
-export function AgentDecisionLayer(props: {
-  decision: AgentPendingDecision | null;
+/** 决定内容在底部交互区内占位，布局与离场生命周期由页面持有。 */
+export function AgentDecision(props: {
+  decision: AgentPendingDecision;
+  title_ref?: RefObject<HTMLHeadingElement | null>;
   on_resolve_question: (response: AgentQuestionResponse) => void;
   on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
-  // Base UI 在离场结束前保持 Popup 挂载，最后一次决定为这段动画保留完整内容。
-  const visible_decision_ref = useRef<AgentPendingDecision | null>(props.decision);
-  const portal_container_ref = useRef<HTMLDivElement | null>(null); // Portal 留在 Agent 页面定位域
-  const title_ref = useRef<HTMLHeadingElement | null>(null); // Dialog 打开时承接初始焦点
-  if (props.decision !== null) visible_decision_ref.current = props.decision;
-  const visible_decision = props.decision ?? visible_decision_ref.current;
-
-  return (
-    <>
-      <div ref={portal_container_ref} className="agent-decision-portal" />
-      <DialogPrimitive.Root
-        open={props.decision !== null}
-        modal="trap-focus"
-        disablePointerDismissal
-      >
-        <DialogPrimitive.Portal container={portal_container_ref}>
-          <DialogPrimitive.Viewport className="agent-decision-layer">
-            <DialogPrimitive.Backdrop className="agent-decision-shade" />
-            <DialogPrimitive.Popup
-              className="agent-operation-surface agent-decision"
-              initialFocus={title_ref}
-            >
-              {visible_decision?.kind === "question" ? (
-                <AgentQuestionDecision
-                  key={visible_decision.id}
-                  decision={visible_decision}
-                  title_ref={title_ref}
-                  on_resolve={props.on_resolve_question}
-                />
-              ) : visible_decision?.kind === "write_approval" ? (
-                <AgentWriteDecision
-                  key={visible_decision.id}
-                  decision={visible_decision}
-                  title_ref={title_ref}
-                  on_resolve={props.on_resolve_write_approval}
-                />
-              ) : null}
-            </DialogPrimitive.Popup>
-          </DialogPrimitive.Viewport>
-        </DialogPrimitive.Portal>
-      </DialogPrimitive.Root>
-    </>
+  return props.decision.kind === "question" ? (
+    <AgentQuestionDecision
+      key={props.decision.id}
+      decision={props.decision}
+      title_ref={props.title_ref}
+      on_resolve={props.on_resolve_question}
+    />
+  ) : (
+    <AgentWriteDecision
+      key={props.decision.id}
+      decision={props.decision}
+      title_ref={props.title_ref}
+      on_resolve={props.on_resolve_write_approval}
+    />
   );
 }
 
 /** 普通问题提供即时固定答案、显式自定义答案和取消入口。 */
 function AgentQuestionDecision(props: {
   decision: QuestionDecision;
-  title_ref: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null>;
   on_resolve: (response: AgentQuestionResponse) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -114,7 +87,6 @@ function AgentQuestionDecision(props: {
   return (
     <AgentDecisionFrame
       title={props.decision.question.prompt}
-      TitleIcon={CircleQuestionMark}
       title_ref={props.title_ref}
       description={props.decision.question.description}
       expires_at={props.decision.expiresAt}
@@ -127,8 +99,8 @@ function AgentQuestionDecision(props: {
               key={option.id}
               ordinal={index + 1}
               label={option.label}
-              deadline={index === 0 ? deadline : undefined}
-              on_select={() => props.on_resolve({ kind: "option", optionId: option.id })}
+              deadline={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? deadline : undefined}
+              onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
             />
           ))}
           <div className="agent-decision-custom">
@@ -175,7 +147,7 @@ function AgentQuestionDecision(props: {
 /** 写入授权展示后端冻结的摘要与三种即时裁决。 */
 function AgentWriteDecision(props: {
   decision: WriteDecision;
-  title_ref: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null>;
   on_resolve: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -183,7 +155,6 @@ function AgentWriteDecision(props: {
   return (
     <AgentDecisionFrame
       title={t("agent_page.approval.title")}
-      TitleIcon={Save}
       title_ref={props.title_ref}
       description={<AgentWriteSummary summary={props.decision.summary} />}
       expires_at={props.decision.expiresAt}
@@ -195,8 +166,8 @@ function AgentWriteDecision(props: {
               key={value}
               ordinal={index + 1}
               label={t(key)}
-              deadline={index === 0 ? deadline : undefined}
-              on_select={() => props.on_resolve(value)}
+              deadline={value === AGENT_WRITE_APPROVAL_DEFAULT ? deadline : undefined}
+              onClick={() => props.on_resolve(value)}
             />
           ))}
         </div>
@@ -208,19 +179,21 @@ function AgentWriteDecision(props: {
 /** 公共框架统一标题语义、期限刷新、取消轨和选项内容位置。 */
 function AgentDecisionFrame(props: {
   title: string;
-  TitleIcon: LucideIcon;
-  title_ref: RefObject<HTMLHeadingElement | null>;
+  title_ref?: RefObject<HTMLHeadingElement | null>;
   description?: ReactNode;
   expires_at: number;
   children: (deadline: AgentDecisionDeadline) => ReactNode;
   on_cancel?: () => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const title_id = useId();
+  const description_id = useId();
   const [remaining_seconds, set_remaining_seconds] = useState(() =>
     read_remaining_seconds(props.expires_at),
   );
 
   useEffect(() => {
+    // 剩余时间由后端绝对期限计算，计时器只负责触发重绘。
     const update = (): void => set_remaining_seconds(read_remaining_seconds(props.expires_at));
     update();
     const timer = window.setInterval(update, 1_000);
@@ -238,19 +211,28 @@ function AgentDecisionFrame(props: {
   };
 
   return (
-    <>
+    <section
+      className="agent-operation-surface agent-decision"
+      aria-labelledby={title_id}
+      aria-describedby={props.description === undefined ? undefined : description_id}
+    >
       <header className="agent-decision__header">
         <div className="agent-decision__heading">
           <div className="agent-decision__title-line">
-            <props.TitleIcon className="agent-decision__title-icon" aria-hidden="true" />
-            <DialogPrimitive.Title ref={props.title_ref} className="agent-decision__prompt">
+            <CircleQuestionMark className="agent-decision__title-icon" aria-hidden="true" />
+            <h2
+              id={title_id}
+              ref={props.title_ref}
+              tabIndex={-1}
+              className="agent-decision__prompt"
+            >
               {props.title}
-            </DialogPrimitive.Title>
+            </h2>
           </div>
           {props.description === undefined ? null : (
-            <DialogPrimitive.Description className="agent-decision__description">
+            <div id={description_id} className="agent-decision__description">
               {props.description}
-            </DialogPrimitive.Description>
+            </div>
           )}
         </div>
         <div className="agent-decision__header-actions">
@@ -276,38 +258,43 @@ function AgentDecisionFrame(props: {
         </div>
       </header>
       <div className="agent-decision__body">{props.children(deadline)}</div>
-    </>
+    </section>
   );
 }
 
 /** 决策动作统一承载序号、标签和可选期限进度。 */
-function AgentDecisionAction(props: {
+function AgentDecisionAction({
+  ordinal,
+  label,
+  deadline,
+  onClick,
+}: {
   ordinal: number;
   label: string;
   deadline?: AgentDecisionDeadline;
-  on_select: () => void;
+  onClick: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const remaining_label =
-    props.deadline === undefined
+    deadline === undefined
       ? null
       : t("agent_page.decision.remaining", {
-          time: format_remaining_time(props.deadline.remaining_seconds),
+          time: format_remaining_time(deadline.remaining_seconds),
         });
   return (
-    <button type="button" className="agent-decision-action" onClick={props.on_select}>
+    <button type="button" onClick={onClick} className="agent-decision-action">
       <span className="agent-decision-badge" aria-hidden="true">
-        {props.ordinal}
+        {ordinal}
       </span>
-      <span className="agent-decision-action__label">{props.label}</span>
+      <span className="agent-decision-action__label">{label}</span>
       <span
         className={`agent-decision-icon agent-decision-action__icon${
-          props.deadline === undefined ? "" : " agent-decision-action__icon--deadline"
+          deadline === undefined ? "" : " agent-decision-action__icon--deadline"
         }`}
-        data-warning={props.deadline?.warning ? "true" : undefined}
-        aria-hidden={props.deadline === undefined ? "true" : undefined}
+        data-warning={deadline?.warning ? "true" : undefined}
+        aria-hidden={deadline === undefined ? "true" : undefined}
       >
-        {props.deadline === undefined ? null : (
+        {deadline === undefined ? null : (
           <svg className="agent-decision-progress" viewBox="0 0 24 24" aria-hidden="true">
             <circle className="agent-decision-progress__track" cx="12" cy="12" r="10.75" />
             <circle
@@ -316,7 +303,7 @@ function AgentDecisionAction(props: {
               cy="12"
               r="10.75"
               pathLength="100"
-              style={{ strokeDashoffset: 100 - props.deadline.remaining_percent }}
+              style={{ strokeDashoffset: 100 - deadline.remaining_percent }}
             />
           </svg>
         )}

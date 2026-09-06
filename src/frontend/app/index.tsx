@@ -1,3 +1,6 @@
+import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-context";
+import { PageLeaveProvider, usePageLeave } from "@frontend/app/navigation/page-leave-context";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { DEFAULT_ROUTE_ID, NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
@@ -7,12 +10,11 @@ import { AppNavigationProvider } from "@frontend/app/navigation/navigation-conte
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
 import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-context";
-import { WorkbenchTasksSessionProvider } from "@frontend/app/session/workbench-tasks/workbench-tasks-session-context";
+import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
 import {
   api_fetch,
   check_github_release_update,
-  get_backend_metadata,
   open_external_url,
   type GithubReleaseUpdate,
 } from "@frontend/app/desktop/desktop-api";
@@ -21,7 +23,10 @@ import {
   summarize_task_snapshot_for_diagnostics,
 } from "@frontend/app/state/desktop-diagnostics";
 import { update_renderer_diagnostics_context } from "@frontend/app/diagnostics/renderer-error-reporter";
-import { useDesktopState, useTaskSnapshot } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useBatchTranslationSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
@@ -61,10 +66,12 @@ const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
+/** 导航只开放注册表中实际存在的页面。 */
 function has_registered_screen(route_id: RouteId): boolean {
   return SCREEN_REGISTRY[route_id] !== undefined;
 }
 
+/** 从窗口本地偏好恢复侧栏折叠状态。 */
 function read_sidebar_state(): boolean {
   const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
 
@@ -75,19 +82,9 @@ function read_sidebar_state(): boolean {
   }
 }
 
+/** 根据宿主窗口角色选择 renderer 组合根。 */
 function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
-}
-
-function format_app_titlebar_title(app_name: string, version: string | null): string {
-  const normalized_version = version?.trim();
-  if (normalized_version === undefined || normalized_version === "") {
-    return app_name;
-  }
-
-  const version_label =
-    normalized_version.match(/^v/iu) === null ? `v${normalized_version}` : normalized_version;
-  return `${app_name} ${version_label}`;
 }
 
 type LogWindowSettingsPayload = {
@@ -96,9 +93,12 @@ type LogWindowSettingsPayload = {
   };
 };
 
+/** 编排主窗口导航、关闭与工作区挂载。 */
 function AppContent(): JSX.Element {
+  const { prepare_page_leave } = usePageLeave();
   const {
-    initial_state_ready,
+    initial_state_status,
+    load_initial_state,
     pending_target_route,
     is_app_language_updating,
     project_snapshot,
@@ -115,7 +115,7 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
   );
-  const [app_version, set_app_version] = useState<string | null>(null);
+  const app_version = window.desktopApp.appVersion;
   const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
     phase: "idle",
   });
@@ -129,7 +129,6 @@ function AppContent(): JSX.Element {
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
   const app_title = t("app.metadata.app_name");
-  const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
   const update_release = read_update_release(update_dialog_state);
   const update_release_url = update_release?.release_url ?? null;
   useEffect(() => {
@@ -137,30 +136,6 @@ function AppContent(): JSX.Element {
   }, [is_sidebar_collapsed]);
 
   useEffect(() => {
-    let is_disposed = false;
-
-    void get_backend_metadata()
-      .then((metadata) => {
-        if (!is_disposed) {
-          set_app_version(metadata.version);
-        }
-      })
-      .catch(() => {
-        if (!is_disposed) {
-          set_app_version(null);
-        }
-      });
-
-    return () => {
-      is_disposed = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (app_version === null) {
-      return;
-    }
-
     let is_disposed = false;
 
     void check_github_release_update(app_version).then((release_update) => {
@@ -188,7 +163,7 @@ function AppContent(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!initial_state_ready) {
+    if (initial_state_status !== "ready") {
       return;
     }
 
@@ -213,7 +188,7 @@ function AppContent(): JSX.Element {
       set_pending_target_route(next_route.pending_target_route);
     }
   }, [
-    initial_state_ready,
+    initial_state_status,
     pending_target_route,
     project_snapshot.loaded,
     project_snapshot.path,
@@ -264,15 +239,22 @@ function AppContent(): JSX.Element {
     });
   }, []);
 
+  /** 用户导航先等待当前页面完成保存。 */
   function handle_select_route(route_id: RouteId): void {
-    const next_route = resolve_route_selection({
-      route_id,
-      project_loaded: project_snapshot.loaded,
-      project_session_status,
-      pending_target_route,
+    if (route_id === selected_route) return;
+    void (async () => {
+      if (!(await prepare_page_leave())) return;
+      const next_route = resolve_route_selection({
+        route_id,
+        project_loaded: project_snapshot.loaded,
+        project_session_status,
+        pending_target_route,
+      });
+      set_pending_target_route(next_route.pending_target_route);
+      set_selected_route(next_route.selected_route);
+    })().catch((error: unknown) => {
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     });
-    set_pending_target_route(next_route.pending_target_route);
-    set_selected_route(next_route.selected_route);
   }
 
   useEffect(() => {
@@ -295,6 +277,7 @@ function AppContent(): JSX.Element {
     set_log_badge_visible(true);
   }, [project_snapshot.loaded, project_snapshot.path, project_session_status]);
 
+  /** 切换导航分组，并在侧栏折叠时先展开侧栏。 */
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
       set_is_sidebar_collapsed(false);
@@ -318,6 +301,7 @@ function AppContent(): JSX.Element {
     }
   }
 
+  /** 通过宿主打开日志窗口并消费当前项目的日志提示。 */
   function handle_open_logs(): void {
     set_log_badge_visible(false);
     void window.desktopApp.openLogWindow().catch((error: unknown) => {
@@ -325,6 +309,7 @@ function AppContent(): JSX.Element {
     });
   }
 
+  /** 将语言选择提交给共享设置入口。 */
   function handle_select_app_language(language: AppLanguage): void {
     void update_app_language(language).catch((error: unknown) => {
       push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
@@ -483,6 +468,7 @@ function AppContent(): JSX.Element {
     });
   }
 
+  /** 侧栏入口根据版本状态打开更新流程或项目主页。 */
   function handle_profile_action(): void {
     if (update_release !== null) {
       reopen_update_dialog();
@@ -494,9 +480,15 @@ function AppContent(): JSX.Element {
     });
   }
 
+  /** 确认退出先收束当前编辑，再调用宿主关闭。 */
   async function handle_confirm_window_close(): Promise<void> {
     set_close_confirm_submitting(true);
     try {
+      if (!(await prepare_page_leave())) {
+        set_close_confirm_submitting(false);
+        set_close_confirm_open(false);
+        return;
+      }
       await window.desktopApp.quitApp();
     } catch (error) {
       set_close_confirm_submitting(false);
@@ -534,7 +526,7 @@ function AppContent(): JSX.Element {
             } as CSSProperties
           }
         >
-          <AppTitlebar title={app_titlebar_title} />
+          <AppTitlebar title={app_title} />
           <section className="shell-body">
             <AppSidebar
               groups={visible_navigation_groups}
@@ -565,21 +557,35 @@ function AppContent(): JSX.Element {
               data-layout={active_screen.workspace_layout}
               aria-label={t(active_screen.title_key)}
             >
-              <AppNavigationProvider
-                selected_route={selected_route}
-                navigate_to_route={handle_select_route}
-              >
-                <AgentSessionProvider>
-                  <AgentCompletionAttention />
-                  <ProjectSessionUiStateProvider>
-                    <WorkbenchTasksSessionProvider>
-                      <QualityRuleStatisticsProvider>
-                        <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                      </QualityRuleStatisticsProvider>
-                    </WorkbenchTasksSessionProvider>
-                  </ProjectSessionUiStateProvider>
-                </AgentSessionProvider>
-              </AppNavigationProvider>
+              {initial_state_status === "ready" ? (
+                <AppNavigationProvider
+                  selected_route={selected_route}
+                  navigate_to_route={handle_select_route}
+                >
+                  <AgentSessionProvider>
+                    <AgentCompletionAttention />
+                    <ProjectSessionUiStateProvider>
+                      <TranslationExportProvider>
+                        <BatchTranslationSessionProvider>
+                          <QualityRuleStatisticsProvider>
+                            <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                          </QualityRuleStatisticsProvider>
+                        </BatchTranslationSessionProvider>
+                      </TranslationExportProvider>
+                    </ProjectSessionUiStateProvider>
+                  </AgentSessionProvider>
+                </AppNavigationProvider>
+              ) : initial_state_status === "error" ? (
+                <AppContentState
+                  status="error"
+                  message={t("app.feedback.initial_load_failed")}
+                  on_retry={() => {
+                    void load_initial_state();
+                  }}
+                />
+              ) : (
+                <AppContentState status="loading" message={t("app.action.loading")} />
+              )}
             </SidebarInset>
           </section>
         </main>
@@ -624,7 +630,7 @@ function RendererDiagnosticsSync(props: {
   project_path: string;
   project_session_status: "idle" | "warming" | "ready";
 }): null {
-  const task_snapshot = useTaskSnapshot();
+  const task_snapshot = useBatchTranslationSnapshot();
   const { route, project_loaded, project_path, project_session_status } = props;
   useEffect(() => {
     update_renderer_diagnostics_context({
@@ -640,6 +646,7 @@ function RendererDiagnosticsSync(props: {
   return null;
 }
 
+/** 日志窗口首帧使用本地语言偏好，随后读取后端设置。 */
 function read_initial_log_window_app_language(): AppLanguage {
   const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
   return stored_language === null
@@ -659,6 +666,7 @@ function WindowVisualContent({ children }: { children: ReactNode }): JSX.Element
   );
 }
 
+/** 为各窗口提供共同的外观和反馈宿主。 */
 function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
   // 多窗口共享的视觉壳层只承载外观、tooltip 和提示，不读取项目或任务运行态
   return (
@@ -668,6 +676,7 @@ function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Eleme
   );
 }
 
+/** 主窗口语言消费权威设置快照。 */
 function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.Element {
   const { settings_snapshot } = useDesktopState();
 
@@ -679,13 +688,16 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   );
 }
 
+/** 装配持有项目与任务运行态的主窗口。 */
 function MainWindowApp(): JSX.Element {
   // 只有主窗口拥有项目、任务、设置和主事件流运行态
   return (
     <DesktopStateProvider>
       <MainWindowLocaleProvider>
         <WindowVisualProviders>
-          <AppContent />
+          <PageLeaveProvider>
+            <AppContent />
+          </PageLeaveProvider>
           <DesktopProgressToastModalLayer />
         </WindowVisualProviders>
       </MainWindowLocaleProvider>
@@ -693,6 +705,7 @@ function MainWindowApp(): JSX.Element {
   );
 }
 
+/** 日志窗口独立读取语言和日志流。 */
 function LogWindowApp(): JSX.Element {
   const [app_language, set_app_language] = useState<AppLanguage>(() =>
     read_initial_log_window_app_language(),
@@ -727,6 +740,7 @@ function LogWindowApp(): JSX.Element {
   );
 }
 
+/** 按宿主角色挂载对应窗口。 */
 function App(): JSX.Element {
   if (is_log_window_mode()) {
     return <LogWindowApp />;

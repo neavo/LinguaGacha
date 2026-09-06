@@ -18,6 +18,7 @@ import type {
   AgentToolEntry,
 } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   find_agent_mention_ranges,
@@ -330,7 +331,8 @@ function AgentMessageActions(props: {
 }): JSX.Element {
   const copy_text = get_agent_copy_text(props.entry);
   const can_copy = copy_text.trim() !== "";
-  const [copy_state, set_copy_state] = useState<"idle" | "copied" | "failed">("idle");
+  const { push_toast } = useDesktopToast();
+  const [copy_state, set_copy_state] = useState<"idle" | "copied">("idle");
 
   useEffect(() => {
     if (copy_state === "idle") return;
@@ -340,20 +342,16 @@ function AgentMessageActions(props: {
 
   const copy = (): void => {
     if (typeof navigator === "undefined" || navigator.clipboard === undefined) {
-      set_copy_state("failed");
+      push_toast("error", props.t("agent_page.action.copy_failed"));
       return;
     }
     void navigator.clipboard.writeText(copy_text).then(
       () => set_copy_state("copied"),
-      () => set_copy_state("failed"),
+      () => push_toast("error", props.t("agent_page.action.copy_failed")),
     );
   };
   const copy_label_key =
-    copy_state === "copied"
-      ? "agent_page.action.copied"
-      : copy_state === "failed"
-        ? "agent_page.action.copy_failed"
-        : "agent_page.action.copy";
+    copy_state === "copied" ? "agent_page.action.copied" : "agent_page.action.copy";
   const CopyIcon = copy_state === "copied" ? Check : Copy;
   return (
     <div className="agent-message-actions">

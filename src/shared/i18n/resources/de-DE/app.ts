@@ -57,16 +57,13 @@ export const de_de_app = {
     select_folder: "Ordner auswählen",
   },
   feedback: {
+    initial_load_failed:
+      "Die Anwendungsdaten konnten nicht geladen werden. Bitte erneut versuchen.",
     export_success: "Daten exportiert …",
     import_success: "Daten importiert …",
-    save_success: "Gespeichert …",
-    reset_success: "Zurückgesetzt …",
     no_valid_data: "Keine gültigen Daten …",
     update_failed: "Aktualisierung fehlgeschlagen …",
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen …",
-    feature_enabled: "{TITLE} aktiviert …",
-    feature_disabled: "{TITLE} deaktiviert …",
-    feature_state_changed: "{TITLE} auf {STATE} umgestellt …",
   },
   error_boundary: {
     eyebrow: "Renderer-Laufzeit",
@@ -283,9 +280,6 @@ export const de_de_app = {
       missing_backend_api_base_url: {
         message: "Backend-API-URL ist nicht konfiguriert …",
       },
-      backend_metadata_unavailable: {
-        message: "Backend-Metadaten sind nicht verfügbar …",
-      },
       http_error: {
         message: "Anfrage fehlgeschlagen: {PATH} …",
       },
@@ -340,9 +334,6 @@ export const de_de_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "Keine Begriffe extrahiert",
-    analysis_task_result: "Analyseergebnis:",
-    analysis_task_source_texts: "Analyse-Eingabe:",
     api_gateway_started: "API Gateway gestartet - {BASE_URL}",
     api_test_fail: "API-Test fehlgeschlagen …",
     api_test_key: "Teste Schlüssel:",

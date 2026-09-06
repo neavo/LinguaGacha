@@ -11,7 +11,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { model_selection_migration } from "./model-selection-migration";
 
 describe("model_selection_migration", () => {
-  it("把旧激活模型迁到三个用途并保持重复执行幂等", () => {
+  it("把旧激活模型迁到执行用途并保持重复执行幂等", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-model-selection-migration-"),
     );
@@ -30,8 +30,9 @@ describe("model_selection_migration", () => {
       models: [{ id: "legacy-model" }, { id: "other-model" }],
       model_selection: {
         translation: "legacy-model",
-        analysis: "legacy-model",
+
         agent: "legacy-model",
+        agent_batch_translation: null,
       },
     });
   });
@@ -45,7 +46,7 @@ describe("model_selection_migration", () => {
       activate_model_id: "legacy-model",
       model_selection: {
         translation: "translation-model",
-        analysis: "",
+
         agent: "agent-model",
         unknown: "ignored",
       },
@@ -56,8 +57,9 @@ describe("model_selection_migration", () => {
     expect(read_config(context.paths.get_config_path())).toEqual({
       model_selection: {
         translation: "translation-model",
-        analysis: "legacy-model",
+
         agent: "agent-model",
+        agent_batch_translation: null,
       },
     });
   });

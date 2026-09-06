@@ -36,6 +36,7 @@ type ProofreadingWarningSummaryResponse = {
 export type TranslationExportFlow = {
   state: TranslationExportState;
   can_request_export: boolean;
+  can_jump_to_agent: boolean;
   request_export: () => void;
   retry_check: () => void;
   confirm_export: () => Promise<void>;
@@ -47,7 +48,7 @@ export type TranslationExportFlow = {
 export function useTranslationExportFlow(): TranslationExportFlow {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { navigate_to_route } = useAppNavigation();
+  const { navigate_to_route, selected_route } = useAppNavigation();
   const agent_input = useAgentInput();
   const { project_snapshot } = useDesktopState();
   const [state, set_state] = useState<TranslationExportState>({ phase: "closed" });
@@ -122,26 +123,32 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     if (current_state.phase !== "ready" && current_state.phase !== "check-failed") {
       return;
     }
+    const generation = request_generation_ref.current;
     apply_state({ phase: "exporting", previous: current_state });
     try {
       await api_fetch("/api/translation/files/export", {});
+      if (generation !== request_generation_ref.current) return;
       apply_state({ phase: "closed" });
     } catch {
+      if (generation !== request_generation_ref.current) return;
       push_toast("error", t("workbench_page.feedback.generate_translation_failed"));
       apply_state(current_state);
     }
   }, [apply_state, push_toast, t]);
 
-  /** 使用 Agent 空态卡片正文覆盖普通草稿，并进入 Agent 页面。 */
+  /** 进入 Agent 时保留用户草稿，只有空草稿才补入审校建议。 */
   const jump_to_agent = useCallback((): void => {
     const current_state = state_ref.current;
     if (current_state.phase !== "ready" || current_state.summary.total_count === 0) {
       return;
     }
-    agent_input.write_draft({
-      text: `${t("agent_page.empty.suggestions.translation_workflow")} ${format_agent_skill_reference("translation-workflow")}`,
-      attachments: [],
-    });
+    const draft = agent_input.read_draft();
+    if (draft.text.trim() === "" && draft.attachments.length === 0) {
+      agent_input.write_draft({
+        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_skill_reference("translation-workflow")}`,
+        attachments: [],
+      });
+    }
     request_generation_ref.current += 1;
     apply_state({ phase: "closed" });
     navigate_to_route("agent");
@@ -170,6 +177,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     () => ({
       state,
       can_request_export: project_snapshot.loaded && state.phase === "closed",
+      can_jump_to_agent: selected_route !== "agent",
       request_export,
       retry_check,
       confirm_export,
@@ -184,6 +192,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       request_export,
       retry_check,
       state,
+      selected_route,
     ],
   );
 }

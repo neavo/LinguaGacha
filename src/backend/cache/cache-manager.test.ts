@@ -141,7 +141,6 @@ describe("CacheManager", () => {
     ]);
     expect(cache.prompts.readBlock()).toHaveProperty("translation");
     expect(cache.quality.readBlock()).toHaveProperty("glossary");
-    expect(cache.analysis.readBlock()).toHaveProperty("status_summary");
     const quality_snapshot = cache.quality.readBlock();
     quality_snapshot["changed"] = true;
     expect(cache.quality.readBlock()).not.toHaveProperty("changed");

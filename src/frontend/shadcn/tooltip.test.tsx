@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, createRef, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,14 +18,17 @@ describe("Tooltip", () => {
     vi.useRealTimers();
   });
 
-  async function render(): Promise<HTMLButtonElement> {
+  /** 挂载真实提示原语，可选地接入消费方的 actionsRef。 */
+  async function render(
+    actions_ref?: RefObject<{ close: () => void; unmount: () => void } | null>,
+  ): Promise<HTMLButtonElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     await act(async () =>
       root?.render(
         <TooltipProvider delay={0}>
-          <Tooltip>
+          <Tooltip actionsRef={actions_ref}>
             <TooltipTrigger>提示按钮</TooltipTrigger>
             <TooltipContent>提示内容</TooltipContent>
           </Tooltip>
@@ -37,26 +40,32 @@ describe("Tooltip", () => {
     return trigger;
   }
 
-  function move_pointer(target: HTMLElement, x: number, y: number): void {
-    target.dispatchEvent(
-      new MouseEvent("mouseenter", {
-        bubbles: true,
-        clientX: x,
-        clientY: y,
-      }),
+  /** 按指针移动和鼠标悬停顺序模拟窗口恢复后的交互。 */
+  async function move_pointer(
+    target: HTMLElement,
+    x: number,
+    y: number,
+    enter = false,
+  ): Promise<void> {
+    await act(async () =>
+      target.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: x, clientY: y }),
+      ),
     );
-    target.dispatchEvent(
-      new PointerEvent("pointermove", { bubbles: true, clientX: x, clientY: y }),
-    );
-  }
-
-  it("窗口恢复时关闭提示并忽略静止鼠标，真实移动后恢复悬停提示", async () => {
-    const trigger = await render();
-
     await act(async () => {
-      move_pointer(trigger, 10, 10);
+      if (enter)
+        target.dispatchEvent(
+          new MouseEvent("mouseenter", { bubbles: true, clientX: x, clientY: y }),
+        );
+      target.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y }));
       vi.runAllTimers();
     });
+  }
+
+  it.each([false, true])("窗口恢复后由真实移动恢复提示，外部 actionsRef=%s", async (external) => {
+    const trigger = await render(external ? createRef() : undefined);
+
+    await move_pointer(trigger, 10, 10, true);
     expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
 
     await act(async () => {
@@ -70,16 +79,11 @@ describe("Tooltip", () => {
     if (restored_trigger === undefined || restored_trigger === null) {
       throw new Error("缺少恢复后的 Tooltip 触发器");
     }
-    await act(async () => {
-      move_pointer(restored_trigger, 10, 10);
-      vi.runAllTimers();
-    });
+    expect(restored_trigger).toBe(trigger);
+    await move_pointer(restored_trigger, 10, 10);
     expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
 
-    await act(async () => {
-      move_pointer(restored_trigger, 20, 10);
-      vi.runAllTimers();
-    });
+    await move_pointer(restored_trigger, 20, 10);
     expect(document.querySelector('[role="tooltip"][data-open]')).not.toBeNull();
   });
 });

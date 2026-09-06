@@ -23,9 +23,7 @@ type QualityRuleSnapshot = {
   translation_prompt_enable: boolean;
   translation_prompt: string;
   translation_prompt_revision: number;
-  analysis_prompt_enable: boolean;
-  analysis_prompt: string;
-  analysis_prompt_revision: number;
+
   glossary_entries: GlossaryEntry[];
 };
 
@@ -85,7 +83,6 @@ export class QualityRuleSnapshotTool {
     const pre_replacement = read_record(quality["pre_replacement"]);
     const post_replacement = read_record(quality["post_replacement"]);
     const translation = read_record(prompts["translation"]);
-    const analysis = read_record(prompts["analysis"]);
     const glossary_rule = QualityRule.from_json("glossary");
     const text_preserve_rule = QualityRule.from_json("text_preserve");
     const pre_replacement_rule = QualityRule.from_json("pre_replacement");
@@ -115,9 +112,7 @@ export class QualityRuleSnapshotTool {
       translation_prompt_enable: Boolean(translation["enabled"] ?? false),
       translation_prompt: String(translation["text"] ?? ""),
       translation_prompt_revision: this.normalize_revision(translation["revision"] ?? 0),
-      analysis_prompt_enable: Boolean(analysis["enabled"] ?? false),
-      analysis_prompt: String(analysis["text"] ?? ""),
-      analysis_prompt_revision: this.normalize_revision(analysis["revision"] ?? 0),
+
       glossary_entries: normalize_quality_rule_entries(
         glossary_rule,
         glossary["entries"] ?? [],
@@ -157,11 +152,6 @@ export class QualityRuleSnapshotTool {
           text: snapshot.translation_prompt,
           enabled: snapshot.translation_prompt_enable,
           revision: snapshot.translation_prompt_revision,
-        },
-        analysis: {
-          text: snapshot.analysis_prompt,
-          enabled: snapshot.analysis_prompt_enable,
-          revision: snapshot.analysis_prompt_revision,
         },
       },
     };

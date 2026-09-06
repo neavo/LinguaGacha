@@ -18,7 +18,6 @@ export type WorkbenchSnapshot = {
   file_count: number;
   total_items: number;
   translation_stats: WorkbenchStats;
-  analysis_stats: WorkbenchStats;
   entries: WorkbenchSnapshotEntry[];
 };
 
@@ -27,50 +26,6 @@ export type WorkbenchDialogState = {
   target_rel_paths: string[];
   pending_path: string | null;
   submitting: boolean;
-};
-
-export type WorkbenchTaskKind = "translation" | "analysis";
-export type WorkbenchStatsMode = WorkbenchTaskKind;
-
-export type WorkbenchTaskViewState = {
-  task_kind: WorkbenchTaskKind | null;
-  can_open_detail: boolean;
-};
-
-export type WorkbenchTaskTone = "neutral" | "success" | "warning";
-
-export type WorkbenchTaskMetricEntry = {
-  key: string;
-  label: string;
-  value_text: string;
-  unit_text: string;
-};
-
-/**
- * WorkbenchTaskSummaryDisplay 是任务胶囊需要的紧凑展示数据。
- */
-export type WorkbenchTaskSummaryDisplay = {
-  status_text: string;
-  trailing_text: string | null;
-  tone: WorkbenchTaskTone;
-  show_spinner: boolean;
-  detail_tooltip_text: string;
-};
-
-/**
- * WorkbenchTaskDetailDisplay 是详情抽屉消费的完整任务展示数据。
- */
-export type WorkbenchTaskDetailDisplay = {
-  title: string;
-  description: string;
-  waveform_title: string;
-  metrics_title: string;
-  completion_percent_text: string;
-  percent_tone: WorkbenchTaskTone;
-  metric_entries: WorkbenchTaskMetricEntry[];
-  stop_button_label: string;
-  stop_disabled: boolean;
-  waveform_history: number[];
 };
 
 export type WorkbenchStats = {

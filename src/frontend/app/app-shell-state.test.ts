@@ -72,6 +72,17 @@ describe("App 更新弹窗状态", () => {
 });
 
 describe("App 项目导航状态", () => {
+  it("项目就绪后直接选择自定义提示词", () => {
+    expect(
+      resolve_route_selection({
+        route_id: "custom-prompt",
+        project_loaded: true,
+        project_session_status: "ready",
+        pending_target_route: null,
+      }),
+    ).toEqual({ selected_route: "custom-prompt", pending_target_route: null });
+  });
+
   it("未加载项目时把项目入口保存为待恢复路由", () => {
     expect(
       resolve_route_selection({
@@ -151,8 +162,10 @@ describe("App 项目导航状态", () => {
 
     expect(unloaded.has("agent")).toBe(false);
     expect(unloaded.has("glossary")).toBe(true);
+    expect(unloaded.has("custom-prompt")).toBe(true);
     expect(warming.has("agent")).toBe(true);
     expect(warming.has("glossary")).toBe(true);
+    expect(warming.has("custom-prompt")).toBe(true);
     expect(ready.size).toBe(0);
   });
 });

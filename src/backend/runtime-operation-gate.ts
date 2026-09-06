@@ -31,8 +31,20 @@ export class RuntimeOperationGate {
     }
     const lease = Object.freeze({ owner });
     this.active_runtime = lease;
-    this.publish_snapshot();
+    try {
+      this.publish_snapshot();
+    } catch (error) {
+      this.active_runtime = null;
+      throw error;
+    }
     return lease;
+  }
+
+  /** Agent 内执行必须出自当前 round 的真实 lease 对象。 */
+  public assert_current_runtime(lease: RuntimeLease, owner: RuntimeActivityOwner): void {
+    if (this.active_runtime !== lease || lease.owner !== owner) {
+      throw new AppErrors.AppError("runtime.busy");
+    }
   }
 
   /** 迟到清理只允许释放自己取得的 lease，不能误伤后续运行。 */
@@ -42,7 +54,7 @@ export class RuntimeOperationGate {
     this.publish_snapshot();
   }
 
-  /** 设置与模型配置等同步写入口在提交前复用同一空闲检查。 */
+  /** 设置与模型管理等同步写入口在提交前复用同一空闲检查。 */
   public assert_runtime_idle(): void {
     if (this.active_runtime !== null) throw new AppErrors.AppError("runtime.busy");
   }

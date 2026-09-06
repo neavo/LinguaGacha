@@ -35,8 +35,9 @@ export function create_agent_workspace_data_tool_context(
   if (!Check(AGENT_WORKSPACE_CONTRACT_SCHEMA, read_port.contract)) {
     throw new Error("Workspace contract does not match the runtime schema.");
   }
-  const contract = read_port.contract as unknown as AgentWorkspaceRuntimeContract;
+  const contract = read_port.contract;
 
+  /** 按已验证的布局定位宿主生成的数据集，记录形状由快照写入入口保证。 */
   function iterate_dataset<Row>(name: string): AsyncIterable<Row> {
     const dataset = contract.datasets[name];
     if (dataset === undefined) throw new Error(`Workspace dataset is missing: ${name}`);
@@ -58,7 +59,6 @@ export type AgentWorkspaceDataToolDefinition<
   Parameters extends TSchema,
   Result extends TSchema,
 > = Readonly<{
-  useWhen: string;
   description: string;
   parameters: Parameters;
   result: Result;
@@ -80,7 +80,6 @@ export function define_agent_workspace_data_tool<
 
 /** 异构注册表在统一调用边界擦除具体 Schema。 */
 export type AnyAgentWorkspaceDataToolDefinition = Readonly<{
-  useWhen: string;
   description: string;
   parameters: TSchema;
   result: TSchema;

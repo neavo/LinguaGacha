@@ -8,7 +8,12 @@ import {
   read_json_record,
   type JsonRecord,
 } from "../../../domain/json";
-import { Prompt, PROMPT_KINDS, type PromptKind } from "../../../domain/prompt";
+import {
+  normalize_translation_prompt_slice,
+  TRANSLATION_PROMPT,
+  PROMPT_KINDS,
+  type PromptKind,
+} from "../../../domain/prompt";
 import { QualityRule, QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import {
   normalize_project_settings_snapshot,
@@ -235,7 +240,7 @@ export class AgentWorkspaceService {
           Object.fromEntries(
             Object.entries(prompts).map(([kind, text]) => [
               kind,
-              project_agent_workspace_prompt(kind as "translation" | "analysis", String(text)),
+              project_agent_workspace_prompt(kind as "translation", String(text)),
             ]),
           ),
         ),
@@ -831,9 +836,11 @@ function read_quality_entries(quality: JsonRecord, kind: QualityRuleKind): JsonR
 
 /** prompt 快照只保留固定正文，不复制功能开关。 */
 function project_workspace_prompts(block: JsonRecord): JsonRecord {
-  return Object.fromEntries(
-    Prompt.all().map((prompt) => [prompt.kind, prompt.normalize_slice(block[prompt.kind]).text]),
-  );
+  return {
+    [TRANSLATION_PROMPT.store_key]: normalize_translation_prompt_slice(
+      block[TRANSLATION_PROMPT.store_key],
+    ).text,
+  };
 }
 
 /** sessionState 与 cache 必须指向同一当前工程。 */

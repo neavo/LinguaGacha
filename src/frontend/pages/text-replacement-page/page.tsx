@@ -1,3 +1,4 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-replacement-page/text-replacement-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -25,6 +26,7 @@ const TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<TextReplacementFilterScope, LocaleKey>;
 
 const TEXT_REPLACEMENT_FILTER_SCOPES: TextReplacementFilterScope[] = ["all", "src", "dst"];
+/** 按译前或译后用途组装替换规则工作面。 */
 export function TextReplacementPage(props: TextReplacementPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -54,6 +56,22 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
         label: t(TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
       };
     });
+
+  if (page_state.quality_status !== "ready") {
+    return (
+      <div className="text-replacement-page page-shell page-shell--full">
+        {page_state.quality_status === "error" ? (
+          <AppContentState
+            status="error"
+            message={t("text_replacement_page.feedback.load_failed")}
+            on_retry={page_state.reload_quality_rule_snapshot}
+          />
+        ) : (
+          <AppContentState status="loading" message={t("app.action.loading")} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="text-replacement-page page-shell page-shell--full">
@@ -144,7 +162,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
         entry={page_state.dialog_state.draft_entry}
         saving={page_state.dialog_state.saving}
         readonly={page_state.readonly}
-        validation_message={page_state.dialog_state.validation_message}
+        invalid={page_state.dialog_state.invalid}
         on_change={page_state.update_dialog_draft}
         on_save={page_state.save_dialog_entry}
         on_close={page_state.request_close_dialog}

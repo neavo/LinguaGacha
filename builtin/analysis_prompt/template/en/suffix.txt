@@ -1,4 +1,0 @@
-Then use JSONLINE to output results, merge duplicate entries, without extra explanation or clarification:
-```jsonline
-{"src":"<Source Term>","dst":"<Translated Term>","type":"<Type>"}
-```

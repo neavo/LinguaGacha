@@ -4,9 +4,9 @@ import {
   capture_renderer_error,
   type RendererErrorSource,
 } from "@frontend/app/diagnostics/renderer-error-reporter";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+
 import type { LogErrorContextInput, RendererErrorContextInput } from "@shared/error";
-import type { TaskType } from "@domain/task";
 
 export type StateErrorReportArgs = {
   source: Extract<
@@ -22,7 +22,6 @@ export type DesktopRecoveryActions = {
   refresh_task_after_state_error: (
     reason: string,
     triggering_event: LogErrorContextInput | undefined,
-    task_type?: TaskType,
   ) => Promise<void>;
   refresh_project_state_after_error: (
     reason: string,
@@ -35,7 +34,7 @@ type DesktopRecoveryOptions = {
   project_loaded: boolean; // 决定项目恢复是否有权访问后端项目主链路
   project_path: string; // 为空时不尝试项目恢复刷新
   refresh_project_state: () => Promise<void>; // 回到 manifest + 页面 query 主链路
-  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>; // 回到后端 task snapshot 主链路
+  refresh_batch_translation: () => Promise<BatchTranslationSnapshot>; // 回到后端 task snapshot 主链路
 };
 
 type ProjectRecoveryJob = {
@@ -43,15 +42,14 @@ type ProjectRecoveryJob = {
   promise: Promise<void>; // 代表当前项目唯一恢复流程，调用方共享完成信号
 };
 
-const DEFAULT_TASK_RECOVERY_KEY = "__default_task__"; // 未指定 task_type 的恢复共享默认快照身份
-
 /**
  * state 恢复策略集中在这里，Provider 只负责注册事件和写入共享 store。
  */
 export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopRecoveryActions {
-  const { project_loaded, project_path, refresh_project_state, refresh_task } = options;
+  const { project_loaded, project_path, refresh_project_state, refresh_batch_translation } =
+    options;
   const project_recovery_ref = useRef<ProjectRecoveryJob | null>(null);
-  const task_recovery_ref = useRef<Map<string, Promise<void>>>(new Map());
+  const task_recovery_ref = useRef<Promise<void> | null>(null);
 
   const report_state_error = useCallback((error: unknown, args: StateErrorReportArgs): void => {
     capture_renderer_error(error, {
@@ -61,22 +59,17 @@ export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopReco
     });
   }, []);
 
-  // 同一 task_type 的恢复共享一个 snapshot 请求，避免错误风暴重复覆盖 TaskSnapshotStore。
+  // 并发恢复共享一个快照请求。
   const refresh_task_after_state_error = useCallback(
-    async (
-      reason: string,
-      triggering_event: LogErrorContextInput | undefined,
-      task_type?: TaskType,
-    ): Promise<void> => {
-      const recovery_key = task_type ?? DEFAULT_TASK_RECOVERY_KEY;
-      const current_recovery = task_recovery_ref.current.get(recovery_key);
-      if (current_recovery !== undefined) {
+    async (reason: string, triggering_event: LogErrorContextInput | undefined): Promise<void> => {
+      const current_recovery = task_recovery_ref.current;
+      if (current_recovery !== null) {
         await current_recovery;
         return;
       }
 
       let recovery_promise!: Promise<void>;
-      recovery_promise = refresh_task(task_type)
+      recovery_promise = refresh_batch_translation()
         .then(() => undefined)
         .catch((error: unknown) => {
           report_state_error(error, {
@@ -86,15 +79,15 @@ export function useDesktopRecovery(options: DesktopRecoveryOptions): DesktopReco
           });
         })
         .finally(() => {
-          if (task_recovery_ref.current.get(recovery_key) === recovery_promise) {
-            task_recovery_ref.current.delete(recovery_key);
+          if (task_recovery_ref.current === recovery_promise) {
+            task_recovery_ref.current = null;
           }
         });
 
-      task_recovery_ref.current.set(recovery_key, recovery_promise);
+      task_recovery_ref.current = recovery_promise;
       await recovery_promise;
     },
-    [refresh_task, report_state_error],
+    [refresh_batch_translation, report_state_error],
   );
 
   // 同一 project path 的恢复共享一个 session 初始化流程，请求方可 await 同一完成信号。

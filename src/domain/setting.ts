@@ -52,7 +52,7 @@ export type SettingSnapshot = {
   pre_translation_replacement_default_preset: string;
   post_translation_replacement_default_preset: string;
   translation_custom_prompt_default_preset: string;
-  analysis_custom_prompt_default_preset: string;
+
   recent_projects: RecentProjectSetting[];
 };
 
@@ -85,7 +85,6 @@ export const SETTING_KEYS = [
   "pre_translation_replacement_default_preset",
   "post_translation_replacement_default_preset",
   "translation_custom_prompt_default_preset",
-  "analysis_custom_prompt_default_preset",
   "recent_projects",
 ] as const;
 
@@ -125,12 +124,13 @@ export const DEFAULT_SETTING: JsonRecord = {
   pre_translation_replacement_default_preset: "",
   post_translation_replacement_default_preset: "",
   translation_custom_prompt_default_preset: "",
-  analysis_custom_prompt_default_preset: "",
+
   recent_projects: [],
   model_selection: {
     translation: "",
-    analysis: "",
+
     agent: "",
+    agent_batch_translation: null,
   },
   models: null,
 };
@@ -143,6 +143,7 @@ const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
 export class Setting {
   public readonly data: JsonRecord; // 完整设置文件形状；设置快照只从白名单计算
 
+  /** 保存从 JSON 归一后的设置字段。 */
   private constructor(data: JsonRecord) {
     this.data = data;
   }
@@ -275,6 +276,7 @@ export class Setting {
     return is_project_save_mode(value) ? value : "MANUAL";
   }
 
+  /** 兼容两种路径分隔符，从文件名去除最后一个扩展名。 */
   private static build_recent_project_display_name(project_path: string): string {
     const base = project_path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "";
     const dot_index = base.lastIndexOf(".");
@@ -359,11 +361,7 @@ export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
       "translation_custom_prompt_default_preset",
       { preserve_case: true },
     ),
-    analysis_custom_prompt_default_preset: read_string_setting(
-      record["analysis_custom_prompt_default_preset"],
-      "analysis_custom_prompt_default_preset",
-      { preserve_case: true },
-    ),
+
     recent_projects: normalize_recent_project_settings(record["recent_projects"]),
   };
 }
@@ -403,12 +401,14 @@ export function normalize_project_settings_snapshot(
   };
 }
 
+/** 设置读取以合法 JSON 对象为起点，其余输入视为空配置。 */
 function read_setting_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
+/** 按设置默认值读取字符串，标识值默认使用大写。 */
 function read_string_setting(
   value: JsonValue | undefined,
   key: SettingKey,
@@ -419,24 +419,29 @@ function read_string_setting(
   return options.preserve_case === true ? raw_value : raw_value.toUpperCase();
 }
 
+/** 空项目设置继承调用方基线，其余值裁剪并使用大写。 */
 function read_project_string_setting(value: JsonValue | undefined, fallback: string): string {
   const text = String(value ?? "").trim();
   return text === "" ? fallback : text.toUpperCase();
 }
 
+/** 布尔设置共用 JSON 归一规则和该键的默认值。 */
 function read_boolean_setting(value: JsonValue | undefined, key: SettingKey): boolean {
   return read_json_boolean(value, Boolean(DEFAULT_SETTING[key]));
 }
 
+/** 按设置键提供数值归一的默认值。 */
 function read_number_setting(value: JsonValue | undefined, key: SettingKey): number {
   return normalize_number_setting(value, Number(DEFAULT_SETTING[key] ?? 0));
 }
 
+/** 有限数值才进入设置，缺失和非有限值沿用基线。 */
 function normalize_number_setting(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;
 }
 
+/** 规范化最近工程记录并过滤缺失路径的条目。 */
 function normalize_recent_project_settings(value: unknown): RecentProjectSetting[] {
   if (!Array.isArray(value)) {
     return [];

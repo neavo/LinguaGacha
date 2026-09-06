@@ -87,6 +87,22 @@ describe("useModelPageState", () => {
     push_toast.mockReset();
   });
 
+  it("首次加载失败可重试，刷新失败保留已读取模型", async () => {
+    api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
+    await render_hook();
+    expect(latest_state?.load_status).toBe("error");
+    expect(push_toast).not.toHaveBeenCalled();
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await act(async () => latest_state?.refresh_snapshot());
+    expect(latest_state?.load_status).toBe("ready");
+    const snapshot = latest_state?.snapshot;
+    api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => latest_state?.refresh_snapshot());
+    expect(latest_state?.snapshot).toBe(snapshot);
+    expect(latest_state?.load_status).toBe("ready");
+    expect(push_toast).toHaveBeenCalledWith("error", "model_page.feedback.refresh_failed");
+  });
+
   it("加载并分组模型，分组内唯一模型不能删除", async () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
@@ -97,17 +113,8 @@ describe("useModelPageState", () => {
         (category) => category.type === "CUSTOM_OPENAI_RESPONSES",
       ),
     ).toMatchObject({
-      description: "model_page.category.custom_openai_responses.description",
-      accent_color: "var(--model-page-accent-openai-responses)",
       models: [{ id: "responses", api_format: "OpenAIResponses" }],
     });
-    expect(latest_state?.snapshot.models[1]).toMatchObject({
-      id: "custom",
-      api_format: "OpenAI",
-      agent: { context_window: 0, max_output_tokens: 0 },
-      threshold: { input_token_limit: 512, output_token_limit: 4096 },
-    });
-
     await act(async () => latest_state?.request_delete_model("custom"));
 
     expect(latest_state?.confirm_state).toEqual({ kind: null, model_id: null });

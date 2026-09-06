@@ -77,6 +77,7 @@ describe("run_backend_runtime", () => {
       readAppLanguage: () => "EN",
       backendServices: {
         app: {
+          metadata: { read_version: () => "1.2.3" },
           paths: {
             get_berserker_update_root_dir: () => "E:/userdata/berserker",
           },
@@ -101,6 +102,7 @@ describe("run_backend_runtime", () => {
       data: {
         apiBaseUrl: "http://127.0.0.1:4567",
         berserkerUpdateRootDir: "E:/userdata/berserker",
+        appVersion: "1.2.3",
       },
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {

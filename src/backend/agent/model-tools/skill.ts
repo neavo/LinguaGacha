@@ -22,7 +22,9 @@ const READ_SKILL_PARAMETERS = Type.Object(
       pattern: "^[a-z0-9-]+$",
     }),
     path: Type.Optional(
-      Type.String({ description: "skill 包内的相对文件路径；缺省读取 SKILL.md。" }),
+      Type.String({
+        description: "使用 / 分隔的技能包内相对文件路径；省略时读取 SKILL.md。",
+      }),
     ),
   },
   { additionalProperties: false },
@@ -41,8 +43,10 @@ export function create_agent_skill_tools(
     defineTool({
       name: "read_skill",
       label: "读技能",
-      description:
-        "读取指定 skill 包内的普通文件。当前会话 skill 使用已冻结的获胜定义；新名称会实时发现。返回 name、相对 path 与 content，只读且不暴露磁盘位置。",
+      description: [
+        "读取指定技能的正文或包内参考文件。",
+        "返回 name、相对 path 与 content。资源缺失返回 skill.resource_not_found，路径越界或不符合格式返回 skill.resource_not_allowed；依据错误修正名称或包内路径。",
+      ].join("\n\n"),
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();

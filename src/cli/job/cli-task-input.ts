@@ -4,7 +4,7 @@ import type {
 } from "../../backend/project/project-task-input";
 import { build_project_quality_rule_input } from "../../backend/project/project-task-input";
 import { load_quality_rule_entries_from_file } from "../../backend/quality/quality-rule-file-io";
-import { Prompt, type PromptKind } from "../../domain/prompt";
+
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import { create_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { default_native_fs } from "../../native/native-fs";
@@ -25,17 +25,14 @@ export async function build_cli_task_input(command: CLICommandOptions): Promise<
         return build_project_quality_rule_input(rule, entries, resource_path !== null);
       }),
     ),
-    prompts: Prompt.all().map((prompt) => build_prompt_input(command, prompt.kind)),
+    translation_prompt: build_prompt_input(command),
   };
 }
 
 /**
- * 分析任务不消费翻译规则；翻译任务按规则 kind 读取对应参数。
+ * 翻译任务按规则 kind 读取对应命令参数。
  */
 function read_rule_resource_path(command: CLICommandOptions, kind: QualityRuleKind): string | null {
-  if (command.command !== "translate") {
-    return null;
-  }
   const resources: Record<QualityRuleKind, string | null> = {
     glossary: command.resources.glossaryPath,
     text_preserve: command.resources.textPreservePath,
@@ -48,11 +45,9 @@ function read_rule_resource_path(command: CLICommandOptions, kind: QualityRuleKi
 /**
  * 只启用当前任务类型且显式传入的自定义提示词。
  */
-function build_prompt_input(command: CLICommandOptions, kind: PromptKind): ProjectPromptInput {
-  const active_kind: PromptKind = command.command === "translate" ? "translation" : "analysis";
-  const enabled = kind === active_kind && command.resources.promptPath !== null;
+function build_prompt_input(command: CLICommandOptions): ProjectPromptInput {
+  const enabled = command.resources.promptPath !== null;
   return {
-    kind,
     text: enabled ? read_prompt_text(command.resources.promptPath) : "",
     enabled,
   };

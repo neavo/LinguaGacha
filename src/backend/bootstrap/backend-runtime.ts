@@ -175,6 +175,7 @@ export async function run_backend_runtime(args: {
     start_result = await bootstrap.start();
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,
+      appVersion: start_result.backendServices.app.metadata.read_version(),
       berserkerUpdateRootDir:
         start_result.backendServices.app.paths.get_berserker_update_root_dir(),
     };

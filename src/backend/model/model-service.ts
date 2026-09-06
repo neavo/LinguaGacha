@@ -34,6 +34,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ModelSelectionSnapshot } from "../../shared/model-selection";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -65,7 +66,7 @@ export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
-  private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入只允许在统一运行态空闲时发生
+  private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入统一要求共享运行时空闲
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
 
@@ -97,7 +98,7 @@ export class ModelService {
   }
 
   /** 读取任务入口直接控制所需的非敏感模型摘要。 */
-  public get_selection_snapshot(): JsonRecord {
+  public get_selection_snapshot(): ModelSelectionSnapshot {
     return this.build_selection_snapshot(this.load_setting_with_models(true));
   }
 
@@ -128,25 +129,34 @@ export class ModelService {
   }
 
   /**
-   * 只更新一个任务用途的模型选择，另外两个用途保持不变
+   * 更新指定执行用途的模型选择
    */
   public select_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const usage = this.read_model_usage(request["usage"]);
     const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
+    return this.build_selection_snapshot(this.update_selection(usage, model_id));
+  }
+
+  /** Agent 批量翻译偏好与其它模型选择共用持久化出口，null 表示动态跟随。 */
+  public select_agent_batch_translation_model(request: JsonRecord): ModelSelectionSnapshot {
+    const value = request["model_id"];
+    if (value !== null && (typeof value !== "string" || value.trim() === "")) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { field: "model_id" },
+      });
+    }
+    const model_id = typeof value === "string" ? value.trim() : null;
     const config = this.load_setting_with_models(false);
-    const models = read_config_model_records(config);
-    this.find_model_index_or_raise(models, model_id);
-    config["models"] = models as unknown as JsonValue;
+    if (model_id !== null)
+      this.find_model_index_or_raise(read_config_model_records(config), model_id);
     const selection = normalize_model_selection(config["model_selection"]);
-    selection[usage] = model_id;
+    selection.agent_batch_translation = model_id;
     config["model_selection"] = selection;
     return this.build_selection_snapshot(this.persist_config(config));
   }
 
   /** 按用途原子更新当前模型的全局思考档位，避免调用方提交过期模型 ID。 */
   public update_selected_model_thinking_level(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const usage = this.read_model_usage(request["usage"]);
     const thinking_level = request["thinking_level"];
     if (!is_model_thinking_level(thinking_level)) {
@@ -158,10 +168,21 @@ export class ModelService {
     const models = read_config_model_records(config);
     const selection = normalize_model_selection(config["model_selection"]);
     const index = this.find_model_index_or_raise(models, selection[usage]);
-    const model = models[index] ?? {};
-    models[index] = this.apply_patch(model, { thinking: { level: thinking_level } });
+    models[index] = this.apply_patch(models[index] ?? {}, { thinking: { level: thinking_level } });
     config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
+  }
+
+  /** 按执行用途校验并持久化模型选择。 */
+  private update_selection(usage: ModelUsage, model_id: string): JsonRecord {
+    const config = this.load_setting_with_models(false);
+    const models = read_config_model_records(config);
+    const selection = normalize_model_selection(config["model_selection"]);
+    this.find_model_index_or_raise(models, model_id);
+    selection[usage] = model_id;
+    config["models"] = models as unknown as JsonValue;
+    config["model_selection"] = selection;
+    return this.persist_config(config);
   }
 
   /**
@@ -555,7 +576,7 @@ export class ModelService {
   }
 
   /**
-   * 读取配置后统一完成模型初始化、排序和三用途选择归一
+   * 读取配置后统一完成模型初始化、排序和选择归一
    */
   private load_setting_with_models(persist_defaults: boolean): MutableJsonRecord {
     const config = this.app_setting_service.read_setting();
@@ -713,6 +734,12 @@ export class ModelService {
         selection[usage] = fallback_id;
       }
     }
+    if (
+      selection.agent_batch_translation !== null &&
+      !available_ids.has(selection.agent_batch_translation)
+    ) {
+      selection.agent_batch_translation = null;
+    }
     return selection;
   }
 
@@ -756,7 +783,7 @@ export class ModelService {
   }
 
   /** 生成任务入口需要的窄快照，只公开模型选择与直接控制所需的非敏感配置。 */
-  private build_selection_snapshot(config: JsonRecord): JsonRecord {
+  private build_selection_snapshot(config: JsonRecord): ModelSelectionSnapshot {
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
       models: read_config_model_records(config).map((model) => {

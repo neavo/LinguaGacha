@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { WrapText } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -33,7 +33,11 @@ import "@frontend/widgets/app-editor/app-editor.css";
 
 type AppEditorVariant = "document" | "field" | "viewer";
 
+/** 消费方通过编辑器自身定位输入焦点，CodeMirror 实例由控件持有。 */
+export type AppEditorHandle = { focus: () => void };
+
 type AppEditorBaseProps = {
+  ref?: Ref<AppEditorHandle>;
   value: string;
   aria_label: string;
   placeholder?: string;
@@ -277,6 +281,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const value = resolve_app_editor_value(props.value, variant);
   const editor_mount_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
+  useImperativeHandle(props.ref, () => ({ focus: () => editor_view_ref.current?.focus() }), []);
   const on_change_ref = useRef(config.on_change);
   const on_blur_ref = useRef(config.on_blur);
   const suppress_change_ref = useRef(false);

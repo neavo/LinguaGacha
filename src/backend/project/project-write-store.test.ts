@@ -219,33 +219,28 @@ describe("ProjectWriteStore", () => {
     const { database, project_path, store, published_changes } = create_store("project-content");
     seed_items(database, project_path);
     add_test_asset(database, project_path, "demo.txt", "demo", 0);
-    database.upsert_analysis_item_checkpoints(project_path, [
-      { item_id: 1, status: "PROCESSED", updated_at: "now", error_count: 0 },
-    ]);
 
     await store.replace_project_items_and_files({
       projectPath: project_path,
-      expectedSectionRevisions: { files: 0, items: 0, analysis: 0 },
-      revisionSections: ["files", "items", "analysis"],
+      expectedSectionRevisions: { files: 0, items: 0 },
+      revisionSections: ["files", "items"],
       source: "project_delete_files",
-      updatedSections: ["files", "items", "analysis"],
+      updatedSections: ["files", "items"],
       assetWrites: [{ kind: "delete", path: "demo.txt" }],
       items: [],
-      meta: { translation_extras: {}, analysis_candidate_count: 0 },
-      resetAnalysis: true,
+      meta: { translation_extras: {} },
     });
 
     expect(database.get_asset_count(project_path)).toBe(0);
     expect(read_items(database, project_path)).toEqual([]);
-    expect(database.get_analysis_item_checkpoints(project_path)).toEqual([]);
+
     expect(read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.files": 1,
       "project_runtime_revision.items": 1,
-      "project_runtime_revision.analysis": 1,
     });
     expect(published_changes.at(-1)).toMatchObject({
       source: "project_delete_files",
-      updatedSections: ["files", "items", "analysis"],
+      updatedSections: ["files", "items"],
       items: { payloadMode: "section-invalidated" },
       files: { payloadMode: "section-invalidated" },
     });
@@ -428,63 +423,6 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  it("提交分析 artifact 时合并候选并发布轻量 analysis delta", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-02T03:04:05.000Z"));
-    cleanup_callbacks.push(() => vi.useRealTimers());
-    const { database, project_path, store, published_changes } = create_store("analysis");
-
-    const ack = await store.commit_analysis_artifacts({
-      projectPath: project_path,
-      successCheckpoints: [
-        {
-          item_id: 1,
-          status: "PROCESSED",
-          updated_at: "2026-01-01T00:00:00.000Z",
-          error_count: 0,
-        },
-      ],
-      errorCheckpoints: [],
-      glossaryEntries: [{ src: "魔法", dst: "magic", info: "术语", case_sensitive: true }],
-      progressSnapshot: {
-        start_time: 0,
-        time: 0,
-        total_line: 1,
-        line: 1,
-        processed_line: 1,
-        error_line: 0,
-        total_tokens: 0,
-        total_input_tokens: 0,
-        total_reasoning_tokens: 0,
-        total_output_tokens: 0,
-      },
-    });
-
-    expect(ack).toMatchObject({
-      inserted_count: 1,
-      analysis_candidate_count: 1,
-      section_revisions: { analysis: 1 },
-    });
-    expect(database.get_analysis_item_checkpoints(project_path)).toEqual([
-      {
-        item_id: 1,
-        status: "PROCESSED",
-        updated_at: "2026-01-01T00:00:00.000Z",
-        error_count: 0,
-      },
-    ]);
-    expect(published_changes.at(-1)).toMatchObject({
-      source: "analysis_batch_update",
-      updatedSections: ["analysis"],
-      sections: {
-        analysis: {
-          payloadMode: "canonical-delta",
-          data: expect.objectContaining({ candidate_count: 1 }),
-        },
-      },
-    });
-  });
-
   it("一次性应用领域任务输入并发布 quality / prompts 提交事件", async () => {
     const project_event_handler = vi.fn();
     const { database, project_path, store, published_changes } = create_store("task-input", {
@@ -505,13 +443,7 @@ describe("ProjectWriteStore", () => {
             mode: null,
           },
         ],
-        prompts: [
-          {
-            kind: "translation",
-            text: "翻译提示词",
-            enabled: true,
-          },
-        ],
+        translation_prompt: { text: "翻译提示词", enabled: true },
       },
     });
 
@@ -602,16 +534,10 @@ describe("ProjectWriteStore", () => {
         },
         prompts: [
           {
-            line: 4,
             kind: "translation",
+            line: 4,
             fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
             text: "翻译正文",
-          },
-          {
-            line: 5,
-            kind: "analysis",
-            fp: String(project_agent_workspace_prompt("analysis", "")["fp"]),
-            text: "分析正文",
           },
         ],
       }),
@@ -630,14 +556,12 @@ describe("ProjectWriteStore", () => {
     expect(database.get_rules(project_path, "glossary")).toHaveLength(1);
     expect(database.get_rules(project_path, "pre_translation_replacement")).toHaveLength(1);
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
-    expect(database.get_rule_text(project_path, "analysis_prompt")).toBe("分析正文");
     expect(read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.items": 1,
       "proofreading_revision.proofreading": 1,
       "quality_rule_revision.glossary": 1,
       "quality_rule_revision.pre_replacement": 1,
       "quality_prompt_revision.translation": 1,
-      "quality_prompt_revision.analysis": 1,
     });
     expect(calls).toEqual([
       "commit",
@@ -725,7 +649,7 @@ describe("ProjectWriteStore", () => {
     seed_items(database, project_path);
     const original_set_rule_text = database.set_rule_text.bind(database);
     vi.spyOn(database, "set_rule_text").mockImplementation((target_path, rule_type, text) => {
-      if (rule_type === "analysis_prompt") throw new Error("prompt write failed");
+      if (rule_type === "translation_prompt") throw new Error("prompt write failed");
       return original_set_rule_text(target_path, rule_type, text);
     });
 
@@ -760,16 +684,10 @@ describe("ProjectWriteStore", () => {
           },
           prompts: [
             {
-              line: 3,
               kind: "translation",
+              line: 3,
               fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
               text: "翻译正文",
-            },
-            {
-              line: 4,
-              kind: "analysis",
-              fp: String(project_agent_workspace_prompt("analysis", "")["fp"]),
-              text: "分析正文",
             },
           ],
         }),
@@ -803,8 +721,8 @@ describe("ProjectWriteStore", () => {
         quality: {},
         prompts: [
           {
-            line: 2,
             kind: "translation",
+            line: 2,
             fp: String(project_agent_workspace_prompt("translation", "")["fp"]),
             text: "翻译正文",
           },

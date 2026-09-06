@@ -1,3 +1,4 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import { GraduationCap, ListTodo, Plus, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -32,6 +33,24 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
     model_page_state.snapshot.models.find(
       (model) => model.id === model_page_state.selector_state.model_id,
     ) ?? null;
+
+  if (model_page_state.load_status !== "ready") {
+    return (
+      <div className="model-page page-shell page-shell--full">
+        {model_page_state.load_status === "error" ? (
+          <AppContentState
+            status="error"
+            message={t("model_page.feedback.refresh_failed")}
+            on_retry={() => {
+              void model_page_state.refresh_snapshot();
+            }}
+          />
+        ) : (
+          <AppContentState status="loading" message={t("app.action.loading")} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <>

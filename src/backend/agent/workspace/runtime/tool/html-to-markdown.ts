@@ -31,7 +31,7 @@ export function format_agent_workspace_html_tools_typescript_api(): string[] {
     "type HtmlToMarkdownOptions = Readonly<{",
     "  /** 用于解析相对链接和图片地址，网页响应通常传入 response.url。 */",
     "  baseUrl?: string;",
-    "  /** 提取页面主内容；不能与 include 同时使用。 */",
+    "  /** 设为 true 时提取页面主内容，此时应省略 include。 */",
     "  mainContent?: boolean;",
     "  /** 只转换匹配任一 CSS selector 的内容。 */",
     "  include?: readonly string[];",

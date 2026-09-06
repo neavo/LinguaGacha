@@ -55,16 +55,12 @@ export const zh_cn_app = {
     select_folder: "选择文件夹",
   },
   feedback: {
+    initial_load_failed: "应用数据加载失败，请重试。",
     export_success: "数据已导出 …",
     import_success: "数据已导入 …",
-    save_success: "已保存 …",
-    reset_success: "已重置 …",
     no_valid_data: "没有有效数据 …",
     update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新项目设置 …",
-    feature_enabled: "{TITLE}已启用 …",
-    feature_disabled: "{TITLE}已禁用 …",
-    feature_state_changed: "{TITLE}已切换为{STATE} …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",
@@ -273,9 +269,6 @@ export const zh_cn_app = {
       missing_backend_api_base_url: {
         message: "Backend API 地址未配置 …",
       },
-      backend_metadata_unavailable: {
-        message: "Backend 元信息不可用 …",
-      },
       http_error: {
         message: "请求失败：{PATH} …",
       },
@@ -327,9 +320,6 @@ export const zh_cn_app = {
     },
   },
   log: {
-    analysis_task_no_terms: "未提取到术语",
-    analysis_task_result: "分析结果：",
-    analysis_task_source_texts: "分析输入：",
     api_gateway_started: "API Gateway 已启动 - {BASE_URL}",
     api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",

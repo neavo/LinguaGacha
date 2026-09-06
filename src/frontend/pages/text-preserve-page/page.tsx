@@ -1,3 +1,4 @@
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-preserve-page/text-preserve-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
@@ -20,6 +21,7 @@ const TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<TextPreserveFilterScope, LocaleKey>;
 
 const TEXT_PRESERVE_FILTER_SCOPES: TextPreserveFilterScope[] = ["all", "src", "info"];
+/** 组装文本保护规则的查询状态、列表与编辑操作。 */
 export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -49,6 +51,22 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         label: t(TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
       };
     });
+
+  if (page_state.quality_status !== "ready") {
+    return (
+      <div className="text-preserve-page page-shell page-shell--full">
+        {page_state.quality_status === "error" ? (
+          <AppContentState
+            status="error"
+            message={t("text_preserve_page.feedback.load_failed")}
+            on_retry={page_state.reload_quality_rule_snapshot}
+          />
+        ) : (
+          <AppContentState status="loading" message={t("app.action.loading")} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="text-preserve-page page-shell page-shell--full">
@@ -137,7 +155,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         entry={page_state.dialog_state.draft_entry}
         saving={page_state.dialog_state.saving}
         readonly={page_state.readonly}
-        validation_message={page_state.dialog_state.validation_message}
+        invalid={page_state.dialog_state.invalid}
         on_change={page_state.update_dialog_draft}
         on_save={page_state.save_dialog_entry}
         on_close={page_state.request_close_dialog}

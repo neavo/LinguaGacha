@@ -55,12 +55,12 @@ export function workspace_item(item_id: number, overrides: JsonRecord = {}): Jso
   };
 }
 
-/** 构造已落盘 glossary 条目，验证数据工具对 id 到 entry_id 的边界投影。 */
+/** 构造已落盘 glossary 条目，验证快照条目可以直接作为分析输入。 */
 export function glossary_entry(id: string, src: string): JsonRecord {
   return { id, src, dst: "译文", info: "", case_sensitive: false };
 }
 
 /** 构造由 scratch 投影的候选条目，不引入与结构聚类无关的字段。 */
-export function relation_candidate(entry_id: string, src: string): JsonRecord {
-  return { entry_id, src, case_sensitive: false };
+export function relation_candidate(id: string, src: string): JsonRecord {
+  return { id, src, case_sensitive: false };
 }

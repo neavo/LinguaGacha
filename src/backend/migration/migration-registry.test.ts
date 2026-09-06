@@ -15,7 +15,6 @@ describe("migration-registry", () => {
       "project-item-stable-metadata",
       "trans-item-metadata",
       "project-item-public-contract",
-      "analysis-checkpoint-status",
       "text-preserve-mode",
       "quality-default-meta",
       "translation-prompt-legacy-slot",
@@ -28,7 +27,6 @@ describe("migration-registry", () => {
       "project-item-stable-metadata",
       "trans-item-metadata",
       "project-item-public-contract",
-      "analysis-checkpoint-status",
     ]);
   });
 });

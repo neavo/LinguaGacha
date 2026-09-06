@@ -1,3 +1,8 @@
+vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({
+  useBatchTranslationSession: () => ({
+    batch_translation_task: { translation_task_metrics: { active: false } },
+  }),
+}));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +36,7 @@ type AgentPageState = AgentTimelineSlice &
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
 const runtime_state = vi.hoisted(() => ({
-  current: { revision: 0, owner: null as "task" | "agent" | null },
+  current: { revision: 0, owner: null as "batch_translation" | "agent" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
 /** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
@@ -53,29 +58,32 @@ class TestResizeObserver implements ResizeObserver {
   private readonly callback: ResizeObserverCallback;
   private readonly targets = new Set<Element>();
 
+  /** 保留真实观察回调，并登记到测试的统一通知入口。 */
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     resize_observers.add(this);
   }
 
+  /** 登记需要接收尺寸通知的元素。 */
   observe(target: Element): void {
     this.targets.add(target);
   }
+  /** 移除指定元素的尺寸订阅。 */
   unobserve(target: Element): void {
     this.targets.delete(target);
   }
+  /** 解除该观察器在测试中的全部通知来源。 */
   disconnect(): void {
     resize_observers.delete(this);
   }
-  takeRecords(): ResizeObserverEntry[] {
-    return [];
-  }
+  /** 按被观察元素定向推进尺寸变化。 */
   notify(target?: Element): void {
     if (target !== undefined && !this.targets.has(target)) return;
     this.callback([], this);
   }
 }
 
+/** 通知实际订阅目标的观察器。 */
 function notify_resize_observers(target?: Element): void {
   for (const observer of resize_observers) observer.notify(target);
 }
@@ -142,7 +150,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     ...actual,
     useModelSelection: () => ({
       snapshot: {
-        model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+        model_selection: { translation: "preset", agent: "agent", agent_batch_translation: null },
         models: [
           {
             id: "agent",
@@ -157,10 +165,14 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: model_selection_commands.update_thinking_level,
     }),
   };
 });
+vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
+  useTranslationExport: () => ({ can_request_export: true, request_export: vi.fn() }),
+}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
@@ -309,7 +321,7 @@ describe("AgentPage", () => {
     const compactContext = vi.fn(async () => undefined);
     const send = vi.fn(async () => undefined);
     const view = await render_page({
-      context: { tokens: 64_000, compactable: true },
+      context: { tokens: 64_000, compactable: true, limits: null },
       compactContext,
       send,
     });
@@ -334,7 +346,9 @@ describe("AgentPage", () => {
   });
 
   it("只为空闲且无需压缩的指令显示简短说明", async () => {
-    const view = await render_page({ context: { tokens: 1_000, compactable: false } });
+    const view = await render_page({
+      context: { tokens: 1_000, compactable: false, limits: null },
+    });
     const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
     if (editor === null) throw new Error("缺少 Composer");
     await act(async () =>
@@ -349,8 +363,8 @@ describe("AgentPage", () => {
     expect(idle_instruction?.disabled).toBe(true);
     expect(idle_instruction?.querySelector("small")).not.toBeNull();
 
-    runtime_state.current = { revision: 1, owner: "task" };
-    await render_page({ context: { tokens: 1_000, compactable: false } });
+    runtime_state.current = { revision: 1, owner: "batch_translation" };
+    await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
     const busy_instruction = view.querySelector<HTMLButtonElement>(
       '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
     );
@@ -369,28 +383,29 @@ describe("AgentPage", () => {
 
     expect(alert).not.toBeNull();
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
-      true,
+      false,
     );
     await act(async () => retry_button.click());
     expect(reconnect).toHaveBeenCalledOnce();
   });
 
-  it("断线状态只在连接提示中公开", async () => {
+  it("断线状态在输入工具栏展示并暂停发送", async () => {
     const view = await render_page({ transport: "disconnected" });
 
-    expect(view.querySelector('.agent-page__connection-status[role="status"]')).not.toBeNull();
-    expect(view.querySelector('.sr-only[role="status"]')).toBeNull();
+    expect(view.querySelector('.agent-composer__connection-status[role="status"]')).not.toBeNull();
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
     runtime_state.current = { revision: 1, owner: "agent" };
     const view = await render_page({ state: "idle" });
-    const model = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    const editor = EditorView.findFromDOM(view.querySelector(".cm-content")!)!;
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "继续任务" } }));
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
 
-    expect(model?.disabled).toBe(true);
+    expect(submit?.disabled).toBe(true);
     runtime_state.current = { revision: 2, owner: null };
     await render_page({ state: "idle" });
-    expect(model?.disabled).toBe(false);
+    expect(submit?.disabled).toBe(false);
   });
 
   it("页面挂载时默认激活跟随最新并归底", async () => {
@@ -666,7 +681,7 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("待决状态同步冻结底部控制区", async () => {
+  it("选择期间收起操作区并在恢复后保留草稿、编辑实例和跟随状态", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -680,13 +695,46 @@ describe("AgentPage", () => {
         prompts: 0,
       },
     };
-    const view = await render_page({ pendingDecision: pending_write_decision });
-
-    const bottom_controls = view.querySelector(".agent-page__bottom-controls");
-    expect(bottom_controls?.hasAttribute("inert")).toBe(true);
-
-    await render_page({ pendingDecision: null });
-    expect(view.querySelector(".agent-page__bottom-controls")?.hasAttribute("inert")).toBe(false);
+    const input: AgentInputSession = {
+      ...build_state().input,
+      read_draft: () => ({
+        text: "",
+        attachments: [
+          { kind: "response_annotation", selectedText: "需要复核的段落", comment: "检查人称" },
+        ],
+      }),
+    };
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ input, send });
+    const host = view.querySelector<HTMLElement>(".cm-content")!;
+    const editor = EditorView.findFromDOM(host)!;
+    await act(async () => {
+      editor.dispatch({ changes: { from: 0, insert: "保留这份草稿" }, selection: { anchor: 3 } });
+      host.focus();
+    });
+    await render_page({ input, send, pendingDecision: pending_write_decision });
+    const body = view.querySelector(".agent-page__composer-slot")!;
+    expect(body.hasAttribute("inert")).toBe(true);
+    const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
+    expect(follow_button.closest("[inert]")).toBe(view.querySelector(".agent-page__status-zone"));
+    expect(follow_button.getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(view.querySelector(".agent-decision__prompt"));
+    await act(async () => {
+      view
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(send).not.toHaveBeenCalled();
+    await render_page({ input, send, pendingDecision: null });
+    expect(body.hasAttribute("inert")).toBe(false);
+    expect(EditorView.findFromDOM(host)).toBe(editor);
+    expect(editor.state.doc.toString()).toBe("保留这份草稿");
+    expect(editor.state.selection.main.anchor).toBe(3);
+    expect(view.textContent).toContain("需要复核的段落");
+    expect(document.activeElement).toBe(host);
+    expect(view.querySelector(".agent-decision")).toBeNull();
+    expect(follow_button.closest("[inert]")).toBeNull();
+    expect(follow_button.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("压缩失败后保留普通 round 操作与新消息发送", async () => {
@@ -917,13 +965,11 @@ describe("AgentPage", () => {
         ?.click(),
     );
     await vi.waitFor(() =>
-      expect(view.querySelector(".agent-inline-editor__error")).not.toBeNull(),
+      expect(push_toast).toHaveBeenCalledWith("error", "agent_page.error.edit"),
     );
 
     expect(get_editor(view).state.doc.toString()).toBe("新输入");
-    expect(view.querySelector(".agent-inline-editor__error")?.textContent).toContain(
-      "agent_page.error.edit",
-    );
+    expect(push_toast).toHaveBeenCalledTimes(1);
   });
 
   it("队列项原位修改并调用队列更新入口", async () => {
@@ -1013,10 +1059,11 @@ describe("AgentPage", () => {
   });
 });
 
+/** 每次渲染创建独立会话快照，场景仅覆盖所需字段。 */
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
-    approvalMode: overrides.approvalMode ?? "manual",
+    approvalMode: "manual",
     pendingDecision: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
@@ -1024,8 +1071,8 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     ],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    todos: overrides.todos ?? [],
-    context: overrides.context ?? { tokens: null, compactable: false },
+    todos: [],
+    context: { tokens: null, compactable: false, limits: null },
     transport: "ready",
     command: null,
     input: {
@@ -1053,6 +1100,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   };
 }
 
+/** 构造带回合归属与完成时间的用户消息。 */
 function user_entry(
   id: string,
   text: string,
@@ -1072,6 +1120,7 @@ function user_entry(
   };
 }
 
+/** 将普通助手正文装配为公开 parts 消息。 */
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
 }
@@ -1089,6 +1138,7 @@ function workspace_apply_entry(id: string) {
   };
 }
 
+/** 按公开结构构造可含多种内容的助手消息。 */
 function assistant_parts_entry(
   id: string,
   parts: AgentAssistantMessageParts,
@@ -1104,16 +1154,19 @@ function assistant_parts_entry(
   };
 }
 
+/** 按可访问名称定位操作入口。 */
 function get_button_by_label(container: HTMLElement, label: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   if (button === null) throw new Error(`缺少按钮：${label}`);
   return button;
 }
 
+/** 定位页面共享的跟随切换入口。 */
 function get_follow_latest_button(container: HTMLElement): HTMLButtonElement {
   return get_button_by_label(container, "agent_page.action.follow_latest");
 }
 
+/** 获取实际 CodeMirror 实例以驱动编辑行为。 */
 function get_editor(container: HTMLElement): EditorView {
   const content = container.querySelector<HTMLElement>(".cm-content");
   const editor = content === null ? null : EditorView.findFromDOM(content);
@@ -1136,6 +1189,7 @@ async function select_agent_thinking_level(container: HTMLElement, label: string
   await act(async () => option.click());
 }
 
+/** 定位当前确认框的主操作。 */
 function get_portal_action_button(): HTMLButtonElement {
   const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
   const button = dialog?.querySelector<HTMLButtonElement>(
@@ -1145,6 +1199,7 @@ function get_portal_action_button(): HTMLButtonElement {
   return button;
 }
 
+/** 定位当前确认框的取消操作。 */
 function get_portal_cancel_button(): HTMLButtonElement {
   const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
   const button = dialog?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]');

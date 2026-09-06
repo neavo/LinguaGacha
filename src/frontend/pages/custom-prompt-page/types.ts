@@ -1,4 +1,3 @@
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
 export type CustomPromptTemplate = {
@@ -27,9 +26,8 @@ export type CustomPromptConfirmState =
     };
 
 export type UseCustomPromptPageStateResult = {
-  title_key: LocaleKey;
-  header_title_key: LocaleKey;
-  header_description_key: LocaleKey;
+  load_status: "loading" | "ready" | "error";
+  reload_prompt: () => Promise<void>;
   template: CustomPromptTemplate;
   prompt_text: string;
   enabled: boolean;

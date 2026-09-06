@@ -14,6 +14,7 @@ import type {
 export const DESKTOP_BRIDGE_GLOBAL_NAME = "desktopApp"; // preload 只通过这个全局名暴露桌面能力，renderer 不直接接触 Electron 或 Node
 
 export interface DesktopBridgeApi {
+  readonly appVersion: string; // 启动期固定版本，标题栏与更新检查共用
   shell: DesktopShellInfo; // 宿主壳层快照只在 preload 初始化时生成，renderer 按快照渲染标题栏安全区
   backendApi: DesktopBackendApiInfo; // Backend API 地址由 main 创建窗口时注入，renderer 不读取环境变量或猜测端口
   getPathForFile: (file: File) => string; // 文件路径解析必须留在 preload，避免 renderer 获得泛化文件系统能力

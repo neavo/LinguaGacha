@@ -72,6 +72,7 @@ describe("TranslationExportDialog", () => {
     expect(confirm_export).toHaveBeenCalledOnce();
   });
 
+  /** 通过公开流程状态驱动确认与警告分流。 */
   function render_dialog(
     state: TranslationExportState,
     callbacks: {
@@ -85,6 +86,7 @@ describe("TranslationExportDialog", () => {
     act(() => {
       root?.render(
         <TranslationExportDialog
+          can_jump_to_agent
           state={state}
           retry_check={vi.fn()}
           confirm_export={callbacks.confirm_export ?? vi.fn(async () => {})}

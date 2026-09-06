@@ -11,6 +11,10 @@ import type {
 } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
+const push_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast }),
+}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
@@ -284,6 +288,20 @@ describe("AgentTimeline", () => {
       "agent_page.action.edit",
     ]);
     expect(view.querySelector(".agent-round-footer button")).toBeNull();
+  });
+
+  it("复制失败通过通知说明结果，按钮继续提供复制入口", async () => {
+    push_toast.mockClear();
+    write_clipboard.mockRejectedValueOnce(new Error("clipboard unavailable"));
+    const view = await render_timeline([
+      user_entry("copy-failed", "复制正文", "success", 0, 2_000),
+    ]);
+    const button = [
+      ...view.querySelectorAll<HTMLButtonElement>(".agent-message-actions button"),
+    ].find((item) => item.textContent === "agent_page.action.copy")!;
+    await act(async () => button.click());
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", "agent_page.action.copy_failed");
+    expect(button.textContent).toBe("agent_page.action.copy");
   });
 
   it("输入与输出正文都可复制并显示完成反馈", async () => {

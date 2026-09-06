@@ -22,12 +22,7 @@ export const de_de_preset_editor = {
     name_placeholder: "Namen der Voreinstellung eingeben …",
   },
   feedback: {
-    default_cleared: "Standard-Voreinstellung aufgehoben …",
-    default_set: "Standard-Voreinstellung gesetzt …",
-    deleted: "Voreinstellung gelöscht …",
     exists: "Datei existiert bereits …",
     name_required: "Name der Voreinstellung ist erforderlich.",
-    renamed: "Voreinstellung umbenannt …",
-    saved: "Voreinstellung gespeichert …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_preset_editor>;

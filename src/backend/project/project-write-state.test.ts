@@ -156,10 +156,5 @@ describe("compute_project_prefilter_write", () => {
     });
 
     expect(result.items["2"]?.status).toBe("NONE");
-    expect(result.analysis.status_summary).toMatchObject({
-      total_line: 2,
-      processed_line: 0,
-      error_line: 0,
-    });
   });
 });

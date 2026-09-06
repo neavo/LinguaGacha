@@ -76,41 +76,16 @@ describe("desktop-api", () => {
   });
 
   it("open_event_stream 通过统一 SSE 路径连接 Backend 事件流", async () => {
-    const fetch_mock = vi.fn(async () => {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          ok: true,
-          data: {
-            status: "ok",
-            service: "linguagacha-backend",
-            version: "9.9.9",
-          },
-        }),
-      } as Response;
-    });
-
     install_desktop_api_host("http://127.0.0.1:38191/");
-    vi.stubGlobal("fetch", fetch_mock);
     vi.stubGlobal("EventSource", EventSourceStub);
 
-    const { get_backend_metadata, open_event_stream } = await import("./desktop-api");
+    const { open_event_stream } = await import("./desktop-api");
     const event_source = open_event_stream();
-    const backend_metadata = await get_backend_metadata();
 
-    expect(fetch_mock).toHaveBeenCalledTimes(1);
-    expect(fetch_mock).toHaveBeenCalledWith(
-      "http://127.0.0.1:38191/api/health",
-      expect.objectContaining({
-        method: "GET",
-      }),
-    );
     expect(event_source).toBeInstanceOf(EventSourceStub);
     expect((event_source as unknown as EventSourceStub).url).toBe(
       "http://127.0.0.1:38191/api/events/stream",
     );
-    expect(backend_metadata).toEqual({ version: "9.9.9" });
   });
 
   it("subscribe_log_stream 解析独立日志事件并仅在取消订阅时关闭", async () => {
@@ -163,22 +138,7 @@ describe("desktop-api", () => {
   });
 
   it("read_log_detail 读取完整日志详情", async () => {
-    const fetch_mock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/api/health")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            ok: true,
-            data: {
-              status: "ok",
-              service: "linguagacha-backend",
-              version: "9.9.9",
-            },
-          }),
-        } as Response;
-      }
+    const fetch_mock = vi.fn(async () => {
       return {
         ok: true,
         status: 200,
@@ -240,30 +200,23 @@ describe("desktop-api", () => {
   it("read_log_detail 拒绝旧 message 详情载荷", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const is_health = String(input).endsWith("/api/health");
+      vi.fn(async () => {
         return {
           ok: true,
           status: 200,
-          json: async () =>
-            is_health
-              ? {
-                  ok: true,
-                  data: { status: "ok", service: "linguagacha-backend", version: "9.9.9" },
-                }
-              : {
-                  ok: true,
-                  data: {
-                    detail: {
-                      id: "log-legacy",
-                      sequence: 1,
-                      created_at: "2026-04-26T00:00:00.000+00:00",
-                      level: "info",
-                      source: "test",
-                      message: "旧正文",
-                    },
-                  },
-                },
+          json: async () => ({
+            ok: true,
+            data: {
+              detail: {
+                id: "log-legacy",
+                sequence: 1,
+                created_at: "2026-04-26T00:00:00.000+00:00",
+                level: "info",
+                source: "test",
+                message: "旧正文",
+              },
+            },
+          }),
         } as Response;
       }),
     );
@@ -275,22 +228,7 @@ describe("desktop-api", () => {
   });
 
   it("report_renderer_error 通过诊断 API 写入前端异常快照", async () => {
-    const fetch_mock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/api/health")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            ok: true,
-            data: {
-              status: "ok",
-              service: "linguagacha-backend",
-              version: "9.9.9",
-            },
-          }),
-        } as Response;
-      }
+    const fetch_mock = vi.fn(async () => {
       return {
         ok: true,
         status: 200,
@@ -511,21 +449,7 @@ describe("desktop-api", () => {
   it("api_fetch 保留 Backend 错误 code 和 details", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) => {
-        if (url.endsWith("/api/health")) {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              ok: true,
-              data: {
-                status: "ok",
-                service: "linguagacha-backend",
-                version: "9.9.9",
-              },
-            }),
-          } as Response;
-        }
+      vi.fn(async () => {
         return {
           ok: false,
           status: 409,

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, Bot, Drama, ListChecks, ScanText, Sparkles, WifiOff } from "lucide-react";
+import {
+  ArrowDownToLine,
+  BookOpenText,
+  Bot,
+  Drama,
+  ListChecks,
+  ScanText,
+  Sparkles,
+} from "lucide-react";
 
 import type { ModelThinkingLevel } from "@domain/model";
 import {
@@ -34,31 +42,37 @@ import {
   useAgentSkills,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-session-context";
-import { AgentDecisionLayer } from "./agent-decision";
+import { AgentDecision } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
 import { create_agent_mention_tokens, type AgentMentionInstruction } from "./agent-mention";
-import { AgentTodo } from "./agent-todo";
+import { AgentTaskStatus } from "./agent-task-status";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
+import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
-/** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
-const FEATURED_AGENT_SKILLS = [
+/** 空会话任务入口按配置顺序展示，关联技能加载后可用；多个任务可共用技能。 */
+const AGENT_TASK_SUGGESTIONS = [
   {
-    name: "roleplay",
+    skillName: "roleplay",
     suggestionKey: "agent_page.empty.suggestions.roleplay",
     Icon: Drama,
   },
   {
-    name: "quality-rule-workflow",
-    suggestionKey: "agent_page.empty.suggestions.quality_rule_workflow",
+    skillName: "quality-rule-workflow",
+    suggestionKey: "agent_page.empty.suggestions.extract_terminology",
     Icon: ListChecks,
   },
   {
-    name: "translation-workflow",
-    suggestionKey: "agent_page.empty.suggestions.translation_workflow",
+    skillName: "translation-workflow",
+    suggestionKey: "agent_page.empty.suggestions.translate_full_text",
+    Icon: BookOpenText,
+  },
+  {
+    skillName: "translation-workflow",
+    suggestionKey: "agent_page.empty.suggestions.review_translation",
     Icon: ScanText,
   },
 ] as const;
@@ -67,7 +81,7 @@ type PendingThinkingOffAction =
   | { kind: "send"; message: AgentMessageInput }
   | { kind: "disable_thinking" };
 
-/** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
+/** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -138,13 +152,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
-    agent_restoring || controls.transport === "restore_failed"
-      ? "restoring"
-      : agent_settling
-        ? "settling"
-        : runtime_snapshot.owner === "task"
-          ? "runtime_busy"
-          : null;
+    controls.transport === "disconnected"
+      ? "disconnected"
+      : agent_restoring || controls.transport === "restore_failed"
+        ? "restoring"
+        : agent_settling
+          ? "settling"
+          : runtime_snapshot.owner === "batch_translation"
+            ? "runtime_busy"
+            : null;
 
   // 会话被 reset、换工程或其它入口替换后，原位编辑目标失去事实即自动退出。
   useEffect(() => {
@@ -334,16 +350,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [active_inline_edit, agent_actions, input],
   );
 
+  /** 保存成功和取消共用同一关闭入口；失败由原位编辑器保留草稿。 */
   const cancel_inline_edit = useCallback((): void => {
     set_active_inline_edit(null);
   }, []);
 
-  /** 后端受理成功后关闭原位编辑器；失败路径由编辑器自行保留草稿。 */
-  const complete_inline_edit = useCallback(
-    (_message: AgentMessageInput): void => cancel_inline_edit(),
-    [cancel_inline_edit],
-  );
-
+  /** 图片处理失败通过页面反馈，保留正在编辑的内容。 */
   const handle_inline_image_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.image"));
   }, [push_toast, t]);
@@ -356,10 +368,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           target={target}
           skills={skills}
           command={controls.command}
-          model_selection={model_selection}
           unavailable_reason={unavailable_reason}
           on_save={save_inline_edit}
-          on_saved={complete_inline_edit}
+          on_saved={cancel_inline_edit}
           on_cancel={cancel_inline_edit}
           on_image_error={handle_inline_image_error}
         />
@@ -368,15 +379,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [
       controls.command,
       cancel_inline_edit,
-      complete_inline_edit,
       handle_inline_image_error,
-      model_selection,
       save_inline_edit,
       skills,
       unavailable_reason,
     ],
   );
 
+  /** 仅在当前历史目标的位置挂载原位编辑器。 */
   const render_entry_editor = useCallback(
     (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => {
       if (
@@ -400,6 +410,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   };
 
+  /** 仅在当前队列目标的位置挂载原位编辑器。 */
   const render_queue_editor = useCallback(
     (item: AgentQueuedInput) => {
       if (active_inline_edit?.kind !== "queue" || active_inline_edit.itemId !== item.id) {
@@ -431,6 +442,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   }, [agent_actions, show_command_error]);
 
+  /** 时间线批注写入普通 Composer 草稿，由用户继续编辑和发送。 */
   const add_response_annotation = useCallback(
     (annotation: Parameters<AgentComposerHandle["add_response_annotation"]>[0]): void => {
       composer_ref.current?.add_response_annotation(annotation);
@@ -439,10 +451,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
 
   // 状态区只在存在内容时占位；容量判断与共享队列上限保持同源。
-  const has_todo = todos.length > 0;
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
+  const input_transition = useAgentInputTransition(pending_decision, composer_ref);
+
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
   const follow_latest_aria_shortcut =
@@ -485,12 +498,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         onScroll={(event) => handle_conversation_scroll(event.currentTarget)}
       >
         <div ref={conversation_content_ref} className="agent-page__conversation-content">
-          {controls.transport === "disconnected" && (
-            <div className="agent-page__connection-status" role="status">
-              <WifiOff aria-hidden="true" />
-              <span>{t("agent_page.error.connection")}</span>
-            </div>
-          )}
           {controls.transport === "restore_failed" ? (
             <div className="agent-page__empty" role="alert">
               <div className="agent-page__empty-intro">
@@ -534,16 +541,16 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     {t("agent_page.empty.suggestions.capabilities")}
                   </span>
                 </button>
-                {FEATURED_AGENT_SKILLS.filter((featured) =>
-                  skills.some((skill) => skill.name === featured.name),
-                ).map(({ name, suggestionKey, Icon }) => (
+                {AGENT_TASK_SUGGESTIONS.filter((suggestion) =>
+                  skills.some((skill) => skill.name === suggestion.skillName),
+                ).map(({ skillName, suggestionKey, Icon }) => (
                   <button
-                    key={name}
+                    key={suggestionKey}
                     type="button"
                     className="agent-page__suggestion"
                     onClick={() =>
                       composer_ref.current?.write_draft(
-                        `${t(suggestionKey)} ${format_agent_skill_reference(name)}`,
+                        `${t(suggestionKey)} ${format_agent_skill_reference(skillName)}`,
                       )
                     }
                   >
@@ -551,7 +558,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     <span className="agent-page__suggestion-label">
                       {t(suggestionKey)}{" "}
                       <span className="agent-mention-token">
-                        <span>{format_agent_skill_reference(name)}</span>
+                        <span>{format_agent_skill_reference(skillName)}</span>
                       </span>
                     </span>
                   </button>
@@ -587,10 +594,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div className="agent-page__bottom-region">
-        <div className="agent-page__bottom-controls" inert={pending_decision !== null || undefined}>
-          <div className="agent-page__status-zone">
-            {has_todo ? <AgentTodo todos={todos} running={is_running} /> : null}
+      <div ref={input_transition.region_ref} className="agent-page__bottom-region">
+        <div ref={input_transition.area_ref} className="agent-page__input-area">
+          <div
+            ref={input_transition.status_ref}
+            className="agent-page__status-zone"
+            inert={input_transition.locked || undefined}
+          >
+            <AgentTaskStatus todos={todos} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
                 <AgentInputQueue
@@ -631,38 +642,52 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           </div>
 
           <div className="agent-page__operation-zone">
-            <AgentComposer
-              ref={composer_ref}
-              locked={active_inline_edit !== null}
-              skills={skills}
-              instructions={instructions}
-              running={is_running}
-              stop_disabled={workspace_apply_running}
-              compacting={compacting}
-              unavailable_reason={unavailable_reason}
-              command={controls.command}
-              can_continue_queue={can_continue_queue}
-              queue_full={queue_full}
-              can_reset={!agent_restoring && entries.length > 0}
-              context_tokens={controls.context.tokens}
-              approval_mode={controls.approvalMode}
-              approval_mode_disabled={workspace_apply_running}
-              model_selection={model_selection}
-              input_session={input}
-              on_send={submit_message}
-              on_thinking_level_change={change_agent_thinking_level}
-              on_approval_mode_change={change_approval_mode}
-              on_image_error={() => push_toast("error", t("agent_page.error.image"))}
-              on_stop={stop}
-              on_reset={() => set_reset_dialog_open(true)}
-            />
+            <div
+              ref={input_transition.decision_ref}
+              className="agent-page__decision-slot"
+              inert={pending_decision === null || undefined}
+            >
+              {input_transition.visible_decision === null ? null : (
+                <AgentDecision
+                  decision={input_transition.visible_decision}
+                  title_ref={input_transition.title_ref}
+                  on_resolve_question={agent_actions.resolveQuestion}
+                  on_resolve_write_approval={agent_actions.resolveWriteApproval}
+                />
+              )}
+            </div>
+            <div
+              ref={input_transition.composer_slot_ref}
+              className="agent-page__composer-slot"
+              inert={input_transition.locked || undefined}
+            >
+              <AgentComposer
+                ref={composer_ref}
+                locked={active_inline_edit !== null || input_transition.locked}
+                skills={skills}
+                instructions={instructions}
+                running={is_running}
+                stop_disabled={workspace_apply_running}
+                compacting={compacting}
+                unavailable_reason={unavailable_reason}
+                command={controls.command}
+                can_continue_queue={can_continue_queue}
+                queue_full={queue_full}
+                can_reset={!agent_restoring && entries.length > 0}
+                context={controls.context}
+                approval_mode={controls.approvalMode}
+                model_selection={model_selection}
+                input_session={input}
+                on_send={submit_message}
+                on_thinking_level_change={change_agent_thinking_level}
+                on_approval_mode_change={change_approval_mode}
+                on_image_error={() => push_toast("error", t("agent_page.error.image"))}
+                on_stop={stop}
+                on_reset={() => set_reset_dialog_open(true)}
+              />
+            </div>
           </div>
         </div>
-        <AgentDecisionLayer
-          decision={pending_decision}
-          on_resolve_question={agent_actions.resolveQuestion}
-          on_resolve_write_approval={agent_actions.resolveWriteApproval}
-        />
       </div>
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}

@@ -1,32 +1,20 @@
-import { Type, type TSchema } from "@earendil-works/pi-ai";
+import type { TSchema } from "@earendil-works/pi-ai";
 
 import { read_json_integer, type JsonRecord } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
 import type { ProofreadingClientItem } from "../../../shared/proofreading/proofreading-types";
 import {
-  AGENT_WORKSPACE_FP_LENGTH,
-  AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
-  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
-} from "../../project/agent-workspace-write";
-
-export { AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES } from "./schema";
-import {
   AGENT_WORKSPACE_ITEM_SCHEMA,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
-  AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+  AGENT_WORKSPACE_PROMPTS_SCHEMA,
+  AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
+  AGENT_WORKSPACE_PROJECT_META_SCHEMA,
+  AGENT_WORKSPACE_QUALITY_SCHEMAS,
   AGENT_WORKSPACE_WARNING_SCHEMA,
   type AgentWorkspaceRuntimeContract,
 } from "./schema";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./runtime/policy";
-
-export {
-  AGENT_WORKSPACE_ITEM_FIELDS,
-  AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS,
-  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
-  project_agent_workspace_item,
-  project_agent_workspace_quality_entry,
-} from "../../project/agent-workspace-write";
 
 /** 工作区固定只读路径；宿主协议与 Backend 只消费这份布局词表。 */
 export const AGENT_WORKSPACE_PATHS = Object.freeze({
@@ -86,102 +74,10 @@ export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
 /** item 提交建议只控制上下文与失败恢复成本，不构成后端硬门。 */
 const AGENT_WORKSPACE_PREFERRED_ITEM_UPDATE_ROWS = 100;
 
+/** 标准 Schema 作为 JSON 写入磁盘契约，类型转换集中在序列化边界。 */
 const schema_record = (schema: TSchema): JsonRecord => schema as unknown as JsonRecord;
 
-const FP_SCHEMA = Type.String({
-  minLength: AGENT_WORKSPACE_FP_LENGTH,
-  maxLength: AGENT_WORKSPACE_FP_LENGTH,
-  description: "基于对象事实计算的当前快照指纹",
-});
-
-const ITEM_SCHEMA = Type.Object(
-  { ...AGENT_WORKSPACE_ITEM_SCHEMA.properties, fp: FP_SCHEMA },
-  { additionalProperties: false },
-);
-
-const ITEM_UPDATE_SCHEMA = Type.Object(
-  { ...AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA.properties, fp: FP_SCHEMA },
-  { additionalProperties: false },
-);
-
-const PROMPTS_SCHEMA = Type.Object(
-  Object.fromEntries(
-    PROMPT_KINDS.map((kind) => [
-      kind,
-      Type.Object({ fp: FP_SCHEMA, text: Type.String() }, { additionalProperties: false }),
-    ]),
-  ),
-  { additionalProperties: false },
-);
-
-const PROMPT_UPDATE_SCHEMA = Type.Object(
-  {
-    kind: Type.Union(PROMPT_KINDS.map((kind) => Type.Literal(kind))),
-    fp: FP_SCHEMA,
-    text: Type.String(),
-  },
-  { additionalProperties: false },
-);
-
-/** project_meta.json 只承载解释快照所需的语言、数量和文件顺序。 */
-const PROJECT_META_SCHEMA = Type.Object(
-  {
-    source_language: Type.String(),
-    target_language: Type.String(),
-    counts: Type.Object(
-      {
-        files: Type.Integer({ minimum: 0 }),
-        items: Type.Integer({ minimum: 0 }),
-        items_with_warnings: Type.Integer({ minimum: 0 }),
-        glossary: Type.Integer({ minimum: 0 }),
-        text_preserve: Type.Integer({ minimum: 0 }),
-        pre_replacement: Type.Integer({ minimum: 0 }),
-        post_replacement: Type.Integer({ minimum: 0 }),
-      },
-      { additionalProperties: false },
-    ),
-    files: Type.Array(
-      Type.Object(
-        {
-          file_path: Type.String(),
-          file_type: Type.String(),
-          source_text_path: Type.Optional(Type.String({ description: "普通文本源文件的只读路径" })),
-          source_text_root: Type.Optional(
-            Type.String({ description: "EPUB 或 XLSX 包内文本树的只读根目录" }),
-          ),
-        },
-        { additionalProperties: false },
-      ),
-      { description: "按工程文件顺序排列" },
-    ),
-  },
-  { additionalProperties: false },
-);
-
-/** quality 字段形状沿用真实领域类型，不建立 Agent 专用别名。 */
-const QUALITY_FIELD_SCHEMAS: Record<QualityRuleKind, Record<string, TSchema>> = {
-  glossary: {
-    src: Type.String(),
-    dst: Type.String(),
-    info: Type.String(),
-    case_sensitive: Type.Boolean(),
-  },
-  text_preserve: { src: Type.String(), info: Type.String() },
-  pre_replacement: {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
-  },
-  post_replacement: {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
-  },
-};
-
-/** 四类只读 quality 数据集共用路径、身份与标准 JSON Schema。 */
+/** 按规则类型组合固定路径与对应记录 Schema。 */
 const quality_entry_datasets = Object.fromEntries(
   QUALITY_RULE_KINDS.map((kind) => [
     kind,
@@ -190,101 +86,48 @@ const quality_entry_datasets = Object.fromEntries(
       format: "jsonl",
       purpose: `${kind} 规则的完整只读有序集合`,
       identity: ["id"],
-      schema: schema_record(
-        Type.Object(
-          {
-            id: Type.String(),
-            fp: FP_SCHEMA,
-            sort: Type.Integer({ minimum: 0, description: "当前零基数组位置" }),
-            ...QUALITY_FIELD_SCHEMAS[kind],
-          },
-          { additionalProperties: false },
-        ),
-      ),
+      schema: schema_record(AGENT_WORKSPACE_QUALITY_SCHEMAS[kind].entries),
     },
   ]),
-) as JsonRecord;
-
-/** 在标准对象 Schema 上追加“至少一个可写字段”约束。 */
-function require_one_of(schema: TSchema, fields: readonly string[]): JsonRecord {
-  return {
-    ...schema_record(schema),
-    anyOf: fields.map((field) => ({ required: [field] })),
-  };
-}
-
-/** 从领域字段生成四类显式操作契约，写入格式与模型类型共享同一 Schema。 */
+);
 const quality_changes = Object.fromEntries(
-  QUALITY_RULE_KINDS.map((kind) => {
-    const mutable_fields = Object.fromEntries(
-      Object.entries(QUALITY_FIELD_SCHEMAS[kind]).map(([field, schema]) => [
-        field,
-        Type.Optional(schema),
+  QUALITY_RULE_KINDS.map((kind) => [
+    kind,
+    Object.fromEntries(
+      AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((operation) => [
+        operation,
+        {
+          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind][operation],
+          format: "jsonl",
+          schema: schema_record(AGENT_WORKSPACE_QUALITY_SCHEMAS[kind][operation]),
+        },
       ]),
-    );
-    return [
-      kind,
-      {
-        creates: {
-          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].creates,
-          format: "jsonl",
-          schema: schema_record(
-            Type.Object(
-              { ...QUALITY_FIELD_SCHEMAS[kind], sort: Type.Integer({ minimum: -1 }) },
-              { additionalProperties: false },
-            ),
-          ),
-        },
-        updates: {
-          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].updates,
-          format: "jsonl",
-          schema: require_one_of(
-            Type.Object(
-              {
-                id: Type.String(),
-                fp: FP_SCHEMA,
-                ...mutable_fields,
-                sort: Type.Optional(Type.Integer({ minimum: -1 })),
-              },
-              { additionalProperties: false },
-            ),
-            [...AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS[kind], "sort"],
-          ),
-        },
-        deletes: {
-          path: AGENT_WORKSPACE_QUALITY_CHANGE_PATHS[kind].deletes,
-          format: "jsonl",
-          schema: schema_record(
-            Type.Object({ id: Type.String(), fp: FP_SCHEMA }, { additionalProperties: false }),
-          ),
-        },
-      },
-    ];
-  }),
-) as JsonRecord;
+    ),
+  ]),
+);
 
-/** 工作区结构、字段、显式 change 与写入语义的唯一代码权威。 */
-const agent_workspace_contract = {
+/** 磁盘契约与工具说明共用完整类型，保留提交语义供调用前发现。 */
+export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes,
-    query_page_default: 20,
-    query_page_max: 100,
-    literal_match_examples_default: 3,
-    literal_match_examples_max: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES,
+    query_page_default: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageDefault,
+    query_page_max: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageMax,
+    literal_match_examples_default: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesDefault,
+    literal_match_examples_max: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesMax,
   },
   datasets: {
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       format: "json",
       purpose: "工程语言、完整数量与文件顺序",
-      schema: schema_record(PROJECT_META_SCHEMA),
+      schema: schema_record(AGENT_WORKSPACE_PROJECT_META_SCHEMA),
     },
     items: {
       path: AGENT_WORKSPACE_PATHS.items,
       format: "jsonl",
       purpose: "完整只读条目集合",
       identity: ["item_id"],
-      schema: schema_record(ITEM_SCHEMA),
+      schema: schema_record(AGENT_WORKSPACE_ITEM_SCHEMA),
     },
     warnings: {
       path: AGENT_WORKSPACE_PATHS.warnings,
@@ -296,9 +139,9 @@ const agent_workspace_contract = {
     prompts: {
       path: AGENT_WORKSPACE_PATHS.prompts,
       format: "json",
-      purpose: "两类提示词对象基线与只读正文",
+      purpose: "翻译提示词对象基线与只读正文",
       identity: [...PROMPT_KINDS],
-      schema: schema_record(PROMPTS_SCHEMA),
+      schema: schema_record(AGENT_WORKSPACE_PROMPTS_SCHEMA),
     },
     ...quality_entry_datasets,
   },
@@ -308,7 +151,7 @@ const agent_workspace_contract = {
         path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
         format: "jsonl",
         identity: ["item_id"],
-        schema: require_one_of(ITEM_UPDATE_SCHEMA, AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS),
+        schema: schema_record(AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA),
       },
     },
     prompts: {
@@ -316,7 +159,7 @@ const agent_workspace_contract = {
         path: AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
         format: "jsonl",
         identity: ["kind"],
-        schema: schema_record(PROMPT_UPDATE_SCHEMA),
+        schema: schema_record(AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA),
       },
     },
     ...quality_changes,
@@ -344,7 +187,10 @@ const agent_workspace_contract = {
     },
   },
   apply: {
-    quality_operation_order: [...AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS],
+    quality_operations:
+      "按完整批次处理 creates、updates、deletes；已接受的删除使同对象更新进入 merge_conflict，依赖删除的新增或更新在删除失败时可能进入 dependency_conflict。",
+    quality_sort:
+      "先移除删除对象与显式排序对象，保留其余相对顺序；按非负 sort 升序插入，-1 最后追加。同位置先更新后创建，各自按 change 文件行序排列；最终执行领域归一化。",
     freshness: "工程身份、语言与 epoch 必须兼容；既有目标的 fp 必须匹配事务内当前对象",
     transaction: "全部实际成功对象在一个数据库事务中提交",
     partial_success: "单行或单对象失败进入 rejected，不阻塞无关对象",
@@ -356,16 +202,17 @@ const agent_workspace_contract = {
       "dependency_conflict",
     ],
     result: {
-      status: ["applied", "partial", "rejected", "unchanged"],
+      status: {
+        applied: "有实际变化且无拒绝",
+        partial: "有实际变化且有拒绝",
+        rejected: "无实际变化且有拒绝",
+        unchanged: "无实际变化且无拒绝",
+      },
       fields: ["status", "applied", "rejected", "destroyed", "revisions"],
       destroyed: "真实提交或目标事实漂移后为 true；输入错误、无变化和事务回滚后为 false",
     },
   },
-} satisfies AgentWorkspaceRuntimeContract;
-
-export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze(
-  agent_workspace_contract,
-) as JsonRecord;
+} satisfies AgentWorkspaceRuntimeContract);
 
 /** warning 只保存关联身份和判决证据，不复制 item 当前值。 */
 export function project_agent_workspace_warning(item: ProofreadingClientItem): JsonRecord {

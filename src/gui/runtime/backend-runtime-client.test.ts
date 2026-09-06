@@ -67,6 +67,7 @@ vi.mock("node:worker_threads", () => ({
 const READY: BackendRuntimeReady = {
   apiBaseUrl: "http://127.0.0.1:4567",
   berserkerUpdateRootDir: "E:/userdata/berserker",
+  appVersion: "1.2.3",
 };
 describe("BackendRuntimeClient", () => {
   beforeEach(() => {

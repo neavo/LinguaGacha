@@ -74,7 +74,6 @@ describe("QualityPromptService", () => {
     ]) {
       expect(() =>
         service.read_preset({
-          task_type: "translation",
           virtual_id,
         }),
       ).toThrow("request.validation_failed");
@@ -90,7 +89,6 @@ describe("QualityPromptService", () => {
     session_state.mark_loaded(project_path);
 
     await service.save({
-      task_type: "translation",
       text: "新的提示词",
       enabled: true,
       expected_section_revisions: { prompts: 0 },
@@ -105,11 +103,10 @@ describe("QualityPromptService", () => {
   });
 
   it("任务 busy 时拒绝提示词项目写但不阻塞预设文件 IO", async () => {
-    const { service } = create_service(null, "task");
+    const { service } = create_service(null, "batch_translation");
 
     await expect(
       service.save({
-        task_type: "translation",
         text: "新的提示词",
         enabled: true,
         expected_section_revisions: { prompts: 0 },
@@ -117,7 +114,6 @@ describe("QualityPromptService", () => {
     ).rejects.toThrow("runtime.busy");
     expect(() =>
       service.save_preset({
-        task_type: "translation",
         name: "busy-allowed",
         text: "预设提示词",
       }),
@@ -126,7 +122,7 @@ describe("QualityPromptService", () => {
 
   function create_service(
     database: ProjectDatabase | null = null,
-    runtime_owner: "task" | "agent" | null = null,
+    runtime_owner: "batch_translation" | "agent" | null = null,
   ): {
     service: QualityPromptService;
     app_root: string;
@@ -178,7 +174,7 @@ describe("QualityPromptService", () => {
     return temp_dir;
   }
 
-  function create_runtime_gate(owner: "task" | "agent" | null): RuntimeOperationGate {
+  function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
     const gate = new RuntimeOperationGate();
     if (owner !== null) gate.begin_runtime(owner);
     return gate;

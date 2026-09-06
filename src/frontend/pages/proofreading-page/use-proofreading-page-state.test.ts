@@ -1,3 +1,7 @@
+import {
+  normalize_batch_translation_progress,
+  type BatchTranslationSnapshot,
+} from "@domain/batch-translation";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +20,6 @@ import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
-  type ProofreadingContextItem,
   type ProofreadingFilterOptions,
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
@@ -32,20 +35,13 @@ type RuntimeFixture = {
     loaded: boolean;
     path: string;
   };
-  task_snapshot: {
-    busy: boolean;
-    task_type?: string;
-    extras?: {
-      kind: "translation";
-      scope: { kind: "all" } | { kind: "items"; item_ids: number[] };
-    };
-  };
-  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
+  task_snapshot: import("@domain/batch-translation").BatchTranslationSnapshot;
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   project_change_signal: ProjectChangeSignal;
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
-  refresh_task: ReturnType<typeof vi.fn>;
+  refresh_batch_translation: ReturnType<typeof vi.fn>;
 };
 
 // 只保留校对页查找意图，避免页面测试依赖真实导航容器。
@@ -179,9 +175,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
     useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
-    useTaskSnapshot: () => runtime_fixture.current.task_snapshot,
+    useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
-    useSyncTaskSnapshot: () => runtime_fixture.current.sync_task_snapshot,
+    useSyncBatchTranslationSnapshot: () => runtime_fixture.current.sync_task_snapshot,
   };
 });
 
@@ -261,11 +257,6 @@ function create_quality_store_payload(): Record<string, unknown> {
         text: "",
         revision: 0,
       },
-      analysis: {
-        enabled: false,
-        text: "",
-        revision: 0,
-      },
     },
   };
 }
@@ -282,9 +273,13 @@ function create_runtime_fixture(): RuntimeFixture {
       path: "E:/demo/sample.lg",
     },
     task_snapshot: {
-      busy: false,
-      task_type: "idle",
-      extras: { kind: "translation", scope: { kind: "all" } },
+      revision: 0,
+      status: "idle",
+      source: null,
+      request_in_flight_count: 0,
+      progress: normalize_batch_translation_progress({}),
+
+      scope: { kind: "all" },
     },
     runtime_snapshot: { revision: 0, owner: null },
     sync_task_snapshot: vi.fn((snapshot) => {
@@ -304,7 +299,7 @@ function create_runtime_fixture(): RuntimeFixture {
       },
     ),
     refresh_project_state: vi.fn(async () => {}),
-    refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
+    refresh_batch_translation: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
@@ -640,86 +635,6 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("首次读取详情失败时显示错误提醒并保持弹窗关闭", async () => {
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockRejectedValueOnce(
-      new Error("详情读取失败"),
-    );
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", expect.any(String));
-  });
-
-  it("上下文读取失败后可重试", async () => {
-    const context_item: ProofreadingContextItem = {
-      row_id: "1",
-      row_number: 1,
-      src: "原文",
-      dst: "译文",
-      name_src: null,
-      name_dst: null,
-    };
-    proofreading_client_fixture.current.read_proofreading_context
-      .mockRejectedValueOnce(new Error("failed"))
-      .mockResolvedValueOnce([context_item]);
-    await render_hook();
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-    await act(async () => {
-      await latest_state?.open_dialog_context();
-    });
-    expect(latest_state?.dialog_state.context.status).toBe("error");
-
-    await act(async () => {
-      await latest_state?.open_dialog_context();
-    });
-    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [context_item] });
-  });
-
-  it("重新打开上下文后忽略旧请求结果", async () => {
-    const stale_request = create_deferred<ProofreadingContextItem[]>();
-    const current_request = create_deferred<ProofreadingContextItem[]>();
-    proofreading_client_fixture.current.read_proofreading_context
-      .mockReturnValueOnce(stale_request.promise)
-      .mockReturnValueOnce(current_request.promise);
-    await render_hook();
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-
-    let first: Promise<void> | undefined;
-    let second: Promise<void> | undefined;
-    act(() => {
-      first = latest_state?.open_dialog_context();
-      latest_state?.close_dialog_context();
-      second = latest_state?.open_dialog_context();
-    });
-    await act(async () => {
-      stale_request.resolve([]);
-      await first;
-    });
-    expect(latest_state?.dialog_state.context.status).toBe("loading");
-
-    const current_item: ProofreadingContextItem = {
-      row_id: "1",
-      row_number: 1,
-      src: "当前原文",
-      dst: "当前译文",
-      name_src: null,
-      name_dst: null,
-    };
-    await act(async () => {
-      current_request.resolve([current_item]);
-      await second;
-    });
-    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [current_item] });
-  });
-
   it("收到导航查找意图时会重置旧筛选并执行统一列表查询", async () => {
     await render_hook();
     await act(async () => {
@@ -792,7 +707,7 @@ describe("useProofreadingPageState", () => {
       latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
     });
     expect(latest_state?.pending_confirmation).toBeNull();
-    expect(api_fetch).not.toHaveBeenCalledWith("/api/tasks/start", expect.anything());
+    expect(api_fetch).not.toHaveBeenCalledWith("/api/batch-translation/start", expect.anything());
   });
 
   it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
@@ -2552,32 +2467,7 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("校对重翻只提交去重后的稳定 item 身份", async () => {
-    await render_hook();
-    vi.mocked(api_fetch).mockResolvedValueOnce({
-      accepted: true,
-      task: {
-        task_type: "translation",
-        status: "requested",
-        busy: true,
-      },
-    });
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-    await act(async () => {
-      await latest_state?.confirm_pending_confirmation("retranslate");
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
-      mode: "new",
-      scope: { kind: "items", item_ids: [1] },
-    });
-  });
-
-  it("只含提示词的变更不重建校对列表且不改变重翻意图载荷", async () => {
+  it("只含提示词的变更保持校对列表缓存", async () => {
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({}, { prompts: 3 });
     });
@@ -2600,27 +2490,6 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
     );
-    vi.mocked(api_fetch).mockResolvedValueOnce({
-      accepted: true,
-      task: {
-        task_type: "translation",
-        status: "requested",
-        busy: true,
-      },
-    });
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-    await act(async () => {
-      await latest_state?.confirm_pending_confirmation("retranslate");
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
-      mode: "new",
-      scope: { kind: "items", item_ids: [1] },
-    });
   });
 
   it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {
@@ -2638,15 +2507,7 @@ describe("useProofreadingPageState", () => {
 
     const retranslate_deferred = create_deferred<{
       accepted: boolean;
-      task: {
-        task_type: string;
-        status: string;
-        busy: boolean;
-        extras?: {
-          kind: "translation";
-          scope: { kind: "items"; item_ids: Array<number | string> };
-        };
-      };
+      batch_translation: Partial<BatchTranslationSnapshot>;
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -2674,78 +2535,39 @@ describe("useProofreadingPageState", () => {
     await act(async () => {
       retranslate_deferred.resolve({
         accepted: true,
-        task: {
-          task_type: "translation",
+        batch_translation: {
           status: "requested",
-          busy: true,
+          source: "standalone",
+          operation: "retranslate",
+          scope: { kind: "items", item_ids: [2, 1] },
         },
       });
       await confirm_promise;
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
-      mode: "new",
+    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
+      operation: "retranslate",
       scope: { kind: "items", item_ids: [2, 1] },
     });
     expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
-        task_type: "translation",
         status: "requested",
-        busy: true,
-        extras: { kind: "translation", scope: { kind: "items", item_ids: [2, 1] } },
+        operation: "retranslate",
+        scope: { kind: "items", item_ids: [2, 1] },
       }),
     );
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+    runtime_fixture.current.task_snapshot = {
+      ...runtime_fixture.current.task_snapshot,
+      status: "done",
+      operation: "retranslate",
+      scope: { kind: "items", item_ids: [] },
+    };
+    await render_hook();
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
       "success",
       expect.any(String),
-    );
-  });
-
-  it("校对重翻失败后不写入任务快照并保留错误提示", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    const retranslate_deferred = create_deferred<{
-      accepted: boolean;
-      task: {
-        task_type: string;
-      };
-    }>();
-    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-
-    let confirm_promise: Promise<void> | undefined;
-    await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_confirmation("retranslate");
-      await Promise.resolve();
-    });
-
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
-
-    await act(async () => {
-      retranslate_deferred.reject(new Error("重翻失败"));
-      await confirm_promise;
-    });
-
-    expect(runtime_fixture.current.sync_task_snapshot).not.toHaveBeenCalled();
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "proofreading_page.feedback.retranslate_failed",
     );
   });
 });

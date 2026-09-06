@@ -257,7 +257,7 @@ describe("ProjectContentService", () => {
     const ack = await service.align_settings({
       path: other_lg_path,
       mode: "prefiltered_items",
-      expected_section_revisions: { items: 0, analysis: 0 },
+      expected_section_revisions: { items: 0 },
       project_settings: {
         source_language: "JA",
         target_language: "ZH",
@@ -271,7 +271,7 @@ describe("ProjectContentService", () => {
       expect.objectContaining({
         projectPath: other_lg_path,
         source: "settings_alignment",
-        updatedSections: ["items", "analysis"],
+        updatedSections: ["items"],
         items: { payloadMode: "section-invalidated" },
       }),
     );
@@ -281,7 +281,6 @@ describe("ProjectContentService", () => {
   it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
       items: 1,
-      analysis: 1,
     });
     const { database, service, lg_path } = create_service(publish_project_change);
     database.set_items(lg_path, [
@@ -289,7 +288,7 @@ describe("ProjectContentService", () => {
     ]);
     const ack = await service.align_settings({
       mode: "prefiltered_items",
-      expected_section_revisions: { items: 0, analysis: 0 },
+      expected_section_revisions: { items: 0 },
       project_settings: {
         source_language: "ALL",
         target_language: "ZH",
@@ -303,14 +302,14 @@ describe("ProjectContentService", () => {
       changes: [
         {
           source: "settings_alignment",
-          updatedSections: ["items", "analysis"],
+          updatedSections: ["items"],
         },
       ],
     });
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "settings_alignment",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items"],
       items: { payloadMode: "section-invalidated" },
     });
     database.close();
@@ -319,7 +318,6 @@ describe("ProjectContentService", () => {
   it("提交 translation reset all 时替换 items 并清分析事实", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
       items: 1,
-      analysis: 1,
     });
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
@@ -333,17 +331,7 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "旧",
-        dst_votes: {},
-        info_votes: {},
-        observation_count: 1,
-        first_seen_at: "t",
-        last_seen_at: "t",
-        case_sensitive: false,
-      },
-    ]);
+
     const ack = await service.reset_translation({
       mode: "all",
       project_settings: { source_language: "JA", target_language: "ZH" },
@@ -355,8 +343,8 @@ describe("ProjectContentService", () => {
         {
           source: "translation_reset",
           projectRevision: 1,
-          sectionRevisions: { items: 1, analysis: 1 },
-          updatedSections: ["items", "analysis"],
+          sectionRevisions: { items: 1 },
+          updatedSections: ["items"],
         },
       ],
     });
@@ -366,11 +354,11 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
+
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "translation_reset",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items"],
       items: { payloadMode: "section-invalidated" },
     });
     database.close();
@@ -448,7 +436,7 @@ describe("ProjectContentService", () => {
         translation_extras: {},
         prefilter_config: {},
         project_settings: { source_language: "JA" },
-        expected_section_revisions: { items: 0, analysis: 0 },
+        expected_section_revisions: { items: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
 
@@ -477,7 +465,7 @@ describe("ProjectContentService", () => {
       files: [{ source_path: second_source, target_rel_path: "b.txt" }],
       conflict_action: "skip",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
     await parse_started;
     try {
@@ -530,7 +518,7 @@ describe("ProjectContentService", () => {
       ],
       conflict_action: "skip",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(database.get_all_asset_records(lg_path)).toEqual([
@@ -559,7 +547,7 @@ describe("ProjectContentService", () => {
       ],
       conflict_action: "replace",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(ack).toMatchObject({
@@ -595,7 +583,7 @@ describe("ProjectContentService", () => {
         files: [{ source_path: broken_json, target_rel_path: "broken.json" }],
         conflict_action: "replace",
         project_settings: { source_language: "JA", target_language: "ZH" },
-        expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+        expected_section_revisions: { files: 0, items: 0 },
       }),
     ).rejects.toMatchObject({
       code: "file.parse_failed",
@@ -623,7 +611,6 @@ describe("ProjectContentService", () => {
     const { publish_project_change } = create_static_project_change_publisher({
       files: 1,
       items: 1,
-      analysis: 1,
     });
     const { database, service, lg_path } = create_service(publish_project_change);
     const old_source = project_path("a.txt");
@@ -632,23 +619,12 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(replace_source, "新", "utf-8");
     database.add_asset_from_source(lg_path, "a.txt", old_source, 3);
     database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "旧",
-        dst_votes: { old: 1 },
-        info_votes: {},
-        observation_count: 1,
-        first_seen_at: "t",
-        last_seen_at: "t",
-        case_sensitive: false,
-      },
-    ]);
 
     const ack = await service.import_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
       conflict_action: "replace",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(ack).toMatchObject({
@@ -656,7 +632,7 @@ describe("ProjectContentService", () => {
       changes: [
         {
           source: "project_import_files",
-          updatedSections: ["files", "items", "analysis"],
+          updatedSections: ["files", "items"],
         },
       ],
     });
@@ -665,11 +641,11 @@ describe("ProjectContentService", () => {
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "新", file_path: "a.txt", row_number: 0 }),
     ]);
-    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
+
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "project_import_files",
-      updatedSections: ["files", "items", "analysis"],
+      updatedSections: ["files", "items"],
       items: { payloadMode: "section-invalidated" },
       files: { payloadMode: "section-invalidated" },
     });
@@ -696,7 +672,7 @@ describe("ProjectContentService", () => {
       conflict_action: "replace",
       inheritance_mode: "inherit",
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(database.get_all_items(lg_path)).toEqual([
@@ -754,7 +730,6 @@ describe("ProjectContentService", () => {
   it("工作台 reset-file 只写顶层计算 meta 白名单", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
       items: 1,
-      analysis: 1,
     });
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
@@ -772,7 +747,7 @@ describe("ProjectContentService", () => {
     await service.reset_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA" },
-      expected_section_revisions: { items: 0, analysis: 0 },
+      expected_section_revisions: { items: 0 },
     });
 
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
@@ -789,7 +764,7 @@ describe("ProjectContentService", () => {
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "project_reset_files",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items"],
       items: { payloadMode: "section-invalidated" },
     });
     database.close();
@@ -799,7 +774,6 @@ describe("ProjectContentService", () => {
     const { publish_project_change } = create_static_project_change_publisher({
       files: 1,
       items: 1,
-      analysis: 1,
     });
     const { database, service, lg_path } = create_service(publish_project_change);
     const first_source = project_path("a.txt");
@@ -820,7 +794,7 @@ describe("ProjectContentService", () => {
     const ack = await service.delete_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA", target_language: "ZH" },
-      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      expected_section_revisions: { files: 0, items: 0 },
     });
 
     expect(ack).toMatchObject({
@@ -828,7 +802,7 @@ describe("ProjectContentService", () => {
       changes: [
         {
           source: "project_delete_files",
-          updatedSections: ["files", "items", "analysis"],
+          updatedSections: ["files", "items"],
         },
       ],
     });
@@ -839,7 +813,7 @@ describe("ProjectContentService", () => {
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "project_delete_files",
-      updatedSections: ["files", "items", "analysis"],
+      updatedSections: ["files", "items"],
       items: { payloadMode: "section-invalidated" },
       files: { payloadMode: "section-invalidated" },
     });
@@ -848,7 +822,7 @@ describe("ProjectContentService", () => {
 
   it("任务忙碌时拒绝 translation reset 且不写库", async () => {
     const { database, service, runtime_gate, lg_path } = create_service();
-    runtime_gate.begin_runtime("task");
+    runtime_gate.begin_runtime("batch_translation");
     database.set_items(lg_path, [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }]);
 
     await expect(
@@ -864,23 +838,9 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("任务忙碌时拒绝 analysis reset 且不写 analysis meta", async () => {
-    const { database, service, runtime_gate, lg_path } = create_service();
-    runtime_gate.begin_runtime("task");
-
-    await expect(
-      service.reset_analysis({
-        mode: "all",
-      }),
-    ).rejects.toThrow("runtime.busy");
-
-    expect(read_meta(database, lg_path, "analysis_extras", null)).toBeNull();
-    database.close();
-  });
-
   it("任务忙碌时拒绝 settings-only 对齐且不写设置 meta", async () => {
     const { database, service, runtime_gate, lg_path } = create_service();
-    runtime_gate.begin_runtime("task");
+    runtime_gate.begin_runtime("batch_translation");
 
     await expect(
       service.align_settings({
@@ -901,7 +861,7 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(second_source, "b", "utf-8");
     database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
     database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
-    runtime_gate.begin_runtime("task");
+    runtime_gate.begin_runtime("batch_translation");
 
     await expect(
       service.reorder_files({
@@ -963,12 +923,7 @@ describe("ProjectContentService", () => {
         expected_section_revisions: { items: 1 },
       }),
     ).rejects.toThrow("request.validation_failed");
-    await expect(
-      service.reset_analysis({
-        mode: "failed",
-        expected_section_revisions: { analysis: 1 },
-      }),
-    ).rejects.toThrow("request.validation_failed");
+
     database.close();
   });
 });

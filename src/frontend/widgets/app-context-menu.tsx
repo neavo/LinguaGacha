@@ -1,17 +1,22 @@
-import type { ComponentProps } from "react";
+import { useRef, type ComponentProps } from "react";
+import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 
 import { cn } from "@frontend/shadcn/classnames";
 import {
+  APP_MENU_POSITIONER_CLASS_NAME,
   APP_MENU_SUBMENU_SIDE_OFFSET,
   APP_MENU_VIEWPORT_PADDING,
   should_keep_submenu_open,
 } from "@frontend/widgets/app-menu";
 
 // 本文件只为 Base UI 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
-function AppContextMenu(props: ContextMenuPrimitive.Root.Props): JSX.Element {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
+function AppContextMenu({ actionsRef, ...props }: ContextMenuPrimitive.Root.Props): JSX.Element {
+  const local_actions = useRef<ContextMenuPrimitive.Root.Actions | null>(null);
+  const actions = actionsRef ?? local_actions;
+  useWindowDeactivation(() => actions.current?.close());
+  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} actionsRef={actions} />;
 }
 
 function AppContextMenuTrigger({
@@ -69,7 +74,7 @@ function AppContextMenuContent({
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
-        className="isolate z-(--ui-layer-popover)"
+        className={APP_MENU_POSITIONER_CLASS_NAME}
         collisionPadding={collisionPadding}
         side={side}
       >
@@ -146,7 +151,7 @@ function AppContextMenuSubContent({
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
-        className="isolate z-(--ui-layer-popover)"
+        className={APP_MENU_POSITIONER_CLASS_NAME}
         collisionPadding={APP_MENU_VIEWPORT_PADDING}
         sideOffset={APP_MENU_SUBMENU_SIDE_OFFSET}
       >

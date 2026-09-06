@@ -14,7 +14,6 @@ const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["PRE_REPLACEMENT", "pre_translation_replacement"],
   ["POST_REPLACEMENT", "post_translation_replacement"],
   ["TRANSLATION_PROMPT", "translation_prompt"],
-  ["ANALYSIS_PROMPT", "analysis_prompt"],
 ]);
 // 条目规则最终只能落为单行数组。
 const CURRENT_RULE_ENTRY_TYPES = new Set([
@@ -26,7 +25,6 @@ const CURRENT_RULE_ENTRY_TYPES = new Set([
 // 文本规则最终只能落为 `{ text }` 对象，旧语言提示词槽位保留给后续业务迁移读取。
 const CURRENT_RULE_TEXT_TYPES = new Set([
   "translation_prompt",
-  "analysis_prompt",
   "CUSTOM_PROMPT_ZH",
   "CUSTOM_PROMPT_EN",
 ]);

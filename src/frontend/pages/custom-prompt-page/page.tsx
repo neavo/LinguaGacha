@@ -1,25 +1,47 @@
+import { useEffect } from "react";
+import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
+import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/custom-prompt-page/custom-prompt-page.css";
-import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { CustomPromptCommandBar } from "@frontend/pages/custom-prompt-page/components/custom-prompt-command-bar";
 import { CustomPromptConfirmDialog } from "@frontend/pages/custom-prompt-page/components/custom-prompt-confirm-dialog";
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
-import type { CustomPromptVariant } from "@frontend/pages/custom-prompt-page/config";
 import { useCustomPromptPageState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-page-state";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 
-type CustomPromptPageProps = ScreenComponentProps & {
-  variant: CustomPromptVariant;
-};
-
+/** 将多行模板压入只读预览条。 */
 function compress_prompt_preview(text: string): string {
   return text.replace(/\r\n|\r|\n/gu, " ↵ ");
 }
 
-export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
-  const page_state = useCustomPromptPageState(props.variant);
+/** 展示提示词编辑工作面并注册离页保存动作。 */
+export function CustomPromptPage(): JSX.Element {
+  const page_state = useCustomPromptPageState();
   const { t } = useI18n();
+  const { leaving, register_before_leave } = usePageLeave();
+  useEffect(
+    () => register_before_leave(page_state.flush_prompt_change),
+    [register_before_leave, page_state.flush_prompt_change],
+  );
+  const readonly = page_state.readonly || leaving;
+  if (page_state.load_status !== "ready") {
+    return (
+      <div className="custom-prompt-page page-shell page-shell--full">
+        {page_state.load_status === "error" ? (
+          <AppContentState
+            status="error"
+            message={t("custom_prompt_page.feedback.load_failed")}
+            on_retry={() => {
+              void page_state.reload_prompt();
+            }}
+          />
+        ) : (
+          <AppContentState status="loading" message={t("app.action.loading")} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="custom-prompt-page page-shell page-shell--full">
@@ -57,12 +79,9 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
           class_name="custom-prompt-page__editor-host"
           syntax="markdown"
           value={page_state.prompt_text}
-          aria_label={t(page_state.header_title_key)}
-          read_only={page_state.readonly}
+          aria_label={t("custom_prompt_page.title")}
+          read_only={readonly}
           on_change={page_state.update_prompt_text}
-          on_blur={() => {
-            void page_state.flush_prompt_change();
-          }}
         />
 
         <Tooltip>
@@ -97,13 +116,10 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
 
       <div className="custom-prompt-page__command-bar-shell">
         <CustomPromptCommandBar
-          title_key={page_state.title_key}
-          header_title_key={page_state.header_title_key}
-          header_description_key={page_state.header_description_key}
           enabled={page_state.enabled}
           preset_items={page_state.preset_items}
           preset_menu_open={page_state.preset_menu_open}
-          readonly={page_state.readonly}
+          readonly={readonly}
           on_toggle_enabled={page_state.update_enabled}
           on_import={page_state.import_prompt_from_picker}
           on_export={page_state.export_prompt_from_picker}

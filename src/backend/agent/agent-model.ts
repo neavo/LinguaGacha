@@ -29,6 +29,7 @@ export function register_agent_model(
 ): {
   model: PiModel<AgentApi>;
   thinkingLevel: PiModelThinkingLevel;
+  model_config: Model;
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
@@ -75,8 +76,11 @@ export function register_agent_model(
       },
     });
   }
+  // SDK provider 标识协议适配器；任务继承应用接入点身份及本轮生效档位。
+  configured_model.thinking.level = Model.normalize_thinking_level(pi.thinkingLevel.toUpperCase());
   return {
     model,
     thinkingLevel: pi.thinkingLevel,
+    model_config: configured_model,
   };
 }

@@ -1,21 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { Prompt } from "./prompt";
+import { normalize_translation_prompt_slice } from "./prompt";
 
 describe("Prompt", () => {
-  it("只接受公开提示词槽位", () => {
-    expect(Prompt.all().map((prompt) => prompt.kind)).toEqual(["translation", "analysis"]);
-    expect(Prompt.from_json("translation").kind).toBe("translation");
-    expect(() => Prompt.from_json("retranslate")).toThrowError(
-      expect.objectContaining({ code: "prompt.unknown_prompt_type" }),
-    );
-  });
-
   it("归一提示词切片时只消费顶层启用态", () => {
-    const prompt = Prompt.translation();
-
     expect(
-      prompt.normalize_slice({
+      normalize_translation_prompt_slice({
         text: "自定义提示词",
         enabled: true,
         revision: 2,
@@ -26,7 +16,7 @@ describe("Prompt", () => {
       revision: 2,
     });
     expect(
-      prompt.normalize_slice({
+      normalize_translation_prompt_slice({
         text: "旧形状提示词",
         meta: { enabled: true },
         revision: 1,

@@ -21,12 +21,16 @@ const result = Type.Object(
       Type.Object(
         {
           target_item_id: Type.Integer({ minimum: 1 }),
-          item_ids: Type.Array(Type.Integer({ minimum: 1 })),
+          item_ids: Type.Array(Type.Integer({ minimum: 1 }), {
+            description: "至多两条非空前文、目标自身、至多两条非空后文，按同文件自然顺序排列。",
+          }),
         },
         { additionalProperties: false },
       ),
     ),
-    items: Type.Array(AGENT_WORKSPACE_ITEM_SCHEMA),
+    items: Type.Array(AGENT_WORKSPACE_ITEM_SCHEMA, {
+      description: "所有上下文共享的完整条目，按 item_id 去重；通过 ID 与 contexts 关联。",
+    }),
     missing_item_ids: Type.Array(Type.Integer({ minimum: 1 })),
   },
   { additionalProperties: false },
@@ -34,10 +38,10 @@ const result = Type.Object(
 
 /** 固定读取目标在同文件自然顺序中的前后各两条非空原文。 */
 export const queryItemContexts = define_agent_workspace_data_tool({
-  useWhen: "读取目标 item 的规范邻近上下文",
   description: "为目标 item 读取同文件自然顺序中前后各两条非空原文。",
   parameters,
   result,
+  /** 按目标收集邻近条目，再将共享证据按 item_id 合并。 */
   async execute(context, args) {
     const item_ids = args.item_ids;
     const targetIds = new Set(item_ids);

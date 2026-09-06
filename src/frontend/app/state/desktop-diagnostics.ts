@@ -1,5 +1,6 @@
 import type { DesktopRefreshSchedulerErrorContext } from "@frontend/app/state/desktop-refresh-scheduler";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
+import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+
 import {
   normalize_section_array,
   normalize_section_revisions,
@@ -42,12 +43,12 @@ export function summarize_project_state_for_diagnostics(
 /**
  * task 诊断只取状态和进度数字，避免把页面展示 extras 写入异常日志。
  */
-export function summarize_task_snapshot_for_diagnostics(snapshot: TaskSnapshot): LogErrorContext {
+export function summarize_task_snapshot_for_diagnostics(
+  snapshot: BatchTranslationSnapshot,
+): LogErrorContext {
   return {
-    runRevision: snapshot.run_revision,
-    taskType: snapshot.task_type,
+    runRevision: snapshot.revision,
     status: snapshot.status,
-    busy: snapshot.busy,
     requestInFlightCount: snapshot.request_in_flight_count,
     progress: {
       line: snapshot.progress.line,

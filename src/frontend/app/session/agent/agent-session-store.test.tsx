@@ -30,7 +30,7 @@ import {
   useAgentTimeline,
 } from "./agent-session-context";
 
-/** 测试探针聚合公开切片，生产代码不再暴露会随任意字段变化的完整 controller。 */
+/** 测试探针聚合公开切片，统一观察会话与命令结果。 */
 function useAgentSession() {
   const timeline = useAgentTimeline();
   const controls = useAgentControls();
@@ -42,7 +42,7 @@ function useAgentSession() {
   return { ...timeline, ...controls, ...queue, ...todo, ...skills, input, ...actions };
 }
 
-/** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
+/** 多个会话入口共享同一份会话协议夹具，避免各用例维护平行字段形状。 */
 const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
   {
     name: "glossary-audit",
@@ -69,6 +69,7 @@ class FakeEventSource {
   private readonly listeners = new Map<string, EventListener>();
   private revision = 0;
 
+  /** 命令回执沿用最近已发布事件的版本。 */
   public get current_revision(): number {
     return this.revision;
   }
@@ -130,6 +131,7 @@ describe("AgentSessionStore", () => {
 
   it("StrictMode effect 重放后仍能完成会话恢复", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
+    /** 在 StrictMode 重放期间订阅同一公开会话。 */
     function Probe(): null {
       latest = useAgentSession();
       return null;
@@ -200,7 +202,7 @@ describe("AgentSessionStore", () => {
       .mockReset()
       .mockResolvedValueOnce(agent_snapshot())
       .mockResolvedValueOnce(
-        agent_snapshot({ revision: 3, context: { tokens: 300, compactable: true } }),
+        agent_snapshot({ revision: 3, context: { tokens: 300, compactable: true, limits: null } }),
       );
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -212,26 +214,26 @@ describe("AgentSessionStore", () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
         revision: 1,
-        context: { tokens: 100, compactable: false },
+        context: { tokens: 100, compactable: false, limits: null },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
         revision: 1,
-        context: { tokens: 200, compactable: true },
+        context: { tokens: 200, compactable: true, limits: null },
       });
     });
-    expect(latest.context).toEqual({ tokens: 100, compactable: false });
+    expect(latest.context).toEqual({ tokens: 100, compactable: false, limits: null });
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
         revision: 3,
-        context: { tokens: 300, compactable: true },
+        context: { tokens: 300, compactable: true, limits: null },
       });
     });
     await wait_for(() => expect(desktop_api_mocks.api_get).toHaveBeenCalledTimes(2));
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    expect(latest.context).toEqual({ tokens: 300, compactable: true });
+    expect(latest.context).toEqual({ tokens: 300, compactable: true, limits: null });
   });
 
   it("只接纳合法上下文用量事件，非法帧不覆盖当前值", async () => {
@@ -244,26 +246,26 @@ describe("AgentSessionStore", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
-        context: { tokens: 31_488, compactable: true },
+        context: { tokens: 31_488, compactable: true, limits: null },
       });
     });
-    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true, limits: null });
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
-        context: { tokens: -1, compactable: true },
+        context: { tokens: -1, compactable: true, limits: null },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
-        context: { tokens: 1.5, compactable: false },
+        context: { tokens: 1.5, compactable: false, limits: null },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
         context: null,
       });
     });
-    expect(latest.context).toEqual({ tokens: 31_488, compactable: true });
+    expect(latest.context).toEqual({ tokens: 31_488, compactable: true, limits: null });
   });
 
   it("用合法 Todo 事件替换全部待办，并拒绝空事项", async () => {
@@ -288,6 +290,31 @@ describe("AgentSessionStore", () => {
       });
     });
     expect(latest.todos).toEqual(["读取工程", "检查章节", "汇总结果"]);
+  });
+
+  it("上下文容量独立于 token 变化更新到会话切片", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    for (const context_window of [128_000, 256_000]) {
+      await act(async () =>
+        event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+          type: "context",
+          context: {
+            tokens: 64_000,
+            compactable: true,
+            limits: { context_window, max_output_tokens: 32_000 },
+          },
+        }),
+      );
+      expect(latest.context).toEqual({
+        tokens: 64_000,
+        compactable: true,
+        limits: { context_window, max_output_tokens: 32_000 },
+      });
+    }
   });
 
   it("用完整队列事件替换投影，并转发队列协议命令", async () => {
@@ -396,7 +423,7 @@ describe("AgentSessionStore", () => {
 
   it("压缩回执应用命令期间收到的公开 running 条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
-      agent_snapshot({ context: { tokens: 64_000, compactable: true } }),
+      agent_snapshot({ context: { tokens: 64_000, compactable: true, limits: null } }),
     );
     desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
@@ -608,7 +635,7 @@ describe("AgentSessionStore", () => {
         entries: [],
         skills: [],
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       },
     ],
     [
@@ -632,7 +659,7 @@ describe("AgentSessionStore", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       },
     ],
     [
@@ -644,7 +671,7 @@ describe("AgentSessionStore", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       },
     ],
   ])("缺失必需快照字段 %s 时按当前协议失败", async (_field, snapshot) => {
@@ -664,7 +691,7 @@ describe("AgentSessionStore", () => {
         skills: [],
         inputQueue: { paused: false, canSendNow: false, items: [] },
         todos: [],
-        context: { tokens: null, compactable: false },
+        context: { tokens: null, compactable: false, limits: null },
       })
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
@@ -692,7 +719,7 @@ describe("AgentSessionStore", () => {
       entries: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -904,7 +931,7 @@ describe("AgentSessionStore", () => {
       skills: [],
       inputQueue: { paused: false, canSendNow: true, items: [] },
       todos: [],
-      context: { tokens: null, compactable: false },
+      context: { tokens: null, compactable: false, limits: null },
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -1174,6 +1201,7 @@ describe("AgentSessionStore", () => {
 
   it("消费页面卸载后仍保留完整草稿", async () => {
     let latest: ReturnType<typeof useAgentSession> | null = null;
+    /** 用页面挂载与卸载观察 Provider 保留的草稿。 */
     function Probe(): null {
       latest = useAgentSession();
       return null;
@@ -1245,7 +1273,7 @@ describe("AgentSessionStore", () => {
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
-        context: { tokens: 200, compactable: true },
+        context: { tokens: 200, compactable: true, limits: null },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "session_state",
@@ -1260,7 +1288,7 @@ describe("AgentSessionStore", () => {
       assistant_entry("assistant-1", "已恢复", "success", 1),
       assistant_entry("assistant-2", "SSE 新消息", "running", 2),
     ]);
-    expect(latest.context).toEqual({ tokens: 200, compactable: true });
+    expect(latest.context).toEqual({ tokens: 200, compactable: true, limits: null });
   });
 
   it("非法命令 ack 不吞掉排队事件或锁死后续命令", async () => {
@@ -1285,13 +1313,13 @@ describe("AgentSessionStore", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context",
-        context: { tokens: 200, compactable: true },
+        context: { tokens: 200, compactable: true, limits: null },
       });
       resolve_send({ state: "running", entries: [], skills: [] });
       await expect(first).rejects.toBeInstanceOf(TypeError);
     });
 
-    expect(latest.context).toEqual({ tokens: 200, compactable: true });
+    expect(latest.context).toEqual({ tokens: 200, compactable: true, limits: null });
 
     desktop_api_mocks.api_fetch.mockImplementation(async () => ({
       revision: event_source.current_revision,
@@ -1490,6 +1518,7 @@ describe("AgentSessionStore", () => {
 
   /** 探针只暴露 Hook 的公开返回值，不读取或注入内部 setter。 */
   async function render_probe(use_probe: () => void): Promise<void> {
+    /** 在 React 生命周期中执行当前测试的订阅。 */
     function Probe(): null {
       use_probe();
       return null;
@@ -1507,6 +1536,7 @@ describe("AgentSessionStore", () => {
   }
 });
 
+/** 构造时间线输出，供恢复和增量事件共用。 */
 function assistant_entry(
   id: string,
   text: string,
@@ -1522,6 +1552,7 @@ function assistant_entry(
   };
 }
 
+/** 构造普通轮次输入，保留生命周期字段。 */
 function user_entry(id: string, text: string, images: string[] = []) {
   return {
     kind: "user_message" as const,
@@ -1535,10 +1566,12 @@ function user_entry(id: string, text: string, images: string[] = []) {
   };
 }
 
+/** 按协议编码有序图片附件。 */
 function image_attachments(...images: string[]): AgentMessageAttachment[] {
   return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
 }
 
+/** 为恢复和重连提供完整会话载荷。 */
 function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
   return {
     revision: 0,
@@ -1549,11 +1582,12 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
     todos: [],
-    context: { tokens: null, compactable: false },
+    context: { tokens: null, compactable: false, limits: null },
     ...overrides,
   };
 }
 
+/** 在 React 提交期间等待公开状态收敛。 */
 async function wait_for(assertion: () => void): Promise<void> {
   await act(async () => await vi.waitFor(assertion));
 }

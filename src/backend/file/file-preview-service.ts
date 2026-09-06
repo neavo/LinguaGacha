@@ -62,7 +62,7 @@ export class FilePreviewService {
         source_paths: draft.source_paths,
         files: draft.files,
         items: draft.items,
-        section_revisions: { files: 0, items: 0, analysis: 0 },
+        section_revisions: { files: 0, items: 0 },
       },
       failed_files: draft.failed_files as unknown as JsonValue,
     };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ModelThinkingLevel, ModelUsage } from "@domain/model";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -17,6 +18,7 @@ export type ModelSelectionController = {
   loading: boolean;
   updating: boolean;
   select_model: (usage: ModelUsage, model_id: string) => Promise<void>;
+  select_agent_batch_translation_model: (model_id: string | null) => Promise<void>;
   update_thinking_level: (usage: ModelUsage, thinking_level: ModelThinkingLevel) => Promise<void>; // 后端按用途原子定位当前模型，调用方不提交可能过期的模型 ID
 };
 
@@ -26,21 +28,25 @@ const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
 export function useModelSelection(): ModelSelectionController {
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
+  const runtime_idle = useRuntimeSnapshot().owner === null; // 共享运行占用变化后刷新配置快照
   const [snapshot, set_snapshot] = useState<ModelSelectionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [updating, set_updating] = useState(false);
+  const settings_revision_ref = useRef(0); // 保存设置使此前发出的查询失效
   const updating_ref = useRef(false); // React 提交 updating 前也要阻止同一帧重复命令
 
   useEffect(() => {
+    if (updating_ref.current) return;
     let mounted = true;
+    const settings_revision = settings_revision_ref.current;
     void api_get<unknown>("/api/models/selection")
       .then((payload) => {
-        if (!mounted) return;
+        if (!mounted || settings_revision !== settings_revision_ref.current) return;
         const next = normalize_model_selection_snapshot(payload);
         set_snapshot(next);
       })
       .catch((error: unknown) => {
-        if (mounted) {
+        if (mounted && settings_revision === settings_revision_ref.current) {
           push_toast(
             "error",
             resolve_visible_error_message(error, t, t("app.model.selection.load_failed")),
@@ -53,13 +59,14 @@ export function useModelSelection(): ModelSelectionController {
     return () => {
       mounted = false;
     };
-  }, [push_toast, t]);
+  }, [push_toast, t, runtime_idle]);
 
-  /** 两种模型控制命令共用提交、回包归一和错误恢复。 */
+  /** 模型控制命令共用提交、回包归一和错误恢复。 */
   const update_snapshot = useCallback(
-    async (path: string, request: Record<string, string>): Promise<void> => {
+    async (path: string, request: Record<string, string | null>): Promise<void> => {
       if (updating_ref.current) return;
       updating_ref.current = true;
+      settings_revision_ref.current += 1;
       set_updating(true);
       try {
         const payload = await api_fetch<unknown>(path, request);
@@ -99,7 +106,23 @@ export function useModelSelection(): ModelSelectionController {
     [snapshot, update_snapshot],
   );
 
-  return { snapshot, loading, updating, select_model, update_thinking_level };
+  /** 显式模型和跟随偏好都以持久化回包作为新的页面事实。 */
+  const select_agent_batch_translation_model = useCallback(
+    async (model_id: string | null): Promise<void> => {
+      if (snapshot.model_selection.agent_batch_translation === model_id) return;
+      await update_snapshot("/api/models/agent-batch-translation/select", { model_id });
+    },
+    [snapshot.model_selection.agent_batch_translation, update_snapshot],
+  );
+
+  return {
+    snapshot,
+    loading,
+    updating,
+    select_model,
+    select_agent_batch_translation_model,
+    update_thinking_level,
+  };
 }
 
 /** 从公开快照读取用途对应模型，失效选择不伪造回退项。 */

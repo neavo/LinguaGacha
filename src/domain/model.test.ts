@@ -129,18 +129,19 @@ describe("Model", () => {
     expect(Model.resolve_template_filename("PRESET")).toBeNull();
   });
 
-  it("模型用途选择只保留规范化后的三个模型 ID", () => {
+  it("模型选择规范化并默认跟随 Agent 批量翻译模型", () => {
     expect(
       normalize_model_selection({
         translation: " translation-model ",
-        analysis: 7,
+
         agent: "agent-model",
         unknown: "ignored",
       }),
     ).toEqual({
       translation: "translation-model",
-      analysis: "",
+
       agent: "agent-model",
+      agent_batch_translation: null,
     });
   });
 });

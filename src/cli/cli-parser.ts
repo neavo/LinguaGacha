@@ -7,7 +7,7 @@ import {
   type TargetLanguageCode,
 } from "../domain/language";
 
-export type CLICommandName = "translate" | "analyze";
+export type CLICommandName = "translate";
 
 export type CLIParseResult =
   | { kind: "help"; command?: CLICommandName }
@@ -24,7 +24,7 @@ export interface CLICommandOptions {
 }
 
 export interface CLICommandResources {
-  promptPath: string | null; // 按命令写入 translation_prompt 或 analysis_prompt
+  promptPath: string | null; // 写入翻译提示词
   glossaryPath: string | null; // 仅服务翻译任务术语表
   preReplacementPath: string | null; // 仅服务翻译任务译前替换
   postReplacementPath: string | null; // 仅服务翻译任务译后替换
@@ -46,7 +46,7 @@ export class CLIUsageError extends Error {
   }
 }
 
-const COMMANDS = new Set<CLICommandName>(["translate", "analyze"]);
+const COMMANDS = new Set<CLICommandName>(["translate"]);
 const SOURCE_LANGUAGE_SET = new Set<string>([ALL_LANGUAGE_CODE, ...SOURCE_LANGUAGE_CODES]);
 const TARGET_LANGUAGE_SET = new Set<string>(TARGET_LANGUAGE_CODES);
 
@@ -109,14 +109,12 @@ function parse_command_options(command: CLICommandName, tokens: string[]): CLICo
       ]);
       index += 1;
     } else if (token === "--glossary") {
-      assert_translation_only_option(command, token);
       resources.glossaryPath = normalize_resource_path(read_option_value(token, value), token, [
         ".json",
         ".xlsx",
       ]);
       index += 1;
     } else if (token === "--pre-replacement") {
-      assert_translation_only_option(command, token);
       resources.preReplacementPath = normalize_resource_path(
         read_option_value(token, value),
         token,
@@ -124,7 +122,6 @@ function parse_command_options(command: CLICommandName, tokens: string[]): CLICo
       );
       index += 1;
     } else if (token === "--post-replacement") {
-      assert_translation_only_option(command, token);
       resources.postReplacementPath = normalize_resource_path(
         read_option_value(token, value),
         token,
@@ -132,7 +129,6 @@ function parse_command_options(command: CLICommandName, tokens: string[]): CLICo
       );
       index += 1;
     } else if (token === "--text-preserve") {
-      assert_translation_only_option(command, token);
       resources.textPreservePath = normalize_resource_path(read_option_value(token, value), token, [
         ".json",
         ".xlsx",
@@ -164,15 +160,6 @@ function create_empty_command_resources(): CLICommandResources {
     postReplacementPath: null,
     textPreservePath: null,
   };
-}
-
-/**
- * 分析任务当前只支持自定义提示词，翻译专属规则不能静默忽略。
- */
-function assert_translation_only_option(command: CLICommandName, option_name: string): void {
-  if (command !== "translate") {
-    throw new CLIUsageError(`${option_name} is only supported by the translate command`);
-  }
 }
 
 /**

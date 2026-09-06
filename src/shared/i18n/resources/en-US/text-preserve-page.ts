@@ -46,10 +46,8 @@ export const en_us_text_preserve_page = {
     load_failed: "Failed to load text preservation rules. Please try again later.",
     preset_name_required: "Preset name cannot be empty",
 
-    default_preset_cleared: "Default preset cleared …",
     unknown_error: "The operation failed. Please try again later.",
 
-    reset_success: "Reset completed …",
     mode_refresh_pending:
       "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.",
   },
