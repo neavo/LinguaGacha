@@ -34,7 +34,7 @@ import {
   useAgentSkills,
   useAgentTimeline,
 } from "@frontend/app/session/agent/agent-session-context";
-import { AgentDecisionLayer } from "./agent-decision";
+import { AgentDecision } from "./agent-decision";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentInlineEditor, type AgentInlineEditTarget } from "./agent-inline-editor";
 import { AgentInputQueue } from "./agent-input-queue";
@@ -42,6 +42,7 @@ import { create_agent_mention_tokens, type AgentMentionInstruction } from "./age
 import { AgentTaskStatus } from "./agent-task-status";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
+import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -68,6 +69,7 @@ type PendingThinkingOffAction =
   | { kind: "disable_thinking" };
 
 /** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
+/** 组合会话快照与交互入口，页面持有原位编辑等临时界面状态。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -336,16 +338,12 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [active_inline_edit, agent_actions, input],
   );
 
+  /** 保存成功和取消共用同一关闭入口；失败由原位编辑器保留草稿。 */
   const cancel_inline_edit = useCallback((): void => {
     set_active_inline_edit(null);
   }, []);
 
-  /** 后端受理成功后关闭原位编辑器；失败路径由编辑器自行保留草稿。 */
-  const complete_inline_edit = useCallback(
-    (_message: AgentMessageInput): void => cancel_inline_edit(),
-    [cancel_inline_edit],
-  );
-
+  /** 图片处理失败通过页面反馈，保留正在编辑的内容。 */
   const handle_inline_image_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.image"));
   }, [push_toast, t]);
@@ -361,7 +359,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           model_selection={model_selection}
           unavailable_reason={unavailable_reason}
           on_save={save_inline_edit}
-          on_saved={complete_inline_edit}
+          on_saved={cancel_inline_edit}
           on_cancel={cancel_inline_edit}
           on_image_error={handle_inline_image_error}
         />
@@ -370,7 +368,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [
       controls.command,
       cancel_inline_edit,
-      complete_inline_edit,
       handle_inline_image_error,
       model_selection,
       save_inline_edit,
@@ -379,6 +376,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     ],
   );
 
+  /** 仅在当前历史目标的位置挂载原位编辑器。 */
   const render_entry_editor = useCallback(
     (entry: Extract<AgentEntry, { kind: "user_message" | "assistant_message" }>) => {
       if (
@@ -402,6 +400,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     });
   };
 
+  /** 仅在当前队列目标的位置挂载原位编辑器。 */
   const render_queue_editor = useCallback(
     (item: AgentQueuedInput) => {
       if (active_inline_edit?.kind !== "queue" || active_inline_edit.itemId !== item.id) {
@@ -444,6 +443,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
+  const input_transition = useAgentInputTransition(pending_decision, composer_ref);
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
   const follow_latest_aria_shortcut =
@@ -582,9 +582,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div className="agent-page__bottom-region">
-        <div className="agent-page__bottom-controls" inert={pending_decision !== null || undefined}>
-          <div className="agent-page__status-zone">
+      <div ref={input_transition.region_ref} className="agent-page__bottom-region">
+        <div ref={input_transition.area_ref} className="agent-page__input-area">
+          <div
+            ref={input_transition.status_ref}
+            className="agent-page__status-zone"
+            inert={input_transition.locked || undefined}
+          >
             <AgentTaskStatus todos={todos} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
@@ -626,38 +630,53 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           </div>
 
           <div className="agent-page__operation-zone">
-            <AgentComposer
-              ref={composer_ref}
-              locked={active_inline_edit !== null}
-              skills={skills}
-              instructions={instructions}
-              running={is_running}
-              stop_disabled={workspace_apply_running}
-              compacting={compacting}
-              unavailable_reason={unavailable_reason}
-              command={controls.command}
-              can_continue_queue={can_continue_queue}
-              queue_full={queue_full}
-              can_reset={!agent_restoring && entries.length > 0}
-              context_tokens={controls.context.tokens}
-              approval_mode={controls.approvalMode}
-              approval_mode_disabled={workspace_apply_running}
-              model_selection={model_selection}
-              input_session={input}
-              on_send={submit_message}
-              on_thinking_level_change={change_agent_thinking_level}
-              on_approval_mode_change={change_approval_mode}
-              on_image_error={() => push_toast("error", t("agent_page.error.image"))}
-              on_stop={stop}
-              on_reset={() => set_reset_dialog_open(true)}
-            />
+            <div
+              ref={input_transition.decision_ref}
+              className="agent-page__decision-slot"
+              inert={pending_decision === null || undefined}
+            >
+              {input_transition.visible_decision === null ? null : (
+                <AgentDecision
+                  decision={input_transition.visible_decision}
+                  title_ref={input_transition.title_ref}
+                  on_resolve_question={agent_actions.resolveQuestion}
+                  on_resolve_write_approval={agent_actions.resolveWriteApproval}
+                />
+              )}
+            </div>
+            <div
+              ref={input_transition.composer_slot_ref}
+              className="agent-page__composer-slot"
+              inert={input_transition.locked || undefined}
+            >
+              <AgentComposer
+                ref={composer_ref}
+                locked={active_inline_edit !== null || input_transition.locked}
+                skills={skills}
+                instructions={instructions}
+                running={is_running}
+                stop_disabled={workspace_apply_running}
+                compacting={compacting}
+                unavailable_reason={unavailable_reason}
+                command={controls.command}
+                can_continue_queue={can_continue_queue}
+                queue_full={queue_full}
+                can_reset={!agent_restoring && entries.length > 0}
+                context_tokens={controls.context.tokens}
+                approval_mode={controls.approvalMode}
+                approval_mode_disabled={workspace_apply_running}
+                model_selection={model_selection}
+                input_session={input}
+                on_send={submit_message}
+                on_thinking_level_change={change_agent_thinking_level}
+                on_approval_mode_change={change_approval_mode}
+                on_image_error={() => push_toast("error", t("agent_page.error.image"))}
+                on_stop={stop}
+                on_reset={() => set_reset_dialog_open(true)}
+              />
+            </div>
           </div>
         </div>
-        <AgentDecisionLayer
-          decision={pending_decision}
-          on_resolve_question={agent_actions.resolveQuestion}
-          on_resolve_write_approval={agent_actions.resolveWriteApproval}
-        />
       </div>
       <AppConfirmDialog
         open={pending_thinking_off_action !== null}

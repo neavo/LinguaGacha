@@ -201,6 +201,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
 const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
 
 /** AGENT 主输入器与原位编辑器共享正文、附件和键盘交互，页面只提供命令入口。 */
+/** 承接主输入和原位编辑，按草稿 revision 同步 CodeMirror 与附件。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolved_theme } = useAppearance();
@@ -340,6 +341,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.unavailable_reason !== null ||
     props.command !== null;
   const approval_mode_disabled =
+    locked ||
     inline ||
     props.approval_mode_disabled === true ||
     props.command !== null ||
@@ -680,7 +682,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   return (
     <form
       className={`agent-operation-surface agent-composer${inline ? " agent-composer--inline" : ""}`}
-      data-image-drop-active={image_drop_active ? "true" : undefined}
+      data-image-drop-active={image_drop_active && !editor_read_only ? "true" : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -858,8 +860,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <span className="truncate">{t("agent_page.error.connection")}</span>
             </span>
           ) : null}
+          {/* 模型和批准菜单只持有临时展开态，输入锁切换时重建以关闭 Portal。 */}
           {!inline ? (
             <AgentComposerModelControls
+              key={locked ? "models-locked" : "models"}
               controller={props.model_selection}
               disabled={model_commands_disabled}
               context_tokens={props.context_tokens}
@@ -867,7 +871,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             />
           ) : null}
           {!inline ? (
-            <AppDropdownMenu>
+            <AppDropdownMenu key={locked ? "approval-locked" : "approval"}>
               <Tooltip>
                 <TooltipTrigger
                   render={tooltip_trigger_target(
@@ -903,16 +907,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 <AppDropdownMenuRadioGroup
                   value={approval_mode}
                   onValueChange={(value) => {
-                    if (value === "manual" || value === "auto") {
+                    if (!approval_mode_disabled && (value === "manual" || value === "auto")) {
                       props.on_approval_mode_change?.(value);
                     }
                   }}
                 >
-                  <AppDropdownMenuRadioItem value="manual">
+                  <AppDropdownMenuRadioItem value="manual" disabled={approval_mode_disabled}>
                     <ShieldQuestionMark aria-hidden="true" />
                     {t("agent_page.approval.manual")}
                   </AppDropdownMenuRadioItem>
-                  <AppDropdownMenuRadioItem value="auto">
+                  <AppDropdownMenuRadioItem value="auto" disabled={approval_mode_disabled}>
                     <ShieldCheck aria-hidden="true" />
                     {t("agent_page.approval.auto")}
                   </AppDropdownMenuRadioItem>

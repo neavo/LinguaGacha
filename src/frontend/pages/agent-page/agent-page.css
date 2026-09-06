@@ -742,45 +742,76 @@
 
 .agent-page__bottom-region {
   position: relative;
+  box-sizing: border-box;
+  display: flex;
   flex: 0 0 auto;
-  isolation: isolate;
-}
-
-.agent-page__bottom-controls {
-  display: flex;
   flex-direction: column;
-  padding-bottom: var(--ui-page-pad-bottom);
+  justify-content: flex-end;
+  padding: var(--ui-page-gap) 0 var(--ui-page-pad-bottom);
 }
 
-.agent-page__bottom-controls[inert] {
-  user-select: none;
+.agent-page__bottom-region[data-transitioning] {
+  overflow: clip;
 }
 
-.agent-page__status-zone,
-.agent-page__operation-zone {
-  display: flex;
+.agent-page__input-area {
   width: min(calc(100% - 32px), var(--agent-composer-max-width));
   flex: 0 0 auto;
-  flex-direction: column;
   margin: 0 auto;
 }
 
+.agent-page__bottom-region[data-decision="true"] .agent-page__input-area {
+  width: min(calc(100% - 32px), var(--agent-decision-max-width));
+}
+
 .agent-page__status-zone {
+  position: relative;
   --agent-status-row-height: 28px;
   /* 对称侧轨为跟随按钮保留间隔，并让队列相对输入器保持居中。 */
   --agent-status-side-rail: 36px;
   --agent-status-border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 
+  display: flex;
+  flex-direction: column;
   container-type: inline-size;
   gap: 8px;
-  margin-top: var(--ui-page-gap);
   min-height: var(--agent-status-row-height);
-  position: relative;
 }
 
 .agent-page__operation-zone {
   container-type: inline-size;
   margin-top: 8px;
+}
+
+.agent-page__decision-slot {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.agent-page__bottom-region[data-decision="true"] .agent-page__decision-slot {
+  height: auto;
+  visibility: visible;
+  opacity: 1;
+}
+
+.agent-page__bottom-region[data-decision="true"] .agent-page__status-zone,
+.agent-page__bottom-region[data-decision="true"] .agent-page__composer-slot {
+  min-height: 0;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.agent-page__bottom-region[data-transitioning] .agent-page__status-zone,
+.agent-page__bottom-region[data-transitioning] .agent-page__composer-slot {
+  min-height: 0;
+  overflow: clip;
 }
 
 .agent-todo,
@@ -1006,12 +1037,10 @@
   }
 }
 
-/* 底部生产操作面使用稳定外框；用户决策层在其上方复用同一宽度基准。 */
+/* 底部操作面共用边界与背景，内容高度由各自布局拥有。 */
 .agent-operation-surface {
   position: relative;
   box-sizing: border-box;
-  /* 固定槽位覆盖编辑器、操作条和既有内边距，避免输入与审批切换时跳动。 */
-  min-height: 106px;
   flex: 0 0 auto;
   margin: 0;
   border: var(--agent-operation-surface-border-width, 1px) solid var(--border);
@@ -1021,6 +1050,7 @@
 }
 
 .agent-composer {
+  min-height: 106px;
   padding: 6px var(--agent-composer-padding-inline-end, 6px) 5px 12px;
 }
 
@@ -1062,7 +1092,7 @@
 }
 
 .agent-page__follow-control {
-  /* 跟随控件由状态区统一拥有，始终贴齐状态区右下角。 */
+  /* 跟随控件贴齐状态区右下角，并随状态区共同收起。 */
   position: absolute;
   inset-inline-end: calc(
     var(--agent-operation-surface-border-width) + var(--agent-composer-padding-inline-end)
@@ -1080,7 +1110,7 @@
   color: var(--primary);
 }
 
-.agent-operation-surface:focus-within {
+.agent-composer:focus-within {
   border-color: var(--primary);
 }
 
@@ -1265,85 +1295,11 @@
   gap: 8px;
 }
 
-/* Portal 留在 Agent 页面定位域；透明区域继续允许阅读和滚动时间线。 */
-.agent-decision-portal {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.agent-decision-layer {
-  position: absolute;
-  z-index: var(--ui-layer-overlay);
-  inset: auto 0 0;
-  box-sizing: border-box;
-  display: flex;
-  min-height: max(100%, 320px);
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 16px 16px;
-  pointer-events: none;
-}
-
-.agent-decision-shade {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: color-mix(in srgb, var(--foreground) 10%, transparent);
-  backdrop-filter: blur(var(--blur-xs));
-  mask-image: linear-gradient(to bottom, transparent 0, black 28%, black 100%);
-  opacity: 1;
-  pointer-events: none;
-  transition: opacity 180ms ease-out;
-}
-
-.agent-decision-shade[data-starting-style],
-.agent-decision-shade[data-ending-style] {
-  opacity: 0;
-}
-
-.agent-decision-shade[data-ending-style] {
-  transition-duration: 120ms;
-  transition-timing-function: ease-in;
-}
-
 .agent-decision {
-  position: relative;
-  z-index: 1;
   display: flex;
-  width: min(100%, var(--agent-decision-max-width));
+  width: 100%;
   flex-direction: column;
   padding: 10px 12px;
-  box-shadow: var(--ui-shadow-overlay);
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-  transition:
-    opacity 180ms ease-out,
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 160ms ease;
-}
-
-.agent-decision[data-starting-style] {
-  opacity: 0;
-  transform: translateY(16px);
-}
-
-.agent-decision[data-ending-style] {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(8px);
-  transition-duration: 150ms;
-  transition-timing-function: ease-in;
-}
-
-.agent-decision[data-starting-style],
-.agent-decision[data-ending-style] {
-  will-change: opacity, transform;
-}
-
-.agent-decision:focus-within {
-  border-color: var(--border);
 }
 
 .agent-decision__header {
@@ -1389,13 +1345,13 @@
 }
 
 .agent-write-summary {
-  display: flex;
+  display: block;
   margin: 0;
-  flex-wrap: wrap;
-  gap: 2px 14px;
   padding: 0;
   list-style: none;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-write-summary__item {
@@ -1403,6 +1359,10 @@
   align-items: baseline;
   gap: 4px;
   white-space: nowrap;
+}
+
+.agent-write-summary__item + .agent-write-summary__item {
+  margin-inline-start: 14px;
 }
 
 .agent-write-summary__value {
@@ -1838,16 +1798,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-decision-shade,
-  .agent-decision {
-    transition-duration: 100ms;
-  }
-
-  .agent-decision[data-starting-style],
-  .agent-decision[data-ending-style] {
-    transform: none;
-  }
-
   .agent-decision-action__icon--deadline::before {
     animation: none;
     opacity: 0;
@@ -1891,11 +1841,6 @@
 .agent-todo__speed {
   margin-left: 8px;
   font-variant-numeric: tabular-nums;
-}
-
-.agent-decision-action:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .agent-composer__connection-status {

@@ -58,29 +58,32 @@ class TestResizeObserver implements ResizeObserver {
   private readonly callback: ResizeObserverCallback;
   private readonly targets = new Set<Element>();
 
+  /** 保留真实观察回调，并登记到测试的统一通知入口。 */
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     resize_observers.add(this);
   }
 
+  /** 登记需要接收尺寸通知的元素。 */
   observe(target: Element): void {
     this.targets.add(target);
   }
+  /** 移除指定元素的尺寸订阅。 */
   unobserve(target: Element): void {
     this.targets.delete(target);
   }
+  /** 解除该观察器在测试中的全部通知来源。 */
   disconnect(): void {
     resize_observers.delete(this);
   }
-  takeRecords(): ResizeObserverEntry[] {
-    return [];
-  }
+  /** 按被观察元素定向推进尺寸变化。 */
   notify(target?: Element): void {
     if (target !== undefined && !this.targets.has(target)) return;
     this.callback([], this);
   }
 }
 
+/** 通知实际订阅目标的观察器。 */
 function notify_resize_observers(target?: Element): void {
   for (const observer of resize_observers) observer.notify(target);
 }
@@ -672,7 +675,7 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("待决状态同步冻结底部控制区", async () => {
+  it("选择期间收起操作区并在恢复后保留草稿、编辑实例和跟随状态", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -686,13 +689,46 @@ describe("AgentPage", () => {
         prompts: 0,
       },
     };
-    const view = await render_page({ pendingDecision: pending_write_decision });
-
-    const bottom_controls = view.querySelector(".agent-page__bottom-controls");
-    expect(bottom_controls?.hasAttribute("inert")).toBe(true);
-
-    await render_page({ pendingDecision: null });
-    expect(view.querySelector(".agent-page__bottom-controls")?.hasAttribute("inert")).toBe(false);
+    const input: AgentInputSession = {
+      ...build_state().input,
+      read_draft: () => ({
+        text: "",
+        attachments: [
+          { kind: "response_annotation", selectedText: "需要复核的段落", comment: "检查人称" },
+        ],
+      }),
+    };
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ input, send });
+    const host = view.querySelector<HTMLElement>(".cm-content")!;
+    const editor = EditorView.findFromDOM(host)!;
+    await act(async () => {
+      editor.dispatch({ changes: { from: 0, insert: "保留这份草稿" }, selection: { anchor: 3 } });
+      host.focus();
+    });
+    await render_page({ input, send, pendingDecision: pending_write_decision });
+    const body = view.querySelector(".agent-page__composer-slot")!;
+    expect(body.hasAttribute("inert")).toBe(true);
+    const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
+    expect(follow_button.closest("[inert]")).toBe(view.querySelector(".agent-page__status-zone"));
+    expect(follow_button.getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(view.querySelector(".agent-decision__prompt"));
+    await act(async () => {
+      view
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(send).not.toHaveBeenCalled();
+    await render_page({ input, send, pendingDecision: null });
+    expect(body.hasAttribute("inert")).toBe(false);
+    expect(EditorView.findFromDOM(host)).toBe(editor);
+    expect(editor.state.doc.toString()).toBe("保留这份草稿");
+    expect(editor.state.selection.main.anchor).toBe(3);
+    expect(view.textContent).toContain("需要复核的段落");
+    expect(document.activeElement).toBe(host);
+    expect(view.querySelector(".agent-decision")).toBeNull();
+    expect(follow_button.closest("[inert]")).toBeNull();
+    expect(follow_button.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("压缩失败后保留普通 round 操作与新消息发送", async () => {
@@ -1017,10 +1053,11 @@ describe("AgentPage", () => {
   });
 });
 
+/** 每次渲染创建独立会话快照，场景仅覆盖所需字段。 */
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   return {
     state: "idle",
-    approvalMode: overrides.approvalMode ?? "manual",
+    approvalMode: "manual",
     pendingDecision: null,
     entries: [
       user_entry("user-1", "开始", "success", 0, 1),
@@ -1028,8 +1065,8 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     ],
     skills: [],
     inputQueue: { paused: false, canSendNow: false, items: [] },
-    todos: overrides.todos ?? [],
-    context: overrides.context ?? { tokens: null, compactable: false },
+    todos: [],
+    context: { tokens: null, compactable: false },
     transport: "ready",
     command: null,
     input: {
@@ -1057,6 +1094,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   };
 }
 
+/** 构造带回合归属与完成时间的用户消息。 */
 function user_entry(
   id: string,
   text: string,
@@ -1076,6 +1114,7 @@ function user_entry(
   };
 }
 
+/** 将普通助手正文装配为公开 parts 消息。 */
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
 }
@@ -1093,6 +1132,7 @@ function workspace_apply_entry(id: string) {
   };
 }
 
+/** 按公开结构构造可含多种内容的助手消息。 */
 function assistant_parts_entry(
   id: string,
   parts: AgentAssistantMessageParts,
@@ -1108,16 +1148,19 @@ function assistant_parts_entry(
   };
 }
 
+/** 按可访问名称定位操作入口。 */
 function get_button_by_label(container: HTMLElement, label: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   if (button === null) throw new Error(`缺少按钮：${label}`);
   return button;
 }
 
+/** 定位页面共享的跟随切换入口。 */
 function get_follow_latest_button(container: HTMLElement): HTMLButtonElement {
   return get_button_by_label(container, "agent_page.action.follow_latest");
 }
 
+/** 获取实际 CodeMirror 实例以驱动编辑行为。 */
 function get_editor(container: HTMLElement): EditorView {
   const content = container.querySelector<HTMLElement>(".cm-content");
   const editor = content === null ? null : EditorView.findFromDOM(content);
@@ -1140,6 +1183,7 @@ async function select_agent_thinking_level(container: HTMLElement, label: string
   await act(async () => option.click());
 }
 
+/** 定位当前确认框的主操作。 */
 function get_portal_action_button(): HTMLButtonElement {
   const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
   const button = dialog?.querySelector<HTMLButtonElement>(
@@ -1149,6 +1193,7 @@ function get_portal_action_button(): HTMLButtonElement {
   return button;
 }
 
+/** 定位当前确认框的取消操作。 */
 function get_portal_cancel_button(): HTMLButtonElement {
   const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
   const button = dialog?.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-cancel"]');

@@ -69,7 +69,6 @@
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
 - `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 `context`、`todos`、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、todo、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
-- Agent Composer 通过菜单切换写入审批模式，更新以后台命令为准。页面在底部控制区叠放 `pendingDecision` 并将控制区设为 inert，时间线仍可阅读；各类决定共用后端 `expiresAt` 的期限进度与裁决结果，受理后关闭。普通问题提供固定动作、自定义答案与取消；写入授权提供三种权限动作，摘要按非零变更类别本地化。
 - `AgentCompletionAttention` 在跨路由会话镜像中观察一次运行从 `running` 收束到最终 round `success | error` 的转换，并忽略 `stopped`、reset 与自动队列中间轮次；确认后只请求宿主注意力，不新增 Agent SSE 事件或通知正文。
 - 图片文件入口和协议归一由 renderer 拥有；文件选择、拖入与粘贴在发送前统一转换为公开协议要求的 WebP，后端不承担文件解码、格式探测或回退。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有命令复用轻量 ack 与命令期 SSE revision 重放，删除、重排和立即发送的受理失败由页面解析为安全 Toast，队列原位编辑失败保留在编辑器旁，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空普通 Composer 草稿，空 continue 不改写草稿或历史；队列项与时间线条目各自在目标位置展开独立编辑器，成功后由页面显式替换 user 输入历史，assistant 修改不改写输入历史。
