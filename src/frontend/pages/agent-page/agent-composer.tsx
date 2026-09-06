@@ -200,8 +200,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
 });
 const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
 
-/** AGENT 主输入器与原位编辑器共享正文、附件和键盘交互，页面只提供命令入口。 */
-/** 承接主输入和原位编辑，按草稿 revision 同步 CodeMirror 与附件。 */
+/** 主输入与原位编辑共享正文、附件和键盘交互，按草稿 revision 同步 CodeMirror。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolved_theme } = useAppearance();
@@ -348,11 +347,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.unavailable_reason !== null;
   const approval_mode_label = t(
     approval_mode === "auto" ? "agent_page.approval.auto" : "agent_page.approval.manual",
-  );
-  const approval_mode_tooltip = t(
-    approval_mode === "auto"
-      ? "agent_page.approval.tooltip_auto"
-      : "agent_page.approval.tooltip_manual",
   );
   const ApprovalModeIcon = approval_mode === "auto" ? ShieldCheck : ShieldQuestionMark;
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
@@ -884,7 +878,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                           className="agent-composer__approval-trigger"
                           data-approval-mode={approval_mode}
                           disabled={approval_mode_disabled}
-                          aria-label={approval_mode_tooltip}
+                          aria-label={approval_mode_label}
                         >
                           <ApprovalModeIcon
                             className="agent-composer__approval-icon"
@@ -900,7 +894,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   )}
                 />
                 <TooltipContent side="top" sideOffset={8}>
-                  <p>{approval_mode_tooltip}</p>
+                  <p>{t("agent_page.approval.tooltip")}</p>
                 </TooltipContent>
               </Tooltip>
               <AppDropdownMenuContent align="end" matchTriggerWidth={false}>

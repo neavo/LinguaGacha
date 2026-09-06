@@ -8,7 +8,7 @@ import {
   FlaskConical,
   GraduationCap,
   Grid2x2Check,
-  LayoutDashboard,
+  ListTree,
   ReplaceAll,
   ScanText,
   ShieldCheck,
@@ -46,7 +46,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
       },
       {
         id: "workbench",
-        icon: LayoutDashboard,
+        icon: ListTree,
         title_key: "workbench_page.title",
       },
     ],

@@ -56,7 +56,7 @@
 
 - `BatchTranslationSessionProvider` 拥有历史、波形、动作确认、唯一详情侧栏与导出流程。侧栏跨路由保留，工程切换或关闭时清空；页面计算缓存、其它弹窗、导入和提交状态随页面挂载与卸载。
 - 完成反馈消费后端终态。独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时自动请求导出确认；Agent 批量结果由工具承接后续步骤。手动与自动导出共用流程，预检读取后端校对摘要，跳转 Agent 时覆盖普通 Composer 草稿。
-- `features/batch-translation` 提供共享摘要、详情、格式化与样式。详情优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；工作台统计消费工程事实，校对页按重翻目的与剩余 item 范围展示行级状态。模型提示直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
+- `features/batch-translation` 提供共享摘要、详情、格式化与样式。详情优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；工作台统计消费工程事实，校对页按重翻目的与剩余 item 范围展示行级状态。详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
 
 ## 4. 样式消费
 

@@ -13,11 +13,7 @@ export function AgentTaskStatus(props: {
   const { batch_translation_task: task } = useBatchTranslationSession();
   const metrics = task.translation_task_metrics;
   if (!metrics.active) return <AgentTodo {...props} />;
-  const display = build_translation_task_summary_display(
-    metrics,
-    t,
-    task.translation_task_display_snapshot?.config,
-  );
+  const display = build_translation_task_summary_display(metrics, t);
   return (
     <Tooltip>
       <TooltipTrigger

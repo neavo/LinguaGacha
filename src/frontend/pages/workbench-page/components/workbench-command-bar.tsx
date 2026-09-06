@@ -47,12 +47,9 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   const model_selection = useModelSelection();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
     props.batch_translation_task.task_confirm_state?.kind ?? null;
-  // 摘要卡只认识统一的打开意图，实际详情面板由当前任务会话决定。
-  const handle_open_task_detail = props.batch_translation_task.open_translation_detail_sheet;
   const summary = build_translation_task_summary_display(
     props.batch_translation_task.translation_task_metrics,
     t,
-    props.batch_translation_task.translation_task_display_snapshot?.config,
   );
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_delete_selected_files;
@@ -145,7 +142,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <BatchTranslationSummary
           class_name="workbench-page__task-summary"
           display={summary}
-          on_open={handle_open_task_detail}
+          on_open={props.batch_translation_task.open_translation_detail_sheet}
         />
       }
     />

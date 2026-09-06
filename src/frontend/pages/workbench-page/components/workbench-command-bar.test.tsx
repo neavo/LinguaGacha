@@ -3,52 +3,19 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
 }));
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentMessageInput } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
 
-/** 只替换命令栏跨页面协作者，任务菜单仍通过公开启动回调驱动。 */
-const navigation_mocks = vi.hoisted(() => ({ navigate_to_route: vi.fn() }));
-const toast_mocks = vi.hoisted(() => ({ push_toast: vi.fn() }));
-const agent_input_mocks = vi.hoisted(() => ({
-  draft: { text: "", attachments: [] } as AgentMessageInput,
-  read_draft: vi.fn(),
-  write_draft: vi.fn<(draft: AgentMessageInput) => void>(),
-}));
-
-/** 测试只关心 i18n 键的消费关系，不复制可独立调整的产品文案。 */
-const locale_messages: Record<string, string> = {
-  "workbench_page.analysis_task.feedback.agent_draft_preserved": "draft-preserved",
-};
-
 vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({
-    t: (key: string) => locale_messages[key] ?? key,
-  }),
-}));
-
-vi.mock("@frontend/app/navigation/navigation-context", () => ({
-  useAppNavigation: () => navigation_mocks,
-}));
-
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => toast_mocks,
-}));
-
-vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
-  useAgentInput: () => agent_input_mocks,
+  useI18n: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@frontend/pages/workbench-page/components/workbench-translation-menu", () => ({
-  WorkbenchTranslationMenu: (props: {
-    model_selection: unknown;
-    on_start_or_continue: () => Promise<void>;
-  }) => (
+  WorkbenchTranslationMenu: (props: { on_start_or_continue: () => Promise<void> }) => (
     <button
       type="button"
-      data-model-selection={props.model_selection !== undefined}
       onClick={() => {
         void props.on_start_or_continue();
       }}
@@ -117,15 +84,6 @@ describe("WorkbenchCommandBar", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
-  beforeEach(() => {
-    navigation_mocks.navigate_to_route.mockReset();
-    toast_mocks.push_toast.mockReset();
-    agent_input_mocks.draft = { text: "", attachments: [] };
-    agent_input_mocks.read_draft.mockReset();
-    agent_input_mocks.read_draft.mockImplementation(() => agent_input_mocks.draft);
-    agent_input_mocks.write_draft.mockReset();
-  });
-
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
@@ -133,7 +91,7 @@ describe("WorkbenchCommandBar", () => {
     root = null;
   });
 
-  /** 使用真实 DOM 渲染命令栏与弹窗，只替换跨页面协作者。 */
+  /** 挂载命令栏，验证按钮权限与任务启动回调。 */
   async function render_command_bar(
     props = create_workbench_command_bar_props(),
   ): Promise<ComponentProps<typeof WorkbenchCommandBar>> {
@@ -167,7 +125,7 @@ describe("WorkbenchCommandBar", () => {
     expect(find_button("app.action.delete").disabled).toBe(true);
   });
 
-  it("翻译任务仍直接进入原启动入口", async () => {
+  it("翻译按钮调用任务启动入口", async () => {
     const props = await render_command_bar();
 
     await act(async () => find_button("translation-task").click());
@@ -175,6 +133,5 @@ describe("WorkbenchCommandBar", () => {
     expect(
       props.batch_translation_task.request_start_or_continue_translation,
     ).toHaveBeenCalledOnce();
-    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
   });
 });

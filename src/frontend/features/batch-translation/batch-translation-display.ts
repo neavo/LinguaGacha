@@ -185,7 +185,6 @@ function build_translation_task_metric_entries(
 export function build_translation_task_summary_display(
   metrics: BatchTranslationMetrics,
   t: ReturnType<typeof useI18n>["t"],
-  config?: BatchTranslationConfig,
 ): BatchTranslationSummaryDisplay {
   let status_text = t("batch_translation.summary.empty");
   if (metrics.stopping) {
@@ -195,22 +194,13 @@ export function build_translation_task_summary_display(
   }
 
   const show_runtime = metrics.active || metrics.stopping;
-  const provider = build_translation_provider(config, t);
 
   return {
     status_text,
     trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
     tone: resolve_task_tone(metrics),
     show_spinner: show_runtime,
-    detail_tooltip_text: [
-      ...(provider === null
-        ? []
-        : [
-            `${t("app.model.selection.label")}: ${provider.name}`,
-            `${t("app.model.thinking_level.label")}: ${provider.thinking}`,
-          ]),
-      t("batch_translation.summary.detail_tooltip"),
-    ].join("\n"),
+    detail_tooltip_text: t("batch_translation.summary.detail_tooltip"),
   };
 }
 

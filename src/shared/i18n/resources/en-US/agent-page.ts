@@ -60,8 +60,7 @@ export const en_us_agent_page = {
   approval: {
     manual: "Manual approval",
     auto: "Automatic approval",
-    tooltip_manual: "Write request - Manual approval",
-    tooltip_auto: "Write request - Automatic approval",
+    tooltip: "Write permission approval mode",
     title: "Writing project data",
     summary: {
       items: "{count} text entries",

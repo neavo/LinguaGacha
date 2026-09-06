@@ -60,8 +60,7 @@ export const de_de_agent_page = {
   approval: {
     manual: "Manuelle Genehmigung",
     auto: "Automatische Genehmigung",
-    tooltip_manual: "Schreibanfrage - Manuelle Genehmigung",
-    tooltip_auto: "Schreibanfrage - Automatische Genehmigung",
+    tooltip: "Genehmigungsmodus für Schreibzugriffe",
     title: "Projektdaten werden geschrieben",
     summary: {
       items: "{count} Texteinträge",
