@@ -14,6 +14,36 @@ describe("批量翻译展示", () => {
     const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });
     expect(clone_translation_task_snapshot(snapshot).source).toBe(source);
   });
+  it("运行展示消费本轮进度，传输与历史复制保留工程累计事实", () => {
+    const snapshot = normalize_batch_translation_snapshot({
+      batch_translation: {
+        status: "running",
+        operation: "translate",
+        progress: normalize_batch_translation_progress({
+          total_line: 100,
+          line: 80,
+          processed_line: 70,
+          error_line: 10,
+        }),
+        run_progress: normalize_batch_translation_progress({
+          total_line: 10,
+          line: 4,
+          processed_line: 0,
+          error_line: 4,
+        }),
+      },
+    });
+    const clone = clone_translation_task_snapshot(snapshot);
+    expect(resolve_translation_task_metrics({ snapshot: clone, now_seconds: 0 })).toMatchObject({
+      completion_percent: 40,
+      processed_count: 0,
+      failed_count: 4,
+    });
+    expect(clone.progress.total_line).toBe(100);
+    expect(clone.operation).toBe("translate");
+    expect(clone.run_progress).not.toBe(snapshot.run_progress);
+  });
+
   it("未提供任务来源时保留空值", () => {
     expect(normalize_batch_translation_snapshot({}).source).toBeNull();
   });
@@ -126,6 +156,7 @@ describe("全量翻译完成导出", () => {
         ...create_empty_batch_translation_snapshot(),
         status,
         source,
+        operation: scope_kind === "all" ? "translate" : "retranslate",
         scope: scope_kind === "items" ? { kind: "items", item_ids: [] } : { kind: "all" },
       }),
     ).toBe(expected);

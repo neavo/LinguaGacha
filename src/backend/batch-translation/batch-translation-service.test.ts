@@ -50,13 +50,13 @@ describe("批量翻译服务", () => {
     const { service, runtime, run } = setup();
     expect(
       await service.start({
-        mode: "new",
-        scope: { kind: "items", item_ids: [2, "1", 2, true, 1.5, -1] },
+        operation: "retranslate",
+        scope: { kind: "items", item_ids: [2, 1, 2] },
       }),
     ).toMatchObject({ accepted: true });
     await runtime.dispose();
     expect(run.mock.calls[0]?.[1]).toEqual({
-      mode: "new",
+      operation: "retranslate",
       scope: { kind: "items", item_ids: [2, 1] },
     });
     expect(run.mock.calls[0]?.[2].model.id).toBe("translation");
@@ -67,7 +67,7 @@ describe("批量翻译服务", () => {
     { kind: "items", item_ids: [false, 0, 1.5] },
   ])("拒绝不完整 scope %j", async (scope) => {
     const { service, runtime, run } = setup();
-    await expect(service.start({ scope })).rejects.toMatchObject({
+    await expect(service.start({ operation: "translate", scope })).rejects.toMatchObject({
       code: "request.validation_failed",
     });
     expect(run).not.toHaveBeenCalled();
@@ -75,7 +75,9 @@ describe("批量翻译服务", () => {
   });
   it("工程未加载时不预约运行", async () => {
     const { service, runtime, gate } = setup(false);
-    await expect(service.start({ mode: "new" })).rejects.toMatchObject({
+    await expect(
+      service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
+    ).rejects.toMatchObject({
       code: "project.not_loaded",
     });
     expect(gate.get_snapshot().owner).toBeNull();
@@ -98,7 +100,10 @@ describe("批量翻译服务", () => {
       "agent",
     );
     const result = service
-      .run_under_agent(lease, new AbortController().signal, inherited)
+      .run_under_agent(lease, new AbortController().signal, inherited, {
+        scope: { kind: "items", item_ids: [2] },
+        include_errors: true,
+      })
       .then((value) => {
         completed();
         return value;
@@ -112,10 +117,14 @@ describe("批量翻译服务", () => {
     });
     expect(run.mock.calls[0]?.[2].model.thinking).not.toBe(inherited.thinking);
     expect(run.mock.calls[0]?.[1]).toEqual({
+      operation: "translate",
+      include_errors: true,
       mode: line > 0 ? "continue" : "new",
-      scope: { kind: "all" },
+      scope: { kind: "items", item_ids: [2] },
     });
-    await expect(service.start({ mode: "new" })).rejects.toMatchObject({ code: "runtime.busy" });
+    await expect(
+      service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
+    ).rejects.toMatchObject({ code: "runtime.busy" });
     finish();
     expect((await result).progress.line).toBe(line);
     expect(gate.get_snapshot().owner).toBe("agent");
@@ -125,7 +134,9 @@ describe("批量翻译服务", () => {
   it("普通项目写持有互斥时不能启动", async () => {
     const { service, runtime, gate } = setup();
     await gate.run_project_write(async () => {
-      await expect(service.start({ mode: "new" })).rejects.toMatchObject({ code: "runtime.busy" });
+      await expect(
+        service.start({ operation: "translate", mode: "new", scope: { kind: "all" } }),
+      ).rejects.toMatchObject({ code: "runtime.busy" });
     });
     await runtime.dispose();
   });
@@ -248,7 +259,11 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
         models: [{ id: "fake", threshold: { concurrency_limit: 1 } }],
       }),
     });
-    const handle = await service.start_current_project({ mode: "new", scope: { kind: "all" } });
+    const handle = await service.start_current_project({
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     expect(await handle.completion).toMatchObject({
       status: "done",
       progress: { line: 1, processed_line: 1, total_tokens: 7 },

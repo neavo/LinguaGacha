@@ -30,7 +30,6 @@ export interface BatchTranslationRunnerOptions {
     | "build_quality_snapshot"
     | "commit_translation_items"
     | "get_translation_items"
-    | "get_translation_items_by_scope"
     | "update_translation_progress"
   >; // 任务编排器只依赖项目任务事实的公开能力
   taskRuntime: Pick<
@@ -38,6 +37,7 @@ export interface BatchTranslationRunnerOptions {
     | "change_request_in_flight_count"
     | "is_current"
     | "publish_progress"
+    | "read_run_progress"
     | "publish_status"
     | "publish_config"
     | "read_progress"

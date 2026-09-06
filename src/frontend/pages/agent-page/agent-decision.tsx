@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type ReactNode, type RefObject } from "reac
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import {
   AGENT_DECISION_TIMEOUT_MS,
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
   AGENT_WRITE_APPROVAL_DEFAULT,
   type AgentPendingDecision,
   type AgentPendingWriteSummary,
@@ -98,7 +99,7 @@ function AgentQuestionDecision(props: {
               key={option.id}
               ordinal={index + 1}
               label={option.label}
-              deadline={index === 0 ? deadline : undefined}
+              deadline={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? deadline : undefined}
               onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
             />
           ))}

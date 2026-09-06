@@ -54,6 +54,7 @@ export const TASK_SKIPPED_ITEM_STATUSES = [
 export const BATCH_TRANSLATION_STOP_SOURCES = ["user", "parent", "shutdown"] as const;
 export type BatchTranslationStopSource = (typeof BATCH_TRANSLATION_STOP_SOURCES)[number];
 export type BatchTranslationSource = "standalone" | "agent";
+export type BatchTranslationOperation = "translate" | "retranslate";
 
 export type BatchTranslationRunStatus = (typeof BATCH_TRANSLATION_RUN_STATUSES)[number];
 export type BatchTranslationStartMode = (typeof BATCH_TRANSLATION_START_MODES)[number];
@@ -62,7 +63,7 @@ export type BatchTranslationProgressStatus = (typeof TASK_PROGRESS_STATUSES)[num
 export type BatchTranslationProgress = {
   start_time: number; // 秒级任务启动时间戳
   time: number; // 由 start_time 计算的累计耗时秒数
-  total_line: number; // 任务启动时冻结的目标行数
+  total_line: number; // 工程统计总量或本轮冻结目标数，由所属进度口径决定
   line: number; // 已成功与最终失败行数之和
   processed_line: number; // 已成功提交的行数
   error_line: number; // 最终失败的行数
@@ -73,8 +74,13 @@ export type BatchTranslationProgress = {
 };
 
 export type BatchTranslationScope =
-  | { kind: "all" } // all 表示普通翻译读取当前工程可运行全集
-  | { kind: "items"; item_ids: number[] }; // items 表示重翻等窄域翻译，只能携带不可变 id 列表
+  | { kind: "all" } // 当前工程范围
+  | { kind: "items"; item_ids: number[] }; // 指定目标范围，执行目的由 operation 决定
+
+export type AgentBatchTranslationRequest = Readonly<{
+  scope: BatchTranslationScope;
+  include_errors: boolean; // 用户已确认是否处理范围内的失败条目
+}>;
 
 const TASK_START_MODE_SET = new Set<string>(BATCH_TRANSLATION_START_MODES);
 const TASK_PROGRESS_STATUS_SET = new Set<string>(TASK_PROGRESS_STATUSES);
@@ -154,7 +160,7 @@ function normalize_translation_item_ids(value: unknown): number[] {
   return item_ids;
 }
 
-/** translation scope 读取侧归一化；空 items 表示运行中重翻已经没有剩余行，命令边界仍负责拒绝空请求 */
+/** translation scope 读取侧归一化；空 items 表示指定范围已经没有剩余行，命令边界仍负责拒绝空请求 */
 export function normalize_translation_scope(value: unknown): BatchTranslationScope {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return { kind: "all" };
@@ -185,6 +191,8 @@ export function clone_translation_scope(scope: BatchTranslationScope): BatchTran
 
 export type BatchTranslationSnapshot = {
   config?: BatchTranslationConfig;
+  operation?: BatchTranslationOperation; // 首次预约后保留本轮目的，工程切换清空
+  run_progress?: BatchTranslationProgress; // 本轮目标和实际提交结果，只属于内存运行态
   revision: number;
   status: BatchTranslationRunStatus;
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
@@ -198,12 +206,20 @@ export type BatchTranslationResult = Readonly<{
   status: "done" | "stopped" | "error";
   stop_source?: BatchTranslationStopSource;
   progress: Readonly<BatchTranslationProgress>;
+  run_progress?: Readonly<BatchTranslationProgress>;
 }>;
 
-export type BatchTranslationStartCommand = {
-  mode: BatchTranslationStartMode;
-  scope: BatchTranslationScope;
-};
+export type BatchTranslationStartCommand =
+  | {
+      operation: "translate";
+      mode: BatchTranslationStartMode;
+      scope: BatchTranslationScope;
+      include_errors?: boolean;
+    }
+  | {
+      operation: "retranslate";
+      scope: Extract<BatchTranslationScope, { kind: "items" }>;
+    };
 
 export type BatchTranslationSnapshotListener = (
   snapshot: Readonly<BatchTranslationSnapshot>,

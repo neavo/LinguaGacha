@@ -2,10 +2,7 @@ import type { BatchTranslationRunContext } from "./batch-translation-runner-opti
 import { Model } from "../../../domain/model";
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
-import {
-  normalize_batch_translation_progress,
-  type BatchTranslationProgress,
-} from "../../../domain/batch-translation";
+import { type BatchTranslationProgress } from "../../../domain/batch-translation";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,10 +44,7 @@ describe("BatchTranslationRunner", () => {
     const task_engine = new BatchTranslationRunner({
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        get_translation_items: () => ({
-          items: [create_pending_item()],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [create_pending_item()],
         commit_translation_items: async (
           items: MutableJsonRecord[],
           translation_extras: BatchTranslationProgress,
@@ -67,7 +61,11 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
+    await start_task(task_engine, task_runtime, {
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     await done.promise;
 
     expect(committed_batches).toHaveLength(1);
@@ -80,14 +78,59 @@ describe("BatchTranslationRunner", () => {
         file_path: "demo.txt",
       },
     ]);
-    expect(committed_batches[0]?.["translation_extras"]).toMatchObject({
+    expect((await task_runtime.build_snapshot()).run_progress).toMatchObject({
       line: 1,
       processed_line: 0,
       error_line: 1,
+    });
+    expect(committed_batches[0]?.["translation_extras"]).toMatchObject({
       total_input_tokens: 1,
       total_output_tokens: 2,
       total_tokens: 3,
     });
+  });
+
+  it("指定重翻的同值提交完成本轮目标并收敛行级状态", async () => {
+    const runtime = create_task_runtime();
+    const snapshots: Readonly<BatchTranslationSnapshot>[] = [];
+    runtime.subscribe((snapshot) => {
+      snapshots.push(snapshot);
+    });
+    const item = { ...create_pending_item(), status: "PROCESSED", dst: "译文" };
+    const runner = new BatchTranslationRunner({
+      builtinRoot: path.join(process.cwd(), "builtin"),
+      taskStore: create_task_store({
+        get_translation_items: () => [item],
+      }),
+      taskRuntime: runtime,
+      executorClient: { execute_unit: async () => create_translation_worker_result([item], 2, 3) },
+      taskPlanner: create_test_task_planner(),
+      logManager: create_log_manager(),
+    });
+    const command: BatchTranslationStartCommand = {
+      operation: "retranslate",
+      scope: { kind: "items", item_ids: [1] },
+    };
+    const handle = runtime.begin_standalone(command.scope, command.operation);
+    await runtime.execute(handle, () => runner.run(handle, command, create_run_context()));
+    const result = await handle.completion;
+    expect(result.run_progress).toMatchObject({
+      total_line: 1,
+      processed_line: 1,
+      error_line: 0,
+      total_tokens: 5,
+    });
+    expect(
+      snapshots.some(
+        (snapshot) =>
+          snapshot.status === "running" &&
+          snapshot.scope.kind === "items" &&
+          snapshot.scope.item_ids.length === 0 &&
+          snapshot.run_progress?.line === 1,
+      ),
+    ).toBe(true);
+    expect(item).toMatchObject({ status: "PROCESSED", dst: "译文" });
+    await runtime.dispose();
   });
 
   it("Runner 将指定模型传给规划器，并发布同源任务摘要", async () => {
@@ -120,7 +163,7 @@ describe("BatchTranslationRunner", () => {
     await start_task(
       task_engine,
       task_runtime,
-      { mode: "new", scope: { kind: "all" } },
+      { operation: "translate", mode: "new", scope: { kind: "all" } },
       run_context,
     );
     await done.promise;
@@ -157,14 +200,7 @@ describe("BatchTranslationRunner", () => {
         acquire_project_lease: () => () => {
           lease_release_count += 1;
         },
-        get_translation_items: () => ({
-          items: [],
-          progress: normalize_batch_translation_progress(
-            {
-              translation_extras,
-            }.translation_extras,
-          ),
-        }),
+        get_translation_items: () => [],
         update_translation_progress: (request: MutableJsonRecord) => {
           translation_extras = {
             ...(request as MutableJsonRecord),
@@ -178,7 +214,11 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
+    await start_task(task_engine, task_runtime, {
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     await done.promise;
 
     expect(lease_release_count).toBe(1);
@@ -213,10 +253,7 @@ describe("BatchTranslationRunner", () => {
           lease_release_count += 1;
           resolve_lease_release();
         },
-        get_translation_items: () => ({
-          items: [],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [],
       }),
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
@@ -224,7 +261,11 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
+    await start_task(task_engine, task_runtime, {
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     await lease_released;
     await wait_until(
       async () =>
@@ -249,10 +290,10 @@ describe("BatchTranslationRunner", () => {
     const task_engine = new BatchTranslationRunner({
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        get_translation_items: () => ({
-          items: [create_pending_item(1, "a.txt"), create_pending_item(2, "b.txt")],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [
+          create_pending_item(1, "a.txt"),
+          create_pending_item(2, "b.txt"),
+        ],
         commit_translation_items: async (items: MutableJsonRecord[]) => {
           committed_items.push(...items);
           return { changed_item_ids: [], section_revisions: {} };
@@ -295,6 +336,7 @@ describe("BatchTranslationRunner", () => {
       task_engine,
       task_runtime,
       {
+        operation: "translate",
         mode: "new",
         scope: { kind: "all" },
       },
@@ -315,13 +357,10 @@ describe("BatchTranslationRunner", () => {
     const task_engine = new BatchTranslationRunner({
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
-        get_translation_items: () => ({
-          items: [
-            create_pending_item(1, "demo.txt", "很长的第一条原文".repeat(20)),
-            create_pending_item(2, "demo.txt", "很长的第二条原文".repeat(20)),
-          ],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [
+          create_pending_item(1, "demo.txt", "很长的第一条原文".repeat(20)),
+          create_pending_item(2, "demo.txt", "很长的第二条原文".repeat(20)),
+        ],
       }),
       taskRuntime: task_runtime,
       executorClient: {
@@ -352,6 +391,7 @@ describe("BatchTranslationRunner", () => {
       task_engine,
       task_runtime,
       {
+        operation: "translate",
         mode: "new",
         scope: { kind: "all" },
       },
@@ -373,10 +413,7 @@ describe("BatchTranslationRunner", () => {
     const task_engine = new BatchTranslationRunner({
       builtinRoot: builtin_root,
       taskStore: create_task_store({
-        get_translation_items: () => ({
-          items: [],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [],
       }),
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
@@ -388,6 +425,7 @@ describe("BatchTranslationRunner", () => {
       task_engine,
       task_runtime,
       {
+        operation: "translate",
         mode: "new",
         scope: { kind: "all" },
       },
@@ -417,10 +455,7 @@ describe("BatchTranslationRunner", () => {
         acquire_project_lease: () => () => {
           lease_release_count += 1;
         },
-        get_translation_items: () => ({
-          items: [create_pending_item()],
-          progress: normalize_batch_translation_progress({}),
-        }),
+        get_translation_items: () => [create_pending_item()],
       }),
       taskRuntime: task_runtime,
       executorClient: {
@@ -434,7 +469,11 @@ describe("BatchTranslationRunner", () => {
       logManager: create_log_manager(),
     });
 
-    await start_task(task_engine, task_runtime, { mode: "new", scope: { kind: "all" } });
+    await start_task(task_engine, task_runtime, {
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     await execution_started;
 
     let dispose_completed = false;
@@ -530,7 +569,7 @@ describe("BatchTranslationRunner", () => {
     command: BatchTranslationStartCommand,
     run_context: BatchTranslationRunContext = create_run_context(),
   ): Promise<void> {
-    const handle = task_runtime.begin_standalone(command.scope);
+    const handle = task_runtime.begin_standalone(command.scope, command.operation);
     await task_runtime.execute(handle, () => task_engine.run(handle, command, run_context));
   }
 
@@ -557,14 +596,7 @@ describe("BatchTranslationRunner", () => {
 
       commit_translation_items: async () => ({ changed_item_ids: [], section_revisions: {} }),
 
-      get_translation_items: () => ({
-        items: [],
-        progress: normalize_batch_translation_progress({}),
-      }),
-      get_translation_items_by_scope: () => ({
-        items: [],
-        progress: normalize_batch_translation_progress({}),
-      }),
+      get_translation_items: () => [],
 
       update_translation_progress: () => ({ accepted: true }),
       ...overrides,

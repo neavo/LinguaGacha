@@ -93,13 +93,14 @@ export function resolve_translation_task_metrics(args: {
   }
 
   const snapshot = args.snapshot;
+  const progress = snapshot.run_progress ?? snapshot.progress;
   const active = is_active_batch_translation_status(snapshot.status);
   const elapsed_seconds =
-    active && snapshot.progress.start_time > 0
-      ? Math.max(0, args.now_seconds - snapshot.progress.start_time)
-      : Math.max(0, snapshot.progress.time);
-  const output_tokens = Math.max(0, snapshot.progress.total_output_tokens);
-  const reasoning_tokens = Math.max(0, snapshot.progress.total_reasoning_tokens);
+    active && progress.start_time > 0
+      ? Math.max(0, args.now_seconds - progress.start_time)
+      : Math.max(0, progress.time);
+  const output_tokens = Math.max(0, progress.total_output_tokens);
+  const reasoning_tokens = Math.max(0, progress.total_reasoning_tokens);
   const generated_tokens = resolve_batch_translation_generated_tokens({
     reasoning_tokens,
     output_tokens,
@@ -108,36 +109,28 @@ export function resolve_translation_task_metrics(args: {
     active,
     stopping: snapshot.status === "stopping",
     completion_percent:
-      snapshot.progress.total_line <= 0
+      progress.total_line <= 0
         ? 0
-        : Math.min(
-            1,
-            Math.max(0, snapshot.progress.line / Math.max(1, snapshot.progress.total_line)),
-          ) * 100,
-    processed_count:
-      snapshot.progress.processed_line > 0
-        ? snapshot.progress.processed_line
-        : snapshot.progress.line,
-    failed_count: Math.max(0, snapshot.progress.error_line),
+        : Math.min(1, Math.max(0, progress.line / Math.max(1, progress.total_line))) * 100,
+    processed_count: progress.processed_line,
+    failed_count: Math.max(0, progress.error_line),
     elapsed_seconds,
     remaining_seconds:
-      snapshot.progress.line <= 0
+      progress.line <= 0
         ? 0
         : Math.max(
             0,
-            (elapsed_seconds / Math.max(1, snapshot.progress.line)) *
-              Math.max(0, snapshot.progress.total_line - snapshot.progress.line),
+            (elapsed_seconds / Math.max(1, progress.line)) *
+              Math.max(0, progress.total_line - progress.line),
           ),
     average_generation_speed:
       elapsed_seconds <= 0 ? 0 : generated_tokens / Math.max(1, elapsed_seconds),
     input_tokens:
-      snapshot.progress.total_input_tokens > 0
-        ? snapshot.progress.total_input_tokens
+      progress.total_input_tokens > 0
+        ? progress.total_input_tokens
         : Math.max(
             0,
-            snapshot.progress.total_tokens -
-              snapshot.progress.total_reasoning_tokens -
-              snapshot.progress.total_output_tokens,
+            progress.total_tokens - progress.total_reasoning_tokens - progress.total_output_tokens,
           ),
     reasoning_tokens,
     output_tokens,
@@ -173,6 +166,12 @@ export function normalize_batch_translation_snapshot(
     : "idle";
   return {
     revision: Math.max(0, Number(raw.revision) || 0),
+    ...(raw.operation === "translate" || raw.operation === "retranslate"
+      ? { operation: raw.operation }
+      : {}),
+    ...(raw.run_progress === undefined
+      ? {}
+      : { run_progress: normalize_batch_translation_progress(raw.run_progress) }),
     ...(config === undefined ? {} : { config }),
     status,
     source: raw.source === "standalone" || raw.source === "agent" ? raw.source : null,
@@ -191,6 +190,7 @@ export function clone_translation_task_snapshot(
   return {
     ...snapshot,
     progress: { ...snapshot.progress },
+    ...(snapshot.run_progress === undefined ? {} : { run_progress: { ...snapshot.run_progress } }),
     ...(snapshot.config === undefined ? {} : { config: { ...snapshot.config } }),
     scope: clone_translation_scope(snapshot.scope),
   };
@@ -205,6 +205,7 @@ export function should_open_translation_export_followup(
     is_active_batch_translation_status(previous_status) &&
     snapshot.status === "done" &&
     snapshot.source === "standalone" &&
+    snapshot.operation === "translate" &&
     snapshot.scope.kind === "all"
   );
 }

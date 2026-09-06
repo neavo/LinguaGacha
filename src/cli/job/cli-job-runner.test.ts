@@ -53,6 +53,7 @@ describe("run_cli_job", () => {
     await expect(run_promise).resolves.toBeUndefined();
 
     expect(harness.start_task).toHaveBeenCalledWith({
+      operation: "translate",
       mode: "new",
       scope: { kind: "all" },
     });

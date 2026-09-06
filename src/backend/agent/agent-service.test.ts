@@ -311,7 +311,11 @@ function create_fake_response(context: Context): FauxResponseStep {
     return after_tool_call && !retry
       ? fauxAssistantMessage("翻译完成")
       : fauxAssistantMessage(
-          fauxToolCall("run_batch_translation", {}, { id: "batch-translation" }),
+          fauxToolCall(
+            "run_batch_translation",
+            { scope: { kind: "all" }, include_errors: false },
+            { id: "batch-translation" },
+          ),
           { stopReason: "toolUse" },
         );
   }
@@ -2651,6 +2655,7 @@ describe("AgentService", () => {
               thinking: { level: "HIGH" },
             },
       ),
+      { scope: { kind: "all" }, include_errors: false },
     );
     expect(service.get_snapshot().pendingDecision).toBeNull();
     select_agent_model("next");

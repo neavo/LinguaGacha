@@ -171,6 +171,7 @@ async function start_and_wait_for_translation(
   try {
     const handle = await services.batchTranslation.start_current_project({
       mode: "new",
+      operation: "translate",
       scope: { kind: "all" },
     });
     const result = await handle.completion;

@@ -80,7 +80,7 @@ export function create_agent_workspace_tools(options: {
       name: "workspace_apply",
       label: "应用工作区",
       description:
-        "提交当前工作区的显式变更批次，按对象 fp 与领域规则逐行处理；实际成功对象在一个独立事务中提交，单个对象失败进入 rejected，不阻塞无关对象。正常回执包含 status、applied、rejected、destroyed、revisions；有应用且有拒绝为 partial，仅有拒绝为 rejected，无变化且无拒绝为 unchanged。applied 按实际变化汇总，destroyed 为 true 时下一次脚本会重建快照。",
+        "提交当前工作区变更批次，宿主按当前审批模式处理授权。成功对象在同一事务中提交，单项拒绝不阻塞无关对象；实际结果与快照有效性依据回执及 ws.contract.apply 判读。",
       executionMode: "sequential",
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {

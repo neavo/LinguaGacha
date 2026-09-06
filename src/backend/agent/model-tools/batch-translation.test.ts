@@ -4,7 +4,7 @@ import { create_agent_batch_translation_tool } from "./batch-translation";
 import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 
 describe("Agent 批量翻译工具", () => {
-  it("零参数顺序工具等待完成后返回同一摘要", async () => {
+  it("顺序工具传递范围与失败策略并等待完整结果", async () => {
     let complete!: () => void;
     const pending = new Promise<void>((resolve) => {
       complete = resolve;
@@ -27,20 +27,20 @@ describe("Agent 批量翻译工具", () => {
         name: tool.name,
         arguments: args,
       } as ToolCall);
-    expect(call({})).toEqual({});
-    expect(() => call({ item_ids: [1] })).toThrow();
-    expect(() => call({ scope: "all" })).toThrow();
+    const request = { scope: { kind: "items" as const, item_ids: [1, 2] }, include_errors: true };
+    expect(call(request)).toEqual(request);
+    expect(() => call({})).toThrow();
     const signal = new AbortController().signal;
     const settled = vi.fn();
     const result = tool
-      .execute("batch", {}, signal, undefined, undefined as never)
+      .execute("batch", request, signal, undefined, undefined as never)
       .then((value) => {
         settled();
         return value;
       });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(signal);
+    expect(run).toHaveBeenCalledWith(request, signal);
     complete();
     expect(await result).toMatchObject({
       details: summary,

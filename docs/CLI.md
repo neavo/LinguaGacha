@@ -28,7 +28,7 @@
 - CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词的默认预设；只有命令行资源写入本次工程。
 - 未被上述覆盖的 translation 用途模型选择、并发、提示词增强、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
 - `build_cli_task_input` 只把显式资源解析成项目领域输入，统一由 `ProjectLifecycleService.apply_task_input` 写入；CLI 不接触 database、meta 或 revision。
-- job 通过 `BatchTranslationService.subscribe` 显示进度，等待当前 run 的 completion 后按终态导出；基础设施异常进入 CLI 错误出口，收尾始终撤销订阅。
+- job 通过 `BatchTranslationService.subscribe` 显示本轮目标与执行进度，等待当前 run 的 completion 后按终态导出；基础设施异常进入 CLI 错误出口，收尾始终撤销订阅。
 
 ## 4. 输出协议
 

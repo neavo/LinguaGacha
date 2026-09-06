@@ -379,6 +379,7 @@ describe("useBatchTranslationTask", () => {
     await flush_microtasks();
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/batch-translation/start", {
+      operation: "translate",
       mode: "new",
       scope: { kind: "all" },
     });
@@ -773,6 +774,7 @@ function create_task_snapshot(
     status: "idle",
     source: overrides.status === undefined || overrides.status === "idle" ? null : "standalone",
     request_in_flight_count: 0,
+    operation: "translate",
     scope: { kind: "all" },
     ...overrides,
     progress: normalize_batch_translation_progress(overrides.progress),

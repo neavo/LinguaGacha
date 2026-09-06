@@ -23,8 +23,7 @@ const READ_SKILL_PARAMETERS = Type.Object(
     }),
     path: Type.Optional(
       Type.String({
-        description:
-          "使用 / 分隔的规范 skill 包内相对文件路径，例如 references/guide.md；省略时读取 SKILL.md。路径须直接指向包内文件，各段使用实际名称。",
+        description: "使用 / 分隔的技能包内相对文件路径；省略时读取 SKILL.md。",
       }),
     ),
   },
@@ -44,8 +43,7 @@ export function create_agent_skill_tools(
     defineTool({
       name: "read_skill",
       label: "读技能",
-      description:
-        "读取指定 skill 包内的普通文件。当前会话 skill 使用已冻结的获胜定义；新名称会实时发现。返回 name、相对 path 与 content，只读且不暴露磁盘位置。",
+      description: "读取指定技能的正文或包内参考文件，返回 name、相对 path 与 content。",
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();

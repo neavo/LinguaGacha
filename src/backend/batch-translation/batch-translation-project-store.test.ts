@@ -126,6 +126,47 @@ describe("BatchTranslationProjectStore", () => {
     ]);
   });
 
+  it("失败重试按实际状态更新工程计数，同值失败仍提交本次用量", async () => {
+    const { database, project_path, store } = create_store();
+    database.set_items(project_path, [
+      { id: 1, src: "待重试", dst: "", status: "ERROR", retry_count: 0, file_path: "a.txt" },
+      {
+        id: 2,
+        src: "已完成",
+        dst: "译文",
+        status: "PROCESSED",
+        retry_count: 0,
+        file_path: "a.txt",
+      },
+    ]);
+    const failed = { item_id: 1, dst: "", status: "ERROR", retry_count: 0 };
+    const ack = await store.commit_translation_items(
+      [failed],
+      create_progress_snapshot({ total_line: 999, error_line: 999, total_tokens: 7 }),
+      false,
+    );
+    expect(ack.changed_item_ids).toEqual([]);
+    expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
+      total_line: 2,
+      line: 2,
+      processed_line: 1,
+      error_line: 1,
+      total_tokens: 7,
+    });
+    await store.commit_translation_items(
+      [{ ...failed, dst: "重试成功", status: "PROCESSED" }],
+      create_progress_snapshot({ total_tokens: 10 }),
+      false,
+    );
+    expect(read_meta(database, project_path)["translation_extras"]).toMatchObject({
+      total_line: 2,
+      line: 2,
+      processed_line: 2,
+      error_line: 0,
+      total_tokens: 10,
+    });
+  });
+
   it("构建任务质量快照时保留工程自定义提示词启用态", async () => {
     const { cache_manager, database, project_path, store } = create_store();
     database.set_rule_text(project_path, "translation_prompt", "自定义翻译提示词");

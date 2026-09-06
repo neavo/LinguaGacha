@@ -8,6 +8,7 @@ import {
   type BatchTranslationSource,
   type BatchTranslationResult,
   type BatchTranslationScope,
+  type BatchTranslationOperation,
   type BatchTranslationSnapshot,
   type BatchTranslationSnapshotListener,
 } from "../../domain/batch-translation";
@@ -81,6 +82,8 @@ export class BatchTranslationRuntime {
         status: "idle",
         source: null,
         config: undefined,
+        operation: undefined,
+        run_progress: undefined,
         stop_source: undefined,
         scope: { kind: "all" },
         request_in_flight_count: 0,
@@ -104,29 +107,43 @@ export class BatchTranslationRuntime {
         : {},
     );
   }
+  /** 本轮计数只在成功提交后推进，供异常收尾恢复已完成结果。 */
+  public read_run_progress(): BatchTranslationProgress | undefined {
+    return this.snapshot.run_progress === undefined ? undefined : { ...this.snapshot.run_progress };
+  }
   /** 组合运行态与持久进度，并隔离可变 scope。 */
   public async build_snapshot(): Promise<BatchTranslationSnapshot> {
     return {
       ...this.snapshot,
       progress: this.read_progress(),
+      run_progress: this.read_run_progress(),
       ...(this.snapshot.config === undefined ? {} : { config: { ...this.snapshot.config } }),
       scope: clone_translation_scope(this.snapshot.scope),
     };
   }
   /** 独立运行原子取得全局 lease 后预约翻译。 */
-  public begin_standalone(scope: BatchTranslationScope): BatchTranslationRunHandle {
+  public begin_standalone(
+    scope: BatchTranslationScope,
+    operation: BatchTranslationOperation = "translate",
+  ): BatchTranslationRunHandle {
     this.assert_available();
-    return this.reserve(scope, "standalone", this.runtime_gate.begin_runtime("batch_translation"));
+    return this.reserve(
+      scope,
+      "standalone",
+      this.runtime_gate.begin_runtime("batch_translation"),
+      operation,
+    );
   }
   /** 复用当前 Agent lease，并连接工具的父取消信号。 */
   public begin_under_agent(
     scope: BatchTranslationScope,
     lease: RuntimeLease,
     signal: AbortSignal,
+    operation: BatchTranslationOperation = "translate",
   ): BatchTranslationRunHandle {
     this.assert_available();
     this.runtime_gate.assert_current_runtime(lease, "agent");
-    return this.reserve(scope, "agent", null, signal);
+    return this.reserve(scope, "agent", null, operation, signal);
   }
   /** 预约前检查关闭状态与单 run 互斥。 */
   private assert_available(): void {
@@ -138,6 +155,7 @@ export class BatchTranslationRuntime {
     scope: BatchTranslationScope,
     source: BatchTranslationSource,
     lease: RuntimeLease | null,
+    operation: BatchTranslationOperation,
     parent?: AbortSignal,
   ): BatchTranslationRunHandle {
     const controller = new AbortController();
@@ -179,6 +197,8 @@ export class BatchTranslationRuntime {
       status: "requested",
       source,
       config: undefined,
+      operation,
+      run_progress: undefined,
       stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
       request_in_flight_count: 0,
@@ -226,6 +246,9 @@ export class BatchTranslationRuntime {
       const output = await runner();
       result = Object.freeze({
         status: output.status,
+        ...(output.run_progress === undefined
+          ? {}
+          : { run_progress: Object.freeze({ ...output.run_progress }) }),
         progress: Object.freeze({ ...output.progress }),
       });
     } catch (error) {
@@ -249,10 +272,12 @@ export class BatchTranslationRuntime {
         result ??= Object.freeze({
           status: "error",
           progress: Object.freeze(this.read_progress()),
+          run_progress: this.read_run_progress(),
         });
         // 最后一次异步收尾后冻结结果；此刻之前受理的停止都属于本轮。
         result = Object.freeze({
           ...result,
+          run_progress: result.run_progress ?? this.read_run_progress(),
           status:
             result.status === "error"
               ? "error"
@@ -272,6 +297,7 @@ export class BatchTranslationRuntime {
               ? { kind: "items", item_ids: [] }
               : { kind: "all" },
           progress: { ...result.progress },
+          run_progress: result.run_progress === undefined ? undefined : { ...result.run_progress },
         };
         await this.publish_snapshot(result.progress);
       }
@@ -299,6 +325,7 @@ export class BatchTranslationRuntime {
                 stop_source: run.stop_source,
                 // 预约尚未执行时沿用前置进度，停止事实仍随完成链返回。
                 progress: result?.progress ?? Object.freeze({ ...run.previous.progress }),
+                run_progress: result?.run_progress ?? this.read_run_progress(),
               }),
               cause,
             )
@@ -345,13 +372,16 @@ export class BatchTranslationRuntime {
     run.stop_source = source;
     run.controller.abort();
   }
-  /** 已提交条目退出重翻范围，并立即发布持久进度。 */
+  /** 已提交结果退出待处理范围，同值结果也完成本轮尝试。 */
   public async publish_progress(
     handle: BatchTranslationRunHandle,
     committed_ids: number[] = [],
+    run_progress?: BatchTranslationProgress,
   ): Promise<void> {
     if (!this.is_current(handle.run_id)) return;
     this.clear_pressure_timer();
+    if (run_progress !== undefined)
+      this.snapshot = { ...this.snapshot, run_progress: { ...run_progress } };
     if (this.snapshot.scope.kind === "items") {
       const done = new Set(committed_ids);
       this.snapshot = {
@@ -405,6 +435,7 @@ export class BatchTranslationRuntime {
         : {
             ...this.snapshot,
             progress: { ...progress },
+            run_progress: this.read_run_progress(),
             scope: clone_translation_scope(this.snapshot.scope),
           };
     const results = await Promise.allSettled(

@@ -22,16 +22,25 @@ export type AgentQuestionPort = {
 const QUESTION_OPTION_PARAMETERS = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
-    label: Type.String({ minLength: 1 }),
+    label: Type.String({
+      minLength: 1,
+      description: "可直接采用的行动或结果，选项之间含义明确不同。",
+    }),
   },
   { additionalProperties: false },
 );
 
 const ASK_USER_PARAMETERS = Type.Object(
   {
-    prompt: Type.String({ minLength: 1 }),
-    description: Type.Optional(Type.String({ minLength: 1 })),
+    prompt: Type.String({ minLength: 1, description: "完整说明需要用户决定的问题。" }),
+    description: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description: "各选项共用的简短背景或判断标准，省略问题中已有的信息。",
+      }),
+    ),
     options: Type.Array(QUESTION_OPTION_PARAMETERS, {
+      description: "按推荐顺序排列的固定答案，超时未选时自动选择第一项。",
       minItems: AGENT_QUESTION_OPTION_MIN,
       maxItems: AGENT_QUESTION_OPTION_MAX,
     }),
@@ -78,7 +87,7 @@ export function create_agent_question_tools(question: AgentQuestionPort): ToolDe
       name: "ask_user",
       label: "询问用户",
       description:
-        "正在执行的任务需要一个有界决定时提出一个完整问题。description 可统一说明背景或判断标准；提供二至三个按推荐顺序排列、点击即可采用的固定答案，界面另提供简短自定义答案和取消。五分钟内未回答会结束当前决定。",
+        "需要确定简短选择时调用，除了给出的选项以外，用户还可以在界面上输入自定义文本作为回答，超时未选时自动选择第一项，用户手动取消时返回 `cancelled`",
       executionMode: "sequential",
       parameters: ASK_USER_PARAMETERS,
       execute: async (tool_call_id, params, signal) => {

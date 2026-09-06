@@ -24,6 +24,7 @@ export interface CLIJsonStatusReporterOptions {
 interface CLIProgressInput {
   status: string;
   progress: JsonRecord;
+  run_progress?: JsonRecord;
 }
 
 /**
@@ -65,7 +66,7 @@ export class CLIJsonStatusReporter {
    * 从任务快照组装四卡片进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
-    const stats = build_cli_progress_stats(snapshot.progress);
+    const stats = build_cli_progress_stats(snapshot.run_progress ?? snapshot.progress);
     if (this.last_progress_key === null && is_empty_stats(stats)) {
       return;
     }

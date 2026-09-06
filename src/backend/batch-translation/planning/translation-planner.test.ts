@@ -57,6 +57,24 @@ describe("TranslationPlanner", () => {
     expect(contexts[1]?.precedings.map((item) => item["id"])).toEqual([1]);
   });
 
+  it("指定目标保留范围外前文，前文不进入实际翻译集合", async () => {
+    const planner = create_planner(async (items) =>
+      items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
+    );
+    const items = [1, 2, 3, 4].map((id) =>
+      create_item({ id, src: `第${id}句。`, file_path: "chapter.txt" }),
+    );
+    const contexts = await planner.build_translation_contexts(
+      items,
+      { preceding_lines_threshold: 2 },
+      {},
+      new AbortController().signal,
+      new Set([3]),
+    );
+    expect(contexts.flatMap((context) => context.items.map((item) => item["id"]))).toEqual([3]);
+    expect(contexts[0]?.precedings.map((item) => item["id"])).toEqual([1, 2]);
+  });
+
   it("SakuraLLM 每个 work unit 只携带一个 item", async () => {
     const planner = create_planner(async (items) =>
       items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),

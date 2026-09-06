@@ -6,7 +6,11 @@ import type {
   AgentQuestionResponse,
   AgentWriteApprovalDecision,
 } from "../../shared/agent";
-import { AGENT_DECISION_TIMEOUT_MS, AGENT_WRITE_APPROVAL_DEFAULT } from "../../shared/agent";
+import {
+  AGENT_DECISION_TIMEOUT_MS,
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
+  AGENT_WRITE_APPROVAL_DEFAULT,
+} from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 
 /** ask_user 返回模型轮次的结构化结果，不进入公开 user 消息。 */
@@ -14,7 +18,7 @@ export type AgentQuestionResult = JsonRecord &
   (
     | { outcome: "selected"; optionId: string }
     | { outcome: "custom"; text: string }
-    | { outcome: "unanswered"; reason: "cancelled" | "expired" }
+    | { outcome: "cancelled" }
   );
 
 /** 决定共用的计时与取消资源；各自结果保持窄类型。 */
@@ -76,8 +80,8 @@ export class AgentDecisionCoordinator {
       const timer = setTimeout(
         () =>
           this.settle(pending, {
-            outcome: "unanswered",
-            reason: "expired",
+            outcome: "selected",
+            optionId: public_decision.question.options[AGENT_QUESTION_DEFAULT_OPTION_INDEX].id,
           }),
         AGENT_DECISION_TIMEOUT_MS,
       );
@@ -223,7 +227,7 @@ function normalize_question_response(
 
 /** 把公开回答协议投影为模型可见的稳定工具结果。 */
 function question_result(response: AgentQuestionResponse): AgentQuestionResult {
-  if (response.kind === "cancel") return { outcome: "unanswered", reason: "cancelled" };
+  if (response.kind === "cancel") return { outcome: "cancelled" };
   if (response.kind === "custom") return { outcome: "custom", text: response.text };
   return { outcome: "selected", optionId: response.optionId };
 }

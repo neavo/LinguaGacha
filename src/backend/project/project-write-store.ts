@@ -790,6 +790,19 @@ export class ProjectWriteStore {
           patches,
         );
         changed_item_ids = actual_changes.map((change) => change.item_id);
+        // 工程计数来自事务内的真实状态变化，本次运行用量由任务入口提供。
+        const counters = this.build_translation_extras_after_status_changes(
+          request.projectPath,
+          revision_context,
+          actual_changes,
+        );
+        const translation_extras = {
+          ...request.translationExtras,
+          total_line: counters["total_line"],
+          processed_line: counters["processed_line"],
+          error_line: counters["error_line"],
+          line: counters["line"],
+        };
         return {
           writes: [
             (database) =>
@@ -799,7 +812,7 @@ export class ProjectWriteStore {
               ),
             (database) =>
               database.upsert_meta_entries(request.projectPath, {
-                translation_extras: request.translationExtras as unknown as JsonValue,
+                translation_extras: translation_extras as unknown as JsonValue,
               } as unknown as JsonRecord),
             ...this.build_section_revision_writes(revision_context),
           ],

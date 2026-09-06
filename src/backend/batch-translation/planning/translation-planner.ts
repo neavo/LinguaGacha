@@ -54,6 +54,7 @@ export class TranslationPlanner {
     config: MutableJsonRecord,
     model: MutableJsonRecord,
     signal: AbortSignal,
+    target_ids?: ReadonlySet<number>,
   ): Promise<TranslationContext[]> {
     const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
     const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // 纯文本响应要求单 item 且不携带 preceding。
@@ -63,6 +64,7 @@ export class TranslationPlanner {
       is_sakura ? 0 : read_json_integer(config["preceding_lines_threshold"], 0),
       signal,
       is_sakura ? SAKURA_MAX_ITEMS_PER_WORK_UNIT : Number.POSITIVE_INFINITY,
+      target_ids,
     );
     return chunks.map(({ chunk_items, precedings }) => ({
       work_unit_id: crypto.randomUUID(),
@@ -137,24 +139,26 @@ export class TranslationPlanner {
     preceding_lines_threshold: number,
     signal: AbortSignal,
     max_items_per_chunk = Number.POSITIVE_INFINITY, // 普通模型不设上限，纯文本协议按 item 边界收敛。
+    target_ids?: ReadonlySet<number>,
   ): Promise<Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }>> {
-    const metric_by_id = await this.resolve_item_metrics(items, signal);
+    // 指标只覆盖可执行目标，完整条目序列仍用于读取前文。
+    const metric_by_id = await this.resolve_item_metrics(
+      target_ids === undefined
+        ? items
+        : items.filter((item) => target_ids.has(read_task_item_id(item))),
+      signal,
+    );
     const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
     const chunks: Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> =
       [];
-    let skipped_count = 0;
+    let chunk_start = 0; // 当前单元首条目标在完整工程序列中的位置。
     let line_length = 0;
     let token_length = 0;
     let chunk: TextTaskItemRecord[] = [];
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
-      if (read_task_item_status(item) !== "NONE") {
-        skipped_count += 1;
-        continue;
-      }
       const metric = metric_by_id.get(read_task_item_id(item));
       if (metric === undefined) {
-        skipped_count += 1;
         continue;
       }
       if (
@@ -169,16 +173,15 @@ export class TranslationPlanner {
           precedings: this.generate_preceding_chunk(
             items,
             chunk,
-            index,
-            skipped_count,
+            chunk_start,
             preceding_lines_threshold,
           ),
         });
-        skipped_count = 0;
         line_length = 0;
         token_length = 0;
         chunk = [];
       }
+      if (chunk.length === 0) chunk_start = index;
       chunk.push(item);
       line_length += metric.line_count;
       token_length += metric.token_count;
@@ -189,8 +192,7 @@ export class TranslationPlanner {
         precedings: this.generate_preceding_chunk(
           items,
           chunk,
-          items.length,
-          skipped_count,
+          chunk_start,
           preceding_lines_threshold,
         ),
       });
@@ -291,12 +293,11 @@ export class TranslationPlanner {
     items: TextTaskItemRecord[],
     chunk: TextTaskItemRecord[],
     start: number,
-    skipped_count: number,
     preceding_lines_threshold: number,
   ): MutableJsonRecord[] {
     const result: MutableJsonRecord[] = [];
     const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
-    for (let index = start - skipped_count - chunk.length - 1; index >= 0; index -= 1) {
+    for (let index = start - 1; index >= 0; index -= 1) {
       const item = items[index];
       if (item === undefined || is_task_skipped_item_status(read_task_item_status(item))) {
         continue;

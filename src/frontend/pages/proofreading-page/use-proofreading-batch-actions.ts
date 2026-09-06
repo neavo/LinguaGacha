@@ -45,7 +45,6 @@ type UseProofreadingBatchActionsOptions = {
   dialog_open: boolean;
   list_revisions: ProjectDataSectionRevisions; // 当前校对列表已经消费的项目、质量和校对事实锁
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingCommandItemSnapshot[]>;
-  task_snapshot: BatchTranslationSnapshot;
   sync_task_snapshot: (snapshot: BatchTranslationSnapshot) => void;
   run_project_write: ProofreadingProjectWriteRunner;
   set_is_writing: (next_is_writing: boolean) => void;
@@ -70,12 +69,12 @@ type UseProofreadingBatchActionsResult = {
   clear_pending_confirmation: () => void;
 };
 
+/** 行选择在发送命令前统一转换为去重的正整数 item 身份。 */
 function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
   if (!Array.isArray(raw_item_ids)) {
     return [];
   }
 
-  // 用户选择、确认状态与任务回执都可能携带行 id；提交前统一收窄为后端 item_id。
   const item_ids: number[] = [];
   const seen_ids = new Set<number>();
   raw_item_ids.forEach((raw_item_id) => {
@@ -101,7 +100,6 @@ export function useProofreadingBatchActions(
     dialog_open,
     list_revisions,
     read_items_by_row_ids,
-    task_snapshot,
     sync_task_snapshot,
     run_project_write,
     set_is_writing,
@@ -132,7 +130,7 @@ export function useProofreadingBatchActions(
       set_is_writing(true);
       try {
         const ack = await api_fetch<RetranslateTaskAck>("/api/batch-translation/start", {
-          mode: "new",
+          operation: "retranslate",
           scope: { kind: "items", item_ids },
         });
         sync_task_snapshot(normalize_batch_translation_snapshot(ack));
@@ -154,7 +152,6 @@ export function useProofreadingBatchActions(
       set_is_writing,
       sync_task_snapshot,
       t,
-      task_snapshot,
     ],
   );
 

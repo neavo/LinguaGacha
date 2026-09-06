@@ -21,6 +21,7 @@ import {
   is_batch_translation_start_mode,
   resolve_batch_translation_start_mode,
   type BatchTranslationStartCommand,
+  type AgentBatchTranslationRequest,
   type BatchTranslationResult,
   type BatchTranslationSnapshot,
   type BatchTranslationSnapshotListener,
@@ -53,9 +54,11 @@ export class BatchTranslationService {
     command: BatchTranslationStartCommand,
   ): Promise<BatchTranslationRunHandle> {
     this.session.require_loaded_project_path();
-    const handle = this.runtime.begin_standalone(command.scope);
+    // Runner 在异步生命周期内使用独立命令，调用方后续修改不改变已预约范围。
+    const run_command = structuredClone(command);
+    const handle = this.runtime.begin_standalone(run_command.scope, run_command.operation);
     await this.runtime.execute(handle, () =>
-      this.runner.run(handle, command, this.read_run_context()),
+      this.runner.run(handle, run_command, this.read_run_context()),
     );
     return handle;
   }
@@ -64,13 +67,16 @@ export class BatchTranslationService {
     lease: RuntimeLease,
     signal: AbortSignal,
     model: Model,
+    request: AgentBatchTranslationRequest,
   ): Promise<BatchTranslationResult> {
     this.session.require_loaded_project_path();
-    const command: BatchTranslationStartCommand = {
+    const command: BatchTranslationStartCommand = this.normalize_command({
+      operation: "translate",
+      scope: request.scope,
+      include_errors: request.include_errors,
       mode: resolve_batch_translation_start_mode(this.runtime.read_progress()),
-      scope: { kind: "all" },
-    };
-    const handle = this.runtime.begin_under_agent(command.scope, lease, signal);
+    });
+    const handle = this.runtime.begin_under_agent(command.scope, lease, signal, command.operation);
     await this.runtime.execute(handle, () =>
       this.runner.run(handle, command, this.read_run_context(model)),
     );
@@ -96,32 +102,43 @@ export class BatchTranslationService {
   public async get_snapshot(): Promise<MutableJsonRecord> {
     return { batch_translation: (await this.snapshot()) as unknown as JsonValue };
   }
-  /** 收窄启动模式与范围，定点 ID 去重保序且至少保留一项。 */
+  /** 公开入口统一校验目的和范围，拒绝无效 ID，去重后保留首次顺序。 */
   private normalize_command(request: JsonRecord): BatchTranslationStartCommand {
-    if (Object.keys(request).some((key) => key !== "mode" && key !== "scope"))
+    const operation = request["operation"];
+    if (operation !== "translate" && operation !== "retranslate")
       throw new AppError("request.validation_failed");
-    const mode = request["mode"] ?? "new";
-    if (!is_batch_translation_start_mode(mode)) throw new AppError("request.validation_failed");
+    const allowed =
+      operation === "translate"
+        ? ["operation", "mode", "scope", "include_errors"]
+        : ["operation", "scope"];
+    if (Object.keys(request).some((key) => !allowed.includes(key)))
+      throw new AppError("request.validation_failed");
     const raw = request["scope"];
-    if (raw === undefined) return { mode, scope: { kind: "all" } };
     if (!is_json_record(raw)) throw new AppError("request.validation_failed");
-    if (raw["kind"] === "all") return { mode, scope: { kind: "all" } };
-    if (raw["kind"] !== "items" || !Array.isArray(raw["item_ids"]))
+    let scope: BatchTranslationStartCommand["scope"];
+    if (raw["kind"] === "all" && Object.keys(raw).length === 1) {
+      scope = { kind: "all" };
+    } else if (
+      raw["kind"] === "items" &&
+      Array.isArray(raw["item_ids"]) &&
+      Object.keys(raw).every((key) => key === "kind" || key === "item_ids")
+    ) {
+      const ids = raw["item_ids"];
+      if (
+        ids.length === 0 ||
+        ids.some((id) => typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0)
+      )
+        throw new AppError("request.validation_failed");
+      scope = { kind: "items", item_ids: [...new Set(ids as number[])] };
+    } else throw new AppError("request.validation_failed");
+    if (operation === "retranslate") {
+      if (scope.kind !== "items") throw new AppError("request.validation_failed");
+      return { operation, scope };
+    }
+    const mode = request["mode"] ?? "new";
+    const include_errors = request["include_errors"] ?? false;
+    if (!is_batch_translation_start_mode(mode) || typeof include_errors !== "boolean")
       throw new AppError("request.validation_failed");
-    const item_ids = [
-      ...new Set(
-        raw["item_ids"].flatMap((value) => {
-          const parsed =
-            typeof value === "number"
-              ? value
-              : typeof value === "string" && /^[+-]?\d+$/.test(value.trim())
-                ? Number(value)
-                : NaN;
-          return Number.isInteger(parsed) && parsed > 0 ? [parsed] : [];
-        }),
-      ),
-    ];
-    if (item_ids.length === 0) throw new AppError("request.validation_failed");
-    return { mode, scope: { kind: "items", item_ids } };
+    return { operation, mode, scope, include_errors };
   }
 }

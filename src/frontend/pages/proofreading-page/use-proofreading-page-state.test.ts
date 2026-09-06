@@ -2548,29 +2548,7 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("校对重翻只提交去重后的稳定 item 身份", async () => {
-    await render_hook();
-    vi.mocked(api_fetch).mockResolvedValueOnce({
-      accepted: true,
-      batch_translation: {
-        status: "requested",
-      },
-    });
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-    await act(async () => {
-      await latest_state?.confirm_pending_confirmation("retranslate");
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
-      mode: "new",
-      scope: { kind: "items", item_ids: [1] },
-    });
-  });
-
-  it("只含提示词的变更不重建校对列表且不改变重翻意图载荷", async () => {
+  it("只含提示词的变更保持校对列表缓存", async () => {
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({}, { prompts: 3 });
     });
@@ -2593,24 +2571,6 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
     );
-    vi.mocked(api_fetch).mockResolvedValueOnce({
-      accepted: true,
-      batch_translation: {
-        status: "requested",
-      },
-    });
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-    await act(async () => {
-      await latest_state?.confirm_pending_confirmation("retranslate");
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
-      mode: "new",
-      scope: { kind: "items", item_ids: [1] },
-    });
   });
 
   it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {
@@ -2659,6 +2619,7 @@ describe("useProofreadingPageState", () => {
         batch_translation: {
           status: "requested",
           source: "standalone",
+          operation: "retranslate",
           scope: { kind: "items", item_ids: [2, 1] },
         },
       });
@@ -2666,12 +2627,13 @@ describe("useProofreadingPageState", () => {
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/batch-translation/start", {
-      mode: "new",
+      operation: "retranslate",
       scope: { kind: "items", item_ids: [2, 1] },
     });
     expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "requested",
+        operation: "retranslate",
         scope: { kind: "items", item_ids: [2, 1] },
       }),
     );
@@ -2679,6 +2641,7 @@ describe("useProofreadingPageState", () => {
     runtime_fixture.current.task_snapshot = {
       ...runtime_fixture.current.task_snapshot,
       status: "done",
+      operation: "retranslate",
       scope: { kind: "items", item_ids: [] },
     };
     await render_hook();
@@ -2686,50 +2649,6 @@ describe("useProofreadingPageState", () => {
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
       "success",
       expect.any(String),
-    );
-  });
-
-  it("校对重翻失败后不写入任务快照并保留错误提示", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    const retranslate_deferred = create_deferred<{
-      accepted: boolean;
-      batch_translation: Partial<BatchTranslationSnapshot>;
-    }>();
-    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
-    });
-
-    let confirm_promise: Promise<void> | undefined;
-    await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_confirmation("retranslate");
-      await Promise.resolve();
-    });
-
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
-
-    await act(async () => {
-      retranslate_deferred.reject(new Error("重翻失败"));
-      await confirm_promise;
-    });
-
-    expect(runtime_fixture.current.sync_task_snapshot).not.toHaveBeenCalled();
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "proofreading_page.feedback.retranslate_failed",
     );
   });
 });

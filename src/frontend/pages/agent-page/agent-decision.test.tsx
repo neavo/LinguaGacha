@@ -38,6 +38,8 @@ describe("AgentDecision", () => {
     const on_resolve_question = vi.fn();
     await render_decision(root, question_decision(), on_resolve_question);
     const safe = action(container, "安全范围");
+    expect(safe.querySelector(".agent-decision-progress")).not.toBeNull();
+    expect(action(container, "完整范围").querySelector(".agent-decision-progress")).toBeNull();
     const region = container.querySelector<HTMLElement>(".agent-decision")!;
     const description = container.querySelector<HTMLElement>(".agent-decision__description")!;
 

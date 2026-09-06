@@ -235,6 +235,7 @@ export function useBatchTranslationTask(
         "/api/batch-translation/start",
         {
           mode: should_continue ? "continue" : "new",
+          operation: "translate",
           scope: { kind: "all" },
         },
       );

@@ -26,9 +26,9 @@
 |Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
 |项目事实提交|`ProjectWriteStore`|单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change`|
 |Item 状态值域与重复关系|`domain/item` / `ProjectWriteStore`|人工状态只含 `NONE`、`PROCESSED`、`EXCLUDED`；重复组协调器物化 `DUPLICATED`|
-|活动 run、scope、status、revision、请求压力和 completion|`BatchTranslationRuntime`|批量翻译命令、Runner 生命周期和项目会话切换|
+|活动 run、operation、scope、本轮进度、status、revision、请求压力和 completion|`BatchTranslationRuntime`|批量翻译命令、Runner 生命周期和项目会话切换|
 |累计翻译进度|`.lg` 的翻译进度 meta|`BatchTranslationProjectStore` 经 `ProjectWriteStore` 写入|
-|批量翻译公开快照|`BatchTranslationRuntime.build_snapshot`|内存运行态与当前工程累计进度|
+|批量翻译公开快照|`BatchTranslationRuntime.build_snapshot`|内存运行态、本轮进度与当前工程累计进度|
 |`.lg` 物理 workflow|`ProjectDatabase`|类型化读写方法、`transaction(projectPath, callback)`|
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
@@ -76,9 +76,10 @@ project, files, items, quality, prompts, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收 `{ mode, scope }`；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`source`、`request_in_flight_count`、`progress` 与 `scope`，可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
-- `BatchTranslationService` 收窄命令并确认 loaded 工程，在运行 lease 内准备单次执行上下文：普通入口按 translation 用途读取模型，Agent 入口采用调用方解析出的模型配置，设置与模型在交给 Runner 时隔离引用。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。Runtime 在预约时按入口写入 `source: standalone | agent`，本轮终态保留，新预约覆盖，工程切换清空为 `null`；来源只属于内存运行态，预约发布失败随快照回滚。快照 `scope.kind` 保留本轮范围类型，局部重翻的 `item_ids` 随实际提交移除，任一终态清空 ID。
-- `BatchTranslationRunner` 消费 Service 提供的执行上下文，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。`new | continue | reset` 在内部保持同一值域，定点重翻仍使用去重保序的非空 items scope。Runner 从执行上下文投影 `config` 并登记到 Runtime；新运行预约和工程切换清空配置，终态保留，工程重开只恢复累计进度。
+- 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收显式 `operation` 与 `scope`：`translate` 携带 `new | continue | reset` 模式和可选 `include_errors`，`retranslate` 只接收指定 item 范围；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`source`、`request_in_flight_count`、工程累计 `progress` 与 `scope`，预约后包含 `operation`，目标准备后包含本轮 `run_progress`；可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
+- `BatchTranslationService` 收窄命令并确认 loaded 工程，在运行 lease 内准备单次执行上下文：普通入口按 translation 用途读取模型，Agent 入口采用调用方解析出的模型配置，设置与模型在交给 Runner 时隔离引用。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。Runtime 在预约时按入口写入 `source: standalone | agent`，本轮终态保留，新预约覆盖，工程切换清空为 `null`；来源只属于内存运行态，预约发布失败随快照回滚。快照 `scope.kind` 保留本轮范围类型，指定范围的 `item_ids` 随成功提交的执行结果移除，同值结果也完成本次尝试，任一终态清空 ID。
+- `BatchTranslationRunner` 消费 Service 提供的执行上下文，以类型化进度、质量规则、条目和提交数据消费 ProjectStore、Planner、Pipeline 与 worker。执行目的与范围分别决定目标资格和选中集合；目标准备校验目标存在性，在执行副本中重置状态。统一规划器保留工程顺序与完整前文，仅对实际目标计量和执行。Runner 从执行上下文投影 `config` 并登记到 Runtime；新运行预约和工程切换清空配置，终态保留，工程重开只恢复累计进度。
+- 本轮 `run_progress` 由 Runtime 持有，目标总量在执行前冻结，成功提交后推进成功、最终失败与用量，终态保留，工程切换清空。工程累计 `progress` 持久化在 `translation_extras`，行数在 ProjectWriteStore 的同一写事务中按真实前后状态更新；失败重试成功减少累计失败数，同值失败保持工程计数。Runner 只提供累计耗时与用量并从已提交 meta 读取权威计数。提交后同步失败保留已完成事实与原始诊断。
 - Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
 - 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。

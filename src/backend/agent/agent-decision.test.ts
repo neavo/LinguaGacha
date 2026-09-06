@@ -7,6 +7,7 @@ describe("AgentDecisionCoordinator", () => {
   afterEach(() => vi.useRealTimers());
 
   it("公开问题并以用户选择原子结束等待", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const changes: unknown[] = [];
     const coordinator = new AgentDecisionCoordinator(() =>
       changes.push(coordinator.read_pending()),
@@ -37,11 +38,14 @@ describe("AgentDecisionCoordinator", () => {
       outcome: "selected",
       optionId: "all",
     });
+    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS);
     expect(changes).toHaveLength(2);
   });
 
   it("接受裁剪后的自定义答案与显式取消", async () => {
-    const coordinator = new AgentDecisionCoordinator(() => undefined);
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const on_change = vi.fn();
+    const coordinator = new AgentDecisionCoordinator(on_change);
     const custom = coordinator.wait_for_question(
       "custom",
       {
@@ -72,12 +76,14 @@ describe("AgentDecisionCoordinator", () => {
     );
     coordinator.resolve_question({ id: "cancel", response: { kind: "cancel" } });
     await expect(cancelled).resolves.toEqual({
-      outcome: "unanswered",
-      reason: "cancelled",
+      outcome: "cancelled",
     });
+    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS);
+    expect(coordinator.read_pending()).toBeNull();
+    expect(on_change).toHaveBeenCalledTimes(4);
   });
 
-  it("问题到期返回未回答", async () => {
+  it("问题等待完整期限后采用第一项并拒绝迟到回答", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const coordinator = new AgentDecisionCoordinator(() => undefined);
     const question = coordinator.wait_for_question(
@@ -92,11 +98,20 @@ describe("AgentDecisionCoordinator", () => {
       undefined,
     );
     expect(coordinator.read_pending()?.expiresAt).toBe(Date.now() + AGENT_DECISION_TIMEOUT_MS);
-    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS - 1);
+    expect(coordinator.read_pending()).toMatchObject({ id: "question-timeout" });
+    await vi.advanceTimersByTimeAsync(1);
     await expect(question).resolves.toEqual({
-      outcome: "unanswered",
-      reason: "expired",
+      outcome: "selected",
+      optionId: "safe",
     });
+    expect(coordinator.read_pending()).toBeNull();
+    expect(() =>
+      coordinator.resolve_question({
+        id: "question-timeout",
+        response: { kind: "option", optionId: "all" },
+      }),
+    ).toThrow("runtime.busy");
   });
 
   it("写入授权等待完整期限后允许本次写入并清除待决状态", async () => {

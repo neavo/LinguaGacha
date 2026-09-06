@@ -1005,7 +1005,7 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
-        create_agent_batch_translation_tool(async (signal) => {
+        create_agent_batch_translation_tool(async (request, signal) => {
           const lease = this.runtime_lease;
           if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
           if (this.translation_paused_result !== null) return this.translation_paused_result;
@@ -1018,7 +1018,12 @@ export class AgentService {
               this.settings.read_setting(),
               runtime.model_config,
             );
-            const result = await this.batch_translation.run_under_agent(lease, signal, model);
+            const result = await this.batch_translation.run_under_agent(
+              lease,
+              signal,
+              model,
+              request,
+            );
             if (generation === this.runtime_generation && result.stop_source === "user") {
               this.translation_paused_result = result;
             }
