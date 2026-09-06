@@ -109,6 +109,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           can_submit,
           actions: (
             <AgentTaskToolbar
+              locked={locked}
               can_reset={
                 props.can_reset &&
                 !locked &&

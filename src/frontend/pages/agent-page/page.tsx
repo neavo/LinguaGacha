@@ -50,6 +50,7 @@ import { create_agent_mention_tokens, type AgentMentionInstruction } from "./age
 import { AgentTaskStatus } from "./agent-task-status";
 import { AgentTimeline } from "./agent-timeline";
 import { useAgentFollowLatest } from "./agent-scroll";
+import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
 /** 空会话任务入口按配置顺序展示，关联技能加载后可用；多个任务可共用技能。 */
@@ -453,6 +454,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const has_input_queue = inputQueue.items.length > 0;
   const queue_full = inputQueue.items.length >= AGENT_INPUT_QUEUE_LIMIT;
   const pending_decision = controls.pendingDecision;
+  const input_transition = useAgentInputTransition(pending_decision, composer_ref);
 
   const follow_latest_label = t("agent_page.action.follow_latest");
   // 可访问性属性使用标准键名；Tooltip 继续显示用户熟悉的平台符号。
@@ -592,9 +594,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         </div>
       </section>
 
-      <div className="agent-page__bottom-region">
-        <div className="agent-page__input-area">
-          <div className="agent-page__status-zone">
+      <div ref={input_transition.region_ref} className="agent-page__bottom-region">
+        <div ref={input_transition.area_ref} className="agent-page__input-area">
+          <div
+            ref={input_transition.status_ref}
+            className="agent-page__status-zone"
+            inert={input_transition.locked || undefined}
+          >
             <AgentTaskStatus todos={todos} running={is_running} />
             {has_input_queue ? (
               <div className="agent-page__status-queue-row">
@@ -636,19 +642,28 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           </div>
 
           <div className="agent-page__operation-zone">
-            <div className="agent-page__decision-slot">
-              {pending_decision === null ? null : (
+            <div
+              ref={input_transition.decision_ref}
+              className="agent-page__decision-slot"
+              inert={pending_decision === null || undefined}
+            >
+              {input_transition.visible_decision === null ? null : (
                 <AgentDecision
-                  decision={pending_decision}
+                  decision={input_transition.visible_decision}
+                  title_ref={input_transition.title_ref}
                   on_resolve_question={agent_actions.resolveQuestion}
                   on_resolve_write_approval={agent_actions.resolveWriteApproval}
                 />
               )}
             </div>
-            <div className="agent-page__composer-slot">
+            <div
+              ref={input_transition.composer_slot_ref}
+              className="agent-page__composer-slot"
+              inert={input_transition.locked || undefined}
+            >
               <AgentComposer
                 ref={composer_ref}
-                locked={active_inline_edit !== null}
+                locked={active_inline_edit !== null || input_transition.locked}
                 skills={skills}
                 instructions={instructions}
                 running={is_running}

@@ -50,7 +50,6 @@ describe("AgentComposerModelControls", () => {
     expect(trigger().textContent).toContain("agent_page.batch_translation_model.follow");
     await act(async () => trigger().click());
     const follow = document.querySelector<HTMLElement>('[data-slot="dropdown-menu-item"]')!;
-    expect(follow.textContent).toBe("agent_page.batch_translation_model.follow_option");
     expect(follow.getAttribute("aria-current")).toBe("true");
     await act(async () =>
       document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
@@ -108,12 +107,25 @@ describe("AgentComposerModelControls", () => {
     expect(container.querySelector(".agent-composer__model-context")?.textContent).toBe("25.0%");
   });
 
+  it("收起底部交互时关闭模型菜单，恢复后保持关闭", async () => {
+    await render();
+    await act(async () => trigger().click());
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    await render(true);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(trigger().disabled).toBe(true);
+    await render();
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(trigger().disabled).toBe(false);
+  });
+
   /** 复用同一组件实例观察保存回包及公共禁用状态。 */
-  async function render(): Promise<void> {
+  async function render(locked = false): Promise<void> {
     await act(async () =>
       root.render(
         <TooltipProvider>
           <AgentComposerModelControls
+            locked={locked}
             context_limits={null}
             controller={controller}
             context_tokens={0}

@@ -65,6 +65,18 @@ describe("AgentTaskToolbar", () => {
     expect(on_approval_mode_change).toHaveBeenCalledWith("auto");
   });
 
+  it("收起底部交互时关闭审批菜单，恢复后保持关闭", async () => {
+    const view = await render({});
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")!.click(),
+    );
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    await render({ locked: true });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    await render({ locked: false });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+
   /** 工具栏在普通输入框有焦点时仍响应快捷键。 */
   async function render(
     props: Partial<ComponentProps<typeof AgentTaskToolbar>>,
@@ -79,6 +91,7 @@ describe("AgentTaskToolbar", () => {
         <TooltipProvider>
           <input />
           <AgentTaskToolbar
+            locked={false}
             can_reset={false}
             context={{ tokens: null, compactable: false, limits: null }}
             model_selection={{

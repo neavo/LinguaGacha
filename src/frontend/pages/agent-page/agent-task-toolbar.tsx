@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ChevronDown,
   FileOutput,
@@ -30,8 +31,9 @@ import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd"
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
-/** 任务设置独立于编辑锁，模型菜单自行管理配置请求期间的可用性。 */
+/** 工具栏菜单随底部交互锁关闭，模型配置请求的可用性由模型控件管理。 */
 export function AgentTaskToolbar(props: {
+  locked: boolean;
   can_reset: boolean;
   context: AgentContextSnapshot;
   model_selection: ModelSelectionController;
@@ -43,6 +45,9 @@ export function AgentTaskToolbar(props: {
   on_approval_mode_change?: (mode: AgentApprovalMode) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const [approval_open, set_approval_open] = useState(false); // 当前审批菜单的展开状态
+  // 在提交菜单前清除展开状态，交互区恢复时菜单保持关闭。
+  if (props.locked && approval_open) set_approval_open(false);
   const translation_export = useTranslationExport();
   const new_task_aria_shortcut = resolve_shortcut_platform() === "mac" ? "Meta+N" : "Control+N";
   useActionShortcut({
@@ -104,12 +109,13 @@ export function AgentTaskToolbar(props: {
         </span>
       ) : null}
       <AgentComposerModelControls
+        locked={props.locked}
         controller={props.model_selection}
         context_tokens={props.context.tokens}
         context_limits={props.context.limits}
         on_thinking_level_change={props.on_thinking_level_change}
       />
-      <AppDropdownMenu>
+      <AppDropdownMenu open={approval_open} onOpenChange={set_approval_open}>
         <Tooltip>
           <TooltipTrigger
             render={tooltip_trigger_target(

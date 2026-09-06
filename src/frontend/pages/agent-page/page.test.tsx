@@ -681,7 +681,7 @@ describe("AgentPage", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("待决审批期间保持输入和底栏可用并保留草稿、编辑实例和跟随状态", async () => {
+  it("选择期间收起操作区并在恢复后保留草稿、编辑实例和跟随状态", async () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
@@ -714,16 +714,17 @@ describe("AgentPage", () => {
     });
     await render_page({ input, send, pendingDecision: pending_write_decision });
     const body = view.querySelector(".agent-page__composer-slot")!;
-    expect(body.hasAttribute("inert")).toBe(false);
+    expect(body.hasAttribute("inert")).toBe(true);
     const follow_button = get_button_by_label(view, "agent_page.action.follow_latest");
-    expect(follow_button.closest("[inert]")).toBeNull();
+    expect(follow_button.closest("[inert]")).toBe(view.querySelector(".agent-page__status-zone"));
     expect(follow_button.getAttribute("aria-pressed")).toBe("true");
-    expect(document.activeElement).toBe(host);
-    expect(editor.state.readOnly).toBe(false);
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__export")?.disabled).toBe(false);
-    expect(
-      view.querySelector<HTMLButtonElement>(".agent-composer__approval-trigger")?.disabled,
-    ).toBe(false);
+    expect(document.activeElement).toBe(view.querySelector(".agent-decision__prompt"));
+    await act(async () => {
+      view
+        .querySelector("form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(send).not.toHaveBeenCalled();
     await render_page({ input, send, pendingDecision: null });
     expect(body.hasAttribute("inert")).toBe(false);
     expect(EditorView.findFromDOM(host)).toBe(editor);

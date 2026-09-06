@@ -1,5 +1,5 @@
 import type { ModelAgentLimits } from "@domain/model-agent";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { BookOpenText, Boxes, Brain, ChevronDown, Circle, CircleCheck } from "lucide-react";
 import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
@@ -31,13 +31,18 @@ import {
 
 /** 输入底栏的模型选择、上下文用量和思考档位共用一个配置控制器。 */
 export function AgentComposerModelControls(props: {
+  locked?: boolean;
   controller: ModelSelectionController;
   context_tokens: number | null;
   context_limits: ModelAgentLimits | null;
   on_thinking_level_change?: (level: ModelThinkingLevel) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const model_controls_disabled = props.controller.loading || props.controller.updating;
+  // 菜单 Portal 位于输入区之外，随底部交互锁关闭并释放菜单状态。
+  const [open_menu, set_open_menu] = useState<"model" | "thinking" | "batch" | null>(null);
+  if (props.locked && open_menu !== null) set_open_menu(null);
+  const model_controls_disabled =
+    props.locked === true || props.controller.loading || props.controller.updating;
   const selected_model = read_selected_model(props.controller, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
@@ -76,6 +81,8 @@ export function AgentComposerModelControls(props: {
   return (
     <>
       <ModelMenuButton
+        open={open_menu === "model"}
+        on_open_change={(open) => set_open_menu(open ? "model" : null)}
         disabled={model_controls_disabled}
         label={
           context_usage === null
@@ -112,7 +119,10 @@ export function AgentComposerModelControls(props: {
         />
       </ModelMenuButton>
       {selected_thinking_label !== null && (
-        <AppDropdownMenu>
+        <AppDropdownMenu
+          open={open_menu === "thinking"}
+          onOpenChange={(open) => set_open_menu(open ? "thinking" : null)}
+        >
           <Tooltip>
             <TooltipTrigger
               render={
@@ -156,6 +166,8 @@ export function AgentComposerModelControls(props: {
       )}
 
       <ModelMenuButton
+        open={open_menu === "batch"}
+        on_open_change={(open) => set_open_menu(open ? "batch" : null)}
         disabled={model_controls_disabled}
         label={`${batch_tooltip}: ${batch_label}`}
         icon={<BookOpenText aria-hidden="true" />}
@@ -188,6 +200,8 @@ export function AgentComposerModelControls(props: {
 
 /** 两个模型入口共享外观与提示，菜单内容由各自选择语义组合。 */
 function ModelMenuButton(props: {
+  open: boolean;
+  on_open_change: (open: boolean) => void;
   disabled: boolean;
   label: string;
   icon: ReactNode;
@@ -197,7 +211,7 @@ function ModelMenuButton(props: {
   children: ReactNode;
 }): JSX.Element {
   return (
-    <AppDropdownMenu>
+    <AppDropdownMenu open={props.open} onOpenChange={props.on_open_change}>
       <Tooltip>
         <TooltipTrigger
           render={tooltip_trigger_target(
