@@ -40,14 +40,14 @@
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿，卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
-- `features/model-selection` 持有页面生命周期的模型 query / command，运行占用变化触发重查并隔离迟到响应；数据不进入 `DesktopStateProvider` 或 SSE。接入点选项以受控值展示分类与标记，激活回调由消费方绑定命令；Agent 翻译决定契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。后端公开各模型生效 Agent 容量与可用思考档位，renderer 直接消费；空档位集合保留禁用控件并显示默认值及提示，普通配置写入消费共享 runtime 锁。
+- `features/model-selection` 持有页面生命周期的模型 query / command，运行占用变化触发重查并隔离迟到响应；数据不进入 `DesktopStateProvider` 或 SSE。接入点选项以受控值展示分类与标记，激活回调由消费方绑定命令；Agent 批量翻译模型偏好与执行契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。后端公开各模型生效 Agent 容量与可用思考档位，renderer 直接消费；空档位集合保留禁用控件并显示默认值及提示，配置写入消费共享 runtime 锁。Agent 底栏的主模型、思考档位与批量翻译模型共用同一模型控制器，批量翻译选择在保存成功后按回包更新；提交期间锁定模型控件与发送动作。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端质量统计结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills 与 input 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，完整消息中的 Mermaid 由专用渲染器按当前主题令牌适配节点、连线与标签样式，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
-- `BatchTranslationSessionProvider` 拥有翻译历史、波形、动作确认、唯一详情侧栏与导出流程；侧栏跨路由保留，随工程切换或关闭清空。完成反馈消费后端终态，导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。`features/batch-translation` 提供共享摘要、详情、格式化与样式；详情消费任务进度，工作台统计消费工程事实；任务提示与侧栏消费快照 `config`，与当前模型设置独立。Agent 在翻译活跃时展示摘要，终态恢复 Todo。页面计算缓存、其它弹窗、导入和提交中状态随页面挂载与卸载。
+- `BatchTranslationSessionProvider` 拥有翻译历史、波形、动作确认、唯一详情侧栏与导出流程；侧栏跨路由保留，随工程切换或关闭清空。完成反馈消费后端终态；仅观察到独立全量任务（`source: standalone`、`scope.kind: all`）从活跃态进入 `done` 时自动请求导出确认，任务来源与范围直接消费当前快照。AGENT 批量翻译结果由工具返回并承接后续步骤。手动生成与自动请求共用导出流程，导出预检读取后端校对摘要，Agent 跳转覆盖普通 Composer 草稿。`features/batch-translation` 提供共享摘要、详情、格式化与样式；详情消费任务进度，工作台统计消费工程事实；任务提示与侧栏消费快照 `config`，与当前模型设置独立。Agent 在翻译活跃时展示摘要，终态恢复 Todo。页面计算缓存、其它弹窗、导入和提交中状态随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。

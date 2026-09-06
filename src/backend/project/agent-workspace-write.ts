@@ -23,35 +23,10 @@ import {
 } from "../../shared/project/project-item-write-planner";
 import type { ProjectItemWriteChange } from "./project-write-request";
 
-/** fp 以字符长度定义，使对象投影、change 校验与运行时 contract 共享同一格式。 */
-export const AGENT_WORKSPACE_FP_LENGTH = 4;
-
-export const AGENT_WORKSPACE_ITEM_FIELDS = Object.freeze([
-  "item_id",
-  "fp",
-  "src",
-  "dst",
-  "name_src",
-  "name_dst",
-  "file_path",
-  "text_type",
-  "row_number",
-  "status",
-  "retry_count",
-] as const);
-
-export const AGENT_WORKSPACE_ITEM_WRITABLE_FIELDS = Object.freeze([
-  "dst",
-  "name_dst",
-  "status",
-] as const);
-
-export const AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS = Object.freeze({
-  glossary: ["src", "dst", "info", "case_sensitive"],
-  text_preserve: ["src", "info"],
-  pre_replacement: ["src", "dst", "regex", "case_sensitive"],
-  post_replacement: ["src", "dst", "regex", "case_sensitive"],
-} as const satisfies Record<QualityRuleKind, readonly string[]>);
+import {
+  AGENT_WORKSPACE_FP_LENGTH,
+  AGENT_WORKSPACE_QUALITY_BUSINESS_FIELDS,
+} from "../../shared/project/agent-workspace";
 
 export type AgentWorkspaceRejectionReason =
   | "invalid_change"
@@ -317,6 +292,7 @@ function quality_fingerprint_tuple(kind: QualityRuleKind, row: JsonRecord): Json
   ];
 }
 
+/** 归一规则身份与业务字段，供指纹与实际变化比较。 */
 function project_quality_business_entry(kind: QualityRuleKind, entry: JsonRecord): JsonRecord {
   const normalized = normalize_quality_rule_entries(QualityRule.from_json(kind), [entry])[0];
   if (normalized === undefined) throw new TypeError("Quality rule entry is missing.");
@@ -407,6 +383,7 @@ function to_item_write_record(item: JsonRecord): ProjectItemWriteRecord[] {
   ];
 }
 
+/** 提取条目写入字段，使派生状态变化进入同一提交计划。 */
 function pick_item_write_fields(item: JsonRecord): ProjectItemWriteChange["current"] {
   return {
     dst: String(item["dst"] ?? ""),
@@ -728,6 +705,7 @@ function replay_quality(args: {
   };
 }
 
+/** 汇总实际新增、删除与发生变化的更新对象。 */
 function summarize_quality(
   current: JsonRecord[],
   next: JsonRecord[],
@@ -741,6 +719,7 @@ function summarize_quality(
   return { created, updated, deleted };
 }
 
+/** 字段变化或显式排序造成的位置变化均计入实际更新。 */
 function quality_target_changed(
   current: JsonRecord[],
   next: JsonRecord[],
@@ -775,6 +754,7 @@ function expanded_duplicate_groups(
     }));
 }
 
+/** 同一目标的所有意图都必须命中当前对象及其指纹。 */
 function existing_target_rejection<T extends { id: string; fp: string }>(
   group: readonly T[],
   current: ReadonlyMap<string, JsonRecord>,
@@ -797,6 +777,7 @@ function merge_fields<T extends object>(values: readonly T[]): T | null {
   return merged as T;
 }
 
+/** 按业务身份分组并保留首次出现及组内输入顺序。 */
 function group_by<T, TKey>(values: readonly T[], key: (value: T) => TKey): Map<TKey, T[]> {
   const groups = new Map<TKey, T[]>();
   for (const value of values) {
@@ -820,10 +801,12 @@ function preview_entry_id(entry_ids: Set<string>, line: number): string {
   return id;
 }
 
+/** 读取项目领域身份，工作区 id 的映射在投影入口完成。 */
 function read_entry_id(entry: JsonRecord): string {
   return String(entry["entry_id"] ?? "");
 }
 
+/** 以条目身份生成对象级拒绝回执。 */
 function item_rejection(
   id: number,
   reason: AgentWorkspaceRejectionReason,
@@ -831,6 +814,7 @@ function item_rejection(
   return { scope: "items", op: "update", id, reason };
 }
 
+/** 以提示词种类定位对象级拒绝。 */
 function prompt_rejection(
   kind: PromptKind,
   reason: AgentWorkspaceRejectionReason,
@@ -838,6 +822,7 @@ function prompt_rejection(
   return { scope: "prompts", op: "update", kind, reason };
 }
 
+/** 保留规则类型、操作与身份，供调用方修复拒绝项。 */
 function quality_rejection(
   kind: QualityRuleKind,
   op: "update" | "delete",
@@ -847,6 +832,7 @@ function quality_rejection(
   return { scope: "quality", kind, op, id, reason };
 }
 
+/** 新增规则以原文定位，缺少原文时使用变更行号。 */
 function quality_create_rejection(
   intent: AgentWorkspaceQualityCreateIntent,
   reason: AgentWorkspaceRejectionReason,

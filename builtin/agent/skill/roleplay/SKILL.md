@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 技能加载
 
-加载并遵循 `writing-guide` 技能。
+加载并遵循 `writing-guide` 技能，并读取该技能包内的 `references/narrative.md`，将叙事质量判据用于人物、场景和连续性判断。
 
 本技能补充角色扮演的玩家权限、原作证据、分支状态、交互和回合规则，发生冲突时，以本技能为准。
 

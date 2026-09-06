@@ -735,31 +735,6 @@ describe("AgentComposer", () => {
     expect(on_send).toHaveBeenCalledWith({ text: "继续补充", attachments: [] });
   });
 
-  it("所选模型没有可用思考档位时保留禁用的默认入口", async () => {
-    const view = await render_composer({
-      model_selection: {
-        snapshot: {
-          model_selection: { translation: "agent", agent: "agent" },
-          models: [
-            {
-              id: "agent",
-              type: "CUSTOM_OPENAI",
-              name: "Unknown Model",
-              agent_limits: { context_window: 256_000, max_output_tokens: 32_000 },
-              thinking_level: "OFF",
-              available_thinking_levels: [],
-            },
-          ],
-        },
-      },
-    });
-
-    const trigger = view.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger");
-    expect(trigger?.disabled).toBe(true);
-    expect(trigger?.textContent).toContain("app.model.thinking_level.default");
-    expect(trigger?.parentElement?.tabIndex).toBe(0);
-  });
-
   it("显示当前写入请求审批模式并在运行 apply 时禁用入口", async () => {
     const on_approval_mode_change = vi.fn();
     const view = await render_composer({
@@ -808,7 +783,11 @@ describe("AgentComposer", () => {
             approval_mode_disabled={options.approval_mode_disabled ?? false}
             model_selection={{
               snapshot: {
-                model_selection: { translation: "preset", agent: "agent" },
+                model_selection: {
+                  translation: "preset",
+                  agent: "agent",
+                  agent_batch_translation: null,
+                },
                 models: [
                   {
                     id: "agent",
@@ -823,6 +802,7 @@ describe("AgentComposer", () => {
               loading: false,
               updating: false,
               select_model: vi.fn(async () => undefined),
+              select_agent_batch_translation_model: vi.fn(async () => undefined),
               update_thinking_level: vi.fn(async () => undefined),
               ...options.model_selection,
             }}

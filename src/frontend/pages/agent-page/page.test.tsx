@@ -147,7 +147,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     ...actual,
     useModelSelection: () => ({
       snapshot: {
-        model_selection: { translation: "preset", agent: "agent" },
+        model_selection: { translation: "preset", agent: "agent", agent_batch_translation: null },
         models: [
           {
             id: "agent",
@@ -162,6 +162,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: model_selection_commands.update_thinking_level,
     }),
   };
@@ -1051,7 +1052,6 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     setApprovalMode: vi.fn(async () => undefined),
     resolveQuestion: vi.fn(async () => undefined),
     resolveWriteApproval: vi.fn(async () => undefined),
-    resolveTranslation: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,
   };

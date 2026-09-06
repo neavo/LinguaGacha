@@ -18,7 +18,6 @@ import type {
   AgentSkillSnapshot,
   AgentToolEntry,
   AgentWriteApprovalDecision,
-  AgentTranslationResponse,
 } from "@shared/agent";
 import {
   AGENT_QUESTION_OPTION_MAX,
@@ -28,7 +27,6 @@ import {
   normalize_agent_message_input,
 } from "@shared/agent";
 import { normalize_agent_todos } from "@shared/agent-todo";
-import { normalize_model_selection_snapshot } from "@shared/model-selection";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { LOCALES } from "@shared/i18n/types";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -92,7 +90,6 @@ export type AgentSessionActions = Readonly<{
   setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
   resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
   resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
-  resolveTranslation: (id: string, response: AgentTranslationResponse) => Promise<void>;
   reconnect: () => void;
 }>;
 
@@ -144,6 +141,7 @@ export class AgentSessionStore {
 
   public readonly actions: AgentSessionActions;
 
+  /** 建立稳定的命令入口与草稿会话，连接由生命周期入口启动。 */
   public constructor(storage: Storage) {
     this.storage = storage;
     this.input_history = read_agent_input_history(storage);
@@ -162,7 +160,6 @@ export class AgentSessionStore {
       setApprovalMode: this.set_approval_mode,
       resolveQuestion: this.resolve_question,
       resolveWriteApproval: this.resolve_write_approval,
-      resolveTranslation: this.resolve_translation,
       reconnect: this.reconnect,
     };
   }
@@ -207,6 +204,7 @@ export class AgentSessionStore {
     this.event_source = null;
   }
 
+  /** 连接世代阻止断开或重连前的迟到响应覆盖当前会话。 */
   private is_current(generation: number): boolean {
     return generation === this.connection_generation;
   }
@@ -237,15 +235,18 @@ export class AgentSessionStore {
     }
   }
 
+  /** 按消费切片订阅，并返回同一监听器的清理入口。 */
   private subscribe(slice: StoreSlice, listener: Listener): () => void {
     this.listeners[slice].add(listener);
     return () => this.listeners[slice].delete(listener);
   }
 
+  /** 只通知受影响的切片订阅者。 */
   private emit(slice: StoreSlice): void {
     for (const listener of this.listeners[slice]) listener();
   }
 
+  /** 控制事实发生变化时才发布新切片，保留无变化引用。 */
   private set_controls(patch: Partial<AgentControlsSlice>): void {
     const next = { ...this.controls, ...patch };
     if (
@@ -263,6 +264,7 @@ export class AgentSessionStore {
     this.emit("controls");
   }
 
+  /** 按连接世代接收事件，命令与恢复期间暂存，缺口触发快照恢复。 */
   private receive_message(message: MessageEvent<string>, generation: number): void {
     if (!this.is_current(generation)) return;
     try {
@@ -282,6 +284,7 @@ export class AgentSessionStore {
     }
   }
 
+  /** 首次恢复失败与已连接后的断线具有不同的页面恢复语义。 */
   private readonly set_transport_failure = (): void => {
     this.set_controls({ transport: this.loaded_once ? "disconnected" : "restore_failed" });
   };
@@ -333,6 +336,7 @@ export class AgentSessionStore {
     this.emit("controls");
   }
 
+  /** 顺序重放事件，遇到首个修订缺口交由快照恢复。 */
   private apply_events(events: readonly AgentSessionEvent[]): boolean {
     for (const event of events) {
       if (!this.apply_event(event)) return false;
@@ -384,6 +388,7 @@ export class AgentSessionStore {
     return true;
   }
 
+  /** 同步占用唯一命令槽，并记录受理期间的事件基线。 */
   private begin_command(command: Exclude<AgentCommand, null>): CommandEventQueue | null {
     if (this.command_events !== null) return null;
     const queue = { base_revision: this.revision, events: [] };
@@ -392,6 +397,7 @@ export class AgentSessionStore {
     return queue;
   }
 
+  /** 先重放命令期事件，再用 ack 判断是否需要补取权威快照。 */
   private async finish_command(
     queue: CommandEventQueue,
     acknowledgement?: AgentCommandAck,
@@ -411,6 +417,7 @@ export class AgentSessionStore {
     if (!acknowledgement_valid) throw new TypeError("Agent command acknowledgement is stale.");
   }
 
+  /** 统一命令占用、ack 校验与失败收尾，成功后执行页面受理动作。 */
   private async execute_command(
     command: Exclude<AgentCommand, null>,
     request: () => Promise<AgentCommandAck>,
@@ -554,16 +561,6 @@ export class AgentSessionStore {
     );
   };
 
-  /** 提交页面捕获的决定身份，迟到点击由后端拒绝。 */
-  private readonly resolve_translation = async (
-    id: string,
-    response: AgentTranslationResponse,
-  ): Promise<void> => {
-    await this.execute_command("decision", () =>
-      api_fetch<AgentCommandAck>("/api/agent/translation/resolve", { id, response }),
-    );
-  };
-
   /** 写入授权与普通回答分离，避免 renderer 拼装混合载荷。 */
   private readonly resolve_write_approval = async (
     decision: AgentWriteApprovalDecision,
@@ -582,6 +579,7 @@ export class AgentSessionStore {
     this.connect();
   };
 
+  /** 草稿与输入历史由 Store 拥有，组件通过稳定端口读取和更新。 */
   private create_input_session(revision: number): AgentInputSession {
     return {
       revision,
@@ -601,6 +599,7 @@ export class AgentSessionStore {
     };
   }
 
+  /** 受理后更新纯文本历史并清空草稿，用输入 revision 通知编辑器。 */
   private accept_message(message: AgentMessageInput): void {
     if (message.text !== "") {
       this.input_history = update_agent_input_history(
@@ -615,6 +614,7 @@ export class AgentSessionStore {
   }
 }
 
+/** 命令回包只提取合法修订号，完整事实由事件传播。 */
 function normalize_acknowledgement(value: unknown): AgentCommandAck {
   const record = read_json_record(value);
   return { revision: normalize_revision(record["revision"], "acknowledgement") };
@@ -703,12 +703,14 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   }
 }
 
+/** 必需修订号无效时抛错，使调用方进入恢复路径。 */
 function normalize_revision(value: unknown, source: string): number {
   const revision = normalize_optional_revision(value);
   if (revision === null) throw new TypeError(`Agent ${source} revision is invalid.`);
   return revision;
 }
 
+/** 修订号必须是可安全比较的非负整数。 */
 function normalize_optional_revision(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -722,6 +724,7 @@ function normalize_todos(value: unknown): string[] | null {
   }
 }
 
+/** 整份队列共同校验，避免部分接收破坏顺序和身份唯一性。 */
 function normalize_input_queue(value: unknown): AgentInputQueueSnapshot | null {
   if (
     !is_json_record(value) ||
@@ -755,6 +758,7 @@ function normalize_input_queue(value: unknown): AgentInputQueueSnapshot | null {
   return { paused: value["paused"], canSendNow: value["canSendNow"], items };
 }
 
+/** null 表示尚无估算，undefined 表示传输值无效。 */
 function normalize_context_tokens(value: unknown): number | null | undefined {
   if (value === null) return null;
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
@@ -767,6 +771,7 @@ function normalize_context(value: unknown): AgentContextSnapshot | null {
   return tokens === undefined ? null : { tokens, compactable: value["compactable"] };
 }
 
+/** 按条目种类收窄消息及生命周期字段，无效条目交由上层判定。 */
 function normalize_entry(value: unknown): AgentEntry[] {
   if (
     !is_json_record(value) ||
@@ -833,6 +838,7 @@ function normalize_entry(value: unknown): AgentEntry[] {
   return [];
 }
 
+/** 工具输出仅在成功或失败终帧存在，运行与停止状态保留空值。 */
 function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   const status = normalize_entry_status(value["status"]);
   if (
@@ -855,17 +861,20 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   return typeof value["output"] === "string" ? [{ ...base, status, output: value["output"] }] : [];
 }
 
+/** 统一收窄时间线条目的运行结果值域。 */
 function normalize_entry_status(value: unknown): AgentEntryStatus | null {
   return value === "running" || value === "success" || value === "error" || value === "stopped"
     ? value
     : null;
 }
 
+/** 会话只公开空闲或运行状态，非法值触发完整恢复。 */
 function normalize_state(value: unknown): AgentSessionState {
   if (value === "idle" || value === "running") return value;
   throw new TypeError("Agent snapshot state is invalid.");
 }
 
+/** 审批模式只接受公开的手动与自动值域。 */
 function normalize_approval_mode(value: unknown): AgentApprovalMode | null {
   return value === "manual" || value === "auto" ? value : null;
 }
@@ -890,25 +899,6 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
     return question === null
       ? undefined
       : { kind: "question", id, expiresAt: expires_at, question };
-  }
-  if (value["kind"] === "batch_translation") {
-    const translation = value["translation"];
-    if (
-      !is_json_record(translation) ||
-      !Array.isArray(translation["providers"]) ||
-      typeof translation["currentProviderId"] !== "string" ||
-      translation["currentProviderId"].trim() === ""
-    )
-      return undefined;
-    return {
-      kind: "batch_translation",
-      id,
-      expiresAt: expires_at,
-      translation: {
-        providers: normalize_model_selection_snapshot({ models: translation["providers"] }).models,
-        currentProviderId: translation["currentProviderId"],
-      },
-    };
   }
   if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];
@@ -989,6 +979,7 @@ function normalize_question(value: unknown): AgentQuestion | null {
     : { prompt, description: description.trim(), options: normalized_options };
 }
 
+/** 公开技能必须带齐支持语言的展示描述，页面保留后端顺序。 */
 function normalize_skill(value: unknown): AgentSkillSnapshot[] {
   if (!is_json_record(value) || typeof value["name"] !== "string") return [];
   const raw_descriptions = value["displayDescriptions"];

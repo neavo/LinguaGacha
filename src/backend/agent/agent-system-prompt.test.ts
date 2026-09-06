@@ -8,7 +8,6 @@ import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./workspace/runtime/policy";
-import { format_agent_workspace_tool_routes } from "./workspace/runtime/tool/api-description";
 
 const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
@@ -25,10 +24,8 @@ describe("Agent system prompt 加载与资源契约", () => {
     write_system_prompt(paths, `\n  prompt-before\n${workspace_placeholders()}\nprompt-after  \n`);
 
     const prompt = load_agent_system_prompt(paths, new NativeFs());
-    const method_routes = format_agent_workspace_tool_routes();
 
     expect(prompt).toContain("prompt-before");
-    expect(prompt).toContain(method_routes);
     for (const root of AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots) {
       expect(prompt).toContain(`\`${root}/**\``);
     }
@@ -37,8 +34,6 @@ describe("Agent system prompt 加载与资源契约", () => {
     }
     expect(prompt).toContain("prompt-after");
     expect(prompt).not.toContain("{{WORKSPACE_");
-    expect(prompt.indexOf("prompt-before")).toBeLessThan(prompt.indexOf(method_routes));
-    expect(prompt.indexOf(method_routes)).toBeLessThan(prompt.indexOf("prompt-after"));
   });
 
   it("资源缺失时保留原始读取异常", () => {
@@ -78,12 +73,9 @@ describe("Agent system prompt 加载与资源契约", () => {
   });
 });
 
+/** 以临时模板验证运行策略占位符的替换契约。 */
 function workspace_placeholders(): string {
-  return [
-    "write {{WORKSPACE_WRITE_SCOPES}}",
-    "deno {{WORKSPACE_DENO_ARGS}}",
-    "{{WORKSPACE_TOOL_ROUTES}}",
-  ].join("\n");
+  return ["write {{WORKSPACE_WRITE_SCOPES}}", "deno {{WORKSPACE_DENO_ARGS}}"].join("\n");
 }
 
 /** 使用真实 AppPathService 解析资源位置，不在测试里复制路径规则。 */

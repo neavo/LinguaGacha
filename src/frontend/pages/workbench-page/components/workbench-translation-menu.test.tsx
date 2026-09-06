@@ -69,12 +69,13 @@ const shared_props = {
   busy: false,
   model_selection: {
     snapshot: {
-      model_selection: { translation: "", agent: "" },
+      model_selection: { translation: "", agent: "", agent_batch_translation: null },
       models: [],
     },
     loading: false,
     updating: false,
     select_model: vi.fn(async () => undefined),
+    select_agent_batch_translation_model: vi.fn(async () => undefined),
     update_thinking_level: vi.fn(async () => undefined),
   },
   active_task_action_kind: null,

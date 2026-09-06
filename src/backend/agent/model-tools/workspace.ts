@@ -36,7 +36,7 @@ const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
     script: Type.String({
       minLength: 1,
       description: [
-        "TypeScript 异步函数体；宿主注入 workspace，支持顶层 await 和显式 return。",
+        "TypeScript 异步函数体；宿主注入只读接口对象 ws，支持顶层 await 和显式 return。",
         WORKSPACE_SCRIPT_API_DESCRIPTION,
       ].join("\n"),
     }),
@@ -80,7 +80,7 @@ export function create_agent_workspace_tools(options: {
       name: "workspace_apply",
       label: "应用工作区",
       description:
-        "读取当前提交批次并按对象 fp 与领域规则逐行处理；实际成功对象在一个独立事务中提交，单个对象失败进入 rejected，不阻塞无关对象。回执始终包含 status、applied、rejected、destroyed、revisions；无真实变化返回 unchanged。workspace_apply 是工程写入入口。",
+        "提交当前工作区的显式变更批次，按对象 fp 与领域规则逐行处理；实际成功对象在一个独立事务中提交，单个对象失败进入 rejected，不阻塞无关对象。正常回执包含 status、applied、rejected、destroyed、revisions；有应用且有拒绝为 partial，仅有拒绝为 rejected，无变化且无拒绝为 unchanged。applied 按实际变化汇总，destroyed 为 true 时下一次脚本会重建快照。",
       executionMode: "sequential",
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {

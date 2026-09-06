@@ -5,6 +5,7 @@ import {
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
   type BatchTranslationStopSource,
+  type BatchTranslationSource,
   type BatchTranslationResult,
   type BatchTranslationScope,
   type BatchTranslationSnapshot,
@@ -52,6 +53,7 @@ export class BatchTranslationRuntime {
   private snapshot: BatchTranslationSnapshot = {
     revision: 0,
     status: "idle",
+    source: null,
     request_in_flight_count: 0,
     progress: normalize_batch_translation_progress({}),
     scope: { kind: "all" },
@@ -77,6 +79,7 @@ export class BatchTranslationRuntime {
       this.snapshot = {
         ...this.snapshot,
         status: "idle",
+        source: null,
         config: undefined,
         stop_source: undefined,
         scope: { kind: "all" },
@@ -113,7 +116,7 @@ export class BatchTranslationRuntime {
   /** 独立运行原子取得全局 lease 后预约翻译。 */
   public begin_standalone(scope: BatchTranslationScope): BatchTranslationRunHandle {
     this.assert_available();
-    return this.reserve(scope, this.runtime_gate.begin_runtime("batch_translation"));
+    return this.reserve(scope, "standalone", this.runtime_gate.begin_runtime("batch_translation"));
   }
   /** 复用当前 Agent lease，并连接工具的父取消信号。 */
   public begin_under_agent(
@@ -123,7 +126,7 @@ export class BatchTranslationRuntime {
   ): BatchTranslationRunHandle {
     this.assert_available();
     this.runtime_gate.assert_current_runtime(lease, "agent");
-    return this.reserve(scope, null, signal);
+    return this.reserve(scope, "agent", null, signal);
   }
   /** 预约前检查关闭状态与单 run 互斥。 */
   private assert_available(): void {
@@ -133,6 +136,7 @@ export class BatchTranslationRuntime {
   /** 同步登记运行句柄和完成链，随后发布受理快照。 */
   private reserve(
     scope: BatchTranslationScope,
+    source: BatchTranslationSource,
     lease: RuntimeLease | null,
     parent?: AbortSignal,
   ): BatchTranslationRunHandle {
@@ -148,6 +152,7 @@ export class BatchTranslationRuntime {
       signal: controller.signal,
       completion,
     });
+    // 父信号只取消本轮翻译，取消来源由 cancel_run 首次登记。
     const abort = () => this.cancel_run(run, "parent");
     const run: ActiveRun = {
       handle,
@@ -172,6 +177,7 @@ export class BatchTranslationRuntime {
     this.snapshot = {
       ...this.snapshot,
       status: "requested",
+      source,
       config: undefined,
       stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
@@ -260,7 +266,11 @@ export class BatchTranslationRuntime {
           status: result.status,
           stop_source: run.stop_source,
           request_in_flight_count: 0,
-          scope: { kind: "all" },
+          // 终态保留任务范围类型，同时清除校对页的正在重翻标记。
+          scope:
+            this.snapshot.scope.kind === "items"
+              ? { kind: "items", item_ids: [] }
+              : { kind: "all" },
           progress: { ...result.progress },
         };
         await this.publish_snapshot(result.progress);

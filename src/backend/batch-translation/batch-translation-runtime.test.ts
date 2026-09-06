@@ -13,12 +13,9 @@ import { normalize_batch_translation_progress } from "../../domain/batch-transla
 function setup() {
   const database = new ProjectDatabase();
   const gate = new RuntimeOperationGate();
-  const runtime = new BatchTranslationRuntime(
-    new ProjectSessionState(),
-    new ProjectDataReader(database),
-    gate,
-  );
-  return { runtime, gate, database };
+  const session = new ProjectSessionState();
+  const runtime = new BatchTranslationRuntime(session, new ProjectDataReader(database), gate);
+  return { runtime, gate, database, session };
 }
 /** 显式控制执行和发布的收尾时机。 */
 function deferred<T>() {
@@ -34,6 +31,41 @@ const result = () => ({
 });
 
 describe("批量翻译完成链", () => {
+  it.each(["standalone", "agent"] as const)(
+    "%s 来源从预约保留到终态，工程关闭后清空",
+    async (source) => {
+      const { runtime, gate, database, session } = setup();
+      const lease = source === "agent" ? gate.begin_runtime("agent") : null;
+      const frames: Array<{ status: string; source: string | null }> = [];
+      runtime.subscribe((snapshot) => {
+        frames.push({ status: snapshot.status, source: snapshot.source });
+      });
+      const handle =
+        lease === null
+          ? runtime.begin_standalone({ kind: "all" })
+          : runtime.begin_under_agent({ kind: "all" }, lease, new AbortController().signal);
+      await runtime.execute(handle, async () => {
+        await runtime.publish_status(handle, "running");
+        return result();
+      });
+      await handle.completion;
+      expect(frames).toEqual([
+        { status: "requested", source },
+        { status: "running", source },
+        { status: "done", source },
+      ]);
+      expect((await runtime.build_snapshot()).source).toBe(source);
+      if (lease !== null) gate.finish_runtime(lease);
+      const next = runtime.begin_standalone({ kind: "all" });
+      expect((await runtime.build_snapshot()).source).toBe("standalone");
+      await runtime.execute(next, async () => result());
+      await next.completion;
+      await session.clear();
+      expect(await runtime.build_snapshot()).toMatchObject({ status: "idle", source: null });
+      await runtime.dispose();
+      database.close();
+    },
+  );
   it("本轮配置隔离引用并保留终态，新运行从空配置开始", async () => {
     const { runtime, database } = setup();
     const handle = runtime.begin_standalone({ kind: "all" });
@@ -199,7 +231,7 @@ describe("批量翻译完成链", () => {
     await expect(handle.completion).rejects.toBe(error);
     expect(run).not.toHaveBeenCalled();
     expect(gate.get_snapshot().owner).toBeNull();
-    expect((await runtime.build_snapshot()).status).toBe("idle");
+    expect(await runtime.build_snapshot()).toMatchObject({ status: "idle", source: null });
     unsubscribe();
     const next = runtime.begin_standalone({ kind: "all" });
     await runtime.execute(next, async () => result());
@@ -207,19 +239,31 @@ describe("批量翻译完成链", () => {
     await runtime.dispose();
     database.close();
   });
-  it("定点重翻只移除真实提交 id，scope 数组与调用方隔离", async () => {
-    const { runtime, database } = setup();
-    const item_ids = [1, 2, 3];
-    const handle = runtime.begin_standalone({ kind: "items", item_ids });
-    item_ids.push(4);
-    await runtime.publish_progress(handle, [2]);
-    expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1, 3] });
-    await runtime.request_stop();
-    expect(handle.signal.aborted).toBe(true);
-    expect((await runtime.build_snapshot()).status).toBe("stopping");
-    await runtime.dispose();
-    database.close();
-  });
+  it.each(["done", "stopped", "error"] as const)(
+    "定点重翻移除提交 id，%s 终态清空 id 并保留范围类型",
+    async (status) => {
+      const { runtime, database } = setup();
+      const item_ids = [1, 2, 3];
+      const handle = runtime.begin_standalone({ kind: "items", item_ids });
+      item_ids.push(4);
+      await runtime.publish_progress(handle, [2]);
+      expect((await runtime.build_snapshot()).scope).toEqual({ kind: "items", item_ids: [1, 3] });
+      if (status === "stopped") {
+        await runtime.request_stop();
+        expect(handle.signal.aborted).toBe(true);
+        expect((await runtime.build_snapshot()).status).toBe("stopping");
+      }
+      await runtime.execute(handle, async () => ({ ...result(), status }));
+      await handle.completion;
+      expect(await runtime.build_snapshot()).toMatchObject({
+        status,
+        source: "standalone",
+        scope: { kind: "items", item_ids: [] },
+      });
+      await runtime.dispose();
+      database.close();
+    },
+  );
   it("standalone 等待执行收尾和终态 listener 后释放 lease，结果与后续运行隔离", async () => {
     const { runtime, gate, database } = setup();
     const work = deferred<ReturnType<typeof result>>();

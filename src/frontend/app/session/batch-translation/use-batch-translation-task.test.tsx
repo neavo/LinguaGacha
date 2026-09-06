@@ -29,7 +29,7 @@ type RuntimeFixture = {
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: BatchTranslationSnapshot;
-  runtime_snapshot: { revision: number; owner: "batch_translation" | null };
+  runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
   refresh_batch_translation: ReturnType<typeof vi.fn>;
@@ -91,9 +91,12 @@ function create_runtime_fixture(
     task_snapshot,
     runtime_snapshot: {
       revision: 0,
-      owner: ["requested", "running", "stopping"].includes(task_snapshot.status)
-        ? "batch_translation"
-        : null,
+      owner:
+        task_snapshot.source === "agent"
+          ? "agent"
+          : ["requested", "running", "stopping"].includes(task_snapshot.status)
+            ? "batch_translation"
+            : null,
     },
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
       const payload = await run();
@@ -168,9 +171,12 @@ describe("useBatchTranslationTask", () => {
     });
   }
 
-  it("翻译完成后请求统一译文导出流程", async () => {
+  it.each([
+    { source: "standalone", export_count: 1 },
+    { source: "agent", export_count: 0 },
+  ] as const)("$source 全量翻译完成后的导出交互", async ({ source, export_count }) => {
     runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({ status: "running", progress: { total_line: 2 } }),
+      create_task_snapshot({ source, status: "running", progress: { total_line: 2 } }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/batch-translation/snapshot") {
@@ -189,6 +195,7 @@ describe("useBatchTranslationTask", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
+        source,
         status: "done",
         progress: { line: 2, total_line: 2, processed_line: 2, total_output_tokens: 8 },
       }),
@@ -198,21 +205,16 @@ describe("useBatchTranslationTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(on_request_export_mock).toHaveBeenCalledOnce();
+    expect(on_request_export_mock).toHaveBeenCalledTimes(export_count);
     expect(push_toast_mock).toHaveBeenCalledWith("success", "batch_translation.feedback.done");
     expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/translation/files/export", {});
   });
 
-  it.each([
-    { scopes: [[7]], terminal: "items" },
-    { scopes: [[7]], terminal: "all" },
-    { scopes: [[7], []], terminal: "all" },
-    { scopes: [[]], terminal: "all" },
-  ] as const)("局部重翻保留导出范围：$scopes → $terminal", async ({ scopes, terminal }) => {
+  it("局部重翻完成后显示完成反馈并保留导出关闭状态", async () => {
     api_fetch_mock.mockImplementation(async () => ({
       batch_translation: runtime_fixture.current.task_snapshot,
     }));
-    for (const item_ids of scopes) {
+    for (const item_ids of [[7], []]) {
       runtime_fixture.current = create_runtime_fixture(
         create_task_snapshot({
           status: "running",
@@ -225,7 +227,7 @@ describe("useBatchTranslationTask", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         status: "done",
-        scope: terminal === "items" ? { kind: "items", item_ids: [] } : { kind: "all" },
+        scope: { kind: "items", item_ids: [] },
         progress: { line: 1, total_line: 1 },
       }),
     );
@@ -769,6 +771,7 @@ function create_task_snapshot(
   return {
     revision: 0,
     status: "idle",
+    source: overrides.status === undefined || overrides.status === "idle" ? null : "standalone",
     request_in_flight_count: 0,
     scope: { kind: "all" },
     ...overrides,

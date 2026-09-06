@@ -22,7 +22,10 @@ const READ_SKILL_PARAMETERS = Type.Object(
       pattern: "^[a-z0-9-]+$",
     }),
     path: Type.Optional(
-      Type.String({ description: "skill 包内的相对文件路径；缺省读取 SKILL.md。" }),
+      Type.String({
+        description:
+          "使用 / 分隔的规范 skill 包内相对文件路径，例如 references/guide.md；省略时读取 SKILL.md。路径须直接指向包内文件，各段使用实际名称。",
+      }),
     ),
   },
   { additionalProperties: false },

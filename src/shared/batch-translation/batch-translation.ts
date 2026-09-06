@@ -7,7 +7,6 @@ import {
   BATCH_TRANSLATION_RUN_STATUSES,
   BATCH_TRANSLATION_STOP_SOURCES,
   type BatchTranslationSnapshot,
-  type BatchTranslationScope,
   type BatchTranslationRunStatus,
 } from "../../domain/batch-translation";
 export type BatchTranslationMetrics = {
@@ -157,6 +156,7 @@ export function create_empty_batch_translation_snapshot(): BatchTranslationSnaps
   return {
     revision: 0,
     status: "idle",
+    source: null,
     request_in_flight_count: 0,
     progress: normalize_batch_translation_progress({}),
     scope: { kind: "all" },
@@ -175,6 +175,7 @@ export function normalize_batch_translation_snapshot(
     revision: Math.max(0, Number(raw.revision) || 0),
     ...(config === undefined ? {} : { config }),
     status,
+    source: raw.source === "standalone" || raw.source === "agent" ? raw.source : null,
     ...(raw.stop_source !== undefined && BATCH_TRANSLATION_STOP_SOURCES.includes(raw.stop_source)
       ? { stop_source: raw.stop_source }
       : {}),
@@ -195,15 +196,15 @@ export function clone_translation_task_snapshot(
   };
 }
 
-/** 全量任务从活跃态自然完成后承接导出流程。 */
-export function should_open_translation_export_followup(args: {
-  previous_status: string;
-  next_status: string;
-  scope: BatchTranslationScope;
-}): boolean {
+/** 独立全量任务从活跃态自然完成后承接导出流程。 */
+export function should_open_translation_export_followup(
+  previous_status: BatchTranslationRunStatus,
+  snapshot: BatchTranslationSnapshot,
+): boolean {
   return (
-    args.scope.kind === "all" &&
-    is_active_batch_translation_status(args.previous_status) &&
-    args.next_status === "done"
+    is_active_batch_translation_status(previous_status) &&
+    snapshot.status === "done" &&
+    snapshot.source === "standalone" &&
+    snapshot.scope.kind === "all"
   );
 }

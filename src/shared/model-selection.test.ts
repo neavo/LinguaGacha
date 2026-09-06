@@ -42,6 +42,7 @@ describe("模型选择快照", () => {
         translation: "translation-model",
 
         agent: "agent-model",
+        agent_batch_translation: null,
       },
       models: [
         {

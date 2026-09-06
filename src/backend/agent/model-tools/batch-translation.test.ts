@@ -40,7 +40,7 @@ describe("Agent 批量翻译工具", () => {
       });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(signal, "batch");
+    expect(run).toHaveBeenCalledWith(signal);
     complete();
     expect(await result).toMatchObject({
       details: summary,

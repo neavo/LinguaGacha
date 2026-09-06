@@ -17,6 +17,7 @@ function create_task_snapshot(): BatchTranslationSnapshot {
   return {
     revision: 7,
     status: "running",
+    source: "standalone",
     request_in_flight_count: 2,
     progress: {
       line: 5,

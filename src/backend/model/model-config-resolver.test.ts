@@ -8,10 +8,28 @@ import {
   read_config_model_preset_records,
   read_config_model_records,
   resolve_model_for_usage,
+  resolve_agent_batch_translation_model,
 } from "./model-config-resolver";
 
+import { Model } from "../../domain/model";
+
 describe("model-config-resolver", () => {
-  it("三个用途分别解析命中的模型", () => {
+  it("跟随使用当前生效配置，固定选择同一 ID 时仍使用保存配置", () => {
+    const agent_model = Model.from_json({ id: "a", thinking: { level: "LOW" } }, "a");
+    const config = {
+      model_selection: { agent: "b", agent_batch_translation: null as string | null },
+      models: [{ id: "a", thinking: { level: "HIGH" } }],
+    };
+    expect(resolve_agent_batch_translation_model(config, agent_model).thinking.level).toBe("LOW");
+    config.model_selection.agent_batch_translation = "a";
+    expect(resolve_agent_batch_translation_model(config, agent_model).thinking.level).toBe("HIGH");
+    config.model_selection.agent_batch_translation = "missing";
+    expect(() => resolve_agent_batch_translation_model(config, agent_model)).toThrow(
+      "model.not_found",
+    );
+  });
+
+  it("执行用途分别解析命中的模型", () => {
     const config = {
       model_selection: {
         translation: "model-1",

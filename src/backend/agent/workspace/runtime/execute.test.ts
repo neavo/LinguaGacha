@@ -113,7 +113,7 @@ describe("Agent Workspace Deno runtime", () => {
       }, read_port()),
     ).resolves.toEqual({
       ok: false,
-      message: "matchLiterals args do not match the declared schema",
+      message: expect.stringContaining("matchLiterals /patterns:"),
     });
   });
 });

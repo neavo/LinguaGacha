@@ -176,9 +176,9 @@ describe("ws.tool.groupQualityRuleEntries 数据工具", () => {
         {
           kind: "text_preserve",
           entries: [
-            { entry_id: "first", src: "\\\\[A-Z]+" },
-            { entry_id: "duplicate", src: "\\\\[A-Z]+" },
-            { entry_id: "other", src: "\\\\[a-z]+" },
+            { id: "first", src: "\\\\[A-Z]+" },
+            { id: "duplicate", src: "\\\\[A-Z]+" },
+            { id: "other", src: "\\\\[a-z]+" },
           ],
         },
         {},
@@ -220,6 +220,67 @@ describe("ws.tool.groupQualityRuleEntries 数据工具", () => {
     expect(result["groups"]).toEqual([
       expect.objectContaining({ entry_ids: ["second"], target_entry_ids: ["second"] }),
     ]);
+  });
+
+  it("显式集合决定完整分析范围，目标筛选保留相关上下文对象", async () => {
+    const files = { "glossary/entries.jsonl": [glossary_entry("existing", "ABC")] };
+    await expect(
+      execute_workspace_tool("groupQualityRuleEntries", { kind: "glossary" }, files),
+    ).resolves.toMatchObject({ total_entry_count: 1, total_target_entry_count: 1 });
+    await expect(
+      execute_workspace_tool(
+        "groupQualityRuleEntries",
+        {
+          kind: "glossary",
+          entries: [relation_candidate("candidate", "ABC家")],
+        },
+        files,
+      ),
+    ).resolves.toMatchObject({ total_entry_count: 1, groups: [{ entry_ids: ["candidate"] }] });
+    await expect(
+      execute_workspace_tool(
+        "groupQualityRuleEntries",
+        {
+          kind: "glossary",
+          entries: [glossary_entry("existing", "ABC"), relation_candidate("candidate", "ABC家")],
+          target_entry_ids: ["candidate"],
+        },
+        files,
+      ),
+    ).resolves.toMatchObject({
+      total_entry_count: 2,
+      total_target_entry_count: 1,
+      groups: [{ entry_ids: ["existing", "candidate"], target_entry_ids: ["candidate"] }],
+    });
+    await expect(
+      execute_workspace_tool("groupQualityRuleEntries", { kind: "glossary", entries: [] }, files),
+    ).resolves.toMatchObject({ total_entry_count: 0, groups: [] });
+  });
+
+  it("参数错误定位当前规则类型的字段，身份在完整集合内唯一", async () => {
+    await expect(
+      execute_workspace_tool(
+        "groupQualityRuleEntries",
+        {
+          kind: "glossary",
+          entries: [{ id: "a", src: "A" }],
+        },
+        {},
+      ),
+    ).rejects.toThrow("/entries/0/case_sensitive:");
+    await expect(
+      execute_workspace_tool(
+        "groupQualityRuleEntries",
+        {
+          kind: "text_preserve",
+          entries: [
+            { id: "a", src: "A" },
+            { id: "a", src: "B" },
+          ],
+        },
+        {},
+      ),
+    ).rejects.toThrow("Duplicate id: a");
   });
 
   it("拒绝超过 contract 上限的分页大小", async () => {

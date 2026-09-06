@@ -1,114 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AGENT_DECISION_TIMEOUT_MS, type AgentTranslationRequest } from "../../shared/agent";
+import { AGENT_DECISION_TIMEOUT_MS } from "../../shared/agent";
 import { AgentDecisionCoordinator } from "./agent-decision";
-import { Model } from "../../domain/model";
-
-const translation: AgentTranslationRequest = {
-  currentProviderId: "model",
-  providers: [
-    {
-      id: "model",
-      name: "Model",
-      type: "PRESET",
-      agent_limits: { context_window: 128000, max_output_tokens: 32000 },
-      thinking_level: "HIGH",
-      available_thinking_levels: ["HIGH"],
-    },
-  ],
-};
-const selected_model = Model.from_json({ id: "model", thinking: { level: "HIGH" } }, "model");
 
 describe("AgentDecisionCoordinator", () => {
-  it("翻译回答只接受当前决定提供的接入点选择", async () => {
-    const coordinator = new AgentDecisionCoordinator(() => undefined);
-    const save = vi.fn(() => selected_model);
-    const result = coordinator.wait_for_translation(
-      "translation",
-      translation,
-      new AbortController().signal,
-      save,
-    );
-    expect(() =>
-      coordinator.resolve_translation({
-        id: "translation",
-        response: { kind: "provider", providerId: "unknown" },
-      }),
-    ).toThrow("request.validation_failed");
-    expect(() =>
-      coordinator.resolve_translation({
-        id: "translation",
-        response: { kind: "provider", providerId: "model", thinkingLevel: "HIGH" },
-      }),
-    ).toThrow("request.validation_failed");
-    expect(save).not.toHaveBeenCalled();
-    expect(coordinator.read_pending()?.id).toBe("translation");
-    coordinator.resolve_translation({ id: "translation", response: { kind: "cancel" } });
-    await expect(result).resolves.toMatchObject({ status: "not_started" });
-  });
-  it("保存失败保留决定，重试成功返回后端执行配置", async () => {
-    const coordinator = new AgentDecisionCoordinator(() => undefined);
-    const save = vi
-      .fn(() => selected_model)
-      .mockImplementationOnce(() => {
-        throw new Error("disk full");
-      });
-    const result = coordinator.wait_for_translation(
-      "translation",
-      translation,
-      new AbortController().signal,
-      save,
-    );
-    const request = { id: "translation", response: { kind: "provider", providerId: "model" } };
-    const before = coordinator.read_pending();
-    expect(() => coordinator.resolve_translation(request)).toThrow("disk full");
-    expect(coordinator.read_pending()).toEqual(before);
-    coordinator.resolve_translation(request);
-    expect(coordinator.read_pending()).toBeNull();
-    await expect(result).resolves.toEqual({ status: "accepted", model: selected_model });
-    expect(save).toHaveBeenLastCalledWith("model");
-    expect(() => coordinator.resolve_translation(request)).toThrow("runtime.busy");
-    expect(save).toHaveBeenCalledTimes(2);
-  });
+  afterEach(() => vi.useRealTimers());
 
-  it.each(["cancel", "expire", "abort"] as const)(
-    "翻译等待的 %s 结束路径保留明确结果",
-    async (action) => {
-      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-      try {
-        const coordinator = new AgentDecisionCoordinator(() => undefined);
-        const controller = new AbortController();
-        const save = vi.fn(() => selected_model);
-        const result = coordinator.wait_for_translation(
-          "translation",
-          translation,
-          controller.signal,
-          save,
-        );
-        if (action === "cancel") {
-          coordinator.resolve_translation({ id: "translation", response: { kind: "cancel" } });
-          await expect(result).resolves.toEqual({ status: "not_started", reason: "cancelled" });
-        } else if (action === "expire") {
-          vi.setSystemTime(Date.now() + AGENT_DECISION_TIMEOUT_MS);
-          expect(() =>
-            coordinator.resolve_translation({
-              id: "translation",
-              response: { kind: "provider", providerId: "model" },
-            }),
-          ).toThrow("runtime.busy");
-          await expect(result).resolves.toEqual({ status: "not_started", reason: "expired" });
-        } else {
-          const rejected = expect(result).rejects.toThrow("stopped");
-          controller.abort(new Error("stopped"));
-          await rejected;
-        }
-        expect(save).not.toHaveBeenCalled();
-        expect(coordinator.read_pending()).toBeNull();
-      } finally {
-        vi.useRealTimers();
-      }
-    },
-  );
   it("公开问题并以用户选择原子结束等待", async () => {
     const changes: unknown[] = [];
     const coordinator = new AgentDecisionCoordinator(() =>
@@ -180,7 +77,7 @@ describe("AgentDecisionCoordinator", () => {
     });
   });
 
-  it("问题到期返回未回答，写入授权到期返回拒绝", async () => {
+  it("问题到期返回未回答", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const coordinator = new AgentDecisionCoordinator(() => undefined);
     const question = coordinator.wait_for_question(
@@ -200,7 +97,11 @@ describe("AgentDecisionCoordinator", () => {
       outcome: "unanswered",
       reason: "expired",
     });
+  });
 
+  it("写入授权等待完整期限后允许本次写入并清除待决状态", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const coordinator = new AgentDecisionCoordinator(() => undefined);
     const write = coordinator.wait_for_write_approval(
       "write-timeout",
       {
@@ -213,8 +114,14 @@ describe("AgentDecisionCoordinator", () => {
       },
       undefined,
     );
-    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS);
-    await expect(write).resolves.toBe("reject");
+    await vi.advanceTimersByTimeAsync(AGENT_DECISION_TIMEOUT_MS - 1);
+    expect(coordinator.read_pending()).toMatchObject({ id: "write-timeout" });
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(write).resolves.toBe("allow_once");
+    expect(coordinator.read_pending()).toBeNull();
+    expect(() =>
+      coordinator.resolve_write_approval({ id: "write-timeout", decision: "reject" }),
+    ).toThrow("runtime.busy");
   });
 
   it("拒绝过期身份和无效答案且保留当前决定", async () => {

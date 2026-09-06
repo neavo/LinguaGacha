@@ -1,4 +1,9 @@
 export const zh_cn_agent_page = {
+  batch_translation_model: {
+    follow: "保持一致",
+    follow_option: "与 AGENT 模型保持一致",
+    tooltip: "批量翻译工具使用的模型",
+  },
   title: "AGENT",
   thinking: "思考过程",
   thinking_active: "正在思考",

@@ -50,6 +50,8 @@ describe("AgentTodo", () => {
     expect(status?.textContent).toContain("读取工程");
     expect(status?.tabIndex).toBe(0);
     expect(tooltip_items).toEqual(["读取工程", "检查章节", "汇总结果"]);
+    expect(view.querySelector(".agent-todo__more")?.textContent).toBe("+2");
+    expect(view.querySelector<HTMLUListElement>("ul")?.tabIndex).toBe(0);
 
     await render_todo([]);
     expect(view.querySelector('[role="status"]')).toBeNull();

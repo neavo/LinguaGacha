@@ -39,8 +39,12 @@ export const MODEL_API_FORMATS = [
 export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
 export type ModelUsage = (typeof MODEL_USAGES)[number];
-/** 每种执行用途当前选择的模型 ID。 */
-export type ModelSelection = Record<ModelUsage, string>;
+/** 执行用途的模型选择与 Agent 批量翻译偏好。 */
+export type ModelSelection = {
+  translation: string;
+  agent: string;
+  agent_batch_translation: string | null; // null 跟随当前 Agent 生效配置，模型 ID 表示固定选择
+};
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
 
@@ -115,6 +119,7 @@ export class Model {
   public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
   public readonly generation: ModelGenerationConfig; // 生成参数配置快照
 
+  /** 保存已归一的模型快照，配置对象由 from_json 建立。 */
   private constructor(fields: {
     id: string;
     type: ModelType;
@@ -254,6 +259,7 @@ export class Model {
     return MODEL_TYPES.filter(Model.is_custom_type);
   }
 
+  /** 补齐请求配置并复制扩展对象，隔离调用方的嵌套引用。 */
   private static normalize_request_config(value: unknown): ModelRequestConfig {
     const record = read_json_model_record(value);
     return {
@@ -266,6 +272,7 @@ export class Model {
     };
   }
 
+  /** 将请求阈值收敛为有限数值，缺失项采用领域默认值。 */
   private static normalize_threshold_config(value: unknown): ModelThresholdConfig {
     const record = read_json_model_record(value);
     return {
@@ -285,6 +292,7 @@ export class Model {
     };
   }
 
+  /** 将保存配置中的档位收窄到共享思考值域。 */
   private static normalize_thinking_config(value: unknown): ModelThinkingConfig {
     const record = read_json_model_record(value);
     return {
@@ -292,6 +300,7 @@ export class Model {
     };
   }
 
+  /** 分别归一生成参数及其启用标志。 */
   private static normalize_generation_config(value: unknown): ModelGenerationConfig {
     const record = read_json_model_record(value);
     return {
@@ -306,6 +315,7 @@ export class Model {
   }
 }
 
+/** 按模型类型词表收窄外部输入。 */
 export function is_model_type(value: unknown): value is ModelType {
   return MODEL_TYPE_SET.has(value as ModelType);
 }
@@ -316,28 +326,34 @@ export function normalize_model_selection(value: unknown): ModelSelection {
   return {
     translation: read_model_selection_id(record["translation"]),
     agent: read_model_selection_id(record["agent"]),
+    agent_batch_translation: read_model_selection_id(record["agent_batch_translation"]) || null,
   };
 }
 
+/** 按请求协议词表收窄外部输入。 */
 export function is_model_api_format(value: unknown): value is ModelApiFormat {
   return MODEL_API_FORMAT_SET.has(value as ModelApiFormat);
 }
 
+/** 校验共享思考档位，具体模型支持范围由能力解析决定。 */
 export function is_model_thinking_level(value: unknown): value is ModelThinkingLevel {
   return MODEL_THINKING_LEVEL_SET.has(value as ModelThinkingLevel);
 }
 
+/** 复制合法配置对象，避免默认值合并修改调用方。 */
 function read_json_model_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as JsonRecord) }
     : {};
 }
 
+/** 将可转换输入归一为有限数值，异常数值采用调用方默认值。 */
 function read_json_model_number(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;
 }
 
+/** 模型选择只接受裁剪后的字符串，空值交由用途规则处理。 */
 function read_model_selection_id(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }

@@ -47,7 +47,7 @@ describe("设置快照", () => {
     );
   });
 
-  it("完整设置只保留三个模型用途并丢弃旧激活字段", () => {
+  it("完整设置规范化模型选择并丢弃旧激活字段", () => {
     const legacy_key = ["activate", "model", "id"].join("_");
     const setting = Setting.from_json({
       [legacy_key]: "legacy",
@@ -63,6 +63,7 @@ describe("设置快照", () => {
       translation: "translation-model",
 
       agent: "agent-model",
+      agent_batch_translation: null,
     });
     expect(setting).not.toHaveProperty(legacy_key);
   });

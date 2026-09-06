@@ -33,7 +33,7 @@ export function AgentTodo(props: AgentTodoProps): JSX.Element | null {
         }
       />
       <TooltipContent side="top" sideOffset={8} className="agent-todo__tooltip">
-        <ul>
+        <ul tabIndex={0} aria-label={t("agent_page.todo.pending")}>
           {props.todos.map((item, index) => (
             <li key={`${index.toString()}:${item}`}>{item}</li>
           ))}

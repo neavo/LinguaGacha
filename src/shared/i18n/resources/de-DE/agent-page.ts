@@ -1,4 +1,9 @@
 export const de_de_agent_page = {
+  batch_translation_model: {
+    follow: "Wie AGENT",
+    follow_option: "AGENT-Modell verwenden",
+    tooltip: "Modell für das Stapelübersetzungswerkzeug",
+  },
   title: "AGENT",
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",

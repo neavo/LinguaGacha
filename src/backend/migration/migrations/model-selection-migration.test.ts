@@ -11,7 +11,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { model_selection_migration } from "./model-selection-migration";
 
 describe("model_selection_migration", () => {
-  it("把旧激活模型迁到三个用途并保持重复执行幂等", () => {
+  it("把旧激活模型迁到执行用途并保持重复执行幂等", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-model-selection-migration-"),
     );
@@ -32,6 +32,7 @@ describe("model_selection_migration", () => {
         translation: "legacy-model",
 
         agent: "legacy-model",
+        agent_batch_translation: null,
       },
     });
   });
@@ -58,6 +59,7 @@ describe("model_selection_migration", () => {
         translation: "translation-model",
 
         agent: "agent-model",
+        agent_batch_translation: null,
       },
     });
   });

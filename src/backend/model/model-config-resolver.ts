@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model, normalize_model_selection, type ModelUsage } from "../../domain/model";
+import { AppError } from "../../shared/error";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
@@ -33,6 +34,18 @@ export function resolve_model_for_usage(config: JsonRecord, usage: ModelUsage): 
   return model === undefined
     ? null
     : (Model.from_json(model, String(model["id"] ?? "")).to_json() as JsonRecord);
+}
+
+/** 跟随时使用 Agent 已生效的配置；显式选择按模型自身保存配置执行。 */
+export function resolve_agent_batch_translation_model(
+  config: JsonRecord,
+  agent_model: Model,
+): Model {
+  const model_id = normalize_model_selection(config["model_selection"]).agent_batch_translation;
+  if (model_id === null) return agent_model;
+  const model = read_config_model_records(config).find((item) => item["id"] === model_id);
+  if (model === undefined) throw new AppError("model.not_found");
+  return Model.from_json(model, model_id);
 }
 
 /**

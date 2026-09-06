@@ -103,6 +103,7 @@ describe("BackendServices", () => {
     await publish_snapshot?.({
       revision: 7,
       status: "running",
+      source: "standalone",
       request_in_flight_count: 2,
       progress: {
         line: 1,
@@ -123,7 +124,9 @@ describe("BackendServices", () => {
 
     expect(options.publishEvent).toHaveBeenCalledWith(
       "batch_translation.snapshot_changed",
-      expect.objectContaining({ batch_translation: expect.objectContaining({ revision: 7 }) }),
+      expect.objectContaining({
+        batch_translation: expect.objectContaining({ revision: 7, source: "standalone" }),
+      }),
     );
   });
 

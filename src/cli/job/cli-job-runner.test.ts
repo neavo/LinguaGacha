@@ -338,6 +338,7 @@ function create_task_snapshot(
   return {
     revision: 1,
     status,
+    source: status === "idle" ? null : "standalone",
     request_in_flight_count: 0,
     progress: {
       line: 0,

@@ -573,7 +573,7 @@
 }
 
 .agent-status-mark--running {
-  animation: agent-status-mark-pulse 1s ease-out infinite;
+  --agent-status-color: var(--primary);
 }
 
 .agent-status-mark--success {
@@ -728,10 +728,6 @@
   background: var(--agent-status-color);
 }
 
-.agent-round-footer[data-running="true"] .agent-round-footer__activity {
-  animation: agent-status-mark-pulse 1s ease-out infinite;
-}
-
 .agent-round-footer__line {
   flex: 1 1 auto;
   height: 1px;
@@ -876,11 +872,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 浮层跟随真实触发器宽度，并完整展示有界短待办。 */
+/* 浮层受可用高度约束，列表独立滚动，让浮层箭头保留在滚动区域外。 */
 .agent-todo__tooltip {
-  display: block;
+  display: flex;
+  max-height: var(--available-height);
   width: var(--anchor-width);
   max-width: var(--available-width);
+  flex-direction: column;
+  align-items: stretch;
   overflow: visible;
   line-height: 1.5;
   white-space: normal;
@@ -889,10 +888,18 @@
 
 .agent-todo__tooltip ul {
   display: grid;
+  min-height: 0;
   gap: 4px;
   margin: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding-inline-start: 16px;
   list-style: disc outside;
+}
+
+.agent-todo__tooltip ul:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
 }
 
 .agent-todo__tooltip li {
@@ -1247,6 +1254,7 @@
 }
 
 .agent-composer__footer-actions {
+  flex-wrap: wrap;
   flex: 1 1 auto;
   gap: 2px;
 }
@@ -1532,12 +1540,12 @@
 }
 
 .agent-decision-action__icon--deadline::before {
+  --agent-status-color: var(--agent-decision-deadline-color);
+
   position: absolute;
   z-index: 0;
   inset: 0;
-  border: 1.5px solid color-mix(in srgb, var(--agent-decision-deadline-color) 70%, transparent);
   border-radius: inherit;
-  animation: agent-decision-deadline-pulse 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   content: "";
   pointer-events: none;
 }
@@ -1572,19 +1580,6 @@
 .agent-decision-action__arrow {
   position: relative;
   z-index: 2;
-}
-
-@keyframes agent-decision-deadline-pulse {
-  0% {
-    opacity: 0.55;
-    transform: scale(0.92);
-  }
-
-  75%,
-  100% {
-    opacity: 0;
-    transform: scale(1.32);
-  }
 }
 
 .agent-decision-action:not(:disabled):hover .agent-decision-action__icon,
@@ -1821,6 +1816,13 @@
 .agent-mention-menu,
 .agent-round-footer {
   user-select: text;
+}
+
+/* 状态点与决定按钮共享扩散节奏，光环从各自主体边缘向外展开。 */
+.agent-status-mark--running,
+.agent-round-footer[data-running="true"] .agent-round-footer__activity,
+.agent-decision-action__icon--deadline::before {
+  animation: agent-status-mark-pulse 1s ease-out infinite;
 }
 
 /* 直接读取状态色令牌，让 Chromium 连续插值阴影颜色与扩散半径。 */

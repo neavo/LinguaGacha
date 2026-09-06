@@ -1,7 +1,7 @@
 import { type JsonRecord } from "../../../../../domain/json";
 import { describe, expect, it } from "vitest";
 
-import { AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES } from "../../contract";
+import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../policy";
 import { execute_workspace_tool, workspace_item } from "./test-support";
 
 describe("ws.tool.matchLiterals 数据工具", () => {
@@ -54,13 +54,31 @@ describe("ws.tool.matchLiterals 数据工具", () => {
     });
   });
 
+  it("补充字符前的命中范围可直接切片原始字段", async () => {
+    const src = "😀Straße";
+    const result = await execute_workspace_tool(
+      "matchLiterals",
+      {
+        patterns: [{ key: "term", text: "STRASSE", case_sensitive: false }],
+      },
+      { "items/entries.jsonl": [workspace_item(1, { src })] },
+    );
+    expect(result).toMatchObject({
+      patterns: [{ example_matches: [{ ranges: [{ start: 2, end: 8 }] }] }],
+    });
+    expect(src.slice(2, 8)).toBe("Straße");
+  });
+
   it("拒绝重复、空文本、缺失标志和越界证据数量", async () => {
     const valid = { key: "key", text: "A", case_sensitive: false };
     const cases: JsonRecord[] = [
       { patterns: [valid, { ...valid, text: "B" }] },
       { patterns: [{ ...valid, text: "" }] },
       { patterns: [{ key: "key", text: "A" }] },
-      { patterns: [valid], examples_per_pattern: AGENT_WORKSPACE_MAX_LITERAL_MATCH_EXAMPLES + 1 },
+      {
+        patterns: [valid],
+        examples_per_pattern: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesMax + 1,
+      },
     ];
     for (const args of cases) {
       await expect(

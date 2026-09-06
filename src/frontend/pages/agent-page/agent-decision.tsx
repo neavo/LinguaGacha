@@ -8,19 +8,10 @@ import {
   type RefObject,
   type ComponentPropsWithRef,
 } from "react";
-import { ArrowRight, CircleQuestionMark, Save, X, type LucideIcon } from "lucide-react";
-import type { AgentTranslationResponse } from "@shared/agent";
-import { ModelSelectionOptions } from "@frontend/features/model-selection/model-selection-menu";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
-
+import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import {
   AGENT_DECISION_TIMEOUT_MS,
+  AGENT_WRITE_APPROVAL_DEFAULT,
   type AgentPendingDecision,
   type AgentPendingWriteSummary,
   type AgentQuestionResponse,
@@ -72,7 +63,6 @@ export function AgentDecisionLayer(props: {
   decision: AgentPendingDecision | null;
   on_resolve_question: (response: AgentQuestionResponse) => void;
   on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void;
-  on_resolve_translation: (id: string, response: AgentTranslationResponse) => Promise<void>;
 }): JSX.Element {
   // Base UI 在离场结束前保持 Popup 挂载，最后一次决定为这段动画保留完整内容。
   const visible_decision_ref = useRef<AgentPendingDecision | null>(props.decision);
@@ -110,107 +100,12 @@ export function AgentDecisionLayer(props: {
                   title_ref={title_ref}
                   on_resolve={props.on_resolve_write_approval}
                 />
-              ) : visible_decision?.kind === "batch_translation" ? (
-                <AgentTranslationDecision
-                  key={visible_decision.id}
-                  decision={visible_decision}
-                  title_ref={title_ref}
-                  on_resolve={props.on_resolve_translation}
-                />
               ) : null}
             </DialogPrimitive.Popup>
           </DialogPrimitive.Viewport>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
     </>
-  );
-}
-
-/** 翻译决定提交接入点选择，失败后恢复当前决定的操作入口。 */
-function AgentTranslationDecision(props: {
-  decision: Extract<AgentPendingDecision, { kind: "batch_translation" }>;
-  title_ref: RefObject<HTMLHeadingElement | null>;
-  on_resolve: (id: string, response: AgentTranslationResponse) => Promise<void>;
-}): JSX.Element {
-  const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
-  const [submitting, set_submitting] = useState(false);
-  const submitting_ref = useRef(false); // React 提交前也只发送一次决定
-
-  /** 同一决定只发送一次在途请求，保存失败后恢复操作。 */
-  async function submit(response: AgentTranslationResponse): Promise<void> {
-    if (submitting_ref.current) return;
-    submitting_ref.current = true;
-    set_submitting(true);
-    try {
-      await props.on_resolve(props.decision.id, response);
-    } catch (failure) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(failure, t, t("agent_page.error.decision")),
-      );
-    } finally {
-      submitting_ref.current = false;
-      set_submitting(false);
-    }
-  }
-
-  return (
-    <AgentDecisionFrame
-      title={t("batch_translation.setup.title")}
-      TitleIcon={CircleQuestionMark}
-      title_ref={props.title_ref}
-      description={t("batch_translation.setup.description")}
-      expires_at={props.decision.expiresAt}
-      on_cancel={() => {
-        void submit({ kind: "cancel" });
-      }}
-      cancel_disabled={submitting}
-    >
-      {(deadline) => (
-        <>
-          <div className="agent-decision__options" aria-busy={submitting}>
-            <AgentDecisionAction
-              ordinal={1}
-              label={t("batch_translation.setup.current")}
-              deadline={deadline}
-              disabled={submitting || deadline.remaining_seconds === 0}
-              onClick={() => {
-                void submit({
-                  kind: "provider",
-                  providerId: props.decision.translation.currentProviderId,
-                });
-              }}
-            />
-            <AppDropdownMenu>
-              <AppDropdownMenuTrigger
-                render={
-                  <AgentDecisionAction
-                    ordinal={2}
-                    label={t("batch_translation.setup.other")}
-                    disabled={
-                      submitting ||
-                      deadline.remaining_seconds === 0 ||
-                      props.decision.translation.providers.length === 0
-                    }
-                  />
-                }
-              />
-              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-                <ModelSelectionOptions
-                  models={props.decision.translation.providers}
-                  value={props.decision.translation.currentProviderId}
-                  disabled={submitting}
-                  on_select={(providerId) => {
-                    void submit({ kind: "provider", providerId });
-                  }}
-                />
-              </AppDropdownMenuContent>
-            </AppDropdownMenu>
-          </div>
-        </>
-      )}
-    </AgentDecisionFrame>
   );
 }
 
@@ -228,7 +123,6 @@ function AgentQuestionDecision(props: {
   return (
     <AgentDecisionFrame
       title={props.decision.question.prompt}
-      TitleIcon={CircleQuestionMark}
       title_ref={props.title_ref}
       description={props.decision.question.description}
       expires_at={props.decision.expiresAt}
@@ -297,7 +191,6 @@ function AgentWriteDecision(props: {
   return (
     <AgentDecisionFrame
       title={t("agent_page.approval.title")}
-      TitleIcon={Save}
       title_ref={props.title_ref}
       description={<AgentWriteSummary summary={props.decision.summary} />}
       expires_at={props.decision.expiresAt}
@@ -309,7 +202,7 @@ function AgentWriteDecision(props: {
               key={value}
               ordinal={index + 1}
               label={t(key)}
-              deadline={index === 0 ? deadline : undefined}
+              deadline={value === AGENT_WRITE_APPROVAL_DEFAULT ? deadline : undefined}
               onClick={() => props.on_resolve(value)}
             />
           ))}
@@ -322,7 +215,6 @@ function AgentWriteDecision(props: {
 /** 公共框架统一标题语义、期限刷新、取消轨和选项内容位置。 */
 function AgentDecisionFrame(props: {
   title: string;
-  TitleIcon: LucideIcon;
   title_ref: RefObject<HTMLHeadingElement | null>;
   description?: ReactNode;
   expires_at: number;
@@ -336,6 +228,7 @@ function AgentDecisionFrame(props: {
   );
 
   useEffect(() => {
+    // 剩余时间由后端绝对期限计算，计时器只负责触发重绘。
     const update = (): void => set_remaining_seconds(read_remaining_seconds(props.expires_at));
     update();
     const timer = window.setInterval(update, 1_000);
@@ -357,7 +250,7 @@ function AgentDecisionFrame(props: {
       <header className="agent-decision__header">
         <div className="agent-decision__heading">
           <div className="agent-decision__title-line">
-            <props.TitleIcon className="agent-decision__title-icon" aria-hidden="true" />
+            <CircleQuestionMark className="agent-decision__title-icon" aria-hidden="true" />
             <DialogPrimitive.Title
               ref={props.title_ref}
               tabIndex={-1}

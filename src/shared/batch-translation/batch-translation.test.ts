@@ -10,6 +10,13 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
+  it.each(["standalone", "agent", null] as const)("任务来源 %s 经归一与复制保留", (source) => {
+    const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });
+    expect(clone_translation_task_snapshot(snapshot).source).toBe(source);
+  });
+  it("未提供任务来源时保留空值", () => {
+    expect(normalize_batch_translation_snapshot({}).source).toBeNull();
+  });
   it("运行配置经传输与历史复制保留，缺失配置保持为空", () => {
     const config = {
       model_name: "执行模型",
@@ -105,16 +112,21 @@ describe("批量翻译展示", () => {
 
 describe("全量翻译完成导出", () => {
   it.each([
-    ["完整翻译从运行态完成时打开生成译文确认", "running", "done", "all", true],
-    ["校对页局部重翻完成时不打开生成译文确认", "running", "done", "items", false],
-    ["用户主动停止翻译后不打开生成译文确认", "stopping", "stopped", "all", false],
-    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "all", false],
-  ] as const)("%s", (_name, previous_status, next_status, scope_kind, expected) => {
+    ["独立完整翻译完成时打开生成译文确认", "running", "done", "all", "standalone", true],
+    ["AGENT 全量翻译完成不请求导出确认", "running", "done", "all", "agent", false],
+    ["来源为空的完成快照不触发导出", "running", "done", "all", null, false],
+    ["校对页局部重翻完成时不打开生成译文确认", "running", "done", "items", "standalone", false],
+    ["用户主动停止翻译后不打开生成译文确认", "stopping", "stopped", "all", "standalone", false],
+    ["首屏已有完成态翻译快照不打开生成译文确认", "idle", "done", "all", "standalone", false],
+    ["重复完成快照不再触发导出", "done", "done", "all", "standalone", false],
+    ["执行失败不请求导出确认", "running", "error", "all", "standalone", false],
+  ] as const)("%s", (_name, previous_status, status, scope_kind, source, expected) => {
     expect(
-      should_open_translation_export_followup({
-        previous_status,
-        next_status,
-        scope: scope_kind === "items" ? { kind: "items", item_ids: [2, 1] } : { kind: "all" },
+      should_open_translation_export_followup(previous_status, {
+        ...create_empty_batch_translation_snapshot(),
+        status,
+        source,
+        scope: scope_kind === "items" ? { kind: "items", item_ids: [] } : { kind: "all" },
       }),
     ).toBe(expected);
   });

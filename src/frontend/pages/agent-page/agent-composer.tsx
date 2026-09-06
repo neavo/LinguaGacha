@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   ArrowUp,
-  Brain,
-  Boxes,
   ChevronDown,
   ImagePlus,
   LoaderCircle,
@@ -38,7 +36,6 @@ import {
 } from "@codemirror/view";
 
 import type { ModelThinkingLevel } from "@domain/model";
-import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import {
   AGENT_INPUT_QUEUE_LIMIT,
   AGENT_MESSAGE_IMAGE_LIMIT,
@@ -50,15 +47,8 @@ import {
 } from "@shared/agent";
 import { useAppearance } from "@frontend/app/appearance/appearance-provider";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import {
-  ModelSelectionCategories,
-  ModelThinkingLevelOptions,
-} from "@frontend/features/model-selection/model-selection-menu";
-import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
-import {
-  read_selected_model,
-  type ModelSelectionController,
-} from "@frontend/features/model-selection/use-model-selection";
+import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
+import { AgentComposerModelControls } from "./agent-composer-model-controls";
 import {
   Tooltip,
   TooltipContent,
@@ -178,6 +168,7 @@ const placeholder_compartment = new Compartment();
 const set_mention_tokens_effect = StateEffect.define<readonly AgentMentionToken[]>();
 const mention_token_config_field = StateField.define<readonly AgentMentionToken[]>({
   create: () => [],
+  /** 技能配置仅随显式 effect 替换，普通编辑沿用当前配置。 */
   update(tokens, transaction) {
     for (const effect of transaction.effects) {
       if (effect.is(set_mention_tokens_effect)) return effect.value;
@@ -187,6 +178,7 @@ const mention_token_config_field = StateField.define<readonly AgentMentionToken[
 });
 const mention_tokens_field = StateField.define<DecorationSet>({
   create: () => Decoration.none,
+  /** 正文或技能集合改变时重建 marker 装饰，其余事务复用结果。 */
   update(tokens, transaction) {
     let config = transaction.startState.field(mention_token_config_field);
     let config_changed = false;
@@ -198,6 +190,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
     if (!transaction.docChanged && !config_changed) return tokens;
     return create_mention_token_decorations(transaction.newDoc.toString(), config);
   },
+  /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
   provide(field) {
     return [
       EditorView.decorations.from(field),
@@ -346,27 +339,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     compacting ||
     props.unavailable_reason !== null ||
     props.command !== null;
-  const model_controls_disabled =
-    model_commands_disabled || props.model_selection.loading || props.model_selection.updating;
   const approval_mode_disabled =
     inline ||
     props.approval_mode_disabled === true ||
     props.command !== null ||
     props.unavailable_reason !== null;
-  const selected_model = read_selected_model(props.model_selection, "agent");
-  const selected_model_name =
-    selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
-  const selected_thinking_available =
-    selected_model !== null &&
-    selected_model.available_thinking_levels.includes(selected_model.thinking_level);
-  const thinking_unavailable =
-    selected_model !== null && selected_model.available_thinking_levels.length === 0;
-  const selected_thinking_label =
-    selected_model === null
-      ? null
-      : selected_thinking_available
-        ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
-        : t("app.model.thinking_level.default");
   const approval_mode_label = t(
     approval_mode === "auto" ? "agent_page.approval.auto" : "agent_page.approval.manual",
   );
@@ -376,17 +353,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       : "agent_page.approval.tooltip_manual",
   );
   const ApprovalModeIcon = approval_mode === "auto" ? ShieldCheck : ShieldQuestionMark;
-  const model_selection_label = t("app.model.selection.label");
-  const model_selection_aria_label = `${model_selection_label}: ${selected_model_name}`;
-  // 后端只拥有历史 token；容量跟随当前选择，并会在下一次模型操作前同步到既有会话。
-  const context_usage =
-    selected_model === null
-      ? null
-      : format_context_usage({
-          tokens: props.context_tokens ?? 0,
-          contextWindow: selected_model.agent_limits.context_window,
-          maxTokens: selected_model.agent_limits.max_output_tokens,
-        });
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
@@ -400,6 +366,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   useEffect(() => {
     const host = host_ref.current;
     if (host === null) return;
+    // 单次读取编辑器事实，再同步 React 消费的派生状态。
     const emit_snapshot = (state: EditorState): void => {
       const next = read_editor_snapshot(state);
       const query_key =
@@ -657,6 +624,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     set_image_drop_active(false);
   };
 
+  /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
     write_draft_attachments(
       draft_attachments_ref.current.filter((_, attachment_index) => attachment_index !== index),
@@ -678,6 +646,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   useImperativeHandle(
     props.ref,
     () => ({
+      /** 外部草稿替换退出历史导航，并遵循当前编辑锁。 */
       write_draft(text) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return;
@@ -685,11 +654,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         write_agent_message_text(view, text);
         view.focus();
       },
+      /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
       add_response_annotation(annotation) {
         if (editor_read_only || assistant_editing) return;
         write_draft_attachments([...draft_attachments_ref.current, structuredClone(annotation)]);
         view_ref.current?.focus();
       },
+      /** 页面动作完成后将焦点交回当前编辑器。 */
       focus() {
         view_ref.current?.focus();
       },
@@ -888,111 +859,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             </span>
           ) : null}
           {!inline ? (
-            <AppDropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={tooltip_trigger_target(
-                    <AppDropdownMenuTrigger
-                      render={
-                        <AppButton
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="agent-composer__model-trigger"
-                          disabled={model_controls_disabled}
-                          aria-label={
-                            context_usage === null
-                              ? model_selection_aria_label
-                              : `${model_selection_aria_label} · ${context_usage.percent}`
-                          }
-                        >
-                          <Boxes aria-hidden="true" />
-                          <span className="agent-composer__model-name">{selected_model_name}</span>
-                          {context_usage !== null ? (
-                            <>
-                              <span
-                                className="agent-composer__model-context-separator"
-                                aria-hidden="true"
-                              >
-                                ·
-                              </span>
-                              <span
-                                className="agent-composer__model-context"
-                                data-tone={context_usage.tone}
-                              >
-                                {context_usage.percent}
-                              </span>
-                            </>
-                          ) : null}
-                          <ChevronDown aria-hidden="true" />
-                        </AppButton>
-                      }
-                    />,
-                  )}
-                />
-                <TooltipContent
-                  className="flex-col items-start gap-0.5 whitespace-nowrap"
-                  side="top"
-                  sideOffset={8}
-                >
-                  {context_usage !== null ? (
-                    <p>{`${context_usage.used} / ${context_usage.total}`}</p>
-                  ) : null}
-                  {context_usage?.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
-                </TooltipContent>
-              </Tooltip>
-              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-                <ModelSelectionCategories
-                  controller={props.model_selection}
-                  usage="agent"
-                  disabled={model_commands_disabled}
-                />
-              </AppDropdownMenuContent>
-            </AppDropdownMenu>
+            <AgentComposerModelControls
+              controller={props.model_selection}
+              disabled={model_commands_disabled}
+              context_tokens={props.context_tokens}
+              on_thinking_level_change={props.on_thinking_level_change}
+            />
           ) : null}
-          {!inline && selected_thinking_label !== null && (
-            <AppDropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex" tabIndex={thinking_unavailable ? 0 : undefined}>
-                      <AppDropdownMenuTrigger
-                        render={
-                          <AppButton
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="agent-composer__thinking-trigger"
-                            disabled={model_controls_disabled || thinking_unavailable}
-                            aria-label={`${t("app.model.thinking_level.label")}: ${selected_thinking_label}`}
-                          >
-                            <Brain aria-hidden="true" />
-                            <span>{selected_thinking_label}</span>
-                            <ChevronDown aria-hidden="true" />
-                          </AppButton>
-                        }
-                      />
-                    </span>
-                  }
-                />
-                <TooltipContent side="top" sideOffset={8}>
-                  <p>
-                    {thinking_unavailable
-                      ? t("app.model.thinking_level.unsupported")
-                      : t("app.model.thinking_level.label")}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-                <ModelThinkingLevelOptions
-                  controller={props.model_selection}
-                  usage="agent"
-                  disabled={model_commands_disabled}
-                  on_thinking_level_change={props.on_thinking_level_change}
-                />
-              </AppDropdownMenuContent>
-            </AppDropdownMenu>
-          )}
           {!inline ? (
             <AppDropdownMenu>
               <Tooltip>
@@ -1252,36 +1125,6 @@ function write_agent_message_text(
     selection: EditorSelection.cursor(text.length),
     annotations,
   });
-}
-
-/** 一次生成上下文百分比、详情与色阶，避免组件分别重复派生。 */
-function format_context_usage(usage: {
-  tokens: number;
-  contextWindow: number;
-  maxTokens: number;
-}): {
-  percent: string;
-  used: string;
-  total: string;
-  tone: "default" | "warning";
-  warning: boolean;
-} {
-  const percent = (usage.tokens / usage.contextWindow) * 100;
-  // 预警到自动压缩之间保留一份最大输出预算。
-  const warning =
-    usage.tokens >= usage.contextWindow - usage.maxTokens - AGENT_COMPACTION_RESERVE_TOKENS;
-  return {
-    percent: `${percent.toFixed(1)}%`,
-    used: format_context_tokens(usage.tokens),
-    total: format_context_tokens(usage.contextWindow),
-    tone: warning ? "warning" : "default",
-    warning,
-  };
-}
-
-/** 鼠标提示中的上下文详情固定以整数 K 展示。 */
-function format_context_tokens(tokens: number): string {
-  return `${Math.round(tokens / 1_000).toString()}K`;
 }
 
 /** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */

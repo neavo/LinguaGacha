@@ -8,6 +8,10 @@ import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
 } from "./contract";
+import { Check } from "typebox/value";
+import type { TSchema } from "@earendil-works/pi-ai";
+import { AGENT_WORKSPACE_CONTRACT } from "./contract";
+import { read_json_record } from "../../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../../domain/quality";
 
 const workspaces: string[] = [];
@@ -34,12 +38,15 @@ describe("Agent workspace change parser", () => {
       workspacePath: workspace,
     });
     expect(parsed.batch.items.map((row) => row.item_id)).toEqual([1, 2]);
-    expect(parsed.rejected).toContainEqual({
-      scope: "items",
-      op: "update",
-      line: 2,
-      reason: "invalid_change",
-    });
+    expect(parsed.rejected).toContainEqual(
+      expect.objectContaining({
+        scope: "items",
+        op: "update",
+        line: 2,
+        reason: "invalid_change",
+        message: "Change line contains invalid JSON.",
+      }),
+    );
   });
 
   it("Item 状态变更只接受人工状态", async () => {
@@ -61,12 +68,14 @@ describe("Agent workspace change parser", () => {
     expect(parsed.batch.items).toEqual([
       { line: 1, item_id: 1, fp: "abcd", update: { status: "NONE" } },
     ]);
-    expect(parsed.rejected).toContainEqual({
-      scope: "items",
-      op: "update",
-      id: 2,
-      reason: "invalid_change",
-    });
+    expect(parsed.rejected).toContainEqual(
+      expect.objectContaining({
+        scope: "items",
+        op: "update",
+        id: 2,
+        reason: "invalid_change",
+      }),
+    );
   });
 
   it("create 的未知字段只拒绝对应行", async () => {
@@ -87,13 +96,15 @@ describe("Agent workspace change parser", () => {
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
-    expect(parsed.rejected).toContainEqual({
-      scope: "quality",
-      kind: "glossary",
-      op: "create",
-      src: "甲",
-      reason: "invalid_change",
-    });
+    expect(parsed.rejected).toContainEqual(
+      expect.objectContaining({
+        scope: "quality",
+        kind: "glossary",
+        op: "create",
+        src: "甲",
+        reason: "invalid_change",
+      }),
+    );
   });
 
   it("按对象契约解析 prompt 与 quality 意图并拒绝格式错误的 fp", async () => {
@@ -131,12 +142,41 @@ describe("Agent workspace change parser", () => {
     expect(parsed.batch.quality.glossary.deletes).toEqual([
       { line: 1, kind: "glossary", id: "term-2", fp: "mnop" },
     ]);
-    expect(parsed.rejected).toContainEqual({
-      scope: "prompts",
-      op: "update",
-      kind: "translation",
-      reason: "invalid_change",
+    expect(parsed.rejected).toContainEqual(
+      expect.objectContaining({
+        scope: "prompts",
+        op: "update",
+        kind: "translation",
+        reason: "invalid_change",
+      }),
+    );
+  });
+  it("磁盘契约与解析入口共用 fp 格式及至少一个变更字段的约束", async () => {
+    const workspace = create_workspace();
+    const rows = [
+      { item_id: 1, fp: "abcd", dst: "" },
+      { item_id: 2, fp: "!!!!", dst: "X" },
+      { item_id: 3, fp: "abcd" },
+    ];
+    const updates = read_json_record(
+      read_json_record(read_json_record(AGENT_WORKSPACE_CONTRACT["changes"])["items"])["updates"],
+    );
+    const schema = updates["schema"] as unknown as TSchema;
+    expect(rows.map((row) => Check(schema, row))).toEqual([true, false, false]);
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+      rows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    const parsed = await prepare_agent_workspace_changes({
+      nativeFs: new NativeFs(),
+      workspacePath: workspace,
     });
+    expect(parsed.batch.items).toEqual([{ line: 1, item_id: 1, fp: "abcd", update: { dst: "" } }]);
+    expect(parsed.rejected).toMatchObject([
+      { id: 2, line: 2, path: "/fp", reason: "invalid_change" },
+      { id: 3, line: 3, path: "/", reason: "invalid_change" },
+    ]);
   });
 });
 

@@ -1,4 +1,9 @@
 export const en_us_agent_page = {
+  batch_translation_model: {
+    follow: "Follow Agent",
+    follow_option: "Use the AGENT model",
+    tooltip: "Model used by the batch translation tool",
+  },
   title: "AGENT",
   thinking: "Thinking",
   thinking_active: "Thinking",

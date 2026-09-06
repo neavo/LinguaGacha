@@ -31,7 +31,7 @@ describe("ws.tool.deriveCommonLiteralRoots 数据工具", () => {
     });
 
     await expect(
-      execute_workspace_tool("deriveCommonLiteralRoots", { forms: ["同じ", "同じ"] }, {}),
+      execute_workspace_tool("deriveCommonLiteralRoots", { forms: ["Ａ", "a"] }, {}),
     ).rejects.toThrow();
   });
 });

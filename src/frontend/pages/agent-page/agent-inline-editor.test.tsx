@@ -125,12 +125,13 @@ describe("AgentInlineEditor", () => {
     root = createRoot(container);
     const model_selection: ModelSelectionController = {
       snapshot: {
-        model_selection: { translation: "", agent: "" },
+        model_selection: { translation: "", agent: "", agent_batch_translation: null },
         models: [],
       },
       loading: false,
       updating: false,
       select_model: async () => undefined,
+      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: async () => undefined,
     };
     act(() => {

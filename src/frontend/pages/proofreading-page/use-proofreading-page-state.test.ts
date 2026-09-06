@@ -276,6 +276,7 @@ function create_runtime_fixture(): RuntimeFixture {
     task_snapshot: {
       revision: 0,
       status: "idle",
+      source: null,
       request_in_flight_count: 0,
       progress: normalize_batch_translation_progress({}),
 
@@ -2657,6 +2658,7 @@ describe("useProofreadingPageState", () => {
         accepted: true,
         batch_translation: {
           status: "requested",
+          source: "standalone",
           scope: { kind: "items", item_ids: [2, 1] },
         },
       });
@@ -2674,6 +2676,13 @@ describe("useProofreadingPageState", () => {
       }),
     );
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+    runtime_fixture.current.task_snapshot = {
+      ...runtime_fixture.current.task_snapshot,
+      status: "done",
+      scope: { kind: "items", item_ids: [] },
+    };
+    await render_hook();
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
       "success",
       expect.any(String),

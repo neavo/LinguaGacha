@@ -2,10 +2,8 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
-  clone_translation_scope,
   resolve_batch_translation_start_mode,
   is_active_batch_translation_status,
-  type BatchTranslationScope,
   type BatchTranslationSnapshot,
 } from "@domain/batch-translation";
 import {
@@ -48,7 +46,7 @@ import { normalize_batch_translation_snapshot } from "@shared/batch-translation/
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
 type BatchTranslationTaskOptions = {
-  onRequestExport: () => void; // 全量翻译自然完成后交给跨路由导出流程
+  onRequestExport: () => void; // 独立全量翻译自然完成后交给跨路由导出流程
 };
 
 export type BatchTranslationTask = {
@@ -67,24 +65,8 @@ export type BatchTranslationTask = {
   close_task_action_confirmation: () => void;
 };
 
-/** 定点任务收尾会清空 scope，导出判断保留本轮已观察到的定点范围。 */
-function resolve_active_translation_completion_scope(args: {
-  active_scope: BatchTranslationScope | null;
-  next_scope: BatchTranslationScope;
-}): BatchTranslationScope {
-  if (args.next_scope.kind === "items") {
-    return clone_translation_scope(args.next_scope);
-  }
-
-  if (args.active_scope?.kind === "items") {
-    return clone_translation_scope(args.active_scope);
-  }
-
-  return { kind: "all" };
-}
-
 /**
- * 拥有翻译任务菜单、确认框、终态提示和完成范围的 renderer 会话状态。
+ * 拥有翻译任务菜单、确认框和终态反馈的 renderer 会话状态。
  */
 export function useBatchTranslationTask(
   options: BatchTranslationTaskOptions,
@@ -109,10 +91,6 @@ export function useBatchTranslationTask(
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_translation_status_ref = useRef(create_empty_batch_translation_snapshot().status);
-  const translation_completion_scope_ref = useRef<BatchTranslationScope>(
-    create_empty_batch_translation_snapshot().scope,
-  );
-  const active_translation_completion_scope_ref = useRef<BatchTranslationScope | null>(null);
   const translation_waveform_state_ref = useRef(create_empty_task_waveform_state());
   const translation_task_display_snapshot = useMemo(() => {
     return resolve_translation_task_display_snapshot({
@@ -179,9 +157,6 @@ export function useBatchTranslationTask(
   });
 
   const clear_translation_task_state = useCallback((): void => {
-    translation_completion_scope_ref.current = { kind: "all" };
-    active_translation_completion_scope_ref.current = null;
-
     set_last_translation_task_snapshot(null);
 
     clear_translation_waveform_sampling();
@@ -193,22 +168,6 @@ export function useBatchTranslationTask(
   const apply_translation_task_snapshot = useCallback(
     (next_snapshot: BatchTranslationSnapshot): void => {
       const normalized_snapshot = clone_translation_task_snapshot(next_snapshot);
-
-      const next_scope = clone_translation_scope(normalized_snapshot.scope);
-
-      if (is_active_batch_translation_status(normalized_snapshot.status)) {
-        const completion_scope = resolve_active_translation_completion_scope({
-          active_scope: active_translation_completion_scope_ref.current,
-          next_scope,
-        });
-        active_translation_completion_scope_ref.current = clone_translation_scope(completion_scope);
-        translation_completion_scope_ref.current = clone_translation_scope(completion_scope);
-      } else {
-        active_translation_completion_scope_ref.current = null;
-        if (next_scope.kind === "items") {
-          translation_completion_scope_ref.current = clone_translation_scope(next_scope);
-        }
-      }
 
       if (is_active_batch_translation_status(normalized_snapshot.status)) {
         return;
@@ -449,11 +408,7 @@ export function useBatchTranslationTask(
 
     if (
       !translation_dialog_open &&
-      should_open_translation_export_followup({
-        previous_status,
-        next_status,
-        scope: translation_completion_scope_ref.current,
-      })
+      should_open_translation_export_followup(previous_status, translation_task_snapshot)
     ) {
       onRequestExport();
     }
@@ -462,7 +417,7 @@ export function useBatchTranslationTask(
     push_toast,
     t,
     translation_dialog_open,
-    translation_task_snapshot.status,
+    translation_task_snapshot,
     onRequestExport,
   ]);
 

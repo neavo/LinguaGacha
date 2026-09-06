@@ -1,12 +1,6 @@
 import { zh_cn_batch_translation } from "../zh-CN/batch-translation";
 import type { LocaleMessageSchema } from "../../types";
 export const en_us_batch_translation = {
-  setup: {
-    title: "Run batch translation",
-    description: "Choose a provider for the batch translation task",
-    current: "Use the current Agent provider",
-    other: "Choose another provider",
-  },
   menu: {
     progress: "Progress",
     tooltip: "Translate source text into the target language",

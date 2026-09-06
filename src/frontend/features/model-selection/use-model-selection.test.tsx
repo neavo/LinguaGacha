@@ -71,6 +71,27 @@ describe("useModelSelection", () => {
     expect(container.textContent).toContain("openai:OFF:false");
   });
 
+  it("批量翻译选择以保存结果回显，失败保留跟随并允许重试", async () => {
+    api.get.mockResolvedValue(snapshot("preset"));
+    api.fetch.mockRejectedValueOnce(new Error("offline"));
+    const container = await render_probe();
+    await act(async () => find_button(container, "batch").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+      model_id: "openai",
+    });
+    expect(container.querySelector("output")?.textContent).toBe("follow");
+    expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
+    api.fetch.mockResolvedValueOnce(snapshot("preset", "OFF", "openai"));
+    await act(async () => find_button(container, "batch").click());
+    expect(container.querySelector("output")?.textContent).toBe("openai");
+    api.fetch.mockResolvedValueOnce(snapshot("preset"));
+    await act(async () => find_button(container, "follow").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+      model_id: null,
+    });
+    expect(container.querySelector("output")?.textContent).toBe("follow");
+  });
+
   it("更新当前用途模型的思考档位并消费统一窄回包", async () => {
     api.get.mockResolvedValue(snapshot("preset"));
     api.fetch.mockResolvedValue(snapshot("preset", "HIGH"));
@@ -135,6 +156,13 @@ function Probe(): JSX.Element {
   );
   return (
     <div>
+      <output>{controller.snapshot.model_selection.agent_batch_translation ?? "follow"}</output>
+      <button onClick={() => void controller.select_agent_batch_translation_model("openai")}>
+        batch
+      </button>
+      <button onClick={() => void controller.select_agent_batch_translation_model(null)}>
+        follow
+      </button>
       <span>{`${controller.snapshot.model_selection.translation}:${selected?.thinking_level ?? "OFF"}:${controller.updating.toString()}`}</span>
       <button onClick={() => void controller.select_model("translation", "preset")}>same</button>
       <button onClick={() => void controller.select_model("translation", "openai")}>change</button>
@@ -146,9 +174,17 @@ function Probe(): JSX.Element {
   );
 }
 
-function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"): unknown {
+function snapshot(
+  selected: string,
+  thinking_level: ModelThinkingLevel = "OFF",
+  batch_model_id: string | null = null,
+): unknown {
   return {
-    model_selection: { translation: selected, agent: "preset" },
+    model_selection: {
+      translation: selected,
+      agent: "preset",
+      agent_batch_translation: batch_model_id,
+    },
     models: [
       {
         id: "preset",

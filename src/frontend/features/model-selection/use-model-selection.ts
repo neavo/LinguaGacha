@@ -18,6 +18,7 @@ export type ModelSelectionController = {
   loading: boolean;
   updating: boolean;
   select_model: (usage: ModelUsage, model_id: string) => Promise<void>;
+  select_agent_batch_translation_model: (model_id: string | null) => Promise<void>;
   update_thinking_level: (usage: ModelUsage, thinking_level: ModelThinkingLevel) => Promise<void>; // 后端按用途原子定位当前模型，调用方不提交可能过期的模型 ID
 };
 
@@ -27,7 +28,7 @@ const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
 export function useModelSelection(): ModelSelectionController {
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
-  const runtime_idle = useRuntimeSnapshot().owner === null; // Agent 释放 lease 后刷新其保存的翻译选择
+  const runtime_idle = useRuntimeSnapshot().owner === null; // 共享运行占用变化后刷新配置快照
   const [snapshot, set_snapshot] = useState<ModelSelectionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [updating, set_updating] = useState(false);
@@ -57,9 +58,9 @@ export function useModelSelection(): ModelSelectionController {
     };
   }, [push_toast, t, runtime_idle]);
 
-  /** 两种模型控制命令共用提交、回包归一和错误恢复。 */
+  /** 模型控制命令共用提交、回包归一和错误恢复。 */
   const update_snapshot = useCallback(
-    async (path: string, request: Record<string, string>): Promise<void> => {
+    async (path: string, request: Record<string, string | null>): Promise<void> => {
       if (updating_ref.current) return;
       updating_ref.current = true;
       set_updating(true);
@@ -101,7 +102,23 @@ export function useModelSelection(): ModelSelectionController {
     [snapshot, update_snapshot],
   );
 
-  return { snapshot, loading, updating, select_model, update_thinking_level };
+  /** 显式模型和跟随偏好都以持久化回包作为新的页面事实。 */
+  const select_agent_batch_translation_model = useCallback(
+    async (model_id: string | null): Promise<void> => {
+      if (snapshot.model_selection.agent_batch_translation === model_id) return;
+      await update_snapshot("/api/models/agent-batch-translation/select", { model_id });
+    },
+    [snapshot.model_selection.agent_batch_translation, update_snapshot],
+  );
+
+  return {
+    snapshot,
+    loading,
+    updating,
+    select_model,
+    select_agent_batch_translation_model,
+    update_thinking_level,
+  };
 }
 
 /** 从公开快照读取用途对应模型，失效选择不伪造回退项。 */
