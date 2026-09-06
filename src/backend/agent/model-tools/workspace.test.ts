@@ -1,6 +1,7 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
+import { format_agent_workspace_typescript_api } from "../workspace/runtime/tool/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
 import {
   create_agent_workspace_tools,
@@ -51,7 +52,7 @@ describe("Agent 工作区工具", () => {
     expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
-  it("函数工具 Schema 只约束两个跨 Agent loop 的公开入口", () => {
+  it("公开完整脚本 API 并校验两个工具的参数边界", () => {
     const tools = create_agent_workspace_tools({
       workspace: build_workspace_port(),
       todo: build_todo_port(),
@@ -60,6 +61,7 @@ describe("Agent 工作区工具", () => {
     const script_tool = read_tool(tools, "workspace_script");
     const apply_tool = read_tool(tools, "workspace_apply");
 
+    expect(script_tool.description).toContain(format_agent_workspace_typescript_api());
     expect(validate(script_tool, { script: "return null;" })).toEqual({
       script: "return null;",
     });

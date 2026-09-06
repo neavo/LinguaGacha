@@ -43,7 +43,10 @@ export function create_agent_skill_tools(
     defineTool({
       name: "read_skill",
       label: "读技能",
-      description: "读取指定技能的正文或包内参考文件，返回 name、相对 path 与 content。",
+      description: [
+        "读取指定技能的正文或包内参考文件。",
+        "返回 name、相对 path 与 content。资源缺失返回 skill.resource_not_found，路径越界或不符合格式返回 skill.resource_not_allowed；依据错误修正名称或包内路径。",
+      ].join("\n\n"),
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();

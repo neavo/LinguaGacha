@@ -13,7 +13,10 @@ const PARAMETERS = Type.Object(
       Type.Object(
         {
           kind: Type.Literal("items"),
-          item_ids: Type.Array(Type.Integer({ minimum: 1 }), { minItems: 1 }),
+          item_ids: Type.Array(Type.Integer({ minimum: 1 }), {
+            minItems: 1,
+            description: "从当前工程事实取得的目标 item 标识。",
+          }),
         },
         { additionalProperties: false },
       ),
@@ -35,8 +38,12 @@ export function create_agent_batch_translation_tool(
   return defineTool({
     name: "run_batch_translation",
     label: "批量翻译",
-    description:
-      "翻译当前工程全量或指定 item 范围内的待译条目，按 include_errors 纳入失败条目。指定范围只翻译符合资格的目标，已有成功译文保持其事实。宿主按用户保存的批量翻译模型偏好执行；引擎自行提交译文，工具等待提交与收尾完成。run_progress 为本轮目标、成功与最终失败数量及用量；progress 为工程累计进度。status 为 done 表示本轮运行结束，仍需核对失败与剩余目标。stop_source 为 user 时汇报当前结果并结束翻译工作，等待用户明确要求继续。",
+    description: [
+      "翻译当前工程全量或指定 item 范围内的待译条目，按 include_errors 纳入失败条目。指定范围只翻译符合资格的目标，已有成功译文保持其事实。",
+      "宿主按用户保存的批量翻译模型偏好执行；引擎自行提交译文，工具等待提交与收尾完成。后续工作区判断加载最新快照。",
+      "返回 run_progress（本轮目标、成功与最终失败数量及用量）和 progress（工程累计进度）。status 为 done 表示本轮运行结束，仍需核对失败与剩余目标。",
+      "stop_source 为 user 时汇报当前结果并结束翻译工作，等待用户明确要求继续。",
+    ].join("\n\n"),
     parameters: PARAMETERS,
     executionMode: "sequential",
     execute: async (_id, params, signal) =>

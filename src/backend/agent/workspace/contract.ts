@@ -106,8 +106,8 @@ const quality_changes = Object.fromEntries(
   ]),
 );
 
-/** 组合当前工作区布局、记录 Schema 与提交语义。 */
-const agent_workspace_contract = {
+/** 磁盘契约与工具说明共用完整类型，保留提交语义供调用前发现。 */
+export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
   limits: {
     result_bytes: AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes,
     query_page_default: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageDefault,
@@ -212,11 +212,7 @@ const agent_workspace_contract = {
       destroyed: "真实提交或目标事实漂移后为 true；输入错误、无变化和事务回滚后为 false",
     },
   },
-} satisfies AgentWorkspaceRuntimeContract;
-
-export const AGENT_WORKSPACE_CONTRACT: JsonRecord = Object.freeze(
-  agent_workspace_contract,
-) as JsonRecord;
+} satisfies AgentWorkspaceRuntimeContract);
 
 /** warning 只保存关联身份和判决证据，不复制 item 当前值。 */
 export function project_agent_workspace_warning(item: ProofreadingClientItem): JsonRecord {
