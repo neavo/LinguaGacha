@@ -15,7 +15,7 @@ import type {
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 
-type ProofreadingToastPusher = (kind: "success" | "warning" | "error", message: string) => void;
+type ProofreadingToastPusher = (kind: "warning" | "error", message: string) => void;
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
@@ -24,7 +24,6 @@ type ProofreadingProjectWriteRunner = (args: {
   plan: ProofreadingCommandPlan | null;
   fallback_error_key: "proofreading_page.feedback.save_failed";
   preferred_row_id?: string | null;
-  success_message_builder?: ((changed_count: number) => string) | null;
   close_dialog?: boolean;
 }) => Promise<void>;
 
@@ -87,12 +86,14 @@ export function useProofreadingDialogActions(
     return { ...dialog_item_snapshot, ...visible_item };
   }, [dialog_item_snapshot, dialog_state.target_row_id, options.visible_item_by_id]);
 
+  /** 关闭弹窗并使旧详情请求失效。 */
   const reset_dialog = useCallback((): void => {
     dialog_request_id_ref.current += 1;
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
   }, []);
 
+  /** 按目标身份准备可编辑草稿。 */
   const open_edit_dialog = useCallback(
     async (row_id: string): Promise<void> => {
       const request_id = dialog_request_id_ref.current + 1;
@@ -134,6 +135,7 @@ export function useProofreadingDialogActions(
     [options],
   );
 
+  /** 更新本地草稿并保留弹窗操作上下文。 */
   const update_dialog_draft = useCallback(
     (patch: Partial<ProofreadingDialogState["draft_item"]>): void => {
       set_dialog_state((previous_state) => {
@@ -149,6 +151,7 @@ export function useProofreadingDialogActions(
     [],
   );
 
+  /** 关闭上下文并使在途读取失效。 */
   const close_dialog_context = useCallback((): void => {
     dialog_request_id_ref.current += 1;
     set_dialog_state((previous_state) => {
@@ -161,6 +164,7 @@ export function useProofreadingDialogActions(
     });
   }, []);
 
+  /** 按当前行读取上下文，过期响应由请求身份隔离。 */
   const open_dialog_context = useCallback(async (): Promise<void> => {
     const target_row_id = dialog_state.target_row_id;
     if (target_row_id === null || dialog_state.saving) {
@@ -196,15 +200,30 @@ export function useProofreadingDialogActions(
     });
   }, [dialog_state.saving, dialog_state.target_row_id, options]);
 
+  /** 提交当前草稿并恢复操作状态。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     if (dialog_state.target_row_id === null) {
       return;
     }
 
     const target_item_id = Number(dialog_state.target_row_id);
-    const target_item = Number.isInteger(target_item_id)
-      ? (await options.read_items_by_row_ids([dialog_state.target_row_id]))[0]
-      : undefined;
+    let target_item: ProofreadingClientItem | undefined;
+    try {
+      target_item = Number.isInteger(target_item_id)
+        ? (await options.read_items_by_row_ids([dialog_state.target_row_id]))[0]
+        : undefined;
+    } catch (error) {
+      // 保存前的权威查询也属于本次操作；失败时保留弹窗草稿供重试。
+      options.push_toast(
+        "error",
+        resolve_visible_error_message(
+          error,
+          options.t,
+          options.t("proofreading_page.feedback.save_failed"),
+        ),
+      );
+      return;
+    }
     if (target_item === undefined) {
       reset_dialog();
       return;
@@ -215,7 +234,6 @@ export function useProofreadingDialogActions(
       dialog_state.draft_item.name_dst === read_item_name_text(target_item.name_dst)
     ) {
       reset_dialog();
-      options.push_toast("success", options.t("app.feedback.save_success"));
       return;
     }
 
@@ -244,7 +262,6 @@ export function useProofreadingDialogActions(
         }),
         fallback_error_key: "proofreading_page.feedback.save_failed",
         preferred_row_id: dialog_state.target_row_id,
-        success_message_builder: () => options.t("app.feedback.save_success"),
         close_dialog: true,
       });
     } finally {

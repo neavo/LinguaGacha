@@ -622,7 +622,7 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
-    expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.feature_state_changed");
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
 
   it("在模式切换进行中忽略后续重复点击", async () => {

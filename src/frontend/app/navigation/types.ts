@@ -16,7 +16,6 @@ export type RouteId =
   | "pre-translation-replacement"
   | "post-translation-replacement"
   | "custom-prompt"
-  | "translation-prompt"
   | "laboratory"
   | "toolbox"
   | "ts-conversion";

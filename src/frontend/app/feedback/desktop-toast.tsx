@@ -23,8 +23,17 @@ type ProgressToastState = {
   dismiss_timer: ReturnType<typeof setTimeout> | null;
 };
 
+type DesktopToastAction = {
+  label: string;
+  onClick: () => void;
+};
+
 type DesktopToastApi = {
-  push_toast: (kind: DesktopToastKind, message: string) => DesktopToastId;
+  push_toast: (
+    kind: DesktopToastKind,
+    message: string,
+    action?: DesktopToastAction,
+  ) => DesktopToastId;
   push_progress_toast: (options: ProgressToastOptions) => DesktopToastId;
   update_progress_toast: (
     toast_id: DesktopToastId,
@@ -175,12 +184,19 @@ export function DesktopProgressToastModalLayer(): JSX.Element | null {
 /** 页面共用稳定的通知动作，进度通知由任务 owner 管理。 */
 export function useDesktopToast(): DesktopToastApi {
   /** 按通知类型统一错误阅读时长。 */
-  const push_toast = useCallback((kind: DesktopToastKind, message: string): DesktopToastId => {
-    return toast[kind](
-      message,
-      kind === "error" ? { duration: ERROR_TOAST_DURATION_MS } : undefined,
-    );
-  }, []);
+  const push_toast = useCallback(
+    (kind: DesktopToastKind, message: string, action?: DesktopToastAction): DesktopToastId => {
+      return toast[kind](
+        message,
+        action !== undefined
+          ? { action, duration: Number.POSITIVE_INFINITY }
+          : kind === "error"
+            ? { duration: ERROR_TOAST_DURATION_MS }
+            : undefined,
+      );
+    },
+    [],
+  );
 
   /** 为本次进度任务分配独立于 Sonner 自动 ID 的身份。 */
   const push_progress_toast = useCallback((options: ProgressToastOptions): DesktopToastId => {

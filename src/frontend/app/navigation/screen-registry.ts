@@ -30,11 +30,6 @@ function PostTranslationReplacementScreen(
   return createElement(TextReplacementPage, { ...props, variant: "post" });
 }
 
-// 将通用提示词页面固定为翻译提示词入口。
-function TranslationPromptScreen(props: ScreenComponentProps): ReturnType<typeof createElement> {
-  return createElement(CustomPromptPage, { ...props, variant: "translation" });
-}
-
 // 导航 route 到页面组件与标题 key 的唯一映射。
 export const SCREEN_REGISTRY: ScreenRegistry = {
   "project-home": {
@@ -82,9 +77,9 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     component: PostTranslationReplacementScreen,
     title_key: "post_translation_replacement_page.title",
   },
-  "translation-prompt": {
-    component: TranslationPromptScreen,
-    title_key: "translation_prompt_page.title",
+  "custom-prompt": {
+    component: CustomPromptPage,
+    title_key: "custom_prompt_page.title",
   },
 
   laboratory: {

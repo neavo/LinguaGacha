@@ -10,14 +10,7 @@ import {
 } from "@frontend/app/state/desktop-project-write";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import {
-  CUSTOM_PROMPT_VARIANT_CONFIG,
-  type CustomPromptVariant,
-} from "@frontend/pages/custom-prompt-page/config";
-import type {
-  CustomPromptTemplate,
-  PromptSaveStatus,
-} from "@frontend/pages/custom-prompt-page/types";
+import type { CustomPromptTemplate } from "@frontend/pages/custom-prompt-page/types";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { AppError } from "@shared/error";
 
@@ -40,8 +33,6 @@ type PromptQueryPayload = {
 type UseCustomPromptEditorStateResult = {
   load_status: "loading" | "ready" | "error";
   reload_prompt: () => Promise<void>;
-  save_status: PromptSaveStatus;
-  discard_prompt_change: () => void;
 
   template: CustomPromptTemplate;
   prompt_text: string;
@@ -92,16 +83,12 @@ function read_prompts_revision(value: unknown): number {
 }
 
 /** 管理当前项目的提示词草稿、串行保存与恢复状态。 */
-export function useCustomPromptEditorState(
-  variant: CustomPromptVariant,
-): UseCustomPromptEditorStateResult {
-  const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant];
+export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+  const { push_toast, dismiss_toast } = useDesktopToast();
   const { project_snapshot, settings_snapshot, commit_project_write } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
   const [load_status, set_load_status] = useState<"loading" | "ready" | "error">("loading");
-  const [save_status, set_save_status] = useState<PromptSaveStatus>("saved");
   const readonly = is_runtime_busy(runtime_snapshot) || load_status !== "ready";
 
   const [template, set_template] = useState<CustomPromptTemplate>(EMPTY_PROMPT_TEMPLATE);
@@ -115,9 +102,17 @@ export function useCustomPromptEditorState(
     promise: Promise<boolean>;
   } | null>(null);
   const identity_generation_ref = useRef(0); // 项目切换与卸载隔离旧查询和在途写入回包。
-  const previous_readonly_ref = useRef(readonly);
   const previous_app_language_ref = useRef(settings_snapshot.app_language);
-  const readonly_ref = useRef(readonly);
+  const readonly_ref = useRef(readonly); // 异步保存读取最新占用状态，Effect 也借此识别解锁。
+  const save_error_toast_ref = useRef<ReturnType<typeof push_toast> | null>(null); // 保存恢复通知随当前尝试和页面生命周期失效。
+
+  /** 关闭恢复通知并使已排队的旧点击失效。 */
+  const clear_save_error = useCallback((): void => {
+    if (save_error_toast_ref.current !== null) {
+      dismiss_toast(save_error_toast_ref.current);
+      save_error_toast_ref.current = null;
+    }
+  }, [dismiss_toast]);
 
   /** 读取固定模板及默认正文。 */
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
@@ -139,6 +134,35 @@ export function useCustomPromptEditorState(
       prompts_revision: read_prompts_revision(payload.sectionRevisions?.prompts),
     };
   }, []);
+
+  // 回调在防抖触发时读取本轮保存入口，声明顺序不参与执行顺序。
+  const debounced_prompt_save = useDebouncedCallback(() => {
+    void drain_prompt_change();
+  }, CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
+
+  /** 保存开始和项目切换都会清除通知身份，撤销仅处理当前失败留下的草稿。 */
+  const notify_save_error = useCallback(
+    (error: unknown, generation: number): void => {
+      if (identity_generation_ref.current !== generation) return;
+      const toast_id = push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.save_failed")),
+        {
+          label: t("custom_prompt_page.save.discard"),
+          onClick: () => {
+            if (save_error_toast_ref.current !== toast_id) return;
+            debounced_prompt_save.cancel();
+            clear_save_error();
+            desired_ref.current = persisted_ref.current;
+            set_prompt_text(persisted_ref.current.text);
+            set_enabled(persisted_ref.current.enabled);
+          },
+        },
+      );
+      save_error_toast_ref.current = toast_id;
+    },
+    [clear_save_error, debounced_prompt_save, push_toast, t],
+  );
 
   /** 保存捕获的草稿；revision 冲突刷新后只重试一次。 */
   const commit_captured_slice = useCallback(
@@ -182,29 +206,15 @@ export function useCustomPromptEditorState(
             prompts_revision_ref.current = refreshed_snapshot.prompts_revision;
             return await commit_captured_slice(captured_slice, generation, false);
           } catch (refresh_error) {
-            if (identity_generation_ref.current === generation) {
-              push_toast(
-                "error",
-                resolve_visible_error_message(
-                  refresh_error,
-                  t,
-                  t("custom_prompt_page.feedback.save_failed"),
-                ),
-              );
-            }
+            notify_save_error(refresh_error, generation);
             return false;
           }
         }
-        if (identity_generation_ref.current === generation) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.save_failed")),
-          );
-        }
+        notify_save_error(error, generation);
         return false;
       }
     },
-    [commit_project_write, fetch_prompt_snapshot, push_toast, t],
+    [commit_project_write, fetch_prompt_snapshot, notify_save_error],
   );
 
   /** 串行提交最新草稿，在途请求结束后再处理后续编辑。 */
@@ -218,6 +228,7 @@ export function useCustomPromptEditorState(
       }
       return await drain_prompt_change();
     }
+    clear_save_error();
     if (are_prompt_slices_equal(desired_ref.current, persisted_ref.current)) {
       return true;
     }
@@ -226,9 +237,7 @@ export function useCustomPromptEditorState(
       return false;
     }
 
-    set_save_status("saving");
     const generation = identity_generation_ref.current;
-    let write_failed = false;
     const write_promise = (async (): Promise<boolean> => {
       while (
         identity_generation_ref.current === generation &&
@@ -237,7 +246,6 @@ export function useCustomPromptEditorState(
       ) {
         const captured_slice = { ...desired_ref.current };
         if (!(await commit_captured_slice(captured_slice, generation, true))) {
-          write_failed = true;
           return false;
         }
       }
@@ -255,22 +263,9 @@ export function useCustomPromptEditorState(
     } finally {
       if (write_promise_ref.current?.promise === write_promise) {
         write_promise_ref.current = null;
-        if (identity_generation_ref.current === generation) {
-          set_save_status(
-            are_prompt_slices_equal(desired_ref.current, persisted_ref.current)
-              ? "saved"
-              : write_failed
-                ? "error"
-                : "pending",
-          );
-        }
       }
     }
-  }, [commit_captured_slice, readonly, push_toast, t]);
-
-  const debounced_prompt_save = useDebouncedCallback(() => {
-    void drain_prompt_change();
-  }, CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
+  }, [clear_save_error, commit_captured_slice, readonly, push_toast, t]);
 
   /** 显式保存与离页先取消防抖，再等待当前草稿收束。 */
   const flush_prompt_change = useCallback(async (): Promise<boolean> => {
@@ -299,8 +294,9 @@ export function useCustomPromptEditorState(
   /** 初始化与重试共同读取模板、正文和提交基线。 */
   const reload_prompt = useCallback(async (): Promise<void> => {
     const generation = ++identity_generation_ref.current;
+    clear_save_error();
     debounced_prompt_save.cancel();
-    set_save_status("saved");
+
     if (!project_snapshot.loaded) {
       set_template(EMPTY_PROMPT_TEMPLATE);
       set_prompt_text("");
@@ -329,6 +325,7 @@ export function useCustomPromptEditorState(
       if (identity_generation_ref.current === generation) set_load_status("error");
     }
   }, [
+    clear_save_error,
     debounced_prompt_save,
     fetch_prompt_snapshot,
     fetch_prompt_template,
@@ -340,9 +337,10 @@ export function useCustomPromptEditorState(
     void reload_prompt();
     return () => {
       identity_generation_ref.current += 1;
+      clear_save_error();
       debounced_prompt_save.cancel();
     };
-  }, [reload_prompt, debounced_prompt_save]);
+  }, [clear_save_error, reload_prompt, debounced_prompt_save]);
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
@@ -357,8 +355,7 @@ export function useCustomPromptEditorState(
   }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language]);
 
   useEffect(() => {
-    const was_readonly = previous_readonly_ref.current;
-    previous_readonly_ref.current = readonly;
+    const was_readonly = readonly_ref.current;
     readonly_ref.current = readonly;
     if (readonly) {
       debounced_prompt_save.cancel();
@@ -368,16 +365,6 @@ export function useCustomPromptEditorState(
       debounced_prompt_save.schedule();
     }
   }, [debounced_prompt_save, readonly]);
-
-  /** 写入空闲时恢复成功基线并取消待保存任务。 */
-  const discard_prompt_change = useCallback((): void => {
-    if (write_promise_ref.current !== null) return;
-    debounced_prompt_save.cancel();
-    desired_ref.current = { ...persisted_ref.current };
-    set_prompt_text(persisted_ref.current.text);
-    set_enabled(persisted_ref.current.enabled);
-    set_save_status("saved");
-  }, [debounced_prompt_save]);
 
   /** 编辑更新期望值，并安排下一次自动保存。 */
   const update_prompt_text = useCallback(
@@ -390,13 +377,7 @@ export function useCustomPromptEditorState(
         ...desired_ref.current,
         text: next_text.trim(),
       };
-      set_save_status(
-        write_promise_ref.current !== null
-          ? "saving"
-          : are_prompt_slices_equal(desired_ref.current, persisted_ref.current)
-            ? "saved"
-            : "pending",
-      );
+
       debounced_prompt_save.schedule();
     },
     [debounced_prompt_save, readonly],
@@ -421,9 +402,7 @@ export function useCustomPromptEditorState(
       if (!succeeded && are_prompt_slices_equal(desired_ref.current, next_slice)) {
         desired_ref.current = previous_slice;
         set_prompt_text(previous_prompt_text);
-        set_save_status(
-          are_prompt_slices_equal(previous_slice, persisted_ref.current) ? "saved" : "pending",
-        );
+
         if (!are_prompt_slices_equal(previous_slice, persisted_ref.current)) {
           debounced_prompt_save.schedule();
         }
@@ -449,31 +428,21 @@ export function useCustomPromptEditorState(
       const succeeded = await drain_prompt_change();
       if (succeeded) {
         set_enabled(next_enabled);
-        push_toast(
-          "success",
-          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
-            TITLE: t(config.header_title_key),
-          }),
-        );
       } else if (are_prompt_slices_equal(desired_ref.current, next_slice)) {
         desired_ref.current = previous_slice;
-        set_save_status(
-          are_prompt_slices_equal(previous_slice, persisted_ref.current) ? "saved" : "pending",
-        );
+
         if (!are_prompt_slices_equal(previous_slice, persisted_ref.current)) {
           debounced_prompt_save.schedule();
         }
       }
       return succeeded;
     },
-    [config.header_title_key, debounced_prompt_save, drain_prompt_change, push_toast, readonly, t],
+    [debounced_prompt_save, drain_prompt_change, readonly],
   );
 
   return {
     load_status,
     reload_prompt,
-    save_status,
-    discard_prompt_change,
     template,
     prompt_text,
     enabled,

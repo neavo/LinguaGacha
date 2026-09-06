@@ -12,7 +12,7 @@
 - Electron main 只在 Backend Runtime ready 后创建窗口，并将启动快照中的 API base URL 与应用版本通过窗口启动参数注入 preload；`window.desktopApp.appVersion` 是标题栏首帧与更新检查共用的固定版本，来源为后端 `AppMetadataService`。`desktop-api.ts` 直接使用该地址处理响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求。renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
 - Agent 页面只通过 Backend API 与 SSE 消费公开会话；工作区运行时属于 Agent 后端边界，其权限与生命周期归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `DesktopApiError` 是 API 与本地网络失败的统一错误，只承载 `code`、`details` 和可选 cause；用户可见文案键由稳定 `code` 推导并以 `details` 填参。页面只在确有恢复分支时按类型或 `code` 判断，不解析原始异常文本。
-- 操作失败由提交控制器负责恢复和一次通知，统一使用错误文案解析与 Toast 入口；持续状态归草稿、连接或任务拥有者。
+- 界面已呈现结果的操作静默成功，有额外结果信息时再通知。操作拥有者负责失败恢复和一次错误 Toast；持续不可用状态就地说明，共享 Toast 入口负责展示与可选恢复动作。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
 - 日志列表只保存 `log.appended` 轻量事件，选中后由 `desktop-api.ts` 严格归一当前进程详情；普通页面、toast 和空状态不展示调用栈或原始异常。
 - 持久化 `AppLanguage` 只在 `src/domain/app-language.ts` 投影为 renderer `Locale`，React Provider 只消费已解析的 locale。
@@ -37,8 +37,9 @@
 - 首次查询失败由内容区提供重试；已有快照刷新失败时保留内容并通知。规则页共用 `useQualityRuleQuery` 的请求入口和项目隔离；`AppContentState` 负责展示。
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
 - 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。普通翻译启动以 Store 当前权威进度选择 new 或 continue，历史展示快照只服务显示。
+- 预设菜单只缓存条目，默认标记由当前 settings 快照计算。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
-- `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿，卸载取消延迟任务并失效旧请求。
+- `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - `features/model-selection` 持有页面级模型 query / command，运行占用变化触发重查，保存设置使旧查询失效；数据不进入 `DesktopStateProvider` 或 SSE。控件消费后端模型摘要、容量与思考档位，配置加载和保存期间锁定。Agent 模型配置的生效边界归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。

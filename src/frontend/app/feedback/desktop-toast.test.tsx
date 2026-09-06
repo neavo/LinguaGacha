@@ -71,6 +71,15 @@ describe("useDesktopToast", () => {
     return toast_api;
   }
 
+  it("带恢复操作的通知持续可用并把操作交给展示层", () => {
+    const action = { label: "撤销未保存改动", onClick: vi.fn() };
+    read_toast_api().push_toast("error", "保存失败", action);
+    expect(sonner_mock.toast.error).toHaveBeenCalledWith("保存失败", {
+      action,
+      duration: Number.POSITIVE_INFINITY,
+    });
+  });
+
   it("只允许当前进度通知 owner 更新和关闭", async () => {
     let first_id: string | number;
     let current_id: string | number;

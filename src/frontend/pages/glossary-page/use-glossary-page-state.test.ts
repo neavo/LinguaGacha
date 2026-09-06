@@ -648,7 +648,7 @@ describe("useGlossaryPageState", () => {
     });
   });
 
-  it("启用和禁用成功后显示对应状态提醒", async () => {
+  it("启用和禁用成功后更新开关并静默完成", async () => {
     await mount_probe();
     api_fetch_mock.mockResolvedValueOnce(
       create_quality_write_result({
@@ -669,7 +669,7 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.enabled).toBe(false);
-    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_disabled");
+    expect(push_toast_mock).not.toHaveBeenCalled();
 
     api_fetch_mock.mockResolvedValueOnce(
       create_quality_write_result({
@@ -690,7 +690,7 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.enabled).toBe(true);
-    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_enabled");
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
 
   it("开关写入失败时不显示成功提醒", async () => {

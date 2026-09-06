@@ -22,7 +22,6 @@ import { de_de_text_preserve_page } from "./resources/de-DE/text-preserve-page";
 import { de_de_text_replacement_page } from "./resources/de-DE/text-replacement-page";
 import { de_de_toolbox_page } from "./resources/de-DE/toolbox-page";
 import { de_de_ts_conversion_page } from "./resources/de-DE/ts-conversion-page";
-import { de_de_translation_prompt_page } from "./resources/de-DE/translation-prompt-page";
 import { de_de_workbench_page } from "./resources/de-DE/workbench-page";
 import { en_us_agent_page } from "./resources/en-US/agent-page";
 import { en_us_agent_runtime } from "./resources/en-US/agent-runtime";
@@ -45,7 +44,6 @@ import { en_us_text_preserve_page } from "./resources/en-US/text-preserve-page";
 import { en_us_text_replacement_page } from "./resources/en-US/text-replacement-page";
 import { en_us_toolbox_page } from "./resources/en-US/toolbox-page";
 import { en_us_ts_conversion_page } from "./resources/en-US/ts-conversion-page";
-import { en_us_translation_prompt_page } from "./resources/en-US/translation-prompt-page";
 import { en_us_workbench_page } from "./resources/en-US/workbench-page";
 import { zh_cn_agent_page } from "./resources/zh-CN/agent-page";
 import { zh_cn_agent_runtime } from "./resources/zh-CN/agent-runtime";
@@ -68,7 +66,6 @@ import { zh_cn_text_preserve_page } from "./resources/zh-CN/text-preserve-page";
 import { zh_cn_text_replacement_page } from "./resources/zh-CN/text-replacement-page";
 import { zh_cn_toolbox_page } from "./resources/zh-CN/toolbox-page";
 import { zh_cn_ts_conversion_page } from "./resources/zh-CN/ts-conversion-page";
-import { zh_cn_translation_prompt_page } from "./resources/zh-CN/translation-prompt-page";
 import { zh_cn_workbench_page } from "./resources/zh-CN/workbench-page";
 import type { LocaleMessageSchema } from "./types";
 
@@ -94,7 +91,6 @@ export const zh_cn_messages = {
   text_replacement_page: zh_cn_text_replacement_page,
   toolbox_page: zh_cn_toolbox_page,
   ts_conversion_page: zh_cn_ts_conversion_page,
-  translation_prompt_page: zh_cn_translation_prompt_page,
   workbench_page: zh_cn_workbench_page,
   batch_translation: zh_cn_batch_translation,
 } as const;
@@ -121,7 +117,6 @@ export const en_us_messages = {
   text_replacement_page: en_us_text_replacement_page,
   toolbox_page: en_us_toolbox_page,
   ts_conversion_page: en_us_ts_conversion_page,
-  translation_prompt_page: en_us_translation_prompt_page,
   workbench_page: en_us_workbench_page,
   batch_translation: en_us_batch_translation,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;
@@ -148,7 +143,6 @@ export const de_de_messages = {
   text_replacement_page: de_de_text_replacement_page,
   toolbox_page: de_de_toolbox_page,
   ts_conversion_page: de_de_ts_conversion_page,
-  translation_prompt_page: de_de_translation_prompt_page,
   workbench_page: de_de_workbench_page,
   batch_translation: de_de_batch_translation,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;

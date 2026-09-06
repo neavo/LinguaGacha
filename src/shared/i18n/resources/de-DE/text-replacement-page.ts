@@ -36,7 +36,5 @@ export const de_de_text_replacement_page = {
     preset_failed: "Fehler beim Laden der Ersetzungs-Voreinstellungen.",
 
     query_failed: "Fehler bei der Abfrage der Ersetzungsregel.",
-
-    reset_success: "Zurücksetzen abgeschlossen …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

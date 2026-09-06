@@ -117,9 +117,8 @@ type GlossaryQualitySlice = {
 };
 
 type GlossaryDuplicateApplyOptions = {
-  close_preset_menu: boolean;
   result_refresh: ResultRefreshPolicy;
-  feedback: "import" | "dialog";
+  source: "import" | "preset" | "dialog";
 };
 
 // 术语表页维护自己的写入诊断名，desktop 层只负责提交和失败恢复。
@@ -369,6 +368,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
+  /** 将查询失败交给页面反馈入口。 */
   const handle_quality_rule_load_error = useCallback(
     (error: unknown): void => {
       push_toast(
@@ -393,7 +393,19 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   });
   const enabled = project_snapshot.loaded ? quality_slice.enabled : true;
   const entries = project_snapshot.loaded ? quality_slice.entries : [];
-  const [preset_items, set_preset_items] = useState<GlossaryPresetItem[]>([]);
+  const [preset_snapshot, set_preset_snapshot] = useState<GlossaryPresetPayload>({
+    builtin_presets: [],
+    user_presets: [],
+  });
+  const preset_items = useMemo(
+    () =>
+      decorate_preset_items(
+        preset_snapshot.builtin_presets,
+        preset_snapshot.user_presets,
+        String(settings_snapshot.glossary_default_preset ?? ""),
+      ),
+    [preset_snapshot, settings_snapshot],
+  );
   const [preset_menu_open, set_preset_menu_open] = useState(false);
   const table_ui_state = useProjectSessionTableUiState<GlossaryFilterState, GlossarySortState>({
     key: "quality:glossary",
@@ -447,6 +459,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]));
   }, [entry_ids]);
 
+  /** 以当前活动行或选区确定新增位置。 */
   const resolve_create_insert_after_entry_id = useCallback((): GlossaryEntryId | null => {
     return resolve_quality_rule_insert_after_entry_id(
       active_entry_id,
@@ -457,6 +470,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const completed_hit_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
     return new Set(hit_state.entry_ids ?? []);
   }, [hit_state.entry_ids]);
+  /** 按当前规则与筛选排序构建结果成员。 */
   const build_result_snapshot = useCallback(
     (
       next_filter_state: GlossaryFilterState,
@@ -482,6 +496,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [entries, entry_ids, hit_sort_available, hit_state],
   );
+  /** 为结果控制器提供当前筛选排序快照。 */
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
@@ -585,6 +600,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [completed_hit_entry_id_set, entries, entry_ids, hit_ready, hit_state, t]);
   const clear_selection_state = table_ui_state.clear_selection_state;
 
+  /** 通过统一写入口保存规则，并按策略刷新结果成员。 */
   const save_entries_snapshot = useCallback(
     async (
       next_entries: GlossaryEntry[],
@@ -639,6 +655,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
+  /** 保存重复项处理结果，再按操作来源更新页面反馈。 */
   const apply_duplicate_resolved_entries = useCallback(
     async (
       next_entries: GlossaryEntry[],
@@ -649,12 +666,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
 
-      if (options.feedback === "import") {
-        clear_selection_state();
+      if (options.source !== "dialog") clear_selection_state();
+      if (options.source === "import") {
         push_toast("success", t("app.feedback.import_success"));
       }
 
-      if (options.close_preset_menu) {
+      if (options.source === "preset") {
         set_preset_menu_open(false);
       }
 
@@ -663,6 +680,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [clear_selection_state, push_toast, save_entries_snapshot, t],
   );
 
+  /** 复制当前条目，供待确认操作重新计算。 */
   const read_current_glossary_entries = useCallback((): GlossaryEntry[] => {
     return entries_ref.current.map((entry) => clone_entry(entry));
   }, []);
@@ -681,6 +699,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     close_import_duplicate_confirm,
   } = import_confirmation;
 
+  /** 按新增或编辑意图构建重复项处理计划。 */
   const build_dialog_duplicate_resolution_plan = useCallback(
     (current_dialog_state: GlossaryDialogState, normalized_entry: GlossaryEntry) => {
       const current_entries = read_current_glossary_entries();
@@ -732,20 +751,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [read_current_glossary_entries],
   );
 
+  /** 刷新预设条目，默认标记由当前设置计算。 */
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<GlossaryPresetPayload>("/api/quality/rules/presets", {
       rule_type: "glossary",
     });
-    const default_virtual_id = String(settings_snapshot.glossary_default_preset ?? "");
-
-    set_preset_items(
-      decorate_preset_items(
-        preset_payload.builtin_presets,
-        preset_payload.user_presets,
-        default_virtual_id,
-      ),
-    );
-  }, [settings_snapshot]);
+    set_preset_snapshot(preset_payload);
+  }, []);
 
   useQualityRuleTableSessionReset({
     project_identity: project_snapshot.loaded ? project_snapshot.path : "",
@@ -778,6 +790,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     resolve_sort_state: resolve_glossary_table_sort_state,
   });
 
+  /** 用命中关系缩小当前规则结果范围。 */
   const search_entry_relations_from_hit = useCallback(
     (entry_id: GlossaryEntryId): void => {
       const target_index = entry_index_by_id.get(entry_id);
@@ -806,6 +819,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
+  /** 提交启用状态并读取后端确认的规则快照。 */
   const update_enabled = useCallback(
     async (next_enabled: boolean): Promise<void> => {
       if (readonly) {
@@ -828,12 +842,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           },
         });
         await refresh_quality_rule_snapshot();
-        push_toast(
-          "success",
-          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
-            TITLE: t("glossary_page.title"),
-          }),
-        );
       } catch (error) {
         push_toast(
           "error",
@@ -851,6 +859,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
+  /** 初始化新增草稿并记录插入位置。 */
   const open_create_dialog = useCallback((): void => {
     if (readonly) {
       return;
@@ -870,6 +879,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, [clear_selection_state, readonly, resolve_create_insert_after_entry_id]);
 
+  /** 按目标身份准备可编辑草稿。 */
   const open_edit_dialog = useCallback(
     (entry_id: GlossaryEntryId): void => {
       const target_index = entry_index_by_id.get(entry_id);
@@ -897,6 +907,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, entry_index_by_id, set_table_selection_state],
   );
 
+  /** 更新本地草稿并保留弹窗操作上下文。 */
   const update_dialog_draft = useCallback((patch: Partial<GlossaryEntryDraft>): void => {
     set_dialog_state((previous_state) => {
       return {
@@ -910,6 +921,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, []);
 
+  /** 收集当前选区并请求删除确认。 */
   const delete_selected_entries = useCallback(async (): Promise<void> => {
     if (readonly || selected_entry_ids.length === 0) {
       return;
@@ -926,6 +938,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, [readonly, selected_entry_ids]);
 
+  /** 提交选区删除并维护结果与选择状态。 */
   const commit_delete_selected_entries = useCallback(async (): Promise<boolean> => {
     if (readonly || selected_entry_ids.length === 0) {
       return true;
@@ -962,6 +975,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     restore_table_selection_state,
   ]);
 
+  /** 将大小写规则批量应用到当前选区。 */
   const toggle_case_sensitive_for_selected = useCallback(
     async (next_value: boolean): Promise<void> => {
       if (readonly || selected_entry_ids.length === 0) {
@@ -985,6 +999,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
   );
 
+  /** 按拖动结果保存规则顺序。 */
   const reorder_selected_entries = useCallback(
     async (ordered_entry_ids: GlossaryEntryId[]): Promise<void> => {
       if (drag_disabled) {
@@ -998,6 +1013,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [drag_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
+  /** 校验并提交弹窗草稿，失败时恢复编辑入口。 */
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
     if (readonly) {
       return false;
@@ -1029,14 +1045,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return build_dialog_duplicate_resolution_plan(current_dialog_state, normalized_entry);
       },
       {
-        close_preset_menu: false,
         result_refresh:
           current_dialog_state.mode === "create" ? REBUILD_RESULT_REFRESH : PRESERVE_RESULT_REFRESH,
-        feedback: "dialog",
+        source: "dialog",
       },
     );
     if (save_result === "saved") {
-      push_toast("success", t("app.feedback.save_success"));
       return true;
     }
 
@@ -1058,14 +1072,17 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     t,
   ]);
 
+  /** 提交当前草稿并恢复操作状态。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry();
   }, [persist_dialog_entry]);
 
+  /** 关闭编辑入口并清空本地弹窗状态。 */
   const request_close_dialog = useCallback(async (): Promise<void> => {
     set_dialog_state(create_empty_dialog_state());
   }, []);
 
+  /** 用所选规则发起校对页查找。 */
   const query_entry_source_from_hit = useCallback(
     async (entry_id: GlossaryEntryId): Promise<void> => {
       const target_index = entry_index_by_id.get(entry_id);
@@ -1092,6 +1109,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, push_toast, t],
   );
 
+  /** 读取文件并通过重复项确认流程提交规则。 */
   const import_entries_from_path = useCallback(
     async (path: string): Promise<void> => {
       try {
@@ -1113,9 +1131,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             });
           },
           {
-            close_preset_menu: false,
             result_refresh: REBUILD_RESULT_REFRESH,
-            feedback: "import",
+            source: "import",
           },
         );
       } catch (error) {
@@ -1134,6 +1151,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
+  /** 把宿主文件选择结果交给规则导入入口。 */
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
     if (readonly) {
       return;
@@ -1147,6 +1165,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     await import_entries_from_path(selected_path);
   }, [import_entries_from_path, readonly]);
 
+  /** 导出规则并反馈文件操作结果。 */
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
       const exported = await export_quality_rule_entries({
@@ -1167,6 +1186,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [entries, push_toast, t]);
 
+  /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
       await refresh_preset_menu();
@@ -1180,6 +1200,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [push_toast, refresh_preset_menu, t]);
 
+  /** 提交所选预设，成功后关闭菜单。 */
   const apply_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       if (readonly) {
@@ -1202,9 +1223,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             });
           },
           {
-            close_preset_menu: true,
             result_refresh: REBUILD_RESULT_REFRESH,
-            feedback: "import",
+            source: "preset",
           },
         );
       } catch (error) {
@@ -1223,6 +1243,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
+  /** 重置规则前记录待确认操作。 */
   const request_reset_entries = useCallback((): void => {
     if (readonly) {
       return;
@@ -1239,6 +1260,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, [readonly]);
 
+  /** 为当前内容打开预设命名流程。 */
   const request_save_preset = useCallback((): void => {
     if (readonly) {
       return;
@@ -1253,6 +1275,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, [readonly]);
 
+  /** 记录预设身份和当前名称供重命名。 */
   const request_rename_preset = useCallback(
     (preset_item: GlossaryPresetItem): void => {
       if (readonly) {
@@ -1270,6 +1293,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [readonly],
   );
 
+  /** 删除确认只保存目标身份。 */
   const request_delete_preset = useCallback(
     (preset_item: GlossaryPresetItem): void => {
       if (readonly) {
@@ -1289,6 +1313,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [readonly],
   );
 
+  /** 校验名称并写入当前内容，完成后刷新预设列表。 */
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
       if (readonly) {
@@ -1312,7 +1337,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -1325,6 +1349,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, push_toast, readonly, refresh_preset_menu, t],
   );
 
+  /** 重命名后同步默认项引用并刷新列表。 */
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
       if (readonly) {
@@ -1357,7 +1382,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.renamed"));
         return true;
       } catch (error) {
         push_toast(
@@ -1370,6 +1394,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [apply_settings_snapshot, preset_items, push_toast, readonly, refresh_preset_menu, t],
   );
 
+  /** 通过设置回包推进默认标记。 */
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       if (readonly) {
@@ -1381,8 +1406,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           glossary_default_preset: virtual_id,
         });
         apply_settings_snapshot(payload);
-        await refresh_preset_menu();
-        push_toast("success", t("preset_editor.feedback.default_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -1390,9 +1413,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [apply_settings_snapshot, push_toast, readonly, refresh_preset_menu, t],
+    [apply_settings_snapshot, push_toast, readonly, t],
   );
 
+  /** 清除默认引用，由设置快照更新菜单。 */
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     if (readonly) {
       return;
@@ -1403,24 +1427,25 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         glossary_default_preset: "",
       });
       apply_settings_snapshot(payload);
-      await refresh_preset_menu();
-      push_toast("success", t("preset_editor.feedback.default_cleared"));
     } catch (error) {
       push_toast(
         "error",
         resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
       );
     }
-  }, [apply_settings_snapshot, push_toast, readonly, refresh_preset_menu, t]);
+  }, [apply_settings_snapshot, push_toast, readonly, t]);
 
+  /** 释放本轮待确认操作。 */
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_quality_rule_confirm_state());
   }, []);
 
+  /** 关闭命名流程并清空提交状态。 */
   const close_preset_input_dialog = useCallback((): void => {
     set_preset_input_state(create_empty_preset_input_state());
   }, []);
 
+  /** 保留操作目标，只更新待提交名称。 */
   const update_preset_input_value = useCallback((next_value: string): void => {
     set_preset_input_state((previous_state) => {
       return {
@@ -1430,6 +1455,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     });
   }, []);
 
+  /** 按保存或重命名意图校验重名并推进确认流程。 */
   const submit_preset_input = useCallback(async (): Promise<void> => {
     if (readonly || !preset_input_state.open || preset_input_state.mode === null) {
       return;
@@ -1496,6 +1522,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [preset_input_state, preset_items, push_toast, readonly, rename_preset, save_preset, t]);
 
+  /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {
     if (readonly) {
       return false;
@@ -1507,11 +1534,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     clear_selection_state();
-    push_toast("success", t("app.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
-  }, [clear_selection_state, push_toast, readonly, save_entries_snapshot, t]);
+  }, [clear_selection_state, readonly, save_entries_snapshot]);
 
+  /** 执行已确认的操作，失败时恢复确认界面的可操作状态。 */
   const confirm_pending_action = useCallback(async (): Promise<void> => {
     if (readonly || !confirm_state.open || confirm_state.kind === null) {
       return;
@@ -1551,7 +1578,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("preset_editor.feedback.deleted"));
           succeeded = true;
         }
       } catch (error) {

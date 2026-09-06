@@ -3,14 +3,15 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_custom_prompt_page = {
   save: {
-    saved: "Saved",
-    pending: "Unsaved",
-    saving: "Saving",
-    error: "Save failed",
     discard: "Discard unsaved changes",
     waiting: "Wait for the current task to finish before saving.",
   },
   title: "Custom Prompts",
+
+  header: {
+    description_html:
+      "Add extra translation requirements such as story settings and writing styles via custom prompts",
+  },
 
   section: {
     prefix_label: "Fixed Prefix",
@@ -28,6 +29,5 @@ export const en_us_custom_prompt_page = {
     import_failed: "Task failed …",
     export_failed: "Task failed …",
     preset_failed: "Task failed …",
-    preset_succeeded: "Task succeeded …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>;

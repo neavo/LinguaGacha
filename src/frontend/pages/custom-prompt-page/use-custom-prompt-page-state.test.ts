@@ -23,6 +23,7 @@ type RuntimeFixture = {
 
 type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
+  dismiss_toast: ReturnType<typeof vi.fn>;
 };
 
 const runtime_fixture: { current: RuntimeFixture } = {
@@ -106,7 +107,8 @@ function create_runtime_fixture(): RuntimeFixture {
 
 function create_toast_fixture(): ToastFixture {
   return {
-    push_toast: vi.fn(),
+    push_toast: vi.fn(() => 1),
+    dismiss_toast: vi.fn(),
   };
 }
 
@@ -139,7 +141,7 @@ describe("useCustomPromptPageState", () => {
   });
 
   function CustomPromptProbe(): null {
-    latest_state = useCustomPromptPageState("translation");
+    latest_state = useCustomPromptPageState();
     return null;
   }
 
@@ -327,6 +329,14 @@ describe("useCustomPromptPageState", () => {
       expect(latest_state?.confirm_state).toEqual({ kind: null });
       expect(latest_state?.prompt_text).toBe("导入提示词");
       expect(latest_state?.enabled).toBe(true);
+      if (source === "file") {
+        expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+          "success",
+          "app.feedback.import_success",
+        );
+      } else {
+        expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
+      }
       if (source === "preset") {
         expect(latest_state?.preset_menu_open).toBe(false);
       }
@@ -378,6 +388,7 @@ describe("useCustomPromptPageState", () => {
 
     await trigger_import(source);
 
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
     expect(get_save_payloads()).toHaveLength(1);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.prompt_text).toBe("项目提示词");
@@ -442,6 +453,22 @@ describe("useCustomPromptPageState", () => {
     ]);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.preset_menu_open).toBe(false);
+  });
+
+  it("设置快照变化后默认预设标记立即更新", async () => {
+    const preset = { name: "默认项", virtual_id: "user:default.txt", type: "user" as const };
+    install_prompt_api({ user_presets: [preset] });
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_preset_menu();
+    });
+    expect(latest_state?.preset_items[0]?.is_default).toBe(false);
+    runtime_fixture.current.settings_snapshot = {
+      ...runtime_fixture.current.settings_snapshot,
+      translation_custom_prompt_default_preset: preset.virtual_id,
+    };
+    await render_hook();
+    expect(latest_state?.preset_items[0]?.is_default).toBe(true);
   });
 
   it("删除预设确认只携带目标 id 并在成功后关闭", async () => {

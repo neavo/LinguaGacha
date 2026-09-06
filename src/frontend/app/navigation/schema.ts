@@ -10,7 +10,6 @@ import {
   Grid2x2Check,
   ListTree,
   ReplaceAll,
-  ScanText,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -100,13 +99,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         id: "custom-prompt",
         icon: BookOpenCheck,
         title_key: "custom_prompt_page.title",
-        children: [
-          {
-            id: "translation-prompt",
-            icon: ScanText,
-            title_key: "translation_prompt_page.title",
-          },
-        ],
       },
     ],
   },

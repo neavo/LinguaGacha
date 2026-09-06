@@ -19,12 +19,7 @@ export const zh_cn_preset_editor = {
     name_placeholder: "请输入预设名称 …",
   },
   feedback: {
-    default_cleared: "已取消默认预设 …",
-    default_set: "已设置为默认预设 …",
-    deleted: "预设已删除 …",
     exists: "文件已存在 …",
     name_required: "预设名称不能为空",
-    renamed: "预设已重命名 …",
-    saved: "预设已保存 …",
   },
 } as const;

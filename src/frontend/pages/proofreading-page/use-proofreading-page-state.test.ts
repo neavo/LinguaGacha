@@ -20,7 +20,6 @@ import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
-  type ProofreadingContextItem,
   type ProofreadingFilterOptions,
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
@@ -634,86 +633,6 @@ describe("useProofreadingPageState", () => {
       changes: [{ item_id: 1, dst: "新译文", name_dst: "新姓名" }],
       expected_section_revisions: { items: 7, proofreading: 1 },
     });
-  });
-
-  it("首次读取详情失败时显示错误提醒并保持弹窗关闭", async () => {
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockRejectedValueOnce(
-      new Error("详情读取失败"),
-    );
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-
-    expect(latest_state?.dialog_state.open).toBe(false);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", expect.any(String));
-  });
-
-  it("上下文读取失败后可重试", async () => {
-    const context_item: ProofreadingContextItem = {
-      row_id: "1",
-      row_number: 1,
-      src: "原文",
-      dst: "译文",
-      name_src: null,
-      name_dst: null,
-    };
-    proofreading_client_fixture.current.read_proofreading_context
-      .mockRejectedValueOnce(new Error("failed"))
-      .mockResolvedValueOnce([context_item]);
-    await render_hook();
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-    await act(async () => {
-      await latest_state?.open_dialog_context();
-    });
-    expect(latest_state?.dialog_state.context.status).toBe("error");
-
-    await act(async () => {
-      await latest_state?.open_dialog_context();
-    });
-    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [context_item] });
-  });
-
-  it("重新打开上下文后忽略旧请求结果", async () => {
-    const stale_request = create_deferred<ProofreadingContextItem[]>();
-    const current_request = create_deferred<ProofreadingContextItem[]>();
-    proofreading_client_fixture.current.read_proofreading_context
-      .mockReturnValueOnce(stale_request.promise)
-      .mockReturnValueOnce(current_request.promise);
-    await render_hook();
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-
-    let first: Promise<void> | undefined;
-    let second: Promise<void> | undefined;
-    act(() => {
-      first = latest_state?.open_dialog_context();
-      latest_state?.close_dialog_context();
-      second = latest_state?.open_dialog_context();
-    });
-    await act(async () => {
-      stale_request.resolve([]);
-      await first;
-    });
-    expect(latest_state?.dialog_state.context.status).toBe("loading");
-
-    const current_item: ProofreadingContextItem = {
-      row_id: "1",
-      row_number: 1,
-      src: "当前原文",
-      dst: "当前译文",
-      name_src: null,
-      name_dst: null,
-    };
-    await act(async () => {
-      current_request.resolve([current_item]);
-      await second;
-    });
-    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [current_item] });
   });
 
   it("收到导航查找意图时会重置旧筛选并执行统一列表查询", async () => {

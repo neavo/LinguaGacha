@@ -25,19 +25,22 @@ const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "text-preserve",
   "pre-translation-replacement",
   "post-translation-replacement",
-  "translation-prompt",
+  "custom-prompt",
   "laboratory",
   "toolbox",
 ]);
 
+/** 识别需要项目会话才能进入的路由。 */
 function is_project_dependent_route(route_id: RouteId): boolean {
   return PROJECT_LOAD_ENTRY_ROUTE_IDS.has(route_id) || PROJECT_LOADED_ONLY_ROUTE_IDS.has(route_id);
 }
 
+/** 从更新流程当前阶段读取发行信息。 */
 export function read_update_release(state: UpdateDialogState): GithubReleaseUpdate | null {
   return state.phase === "idle" ? null : state.release;
 }
 
+/** 仅在需要确认或等待更新操作时展示弹窗。 */
 export function is_update_dialog_open(state: UpdateDialogState): boolean {
   return (
     state.phase === "confirming" ||
@@ -47,14 +50,17 @@ export function is_update_dialog_open(state: UpdateDialogState): boolean {
   );
 }
 
+/** 下载和启动安装期间锁定重复提交。 */
 export function is_update_dialog_submitting(state: UpdateDialogState): boolean {
   return state.phase === "downloading" || state.phase === "launching";
 }
 
+/** 限制进度范围并生成百分比标签。 */
 export function format_update_progress_label(progress_percent: number): string {
   return `${Math.max(0, Math.min(100, progress_percent)).toFixed(2)}%`;
 }
 
+/** 由更新阶段选择主操作文案。 */
 export function resolve_update_confirm_label(state: UpdateDialogState, t: AppTranslator): string {
   if (state.phase === "ready_to_restart") {
     return t("app.update.restart_confirm");
@@ -69,16 +75,15 @@ export function resolve_update_confirm_label(state: UpdateDialogState, t: AppTra
   return t("app.action.confirm");
 }
 
+/** 将替换功能分组解析为默认可访问页面。 */
 export function resolve_selectable_route(route_id: RouteId): RouteId {
   if (route_id === "text-replacement") {
     return "pre-translation-replacement";
   }
-  if (route_id === "custom-prompt") {
-    return "translation-prompt";
-  }
   return route_id;
 }
 
+/** 按项目加载与准备状态计算可用入口。 */
 export function resolve_disabled_route_ids(args: {
   project_loaded: boolean;
   project_session_status: ProjectSessionStatus;
@@ -92,6 +97,7 @@ export function resolve_disabled_route_ids(args: {
     : new Set([...PROJECT_LOAD_ENTRY_ROUTE_IDS, ...PROJECT_LOADED_ONLY_ROUTE_IDS]);
 }
 
+/** 项目尚未就绪时保留目标，供会话准备后恢复。 */
 export function resolve_route_selection(args: {
   route_id: RouteId;
   project_loaded: boolean;
@@ -112,6 +118,7 @@ export function resolve_route_selection(args: {
   };
 }
 
+/** 项目关闭时回首页，新会话就绪后恢复待访问页面。 */
 export function resolve_project_route_after_snapshot(args: {
   previous_project_loaded: boolean;
   previous_project_path: string;

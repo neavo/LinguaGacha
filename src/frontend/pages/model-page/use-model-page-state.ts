@@ -481,6 +481,7 @@ export function useModelPageState(): UseModelPageStateResult {
 
   const readonly = is_runtime_busy(runtime_snapshot) || is_action_running;
 
+  /** 提交模型字段修改并同步后端快照。 */
   const update_model_patch = useCallback(
     async (model_id: string, patch: Record<string, unknown>): Promise<void> => {
       if (model_id === "") {
@@ -517,6 +518,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, refresh_snapshot, t],
   );
 
+  /** 新增指定分类的模型并回填列表快照。 */
   const request_add_model = useCallback(
     async (model_type: ModelType): Promise<void> => {
       if (readonly) {
@@ -542,6 +544,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
+  /** 检查分类剩余模型并请求删除确认。 */
   const request_delete_model = useCallback(
     (model_id: string): void => {
       if (readonly) {
@@ -568,6 +571,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
+  /** 记录模型预设恢复目标供确认。 */
   const request_reset_model = useCallback(
     (model_id: string): void => {
       if (readonly) {
@@ -582,6 +586,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [readonly],
   );
 
+  /** 提交模型顺序并同步列表结果。 */
   const request_reorder_models = useCallback(
     async (model_type: ModelType, ordered_model_ids: string[]): Promise<void> => {
       if (readonly) {
@@ -616,6 +621,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
+  /** 执行连接测试并展示服务端测试结果。 */
   const request_test_model = useCallback(
     async (model_id: string): Promise<void> => {
       if (readonly) {
@@ -662,6 +668,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_dialog_state(close_dialog_state());
   }
 
+  /** 执行模型删除或预设恢复，结束后释放忙碌状态。 */
   const confirm_dialog = useCallback(async (): Promise<void> => {
     const current_confirm_state = confirm_state;
     set_confirm_state(close_confirm_state());
@@ -689,7 +696,6 @@ export function useModelPageState(): UseModelPageStateResult {
           model_id: current_confirm_state.model_id,
         });
         set_snapshot(normalize_model_page_snapshot(payload));
-        push_toast("success", t("model_page.feedback.reset_success"));
       }
     } catch (error) {
       push_toast(
@@ -740,6 +746,7 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
+  /** 从当前接口读取可选择的模型标识。 */
   const load_available_models = useCallback(
     async (model_id: string): Promise<void> => {
       set_selector_state((previous_state) => {
@@ -782,6 +789,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, t],
   );
 
+  /** 将选择结果写入当前模型配置。 */
   const select_model_id = useCallback(
     async (model_name: string): Promise<void> => {
       const target_model_id = selector_state.model_id;
