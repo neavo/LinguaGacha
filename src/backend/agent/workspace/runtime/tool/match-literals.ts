@@ -4,6 +4,7 @@ import { compile_literal_patterns } from "../../../../../shared/text/literal-mat
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../policy";
 import { define_agent_workspace_data_tool } from "./data-tool";
 
+/** 模式独立续页；页大小只限制证据返回量，完整扫描计数始终保留。 */
 const parameters = Type.Object(
   {
     patterns: Type.Array(
@@ -22,6 +23,14 @@ const parameters = Type.Object(
           case_sensitive: Type.Boolean({
             description: "执行 Unicode 归一化；false 时同时折叠大小写。",
           }),
+          offset: Type.Optional(
+            Type.Integer({
+              minimum: 0,
+              default: 0,
+              description:
+                "本模式的 (item_id, field) 证据偏移；同一快照和模式下用 next_offset 续页。计数始终覆盖完整快照。",
+            }),
+          ),
         },
         { additionalProperties: false },
       ),
@@ -33,13 +42,14 @@ const parameters = Type.Object(
         maximum: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesMax,
         default: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesDefault,
         description:
-          "每个模式最多返回的 (item_id, field) 证据记录数；按条目、src、name_src 顺序截取，同一条目可占两份，0 仅统计。",
+          "每个模式本页最多返回的 (item_id, field) 证据记录数；按条目、src、name_src 排序，同一条目可占两份。0 仅统计，读取证据时使用正数。",
       }),
     ),
   },
   { additionalProperties: false },
 );
 
+/** 字段证据携带原文范围，供调用方重建覆盖集合并检查同一条目内的额外命中。 */
 const result = Type.Object(
   {
     scanned_item_count: Type.Integer({ minimum: 0, description: "完整扫描的条目数。" }),
@@ -48,6 +58,10 @@ const result = Type.Object(
       Type.Object(
         {
           key: Type.String(),
+          next_offset: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], {
+            description:
+              "本模式下一页的证据偏移，null 表示证据已到末尾。仅统计时如有证据则返回当前偏移，须改用正数页大小继续。",
+          }),
           matched_item_count: Type.Integer({
             minimum: 0,
             description: "该模式在两个字段上的去重条目数。",
@@ -94,29 +108,29 @@ const result = Type.Object(
 
 type LiteralMatchPatternResult = Static<(typeof result)["properties"]["patterns"]>[number];
 
-/** 使用正式字面匹配器一次扫描只读 items，并按输入 pattern 顺序聚合证据。 */
+/** 使用正式字面匹配器完整扫描只读 items，计数与每个模式的证据分页独立。 */
 export const matchLiterals = define_agent_workspace_data_tool({
-  description: "按正式连续字面语义一次扫描 src 与 name_src，并返回完整计数和有限证据。",
+  description:
+    "按正式连续字面语义扫描 src 与 name_src，返回完整计数及分页命中证据；完整覆盖核验须消费各模式全部证据页。",
   parameters,
   result,
-  /** 关联键唯一后累计去重条目数，并按字段截取有限证据。 */
+  /** 复用正式匹配器的键校验与匹配语义；一次扫描聚合完整计数和各模式证据页。 */
   async execute(context, args) {
-    const keys = new Set<string>();
-    for (const pattern of args.patterns) {
-      if (keys.has(pattern.key)) throw new Error(`Duplicate literal pattern key: ${pattern.key}`);
-      keys.add(pattern.key);
-    }
     const examples_per_pattern =
       args.examples_per_pattern ?? context.contract.limits.literal_match_examples_default;
     const matcher = compile_literal_patterns(args.patterns);
-    const results = new Map<string, LiteralMatchPatternResult>(
+    const pages = new Map<string, { offset: number; result: LiteralMatchPatternResult }>(
       args.patterns.map((pattern) => [
         pattern.key,
         {
-          key: pattern.key,
-          matched_item_count: 0,
-          field_item_counts: { src: 0, name_src: 0 },
-          example_matches: [],
+          offset: pattern.offset ?? 0, // 与对应结果共同保存，按字段证据计数。
+          result: {
+            key: pattern.key,
+            next_offset: null,
+            matched_item_count: 0,
+            field_item_counts: { src: 0, name_src: 0 },
+            example_matches: [],
+          },
         },
       ]),
     );
@@ -126,32 +140,38 @@ export const matchLiterals = define_agent_workspace_data_tool({
     for await (const item of context.data.items()) {
       const { item_id, src, name_src } = item;
       scanned_item_count += 1;
-      const matched_keys = new Set<string>();
+      const matched_results = new Set<LiteralMatchPatternResult>(); // 正文与姓名共同命中只计一个 item。
       for (const [field, text] of [
         ["src", src],
         ["name_src", name_src],
       ] as const) {
         for (const match of matcher.match(text)) {
-          const result = results.get(match.key);
-          if (result === undefined) continue;
+          // 匹配器仅返回输入模式的 key，pages 在扫描前已为全部模式建立记录。
+          const { offset, result } = pages.get(match.key)!;
           result.field_item_counts[field] += 1;
-          matched_keys.add(match.key);
-          if (result.example_matches.length < examples_per_pattern) {
+          matched_results.add(result);
+          // 分页单位是字段证据；同字段的全部 ranges 留在一条记录中。
+          const field_count = result.field_item_counts.src + result.field_item_counts.name_src;
+          if (field_count > offset && result.example_matches.length < examples_per_pattern) {
             result.example_matches.push({ item_id, field, ranges: match.ranges });
           }
         }
       }
-      if (matched_keys.size > 0) matched_item_count += 1;
-      for (const key of matched_keys) {
-        const result = results.get(key);
-        if (result !== undefined) result.matched_item_count += 1;
-      }
+      if (matched_results.size > 0) matched_item_count += 1;
+      for (const result of matched_results) result.matched_item_count += 1;
+    }
+
+    // 每个模式按自己的证据总数结束；纯计数调用保留当前偏移作为读取入口。
+    for (const { offset, result } of pages.values()) {
+      const end = offset + result.example_matches.length;
+      const total = result.field_item_counts.src + result.field_item_counts.name_src;
+      result.next_offset = end < total ? end : null;
     }
 
     return {
       scanned_item_count,
       matched_item_count,
-      patterns: [...results.values()],
+      patterns: [...pages.values()].map(({ result }) => result),
     };
   },
 });

@@ -57,7 +57,7 @@
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。skill 正文声明的前置或条件组合技能统一由模型调用 `read_skill` 加载，组合本身不改变任务对象、范围或工作区权限。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
 - System Prompt 统一拥有最高层任务准则、对外人格、结果表达、跨任务术语前置、CodeAct 执行范式及示例、提交恢复与交互路由；参数用法归工具 Schema，工作区回执字段归 `ws.contract`。静态 Markdown 模板直接拥有完整的 Agent 工作区章节和顺序，资源加载器只在原位填充权限范围与模块限制，形成跨会话字节稳定的基础 System 前缀，再在其后拼接会话 skill catalog。除有意重复该短准则的 `agent-charter` 外，skill 只补充领域概念、业务信息与工作资产归属、判断逻辑、证据方法和停止条件；仅当某个正式数据工具本身构成流程语义或结果契约时直接点名，不描述其调用参数、文件 API 或通用工具编排。Agent 页面忠实消费模型 Markdown、Mermaid 与结构化决策状态，不从标题或 emoji 反向推断领域状态。
-- 领域流程记录由模型维护在工作资产中，技能加载器与后端不维护领域流程状态；具体组合、参考文件、字段与恢复规则归各技能包。
+- 领域流程记录由模型维护在工作资产中，技能加载器与后端不维护领域流程状态；阶段完成依据来自工作资产与实际工具结果，具体组合、判据、字段与恢复规则归各技能包。
 
 ## 4. 产品工具与宿主能力
 
@@ -68,6 +68,7 @@
 - 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据、百分比、完成历史或完成判据。每次 `workspace_script` 启动时以当前 Todo 初始化 `ws.todo`；脚本通过同步 `read()` 读取不可变副本，通过同步 `write(todos)` 替换本次脚本副本。脚本成功时最终 Todo 随结果 envelope 返回并由 `AgentService` 原子提交，脚本失败、停止或超时保留调用前状态；公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
 - 工作区工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与显式变更提交协调。
 - 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举工具集合，`ws.tool` 与模型可见 TypeScript 协议由该集合投影，并随恒定注册的 `workspace_script` 参数说明提供完整能力发现。字段描述与结构约束共同进入生成声明；脚本内数据工具可使用判别联合表达相关参数。未知参数在统一分发边界按 Schema 收窄，结构错误返回字段路径与要求，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。HTML 字符串与响应流转换同样位于 `ws.tool`，只公开稳定的 `baseUrl`、正文选择和 CSS selector 参数，底层 npm 实现随单文件 runtime 构建而不进入产品契约。
+- `matchLiterals` 的覆盖核验消费各模式全部字段证据页，完整计数独立于分页。各页重新扫描同一快照，不维护跨调用游标状态；快照或模式变化后重新取得证据。分页参数与字段范围归工具 Schema。
 - `ws.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；`workspace/schema` 统一拥有快照与变更记录结构，`contract` 组合布局与提交语义，`changes` 按相同 Schema 校验 JSONL 后转换为领域意图。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则。标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。Deno 注入的冻结 `ws` 由 contract、Todo 与工具树组成，文件访问统一使用 Deno 标准 API。
 - `workspace_script` 按需建立或刷新完整只读快照、空变更清单文件和当前对话 `task`。`items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
 - TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时、结果上限与数据工具默认值及上限；Deno 可读取完整工作区，只能写入 `changes`、`task` 与 `scratch`，可使用原生网络，但不能访问外部模块、环境、系统信息、子进程或 FFI。stdin / stdout 使用窄 JSONL 协议承载启动、系统代理解析和最终有界结果，脚本诊断进入 stderr；超时或停止先终止进程、取消待决代理请求并等待退出，再释放工作区串行边界。

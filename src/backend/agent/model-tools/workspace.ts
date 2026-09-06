@@ -76,7 +76,7 @@ export function create_agent_workspace_tools(options: {
       name: "workspace_apply",
       label: "应用工作区",
       description:
-        "提交当前工作区变更批次，宿主按当前审批模式处理授权。成功对象在同一事务中提交，单项拒绝不阻塞无关对象；实际结果与快照有效性依据回执及 ws.contract.apply 判读。",
+        "提交当前工作区变更批次，宿主按当前审批模式处理授权。成功对象在同一事务中提交，单项拒绝不阻塞无关对象。实际提交或目标事实漂移会销毁当前快照；提交前将后续仍需使用的工作记录保存到 task/**。实际结果与快照有效性依据回执及 ws.contract.apply 判读。",
       executionMode: "sequential",
       parameters: WORKSPACE_APPLY_PARAMETERS,
       execute: async (tool_call_id, _params, signal) => {

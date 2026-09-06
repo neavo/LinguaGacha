@@ -15,8 +15,6 @@ describe("Agent Workspace 工具说明投影", () => {
     );
 
     expect(new Set(method_names)).toEqual(new Set(Object.keys(AGENT_WORKSPACE_DATA_TOOLS)));
-    expect(api).toContain("declare const ws: Readonly<{");
-    expect(api).toContain("tool: Readonly<WorkspaceHtmlTools & {");
     expect(api).toContain("htmlToMarkdown(html: string");
     expect(api).toContain("streamHtmlToMarkdown(");
   });
@@ -35,7 +33,9 @@ ws.tool.groupQualityRuleEntries({ kind: "glossary", entries: [{ id: "a", src: "A
 // @ts-expect-error entry identity is required
 ws.tool.groupQualityRuleEntries({ kind: "text_preserve", entries: [{ src: "A" }] });
 ws.tool.queryItemContexts({ item_ids: [1] }).then(result => result.items[0]?.src);
-ws.tool.matchLiterals({ patterns: [{ key: "a", text: "A", case_sensitive: false }] });
+ws.tool.matchLiterals({ patterns: [{ key: "a", text: "A", case_sensitive: false, offset: 1 }], examples_per_pattern: 2 }).then(result => {
+  const next: number | null = result.patterns[0]!.next_offset;
+});
 `,
       );
       execFileSync(
