@@ -263,7 +263,10 @@ function create_editor_extensions(args: {
   ];
 }
 
-/** 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。 */
+/**
+ * 受控 CodeMirror 表面，统一字段、正文与只读查看器的互斥语义。
+ * 正文通过 aria_label 命名；调用方用普通容器组合字段，避免 label 将点击转发给内部换行按钮。
+ */
 export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolved_theme } = useAppearance();
   const { t } = useI18n();
