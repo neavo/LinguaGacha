@@ -57,7 +57,7 @@ const WORKSPACE_APPLY_DESCRIPTION = [
   AGENT_WORKSPACE_CONTRACT.apply.transaction,
   AGENT_WORKSPACE_CONTRACT.apply.partial_success,
   `返回回执字段：${AGENT_WORKSPACE_CONTRACT.apply.result.fields.join("、")}。destroyed：${AGENT_WORKSPACE_CONTRACT.apply.result.destroyed}。详细状态与拒绝原因见 ws.contract.apply。`,
-  "提交前将后续仍需使用的工作记录保存到 task/**。回执 destroyed 为 true 时先通过 workspace_script 建立新快照；仍有效时可复用，依赖写入后事实时重新读取。",
+  "回执 destroyed 为 true 时先通过 workspace_script 建立新快照；仍有效时可复用，依赖写入后事实时重新读取。",
 ].join("\n\n");
 
 /** apply 消费当前活动工作区中的一个提交批次，身份与对象 fp 由服务持有。 */

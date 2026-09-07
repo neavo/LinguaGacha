@@ -97,7 +97,7 @@ describe("DenoAgentWorkspaceRunner", () => {
         "--deny-ffi",
         "--allow-net",
         "--allow-read=E:\\workspace",
-        "--allow-write=E:\\workspace\\changes,E:\\workspace\\task,E:\\workspace\\scratch",
+        "--allow-write=E:\\workspace\\changes,E:\\workspace\\work",
         "E:\\runtime\\deno-runtime.js",
       ],
       expect.objectContaining({
@@ -233,6 +233,7 @@ describe("DenoAgentWorkspaceRunner", () => {
   });
 });
 
+/** 固定资产路径，场景只替换当前系统代理解析。 */
 function build_runner(
   resolve_proxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ): DenoAgentWorkspaceRunner {
@@ -243,6 +244,7 @@ function build_runner(
   });
 }
 
+/** 用内存管道模拟子进程，close 由用例控制以验证退出与结算顺序。 */
 function fake_process() {
   const child = new EventEmitter() as EventEmitter & {
     stdin: PassThrough;
@@ -263,6 +265,7 @@ function fake_process() {
   };
 }
 
+/** 接收测试管道中一次完整写入的启动消息。 */
 async function read_line(stream: PassThrough): Promise<unknown> {
   const existing = stream.read() as Buffer | null;
   const chunk = existing ?? (await new Promise<Buffer>((resolve) => stream.once("data", resolve)));

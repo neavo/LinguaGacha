@@ -60,7 +60,7 @@ export function glossary_entry(id: string, src: string): JsonRecord {
   return { id, src, dst: "译文", info: "", case_sensitive: false };
 }
 
-/** 构造由 scratch 投影的候选条目，不引入与结构聚类无关的字段。 */
+/** 构造工作材料中的候选条目，只保留结构聚类需要的字段。 */
 export function relation_candidate(id: string, src: string): JsonRecord {
   return { id, src, case_sensitive: false };
 }
