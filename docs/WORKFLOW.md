@@ -58,4 +58,6 @@
 
 Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 初始化。使用 `npm test -- --project node <测试文件路径...>` 或 `npm test -- --project renderer <测试文件路径...>` 定位目标；省略文件路径运行对应项目。
 
+`buildtools/vite/deno-runtime.vite.config.test.mjs` 使用生产构建与真实 Deno 验证单文件、TypeScript 加载和语法诊断；运行前用 `node buildtools/builder/deno-runtime.mjs` 准备本地二进制。
+
 构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Deno runtime 为无外部 import 的单文件；manifest 校验发布资产与目标二进制并复用有效安装；afterPack 安装当前目标 Deno 与 runtime bundle；涉及平台启动器时测试并构建对应 Go module。
