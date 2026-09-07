@@ -45,19 +45,19 @@
     - 根据 CPU 类型下载 `*_Linux_x64.AppImage` 或 `*_Linux_arm64.AppImage`
     - 添加执行权限 `chmod +x LinguaGacha*.AppImage`
     - 运行 `./LinguaGacha*.AppImage`
-- 获取一个可靠的 AI 大模型接口，建议选择其一：
-  - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，最便宜，速度快，质量高，无显卡要求
+- 获取一个可靠的 AI 大模型接口，推荐：
+  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，无显卡要求
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
   - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
 - 启动应用
   - 将 `待翻译的文件` 拖到页面上创建项目
-  - 在 `模型管理` 中设置要使用的模型
   - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `AGENT` 中选择模型，完成术语表的自动提取
-  - 在 `工作台` 中选择模型并执行 `翻译` 完成翻译
-  - Enjoy!
+  - 在 `AGENT` 中选择模型，依次点击界面上预设指令完成以下步骤：
+    - `术语提取`　`👈👈 可选但推荐，对质量很重要`
+    - `全文翻译`
+    - `自动审校`　`👈👈 可选但推荐，对质量很重要`
+  - 在 `AGENT` 中点击生成译文
 
 ## 使用教程 📝
 - 综合
@@ -87,15 +87,16 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260904 v0.119.0
-  - `AGENT` - 手动上下文压缩 [#856](../../issues/856)
-  - `AGENT` - 新的选择/审批工具 [#857](../../issues/857)
-  - 修复与改进 [#854](../../issues/845) [#855](../../issues/855)  [#858](../../issues/858)
+- 20260907 v0.120.0
+  - `AGENT` - 批量翻译 [#856](../../issues/856)
+  - 修复与改进 [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
 
 ## 开发指南 🛠️
-- 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
+- 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]
+- 安装依赖 `npm install`
 - 更新依赖 `npm ci`
 - 运行应用 `npm run dev`
+- 构建发布 `npm run build`
 - 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 

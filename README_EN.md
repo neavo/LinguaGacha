@@ -47,19 +47,19 @@
     - Download `*_Linux_x64.AppImage` or `*_Linux_arm64.AppImage` according to your CPU type
     - Add executable permission with `chmod +x LinguaGacha*.AppImage`
     - Run `./LinguaGacha*.AppImage`
-- Obtain a reliable AI model interface (choose one):
-  - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Cheapest, fast, high-quality, no GPU required)
+- Obtain a reliable AI model interface. Recommended:
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (No GPU required)
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
 - Launch the application:
   - Drag the `files to translate` onto the page to create a project
-  - Configure the model you want to use in `Model Management`
   - Configure essential information such as source and target languages in `Basic Settings`
-  - Select a model in `AGENT` to automatically extract the glossary
-  - Select the model and run `Translation` in `Workbench` to complete the translation
-  - Enjoy!
+  - Select a model in `AGENT`, then click the preset instructions in the interface in order to complete the following steps:
+    - `Glossary Extraction`　`👈👈 Optional but recommended; important for translation quality`
+    - `Full Text Translation`
+    - `Automatic Proofreading`　`👈👈 Optional but recommended; important for translation quality`
+  - Click Generate Translation in `AGENT`
 
 ## User Guide 📝
 - Overall
@@ -88,15 +88,16 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260904 v0.119.0
-  - `AGENT` - Manual context compaction [#856](../../issues/856)
-  - `AGENT` - New selection/approval tools [#857](../../issues/857)
-  - Fixes and improvements [#854](../../issues/845) [#855](../../issues/855)  [#858](../../issues/858)
+- 20260907 v0.120.0
+  - `AGENT` - Batch translation [#856](../../issues/856)
+  - Fixes and improvements [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
 
 ## Development Guide 🛠️
-- Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
+- Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)
+- Install dependencies `npm install`
 - Update dependencies `npm ci`
 - Run the application `npm run dev`
+- Build the release `npm run build`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
