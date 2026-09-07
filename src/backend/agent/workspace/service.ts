@@ -53,7 +53,6 @@ import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_CONTRACT,
   AGENT_WORKSPACE_PATHS,
-  AGENT_WORKSPACE_TASK_ROOT,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
@@ -65,6 +64,7 @@ import {
   type AgentWorkspaceRunResult,
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
+import { AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 
 type AgentWorkspaceStoreResult = {
@@ -95,19 +95,19 @@ type AgentWorkspaceSourceSession = {
   files: AgentWorkspaceSourceFile[]; // project_meta 复用的不可变文件映射
 };
 
-/** 与当前 Agent 对话和工程解释边界绑定、跨数据快照保留的自由任务目录。 */
-type AgentWorkspaceTaskSession = {
+/** 与当前 Agent 对话和工程解释边界绑定、跨数据快照保留的工作材料目录。 */
+type AgentWorkspaceWorkSession = {
   projectPath: string; // snapshot 建立时绑定的工程身份
-  projectEpoch: number; // 同路径重新加载后不得复用旧任务内容
-  languageKey: string; // 语言解释边界变化时旧任务内容失效
+  projectEpoch: number; // 同路径重新加载后不得复用旧工作材料
+  languageKey: string; // 语言解释边界变化时旧工作材料失效
 };
 
-/** 当前 Agent 会话磁盘工作区；协调跨快照 task、当前数据快照与 apply。 */
+/** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
   private active: ActiveAgentWorkspace | null = null;
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
-  private task_session: AgentWorkspaceTaskSession | null = null; // 不读取目录内容，只拥有生命周期
+  private work_session: AgentWorkspaceWorkSession | null = null; // 不读取目录内容，只拥有生命周期
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
 
   /** 注入当前工程读侧、唯一写入口与 Deno 脚本端口。 */
@@ -138,16 +138,16 @@ export class AgentWorkspaceService {
     return this.options.nativeFs ?? default_native_fs;
   }
 
-  /** task 固定挂在 Workspace 根，替换 snapshot 时无需搬运内容。 */
-  private get task_path(): string {
-    return path.join(this.root_path, AGENT_WORKSPACE_TASK_ROOT);
+  /** work 固定挂在 Workspace 根，替换 snapshot 时无需搬运内容。 */
+  private get work_path(): string {
+    return path.join(this.root_path, AGENT_WORKSPACE_WORK_ROOT);
   }
 
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
   public async initialize(): Promise<void> {
     this.active = null;
     this.source_session = null;
-    this.task_session = null;
+    this.work_session = null;
     await this.native_fs.remove_async(this.root_path, { recursive: true, force: true });
     await this.native_fs.make_dir_async(this.root_path);
   }
@@ -164,7 +164,7 @@ export class AgentWorkspaceService {
     const revisions = pick_workspace_revisions(start_snapshot.sectionRevisions);
     const language = read_workspace_language(this.options.settings.read_setting());
     const language_key = JsonTool.stringifyStrict(language);
-    await this.discard_incompatible_task({
+    await this.discard_incompatible_work({
       projectPath: project_path,
       projectEpoch: start_snapshot.epoch,
       languageKey: language_key,
@@ -261,13 +261,12 @@ export class AgentWorkspaceService {
         ...all_change_paths().map((relative_path) =>
           this.native_fs.write_file(path.join(this.root_path, relative_path), ""),
         ),
-        this.native_fs.make_dir_async(path.join(this.root_path, "scratch")),
       ]);
       const write_failure = write_results.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       );
       if (write_failure !== undefined) throw write_failure.reason;
-      await this.ensure_task({
+      await this.ensure_work({
         projectPath: project_path,
         projectEpoch: start_snapshot.epoch,
         languageKey: language_key,
@@ -292,10 +291,9 @@ export class AgentWorkspaceService {
     signal: AbortSignal,
   ): Promise<AgentWorkspaceRunResult> {
     return await this.exclusive(async () => {
-      let active = this.active;
+      const active = this.active;
       if (active === null || !this.read_freshness(active).snapshotFresh) {
         await this.create_snapshot_locked();
-        active = this.require_active();
       }
       try {
         return await this.options.run({ workspacePath: this.root_path, script, todos }, signal);
@@ -320,9 +318,9 @@ export class AgentWorkspaceService {
     return await this.exclusive(async () => {
       const active = this.require_active();
       const freshness = this.read_freshness(active);
-      if (!freshness.taskCompatible) {
-        await this.discard_active();
-        await this.discard_task();
+      if (!freshness.workCompatible) {
+        await this.clear_snapshot();
+        await this.discard_work();
         throw workspace_validation_error("agent_workspace_stale");
       }
       let parsed;
@@ -334,7 +332,7 @@ export class AgentWorkspaceService {
       } catch (error) {
         if (AppErrors.is_app_error(error) && error.code === "request.validation_failed")
           throw error;
-        await this.discard_active();
+        await this.clear_snapshot();
         throw workspace_recovery_error(error, "agent_workspace_apply_prepare_failed");
       }
       let preview: ReturnType<typeof resolve_agent_workspace_writes>;
@@ -361,7 +359,7 @@ export class AgentWorkspaceService {
           this.native_fs,
         );
       } catch (error) {
-        await this.discard_active();
+        await this.clear_snapshot();
         throw workspace_recovery_error(error, "agent_workspace_apply_preview_failed");
       }
       if (!has_agent_workspace_applied_changes(preview.applied)) {
@@ -370,7 +368,7 @@ export class AgentWorkspaceService {
           (rejection) =>
             rejection.reason === "fp_mismatch" || rejection.reason === "target_missing",
         );
-        if (destroyed) await this.discard_active();
+        if (destroyed) await this.clear_snapshot();
         return {
           status,
           applied: {},
@@ -393,7 +391,7 @@ export class AgentWorkspaceService {
         );
       } catch (error) {
         if (AppErrors.is_app_error(error) && error.code === "data.committed_sync_failed") {
-          await this.discard_active();
+          await this.clear_snapshot();
           throw error;
         }
         throw workspace_error_with_action(error, "workspace_apply");
@@ -407,21 +405,21 @@ export class AgentWorkspaceService {
         destroyed: write_ack.destroyed,
         revisions: pick_apply_revisions(write_ack.sectionRevisions),
       };
-      if (write_ack.destroyed) await this.discard_active();
+      if (write_ack.destroyed) await this.clear_snapshot();
       return result;
     });
   }
 
-  /** 显式 Agent reset 销毁当前快照和自由任务目录，同一工程会话继续复用源文件投影。 */
+  /** 显式 Agent reset 销毁当前快照和工作材料目录，同一工程会话继续复用源文件投影。 */
   public async reset_workspace(): Promise<void> {
-    await this.discard_active();
-    await this.discard_task();
+    await this.clear_snapshot();
+    await this.discard_work();
   }
 
   /** 工程切换先销毁旧投影；非空路径表示为当前工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
-    await this.discard_active();
-    await this.discard_task();
+    await this.clear_snapshot();
+    await this.discard_work();
     this.source_session = null;
     await this.remove_workspace_directory(path.join(this.root_path, "sources"));
     if (project_path === null) return;
@@ -446,27 +444,27 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** 比较当前工程事实；task 只依赖工程身份与语言，不依赖普通 section revision。 */
+  /** 比较当前工程事实；work 只依赖工程身份与语言，不依赖普通 section revision。 */
   private read_freshness(active: ActiveAgentWorkspace): {
     snapshotFresh: boolean;
-    taskCompatible: boolean;
+    workCompatible: boolean;
   } {
     const snapshot = this.options.cache.snapshot();
     const language_key = JsonTool.stringifyStrict(
       read_workspace_language(this.options.settings.read_setting()),
     );
-    const task_compatible =
+    const work_compatible =
       snapshot.projectPath === active.projectPath &&
       snapshot.epoch === active.projectEpoch &&
       language_key === active.languageKey;
     const snapshot_fresh =
-      task_compatible &&
+      work_compatible &&
       PROJECT_DATA_SECTIONS.every(
         (section) =>
           read_json_integer(snapshot.sectionRevisions[section], 0) ===
           read_json_integer(active.revisions[section], 0),
       );
-    return { snapshotFresh: snapshot_fresh, taskCompatible: task_compatible };
+    return { snapshotFresh: snapshot_fresh, workCompatible: work_compatible };
   }
 
   /** Agent 预演读取项目持久镜像，确保审批采用与事务提交相同的重复过滤口径。 */
@@ -521,26 +519,18 @@ export class AgentWorkspaceService {
     }
   }
 
-  /** task 只绑定对话中的工程身份与语言，普通 revision 和 apply 不改变其生命周期。 */
-  private async ensure_task(args: AgentWorkspaceTaskSession): Promise<void> {
-    const current = this.task_session;
-    if (
-      current?.projectPath === args.projectPath &&
-      current.projectEpoch === args.projectEpoch &&
-      current.languageKey === args.languageKey
-    ) {
-      await this.native_fs.make_dir_async(this.task_path);
-      return;
+  /** 快照读取前已清除不相容身份；无身份时须删除可能残留的旧材料后再建立目录。 */
+  private async ensure_work(args: AgentWorkspaceWorkSession): Promise<void> {
+    if (this.work_session === null) {
+      await this.native_fs.remove_async(this.work_path, { recursive: true, force: true });
     }
-    this.task_session = null;
-    await this.native_fs.remove_async(this.task_path, { recursive: true, force: true });
-    await this.native_fs.make_dir_async(this.task_path);
-    this.task_session = { ...args };
+    await this.native_fs.make_dir_async(this.work_path);
+    this.work_session = { ...args };
   }
 
-  /** 新快照尚未生成成功时也不能让身份或语言不兼容的旧 task 继续暴露。 */
-  private async discard_incompatible_task(args: AgentWorkspaceTaskSession): Promise<void> {
-    const current = this.task_session;
+  /** 新快照尚未生成成功时也不能让身份或语言不兼容的旧 work 继续暴露。 */
+  private async discard_incompatible_work(args: AgentWorkspaceWorkSession): Promise<void> {
+    const current = this.work_session;
     if (
       current === null ||
       (current.projectPath === args.projectPath &&
@@ -549,10 +539,10 @@ export class AgentWorkspaceService {
     ) {
       return;
     }
-    await this.discard_task();
+    await this.discard_work();
   }
 
-  /** 清除数据快照与工作变更，保留独立生命周期的 sources 和 task。 */
+  /** 清除数据快照与工作变更，保留独立生命周期的 sources 和 work。 */
   private async clear_snapshot(): Promise<void> {
     this.active = null;
     const targets = [
@@ -562,7 +552,6 @@ export class AgentWorkspaceService {
       AGENT_WORKSPACE_PATHS.prompts,
       ...QUALITY_RULE_KINDS,
       "changes",
-      "scratch",
     ];
     await Promise.all(
       targets.map((relative_path) =>
@@ -574,15 +563,10 @@ export class AgentWorkspaceService {
     );
   }
 
-  /** 先清空内存身份，再移除固定快照内容。 */
-  private async discard_active(): Promise<void> {
-    await this.clear_snapshot();
-  }
-
-  /** 先解除任务身份；删除失败的旧目录不会在下次 snapshot 建立时被静默复用。 */
-  private async discard_task(): Promise<void> {
-    this.task_session = null;
-    await this.remove_workspace_directory(this.task_path);
+  /** 先解除工作材料身份；删除失败的旧目录不会在下次 snapshot 建立时被静默复用。 */
+  private async discard_work(): Promise<void> {
+    this.work_session = null;
+    await this.remove_workspace_directory(this.work_path);
   }
 
   /** 临时目录清理是尽力而为；活动身份已先解除，失败只进入诊断。 */

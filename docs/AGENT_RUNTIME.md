@@ -21,7 +21,7 @@
 |模型对话级有序 Todo|`AgentService`|`ws.todo`、Agent API 与 `agent.session_event`|
 |当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
-|当前对话 `task`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
+|当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
 ### 用户决定与会话配置
 
@@ -41,8 +41,8 @@
 
 ### 工作区投影
 
-- GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`scratch`、`task` 与 `sources` 都使用真实相对路径。task 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
-- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_script` 在普通 section revision 后刷新数据快照、空变更清单和 `scratch`，保留相容的 `task`；reset 清除快照和 task 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
+- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_script` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 - 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。
 - 每次 `workspace_script` 启动一个 Deno 子进程，跨调用状态只由文件承担。脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
 
@@ -73,11 +73,11 @@
 - 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举工具集合，`ws.tool` 与模型可见 TypeScript 协议由该集合投影，并随恒定注册的 `workspace_script` 顶层工具说明提供完整能力发现。字段描述与结构约束共同进入生成声明；脚本内数据工具可使用判别联合表达相关参数。未知参数在统一分发边界按 Schema 收窄，结构错误返回字段路径与要求，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。HTML 字符串与响应流转换同样位于 `ws.tool`，只公开稳定的 `baseUrl`、正文选择和 CSS selector 参数，底层 npm 实现随单文件 runtime 构建而不进入产品契约。
 - `matchLiterals` 在单次调用内扫描一次完整快照，返回完整计数与全部或限量字段证据；覆盖核验消费完整证据并检查结果完整性。工具结果直接留在 Deno 进程内，脚本负责保存工作资产与聚合，结果字节上限只约束脚本最终返回值。证据随快照与模式确定，变化后重新取得受影响证据；工具不持有跨调用查询状态。字段范围与收集参数归工具 Schema。
 - `ws.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；`workspace/schema` 统一拥有快照与变更记录结构，`contract` 组合布局与提交语义，`changes` 按相同 Schema 校验 JSONL 后转换为领域意图。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则。标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。Deno 注入的冻结 `ws` 由 contract、Todo 与工具树组成，文件访问统一使用 Deno 标准 API。
-- `workspace_script` 按需建立或刷新完整只读快照、空变更清单文件和当前对话 `task`。`items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
-- TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时、结果上限与数据工具默认值及上限；Deno 可读取完整工作区，只能写入 `changes`、`task` 与 `scratch`，可使用原生网络，但不能访问外部模块、环境、系统信息、子进程或 FFI。stdin / stdout 使用窄 JSONL 协议承载启动、系统代理解析和最终有界结果，脚本诊断进入 stderr；超时或停止先终止进程、取消待决代理请求并等待退出，再释放工作区串行边界。
+- `items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
+- TypeScript 异步函数体通过 Deno 原生模块加载器转译，并在一次性固定版本进程中运行。运行时策略统一投影可写根、限制参数、超时、结果上限与数据工具默认值及上限；Deno 可读取完整工作区，只能写入 `changes` 与 `work`，可使用原生网络，但不能访问外部模块、环境、系统信息、子进程或 FFI。stdin / stdout 使用窄 JSONL 协议承载启动、系统代理解析和最终有界结果，脚本诊断进入 stderr；超时或停止先终止进程、取消待决代理请求并等待退出，再释放工作区串行边界。
 - Deno 二进制按 Windows、macOS、Linux 的 x64 与 ARM64 目标由单一版本 manifest 管理，发布压缩资产与解压后二进制分别携带 SHA-256；目标二进制校验通过时直接复用，否则校验压缩资产和二进制后安装。Runner 从该 manifest 读取期望版本并在应用启动时校验当前目标二进制。发布包只带当前目标资产，开发态使用项目构建缓存，二者都不查询系统 `PATH`；afterPack 只安装目标资产与已经生成的 runtime bundle。
-- `workspace_apply` 单次读取一个提交批次的显式变更清单，按对象 `fp` 与领域规则逐行处理，成功对象在同一事务写入；Item 预演与事务提交都把受影响同文组的被动状态变化计入 actual applied，审批摘要与回执使用该实际数量。正常结果固定包含 `status`、`applied`、`rejected`、`destroyed` 与 `revisions`；status 为 `applied | partial | rejected | unchanged`。实际提交或目标事实漂移返回 `destroyed: true`，输入错误、无变化和回滚保留工作区。
-- 提交简报后的工具调用、回执核对、拒绝或失败后的恢复及完成判断由 System Prompt 约束；宿主仅在实际调用时建立审批等待，不按任务类型驱动模型续跑。跨快照仍需使用的记录由模型在提交或刷新前保存到 `task/**`，目录清理边界见“工作区投影”。
+- `workspace_apply` 单次读取一个提交批次的显式变更清单，按对象 `fp` 与领域规则逐行处理，成功对象在同一事务写入；Item 预演与事务提交都把受影响同文组的被动状态变化计入 actual applied，审批摘要与回执使用该实际数量。正常结果固定包含 `status`、`applied`、`rejected`、`destroyed` 与 `revisions`；status 为 `applied | partial | rejected | unchanged`。实际提交或目标事实漂移返回 `destroyed: true`，表示数据快照与当前变更清单已销毁，相容的 `work` 保留；输入错误、无变化和回滚保留工作区。
+- 提交简报后的工具调用、回执核对、拒绝或失败后的恢复及完成判断由 System Prompt 约束；宿主仅在实际调用时建立审批等待，不按任务类型驱动模型续跑。
 - GUI Agent 只把 `web_search` 注册为模型 FC；它通过固定的 Exa、Tavily、Firecrawl、AnySearch 与 Keenable 无凭据 MCP 工具实现统一查询 Schema 和错误契约，不动态投影远端工具。模型提交自然语言查询后，供应商协议或业务失败进入同一回退链；应用级搜索服务从 Exa 开始，当前来源失败时环形尝试其余来源并将成功来源晋升为首选，该内存状态跨工程切换复用、应用重启后重置，五家会话按需建立并复用，组合根在 Agent 之后统一释放。
 - 网页读取、批量编排、筛选、聚合与工作文件落盘由 `workspace_script` 内的 Deno 原生 `fetch` 和 `ws.tool` 完成。全局 `fetch` 在每次调用开始时经 JSONL 通道请求 Backend 使用 Electron session 解析当前 URL 的系统代理路线，Deno 为代理路线复用显式 `HttpClient`，DIRECT 使用确定的直连环境；原生重定向链复用初始路线。其它 Deno 网络 API 沿用运行时原生语义。System Prompt 是搜索摘要和网页正文不可信规则的唯一归宿。
 

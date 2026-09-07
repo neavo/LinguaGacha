@@ -25,9 +25,6 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
   prompts: "prompts.json",
 } as const);
 
-/** 对话级任务目录固定名。 */
-export const AGENT_WORKSPACE_TASK_ROOT = "task";
-
 /** 四类质量规则直接按领域 kind 落盘。 */
 export const AGENT_WORKSPACE_QUALITY_ENTRY_PATHS = Object.freeze(
   Object.fromEntries(QUALITY_RULE_KINDS.map((kind) => [kind, `${kind}/entries.jsonl`])) as Record<
@@ -207,7 +204,8 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
         unchanged: "无实际变化且无拒绝",
       },
       fields: ["status", "applied", "rejected", "destroyed", "revisions"],
-      destroyed: "真实提交或目标事实漂移后为 true；输入错误、无变化和事务回滚后为 false",
+      destroyed:
+        "真实提交或目标事实漂移后为 true，表示数据快照与当前变更清单已销毁，相容的 work/** 保留；输入错误、无变化和事务回滚后为 false",
     },
   },
 } satisfies AgentWorkspaceRuntimeContract);

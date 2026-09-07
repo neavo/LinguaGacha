@@ -9,12 +9,13 @@ import { AGENT_WORKSPACE_CONTRACT } from "../../src/backend/agent/workspace/cont
 import { DenoAgentWorkspaceRunner } from "../../src/backend/agent/workspace/runtime/runner.ts";
 import { project_path } from "./project-paths.ts";
 
-it("单文件构建产物由 Deno 加载 TypeScript 并保留语法诊断", async () => {
+it("单文件构建产物由 Deno 加载 TypeScript、执行工作目录权限并保留语法诊断", async () => {
   const temporary_root = await mkdtemp(path.join(os.tmpdir(), "linguagacha-deno-runtime-")); // 隔离产物与工作区，统一清理
   try {
     const workspace_path = path.join(temporary_root, "workspace");
     const bundle_path = path.join(temporary_root, "bundle");
     await mkdir(workspace_path);
+    await mkdir(path.join(workspace_path, "work"));
     await writeFile(
       path.join(workspace_path, "contract.json"),
       JSON.stringify(AGENT_WORKSPACE_CONTRACT),
@@ -41,12 +42,33 @@ it("单文件构建产物由 Deno 加载 TypeScript 并保留语法诊断", asyn
       runner.run(
         {
           workspacePath: workspace_path,
-          script: "const value: number = await Promise.resolve(42); return value;",
+          script:
+            'const value: number = await Promise.resolve(42); await Deno.writeTextFile("work/state.json", JSON.stringify({ value })); return value;',
           todos: [],
         },
         signal,
       ),
     ).resolves.toMatchObject({ result: 42 });
+    await expect(
+      runner.run(
+        {
+          workspacePath: workspace_path,
+          script: 'return JSON.parse(await Deno.readTextFile("work/state.json"));',
+          todos: [],
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({ result: { value: 42 } });
+    await expect(
+      runner.run(
+        {
+          workspacePath: workspace_path,
+          script: 'await Deno.writeTextFile("contract.json", "{}"); return null;',
+          todos: [],
+        },
+        signal,
+      ),
+    ).rejects.toThrow(/Requires write access/u);
     await expect(
       runner.run(
         {

@@ -50,7 +50,7 @@ disable-model-invocation: true
 ### 工程与内部信息
 
 - 工程事实来自当前工作区快照：items 承载原作文本、姓名和人物证据，glossary 承载目标语言术语约束，`project_meta` 提供工程语言、数量和文件顺序，sources 补充必要的结构证据。
-- 角色扮演保持项目只读，任务资产由 `task/roleplay_canon.json` 与 `task/roleplay_state.json` 组成。
+- 角色扮演保持项目只读，工作材料由 `work/roleplay_canon.json` 与 `work/roleplay_state.json` 组成。
 - 用户可见内容由所选视角能够感知的信息和当前交互组成，状态维护、证据检索与内部推演留在执行层。
 
 ### 故事正文与交互区
