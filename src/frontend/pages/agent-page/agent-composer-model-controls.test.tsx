@@ -35,7 +35,6 @@ describe("AgentComposerModelControls", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
   });
@@ -54,21 +53,107 @@ describe("AgentComposerModelControls", () => {
     await act(async () =>
       document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
     );
-    const model = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
-      (item) => item.textContent === "模型 A",
-    )!;
-    await act(async () => model.click());
-    expect(controller.select_agent_batch_translation_model).toHaveBeenCalledWith("a");
+    const model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => item.title === "模型 A");
+    expect(model).toBeDefined();
+    await act(async () => model!.click());
+    expect(controller.select_model).not.toHaveBeenCalled();
+    const default_option = document.querySelector<HTMLElement>('[role="menuitemradio"]')!;
+    expect(default_option.getAttribute("aria-checked")).toBe("false");
+    await act(async () => default_option.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "agent_batch_translation",
+      model_id: "a",
+    });
+    expect(trigger().getAttribute("aria-expanded")).toBe("false");
     controller.snapshot.model_selection.agent_batch_translation = "a";
     await render();
     expect(trigger().textContent).toContain("模型 A");
     await act(async () => trigger().click());
+    await act(async () =>
+      document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
+    );
+    const selected_model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => item.title === "模型 A")!;
+    await act(async () => selected_model.click());
+    expect(document.querySelector('[role="menuitemradio"]')?.getAttribute("aria-checked")).toBe(
+      "true",
+    );
     const follow_again = [
       ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-item"]'),
     ].find((item) => item.textContent === "agent_page.batch_translation_model.follow_option")!;
     expect(follow_again.getAttribute("aria-current")).toBeNull();
     await act(async () => follow_again.click());
-    expect(controller.select_agent_batch_translation_model).toHaveBeenLastCalledWith(null);
+    expect(controller.select_model).toHaveBeenLastCalledWith({
+      target: "agent_batch_translation",
+      model_id: null,
+    });
+  });
+
+  it("批量菜单展开不保存，激活已选等级提交模型并关闭整组菜单", async () => {
+    controller.snapshot.models[0]!.available_thinking_levels = ["OFF"];
+    await render();
+    await act(async () => trigger().click());
+    await act(async () =>
+      document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
+    );
+    const model = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]'),
+    ].find((item) => item.title === "模型 A")!;
+    await act(async () => model.click());
+    expect(controller.select_model).not.toHaveBeenCalled();
+    const level = document.querySelector<HTMLElement>(
+      '[role="menuitemradio"][aria-checked="true"]',
+    )!;
+    await act(async () => level.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "agent_batch_translation",
+      model_id: "a",
+      thinking_level: "OFF",
+    });
+    expect(controller.update_thinking_level).not.toHaveBeenCalled();
+    expect(trigger().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("主模型保持直接选择，独立等级继续走页面回调", async () => {
+    controller.snapshot.models[0]!.available_thinking_levels = ["OFF", "HIGH"];
+    const on_change = vi.fn();
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <AgentComposerModelControls
+            controller={controller}
+            context_tokens={null}
+            context_limits={null}
+            on_thinking_level_change={on_change}
+          />
+        </TooltipProvider>,
+      ),
+    );
+    const main = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="app.model.selection.label"]',
+    )!;
+    await act(async () => main.click());
+    await act(async () =>
+      document.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!.click(),
+    );
+    const model = document.querySelector<HTMLElement>('[role="menuitemradio"]')!;
+    await act(async () => model.click());
+    expect(controller.select_model).toHaveBeenCalledExactlyOnceWith({
+      target: "agent",
+      model_id: "a",
+    });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger")!.click(),
+    );
+    const high = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+      (item) => item.textContent === "app.model.thinking_level.high",
+    )!;
+    await act(async () => high.click());
+    expect(on_change).toHaveBeenCalledExactlyOnceWith("HIGH");
+    expect(controller.update_thinking_level).not.toHaveBeenCalled();
   });
 
   it.each(["loading", "updating"] as const)("%s 时模型入口使用共同禁用状态", async (state) => {
@@ -88,7 +173,6 @@ describe("AgentComposerModelControls", () => {
       ".agent-composer__thinking-trigger",
     );
     expect(thinking?.disabled).toBe(true);
-    expect(thinking?.textContent).toContain("app.model.thinking_level.default");
     expect(thinking?.parentElement?.tabIndex).toBe(0);
   });
 

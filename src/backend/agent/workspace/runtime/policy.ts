@@ -4,8 +4,6 @@ export const AGENT_WORKSPACE_RUNTIME_POLICY = Object.freeze({
   resultBytes: 128 * 1024,
   queryPageDefault: 20,
   queryPageMax: 100,
-  literalMatchExamplesDefault: 3,
-  literalMatchExamplesMax: 50,
   writeRoots: Object.freeze(["changes", "task", "scratch"] as const),
   denoArgs: Object.freeze([
     "--no-npm",

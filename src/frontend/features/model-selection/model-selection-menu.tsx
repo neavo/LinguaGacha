@@ -1,11 +1,6 @@
 import { Boxes, Circle, CircleCheck } from "lucide-react";
 
-import {
-  MODEL_TYPES,
-  is_model_thinking_level,
-  type ModelThinkingLevel,
-  type ModelUsage,
-} from "@domain/model";
+import { MODEL_TYPES, type ModelThinkingLevel, type ModelUsage } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   AppDropdownMenuRadioGroup,
@@ -28,8 +23,10 @@ type ModelThinkingLevelOptionsProps = ModelSelectionMenuProps & {
   on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void;
 };
 
-/** 工作台使用的三级入口：当前模型、模型类型、类型内模型。 */
-export function ModelSelectionMenu(props: ModelSelectionMenuProps): JSX.Element {
+/** 工作台当前模型入口，叶子一次提交模型及可选思考等级。 */
+export function ModelSelectionMenu(
+  props: Omit<ModelSelectionMenuProps, "usage"> & { usage: "translation" },
+): JSX.Element {
   const { t } = useI18n();
   const selected = read_selected_model(props.controller, props.usage);
   const selected_name = selected?.name || selected?.id || t("app.model.selection.unavailable");
@@ -42,32 +39,27 @@ export function ModelSelectionMenu(props: ModelSelectionMenuProps): JSX.Element 
         <span className="max-w-72 truncate">{selected_name}</span>
       </AppDropdownMenuSubTrigger>
       <AppDropdownMenuSubContent>
-        <ModelSelectionCategories {...props} />
+        <ModelSelectionOptions
+          mode="model_and_thinking"
+          models={props.controller.snapshot.models}
+          value={props.controller.snapshot.model_selection.translation}
+          disabled={disabled}
+          on_select={(change) => {
+            void props.controller.select_model({ target: "translation", ...change });
+          }}
+        />
       </AppDropdownMenuSubContent>
     </AppDropdownMenuSub>
   );
 }
 
-/** Agent 底栏按钮已承担当前模型入口，因此只复用分类与模型两层。 */
-export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.Element {
-  return (
-    <ModelSelectionOptions
-      models={props.controller.snapshot.models}
-      value={props.controller.snapshot.model_selection[props.usage]}
-      disabled={Boolean(props.disabled) || props.controller.loading || props.controller.updating}
-      on_select={(id) => {
-        void props.controller.select_model(props.usage, id);
-      }}
-    />
-  );
-}
-
-/** 模型选项只表达选择；消费方决定暂存还是立即保存。 */
+/** 模型选项只表达模型及可选等级，消费方决定目标用途与提交命令。 */
 export function ModelSelectionOptions(props: {
+  mode: "model" | "model_and_thinking";
   models: readonly ModelSelectionOption[];
   value: string;
   disabled?: boolean;
-  on_select: (model_id: string) => void;
+  on_select: (change: { model_id: string; thinking_level?: ModelThinkingLevel }) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const selected_id = props.value;
@@ -91,16 +83,54 @@ export function ModelSelectionOptions(props: {
             </AppDropdownMenuSubTrigger>
             <AppDropdownMenuSubContent>
               <AppDropdownMenuRadioGroup value={selected_id}>
-                {models.map((model) => (
-                  <AppDropdownMenuRadioItem
-                    key={model.id}
-                    value={model.id}
-                    disabled={disabled}
-                    onClick={() => props.on_select(model.id)}
-                  >
-                    <span className="max-w-72 truncate">{model.name || model.id}</span>
-                  </AppDropdownMenuRadioItem>
-                ))}
+                {models.map((model) =>
+                  props.mode === "model_and_thinking" ? (
+                    <AppDropdownMenuSub key={model.id}>
+                      <AppDropdownMenuSubTrigger
+                        disabled={disabled}
+                        title={model.name || model.id}
+                        aria-current={model.id === selected_id ? "true" : undefined}
+                      >
+                        {model.id === selected_id ? (
+                          <CircleCheck aria-hidden="true" />
+                        ) : (
+                          <Circle aria-hidden="true" />
+                        )}
+                        <span className="max-w-72 truncate">{model.name || model.id}</span>
+                      </AppDropdownMenuSubTrigger>
+                      <AppDropdownMenuSubContent>
+                        {model.available_thinking_levels.length > 0 ? (
+                          <ThinkingLevelOptions
+                            model={model}
+                            disabled={disabled}
+                            on_select={(thinking_level) =>
+                              props.on_select({ model_id: model.id, thinking_level })
+                            }
+                          />
+                        ) : (
+                          // 默认叶子只选择模型，省略等级以沿用模型配置。
+                          <AppDropdownMenuRadioItem
+                            value={model.id}
+                            disabled={disabled}
+                            onClick={() => props.on_select({ model_id: model.id })}
+                          >
+                            {t("app.model.thinking_level.default")}
+                          </AppDropdownMenuRadioItem>
+                        )}
+                      </AppDropdownMenuSubContent>
+                    </AppDropdownMenuSub>
+                  ) : (
+                    <AppDropdownMenuRadioItem
+                      key={model.id}
+                      value={model.id}
+                      disabled={disabled}
+                      title={model.name || model.id}
+                      onClick={() => props.on_select({ model_id: model.id })}
+                    >
+                      <span className="max-w-72 truncate">{model.name || model.id}</span>
+                    </AppDropdownMenuRadioItem>
+                  ),
+                )}
               </AppDropdownMenuRadioGroup>
             </AppDropdownMenuSubContent>
           </AppDropdownMenuSub>
@@ -114,22 +144,39 @@ export function ModelSelectionOptions(props: {
 export function ModelThinkingLevelOptions(
   props: ModelThinkingLevelOptionsProps,
 ): JSX.Element | null {
-  const { t } = useI18n();
   const selected = read_selected_model(props.controller, props.usage);
-  if (selected === null || selected.available_thinking_levels.length === 0) return null;
-  const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
+  if (selected === null) return null;
   return (
-    <AppDropdownMenuRadioGroup
-      value={selected.thinking_level}
-      onValueChange={(level) => {
-        if (!is_model_thinking_level(level)) return;
+    <ThinkingLevelOptions
+      model={selected}
+      disabled={Boolean(props.disabled) || props.controller.loading || props.controller.updating}
+      on_select={(level) => {
+        if (level === selected.thinking_level) return;
         if (props.on_thinking_level_change === undefined) {
           void props.controller.update_thinking_level(props.usage, level);
         } else props.on_thinking_level_change(level);
       }}
-    >
-      {selected.available_thinking_levels.map((level) => (
-        <AppDropdownMenuRadioItem key={level} value={level} disabled={disabled}>
+    />
+  );
+}
+
+/** 显式模型的等级叶子支持再次激活已选值，用于同时切换目标模型。 */
+function ThinkingLevelOptions(props: {
+  model: ModelSelectionOption;
+  disabled: boolean;
+  on_select: (level: ModelThinkingLevel) => void;
+}): JSX.Element | null {
+  const { t } = useI18n();
+  if (props.model.available_thinking_levels.length === 0) return null;
+  return (
+    <AppDropdownMenuRadioGroup value={props.model.thinking_level}>
+      {props.model.available_thinking_levels.map((level) => (
+        <AppDropdownMenuRadioItem
+          key={level}
+          value={level}
+          disabled={props.disabled}
+          onClick={() => props.on_select(level)}
+        >
           {t(MODEL_THINKING_LEVEL_LABEL_KEY[level])}
         </AppDropdownMenuRadioItem>
       ))}

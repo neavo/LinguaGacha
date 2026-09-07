@@ -5,7 +5,6 @@ import type { ModelThinkingLevel } from "@domain/model";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
-  ModelSelectionCategories,
   ModelSelectionOptions,
   ModelThinkingLevelOptions,
 } from "@frontend/features/model-selection/model-selection-menu";
@@ -112,9 +111,13 @@ export function AgentComposerModelControls(props: {
           </>
         }
       >
-        <ModelSelectionCategories
-          controller={props.controller}
-          usage="agent"
+        <ModelSelectionOptions
+          mode="model"
+          models={props.controller.snapshot.models}
+          value={props.controller.snapshot.model_selection.agent}
+          on_select={({ model_id }) => {
+            void props.controller.select_model({ target: "agent", model_id });
+          }}
           disabled={model_controls_disabled}
         />
       </ModelMenuButton>
@@ -178,7 +181,10 @@ export function AgentComposerModelControls(props: {
           aria-current={batch_model_id === null ? "true" : undefined}
           disabled={model_controls_disabled}
           onClick={() => {
-            void props.controller.select_agent_batch_translation_model(null);
+            void props.controller.select_model({
+              target: "agent_batch_translation",
+              model_id: null,
+            });
           }}
         >
           <FollowModelIcon aria-hidden="true" />
@@ -186,11 +192,12 @@ export function AgentComposerModelControls(props: {
         </AppDropdownMenuItem>
         <AppDropdownMenuSeparator />
         <ModelSelectionOptions
+          mode="model_and_thinking"
           models={props.controller.snapshot.models}
           value={batch_model_id ?? ""}
           disabled={model_controls_disabled}
-          on_select={(id) => {
-            void props.controller.select_agent_batch_translation_model(id);
+          on_select={(change) => {
+            void props.controller.select_model({ target: "agent_batch_translation", ...change });
           }}
         />
       </ModelMenuButton>

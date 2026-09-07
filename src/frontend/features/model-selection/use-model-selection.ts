@@ -8,6 +8,7 @@ import { resolve_visible_error_message } from "@frontend/app/feedback/visible-er
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   normalize_model_selection_snapshot,
+  type ModelSelectionChange,
   type ModelSelectionOption,
   type ModelSelectionSnapshot,
 } from "@shared/model-selection";
@@ -17,8 +18,7 @@ export type ModelSelectionController = {
   snapshot: ModelSelectionSnapshot;
   loading: boolean;
   updating: boolean;
-  select_model: (usage: ModelUsage, model_id: string) => Promise<void>;
-  select_agent_batch_translation_model: (model_id: string | null) => Promise<void>;
+  select_model: (change: ModelSelectionChange) => Promise<void>;
   update_thinking_level: (usage: ModelUsage, thinking_level: ModelThinkingLevel) => Promise<void>; // 后端按用途原子定位当前模型，调用方不提交可能过期的模型 ID
 };
 
@@ -85,14 +85,22 @@ export function useModelSelection(): ModelSelectionController {
     [push_toast, t],
   );
 
+  /** 同时比较选择和全局等级，允许当前模型换档及其它模型沿用已选档位。 */
   const select_model = useCallback(
-    async (usage: ModelUsage, model_id: string): Promise<void> => {
-      if (snapshot.model_selection[usage] === model_id) return;
-      await update_snapshot("/api/models/select", { usage, model_id });
+    async (change: ModelSelectionChange): Promise<void> => {
+      const level = "thinking_level" in change ? change.thinking_level : undefined;
+      const model = snapshot.models.find((item) => item.id === change.model_id);
+      if (
+        snapshot.model_selection[change.target] === change.model_id &&
+        (level === undefined || model?.thinking_level === level)
+      )
+        return;
+      await update_snapshot("/api/models/select", change);
     },
-    [snapshot.model_selection, update_snapshot],
+    [snapshot, update_snapshot],
   );
 
+  /** 独立档位入口按用途更新当前模型，重复档位无需保存。 */
   const update_thinking_level = useCallback(
     async (usage: ModelUsage, thinking_level: ModelThinkingLevel): Promise<void> => {
       const selected = snapshot.models.find(
@@ -106,21 +114,11 @@ export function useModelSelection(): ModelSelectionController {
     [snapshot, update_snapshot],
   );
 
-  /** 显式模型和跟随偏好都以持久化回包作为新的页面事实。 */
-  const select_agent_batch_translation_model = useCallback(
-    async (model_id: string | null): Promise<void> => {
-      if (snapshot.model_selection.agent_batch_translation === model_id) return;
-      await update_snapshot("/api/models/agent-batch-translation/select", { model_id });
-    },
-    [snapshot.model_selection.agent_batch_translation, update_snapshot],
-  );
-
   return {
     snapshot,
     loading,
     updating,
     select_model,
-    select_agent_batch_translation_model,
     update_thinking_level,
   };
 }

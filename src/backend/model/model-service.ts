@@ -128,29 +128,50 @@ export class ModelService {
     return this.persist_config_and_build_snapshot(config);
   }
 
-  /**
-   * 更新指定执行用途的模型选择
-   */
-  public select_model(request: JsonRecord): JsonRecord {
-    const usage = this.read_model_usage(request["usage"]);
-    const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
-    return this.build_selection_snapshot(this.update_selection(usage, model_id));
-  }
-
-  /** Agent 批量翻译偏好与其它模型选择共用持久化出口，null 表示动态跟随。 */
-  public select_agent_batch_translation_model(request: JsonRecord): ModelSelectionSnapshot {
+  /** 模型选择和显式等级在同一配置副本中校验，并由唯一出口保存一次。 */
+  public select_model(request: JsonRecord): ModelSelectionSnapshot {
+    const target = request["target"];
+    if (target !== "translation" && target !== "agent" && target !== "agent_batch_translation") {
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { field: "target" },
+      });
+    }
     const value = request["model_id"];
-    if (value !== null && (typeof value !== "string" || value.trim() === "")) {
+    if (
+      !(value === null && target === "agent_batch_translation") &&
+      (typeof value !== "string" || value.trim() === "")
+    ) {
       throw new AppErrors.AppError("request.validation_failed", {
         public_details: { field: "model_id" },
       });
     }
+    const has_level = Object.hasOwn(request, "thinking_level");
+    const level = request["thinking_level"];
+    if (has_level && (target === "agent" || value === null || !is_model_thinking_level(level))) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { field: "thinking_level" },
+      });
+    }
     const model_id = typeof value === "string" ? value.trim() : null;
     const config = this.load_setting_with_models(false);
-    if (model_id !== null)
-      this.find_model_index_or_raise(read_config_model_records(config), model_id);
+    const models = read_config_model_records(config);
+    if (model_id !== null) {
+      const index = this.find_model_index_or_raise(models, model_id);
+      if (has_level && is_model_thinking_level(level)) {
+        const model = models[index]!; // 查找成功保证对象存在，输入等级已在上方收窄。
+        const capability = resolve_model_capability(Model.from_json(model, model_id));
+        if (!capability.available_thinking_levels.includes(level)) {
+          throw new AppErrors.AppError("request.validation_failed", {
+            public_details: { field: "thinking_level" },
+          });
+        }
+        models[index] = { ...model, thinking: { level } };
+      }
+    }
     const selection = normalize_model_selection(config["model_selection"]);
-    selection.agent_batch_translation = model_id;
+    if (target === "agent_batch_translation") selection[target] = model_id;
+    else if (model_id !== null) selection[target] = model_id;
+    config["models"] = models as unknown as JsonValue;
     config["model_selection"] = selection;
     return this.build_selection_snapshot(this.persist_config(config));
   }
@@ -171,18 +192,6 @@ export class ModelService {
     models[index] = this.apply_patch(models[index] ?? {}, { thinking: { level: thinking_level } });
     config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
-  }
-
-  /** 按执行用途校验并持久化模型选择。 */
-  private update_selection(usage: ModelUsage, model_id: string): JsonRecord {
-    const config = this.load_setting_with_models(false);
-    const models = read_config_model_records(config);
-    const selection = normalize_model_selection(config["model_selection"]);
-    this.find_model_index_or_raise(models, model_id);
-    selection[usage] = model_id;
-    config["models"] = models as unknown as JsonValue;
-    config["model_selection"] = selection;
-    return this.persist_config(config);
   }
 
   /**

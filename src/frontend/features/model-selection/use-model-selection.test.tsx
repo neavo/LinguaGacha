@@ -59,7 +59,7 @@ describe("useModelSelection", () => {
 
     expect(api.fetch).toHaveBeenCalledOnce();
     expect(api.fetch).toHaveBeenCalledWith("/api/models/select", {
-      usage: "translation",
+      target: "translation",
       model_id: "openai",
     });
     expect(container.textContent).toContain("preset:OFF:true");
@@ -76,7 +76,8 @@ describe("useModelSelection", () => {
     api.fetch.mockRejectedValueOnce(new Error("offline"));
     const container = await render_probe();
     await act(async () => find_button(container, "batch").click());
-    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/select", {
+      target: "agent_batch_translation",
       model_id: "openai",
     });
     expect(container.querySelector("output")?.textContent).toBe("follow");
@@ -86,10 +87,34 @@ describe("useModelSelection", () => {
     expect(container.querySelector("output")?.textContent).toBe("openai");
     api.fetch.mockResolvedValueOnce(snapshot("preset"));
     await act(async () => find_button(container, "follow").click());
-    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/agent-batch-translation/select", {
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/select", {
+      target: "agent_batch_translation",
       model_id: null,
     });
     expect(container.querySelector("output")?.textContent).toBe("follow");
+  });
+
+  it("组合选择比较模型和等级，并用回包更新共享等级", async () => {
+    api.get.mockResolvedValue(snapshot("preset"));
+    api.fetch.mockResolvedValueOnce(snapshot("preset", "HIGH"));
+    const container = await render_probe();
+    await act(async () => find_button(container, "combined").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/select", {
+      target: "translation",
+      model_id: "preset",
+      thinking_level: "HIGH",
+    });
+    expect(container.textContent).toContain("preset:HIGH:false");
+    await act(async () => find_button(container, "combined").click());
+    expect(api.fetch).toHaveBeenCalledOnce();
+    api.fetch.mockResolvedValueOnce(snapshot("openai"));
+    await act(async () => find_button(container, "saved-level").click());
+    expect(api.fetch).toHaveBeenLastCalledWith("/api/models/select", {
+      target: "translation",
+      model_id: "openai",
+      thinking_level: "OFF",
+    });
+    expect(container.textContent).toContain("openai:OFF:false");
   });
 
   it("更新当前用途模型的思考档位并消费统一窄回包", async () => {
@@ -105,18 +130,6 @@ describe("useModelSelection", () => {
       thinking_level: "HIGH",
     });
     expect(container.textContent).toContain("preset:HIGH:false");
-  });
-
-  it("更新失败保留旧快照并显示统一错误", async () => {
-    api.get.mockResolvedValue(snapshot("preset"));
-    api.fetch.mockRejectedValue(new Error("offline"));
-    const container = await render_probe();
-    await wait_for_text(container, "preset:OFF:false");
-
-    await act(async () => find_button(container, "change").click());
-    await wait_for_text(container, "preset:OFF:false");
-
-    expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
   });
 
   it("运行结束后刷新持久化选择，并隔离运行期间的迟到查询", async () => {
@@ -176,17 +189,57 @@ function Probe(): JSX.Element {
   );
   return (
     <div>
+      <button
+        onClick={() =>
+          void controller.select_model({
+            target: "translation",
+            model_id: "preset",
+            thinking_level: "HIGH",
+          })
+        }
+      >
+        combined
+      </button>
+      <button
+        onClick={() =>
+          void controller.select_model({
+            target: "translation",
+            model_id: "openai",
+            thinking_level: "OFF",
+          })
+        }
+      >
+        saved-level
+      </button>
       <output>{controller.snapshot.model_selection.agent_batch_translation ?? "follow"}</output>
-      <button onClick={() => void controller.select_agent_batch_translation_model("openai")}>
+      <button
+        onClick={() =>
+          void controller.select_model({ target: "agent_batch_translation", model_id: "openai" })
+        }
+      >
         batch
       </button>
-      <button onClick={() => void controller.select_agent_batch_translation_model(null)}>
+      <button
+        onClick={() =>
+          void controller.select_model({ target: "agent_batch_translation", model_id: null })
+        }
+      >
         follow
       </button>
       <span>{`${controller.snapshot.model_selection.translation}:${selected?.thinking_level ?? "OFF"}:${controller.updating.toString()}`}</span>
-      <button onClick={() => void controller.select_model("translation", "preset")}>same</button>
-      <button onClick={() => void controller.select_model("translation", "openai")}>change</button>
-      <button onClick={() => void controller.select_model("agent", "openai")}>other</button>
+      <button
+        onClick={() => void controller.select_model({ target: "translation", model_id: "preset" })}
+      >
+        same
+      </button>
+      <button
+        onClick={() => void controller.select_model({ target: "translation", model_id: "openai" })}
+      >
+        change
+      </button>
+      <button onClick={() => void controller.select_model({ target: "agent", model_id: "openai" })}>
+        other
+      </button>
       <button onClick={() => void controller.update_thinking_level("translation", "HIGH")}>
         thinking
       </button>

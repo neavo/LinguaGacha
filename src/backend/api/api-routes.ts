@@ -164,9 +164,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/models/snapshot", () => models.get_snapshot());
   context.postJson("/api/models/update", (body) => models.update_model(body));
   context.postJson("/api/models/select", (body) => models.select_model(body));
-  context.postJson("/api/models/agent-batch-translation/select", (body) =>
-    models.select_agent_batch_translation_model(body),
-  );
   context.postJson("/api/models/thinking-level/update", (body) =>
     models.update_selected_model_thinking_level(body),
   );

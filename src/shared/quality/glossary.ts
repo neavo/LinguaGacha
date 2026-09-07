@@ -91,10 +91,9 @@ export function evaluate_glossary_applications(
   const matched_ids_by_field = new Map<GlossaryTargetField, Set<string>>();
   for (const part of translation_parts) {
     if (part.field !== "dst" && part.field !== "name_dst") continue;
-    matched_ids_by_field.set(
-      part.field,
-      new Set(compiled.target_matcher.match(part.text).map((match) => match.key)),
-    );
+    const matched_ids = new Set<string>();
+    compiled.target_matcher.scan_keys(part.text, (key) => matched_ids.add(key));
+    matched_ids_by_field.set(part.field, matched_ids);
   }
   return source_matches.flatMap(({ entry, fields }) => {
     if (entry.dst.trim() === "") return [];

@@ -64,13 +64,16 @@ describe("共享字面量匹配器", () => {
     ]);
   });
 
-  it("布尔匹配与完整范围匹配保持相同的 Unicode 语义", () => {
+  it("命中身份、布尔匹配与范围匹配保持相同的 Unicode 语义", () => {
     const matcher = compile_literal_patterns([
       { key: "folded", text: "STRASSE", case_sensitive: false },
       { key: "sigma", text: "ΟΣ", case_sensitive: false },
       { key: "accent", text: "é", case_sensitive: false },
       { key: "hangul", text: "가", case_sensitive: false },
       { key: "kana", text: "カタカナ", case_sensitive: false },
+      { key: "voiced-kana", text: "ガ", case_sensitive: false },
+      { key: "ligature", text: "fi", case_sensitive: false },
+      { key: "duplicate", text: "STRASSE", case_sensitive: false },
       { key: "emoji", text: "👩‍💻", case_sensitive: true },
       { key: "sensitive", text: "JK", case_sensitive: true },
     ]);
@@ -80,24 +83,53 @@ describe("共享字面量匹配器", () => {
       "前缀 ος 后缀",
       "组合字符 e\u0301",
       "韩文 Jamo 가",
+      "兼容 Jamo ㄱㅏ 与半角 ﾡￂ",
       "半角假名 ｶﾀｶﾅ",
+      "浊音 ｶﾞ と カ\u3099",
+      "合字 ﬁ",
+      "重复命中 STRASSE Straße",
       "emoji 👩‍💻 test",
       "全角 ＪＫ",
       "小写 ｊｋ",
     ];
 
     for (const text of texts) {
-      expect(matcher.matches(text), text).toBe(matcher.match(text).length > 0);
+      const matches = matcher.match(text);
+      const keys: string[] = [];
+      matcher.scan_keys(text, (key) => keys.push(key));
+      expect(keys.toSorted(), text).toEqual(matches.map(({ key }) => key).toSorted());
+      expect(matcher.matches(text), text).toBe(matches.length > 0);
+    }
+  });
+
+  it("按选定身份返回全部范围，并保持输入身份顺序", () => {
+    const matcher = compile_literal_patterns([
+      { key: "folded", text: "s", case_sensitive: false },
+      { key: "suffix", text: "a", case_sensitive: true },
+      { key: "full", text: "aa", case_sensitive: true },
+      { key: "duplicate", text: "AA", case_sensitive: false },
+    ]);
+    const text = "aaa ß";
+    const keys = ["folded", "full", "duplicate"];
+    for (const selected of [keys, ["full"], ["folded"], []]) {
+      expect(matcher.match(text, new Set(selected))).toEqual(
+        matcher.match(text).filter(({ key }) => selected.includes(key)),
+      );
     }
   });
 
   it("使用 NFKC 与兼容 casefold", () => {
     expect(normalize_literal_text("ＳＴＲＡẞＥ I ΟΣ", false)).toBe("strasse i οσ");
-    expect(
-      compile_literal_patterns([{ key: "term", text: "STRASSE", case_sensitive: false }]).match(
-        "Straße",
-      ),
-    ).toEqual([{ key: "term", ranges: [{ start: 0, end: 6 }] }]);
+    const matcher = compile_literal_patterns([{ key: "hangul", text: "가", case_sensitive: true }]);
+    expect(matcher.match("ㄱㅏ ﾡￂ")).toEqual([
+      {
+        key: "hangul",
+        ranges: [
+          { start: 0, end: 2 },
+          { start: 3, end: 5 },
+        ],
+      },
+    ]);
   });
 
   it("大小写敏感规则仍执行 NFKC，但不执行大小写折叠", () => {

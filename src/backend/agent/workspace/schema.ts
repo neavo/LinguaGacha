@@ -44,8 +44,6 @@ export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
         result_bytes: Type.Integer({ minimum: 1 }),
         query_page_default: Type.Integer({ minimum: 1 }),
         query_page_max: Type.Integer({ minimum: 1 }),
-        literal_match_examples_default: Type.Integer({ minimum: 0 }),
-        literal_match_examples_max: Type.Integer({ minimum: 0 }),
       },
       { additionalProperties: false },
     ),

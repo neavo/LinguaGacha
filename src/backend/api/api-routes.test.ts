@@ -23,7 +23,6 @@ const POST_PATHS = new Set([
   "/api/agent/message",
   "/api/agent/approval-mode",
   "/api/agent/question/resolve",
-  "/api/models/agent-batch-translation/select",
   "/api/agent/write-approval/resolve",
   "/api/agent/queue/update",
   "/api/agent/queue/delete",
@@ -234,6 +233,15 @@ describe("register_api_routes", () => {
     expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
   });
 
+  it("组合选模载荷原样转交唯一选模入口", () => {
+    const fixture = create_route_fixture();
+    const request = { target: "translation", model_id: "a", thinking_level: "HIGH" };
+    expect(read_post_handler(fixture.post_json, "/api/models/select")(request)).toEqual({
+      selected: request,
+    });
+    expect(fixture.select_model).toHaveBeenCalledExactlyOnceWith(request);
+  });
+
   it("思考档位更新原样转交模型服务", () => {
     const fixture = create_route_fixture();
     const request = { usage: "agent", thinking_level: "HIGH" };
@@ -265,6 +273,7 @@ function create_route_fixture() {
   const stop = vi.fn(() => acknowledgement);
   const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
+  const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
   const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
     updated: request,
   }));
@@ -314,6 +323,7 @@ function create_route_fixture() {
         model_selection: { translation: "a", agent: "c" },
         models: [],
       })),
+      select_model,
       update_selected_model_thinking_level,
     },
     batchTranslation: { start: start_task },
@@ -353,6 +363,7 @@ function create_route_fixture() {
     stop,
     update_selected_model_thinking_level,
     update_settings,
+    select_model,
   };
 }
 

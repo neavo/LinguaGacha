@@ -83,7 +83,7 @@ function assign_literal_hits(
   for (const [item_index, text_group] of text_groups.entries()) {
     const matched_entry_ids = new Set<string>();
     for (const part of text_group) {
-      matcher.scan(part.text, (entry_id) => matched_entry_ids.add(entry_id));
+      matcher.scan_keys(part.text, (entry_id) => matched_entry_ids.add(entry_id));
     }
     for (const entry_id of matched_entry_ids) {
       hits_by_entry_id[entry_id] = (hits_by_entry_id[entry_id] ?? 0) + 1;
