@@ -35,7 +35,7 @@ export const zh_cn_workbench_page = {
     checking: "正在检查校对警告 …",
     check_failed: "读取校对警告失败，仍可继续生成当前译文。",
     warning_description:
-      "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校修复后再生成译文，是否确认继续 …?",
+      "检查到 {COUNT} 个校对警告，推荐使用 AGENT 自动审校后再生成译文，是否确认继续 …?",
     warning_list: "校对警告",
     retry_check: "重新检查",
     continue_generate: "继续生成",

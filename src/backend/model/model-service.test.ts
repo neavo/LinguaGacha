@@ -37,34 +37,83 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
-  it("批量翻译偏好独立保存，失败可重试，删除模型恢复跟随", async () => {
+  it("批量翻译偏好独立保存，删除模型恢复跟随", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ id: "a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "b", type: "CUSTOM_OPENAI" }),
     ]);
     const original = service.get_selection_snapshot().model_selection;
     expect(original.agent_batch_translation).toBeNull();
-    expect(() => service.select_agent_batch_translation_model({ model_id: "missing" })).toThrow(
-      "model.not_found",
-    );
-    const save = vi.spyOn(app_setting_service, "save_setting");
-    save.mockImplementationOnce(() => {
-      throw new Error("disk full");
-    });
-    expect(() => service.select_agent_batch_translation_model({ model_id: "b" })).toThrow(
-      "disk full",
-    );
-    expect(app_setting_service.read_setting()["model_selection"]).toEqual(original);
-    const selected = service.select_agent_batch_translation_model({ model_id: "b" });
+    expect(() =>
+      service.select_model({ target: "agent_batch_translation", model_id: "missing" }),
+    ).toThrow("model.not_found");
+    const selected = service.select_model({ target: "agent_batch_translation", model_id: "b" });
     expect(selected.model_selection).toEqual({ ...original, agent_batch_translation: "b" });
     expect(app_setting_service.read_setting()["model_selection"]).toEqual(selected.model_selection);
     expect(
-      service.select_agent_batch_translation_model({ model_id: null }).model_selection
+      service.select_model({ target: "agent_batch_translation", model_id: null }).model_selection
         .agent_batch_translation,
     ).toBeNull();
-    service.select_agent_batch_translation_model({ model_id: "b" });
+    service.select_model({ target: "agent_batch_translation", model_id: "b" });
     service.delete_model({ model_id: "b" });
     expect(service.get_selection_snapshot().model_selection.agent_batch_translation).toBeNull();
+  });
+
+  it.each(["translation", "agent_batch_translation"])(
+    "%s 组合选择和模型全局等级保存一次",
+    async (target) => {
+      const { service, app_setting_service } = await create_model_service([
+        create_model({ id: "a", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
+        create_model({ id: "b", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
+      ]);
+      service.select_model({ target: "agent", model_id: "b" });
+      const original = service.get_selection_snapshot().model_selection;
+      const save = vi.spyOn(app_setting_service, "save_setting");
+      const selected = service.select_model({ target, model_id: "b", thinking_level: "HIGH" });
+      expect(save).toHaveBeenCalledOnce();
+      expect(selected.model_selection).toEqual({ ...original, [target]: "b" });
+      expect(selected.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");
+      expect(
+        read_config_model_records(app_setting_service.read_setting()).find(
+          (model) => model["id"] === "b",
+        )?.["thinking"],
+      ).toEqual({ level: "HIGH" });
+      const changed = service.select_model({ target, model_id: "b", thinking_level: "LOW" });
+      expect(changed.models.find((model) => model.id === "b")?.thinking_level).toBe("LOW");
+      expect(
+        service.select_model({ target, model_id: "b" }).models.find((model) => model.id === "b")
+          ?.thinking_level,
+      ).toBe("LOW");
+      const before_failure = app_setting_service.read_setting(); // 失败必须同时保留选择和全局等级。
+      save.mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+      expect(() => service.select_model({ target, model_id: "a", thinking_level: "HIGH" })).toThrow(
+        "disk full",
+      );
+      expect(app_setting_service.read_setting()).toEqual(before_failure);
+    },
+  );
+
+  it.each<JsonRecord>([
+    { target: "unknown", model_id: "a" },
+    { usage: "translation", model_id: "a" },
+    { target: "translation", model_id: " " },
+    { target: "translation", model_id: null },
+    { target: "agent", model_id: "a", thinking_level: "HIGH" },
+    { target: "agent_batch_translation", model_id: null, thinking_level: "HIGH" },
+    { target: "translation", model_id: "a", thinking_level: "UNKNOWN" },
+    { target: "translation", model_id: "a", thinking_level: "MAX" },
+  ])("非法组合在保存前拒绝：%j", async (request) => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({ id: "a", type: "CUSTOM_OPENAI", model_id: "mimo-v2.5-pro" }),
+    ]);
+    service.get_selection_snapshot();
+    const before = app_setting_service.read_setting();
+    const save = vi.spyOn(app_setting_service, "save_setting");
+    expect(() => service.select_model(request)).toThrow("request.validation_failed");
+    expect(save).not.toHaveBeenCalled();
+    expect(app_setting_service.read_setting()).toEqual(before);
   });
 
   it("快照初始化保留用户模型并补齐缺失预设和自定义类型", async () => {
@@ -285,7 +334,7 @@ describe("ModelService 配置管理", () => {
     ]);
 
     const snapshot = read_selection_snapshot(
-      service.select_model({ usage: "agent", model_id: "openai-a" }),
+      service.select_model({ target: "agent", model_id: "openai-a" }),
     );
     const management = read_request_model_snapshot(service.get_snapshot());
 
@@ -317,7 +366,7 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI", model_id: "gpt-5.6-luna" }),
     ]);
-    service.select_model({ usage: "agent", model_id: "openai" });
+    service.select_model({ target: "agent", model_id: "openai" });
 
     const selection = read_selection_snapshot(
       service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "MAX" }),
@@ -396,7 +445,7 @@ describe("ModelService 配置管理", () => {
     });
 
     const selected_snapshot = read_selection_snapshot(
-      service.select_model({ usage: "agent", model_id: "stale" }),
+      service.select_model({ target: "agent", model_id: "stale" }),
     );
     expect(selected_snapshot.models.find((model) => model["id"] === "stale")).toMatchObject({
       thinking_level: "HIGH",
@@ -408,17 +457,14 @@ describe("ModelService 配置管理", () => {
     });
   });
 
-  it("非法用途和缺失模型均不落盘", async () => {
+  it("主模型不存在时保留原配置", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
     ]);
     const before = service.get_selection_snapshot();
 
-    expect(() => service.select_model({ usage: "unknown", model_id: "openai" })).toThrow(
-      "request.validation_failed",
-    );
-    expect(() => service.select_model({ usage: "agent", model_id: "missing" })).toThrow(
+    expect(() => service.select_model({ target: "agent", model_id: "missing" })).toThrow(
       "model.not_found",
     );
 
@@ -431,9 +477,9 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "openai-a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
     ]);
-    service.select_model({ usage: "translation", model_id: "openai-a" });
-    service.select_model({ usage: "agent", model_id: "openai-a" });
-    service.select_model({ usage: "agent", model_id: "preset" });
+    service.select_model({ target: "translation", model_id: "openai-a" });
+    service.select_model({ target: "agent", model_id: "openai-a" });
+    service.select_model({ target: "agent", model_id: "preset" });
 
     const management_snapshot = read_request_model_snapshot(
       service.delete_model({ model_id: "openai-a" }),
@@ -454,8 +500,8 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
     ]);
-    service.select_model({ usage: "translation", model_id: "google" });
-    service.select_model({ usage: "agent", model_id: "openai" });
+    service.select_model({ target: "translation", model_id: "google" });
+    service.select_model({ target: "agent", model_id: "openai" });
 
     service.delete_model({ model_id: "google" });
     const selection = read_selection_snapshot(service.get_selection_snapshot());
@@ -682,9 +728,9 @@ describe("ModelService 配置管理", () => {
         create_model({ id: "b", type: "CUSTOM_OPENAI" }),
       ]);
       const lease = runtime_gate.begin_runtime(owner);
-      service.select_model({ usage: "agent", model_id: "b" });
+      service.select_model({ target: "agent", model_id: "b" });
       service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" });
-      service.select_agent_batch_translation_model({ model_id: "a" });
+      service.select_model({ target: "agent_batch_translation", model_id: "a" });
       const snapshot = service.get_selection_snapshot();
       expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });
       expect(snapshot.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");

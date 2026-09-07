@@ -38,8 +38,9 @@ ws.tool.groupQualityRuleEntries({ kind: "glossary", entries: [{ id: "a", src: "A
 // @ts-expect-error entry identity is required
 ws.tool.groupQualityRuleEntries({ kind: "text_preserve", entries: [{ src: "A" }] });
 ws.tool.queryItemContexts({ item_ids: [1] }).then(result => result.items[0]?.src);
-ws.tool.matchLiterals({ patterns: [{ key: "a", text: "A", case_sensitive: false, offset: 1 }], examples_per_pattern: 2 }).then(result => {
-  const next: number | null = result.patterns[0]!.next_offset;
+ws.tool.matchLiterals({ patterns: [{ key: "a", text: "A", case_sensitive: false }], max_matches_per_pattern: 2 }).then(result => {
+  const complete: boolean = result.patterns[0]!.matches_complete;
+  const itemId: number | undefined = result.patterns[0]!.matches[0]?.item_id;
 });
 `,
       );

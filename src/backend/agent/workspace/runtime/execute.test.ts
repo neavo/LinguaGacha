@@ -5,6 +5,7 @@ import { AGENT_WORKSPACE_DATA_TOOLS } from "./tool/registry";
 import { execute_agent_workspace_program } from "./execute";
 import type { AgentWorkspaceReadPort } from "./tool/data-tool";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
+import { workspace_item } from "./tool/test-support";
 
 describe("Agent Workspace Deno runtime", () => {
   it("执行异步脚本并投影冻结的 ws 能力树", async () => {
@@ -97,7 +98,7 @@ describe("Agent Workspace Deno runtime", () => {
       execute_agent_workspace_program(async (ws) => {
         return await ws.tool.matchLiterals({
           patterns: [{ key: "alice", text: "alice", case_sensitive: false }],
-          examples_per_pattern: 0,
+          max_matches_per_pattern: 0,
         });
       }, port),
     ).resolves.toMatchObject({ ok: true, result: { matched_item_count: 1 } });
@@ -116,8 +117,35 @@ describe("Agent Workspace Deno runtime", () => {
       message: expect.stringContaining("matchLiterals /patterns:"),
     });
   });
+
+  it("一次读取完整证据后在脚本内聚合，内部结果可超过最终输出上限", async () => {
+    const count = 5000;
+    const iterate_jsonl = vi.fn(async function* () {
+      for (let index = 1; index <= count; index += 1) {
+        yield workspace_item(index, { src: "セラ王女とセラ教団", name_src: "セラ" });
+      }
+    });
+    const response = await execute_agent_workspace_program(
+      async (ws) => {
+        const result = await ws.tool.matchLiterals({
+          patterns: [{ key: "root", text: "セラ", case_sensitive: true }],
+        });
+        const pattern = result.patterns[0]!;
+        expect(pattern.matches_complete).toBe(true);
+        expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeGreaterThan(
+          AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes,
+        );
+        return { count: pattern.matched_item_count };
+      },
+      { contract: AGENT_WORKSPACE_CONTRACT, iterateJsonl: iterate_jsonl },
+    );
+
+    expect(response).toEqual({ ok: true, result: { count }, todos: [] });
+    expect(iterate_jsonl).toHaveBeenCalledExactlyOnceWith("items/entries.jsonl");
+  });
 });
 
+/** 提供单条工程事实，供运行时端口与失败封装测试复用。 */
 function read_port(): AgentWorkspaceReadPort {
   return {
     contract: AGENT_WORKSPACE_CONTRACT,

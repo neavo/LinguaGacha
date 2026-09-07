@@ -10,6 +10,16 @@ import {
 } from "../domain/model";
 import { parse_model_agent_limits, type ModelAgentLimits } from "../domain/model-agent";
 
+/** 一次选择同时提交目标模型及可选的全局思考等级。 */
+export type ModelSelectionChange =
+  | {
+      target: "translation" | "agent_batch_translation";
+      model_id: string;
+      thinking_level?: ModelThinkingLevel;
+    }
+  | { target: "agent"; model_id: string }
+  | { target: "agent_batch_translation"; model_id: null };
+
 /** 任务入口可见的非敏感模型摘要。 */
 export type ModelSelectionOption = JsonRecord & {
   id: string;

@@ -141,7 +141,7 @@ export function create_text_keywords_matcher(args: {
     );
     const match = (value: string): string[] => {
       const matched_indexes = new Set<number>();
-      matcher.scan(value, (key) => matched_indexes.add(Number.parseInt(key, 10)));
+      matcher.scan_keys(value, (key) => matched_indexes.add(Number.parseInt(key, 10)));
       return [...matched_indexes]
         .toSorted((left, right) => left - right)
         .flatMap((index) => {

@@ -112,8 +112,6 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
     result_bytes: AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes,
     query_page_default: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageDefault,
     query_page_max: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageMax,
-    literal_match_examples_default: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesDefault,
-    literal_match_examples_max: AGENT_WORKSPACE_RUNTIME_POLICY.literalMatchExamplesMax,
   },
   datasets: {
     project_meta: {

@@ -102,7 +102,6 @@ describe("AgentTaskToolbar", () => {
               loading: false,
               updating: false,
               select_model: async () => {},
-              select_agent_batch_translation_model: async () => {},
               update_thinking_level: async () => {},
             }}
             approval_mode="manual"

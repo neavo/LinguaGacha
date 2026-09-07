@@ -165,7 +165,6 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: model_selection_commands.update_thinking_level,
     }),
   };

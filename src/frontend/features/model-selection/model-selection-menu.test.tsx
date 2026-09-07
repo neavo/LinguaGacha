@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelSelectionController } from "./use-model-selection";
 import { ModelSelectionMenu, ModelThinkingLevelOptions } from "./model-selection-menu";
 
 const menu_state = vi.hoisted(() => ({
   item_actions: new Map<string, (() => void) | undefined>(),
-  on_value_change: null as ((value: string) => void) | null,
 }));
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
@@ -26,12 +25,7 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
     </button>
   ),
   AppDropdownMenuSubContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  AppDropdownMenuRadioGroup: (props: {
-    children: ReactNode;
-    value?: string;
-    onValueChange: (value: string) => void;
-  }) => {
-    menu_state.on_value_change = props.onValueChange;
+  AppDropdownMenuRadioGroup: (props: { children: ReactNode; value?: string }) => {
     return (
       <div role="radiogroup" data-value={props.value}>
         {props.children}
@@ -53,6 +47,7 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
 }));
 
 describe("ModelSelectionMenu", () => {
+  beforeEach(() => menu_state.item_actions.clear());
   it("展示当前分类与模型，并把选择提交给对应任务用途", () => {
     const select_model = vi.fn(async () => undefined);
     const controller: ModelSelectionController = {
@@ -65,7 +60,7 @@ describe("ModelSelectionMenu", () => {
             name: "",
             agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: "OFF",
-            available_thinking_levels: ["OFF", "LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"],
+            available_thinking_levels: [],
           },
           {
             id: "openai",
@@ -80,7 +75,6 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model,
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 
@@ -91,11 +85,15 @@ describe("ModelSelectionMenu", () => {
 
     expect(document.querySelector('button[aria-current="true"]')).not.toBeNull();
     expect(document.querySelector('[role="radiogroup"][data-value="openai"]')).not.toBeNull();
-    expect(document.querySelector('[role="radio"][data-value="preset"]')).not.toBeNull();
     menu_state.item_actions.get("preset")?.();
-    menu_state.item_actions.get("openai")?.();
-    expect(select_model).toHaveBeenCalledWith("translation", "openai");
-    expect(select_model).toHaveBeenCalledWith("translation", "preset");
+    menu_state.item_actions.get("MEDIUM")?.();
+    expect(select_model).toHaveBeenCalledWith({
+      target: "translation",
+      model_id: "openai",
+      thinking_level: "MEDIUM",
+    });
+    expect(select_model).toHaveBeenCalledWith({ target: "translation", model_id: "preset" });
+    expect(select_model).toHaveBeenCalledTimes(2);
   });
 
   it("当前选择失效时仍可打开菜单恢复到可用模型", () => {
@@ -116,7 +114,6 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 
@@ -126,7 +123,7 @@ describe("ModelSelectionMenu", () => {
     const document = new DOMParser().parseFromString(html, "text/html");
 
     expect(document.querySelector("button")?.disabled).toBe(false);
-    expect(document.querySelector('[role="radio"][data-value="openai"]')).not.toBeNull();
+    expect(document.querySelector('[role="radiogroup"][data-value="OFF"]')).not.toBeNull();
   });
 
   it("展示当前思考档位并提交合法选择", () => {
@@ -148,7 +145,6 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level,
     };
 
@@ -162,7 +158,7 @@ describe("ModelSelectionMenu", () => {
     );
     expect(document.querySelector('[role="radio"][data-value="MAX"]')).not.toBeNull();
     expect(document.querySelector('[role="radio"][data-value="OFF"]')).toBeNull();
-    menu_state.on_value_change?.("MAX");
+    menu_state.item_actions.get("MAX")?.();
     expect(update_thinking_level).toHaveBeenCalledWith("agent", "MAX");
   });
 
@@ -184,7 +180,6 @@ describe("ModelSelectionMenu", () => {
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
-      select_agent_batch_translation_model: vi.fn(async () => undefined),
       update_thinking_level: vi.fn(async () => undefined),
     };
 

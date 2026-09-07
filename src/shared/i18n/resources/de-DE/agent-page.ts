@@ -29,7 +29,7 @@ export const de_de_agent_page = {
       roleplay: "Rollenspiel starten",
       extract_terminology: "Hilf mir, Begriffe zu extrahieren",
       translate_full_text: "Hilf mir, den gesamten Text zu übersetzen",
-      review_translation: "Hilf mir, die Übersetzung zu prüfen",
+      review_translation: "Hilf mir, die Übersetzung zu prüfen und zu korrigieren",
     },
   },
   input: {
