@@ -26,13 +26,22 @@ describe("translation-quality-rules", () => {
     ).toEqual(["か\u3099", "ｶﾞ", "゛"]);
   });
 
-  it("忽略孤立的单个拉丁字素并保留更强的残留证据", () => {
+  it("忽略孤立拉丁字素和两字符全大写缩写并保留更强的残留证据", () => {
     expect(
       collect_foreign_residue_fragments({
         text: "按 A/X 键，é，e\u0301，Ａ；AB；Aあ；한；β",
         targetLanguage: "ZH",
       }),
-    ).toEqual(["AB", "Aあ", "한", "β"]);
+    ).toEqual(["Aあ", "한", "β"]);
+  });
+
+  it("只豁免恰好两个 ASCII 大写字母", () => {
+    expect(
+      collect_foreign_residue_fragments({
+        text: "AB Ab ABC OpenAI",
+        targetLanguage: "ZH",
+      }),
+    ).toEqual(["Ab", "ABC", "OpenAI"]);
   });
 
   it.each([

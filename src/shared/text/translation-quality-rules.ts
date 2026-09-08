@@ -10,9 +10,10 @@ const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值只服务校对�
 const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给人工校对，不再继续用任务侧质量检查阻塞提交
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const TWO_ASCII_UPPERCASE_LATIN_PATTERN = /^[A-Z]{2}$/;
 
 /**
- * 外文残留按连续字素聚合；孤立 Latin 字素证据不足，其它单字素和连续片段继续报告。
+ * 外文残留按连续字素聚合；孤立 Latin 字素及两字符全大写缩写证据不足，其它片段继续报告。
  */
 export function collect_foreign_residue_fragments(args: {
   text: string;
@@ -25,7 +26,13 @@ export function collect_foreign_residue_fragments(args: {
 
   // 片段结束时就地判断证据强度，不让过滤规则泄漏到调用方。
   const flush_current_fragment = (): void => {
-    if (current_fragment !== "" && (current_grapheme_count > 1 || current_has_other_residue)) {
+    if (
+      current_fragment !== "" &&
+      (current_has_other_residue ||
+        (current_grapheme_count > 1 &&
+          !(current_grapheme_count === 2 &&
+            TWO_ASCII_UPPERCASE_LATIN_PATTERN.test(current_fragment))))
+    ) {
       fragments.push(current_fragment);
     }
     current_fragment = "";
