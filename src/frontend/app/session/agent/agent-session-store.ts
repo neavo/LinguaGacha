@@ -20,8 +20,11 @@ import type {
   AgentWriteApprovalDecision,
 } from "@shared/agent";
 import {
+  AGENT_QUESTION_DESCRIPTION_LIMIT,
+  AGENT_QUESTION_LABEL_LIMIT,
   AGENT_QUESTION_OPTION_MAX,
   AGENT_QUESTION_OPTION_MIN,
+  AGENT_QUESTION_PROMPT_LIMIT,
   AGENT_SESSION_EVENT_TOPIC,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
@@ -959,13 +962,18 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
 function normalize_question(value: unknown): AgentQuestion | null {
   if (!is_json_record(value) || typeof value["prompt"] !== "string") return null;
   const prompt = value["prompt"].trim();
+  if (prompt === "" || prompt.length > AGENT_QUESTION_PROMPT_LIMIT) return null;
   const description = value["description"];
-  if (description !== undefined && (typeof description !== "string" || description.trim() === "")) {
+  if (
+    description !== undefined &&
+    (typeof description !== "string" ||
+      description.trim() === "" ||
+      description.trim().length > AGENT_QUESTION_DESCRIPTION_LIMIT)
+  ) {
     return null;
   }
   const raw_options = value["options"];
   if (
-    prompt === "" ||
     !Array.isArray(raw_options) ||
     raw_options.length < AGENT_QUESTION_OPTION_MIN ||
     raw_options.length > AGENT_QUESTION_OPTION_MAX
@@ -983,7 +991,7 @@ function normalize_question(value: unknown): AgentQuestion | null {
     }
     const id = candidate["id"].trim();
     const label = candidate["label"].trim();
-    if (id === "" || label === "" || ids.has(id)) {
+    if (id === "" || label === "" || label.length > AGENT_QUESTION_LABEL_LIMIT || ids.has(id)) {
       return [];
     }
     ids.add(id);
