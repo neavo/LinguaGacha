@@ -220,19 +220,31 @@ function AgentDecisionFrame(props: {
         <div className="agent-decision__heading">
           <div className="agent-decision__title-line">
             <CircleQuestionMark className="agent-decision__title-icon" aria-hidden="true" />
-            <h2
-              id={title_id}
-              ref={props.title_ref}
-              tabIndex={-1}
-              className="agent-decision__prompt"
-            >
-              {props.title}
-            </h2>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <h2
+                    id={title_id}
+                    ref={props.title_ref}
+                    tabIndex={-1}
+                    className="agent-decision__prompt"
+                  />
+                }
+              >
+                {props.title}
+              </TooltipTrigger>
+              <TooltipContent>{props.title}</TooltipContent>
+            </Tooltip>
           </div>
           {props.description === undefined ? null : (
-            <div id={description_id} className="agent-decision__description">
-              {props.description}
-            </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={<div id={description_id} className="agent-decision__description" />}
+              >
+                {props.description}
+              </TooltipTrigger>
+              <TooltipContent>{props.description}</TooltipContent>
+            </Tooltip>
           )}
         </div>
         <div className="agent-decision__header-actions">
@@ -286,7 +298,12 @@ function AgentDecisionAction({
       <span className="agent-decision-badge" aria-hidden="true">
         {ordinal}
       </span>
-      <span className="agent-decision-action__label">{label}</span>
+      <Tooltip>
+        <TooltipTrigger render={<span className="agent-decision-action__label" />}>
+          {label}
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <span
         className={`agent-decision-icon agent-decision-action__icon${
           deadline === undefined ? "" : " agent-decision-action__icon--deadline"

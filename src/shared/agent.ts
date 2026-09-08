@@ -64,6 +64,10 @@ export const AGENT_QUESTION_DEFAULT_OPTION_INDEX = 0;
 /** 单题固定选项与自定义入口共同保持在四个可见选择以内。 */
 export const AGENT_QUESTION_OPTION_MIN = 2;
 export const AGENT_QUESTION_OPTION_MAX = 3;
+/** 问题文本限制同时约束模型载荷与决定页布局，后端和 renderer 共用。 */
+export const AGENT_QUESTION_PROMPT_LIMIT = 64;
+export const AGENT_QUESTION_DESCRIPTION_LIMIT = 96;
+export const AGENT_QUESTION_LABEL_LIMIT = 40;
 
 /** 单次工具调用只提出一个问题和二至三个固定选项，自定义答案由 renderer 提供。 */
 export type AgentQuestion = JsonRecord & {
