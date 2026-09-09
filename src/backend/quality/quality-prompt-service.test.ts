@@ -17,6 +17,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectWriteStore } from "../project/project-write-store";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 import { QualityPromptService } from "./quality-prompt-service";
+import { build_translation_output_format } from "../../shared/text/translation-output-format";
 
 describe("QualityPromptService", () => {
   const cleanup_paths: string[] = [];
@@ -47,7 +48,7 @@ describe("QualityPromptService", () => {
     const template = result["template"] as Record<string, string>;
 
     expect(template["suffix_text"]).toBe(
-      '输出 JSONLINE\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```',
+      `输出 JSONLINE\n${build_translation_output_format("text", "zh")}`,
     );
   });
 
@@ -120,6 +121,7 @@ describe("QualityPromptService", () => {
     ).not.toThrow();
   });
 
+  /** 组合真实设置、项目写入口与最小缓存，隔离每个用例的文件和运行租约。 */
   function create_service(
     database: ProjectDatabase | null = null,
     runtime_owner: "batch_translation" | "agent" | null = null,
@@ -168,12 +170,14 @@ describe("QualityPromptService", () => {
     return { service, app_root, session_state, published };
   }
 
+  /** 将临时文件根登记到本用例的清理集合。 */
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-prompt-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
   }
 
+  /** 以真实运行租约模拟空闲或忙碌状态。 */
   function create_runtime_gate(owner: "batch_translation" | "agent" | null): RuntimeOperationGate {
     const gate = new RuntimeOperationGate();
     if (owner !== null) gate.begin_runtime(owner);

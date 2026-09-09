@@ -271,7 +271,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  color: var(--muted-foreground);
+  color: var(--foreground);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -281,6 +281,5 @@
   white-space: nowrap;
 }
 .batch-translation__provider > span:first-child {
-  color: var(--foreground);
   font-weight: 500;
 }

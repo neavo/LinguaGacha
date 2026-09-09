@@ -95,7 +95,7 @@ export class BatchTranslationRunner {
       });
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      await this.log_task_run_start(run_context, quality_snapshot, app_language);
+      this.log_task_run_start(run_context, quality_snapshot, app_language);
       const items = this.task_store.get_translation_items();
       const prepared = prepare_translation_targets(items, command);
       progress = this.build_translation_progress(mode, items, progress);
@@ -422,34 +422,23 @@ export class BatchTranslationRunner {
   }
 
   /**
-   * 非 SakuraLLM 翻译启动时在 API 信息后打印本轮主提示词
+   * 用本轮快照打印普通模型的主提示词；实际请求由 worker 同步构造，Sakura 使用专用路径。
    */
-  private async log_task_run_start(
+  private log_task_run_start(
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
     app_language: unknown,
-  ): Promise<void> {
-    const prompt_text = await this.build_task_start_prompt(run_context, quality_snapshot);
-    this.log_replay.task_run_start(run_context.model, app_language, prompt_text);
-  }
-
-  /**
-   * 启动提示词只用于诊断日志，实际请求仍由 worker 基于同一快照重新构造完整 messages
-   */
-  private async build_task_start_prompt(
-    run_context: BatchTranslationRunContext,
-    quality_snapshot: TextQualitySnapshot,
-  ): Promise<string | null> {
-    if (String(run_context.model["api_format"] ?? "") === "SakuraLLM") {
-      return null;
+  ): void {
+    let prompt_text: string | null = null;
+    if (String(run_context.model["api_format"] ?? "") !== "SakuraLLM") {
+      prompt_text = new PromptBuilder(
+        this.builtin_root,
+        normalize_setting_snapshot(run_context.config_snapshot),
+        quality_snapshot,
+        [],
+      ).build_main();
     }
-    const builder = new PromptBuilder(
-      this.builtin_root,
-      normalize_setting_snapshot(run_context.config_snapshot),
-      quality_snapshot,
-      [],
-    );
-    return await builder.build_main();
+    this.log_replay.task_run_start(run_context.model, app_language, prompt_text);
   }
 
   /**

@@ -17,7 +17,7 @@ describe("TranslationPrePipeline", () => {
       9,
     );
     expect(context.request_item).toMatchObject({
-      request_index: 9,
+      request_id: 9,
       item_index: 4,
       text_src: "<skip>\nhello\n\nworld",
     });

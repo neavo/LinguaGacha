@@ -163,7 +163,7 @@ describe("TranslationWorkUnitRunner", () => {
       create_llm_client(
         {
           response_result:
-            '{"index":0,"actor":"虎铁","text":"你好"}\n{"index":1,"actor":null,"text":"旁白译文"}',
+            '{"id":0,"actor":"虎铁","text":"你好"}\n{"id":1,"actor":null,"text":"旁白译文"}',
           input_tokens: 4,
           reasoning_tokens: 2,
           output_tokens: 5,
@@ -217,10 +217,10 @@ describe("TranslationWorkUnitRunner", () => {
       { src: "地の文", dst: "旁白译文", actor_src: null, actor_dst: null },
     ]);
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"index":0,"actor":"虎鉄","text":"こんにちは"}',
+      '{"id":0,"actor":"虎鉄","text":"こんにちは"}',
     );
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"index":1,"actor":null,"text":"地の文"}',
+      '{"id":1,"actor":null,"text":"地の文"}',
     );
     expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
   });
@@ -232,7 +232,7 @@ describe("TranslationWorkUnitRunner", () => {
       create_llm_client(
         {
           response_result:
-            '{"index":0,"actor":"lg-uri/1","text":"查看 lg-uri/2"}\n{"index":1,"actor":null,"text":"图片 lg-uri/3"}',
+            '{"id":0,"actor":"lg-uri/1","text":"查看 lg-uri/2"}\n{"id":1,"actor":null,"text":"图片 lg-uri/3"}',
         },
         captured_requests,
       ),
@@ -265,7 +265,7 @@ describe("TranslationWorkUnitRunner", () => {
 
     expect(captured_requests[0]?.messages[1]?.content).toContain("上文 lg-uri/0");
     expect(captured_requests[0]?.messages[1]?.content).toContain(
-      '{"index":0,"actor":"lg-uri/1","text":"打开 lg-uri/2"}',
+      '{"id":0,"actor":"lg-uri/1","text":"打开 lg-uri/2"}',
     );
     expect(result.output).toMatchObject({
       kind: "translation",
@@ -284,7 +284,7 @@ describe("TranslationWorkUnitRunner", () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client(
-        { response_result: '{"index":0,"actor":"爱丽丝","text":"生命值"}' },
+        { response_result: '{"id":0,"actor":"爱丽丝","text":"生命值"}' },
         captured_requests,
       ),
     );
@@ -343,7 +343,7 @@ describe("TranslationWorkUnitRunner", () => {
       const runner = new TranslationWorkUnitRunner(
         await create_template_root(),
         create_llm_client(
-          { response_result: api_format === "SakuraLLM" ? "译文" : '{"index":0,"text":"译文"}' },
+          { response_result: api_format === "SakuraLLM" ? "译文" : '{"id":0,"text":"译文"}' },
           captured_requests,
         ),
       );
@@ -370,7 +370,7 @@ describe("TranslationWorkUnitRunner", () => {
         vi.setSystemTime(new Date(3500));
         return {
           response_think: "",
-          response_result: '{"index":0,"text":"你好"}',
+          response_result: '{"id":0,"text":"你好"}',
           input_tokens: 4,
           reasoning_tokens: 0,
           output_tokens: 5,
@@ -388,24 +388,82 @@ describe("TranslationWorkUnitRunner", () => {
     expect(read_log_summary(result.logs[0])).toContain("任务耗时 2.50 秒");
   });
 
-  it("翻译日志分离模型思考、规则分析和译文", async () => {
+  it.each([true, false])(
+    "增强开关为 %s 时日志分离模型思考、规则分析和译文",
+    async (prompt_enhancement_enable) => {
+      const runner = new TranslationWorkUnitRunner(
+        await create_template_root(),
+        create_llm_client({
+          response_think: "真实思考链",
+          response_result: '<why>[核心约束]：保持行数</why>\n{"id":0,"text":"你好"}',
+        }),
+      );
+
+      const result = await runner.execute_unit(
+        create_translation_unit({
+          model: { api_format: "OpenAI" },
+          config_overrides: { prompt_enhancement_enable },
+        }),
+        new AbortController().signal,
+      );
+
+      expect(read_translation_log(result.logs[0]).sections).toEqual([
+        { title: "思考过程：", text: "真实思考链" },
+        { title: "规则分析：", text: "[核心约束]：保持行数" },
+        { title: "翻译结果：", text: '{"id":0,"text":"你好"}' },
+      ]);
+      expect(result.output).toMatchObject({
+        kind: "translation",
+        items: [{ dst: "你好", status: "PROCESSED" }],
+      });
+    },
+  );
+
+  it("未闭合分析中的候选译文留在日志并进入既有失败重试流程", async () => {
+    const analysis = '决策\n{"id":0,"text":"候选译文"}';
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({ response_result: `<why>${analysis}` }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({ model: { api_format: "OpenAI" }, retry_count: 2 }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      items: [{ dst: "", status: "NONE", retry_count: 3 }],
+    });
+    expect(read_translation_log(result.logs[0]).sections).toEqual([
+      { title: "规则分析：", text: analysis },
+    ]);
+  });
+
+  it.each(["OpenAI", "SakuraLLM"])("%s 译文保留正文中的 why 标签", async (api_format) => {
+    const text = "<why>正文标签</why>";
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_think: "真实思考链",
-        response_result: '<why>[核心约束]：保持行数</why>\n{"index":0,"text":"你好"}',
+        response_result: api_format === "SakuraLLM" ? text : JSON.stringify({ id: 0, text }),
       }),
     );
 
     const result = await runner.execute_unit(
-      create_translation_unit({ model: { api_format: "OpenAI" } }),
+      create_translation_unit({ model: { api_format } }),
       new AbortController().signal,
     );
 
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      items: [{ dst: text, status: "PROCESSED" }],
+    });
     expect(read_translation_log(result.logs[0]).sections).toEqual([
-      { title: "思考过程：", text: "真实思考链" },
-      { title: "规则分析：", text: "[核心约束]：保持行数" },
-      { title: "翻译结果：", text: '{"index":0,"text":"你好"}' },
+      {
+        title: "翻译结果：",
+        text: api_format === "SakuraLLM" ? text : JSON.stringify({ id: 0, text }),
+      },
     ]);
   });
 
@@ -499,51 +557,56 @@ describe("TranslationWorkUnitRunner", () => {
     });
   });
 
-  it("多条 item 响应按序号独立提交，缺失项保持待处理", async () => {
+  it("乱序响应按请求 ID 独立提交，缺失、重复、未知和空白记录只影响对应条目", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
-        response_result: '{"index":0,"text":"你好"}',
+        response_result: [
+          { id: 2, text: "译文丙" },
+          { id: 1, text: "候选乙" },
+          { id: 99, text: "未知条目" },
+          { id: 0, text: "译文甲" },
+          { id: 1, text: "重复乙" },
+          { id: 3, text: " " },
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n"),
       }),
     );
 
     const result = await runner.execute_unit(
       create_translation_unit({
         model: { api_format: "OpenAI" },
-        items: [
-          {
-            id: 1,
-            src: "こんにちは",
-            dst: "",
-            status: "NONE",
-            text_type: "TXT",
-            retry_count: 2,
-          },
-          {
-            id: 2,
-            src: "世界",
-            dst: "",
-            status: "NONE",
-            text_type: "TXT",
-            retry_count: 2,
-          },
-        ],
+        items: ["甲", "乙", "丙", "丁", "戊"].map((src, item_index) => ({
+          id: item_index + 101,
+          src,
+          dst: "",
+          status: "NONE",
+          text_type: "TXT",
+          retry_count: 2,
+        })),
       }),
       new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("success");
-    expect(result.logs[0]?.level).toBe("warning");
     expect(result.output).toMatchObject({
       kind: "translation",
       items: [
-        { id: 1, dst: "你好", status: "PROCESSED", retry_count: 2 },
-        { id: 2, dst: "", status: "NONE", retry_count: 2 },
+        { id: 101, dst: "译文甲", status: "PROCESSED", retry_count: 2 },
+        { id: 102, dst: "", status: "NONE", retry_count: 2 },
+        { id: 103, dst: "译文丙", status: "PROCESSED", retry_count: 2 },
+        { id: 104, dst: "", status: "NONE", retry_count: 2 },
+        { id: 105, dst: "", status: "NONE", retry_count: 2 },
       ],
     });
+    expect(result.outcome).toBe("success");
+    expect(result.logs[0]?.level).toBe("warning");
     expect(read_translation_log(result.logs[0]).pairs).toEqual([
-      { src: "こんにちは", dst: "你好" },
-      { src: "世界", dst: "" },
+      { src: "甲", dst: "译文甲" },
+      { src: "乙", dst: "" },
+      { src: "丙", dst: "译文丙" },
+      { src: "丁", dst: "" },
+      { src: "戊", dst: "" },
     ]);
   });
 

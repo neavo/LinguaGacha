@@ -47,9 +47,9 @@ export class PromptBuilder {
   private static readonly template_cache = new Map<string, string>(); // 按资产根和模板身份复用只读文本
 
   private readonly builtin_root: string; // 当前版本提示词模板根
-  private readonly config: PromptBuilderConfig;
-  private readonly quality_snapshot: TextQualitySnapshot;
-  private readonly activated_glossary_entries: readonly GlossaryEntry[];
+  private readonly config: PromptBuilderConfig; // 本轮冻结的语言与增强开关
+  private readonly quality_snapshot: TextQualitySnapshot; // 工程自定义翻译规则快照
+  private readonly activated_glossary_entries: readonly GlossaryEntry[]; // runner 已按原文完成激活
 
   /**
    * builtin_root 由入口注入，worker 不自行猜测内置资产根
@@ -75,15 +75,15 @@ export class PromptBuilder {
   /**
    * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
    */
-  public async generate_prompt(
+  public generate_prompt(
     items: TranslationRequestItem[],
     mode: TranslationPromptMode,
     samples: string[],
     precedings: TextTaskItemRecord[],
-  ): Promise<PromptBuildResult> {
+  ): PromptBuildResult {
     const messages: LLMMessage[] = [];
     const console_log: string[] = [];
-    const instruction_text = await this.build_main(mode);
+    const instruction_text = this.build_main(mode);
     const user_parts: string[] = [];
 
     const preceding = this.build_preceding(precedings);
@@ -104,10 +104,7 @@ export class PromptBuilder {
       console_log.push(control_samples);
     }
 
-    const inputs = this.build_inputs(items, mode);
-    if (inputs !== "") {
-      user_parts.push(inputs);
-    }
+    user_parts.push(this.build_inputs(items, mode));
 
     messages.push({ role: "system", content: instruction_text });
     messages.push({ role: "user", content: user_parts.join("\n\n") });
@@ -137,27 +134,22 @@ export class PromptBuilder {
   /**
    * 翻译主提示词从自定义快照或资源模板读取
    */
-  public async build_main(mode: TranslationPromptMode = "text"): Promise<string> {
+  public build_main(mode: TranslationPromptMode = "text"): string {
     const context = this.resolve_prompt_context();
-    const prompt = TRANSLATION_PROMPT;
-    const prefix = await this.read_prompt_text(
-      prompt.directory_name,
-      context.prompt_language,
-      "prefix.txt",
-    );
+    const prefix = this.read_prompt_text(context.prompt_language, "prefix.txt");
     const base = this.quality_snapshot.translation_prompt_enable
       ? this.quality_snapshot.translation_prompt
-      : await this.read_prompt_text(prompt.directory_name, context.prompt_language, "base.txt");
-    const thinking = await this.read_prompt_enhancement(
-      prompt.directory_name,
-      context.prompt_language,
-    );
-    const suffix = await this.read_prompt_text(
-      prompt.directory_name,
-      context.prompt_language,
-      "suffix.txt",
-    );
-    return this.join_prompt_sections(prefix, base, thinking, suffix)
+      : this.read_prompt_text(context.prompt_language, "base.txt");
+    const enhancement = this.config.prompt_enhancement_enable
+      ? this.read_prompt_text(context.prompt_language, "thinking.txt")
+      : "";
+    const suffix = this.read_prompt_text(context.prompt_language, "suffix.txt");
+    const sections = [`${prefix}\n${base}`];
+    if (enhancement !== "") sections.push(enhancement);
+    // 自定义规则和增强段共用最后的输出约束。
+    sections.push(suffix);
+    return sections
+      .join("\n\n")
       .replaceAll("{source_language}", context.source_language)
       .replaceAll("{target_language}", context.target_language)
       .replaceAll(
@@ -225,30 +217,13 @@ export class PromptBuilder {
     const inputs = items
       .map((item) =>
         JsonTool.stringifyStrict({
-          index: item.request_index,
+          id: item.request_id,
           ...(mode === "actor_text" ? { actor: item.actor_src } : {}),
           text: item.text_src,
         }),
       )
       .join("\n");
     return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
-  }
-
-  /**
-   * 模板段落拼接统一在这里处理，保证输出约束始终位于最后
-   */
-  private join_prompt_sections(
-    prefix: string,
-    base: string,
-    thinking: string,
-    suffix: string,
-  ): string {
-    const parts = [`${prefix}\n${base}`];
-    if (thinking !== "") {
-      parts.push(thinking);
-    }
-    parts.push(suffix);
-    return parts.join("\n\n");
   }
 
   /**
@@ -277,37 +252,21 @@ export class PromptBuilder {
     };
   }
 
-  private async read_prompt_enhancement(
-    task_dir_name: string,
-    language: TranslationPromptLanguage,
-  ): Promise<string> {
-    return this.config.prompt_enhancement_enable
-      ? await this.read_prompt_text(task_dir_name, language, "thinking.txt")
-      : "";
-  }
-
   /**
-   * 模板只从版本内置资产读取，worker 不读用户预设目录
+   * worker 同步读取内置模板，按完整路径隔离不同资产根的缓存。
    */
-  private async read_prompt_text(
-    task_dir_name: string,
-    language: TranslationPromptLanguage,
-    file_name: string,
-  ): Promise<string> {
-    const cache_key = `${this.builtin_root}\u0000${task_dir_name}\u0000${language}\u0000${file_name}`;
-    const cached = PromptBuilder.template_cache.get(cache_key);
-    if (cached !== undefined) {
-      return cached;
-    }
+  private read_prompt_text(language: TranslationPromptLanguage, file_name: string): string {
     const template_path = path.join(
       this.builtin_root,
-      task_dir_name,
+      TRANSLATION_PROMPT.directory_name,
       "template",
       language,
       file_name,
     );
+    const cached = PromptBuilder.template_cache.get(template_path);
+    if (cached !== undefined) return cached;
     const text = default_native_fs.read_text_file(template_path).trim();
-    PromptBuilder.template_cache.set(cache_key, text);
+    PromptBuilder.template_cache.set(template_path, text);
     return text;
   }
 }

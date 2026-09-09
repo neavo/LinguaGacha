@@ -138,7 +138,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 0, text_dst: "hi", actor_dst: "爱丽丝" },
+      { request_id: 0, text_dst: "hi", actor_dst: "爱丽丝" },
       "actor_text",
     );
 
@@ -155,7 +155,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 0, text_dst: "请看 lg-uri/1", actor_dst: "lg-uri/0" },
+      { request_id: 0, text_dst: "请看 lg-uri/1", actor_dst: "lg-uri/0" },
       "actor_text",
     );
 
@@ -197,7 +197,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 2, text_dst: "hi", actor_dst: "旁白" },
+      { request_id: 2, text_dst: "hi", actor_dst: "旁白" },
       "actor_text",
     );
 
@@ -214,7 +214,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 0, text_dst: "hi", actor_dst: null },
+      { request_id: 0, text_dst: "hi", actor_dst: null },
       "actor_text",
     );
 
@@ -272,7 +272,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 0, text_dst: "1", actor_dst: null },
+      { request_id: 0, text_dst: "1", actor_dst: null },
       "text",
     );
 
@@ -288,7 +288,7 @@ describe("TranslationPostPipeline", () => {
 
     const result = post.process_item(
       context,
-      { request_index: 0, text_dst: "合并 lg-uri/0", actor_dst: null },
+      { request_id: 0, text_dst: "合并 lg-uri/0", actor_dst: null },
       "text",
     );
 
@@ -348,7 +348,7 @@ function decoded_item(
     return dsts[translated_index++] ?? "";
   });
   return {
-    request_index: context.request_item?.request_index ?? 0,
+    request_id: context.request_item?.request_id ?? 0,
     text_dst: lines.join("\n"),
     actor_dst: null,
   };

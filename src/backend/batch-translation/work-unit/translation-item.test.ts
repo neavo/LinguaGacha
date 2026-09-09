@@ -17,8 +17,8 @@ describe("翻译 item 模型", () => {
   it("单次请求内存在有效姓名时切换到 actor/text 模式", () => {
     expect(
       resolve_translation_prompt_mode([
-        create_item({ request_index: 0, text_src: "正文一", actor_src: null }),
-        create_item({ request_index: 1, text_src: "正文二", actor_src: "虎鉄" }),
+        create_item({ request_id: 0, text_src: "正文一", actor_src: null }),
+        create_item({ request_id: 1, text_src: "正文二", actor_src: "虎鉄" }),
       ]),
     ).toBe("actor_text");
   });
@@ -28,6 +28,7 @@ describe("翻译 item 模型", () => {
   });
 });
 
+/** 提供请求记录必需字段，让用例只声明影响姓名模式的输入。 */
 function create_item(overrides: Partial<TranslationRequestItem>): TranslationRequestItem {
-  return { request_index: 0, item_index: 0, text_src: "", actor_src: null, ...overrides };
+  return { request_id: 0, item_index: 0, text_src: "", actor_src: null, ...overrides };
 }
