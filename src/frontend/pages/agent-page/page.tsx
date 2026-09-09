@@ -651,8 +651,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 <AgentDecision
                   decision={input_transition.visible_decision}
                   title_ref={input_transition.title_ref}
-                  on_resolve_question={agent_actions.resolveQuestion}
-                  on_resolve_write_approval={agent_actions.resolveWriteApproval}
                 />
               )}
             </div>

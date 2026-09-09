@@ -76,6 +76,7 @@ export const en_us_agent_page = {
     allow_session: "Allow this and all later writes in this session",
   },
   decision: {
+    paused_remaining: "Paused · {time} remaining",
     remaining: "{time} remaining",
     custom: "Custom",
     custom_placeholder: "Enter a custom answer …",

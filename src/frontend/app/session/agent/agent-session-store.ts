@@ -38,6 +38,12 @@ import {
   replace_agent_input_history,
   update_agent_input_history,
 } from "./agent-input-history";
+import {
+  AgentDecisionCountdown,
+  type AgentDecisionCountdownSnapshot,
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
+  AGENT_WRITE_APPROVAL_DEFAULT,
+} from "./agent-decision-countdown";
 
 export type AgentCommand =
   | "send"
@@ -93,10 +99,11 @@ export type AgentSessionActions = Readonly<{
   setApprovalMode: (approval_mode: AgentApprovalMode) => Promise<void>;
   resolveQuestion: (response: AgentQuestionResponse) => Promise<void>;
   resolveWriteApproval: (decision: AgentWriteApprovalDecision) => Promise<void>;
+  setQuestionFocused: (id: string, focused: boolean) => void;
   reconnect: () => void;
 }>;
 
-type StoreSlice = "timeline" | "controls" | "queue" | "todo" | "skills" | "input";
+type StoreSlice = "timeline" | "controls" | "queue" | "todo" | "skills" | "input" | "countdown";
 type Listener = () => void;
 type CommandEventQueue = { base_revision: number; events: AgentSessionEvent[] };
 
@@ -115,7 +122,7 @@ const EMPTY_QUEUE: AgentQueueSlice = {
 const EMPTY_TODO: AgentTodoSlice = { todos: [] };
 const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
-/** renderer 侧唯一 Agent 会话镜像；所有公开事实先经过 revision 校验再进入切片。 */
+/** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
 export class AgentSessionStore {
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
@@ -139,14 +146,34 @@ export class AgentSessionStore {
     todo: new Set(),
     skills: new Set(),
     input: new Set(),
+    countdown: new Set(),
   };
+  private readonly countdown: AgentDecisionCountdown;
+  private readonly on_decision_error: (error: unknown) => void;
   private readonly storage: Storage;
 
   public readonly actions: AgentSessionActions;
 
   /** 建立稳定的命令入口与草稿会话，连接由生命周期入口启动。 */
-  public constructor(storage: Storage) {
+  public constructor(storage: Storage, on_decision_error: (error: unknown) => void) {
     this.storage = storage;
+    this.on_decision_error = on_decision_error;
+    this.countdown = new AgentDecisionCountdown(
+      () => this.emit("countdown"),
+      (decision) => {
+        // 到期回调绑定原问题，复用手动提交的命令槽和错误反馈。
+        const current = this.controls.pendingDecision;
+        if (current?.id !== decision.id || current.kind !== decision.kind) return;
+        if (decision.kind === "question") {
+          void this.resolve_question({
+            kind: "option",
+            optionId: decision.question.options[AGENT_QUESTION_DEFAULT_OPTION_INDEX].id,
+          });
+        } else {
+          void this.resolve_write_approval(AGENT_WRITE_APPROVAL_DEFAULT);
+        }
+      },
+    );
     this.input_history = read_agent_input_history(storage);
     this.input = this.create_input_session(0);
     this.actions = {
@@ -163,27 +190,45 @@ export class AgentSessionStore {
       setApprovalMode: this.set_approval_mode,
       resolveQuestion: this.resolve_question,
       resolveWriteApproval: this.resolve_write_approval,
+      setQuestionFocused: (id, focused) => this.countdown.set_focused(id, focused),
       reconnect: this.reconnect,
     };
   }
 
+  /** 返回时间线缓存，供独立消息区订阅。 */
   public readonly get_timeline = (): AgentTimelineSlice => this.timeline;
+  /** 返回后端控制事实与前端命令占用。 */
   public readonly get_controls = (): AgentControlsSlice => this.controls;
+  /** 返回后端拥有的输入队列快照。 */
   public readonly get_queue = (): AgentQueueSlice => this.queue;
+  /** 返回当前会话任务步骤。 */
   public readonly get_todo = (): AgentTodoSlice => this.todo;
+  /** 返回当前可用技能集合。 */
   public readonly get_skills = (): AgentSkillsSlice => this.skills;
+  /** 返回跨路由稳定的草稿与历史入口。 */
   public readonly get_input = (): AgentInputSession => this.input;
+  /** 返回前端时钟缓存，隔离每秒更新。 */
+  public readonly get_countdown = (): AgentDecisionCountdownSnapshot => this.countdown.read();
+  /** 只通知决策区域的时钟变化。 */
+  public readonly subscribe_countdown = (listener: Listener): (() => void) =>
+    this.subscribe("countdown", listener);
 
+  /** 只通知消息与工具条目变化。 */
   public readonly subscribe_timeline = (listener: Listener): (() => void) =>
     this.subscribe("timeline", listener);
+  /** 只通知运行、连接和命令控制变化。 */
   public readonly subscribe_controls = (listener: Listener): (() => void) =>
     this.subscribe("controls", listener);
+  /** 只通知队列顺序与能力变化。 */
   public readonly subscribe_queue = (listener: Listener): (() => void) =>
     this.subscribe("queue", listener);
+  /** 只通知任务步骤变化。 */
   public readonly subscribe_todo = (listener: Listener): (() => void) =>
     this.subscribe("todo", listener);
+  /** 只通知技能集合变化。 */
   public readonly subscribe_skills = (listener: Listener): (() => void) =>
     this.subscribe("skills", listener);
+  /** 只通知输入会话版本变化。 */
   public readonly subscribe_input = (listener: Listener): (() => void) =>
     this.subscribe("input", listener);
 
@@ -205,6 +250,7 @@ export class AgentSessionStore {
     this.pending_events = [];
     this.event_source?.close();
     this.event_source = null;
+    this.sync_countdown();
   }
 
   /** 连接世代阻止断开或重连前的迟到响应覆盖当前会话。 */
@@ -266,7 +312,19 @@ export class AgentSessionStore {
       return;
     }
     this.controls = next;
+    this.sync_countdown();
     this.emit("controls");
+  }
+
+  /** 后端决定与连接、命令状态在此汇合，逐秒展示只通知 countdown 消费者。 */
+  private sync_countdown(): void {
+    this.countdown.sync(
+      this.controls.pendingDecision,
+      this.event_source !== null &&
+        this.restoring_generation === null &&
+        this.controls.transport === "ready" &&
+        this.controls.command === null,
+    );
   }
 
   /** 按连接世代接收事件，命令与恢复期间暂存，缺口触发快照恢复。 */
@@ -298,6 +356,7 @@ export class AgentSessionStore {
   private async restore_snapshot(generation: number): Promise<void> {
     if (!this.is_current(generation) || this.restoring_generation === generation) return;
     this.restoring_generation = generation;
+    this.sync_countdown();
     try {
       const snapshot = normalize_snapshot(
         await api_get<AgentSessionSnapshot>("/api/agent/snapshot"),
@@ -316,6 +375,7 @@ export class AgentSessionStore {
       if (this.is_current(generation)) this.set_transport_failure();
     } finally {
       if (this.restoring_generation === generation) this.restoring_generation = null;
+      this.sync_countdown();
     }
   }
 
@@ -334,6 +394,7 @@ export class AgentSessionStore {
       pendingDecision: snapshot.pendingDecision,
       context: snapshot.context,
     };
+    this.sync_countdown();
     this.emit("timeline");
     this.emit("queue");
     this.emit("todo");
@@ -442,6 +503,7 @@ export class AgentSessionStore {
     }
   }
 
+  /** 规范输入，命令受理成功后再清理草稿并记录历史。 */
   private readonly send = async (message: AgentMessageInput): Promise<void> => {
     if (this.controls.transport === "restoring" || !this.loaded_once) return;
     const normalized = normalize_agent_message_input(message);
@@ -453,6 +515,7 @@ export class AgentSessionStore {
     );
   };
 
+  /** 规范替换内容，队列事实由后端事件更新。 */
   private readonly update_queued_message = async (
     id: string,
     message: AgentMessageInput,
@@ -464,24 +527,28 @@ export class AgentSessionStore {
     );
   };
 
+  /** 提交删除意图，等待后端发布新队列。 */
   private readonly delete_queued_message = async (id: string): Promise<void> => {
     await this.execute_command("queue_delete", () =>
       api_fetch<AgentCommandAck>("/api/agent/queue/delete", { id }),
     );
   };
 
+  /** 复制顺序载荷，避免调用者后续修改影响请求。 */
   private readonly reorder_queued_messages = async (ids: readonly string[]): Promise<void> => {
     await this.execute_command("queue_reorder", () =>
       api_fetch<AgentCommandAck>("/api/agent/queue/reorder", { ids: [...ids] }),
     );
   };
 
+  /** 请求立即发送队列项，发送状态由后端裁决。 */
   private readonly send_queued_message = async (id: string): Promise<void> => {
     await this.execute_command("queue_send", () =>
       api_fetch<AgentCommandAck>("/api/agent/queue/send", { id }),
     );
   };
 
+  /** 仅在已恢复的空闲会话提交修订内容。 */
   private readonly revise_latest_round = async (
     entry_id: string,
     message: AgentMessageInput,
@@ -503,6 +570,7 @@ export class AgentSessionStore {
     );
   };
 
+  /** 继续空闲会话，可附带草稿并在受理后清理。 */
   private readonly continue_session = async (message?: AgentMessageInput): Promise<void> => {
     if (
       this.controls.transport === "restoring" ||
@@ -542,15 +610,18 @@ export class AgentSessionStore {
     );
   };
 
+  /** 仅运行中的会话接受停止请求。 */
   private readonly stop = async (): Promise<void> => {
     if (this.controls.state !== "running") return;
     await this.execute_command("stop", () => api_fetch<AgentCommandAck>("/api/agent/stop"));
   };
 
+  /** 请求后端重置，通过快照和事件清理前端会话。 */
   private readonly reset = async (): Promise<void> => {
     await this.execute_command("reset", () => api_fetch<AgentCommandAck>("/api/agent/reset"));
   };
 
+  /** 提交审批模式，实际模式由后端事件同步。 */
   private readonly set_approval_mode = async (approval_mode: AgentApprovalMode): Promise<void> => {
     await this.execute_command("approval_mode", () =>
       api_fetch<AgentCommandAck>("/api/agent/approval-mode", { approvalMode: approval_mode }),
@@ -561,7 +632,7 @@ export class AgentSessionStore {
   private readonly resolve_question = async (response: AgentQuestionResponse): Promise<void> => {
     const pending = this.controls.pendingDecision;
     if (pending?.kind !== "question") return;
-    await this.execute_command("decision", () =>
+    await this.submit_decision(pending.id, () =>
       api_fetch<AgentCommandAck>("/api/agent/question/resolve", { id: pending.id, response }),
     );
   };
@@ -572,7 +643,7 @@ export class AgentSessionStore {
   ): Promise<void> => {
     const pending = this.controls.pendingDecision;
     if (pending?.kind !== "write_approval") return;
-    await this.execute_command("decision", () =>
+    await this.submit_decision(pending.id, () =>
       api_fetch<AgentCommandAck>("/api/agent/write-approval/resolve", {
         id: pending.id,
         decision,
@@ -580,6 +651,21 @@ export class AgentSessionStore {
     );
   };
 
+  /** 手动与自动决定共用受理入口；失败通知一次，保留问题供手动重试。 */
+  private async submit_decision(
+    id: string,
+    request: () => Promise<AgentCommandAck>,
+  ): Promise<void> {
+    if (this.command_events !== null || this.controls.transport !== "ready") return;
+    this.countdown.stop(id);
+    try {
+      await this.execute_command("decision", request);
+    } catch (error) {
+      this.on_decision_error(error);
+    }
+  }
+
+  /** 复用连接世代与快照恢复入口。 */
   private readonly reconnect = (): void => {
     this.connect();
   };
@@ -908,21 +994,12 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
   if (value === null) return null;
   if (value === undefined || !is_json_record(value)) return undefined;
   const id = value["id"];
-  const expires_at = value["expiresAt"];
-  if (
-    typeof id !== "string" ||
-    id.trim() === "" ||
-    typeof expires_at !== "number" ||
-    !Number.isSafeInteger(expires_at) ||
-    expires_at < 0
-  ) {
+  if (typeof id !== "string" || id.trim() === "") {
     return undefined;
   }
   if (value["kind"] === "question") {
     const question = normalize_question(value["question"]);
-    return question === null
-      ? undefined
-      : { kind: "question", id, expiresAt: expires_at, question };
+    return question === null ? undefined : { kind: "question", id, question };
   }
   if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];
@@ -955,7 +1032,7 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
     postReplacement: post_replacement as number,
     prompts: prompts as number,
   };
-  return { kind: "write_approval", id, expiresAt: expires_at, summary };
+  return { kind: "write_approval", id, summary };
 }
 
 /** 问题投影复核选项数量、文本与身份唯一性。 */

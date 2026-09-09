@@ -1,3 +1,9 @@
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast: vi.fn() }),
+}));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";

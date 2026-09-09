@@ -76,6 +76,7 @@ export const de_de_agent_page = {
     allow_session: "Diesen und alle weiteren Schreibvorgänge dieser Sitzung erlauben",
   },
   decision: {
+    paused_remaining: "Pausiert · Noch {time}",
     remaining: "Noch {time}",
     custom: "Benutzerdefiniert",
     custom_placeholder: "Benutzerdefinierte Antwort eingeben …",

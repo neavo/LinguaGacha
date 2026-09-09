@@ -19,16 +19,18 @@
 |模型可见历史、工具循环、上下文压缩、中断与 settle|内存 `AgentSession`|`AgentService` 调用 SDK 的 prompt、模型切换与关闭 API|
 |用户输入队列与暂停 / 发送状态|`AgentService`|Agent message、continue 与 queue API|
 |模型对话级有序 Todo|`AgentService`|`ws.todo`、Agent API 与 `agent.session_event`|
-|当前唯一用户决定、固定期限与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
+|当前唯一用户决定、取消与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
+|当前决定的自动选择倒计时|renderer `AgentSessionStore` 持有的 `AgentDecisionCountdown`|已确认决定、连接与命令状态、自定义输入焦点|
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
 |当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
 
 ### 用户决定与会话配置
 
-- 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 统一持有普通问题与写入授权的五分钟期限、取消和一次性裁决，各自使用窄 resolve API。后端根据发布时的快照执行到期裁决，renderer 按后端绝对期限展示默认选项的倒计时；默认选项由共享契约定义，结果语义见下文工具契约。裁决先清除 pending，再在下一事件循环恢复工具。reset、工程切换和 dispose 取消当前等待。
+- 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 持有普通问题与写入授权的待回答状态、取消和一次性裁决，各自使用窄 resolve API。后端等待宿主提交答案，公开决定不携带期限；裁决先清除 pending，再在下一事件循环恢复工具。reset、工程切换和 dispose 取消当前等待。
+- 自动选择由前端会话时钟拥有，通过现有 resolve API 提交默认答案；后端只等待宿主裁决。同一决定的快照恢复与切页保留剩余时间，前端重载重新计时；输入聚焦、断线、快照恢复或命令占用期间冻结，条件解除后续计，卸载输入框释放聚焦。提交受理后停止计时，失败通知一次并保留问题供手动重试。逐秒变化通过独立 countdown 订阅发布。
 - Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
 - Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
-- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入（含到期默认裁决）、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
+- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
 
 ### 运行控制与恢复
 
@@ -67,7 +69,7 @@
 
 - 工具模块拥有模型可见的用途、调用要求、结果、副作用与特有恢复说明，参数 Schema 只描述字段含义和约束。`workspace_script` 从运行策略生成环境与限制；`workspace_apply` 从 `contract` 的同一份提交语义投影关键副作用和回执。System Prompt 保留通用协作、信任边界与任务流程。
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
-- `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。到期采用第一项并返回 `selected` 与其 `optionId`，手动选择和自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。决策卡片以单行省略显示，并通过 shadcn Tooltip 查看完整字段。工程写入授权使用独立权限入口，到期采用 `allow_once`，对应界面第二项，仅允许当前批次写入。
+- `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。宿主提交固定选择时返回 `selected` 与其 `optionId`，自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。工程写入授权使用独立权限入口，`allow_once` 仅允许当前批次写入。
 - 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据、百分比、完成历史或完成判据。每次 `workspace_script` 启动时以当前 Todo 初始化 `ws.todo`；脚本通过同步 `read()` 读取不可变副本，通过同步 `write(todos)` 替换本次脚本副本。脚本成功时最终 Todo 随结果 envelope 返回并由 `AgentService` 原子提交，脚本失败、停止或超时保留调用前状态；公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
 - 工作区工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与显式变更提交协调。
 - 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举工具集合，`ws.tool` 与模型可见 TypeScript 协议由该集合投影，并随恒定注册的 `workspace_script` 顶层工具说明提供完整能力发现。字段描述与结构约束共同进入生成声明；脚本内数据工具可使用判别联合表达相关参数。未知参数在统一分发边界按 Schema 收窄，结构错误返回字段路径与要求，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。HTML 字符串与响应流转换同样位于 `ws.tool`，只公开稳定的 `baseUrl`、正文选择和 CSS selector 参数，底层 npm 实现随单文件 runtime 构建而不进入产品契约。

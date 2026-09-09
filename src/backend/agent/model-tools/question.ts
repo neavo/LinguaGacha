@@ -2,7 +2,6 @@ import { Type, type Static } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import {
-  AGENT_DECISION_TIMEOUT_MS,
   AGENT_QUESTION_OPTION_MAX,
   AGENT_QUESTION_OPTION_MIN,
   AGENT_QUESTION_DESCRIPTION_LIMIT,
@@ -107,7 +106,7 @@ export function create_agent_question_tools(question: AgentQuestionPort): ToolDe
       label: "询问用户",
       description: [
         "需要用户确定可用简短选项表达的范围、处理策略或偏好时调用。宿主同时提供自定义文本与取消。",
-        `${(AGENT_DECISION_TIMEOUT_MS / 60_000).toString()} 分钟到期未选时采用第一项。`,
+        "宿主倒计时结束时默认采用第一项。",
         "返回 outcome: selected 与 optionId，或 outcome: custom 与 text；手动取消返回 outcome: cancelled，此时暂停依赖该决定的动作，依据后续输入恢复。",
       ].join("\n\n"),
       executionMode: "sequential",

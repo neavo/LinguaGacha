@@ -133,6 +133,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentTodo: () => ({ todos: page_state.current.todos }),
   useAgentSkills: () => ({ skills: page_state.current.skills }),
   useAgentInput: () => page_state.current.input,
+  useAgentDecisionCountdown: () => null,
   useAgentSessionActions: () => page_state.current,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
@@ -684,7 +685,6 @@ describe("AgentPage", () => {
     const pending_write_decision = {
       kind: "write_approval" as const,
       id: "apply-1",
-      expiresAt: Date.now() + 300_000,
       summary: {
         items: 1,
         glossary: 0,
@@ -1094,6 +1094,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     setApprovalMode: vi.fn(async () => undefined),
     resolveQuestion: vi.fn(async () => undefined),
     resolveWriteApproval: vi.fn(async () => undefined),
+    setQuestionFocused: vi.fn(),
     reconnect: vi.fn(),
     ...overrides,
   };

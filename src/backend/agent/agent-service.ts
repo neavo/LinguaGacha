@@ -213,7 +213,7 @@ export class AgentService {
   private readonly publish: AgentServiceOptions["publish"];
   private todos: string[] = []; // 对话级有序待办；Deno 脚本成功后才原子替换
   private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
-  private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其固定期限
+  private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其取消生命周期
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入

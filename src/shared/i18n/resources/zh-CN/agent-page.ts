@@ -76,6 +76,7 @@ export const zh_cn_agent_page = {
     allow_session: "允许本次及本会话后续的全部写入",
   },
   decision: {
+    paused_remaining: "已暂停 · 剩余时间 {time}",
     remaining: "剩余时间 {time}",
     custom: "自定义",
     custom_placeholder: "输入自定义答案 …",

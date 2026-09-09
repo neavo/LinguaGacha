@@ -1,9 +1,17 @@
+const decision_toast = vi.hoisted(() => vi.fn());
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast: decision_toast }),
+}));
 import { act, StrictMode, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_SESSION_EVENT_TOPIC,
+  type AgentPendingDecision,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentMessageAttachment,
@@ -114,6 +122,7 @@ describe("AgentSessionStore", () => {
   let event_source: FakeEventSource;
 
   beforeEach(() => {
+    decision_toast.mockClear();
     window.localStorage.clear();
     event_source = new FakeEventSource();
     desktop_api_mocks.api_get.mockReset().mockResolvedValue(
@@ -159,6 +168,7 @@ describe("AgentSessionStore", () => {
     container?.remove();
     root = null;
     container = null;
+    vi.useRealTimers();
   });
 
   it("按 id 覆盖完整条目并保留首次出现的真实顺序", async () => {
@@ -461,7 +471,6 @@ describe("AgentSessionStore", () => {
     const waiting = {
       kind: "write_approval" as const,
       id: "apply-1",
-      expiresAt: 300_000,
       summary: {
         items: 2,
         glossary: 1,
@@ -497,7 +506,6 @@ describe("AgentSessionStore", () => {
     const pending = {
       kind: "question" as const,
       id: "question-1",
-      expiresAt: 300_000,
       question: {
         prompt: "选择范围",
         description: "选择最符合本次任务的范围",
@@ -529,6 +537,123 @@ describe("AgentSessionStore", () => {
     expect(latest.pendingDecision).toBeNull();
   });
 
+  it.each([
+    {
+      pending: countdown_question(),
+      path: "/api/agent/question/resolve",
+      body: { id: "countdown-question", response: { kind: "option", optionId: "safe" } },
+    },
+    {
+      pending: {
+        kind: "write_approval",
+        id: "countdown-write",
+        summary: {
+          items: 1,
+          glossary: 0,
+          textPreserve: 0,
+          preReplacement: 0,
+          postReplacement: 0,
+          prompts: 0,
+        },
+      } satisfies AgentPendingDecision,
+      path: "/api/agent/write-approval/resolve",
+      body: { id: "countdown-write", decision: "allow_once" },
+    },
+  ])("前端到期通过现有入口提交 $path 的默认答案", async ({ pending, path, body }) => {
+    vi.useFakeTimers();
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
+    desktop_api_mocks.api_fetch.mockImplementationOnce(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: null,
+      });
+      return { revision: event_source.current_revision };
+    });
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    expect(latest.transport).toBe("ready");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299_999);
+    });
+    expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledExactlyOnceWith(path, body);
+    expect(latest.pendingDecision).toBeNull();
+  });
+
+  it("暂停跨断线快照恢复保留，失焦后按余量提交", async () => {
+    vi.useFakeTimers();
+    const pending = countdown_question();
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ pendingDecision: pending }));
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    await act(async () => latest.setQuestionFocused(pending.id, true));
+    await act(async () => event_source.onerror?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    await act(async () => latest.reconnect());
+    expect(latest.transport).toBe("ready");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+    await act(async () => latest.setQuestionFocused(pending.id, false));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(240_000);
+    });
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+  });
+
+  it("手动提交占用命令槽，失败仅通知一次且恢复同一问题不自动重试", async () => {
+    vi.useFakeTimers();
+    desktop_api_mocks.api_get.mockResolvedValue(
+      agent_snapshot({ pendingDecision: countdown_question() }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    let reject!: (error: Error) => void;
+    desktop_api_mocks.api_fetch.mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    let submission!: Promise<void>;
+    await act(async () => {
+      submission = latest.resolveQuestion({ kind: "custom", text: "逐章处理" });
+    });
+    await act(async () => latest.resolveQuestion({ kind: "option", optionId: "safe" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+    await act(async () => {
+      reject(new Error("connection failed"));
+      await submission;
+    });
+    expect(decision_toast).toHaveBeenCalledExactlyOnceWith("error", "agent_page.error.decision");
+    expect(latest.pendingDecision?.id).toBe("countdown-question");
+    await act(async () => latest.reconnect());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+    await act(async () => latest.resolveQuestion({ kind: "custom", text: "逐章处理" }));
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("畸形决策增量保持最近一次完整控制状态", async () => {
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -538,7 +663,6 @@ describe("AgentSessionStore", () => {
     const pending = {
       kind: "write_approval" as const,
       id: "apply-1",
-      expiresAt: 300_000,
       summary: {
         items: 1,
         glossary: 0,
@@ -577,7 +701,6 @@ describe("AgentSessionStore", () => {
         pendingDecision: {
           kind: "question",
           id: "question-1",
-          expiresAt: 300_000,
           question: {
             prompt: "选择范围",
             options: [{ id: "only", label: "唯一选项" }],
@@ -1590,4 +1713,19 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
 /** 在 React 提交期间等待公开状态收敛。 */
 async function wait_for(assertion: () => void): Promise<void> {
   await act(async () => await vi.waitFor(assertion));
+}
+
+/** 时钟与接口集成使用具有明确推荐顺序的普通问题。 */
+function countdown_question(): AgentPendingDecision {
+  return {
+    kind: "question",
+    id: "countdown-question",
+    question: {
+      prompt: "选择范围",
+      options: [
+        { id: "safe", label: "当前章节" },
+        { id: "all", label: "全文" },
+      ],
+    },
+  };
 }
