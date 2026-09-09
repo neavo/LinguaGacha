@@ -62,7 +62,7 @@ export class TranslationPrePipeline {
   public process_item(
     item: TextTaskItemRecord | null,
     item_index = 0,
-    request_index = 0,
+    request_id = 0,
   ): TranslationPrePipelineContext {
     const context = this.create_empty_context(item);
     if (item === null) {
@@ -105,7 +105,7 @@ export class TranslationPrePipeline {
     const has_translatable = context.prepared_lines.some((line) => line.state === "translatable");
     if (has_translatable) {
       context.request_item = {
-        request_index,
+        request_id,
         item_index,
         text_src: context.prepared_lines.map((line) => line.prepared_text).join("\n"),
         actor_src,

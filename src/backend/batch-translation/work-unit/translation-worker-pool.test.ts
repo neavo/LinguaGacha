@@ -27,7 +27,7 @@ describe("TranslationWorkerPool", () => {
     const llm_client = {
       request: vi.fn().mockResolvedValue({
         response_think: "",
-        response_result: '{"index":0,"text":"你好"}',
+        response_result: '{"id":0,"text":"你好"}',
         input_tokens: 1,
         reasoning_tokens: 0,
         output_tokens: 2,
@@ -269,8 +269,12 @@ function create_translation_unit(unit_id: string) {
  */
 async function create_template_root(): Promise<string> {
   const builtin_root = await create_temp_root();
-  await write_template(builtin_root, "translation_prompt", "zh");
-  await write_template(builtin_root, "analysis_prompt", "zh");
+  const dir = path.join(builtin_root, "translation_prompt", "template", "zh");
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
+  await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
+  await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
+  await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
   return builtin_root;
 }
 
@@ -281,20 +285,4 @@ async function create_temp_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-pool-"));
   cleanup_roots.push(app_root);
   return app_root;
-}
-
-/**
- * 写入最小可用模板，确保 pool 测试只关注执行路径而非提示词内容
- */
-async function write_template(
-  builtin_root: string,
-  task_dir_name: string,
-  language: "zh" | "en",
-): Promise<void> {
-  const dir = path.join(builtin_root, task_dir_name, "template", language);
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
-  await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
-  await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
-  await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
 }

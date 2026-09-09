@@ -402,7 +402,7 @@ describe("BatchTranslationRunner", () => {
     expect(executed_batches).toEqual([[1, 2]]);
   });
 
-  it("翻译任务启动时对齐旧实现打印主提示词", async () => {
+  it("翻译任务启动时按本轮配置打印主提示词", async () => {
     const builtin_root = create_template_root();
     const logs: string[] = [];
     const done = create_status_waiter("done");
@@ -506,6 +506,7 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
+  /** 以条目处理状态生成 worker 结果，供 Runner 验证提交与重试。 */
   function create_translation_worker_result(
     items: MutableJsonRecord[],
     input_tokens: number,
@@ -524,6 +525,7 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
+  /** 通过公开状态事件等待目标终态。 */
   function create_status_waiter(status: BatchTranslationSnapshot["status"]): {
     promise: Promise<void>;
     listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void;
@@ -542,6 +544,7 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
+  /** 组合真实运行态与可控 meta，验证任务生命周期和租约释放。 */
   function create_task_runtime(
     listener: (snapshot: Readonly<BatchTranslationSnapshot>) => void = () => undefined,
     read_meta: (() => JsonRecord) | null = null,
@@ -603,6 +606,7 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
+  /** 空任务场景一旦意外调度 worker 就立即失败。 */
   function create_unused_executor(): WorkUnitExecutor {
     return {
       execute_unit: async () => {
@@ -644,37 +648,25 @@ describe("BatchTranslationRunner", () => {
     };
   }
 
+  /** 用临时翻译模板隔离启动日志的资源读取。 */
   function create_template_root(): string {
     const builtin_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
     cleanup_paths.push(builtin_root);
-    write_template(builtin_root, "translation_prompt", "zh", {
+    const files = {
       "prefix.txt": "翻译前缀",
       "base.txt": "翻译正文 {target_language}",
       "thinking.txt": "翻译思考",
       "suffix.txt": "翻译后缀",
-    });
-    write_template(builtin_root, "analysis_prompt", "zh", {
-      "prefix.txt": "分析前缀",
-      "base.txt": "分析正文 {target_language}",
-      "thinking.txt": "分析思考",
-      "suffix.txt": "分析后缀",
-    });
-    return builtin_root;
-  }
-
-  function write_template(
-    builtin_root: string,
-    task_dir_name: string,
-    language: string,
-    files: Record<string, string>,
-  ): void {
-    const template_dir = path.join(builtin_root, task_dir_name, "template", language);
+    };
+    const template_dir = path.join(builtin_root, "translation_prompt", "template", "zh");
     fs.mkdirSync(template_dir, { recursive: true });
     for (const [file_name, content] of Object.entries(files)) {
       fs.writeFileSync(path.join(template_dir, file_name), content, "utf-8");
     }
+    return builtin_root;
   }
 
+  /** 收集结构化日志的公开文本投影。 */
   function create_log_manager(logs: string[] = []): BatchTranslationRunnerOptions["logManager"] {
     return {
       append: (payload) => {

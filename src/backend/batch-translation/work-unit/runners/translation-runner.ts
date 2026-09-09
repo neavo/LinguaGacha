@@ -28,7 +28,7 @@ import {
   type TranslationRequestItem,
 } from "../translation-item";
 import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
-import { ResponseCleaner } from "../response/response-cleaner";
+import { split_translation_response } from "../response/split-translation-response";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
@@ -116,7 +116,7 @@ export class TranslationWorkUnitRunner {
     const quality = request.quality_snapshot;
     const items = structuredClone(request.items);
     const precedings = structuredClone(request.precedings);
-    const prepared = await this.prepare_request_data(request, config, quality, items, precedings);
+    const prepared = this.prepare_request_data(request, config, quality, items, precedings);
     if (prepared.done) return prepared.result;
     const start_time = Date.now();
     const response = await this.llm_client.request(
@@ -146,13 +146,13 @@ export class TranslationWorkUnitRunner {
   }
 
   /** 为每个 item 构建一条请求记录，并将逐行事实保留在 pipeline 内部。 */
-  private async prepare_request_data(
+  private prepare_request_data(
     request: TranslationWorkUnitRequest,
     config: TextProcessingConfig,
     quality: TextQualitySnapshot,
     items: TextTaskItemRecord[],
     precedings: TextTaskItemRecord[],
-  ): Promise<
+  ):
     | { done: true; result: TranslationWorkUnitResult }
     | {
         done: false;
@@ -161,8 +161,7 @@ export class TranslationWorkUnitRunner {
         messages: LLMMessage[];
         console_log: string[];
         pipeline_contexts: TranslationPrePipelineContext[];
-      }
-  > {
+      } {
     const activated = this.resolve_activated_glossary_entries(quality, items);
     const pipeline = new TranslationPrePipeline(config, quality);
     const projected_precedings = pipeline.project_precedings(precedings);
@@ -195,7 +194,7 @@ export class TranslationWorkUnitRunner {
     const prompt =
       api_format === "SakuraLLM"
         ? builder.generate_prompt_sakura(request_items[0]?.text_src ?? "")
-        : await builder.generate_prompt(request_items, mode, samples, projected_precedings);
+        : builder.generate_prompt(request_items, mode, samples, projected_precedings);
     return {
       done: false,
       request_items,
@@ -206,7 +205,7 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  /** 按 index 独立校验，避免单个格式错误的 item 影响其它 item。 */
+  /** 按请求 ID 独立校验，避免单个格式错误的 item 影响其它 item。 */
   private async apply_response_data(
     context: {
       config: TextProcessingConfig;
@@ -224,28 +223,30 @@ export class TranslationWorkUnitRunner {
     response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const request_failed = context.request_error !== undefined || context.request_timeout;
-    const cleaner = request_failed
-      ? { cleaned_response_result: "", rule_analysis_text: "" }
-      : ResponseCleaner.extract_rule_analysis_from_response(response.response_result);
-    const decoder = new ResponseDecoder();
     // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
     const is_sakura =
       String(read_json_record(context.request.model)["api_format"] ?? "") === "SakuraLLM";
+    const response_parts = request_failed
+      ? { translation_text: "", rule_analysis_text: "" }
+      : is_sakura
+        ? { translation_text: response.response_result, rule_analysis_text: "" }
+        : split_translation_response(response.response_result);
+    const decoder = new ResponseDecoder();
     const decoded = request_failed
       ? []
       : is_sakura && context.request_items.length === 1
         ? decoder.decode_plain_text_item(
-            cleaner.cleaned_response_result,
-            context.request_items[0]?.request_index ?? 0,
+            response_parts.translation_text,
+            context.request_items[0]?.request_id ?? 0,
           )
         : is_sakura
           ? []
-          : await decoder.decode_translation(cleaner.cleaned_response_result, context.mode);
-    const by_index = new Map<number, TranslationDecodedItem>();
-    const duplicates = new Set<number>();
+          : await decoder.decode_translation(response_parts.translation_text, context.mode);
+    const by_request_id = new Map<number, TranslationDecodedItem>();
+    const duplicates = new Set<number>(); // 同一请求 ID 有多个候选时无法唯一匹配，整组保持待处理。
     for (const item of decoded) {
-      if (by_index.has(item.request_index)) duplicates.add(item.request_index);
-      else by_index.set(item.request_index, item);
+      if (by_request_id.has(item.request_id)) duplicates.add(item.request_id);
+      else by_request_id.set(item.request_id, item);
     }
     const dsts: string[] = [];
     const actor_dsts: TranslationActor[] = [];
@@ -254,11 +255,11 @@ export class TranslationWorkUnitRunner {
     for (const request_item of context.request_items) {
       const item = context.items[request_item.item_index];
       const pipeline_context = context.pipeline_contexts[request_item.item_index];
-      const decoded_item = by_index.get(request_item.request_index);
+      const decoded_item = by_request_id.get(request_item.request_id);
       const valid =
         !request_failed &&
         decoded_item !== undefined &&
-        !duplicates.has(request_item.request_index) &&
+        !duplicates.has(request_item.request_id) &&
         item !== undefined &&
         pipeline_context !== undefined;
       if (valid) {
@@ -283,7 +284,7 @@ export class TranslationWorkUnitRunner {
       reasoning_tokens: response.reasoning_tokens,
       output_tokens: response.output_tokens,
       stopped: false,
-      logs: this.build_logs(context, valid_count, dsts, actor_dsts, response, cleaner),
+      logs: this.build_logs(context, valid_count, dsts, actor_dsts, response, response_parts),
     };
   }
 
@@ -302,7 +303,7 @@ export class TranslationWorkUnitRunner {
     dsts: string[],
     actor_dsts: TranslationActor[],
     response: LLMRequestResult,
-    cleaner: { cleaned_response_result: string; rule_analysis_text: string },
+    response_parts: { translation_text: string; rule_analysis_text: string },
   ): WorkUnitLogEntry[] {
     const app_language = normalize_setting_snapshot(context.request.config_snapshot).app_language;
     const stats = this.t(app_language, "app.log.engine_task_success", {
@@ -340,16 +341,16 @@ export class TranslationWorkUnitRunner {
         text: response.response_think.trim(),
       });
     }
-    if (cleaner.rule_analysis_text.trim() !== "") {
+    if (response_parts.rule_analysis_text.trim() !== "") {
       sections.push({
         title: this.t(app_language, "app.log.engine_task_rule_analysis"),
-        text: cleaner.rule_analysis_text.trim(),
+        text: response_parts.rule_analysis_text.trim(),
       });
     }
-    if (cleaner.cleaned_response_result.trim() !== "") {
+    if (response_parts.translation_text.trim() !== "") {
       sections.push({
         title: this.t(app_language, "app.log.translation_task_result"),
-        text: cleaner.cleaned_response_result.trim(),
+        text: response_parts.translation_text.trim(),
       });
     }
     return [

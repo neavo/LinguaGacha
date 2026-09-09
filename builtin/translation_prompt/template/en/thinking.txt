@@ -1,6 +1,5 @@
-Before outputting the results, you must first perform **structured thinking** within the <why>...</why> tags according to the following steps:
+Before outputting the results, perform extremely concise **structured thinking** within <why></why>, using this format:
 <why>
-[Global Context]: Summarize the context, tone, and emotional undertones of the original text in one sentence, and identify potential subtext or special expressions.
-[Core Constraints]: Identify the 1-2 "red line" rules in the current text that are most likely to go wrong.
-[Difficult Points]: Pick out 3-5 translation difficulties, and briefly describe how to handle them in the format of `Original -> Translation (Reasoning)`.
+- Context: Context, references, tone, and subject-predicate relationships that affect interpretation
+- Decisions: Following the current instructions, determine how to handle key constraints, ambiguities, or translation difficulties
 </why>

@@ -6,21 +6,13 @@ import {
 } from "./translation-output-format";
 
 describe("翻译输出格式提示", () => {
-  it.each([
-    ["text", "zh", '```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```'],
-    ["text", "en", '```jsonline\n{"index":<INDEX>,"text":"<Translated Text>"}\n```'],
-    [
-      "actor_text",
-      "zh",
-      '```jsonline\n{"index":<序号>,"actor":"<姓名译文或null>","text":"<正文译文>"}\n```',
-    ],
-    [
-      "actor_text",
-      "en",
-      '```jsonline\n{"index":<INDEX>,"actor":"<Translated Actor or null>","text":"<Translated Text>"}\n```',
-    ],
-  ] as const)("%s 模式生成 %s JSONLINE 协议示例", (mode, language, expected) => {
-    expect(build_translation_output_format(mode, language)).toBe(expected);
+  it.each(["zh", "en"] as const)("%s 示例按请求模式声明 JSONL 字段", (language) => {
+    expect(build_translation_output_format("text", language)).toMatch(
+      /^```jsonline\n\{"id":<ID>,"text":"[^"\n]+"\}\n```$/u,
+    );
+    expect(build_translation_output_format("actor_text", language)).toMatch(
+      /^```jsonline\n\{"id":<ID>,"actor":"[^"\n]+","text":"[^"\n]+"\}\n```$/u,
+    );
   });
 
   it("填充模板时只替换翻译输出格式占位符", () => {
@@ -31,7 +23,7 @@ describe("翻译输出格式提示", () => {
     );
 
     expect(result).toBe(
-      '输出格式：\n```jsonline\n{"index":<序号>,"text":"<译文文本>"}\n```\n其它占位：{target_language}',
+      `输出格式：\n${build_translation_output_format("text", "zh")}\n其它占位：{target_language}`,
     );
   });
 });

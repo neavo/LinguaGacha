@@ -23,7 +23,7 @@ describe("TranslationExportDialog", () => {
     root = null;
   });
 
-  it("有警告时显示类型计数并提供前往 AGENT 与继续任务", () => {
+  it("有警告时显示类型计数并提供前往 AGENT 与继续生成", () => {
     const jump_to_agent = vi.fn();
     const confirm_export = vi.fn(async () => {});
     render_dialog(
