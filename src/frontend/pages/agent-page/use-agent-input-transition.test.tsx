@@ -42,7 +42,6 @@ function question(id: string): AgentPendingDecision {
   return {
     id,
     kind: "question",
-    expiresAt: Date.now() + 300_000,
     question: {
       prompt: "选择范围",
       options: [

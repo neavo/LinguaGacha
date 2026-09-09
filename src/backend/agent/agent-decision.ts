@@ -6,11 +6,6 @@ import type {
   AgentQuestionResponse,
   AgentWriteApprovalDecision,
 } from "../../shared/agent";
-import {
-  AGENT_DECISION_TIMEOUT_MS,
-  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
-  AGENT_WRITE_APPROVAL_DEFAULT,
-} from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 
 /** ask_user 返回模型轮次的结构化结果，不进入公开 user 消息。 */
@@ -21,10 +16,9 @@ export type AgentQuestionResult = JsonRecord &
     | { outcome: "cancelled" }
   );
 
-/** 决定共用的计时与取消资源；各自结果保持窄类型。 */
+/** 决定共用的取消资源；各自结果保持窄类型。 */
 type PendingDecisionLifecycle = {
   reject: (error: unknown) => void;
-  timer: ReturnType<typeof setTimeout>;
   signal: AbortSignal | undefined;
   on_abort: () => void;
 };
@@ -42,10 +36,10 @@ type PendingWriteApproval = PendingDecisionLifecycle & {
 type PendingDecision = PendingQuestion | PendingWriteApproval;
 
 /**
- * 单个 Agent 会话的用户决策协调器；统一拥有期限、竞态、取消与公开 pending 状态。
+ * 单个 Agent 会话的用户决策协调器；统一拥有待回答状态、答案裁决与取消。
  */
 export class AgentDecisionCoordinator {
-  private pending: PendingDecision | null = null; // 当前会话唯一等待项，也是计时与取消资源的所有者
+  private pending: PendingDecision | null = null; // 当前会话唯一等待项，也是取消资源的所有者
 
   /** 状态变化由 AgentService 投影为 SSE 与输入能力快照。 */
   public constructor(private readonly on_change: () => void) {}
@@ -70,29 +64,20 @@ export class AgentDecisionCoordinator {
     const public_decision: Extract<AgentPendingDecision, { kind: "question" }> = {
       kind: "question",
       id: tool_call_id,
-      expiresAt: Date.now() + AGENT_DECISION_TIMEOUT_MS,
       question: structuredClone(question),
     };
     return new Promise<AgentQuestionResult>((resolve, reject) => {
       let pending!: PendingQuestion;
-      // 上游取消经同一裁决入口释放计时器与 pending。
+      // 上游取消经同一裁决入口释放 pending。
       const on_abort = () => this.abort(pending);
-      const timer = setTimeout(
-        () =>
-          this.settle(pending, {
-            outcome: "selected",
-            optionId: public_decision.question.options[AGENT_QUESTION_DEFAULT_OPTION_INDEX].id,
-          }),
-        AGENT_DECISION_TIMEOUT_MS,
-      );
-      pending = { public: public_decision, resolve, reject, timer, signal, on_abort };
+      pending = { public: public_decision, resolve, reject, signal, on_abort };
       signal?.addEventListener("abort", on_abort, { once: true });
       this.pending = pending;
       this.on_change();
     });
   }
 
-  /** 发布写入授权，到期采用共享默认结果，允许当前批次写入。 */
+  /** 发布写入授权，并等待宿主提交明确权限结果。 */
   public wait_for_write_approval(
     tool_call_id: string,
     summary: AgentPendingWriteSummary,
@@ -102,18 +87,13 @@ export class AgentDecisionCoordinator {
     const public_decision: Extract<AgentPendingDecision, { kind: "write_approval" }> = {
       kind: "write_approval",
       id: tool_call_id,
-      expiresAt: Date.now() + AGENT_DECISION_TIMEOUT_MS,
       summary: structuredClone(summary),
     };
     return new Promise<AgentWriteApprovalDecision>((resolve, reject) => {
       let pending!: PendingWriteApproval;
-      // 上游取消经同一裁决入口释放计时器与 pending。
+      // 上游取消经同一裁决入口释放 pending。
       const on_abort = () => this.abort(pending);
-      const timer = setTimeout(
-        () => this.settle(pending, AGENT_WRITE_APPROVAL_DEFAULT),
-        AGENT_DECISION_TIMEOUT_MS,
-      );
-      pending = { public: public_decision, resolve, reject, timer, signal, on_abort };
+      pending = { public: public_decision, resolve, reject, signal, on_abort };
       signal?.addEventListener("abort", on_abort, { once: true });
       this.pending = pending;
       this.on_change();
@@ -189,9 +169,8 @@ export class AgentDecisionCoordinator {
     );
   }
 
-  /** 清理计时器和信号订阅后再公开空状态。 */
+  /** 清理信号订阅后再公开空状态。 */
   private clear(pending: PendingDecisionLifecycle): void {
-    clearTimeout(pending.timer);
     pending.signal?.removeEventListener("abort", pending.on_abort);
     this.pending = null;
     this.on_change();

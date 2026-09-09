@@ -1,14 +1,20 @@
 import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import {
-  AGENT_DECISION_TIMEOUT_MS,
-  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
-  AGENT_WRITE_APPROVAL_DEFAULT,
   type AgentPendingDecision,
   type AgentPendingWriteSummary,
   type AgentQuestionResponse,
   type AgentWriteApprovalDecision,
 } from "@shared/agent";
+import {
+  AGENT_QUESTION_DEFAULT_OPTION_INDEX,
+  AGENT_WRITE_APPROVAL_DEFAULT,
+  type AgentDecisionCountdownSnapshot,
+} from "@frontend/app/session/agent/agent-decision-countdown";
+import {
+  useAgentDecisionCountdown,
+  useAgentSessionActions,
+} from "@frontend/app/session/agent/agent-session-context";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   InputGroup,
@@ -42,33 +48,31 @@ const WRITE_DECISIONS = [
 type QuestionDecision = Extract<AgentPendingDecision, { kind: "question" }>;
 type WriteDecision = Extract<AgentPendingDecision, { kind: "write_approval" }>;
 
-/** 后端绝对期限在当前渲染帧中的只读展示投影。 */
-type AgentDecisionDeadline = Readonly<{
-  remaining_seconds: number;
-  remaining_percent: number;
-  warning: boolean;
-}>;
-
-/** 决定内容在底部交互区内占位，布局与离场生命周期由页面持有。 */
+/** 决策区域独立订阅时钟，页面只负责布局与离场生命周期。 */
 export function AgentDecision(props: {
   decision: AgentPendingDecision;
   title_ref?: RefObject<HTMLHeadingElement | null>;
-  on_resolve_question: (response: AgentQuestionResponse) => void;
-  on_resolve_write_approval: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
+  const countdown = useAgentDecisionCountdown();
+  const actions = useAgentSessionActions();
+  // 离场期间保留旧卡片，不把新问题的时钟显示在旧卡片上。
+  const current_countdown = countdown?.id === props.decision.id ? countdown : null;
   return props.decision.kind === "question" ? (
     <AgentQuestionDecision
       key={props.decision.id}
       decision={props.decision}
       title_ref={props.title_ref}
-      on_resolve={props.on_resolve_question}
+      countdown={current_countdown}
+      on_focus={actions.setQuestionFocused}
+      on_resolve={actions.resolveQuestion}
     />
   ) : (
     <AgentWriteDecision
       key={props.decision.id}
       decision={props.decision}
       title_ref={props.title_ref}
-      on_resolve={props.on_resolve_write_approval}
+      countdown={current_countdown}
+      on_resolve={actions.resolveWriteApproval}
     />
   );
 }
@@ -76,6 +80,8 @@ export function AgentDecision(props: {
 /** 普通问题提供即时固定答案、显式自定义答案和取消入口。 */
 function AgentQuestionDecision(props: {
   decision: QuestionDecision;
+  countdown: AgentDecisionCountdownSnapshot;
+  on_focus: (id: string, focused: boolean) => void;
   title_ref?: RefObject<HTMLHeadingElement | null>;
   on_resolve: (response: AgentQuestionResponse) => void;
 }): JSX.Element {
@@ -83,63 +89,70 @@ function AgentQuestionDecision(props: {
   const custom_input_id = useId();
   const [custom_text, set_custom_text] = useState("");
   const custom_value = custom_text.trim();
+  const {
+    on_focus,
+    decision: { id },
+  } = props;
+  // 切页卸载也释放焦点；身份校验由 Store 承担，旧卡片不会恢复新问题的计时。
+  useEffect(() => () => on_focus(id, false), [id, on_focus]);
 
   return (
     <AgentDecisionFrame
       title={props.decision.question.prompt}
       title_ref={props.title_ref}
       description={props.decision.question.description}
-      expires_at={props.decision.expiresAt}
       on_cancel={() => props.on_resolve({ kind: "cancel" })}
     >
-      {(deadline) => (
-        <div className="agent-decision__options">
-          {props.decision.question.options.map((option, index) => (
-            <AgentDecisionAction
-              key={option.id}
-              ordinal={index + 1}
-              label={option.label}
-              deadline={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? deadline : undefined}
-              onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
+      <div className="agent-decision__options">
+        {props.decision.question.options.map((option, index) => (
+          <AgentDecisionAction
+            key={option.id}
+            ordinal={index + 1}
+            label={option.label}
+            countdown={index === AGENT_QUESTION_DEFAULT_OPTION_INDEX ? props.countdown : null}
+            onClick={() => props.on_resolve({ kind: "option", optionId: option.id })}
+          />
+        ))}
+        <div className="agent-decision-custom">
+          <label className="agent-decision-badge" htmlFor={custom_input_id}>
+            {t("agent_page.decision.custom")}
+          </label>
+          <InputGroup className="agent-decision-custom__field">
+            <InputGroupInput
+              id={custom_input_id}
+              value={custom_text}
+              placeholder={t("agent_page.decision.custom_placeholder")}
+              onFocus={() => on_focus(id, true)}
+              onBlur={() => on_focus(id, false)}
+              onChange={(event) => set_custom_text(event.target.value)}
             />
-          ))}
-          <div className="agent-decision-custom">
-            <label className="agent-decision-badge" htmlFor={custom_input_id}>
-              {t("agent_page.decision.custom")}
-            </label>
-            <InputGroup className="agent-decision-custom__field">
-              <InputGroupInput
-                id={custom_input_id}
-                value={custom_text}
-                placeholder={t("agent_page.decision.custom_placeholder")}
-                onChange={(event) => set_custom_text(event.target.value)}
-              />
-              <InputGroupAddon align="inline-end">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <InputGroupButton
-                        className="agent-decision-icon agent-decision-custom__submit"
-                        size="icon-xs"
-                        disabled={custom_value === ""}
-                        aria-label={t("agent_page.decision.confirm")}
-                        onClick={() => {
-                          if (custom_value !== "") {
-                            props.on_resolve({ kind: "custom", text: custom_value });
-                          }
-                        }}
-                      >
-                        <ArrowRight aria-hidden="true" />
-                      </InputGroupButton>
-                    }
-                  />
-                  <TooltipContent>{t("agent_page.decision.confirm")}</TooltipContent>
-                </Tooltip>
-              </InputGroupAddon>
-            </InputGroup>
-          </div>
+            <InputGroupAddon align="inline-end">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <InputGroupButton
+                      className="agent-decision-icon agent-decision-custom__submit"
+                      size="icon-xs"
+                      disabled={custom_value === ""}
+                      aria-label={t("agent_page.decision.confirm")}
+                      // 保持输入框焦点，点击发送不会先恢复零秒计时。
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        if (custom_value !== "") {
+                          props.on_resolve({ kind: "custom", text: custom_value });
+                        }
+                      }}
+                    >
+                      <ArrowRight aria-hidden="true" />
+                    </InputGroupButton>
+                  }
+                />
+                <TooltipContent>{t("agent_page.decision.confirm")}</TooltipContent>
+              </Tooltip>
+            </InputGroupAddon>
+          </InputGroup>
         </div>
-      )}
+      </div>
     </AgentDecisionFrame>
   );
 }
@@ -147,6 +160,7 @@ function AgentQuestionDecision(props: {
 /** 写入授权展示后端冻结的摘要与三种即时裁决。 */
 function AgentWriteDecision(props: {
   decision: WriteDecision;
+  countdown: AgentDecisionCountdownSnapshot;
   title_ref?: RefObject<HTMLHeadingElement | null>;
   on_resolve: (decision: AgentWriteApprovalDecision) => void;
 }): JSX.Element {
@@ -157,58 +171,33 @@ function AgentWriteDecision(props: {
       title={t("agent_page.approval.title")}
       title_ref={props.title_ref}
       description={<AgentWriteSummary summary={props.decision.summary} />}
-      expires_at={props.decision.expiresAt}
     >
-      {(deadline) => (
-        <div className="agent-decision__options">
-          {WRITE_DECISIONS.map(([value, key], index) => (
-            <AgentDecisionAction
-              key={value}
-              ordinal={index + 1}
-              label={t(key)}
-              deadline={value === AGENT_WRITE_APPROVAL_DEFAULT ? deadline : undefined}
-              onClick={() => props.on_resolve(value)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="agent-decision__options">
+        {WRITE_DECISIONS.map(([value, key], index) => (
+          <AgentDecisionAction
+            key={value}
+            ordinal={index + 1}
+            label={t(key)}
+            countdown={value === AGENT_WRITE_APPROVAL_DEFAULT ? props.countdown : null}
+            onClick={() => props.on_resolve(value)}
+          />
+        ))}
+      </div>
     </AgentDecisionFrame>
   );
 }
 
-/** 公共框架统一标题语义、期限刷新、取消轨和选项内容位置。 */
+/** 公共框架统一标题语义、取消轨和选项内容位置。 */
 function AgentDecisionFrame(props: {
   title: string;
   title_ref?: RefObject<HTMLHeadingElement | null>;
   description?: ReactNode;
-  expires_at: number;
-  children: (deadline: AgentDecisionDeadline) => ReactNode;
+  children: ReactNode;
   on_cancel?: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const title_id = useId();
   const description_id = useId();
-  const [remaining_seconds, set_remaining_seconds] = useState(() =>
-    read_remaining_seconds(props.expires_at),
-  );
-
-  useEffect(() => {
-    // 剩余时间由后端绝对期限计算，计时器只负责触发重绘。
-    const update = (): void => set_remaining_seconds(read_remaining_seconds(props.expires_at));
-    update();
-    const timer = window.setInterval(update, 1_000);
-    return () => window.clearInterval(timer);
-  }, [props.expires_at]);
-
-  const remaining_percent = Math.min(
-    100,
-    (remaining_seconds / (AGENT_DECISION_TIMEOUT_MS / 1_000)) * 100,
-  );
-  const deadline: AgentDecisionDeadline = {
-    remaining_seconds,
-    remaining_percent,
-    warning: remaining_percent <= AGENT_DECISION_WARNING_REMAINING_PERCENT,
-  };
 
   return (
     <section
@@ -269,7 +258,7 @@ function AgentDecisionFrame(props: {
           )}
         </div>
       </header>
-      <div className="agent-decision__body">{props.children(deadline)}</div>
+      <div className="agent-decision__body">{props.children}</div>
     </section>
   );
 }
@@ -278,56 +267,76 @@ function AgentDecisionFrame(props: {
 function AgentDecisionAction({
   ordinal,
   label,
-  deadline,
+  countdown,
   onClick,
 }: {
   ordinal: number;
   label: string;
-  deadline?: AgentDecisionDeadline;
+  countdown: AgentDecisionCountdownSnapshot;
   onClick: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const remaining_label =
-    deadline === undefined
+    countdown === null
       ? null
-      : t("agent_page.decision.remaining", {
-          time: format_remaining_time(deadline.remaining_seconds),
-        });
+      : t(
+          countdown.paused
+            ? "agent_page.decision.paused_remaining"
+            : "agent_page.decision.remaining",
+          {
+            time: format_remaining_time(countdown.remainingSeconds),
+          },
+        );
   return (
-    <button type="button" onClick={onClick} className="agent-decision-action">
-      <span className="agent-decision-badge" aria-hidden="true">
-        {ordinal}
-      </span>
-      <Tooltip>
-        <TooltipTrigger render={<span className="agent-decision-action__label" />}>
-          {label}
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-      <span
-        className={`agent-decision-icon agent-decision-action__icon${
-          deadline === undefined ? "" : " agent-decision-action__icon--deadline"
-        }`}
-        data-warning={deadline?.warning ? "true" : undefined}
-        aria-hidden={deadline === undefined ? "true" : undefined}
+    <Tooltip>
+      <TooltipTrigger
+        render={<button type="button" onClick={onClick} className="agent-decision-action" />}
       >
-        {deadline === undefined ? null : (
-          <svg className="agent-decision-progress" viewBox="0 0 24 24" aria-hidden="true">
-            <circle className="agent-decision-progress__track" cx="12" cy="12" r="10.75" />
-            <circle
-              className="agent-decision-progress__value"
-              cx="12"
-              cy="12"
-              r="10.75"
-              pathLength="100"
-              style={{ strokeDashoffset: 100 - deadline.remaining_percent }}
-            />
-          </svg>
-        )}
-        <ArrowRight className="agent-decision-action__arrow" aria-hidden="true" />
-        {remaining_label === null ? null : <span className="sr-only">{remaining_label}</span>}
-      </span>
-    </button>
+        <span className="agent-decision-badge" aria-hidden="true">
+          {ordinal}
+        </span>
+        <span className="agent-decision-action__label">{label}</span>
+        <span
+          className={`agent-decision-icon agent-decision-action__icon${
+            countdown === null ? "" : " agent-decision-action__icon--deadline"
+          }`}
+          data-warning={
+            countdown !== null &&
+            countdown.remainingPercent <= AGENT_DECISION_WARNING_REMAINING_PERCENT
+              ? "true"
+              : undefined
+          }
+          aria-hidden={countdown === null ? "true" : undefined}
+        >
+          {countdown === null ? null : (
+            <svg className="agent-decision-progress" viewBox="0 0 24 24" aria-hidden="true">
+              <circle className="agent-decision-progress__track" cx="12" cy="12" r="10.75" />
+              <circle
+                className="agent-decision-progress__value"
+                cx="12"
+                cy="12"
+                r="10.75"
+                pathLength="100"
+                style={{ strokeDashoffset: 100 - countdown.remainingPercent }}
+              />
+            </svg>
+          )}
+          <ArrowRight className="agent-decision-action__arrow" aria-hidden="true" />
+          {remaining_label === null ? null : <span className="sr-only">{remaining_label}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span>
+          {label}
+          {remaining_label === null ? null : (
+            <>
+              <br />
+              {remaining_label}
+            </>
+          )}
+        </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -351,11 +360,6 @@ function AgentWriteSummary(props: { summary: AgentPendingWriteSummary }): JSX.El
       })}
     </ul>
   );
-}
-
-/** 向上取整避免后端期限到达前提前显示为零。 */
-function read_remaining_seconds(expires_at: number): number {
-  return Math.max(0, Math.ceil((expires_at - Date.now()) / 1_000));
 }
 
 /** 倒计时固定为便于快速扫读的分秒格式。 */
