@@ -127,7 +127,8 @@ export type AppTableProps<Row> = {
   on_sort_change: (payload: AppTableSortState | null) => void;
   // 回调存在即开放拖拽；表格维持临时顺序直到页面完成持久化与权威数据刷新。
   on_reorder?: (ordered_row_ids: string[]) => Promise<void>;
-  on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
+  // 双击目标行或在表格焦点下按 Enter 激活当前活动行。
+  on_row_activate?: (row_id: string) => void;
   render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
   box_selection_enabled?: boolean;
   virtual_overscan?: number;

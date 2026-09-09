@@ -259,9 +259,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
           on_reorder={props.drag_disabled ? undefined : props.on_reorder}
-          on_row_double_click={(payload) => {
-            props.on_open_edit(payload.row_id);
-          }}
+          on_row_activate={props.on_open_edit}
           render_row_context_menu={(payload) => {
             const target_entry_ids = resolve_app_table_context_target_row_ids(
               payload.row_id,

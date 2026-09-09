@@ -60,6 +60,19 @@
   gap: 8px;
 }
 
+.proofreading-page__text-preview {
+  max-width: min(560px, var(--available-width));
+}
+
+.proofreading-page__text-preview-body {
+  /* 为 Tooltip 外层内边距预留空间，长正文在可用高度内滚动。 */
+  max-height: min(320px, calc(var(--available-height) - 16px));
+  min-width: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .proofreading-page__table-name-badge {
   max-width: min(128px, 36%);
   flex: 0 0 auto;

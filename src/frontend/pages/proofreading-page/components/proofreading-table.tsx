@@ -30,6 +30,7 @@ import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
+  AppContextMenuShortcut,
   AppContextMenuSub,
   AppContextMenuSubContent,
   AppContextMenuSubTrigger,
@@ -123,19 +124,34 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   return "neutral";
 }
 
-function render_name_prefixed_text(args: { name: string | null; text: string }): JSX.Element {
+// 浮层读取完整正文；姓名和压缩后的列表文本各自保留原有展示。
+function ProofreadingTextCell(props: {
+  name: string | null;
+  text: string;
+  full_text: string;
+}): JSX.Element {
+  const text = <span className="proofreading-page__table-text">{props.text}</span>;
   return (
     <span className="proofreading-page__table-text-line">
-      {args.name === null ? null : (
+      {props.name === null ? null : (
         <Badge
           variant="secondary"
-          title={args.name}
+          title={props.name}
           className="proofreading-page__table-name-badge"
         >
-          <span className="proofreading-page__table-name-badge-label">{args.name}</span>
+          <span className="proofreading-page__table-name-badge-label">{props.name}</span>
         </Badge>
       )}
-      <span className="proofreading-page__table-text">{args.text}</span>
+      {props.full_text !== "" ? (
+        <Tooltip>
+          <TooltipTrigger render={text} />
+          <TooltipContent className="proofreading-page__text-preview" sideOffset={8}>
+            <div className="proofreading-page__text-preview-body">{props.full_text}</div>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        text
+      )}
     </span>
   );
 }
@@ -297,7 +313,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
               can_drag={payload.can_drag}
               dragging={payload.dragging}
               drag_handle={payload.drag_handle}
-              show_tooltip={payload.presentation !== "overlay"}
             />
           );
         },
@@ -316,10 +331,13 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-source-head",
         cell_class_name: "proofreading-page__table-source-cell",
         render_cell: (payload) => {
-          return render_name_prefixed_text({
-            name: read_optional_item_name_text(payload.row.item.name_src),
-            text: payload.row.compressed_src,
-          });
+          return (
+            <ProofreadingTextCell
+              name={read_optional_item_name_text(payload.row.item.name_src)}
+              text={payload.row.compressed_src}
+              full_text={payload.row.item.src}
+            />
+          );
         },
       },
       {
@@ -336,10 +354,13 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-translation-head",
         cell_class_name: "proofreading-page__table-translation-cell",
         render_cell: (payload) => {
-          return render_name_prefixed_text({
-            name: read_optional_item_name_text(payload.row.item.name_dst),
-            text: payload.row.compressed_dst,
-          });
+          return (
+            <ProofreadingTextCell
+              name={read_optional_item_name_text(payload.row.item.name_dst)}
+              text={payload.row.compressed_dst}
+              full_text={payload.row.item.dst}
+            />
+          );
         },
       },
       {
@@ -358,10 +379,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-status-head",
         cell_class_name: "proofreading-page__table-status-cell",
         render_cell: (payload) => {
-          if (payload.presentation === "overlay") {
-            return null;
-          }
-
           return (
             <ProofreadingStatusCell
               item={payload.row.item}
@@ -391,9 +408,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_selection_change={props.on_selection_change}
           on_selection_error={props.on_selection_error}
           on_sort_change={props.on_sort_change}
-          on_row_double_click={(payload) => {
-            props.on_open_edit(payload.row_id);
-          }}
+          on_row_activate={props.on_open_edit}
           render_row_context_menu={(payload) => {
             const target_row_ids = resolve_app_table_context_target_row_ids(
               payload.row_id,
@@ -404,6 +419,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
               <AppContextMenuContent>
                 <AppContextMenuGroup>
                   <AppContextMenuItem
+                    aria-keyshortcuts="Enter"
                     onClick={() => {
                       run_after_context_menu_close(() => {
                         props.on_open_edit(payload.row_id);
@@ -412,6 +428,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   >
                     <PencilLine />
                     {t("app.action.edit")}
+                    <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}

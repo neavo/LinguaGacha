@@ -5,6 +5,7 @@ import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
+  AppContextMenuShortcut,
   AppContextMenuRadioGroup,
   AppContextMenuRadioItem,
   AppContextMenuSub,
@@ -28,9 +29,10 @@ export function TextReplacementContextMenuContent(
   return (
     <AppContextMenuContent>
       <AppContextMenuGroup>
-        <AppContextMenuItem onClick={props.on_open_edit}>
+        <AppContextMenuItem aria-keyshortcuts="Enter" onClick={props.on_open_edit}>
           <PencilLine />
           {t("app.action.edit")}
+          <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
         </AppContextMenuItem>
         <AppContextMenuSub>
           <AppContextMenuSubTrigger disabled={props.readonly}>
