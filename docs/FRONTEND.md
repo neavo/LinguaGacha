@@ -64,5 +64,6 @@
 - 本文不定义视觉风格，只记录工程消费落点；具体方向来自当前任务输入、既有界面证据和适用设计流程，不绑定固定文件名。
 - `AppearanceProvider` 是各 renderer 窗口持久化主题 / 字体偏好、解析系统主题、同步根节点视觉状态与原生标题栏的唯一入口；宿主桥只接收已解析的 `light / dark`，不持有 `system` 等用户偏好。
 - `src/frontend/index.css` 拥有全局 token 与主题样式，`src/frontend/shadcn` 拥有基础控件，`widgets`、`features` 与 `pages` 只消费外观运行态、token，并组合各自所有权内的界面。
+- 应用自绘界面的快捷键提示统一复用 `Kbd` 键帽，动作键位文案由 `ShortcutKbd` 提供。
 - 下拉与右键菜单主、子定位层共用 `widgets/app-menu` 的鼠标命中样式，覆盖宿主透明容器经 Portal 继承的穿透规则。菜单与 Tooltip 通过 `useWindowDeactivation` 及 Base UI 公开入口响应失焦和页面隐藏；Tooltip 在新交互后恢复悬停，窗口切换保持触发器 DOM 身份。
 - `npm run check` 是前端分层、可见文案与样式消费边界的机器门闩，验证选择见 [`WORKFLOW.md`](WORKFLOW.md)。

@@ -4,6 +4,7 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 
 import { cn } from "@frontend/shadcn/classnames";
+import { Kbd } from "@frontend/shadcn/kbd";
 import {
   APP_MENU_POSITIONER_CLASS_NAME,
   APP_MENU_SUBMENU_SIDE_OFFSET,
@@ -11,7 +12,7 @@ import {
   should_keep_submenu_open,
 } from "@frontend/widgets/app-menu";
 
-// 本文件只为 Base UI 右键菜单原语补充应用级 data-slot 与视觉约定，不持有业务状态。
+// 与调用方共用 actionsRef，使窗口失焦关闭经过 Base UI 原有的状态通知入口。
 function AppContextMenu({ actionsRef, ...props }: ContextMenuPrimitive.Root.Props): JSX.Element {
   const local_actions = useRef<ContextMenuPrimitive.Root.Actions | null>(null);
   const actions = actionsRef ?? local_actions;
@@ -108,7 +109,7 @@ function AppContextMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/context-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 focus:*:[svg]:text-accent-foreground data-[variant=destructive]:*:[svg]:text-destructive",
+        "relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 focus:*:[svg]:text-accent-foreground data-[variant=destructive]:*:[svg]:text-destructive",
         "text-[13px]",
         className,
       )}
@@ -169,37 +170,6 @@ function AppContextMenuSubContent({
   );
 }
 
-function AppContextMenuCheckboxItem({
-  className,
-  children,
-  checked,
-  inset,
-  ...props
-}: ContextMenuPrimitive.CheckboxItem.Props & {
-  inset?: boolean;
-}): JSX.Element {
-  return (
-    <ContextMenuPrimitive.CheckboxItem
-      data-slot="context-menu-checkbox-item"
-      data-inset={inset}
-      className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "text-[13px]",
-        className,
-      )}
-      checked={checked}
-      {...props}
-    >
-      <span className="pointer-events-none absolute right-2">
-        <ContextMenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon />
-        </ContextMenuPrimitive.CheckboxItemIndicator>
-      </span>
-      {children}
-    </ContextMenuPrimitive.CheckboxItem>
-  );
-}
-
 function AppContextMenuRadioItem({
   className,
   children,
@@ -231,64 +201,18 @@ function AppContextMenuRadioItem({
   );
 }
 
-function AppContextMenuLabel({
-  className,
-  inset,
-  ...props
-}: ContextMenuPrimitive.GroupLabel.Props & {
-  inset?: boolean;
-}): JSX.Element {
-  return (
-    <ContextMenuPrimitive.GroupLabel
-      data-slot="context-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
-        "text-[13px]",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function AppContextMenuSeparator({
-  className,
-  ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Separator>): JSX.Element {
-  return (
-    <ContextMenuPrimitive.Separator
-      data-slot="context-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-border", className)}
-      {...props}
-    />
-  );
-}
-
-function AppContextMenuShortcut({ className, ...props }: ComponentProps<"span">): JSX.Element {
-  return (
-    <span
-      data-slot="context-menu-shortcut"
-      className={cn(
-        "ml-auto text-xs tracking-widest text-muted-foreground group-focus/context-menu-item:text-accent-foreground",
-        "text-[13px]",
-        className,
-      )}
-      {...props}
-    />
-  );
+/** 菜单只拥有尾部布局，键帽语义与外观由 Kbd 统一维护。 */
+function AppContextMenuShortcut({ className, ...props }: ComponentProps<typeof Kbd>): JSX.Element {
+  return <Kbd className={cn("ml-auto shrink-0", className)} {...props} />;
 }
 
 export {
   AppContextMenu,
-  AppContextMenuCheckboxItem,
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
-  AppContextMenuLabel,
   AppContextMenuRadioGroup,
   AppContextMenuRadioItem,
-  AppContextMenuSeparator,
   AppContextMenuShortcut,
   AppContextMenuSub,
   AppContextMenuSubContent,

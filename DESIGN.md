@@ -391,8 +391,11 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 - **Hover / Focus:** hover 轻微改变当前语义面；按钮预留 1px 边框，focus-visible 把边框切换为 ring；非弹出型按钮 active 下压 1px。
 - **Secondary / Ghost / Destructive:** outline、secondary 和 ghost 依靠背景与边框变化表达层级；destructive 使用低透明失败红底、失败红文字和低强度失败红 1px 边框，不做满屏警报式高饱和填充。
 - **Variant Surfaces:** outline 浅色态使用 background 底色与 border 边界，暗色态使用 input 的 30% 混色面；ghost 保持透明默认面，link 使用主色文字与悬停下划线。前置 token 表记录浅色默认态，主题混色与交互状态由当前控件及配套设计数据承接。
-- **Shortcuts:** 操作只在快捷键有效时显示键帽并声明 `aria-keyshortcuts`；Tooltip 使用动作或状态文案加右侧键帽，多行提示统一对齐。中点只分隔标题与当前值。
-- **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
+- **State Tooltips:** 控件 Tooltip 使用完整的本地化“标题 · 当前值”，中点只分隔标题与当前值；布尔选项显示“启用 / 禁用”，布尔状态显示“已启用 / 已禁用”；布尔切换控件的可访问名称保持稳定，并由 `aria-pressed` 表达开关状态。
+
+### Shortcuts
+
+- 操作只在快捷键有效时显示键帽并声明 `aria-keyshortcuts`；组合键以整组键帽展示。菜单和 Tooltip 的键帽靠右排列，多行提示统一对齐。
 
 ### Dialogs
 

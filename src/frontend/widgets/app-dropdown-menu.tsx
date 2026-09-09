@@ -1,4 +1,4 @@
-import { useRef, type ComponentProps } from "react";
+import { useRef } from "react";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
@@ -19,7 +19,7 @@ type AppDropdownMenuContentProps = DropdownMenuPrimitive.Popup.Props &
     matchTriggerWidth?: boolean;
   };
 
-// 本文件只为 Base UI 菜单原语补充应用级 data-slot、尺寸和视觉约定，不持有业务状态。
+// 与调用方共用 actionsRef，使窗口失焦关闭经过 Base UI 原有的状态通知入口。
 function AppDropdownMenu({ actionsRef, ...props }: DropdownMenuPrimitive.Root.Props): JSX.Element {
   const local_actions = useRef<DropdownMenuPrimitive.Root.Actions | null>(null);
   const actions = actionsRef ?? local_actions;
@@ -91,7 +91,7 @@ function AppDropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         "text-[13px]",
         className,
       )}
@@ -99,40 +99,6 @@ function AppDropdownMenuItem({
       closeOnClick
       {...props}
     />
-  );
-}
-
-function AppDropdownMenuCheckboxItem({
-  className,
-  children,
-  checked,
-  inset,
-  ...props
-}: DropdownMenuPrimitive.CheckboxItem.Props & {
-  inset?: boolean;
-}): JSX.Element {
-  return (
-    <DropdownMenuPrimitive.CheckboxItem
-      data-slot="dropdown-menu-checkbox-item"
-      data-inset={inset}
-      className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "text-[13px]",
-        className,
-      )}
-      checked={checked}
-      {...props}
-    >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-checkbox-item-indicator"
-      >
-        <DropdownMenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon />
-        </DropdownMenuPrimitive.CheckboxItemIndicator>
-      </span>
-      {children}
-    </DropdownMenuPrimitive.CheckboxItem>
   );
 }
 
@@ -203,20 +169,6 @@ function AppDropdownMenuSeparator({
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
       className={cn("-mx-1 my-1 h-px bg-border", className)}
-      {...props}
-    />
-  );
-}
-
-function AppDropdownMenuShortcut({ className, ...props }: ComponentProps<"span">): JSX.Element {
-  return (
-    <span
-      data-slot="dropdown-menu-shortcut"
-      className={cn(
-        "ml-auto text-xs tracking-widest text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground",
-        "text-[13px]",
-        className,
-      )}
       {...props}
     />
   );
@@ -293,7 +245,6 @@ function AppDropdownMenuSubContent({
 
 export {
   AppDropdownMenu,
-  AppDropdownMenuCheckboxItem,
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
@@ -301,7 +252,6 @@ export {
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
   AppDropdownMenuSeparator,
-  AppDropdownMenuShortcut,
   AppDropdownMenuSub,
   AppDropdownMenuSubContent,
   AppDropdownMenuSubTrigger,
