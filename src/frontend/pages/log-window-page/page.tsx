@@ -495,7 +495,7 @@ export function LogWindowPage(): JSX.Element {
                 get_row_id={(event) => event.id}
                 on_selection_change={apply_log_selection}
                 on_sort_change={() => undefined}
-                on_row_double_click={() => {
+                on_row_activate={() => {
                   set_detail_expanded(true);
                 }}
                 box_selection_enabled={false}

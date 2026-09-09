@@ -175,7 +175,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
         active_row_id: string | null;
         anchor_row_id: string | null;
       }) => void;
-      on_row_double_click?: (payload: { row: LogEvent; row_id: string; row_index: number }) => void;
+      on_row_activate?: (row_id: string) => void;
     }) => (
       <>
         <div className={props.table_class_name} data-table-part="header" />
@@ -199,7 +199,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
                     });
                   }}
                   onDoubleClick={() => {
-                    props.on_row_double_click?.({ row: event, row_id, row_index: index });
+                    props.on_row_activate?.(row_id);
                   }}
                 >
                   {props.columns.map((column) => (

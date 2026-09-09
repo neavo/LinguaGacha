@@ -98,7 +98,7 @@ type AppTableSortableRowProps<Row> = {
   should_ignore_click: () => boolean;
   on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
   on_row_context: (row_id: string) => void;
-  on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
+  on_row_activate?: (row_id: string) => void;
   register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
 };
 
@@ -294,12 +294,9 @@ function has_primary_keyboard_modifier(event: Pick<KeyboardEvent, "ctrlKey" | "m
   return event.ctrlKey || event.metaKey;
 }
 
+// 表格只处理自身焦点，输入法确认和行内控件的按键由原入口消费。
 function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
-  if (event.nativeEvent.isComposing) {
-    return false;
-  } else {
-    return event.target === event.currentTarget;
-  }
+  return !event.nativeEvent.isComposing && event.target === event.currentTarget;
 }
 
 type AppTableKeyboardNavigationAction = "previous" | "next" | "first" | "last";
@@ -409,7 +406,7 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
           return;
         }
 
-        props.on_row_double_click?.(row_event);
+        props.on_row_activate?.(props.row_id);
       }}
     >
       {props.columns.map((column, column_index) => {
@@ -488,7 +485,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     on_selection_error,
     on_sort_change,
     on_reorder,
-    on_row_double_click,
+    on_row_activate,
     render_row_context_menu,
     box_selection_enabled: box_selection_enabled_prop,
     virtual_overscan,
@@ -1500,6 +1497,20 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         return;
       }
 
+      if (event.key === "Enter") {
+        if (
+          !event.shiftKey &&
+          !event.repeat &&
+          selection_state.active_row_id !== null &&
+          on_row_activate
+        ) {
+          event.preventDefault();
+          // 只传行身份，远端窗口中的正文读取仍由消费页面负责。
+          on_row_activate(selection_state.active_row_id);
+        }
+        return;
+      }
+
       let next_action: AppTableKeyboardNavigationAction | null = null;
 
       if (event.key === "ArrowUp") {
@@ -1618,6 +1629,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       begin_selection_request,
       emit_selection_change,
       is_selection_request_current,
+      on_row_activate,
       report_selection_error,
       resolve_row_ids_range,
       resolve_single_row_id,
@@ -1901,7 +1913,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                         should_ignore_click={should_ignore_click}
                         on_row_click={handle_row_click}
                         on_row_context={handle_row_context}
-                        on_row_double_click={on_row_double_click}
+                        on_row_activate={on_row_activate}
                         register_row_element={register_row_element}
                       />
                     );

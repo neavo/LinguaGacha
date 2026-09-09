@@ -8,16 +8,6 @@ import type {
   ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type {
-  AppTableCellPayload,
-  AppTableDragCellPayload,
-  AppTableProps,
-  AppTableScrollAnchor,
-  AppTableScrollTarget,
-} from "@frontend/widgets/app-table/app-table-types";
-
-type CapturedAppTableProps = AppTableProps<ProofreadingVisibleItem>;
-
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
@@ -28,97 +18,43 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-table/app-table", () => {
+// happy-dom 不计算布局，只替换尺寸观测，保留真实表格与虚拟列表交互。
+vi.mock("@tanstack/react-virtual", async (import_original) => {
+  const actual = await import_original<typeof import("@tanstack/react-virtual")>();
   return {
-    AppTable: (props: CapturedAppTableProps) => {
-      const row_model = props.row_model;
-      return (
-        <div
-          data-testid="app-table"
-          data-row-count={row_model?.row_count}
-          data-loaded-row-ids={row_model?.loaded_row_ids.join(",")}
-          data-scroll-to-row-id={props.scroll_to_row?.row_id ?? ""}
-          data-preserve-scroll-row-id={props.preserve_scroll_anchor?.row_id ?? ""}
-          data-preserve-scroll-revision={props.preserve_scroll_anchor?.revision}
-        >
-          <button
-            type="button"
-            data-testid="app-table-visible-range"
-            onClick={() => row_model?.on_visible_range_change?.({ start: 2, count: 5 })}
-          >
-            发布可见范围
-          </button>
-          {props.rows.map((row, row_index) => {
-            const row_id = props.get_row_id(row, row_index);
-            return (
-              <div key={row_id} data-testid={`app-table-row-${row_id}`}>
-                {props.columns.map((column) => {
-                  const base_payload: AppTableCellPayload<ProofreadingVisibleItem> = {
-                    row,
-                    row_id,
-                    row_index,
-                    active: false,
-                    selected: false,
-                    dragging: false,
-                    can_drag: false,
-                    presentation: "body",
-                  };
-                  const cell_content =
-                    column.kind === "drag"
-                      ? column.render_cell({
-                          ...base_payload,
-                          drag_handle: null,
-                        } satisfies AppTableDragCellPayload<ProofreadingVisibleItem>)
-                      : column.render_cell(base_payload);
-                  return (
-                    <div key={column.id} data-testid={`app-table-cell-${column.id}`}>
-                      {cell_content}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      );
-    },
+    ...actual,
+    useVirtualizer: (options: Parameters<typeof actual.useVirtualizer>[0]) =>
+      actual.useVirtualizer({
+        ...options,
+        observeElementRect: (_instance, callback) => {
+          callback({ width: 800, height: 600 });
+        },
+      }),
   };
 });
 
-// 生成状态单元格和表格行共用的最小校对 item。
-function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingItem {
-  return {
+// 摘要与正文故意不同，验证浮层读取完整字段而非重复表格摘要。
+function create_visible_item(overrides: Partial<ProofreadingItem>): ProofreadingVisibleItem {
+  const item = {
     item_id: 1,
-    file_path: "chapter01.txt",
+    row_id: "1",
+    file_path: "chapter.txt",
     row_number: 1,
-    src: "foo",
-    dst: "bar",
-    name_src: null,
-    name_dst: null,
+    src: "原文",
+    dst: "译文",
+    name_src: "Alice",
+    name_dst: "爱丽丝",
     status: "PROCESSED",
     retry_count: 0,
-    warnings: ["GLOSSARY"],
+    warnings: [],
     warning_fragments_by_code: {},
     glossary_applications: [],
+    compressed_src: "src-preview",
+    compressed_dst: "dst-preview",
     ...overrides,
-  };
-}
-
-// 构造带 row_id 的校对表格行，便于断言 row_model 公开载荷。
-function create_visible_item(
-  item_id: number,
-  overrides: Partial<ProofreadingItem> = {},
-): ProofreadingVisibleItem {
-  const item = {
-    ...create_item(),
-    ...overrides,
-    item_id,
-    row_id: String(item_id),
-    compressed_src: `src-${item_id.toString()}`,
-    compressed_dst: `dst-${item_id.toString()}`,
   };
   return {
-    row_id: String(item_id),
+    row_id: item.row_id,
     item,
     compressed_src: item.compressed_src,
     compressed_dst: item.compressed_dst,
@@ -139,17 +75,11 @@ describe("ProofreadingTable", () => {
     container?.remove();
     container = null;
     root = null;
+    vi.useRealTimers();
   });
 
-  async function render_table(
-    item: ProofreadingVisibleItem,
-    options: {
-      visible_row_count?: number;
-      on_visible_range_change?: (range: { start: number; count: number }) => void;
-      scroll_to_row?: AppTableScrollTarget | null;
-      preserve_scroll_anchor?: AppTableScrollAnchor;
-    } = {},
-  ): Promise<void> {
+  // 挂载生产表格，行读取沿用页面提供的远端窗口接口。
+  async function render_table(item: ProofreadingVisibleItem): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -159,21 +89,21 @@ describe("ProofreadingTable", () => {
         <TooltipProvider>
           <ProofreadingTable
             items={[item]}
-            visible_row_count={options.visible_row_count ?? 1}
+            visible_row_count={1}
             sort_state={null}
             selected_row_ids={[]}
             active_row_id={null}
             anchor_row_id={null}
             retranslating_row_ids={[]}
             readonly={false}
-            get_row_at_index={() => undefined}
-            get_row_id_at_index={() => undefined}
-            resolve_row_index={() => undefined}
+            get_row_at_index={(index) => (index === 0 ? item : undefined)}
+            get_row_id_at_index={(index) => (index === 0 ? item.row_id : undefined)}
+            resolve_row_index={(id) => (id === item.row_id ? 0 : undefined)}
             resolve_row_index_async={async () => undefined}
             resolve_row_ids_range={async () => []}
-            on_visible_range_change={options.on_visible_range_change ?? (() => {})}
-            scroll_to_row={options.scroll_to_row ?? { row_id: "1", revision: 2 }}
-            preserve_scroll_anchor={options.preserve_scroll_anchor ?? { row_id: "1", revision: 3 }}
+            on_visible_range_change={() => {}}
+            scroll_to_row={null}
+            preserve_scroll_anchor={{ row_id: null, revision: 0 }}
             on_sort_change={() => {}}
             on_selection_change={() => {}}
             on_selection_error={() => {}}
@@ -187,27 +117,24 @@ describe("ProofreadingTable", () => {
     });
   }
 
-  it("向 AppTable 透传远端行模型与滚动锚点，并回流可见范围", async () => {
-    const on_visible_range_change = vi.fn();
-    await render_table(create_visible_item(1), {
-      visible_row_count: 10,
-      on_visible_range_change,
-      scroll_to_row: { row_id: "8", revision: 5 },
-      preserve_scroll_anchor: { row_id: "7", revision: 4 },
-    });
-
-    const table = container?.querySelector('[data-testid="app-table"]');
-    expect(table?.getAttribute("data-row-count")).toBe("10");
-    expect(table?.getAttribute("data-loaded-row-ids")).toBe("1");
-    expect(table?.getAttribute("data-scroll-to-row-id")).toBe("8");
-    expect(table?.getAttribute("data-preserve-scroll-row-id")).toBe("7");
-    expect(table?.getAttribute("data-preserve-scroll-revision")).toBe("4");
-
+  it.each([
+    ["src", "原文第一行\n  原文第二行"],
+    ["dst", "译文第一行\n  译文第二行"],
+  ])("%s 悬浮预览完整正文，保留换行且不混入姓名", async (column, body) => {
+    vi.useFakeTimers();
+    await render_table(
+      create_visible_item({
+        [column]: body,
+      }),
+    );
+    const trigger = container?.querySelector<HTMLElement>(
+      `.proofreading-page__table-${column === "src" ? "source" : "translation"}-cell .proofreading-page__table-text`,
+    );
     await act(async () => {
-      container
-        ?.querySelector<HTMLButtonElement>('[data-testid="app-table-visible-range"]')
-        ?.click();
+      trigger?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      trigger?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      vi.runAllTimers();
     });
-    expect(on_visible_range_change).toHaveBeenCalledWith({ start: 2, count: 5 });
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(body);
   });
 });

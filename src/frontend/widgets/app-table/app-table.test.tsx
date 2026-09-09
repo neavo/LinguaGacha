@@ -97,6 +97,7 @@ vi.mock("@tanstack/react-virtual", () => {
 });
 
 import { AppTable } from "@frontend/widgets/app-table/app-table";
+import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import type {
   AppTableColumn,
   AppTableRowModel,
@@ -107,6 +108,10 @@ type TestRow = {
   id: string;
   label: string;
 };
+
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
 
 class TestResizeObserver {
   observe(): void {}
@@ -305,7 +310,7 @@ async function flush_promises(): Promise<void> {
   });
 }
 
-describe("AppTable row model", () => {
+describe("AppTable", () => {
   let mounted_roots: Root[] = [];
   let mounted_containers: HTMLDivElement[] = [];
 
@@ -338,6 +343,123 @@ describe("AppTable row model", () => {
     mounted_containers.push(rendered.container);
     return rendered.container;
   }
+
+  it("双击目标行与 Enter 活动行共用激活入口，多选保持原有选区", async () => {
+    const on_row_activate = vi.fn();
+    const on_selection_change = vi.fn();
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        selected_row_ids: ["a", "b"],
+        active_row_id: "b",
+        on_row_activate,
+        on_selection_change,
+      }),
+    );
+    const host = get_table_host(container);
+    await act(async () => {
+      host.focus();
+      host.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      container
+        .querySelector('[data-row-index="2"]')
+        ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(on_row_activate.mock.calls).toEqual([["b"], ["c"]]);
+    expect(on_selection_change).not.toHaveBeenCalled();
+  });
+
+  it("远端活动行离开加载窗口后仍按身份激活", async () => {
+    const rows = create_reorder_rows();
+    const on_row_activate = vi.fn();
+    const container = await mount(
+      create_default_props({
+        rows: [rows[0]],
+        row_model: create_remote_row_model({ rows, loaded_indices: [0] }),
+        active_row_id: "b",
+        on_row_activate,
+      }),
+    );
+    await act(async () =>
+      get_table_host(container).dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      ),
+    );
+    expect(on_row_activate).toHaveBeenCalledWith("b");
+  });
+
+  it("修饰键、输入法、重复按键和行内输入交由原控件处理", async () => {
+    const on_row_activate = vi.fn();
+    const container = await mount(
+      create_default_props({
+        active_row_id: "a",
+        on_row_activate,
+        columns: [{ kind: "data", id: "input", title: "正文", render_cell: () => <input /> }],
+      }),
+    );
+    const host = get_table_host(container);
+    await act(async () => {
+      for (const modifiers of [
+        { ctrlKey: true },
+        { metaKey: true },
+        { altKey: true },
+        { shiftKey: true },
+        { isComposing: true },
+        { repeat: true },
+      ]) {
+        host.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, ...modifiers }),
+        );
+      }
+      container
+        .querySelector("input")
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(on_row_activate).not.toHaveBeenCalled();
+  });
+
+  it("Enter 打开弹窗后按 Esc 归还表格焦点并继续方向键导航", async () => {
+    // 组合真实弹窗，验证焦点归还后表格仍接收键盘操作。
+    function TableDialog(): JSX.Element {
+      const [open, set_open] = useState(false);
+      const [selection, set_selection] = useState<AppTableSelectionChange>({
+        selected_row_ids: ["a"],
+        active_row_id: "a",
+        anchor_row_id: "a",
+      });
+      return (
+        <>
+          {create_default_props({
+            rows: create_reorder_rows(),
+            ...selection,
+            on_selection_change: set_selection,
+            on_row_activate: () => set_open(true),
+          })}
+          <AppPageDialog open={open} title="编辑" onClose={() => set_open(false)}>
+            <input />
+          </AppPageDialog>
+        </>
+      );
+    }
+    const container = await mount(<TableDialog />);
+    const host = get_table_host(container);
+    await act(async () => {
+      host.focus();
+      host.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await flush_promises();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    await flush_promises();
+    expect(document.activeElement).toBe(host);
+    await act(async () =>
+      host.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })),
+    );
+    expect(container.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  });
 
   it("未传 row_model 时会用 rows 兼容入口渲染并派发选择", async () => {
     const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
