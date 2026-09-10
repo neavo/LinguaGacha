@@ -60,8 +60,9 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenuSeparator: () => <hr />,
 }));
 
-function create_model_page_state() {
-  const model = create_model_snapshot({ id: "model-openai-1", name: "OpenAI 模型" });
+/** 隔离页面动作分发，交互效果由对应 Hook 测试负责。 */
+function create_model_page_state(overrides: Partial<ModelEntrySnapshot> = {}) {
+  const model = create_model_snapshot({ id: "model-openai-1", name: "OpenAI 模型", ...overrides });
   const open_dialog = vi.fn();
 
   return {
@@ -124,6 +125,30 @@ describe("ModelPage", () => {
     use_model_page_state_mock.mockReset();
     push_toast_mock.mockReset();
   });
+
+  it.each([
+    { type: "PRESET", can_reset: true, action: "reset" },
+    { type: "PRESET", can_reset: false, action: "delete" },
+    { type: "CUSTOM_OPENAI", can_reset: false, action: "delete" },
+  ] as const)(
+    "$type can_reset=$can_reset 展示并触发 $action",
+    async ({ type, can_reset, action }) => {
+      const { state } = create_model_page_state({ type, can_reset });
+      use_model_page_state_mock.mockReturnValue(state);
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+      await act(async () => root?.render(<ModelPage is_sidebar_collapsed={false} />));
+      const actions = [...container.querySelectorAll("button")].filter((button) =>
+        ["app.action.reset", "app.action.delete"].includes(button.textContent?.trim() ?? ""),
+      );
+      expect(actions.map((button) => button.textContent?.trim())).toEqual([`app.action.${action}`]);
+      await act(async () => actions[0]!.click());
+      expect(
+        state[action === "reset" ? "request_reset_model" : "request_delete_model"],
+      ).toHaveBeenCalledWith("model-openai-1");
+    },
+  );
 
   it("配置动作携带对应类型与模型标识", async () => {
     const { open_dialog, state } = create_model_page_state();

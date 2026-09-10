@@ -91,7 +91,7 @@ describe("model-config-resolver", () => {
     expect(read_config_model_records(config)).toEqual([{ id: "model-1", name: "原始模型" }]);
   });
 
-  it("读取内置模型预设时过滤非对象项并兼容缺失文件", () => {
+  it("内置模型目录允许空列表，文件缺失或解析失败时保留错误上下文", () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-model-preset-"));
     const preset_root = temp_root.path;
     const preset_dir = path.join(preset_root, "builtin", "model", "preset");
@@ -101,12 +101,38 @@ describe("model-config-resolver", () => {
     fs.mkdirSync(preset_dir, { recursive: true });
     fs.writeFileSync(
       path.join(preset_dir, "preset_model_builtin.json"),
-      JSON.stringify([{ id: "preset-1" }, null, "bad", ["bad"]]),
+      JSON.stringify([{ id: "preset-1" }]),
       "utf-8",
     );
 
     expect(read_config_model_preset_records(paths)).toEqual([{ id: "preset-1" }]);
-    fs.rmSync(path.join(preset_dir, "preset_model_builtin.json"));
+    fs.writeFileSync(path.join(preset_dir, "preset_model_builtin.json"), "[]");
     expect(read_config_model_preset_records(paths)).toEqual([]);
+    fs.writeFileSync(path.join(preset_dir, "preset_model_builtin.json"), "{");
+    expect(() => read_config_model_preset_records(paths)).toThrow(
+      expect.objectContaining({ code: "file.parse_failed", cause: expect.any(SyntaxError) }),
+    );
+    fs.rmSync(path.join(preset_dir, "preset_model_builtin.json"));
+    expect(() => read_config_model_preset_records(paths)).toThrow(
+      expect.objectContaining({ code: "file.io_failed", cause: expect.any(Error) }),
+    );
+  });
+
+  it.each([
+    { label: "非数组", data: {} },
+    { label: "非对象条目", data: [{ id: "valid" }, null] },
+    { label: "缺失 ID", data: [{}] },
+    { label: "非字符串 ID", data: [{ id: 1 }] },
+    { label: "空白 ID", data: [{ id: " " }] },
+    { label: "未规范 ID", data: [{ id: " preset " }] },
+    { label: "重复 ID", data: [{ id: "same" }, { id: "same" }] },
+  ])("内置目录拒绝$label，避免错误判断预设已下架", ({ data }) => {
+    using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-model-preset-"));
+    fs.writeFileSync(path.join(temp_root.path, "preset_model_builtin.json"), JSON.stringify(data));
+    expect(() =>
+      read_config_model_preset_records({
+        get_model_preset_dir: () => temp_root.path,
+      }),
+    ).toThrow("file.invalid_structure");
   });
 });

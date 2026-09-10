@@ -37,6 +37,37 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it("保留有效关闭配置，切换思考后可保存并重新关闭", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({
+        id: "doubao",
+        api_format: "OpenAIResponses",
+        model_id: "doubao-seed-evolving",
+      }),
+    ]);
+    expect(
+      service.get_selection_snapshot().models.find((model) => model.id === "doubao")
+        ?.thinking_level,
+    ).toBe("OFF");
+    service.select_model({ target: "agent", model_id: "doubao" });
+
+    for (const level of ["HIGH", "OFF"] as const) {
+      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: level });
+
+      expect(
+        service.get_selection_snapshot().models.find((model) => model.id === "doubao")
+          ?.thinking_level,
+      ).toBe(level);
+      expect(
+        read_config_model_records(app_setting_service.read_setting()).find(
+          (model) => model["id"] === "doubao",
+        )?.["thinking"],
+      ).toEqual({
+        level,
+      });
+    }
+  });
+
   it("批量翻译偏好独立保存，删除模型恢复跟随", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({ id: "a", type: "CUSTOM_OPENAI" }),
@@ -173,28 +204,39 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("首次读取旧配置时统一持久化失效思考档位的修正", async () => {
-    const { service, app_setting_service } = await create_model_service([
-      create_model({
-        api_format: "OpenAIResponses",
-        id: "legacy-mimo",
-        model_id: "mimo-v2.5-pro",
-        thinking: { level: "MAX" },
-      }),
-    ]);
+  it.each([
+    { model_id: "mimo-v2.5-pro", api_format: "OpenAI", level: "HIGH", expected_level: "LOW" },
+    {
+      model_id: "deepseek-v4-pro",
+      api_format: "OpenAIResponses",
+      level: "LOW",
+      expected_level: "HIGH",
+    },
+  ])(
+    "$api_format $model_id 首次读取旧配置时持久化失效思考档位的修正",
+    async ({ model_id, api_format, level, expected_level }) => {
+      const { service, app_setting_service } = await create_model_service([
+        create_model({
+          api_format,
+          id: "legacy-model",
+          model_id,
+          thinking: { level },
+        }),
+      ]);
 
-    const snapshot = read_request_model_snapshot(service.get_snapshot());
-    expect(snapshot.models).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "legacy-mimo", thinking: { level: "HIGH" } }),
-      ]),
-    );
-    expect(
-      read_config_model_records(app_setting_service.read_setting()).find(
-        (model) => model["id"] === "legacy-mimo",
-      ),
-    ).toEqual(expect.objectContaining({ thinking: { level: "HIGH" } }));
-  });
+      const snapshot = read_request_model_snapshot(service.get_snapshot());
+      expect(snapshot.models).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "legacy-model", thinking: { level: expected_level } }),
+        ]),
+      );
+      expect(
+        read_config_model_records(app_setting_service.read_setting()).find(
+          (model) => model["id"] === "legacy-model",
+        ),
+      ).toEqual(expect.objectContaining({ thinking: { level: expected_level } }));
+    },
+  );
 
   it("空模型配置按内置预设后补齐全部自定义模型", async () => {
     stub_random_ids(
@@ -513,13 +555,86 @@ describe("ModelService 配置管理", () => {
     });
   });
 
-  it("预设模型和不存在的模型不能删除", async () => {
-    const { service } = await create_model_service([
-      create_model({ id: "preset", type: "PRESET" }),
-    ]);
+  it("当前内置预设和不存在的模型不能删除", async () => {
+    const preset = create_model({ id: "preset", type: "PRESET" });
+    const { service } = await create_model_service([preset], { builtin_models: [preset] });
 
     expect(() => service.delete_model({ model_id: "preset" })).toThrow("request.validation_failed");
     expect(() => service.delete_model({ model_id: "missing" })).toThrow("model.not_found");
+  });
+
+  it("下架预设保留用户配置和选择，删除后修复引用且重新加载不会补回", async () => {
+    const preset = create_model({ id: "retired", type: "PRESET", api_format: "SakuraLLM" });
+    const { service, paths, app_setting_service } = await create_model_service([preset], {
+      builtin_models: [preset],
+    });
+    const configured = read_request_model_snapshot(
+      service.update_model({
+        model_id: "retired",
+        patch: { name: "我的模型", api_url: "http://localhost:9000", api_key: "my-key" },
+      }),
+    ).models.find((model) => model["id"] === "retired");
+    expect(configured).toMatchObject({ can_reset: true });
+    service.select_model({ target: "translation", model_id: "retired" });
+    service.select_model({ target: "agent", model_id: "retired" });
+    service.select_model({ target: "agent_batch_translation", model_id: "retired" });
+    const before = app_setting_service.read_setting();
+
+    await writeFile(path.join(paths.get_model_preset_dir(), "preset_model_builtin.json"), "[]");
+    const snapshot = read_request_model_snapshot(service.get_snapshot());
+    expect(snapshot.models.find((model) => model["id"] === "retired")).toEqual({
+      ...configured,
+      can_reset: false,
+    });
+    expect(app_setting_service.read_setting()).toEqual(before);
+    expect(() => service.reset_preset_model({ model_id: "retired" })).toThrow("model.not_found");
+
+    service.delete_model({ model_id: "retired" });
+    expect(read_request_model_snapshot(service.get_snapshot()).models).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "retired" })]),
+    );
+    const selection = service.get_selection_snapshot();
+    expect(selection.model_selection).toEqual({
+      translation: selection.models[0]!.id,
+      agent: selection.models[0]!.id,
+      agent_batch_translation: null,
+    });
+    expect(
+      read_config_model_records(app_setting_service.read_setting()).every(
+        (model) => !Object.hasOwn(model, "can_reset"),
+      ),
+    ).toBe(true);
+  });
+
+  it("同 ID 预设重新上架时保留已有配置，已删除的条目重新补齐", async () => {
+    const preset = create_model({ id: "preset", type: "PRESET", name: "默认名称" });
+    const { service, paths } = await create_model_service([{ ...preset, name: "我的名称" }]);
+    const preset_path = path.join(paths.get_model_preset_dir(), "preset_model_builtin.json");
+    await writeFile(preset_path, JSON.stringify([preset]));
+    expect(read_request_model_snapshot(service.get_snapshot()).models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "preset", name: "我的名称", can_reset: true }),
+      ]),
+    );
+    await writeFile(preset_path, "[]");
+    service.delete_model({ model_id: "preset" });
+    await writeFile(preset_path, JSON.stringify([preset]));
+    expect(read_request_model_snapshot(service.get_snapshot()).models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "preset", name: "默认名称", can_reset: true }),
+      ]),
+    );
+  });
+
+  it("内置目录损坏时模型读取和删除失败且不写入配置", async () => {
+    const { service, paths, app_setting_service } = await create_model_service([
+      create_model({ id: "preset", type: "PRESET" }),
+    ]);
+    const before = app_setting_service.read_setting();
+    await writeFile(path.join(paths.get_model_preset_dir(), "preset_model_builtin.json"), "{");
+    expect(() => service.get_snapshot()).toThrow("file.parse_failed");
+    expect(() => service.delete_model({ model_id: "preset" })).toThrow("file.parse_failed");
+    expect(app_setting_service.read_setting()).toEqual(before);
   });
 
   it("更新模型只应用白名单字段并重建快照", async () => {

@@ -36,7 +36,7 @@
     "api_format": "Google",
     "api_url": "https://generativelanguage.googleapis.com",
     "api_key": "no_key_required",
-    "model_id": "gemini-3.7-flash",
+    "model_id": "gemini-3.8-flash",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -96,7 +96,7 @@
     "api_format": "OpenAIResponses",
     "api_url": "https://api.deepseek.com",
     "api_key": "no_key_required",
-    "model_id": "deepseek-v4-flash",
+    "model_id": "deepseek-flash",
     "request": {
       "extra_headers": {},
       "extra_body": {},
@@ -217,36 +217,6 @@
     "api_url": "https://api.moonshot.cn/v1",
     "api_key": "no_key_required",
     "model_id": "kimi-k3",
-    "request": {
-      "extra_headers": {},
-      "extra_body": {},
-      "extra_headers_custom_enable": false,
-      "extra_body_custom_enable": false
-    },
-    "threshold": {
-      "input_token_limit": 768,
-      "output_token_limit": 0,
-      "rpm_limit": 0,
-      "concurrency_limit": 0
-    },
-    "thinking": {
-      "level": "OFF"
-    },
-    "generation": {
-      "temperature": 0.95,
-      "temperature_custom_enable": false,
-      "top_p": 0.95,
-      "top_p_custom_enable": false
-    }
-  },
-  {
-    "id": "preset-siliconflow",
-    "type": "PRESET",
-    "name": "硅基流动",
-    "api_format": "OpenAI",
-    "api_url": "https://api.siliconflow.cn/v1",
-    "api_key": "no_key_required",
-    "model_id": "deepseek-ai/DeepSeek-V4-Flash",
     "request": {
       "extra_headers": {},
       "extra_body": {},

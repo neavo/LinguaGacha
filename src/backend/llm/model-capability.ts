@@ -25,7 +25,7 @@ import {
   type ModelCapabilityOverride,
 } from "./model-capability-overrides";
 
-/** 未命中任何 Pi 记录时的安全运行容量；不据模型名猜测规格。 */
+/** 模型容量规格缺失时的安全运行容量；不据模型名猜测规格。 */
 const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
   context_window: 256_000,
   max_output_tokens: 32_000,
@@ -62,11 +62,11 @@ const NATIVE_PROVIDER_ORDER = [
 type PiCatalogModel = PiModel<Api>;
 
 export type ResolvedModelCapability = Readonly<{
-  agent_config: ModelAgentConfig;
-  agent_limits: ModelAgentLimits;
+  agent_config: ModelAgentConfig; // 可持久化的用户配置，0 保留自动语义。
+  agent_limits: ModelAgentLimits; // 合并产品策略与用户配置后的运行容量。
   available_thinking_levels: readonly ModelThinkingLevel[];
-  catalog_context_window: number | null;
-  catalog_max_tokens: number | null;
+  context_window: number | null; // 模型规格；缺少证据时为 null。
+  max_tokens: number | null; // 模型最大输出规格，独立于 Agent 自动输出档位。
   reasoning: boolean;
   thinking_level_map?: ThinkingLevelMap;
   compat?: PiCatalogModel["compat"];
@@ -80,39 +80,36 @@ const PI_CATALOG_MODELS: readonly PiCatalogModel[] = Object.freeze(
 );
 
 /**
- * 解析持久化模型对应的唯一运行能力；应用修正只接管思考字段，容量始终聚合全部 Pi 证据。
+ * 解析唯一运行能力；模型容量与协议思考能力分别采用应用修正，再合并用户 Agent 配置。
  */
 export function resolve_model_capability(model: ModelCapabilityInput): ResolvedModelCapability {
   const matches = match_pi_catalog_models(model.model_id, PI_CATALOG_MODELS);
   const pi_template = select_pi_thinking_template(model.api_format, matches);
-  const app_override = match_model_capability_override(model.api_format, model.model_id);
-  const reasoning = app_override !== null || pi_template?.reasoning === true;
-  const thinking_level_map = app_override?.thinking_level_map ?? pi_template?.thinkingLevelMap;
-  const compat = app_override?.compat ?? pi_template?.compat;
+  const app_override = match_model_capability_override(model.model_id);
+  const protocol_override = app_override?.protocols?.[model.api_format];
+  const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
+  const thinking_level_map = protocol_override?.thinking_level_map ?? pi_template?.thinkingLevelMap;
+  const compat = protocol_override?.compat ?? pi_template?.compat;
   const available_thinking_levels = resolve_available_thinking_levels(
     model.api_format,
     reasoning,
     thinking_level_map,
     compat,
-    app_override !== null,
   );
-  const catalog_context_window = maximum_positive_integer(
-    matches.map((catalog_model) => catalog_model.contextWindow),
-  );
-  const catalog_max_tokens = maximum_positive_integer(
-    matches.map((catalog_model) => catalog_model.maxTokens),
-  );
-  const automatic_agent_limits = resolve_automatic_agent_limits(
-    catalog_context_window,
-    catalog_max_tokens,
-  );
+  const context_window =
+    app_override?.capacity?.context_window ??
+    maximum_positive_integer(matches.map((catalog_model) => catalog_model.contextWindow));
+  const max_tokens =
+    app_override?.capacity?.max_tokens ??
+    maximum_positive_integer(matches.map((catalog_model) => catalog_model.maxTokens));
+  const automatic_agent_limits = resolve_automatic_agent_limits(context_window, max_tokens);
   const agent = resolve_agent_limits(model.agent, automatic_agent_limits);
   return {
     agent_config: agent.config,
     agent_limits: agent.limits,
     available_thinking_levels,
-    catalog_context_window,
-    catalog_max_tokens,
+    context_window,
+    max_tokens,
     reasoning,
     ...(thinking_level_map === undefined ? {} : { thinking_level_map }),
     ...(compat === undefined ? {} : { compat }),
@@ -124,20 +121,11 @@ export function match_pi_catalog_models(
   configured_id: string,
   catalog: readonly PiCatalogModel[],
 ): PiCatalogModel[] {
-  const normalized_id = configured_id.trim().toLowerCase();
-  const exact = catalog.filter((model) => model.id.toLowerCase() === normalized_id);
-  if (exact.length > 0) return exact;
-
-  const candidates = catalog.filter((model) => contains_canonical_id(normalized_id, model.id));
-  const longest_length = Math.max(0, ...candidates.map((model) => model.id.length));
-  const longest_ids = new Set(
-    candidates
-      .filter((model) => model.id.length === longest_length)
-      .map((model) => model.id.toLowerCase()),
+  const canonical_id = match_canonical_model_id(
+    configured_id,
+    catalog.map((model) => model.id),
   );
-  if (longest_ids.size !== 1) return [];
-  const [canonical_id] = longest_ids;
-  return candidates.filter((model) => model.id.toLowerCase() === canonical_id);
+  return catalog.filter((model) => model.id.toLowerCase() === canonical_id);
 }
 
 /** 配置归一化时修正失效档位；请求阶段不再隐式升降档。 */
@@ -162,34 +150,48 @@ export function resolve_pi_thinking_level(
   return available_levels.includes(level) ? PRODUCT_TO_PI_LEVEL[level] : "off";
 }
 
-/** 按协议和最长 canonical ID 选择唯一应用修正，避免通用前缀覆盖精确修正。 */
-function match_model_capability_override(
-  api_format: ModelApiFormat,
-  configured_id: string,
-): ModelCapabilityOverride | null {
-  const candidates = MODEL_CAPABILITY_OVERRIDES.filter(
-    (override) =>
-      override.api_format === api_format &&
-      contains_canonical_id(configured_id.trim().toLowerCase(), override.model_id),
+/** 模型修正先按名称定位，容量和协议能力在各自消费边界读取。 */
+function match_model_capability_override(configured_id: string): ModelCapabilityOverride | null {
+  const canonical_id = match_canonical_model_id(
+    configured_id,
+    MODEL_CAPABILITY_OVERRIDES.map((override) => override.model_id),
   );
-  const longest_length = Math.max(0, ...candidates.map((override) => override.model_id.length));
-  const longest = candidates.filter((override) => override.model_id.length === longest_length);
-  return longest.length === 1 ? (longest[0] ?? null) : null;
+  return (
+    MODEL_CAPABILITY_OVERRIDES.find(
+      (override) => override.model_id.toLowerCase() === canonical_id,
+    ) ?? null
+  );
+}
+
+/** 两种事实来源共用名称选择规则；重复目录记录保留给调用方聚合。 */
+function match_canonical_model_id(
+  configured_id: string,
+  model_ids: readonly string[],
+): string | null {
+  const normalized_id = configured_id.trim().toLowerCase();
+  const canonical_ids = model_ids.map((model_id) => model_id.toLowerCase());
+  if (canonical_ids.includes(normalized_id)) return normalized_id;
+  const candidates = canonical_ids.filter((model_id) =>
+    contains_canonical_id(normalized_id, model_id),
+  );
+  const longest_length = Math.max(0, ...candidates.map((model_id) => model_id.length));
+  const longest_ids = new Set(candidates.filter((model_id) => model_id.length === longest_length));
+  return longest_ids.size === 1 ? (longest_ids.values().next().value ?? null) : null;
 }
 
 /** 只在 canonical ID 的字母数字边界匹配，避免把短模型名误配到更长 ID。 */
 function contains_canonical_id(configured_id: string, canonical_id: string): boolean {
-  const normalized_canonical_id = canonical_id.toLowerCase();
-  let offset = configured_id.indexOf(normalized_canonical_id);
+  let offset = configured_id.indexOf(canonical_id);
   while (offset >= 0) {
     const before = configured_id[offset - 1];
-    const after = configured_id[offset + normalized_canonical_id.length];
+    const after = configured_id[offset + canonical_id.length];
     if (!is_model_id_word_character(before) && !is_model_id_word_character(after)) return true;
-    offset = configured_id.indexOf(normalized_canonical_id, offset + 1);
+    offset = configured_id.indexOf(canonical_id, offset + 1);
   }
   return false;
 }
 
+/** ID 首尾和非字母数字字符都构成模型名匹配边界。 */
 function is_model_id_word_character(value: string | undefined): boolean {
   return value !== undefined && /[a-z0-9]/u.test(value);
 }
@@ -235,12 +237,10 @@ function resolve_available_thinking_levels(
   reasoning: boolean,
   thinking_level_map: ThinkingLevelMap | undefined,
   compat: PiCatalogModel["compat"] | undefined,
-  has_app_override: boolean,
 ): readonly ModelThinkingLevel[] {
   if (!reasoning || api_format === "SakuraLLM") return [];
   if (
     api_format === "OpenAI" &&
-    !has_app_override &&
     thinking_level_map === undefined &&
     compat !== undefined &&
     "thinkingFormat" in compat &&
@@ -266,7 +266,7 @@ function resolve_available_thinking_levels(
   return MODEL_THINKING_LEVELS.filter((level) => supported.has(PRODUCT_TO_PI_LEVEL[level]));
 }
 
-/** 聚合 catalog 容量后应用产品的自动输出上限规则。 */
+/** 根据已解析的模型容量应用产品的自动输出上限规则。 */
 function resolve_automatic_agent_limits(
   context_window: number | null,
   model_max_tokens: number | null,

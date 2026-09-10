@@ -7,6 +7,7 @@ export function create_model_snapshot(
   return {
     id: "model-1",
     type: "PRESET",
+    can_reset: true,
     name: "默认模型",
     api_format: "OpenAI",
     api_url: "https://api.example.test",

@@ -185,7 +185,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                           {t("model_page.action.advanced_settings")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuSeparator />
-                        {model.type === "PRESET" ? (
+                        {model.can_reset ? (
                           <AppDropdownMenuItem
                             onClick={() => {
                               model_page_state.request_reset_model(model.id);

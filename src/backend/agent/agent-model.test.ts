@@ -3,7 +3,8 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
-import type { ModelApiFormat } from "../../domain/model";
+import { Model, type ModelApiFormat } from "../../domain/model";
+import { resolve_model_capability } from "../llm/model-capability";
 import { register_agent_model } from "./agent-model";
 
 const api_mocks = vi.hoisted(() => ({
@@ -25,6 +26,43 @@ beforeEach(() => {
 });
 
 describe("Agent 模型注册", () => {
+  it("将统一解析的 Agent 自动容量注册到运行时", async () => {
+    const runtime = await create_model_runtime();
+    const config = { api_format: "OpenAIResponses", model_id: "deepseek-flash" };
+    const { agent_limits } = resolve_model_capability(Model.from_json(config, "active"));
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", config),
+      TEST_USER_AGENT,
+    );
+    expect(resolved.model).toMatchObject({
+      id: "deepseek-flash",
+      contextWindow: agent_limits.context_window,
+      maxTokens: agent_limits.max_output_tokens,
+    });
+  });
+
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s Agent 注册并转交关闭思考的模型映射",
+    async (api_format) => {
+      const runtime = await create_model_runtime();
+      const resolved = register_agent_model(
+        runtime,
+        build_config(api_format, { model_id: "doubao-seed-evolving" }),
+        TEST_USER_AGENT,
+      );
+      expect(resolved.thinkingLevel).toBe("off");
+      expect(resolved.model_config.thinking.level).toBe("OFF");
+      const provider = runtime.getRegisteredProviderConfig("openai");
+      if (provider?.streamSimple === undefined) throw new Error("Agent 缺少 provider streamSimple");
+      // Agent core 关闭思考时省略 reasoning；注册结果须将 off 映射交给共享适配器。
+      void provider.streamSimple(resolved.model, { messages: [] });
+      expect(api_mocks.streamSimple.mock.calls.at(-1)?.[0]).toMatchObject({
+        thinkingLevelMap: { off: "minimal" },
+      });
+    },
+  );
+
   it("注册统一模型事实，并在 streamSimple 强制 LinguaGacha 请求策略", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
@@ -267,6 +305,7 @@ describe("Agent 模型注册", () => {
   });
 });
 
+/** 以内存凭据创建离线运行时，隔离用户模型和网络发现。 */
 async function create_model_runtime(): Promise<ModelRuntime> {
   return await ModelRuntime.create({
     credentials: new InMemoryCredentialStore(),

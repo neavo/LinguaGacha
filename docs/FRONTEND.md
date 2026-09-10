@@ -38,6 +38,7 @@
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
 - 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。普通翻译启动以 Store 当前权威进度选择 new 或 continue，历史展示快照只服务显示。
 - 预设菜单只缓存条目，默认标记由当前 settings 快照计算。
+- 模型页按后端快照的 `can_reset` 展示重置或删除，类型只用于分组；自定义分组最后一项保留，已下架预设可清空分组。内置目录与用户配置的生命周期归 [`BACKEND.md`](BACKEND.md)。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。

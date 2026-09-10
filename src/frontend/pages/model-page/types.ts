@@ -29,6 +29,7 @@ export type ModelGenerationSnapshot = {
 export type ModelEntrySnapshot = {
   id: string;
   type: ModelType;
+  can_reset: boolean; // 后端按当前内置目录判断，仅用于模型管理操作
   name: string;
   api_format: ModelApiFormat;
   api_url: string;

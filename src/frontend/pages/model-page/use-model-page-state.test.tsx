@@ -29,23 +29,26 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: translate }),
 }));
 
+/** 模拟后端分组与操作权限，刷新时可替换目录事实。 */
 function create_snapshot(name = "自定义模型") {
   return {
     snapshot: {
       models: [
-        { id: "preset", type: "PRESET", name: "内置模型" },
-        { id: "custom", type: "CUSTOM_OPENAI", name },
+        { id: "preset", type: "PRESET", name: "内置模型", can_reset: true },
+        { id: "custom", type: "CUSTOM_OPENAI", name, can_reset: false },
         {
           id: "responses",
           type: "CUSTOM_OPENAI_RESPONSES",
           api_format: "OpenAIResponses",
           name: "Responses 模型",
+          can_reset: false,
         },
       ],
     },
   };
 }
 
+/** 手动控制请求完成顺序，验证刷新和保存之间的竞争。 */
 function create_deferred<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((promise_resolve) => {
@@ -59,11 +62,13 @@ describe("useModelPageState", () => {
   let root: Root | null = null;
   let latest_state: ReturnType<typeof useModelPageState> | null = null;
 
+  /** 通过公开 Hook 返回值观察状态。 */
   function Probe(): null {
     latest_state = useModelPageState();
     return null;
   }
 
+  /** 挂载 Hook 并等待首次快照处理完成。 */
   async function render_hook(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -103,7 +108,7 @@ describe("useModelPageState", () => {
     expect(push_toast).toHaveBeenCalledWith("error", "model_page.feedback.refresh_failed");
   });
 
-  it("加载并分组模型，分组内唯一模型不能删除", async () => {
+  it("加载并分组模型，自定义分组内唯一模型不能删除", async () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
 
@@ -119,6 +124,19 @@ describe("useModelPageState", () => {
 
     expect(latest_state?.confirm_state).toEqual({ kind: null, model_id: null });
     expect(push_toast).toHaveBeenCalledWith("warning", "model_page.feedback.delete_last_one");
+  });
+
+  it("刷新下架预设的操作能力，允许删除预设分组最后一项", async () => {
+    const response = create_snapshot();
+    api_fetch_mock.mockResolvedValue(response);
+    await render_hook();
+    expect(latest_state?.snapshot.models[0]).toMatchObject({ can_reset: true });
+    response.snapshot.models[0]!.can_reset = false;
+    await act(async () => latest_state?.refresh_snapshot());
+    expect(latest_state?.snapshot.models[0]).toMatchObject({ type: "PRESET", can_reset: false });
+    await act(async () => latest_state?.request_delete_model("preset"));
+    expect(latest_state?.confirm_state).toEqual({ kind: "delete", model_id: "preset" });
+    expect(push_toast).not.toHaveBeenCalled();
   });
 
   it("乐观更新合并 Agent 容量并保留同组字段", async () => {

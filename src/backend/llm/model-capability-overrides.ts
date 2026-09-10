@@ -8,84 +8,82 @@ import type { ModelApiFormat } from "../../domain/model";
 
 type CompleteThinkingLevelMap = Readonly<Record<PiModelThinkingLevel, string | null>>;
 
-export type ModelCapabilityOverride = Readonly<{
-  api_format: Extract<ModelApiFormat, "OpenAI" | "OpenAIResponses">;
-  model_id: string;
+type ModelProtocolOverride = Readonly<{
+  reasoning: boolean;
   thinking_level_map?: ThinkingLevelMap;
   compat?: OpenAICompletionsCompat;
 }>;
 
-/** 用完整 null 映射表达 Pi 支持集合，避免未声明档位沿用 adapter 默认行为。 */
-function define_level_map(
-  supported_levels: readonly PiModelThinkingLevel[],
-  wire_values: Partial<Record<PiModelThinkingLevel, string>> = {},
-): CompleteThinkingLevelMap {
-  const level_map: Record<PiModelThinkingLevel, string | null> = {
-    off: null,
-    minimal: null,
-    low: null,
-    medium: null,
-    high: null,
-    xhigh: null,
-    max: null,
-  };
-  for (const level of supported_levels) {
-    level_map[level] = wire_values[level] ?? level;
-  }
-  return Object.freeze(level_map);
-}
+export type ModelCapabilityOverride = Readonly<{
+  model_id: string;
+  capacity?: Readonly<{
+    context_window: number;
+    max_tokens: number;
+  }>; // 容量以完整规格覆盖目录，独立于接入协议。
+  protocols?: Readonly<Partial<Record<ModelApiFormat, ModelProtocolOverride>>>;
+}>;
+
+// 两种 OpenAI 协议共用档位语义；null 显式关闭 Pi 的默认档位回退。
+const DOUBAO_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
+  off: "minimal", // 豆包以 minimal 表达关闭思考，产品不另设同义档位。
+  minimal: null,
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: null,
+  max: null,
+});
+const DEEPSEEK_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
+  off: "none",
+  minimal: null,
+  low: "low",
+  medium: null,
+  high: "high",
+  xhigh: null,
+  max: "max",
+});
 
 /** 只收录当前 Pi catalog 缺失或落后的精确修正；canonical matcher 负责常见前后缀。 */
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
   {
-    api_format: "OpenAI",
-    model_id: "z-ai/glm-5.3",
-    thinking_level_map: define_level_map(["low", "high", "max"]),
-    compat: { supportsReasoningEffort: true, thinkingFormat: "openrouter" },
-  },
-  {
-    api_format: "OpenAIResponses",
-    model_id: "z-ai/glm-5.3",
-    thinking_level_map: define_level_map(["low", "high", "max"]),
-  },
-  {
-    api_format: "OpenAI",
     model_id: "grok-4.6",
-    compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+    protocols: {
+      OpenAI: {
+        reasoning: true,
+        compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+      },
+    },
   },
   {
-    api_format: "OpenAI",
     model_id: "doubao-seed",
-    thinking_level_map: define_level_map(["minimal", "low", "medium", "high"]),
-    compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+    protocols: {
+      OpenAI: {
+        reasoning: true,
+        thinking_level_map: DOUBAO_THINKING_LEVEL_MAP,
+        compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+      },
+      OpenAIResponses: {
+        reasoning: true,
+        thinking_level_map: DOUBAO_THINKING_LEVEL_MAP,
+      },
+    },
   },
   {
-    api_format: "OpenAIResponses",
-    model_id: "doubao-seed",
-    thinking_level_map: define_level_map(["minimal", "low", "medium", "high"]),
-  },
-  {
-    api_format: "OpenAI",
-    model_id: "deepseek-v4-pro",
-    thinking_level_map: define_level_map(["off", "low", "high", "max"], {
-      off: "disabled",
-    }),
-    compat: { supportsReasoningEffort: true, thinkingFormat: "deepseek" },
-  },
-  {
-    api_format: "OpenAIResponses",
-    model_id: "deepseek-v4",
-    thinking_level_map: define_level_map(["off", "low", "high", "max"], { off: "none" }),
-  },
-  {
-    api_format: "OpenAI",
-    model_id: "mimo-v2.5",
-    thinking_level_map: define_level_map(["off", "high"]),
-    compat: { supportsReasoningEffort: false, thinkingFormat: "deepseek" },
-  },
-  {
-    api_format: "OpenAIResponses",
-    model_id: "mimo-v2.5",
-    thinking_level_map: define_level_map(["off", "high"], { off: "none" }),
+    model_id: "deepseek-flash",
+    capacity: {
+      context_window: 1_000_000,
+      max_tokens: 384_000, // 模型最大输出规格，Agent 自动上限仍取产品档位与此值的较小值，用户设置优先。
+    },
+    protocols: {
+      OpenAI: {
+        reasoning: true,
+        thinking_level_map: DEEPSEEK_THINKING_LEVEL_MAP,
+        compat: { supportsReasoningEffort: true, thinkingFormat: "deepseek" },
+      },
+      OpenAIResponses: {
+        reasoning: true,
+        thinking_level_map: DEEPSEEK_THINKING_LEVEL_MAP,
+      },
+    },
   },
 ]);

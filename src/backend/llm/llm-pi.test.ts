@@ -3,12 +3,92 @@ import { ANTHROPIC_MODELS } from "@earendil-works/pi-ai/providers/anthropic.mode
 import { describe, expect, it, vi } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
+import { Model as ConfiguredModel } from "../../domain/model";
 import { read_model_request_snapshot } from "./llm-client-policy";
 import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
+import { resolve_model_capability } from "./model-capability";
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 
 describe("pi-ai 请求适配", () => {
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s DeepSeek Flash 保留新请求 ID 并发送各可用思考档位",
+    async (api_format) => {
+      const capability = resolve_model_capability(
+        ConfiguredModel.from_json({ api_format, model_id: "deepseek-flash" }, "test-model"),
+      );
+      for (const [level, effort] of [
+        ["OFF", "none"],
+        ["LOW", "low"],
+        ["HIGH", "high"],
+        ["MAX", "max"],
+      ] as const) {
+        const request = resolve_request({
+          api_format,
+          api_url: "https://api.deepseek.com",
+          model_id: "deepseek-flash",
+          thinking: { level },
+        });
+        const payload = await capture_payload(request);
+
+        expect(request.model).toMatchObject({
+          contextWindow: capability.context_window,
+          maxTokens: capability.max_tokens,
+        });
+        expect(payload).toHaveProperty("model", "deepseek-flash");
+        if (api_format === "OpenAIResponses") {
+          expect(payload).toHaveProperty("reasoning.effort", effort);
+        } else {
+          expect(payload).toHaveProperty("thinking.type", level === "OFF" ? "disabled" : "enabled");
+          expect(payload["reasoning_effort"]).toBe(level === "OFF" ? undefined : effort);
+        }
+      }
+    },
+  );
+
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s GLM-5.3 由 Pi 目录与适配器生成各可用档位的请求",
+    async (api_format) => {
+      for (const [level, effort] of [
+        ["LOW", "low"],
+        ["HIGH", "high"],
+        ["MAX", "max"],
+      ] as const) {
+        const request = resolve_request({
+          api_format,
+          model_id: "z-ai/glm-5.3",
+          thinking: { level },
+        });
+
+        expect(await capture_payload(request)).toHaveProperty("reasoning.effort", effort);
+      }
+    },
+  );
+
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s 豆包把关闭思考发送为 minimal，并保留开启档位",
+    async (api_format) => {
+      for (const [level, effort] of [
+        ["OFF", "minimal"],
+        ["LOW", "low"],
+        ["MEDIUM", "medium"],
+        ["HIGH", "high"],
+      ] as const) {
+        const request = resolve_request({
+          api_format,
+          model_id: "doubao-seed-evolving",
+          thinking: { level },
+        });
+        const payload = await capture_payload(request);
+
+        expect(payload).toHaveProperty(
+          api_format === "OpenAI" ? "reasoning_effort" : "reasoning.effort",
+          effort,
+        );
+      }
+    },
+  );
+
   it.each([
     ["OpenAI", "openai", "openai-completions"],
     ["OpenAIResponses", "openai", "openai-responses"],
@@ -270,33 +350,48 @@ describe("pi-ai 请求适配", () => {
     expect(payload).toHaveProperty("reasoning_effort", "high");
   });
 
-  it("应用精确修正通过 Pi 生成 Grok 与 DeepSeek 新档位", async () => {
+  it("Grok 修正通过 Pi 生成特高思考字段", async () => {
     const grok_request = resolve_request({
       api_format: "OpenAI",
       model_id: "vendor/grok-4.6-fast",
       thinking: { level: "XHIGH" },
     });
-    const deepseek_request = resolve_request({
-      api_format: "OpenAI",
-      model_id: "deepseek-v4-pro",
-      thinking: { level: "LOW" },
-    });
-
     await expect(capture_payload(grok_request)).resolves.toHaveProperty(
       "reasoning_effort",
       "xhigh",
     );
-    await expect(capture_payload(deepseek_request)).resolves.toMatchObject({
-      thinking: { type: "enabled" },
-      reasoning_effort: "low",
-    });
   });
 
-  it("MiMo V2.5 在两种 OpenAI 协议中只发送思考开关", async () => {
+  it.each(["OpenAI", "OpenAIResponses"] as const)(
+    "%s DeepSeek V4 Pro 由 Pi 目录与适配器生成各可用档位的请求",
+    async (api_format) => {
+      for (const [level, effort] of [
+        ["OFF", undefined],
+        ["HIGH", "high"],
+        ["MAX", "max"],
+      ] as const) {
+        const request = resolve_request({
+          api_format,
+          api_url: "https://api.deepseek.com/v1",
+          model_id: "deepseek-v4-pro",
+          thinking: { level },
+        });
+        const payload = await capture_payload(request);
+        if (api_format === "OpenAIResponses") {
+          expect(payload).toHaveProperty("reasoning.effort", effort ?? "none");
+        } else {
+          expect(payload).toHaveProperty("thinking.type", level === "OFF" ? "disabled" : "enabled");
+          expect(payload["reasoning_effort"]).toBe(effort);
+        }
+      }
+    },
+  );
+
+  it("MiMo V2.5 由 Pi 目录与适配器生成协议对应的思考字段", async () => {
     const completions_request = resolve_request({
       api_format: "OpenAI",
       model_id: "mimo-v2.5-pro",
-      thinking: { level: "HIGH" },
+      thinking: { level: "LOW" },
     });
     const disabled_request = resolve_request({
       api_format: "OpenAI",
@@ -310,8 +405,10 @@ describe("pi-ai 请求适配", () => {
     });
 
     const completions_payload = await capture_payload(completions_request);
-    expect(completions_payload).toMatchObject({ thinking: { type: "enabled" } });
-    expect(completions_payload).not.toHaveProperty("reasoning_effort");
+    expect(completions_payload).toMatchObject({
+      thinking: { type: "enabled" },
+      reasoning_effort: "low",
+    });
     await expect(capture_payload(disabled_request)).resolves.toHaveProperty(
       "thinking.type",
       "disabled",
