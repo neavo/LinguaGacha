@@ -49,18 +49,37 @@ export function resolve_agent_batch_translation_model(
 }
 
 /**
- * 读取内置模型预设，模型初始化只消费合法对象项。
+ * 内置目录同时决定初始化与重置权限；损坏资源必须报错，避免被当作预设下架。
  */
 export function read_config_model_preset_records(
   paths: ModelPresetPathReader,
   native_fs: NativeFs = default_native_fs,
 ): JsonRecord[] {
   const preset_path = path.join(paths.get_model_preset_dir(), "preset_model_builtin.json");
-  let data: JsonValue = [];
+  let data: JsonValue;
   try {
     data = JsonTool.parseStrict<JsonValue>(native_fs.read_file(preset_path));
-  } catch {
-    data = [];
+  } catch (error) {
+    throw new AppError(error instanceof SyntaxError ? "file.parse_failed" : "file.io_failed", {
+      cause: error,
+      diagnostic_context: { path: preset_path },
+    });
   }
-  return Array.isArray(data) ? data.filter(is_json_record) : [];
+  if (!Array.isArray(data)) {
+    throw new AppError("file.invalid_structure", { diagnostic_context: { path: preset_path } });
+  }
+  const ids = new Set<string>();
+  return data.map((item) => {
+    if (
+      !is_json_record(item) ||
+      typeof item["id"] !== "string" ||
+      item["id"] === "" ||
+      item["id"].trim() !== item["id"] ||
+      ids.has(item["id"])
+    ) {
+      throw new AppError("file.invalid_structure", { diagnostic_context: { path: preset_path } });
+    }
+    ids.add(item["id"]);
+    return item;
+  });
 }

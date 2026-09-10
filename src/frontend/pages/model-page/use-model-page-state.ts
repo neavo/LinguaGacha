@@ -233,6 +233,7 @@ function normalize_model_entry(
   return {
     id: String(source.id ?? ""),
     type: Model.normalize_type(source.type),
+    can_reset: source.can_reset === true,
     name: String(source.name ?? ""),
     api_format: Model.normalize_api_format(source.api_format),
     api_url: String(source.api_url ?? ""),
@@ -544,7 +545,7 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
-  /** 检查分类剩余模型并请求删除确认。 */
+  /** 自定义分组会自动补齐至少一项；已下架预设允许清空分组。 */
   const request_delete_model = useCallback(
     (model_id: string): void => {
       if (readonly) {
@@ -559,7 +560,7 @@ export function useModelPageState(): UseModelPageStateResult {
       const group_count = snapshot_ref.current.models.filter(
         (entry) => entry.type === model.type,
       ).length;
-      if (group_count <= 1) {
+      if (model.type !== "PRESET" && group_count <= 1) {
         push_toast("warning", t("model_page.feedback.delete_last_one"));
       } else {
         set_confirm_state({

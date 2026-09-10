@@ -16,6 +16,8 @@
 
 `POST /api/models/select` 接受 `target`（translation / agent / agent_batch_translation）、`model_id` 和可选 `thinking_level`，返回 `ModelSelectionSnapshot`。Agent 主模型选择不接受等级，批量跟随使用 `model_id: null` 且不带等级；省略等级保留模型归一配置，显式等级须属于模型能力集合。`ModelService` 在同一配置副本中校验并更新选择和模型全局等级，同步保存一次，设置文件写入成功后才更新缓存；该边界不提供磁盘写入回滚。独立等级更新按用途定位当前模型。
 
+内置模型目录按 ID 补齐缺失模型并提供重置模板；已有用户配置与选择保留。预设下架后可删除，仍有模板时可重置且禁止删除。`ModelService` 每次操作共用一份目录判断权限，快照的 `can_reset` 不持久化，类型仍记录来源与分组。目录允许空数组；读取、解析或结构校验失败在配置写入前报错，避免把资源损坏解释为下架。
+
 ## 2. 状态拥有者
 
 |状态 / 边界|拥有者|唯一写入口 / 读出口|
@@ -91,7 +93,8 @@ project, files, items, quality, prompts, proofreading
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
-- 模型能力优先采用项目内少量精确修正，否则读取 Pi 内置 catalog，两者均未命中时不猜测思考能力并使用 Agent 安全容量。配置 ID 优先精确匹配；变种 ID 只在字母数字分隔边界内取最长且唯一的 canonical ID。思考能力使用与当前协议适配的单一模板；容量聚合同 canonical ID 在全部 Pi catalog 中的记录并分别取最大 `contextWindow` 与 `maxTokens`，不改写真实请求 ID、归一后的 API URL 或请求头。应用修正只承载 Pi 缺失或落后的当前事实，Pi 更新并验证后直接删除对应修正。
+- 模型容量与协议思考能力分别优先采用应用修正，再读取 Pi catalog。两者共用名称规则：精确匹配优先，变种 ID 在字母数字分隔边界内取最长且唯一的 canonical ID。容量跨协议聚合同 ID 的全部记录，分别取最大上下文与输出规格；思考使用当前协议适配的单一模板。缺少容量时使用 Agent 安全值，缺少思考证据时不猜测；解析保留真实请求 ID、归一后的 API URL 和请求头。修正只承载 Pi 缺失或落后的事实，Pi 更新并验证后按容量或协议删除。Agent 运行容量的合并规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
+- 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态：供应商错误、长度截断和工具调用成为当前请求错误，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
 - 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。

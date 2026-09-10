@@ -197,14 +197,14 @@ export class Model {
   }
 
   /**
-   * 自定义模型可编辑、可删除并拥有模板文件，内置预设只允许重置
+   * 自定义分类拥有独立的新增模板文件。
    */
   public is_custom(): boolean {
     return Model.is_custom_type(this.type);
   }
 
   /**
-   * 预设模型来自内置资源，只允许重置，不允许删除
+   * 预设分类记录来源；当前资源目录中的模板是否存在由模型服务判断。
    */
   public is_preset(): boolean {
     return this.type === "PRESET";

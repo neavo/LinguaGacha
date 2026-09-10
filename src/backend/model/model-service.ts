@@ -93,13 +93,14 @@ export class ModelService {
    * 读取模型页完整快照，供 UI 一次性恢复配置状态
    */
   public get_snapshot(): JsonRecord {
-    const config = this.load_setting_with_models(true);
-    return this.build_snapshot_response(config);
+    const { config, presets } = this.load_setting_with_models(true);
+    return this.build_snapshot_response(config, presets);
   }
 
   /** 读取任务入口直接控制所需的非敏感模型摘要。 */
   public get_selection_snapshot(): ModelSelectionSnapshot {
-    return this.build_selection_snapshot(this.load_setting_with_models(true));
+    const { config } = this.load_setting_with_models(true);
+    return this.build_selection_snapshot(config);
   }
 
   /**
@@ -120,12 +121,12 @@ export class ModelService {
         });
       }
     }
-    const config = this.load_setting_with_models(false);
+    const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     models[index] = this.apply_patch(models[index] ?? {}, patch);
     config["models"] = models as unknown as JsonValue;
-    return this.persist_config_and_build_snapshot(config);
+    return this.persist_config_and_build_snapshot(config, presets);
   }
 
   /** 模型选择和显式等级在同一配置副本中校验，并由唯一出口保存一次。 */
@@ -153,7 +154,7 @@ export class ModelService {
       });
     }
     const model_id = typeof value === "string" ? value.trim() : null;
-    const config = this.load_setting_with_models(false);
+    const { config } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     if (model_id !== null) {
       const index = this.find_model_index_or_raise(models, model_id);
@@ -185,7 +186,7 @@ export class ModelService {
         public_details: { field: "thinking_level" },
       });
     }
-    const config = this.load_setting_with_models(false);
+    const { config } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     const selection = normalize_model_selection(config["model_selection"]);
     const index = this.find_model_index_or_raise(models, selection[usage]);
@@ -205,11 +206,11 @@ export class ModelService {
         public_details: { model_type },
       });
     }
-    const config = this.load_setting_with_models(false);
+    const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     models.push(this.build_custom_model(model_type));
     config["models"] = models as unknown as JsonValue;
-    return this.persist_config_and_build_snapshot(config);
+    return this.persist_config_and_build_snapshot(config, presets);
   }
 
   /**
@@ -218,11 +219,11 @@ export class ModelService {
   public delete_model(request: JsonRecord): JsonRecord {
     this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
-    const config = this.load_setting_with_models(false);
+    const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
-    if (String(target_model["type"] ?? "PRESET") === "PRESET") {
+    if (this.find_preset_model(target_model, presets) !== undefined) {
       throw new AppErrors.AppError("request.validation_failed");
     }
     models.splice(index, 1);
@@ -235,7 +236,7 @@ export class ModelService {
     }
     config["model_selection"] = selection;
     config["models"] = models as unknown as JsonValue;
-    return this.persist_config_and_build_snapshot(config);
+    return this.persist_config_and_build_snapshot(config, presets);
   }
 
   /**
@@ -244,19 +245,19 @@ export class ModelService {
   public reset_preset_model(request: JsonRecord): JsonRecord {
     this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
-    const config = this.load_setting_with_models(false);
+    const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const preset = this.load_preset_models().find((item) => String(item["id"] ?? "") === model_id);
+    const preset = this.find_preset_model(models[index]!, presets);
     if (preset === undefined) {
       throw new AppErrors.AppError("model.not_found");
     }
     models[index] = this.normalize_model(preset);
     config["models"] = models as unknown as JsonValue;
-    return this.persist_config_and_build_snapshot(config);
+    return this.persist_config_and_build_snapshot(config, presets);
   }
 
   /**
@@ -272,7 +273,7 @@ export class ModelService {
     if (ordered_ids.length === 0) {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const config = this.load_setting_with_models(false);
+    const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     const first_index = this.find_model_index_or_raise(models, ordered_ids[0] ?? "");
     const model_type = String(models[first_index]?.["type"] ?? "PRESET");
@@ -289,14 +290,14 @@ export class ModelService {
     }
     const reordered = this.reorder_group(models, model_type, ordered_ids);
     config["models"] = reordered as unknown as JsonValue;
-    return this.persist_config_and_build_snapshot(config);
+    return this.persist_config_and_build_snapshot(config, presets);
   }
 
   /**
    * 查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
    */
   public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
-    const config = this.load_setting_with_models(false);
+    const { config } = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const models = await list_available_models(model);
     return { models: models as unknown as JsonValue };
@@ -306,7 +307,7 @@ export class ModelService {
    * 模型连通性测试复用同一 LLM request client，确保模型页和任务请求走同一策略。
    */
   public async test_model(request: JsonRecord): Promise<JsonRecord> {
-    const config = this.load_setting_with_models(false);
+    const { config } = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const keys = collect_api_keys(String(model["api_key"] ?? ""));
     const key_results: Array<JsonRecord> = [];
@@ -571,8 +572,11 @@ export class ModelService {
   /**
    * 保存配置后立即重建快照，保证响应反映持久化结果
    */
-  private persist_config_and_build_snapshot(config: MutableJsonRecord): JsonRecord {
-    return this.build_snapshot_response(this.persist_config(config));
+  private persist_config_and_build_snapshot(
+    config: MutableJsonRecord,
+    presets: ReadonlyMap<string, JsonRecord>,
+  ): JsonRecord {
+    return this.build_snapshot_response(this.persist_config(config), presets);
   }
 
   /** 保存前统一排序模型并修复悬空选择，所有配置写入共享这一出口。 */
@@ -585,26 +589,40 @@ export class ModelService {
   }
 
   /**
-   * 读取配置后统一完成模型初始化、排序和选择归一
+   * 每次操作只读一份内置目录，初始化、权限校验和响应使用同一份资源事实。
    */
-  private load_setting_with_models(persist_defaults: boolean): MutableJsonRecord {
+  private load_setting_with_models(persist_defaults: boolean): {
+    config: MutableJsonRecord;
+    presets: ReadonlyMap<string, JsonRecord>;
+  } {
+    const presets = new Map(
+      read_config_model_preset_records(this.paths, this.native_fs).map((preset) => [
+        String(preset["id"]),
+        preset,
+      ]),
+    );
     const config = this.app_setting_service.read_setting();
-    const models = this.sort_models(this.initialize_models(read_config_model_records(config)));
+    const models = this.sort_models(
+      this.initialize_models(read_config_model_records(config), presets),
+    );
     config["models"] = models as unknown as JsonValue;
     config["model_selection"] = this.normalize_selection_for_models(config, models);
     if (persist_defaults) {
       this.app_setting_service.save_setting(config);
     }
-    return config;
+    return { config, presets };
   }
 
   /**
    * 初始化模型集合，合并用户配置和内置预设
    */
-  private initialize_models(existing_models: JsonRecord[]): JsonRecord[] {
+  private initialize_models(
+    existing_models: JsonRecord[],
+    presets: ReadonlyMap<string, JsonRecord>,
+  ): JsonRecord[] {
     const models = existing_models.map((model) => this.normalize_model(model));
     const existing_ids = new Set(models.map((model) => String(model["id"] ?? "")));
-    for (const preset of this.load_preset_models()) {
+    for (const preset of presets.values()) {
       if (!existing_ids.has(String(preset["id"] ?? ""))) {
         models.push(this.normalize_model(preset));
       }
@@ -618,10 +636,13 @@ export class ModelService {
   }
 
   /**
-   * 读取内置模型预设，保持 UI 语言不影响模型集合
+   * 类型保留模型来源与分组，当前目录决定重置和删除权限。
    */
-  private load_preset_models(): JsonRecord[] {
-    return read_config_model_preset_records(this.paths, this.native_fs);
+  private find_preset_model(
+    model: JsonRecord,
+    presets: ReadonlyMap<string, JsonRecord>,
+  ): JsonRecord | undefined {
+    return model["type"] === "PRESET" ? presets.get(String(model["id"])) : undefined;
   }
 
   /**
@@ -775,12 +796,16 @@ export class ModelService {
   /**
    * 生成模型页管理快照，隔离配置内部结构
    */
-  private build_snapshot_response(config: JsonRecord): JsonRecord {
+  private build_snapshot_response(
+    config: JsonRecord,
+    presets: ReadonlyMap<string, JsonRecord>,
+  ): JsonRecord {
     const models = read_config_model_records(config).map((model) => {
       const normalized = Model.from_json(model, String(model["id"] ?? ""));
       const capability = resolve_model_capability(normalized);
       return {
         ...normalized.to_json(),
+        can_reset: this.find_preset_model(model, presets) !== undefined,
         available_thinking_levels: [...capability.available_thinking_levels],
       };
     });
