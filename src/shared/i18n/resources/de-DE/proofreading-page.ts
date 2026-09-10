@@ -47,6 +47,7 @@ export const de_de_proofreading_page = {
     text_preserve: "Textschutz fehlgeschlagen",
     similarity: "Hohe Ähnlichkeit",
     glossary: "Glossar nicht angewendet",
+    punctuation_mismatch: "Abweichende Satzzeichenstruktur",
     retry_threshold: "Wiederholungsschwelle erreicht",
     line_count_mismatch: "Zeilenanzahl stimmt nicht überein",
   },

@@ -9,6 +9,7 @@ import type { ItemNameField } from "../../domain/item";
 import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../domain/language";
 import type { TextProcessingConfig } from "../text/text-types";
 
+/** 默认禁用可选规则，各用例只开启影响当前判断的质量配置。 */
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
   return {
     glossary: { enabled: false, mode: "custom", revision: 0, entries: [] },
@@ -19,6 +20,7 @@ function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapsh
   };
 }
 
+/** 使用真实规则编译和评估入口，默认提供已完成的正文条目。 */
 function evaluate(args: {
   src: string;
   dst: string;
@@ -59,6 +61,48 @@ function evaluate(args: {
 }
 
 describe("proofreading-evaluator", () => {
+  it("跨行标点以整条正文比较", () => {
+    expect(
+      evaluate({ src: "「こんにちは\n世界」", dst: "“你好世界”", sourceLanguage: "JA" }).warnings,
+    ).not.toContain("PUNCTUATION_MISMATCH");
+  });
+
+  it("标点检查排除保护段和资源引用，仍保留文本保护差异", () => {
+    const quality = create_quality({
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ entry_id: "tag", src: "<[^>]+>" }],
+      },
+    });
+    const item = evaluate({
+      src: '「こんにちは」<tag value="(x)"> https://example.com/a(1).png',
+      dst: '“你好”<tag value="[]"> https://example.com/b(2)(3).png',
+      sourceLanguage: "JA",
+      quality,
+    });
+    expect(item.warnings).toContain("TEXT_PRESERVE");
+    expect(item.warnings).not.toContain("PUNCTUATION_MISMATCH");
+  });
+
+  it("标点检查使用译前替换后的源文和最终译文", () => {
+    const quality = create_quality({
+      pre_replacement: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ entry_id: "opening", src: "「", dst: "", regex: false, case_sensitive: true }],
+      },
+    });
+    expect(
+      evaluate({ src: "「こんにちは", dst: "你好", sourceLanguage: "JA", quality }).warnings,
+    ).not.toContain("PUNCTUATION_MISMATCH");
+    expect(
+      evaluate({ src: "「こんにちは", dst: "「你好", sourceLanguage: "JA", quality }).warnings,
+    ).toContain("PUNCTUATION_MISMATCH");
+  });
+
   it("派生 item 行数变化 warning，并在修正后消失", () => {
     expect(evaluate({ src: "a\nb", dst: "甲", sourceLanguage: "EN" }).warnings).toContain(
       "LINE_COUNT_MISMATCH",

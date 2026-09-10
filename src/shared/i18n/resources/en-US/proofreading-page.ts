@@ -47,6 +47,7 @@ export const en_us_proofreading_page = {
     text_preserve: "Text Preserve Failed",
     similarity: "High Similarity",
     glossary: "Glossary Not Applied",
+    punctuation_mismatch: "Punctuation Structure Mismatch",
     retry_threshold: "Retry Threshold Reached",
     line_count_mismatch: "Line Count Mismatch",
   },

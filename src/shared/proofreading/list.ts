@@ -1,4 +1,5 @@
 import {
+  PROOFREADING_WARNING_CODES,
   build_proofreading_row_id,
   compress_proofreading_text,
   resolve_proofreading_status_sort_rank,
@@ -178,7 +179,8 @@ export function create_proofreading_client_item(args: {
     name_dst: clone_item_name(args.item.name_dst),
     status: args.item.status,
     retry_count: args.item.retry_count,
-    warnings: [...args.warnings],
+    // 与筛选和统计共用词表顺序，检查执行顺序不决定展示顺序。
+    warnings: PROOFREADING_WARNING_CODES.filter((code) => args.warnings.includes(code)),
     warning_fragments_by_code: {
       ...(args.warning_fragments_by_code.FOREIGN_CHAR_RESIDUE === undefined
         ? {}
@@ -197,6 +199,7 @@ export function create_proofreading_client_item(args: {
   };
 }
 
+/** 隔离数组形式的姓名槽位，避免列表消费者改写条目事实。 */
 function clone_item_name(value: ItemNameField): ItemNameField {
   return Array.isArray(value) ? [...value] : value;
 }
