@@ -44,6 +44,7 @@ export const zh_cn_proofreading_page = {
     text_preserve: "文本保护未落实",
     similarity: "相似度过高",
     glossary: "术语未落实",
+    punctuation_mismatch: "标点结构不一致",
     retry_threshold: "重试次数达到阈值",
     line_count_mismatch: "行数不一致",
   },

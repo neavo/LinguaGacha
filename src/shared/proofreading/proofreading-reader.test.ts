@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createProofreadingReader,
   evaluateProofreadingSlice,
+  type ProofreadingListViewQuery,
   type ProofreadingSyncInput,
 } from "./proofreading-reader";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
@@ -76,6 +77,61 @@ function sync_full(
 }
 
 describe("proofreading-reader", () => {
+  it("标点警告进入筛选和统计，并在译文修正后增量清除", () => {
+    const service = createProofreadingReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 2,
+      processingConfig: create_processing_config(),
+      quality: create_quality(),
+      upsertItems: [
+        {
+          ...create_item({ item_id: 1, src: "「こんにちは」", dst: "「你好", status: "PROCESSED" }),
+          retry_count: 2,
+        },
+        create_item({ item_id: 2, src: "「こんにちは」", dst: "“你好”", status: "PROCESSED" }),
+      ],
+    });
+    const panel = service.build_filter_panel({ filters: sync_state.defaultFilters });
+    expect(panel.outcome_count_by_code.PUNCTUATION_MISMATCH).toBe(1);
+    const punctuation_index = panel.available_outcomes.indexOf("PUNCTUATION_MISMATCH");
+    expect(panel.available_outcomes[punctuation_index + 1]).toBe("RETRY_THRESHOLD");
+    const query: ProofreadingListViewQuery = {
+      filters: { ...sync_state.defaultFilters, outcomes: ["PUNCTUATION_MISMATCH"] },
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    };
+    const view = service.read_list_view(query);
+    expect(view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
+    expect(view.window_rows[0]?.item.warnings).toEqual(["PUNCTUATION_MISMATCH", "RETRY_THRESHOLD"]);
+    expect(service.read_warning_summary()).toEqual({
+      total_count: 2,
+      entries: [
+        { code: "PUNCTUATION_MISMATCH", count: 1 },
+        { code: "RETRY_THRESHOLD", count: 1 },
+      ],
+    });
+
+    service.apply_item_delta({
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
+      total_item_count: 2,
+      upsertItems: [],
+      patchItemIds: [1],
+      fieldPatch: { dst: "“你好”", retry_count: 0 },
+      deleteItemIds: [],
+    });
+    expect(
+      service.read_list_window({ view_id: view.view_id, start: 0, count: 1 }).rows[0]?.item
+        .warnings,
+    ).toEqual([]);
+    expect(service.read_list_view(query).row_count).toBe(0);
+    expect(service.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
+  });
+
   it("默认筛选选中翻译成功和尚未完成两组", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {

@@ -43,6 +43,7 @@ import {
 import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
 import { split_text_lines } from "../text/text-lines";
 import { remove_text_resource_references } from "../text/text-resource-reference";
+import { has_punctuation_structure_mismatch } from "../text/punctuation-structure";
 
 export type ProofreadingEvaluationContext = {
   glossary: CompiledGlossary; // 术语始终按原始 src/name_src 命中
@@ -167,6 +168,10 @@ export function evaluateProofreadingItem(args: {
       .join("\n");
     const normalized_dst = strip_preserved_segments_by_line(args.item.dst, sample_rule);
     const natural_dst = remove_text_resource_references(normalized_dst);
+    // 相似度与标点检查共用准备后的源文，避免两项检查采用不同的替换与保护语义。
+    const natural_src = remove_text_resource_references(
+      strip_preserved_segments_by_line(review_src, sample_rule),
+    );
     if (split_text_lines(args.item.src).length !== split_text_lines(args.item.dst).length) {
       warnings.push("LINE_COUNT_MISMATCH");
     }
@@ -196,15 +201,16 @@ export function evaluateProofreadingItem(args: {
 
     if (
       has_translation_similarity_issue({
-        src: remove_text_resource_references(
-          strip_preserved_segments_by_line(review_src, sample_rule),
-        ),
+        src: natural_src,
         dst: natural_dst,
         sourceLanguage: args.processingConfig.source_language,
         targetLanguage: args.processingConfig.target_language,
       })
     ) {
       warnings.push("SIMILARITY");
+    }
+    if (has_punctuation_structure_mismatch({ src: natural_src, dst: natural_dst })) {
+      warnings.push("PUNCTUATION_MISMATCH");
     }
   }
 
