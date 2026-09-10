@@ -87,6 +87,10 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 2026091 v0.120.1
+  - `deepseek-flash` モデルに対応
+  - 修正と改善 [#866](../../issues/866) [#867](../../issues/867) [#868](../../issues/868) [#871](../../issues/871)
+
 - 20260907 v0.120.0
   - `AGENT` - 一括翻訳 [#856](../../issues/856)
   - 修正と改善 [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)

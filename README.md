@@ -87,6 +87,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 2026091 v0.120.1
+  - 支持 `deepseek-flash` 模型
+  - 修复与改进 [#866](../../issues/866) [#867](../../issues/867) [#868](../../issues/868) [#871](../../issues/871)
+
 - 20260907 v0.120.0
   - `AGENT` - 批量翻译 [#856](../../issues/856)
   - 修复与改进 [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
