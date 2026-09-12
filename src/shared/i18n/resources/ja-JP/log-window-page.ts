@@ -2,6 +2,13 @@ import type { zh_cn_log_window_page } from "../zh-CN/log-window-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_log_window_page = {
   title: "ログ",
+  history: {
+    date: "ログの日付",
+    loading: "ログを読み込み中…",
+    empty: "ログはありません",
+    failed: "ログを読み込めませんでした",
+    expired: "この日付のログは削除されました",
+  },
   level: {
     all: "すべて",
     debug: "デバッグ",
@@ -18,7 +25,7 @@ export const ja_jp_log_window_page = {
     return_to_top: "先頭に戻る",
   },
   search: {
-    placeholder: "検索 …",
+    placeholder: "読み込んだログを検索…",
     clear: "クリア",
     regex: "正規表現",
     regex_tooltip_label: "正規表現モード",

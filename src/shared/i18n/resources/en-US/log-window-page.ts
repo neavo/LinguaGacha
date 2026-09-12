@@ -3,6 +3,13 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_log_window_page = {
   title: "Logs",
+  history: {
+    date: "Log date",
+    loading: "Reading logs…",
+    empty: "No logs",
+    failed: "Could not read logs",
+    expired: "Logs for this date have been removed",
+  },
   level: {
     all: "All",
     debug: "Debug",
@@ -19,7 +26,7 @@ export const en_us_log_window_page = {
     return_to_top: "Back to Top",
   },
   search: {
-    placeholder: "Query …",
+    placeholder: "Search loaded logs…",
     clear: "Clear",
     regex: "Regex",
     regex_tooltip_label: "Regex Mode",

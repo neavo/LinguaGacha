@@ -1,16 +1,18 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AppError } from "../../shared/error";
-import { LogManager, type FileLogWriter } from "./log-manager";
+import { LogManager } from "./log-manager";
 import { record_app_error } from "./app-error-reporter";
 
 describe("record_app_error", () => {
-  it("按 AppError severity 选择日志等级并写入结构化上下文", () => {
-    const events: string[] = [];
+  it("按 AppError severity 选择日志等级并写入结构化上下文", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-error-"));
     const log_manager = new LogManager({
-      consoleWriter: (text) => events.push(text),
-      fileWriter: create_memory_file_writer(events),
-      logDir: ".",
+      consoleWriter: () => undefined,
+      logDir: directory.path,
       now: () => new Date(2012, 11, 12, 12, 12, 12),
     });
 
@@ -21,8 +23,13 @@ describe("record_app_error", () => {
       context: { request_id: "request-1" },
     });
 
-    const file_record = JSON.parse(events[0] ?? "{}") as Record<string, unknown>;
-    expect(file_record["level_label"]).toBe("warning");
+    const file_record = JSON.parse(
+      fs.readFileSync(
+        path.join(directory.path, `app.${log_manager.files.list_dates()[0]!}.jsonl`),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(file_record["level"]).toBe("warning");
     expect(file_record["source"]).toBe("test");
     expect(file_record["error"]).toMatchObject({
       message: "model.provider_failed",
@@ -32,15 +39,21 @@ describe("record_app_error", () => {
         severity: "warning",
       },
     });
-    expect(log_manager.snapshot_events()[0]?.level).toBe("warning");
+    expect(
+      (
+        await log_manager.files.read_page({
+          date: log_manager.files.list_dates()[0]!,
+          direction: "latest",
+        })
+      ).entries[0]?.level,
+    ).toBe("warning");
   });
 
-  it("expected 错误进入 debug 而不是 error", () => {
-    const events: string[] = [];
+  it("expected 错误进入 debug 而不是 error", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-error-"));
     const log_manager = new LogManager({
-      consoleWriter: (text) => events.push(text),
-      fileWriter: create_memory_file_writer(events),
-      logDir: ".",
+      consoleWriter: () => undefined,
+      logDir: directory.path,
     });
 
     record_app_error(new AppError("request.validation_failed"), {
@@ -49,17 +62,13 @@ describe("record_app_error", () => {
       source: "test",
     });
 
-    expect(log_manager.snapshot_events()[0]?.level).toBe("debug");
+    expect(
+      (
+        await log_manager.files.read_page({
+          date: log_manager.files.list_dates()[0]!,
+          direction: "latest",
+        })
+      ).entries[0]?.level,
+    ).toBe("debug");
   });
-
-  function create_memory_file_writer(lines: string[]): FileLogWriter {
-    return {
-      write: (text) => lines.push(text),
-      flush: () => undefined,
-      flushSync: () => undefined,
-      end: (callback?: () => void) => {
-        callback?.();
-      },
-    };
-  }
 });

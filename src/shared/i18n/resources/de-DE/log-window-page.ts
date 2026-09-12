@@ -3,6 +3,13 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_log_window_page = {
   title: "Protokolle",
+  history: {
+    date: "Protokolldatum",
+    loading: "Protokolle werden gelesen…",
+    empty: "Keine Protokolle",
+    failed: "Protokolle konnten nicht gelesen werden",
+    expired: "Protokolle dieses Datums wurden entfernt",
+  },
   level: {
     all: "Alle",
     debug: "Debug",
@@ -19,7 +26,7 @@ export const de_de_log_window_page = {
     return_to_top: "Nach oben",
   },
   search: {
-    placeholder: "Abfrage …",
+    placeholder: "Geladene Protokolle durchsuchen…",
     clear: "Löschen",
     regex: "Regex",
     regex_tooltip_label: "Regex-Modus",

@@ -6,7 +6,7 @@ import { serve } from "@hono/node-server";
 import { t_main_log } from "../log/log-text";
 import { record_app_error } from "../log/app-error-reporter";
 import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
-import type { LogEvent } from "../../shared/log";
+import type { LogPageRequest } from "../../shared/log";
 import type { BackendServices } from "../bootstrap/backend-services";
 import type { AgentService } from "../agent/agent-service";
 import type { ApiStreamHub } from "./api-stream-hub";
@@ -22,8 +22,6 @@ import type { ApiGatewayStartResult } from "./api-types";
 import { api_error_envelope, normalize_api_error } from "./api-error";
 import { type ApiJsonHandler, register_post_json_route } from "./api-json";
 import { register_api_routes } from "./api-routes";
-
-const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500; // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏
 
 const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON 请求头，避免 renderer 依赖额外私有请求头
 
@@ -68,6 +66,7 @@ export class ApiGatewayServer {
     const app = this.create_app();
     const server = await new Promise<Server>((resolve, reject) => {
       let pending_server: Server;
+      /** 启动失败时撤销监听状态，保持重试入口可用。 */
       const handle_start_error = (error: Error): void => {
         pending_server.close();
         this.server = null;
@@ -160,7 +159,11 @@ export class ApiGatewayServer {
       postJson: (path_name: string, handler: ApiJsonHandler) =>
         this.post_json(app, path_name, handler),
       createEventStreamResponse: () => this.options.eventStream.create_stream_response(),
-      createLogStreamResponse: () => this.create_log_stream_response(),
+      readLogFiles: () => ({ dates: services.logManager.files.list_dates() }),
+      readLogPage: async (body: JsonRecord) =>
+        (await services.logManager.files.read_page(
+          body as unknown as LogPageRequest,
+        )) as unknown as JsonValue,
       readLogDetail: (body: JsonRecord) => this.read_log_detail(body),
       recordRendererError: (body: JsonRecord) => this.record_renderer_error(body),
     };
@@ -237,13 +240,18 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 日志详情只从当前进程内详情池读取；旧日志文件不在 API 层扫描。
+   * 日志详情按正文位置读取，旧 .log 文件不进入读取协议。
    */
-  private read_log_detail(body: JsonRecord): JsonValue {
+  private async read_log_detail(body: JsonRecord): Promise<JsonValue> {
     const id = String(body["id"] ?? "").trim();
     return {
       detail:
-        id === "" ? null : (this.options.backendServices.logManager.read_detail(id) as JsonValue),
+        id === ""
+          ? null
+          : ((await this.options.backendServices.logManager.files.read_detail(
+              id,
+              String(body["revision"] ?? ""),
+            )) as unknown as JsonValue),
     };
   }
 
@@ -273,56 +281,5 @@ export class ApiGatewayServer {
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
     });
-  }
-
-  /**
-   * 公开日志流由 LogManager 直接提供，避免窗口依赖内部日志实现
-   */
-  private create_log_stream_response(): Response {
-    const encoder = new TextEncoder();
-    let unsubscribe: (() => void) | null = null;
-    let keepalive_timer: ReturnType<typeof setInterval> | null = null;
-    const close_stream = (): void => {
-      if (keepalive_timer !== null) {
-        clearInterval(keepalive_timer);
-        keepalive_timer = null;
-      }
-      unsubscribe?.();
-      unsubscribe = null;
-    };
-    const stream = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        const enqueue_text = (text: string): void => {
-          controller.enqueue(encoder.encode(text));
-        };
-        unsubscribe = this.options.backendServices.logManager.subscribe((event) => {
-          enqueue_text(this.build_log_sse_frame(event));
-        });
-        keepalive_timer = setInterval(() => {
-          enqueue_text(": keepalive\n\n");
-        }, LOG_STREAM_KEEPALIVE_INTERVAL_MS);
-      },
-      cancel: () => {
-        close_stream();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "Content-Type": "text/event-stream; charset=utf-8",
-      },
-      status: 200,
-    });
-  }
-
-  /**
-   * 日志 SSE frame 使用固定事件名，renderer 日志面板只需订阅 log.appended
-   */
-  private build_log_sse_frame(event: LogEvent): string {
-    return "event: log.appended\ndata: " + JsonTool.stringifyStrict(event) + "\n\n";
   }
 }

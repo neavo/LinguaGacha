@@ -7,7 +7,6 @@ import { defineTool, type AgentSessionEvent } from "@earendil-works/pi-coding-ag
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../../shared/error";
-import type { FileLogWriter } from "../../log/log-manager";
 import { LogManager } from "../../log/log-manager";
 import { set_main_log_language_reader } from "../../log/log-text";
 import {
@@ -136,12 +135,12 @@ describe("Agent 工具公共边界", () => {
     expect(append.mock.calls[0]?.[0]).toMatchObject({
       level: "info",
       source: "agent-tool",
-      targets: { file: true, console: false, window: false },
+      targets: { console: false, window: false },
     });
     expect(append.mock.calls[1]?.[0]).toMatchObject({
       level: "error",
       source: "agent-tool",
-      targets: { file: true, console: false, window: false },
+      targets: { console: false, window: false },
     });
     expect(JSON.parse(append.mock.calls[0]?.[0].content.text)).toEqual({
       event: "start",
@@ -158,12 +157,9 @@ describe("Agent 工具公共边界", () => {
     });
   });
 
-  it("真实 LogManager 不裁剪调用正文且不写控制台和窗口", () => {
-    const file_lines: string[] = [];
+  it("真实 LogManager 不裁剪调用正文且不写控制台和窗口", async () => {
     const console_lines: string[] = [];
-    const log_manager = create_log_manager(file_lines, console_lines);
-    const window_events = vi.fn();
-    log_manager.subscribe(window_events, { replay: false });
+    const { log_manager, log_dir } = create_log_manager(console_lines);
     const input = { text: "i".repeat(5_000), items: Array.from({ length: 30 }, (_, i) => i) };
     const output = {
       content: [{ type: "text", text: "w".repeat(5_000) }],
@@ -173,11 +169,22 @@ describe("Agent 工具公共边界", () => {
     log_agent_tool_event(log_manager, tool_start("long", "read_skill", input));
     log_agent_tool_event(log_manager, tool_end("long", "read_skill", output, false));
 
-    const records = file_lines.map((line) => JSON.parse(line) as { message: string });
-    expect(JSON.parse(records[0]?.message ?? "{}").input).toEqual(input);
-    expect(JSON.parse(records[1]?.message ?? "{}").output).toEqual(output);
+    const records = fs
+      .readFileSync(path.join(log_dir, `app.${log_manager.files.list_dates()[0]!}.jsonl`), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { content: { text: string } });
+    expect(JSON.parse(records[0]?.content.text ?? "{}").input).toEqual(input);
+    expect(JSON.parse(records[1]?.content.text ?? "{}").output).toEqual(output);
     expect(console_lines).toEqual([]);
-    expect(window_events).not.toHaveBeenCalled();
+    expect(
+      (
+        await log_manager.files.read_page({
+          date: log_manager.files.list_dates()[0]!,
+          direction: "latest",
+        })
+      ).entries,
+    ).toEqual([]);
   });
 
   it("非工具 SDK 事件不产生日志", () => {
@@ -186,20 +193,23 @@ describe("Agent 工具公共边界", () => {
     expect(append).not.toHaveBeenCalled();
   });
 
-  function create_log_manager(file_lines: string[], console_lines: string[]): LogManager {
+  /** 使用独立临时目录，避免测试写入用户日志。 */
+  function create_log_manager(console_lines: string[]): {
+    log_manager: LogManager;
+    log_dir: string;
+  } {
     const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-tool-test-"));
-    const file_writer: FileLogWriter = { write: (text) => file_lines.push(text) };
     const log_manager = new LogManager({
       logDir: log_dir,
-      fileWriter: file_writer,
       consoleWriter: (text) => console_lines.push(text),
     });
     cleanup_callbacks.push(() => fs.rmSync(log_dir, { force: true, recursive: true }));
     cleanup_callbacks.push(() => log_manager.shutdown());
-    return log_manager;
+    return { log_manager, log_dir };
   }
 });
 
+/** 构造工具开始事件，保留 SDK 入口形状。 */
 function tool_start(tool_call_id: string, tool_name: string, input: unknown): AgentSessionEvent {
   return {
     type: "tool_execution_start",
@@ -209,6 +219,7 @@ function tool_start(tool_call_id: string, tool_name: string, input: unknown): Ag
   };
 }
 
+/** 构造工具结束事件，覆盖成功与失败输出。 */
 function tool_end(
   tool_call_id: string,
   tool_name: string,

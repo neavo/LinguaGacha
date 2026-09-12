@@ -10,7 +10,6 @@ import { register_api_routes } from "./api-routes";
 /** 路由集合是公开面契约，注册顺序不是。 */
 const GET_PATHS = new Set([
   "/api/health",
-  "/api/logs/stream",
   "/api/events/stream",
   "/api/agent/snapshot",
   "/api/models/selection",
@@ -18,6 +17,8 @@ const GET_PATHS = new Set([
 
 const POST_PATHS = new Set([
   "/api/logs/detail",
+  "/api/logs/files",
+  "/api/logs/page",
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
@@ -110,6 +111,7 @@ describe("register_api_routes", () => {
 
   it("GET 路由返回 Agent 与模型选择快照", () => {
     const fixture = create_route_fixture();
+    /** 保留原始响应对象以验证公开载荷。 */
     const json = (value: unknown) => value;
 
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
@@ -338,7 +340,8 @@ function create_route_fixture() {
     agent,
     postJson: post_json,
     createEventStreamResponse: vi.fn(),
-    createLogStreamResponse: vi.fn(),
+    readLogFiles: vi.fn(),
+    readLogPage: vi.fn(),
     readLogDetail: vi.fn(),
     recordRendererError: vi.fn(),
   });

@@ -55,6 +55,7 @@
 
 .log-window-page__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -85,6 +86,7 @@
 .log-window-page__table-card-content {
   position: relative;
   display: flex;
+  flex-direction: column;
   min-height: 0;
   height: 100%;
   padding: 0;
@@ -208,4 +210,14 @@
 
 .log-window-page__detail-editor .cm-content {
   letter-spacing: 0;
+}
+
+.log-window-page__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
 }

@@ -1,5 +1,12 @@
 export const zh_cn_log_window_page = {
   title: "日志",
+  history: {
+    date: "日志日期",
+    loading: "正在读取日志 …",
+    empty: "暂无日志",
+    failed: "日志读取失败",
+    expired: "该日期的日志已清理",
+  },
   level: {
     all: "全部",
     debug: "调试",
@@ -16,7 +23,7 @@ export const zh_cn_log_window_page = {
     return_to_top: "回到顶部",
   },
   search: {
-    placeholder: "查询 …",
+    placeholder: "搜索已加载日志 …",
     clear: "清空",
     regex: "正则",
     regex_tooltip_label: "正则模式",
@@ -34,7 +41,7 @@ export const zh_cn_log_window_page = {
     minimize: "最小化",
     empty: "请选择一条日志查看详情。",
     loading: "正在读取日志详情 …",
-    unavailable: "日志详情已从当前进程内存释放，请查看日志文件。",
+    unavailable: "日志文件已清理或记录不可用",
     failed: "日志详情读取失败。",
     content: {
       source_text: "原文",

@@ -4,8 +4,11 @@ import {
   normalize_log_level,
   read_log_content,
   type LogDetail,
-  type LogEvent,
+  type LogEntry,
   type LogLevel,
+  type LogCursor,
+  type LogPage,
+  type LogPageRequest,
 } from "@shared/log";
 import {
   is_app_error_code,
@@ -19,7 +22,7 @@ import {
   type WindowsReleaseZipUrls,
 } from "@shared/update/windows-update-target";
 
-export type { LogDetail, LogEvent, LogLevel };
+export type { LogDetail, LogEntry, LogLevel };
 
 type ApiEnvelope<data_type> = {
   ok: boolean;
@@ -101,6 +104,7 @@ function build_desktop_api_error<data_type>(
   });
 }
 
+/** 响应不是合法 JSON 时交由统一错误映射处理。 */
 async function read_api_envelope<data_type>(
   response: Response,
 ): Promise<ApiEnvelope<data_type> | null> {
@@ -122,6 +126,7 @@ function create_network_error(path: string, cause: unknown): DesktopApiError {
   });
 }
 
+/** 只消费宿主注入的地址，缺失时报告本地接入错误。 */
 function read_backend_api_base_url(): string {
   const base_url = normalize_backend_api_base_url(window.desktopApp.backendApi.baseUrl);
 
@@ -140,14 +145,7 @@ function build_api_url(base_url: string, path: string): string {
   return `${base_url}${normalized_path}`;
 }
 
-function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
-  try {
-    return JsonTool.parseStrict<Record<string, unknown>>(event.data);
-  } catch {
-    return {};
-  }
-}
-
+/** 提取三段版本用于更新比较，不参与展示文案。 */
 function parse_semantic_version(value: string): SemanticVersion | null {
   const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (version_match === null) {
@@ -176,6 +174,7 @@ function compare_semantic_version(left: SemanticVersion, right: SemanticVersion)
   return left.patch - right.patch;
 }
 
+/** 收窄发布元数据，保留下载选择所需的有效资产。 */
 function normalize_github_release_update(
   payload: GithubReleasePayload,
   current_version: string,
@@ -209,6 +208,7 @@ function normalize_github_release_update(
   };
 }
 
+/** 通过现有网络入口读取并比较最新发布版本。 */
 export async function check_github_release_update(
   current_version: string,
 ): Promise<GithubReleaseUpdate | null> {
@@ -236,11 +236,13 @@ export async function check_github_release_update(
 export async function api_fetch<data_type>(
   path: string,
   body: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<data_type> {
   return api_request<data_type>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JsonTool.stringifyStrict(body),
+    signal,
   });
 }
 
@@ -278,6 +280,7 @@ export async function report_renderer_error(report: RendererErrorReport): Promis
   await api_fetch<Record<string, never>>("/api/diagnostics/renderer-error", report);
 }
 
+/** 从同一后端地址建立页面事件流。 */
 function open_event_source_at_path(path: string): EventSource {
   return new EventSource(build_api_url(read_backend_api_base_url(), path));
 }
@@ -288,11 +291,8 @@ export function open_event_stream(): EventSource {
 }
 
 // 日志流只接受轻量事件字段，缺失预览契约时直接丢弃该条边界数据
-function normalize_log_event(payload: Record<string, unknown>): LogEvent | null {
-  if (typeof payload.id !== "string") {
-    return null;
-  }
-  if (typeof payload.sequence !== "number") {
+function normalize_log_entry(payload: Record<string, unknown>): LogEntry | null {
+  if (!read_log_identity(payload)) {
     return null;
   }
   if (typeof payload.created_at !== "string") {
@@ -310,7 +310,9 @@ function normalize_log_event(payload: Record<string, unknown>): LogEvent | null 
 
   return {
     id: payload.id,
-    sequence: payload.sequence,
+    date: payload.date,
+    line: payload.line,
+    revision: payload.revision,
     created_at: payload.created_at,
     level: normalize_log_level(payload.level),
     source: payload.source,
@@ -329,8 +331,7 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
   const detail = payload as Record<string, unknown>;
   const content = read_log_content(detail["content"]);
   if (
-    typeof detail["id"] !== "string" ||
-    typeof detail["sequence"] !== "number" ||
+    !read_log_identity(detail) ||
     typeof detail["created_at"] !== "string" ||
     typeof detail["source"] !== "string" ||
     content === null
@@ -340,7 +341,9 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
 
   return {
     id: detail["id"],
-    sequence: detail["sequence"],
+    date: detail["date"],
+    line: detail["line"],
+    revision: detail["revision"],
     created_at: detail["created_at"],
     level: normalize_log_level(detail["level"]),
     source: detail["source"],
@@ -360,28 +363,89 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
   };
 }
 
-/** 日志页面只接收已收窄的轻量事件，连接重试由浏览器 EventSource 负责。 */
-export function subscribe_log_stream(on_append: (event: LogEvent) => void): () => void {
-  const event_source = open_event_source_at_path("/api/logs/stream");
-  const handle_append = ((event: MessageEvent<string>) => {
-    const log_event = normalize_log_event(parse_event_source_payload(event));
-    if (log_event !== null) {
-      on_append(log_event);
-    }
-  }) as EventListener;
-  event_source.addEventListener("log.appended", handle_append);
+/** 物理行号属于记录身份，内容代次属于文件有效性，两者独立校验。 */
+function read_log_identity(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & Pick<LogEntry, "id" | "date" | "line" | "revision"> {
+  return (
+    typeof value.date === "string" &&
+    /^\d{8}$/.test(value.date) &&
+    typeof value.line === "number" &&
+    Number.isSafeInteger(value.line) &&
+    value.line > 0 &&
+    typeof value.revision === "string" &&
+    value.revision !== "" &&
+    value.id === `${value.date}:${String(value.line)}`
+  );
+}
 
-  return () => {
-    event_source.removeEventListener("log.appended", handle_append);
-    event_source.close();
+/** 收窄日期、行数和内容代次，拒绝失真的分页边界。 */
+function read_cursor(value: unknown): LogCursor | null {
+  if (value === null) return null;
+  if (typeof value !== "object") throw new Error("Invalid log cursor");
+  const cursor = value as Record<string, unknown>;
+  if (
+    typeof cursor.date !== "string" ||
+    !/^\d{8}$/.test(cursor.date) ||
+    typeof cursor.line !== "number" ||
+    !Number.isSafeInteger(cursor.line) ||
+    cursor.line < 0 ||
+    typeof cursor.revision !== "string" ||
+    cursor.revision === ""
+  )
+    throw new Error("Invalid log cursor");
+  return { date: cursor.date, line: cursor.line, revision: cursor.revision };
+}
+
+/** 只接受后端返回的有效日期列表。 */
+export async function read_log_dates(signal?: AbortSignal): Promise<string[]> {
+  const result = await api_fetch<{ dates: unknown }>("/api/logs/files", {}, signal);
+  if (
+    !Array.isArray(result.dates) ||
+    !result.dates.every((date: unknown) => typeof date === "string" && /^\d{8}$/.test(date))
+  )
+    throw new Error("Invalid log dates");
+  return result.dates as string[];
+}
+
+/** 收窄完整分页响应，避免异常摘要进入页面缓存。 */
+export async function read_log_page(
+  request: LogPageRequest,
+  signal?: AbortSignal,
+): Promise<LogPage> {
+  const result = await api_fetch<Record<string, unknown>>("/api/logs/page", { ...request }, signal);
+  if (
+    !["ready", "expired", "cursor_invalid"].includes(String(result.status)) ||
+    !Array.isArray(result.entries) ||
+    typeof result.has_more !== "boolean"
+  )
+    throw new Error("Invalid log page");
+  const entries = result.entries.map((value: unknown) =>
+    typeof value === "object" && value !== null
+      ? normalize_log_entry(value as Record<string, unknown>)
+      : null,
+  );
+  if (entries.some((entry) => entry === null)) throw new Error("Invalid log entry");
+  return {
+    status: result.status as LogPage["status"],
+    entries: entries as LogEntry[],
+    before: read_cursor(result.before),
+    after: read_cursor(result.after),
+    has_more: result.has_more,
   };
 }
 
-/**
- * 读取当前进程内日志详情；详情被淘汰或载荷异常时统一返回 null
- */
-export async function read_log_detail(id: string): Promise<LogDetail | null> {
-  const payload = await api_fetch<{ detail?: unknown }>("/api/logs/detail", { id });
+/** 详情直接从正文文件读取，不依赖当前进程是否曾显示该记录。 */
+export async function read_log_detail(
+  id: string,
+  revision: string,
+  signal?: AbortSignal,
+): Promise<LogDetail | null> {
+  const payload = await api_fetch<{ detail?: unknown }>(
+    "/api/logs/detail",
+    { id, revision },
+    signal,
+  );
   return normalize_log_detail(payload.detail);
 }
 

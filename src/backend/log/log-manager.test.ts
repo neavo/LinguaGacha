@@ -1,306 +1,57 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import process from "node:process";
-
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { LOG_WINDOW_EVENT_CAPACITY, type LogContent } from "../../shared/log";
-import { format_log_date_key, type FileLogWriter, LogManager } from "./log-manager";
+import { describe, expect, it } from "vitest";
+import { LogManager } from "./log-manager";
+import type { LogContent } from "../../shared/log";
 
 describe("LogManager", () => {
-  const cleanup_callbacks: Array<() => Promise<void> | void> = [];
-
-  afterEach(async () => {
-    while (cleanup_callbacks.length > 0) {
-      const cleanup = cleanup_callbacks.pop();
-      await cleanup?.();
-    }
-    vi.restoreAllMocks();
-  });
-
-  it("把窗口日志写入 ring buffer 并按订阅回放", () => {
-    const log_manager = create_log_manager();
-    const received: string[] = [];
-
-    log_manager.info("第一条", { targets: { file: false, console: false } });
-    log_manager.subscribe((event) => {
-      received.push(event.message_preview);
-    });
-    log_manager.warning("第二条", { targets: { file: false, console: false } });
-
-    expect(received).toEqual(["第一条", "第二条"]);
-    expect(log_manager.snapshot_events().map((event) => event.sequence)).toEqual([1, 2]);
-  });
-
-  it("目标开关可以分别关闭文件、控制台和窗口输出", () => {
+  it("统一正文文件、索引摘要和控制台文本，调用方修改不会影响已写记录", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-manager-"));
     const console_lines: string[] = [];
-    const file_lines: string[] = [];
-    const log_manager = create_log_manager(
-      console_lines,
-      LOG_WINDOW_EVENT_CAPACITY,
-      undefined,
-      file_lines,
-    );
-
-    log_manager.error("只写文件", {
-      targets: { console: false, window: false },
+    const manager = new LogManager({
+      logDir: directory.path,
+      consoleWriter: (text) => console_lines.push(text),
     });
-
-    const file_record = JSON.parse(file_lines[0] ?? "{}") as Record<string, unknown>;
-    expect(file_record["message"]).toBe("只写文件");
-    expect(console_lines).toEqual([]);
-    expect(log_manager.snapshot_events()).toEqual([]);
-  });
-
-  it("ring buffer 只保留最近固定数量", () => {
-    const log_manager = create_log_manager([], 2);
-
-    log_manager.info("一", { targets: { file: false, console: false } });
-    log_manager.info("二", { targets: { file: false, console: false } });
-    log_manager.info("三", { targets: { file: false, console: false } });
-
-    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
-      "二",
-      "三",
-    ]);
-    expect(log_manager.read_detail("log-1")).toBeNull();
-    expect(log_manager.read_detail("log-2")?.content).toEqual({ kind: "text", text: "二" });
-  });
-
-  it("订阅取消后不再接收新的窗口日志", () => {
-    const log_manager = create_log_manager();
-    const received: string[] = [];
-    const unsubscribe = log_manager.subscribe((event) => {
-      received.push(event.message_preview);
-    });
-
-    log_manager.info("订阅期日志", { targets: { file: false, console: false } });
-    unsubscribe();
-    log_manager.info("取消后日志", { targets: { file: false, console: false } });
-
-    expect(received).toEqual(["订阅期日志"]);
-    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
-      "订阅期日志",
-      "取消后日志",
-    ]);
-  });
-
-  it("窗口事件只暴露轻量预览，完整正文留在详情池", () => {
-    const log_manager = create_log_manager();
-    const full_message = `${"长日志".repeat(600)}\n第二行`;
-
-    log_manager.error(full_message, {
-      context: { route: "/api/demo" },
-      error: Object.assign(new Error("boom"), { stack: "Error: boom" }),
-      source: "test",
-      targets: { console: false, file: false },
-    });
-
-    const [snapshot_event] = log_manager.snapshot_events();
-    const detail = log_manager.read_detail(snapshot_event?.id ?? "");
-    expect(snapshot_event).toMatchObject({
-      id: "log-1",
-      sequence: 1,
-      source: "test",
-      message_length: full_message.length,
-    });
-    expect(snapshot_event?.message_preview.length).toBeLessThan(full_message.length);
-    expect(detail).toMatchObject({
-      id: "log-1",
-      content: { kind: "text", text: full_message },
-      error: {
-        message: "boom",
-        stack: "Error: boom",
-        context: { route: "/api/demo" },
-      },
-    });
-  });
-
-  it("结构化详情只在输出目标生成纯文本投影", () => {
-    const console_lines: string[] = [];
-    const file_lines: string[] = [];
-    const log_manager = create_log_manager(
-      console_lines,
-      LOG_WINDOW_EVENT_CAPACITY,
-      undefined,
-      file_lines,
-    );
-
     const content: LogContent = {
       kind: "translation_result",
       summary: ["任务完成"],
       sections: [],
-      pairs: [{ src: "こんにちは", dst: "你好" }],
+      pairs: [{ src: "原文", dst: "译文" }],
     };
-    const event = log_manager.append({
-      level: "info",
-      source: "engine-worker",
-      content,
+    manager.append({ level: "info", content, source: "engine" });
+    content.pairs[0]!.dst = "污染";
+    const page = await manager.files.read_page({
+      date: manager.files.list_dates()[0]!,
+      direction: "latest",
     });
-    content.pairs[0]!.dst = "调用方污染";
-
-    expect(event?.message_preview).toContain("任务完成");
-    if (event === null) {
-      throw new Error("期望发布窗口日志事件");
-    }
-    expect(event).not.toHaveProperty("content");
-    const detail = log_manager.read_detail(event.id);
-    expect(detail?.content).toMatchObject({
-      kind: "translation_result",
-      pairs: [{ src: "こんにちは", dst: "你好" }],
-    });
-    if (detail?.content.kind !== "translation_result") {
-      throw new Error("期望读取翻译结构化详情");
-    }
-    detail.content.pairs[0]!.dst = "读取方污染";
-    expect(log_manager.read_detail(event.id)?.content).toMatchObject({
-      kind: "translation_result",
-      pairs: [{ src: "こんにちは", dst: "你好" }],
-    });
-    expect(JSON.parse(file_lines[0] ?? "{}")).toMatchObject({
-      message: expect.stringContaining("SRC: こんにちは\nDST: 你好"),
-    });
-    expect(console_lines[0]).toContain("こんにちは");
-    expect(console_lines[0]).toContain("你好");
+    expect(page.entries[0]?.message_preview).toContain("译文");
+    const detail = await manager.files.read_detail(page.entries[0]!.id, page.entries[0]!.revision);
+    expect(detail?.content).toMatchObject({ pairs: [{ dst: "译文" }] });
+    expect(console_lines[0]).toContain("译文");
+    await manager.shutdown();
   });
 
-  it("fatal 日志会尽力同步刷新文件输出", () => {
-    const flush_calls: string[] = [];
-    const log_manager = new LogManager({
-      consoleWriter: () => undefined,
-      fileWriter: {
-        write: () => undefined,
-        flushSync: () => {
-          flush_calls.push("flushSync");
-        },
-        end: (callback?: () => void) => {
-          callback?.();
-        },
-      },
-      logDir: ".",
-    });
-    cleanup_callbacks.push(() => log_manager.shutdown());
-
-    log_manager.fatal("崩溃前诊断", { targets: { console: false, window: false } });
-
-    expect(flush_calls).toEqual(["flushSync"]);
-  });
-
-  it("shutdown 后丢弃新日志且不再写入文件或窗口事件", async () => {
-    const file_lines: string[] = [];
-    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const log_manager = create_log_manager([], LOG_WINDOW_EVENT_CAPACITY, undefined, file_lines);
-
-    log_manager.info("关闭前日志", { targets: { console: false } });
-    await log_manager.shutdown();
-    log_manager.error("关闭后日志");
-
-    expect(file_lines).toHaveLength(1);
-    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
-      "关闭前日志",
-    ]);
-    expect(log_manager.read_detail("log-1")?.content).toEqual({
-      kind: "text",
-      text: "关闭前日志",
-    });
-    expect(stderr_write).toHaveBeenCalledWith(
-      expect.stringContaining("日志系统已关闭，丢弃新日志：关闭后日志"),
-    );
-  });
-
-  it("真实文件输出按 app.yyyymmdd.log 写入结构化日志", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-log-file-test-"));
-    const log_dir = temp_dir.path;
-    const now = new Date(2012, 11, 12, 8, 0, 0);
-    const log_manager = new LogManager({
-      consoleWriter: () => undefined,
-      logDir: log_dir,
-      now: () => now,
-    });
-    cleanup_callbacks.push(() => log_manager.shutdown());
-
-    log_manager.error("文件日志", {
-      error: new Error("boom"),
-      source: "test",
+  it("窗口关闭记录仍落盘，错误诊断保留，shutdown 后停止追加", async () => {
+    using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "log-manager-"));
+    const manager = new LogManager({
+      logDir: directory.path,
       targets: { console: false, window: false },
     });
-    await log_manager.shutdown();
-    const log_file_name = `app.${format_log_date_key(now)}.log`;
-    const text = fs.readFileSync(path.join(log_dir, log_file_name), "utf-8").trim();
-    const record = JSON.parse(text) as Record<string, unknown>;
-
-    expect(log_file_name).toBe("app.20121212.log");
-    expect(record["message"]).toBe("文件日志");
-    expect(record["level"]).toBe(50);
-    expect(record["level_label"]).toBe("error");
-    expect(record["time"]).toBe(now.toISOString());
-    expect(record["source"]).toBe("test");
-    expect(record["error"]).toMatchObject({ message: "boom" });
-  });
-
-  it("磁盘日志只保留最近 3 份 app.yyyymmdd.log", async () => {
-    using temp_dir = fs.mkdtempDisposableSync(
-      path.join(os.tmpdir(), "linguagacha-log-retention-test-"),
-    );
-    const log_dir = temp_dir.path;
-    const now = new Date(2012, 11, 12, 8, 0, 0);
-    for (const file_name of [
-      "app.20121208.log",
-      "app.20121209.log",
-      "app.20121210.log",
-      "app.20121211.log",
-      "debug.log",
-    ]) {
-      fs.writeFileSync(path.join(log_dir, file_name), "old\n", "utf-8");
-    }
-    const log_manager = new LogManager({
-      consoleWriter: () => undefined,
-      logDir: log_dir,
-      now: () => now,
+    manager.fatal("失败", { error: new Error("boom") });
+    expect(
+      (await manager.files.read_page({ date: manager.files.list_dates()[0]!, direction: "latest" }))
+        .entries,
+    ).toEqual([]);
+    await manager.shutdown();
+    const file = path.join(directory.path, `app.${manager.files.list_dates()[0]!}.jsonl`);
+    const before = fs.readFileSync(file, "utf8");
+    expect(JSON.parse(before)).toMatchObject({
+      level: "fatal",
+      window: false,
+      error: { message: "boom" },
     });
-    cleanup_callbacks.push(() => log_manager.shutdown());
-
-    log_manager.info("触发清理", { targets: { console: false, window: false } });
-    await log_manager.shutdown();
-
-    expect(fs.readdirSync(log_dir).sort()).toEqual([
-      "app.20121210.log",
-      "app.20121211.log",
-      "app.20121212.log",
-      "debug.log",
-    ]);
+    manager.info("关闭后");
+    expect(fs.readFileSync(file, "utf8")).toBe(before);
   });
-
-  function create_log_manager(
-    console_lines: string[] = [],
-    ring_buffer_size = LOG_WINDOW_EVENT_CAPACITY,
-    now?: () => Date,
-    file_lines?: string[],
-  ): LogManager {
-    const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-log-test-"));
-    cleanup_callbacks.push(() => fs.rmSync(log_dir, { force: true, recursive: true }));
-    const log_manager = new LogManager({
-      consoleWriter: (text) => {
-        console_lines.push(text);
-      },
-      fileWriter: create_memory_file_writer(file_lines),
-      logDir: log_dir,
-      now,
-      ringBufferSize: ring_buffer_size,
-    });
-    cleanup_callbacks.push(() => log_manager.shutdown());
-    return log_manager;
-  }
-
-  function create_memory_file_writer(lines: string[] = []): FileLogWriter {
-    return {
-      write: (text) => lines.push(text),
-      flush: () => undefined,
-      flushSync: () => undefined,
-      end: (callback?: () => void) => {
-        callback?.();
-      },
-    };
-  }
 });

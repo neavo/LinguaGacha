@@ -8,10 +8,12 @@
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview、`/api/session/source-files/summary` 和打开前 settings alignment 是可以接收显式路径的生命周期例外。source-files summary 只按共享互斥扩展名目录递归发现并去重，返回文件总数与各格式命中数，不读取内容或向 renderer 公开文件路径。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
-- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
+- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
-- `LogManager` 以 `LogContent` 判别联合保存单一正文事实：结构化任务摘要拥有用户可见结果，其纯文本投影省略 `LogError.message`，调用栈和上下文作为诊断事实保留；文件和控制台从正文生成纯文本投影，`log.appended` 只携带轻量预览，每次日志流连接先回放当前进程 ring buffer 供 renderer 去重补漏，详情 query 只查询同一详情池且不回扫历史文件。`source: agent-tool` 的完整严格 JSON 正文是 file-only 特例，不进入控制台或日志窗口、不使用会裁剪的 context，并沿用每日文件及最近三个日期文件的轮转。
+- `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。正文保存完整 `LogContent`、错误和上下文；控制台和索引摘要消费文本投影。结构化任务摘要拥有用户可见结果，其投影省略 `LogError.message`，保留诊断调用栈。
+- 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
+- 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 工具完整严格 JSON 保存在 `content.text`，不经裁剪 context 或控制台。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
 `POST /api/models/select` 接受 `target`（translation / agent / agent_batch_translation）、`model_id` 和可选 `thinking_level`，返回 `ModelSelectionSnapshot`。Agent 主模型选择不接受等级，批量跟随使用 `model_id: null` 且不带等级；省略等级保留模型归一配置，显式等级须属于模型能力集合。`ModelService` 在同一配置副本中校验并更新选择和模型全局等级，同步保存一次，设置文件写入成功后才更新缓存；该边界不提供磁盘写入回滚。独立等级更新按用途定位当前模型。
@@ -35,7 +37,7 @@
 |批量翻译公开快照|`BatchTranslationRuntime.build_snapshot`|内存运行态、本轮进度与当前工程累计进度|
 |`.lg` 物理 workflow|`ProjectDatabase`|类型化读写方法、`transaction(projectPath, callback)`|
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
-|后端日志|`LogManager`|文件日志、轻量 SSE、当前进程详情池|
+|后端日志|`LogManager`|正文文件、可重建索引与按位置查询|
 
 `RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，普通设置与模型管理写入必须先确认运行时空闲；模型选择、Agent 批量翻译模型偏好和所选模型思考档位允许在运行中保存，模型校验与持久化统一归 `ModelService`，执行入口冻结所用配置。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
 

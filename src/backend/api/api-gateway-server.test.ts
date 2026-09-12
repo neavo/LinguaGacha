@@ -12,7 +12,7 @@ import type { AgentService } from "../agent/agent-service";
 import { BackendServices } from "../bootstrap/backend-services";
 import { ProjectDatabase } from "../database/database-operations";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
-import { type FileLogWriter, LogManager } from "../log/log-manager";
+import { LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 import { ApiStreamHub } from "./api-stream-hub";
 
@@ -72,7 +72,7 @@ describe("ApiGatewayServer", () => {
     });
   });
 
-  it("由 LogManager 提供轻量日志流和按需详情", async () => {
+  it("文件查询提供轻量摘要和完整详情", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
@@ -81,25 +81,25 @@ describe("ApiGatewayServer", () => {
     const gateway = create_gateway_fixture(app_root, database, log_manager).gateway;
 
     const started = await gateway.start();
-    const controller = new AbortController();
-    const response = await fetch(`${started.baseUrl}/api/logs/stream`, {
-      signal: controller.signal,
+    const response = await post_json(started.baseUrl, "/api/logs/page", {
+      date: log_manager.files.list_dates()[0]!,
+      direction: "latest",
     });
-    const reader = response.body?.getReader();
-    if (reader === undefined) {
-      throw new Error("日志流响应体为空。");
-    }
-    const chunk = await reader.read();
-    controller.abort();
-
-    const text = new TextDecoder().decode(chunk.value);
+    const page = (await response.json()) as {
+      data: { entries: Array<{ id: string; revision: string; message_preview: string }> };
+    };
     expect(response.status).toBe(200);
-    expect(text).toContain("event: log.appended");
-    expect(text).toContain('"message_preview"');
-    expect(text).not.toContain('"message":');
-    expect(text).not.toContain("详情尾部");
-
-    const detail_response = await post_json(started.baseUrl, "/api/logs/detail", { id: "log-1" });
+    expect(page.data.entries).toHaveLength(1);
+    expect(page.data.entries[0]?.message_preview).not.toContain("详情尾部");
+    const dates_response = await post_json(started.baseUrl, "/api/logs/files", {});
+    expect(await dates_response.json()).toMatchObject({
+      ok: true,
+      data: { dates: log_manager.files.list_dates() },
+    });
+    const detail_response = await post_json(started.baseUrl, "/api/logs/detail", {
+      id: page.data.entries[0]!.id,
+      revision: page.data.entries[0]!.revision,
+    });
     const detail_body = (await detail_response.json()) as {
       data?: { detail?: { content?: { kind?: string; text?: string }; source?: string } };
     };
@@ -107,6 +107,10 @@ describe("ApiGatewayServer", () => {
       content: { kind: "text", text: full_message },
       source: "test",
     });
+    const missing_date = await post_json(started.baseUrl, "/api/logs/page", {
+      direction: "latest",
+    });
+    expect(missing_date.status).toBe(400);
   });
 
   it("接收 renderer 异常诊断并写入统一日志", async () => {
@@ -131,8 +135,14 @@ describe("ApiGatewayServer", () => {
       },
     });
 
-    const [event] = log_manager.snapshot_events();
-    const detail = event === undefined ? null : log_manager.read_detail(event.id);
+    const [event] = (
+      await log_manager.files.read_page({
+        date: log_manager.files.list_dates()[0]!,
+        direction: "latest",
+      })
+    ).entries;
+    const detail =
+      event === undefined ? null : await log_manager.files.read_detail(event.id, event.revision);
     expect(response.status).toBe(200);
     expect(event).toMatchObject({ level: "error", source: "renderer" });
     expect(detail).toMatchObject({
@@ -174,10 +184,12 @@ describe("ApiGatewayServer", () => {
       () => console_error.mockRestore(),
     );
     const fixture = create_gateway_fixture(create_app_root(), new ProjectDatabase());
+    /** 让测试等待处理器真正进入在途阶段。 */
     let mark_handler_started: () => void = () => undefined;
     const handler_started = new Promise<void>((resolve) => {
       mark_handler_started = resolve;
     });
+    /** 由测试主动释放请求，验证关闭等待语义。 */
     let release_handler: () => void = () => undefined;
     const handler_block = new Promise<void>((resolve) => {
       release_handler = resolve;
@@ -313,21 +325,10 @@ describe("ApiGatewayServer", () => {
   function create_log_manager(app_root: string): LogManager {
     const log_manager = new LogManager({
       consoleWriter: () => undefined,
-      fileWriter: create_memory_file_writer(),
       logDir: path.join(app_root, "log"),
     });
     cleanup_callbacks.push(() => log_manager.shutdown());
     return log_manager;
-  }
-
-  /** 消费日志完成回调，避免测试依赖磁盘写入。 */
-  function create_memory_file_writer(): FileLogWriter {
-    return {
-      write: () => undefined,
-      flush: () => undefined,
-      flushSync: () => undefined,
-      end: (callback?: () => void) => callback?.(),
-    };
   }
 
   /** 通过真实 HTTP 边界提交 JSON。 */

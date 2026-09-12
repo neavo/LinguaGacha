@@ -76,6 +76,7 @@ type SearchBarProps<scope_value extends string = string> =
   | SearchBarFilterProps<scope_value>
   | SearchBarReplaceProps<scope_value>;
 
+/** 消费搜索专用参数后，仅向容器传递合法组件属性。 */
 function resolve_search_bar_card_props<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): React.ComponentProps<"section"> {
@@ -236,16 +237,28 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
   );
 }
 
-type SearchBarScopeActionProps<scope_value extends string = string> = {
-  search_disabled?: boolean;
-  scope: SearchBarSharedProps<scope_value>["scope"];
+type SearchBarMenuActionProps<Value extends string> = {
+  value: Value | null;
+  button_label: React.ReactNode;
+  tooltip: React.ReactNode;
+  icon: React.ReactNode;
+  options: readonly { value: Value; label: React.ReactNode }[];
+  on_change: (value: Value) => void;
+  on_open?: () => void;
+  disabled?: boolean;
+  active?: boolean;
 };
-// 搜索范围只改变 query 参数，禁用语义跟关键词输入保持一致。
-function SearchBarScopeAction<scope_value extends string = string>(
-  props: SearchBarScopeActionProps<scope_value>,
+
+/** 范围与日期共用工具栏菜单的尺寸、提示和单选交互。 */
+export function SearchBarMenuAction<Value extends string>(
+  props: SearchBarMenuActionProps<Value>,
 ): JSX.Element {
   return (
-    <AppDropdownMenu>
+    <AppDropdownMenu
+      onOpenChange={(open) => {
+        if (open) props.on_open?.();
+      }}
+    >
       <Tooltip>
         <TooltipTrigger
           render={tooltip_trigger_target(
@@ -255,29 +268,27 @@ function SearchBarScopeAction<scope_value extends string = string>(
                   type="button"
                   variant="ghost"
                   size="toolbar"
-                  disabled={props.search_disabled}
+                  disabled={props.disabled}
                   className="search-bar__action-trigger"
-                  data-active={props.scope.value === "all" ? undefined : "true"}
+                  data-active={props.active ? "true" : undefined}
                 >
-                  <ListFilter data-icon="inline-start" />
-                  {props.scope.button_label}
+                  {props.icon}
+                  {props.button_label}
                 </AppButton>
               }
             />,
           )}
         />
         <TooltipContent side="bottom" sideOffset={8}>
-          <p>{props.scope.tooltip}</p>
+          <p>{props.tooltip}</p>
         </TooltipContent>
       </Tooltip>
       <AppDropdownMenuContent align="center">
         <AppDropdownMenuRadioGroup
-          value={props.scope.value}
-          onValueChange={(next_value) => {
-            props.scope.on_change(next_value as scope_value);
-          }}
+          value={props.value ?? undefined}
+          onValueChange={(value) => props.on_change(value as Value)}
         >
-          {props.scope.options.map((option) => (
+          {props.options.map((option) => (
             <AppDropdownMenuRadioItem key={option.value} value={option.value}>
               {option.label}
             </AppDropdownMenuRadioItem>
@@ -496,7 +507,12 @@ export function SearchBar<scope_value extends string = string>(
             />
           )}
           <div className="search-bar__actions">
-            <SearchBarScopeAction search_disabled={search_disabled} scope={scope} />
+            <SearchBarMenuAction
+              {...scope}
+              icon={<ListFilter data-icon="inline-start" />}
+              disabled={search_disabled}
+              active={scope.value !== "all"}
+            />
             <SearchBarRegexAction search_disabled={search_disabled} regex={regex} />
             {props.extra_actions}
           </div>
