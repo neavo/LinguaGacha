@@ -1,41 +1,16 @@
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import type { Locale } from "@shared/i18n";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
-type LaboratoryHelpField = "mtool_optimizer_enable";
-
-const HELP_URL_BY_FIELD = {
-  "zh-CN": {
-    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer",
-  },
-  "en-US": {
-    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN",
-  },
-  "de-DE": {
-    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN",
-  },
-} as const satisfies Record<Locale, Record<LaboratoryHelpField, string>>;
-
+/** 实验选项通过页面状态入口保存，并随运行态锁定。 */
 export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n();
   const laboratory_page_state = useLaboratoryPageState();
-  function render_help_button(field: LaboratoryHelpField): JSX.Element {
-    const help_url = HELP_URL_BY_FIELD[locale][field];
-
-    return (
-      <SettingHelpButton
-        url={help_url}
-        aria_label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
-        className="laboratory-page__help-button"
-      />
-    );
-  }
-
+  /** 三个开关共用标签、伸展布局和禁用状态的消费方式。 */
   function render_boolean_toggle(options: {
     title_key:
       | "laboratory_page.fields.prompt_enhancement_enable.title"
@@ -61,7 +36,13 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
       <section className="laboratory-page__list" aria-label={t("laboratory_page.title")}>
         <SettingCardRow
           title={t("laboratory_page.fields.mtool_optimizer_enable.title")}
-          title_suffix={render_help_button("mtool_optimizer_enable")}
+          title_suffix={
+            <SettingHelpButton
+              url={`https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer${locale === "zh-CN" ? "" : "EN"}`}
+              aria_label={t("laboratory_page.fields.mtool_optimizer_enable.title")}
+              className="laboratory-page__help-button"
+            />
+          }
           description={t("laboratory_page.fields.mtool_optimizer_enable.description")}
           action={render_boolean_toggle({
             title_key: "laboratory_page.fields.mtool_optimizer_enable.title",

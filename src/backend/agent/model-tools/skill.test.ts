@@ -112,6 +112,7 @@ describe("Agent 技能读取工具", () => {
   });
 });
 
+/** 构建可回收的用户／内置资源根及工具快照，验证真实文件边界。 */
 function create_fixture(source?: "user" | "builtin", name = "shared", body = "正文") {
   const disposable = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-skill-read-"));
   const user_root = path.join(disposable.path, "user");
@@ -136,6 +137,8 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
               "zh-CN": `${name} 描述`,
               "en-US": `${name} 描述`,
               "de-DE": `${name} 描述`,
+              "ja-JP": `${name} 描述`,
+              "ko-KR": `${name} 描述`,
             },
             disableModelInvocation: false,
           } satisfies AgentSkillDefinition,
@@ -159,17 +162,20 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
   };
 }
 
+/** 生成带最小合法元数据的技能文件并返回工具使用的路径。 */
 function write_skill(root: string, name: string, body: string): string {
   const file_path = path.join(root, name, "SKILL.md");
   write_file(file_path, `---\nname: ${name}\ndescription: ${name} 描述\n---\n\n${body}`);
   return file_path;
 }
 
+/** 写入嵌套资源夹具，供相对路径和访问边界场景使用。 */
 function write_file(file_path: string, content: string): void {
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, "utf8");
 }
 
+/** 通过工具公开入口执行查询；此工具不消费会话上下文。 */
 async function execute(
   tool: ReturnType<typeof create_agent_skill_tools>[number],
   input: { name: string; path?: string },

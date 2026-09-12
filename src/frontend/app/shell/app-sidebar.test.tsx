@@ -78,7 +78,7 @@ describe("AppSidebar", () => {
     });
   }
 
-  it("选择语言后提交明确的应用语言", async () => {
+  it("选择语言自称后提交对应的持久化编码", async () => {
     const selected_languages: AppLanguage[] = [];
     await render_sidebar({
       on_select_app_language: (language) => {
@@ -87,18 +87,18 @@ describe("AppSidebar", () => {
     });
     await open_language_menu();
 
-    const german_option = Array.from(
+    const language_option = Array.from(
       document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
-    ).find((option) => option.textContent?.trim() === "Deutsch");
-    if (german_option === undefined) {
-      throw new Error("缺少德文界面语言选项。");
+    ).find((option) => option.textContent?.trim() === "日本語");
+    if (language_option === undefined) {
+      throw new Error("缺少日文界面语言选项。");
     }
 
     await act(async () => {
-      german_option.click();
+      language_option.click();
     });
 
-    expect(selected_languages).toEqual(["DE"]);
+    expect(selected_languages).toEqual(["JA"]);
   });
 
   it("语言设置更新期间禁用菜单按钮", async () => {

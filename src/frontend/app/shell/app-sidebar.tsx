@@ -1,7 +1,8 @@
 import { ChevronDown, Languages, ScrollText } from "lucide-react";
 
 import type { NavigationGroup, RouteId } from "@frontend/app/navigation/types";
-import { APP_LANGUAGES, is_app_language, type AppLanguage } from "@domain/app-language";
+import { is_app_language, type AppLanguage } from "@domain/app-language";
+import { APP_LANGUAGE_DEFINITIONS } from "@shared/i18n/types";
 import { AppAppearanceMenu } from "@frontend/app/shell/app-appearance-menu";
 import {
   Sidebar,
@@ -31,12 +32,6 @@ import "@frontend/app/shell/app-sidebar.css";
 
 const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
 
-const APP_LANGUAGE_LABEL_KEYS: Readonly<Record<AppLanguage, LocaleKey>> = Object.freeze({
-  ZH: "app.navigation_action.language_option.ZH",
-  EN: "app.navigation_action.language_option.EN",
-  DE: "app.navigation_action.language_option.DE",
-});
-
 type AppSidebarProps = {
   groups: NavigationGroup[];
   selected_route: RouteId;
@@ -54,6 +49,7 @@ type AppSidebarProps = {
   on_select_app_language: (language: AppLanguage) => void;
   on_profile_action: () => void;
 };
+/** 导航与语言选择由宿主状态驱动，侧栏只提交用户操作。 */
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { t } = useI18n();
   const { state } = useSidebar();
@@ -242,9 +238,9 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                     }
                   }}
                 >
-                  {APP_LANGUAGES.map((language) => (
-                    <AppDropdownMenuRadioItem key={language} value={language}>
-                      <span>{t(APP_LANGUAGE_LABEL_KEYS[language])}</span>
+                  {APP_LANGUAGE_DEFINITIONS.map(({ code, name }) => (
+                    <AppDropdownMenuRadioItem key={code} value={code}>
+                      <span>{name}</span>
                     </AppDropdownMenuRadioItem>
                   ))}
                 </AppDropdownMenuRadioGroup>

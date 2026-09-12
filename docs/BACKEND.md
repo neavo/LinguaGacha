@@ -90,6 +90,7 @@ project, files, items, quality, prompts, proofreading
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理，但不持有供应商网络客户端；模型请求通过类型化 worker 消息回到父线程唯一的 `LLMClient`，取消仍使用原 work unit 的 signal。planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`id`、`text`，actor 模式再加 `actor`），`text` 可包含换行。`id` 在请求内从 0 按实际记录分配，与数据库 item ID 独立；响应按原值匹配，允许乱序。唯一匹配的非空译文独立提交，缺失、重复、未知或空白正文只影响对应 item；请求失败、零有效译文、部分有效和全部有效分别形成 error、error、warning 和 info 结果日志，结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文；worker 内部才保留逐行准备与恢复事实。
 - 普通翻译的增强段位于基础或自定义规则之后、输出约束之前，由本轮 `prompt_enhancement_enable` 控制，与模型原生思考独立；Agent 批量翻译共用，SakuraLLM 使用专用提示词并跳过分析分离。普通响应无论增强开关如何，只分离开头连续的 `<why>` 块，保留正文中的同名标签；未闭合块保留诊断、清空译文正文，交给既有无效响应处理。原生思考、规则分析与译文分别记录，只有译文进入解码。
+- `resolve_prompt_template_language` 统一选择普通翻译模板：中文 UI 使用中文，其它 UI 语言使用英文。模板、源／目标语言占位符、输入与术语等模型说明及其日志回显均使用模板语言，名称与说明从共享词典解析；自定义规则正文由用户拥有。一般日志和错误继续按应用语言展示，Agent 交互消息的语言归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。

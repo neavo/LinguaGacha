@@ -49,6 +49,7 @@ type TextReplacementRuleBadgeProps = {
   enabled: boolean;
   tooltip: string;
 };
+/** 用规则图标与提示表达开关状态，徽标区域不触发框选。 */
 function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Element {
   const Icon = props.icon === "regex" ? Regex : CaseSensitive;
   const badge = (
@@ -73,6 +74,7 @@ function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Ele
   );
 }
 
+/** 翻译前后置换共用表格，规则写入由对应页面回调负责。 */
 export function TextReplacementTable(props: TextReplacementTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {
@@ -186,7 +188,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         kind: "data",
         id: "hit",
         title: t("text_replacement_page.fields.hit"),
-        width: 92,
+        width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_ready,

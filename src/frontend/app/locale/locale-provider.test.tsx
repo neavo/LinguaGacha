@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { LocaleProvider, useI18n } from "@frontend/app/locale/locale-provider";
 
+/** 通过子树公开消费的 locale 观察 Provider 更新。 */
 function LocaleProbe(): JSX.Element {
   const { locale } = useI18n();
   return <output>{locale}</output>;
@@ -32,12 +33,13 @@ describe("LocaleProvider", () => {
 
     await act(async () => {
       root.render(
-        <LocaleProvider locale="de-DE">
+        <LocaleProvider locale="ko-KR">
           <LocaleProbe />
         </LocaleProvider>,
       );
     });
-    expect(container.textContent).toBe("de-DE");
-    expect(document.documentElement.dataset.locale).toBe("de-DE");
+    expect(container.textContent).toBe("ko-KR");
+    expect(document.documentElement.lang).toBe("ko-KR");
+    expect(document.documentElement.dataset.locale).toBe("ko-KR");
   });
 });

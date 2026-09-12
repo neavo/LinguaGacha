@@ -1,5 +1,4 @@
 import { zh_cn_app } from "../zh-CN/app";
-import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_app = {
@@ -117,9 +116,27 @@ export const de_de_app = {
     disabled: "Ziehen deaktiviert",
     handle: "Ziehen",
   },
-  language: Object.fromEntries(
-    Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.de]),
-  ) as Record<keyof typeof LANGUAGE_DISPLAY_NAMES, string>,
+  language: {
+    ALL: "Alle",
+    ZH: "Chinesisch",
+    "ZH-HANT": "Chinesisch (traditionell)",
+    EN: "Englisch",
+    JA: "Japanisch",
+    KO: "Koreanisch",
+    RU: "Russisch",
+    AR: "Arabisch",
+    DE: "Deutsch",
+    FR: "Französisch",
+    PL: "Polnisch",
+    ES: "Spanisch",
+    IT: "Italienisch",
+    PT: "Portugiesisch",
+    HU: "Ungarisch",
+    TR: "Türkisch",
+    TH: "Thailändisch",
+    ID: "Indonesisch",
+    VI: "Vietnamesisch",
+  },
   navigation_action: {
     appearance: "Darstellung",
     font: "Schriftart",
@@ -134,11 +151,6 @@ export const de_de_app = {
       dark: "Dunkel",
     },
     language: "Sprache",
-    language_option: {
-      ZH: "中文",
-      EN: "English",
-      DE: "Deutsch",
-    },
     logs: "Protokolle",
   },
   profile: {
@@ -148,6 +160,7 @@ export const de_de_app = {
     update_available_tooltip: "Update-Bestätigungsdialog öffnen",
   },
   prompt: {
+    source: "Ausgangstext",
     builder_control_character_samples: "Steuerzeichen-Beispiele:",
     builder_glossary_header:
       "Glossar <Originalbegriff> -> <Übersetzter Begriff> #<Begriffsinformation>:",

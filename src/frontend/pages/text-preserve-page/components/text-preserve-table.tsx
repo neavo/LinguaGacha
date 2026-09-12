@@ -37,6 +37,7 @@ type TextPreserveTableProps = {
   on_query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
 };
 
+/** 组合保护规则列与命中状态，将编辑和重排交给页面写入口。 */
 export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
   const { t } = useI18n();
 
@@ -102,7 +103,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         kind: "data",
         id: "hit",
         title: t("text_preserve_page.fields.hit"),
-        width: 92,
+        width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_ready,

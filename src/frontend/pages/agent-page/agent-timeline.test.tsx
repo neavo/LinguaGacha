@@ -31,7 +31,7 @@ import { create_agent_mention_tokens } from "./agent-mention";
 const MENTION_TOKENS = create_agent_mention_tokens([
   {
     name: "glossary-audit",
-    displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "" },
+    displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "", "ja-JP": "", "ko-KR": "" },
   },
 ]);
 type ScrollMetrics = {
@@ -641,6 +641,7 @@ describe("AgentTimeline", () => {
   });
 });
 
+/** 补入轮次起点，使条目分组和耗时经过真实时间线投影。 */
 function round_entries(
   entries: readonly AgentEntry[],
   status: AgentEntryStatus = "running",
@@ -651,6 +652,7 @@ function round_entries(
   ];
 }
 
+/** 构造已进入轮次的用户消息，附件使用会话快照格式。 */
 function user_entry(
   id: string,
   text: string,
@@ -671,10 +673,12 @@ function user_entry(
   };
 }
 
+/** 纯文本场景复用分段消息夹具。 */
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
 }
 
+/** 保留分段结构供正文、思考和媒体渲染场景组合。 */
 function assistant_parts_entry(
   id: string,
   parts: AgentAssistantMessageParts,
@@ -690,6 +694,7 @@ function assistant_parts_entry(
   };
 }
 
+/** 夹具遵循状态与输出的联合类型，避免测试不可出现的快照。 */
 function tool_entry(
   id: string,
   toolName: string,
@@ -707,6 +712,7 @@ function tool_entry(
   return { ...base, status, output };
 }
 
+/** 以独立压缩事件验证其在时间线中的顺序与状态。 */
 function compaction_entry(
   id: string,
   status: AgentContextCompactionEntry["status"],

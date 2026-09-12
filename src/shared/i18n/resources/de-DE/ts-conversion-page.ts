@@ -13,21 +13,16 @@ export const de_de_ts_conversion_page = {
     direction: {
       title: "Konvertierungsmodus",
       description:
-        "Die Konvertierung wird durch <emphasis>OpenCC</emphasis> implementiert" +
-        "\n" +
-        "Vereinfacht zu Traditionell verwendet S2TW-Regeln, Traditionell zu Vereinfacht verwendet T2S-Regeln",
+        "<emphasis>OpenCC</emphasis>: S2TW für vereinfacht → traditionell, T2S für traditionell → vereinfacht.",
     },
     preserve_text: {
       title: "Textschutzregeln befolgen",
-      description:
-        "Textschutzregeln befolgen, um zu vermeiden, dass Code-Segmente im Spieltext während des Konvertierungsprozesses beschädigt werden",
+      description: "Textschutzregeln bewahren Codeabschnitte in Spieltexten bei der Konvertierung.",
     },
     target_name: {
       title: "Namensfeld-Übersetzungen konvertieren",
       description:
-        "In einigen <emphasis>GalGame</emphasis> ist das Namensfeld an Ressourcen gebunden, was nach der Übersetzung zu Fehlern führen kann" +
-        "\n" +
-        "Sie können diese Funktion in diesem Fall deaktivieren, standardmäßig aktiviert",
+        "Manche <emphasis>GalGame</emphasis>-Namen sind an Bild- und Sprachdateien gebunden. Bei Übersetzungsfehlern deaktivieren (standardmäßig an).",
     },
   },
   action: {

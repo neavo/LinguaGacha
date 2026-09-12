@@ -3,6 +3,8 @@
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能对术语与文本保护规则进行自动化提取或审校",
     "en-US": "Use AI to discover and continuously improve glossary and text-protection rules in the current project",
-    "de-DE": "Glossar- und Textschutzregeln im aktuellen Projekt mit KI entdecken und kontinuierlich verbessern"
+    "de-DE": "Glossar- und Textschutzregeln im aktuellen Projekt mit KI entdecken und kontinuierlich verbessern",
+    "ja-JP": "AI で現在のプロジェクトの用語・テキスト保護ルールを抽出し、校正する",
+    "ko-KR": "AI로 현재 프로젝트의 용어 및 텍스트 보호 규칙을 추출하고 교정합니다"
   }
 }

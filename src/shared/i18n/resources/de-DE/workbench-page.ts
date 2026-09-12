@@ -34,7 +34,7 @@ export const de_de_workbench_page = {
     translation_task: "Übersetzung",
     start_translation: "Übersetzung starten",
     reset_task_all: "Alle Daten zurücksetzen",
-    reset_task_failed: "Fehlgeschlagene Daten zurücksetzen",
+    reset_task_failed: "Fehlgeschlagenes zurücksetzen",
   },
   translation_export: {
     checking: "Korrekturwarnungen werden geprüft …",

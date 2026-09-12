@@ -24,7 +24,7 @@ export const de_de_project_page = {
   },
   open: {
     title: "Projekt öffnen",
-    subtitle: "Laden Sie eine .lg-Datei, um mit gespeichertem Fortschritt und Regeln fortzufahren.",
+    subtitle: ".lg öffnen: Übersetzungsfortschritt und Regeln fortsetzen.",
     drop_title: "Klicken oder .lg-Datei hierher ziehen",
     recent_title: "Letzte Projekte",
     empty: "Keine letzten Projekte",

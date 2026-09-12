@@ -27,6 +27,18 @@ afterEach(() => {
 });
 
 describe("AppSettingService", () => {
+  it("保留已保存的语言，切换后重启使用新选择", () => {
+    const { service, paths, config_path } = create_service();
+    write_config(config_path, { app_language: "DE" });
+    expect(service.read_app_language()).toBe("DE");
+    service.update_app_settings({ request_timeout: 45 });
+    expect(read_config(config_path)["app_language"]).toBe("DE");
+    const restored = new AppSettingService(paths);
+    expect(restored.read_app_language()).toBe("DE");
+    restored.update_app_settings({ app_language: "JA" });
+    expect(new AppSettingService(paths).read_app_language()).toBe("JA");
+  });
+
   it("读取缺失设置时补齐快照并把完整设置文件落到 userdata/config.json", () => {
     const { service, config_path } = create_service();
 
@@ -203,7 +215,9 @@ describe("AppSettingService", () => {
   });
 });
 
+/** 使用独立磁盘配置和事件收集器观察保存及实例重建。 */
 function create_service(): {
+  paths: AppPathService;
   service: AppSettingService;
   config_path: string;
   events: SettingsStreamMessage[];
@@ -222,13 +236,15 @@ function create_service(): {
       events.push({ topic, payload });
     },
   });
-  return { service, config_path: paths.get_config_path(), events };
+  return { service, paths, config_path: paths.get_config_path(), events };
 }
 
+/** 直接读取落盘结果，避免服务缓存掩盖保存失败。 */
 function read_config(config_path: string): JsonRecord {
   return JsonTool.parseStrict(fs.readFileSync(config_path, "utf-8")) as JsonRecord;
 }
 
+/** 写入用户配置夹具，也用于模拟服务外部的文件变化。 */
 function write_config(config_path: string, payload: JsonRecord): void {
   fs.mkdirSync(path.dirname(config_path), { recursive: true });
   fs.writeFileSync(config_path, JsonTool.stringifyStrict(payload), "utf-8");

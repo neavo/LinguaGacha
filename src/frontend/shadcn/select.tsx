@@ -3,10 +3,12 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cn } from "@frontend/shadcn/classnames";
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react";
 
+/** 保留底层泛型值和受控选择协议。 */
 function Select<Value = string>(props: SelectPrimitive.Root.Props<Value>) {
   return <SelectPrimitive.Root data-slot="select" {...props} />;
 }
 
+/** 为选项分组提供统一间距与样式定位点。 */
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
@@ -17,6 +19,7 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   );
 }
 
+/** 显示底层解析的选中项，并允许在窄触发器内收缩。 */
 function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   return (
     <SelectPrimitive.Value
@@ -27,6 +30,7 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   );
 }
 
+/** 统一触发器尺寸、焦点与禁用反馈。 */
 function SelectTrigger({
   className,
   size = "default",
@@ -51,6 +55,7 @@ function SelectTrigger({
   );
 }
 
+/** 弹层按内容扩宽并受可用空间限制，长语言名称可在选项内换行。 */
 function SelectContent({
   className,
   children,
@@ -73,7 +78,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "cn-menu-target cn-menu-translucent relative isolate max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "cn-menu-target cn-menu-translucent relative isolate max-h-(--available-height) w-max min-w-[max(var(--anchor-width),9rem)] max-w-(--available-width) origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className,
           )}
           {...props}
@@ -87,6 +92,7 @@ function SelectContent({
   );
 }
 
+/** 为分组标题提供与选项区分的弱化样式。 */
 function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) {
   return (
     <SelectPrimitive.GroupLabel
@@ -97,6 +103,7 @@ function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) 
   );
 }
 
+/** 为长文案保留换行空间，选中标记固定在右侧。 */
 function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Props) {
   return (
     <SelectPrimitive.Item
@@ -107,7 +114,7 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+      <SelectPrimitive.ItemText className="flex min-w-0 flex-1 gap-2 whitespace-normal wrap-anywhere">
         {children}
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator
@@ -121,6 +128,7 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
   );
 }
 
+/** 沿用菜单分隔线的间距和颜色。 */
 function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Props) {
   return (
     <SelectPrimitive.Separator
@@ -131,6 +139,7 @@ function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Prop
   );
 }
 
+/** 列表上方仍有内容时由底层显示滚动入口。 */
 function SelectScrollUpButton({ className, ...props }: SelectPrimitive.ScrollUpArrow.Props) {
   return (
     <SelectPrimitive.ScrollUpArrow
@@ -146,6 +155,7 @@ function SelectScrollUpButton({ className, ...props }: SelectPrimitive.ScrollUpA
   );
 }
 
+/** 列表下方仍有内容时由底层显示滚动入口。 */
 function SelectScrollDownButton({ className, ...props }: SelectPrimitive.ScrollDownArrow.Props) {
   return (
     <SelectPrimitive.ScrollDownArrow

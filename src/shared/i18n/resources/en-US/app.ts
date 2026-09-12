@@ -1,5 +1,4 @@
 import { zh_cn_app } from "../zh-CN/app";
-import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
@@ -115,9 +114,27 @@ export const en_us_app = {
     disabled: "Drag disabled",
     handle: "Drag",
   },
-  language: Object.fromEntries(
-    Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.en]),
-  ) as Record<keyof typeof LANGUAGE_DISPLAY_NAMES, string>,
+  language: {
+    ALL: "All",
+    ZH: "Chinese",
+    "ZH-HANT": "Traditional Chinese",
+    EN: "English",
+    JA: "Japanese",
+    KO: "Korean",
+    RU: "Russian",
+    AR: "Arabic",
+    DE: "German",
+    FR: "French",
+    PL: "Polish",
+    ES: "Spanish",
+    IT: "Italian",
+    PT: "Portuguese",
+    HU: "Hungarian",
+    TR: "Turkish",
+    TH: "Thai",
+    ID: "Indonesian",
+    VI: "Vietnamese",
+  },
   navigation_action: {
     appearance: "Appearance",
     font: "Font",
@@ -132,11 +149,6 @@ export const en_us_app = {
       dark: "Dark",
     },
     language: "Language",
-    language_option: {
-      ZH: "中文",
-      EN: "English",
-      DE: "Deutsch",
-    },
     logs: "Logs",
   },
   profile: {
@@ -146,6 +158,7 @@ export const en_us_app = {
     update_available_tooltip: "Open the update confirmation dialog",
   },
   prompt: {
+    source: "Source",
     builder_control_character_samples: "Control Characters Samples:",
     builder_glossary_header: "Glossary <Original Term> -> <Translated Term> #<Term Information>:",
     builder_input: "Input:",

@@ -34,9 +34,7 @@ export const de_de_basic_settings_page = {
     request_timeout: {
       title: "Anfrage-Timeout",
       description:
-        "Die maximale Wartezeit (Sekunden) für eine Antwort bei einer Anfrage" +
-        "\n" +
-        "Wenn nach dem Timeout keine Antwort eingeht, wird die Aufgabe als fehlgeschlagen betrachtet",
+        "Maximale Antwortzeit in Sekunden. Ohne Antwort innerhalb dieser Frist gilt die Aufgabe als fehlgeschlagen.",
     },
   },
   feedback: {

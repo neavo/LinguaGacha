@@ -3,6 +3,8 @@
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能对原文和译文进行自动化翻译或审校",
     "en-US": "Use AI to translate, actively review, and correct translation data in the current project",
-    "de-DE": "Übersetzungsdaten im aktuellen Projekt mit KI übersetzen, aktiv prüfen und korrigieren"
+    "de-DE": "Übersetzungsdaten im aktuellen Projekt mit KI übersetzen, aktiv prüfen und korrigieren",
+    "ja-JP": "AI で現在のプロジェクトの原文・訳文を翻訳し、確認・修正する",
+    "ko-KR": "AI로 현재 프로젝트의 원문과 번역문을 번역하고 검토·교정합니다"
   }
 }

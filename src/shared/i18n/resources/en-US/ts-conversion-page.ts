@@ -13,9 +13,7 @@ export const en_us_ts_conversion_page = {
     direction: {
       title: "Conversion Mode",
       description:
-        "Conversion is implemented by <emphasis>OpenCC</emphasis>" +
-        "\n" +
-        "Simplified to Traditional uses S2TW rules, Traditional to Simplified uses T2S rules",
+        "<emphasis>OpenCC</emphasis>: S2TW for Simplified → Traditional; T2S for Traditional → Simplified.",
     },
     preserve_text: {
       title: "Follow Text Protection Rules",
@@ -25,9 +23,7 @@ export const en_us_ts_conversion_page = {
     target_name: {
       title: "Convert Name Field Translations",
       description:
-        "In some <emphasis>GalGame</emphasis>, name field is bound to resource, which may cause errors after translation" +
-        "\n" +
-        "You can disable this feature in that case, enabled by default",
+        "In some <emphasis>GalGame</emphasis>, names link to image or voice files. Disable if translating names causes errors. Enabled by default.",
     },
   },
   action: {
