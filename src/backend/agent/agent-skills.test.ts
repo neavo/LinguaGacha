@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { LOCALES } from "../../shared/i18n/types";
 import { AppPathService } from "../app/app-path-service";
 import {
   format_agent_skill_invocation,
@@ -100,11 +101,7 @@ describe("Agent skill 加载", () => {
         name: "manual",
         description: "手动能力",
         visible: true,
-        displayDescriptions: {
-          "zh-CN": "手动能力",
-          "en-US": "手动能力",
-          "de-DE": "手动能力",
-        },
+        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
         content: "执行手动任务。",
         filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
         disableModelInvocation: true,
@@ -113,11 +110,7 @@ describe("Agent skill 加载", () => {
         name: "valid",
         description: "合法能力",
         visible: true,
-        displayDescriptions: {
-          "zh-CN": "合法能力",
-          "en-US": "合法能力",
-          "de-DE": "合法能力",
-        },
+        displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "合法能力"])),
         content: "执行合法任务。",
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         disableModelInvocation: false,
@@ -157,7 +150,7 @@ describe("Agent skill 加载", () => {
     );
     write_skill(
       path.join(user_dir, "ui.json"),
-      '{"order":200,"displayDescriptions":{"en-US":"User skill"}}',
+      '{"order":200,"displayDescriptions":{"en-US":"User skill","ja-JP":"ユーザー機能","ko-KR":"사용자 기능"}}',
     );
     const warning = vi.fn();
 
@@ -171,6 +164,8 @@ describe("Agent skill 加载", () => {
           "zh-CN": "用户能力",
           "en-US": "User skill",
           "de-DE": "用户能力",
+          "ja-JP": "ユーザー機能",
+          "ko-KR": "사용자 기능",
         },
         content: "用户正文。",
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
@@ -182,7 +177,7 @@ describe("Agent skill 加载", () => {
 
   it.each([
     ["坏 JSON", "{"],
-    ["非法语言", '{"displayDescriptions":{"ja-JP":"日本語"}}'],
+    ["非法语言", '{"displayDescriptions":{"xx-XX":"Unknown"}}'],
     ["非法可见性", '{"visible":"false"}'],
     ["非法顺序类型", '{"order":"100"}'],
     ["负数顺序", '{"order":-1}'],
@@ -206,11 +201,7 @@ describe("Agent skill 加载", () => {
 
     expect(skills[0]).toMatchObject({
       visible: true,
-      displayDescriptions: {
-        "zh-CN": "默认描述",
-        "en-US": "默认描述",
-        "de-DE": "默认描述",
-      },
+      displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "默认描述"])),
     });
     expect(warning).toHaveBeenCalledWith(
       "Agent skill 资源加载失败 …",
@@ -246,16 +237,13 @@ describe("Agent skill 加载", () => {
       description: "内部能力",
       content: "执行内部任务。",
       visible: false,
-      displayDescriptions: {
-        "zh-CN": "内部能力",
-        "en-US": "内部能力",
-        "de-DE": "内部能力",
-      },
+      displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "内部能力"])),
     });
     expect(warning).not.toHaveBeenCalled();
   });
 });
 
+/** 将用户和内置技能根隔离到测试目录，避免读取实际动态资源。 */
 function create_paths(app_root: string): AppPathService {
   return new AppPathService({
     appRoot: app_root,
@@ -265,6 +253,7 @@ function create_paths(app_root: string): AppPathService {
   });
 }
 
+/** 在临时目录写入技能或 UI 元数据，覆盖真实文件加载入口。 */
 function write_skill(file_path: string, content: string): void {
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, "utf8");

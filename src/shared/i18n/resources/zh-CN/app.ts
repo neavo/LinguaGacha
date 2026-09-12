@@ -1,4 +1,4 @@
-import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
+import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
   metadata: {
@@ -111,9 +111,27 @@ export const zh_cn_app = {
     disabled: "禁止拖拽",
     handle: "拖拽",
   },
-  language: Object.fromEntries(
-    Object.entries(LANGUAGE_DISPLAY_NAMES).map(([code, names]) => [code, names.zh]),
-  ) as Record<keyof typeof LANGUAGE_DISPLAY_NAMES, string>,
+  language: {
+    ALL: "全部",
+    ZH: "中文",
+    "ZH-HANT": "中文（繁体）",
+    EN: "英文",
+    JA: "日文",
+    KO: "韩文",
+    RU: "俄文",
+    AR: "阿拉伯文",
+    DE: "德文",
+    FR: "法文",
+    PL: "波兰文",
+    ES: "西班牙文",
+    IT: "意大利文",
+    PT: "葡萄牙文",
+    HU: "匈牙利文",
+    TR: "土耳其文",
+    TH: "泰文",
+    ID: "印尼文",
+    VI: "越南文",
+  } satisfies Record<LanguageCode, string>,
   navigation_action: {
     appearance: "变换自如",
     font: "字体",
@@ -128,11 +146,6 @@ export const zh_cn_app = {
       dark: "深色",
     },
     language: "字字珠玑",
-    language_option: {
-      ZH: "中文",
-      EN: "English",
-      DE: "Deutsch",
-    },
     logs: "日志",
   },
   profile: {
@@ -142,6 +155,7 @@ export const zh_cn_app = {
     update_available_tooltip: "打开更新确认框",
   },
   prompt: {
+    source: "原文",
     builder_control_character_samples: "控制字符示例：",
     builder_glossary_header: "术语表 <术语原文> -> <术语译文> #<术语信息>:",
     builder_input: "输入：",

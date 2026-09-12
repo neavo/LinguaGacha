@@ -19,7 +19,7 @@ export const en_us_laboratory_page = {
     skip_duplicate_source_text_enable: {
       title: "Skip Duplicate Source Text",
       description:
-        "In one file, translate entries with the same source text, speaker, and text rules once, <emphasis>duplicates reuse the translated text</emphasis>, enabled by default",
+        "Per file, entries with identical text, character names and text rules share <emphasis>one translation</emphasis>. Enabled by default.",
     },
   },
   feedback: {

@@ -7,16 +7,12 @@ export const de_de_expert_settings_page = {
     preceding_lines_threshold: {
       title: "Schwellenwert für vorhergehende Zeilen",
       description:
-        "Maximale Anzahl vorhergehender Zeilen, die als Kontext für jede Übersetzungsaufgabe einbezogen werden, standardmäßig deaktiviert",
+        "Maximale Zahl vorheriger Kontextzeilen pro Übersetzungsaufgabe. Standardmäßig deaktiviert.",
     },
     clean_ruby: {
       title: "Ruby-Text bereinigen",
       description:
-        "Entfernt die phonetischen Ruby-Zeichen aus Anmerkungen und behält nur den Haupttext bei, standardmäßig deaktiviert" +
-        "\n" +
-        "Phonetische Ruby-Zeichen werden vom Modell oft nicht verstanden, ihre Bereinigung kann die Übersetzungsqualität verbessern" +
-        "\n" +
-        "Unterstützte Ruby-Formate umfassen, sind aber nicht beschränkt auf:" +
+        "Ruby-Lesungen entfernen, Grundtext behalten (standardmäßig aus). Modelle verstehen Ruby oft nicht; Entfernen kann die Übersetzung verbessern. Formatbeispiele:" +
         "\n" +
         "• <ruby>漢字<rt>かんじ</rt></ruby>" +
         "\n" +
@@ -30,14 +26,12 @@ export const de_de_expert_settings_page = {
       title:
         "Nur einmal ausgeben, wenn Quelle und Ziel in zweisprachigen Ausgabedateien identisch sind",
       description:
-        "In Untertiteln oder E-Books, ob Text nur einmal ausgegeben werden soll, wenn Quell- und Zieltext identisch sind, standardmäßig aktiviert",
+        "In Untertiteln und E-Books gleiche Quell- und Zieltexte nur einmal ausgeben. Standardmäßig aktiviert.",
     },
     write_translated_name_fields_to_file: {
       title: "Übersetzte Namensfelder in die Ausgabedatei schreiben",
       description:
-        "In einigen <emphasis>GalGame</emphasis> sind Namensfelddaten an Ressourcendateien wie Bild- oder Sprachdateien gebunden" +
-        "\n" +
-        "Das Übersetzen dieser Namensfelder kann Fehler verursachen. In solchen Fällen kann diese Funktion deaktiviert werden, standardmäßig aktiviert" +
+        "Manche <emphasis>GalGame</emphasis>-Namen sind an Bild- und Sprachdateien gebunden. Bei Übersetzungsfehlern deaktivieren (standardmäßig an)." +
         "\n" +
         "Unterstützte Formate:" +
         "\n" +
@@ -48,11 +42,11 @@ export const de_de_expert_settings_page = {
     auto_process_prefix_suffix_preserved_text: {
       title: "Präfix/Suffix-geschützten Text automatisch verarbeiten",
       description:
-        "Ob Textsegmente am Anfang/Ende, die Schutzregeln entsprechen, automatisch verarbeitet werden sollen, standardmäßig aktiviert" +
+        "Geschützte Textanfänge/-enden automatisch verarbeiten (standardmäßig an)." +
         "\n" +
-        "• Aktiviert: Entfernt Segmente, die Schutzregeln entsprechen, und stellt sie nach der Übersetzung wieder her" +
+        "• An: Geschützte Segmente vor der Übersetzung entfernen und danach wieder einfügen." +
         "\n" +
-        "• Deaktiviert: Sendet den vollständigen Text für besseren Kontext, kann aber die Schutzwirksamkeit verringern",
+        "• Aus: Den vollständigen Eintrag übersetzen; mehr Kontext, aber schwächerer Textschutz.",
     },
   },
   feedback: {

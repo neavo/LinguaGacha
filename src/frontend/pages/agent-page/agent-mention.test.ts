@@ -9,10 +9,13 @@ const skills = [
       "zh-CN": "审校术语",
       "en-US": "Review glossary",
       "de-DE": "Glossar prüfen",
+      "ja-JP": "用語を校正",
+      "ko-KR": "용어 교정",
     },
   },
 ];
 
+/** 在同一个查询中提供技能和指令，验证两个分组的筛选。 */
 function create_candidates(query: string) {
   return create_agent_mention_candidates({
     query,
@@ -31,6 +34,12 @@ function create_candidates(query: string) {
 }
 
 describe("Agent mention 菜单候选", () => {
+  it("按当前语言的描述查询并展示技能", () => {
+    expect(
+      create_agent_mention_candidates({ locale: "ja-JP", query: "用語", skills, instructions: [] })
+        .skills,
+    ).toMatchObject([{ title: "glossary-review", description: "用語を校正" }]);
+  });
   it("按技能字段、本地化指令标题和稳定指令名筛选两个分组", () => {
     expect(create_candidates("")).toMatchObject({
       skills: [{ kind: "skill", title: "glossary-review" }],

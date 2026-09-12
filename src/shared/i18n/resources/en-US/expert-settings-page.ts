@@ -12,11 +12,7 @@ export const en_us_expert_settings_page = {
     clean_ruby: {
       title: "Clean Ruby Text",
       description:
-        "Removes the phonetic ruby characters from annotations, retaining only the main text, disabled by default" +
-        "\n" +
-        "Phonetic ruby characters are often not understood by the model, cleaning them can improve translation quality" +
-        "\n" +
-        "Supported ruby formats include, but are not limited to:" +
+        "Remove ruby readings, keep base text (off by default). Models often misread ruby; removal may improve translation. Supported formats include:" +
         "\n" +
         "• <ruby>漢字<rt>かんじ</rt></ruby>" +
         "\n" +
@@ -34,9 +30,7 @@ export const en_us_expert_settings_page = {
     write_translated_name_fields_to_file: {
       title: "Write Translated Name Fields to the Output File",
       description:
-        "In some <emphasis>GalGame</emphasis>, name field data is bound to resource files such as image or voice files" +
-        "\n" +
-        "Translating these name fields can cause errors. In such cases, this feature can be disabled, enabled by default" +
+        "Some <emphasis>GalGame</emphasis> names link to image or voice files. Disable name translation if it causes errors (on by default)." +
         "\n" +
         "Supported formats:" +
         "\n" +

@@ -33,9 +33,7 @@ export const en_us_basic_settings_page = {
     request_timeout: {
       title: "Request Timeout",
       description:
-        "The maximum time (seconds) to wait for response when making a request" +
-        "\n" +
-        "If no reply is received after the timeout, the task will be considered failed",
+        "Maximum wait for a model reply, in seconds. The task fails if no reply arrives in time.",
     },
   },
   feedback: {

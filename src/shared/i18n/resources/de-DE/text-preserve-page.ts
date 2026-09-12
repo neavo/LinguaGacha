@@ -23,7 +23,7 @@ export const de_de_text_preserve_page = {
     },
   },
   fields: {
-    note: "Bemerkungen (Nur zur Referenz, keine tatsächliche Wirkung)",
+    note: "Anmerkungen (nur zur Referenz, ohne Wirkung)",
     hit: "Treffer",
   },
   filter: {

@@ -58,6 +58,8 @@ const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
       "zh-CN": "审校术语",
       "en-US": "Review glossary",
       "de-DE": "Glossar prüfen",
+      "ja-JP": "Glossar prüfen",
+      "ko-KR": "Glossar prüfen",
     },
   },
   {
@@ -66,6 +68,8 @@ const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
       "zh-CN": "检索语料",
       "en-US": "Search corpus",
       "de-DE": "Korpus durchsuchen",
+      "ja-JP": "Korpus durchsuchen",
+      "ko-KR": "Korpus durchsuchen",
     },
   },
 ];

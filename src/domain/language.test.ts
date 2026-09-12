@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_LANGUAGE_CODE,
   classify_target_language_grapheme,
-  get_prompt_source_language_name,
-  get_prompt_target_language_name,
   has_cjk_language_character,
   has_language_body_character,
   has_language_character,
@@ -14,18 +12,6 @@ import {
 } from "./language";
 
 describe("语言规则", () => {
-  it("提示词泛化未限定的源语言并拒绝无效目标语言", () => {
-    expect(get_prompt_source_language_name(ALL_LANGUAGE_CODE, "zh")).toBe("原文");
-    expect(get_prompt_source_language_name(null, "en")).toBe("Source");
-    expect(get_prompt_target_language_name("ZH-HANT", "de")).toBe("Chinesisch (traditionell)");
-    expect(() => get_prompt_target_language_name(ALL_LANGUAGE_CODE, "zh")).toThrowError(
-      expect.objectContaining({ code: "language.unsupported_all_target_language" }),
-    );
-    expect(() => get_prompt_target_language_name(null, "zh")).toThrowError(
-      expect.objectContaining({ code: "language.invalid_target_language" }),
-    );
-  });
-
   it("归一化合法语言代码并拒绝未知格式", () => {
     expect(normalize_language_code("fr")).toBe("FR");
     expect(normalize_language_code(" zh-hant ")).toBe("ZH-HANT");

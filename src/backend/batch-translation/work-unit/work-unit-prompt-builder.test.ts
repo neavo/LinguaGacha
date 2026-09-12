@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
 import type { TranslationActor, TranslationRequestItem } from "./translation-item";
+import { format_i18n_message } from "../../../shared/i18n";
 import { PromptBuilder } from "./work-unit-prompt-builder";
 
 const template_roots: string[] = [];
@@ -19,6 +20,29 @@ afterEach(async () => {
 });
 
 describe("PromptBuilder", () => {
+  it("未限定源语言使用模板语言的泛称，非法目标语言返回领域错误", async () => {
+    const builtin_root = await create_template_root();
+    // 共用模板夹具，只改变待验证的源／目标语言边界。
+    const make_builder = (source_language: string, target_language: string) =>
+      new PromptBuilder(
+        builtin_root,
+        { app_language: "JA", source_language, target_language },
+        create_quality_snapshot(),
+        [],
+      );
+    expect(make_builder("ALL", "ZH-HANT").build_main()).toContain(
+      "Translate from Source to Traditional Chinese.",
+    );
+    expect(make_builder("unknown", "EN").build_main()).toContain(
+      "Translate from Source to English.",
+    );
+    expect(() => make_builder("JA", "ALL").build_main()).toThrowError(
+      expect.objectContaining({ code: "language.unsupported_all_target_language" }),
+    );
+    expect(() => make_builder("JA", "unknown").build_main()).toThrowError(
+      expect.objectContaining({ code: "language.invalid_target_language" }),
+    );
+  });
   it("每个 item 只生成一条 JSONL，text 内换行由 JSON 转义承载", async () => {
     const builder = new PromptBuilder(
       await create_template_root(),
@@ -75,23 +99,27 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).toContain('{"id":0,"text":"Alice\\\\n[1]"}');
   });
 
-  it("提示词模板语言跟随 UI 语言而不是目标语言", async () => {
-    const builtin_root = await create_template_root();
+  it("非中文界面的模板、语言名和输入说明统一使用英文", async () => {
     const builder = new PromptBuilder(
-      builtin_root,
-      {
-        app_language: "EN",
-        source_language: "JA",
-        target_language: "ZH",
-      },
+      await create_template_root(),
+      { app_language: "JA", source_language: "JA", target_language: "ZH" },
       create_quality_snapshot(),
       [],
     );
-
-    const result = builder.build_main("text");
-
-    expect(result).toContain("Translation prefix");
-    expect(result).toContain("Translate from Japanese to Chinese.");
+    const prompt = builder.generate_prompt(
+      [create_line({ text_src: "hello" })],
+      "text",
+      [],
+      [{ src: "previous" }],
+    );
+    expect(prompt.messages[0]?.content).toContain("Translation prefix");
+    expect(prompt.messages[0]?.content).toContain("Translate from Japanese to Chinese.");
+    expect(prompt.messages[1]?.content).toContain(
+      format_i18n_message("en-US", "app.prompt.builder_preceding_context"),
+    );
+    expect(prompt.messages[1]?.content).toContain(
+      format_i18n_message("en-US", "app.prompt.builder_input"),
+    );
   });
 
   it.each([

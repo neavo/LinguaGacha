@@ -1,5 +1,3 @@
-import { AppError } from "../shared/error";
-
 type CharacterMatcher = (char: string) => boolean;
 
 const WRITING_SYSTEM_CODES = [
@@ -71,151 +69,12 @@ export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
 export type ConfiguredSourceLanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode;
 // 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
-export type LanguageDisplayLocale = "zh" | "en" | "de";
-
 // 语言定义只声明允许的书写系统，字符分类统一由书写系统词表负责。
 type TargetLanguageGraphemeClassification =
   | "allowed"
   | "latin-residue"
   | "other-residue"
   | "neutral";
-
-// 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
-export const LANGUAGE_DISPLAY_NAMES: Record<
-  LanguageCode,
-  Readonly<Record<LanguageDisplayLocale, string>>
-> = {
-  ALL: {
-    zh: "全部",
-    en: "All",
-    de: "Alle",
-  },
-  ZH: {
-    zh: "中文",
-    en: "Chinese",
-    de: "Chinesisch",
-  },
-  "ZH-HANT": {
-    zh: "中文（繁体）",
-    en: "Traditional Chinese",
-    de: "Chinesisch (traditionell)",
-  },
-  EN: {
-    zh: "英文",
-    en: "English",
-    de: "Englisch",
-  },
-  JA: {
-    zh: "日文",
-    en: "Japanese",
-    de: "Japanisch",
-  },
-  KO: {
-    zh: "韩文",
-    en: "Korean",
-    de: "Koreanisch",
-  },
-  RU: {
-    zh: "俄文",
-    en: "Russian",
-    de: "Russisch",
-  },
-  AR: {
-    zh: "阿拉伯文",
-    en: "Arabic",
-    de: "Arabisch",
-  },
-  DE: {
-    zh: "德文",
-    en: "German",
-    de: "Deutsch",
-  },
-  FR: {
-    zh: "法文",
-    en: "French",
-    de: "Französisch",
-  },
-  PL: {
-    zh: "波兰文",
-    en: "Polish",
-    de: "Polnisch",
-  },
-  ES: {
-    zh: "西班牙文",
-    en: "Spanish",
-    de: "Spanisch",
-  },
-  IT: {
-    zh: "意大利文",
-    en: "Italian",
-    de: "Italienisch",
-  },
-  PT: {
-    zh: "葡萄牙文",
-    en: "Portuguese",
-    de: "Portugiesisch",
-  },
-  HU: {
-    zh: "匈牙利文",
-    en: "Hungarian",
-    de: "Ungarisch",
-  },
-  TR: {
-    zh: "土耳其文",
-    en: "Turkish",
-    de: "Türkisch",
-  },
-  TH: {
-    zh: "泰文",
-    en: "Thai",
-    de: "Thailändisch",
-  },
-  ID: {
-    zh: "印尼文",
-    en: "Indonesian",
-    de: "Indonesisch",
-  },
-  VI: {
-    zh: "越南文",
-    en: "Vietnamese",
-    de: "Vietnamesisch",
-  },
-};
-
-// 展示名统一从语言定义表读取，不在调用点重复维护语言名称
-export function get_language_display_name(
-  language_code: LanguageCode,
-  locale: LanguageDisplayLocale,
-): string {
-  return LANGUAGE_DISPLAY_NAMES[language_code][locale];
-}
-
-// 源语言允许 ALL 和空值，提示词里表达为泛化的“原文”
-export function get_prompt_source_language_name(
-  language_code: LanguageCode | null,
-  locale: LanguageDisplayLocale,
-): string {
-  if (language_code === null || language_code === ALL_LANGUAGE_CODE) {
-    return locale === "zh" ? "原文" : "Source";
-  }
-
-  return get_language_display_name(language_code, locale);
-}
-
-// 目标语言不能是 ALL 或空值，调用方配置损坏时必须显式报错
-export function get_prompt_target_language_name(
-  language_code: LanguageCode | null,
-  locale: LanguageDisplayLocale,
-): string {
-  if (language_code === ALL_LANGUAGE_CODE) {
-    throw new AppError("language.unsupported_all_target_language");
-  }
-  if (language_code === null) {
-    throw new AppError("language.invalid_target_language");
-  }
-
-  return get_language_display_name(language_code, locale);
-}
 
 const LETTER_CHARACTER_PATTERN = /\p{L}/u;
 const MARK_CHARACTER_PATTERN = /\p{M}/u;

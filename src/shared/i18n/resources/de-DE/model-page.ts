@@ -76,13 +76,13 @@ export const de_de_model_page = {
     },
     api_url: {
       title: "API-URL",
-      description: "Geben Sie die API-URL ein und prüfen Sie, ob /v1 am Ende enthalten sein soll",
+      description: "API-URL eingeben; prüfen, ob /v1 am Ende nötig ist.",
       placeholder: "Bitte API-URL eingeben …",
     },
     api_key: {
       title: "API-Schlüssel",
       description:
-        "Geben Sie den API-Schlüssel ein, z.B. sk-d0daba12345678fd8eb7b8d31c123456, mehrere Schlüssel können für Polling eingegeben werden, ein Schlüssel pro Zeile",
+        "API-Schlüssel eingeben, z. B. sk-d0daba12345678fd8eb7b8d31c123456. Mehrere Schlüssel zeilenweise für abwechselnde Nutzung.",
       placeholder: "Bitte API-Schlüssel eingeben …",
     },
     model_id: {
@@ -124,13 +124,13 @@ export const de_de_model_page = {
     extra_headers: {
       title: "Benutzerdefinierte Anfrage-Header",
       description:
-        "Bitte mit Vorsicht setzen, falsche Werte können zu ungewöhnlichen Ergebnissen oder Anfragefehlern führen",
+        "Anfrageheader vorsichtig setzen: Falsche Werte können Ergebnisse verfälschen oder Fehler auslösen.",
       placeholder: 'Beispiel: {"Authorization": "Bearer xxx"}',
     },
     extra_body: {
       title: "Benutzerdefinierter Anfrage-Body",
       description:
-        "Bitte mit Vorsicht setzen, falsche Werte können zu ungewöhnlichen Ergebnissen oder Anfragefehlern führen",
+        "Anfrageparameter vorsichtig setzen: Falsche Werte können Ergebnisse verfälschen oder Fehler auslösen.",
       placeholder: 'Beispiel: {"seed": 42}',
     },
   },

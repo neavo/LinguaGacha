@@ -10,17 +10,10 @@ import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
 import { TRANSLATION_PROMPT } from "../../../domain/prompt";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../../domain/setting";
-import {
-  resolve_app_locale,
-  resolve_language_display_locale,
-  resolve_prompt_template_language,
-} from "../../../domain/app-language";
+import { resolve_prompt_template_language } from "../../../domain/app-language";
+import { AppError } from "../../../shared/error";
 import { format_i18n_message, type LocaleKey } from "../../../shared/i18n";
-import {
-  get_prompt_source_language_name,
-  get_prompt_target_language_name,
-  normalize_language_code,
-} from "../../../domain/language";
+import { normalize_language_code } from "../../../domain/language";
 import type { TranslationRequestItem, TranslationPromptMode } from "./translation-item";
 import { format_glossary_entry, type GlossaryEntry } from "../../../shared/quality/glossary";
 
@@ -227,10 +220,12 @@ export class PromptBuilder {
   }
 
   /**
-   * 转换本地化键为当前语言文本。
+   * 模型输入说明及其日志回显使用模板语言，避免同一次请求混用 UI 语言。
    */
-  private t(key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_app_locale(this.config.app_language), key, params);
+  private t(key: LocaleKey): string {
+    const locale =
+      resolve_prompt_template_language(this.config.app_language) === "zh" ? "zh-CN" : "en-US";
+    return format_i18n_message(locale, key);
   }
 
   /**
@@ -242,13 +237,22 @@ export class PromptBuilder {
     target_language: string;
   } {
     const prompt_language = resolve_prompt_template_language(this.config.app_language);
-    const display_locale = resolve_language_display_locale(this.config.app_language);
-    const source_code = normalize_language_code(String(this.config.source_language));
-    const target_code = normalize_language_code(String(this.config.target_language));
+    const source_code = normalize_language_code(this.config.source_language);
+    const target_code = normalize_language_code(this.config.target_language);
+    if (target_code === "ALL") {
+      throw new AppError("language.unsupported_all_target_language");
+    }
+    if (target_code === null) {
+      throw new AppError("language.invalid_target_language");
+    }
     return {
       prompt_language,
-      source_language: get_prompt_source_language_name(source_code, display_locale),
-      target_language: get_prompt_target_language_name(target_code, display_locale),
+      source_language: this.t(
+        source_code === null || source_code === "ALL"
+          ? "app.prompt.source"
+          : `app.language.${source_code}`,
+      ),
+      target_language: this.t(`app.language.${target_code}`),
     };
   }
 

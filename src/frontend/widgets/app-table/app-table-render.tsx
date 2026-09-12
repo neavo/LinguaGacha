@@ -11,6 +11,7 @@ import type {
   AppTableSortDirection,
 } from "@frontend/widgets/app-table/app-table-types";
 
+/** 排序按钮提示下一次操作；禁用排序时不占用操作位。 */
 function resolve_sort_action_label(args: {
   direction: AppTableSortDirection | null;
   column: AppTableDataColumn<unknown>;
@@ -29,6 +30,7 @@ function resolve_sort_action_label(args: {
 
   return args.column.sortable.action_labels.clear;
 }
+/** 表头组合排序入口与自定义内容，无操作时将预留空间还给标题。 */
 export function AppTableHeadCell<Row>(args: {
   column: AppTableColumn<Row>;
   direction: AppTableSortDirection | null;
@@ -89,7 +91,12 @@ export function AppTableHeadCell<Row>(args: {
     direction: args.direction,
     trigger: resolved_trigger,
   }) ?? (
-    <div className="app-table__head-content">
+    <div
+      className={cn(
+        "app-table__head-content",
+        resolved_trigger === null && "app-table__head-content--compact",
+      )}
+    >
       <span className="app-table__head-label">{args.column.title}</span>
       {resolved_trigger === null ? null : (
         <span className="app-table__head-action">{resolved_trigger}</span>
@@ -107,6 +114,7 @@ export function AppTableHeadCell<Row>(args: {
     </TableHead>
   );
 }
+/** 以单个跨列单元格承载虚拟列表的滚动高度。 */
 export function AppTableSpacerRow(props: { column_count: number; height: number }): JSX.Element {
   return (
     <TableRow aria-hidden="true" className="app-table__row app-table__spacer-row">
@@ -116,6 +124,7 @@ export function AppTableSpacerRow(props: { column_count: number; height: number 
     </TableRow>
   );
 }
+/** 虚拟行未加载时保留列宽、斑马纹和分隔线。 */
 export function AppTablePlaceholderRow<Row>(props: {
   columns: AppTableColumn<Row>[];
   row_index: number;

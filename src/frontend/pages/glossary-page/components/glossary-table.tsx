@@ -42,6 +42,7 @@ type GlossaryTableProps = {
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
 };
 
+/** 将术语排序字段映射到通用表格列；未排序时统一返回 null。 */
 function map_glossary_sort_state(sort_state: GlossarySortState): AppTableSortState | null {
   if (sort_state.field === null || sort_state.direction === null) {
     return null;
@@ -57,6 +58,7 @@ type GlossaryRuleBadgeProps = {
   enabled: boolean;
   tooltip: string;
 };
+/** 显示大小写规则并提供说明，徽标区域不触发框选。 */
 function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   const badge = (
     <span className="glossary-page__rule-badge-wrap">
@@ -80,6 +82,7 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   );
 }
 
+/** 将术语条目、命中与选择状态接入通用表格，写入交给页面回调。 */
 export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {
@@ -196,7 +199,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         kind: "data",
         id: "hit",
         title: t("glossary_page.fields.hit"),
-        width: 92,
+        width: 120,
         align: "center",
         sortable: {
           disabled: !props.hit_sort_available,
