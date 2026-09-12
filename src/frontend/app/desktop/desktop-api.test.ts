@@ -3,50 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
-/**
- * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖
- */
+/** 只记录事件流创建地址，订阅投递由实际流消费者测试负责。 */
 class EventSourceStub {
-  static instances: EventSourceStub[] = [];
-
-  url: string;
-  close = vi.fn();
-  listeners = new Map<string, EventListener[]>();
-  onerror: ((event: Event) => void) | null = null;
-
-  /**
-   * 初始化 EventSourceStub 依赖，保持外部写入口清晰
-   */
+  readonly url: string;
+  /** 保存公开连接地址供断言。 */
   constructor(url: string) {
     this.url = url;
-    EventSourceStub.instances.push(this);
-  }
-
-  /**
-   * 登记测试监听器，模拟 EventSource 多事件订阅行为
-   */
-  addEventListener(type: string, listener: EventListener): void {
-    const listeners = this.listeners.get(type) ?? [];
-    listeners.push(listener);
-    this.listeners.set(type, listeners);
-  }
-
-  /** 取消订阅后不再向已卸载消费方投递事件。 */
-  removeEventListener(type: string, listener: EventListener): void {
-    const listeners = this.listeners.get(type) ?? [];
-    this.listeners.set(
-      type,
-      listeners.filter((candidate) => candidate !== listener),
-    );
-  }
-
-  /**
-   * 触发测试事件，帮助断言桌面 API 流解析结果
-   */
-  emit(type: string, data: Record<string, unknown>): void {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener({ data: JsonTool.stringifyStrict(data) } as MessageEvent<string>);
-    }
   }
 }
 
@@ -72,7 +34,6 @@ describe("desktop-api", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.resetModules();
-    EventSourceStub.instances = [];
   });
 
   it("open_event_stream 通过统一 SSE 路径连接 Backend 事件流", async () => {
@@ -88,53 +49,44 @@ describe("desktop-api", () => {
     );
   });
 
-  it("subscribe_log_stream 解析独立日志事件并仅在取消订阅时关闭", async () => {
+  it("分页读取严格校验摘要与游标并传递取消信号", async () => {
     install_desktop_api_host("http://127.0.0.1:38191/");
-    vi.stubGlobal("EventSource", EventSourceStub);
-
-    const received: unknown[] = [];
-    const { subscribe_log_stream } = await import("./desktop-api");
-    const unsubscribe = subscribe_log_stream((event) => received.push(event));
-    const event_source = EventSourceStub.instances[0];
-    event_source?.emit("log.appended", {
-      id: "log-1",
-      sequence: 1,
-      created_at: "2026-04-26T00:00:00.000+00:00",
-      level: "warning",
-      source: "test",
-      message_preview: "hello",
-      message_length: 2048,
-    });
-    event_source?.emit("log.appended", { id: "invalid" });
-
-    expect(received).toEqual([
-      {
-        id: "log-1",
-        sequence: 1,
-        created_at: "2026-04-26T00:00:00.000+00:00",
-        level: "warning",
-        source: "test",
-        message_preview: "hello",
-        message_length: 2048,
-      },
-    ]);
-    expect(event_source?.url).toBe("http://127.0.0.1:38191/api/logs/stream");
-    expect(event_source?.onerror).toBeNull();
-    expect(event_source?.close).not.toHaveBeenCalled();
-
-    unsubscribe();
-
-    expect(event_source?.close).toHaveBeenCalledOnce();
-    event_source?.emit("log.appended", {
-      id: "log-2",
-      sequence: 2,
-      created_at: "2026-04-26T00:00:01.000+00:00",
-      level: "info",
-      source: "test",
-      message_preview: "late",
-      message_length: 4,
-    });
-    expect(received).toHaveLength(1);
+    const data = {
+      status: "ready",
+      entries: [
+        {
+          id: "20260913:1",
+          date: "20260913",
+          line: 1,
+          revision: "rev",
+          created_at: "2026-09-13T00:00:00Z",
+          level: "info",
+          source: "test",
+          message_preview: "内容",
+          message_length: 2,
+        },
+      ],
+      before: { date: "20260913", line: 0, revision: "rev" },
+      after: { date: "20260913", line: 1, revision: "rev" },
+      has_more: false,
+    };
+    const fetch_mock = vi.fn(
+      async () => ({ ok: true, status: 200, json: async () => ({ ok: true, data }) }) as Response,
+    );
+    vi.stubGlobal("fetch", fetch_mock);
+    const { read_log_page } = await import("./desktop-api");
+    const controller = new AbortController();
+    await expect(
+      read_log_page({ date: "20260913", direction: "latest" }, controller.signal),
+    ).resolves.toEqual(data);
+    expect(fetch_mock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/logs/page"),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    data.entries[0]!.line = -1;
+    await expect(read_log_page({ date: "20260913", direction: "latest" })).rejects.toThrow(
+      "Invalid log entry",
+    );
   });
 
   it("read_log_detail 读取完整日志详情", async () => {
@@ -146,8 +98,10 @@ describe("desktop-api", () => {
           ok: true,
           data: {
             detail: {
-              id: "log-1",
-              sequence: 1,
+              id: "20260913:1",
+              date: "20260913",
+              line: 1,
+              revision: "rev",
               created_at: "2026-04-26T00:00:00.000+00:00",
               level: "error",
               source: "engine-worker",
@@ -173,8 +127,8 @@ describe("desktop-api", () => {
 
     const { read_log_detail } = await import("./desktop-api");
 
-    await expect(read_log_detail("log-1")).resolves.toMatchObject({
-      id: "log-1",
+    await expect(read_log_detail("20260913:1", "rev")).resolves.toMatchObject({
+      id: "20260913:1",
       level: "error",
       source: "engine-worker",
       content: {
@@ -209,7 +163,9 @@ describe("desktop-api", () => {
             data: {
               detail: {
                 id: "log-legacy",
-                sequence: 1,
+                date: "20260913",
+                line: 1,
+                revision: "rev",
                 created_at: "2026-04-26T00:00:00.000+00:00",
                 level: "info",
                 source: "test",
@@ -224,7 +180,7 @@ describe("desktop-api", () => {
 
     const { read_log_detail } = await import("./desktop-api");
 
-    await expect(read_log_detail("log-legacy")).resolves.toBeNull();
+    await expect(read_log_detail("log-legacy", "rev")).resolves.toBeNull();
   });
 
   it("report_renderer_error 通过诊断 API 写入前端异常快照", async () => {

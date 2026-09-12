@@ -1,25 +1,27 @@
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { ChevronDown, ChevronUp, ListStart, Maximize2, Minimize2, ScrollText } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  ListStart,
+  Maximize2,
+  Minimize2,
+  ScrollText,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
-import {
-  read_log_detail,
-  subscribe_log_stream,
-  type LogDetail,
-  type LogEvent,
-} from "@frontend/app/desktop/desktop-api";
+import { read_log_detail, type LogDetail, type LogEntry } from "@frontend/app/desktop/desktop-api";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import { cn } from "@frontend/shadcn/classnames";
 import {
-  append_log_events,
   compress_log_message_text,
-  filter_log_events,
+  filter_log_entries,
   format_log_timestamp,
-  sort_log_events_latest_first,
+  sort_log_entries_latest_first,
   type LogLevelFilter,
 } from "@frontend/pages/log-window-page/logic";
-import { LogAppendBuffer } from "@frontend/pages/log-window-page/log-append-buffer";
+import { useLogPages } from "./use-log-pages";
 import { LogDetailView } from "@frontend/pages/log-window-page/log-detail-view";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
@@ -33,12 +35,18 @@ import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
   AppTableColumn,
+  AppTableScrollAnchor,
   AppTableSelectionChange,
 } from "@frontend/widgets/app-table/app-table-types";
-import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
+import {
+  SearchBar,
+  SearchBarMenuAction,
+  type SearchBarScopeOption,
+} from "@frontend/widgets/search-bar/search-bar";
 import "@frontend/app/shell/app-titlebar.css";
 import "@frontend/pages/log-window-page/log-window-page.css";
 
+const LOG_LOAD_MORE_THRESHOLD_PX = 160; // 提前读取下一页，保留约几行的等待余量
 // 日志等级筛选顺序同时决定搜索范围菜单顺序。
 const LEVEL_FILTERS: LogLevelFilter[] = ["all", "debug", "info", "warning", "error", "fatal"];
 // 筛选值和日志等级共用同一份本地化键映射。
@@ -62,11 +70,6 @@ type LogDetailState =
   | { status: "loading" | "unavailable" | "failed"; event_id: string; detail: null }
   | { status: "ready"; event_id: string; detail: LogDetail };
 
-// follow_latest 记录用户是否仍跟随列表头部，不能从新事件到达后的 active_row_id 反推。
-type LogSelectionState = AppTableSelectionChange & {
-  follow_latest: boolean;
-};
-
 /**
  * AppTable 会把 table_class_name 同时挂到表头、浮层和表体，从 viewport 内定位避免误取固定表头
  */
@@ -85,16 +88,18 @@ export function LogWindowPage(): JSX.Element {
   const [detail_request, set_detail_request] = useState(0); // 同一选中日志的显式重试序号。
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
-  const [events, set_events] = useState<LogEvent[]>([]);
+  const [scroll_anchor, set_scroll_anchor] = useState<AppTableScrollAnchor>({
+    row_id: null,
+    revision: 0,
+  });
   const [level_filter, set_level_filter] = useState<LogLevelFilter>("all");
   const [keyword, set_keyword] = useState<string>("");
   const debounced_keyword = useDebouncedValue(keyword); // 搜索框即时显示 keyword，日志过滤只消费延迟值
   const [is_regex, set_is_regex] = useState<boolean>(false);
-  const [selection_state, set_selection_state] = useState<LogSelectionState>({
+  const [selection_state, set_selection_state] = useState<AppTableSelectionChange>({
     selected_row_ids: [],
     active_row_id: null,
     anchor_row_id: null,
-    follow_latest: true,
   });
   const [detail_expanded, set_detail_expanded] = useState<boolean>(false);
   const [detail_state, set_detail_state] = useState<LogDetailState>({
@@ -107,28 +112,20 @@ export function LogWindowPage(): JSX.Element {
     document.title = t("log_window_page.title");
   }, [t]);
 
+  const logs = useLogPages(selection_state.active_row_id);
+  const events = logs.entries;
   useEffect(() => {
-    const log_append_buffer = new LogAppendBuffer<LogEvent>({
-      onFlush: (next_events) => {
-        if (next_events.length === 0) {
-          return;
-        }
-
-        set_events((previous_events) => append_log_events(previous_events, next_events));
-      },
+    // 外部编辑可能插删行，刷新前清空选择，防止同一行号指向另一条记录。
+    set_selection_state({
+      selected_row_ids: [],
+      active_row_id: null,
+      anchor_row_id: null,
     });
-    const unsubscribe = subscribe_log_stream((event) => {
-      log_append_buffer.append(event);
-    });
-
-    return () => {
-      unsubscribe();
-      log_append_buffer.dispose();
-    };
-  }, []);
+    set_detail_state({ status: "idle", event_id: null, detail: null });
+  }, [logs.reset_revision, logs.date]);
 
   const filtered_events = useMemo(() => {
-    return filter_log_events({
+    return filter_log_entries({
       events,
       level_filter,
       keyword: debounced_keyword,
@@ -136,7 +133,7 @@ export function LogWindowPage(): JSX.Element {
     });
   }, [debounced_keyword, events, is_regex, level_filter]);
   const visible_events = useMemo(() => {
-    return sort_log_events_latest_first(filtered_events);
+    return sort_log_entries_latest_first(filtered_events);
   }, [filtered_events]);
   // 跟随、回顶和前后导航都以当前筛选结果为边界，不跳到不可见日志。
   const latest_event_id = visible_events[0]?.id ?? null;
@@ -183,22 +180,25 @@ export function LogWindowPage(): JSX.Element {
   const selected_event =
     selected_event_index < 0 ? null : (visible_events[selected_event_index] ?? null);
   const selected_event_id = selected_event?.id ?? null;
+  const selected_event_revision = selected_event?.revision;
   const previous_event_id =
     selected_event_index > 0 ? (visible_events[selected_event_index - 1]?.id ?? null) : null;
   const next_event_id =
     selected_event_index >= 0 ? (visible_events[selected_event_index + 1]?.id ?? null) : null;
 
+  /** 选区与跟随状态共用一个页面写入口。 */
   const apply_log_selection = useCallback(
     (payload: AppTableSelectionChange): void => {
       // 清空或选中列表头部继续跟随；主动选中旧日志立即暂停。
-      set_selection_state({
-        ...payload,
-        follow_latest: payload.active_row_id === null || payload.active_row_id === latest_event_id,
-      });
+      set_selection_state(payload);
+      logs.set_following(
+        payload.active_row_id === null || payload.active_row_id === latest_event_id,
+      );
     },
-    [latest_event_id],
+    [latest_event_id, logs.set_following],
   );
 
+  /** 键盘与按钮导航复用相同的选区更新逻辑。 */
   const select_event_id = useCallback(
     (event_id: string): void => {
       apply_log_selection({
@@ -256,15 +256,16 @@ export function LogWindowPage(): JSX.Element {
 
   // 详情正文按当前选中行懒加载，避免完整日志进入列表 state 和筛选排序热路径
   useEffect(() => {
-    if (selected_event_id === null) {
+    if (selected_event_id === null || selected_event_revision === undefined) {
       set_detail_state({ status: "idle", event_id: null, detail: null });
       return;
     }
 
     let disposed = false;
+    const controller = new AbortController();
     set_detail_state({ status: "loading", event_id: selected_event_id, detail: null });
 
-    void read_log_detail(selected_event_id)
+    void read_log_detail(selected_event_id, selected_event_revision, controller.signal)
       .then((detail) => {
         if (disposed) {
           return;
@@ -283,8 +284,9 @@ export function LogWindowPage(): JSX.Element {
 
     return () => {
       disposed = true;
+      controller.abort();
     };
-  }, [selected_event_id, detail_request]);
+  }, [selected_event_id, selected_event_revision, detail_request]);
 
   // 筛选或容量裁剪移除活动行时清空选区，并恢复到跟随模式。
   useEffect(() => {
@@ -305,7 +307,7 @@ export function LogWindowPage(): JSX.Element {
 
   // 新日志替换连续空行时列表长度不变，因此直接依赖最新 ID 而不是数组长度。
   useEffect(() => {
-    if (!selection_state.follow_latest || latest_event_id === null) {
+    if (!logs.following || latest_event_id === null) {
       return;
     }
 
@@ -316,14 +318,23 @@ export function LogWindowPage(): JSX.Element {
       select_event_id(latest_event_id);
     }
     scroll_log_table_to_top();
-  }, [
-    latest_event_id,
-    select_event_id,
-    selection_state.active_row_id,
-    selection_state.follow_latest,
-  ]);
+  }, [latest_event_id, select_event_id, selection_state.active_row_id, logs.following]);
 
-  const columns = useMemo<AppTableColumn<LogEvent>[]>(() => {
+  // 数据更新前捕获表格锚点，裁掉较新页时保持当前阅读位置。
+  function load_older(): void {
+    if (logs.loading || !logs.can_load_older) return;
+    const first_row = document.querySelector(
+      '[data-slot="scroll-area-viewport"] .log-window-page__table [data-row-index]',
+    );
+    const row_index = Number(first_row?.getAttribute("data-row-index") ?? 0);
+    set_scroll_anchor((previous) => ({
+      row_id: selected_event_id ?? visible_events[row_index]?.id ?? null,
+      revision: previous.revision + 1,
+    }));
+    logs.load_older();
+  }
+
+  const columns = useMemo<AppTableColumn<LogEntry>[]>(() => {
     return [
       {
         kind: "data",
@@ -460,18 +471,32 @@ export function LogWindowPage(): JSX.Element {
                 variant="ghost"
                 size="toolbar"
                 className="search-bar__action-trigger"
-                disabled={latest_event_id === null}
                 onClick={() => {
-                  if (latest_event_id === null) {
-                    return;
-                  }
-                  select_event_id(latest_event_id);
+                  set_selection_state({
+                    selected_row_ids: [],
+                    active_row_id: null,
+                    anchor_row_id: null,
+                  });
+                  logs.refresh();
                   scroll_log_table_to_top();
                 }}
               >
                 <ListStart data-icon="inline-start" />
                 {t("log_window_page.action.return_to_top")}
               </AppButton>
+              <SearchBarMenuAction
+                value={logs.date}
+                button_label={
+                  logs.date === null ? t("log_window_page.history.date") : format_date(logs.date)
+                }
+                tooltip={t("log_window_page.history.date")}
+                icon={<CalendarDays data-icon="inline-start" />}
+                options={logs.dates.map((date) => ({ value: date, label: format_date(date) }))}
+                on_change={logs.select_date}
+                on_open={() => {
+                  void logs.refresh_dates();
+                }}
+              />
             </div>
           }
         />
@@ -483,7 +508,44 @@ export function LogWindowPage(): JSX.Element {
           )}
         >
           <Card variant="table" className="log-window-page__table-card">
-            <CardContent className="log-window-page__table-card-content">
+            <CardContent
+              className="log-window-page__table-card-content"
+              onScrollCapture={(event) => {
+                const viewport = event.target;
+                if (
+                  !(viewport instanceof HTMLElement) ||
+                  viewport.dataset.slot !== "scroll-area-viewport" ||
+                  viewport.scrollTop <= 0
+                )
+                  return;
+                // 用户向下阅读即暂停跟随，后续新增日志不会把视口拉回顶部。
+                logs.set_following(false);
+                if (
+                  viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <=
+                  LOG_LOAD_MORE_THRESHOLD_PX
+                )
+                  load_older();
+              }}
+            >
+              {logs.failed || logs.expired ? (
+                <div className="log-window-page__status" role="alert">
+                  <span>
+                    {t(
+                      logs.expired
+                        ? "log_window_page.history.expired"
+                        : "log_window_page.history.failed",
+                    )}
+                  </span>
+                  <AppButton variant="ghost" size="sm" onClick={logs.refresh}>
+                    {t("app.action.retry")}
+                  </AppButton>
+                </div>
+              ) : null}
+              {logs.loading && events.length === 0 ? (
+                <AppContentState status="loading" message={t("log_window_page.history.loading")} />
+              ) : events.length === 0 && !logs.failed && !logs.expired ? (
+                <p className="log-window-page__status">{t("log_window_page.history.empty")}</p>
+              ) : null}
               <AppTable
                 rows={visible_events}
                 columns={columns}
@@ -492,6 +554,7 @@ export function LogWindowPage(): JSX.Element {
                 active_row_id={selection_state.active_row_id}
                 anchor_row_id={selection_state.anchor_row_id}
                 sort_state={null}
+                preserve_scroll_anchor={scroll_anchor}
                 get_row_id={(event) => event.id}
                 on_selection_change={apply_log_selection}
                 on_sort_change={() => undefined}
@@ -595,4 +658,9 @@ export function LogWindowPage(): JSX.Element {
       </div>
     </main>
   );
+}
+
+/** 菜单展示年月日，文件标识本身保持原值。 */
+function format_date(date: string): string {
+  return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
 }

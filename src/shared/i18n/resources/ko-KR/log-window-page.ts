@@ -2,6 +2,13 @@ import type { zh_cn_log_window_page } from "../zh-CN/log-window-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_log_window_page = {
   title: "로그",
+  history: {
+    date: "로그 날짜",
+    loading: "로그 읽는 중…",
+    empty: "로그 없음",
+    failed: "로그를 읽지 못했습니다",
+    expired: "이 날짜의 로그가 삭제되었습니다",
+  },
   level: {
     all: "전체",
     debug: "디버그",
@@ -18,7 +25,7 @@ export const ko_kr_log_window_page = {
     return_to_top: "맨 위로",
   },
   search: {
-    placeholder: "검색 …",
+    placeholder: "불러온 로그 검색…",
     clear: "비우기",
     regex: "정규식",
     regex_tooltip_label: "정규식 모드",

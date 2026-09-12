@@ -15,8 +15,9 @@ export interface ApiRouteContext {
   agent: AgentService;
   postJson: ApiPostJsonRoute;
   createEventStreamResponse: () => Response;
-  createLogStreamResponse: () => Response;
-  readLogDetail: (body: JsonRecord) => JsonValue;
+  readLogFiles: () => JsonValue;
+  readLogPage: (body: JsonRecord) => Promise<JsonValue>;
+  readLogDetail: (body: JsonRecord) => Promise<JsonValue>;
   recordRendererError: (body: JsonRecord) => JsonValue;
 }
 
@@ -36,7 +37,8 @@ export function register_api_routes(context: ApiRouteContext): void {
       }),
     ),
   );
-  context.app.get("/api/logs/stream", () => context.createLogStreamResponse());
+  context.postJson("/api/logs/files", () => context.readLogFiles());
+  context.postJson("/api/logs/page", (body) => context.readLogPage(body));
   context.postJson("/api/logs/detail", (body) => context.readLogDetail(body));
   context.postJson("/api/diagnostics/renderer-error", (body) => context.recordRendererError(body));
 

@@ -122,6 +122,6 @@ export function log_agent_tool_event(
     level,
     source: "agent-tool",
     content: { kind: "text", text: JsonTool.stringifyStrict(record) },
-    targets: { file: true, console: false, window: false },
+    targets: { console: false, window: false },
   });
 }

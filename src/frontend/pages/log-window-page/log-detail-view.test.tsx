@@ -29,7 +29,9 @@ describe("LogDetailView", () => {
           <LogDetailView
             detail={{
               id: "log-1",
-              sequence: 1,
+              date: "20260426",
+              revision: "rev",
+              line: 1,
               created_at: "2026-08-30T00:00:00.000Z",
               level: "error",
               source: "engine-worker",

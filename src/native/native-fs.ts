@@ -28,6 +28,37 @@ export function normalize_native_file_bytes(content: unknown): Uint8Array {
  * Backend / worker 唯一文件系统门面，所有真实磁盘 IO 都先经过平台路径策略。
  */
 export class NativeFs {
+  /** 日志按字节定位，范围读取不把当天完整文件加载到内存。 */
+  public async read_range(file_path: string, offset: number, length: number): Promise<Buffer> {
+    const handle = await fs.promises.open(this.to_native_path(file_path), "r");
+    try {
+      const buffer = Buffer.alloc(length);
+      let count = 0;
+      while (count < length) {
+        const result = await handle.read(buffer, count, length - count, offset + count);
+        if (result.bytesRead === 0) break;
+        count += result.bytesRead;
+      }
+      return buffer.subarray(0, count);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /** 同步追加前只检查末尾一个字节，隔开异常退出留下的尾行。 */
+  public read_last_byte(file_path: string): number | null {
+    const handle = fs.openSync(this.to_native_path(file_path), "r");
+    try {
+      const size = fs.fstatSync(handle).size;
+      if (size === 0) return null;
+      const buffer = Buffer.alloc(1);
+      fs.readSync(handle, buffer, 0, 1, size - 1);
+      return buffer[0] ?? null;
+    } finally {
+      fs.closeSync(handle);
+    }
+  }
+
   /**
    * path_policy 是 Windows 长路径和跨平台路径身份的唯一策略入口。
    */

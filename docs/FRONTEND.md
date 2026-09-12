@@ -14,13 +14,13 @@
 - `DesktopApiError` 是 API 与本地网络失败的统一错误，只承载 `code`、`details` 和可选 cause；用户可见文案键由稳定 `code` 推导并以 `details` 填参。页面只在确有恢复分支时按类型或 `code` 判断，不解析原始异常文本。
 - 界面已呈现结果的操作静默成功，有额外结果信息时再通知。操作拥有者负责失败恢复和一次错误 Toast；持续不可用状态就地说明，共享 Toast 入口负责展示与可选恢复动作。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
-- 日志列表只保存 `log.appended` 轻量事件，选中后由 `desktop-api.ts` 严格归一当前进程详情；普通页面、toast 和空状态不展示调用栈或原始异常。
+- `useLogPages` 独占日志日期、跟随状态和单日期分页缓存；首次选择最新实际日期，目录刷新保留原选择。可见时串行补读，暂停跟随时只检查文件状态；隐藏暂停、恢复补读。滚动加载保留阅读锚点，失败 Toast 后由再次滚动重试。“回到顶部”仍读取所选日期。切换日期取消旧请求，外部编辑清空旧选择与详情，迟到响应不得污染新视图；搜索仅覆盖已加载摘要。普通页面、toast 和空状态不展示调用栈或原始异常。
 - 应用语言元数据归 `src/shared/i18n/types.ts`，菜单与发行包共用该声明且不加载词典。`src/domain/app-language.ts` 保留合法持久化编码并投影为 renderer `Locale`；系统语言只用于显式缺省场景，Provider 消费已解析的 locale。
 - 应用文案及源／目标语言展示名归 `src/shared/i18n`，菜单使用固定自称；领域语言模块只拥有语言码与字符规则。中文词典定义消息契约，其它语言保持键和占位符一致；提示词语言消费归 [`BACKEND.md`](BACKEND.md)。
 
 ## 2. 主窗口运行态
 
-- `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 batch translation、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
+- `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并查询日志文件。高频 batch translation、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
 - `DesktopStateProvider.load_initial_state` 统一初始化与重试，读取后端现有会话的设置、项目、任务和运行态快照；请求世代隔离迟到响应，`initial_state_status` 为 `ready` 后挂载工作区会话与页面。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `BatchTranslationSnapshotStore` 独占 renderer 当前批量翻译快照，HTTP 与 SSE 共用同形载荷并按 `revision` 丢弃旧帧；Hook 通过 `useBatchTranslationSnapshot` 直接消费，不保存或回写本地当前快照。metrics 随快照与显示时钟计算，输入、思考和输出 token 保持互斥累计口径。

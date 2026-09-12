@@ -1,26 +1,27 @@
 import type { LogError } from "./error/log-error";
 
-const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级同时进入 main 日志、SSE payload 和日志窗口筛选
+const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级由正文、索引和日志窗口筛选共用
 
-export const LOG_WINDOW_EVENT_CAPACITY = 8 * 1024; // main replay、详情池与 renderer 日志窗口共享同一实时保留上限
+export const LOG_WINDOW_ENTRY_CAPACITY = 8 * 1024; // 日志窗口摘要缓存上限，历史通过分页继续读取
 
-export const LOG_WINDOW_MESSAGE_PREVIEW_LENGTH = 1024; // 日志列表只消费预览，完整正文按需从后端详情池读取
+export const LOG_WINDOW_MESSAGE_PREVIEW_LENGTH = 1024; // 日志列表只消费预览，完整正文按需从日志文件读取
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
 export interface LogTargets {
-  file: boolean; // 写入日志文件
   console: boolean; // 输出到控制台
-  window: boolean; // 推送到日志窗口和 SSE 订阅者
+  window: boolean; // 记录是否出现在日志窗口
 }
 
-export interface LogEvent {
-  id: string; // 单条日志事件 ID
-  sequence: number; // 进程内递增序号
+export interface LogEntry {
+  id: string; // 日期与物理行号组成的 ID
+  date: string; // 所属日期文件
+  line: number; // 从 1 开始的物理行号，隐藏及损坏行同样计数
+  revision: string; // 所属文件内容代次，用于拒绝外部编辑前的详情请求
   created_at: string; // ISO 时间戳
   level: LogLevel; // 公开日志等级
   source: string; // 产生日志的模块或任务源
-  message_preview: string; // 已格式化日志正文预览，供列表、筛选和 SSE 使用
+  message_preview: string; // 已格式化日志正文预览，供列表与筛选使用
   message_length: number; // 完整正文字符数，供 UI 判断详情体量
 }
 
@@ -38,7 +39,7 @@ export type LogTranslationPair = {
   actor_dst?: string | null; // 字段存在表示角色模式，null 表示该行没有译名
 };
 
-/** 日志正文的跨进程判别联合；文件、控制台和列表只消费它的纯文本投影。 */
+/** 日志正文的跨进程判别联合；文件保存完整结构，控制台和列表消费纯文本投影。 */
 export type LogContent =
   | {
       kind: "text";
@@ -51,15 +52,22 @@ export type LogContent =
       pairs: LogTranslationPair[]; // 按输入顺序排列的翻译对照
     };
 
-export interface LogDetail {
-  id: string; // 与 LogEvent.id 一一对应
-  sequence: number; // 与轻量事件共享的进程内序号
-  created_at: string; // 与轻量事件共享的创建时间
-  level: LogLevel; // 与轻量事件共享的日志等级
+/** 完整正文的持久化事实；API 身份和查询代次不进入文件。 */
+export interface LogFileRecord {
+  created_at: string; // ISO 创建时间
+  level: LogLevel; // 日志等级
   source: string; // 产生日志的模块或任务源
-  content: LogContent; // 完整结构化正文，只通过详情接口按需读取
+  content: LogContent; // 完整结构化正文，通过详情接口按需读取
   error?: LogError; // Error 的可序列化边界快照
   context?: Record<string, unknown>; // 额外结构化上下文
+  window?: false; // 缺省显示，仅隐藏记录写入 false
+}
+
+export interface LogDetail extends Omit<LogFileRecord, "window"> {
+  id: string; // 与 LogEntry.id 一一对应
+  date: string; // 所属日期文件
+  line: number; // 正文物理行号
+  revision: string; // 所属文件内容代次
 }
 
 export interface LogAppendPayload {
@@ -71,7 +79,29 @@ export interface LogAppendPayload {
   targets?: Partial<LogTargets>; // 单次写入的输出目标覆盖
 }
 
-export type LogSubscriber = (event: LogEvent) => void;
+export interface LogCursor {
+  date: string;
+  line: number; // 此边界已处理的正文物理行数，0 表示文件起点
+  revision: string; // 文件内容代次，正文外部修改或索引重建后失效
+}
+
+export interface LogPageRequest {
+  date: string; // 所有读取都限定于这个日期文件
+  direction: "latest" | "before" | "after" | "check";
+  cursor?: LogCursor;
+  limit?: number;
+}
+
+export interface LogPage {
+  status: "ready" | "expired" | "cursor_invalid";
+  entries: LogEntry[];
+  before: LogCursor | null;
+  after: LogCursor | null;
+  has_more: boolean;
+}
+
+export const LOG_PAGE_SIZE = 200;
+export const LOG_POLL_INTERVAL_MS = 500;
 
 const LOG_LEVEL_SET = new Set<LogLevel>(LOG_LEVELS);
 
@@ -112,7 +142,7 @@ export function read_log_content(value: unknown): LogContent | null {
 }
 
 /**
- * 文件、控制台与列表预览共用同一纯文本投影，结构化内容本身仍是详情池唯一事实。
+ * 文件、控制台与列表预览共用同一纯文本投影，结构化内容本身保存在正文文件中。
  */
 export function format_log_content_text(content: LogContent): string {
   if (content.kind === "text") {

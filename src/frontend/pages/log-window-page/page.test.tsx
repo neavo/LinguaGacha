@@ -1,67 +1,48 @@
+import type {
+  AppTableProps,
+  AppTableDataColumn,
+} from "@frontend/widgets/app-table/app-table-types";
 import type { ReactNode } from "react";
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import type { LogEvent } from "@frontend/app/desktop/desktop-api";
-import { LogWindowPage } from "@frontend/pages/log-window-page/page";
+import type { LogEntry } from "@shared/log";
+import { LogWindowPage } from "./page";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
-type StreamController = {
-  closed: boolean;
-  emit: (event: LogEvent) => void;
-  unsubscribe: ReturnType<typeof vi.fn>;
-};
-
-const { subscribe_log_stream_mock, read_log_detail_mock, stream_controllers } = vi.hoisted(() => {
-  const controllers: StreamController[] = [];
-
-  /** 只模拟页面可观察的订阅、投递与取消生命周期。 */
-  function create_controller(on_append: (event: LogEvent) => void): StreamController {
-    const controller: StreamController = {
-      closed: false,
-      emit(event: LogEvent): void {
-        if (!controller.closed) {
-          on_append(event);
-        }
-      },
-      unsubscribe: vi.fn(() => {
-        controller.closed = true;
-      }),
-    };
-
-    return controller;
-  }
-
-  return {
-    subscribe_log_stream_mock: vi.fn((on_append: (event: LogEvent) => void) => {
-      const controller = create_controller(on_append);
-      controllers.push(controller);
-      return controller.unsubscribe;
-    }),
-    read_log_detail_mock: vi.fn(async (id: string) => ({
-      id,
-      sequence: Number(id.replace(/^log-/u, "")) || 1,
-      created_at: "2026-04-26T00:00:00.000+00:00",
-      level: "info",
-      source: "test",
-      content: { kind: "text", text: `完整详情：${id}` },
-    })),
-    stream_controllers: controllers,
-  };
-});
-
-vi.mock("@frontend/app/desktop/desktop-api", async () => {
-  const actual = await vi.importActual<typeof import("@frontend/app/desktop/desktop-api")>(
-    "@frontend/app/desktop/desktop-api",
-  );
-  return {
-    ...actual,
-    subscribe_log_stream: subscribe_log_stream_mock,
-    read_log_detail: read_log_detail_mock,
-  };
-});
-
+const mocks = vi.hoisted(() => ({
+  entries: [] as LogEntry[],
+  older: vi.fn(),
+  refresh: vi.fn(),
+  detail: vi.fn(),
+  date: "20260913",
+  following: true,
+  set_following: vi.fn(),
+  select_date: vi.fn(),
+  refresh_dates: vi.fn(),
+  failed: false,
+  loading: false,
+  has_older: true,
+}));
+vi.mock("./use-log-pages", () => ({
+  useLogPages: () => ({
+    entries: mocks.entries,
+    date: mocks.date,
+    following: mocks.following,
+    set_following: mocks.set_following,
+    select_date: mocks.select_date,
+    refresh_dates: mocks.refresh_dates,
+    dates: ["20260913"],
+    loading: mocks.loading,
+    failed: mocks.failed,
+    reset_revision: 0,
+    expired: false,
+    can_load_older: mocks.has_older,
+    load_older: mocks.older,
+    refresh: mocks.refresh,
+  }),
+}));
+vi.mock("@frontend/app/desktop/desktop-api", () => ({ read_log_detail: mocks.detail }));
 vi.mock("@frontend/app/appearance/appearance-provider", () => {
   return {
     useAppearance: () => ({
@@ -78,36 +59,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-button", () => {
-  return {
-    AppButton: (props: {
-      children: ReactNode;
-      disabled?: boolean;
-      onClick?: () => void;
-      type?: "button";
-      "aria-label"?: string;
-    }) => (
-      <button
-        type={props.type ?? "button"}
-        aria-label={props["aria-label"]}
-        disabled={props.disabled}
-        onClick={props.onClick}
-      >
-        {props.children}
-      </button>
-    ),
-  };
-});
-
-vi.mock("@frontend/shadcn/card", () => {
-  return {
-    Card: (props: { children: ReactNode }) => <section>{props.children}</section>,
-    CardContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    CardHeader: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    CardTitle: (props: { children: ReactNode }) => <h2>{props.children}</h2>,
-  };
-});
-
 vi.mock("@frontend/shadcn/tooltip", () => {
   return {
     Tooltip: (props: { children?: ReactNode; render?: ReactNode }) => (
@@ -121,28 +72,6 @@ vi.mock("@frontend/shadcn/tooltip", () => {
   };
 });
 
-vi.mock("@frontend/widgets/search-bar/search-bar", () => {
-  return {
-    SearchBar: (props: {
-      keyword: string;
-      placeholder: string;
-      on_keyword_change: (next_keyword: string) => void;
-      extra_actions?: ReactNode;
-    }) => (
-      <section>
-        <input
-          value={props.keyword}
-          placeholder={props.placeholder}
-          onChange={(event) => {
-            props.on_keyword_change(event.target.value);
-          }}
-        />
-        {props.extra_actions}
-      </section>
-    ),
-  };
-});
-
 vi.mock("@frontend/widgets/app-editor/app-editor", () => {
   return {
     AppEditor: (props: { value: string }) => <pre>{props.value}</pre>,
@@ -151,32 +80,20 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => {
 
 vi.mock("@frontend/widgets/app-table/app-table", () => {
   return {
-    AppTable: (props: {
-      rows: LogEvent[];
-      columns: Array<{
-        id: string;
-        render_cell: (payload: {
-          row: LogEvent;
-          row_id: string;
-          row_index: number;
-          active: boolean;
-          selected: boolean;
-          dragging: boolean;
-          can_drag: boolean;
-          presentation: "body";
-        }) => ReactNode;
-      }>;
-      get_row_id: (row: LogEvent, index: number) => string;
-      selected_row_ids: string[];
-      active_row_id: string | null;
-      table_class_name?: string;
-      on_selection_change?: (payload: {
-        selected_row_ids: string[];
-        active_row_id: string | null;
-        anchor_row_id: string | null;
-      }) => void;
-      on_row_activate?: (row_id: string) => void;
-    }) => (
+    AppTable: (
+      props: Pick<
+        AppTableProps<LogEntry>,
+        | "rows"
+        | "get_row_id"
+        | "selected_row_ids"
+        | "active_row_id"
+        | "table_class_name"
+        | "on_selection_change"
+        | "on_row_activate"
+      > & {
+        columns: Pick<AppTableDataColumn<LogEntry>, "id" | "render_cell">[];
+      },
+    ) => (
       <>
         <div className={props.table_class_name} data-table-part="header" />
         <div data-slot="scroll-area-viewport">
@@ -226,406 +143,148 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
   };
 });
 
-function build_log_event(message: string, overrides: Partial<LogEvent> = {}): LogEvent {
-  return {
-    id: "log-1",
-    sequence: 1,
-    created_at: "2026-04-26T00:00:00.000+00:00",
-    level: "info",
-    source: "test",
-    message_preview: message,
-    message_length: message.length,
-    ...overrides,
-  };
-}
-
-function get_active_stream(): StreamController {
-  const active_stream = stream_controllers.findLast((controller) => !controller.closed);
-  if (active_stream === undefined) {
-    throw new Error("没有活动日志流。");
-  }
-  return active_stream;
-}
-
-/** 通过真实流控制器发送事件并冲刷页面缓冲。 */
-async function emit_logs(...events: LogEvent[]): Promise<void> {
-  await act(async () => {
-    for (const event of events) {
-      get_active_stream().emit(event);
-      await Promise.resolve();
-    }
-    vi.advanceTimersByTime(500);
+describe("日志窗口", () => {
+  it("打开日期菜单刷新可选文件", async () => {
+    await mount();
+    const date_button = [...container!.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("2026-09-13"),
+    );
+    await act(async () => {
+      date_button?.click();
+    });
+    expect(mocks.refresh_dates).toHaveBeenCalledOnce();
   });
-}
-
-/** 构造最新在前的三条日志，供按钮和方向键共享同一导航基线。 */
-async function emit_navigation_logs(): Promise<void> {
-  await emit_logs(
-    build_log_event("第一条", { id: "log-1", sequence: 1 }),
-    build_log_event("第二条", { id: "log-2", sequence: 2 }),
-    build_log_event("第三条", { id: "log-3", sequence: 3 }),
-  );
-}
-
-describe("LogWindowPage", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
-    }
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+  afterEach(() => {
+    act(() => root?.unmount());
     container?.remove();
-    container = null;
-    root = null;
-    subscribe_log_stream_mock.mockClear();
-    read_log_detail_mock.mockClear();
-    stream_controllers.splice(0, stream_controllers.length);
-    vi.useRealTimers();
+    mocks.entries = [];
+    mocks.failed = false;
+    mocks.following = true;
+    mocks.loading = false;
+    mocks.has_older = true;
+    vi.clearAllMocks();
   });
-
-  async function mount_page(): Promise<void> {
-    vi.useFakeTimers();
+  /** 挂载隔离的日志页面，便于观察用户交互结果。 */
+  async function mount(): Promise<void> {
+    mocks.set_following.mockImplementation((value: boolean) => {
+      mocks.following = value;
+    });
     Object.defineProperty(window, "desktopApp", {
       configurable: true,
-      writable: true,
-      value: create_desktop_bridge_api_mock({
-        methods: {
-          setTitleBarTheme: vi.fn(),
-        },
-      }),
+      value: create_desktop_bridge_api_mock(),
     });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-
+    mocks.entries = [1, 2].map((line) => ({
+      id: `20260913:${String(line)}`,
+      date: "20260913",
+      line,
+      revision: "rev",
+      created_at: "2026-09-13T00:00:00Z",
+      source: "test",
+      level: "info",
+      message_preview: `摘要${String(line)}`,
+      message_length: 3,
+    }));
+    mocks.detail.mockImplementation(async (id: string) => ({
+      ...mocks.entries.find((entry) => entry.id === id),
+      content: { kind: "text", text: `详情${id}` },
+    }));
     await act(async () => {
-      root?.render(
+      root!.render(
         <StrictMode>
           <LogWindowPage />
         </StrictMode>,
       );
     });
   }
-
-  /** 返回页面实际滚动视口，验证回顶行为而不读取组件私有状态。 */
-  function get_log_viewport(): HTMLElement {
-    const viewport = container?.querySelector('[data-slot="scroll-area-viewport"]');
-    if (!(viewport instanceof HTMLElement)) {
-      throw new Error("日志滚动视口未挂载。");
-    }
-    return viewport;
-  }
-
-  /** 按用户可见文案定位回顶按钮。 */
-  function get_return_to_top_button(): HTMLButtonElement {
-    const button = Array.from(container?.querySelectorAll("button") ?? []).find((candidate) => {
-      return candidate.textContent?.includes("log_window_page.action.return_to_top") === true;
-    });
-    if (!(button instanceof HTMLButtonElement)) {
-      throw new Error("回到顶部按钮未挂载。");
-    }
-    return button;
-  }
-
-  it("详情读取失败后直接重试当前日志", async () => {
-    await mount_page();
-    read_log_detail_mock.mockRejectedValueOnce(new Error("offline"));
-    await emit_logs(build_log_event("重试日志", { id: "log-1", sequence: 1 }));
+  it("列表按文件位置排序，选中后读取详情并支持方向键导航", async () => {
+    await mount();
+    const rows = container!.querySelectorAll<HTMLElement>("[data-log-row-id]");
+    expect(rows[0]?.textContent).toContain("摘要2");
     await act(async () => {
-      container
-        ?.querySelector('[data-log-row-id="log-1"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      rows[0]?.click();
     });
-    expect(container?.textContent).toContain("log_window_page.detail.failed");
-    const retry = [...container!.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "app.action.retry",
-    )!;
-    await act(async () => retry.click());
-    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
-    expect(container?.textContent).toContain("完整详情：log-1");
+    expect(mocks.detail).toHaveBeenLastCalledWith("20260913:2", "rev", expect.any(AbortSignal));
+    expect(container!.textContent).toContain("详情20260913:2");
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+    });
+    expect(mocks.detail).toHaveBeenLastCalledWith("20260913:1", "rev", expect.any(AbortSignal));
   });
-
-  it("在 StrictMode 重新挂载 effect 后仍会接收日志事件", async () => {
-    await mount_page();
-
-    await act(async () => {
-      get_active_stream().emit(build_log_event("严格模式日志"));
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
+  it("接近底部自动翻页，保持选择，回到顶部和整体读取错误仍可重试", async () => {
+    await mount();
+    const buttons = [...container!.querySelectorAll("button")];
+    const viewport = container!.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    Object.defineProperties(viewport, {
+      clientHeight: { value: 300, configurable: true },
+      scrollHeight: { value: 2000, configurable: true },
     });
-
-    expect(container?.textContent).toContain("严格模式日志");
-  });
-
-  it("页面卸载时取消日志订阅", async () => {
-    await mount_page();
-    const active_stream = get_active_stream();
-
     await act(async () => {
-      root?.unmount();
+      container!.querySelector<HTMLElement>('[data-log-row-id="20260913:2"]')!.click();
+      viewport.scrollTop = 500;
+      viewport.dispatchEvent(new Event("scroll"));
     });
-    root = null;
-
-    expect(active_stream.unsubscribe).toHaveBeenCalledOnce();
-  });
-
-  it("按最新日志在前的顺序显示日志", async () => {
-    await mount_page();
-
+    expect(mocks.older).not.toHaveBeenCalled();
     await act(async () => {
-      get_active_stream().emit(build_log_event("较早日志", { id: "log-1", sequence: 1 }));
-      get_active_stream().emit(build_log_event("较新日志", { id: "log-2", sequence: 2 }));
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
+      viewport.scrollTop = 1700;
+      viewport.dispatchEvent(new Event("scroll"));
     });
-
-    const page_text = container?.textContent ?? "";
-    expect(page_text.indexOf("较新日志")).toBeLessThan(page_text.indexOf("较早日志"));
-  });
-
-  it("回到顶部按钮在空列表禁用，点击后滚动并选中最新日志", async () => {
-    await mount_page();
-
-    const button = get_return_to_top_button();
-    expect(button.disabled).toBe(true);
-
-    await emit_logs(
-      build_log_event("第一条", { id: "log-1", sequence: 1 }),
-      build_log_event("第二条", { id: "log-2", sequence: 2 }),
-    );
-    expect(button.disabled).toBe(false);
-
-    const viewport = get_log_viewport();
-    viewport.scrollTop = 240;
-    await act(async () => {
-      button.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(viewport.scrollTop).toBe(0);
     expect(
-      container?.querySelector('[data-log-row-id="log-2"][data-active="true"]'),
-    ).not.toBeNull();
-    expect(container?.textContent).toContain("完整详情：log-2");
+      container!.querySelector('[data-log-row-id="20260913:2"]')?.getAttribute("data-selected"),
+    ).toBe("true");
+    expect(mocks.older).toHaveBeenCalledOnce();
+    await act(async () => {
+      buttons
+        .find((button) => button.textContent?.includes("log_window_page.action.return_to_top"))
+        ?.click();
+    });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    mocks.failed = true;
+    await act(async () => {
+      root!.render(
+        <StrictMode>
+          <LogWindowPage />
+        </StrictMode>,
+      );
+    });
+    expect(container!.textContent).toContain("log_window_page.history.failed");
   });
-
-  it("没有选中日志时在列表长度不变后仍跟随最新日志", async () => {
-    await mount_page();
-    await emit_logs(build_log_event("", { id: "log-1", sequence: 1 }));
-
-    const viewport = get_log_viewport();
-    viewport.scrollTop = 240;
-    await emit_logs(build_log_event("", { id: "log-2", sequence: 2 }));
-
-    expect(viewport.scrollTop).toBe(0);
-    expect(container?.querySelector('[data-log-row-id="log-1"]')).toBeNull();
-    expect(container?.querySelector('[data-log-row-id="log-2"]')).not.toBeNull();
-    expect(read_log_detail_mock).not.toHaveBeenCalled();
-  });
-
-  it("选中最新日志时继续跟随，主动选择旧日志后暂停", async () => {
-    await mount_page();
-    await emit_logs(
-      build_log_event("第一条", { id: "log-1", sequence: 1 }),
-      build_log_event("第二条", { id: "log-2", sequence: 2 }),
-    );
-
-    const latest_row = container?.querySelector('[data-log-row-id="log-2"]');
+  it("正在读取或没有更早记录时滚动不触发额外请求", async () => {
+    await mount();
+    mocks.loading = true;
     await act(async () => {
-      latest_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
+      root!.render(
+        <StrictMode>
+          <LogWindowPage />
+        </StrictMode>,
+      );
     });
-
-    const viewport = get_log_viewport();
-    viewport.scrollTop = 240;
-    await emit_logs(build_log_event("第三条", { id: "log-3", sequence: 3 }));
-
-    expect(viewport.scrollTop).toBe(0);
-    expect(
-      container?.querySelector('[data-log-row-id="log-3"][data-active="true"]'),
-    ).not.toBeNull();
-    expect(container?.textContent).toContain("完整详情：log-3");
-
-    const old_row = container?.querySelector('[data-log-row-id="log-1"]');
+    const viewport = container!.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    Object.defineProperties(viewport, {
+      clientHeight: { value: 300 },
+      scrollHeight: { value: 1000 },
+    });
     await act(async () => {
-      old_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
+      viewport.scrollTop = 700;
+      viewport.dispatchEvent(new Event("scroll"));
     });
-
-    viewport.scrollTop = 240;
-    await emit_logs(build_log_event("第四条", { id: "log-4", sequence: 4 }));
-
-    expect(viewport.scrollTop).toBe(240);
-    expect(
-      container?.querySelector('[data-log-row-id="log-1"][data-active="true"]'),
-    ).not.toBeNull();
-    expect(container?.textContent).toContain("完整详情：log-1");
-    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
-  });
-
-  it("双击日志行会放大详情区", async () => {
-    await mount_page();
-
+    expect(mocks.older).not.toHaveBeenCalled();
+    mocks.loading = false;
+    mocks.has_older = false;
     await act(async () => {
-      get_active_stream().emit(build_log_event("可放大日志"));
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
+      root!.render(
+        <StrictMode>
+          <LogWindowPage />
+        </StrictMode>,
+      );
     });
-
-    expect(container?.querySelector(".log-window-page__content--detail-expanded")).toBeNull();
-
-    const row = container?.querySelector('[data-log-row-id="log-1"]');
-
     await act(async () => {
-      row?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      viewport.dispatchEvent(new Event("scroll"));
     });
-
-    expect(container?.querySelector(".log-window-page__content--detail-expanded")).not.toBeNull();
-  });
-
-  it("详情按钮按可见顺序切换上一条和下一条日志", async () => {
-    await mount_page();
-    await emit_navigation_logs();
-
-    const middle_row = container?.querySelector('[data-log-row-id="log-2"]');
-    await act(async () => {
-      middle_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    const previous_button = container?.querySelector(
-      'button[aria-label="log_window_page.detail.previous"]',
-    );
-    const next_button = container?.querySelector(
-      'button[aria-label="log_window_page.detail.next"]',
-    );
-    if (
-      !(previous_button instanceof HTMLButtonElement) ||
-      !(next_button instanceof HTMLButtonElement)
-    ) {
-      throw new Error("日志前后导航按钮未挂载。");
-    }
-
-    expect(previous_button.disabled).toBe(false);
-    expect(next_button.disabled).toBe(false);
-
-    await act(async () => {
-      previous_button.click();
-      await Promise.resolve();
-    });
-    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-3");
-    expect(previous_button.disabled).toBe(true);
-
-    await act(async () => {
-      next_button.click();
-      await Promise.resolve();
-    });
-    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-2");
-
-    await act(async () => {
-      next_button.click();
-      await Promise.resolve();
-    });
-    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
-    expect(next_button.disabled).toBe(true);
-  });
-
-  it("收起和展开详情时四个方向键都能切换相邻日志", async () => {
-    await mount_page();
-    await emit_navigation_logs();
-
-    const middle_row = container?.querySelector('[data-log-row-id="log-2"]');
-    await act(async () => {
-      middle_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    /** 发送一个导航键并验证公开详情读取目标。 */
-    async function press_and_expect(key: string, expected_event_id: string): Promise<void> {
-      await act(async () => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { key }));
-        await Promise.resolve();
-      });
-      expect(read_log_detail_mock).toHaveBeenLastCalledWith(expected_event_id);
-    }
-
-    await press_and_expect("ArrowUp", "log-3");
-    await press_and_expect("ArrowDown", "log-2");
-    await press_and_expect("ArrowRight", "log-1");
-    await press_and_expect("ArrowLeft", "log-2");
-
-    await act(async () => {
-      middle_row?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    });
-    expect(container?.querySelector(".log-window-page__content--detail-expanded")).not.toBeNull();
-
-    await press_and_expect("ArrowUp", "log-3");
-    await press_and_expect("ArrowDown", "log-2");
-    await press_and_expect("ArrowRight", "log-1");
-    await press_and_expect("ArrowLeft", "log-2");
-  });
-
-  it("选中日志行后按需读取完整详情", async () => {
-    await mount_page();
-
-    await act(async () => {
-      get_active_stream().emit(build_log_event("列表预览", { id: "log-9", sequence: 9 }));
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
-    });
-
-    const row = container?.querySelector('[data-log-row-id="log-9"]');
-    await act(async () => {
-      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(read_log_detail_mock).toHaveBeenCalledWith("log-9");
-    expect(container?.textContent).toContain("完整详情：log-9");
-  });
-
-  it("切换选中日志时不展示上一条详情", async () => {
-    read_log_detail_mock.mockImplementation((id: string) => {
-      if (id === "log-2") {
-        return new Promise(() => {});
-      }
-      return Promise.resolve({
-        id,
-        sequence: 1,
-        created_at: "2026-04-26T00:00:00.000+00:00",
-        level: "info",
-        source: "test",
-        content: { kind: "text", text: `完整详情：${id}` },
-      });
-    });
-    await mount_page();
-
-    await act(async () => {
-      get_active_stream().emit(build_log_event("第一条", { id: "log-1", sequence: 1 }));
-      get_active_stream().emit(build_log_event("第二条", { id: "log-2", sequence: 2 }));
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
-    });
-
-    const first_row = container?.querySelector('[data-log-row-id="log-1"]');
-    await act(async () => {
-      first_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(container?.textContent).toContain("完整详情：log-1");
-
-    const second_row = container?.querySelector('[data-log-row-id="log-2"]');
-    await act(async () => {
-      second_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(container?.textContent).not.toContain("完整详情：log-1");
-    expect(container?.textContent).toContain("log_window_page.detail.loading");
+    expect(mocks.older).not.toHaveBeenCalled();
   });
 });
