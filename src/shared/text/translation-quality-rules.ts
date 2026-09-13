@@ -7,13 +7,13 @@ import { check_similarity_by_jaccard } from "../utils/text-tool";
 
 const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值只服务校对页质量 warning
 
-const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给人工校对，不再继续用任务侧质量检查阻塞提交
+const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2;
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const TWO_ASCII_UPPERCASE_LATIN_PATTERN = /^[A-Z]{2}$/;
+const SHORT_ASCII_UPPERCASE_LATIN_PATTERN = /^[A-Z]{2,4}$/;
 
 /**
- * 外文残留按连续字素聚合；孤立 Latin 字素及两字符全大写缩写证据不足，其它片段继续报告。
+ * 外文残留按连续字素聚合；孤立 Latin 字素及短大写片段证据不足，其它片段继续报告。
  */
 export function collect_foreign_residue_fragments(args: {
   text: string;
@@ -21,18 +21,16 @@ export function collect_foreign_residue_fragments(args: {
 }): string[] {
   const fragments: string[] = [];
   let current_fragment = "";
-  let current_grapheme_count = 0;
-  let current_has_other_residue = false;
+  let current_grapheme_count = 0; // 附标与基字符属于同一字素，不能按字符串长度计数。
+  let current_has_other_residue = false; // 含其它书写系统的片段即使只有一个字素也要报告。
 
   // 片段结束时就地判断证据强度，不让过滤规则泄漏到调用方。
   const flush_current_fragment = (): void => {
-    if (
-      current_fragment !== "" &&
-      (current_has_other_residue ||
-        (current_grapheme_count > 1 &&
-          !(current_grapheme_count === 2 &&
-            TWO_ASCII_UPPERCASE_LATIN_PATTERN.test(current_fragment))))
-    ) {
+    const is_exempt_latin_fragment =
+      !current_has_other_residue &&
+      (current_grapheme_count === 1 || SHORT_ASCII_UPPERCASE_LATIN_PATTERN.test(current_fragment));
+
+    if (current_fragment !== "" && !is_exempt_latin_fragment) {
       fragments.push(current_fragment);
     }
     current_fragment = "";
@@ -58,7 +56,7 @@ export function collect_foreign_residue_fragments(args: {
 }
 
 /**
- * 重试阈值同时服务任务侧“停止继续阻塞”和校对页“提示人工介入”。
+ * 校对页在重试次数达到阈值时提示人工介入。
  */
 export function has_translation_retry_reached_review_threshold(retryCount: number): boolean {
   const normalized_retry_count = Number.isFinite(retryCount) ? Math.trunc(retryCount) : 0;

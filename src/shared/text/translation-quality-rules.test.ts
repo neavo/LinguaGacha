@@ -26,22 +26,22 @@ describe("translation-quality-rules", () => {
     ).toEqual(["か\u3099", "ｶﾞ", "゛"]);
   });
 
-  it("忽略孤立拉丁字素和两字符全大写缩写并保留更强的残留证据", () => {
+  it("忽略孤立拉丁字素并报告其它书写系统残留", () => {
     expect(
       collect_foreign_residue_fragments({
-        text: "按 A/X 键，é，e\u0301，Ａ；AB；Aあ；한；β",
+        text: "按 A/X 键，é，e\u0301，Ａ；Aあ；한；β",
         targetLanguage: "ZH",
       }),
     ).toEqual(["Aあ", "한", "β"]);
   });
 
-  it("只豁免恰好两个 ASCII 大写字母", () => {
+  it("豁免 2～4 个 ASCII 大写字母组成的片段并报告超长或其它 Latin 片段", () => {
     expect(
       collect_foreign_residue_fragments({
-        text: "AB Ab ABC OpenAI",
+        text: "AB ABC ABCD ABCDE Ab OpenAI ＡＢ ÉA E\u0301A",
         targetLanguage: "ZH",
       }),
-    ).toEqual(["Ab", "ABC", "OpenAI"]);
+    ).toEqual(["ABCDE", "Ab", "OpenAI", "ＡＢ", "ÉA", "E\u0301A"]);
   });
 
   it.each([
@@ -86,6 +86,7 @@ describe("translation-quality-rules", () => {
     ["日译中有非中文文字时报告", "東京", "東京あ", "JA", "ZH-HANT", true],
     ["日译中孤立 Latin 不构成相似证据", "東京A", "東京A", "JA", "ZH", false],
     ["韩译中无非中文文字时不报告", "韓國", "韓國", "KO", "ZH", false],
+    ["韩译中四字母大写片段不构成相似证据", "韓國HTTP", "韓國HTTP", "KO", "ZH-HANT", false],
     ["韩译中有非中文文字时报告", "韓國", "韓國한", "KO", "ZH", true],
     ["非日韩译中时相似即报告", "same text", "same text", "EN", "ZH", true],
     ["日韩译非中文时相似即报告", "東京", "東京", "JA", "EN", true],
