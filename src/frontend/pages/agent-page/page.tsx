@@ -53,7 +53,7 @@ import { useAgentFollowLatest } from "./agent-scroll";
 import { useAgentInputTransition } from "./use-agent-input-transition";
 import "./agent-page.css";
 
-/** 空会话任务入口按配置顺序展示，关联技能加载后可用；多个任务可共用技能。 */
+/** 空会话任务入口按配置顺序展示，关联技能加载后可用。 */
 const AGENT_TASK_SUGGESTIONS = [
   {
     skillName: "roleplay",
@@ -66,12 +66,12 @@ const AGENT_TASK_SUGGESTIONS = [
     Icon: ListChecks,
   },
   {
-    skillName: "translation-workflow",
+    skillName: "translation-task",
     suggestionKey: "agent_page.empty.suggestions.translate_full_text",
     Icon: BookOpenText,
   },
   {
-    skillName: "translation-workflow",
+    skillName: "translation-review",
     suggestionKey: "agent_page.empty.suggestions.review_translation",
     Icon: ScanText,
   },

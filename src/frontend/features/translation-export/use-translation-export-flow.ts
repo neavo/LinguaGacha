@@ -145,7 +145,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     const draft = agent_input.read_draft();
     if (draft.text.trim() === "" && draft.attachments.length === 0) {
       agent_input.write_draft({
-        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_skill_reference("translation-workflow")}`,
+        text: `${t("agent_page.empty.suggestions.review_translation")} ${format_agent_skill_reference("translation-review")}`,
         attachments: [],
       });
     }
