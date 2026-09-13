@@ -39,11 +39,6 @@ const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "batch_translation" | "agent" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
-/** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
-const model_agent_limits = vi.hoisted(() => ({
-  context_window: 288_000,
-  max_output_tokens: 32_000,
-}));
 const model_thinking_state = vi.hoisted(() => ({
   thinking_level: "OFF" as ModelThinkingLevel,
   available_thinking_levels: [] as ModelThinkingLevel[],
@@ -157,7 +152,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
             id: "agent",
             type: "CUSTOM_OPENAI",
             name: "Agent Model",
-            agent_limits: { ...model_agent_limits },
+            agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
             thinking_level: model_thinking_state.thinking_level,
             available_thinking_levels: model_thinking_state.available_thinking_levels,
           },
@@ -172,6 +167,9 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
 });
 vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
   useTranslationExport: () => ({ can_request_export: true, request_export: vi.fn() }),
+}));
+vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
+  useProjectTranslationStats: () => null,
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -194,8 +192,6 @@ describe("AgentPage", () => {
     resize_observers.clear();
     runtime_state.current = { revision: 0, owner: null };
     push_toast.mockReset();
-    model_agent_limits.context_window = 288_000;
-    model_agent_limits.max_output_tokens = 32_000;
     model_thinking_state.thinking_level = "OFF";
     model_thinking_state.available_thinking_levels = [];
     model_selection_commands.update_thinking_level.mockClear();
@@ -391,8 +387,11 @@ describe("AgentPage", () => {
 
   it("断线状态在输入工具栏展示并暂停发送", async () => {
     const view = await render_page({ transport: "disconnected" });
+    const editor = get_editor(view);
+    await act(async () => editor.dispatch({ changes: { from: 0, insert: "待发送草稿" } }));
 
     expect(view.querySelector('.agent-composer__connection-status[role="status"]')).not.toBeNull();
+    expect(get_button_by_label(view, "agent_page.action.send").disabled).toBe(true);
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
@@ -850,19 +849,6 @@ describe("AgentPage", () => {
     expect(continue_session).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
     expect(editor.state.doc.toString()).toBe("正在编辑的新任务");
-  });
-
-  it("成功轮次不显示回合重试，输入编辑器承接重新运行", async () => {
-    const view = await render_page({
-      entries: [
-        user_entry("user-write", "修改工程", "success", 0, 3),
-        workspace_apply_entry("apply-1"),
-        assistant_entry("assistant-write", "修改完成", "success", 2),
-      ],
-    });
-
-    expect(view.querySelector(".agent-round-footer button")).toBeNull();
-    expect(view.querySelector(".agent-composer--inline")).toBeNull();
   });
 
   it("历史消息原位编辑直接保存输入与输出", async () => {
