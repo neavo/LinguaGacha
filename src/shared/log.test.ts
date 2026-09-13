@@ -8,33 +8,46 @@ describe("log 基础模型", () => {
     expect(normalize_log_level("bad")).toBe("info");
   });
 
-  it("严格读取三种日志正文", () => {
-    expect(read_log_content({ kind: "text", text: "普通日志" })).toEqual({
-      kind: "text",
-      text: "普通日志",
-    });
+  it("普通文本、空行和异常正文保持原有显示格式", () => {
+    expect(format_log_readable_text({ content: "" })).toBe("");
+    expect(format_log_readable_text({ content: "第一行\n第二行" })).toBe("第一行\n第二行");
     expect(
-      read_log_content({
-        kind: "translation_result",
-        summary: ["完成"],
-        sections: [{ title: "思考", text: "过程" }],
-        pairs: [{ src: "原文", dst: "译文", actor_src: null, actor_dst: "译名" }],
+      format_log_readable_text({
+        content: "操作失败",
+        error: { message: "boom", stack: "Error: boom\n    at request" },
       }),
-    ).toEqual({
+    ).toBe("操作失败\nboom\nError: boom\n    at request");
+  });
+
+  it("读取普通文本和翻译对照", () => {
+    expect(read_log_content("普通日志")).toBe("普通日志");
+    const content = {
       kind: "translation_result",
+      started_at: "2026-09-13T00:00:00.000Z",
+      ended_at: "2026-09-13T00:00:01.000Z",
       summary: ["完成"],
       sections: [{ title: "思考", text: "过程" }],
       pairs: [{ src: "原文", dst: "译文", actor_src: null, actor_dst: "译名" }],
-    });
+    };
+    expect(read_log_content(content)).toEqual(content);
   });
 
-  it("拒绝旧 message、未知 kind 和缺失字段", () => {
-    expect(read_log_content({ message: "旧正文" })).toBeNull();
+  it("拒绝未知正文类型和不完整翻译对照", () => {
     expect(read_log_content({ kind: "markdown", text: "# 标题" })).toBeNull();
-    expect(read_log_content({ kind: "translation_result", summary: [], sections: [] })).toBeNull();
     expect(
       read_log_content({
         kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
+        summary: [],
+        sections: [],
+      }),
+    ).toBeNull();
+    expect(
+      read_log_content({
+        kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
         summary: [],
         sections: [],
         pairs: [{ src: "原文", dst: "译文", actor_src: 1 }],
@@ -46,6 +59,8 @@ describe("log 基础模型", () => {
     const text = format_log_readable_text({
       content: {
         kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
         summary: ["用户可见摘要"],
         sections: [],
         pairs: [],

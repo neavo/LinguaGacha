@@ -40,27 +40,27 @@ export class LogManager {
   }
   /** 将调试正文送入统一写入口。 */
   public debug(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "debug", content: { kind: "text", text: message } });
+    this.append({ ...payload, level: "debug", content: message });
   }
 
   /** 将信息正文送入统一写入口。 */
   public info(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "info", content: { kind: "text", text: message } });
+    this.append({ ...payload, level: "info", content: message });
   }
 
   /** 将警告正文送入统一写入口。 */
   public warning(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "warning", content: { kind: "text", text: message } });
+    this.append({ ...payload, level: "warning", content: message });
   }
 
   /** 将错误正文送入统一写入口。 */
   public error(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "error", content: { kind: "text", text: message } });
+    this.append({ ...payload, level: "error", content: message });
   }
 
   /** 同步追加致命错误正文，供退出前诊断使用。 */
   public fatal(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
-    this.append({ ...payload, level: "fatal", content: { kind: "text", text: message } });
+    this.append({ ...payload, level: "fatal", content: message });
   }
 
   /** 正文同步追加完成才写索引；控制台与窗口均从同一正文消费。 */

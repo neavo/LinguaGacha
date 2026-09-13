@@ -306,12 +306,13 @@ export class TranslationWorkUnitRunner {
     response_parts: { translation_text: string; rule_analysis_text: string },
   ): WorkUnitLogEntry[] {
     const app_language = normalize_setting_snapshot(context.request.config_snapshot).app_language;
+    const ended_at = Date.now();
     const stats = this.t(app_language, "app.log.engine_task_success", {
       CT: String(response.output_tokens),
       LINES: String(context.request_items.length),
       PT: String(response.input_tokens),
       RT: String(response.reasoning_tokens),
-      TIME: ((Date.now() - context.start_time) / 1000).toFixed(2),
+      TIME: ((ended_at - context.start_time) / 1000).toFixed(2),
     });
     const summary = [stats];
     let level: WorkUnitLogEntry["level"] = "info";
@@ -358,6 +359,8 @@ export class TranslationWorkUnitRunner {
         level,
         content: {
           kind: "translation_result",
+          started_at: new Date(context.start_time).toISOString(),
+          ended_at: new Date(ended_at).toISOString(),
           summary,
           sections,
           pairs: context.request_items.map((item, index) => ({

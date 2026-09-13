@@ -197,7 +197,6 @@ export class ApiGatewayServer {
           source: "api-gateway",
           context: {
             code: normalized_error.code,
-            details: normalized_error.public_details,
             path: route_path,
             request_id,
             status,

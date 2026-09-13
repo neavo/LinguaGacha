@@ -386,6 +386,10 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(read_log_summary(result.logs[0])).toContain("任务耗时 2.50 秒");
+    expect(result.logs[0]?.content).toMatchObject({
+      started_at: "1970-01-01T00:00:01.000Z",
+      ended_at: "1970-01-01T00:00:03.500Z",
+    });
   });
 
   it.each([true, false])(

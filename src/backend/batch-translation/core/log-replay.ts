@@ -85,17 +85,17 @@ export class TranslationLogReplay {
   public task_error(message: string, error: unknown): void {
     this.log_manager.append({
       level: "error",
-      content: { kind: "text", text: message },
+      content: message,
       source: "engine",
       error,
     });
   }
 
-  /** 普通生命周期日志统一包装成 text content，避免调用点重复协议形状。 */
+  /** 普通生命周期日志共用等级、来源与字符串正文的写入口。 */
   private append_text(level: "info" | "warning" | "error", message: string, source: string): void {
     this.log_manager.append({
       level,
-      content: { kind: "text", text: message },
+      content: message,
       source,
     });
   }

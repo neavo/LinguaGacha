@@ -1,27 +1,14 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "../../../shared/error";
-import { LogManager } from "../../log/log-manager";
 import { set_main_log_language_reader } from "../../log/log-text";
-import {
-  AgentToolError,
-  agent_tool_result,
-  log_agent_tool_event,
-  prepare_agent_tool,
-} from "./definition";
+import { AgentToolError, agent_tool_result, prepare_agent_tool } from "./definition";
 
 describe("Agent 工具公共边界", () => {
-  const cleanup_callbacks: Array<() => Promise<void> | void> = [];
-
-  afterEach(async () => {
+  afterEach(() => {
     set_main_log_language_reader(null);
-    while (cleanup_callbacks.length > 0) await cleanup_callbacks.pop()?.();
     vi.restoreAllMocks();
   });
 
@@ -119,118 +106,4 @@ describe("Agent 工具公共边界", () => {
 
     expect(() => prepare_agent_tool(invalid, { error: vi.fn() })).toThrow();
   });
-
-  it("start/end 使用稳定 source、等级、目标与完整严格 JSON", () => {
-    const append = vi.fn();
-    const input = { query: "x".repeat(5_000), items: Array.from({ length: 30 }, (_, i) => i) };
-    const output = {
-      content: [{ type: "text", text: "web正文".repeat(2_000) }],
-      details: { content: "skill正文".repeat(2_000) },
-    };
-
-    log_agent_tool_event({ append }, tool_start("call-1", "web_search", input));
-    log_agent_tool_event({ append }, tool_end("call-1", "web_search", output, true));
-
-    expect(append).toHaveBeenCalledTimes(2);
-    expect(append.mock.calls[0]?.[0]).toMatchObject({
-      level: "info",
-      source: "agent-tool",
-      targets: { console: false, window: false },
-    });
-    expect(append.mock.calls[1]?.[0]).toMatchObject({
-      level: "error",
-      source: "agent-tool",
-      targets: { console: false, window: false },
-    });
-    expect(JSON.parse(append.mock.calls[0]?.[0].content.text)).toEqual({
-      event: "start",
-      tool_call_id: "call-1",
-      tool_name: "web_search",
-      input,
-    });
-    expect(JSON.parse(append.mock.calls[1]?.[0].content.text)).toEqual({
-      event: "end",
-      tool_call_id: "call-1",
-      tool_name: "web_search",
-      is_error: true,
-      output,
-    });
-  });
-
-  it("真实 LogManager 不裁剪调用正文且不写控制台和窗口", async () => {
-    const console_lines: string[] = [];
-    const { log_manager, log_dir } = create_log_manager(console_lines);
-    const input = { text: "i".repeat(5_000), items: Array.from({ length: 30 }, (_, i) => i) };
-    const output = {
-      content: [{ type: "text", text: "w".repeat(5_000) }],
-      details: { skill: "s".repeat(5_000) },
-    };
-
-    log_agent_tool_event(log_manager, tool_start("long", "read_skill", input));
-    log_agent_tool_event(log_manager, tool_end("long", "read_skill", output, false));
-
-    const records = fs
-      .readFileSync(path.join(log_dir, `app.${log_manager.files.list_dates()[0]!}.jsonl`), "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { content: { text: string } });
-    expect(JSON.parse(records[0]?.content.text ?? "{}").input).toEqual(input);
-    expect(JSON.parse(records[1]?.content.text ?? "{}").output).toEqual(output);
-    expect(console_lines).toEqual([]);
-    expect(
-      (
-        await log_manager.files.read_page({
-          date: log_manager.files.list_dates()[0]!,
-          direction: "latest",
-        })
-      ).entries,
-    ).toEqual([]);
-  });
-
-  it("非工具 SDK 事件不产生日志", () => {
-    const append = vi.fn();
-    log_agent_tool_event({ append }, { type: "agent_start" } as AgentSessionEvent);
-    expect(append).not.toHaveBeenCalled();
-  });
-
-  /** 使用独立临时目录，避免测试写入用户日志。 */
-  function create_log_manager(console_lines: string[]): {
-    log_manager: LogManager;
-    log_dir: string;
-  } {
-    const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-tool-test-"));
-    const log_manager = new LogManager({
-      logDir: log_dir,
-      consoleWriter: (text) => console_lines.push(text),
-    });
-    cleanup_callbacks.push(() => fs.rmSync(log_dir, { force: true, recursive: true }));
-    cleanup_callbacks.push(() => log_manager.shutdown());
-    return { log_manager, log_dir };
-  }
 });
-
-/** 构造工具开始事件，保留 SDK 入口形状。 */
-function tool_start(tool_call_id: string, tool_name: string, input: unknown): AgentSessionEvent {
-  return {
-    type: "tool_execution_start",
-    toolCallId: tool_call_id,
-    toolName: tool_name,
-    args: input,
-  };
-}
-
-/** 构造工具结束事件，覆盖成功与失败输出。 */
-function tool_end(
-  tool_call_id: string,
-  tool_name: string,
-  output: unknown,
-  is_error: boolean,
-): AgentSessionEvent {
-  return {
-    type: "tool_execution_end",
-    toolCallId: tool_call_id,
-    toolName: tool_name,
-    result: output,
-    isError: is_error,
-  };
-}

@@ -191,7 +191,7 @@ describe("日志窗口", () => {
     }));
     mocks.detail.mockImplementation(async (id: string) => ({
       ...mocks.entries.find((entry) => entry.id === id),
-      content: { kind: "text", text: `详情${id}` },
+      content: `详情${id}`,
     }));
     await act(async () => {
       root!.render(
