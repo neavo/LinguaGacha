@@ -33,12 +33,14 @@ export function read_translation_worker_result(value: unknown): WorkUnitExecutio
     !Array.isArray(output["items"]) ||
     !output["items"].every(is_json_record) ||
     !Array.isArray(logs) ||
-    !logs.every(
-      (log) =>
-        is_json_record(log) &&
-        ["info", "warning", "error"].includes(String(log["level"])) &&
-        read_log_content(log["content"])?.kind === "translation_result",
-    )
+    !logs.every((log) => {
+      if (!is_json_record(log) || !["info", "warning", "error"].includes(String(log["level"])))
+        return false;
+      const content = read_log_content(log["content"]);
+      return (
+        content !== null && typeof content !== "string" && content.kind === "translation_result"
+      );
+    })
   )
     throw new AppError("worker.execution_failed");
   return value as unknown as WorkUnitExecutionResult;

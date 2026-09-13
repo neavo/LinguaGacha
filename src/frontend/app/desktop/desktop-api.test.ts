@@ -107,6 +107,8 @@ describe("desktop-api", () => {
               source: "engine-worker",
               content: {
                 kind: "translation_result",
+                started_at: "2026-09-13T00:00:00.000Z",
+                ended_at: "2026-09-13T00:00:01.000Z",
                 summary: ["任务失败"],
                 sections: [],
                 pairs: [{ src: "原文", dst: "译文" }],
@@ -133,6 +135,8 @@ describe("desktop-api", () => {
       source: "engine-worker",
       content: {
         kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
         summary: ["任务失败"],
         sections: [],
         pairs: [{ src: "原文", dst: "译文" }],

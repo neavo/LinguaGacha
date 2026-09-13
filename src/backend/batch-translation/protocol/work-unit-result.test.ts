@@ -18,7 +18,7 @@ describe("翻译 worker 结果边界", () => {
     {},
     { ...result, output: { kind: "translation", items: [null] } },
     { ...result, metrics: { input_tokens: Infinity, reasoning_tokens: 0, output_tokens: 2 } },
-    { ...result, logs: [{ level: "info", content: { kind: "text", text: "bad result" } }] },
+    { ...result, logs: [{ level: "info", content: "bad result" }] },
   ])("拒绝非法结果 %j", (value) => {
     expect(() => read_translation_worker_result(value)).toThrowError(
       expect.objectContaining({ code: "worker.execution_failed" }),

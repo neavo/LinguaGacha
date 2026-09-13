@@ -13,7 +13,7 @@ function record(text: string, window = true): LogFileRecord {
     created_at: "2026-09-13T08:00:00.000Z",
     level: "info",
     source: "test",
-    content: { kind: "text", text },
+    content: text,
     ...(window ? {} : { window: false as const }),
   };
 }
@@ -63,7 +63,7 @@ describe("LogFileStore", () => {
       "新增",
     ]);
     expect(await store.read_detail(after.entries[1]!.id, after.entries[1]!.revision)).toMatchObject(
-      { content: { text: "第二行" } },
+      { content: "第二行" },
     );
     await store.close();
   });

@@ -101,10 +101,10 @@ describe("ApiGatewayServer", () => {
       revision: page.data.entries[0]!.revision,
     });
     const detail_body = (await detail_response.json()) as {
-      data?: { detail?: { content?: { kind?: string; text?: string }; source?: string } };
+      data?: { detail?: { content?: string; source?: string } };
     };
     expect(detail_body.data?.detail).toMatchObject({
-      content: { kind: "text", text: full_message },
+      content: full_message,
       source: "test",
     });
     const missing_date = await post_json(started.baseUrl, "/api/logs/page", {

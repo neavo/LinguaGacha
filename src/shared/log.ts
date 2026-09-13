@@ -1,4 +1,5 @@
 import type { LogError } from "./error/log-error";
+import type { JsonRecord } from "../domain/json";
 
 const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级由正文、索引和日志窗口筛选共用
 
@@ -41,29 +42,32 @@ export type LogTranslationPair = {
 
 /** 日志正文的跨进程判别联合；文件保存完整结构，控制台和列表消费纯文本投影。 */
 export type LogContent =
-  | {
-      kind: "text";
-      text: string; // 普通生命周期或诊断正文
-    }
+  | string
+  | (JsonRecord & { kind: "agent" })
   | {
       kind: "translation_result";
       summary: string[]; // 统计、状态和重试摘要
       sections: LogTextSection[]; // 模型响应过程
       pairs: LogTranslationPair[]; // 按输入顺序排列的翻译对照
+      started_at: string; // worker 开始模型请求的时间
+      ended_at: string; // worker 完成响应处理的时间
     };
 
-/** 完整正文的持久化事实；API 身份和查询代次不进入文件。 */
-export interface LogFileRecord {
+/** 文件与详情共用的日志事实，查询身份和输出显隐由各自边界补齐。 */
+export interface LogRecord {
   created_at: string; // ISO 创建时间
   level: LogLevel; // 日志等级
   source: string; // 产生日志的模块或任务源
   content: LogContent; // 完整结构化正文，通过详情接口按需读取
   error?: LogError; // Error 的可序列化边界快照
   context?: Record<string, unknown>; // 额外结构化上下文
+}
+
+export interface LogFileRecord extends LogRecord {
   window?: false; // 缺省显示，仅隐藏记录写入 false
 }
 
-export interface LogDetail extends Omit<LogFileRecord, "window"> {
+export interface LogDetail extends LogRecord {
   id: string; // 与 LogEntry.id 一一对应
   date: string; // 所属日期文件
   line: number; // 正文物理行号
@@ -115,25 +119,38 @@ export function normalize_log_level(value: unknown): LogLevel {
   return is_log_level(value) ? value : "info";
 }
 
-/**
- * HTTP 详情边界只接收当前判别联合，不读取旧 message 载荷。
- */
+/** 文件与 HTTP 详情共用正文校验，保持生产者、存储和显示的单一契约。 */
 export function read_log_content(value: unknown): LogContent | null {
+  if (typeof value === "string") return value;
   const content = read_record(value);
   if (content === null) {
     return null;
   }
 
   switch (content["kind"]) {
-    case "text":
-      return typeof content["text"] === "string" ? { kind: "text", text: content["text"] } : null;
+    case "agent":
+      // Agent 正文只按 JSON 展示；事件字段由后端生产者约束，不在读取端重复定义。
+      return structuredClone(content) as JsonRecord & { kind: "agent" };
     case "translation_result": {
       const summary = read_string_array(content["summary"]);
       const sections = read_text_sections(content["sections"]);
       const pairs = read_translation_pairs(content["pairs"]);
-      return summary === null || sections === null || pairs === null
+      const started_at = content["started_at"];
+      const ended_at = content["ended_at"];
+      return summary === null ||
+        sections === null ||
+        pairs === null ||
+        typeof started_at !== "string" ||
+        typeof ended_at !== "string"
         ? null
-        : { kind: "translation_result", summary, sections, pairs };
+        : {
+            kind: "translation_result",
+            summary,
+            sections,
+            pairs,
+            started_at,
+            ended_at,
+          };
     }
 
     default:
@@ -145,9 +162,8 @@ export function read_log_content(value: unknown): LogContent | null {
  * 文件、控制台与列表预览共用同一纯文本投影，结构化内容本身保存在正文文件中。
  */
 export function format_log_content_text(content: LogContent): string {
-  if (content.kind === "text") {
-    return content.text;
-  }
+  if (typeof content === "string") return content;
+  if (content.kind === "agent") return JSON.stringify(content, null, 2);
 
   const rows = [
     ...content.summary,
@@ -176,7 +192,7 @@ export function format_log_content_text(content: LogContent): string {
 
 // 普通文本附带异常消息；结构化结果由 summary 承载用户文案，只追加诊断调用栈。
 export function format_log_readable_text(detail: Pick<LogDetail, "content" | "error">): string {
-  const error_message = detail.content.kind === "text" ? detail.error?.message : undefined;
+  const error_message = typeof detail.content === "string" ? detail.error?.message : undefined;
   return [format_log_content_text(detail.content), error_message, detail.error?.stack]
     .filter((value): value is string => value !== undefined && value.trim() !== "")
     .join("\n");

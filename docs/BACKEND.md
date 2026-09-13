@@ -11,9 +11,9 @@
 - 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
-- `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。正文保存完整 `LogContent`、错误和上下文；控制台和索引摘要消费文本投影。结构化任务摘要拥有用户可见结果，其投影省略 `LogError.message`，保留诊断调用栈。
+- `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影省略 `LogError.message`、保留调用栈。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
-- 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 工具完整严格 JSON 保存在 `content.text`，不经裁剪 context 或控制台。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
+- 查询固定在显式日期文件内结束；隐藏记录 `window: false` 不进入摘要和详情。Agent 对话与执行记录消费同一查询链路，其生产和生命周期边界归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。正文、索引和旧 `.log` 按最近三个日期共同轮转；旧 `.log` 只供直接查看。
 - renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
 `POST /api/models/select` 接受 `target`（translation / agent / agent_batch_translation）、`model_id` 和可选 `thinking_level`，返回 `ModelSelectionSnapshot`。Agent 主模型选择不接受等级，批量跟随使用 `model_id: null` 且不带等级；省略等级保留模型归一配置，显式等级须属于模型能力集合。`ModelService` 在同一配置副本中校验并更新选择和模型全局等级，同步保存一次，设置文件写入成功后才更新缓存；该边界不提供磁盘写入回滚。独立等级更新按用途定位当前模型。

@@ -1249,6 +1249,46 @@ describe("AgentService", () => {
     ]);
   });
 
+  it("重置期间的工具终帧归入旧会话，新会话使用独立日志身份", async () => {
+    const { service, log_append } = await create_service();
+    fake_agent_state.mode = "tool_only";
+    fake_agent_state.hold_tool_execution = true;
+    await service.send_message({ text: "旧任务", attachments: [] });
+    await vi.waitFor(() => expect(fake_agent_state.release_tool_execution).not.toBeNull());
+    const started = log_append.mock.calls
+      .map(([payload]) => payload.content)
+      .find((content) => content.event === "tool_start");
+    const reset = service.reset();
+    expect(service.get_snapshot().entries).toEqual([]);
+    expect(log_append.mock.calls.some(([payload]) => payload.content.event === "run_end")).toBe(
+      false,
+    );
+    fake_agent_state.release_tool_execution?.();
+    await reset;
+    const records = log_append.mock.calls.map(([payload]) => payload.content);
+    expect(records.filter((content) => content.event === "tool_end")).toEqual([
+      expect.objectContaining({
+        session_id: started.session_id,
+        run_id: started.run_id,
+        tool_call_id: started.tool_call_id,
+        ended_at: expect.any(String),
+      }),
+    ]);
+    expect(records.filter((content) => content.event === "run_end")).toEqual([
+      expect.objectContaining({
+        session_id: started.session_id,
+        run_id: started.run_id,
+        status: "stopped",
+      }),
+    ]);
+    fake_agent_state.mode = "success";
+    await service.send_message({ text: "新任务", attachments: [] });
+    await wait_for_idle(service);
+    const latest = log_append.mock.calls.at(-1)?.[0].content;
+    expect(latest).toMatchObject({ event: "run_end", status: "success" });
+    expect(latest.session_id).not.toBe(started.session_id);
+  });
+
   it("成功工具与 SDK Schema 失败都记录完整 start/end", async () => {
     const { service, log_append } = await create_service();
     fake_agent_state.mode = "tool_only";
@@ -1261,19 +1301,19 @@ describe("AgentService", () => {
 
     const records = log_append.mock.calls.map(
       ([payload]) =>
-        JSON.parse(payload.content.text) as {
-          event: "start" | "end";
+        payload.content as {
+          event: "tool_start" | "tool_end";
           tool_call_id: string;
-          is_error?: boolean;
+          status?: string;
         },
     );
     expect(records.filter((record) => record.tool_call_id === "tool-only")).toEqual([
-      expect.objectContaining({ event: "start" }),
-      expect.objectContaining({ event: "end", is_error: false }),
+      expect.objectContaining({ event: "tool_start" }),
+      expect.objectContaining({ event: "tool_end", status: "success" }),
     ]);
     expect(records.filter((record) => record.tool_call_id === "schema-invalid")).toEqual([
-      expect.objectContaining({ event: "start" }),
-      expect.objectContaining({ event: "end", is_error: true }),
+      expect.objectContaining({ event: "tool_start" }),
+      expect.objectContaining({ event: "tool_end", status: "error" }),
     ]);
   });
 
@@ -1881,11 +1921,11 @@ describe("AgentService", () => {
     );
     expect(
       log_append.mock.calls
-        .map(([payload]) => JSON.parse(payload.content.text) as JsonRecord)
+        .map(([payload]) => payload.content as JsonRecord)
         .filter((record) => record["tool_call_id"] === "write-1"),
     ).toEqual([
-      expect.objectContaining({ event: "start" }),
-      expect.objectContaining({ event: "end" }),
+      expect.objectContaining({ event: "tool_start" }),
+      expect.objectContaining({ event: "tool_end" }),
     ]);
   });
 

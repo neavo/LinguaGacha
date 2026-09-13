@@ -1,62 +1,83 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@frontend/app/locale/locale-provider";
-import { LogDetailView } from "@frontend/pages/log-window-page/log-detail-view";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import type { LogContent } from "@shared/log";
+import type { LogError } from "@shared/error";
+
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
+}));
+
+import { LogDetailView } from "./log-detail-view";
 
 describe("LogDetailView", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
 
   afterEach(() => {
-    if (root !== null) {
-      act(() => root?.unmount());
-    }
+    act(() => root?.unmount());
     container?.remove();
     root = null;
     container = null;
   });
 
-  it("结构化摘要显示用户错误且诊断区只显示调用栈", () => {
+  /** 公共挂载只补齐详情元数据，用例明确提供需要观察的正文和错误。 */
+  function render_detail(content: LogContent, error?: LogError): HTMLDivElement {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-
     act(() => {
       root?.render(
-        <LocaleProvider locale="zh-CN">
-          <LogDetailView
-            detail={{
-              id: "log-1",
-              date: "20260426",
-              revision: "rev",
-              line: 1,
-              created_at: "2026-08-30T00:00:00.000Z",
-              level: "error",
-              source: "engine-worker",
-              content: {
-                kind: "translation_result",
-                summary: ["用户可见摘要"],
-                sections: [],
-                pairs: [],
-              },
-              error: {
-                message: "不应单独展示的错误消息",
-                stack: "ProviderError\n    at request",
-              },
-            }}
-          />
-        </LocaleProvider>,
+        <TooltipProvider>
+          <LocaleProvider locale="zh-CN">
+            <LogDetailView
+              detail={{
+                id: "log-1",
+                date: "20260913",
+                revision: "rev",
+                line: 1,
+                created_at: "2026-09-13T00:00:01.000Z",
+                level: "info",
+                source: "test",
+                content,
+                error,
+              }}
+            />
+          </LocaleProvider>
+        </TooltipProvider>,
       );
     });
+    return container;
+  }
 
-    expect(container.querySelector(".log-detail-view__summary")?.textContent).toContain(
-      "用户可见摘要",
+  it("结构化摘要显示用户错误且诊断区只显示调用栈", () => {
+    const view = render_detail(
+      {
+        kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
+        summary: ["用户可见摘要"],
+        sections: [],
+        pairs: [],
+      },
+      { message: "不应单独展示的错误消息", stack: "ProviderError\n    at request" },
     );
-    expect(container.querySelector(".log-detail-view__error pre")?.textContent).toBe(
+    expect(view.querySelector(".log-detail-view__summary")?.textContent).toContain("用户可见摘要");
+    expect(view.querySelector(".log-detail-view__error pre")?.textContent).toBe(
       "ProviderError\n    at request",
     );
-    expect(container.textContent).not.toContain("不应单独展示的错误消息");
+    expect(view.textContent).not.toContain("不应单独展示的错误消息");
+  });
+
+  it("AGENT 结构化正文进入详情编辑器", () => {
+    const view = render_detail({
+      kind: "agent",
+      event: "message",
+      parts: [{ kind: "text", text: "任务已经完成" }],
+    });
+    expect(view.querySelector(".cm-content")?.textContent).toContain("任务已经完成");
   });
 });

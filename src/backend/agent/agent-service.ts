@@ -32,7 +32,6 @@ import {
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
-  type AgentAssistantMessagePart,
   type AgentAssistantMessageParts,
   type AgentApprovalMode,
   type AgentCommandAck,
@@ -78,7 +77,10 @@ import {
   type AgentSkillDefinition,
 } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { AgentToolError, log_agent_tool_event, prepare_agent_tool } from "./model-tools/definition";
+import { AgentToolError, prepare_agent_tool } from "./model-tools/definition";
+
+import { AgentSessionLog } from "./agent-log";
+import { project_assistant_message_parts } from "./agent-message";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -121,6 +123,7 @@ function select_agent_skills(
 }
 
 type AgentRuntime = {
+  log: AgentSessionLog; // 跟随 SDK 生命周期，独立于公开时间线的提前封口
   session: AgentSession;
   model_config: Model; // 随 SDK 成功换模同步的应用配置；批量翻译跟随时以此作为继承来源
   unsubscribe: () => void;
@@ -574,6 +577,7 @@ export class AgentService {
     ) {
       throw new AppErrors.AppError("runtime.busy");
     }
+    this.runtime?.log.request_stop();
     this.flush_assistant_stream();
     this.runtime?.session.clearQueue();
     this.input_queue.cancel_send();
@@ -606,6 +610,7 @@ export class AgentService {
     this.unsubscribe_project_session();
     const runtime = this.runtime;
     const reset = this.session_reset;
+    runtime?.log.reset("dispose");
     const acceptance = this.operation_acceptance;
     const settlement = this.runtime_settlement;
     this.runtime = null;
@@ -731,6 +736,11 @@ export class AgentService {
         });
       }
 
+      runtime.log.revise(
+        this.latest_round_checkpoint!.entry_id,
+        revision.role,
+        revision.message.text,
+      );
       this.replace_active_history(runtime, revision.checkpoint.leaf_id);
       this.pending_assistant_checkpoint = null;
       if (revision.role === "assistant") {
@@ -1058,13 +1068,14 @@ export class AgentService {
       settingsManager: settings_manager,
     });
     const runtime: AgentRuntime = {
+      log: new AgentSessionLog(this.log_manager),
       session,
       model_config: resolved_model.model_config,
       unsubscribe: () => undefined,
       steer_ready: false,
     };
     runtime.unsubscribe = session.subscribe((event) => {
-      log_agent_tool_event(this.log_manager, event);
+      runtime.log.handle_event(event);
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
     return runtime;
@@ -1079,6 +1090,7 @@ export class AgentService {
   ): Promise<void> {
     let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     let next_request: AgentModelRequest | null = null;
+    runtime.log.begin_run(this.latest_round_checkpoint!.entry_id, request.kind);
     try {
       // 普通入口已在受理前完成预检；FIFO 在实际出队执行时采用新设置，失败归入该轮终态。
       if (request.kind === "queued")
@@ -1103,6 +1115,7 @@ export class AgentService {
         this.log_request_failure(error);
       }
     } finally {
+      runtime.log.finish_run(outcome);
       if (this.prompt_is_current(runtime, generation)) {
         this.flush_assistant_stream();
         this.finish_current_round(outcome);
@@ -1565,6 +1578,7 @@ export class AgentService {
     this.runtime_generation += 1;
     this.clear_assistant_stream();
     const runtime = this.runtime;
+    runtime?.log.reset(scope);
     const acceptance = this.operation_acceptance;
     const settlement = this.runtime_settlement;
     this.runtime = null;
@@ -1606,11 +1620,6 @@ export class AgentService {
   /** SDK 运行时只有一个关闭入口，清理失败记录 warning 但仍继续 dispose。 */
   private async close_runtime(runtime: AgentRuntime): Promise<void> {
     try {
-      runtime.unsubscribe();
-    } catch (error) {
-      this.warn_cleanup_failure(error);
-    }
-    try {
       runtime.session.abortCompaction();
     } catch (error) {
       this.warn_cleanup_failure(error);
@@ -1620,6 +1629,11 @@ export class AgentService {
     } catch (error) {
       this.warn_cleanup_failure(error);
     } finally {
+      try {
+        runtime.unsubscribe();
+      } catch (error) {
+        this.warn_cleanup_failure(error);
+      }
       try {
         runtime.session.dispose();
       } catch (error) {
@@ -1853,18 +1867,4 @@ function read_agent_message_images(message: AgentMessageInput): string[] {
   return message.attachments.flatMap((attachment) =>
     attachment.kind === "image" ? [attachment.webpBase64] : [],
   );
-}
-
-/** 将 Pi 内容投影成唯一公开形状；相邻同类块合并，脱敏思考和连续性元数据不外泄。 */
-function project_assistant_message_parts(
-  message: AssistantMessage,
-): AgentAssistantMessageParts | null {
-  const parts: AgentAssistantMessagePart[] = [];
-  for (const content of message.content) {
-    if (content.type === "text") parts.push({ kind: "text", text: content.text });
-    else if (content.type === "thinking" && !content.redacted) {
-      parts.push({ kind: "thinking", text: content.thinking });
-    }
-  }
-  return normalize_agent_assistant_message_parts(parts);
 }

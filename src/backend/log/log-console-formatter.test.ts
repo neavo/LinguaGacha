@@ -56,10 +56,11 @@ describe("format_console_log", () => {
     );
   });
 
+  /** 固定公共日志字段，让用例只变化需要验证的正文格式。 */
   function create_payload(message: string): ConsoleLogTestPayload {
     return {
       level: "info",
-      content: { kind: "text", text: message },
+      content: message,
     };
   }
 });

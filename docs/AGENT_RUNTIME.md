@@ -34,12 +34,17 @@
 
 ### 运行控制与恢复
 
-- Agent 完全内存化。消息受理到当前 round 及自动 FIFO 链最终 settle 期间持有同一 [`RuntimeOperationGate`](BACKEND.md) lease，等待用户决定也不释放；Pi 在 SDK run 内拥有工具循环、自动压缩和压缩后的续跑。
+- Agent 的公开会话与模型历史完全内存化，持久化日志不参与会话恢复。消息受理到当前 round 及自动 FIFO 链最终 settle 期间持有同一 [`RuntimeOperationGate`](BACKEND.md) lease，等待用户决定也不释放；Pi 在 SDK run 内拥有工具循环、自动压缩和压缩后的续跑。
 - 手动压缩只在稳定空闲且有可压缩旧段时受理，以独立 Agent lease 更新模型配置、发布 running 条目并后台调用同一压缩入口，不建立公开 round。ack 返回后仍持有 lease，关闭屏障等待 settlement 退出。
 - Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定 `canSendNow`，使异步预检、用户决定、压缩与结算窗口中的 steer 受同一条件约束。
 - continue 在同一 lease 内恢复失败 round 或启动队首；失败 user 原位保留历史，不追加公开“继续”user，恢复失败时重新暂停队列。stop 同步封口 round 并异步取消 SDK，到最终 settle 才释放 lease；压缩和 `workspace_apply` 不可 stop。
 - 输入队列与 Todo 跨普通回合、stop、continue、模型失败和压缩保留，reset、工程切换和 dispose 时清理。round user 与最终 assistant 修订按各自 SDK history checkpoint 裁剪活动路径，不回滚已发生的外部副作用。
 - 显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理；同一工程内的项目事实变化不重置公开时间线或模型历史，已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
+
+### 对话与执行日志
+
+- `AgentSessionLog` 随 SDK runtime 冻结日志会话身份，round 复用公开用户轮次身份，continue 分配新执行身份。停止请求与实际结束分开记录；reset、工程切换和 dispose 隔离公开状态后，日志订阅仍保留到 SDK abort 结算，迟到终帧归入旧会话。未观察到结束的工具保留开始事实。
+- 日志保留实际进入模型会话的用户文本，助手正文与时间线共用可见性规则，停止结算保留部分正文，图片只存类型摘要。工具 JSON 不经诊断裁剪，仅合并能逐字重建的文本与 details 副本。记录进入日志窗口，终端沿用普通诊断输出；存储与轮转归 [BACKEND](BACKEND.md)。
 
 ### 工作区投影
 

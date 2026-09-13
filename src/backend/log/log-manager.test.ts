@@ -15,6 +15,8 @@ describe("LogManager", () => {
     });
     const content: LogContent = {
       kind: "translation_result",
+      started_at: "2026-09-13T00:00:00.000Z",
+      ended_at: "2026-09-13T00:00:01.000Z",
       summary: ["任务完成"],
       sections: [],
       pairs: [{ src: "原文", dst: "译文" }],

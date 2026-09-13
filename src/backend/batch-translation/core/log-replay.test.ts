@@ -22,6 +22,8 @@ describe("TranslationLogReplay", () => {
         level: "warning",
         content: {
           kind: "translation_result",
+          started_at: "2026-09-13T00:00:00.000Z",
+          ended_at: "2026-09-13T00:00:01.000Z",
           summary: ["worker warning"],
           sections: [],
           pairs: [{ src: "原文", dst: "译文" }],
@@ -37,6 +39,8 @@ describe("TranslationLogReplay", () => {
       level: "warning",
       content: {
         kind: "translation_result",
+        started_at: "2026-09-13T00:00:00.000Z",
+        ended_at: "2026-09-13T00:00:01.000Z",
         summary: ["worker warning"],
         sections: [],
         pairs: [{ src: "原文", dst: "译文" }],
@@ -58,7 +62,7 @@ describe("TranslationLogReplay", () => {
     expect(log_manager.append).toHaveBeenCalledWith(
       expect.objectContaining({
         level: "error",
-        content: { kind: "text", text: "任务执行失败" },
+        content: "任务执行失败",
         source: "engine",
         error: expect.objectContaining({
           message: "provider timeout",

@@ -15,7 +15,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   const { t } = useI18n();
   const { content } = props.detail;
 
-  if (content.kind === "text") {
+  if (typeof content === "string" || content.kind === "agent") {
     return (
       <AppEditor
         variant="viewer"

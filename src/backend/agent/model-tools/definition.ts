@@ -1,6 +1,6 @@
 import { scheduler } from "node:timers/promises";
 
-import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../../domain/json";
 import { is_app_error } from "../../../shared/error";
@@ -9,21 +9,6 @@ import type { LogManager } from "../../log/log-manager";
 import { t_main_log } from "../../log/log-text";
 
 type AgentToolFailure = JsonRecord & { code: string };
-
-type AgentToolCallLogRecord =
-  | {
-      event: "start";
-      tool_call_id: string;
-      tool_name: string;
-      input: unknown;
-    }
-  | {
-      event: "end";
-      tool_call_id: string;
-      tool_name: string;
-      is_error: boolean;
-      output: unknown;
-    };
 
 /** 模型可见工具错误只承载稳定码和安全修复事实。 */
 export class AgentToolError extends Error {
@@ -89,39 +74,4 @@ export function prepare_agent_tool(
       }
     },
   };
-}
-
-/** SDK 工具起止事件以完整严格 JSON 写入文件，不进入控制台或日志窗口。 */
-export function log_agent_tool_event(
-  log_manager: Pick<LogManager, "append">,
-  event: AgentSessionEvent,
-): void {
-  let record: AgentToolCallLogRecord;
-  let level: "info" | "error";
-  if (event.type === "tool_execution_start") {
-    record = {
-      event: "start",
-      tool_call_id: event.toolCallId,
-      tool_name: event.toolName,
-      input: event.args,
-    };
-    level = "info";
-  } else if (event.type === "tool_execution_end") {
-    record = {
-      event: "end",
-      tool_call_id: event.toolCallId,
-      tool_name: event.toolName,
-      is_error: event.isError,
-      output: event.result,
-    };
-    level = event.isError ? "error" : "info";
-  } else {
-    return;
-  }
-  log_manager.append({
-    level,
-    source: "agent-tool",
-    content: { kind: "text", text: JsonTool.stringifyStrict(record) },
-    targets: { console: false, window: false },
-  });
 }
