@@ -38,25 +38,11 @@ import type {
   WorkbenchDialogState,
   WorkbenchFileEntry,
   WorkbenchSnapshot,
-  WorkbenchStats,
 } from "@frontend/pages/workbench-page/types";
-
-// 缓存尚未就绪时使用零值统计，避免把旧项目进度带入新会话。
-const EMPTY_WORKBENCH_STATS: WorkbenchStats = {
-  total_items: 0,
-  completed_count: 0,
-  failed_count: 0,
-  pending_count: 0,
-  skipped_count: 0,
-  completion_percent: 0,
-};
 
 type WorkbenchCacheErrorContext = Pick<RendererErrorContextInput, "stage" | "signalSeq">; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
 
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
-  file_count: 0,
-  total_items: 0,
-  translation_stats: EMPTY_WORKBENCH_STATS,
   entries: [],
 };
 
@@ -230,8 +216,6 @@ export type UseWorkbenchPageStateResult = {
   settled_project_path: string;
   is_refreshing: boolean;
   file_op_running: boolean;
-  stats: WorkbenchStats;
-  translation_stats: WorkbenchStats;
   entries: WorkbenchFileEntry[];
   selected_entry_ids: string[];
   active_entry_id: string | null;
@@ -509,7 +493,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     workbench_change_seq,
   ]);
 
-  const stats = snapshot.translation_stats;
   const readonly =
     !project_snapshot.loaded ||
     is_runtime_busy(runtime_snapshot) ||
@@ -826,8 +809,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     settled_project_path,
     is_refreshing,
     file_op_running,
-    stats,
-    translation_stats: snapshot.translation_stats,
     entries,
     selected_entry_ids,
     active_entry_id,

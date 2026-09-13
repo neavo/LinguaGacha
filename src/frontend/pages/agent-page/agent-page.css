@@ -1833,18 +1833,6 @@
   }
 }
 
-/* 对称列让摘要相对状态条居中；橙色标记占用左列。 */
-.agent-todo--translation {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) 12px;
-  cursor: pointer;
-}
-
-.agent-todo__speed {
-  margin-left: 8px;
-  font-variant-numeric: tabular-nums;
-}
-
 .agent-composer__connection-status {
   display: flex;
   min-width: 0;

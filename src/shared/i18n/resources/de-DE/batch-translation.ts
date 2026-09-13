@@ -25,6 +25,7 @@ export const de_de_batch_translation = {
     active_requests: "Echtzeit-Aufgaben",
   },
   feedback: {
+    stats_refresh_failed: "Die Übersetzungsstatistik des Projekts konnte nicht aktualisiert werden",
     done: "Abgeschlossen …",
     stopped: "Gestoppt …",
     refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe.",

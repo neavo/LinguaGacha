@@ -12,9 +12,6 @@ import {
 export type BatchTranslationMetrics = {
   active: boolean;
   stopping: boolean;
-  completion_percent: number;
-  processed_count: number;
-  failed_count: number;
   elapsed_seconds: number;
   remaining_seconds: number;
   average_generation_speed: number; // 思考与输出 token 的累计平均生成速度
@@ -79,9 +76,6 @@ export function resolve_translation_task_metrics(args: {
     return {
       active: false,
       stopping: false,
-      completion_percent: 0,
-      processed_count: 0,
-      failed_count: 0,
       elapsed_seconds: 0,
       remaining_seconds: 0,
       average_generation_speed: 0,
@@ -108,12 +102,6 @@ export function resolve_translation_task_metrics(args: {
   return {
     active,
     stopping: snapshot.status === "stopping",
-    completion_percent:
-      progress.total_line <= 0
-        ? 0
-        : Math.min(1, Math.max(0, progress.line / Math.max(1, progress.total_line))) * 100,
-    processed_count: progress.processed_line,
-    failed_count: Math.max(0, progress.error_line),
     elapsed_seconds,
     remaining_seconds:
       progress.line <= 0

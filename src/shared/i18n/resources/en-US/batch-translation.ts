@@ -25,6 +25,7 @@ export const en_us_batch_translation = {
     active_requests: "Real Time Tasks",
   },
   feedback: {
+    stats_refresh_failed: "Failed to refresh project translation statistics",
     done: "Completed …",
     stopped: "Stopped …",
     refresh_failed: "Failed to refresh the translation task.",

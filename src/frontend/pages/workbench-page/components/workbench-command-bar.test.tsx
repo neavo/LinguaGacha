@@ -38,8 +38,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   const translation_task_metrics = {
     active: false,
     stopping: false,
-    processed_count: 0,
-    failed_count: 0,
     elapsed_seconds: 0,
     remaining_seconds: 0,
     average_generation_speed: 0,
@@ -47,7 +45,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
     reasoning_tokens: 0,
     output_tokens: 0,
     request_in_flight_count: 0,
-    completion_percent: 0,
   };
 
   return {

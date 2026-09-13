@@ -20,11 +20,6 @@
   height: 150px;
 }
 
-.workbench-page__stat-card-trigger {
-  display: block;
-  min-width: 0;
-}
-
 .workbench-page__stat-card-content {
   display: flex;
   flex: 1 1 auto;
@@ -102,13 +97,6 @@
   display: inline-flex;
   align-items: center;
   font-size: 14px;
-  color: var(--workbench-unit);
-}
-
-.workbench-page__stat-card-toggle-icon {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
   color: var(--workbench-unit);
 }
 

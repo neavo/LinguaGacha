@@ -25,6 +25,7 @@ export const ja_jp_batch_translation = {
     active_requests: "実行中のタスク数",
   },
   feedback: {
+    stats_refresh_failed: "プロジェクトの翻訳統計を更新できませんでした",
     done: "完了 …",
     stopped: "停止済み …",
     refresh_failed: "翻訳タスクの状態を更新できませんでした",

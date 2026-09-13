@@ -26,15 +26,10 @@ type RuntimeFixture = {
       };
     };
   };
-  refresh_project_state: ReturnType<typeof vi.fn>;
   project_change_signal: ProjectChangeSignal;
   refresh_batch_translation: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
   refresh_project_snapshot: ReturnType<typeof vi.fn>;
-  sync_task_snapshot: ReturnType<typeof vi.fn>;
-  task_snapshot: {
-    status: string;
-  };
   runtime_snapshot: { revision: number; owner: "batch_translation" | "agent" | null };
 };
 
@@ -45,15 +40,6 @@ type WorkbenchPickerFixture = {
 type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
-};
-
-type WorkbenchQueryStats = {
-  total_items: number;
-  completed_count: number;
-  failed_count: number;
-  pending_count: number;
-  skipped_count: number;
-  completion_percent: number;
 };
 
 type ApiRouteResponder = unknown | ((body: Record<string, unknown>) => unknown | Promise<unknown>);
@@ -93,7 +79,6 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
     useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
-    useBatchTranslationSnapshot: () => runtime_fixture.current.task_snapshot,
     useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
   };
 });
@@ -129,36 +114,14 @@ function create_project_change_signal(
   options: {
     reason?: string;
     updatedSections?: ProjectChangeSignal["updated_sections"];
-    itemIds?: Array<number | string>;
   } = {},
 ): ProjectChangeSignal {
   const updated_sections = options.updatedSections ?? ["project", "files", "items"];
-  const item_ids = options.itemIds ?? [];
   return {
     seq,
     reason: options.reason ?? "project_read_sections",
     updated_sections,
-    results:
-      updated_sections.length === 0
-        ? []
-        : [
-            {
-              applied: true,
-              source: options.reason ?? "project_read_sections",
-              projectRevision: seq,
-              updatedSections: updated_sections,
-              ...(updated_sections.includes("items")
-                ? {
-                    itemDelta: {
-                      upsertItemIds: item_ids,
-                      deleteItemIds: [],
-                      fullReplace: item_ids.length === 0,
-                    },
-                  }
-                : {}),
-              sectionRevisions: {},
-            },
-          ],
+    results: [],
   };
 }
 
@@ -187,15 +150,10 @@ function create_runtime_fixture(): RuntimeFixture {
         };
       },
     },
-    refresh_project_state: vi.fn(async () => {}),
     project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
     refresh_batch_translation: vi.fn(async () => {}),
     settings_snapshot: {},
     refresh_project_snapshot: vi.fn(),
-    sync_task_snapshot: vi.fn(),
-    task_snapshot: {
-      status: "idle",
-    },
     runtime_snapshot: { revision: 0, owner: null },
   };
 }
@@ -237,7 +195,7 @@ function setup_api_fetch_mock(): void {
 /**
  * 从可变项目仓库派生 mock 快照，使写入后的刷新能观察到新事实。
  */
-function create_workbench_query_response(stats?: { translation?: WorkbenchQueryStats }) {
+function create_workbench_query_response() {
   const state = runtime_fixture.current.project_store.getState();
   const files = Object.values(state.files ?? {}).flatMap((value) => {
     if (typeof value !== "object" || value === null) {
@@ -257,14 +215,6 @@ function create_workbench_query_response(stats?: { translation?: WorkbenchQueryS
     ];
   });
   const items = [...(state.items?.values() ?? [])];
-  const default_stats: WorkbenchQueryStats = {
-    total_items: items.length,
-    completed_count: 0,
-    failed_count: 0,
-    pending_count: items.length,
-    skipped_count: 0,
-    completion_percent: 0,
-  };
   const entries = files.map((file) => {
     return {
       ...file,
@@ -279,10 +229,6 @@ function create_workbench_query_response(stats?: { translation?: WorkbenchQueryS
       items: 2,
     },
     snapshot: {
-      file_count: entries.length,
-      total_items: items.length,
-      translation_stats: stats?.translation ?? default_stats,
-
       entries,
     },
   };
@@ -444,30 +390,10 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1, { updatedSections: ["quality"] }),
     };
-    enqueue_api_response(
-      "/api/workbench/snapshot",
-      create_workbench_query_response({
-        translation: {
-          total_items: 1,
-          completed_count: 0,
-          failed_count: 0,
-          pending_count: 0,
-          skipped_count: 1,
-          completion_percent: 0,
-        },
-      }),
-    );
-
     await render_hook();
 
-    expect(latest_state).not.toBeNull();
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
-    expect(latest_state?.entries).toHaveLength(1);
-    expect(latest_state?.stats.total_items).toBe(1);
-    expect(latest_state?.stats.completed_count).toBe(0);
-    expect(latest_state?.stats.skipped_count).toBe(1);
-    expect(latest_state?.stats.completion_percent).toBe(0);
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
   });
 
@@ -513,154 +439,6 @@ describe("useWorkbenchPageState", () => {
 
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
-  });
-
-  it("运行中翻译统计仍只按后端 query items.status 计算", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      runtime_snapshot: { revision: 1, owner: "batch_translation" },
-      task_snapshot: { status: "running" },
-      project_store: {
-        getState: () => {
-          return {
-            files: {
-              "chapter01.txt": {
-                rel_path: "chapter01.txt",
-                file_type: "TXT",
-                sort_index: 1,
-              },
-            },
-            items: create_test_items({
-              "1": create_project_item({ item_id: 1, file_path: "chapter01.txt" }),
-              "2": create_project_item({ item_id: 2, file_path: "chapter01.txt" }),
-              "3": create_project_item({ item_id: 3, file_path: "chapter01.txt" }),
-              "4": create_project_item({ item_id: 4, file_path: "chapter01.txt" }),
-              "5": create_project_item({ item_id: 5, file_path: "chapter01.txt" }),
-            }),
-          };
-        },
-      },
-      project_change_signal: create_project_change_signal(1),
-    };
-    const query_stats = {
-      total_items: 5,
-      completed_count: 1,
-      failed_count: 1,
-      pending_count: 1,
-      skipped_count: 2,
-      completion_percent: 20,
-    };
-    enqueue_api_response(
-      "/api/workbench/snapshot",
-      create_workbench_query_response({
-        translation: query_stats,
-      }),
-    );
-
-    await render_hook();
-
-    expect(latest_state?.stats).toMatchObject({
-      total_items: 5,
-      completed_count: 1,
-      failed_count: 1,
-      pending_count: 1,
-      skipped_count: 2,
-      completion_percent: 20,
-    });
-  });
-
-  it("翻译统计会在 items 信号后继续按后端 query 状态刷新", async () => {
-    await render_hook();
-
-    let items_revision = 1;
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => {
-          return {
-            files: {
-              "chapter01.txt": {
-                rel_path: "chapter01.txt",
-                file_type: "TXT",
-                sort_index: 1,
-              },
-            },
-            items: create_test_items({
-              "1": create_project_item({
-                item_id: 1,
-                file_path: "chapter01.txt",
-                status: "NONE",
-              }),
-            }),
-            revisions: {
-              sections: {
-                files: 1,
-                items: items_revision,
-              },
-            },
-          };
-        },
-      },
-      project_change_signal: create_project_change_signal(1),
-    };
-    enqueue_api_response(
-      "/api/workbench/snapshot",
-      create_workbench_query_response({
-        translation: {
-          total_items: 1,
-          completed_count: 0,
-          failed_count: 0,
-          pending_count: 1,
-          skipped_count: 0,
-          completion_percent: 0,
-        },
-      }),
-    );
-
-    await render_hook();
-
-    expect(latest_state?.translation_stats).toMatchObject({
-      total_items: 1,
-      completed_count: 0,
-      failed_count: 0,
-      pending_count: 1,
-      skipped_count: 0,
-      completion_percent: 0,
-    });
-
-    items_revision = 2;
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(2, {
-        reason: "translation_commit",
-        updatedSections: ["items"],
-        itemIds: [1],
-      }),
-    };
-    enqueue_api_response(
-      "/api/workbench/snapshot",
-      create_workbench_query_response({
-        translation: {
-          total_items: 1,
-          completed_count: 1,
-          failed_count: 0,
-          pending_count: 0,
-          skipped_count: 0,
-          completion_percent: 100,
-        },
-      }),
-    );
-
-    await render_hook();
-
-    expect(latest_state?.translation_stats).toMatchObject({
-      total_items: 1,
-      completed_count: 1,
-      failed_count: 0,
-      pending_count: 0,
-      skipped_count: 0,
-      completion_percent: 100,
-    });
   });
 
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {

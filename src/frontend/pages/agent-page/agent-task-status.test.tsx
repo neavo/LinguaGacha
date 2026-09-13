@@ -10,6 +10,7 @@ import { AgentTaskStatus } from "./agent-task-status";
 const task = vi.hoisted(() => ({
   metrics: {} as ReturnType<typeof resolve_translation_task_metrics>,
   open: vi.fn(),
+  percent: null as number | null,
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -23,6 +24,11 @@ vi.mock("@frontend/app/session/batch-translation/batch-translation-session-conte
   }),
 }));
 
+vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
+  useProjectTranslationStats: () =>
+    task.percent === null ? null : { completion_percent: task.percent },
+}));
+
 describe("AgentTaskStatus", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
@@ -34,7 +40,12 @@ describe("AgentTaskStatus", () => {
     task.open.mockClear();
   });
   /** 在同一挂载中切换翻译终态，验证 Todo 的恢复。 */
-  async function render(status: "running" | "stopping" | "stopped", todos: string[]) {
+  async function render(
+    status: "running" | "stopping" | "stopped",
+    todos: string[],
+    percent: number | null = 80,
+  ) {
+    task.percent = percent;
     task.metrics = resolve_translation_task_metrics({
       snapshot: {
         ...create_empty_batch_translation_snapshot(),
@@ -43,6 +54,8 @@ describe("AgentTaskStatus", () => {
           ...create_empty_batch_translation_snapshot().progress,
           start_time: 10,
           total_output_tokens: 100,
+          line: 100,
+          total_line: 400,
         },
       },
       now_seconds: 20,
@@ -73,6 +86,21 @@ describe("AgentTaskStatus", () => {
     const view = await render("running", []);
     expect(view.querySelector("button")).not.toBeNull();
     await render("stopped", []);
+    expect(view.innerHTML).toBe("");
+  });
+
+  it("卡片采用工程完成率，停止收尾仍保留工程进度", async () => {
+    const view = await render("running", [], null);
+    expect(view.querySelector('[role="progressbar"]')).toBeNull();
+    expect(view.querySelector("button")?.textContent).toBe(
+      "batch_translation.summary.running · 10.00 T/S",
+    );
+    await render("running", [], 80);
+    expect(view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("80");
+    expect(view.textContent).not.toContain("%");
+    await render("stopping", [], 90);
+    expect(view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("90");
+    await render("stopped", [], 90);
     expect(view.innerHTML).toBe("");
   });
 });

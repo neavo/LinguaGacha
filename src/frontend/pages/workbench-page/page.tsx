@@ -1,4 +1,5 @@
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
+import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
@@ -19,10 +20,11 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { batch_translation_task } = useBatchTranslationSession();
   const translation_export = useTranslationExport();
   const workbench_state = useWorkbenchPageState();
+  const translation_stats = useProjectTranslationStats();
 
   return (
     <div className="workbench-page page-shell page-shell--full">
-      <WorkbenchStatsSection stats={workbench_state.stats} />
+      <WorkbenchStatsSection stats={translation_stats} />
       <FileDropZone
         label={t("app.drop.import_here")}
         disabled={!workbench_state.can_edit_files}
@@ -49,7 +51,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
       </FileDropZone>
       <WorkbenchCommandBar
         batch_translation_task={batch_translation_task}
-        translation_stats={workbench_state.translation_stats}
+        translation_stats={translation_stats}
         can_edit_files={workbench_state.can_edit_files}
         can_delete_selected_files={workbench_state.can_delete_selected_files}
         can_generate_translation={translation_export.can_request_export}

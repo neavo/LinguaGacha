@@ -25,6 +25,7 @@ export const ko_kr_batch_translation = {
     active_requests: "실행 중인 작업 수",
   },
   feedback: {
+    stats_refresh_failed: "프로젝트 번역 통계를 새로 고치지 못했습니다",
     done: "완료 …",
     stopped: "중지됨 …",
     refresh_failed: "번역 작업 상태를 새로 고치지 못했습니다",

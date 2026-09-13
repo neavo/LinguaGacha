@@ -8,9 +8,8 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const running_display: BatchTranslationSummaryDisplay = {
   status_text: "翻译中",
-  trailing_text: "12 Line/s",
-  tone: "warning",
-  show_spinner: true,
+  speed_text: "2.47 KT/S",
+  tone: "success",
   detail_tooltip_text: "点击查看详情",
 };
 
@@ -33,7 +32,10 @@ describe("BatchTranslationSummary", () => {
       root?.render(
         <TooltipProvider>
           <BatchTranslationSummary
-            display={{ ...running_display, show_spinner: props.active ?? false }}
+            display={{
+              ...running_display,
+              speed_text: props.active ? running_display.speed_text : null,
+            }}
             on_open={props.on_open ?? vi.fn()}
           />
         </TooltipProvider>,
@@ -57,11 +59,14 @@ describe("BatchTranslationSummary", () => {
     await render_summary();
 
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+    expect(container?.textContent).not.toContain(running_display.speed_text);
   });
 
   it("任务活跃时提示详情入口，点击后收起提示并打开详情", async () => {
     const on_open = vi.fn();
     await render_summary({ active: true, on_open });
+    expect(container?.textContent).toContain(running_display.speed_text);
+    expect(container?.textContent).not.toContain("%");
     expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
 
     const trigger = container?.querySelector("button");

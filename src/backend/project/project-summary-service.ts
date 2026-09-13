@@ -1,5 +1,9 @@
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonValue, MutableJsonRecord } from "../../domain/json";
+import type {
+  ProjectTranslationStats,
+  ProjectTranslationStatsResponse,
+} from "../../shared/project-translation-stats";
 import type { CacheFileEntry, CacheReadPort } from "../cache/cache-types";
 
 import type { ProjectSessionState } from "./project-session-state";
@@ -24,27 +28,32 @@ export class ProjectSummaryService {
   }
 
   /**
-   * 项目摘要只返回文件列表和统计结果，页面不再接收完整项目区块。
+   * 工作台快照承接文件列表，跨页面翻译统计由独立查询提供。
    */
   public read(): MutableJsonRecord {
     const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
-    const stats = this.build_item_stats(items);
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
       snapshot: {
-        file_count: file_entries.length,
-        total_items: items.length,
-        translation_stats: stats,
         entries: file_entries as unknown as JsonValue,
       },
     };
   }
 
+  /** 工程身份随统计返回，供共享缓存隔离切换期间的响应。 */
+  public read_translation_stats(): ProjectTranslationStatsResponse {
+    const projectPath = this.session_state.require_loaded_project_path();
+    return {
+      projectPath,
+      stats: this.build_item_stats(this.cache.items.readItems()),
+    };
+  }
+
   /**
-   * 按文件路径聚合项目列表，统计结果和文件条目使用同一批 item。
+   * 按文件路径聚合项目列表和文件条目数。
    */
   private build_file_entries(
     items: ProjectItemPublicRecord[],
@@ -64,12 +73,9 @@ export class ProjectSummaryService {
     const result: MutableJsonRecord[] = [];
     for (const file_entry of cached_file_entries) {
       const rel_path = file_entry.rel_path;
-      if (rel_path === "") {
-        continue;
-      }
       const file_items = entries_by_path.get(rel_path) ?? [];
       emitted_paths.add(rel_path);
-      result.push(this.build_project_file_entry(file_entry, file_items, result.length));
+      result.push(this.build_project_file_entry(file_entry, file_items));
     }
     for (const [rel_path, file_items] of entries_by_path.entries()) {
       if (emitted_paths.has(rel_path)) {
@@ -83,7 +89,6 @@ export class ProjectSummaryService {
             sort_index: result.length,
           },
           file_items,
-          result.length,
         ),
       );
     }
@@ -91,17 +96,16 @@ export class ProjectSummaryService {
   }
 
   /**
-   * 项目文件行同时携带 asset 顺序和该文件下 item 统计。
+   * FileCache 已过滤空路径并归一序号，项目文件行补充条目数及非负展示顺序。
    */
   private build_project_file_entry(
     file_entry: CacheFileEntry,
     file_items: ProjectItemPublicRecord[],
-    fallback_sort_index: number,
   ): MutableJsonRecord {
     return {
       rel_path: file_entry.rel_path,
       file_type: file_entry.file_type,
-      sort_index: this.read_number(file_entry.sort_index, fallback_sort_index),
+      sort_index: Math.max(0, file_entry.sort_index),
       item_count: file_items.length,
     };
   }
@@ -109,7 +113,7 @@ export class ProjectSummaryService {
   /**
    * 项目进度统计只基于 item status，任务运行态进度由 BatchTranslationSnapshot 单独提供。
    */
-  private build_item_stats(items: ProjectItemPublicRecord[]): MutableJsonRecord {
+  private build_item_stats(items: ProjectItemPublicRecord[]): ProjectTranslationStats {
     let completed_count = 0;
     let failed_count = 0;
     let skipped_count = 0;
@@ -124,45 +128,16 @@ export class ProjectSummaryService {
       }
     }
     const total_items = items.length;
-    const pending_count = Math.max(0, total_items - completed_count - failed_count - skipped_count);
-    return this.build_stats_result({
+    const pending_count = total_items - completed_count - failed_count - skipped_count;
+    return {
       total_items,
       completed_count,
       failed_count,
       pending_count,
       skipped_count,
-    });
-  }
-
-  /**
-   * 项目完成率沿用跳过项视作已处理的口径。
-   */
-  private build_stats_result(args: {
-    total_items: number;
-    completed_count: number;
-    failed_count: number;
-    pending_count: number;
-    skipped_count: number;
-  }): MutableJsonRecord {
-    const completed_or_skipped_count = args.completed_count + args.skipped_count;
-    return {
-      total_items: args.total_items,
-      completed_count: args.completed_count,
-      failed_count: args.failed_count,
-      pending_count: args.pending_count,
-      skipped_count: args.skipped_count,
+      // 跳过项视作已处理，沿用工作台的整数完成率。
       completion_percent:
-        args.total_items === 0
-          ? 0
-          : Math.round((completed_or_skipped_count / args.total_items) * 100),
+        total_items === 0 ? 0 : Math.round(((completed_count + skipped_count) / total_items) * 100),
     };
-  }
-
-  /**
-   * query 参数里的数值统一非负截断，窗口参数不能传入负索引。
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const parsed = Number(value ?? fallback);
-    return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;
   }
 }

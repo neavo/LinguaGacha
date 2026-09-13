@@ -17,10 +17,12 @@ type BatchTranslationSummaryProps = {
 /** 任务开始时展开详情提示，点击摘要进入共享侧栏。 */
 export function BatchTranslationSummary(props: BatchTranslationSummaryProps): JSX.Element {
   const [tooltip_open, set_tooltip_open] = useState(false);
+  const { speed_text } = props.display;
+  const active = speed_text !== null;
 
   useEffect(() => {
-    set_tooltip_open(props.display.show_spinner);
-  }, [props.display.show_spinner]);
+    set_tooltip_open(active);
+  }, [active]);
 
   /** 打开详情时收起提示，避免遮挡侧栏。 */
   function handle_open_detail(): void {
@@ -39,10 +41,10 @@ export function BatchTranslationSummary(props: BatchTranslationSummaryProps): JS
         `batch-translation__summary-badge--${props.display.tone}`,
       )}
     >
-      {props.display.show_spinner ? <Spinner data-icon="inline-start" /> : null}
+      {active ? <Spinner data-icon="inline-start" /> : null}
       <span>{props.display.status_text}</span>
-      {props.display.trailing_text !== null ? (
-        <span className="batch-translation__summary-trailing">{props.display.trailing_text}</span>
+      {speed_text !== null ? (
+        <span className="batch-translation__summary-trailing">· {speed_text}</span>
       ) : null}
     </Badge>
   );
