@@ -150,11 +150,8 @@ function read_tool(
 }
 
 /** 测试替换工作区业务边界，不伪造具体服务的私有状态。 */
-function build_workspace_port(): AgentWorkspacePort {
+function build_workspace_port(): Pick<AgentWorkspacePort, "run_script" | "apply_workspace"> {
   return {
-    initialize: vi.fn(async () => undefined),
-    reset_workspace: vi.fn(async () => undefined),
-    reset_project: vi.fn(async () => undefined),
     run_script: vi.fn(async () => ({ result: { changed: 2 }, todos: ["核验结果"] })),
     apply_workspace: vi.fn(async (request_approval) => {
       await request_approval?.({

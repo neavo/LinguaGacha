@@ -5,10 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // 当前组件的外部协作者集中在同一可重置夹具中，测试仍观察最终 DOM。
 const mocks = vi.hoisted(() => ({
   open_external_url: vi.fn(),
+  api_fetch: vi.fn(),
+  push_toast: vi.fn(),
 }));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
   open_external_url: mocks.open_external_url,
+  api_fetch: mocks.api_fetch,
+}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast: mocks.push_toast }),
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -25,6 +31,10 @@ describe("AgentMarkdown", () => {
 
   beforeEach(() => {
     mocks.open_external_url.mockReset();
+    mocks.open_external_url.mockResolvedValue(undefined);
+    mocks.api_fetch.mockReset();
+    mocks.api_fetch.mockResolvedValue(undefined);
+    mocks.push_toast.mockReset();
   });
 
   afterEach(async () => {
@@ -62,6 +72,42 @@ describe("AgentMarkdown", () => {
     expect(view.querySelector<HTMLImageElement>('img[src="https://example.com/a.png"]')?.alt).toBe(
       "示意图",
     );
+  });
+
+  it("工作区链接把编码路径交给定位 API，失败只提示一次", async () => {
+    const view = await render_markdown(
+      "[报告](work/报告%20%23%25.md)\n\n[目录](work/reports/)",
+      false,
+    );
+    const links = view.querySelectorAll<HTMLAnchorElement>("a");
+    await act(async () => links[0]?.click());
+    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/agent/workspace/open-path", {
+      path: "work/%E6%8A%A5%E5%91%8A%20%23%25.md",
+    });
+    mocks.api_fetch.mockRejectedValueOnce(new Error("missing"));
+    await act(async () => links[1]?.click());
+    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/agent/workspace/open-path", {
+      path: "work/reports/",
+    });
+    expect(mocks.open_external_url).not.toHaveBeenCalled();
+    expect(mocks.push_toast).toHaveBeenCalledOnce();
+  });
+
+  it("被过滤的目标呈现文本，页内链接保留原生跳转", async () => {
+    const view = await render_markdown(
+      '[文件](file:///E:/report.md)\n\n[盘符](E:/report.md)\n\n[跳转](#section)\n\n<span id="section">目标</span>',
+      false,
+    );
+    expect(view.textContent).toContain("文件");
+    expect(view.querySelectorAll("a")).toHaveLength(1);
+    const link = view.querySelector("a");
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(async () => {
+      link?.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(mocks.open_external_url).not.toHaveBeenCalled();
+    expect(mocks.api_fetch).not.toHaveBeenCalled();
   });
 
   it("Markdown 图片使用与附件相同的媒体预览画布", async () => {

@@ -21,6 +21,7 @@ import {
 } from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
 import type { AgentPendingWriteSummary } from "../../../shared/agent";
+import type { FileManagerTarget } from "../../../shared/backend-runtime";
 import { normalize_quality_rule_entries } from "../../../shared/quality/quality-rule-entry";
 import {
   PROJECT_DATA_SECTIONS,
@@ -127,6 +128,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      openInFileManager: (target: FileManagerTarget) => Promise<void>;
       nativeFs?: NativeFs;
     },
   ) {
@@ -141,6 +143,64 @@ export class AgentWorkspaceService {
   /** work 固定挂在 Workspace 根，替换 snapshot 时无需搬运内容。 */
   private get work_path(): string {
     return path.join(this.root_path, AGENT_WORKSPACE_WORK_ROOT);
+  }
+
+  /** 定位只读现存目标，不建立快照或占用覆盖整个脚本运行的互斥。 */
+  public async open_path(href: unknown): Promise<void> {
+    if (typeof href !== "string") {
+      throw new AppErrors.AppError("request.validation_failed");
+    }
+    let relative_path: string;
+    try {
+      // 链接片段不参与文件定位；百分号只在此解码一次，保留编码后的文件名字符。
+      relative_path = decodeURIComponent(href.split(/[?#]/u)[0]);
+    } catch (cause) {
+      throw new AppErrors.AppError("request.validation_failed", { cause });
+    }
+    if (
+      relative_path === "" ||
+      /[\\:]/u.test(relative_path) ||
+      relative_path.includes("\0") ||
+      path.posix.isAbsolute(relative_path) ||
+      relative_path.split("/").includes("..")
+    ) {
+      throw new AppErrors.AppError("request.validation_failed");
+    }
+    let target: FileManagerTarget;
+    try {
+      const root = this.native_fs.real_path(this.root_path);
+      const file_path = this.native_fs.real_path(path.resolve(root, relative_path));
+      const inside_path = path.relative(root, file_path);
+      // 真实路径检查阻止工作区内的符号链接把宿主定位引向工作区外。
+      if (
+        inside_path === ".." ||
+        inside_path.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(inside_path)
+      ) {
+        throw new AppErrors.AppError("request.validation_failed");
+      }
+      const stat = this.native_fs.stat(file_path);
+      if (!stat.isFile() && !stat.isDirectory()) {
+        throw new AppErrors.AppError("file.invalid_structure");
+      }
+      // realpath 在 Windows 可能返回 namespaced path，shell 消费普通平台路径。
+      target = {
+        path: path.resolve(this.root_path, inside_path),
+        kind: stat.isDirectory() ? "directory" : "file",
+      };
+    } catch (cause) {
+      if (AppErrors.is_app_error(cause)) throw cause;
+      const missing =
+        cause instanceof Error &&
+        "code" in cause &&
+        (cause.code === "ENOENT" || cause.code === "ENOTDIR");
+      throw new AppErrors.AppError(missing ? "file.not_found" : "file.io_failed", { cause });
+    }
+    try {
+      await this.options.openInFileManager(target);
+    } catch (cause) {
+      throw new AppErrors.AppError("file.io_failed", { cause });
+    }
   }
 
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
@@ -593,10 +653,15 @@ export class AgentWorkspaceService {
   }
 }
 
-/** AgentService 只依赖工作区生命周期，不接触领域协作者。 */
+/** AgentService 通过工作区公开操作管理生命周期、执行工具与定位文件。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
-  "initialize" | "run_script" | "apply_workspace" | "reset_workspace" | "reset_project"
+  | "initialize"
+  | "run_script"
+  | "apply_workspace"
+  | "reset_workspace"
+  | "reset_project"
+  | "open_path"
 >;
 
 /** 审批摘要只统计预演实际候选对象。 */

@@ -2,7 +2,11 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
-import type { AgentWorkspaceRuntimePaths, BackendRuntimeReady } from "../shared/backend-runtime";
+import type {
+  AgentWorkspaceRuntimePaths,
+  BackendRuntimeReady,
+  FileManagerTarget,
+} from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
@@ -44,13 +48,18 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
   /**
-   * 输出目录只由导出成功链路触发，Electron shell 返回非空错误文本时转为异常交给文件域记录。
+   * 文件显示所在目录并选中，目录直接进入；原生打开失败沿宿主通道回传。
    */
-  async function open_output_folder(output_path: string): Promise<void> {
-    const error_message = await shell.openPath(output_path);
+  async function open_in_file_manager(target: FileManagerTarget): Promise<void> {
+    if (target.kind === "file") {
+      // 此 API 无完成回执，成功仅表示已向系统发起定位。
+      shell.showItemInFolder(target.path);
+      return;
+    }
+    const error_message = await shell.openPath(target.path);
     if (error_message !== "") {
       throw new AppErrors.AppError("file.io_failed", {
-        diagnostic_context: { output_path, reason: error_message },
+        diagnostic_context: { path: target.path, reason: error_message },
       });
     }
   }
@@ -69,7 +78,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     builtinRoot: builtin_root,
     agentWorkspaceRuntime: agent_workspace_runtime,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
-    openOutputFolder: open_output_folder,
+    openInFileManager: open_in_file_manager,
     onUnexpectedExit: (error) => {
       try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
       void quit_app_after_backend_shutdown(1);

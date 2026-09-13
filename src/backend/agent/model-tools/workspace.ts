@@ -65,7 +65,7 @@ const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false
 
 /** 工作区由单一服务持有，模型接口由脚本与提交批次组成。 */
 export function create_agent_workspace_tools(options: {
-  workspace: AgentWorkspacePort;
+  workspace: Pick<AgentWorkspacePort, "run_script" | "apply_workspace">;
   todo: AgentTodoPort;
   approval: AgentWorkspaceApprovalPort;
 }): ToolDefinition[] {

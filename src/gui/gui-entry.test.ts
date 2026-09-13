@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";
 
-import type { BackendRuntimeReady } from "../shared/backend-runtime";
+import type { BackendRuntimeReady, FileManagerTarget } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
 import { resolve_agent_workspace_runtime_paths, run_gui_entry } from "./gui-entry";
 
@@ -20,7 +20,9 @@ const mocks = vi.hoisted(() => {
   const backend_record_diagnostic = vi.fn(async () => undefined);
   let backend_stopped = false;
 
+  /** 以可控 ready 与 stop 替代线程，观察 GUI 的启动关闭顺序。 */
   class BackendRuntimeClient {
+    /** 记录 GUI 注入的宿主能力，供测试调用真实适配器。 */
     constructor(readonly options: Record<string, unknown>) {
       backend_instances.push(options);
     }
@@ -37,7 +39,9 @@ const mocks = vi.hoisted(() => {
 
   const cleanup_updates = vi.fn(async () => undefined);
   const update_options: DesktopUpdateServiceOptions[] = [];
+  /** 隔离更新下载和清理，只验证当前 GUI 的宿主装配。 */
   class DesktopUpdateService {
+    /** 捕获更新器路径与网络端口。 */
     constructor(options: DesktopUpdateServiceOptions) {
       update_options.push(options);
     }
@@ -65,6 +69,7 @@ const mocks = vi.hoisted(() => {
     resolve_proxy: vi.fn(async () => "DIRECT"),
     session_fetch: vi.fn(async () => new Response()),
     open_path: vi.fn(async () => ""),
+    show_item_in_folder: vi.fn(),
     configure_public_path: vi.fn(),
     configure_debugging: vi.fn(),
     configure_crash_reporting: vi.fn(),
@@ -91,7 +96,7 @@ vi.mock("electron", () => ({
   session: {
     defaultSession: { fetch: mocks.session_fetch, resolveProxy: mocks.resolve_proxy },
   },
-  shell: { openPath: mocks.open_path },
+  shell: { openPath: mocks.open_path, showItemInFolder: mocks.show_item_in_folder },
 }));
 vi.mock("./runtime/backend-runtime-client", () => ({
   BackendRuntimeClient: mocks.BackendRuntimeClient,
@@ -173,6 +178,26 @@ describe("run_gui_entry", () => {
       readAppLanguage: () => Promise<unknown>;
     };
     await expect(ipc_options.readAppLanguage()).resolves.toBe("ZH");
+  });
+
+  it("文件管理器入口区分文件定位和目录打开，并传回原生失败", async () => {
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
+    });
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+    const options = mocks.backend_instances[0] as {
+      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+    };
+    await options.openInFileManager({ path: "E:\\报告\\结果 # 1.md", kind: "file" });
+    expect(mocks.show_item_in_folder).toHaveBeenCalledExactlyOnceWith("E:\\报告\\结果 # 1.md");
+    expect(mocks.open_path).not.toHaveBeenCalled();
+    await options.openInFileManager({ path: "E:\\报告", kind: "directory" });
+    expect(mocks.open_path).toHaveBeenCalledExactlyOnceWith("E:\\报告");
+    mocks.open_path.mockResolvedValueOnce("access denied");
+    await expect(
+      options.openInFileManager({ path: "E:\\报告", kind: "directory" }),
+    ).rejects.toMatchObject({ code: "file.io_failed" });
   });
 
   it("Backend 完整就绪前不注册 macOS 恢复窗口入口", async () => {

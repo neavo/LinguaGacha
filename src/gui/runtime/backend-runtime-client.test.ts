@@ -7,52 +7,34 @@ import type {
 } from "../../shared/backend-runtime";
 import { BackendRuntimeClient } from "./backend-runtime-client";
 
-const worker_threads_mock = vi.hoisted(() => {
-  type Listener = (...args: unknown[]) => void;
+const worker_threads_mock = await vi.hoisted(async () => {
+  const { EventEmitter } = await import("node:events");
 
-  class FakeWorker {
+  /** 用原生事件语义替代线程，只记录跨线程消息与终止结果。 */
+  class FakeWorker extends EventEmitter {
     static instances: FakeWorker[] = [];
 
     readonly posted_messages: BackendRuntimeMainMessage[] = [];
     readonly worker_data: unknown;
     terminate_count = 0;
-    private readonly listeners = new Map<string, Listener[]>();
 
-    constructor(
-      readonly entry_url: URL,
-      options: { workerData?: unknown } = {},
-    ) {
+    /** 捕获启动快照，供测试驱动当前 worker 的生命周期。 */
+    constructor(_entry_url: URL, options: { workerData: unknown }) {
+      super();
       this.worker_data = options.workerData;
       FakeWorker.instances.push(this);
     }
 
-    on(event: string, listener: Listener): this {
-      const listeners = this.listeners.get(event) ?? [];
-      listeners.push(listener);
-      this.listeners.set(event, listeners);
-      return this;
-    }
-
-    off(event: string, listener: Listener): this {
-      this.listeners.set(
-        event,
-        (this.listeners.get(event) ?? []).filter((candidate) => candidate !== listener),
-      );
-      return this;
-    }
-
+    /** 记录 main 发出的结构化消息，供协议断言消费。 */
     postMessage(message: BackendRuntimeMainMessage): void {
       this.posted_messages.push(message);
     }
 
+    /** 显式终止同步发出 exit，覆盖关闭时的回调顺序。 */
     async terminate(): Promise<number> {
       this.terminate_count += 1;
       this.emit("exit", 0);
       return 0;
-    }
-
-    emit(event: string, ...args: unknown[]): void {
-      for (const listener of this.listeners.get(event) ?? []) listener(...args);
     }
   }
 
@@ -60,7 +42,6 @@ const worker_threads_mock = vi.hoisted(() => {
 });
 
 vi.mock("node:worker_threads", () => ({
-  default: { Worker: worker_threads_mock.FakeWorker },
   Worker: worker_threads_mock.FakeWorker,
 }));
 
@@ -112,7 +93,7 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_output_folder } = create_client();
+    const { client, resolve_proxy, open_in_file_manager } = create_client();
     const start = client.start();
     const worker = get_worker();
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
@@ -126,12 +107,12 @@ describe("BackendRuntimeClient", () => {
     worker.emit("message", {
       type: "host_request",
       requestId: "open-1",
-      operation: { kind: "open_output_folder", path: "E:/output" },
+      operation: { kind: "open_in_file_manager", target: { path: "E:/output", kind: "directory" } },
     } satisfies BackendRuntimeWorkerMessage);
     await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(2));
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
-    expect(open_output_folder).toHaveBeenCalledWith("E:/output");
+    expect(open_in_file_manager).toHaveBeenCalledWith({ path: "E:/output", kind: "directory" });
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "proxy-1",
@@ -209,9 +190,10 @@ describe("BackendRuntimeClient", () => {
   });
 });
 
+/** 默认宿主保留成功与失败两种结果，测试仅替换线程。 */
 function create_client() {
   const resolve_proxy = vi.fn(async () => "DIRECT");
-  const open_output_folder = vi.fn(async () => {
+  const open_in_file_manager = vi.fn(async () => {
     throw new Error("无法打开目录");
   });
   const on_unexpected_exit = vi.fn();
@@ -225,21 +207,23 @@ function create_client() {
         runtimeEntryPath: "E:/runtime/deno-runtime.js",
       },
       resolveProxy: resolve_proxy,
-      openOutputFolder: open_output_folder,
+      openInFileManager: open_in_file_manager,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
-    open_output_folder,
+    open_in_file_manager,
     on_unexpected_exit,
   };
 }
 
+/** 取得本用例创建的 worker；缺失直接暴露启动失败。 */
 function get_worker(): InstanceType<typeof worker_threads_mock.FakeWorker> {
   const worker = worker_threads_mock.FakeWorker.instances.at(-1);
   if (worker === undefined) throw new Error("缺少 Backend runtime worker。");
   return worker;
 }
 
+/** 按消息类型取得当前请求，避免依赖随机 requestId。 */
 function get_last_request<TType extends BackendRuntimeMainMessage["type"]>(
   worker: InstanceType<typeof worker_threads_mock.FakeWorker>,
   type: TType,

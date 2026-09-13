@@ -7,7 +7,7 @@
 - renderer 只能通过 `window.desktopApp` 的按用途窄接口接触宿主能力，不直接导入 Electron、Node、`src/native`、preload 或 backend 实现；原生路径选择在 preload / main 之间统一收口为单一判别联合 IPC，页面不传 Electron 对话框选项。
 - renderer 通过无参数的 `requestUserAttention` 请求桌面注意力；是否播放系统提示音与闪烁窗口由 main 按所属窗口焦点决定，renderer 不传业务文案或任务字段。
 - 主进程按 Chromium 编辑语义为主窗口和日志窗口提供原生文本菜单；renderer 不新增菜单 IPC 或页面私有实现。
-- Agent Markdown 直接渲染原始 HTML 与图片；链接点击统一交给宿主外部打开，URL 语义由 Markdown 渲染链和宿主处理。
+- Agent Markdown 直接渲染原始 HTML 与图片，并保留默认 URL 过滤；非空相对链接经 Backend API 请求工作区定位，外部链接交给宿主外部打开，页内锚点保留原生跳转，被过滤为空的目标显示文本。工作区链接约定归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面和跨页面 feature 可以直接调用其 `api_fetch`，也可以在各自所有权目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
 - Electron main 只在 Backend Runtime ready 后创建窗口，并将启动快照中的 API base URL 与应用版本通过窗口启动参数注入 preload；`window.desktopApp.appVersion` 是标题栏首帧与更新检查共用的固定版本，来源为后端 `AppMetadataService`。`desktop-api.ts` 直接使用该地址处理响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求。renderer 的 release 请求与 Electron main 的 release zip 下载都复用默认 session 的 Chromium 网络栈并随其当前系统代理，loopback Backend API 保持直连。
 - Agent 页面只通过 Backend API 与 SSE 消费公开会话；工作区运行时属于 Agent 后端边界，其权限与生命周期归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。

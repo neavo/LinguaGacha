@@ -1758,6 +1758,7 @@ describe("AgentService", () => {
   it("Electron 工作区端口随两个工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
+      open_path: vi.fn(async () => undefined),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
       run_script: vi.fn(async (_script, todos) => ({ result: null, todos: [...todos] })),
@@ -2963,6 +2964,7 @@ describe("AgentService", () => {
       workspace ??
       ({
         initialize: vi.fn(async () => undefined),
+        open_path: vi.fn(async () => undefined),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
         run_script: vi.fn<AgentWorkspacePort["run_script"]>(async (script, todos) => {

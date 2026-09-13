@@ -55,7 +55,9 @@ const stream = {
 const agent = { load_resources: mocks.agent_load, dispose: mocks.agent_dispose };
 
 vi.mock("./backend-resources", () => ({
+  /** 由用例控制共享资源启动，并记录其生命周期顺序。 */
   BackendResources: class {
+    /** 在启动真正完成前保持对应的测试等待点。 */
     public static async start(options: unknown): Promise<unknown> {
       mocks.events.push("resources:start");
       return await mocks.resource_start(options);
@@ -63,7 +65,9 @@ vi.mock("./backend-resources", () => ({
   },
 }));
 vi.mock("./backend-services", () => ({
+  /** 复用领域 fake，让断言聚焦组合根的依赖连接。 */
   BackendServices: class {
+    /** 记录创建顺序和宿主端口，再交付共享服务。 */
     public constructor(options: unknown) {
       mocks.events.push("services:create");
       mocks.service_options.push(options);
@@ -72,7 +76,9 @@ vi.mock("./backend-services", () => ({
   },
 }));
 vi.mock("../api/api-stream-hub", () => ({
+  /** 以共享事件流 fake 观察订阅和清理连接。 */
   ApiStreamHub: class {
+    /** 把事件流创建纳入启动顺序。 */
     public constructor() {
       mocks.events.push("stream:create");
       return stream;
@@ -80,11 +86,14 @@ vi.mock("../api/api-stream-hub", () => ({
   },
 }));
 vi.mock("../agent/web-search-service", () => ({
+  /** 隔离网络请求，保留搜索资源的创建与释放。 */
   WebSearchService: class {
     public readonly search = vi.fn();
+    /** 记录搜索资源创建位置。 */
     public constructor() {
       mocks.events.push("web:create");
     }
+    /** 允许模拟关闭失败，验证其它资源仍得到释放。 */
     public async dispose(): Promise<void> {
       mocks.events.push("web:dispose");
       await mocks.web_dispose();
@@ -92,7 +101,9 @@ vi.mock("../agent/web-search-service", () => ({
   },
 }));
 vi.mock("../agent/workspace/service", () => ({
+  /** 隔离磁盘工作区，仅检查依赖的所有权。 */
   AgentWorkspaceService: class {
+    /** 保存工作区端口与共享状态的注入关系。 */
     public constructor(options: unknown) {
       mocks.events.push("workspace:create");
       mocks.workspace_options.push(options);
@@ -100,7 +111,9 @@ vi.mock("../agent/workspace/service", () => ({
   },
 }));
 vi.mock("../agent/agent-service", () => ({
+  /** 由用例控制 Agent 的资源加载与关闭。 */
   AgentService: class {
+    /** 交付共享 Agent fake，使初始化和释放结果可控。 */
     public constructor(options: unknown) {
       mocks.events.push("agent:create");
       mocks.agent_options.push(options);
@@ -109,15 +122,19 @@ vi.mock("../agent/agent-service", () => ({
   },
 }));
 vi.mock("../api/api-gateway-server", () => ({
+  /** 隔离监听端口，保留 Gateway 的启动和关闭等待点。 */
   ApiGatewayServer: class {
+    /** 记录 Gateway 对服务、Agent 与事件流的连接。 */
     public constructor(options: unknown) {
       mocks.events.push("gateway:create");
       mocks.gateway_options.push(options);
     }
+    /** 模拟监听就绪或失败，验证启动回滚顺序。 */
     public async start(): Promise<unknown> {
       mocks.events.push("gateway:start");
       return await mocks.gateway_start();
     }
+    /** 模拟监听关闭或失败，验证后续资源释放。 */
     public async stop(): Promise<void> {
       mocks.events.push("gateway:stop");
       await mocks.gateway_stop();
@@ -154,7 +171,8 @@ beforeEach(() => {
 
 describe("GuiBackendBootstrap", () => {
   it("用共享状态组装必需 Agent、事件流与 Gateway", async () => {
-    const bootstrap = new GuiBackendBootstrap(create_options());
+    const options = create_options();
+    const bootstrap = new GuiBackendBootstrap(options);
 
     const result = await bootstrap.start();
 
@@ -167,6 +185,14 @@ describe("GuiBackendBootstrap", () => {
       cache: shared_state.cache,
       runtimeGate: shared_state.runtimeGate,
       writeStore: shared_state.writes,
+    });
+    const service_options = mocks.service_options[0] as {
+      openOutputFolder: (path: string) => Promise<void>;
+    };
+    await service_options.openOutputFolder("E:/output");
+    expect(options.openInFileManager).toHaveBeenCalledExactlyOnceWith({
+      path: "E:/output",
+      kind: "directory",
     });
     expect(mocks.agent_options[0]).toMatchObject({
       batchTranslation: services.batchTranslation,
@@ -262,13 +288,14 @@ describe("GuiBackendBootstrap", () => {
   });
 });
 
+/** 为每个用例提供独立宿主回调，避免副作用调用记录串扰。 */
 function create_options() {
   return {
     appRoot: "E:/app",
     builtinRoot: "E:/app.asar/builtin",
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     agentWorkspaceRun: vi.fn(),
-    openOutputFolder: vi.fn(),
+    openInFileManager: vi.fn(),
     workerExecution: { kind: "in_process" as const },
   };
 }

@@ -11,7 +11,9 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
-import { open_external_url } from "@frontend/app/desktop/desktop-api";
+import { open_external_url, api_fetch } from "@frontend/app/desktop/desktop-api";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
 import { AgentMermaidBlock } from "./agent-mermaid";
@@ -37,20 +39,35 @@ type CodeBlock = {
 /** 渲染 Agent 正文 Markdown；图表仅在完整消息内进入 Mermaid 异步边界。 */
 export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
-  // Markdown 只接管外链、图片预览与 Mermaid，其余 HTML 沿用标准渲染链。
+  const { push_toast } = useDesktopToast();
+  // 相对链接由工作区解释；页内锚点保留浏览器语义，外链交给桌面宿主。
   const components = useMemo<Components>(
     () => ({
-      a: ({ href, children }) => (
-        <a
-          href={href}
-          onClick={(event) => {
-            event.preventDefault();
-            if (href !== undefined) void open_external_url(href);
-          }}
-        >
-          {children}
-        </a>
-      ),
+      a: ({ node: _node, href, children, ...anchor_props }) =>
+        !href ? (
+          <span>{children}</span>
+        ) : (
+          <a
+            {...anchor_props}
+            href={href}
+            onClick={(event) => {
+              if (href.startsWith("#")) return;
+              event.preventDefault();
+              const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(href);
+              const opening = external
+                ? open_external_url(href.startsWith("//") ? `https:${href}` : href)
+                : api_fetch("/api/agent/workspace/open-path", { path: href });
+              void opening.catch((error: unknown) => {
+                push_toast(
+                  "error",
+                  resolve_visible_error_message(error, t, t("agent_page.error.open_link")),
+                );
+              });
+            }}
+          >
+            {children}
+          </a>
+        ),
       pre: ({ node: _node, children, ...pre_props }) => {
         const code_block = read_code_block(children);
         if (!props.streaming && code_block?.language === "mermaid") {
@@ -72,7 +89,7 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
         return <AgentMarkdownImage src={src} alt={label} image_props={img_props} />;
       },
     }),
-    [props.streaming, t],
+    [props.streaming, push_toast, t],
   );
 
   return (
@@ -90,18 +107,7 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
       </ReactMarkdown>
     </div>
   );
-}, agent_markdown_props_equal);
-
-function agent_markdown_props_equal(
-  previous: AgentMarkdownProps,
-  next: AgentMarkdownProps,
-): boolean {
-  return (
-    previous.text === next.text &&
-    previous.streaming === next.streaming &&
-    previous.annotatable === next.annotatable
-  );
-}
+});
 
 /** 把 Markdown 图片投影为可访问的内嵌预览入口。 */
 function AgentMarkdownImage(props: {

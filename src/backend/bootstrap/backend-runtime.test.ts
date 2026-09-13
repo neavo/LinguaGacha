@@ -4,8 +4,14 @@ import type {
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
   BackendRuntimeWorkerMessage,
+  FileManagerTarget,
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
+
+const RUNTIME_PATHS = {
+  denoExecutablePath: "E:/runtime/deno.exe",
+  runtimeEntryPath: "E:/runtime/runner.js",
+};
 
 const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
@@ -19,14 +25,18 @@ const runtime_mocks = vi.hoisted(() => {
   };
   const runner_initialize = vi.fn(async () => undefined);
   const runner_run = vi.fn(async () => ({ changed: 2 }));
+  /** 隔离 Deno 进程，保留初始化、运行和注入选项的观察入口。 */
   class DenoAgentWorkspaceRunner {
+    /** 记录宿主注入，验证脚本沿正式 runner 端口执行。 */
     constructor(options: unknown) {
       runner_constructor_options.push(options);
     }
     initialize = runner_initialize;
     run = runner_run;
   }
+  /** 由测试决定启动和关闭结果，验证 worker 协议的生命周期。 */
   class GuiBackendBootstrap {
+    /** 捕获组合根依赖，允许测试直接触发宿主回调。 */
     constructor(options: unknown) {
       constructor_options.push(options);
     }
@@ -93,7 +103,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
-      agentWorkspaceRuntime: runtime_paths(),
+      agentWorkspaceRuntime: RUNTIME_PATHS,
       port,
     });
 
@@ -109,7 +119,7 @@ describe("run_backend_runtime", () => {
       appRoot: string;
       builtinRoot: string;
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
-      openOutputFolder: (path: string) => Promise<void>;
+      openInFileManager: (target: FileManagerTarget) => Promise<void>;
       agentWorkspaceRun: (request: unknown, signal: AbortSignal) => Promise<unknown>;
     };
     expect(bootstrap_options).toMatchObject({
@@ -128,8 +138,8 @@ describe("run_backend_runtime", () => {
       systemProxyResolver: bootstrap_options.systemProxyResolver,
     });
 
-    const open = bootstrap_options.openOutputFolder("E:/output");
-    const open_request = get_host_request(port, "open_output_folder");
+    const open = bootstrap_options.openInFileManager({ path: "E:/output", kind: "directory" });
+    const open_request = get_host_request(port, "open_in_file_manager");
     port.emit({
       type: "host_response",
       requestId: open_request.requestId,
@@ -181,7 +191,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: runtime_paths(),
+      agentWorkspaceRuntime: RUNTIME_PATHS,
       port,
     });
     const runner_options = runtime_mocks.runner_constructor_options[0] as {
@@ -225,15 +235,15 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: runtime_paths(),
+      agentWorkspaceRuntime: RUNTIME_PATHS,
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      openOutputFolder: (path: string) => Promise<void>;
+      openInFileManager: (target: FileManagerTarget) => Promise<void>;
     };
-    const pending = bootstrap_options.openOutputFolder("E:/output");
+    const pending = bootstrap_options.openInFileManager({ path: "E:/output", kind: "directory" });
     const rejection = expect(pending).rejects.toThrow("Backend runtime is closed.");
-    const request = get_host_request(port, "open_output_folder");
+    const request = get_host_request(port, "open_in_file_manager");
 
     port.emit({ type: "stop", requestId: "stop-pending" });
 
@@ -250,7 +260,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: runtime_paths(),
+      agentWorkspaceRuntime: RUNTIME_PATHS,
       port,
     });
 
@@ -263,6 +273,7 @@ describe("run_backend_runtime", () => {
   });
 });
 
+/** 用同步消息投递驱动 worker，保留其向 main 发出的完整消息。 */
 function create_port() {
   let listener: ((message: BackendRuntimeMainMessage) => void) | null = null;
   const messages: BackendRuntimeWorkerMessage[] = [];
@@ -280,10 +291,7 @@ function create_port() {
   };
 }
 
-function runtime_paths() {
-  return { denoExecutablePath: "E:/runtime/deno.exe", runtimeEntryPath: "E:/runtime/runner.js" };
-}
-
+/** 按操作类型取得宿主请求，避免测试依赖随机 requestId。 */
 function get_host_request(
   port: { messages: BackendRuntimeWorkerMessage[] },
   kind: BackendRuntimeHostOperation["kind"],
