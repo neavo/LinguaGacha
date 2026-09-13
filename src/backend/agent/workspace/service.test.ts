@@ -46,6 +46,79 @@ describe("AgentWorkspaceService", () => {
     vi.restoreAllMocks();
   });
 
+  it("定位现存文件和目录，URL 编码只解码一次且不建立快照", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    const directory = path.join(fixture.workspace_root, "work", "报告");
+    fs.mkdirSync(directory, { recursive: true });
+    const file = path.join(directory, "结果 # %23.md");
+    fs.writeFileSync(file, "报告");
+
+    await fixture.service.open_path(
+      "work/%E6%8A%A5%E5%91%8A/%E7%BB%93%E6%9E%9C%20%23%20%2523.md#section",
+    );
+    await fixture.service.open_path("work/报告/");
+
+    expect(fixture.open_in_file_manager.mock.calls).toEqual([
+      [{ path: file, kind: "file" }],
+      [{ path: directory, kind: "directory" }],
+    ]);
+    expect(fixture.run).not.toHaveBeenCalled();
+    expect(fixture.active_path()).toBe("");
+  });
+
+  it.each([
+    undefined,
+    "",
+    "../outside",
+    "work/%2e%2e/outside",
+    "/tmp/report",
+    "C:/report",
+    "work\\report",
+    "work/%00",
+    "work/%ZZ",
+  ])("拒绝无效工作区链接：%s", async (href) => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await expect(fixture.service.open_path(href)).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    expect(fixture.open_in_file_manager).not.toHaveBeenCalled();
+  });
+
+  it("文件不存在与符号链接越界时不调用宿主", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    await expect(fixture.service.open_path("work/missing.md")).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    const outside = path.join(temp_dir, "outside");
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(fixture.workspace_root, "escape"), "junction");
+    await expect(fixture.service.open_path("escape/")).rejects.toMatchObject({
+      code: "request.validation_failed",
+    });
+    expect(fixture.open_in_file_manager).not.toHaveBeenCalled();
+  });
+
+  it("脚本执行期间也能定位已经写完的文件，宿主失败保留原因", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    fixture.run.mockImplementationOnce(async () => {
+      fs.writeFileSync(path.join(fixture.workspace_root, "work", "ready.md"), "ready");
+      await fixture.service.open_path("work/ready.md");
+      return { result: null, todos: [] };
+    });
+    await run_workspace_script(fixture);
+    expect(fixture.open_in_file_manager).toHaveBeenCalledOnce();
+    const cause = new Error("shell failed");
+    fixture.open_in_file_manager.mockRejectedValueOnce(cause);
+    await expect(fixture.service.open_path("work/ready.md")).rejects.toMatchObject({
+      code: "file.io_failed",
+      cause,
+    });
+  });
+
   it("首次 workspace_script 生成只读快照和空 change 文件", async () => {
     const fixture = create_fixture(temp_dir);
     fs.mkdirSync(path.join(fixture.workspace_root, "stale"), { recursive: true });
@@ -689,6 +762,9 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       ],
     },
   }));
+  const open_in_file_manager = vi.fn(
+    async (_target: import("../../../shared/backend-runtime").FileManagerTarget) => undefined,
+  );
   const service = new AgentWorkspaceService({
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
@@ -705,10 +781,12 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     writeStore: { apply_agent_workspace_changes: write_store },
     logManager: { warning: vi.fn() },
     run,
+    openInFileManager: open_in_file_manager,
     ...(native_fs === undefined ? {} : { nativeFs: native_fs }),
   });
   return {
     service,
+    open_in_file_manager,
     workspace_root,
     revisions,
     snapshot,

@@ -23,7 +23,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { resolve_app_locale } from "../../domain/app-language";
-import type { JsonRecord } from "../../domain/json";
+import { is_json_record, type JsonRecord } from "../../domain/json";
 import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import {
   AGENT_SESSION_EVENT_TOPIC,
@@ -262,6 +262,14 @@ export class AgentService {
     this.unsubscribe_project_session = this.session_state.subscribe_change((change) =>
       this.reset_session("project", change.loaded ? change.projectPath : null),
     );
+  }
+
+  /** 用户点击只触发现存文件定位；会话清理期间拒绝读取正在失效的目录。 */
+  public async open_workspace_path(request: JsonRecord): Promise<null> {
+    this.assert_not_disposed();
+    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    await this.workspace.open_path(is_json_record(request) ? request["path"] : undefined);
+    return null;
   }
 
   /** 返回仅含不可变投影的公开快照；UI 排序不改写模型侧持有的原始 skill 顺序。 */

@@ -110,8 +110,8 @@ export async function run_backend_runtime(args: {
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
     systemProxyResolver: system_proxy_resolver,
-    openOutputFolder: async (output_path) => {
-      await call_host({ kind: "open_output_folder", path: output_path });
+    openInFileManager: async (target) => {
+      await call_host({ kind: "open_in_file_manager", target });
     },
     agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
     workerExecution:

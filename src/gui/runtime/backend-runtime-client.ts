@@ -17,6 +17,7 @@ import type {
   BackendRuntimeReady,
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
+  FileManagerTarget,
 } from "../../shared/backend-runtime";
 
 type PendingRequest = {
@@ -43,7 +44,7 @@ export class BackendRuntimeClient {
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
       agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
       resolveProxy: (url: string) => Promise<string>;
-      openOutputFolder: (path: string) => Promise<void>;
+      openInFileManager: (target: FileManagerTarget) => Promise<void>;
       onUnexpectedExit: (error: Error) => void;
     },
   ) {}
@@ -174,8 +175,8 @@ export class BackendRuntimeClient {
         case "resolve_proxy":
           data = await this.options.resolveProxy(operation.url);
           break;
-        case "open_output_folder":
-          data = await this.options.openOutputFolder(operation.path);
+        case "open_in_file_manager":
+          data = await this.options.openInFileManager(operation.target);
           break;
       }
       result = { ok: true, data };

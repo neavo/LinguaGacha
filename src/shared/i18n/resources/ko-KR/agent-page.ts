@@ -135,6 +135,7 @@ export const ko_kr_agent_page = {
     stopped: "중지됨 · {duration}",
   },
   error: {
+    open_link: "링크를 열지 못했습니다.",
     decision: "결정을 제출하지 못했습니다. 다시 시도해 주세요.",
     restore: "세션을 복원하지 못했습니다. 다시 시도해 주세요.",
     connection: "연결이 끊어졌습니다. 재연결을 기다리고 있습니다.",
