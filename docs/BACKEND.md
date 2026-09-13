@@ -10,6 +10,7 @@
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
 - 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
+- `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零；该口径独立于本轮任务进度。响应携带工程路径供切换隔离，工作台文件查询独立提供列表。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影省略 `LogError.message`、保留调用栈。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。

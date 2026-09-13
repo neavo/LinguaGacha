@@ -1,3 +1,4 @@
+import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { BatchTranslationDetailSheet } from "@frontend/features/batch-translation/batch-translation-detail-sheet";
 import { build_translation_task_detail_display } from "@frontend/features/batch-translation/batch-translation-display";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
@@ -45,6 +46,7 @@ function resolve_translation_task_confirm_description(
 function BatchTranslationDialogsLayer(): JSX.Element {
   const { t } = useI18n();
   const { batch_translation_task } = useBatchTranslationSession();
+  const stats = useProjectTranslationStats();
   const translation_confirm_description = useMemo(() => {
     return resolve_translation_task_confirm_description(
       batch_translation_task.task_confirm_state,
@@ -65,6 +67,7 @@ function BatchTranslationDialogsLayer(): JSX.Element {
         display={build_translation_task_detail_display({
           config: batch_translation_task.translation_task_display_snapshot?.config,
           metrics: batch_translation_task.translation_task_metrics,
+          completion_percent: stats?.completion_percent ?? null,
           waveform_history: batch_translation_task.translation_waveform_history,
           t,
         })}

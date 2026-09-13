@@ -4,7 +4,7 @@ import "@frontend/features/batch-translation/batch-translation.css";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { ModelSelectionMenu } from "@frontend/features/model-selection/model-selection-menu";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
-import type { WorkbenchStats } from "@frontend/pages/workbench-page/types";
+import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { Spinner } from "@frontend/shadcn/spinner";
 import {
   Tooltip,
@@ -28,7 +28,7 @@ type WorkbenchTaskResetKind = "reset-all" | "reset-failed";
 
 type WorkbenchTranslationMenuProps = {
   active: boolean;
-  workbench_stats: WorkbenchStats;
+  workbench_stats: ProjectTranslationStats | null;
   disabled: boolean;
   busy: boolean;
   model_selection: ModelSelectionController;
@@ -46,7 +46,7 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
   const { t } = useI18n();
   const action_items_disabled =
     props.active || props.busy || props.disabled || props.model_selection.updating;
-  const progress_percent = props.workbench_stats.completion_percent;
+  const progress_percent = props.workbench_stats?.completion_percent;
 
   return (
     <AppDropdownMenu>
@@ -75,19 +75,21 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
               {t("batch_translation.menu.progress")}
             </span>
             <span className="batch-translation__menu-progress-value">
-              {progress_percent.toFixed(2)}%
+              {progress_percent === undefined ? "—" : `${progress_percent.toFixed(2)}%`}
             </span>
           </div>
-          <SegmentedProgress
-            stats={props.workbench_stats}
-            labels={{
-              skipped: t(`task_progress.translation_skipped`),
-              failed: t(`task_progress.translation_failed`),
-              completed: t(`task_progress.translation_completed`),
-              pending: t(`task_progress.translation_pending`),
-              total: t("task_progress.total_lines"),
-            }}
-          />
+          {props.workbench_stats !== null ? (
+            <SegmentedProgress
+              stats={props.workbench_stats}
+              labels={{
+                skipped: t(`task_progress.translation_skipped`),
+                failed: t(`task_progress.translation_failed`),
+                completed: t(`task_progress.translation_completed`),
+                pending: t(`task_progress.translation_pending`),
+                total: t("task_progress.total_lines"),
+              }}
+            />
+          ) : null}
         </div>
 
         <AppDropdownMenuSeparator />

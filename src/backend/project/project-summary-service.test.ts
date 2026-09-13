@@ -39,17 +39,6 @@ describe("ProjectSummaryService", () => {
     expect(result).toMatchObject({
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 7 },
-      snapshot: {
-        file_count: 1,
-        total_items: 2,
-        translation_stats: {
-          total_items: 2,
-          completed_count: 1,
-          failed_count: 1,
-          pending_count: 0,
-          completion_percent: 50,
-        },
-      },
     });
   });
 
@@ -77,30 +66,41 @@ describe("ProjectSummaryService", () => {
     });
   });
 
-  it("项目摘要按分析进度与跳过项口径计算统计", async () => {
+  it("工程完成率包含成功与跳过，失败和待处理计入总量", async () => {
     const { service } = await create_service(
       [
         create_item({ id: 1, status: "PROCESSED" }),
         create_item({ id: 2, src: "跳过", status: "EXCLUDED" }),
-        create_item({ id: 3, src: "待分析", status: "NONE" }),
-        create_item({ id: 4, src: "分析失败", status: "NONE" }),
+        create_item({ id: 3, src: "待翻译", status: "NONE" }),
+        create_item({ id: 4, src: "翻译失败", status: "ERROR" }),
       ],
       [{ path: "script.txt", sort_order: 0 }],
       {},
     );
 
-    const result = service.read();
-
+    const result = service.read_translation_stats();
     expect(result).toMatchObject({
-      snapshot: {
-        translation_stats: {
-          total_items: 4,
-          completed_count: 1,
-          skipped_count: 1,
-          completion_percent: 50,
-        },
+      projectPath: "E:/Project/demo.lg",
+      stats: {
+        total_items: 4,
+        completed_count: 1,
+        skipped_count: 1,
+        failed_count: 1,
+        pending_count: 1,
+        completion_percent: 50,
       },
     });
+  });
+
+  it("空工程完成率为零，非整比例沿用工作台取整", async () => {
+    const empty = await create_service([]);
+    expect(empty.service.read_translation_stats().stats.completion_percent).toBe(0);
+    const partial = await create_service([
+      create_item({ id: 1, status: "PROCESSED" }),
+      create_item({ id: 2 }),
+      create_item({ id: 3 }),
+    ]);
+    expect(partial.service.read_translation_stats().stats.completion_percent).toBe(33);
   });
 
   // 通过 CacheManager 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。

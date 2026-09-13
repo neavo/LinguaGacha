@@ -10,6 +10,7 @@ import { AppNavigationProvider } from "@frontend/app/navigation/navigation-conte
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
 import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-context";
+import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-context";
 import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
 import {
@@ -566,11 +567,13 @@ function AppContent(): JSX.Element {
                     <AgentCompletionAttention />
                     <ProjectSessionUiStateProvider>
                       <TranslationExportProvider>
-                        <BatchTranslationSessionProvider>
-                          <QualityRuleStatisticsProvider>
-                            <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                          </QualityRuleStatisticsProvider>
-                        </BatchTranslationSessionProvider>
+                        <ProjectTranslationStatsProvider>
+                          <BatchTranslationSessionProvider>
+                            <QualityRuleStatisticsProvider>
+                              <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                            </QualityRuleStatisticsProvider>
+                          </BatchTranslationSessionProvider>
+                        </ProjectTranslationStatsProvider>
                       </TranslationExportProvider>
                     </ProjectSessionUiStateProvider>
                   </AgentSessionProvider>

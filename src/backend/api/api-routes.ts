@@ -84,6 +84,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   const project_content = services.project.content;
   const reset_preview = services.project.resetPreview;
   context.postJson("/api/workbench/snapshot", () => services.project.summary.read());
+  context.postJson("/api/project/translation-stats", () =>
+    services.project.summary.read_translation_stats(),
+  );
   context.postJson("/api/workbench/files/import", (body) => project_content.import_files(body));
   context.postJson("/api/workbench/file/reset", (body) => project_content.reset_files(body));
   context.postJson("/api/workbench/file/delete", (body) => project_content.delete_files(body));

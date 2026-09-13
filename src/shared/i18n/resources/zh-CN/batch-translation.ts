@@ -23,6 +23,7 @@ export const zh_cn_batch_translation = {
     active_requests: "实时任务数",
   },
   feedback: {
+    stats_refresh_failed: "工程翻译统计刷新失败",
     done: "已完成 …",
     stopped: "已停止 …",
     refresh_failed: "翻译任务状态刷新失败",

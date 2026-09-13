@@ -6,7 +6,7 @@ import type { BatchTranslationTask } from "@frontend/app/session/batch-translati
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
-import type { WorkbenchStats } from "@frontend/pages/workbench-page/types";
+import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { WorkbenchTranslationMenu } from "@frontend/pages/workbench-page/components/workbench-translation-menu";
 import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
@@ -20,7 +20,7 @@ import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
   batch_translation_task: BatchTranslationTask;
-  translation_stats: WorkbenchStats;
+  translation_stats: ProjectTranslationStats | null;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
   can_generate_translation: boolean;

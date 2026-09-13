@@ -2,6 +2,8 @@ import type { useI18n } from "@frontend/app/locale/locale-provider";
 import type { BatchTranslationMetrics } from "@shared/batch-translation/batch-translation";
 import type { BatchTranslationConfig } from "@domain/batch-translation";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
+const METRIC_SCALE = 1000;
+
 export type BatchTranslationTone = "neutral" | "success" | "warning";
 
 export type BatchTranslationMetricEntry = {
@@ -12,13 +14,12 @@ export type BatchTranslationMetricEntry = {
 };
 
 /**
- * BatchTranslationSummaryDisplay 是任务胶囊需要的紧凑展示数据。
+ * 摘要共享运行指标，消费方决定使用胶囊或进度卡片展示。
  */
 export type BatchTranslationSummaryDisplay = {
   status_text: string;
-  trailing_text: string | null;
+  speed_text: string | null;
   tone: BatchTranslationTone;
-  show_spinner: boolean;
   detail_tooltip_text: string;
 };
 
@@ -72,50 +73,26 @@ function format_duration_value(
 function format_compact_metric_value(
   value: number,
   base_unit: string,
+  base_fraction_digits = 0, // 基础单位下计数取整，速度保留两位；K/M 缩写统一两位
 ): Pick<BatchTranslationMetricEntry, "value_text" | "unit_text"> {
-  if (value < 1000) {
+  if (value < METRIC_SCALE) {
     return {
-      value_text: value.toFixed(0),
+      value_text: value.toFixed(base_fraction_digits),
       unit_text: base_unit,
     };
   }
 
-  if (value < 1000 * 1000) {
+  if (value < METRIC_SCALE * METRIC_SCALE) {
     return {
-      value_text: (value / 1000).toFixed(2),
+      value_text: (value / METRIC_SCALE).toFixed(2),
       unit_text: `K${base_unit}`,
     };
   }
 
   return {
-    value_text: (value / 1000 / 1000).toFixed(2),
+    value_text: (value / METRIC_SCALE / METRIC_SCALE).toFixed(2),
     unit_text: `M${base_unit}`,
   };
-}
-
-/**
- * 按每秒千 token 阈值选择翻译速度单位。
- */
-function format_speed_value(
-  value: number,
-): Pick<BatchTranslationMetricEntry, "value_text" | "unit_text"> {
-  if (value < 1000) {
-    return {
-      value_text: value.toFixed(2),
-      unit_text: "T/S",
-    };
-  }
-
-  return {
-    value_text: (value / 1000).toFixed(2),
-    unit_text: "KT/S",
-  };
-}
-
-/** 将详情使用的速度值压平成摘要尾部文案。 */
-function format_summary_speed(value: number): string {
-  const metric_value = format_speed_value(value);
-  return `${metric_value.value_text} ${metric_value.unit_text}`;
 }
 
 /**
@@ -169,7 +146,7 @@ function build_translation_task_metric_entries(
     {
       key: "speed",
       label: t("batch_translation.detail.average_speed"),
-      ...format_speed_value(metrics.average_generation_speed),
+      ...format_compact_metric_value(metrics.average_generation_speed, "T/S", 2),
     },
     {
       key: "active-requests",
@@ -193,13 +170,13 @@ export function build_translation_task_summary_display(
     status_text = t("batch_translation.summary.running");
   }
 
-  const show_runtime = metrics.active || metrics.stopping;
+  const speed = format_compact_metric_value(metrics.average_generation_speed, "T/S", 2);
 
   return {
     status_text,
-    trailing_text: show_runtime ? format_summary_speed(metrics.average_generation_speed) : null,
+    speed_text:
+      metrics.active || metrics.stopping ? `${speed.value_text} ${speed.unit_text}` : null,
     tone: resolve_task_tone(metrics),
-    show_spinner: show_runtime,
     detail_tooltip_text: t("batch_translation.summary.detail_tooltip"),
   };
 }
@@ -210,6 +187,7 @@ export function build_translation_task_summary_display(
 export function build_translation_task_detail_display(args: {
   config?: BatchTranslationConfig;
   metrics: BatchTranslationMetrics;
+  completion_percent: number | null; // 工程完成率由共享统计提供，与本轮运行指标分开
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
 }): BatchTranslationDetailDisplay {
@@ -217,7 +195,8 @@ export function build_translation_task_detail_display(args: {
     provider: build_translation_provider(args.config, args.t),
     waveform_title: args.t("batch_translation.detail.waveform_title"),
     metrics_title: args.t("batch_translation.detail.metrics_title"),
-    completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
+    completion_percent_text:
+      args.completion_percent === null ? "—" : `${args.completion_percent.toFixed(2)}%`,
     percent_tone: resolve_task_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping

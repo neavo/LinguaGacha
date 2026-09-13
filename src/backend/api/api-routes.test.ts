@@ -44,6 +44,7 @@ const POST_PATHS = new Set([
   "/api/session/project/create",
   "/api/session/project/open-preview",
   "/api/workbench/snapshot",
+  "/api/project/translation-stats",
   "/api/workbench/files/import",
   "/api/workbench/file/reset",
   "/api/workbench/file/delete",

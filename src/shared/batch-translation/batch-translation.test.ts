@@ -14,7 +14,7 @@ describe("批量翻译展示", () => {
     const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });
     expect(clone_translation_task_snapshot(snapshot).source).toBe(source);
   });
-  it("运行展示消费本轮进度，传输与历史复制保留工程累计事实", () => {
+  it("运行指标消费本轮数据，传输与历史复制保留工程累计事实", () => {
     const snapshot = normalize_batch_translation_snapshot({
       batch_translation: {
         status: "running",
@@ -24,20 +24,24 @@ describe("批量翻译展示", () => {
           line: 80,
           processed_line: 70,
           error_line: 10,
+          time: 100,
+          total_output_tokens: 1000,
         }),
         run_progress: normalize_batch_translation_progress({
           total_line: 10,
           line: 4,
           processed_line: 0,
           error_line: 4,
+          start_time: 10,
+          total_output_tokens: 40,
         }),
       },
     });
     const clone = clone_translation_task_snapshot(snapshot);
-    expect(resolve_translation_task_metrics({ snapshot: clone, now_seconds: 0 })).toMatchObject({
-      completion_percent: 40,
-      processed_count: 0,
-      failed_count: 4,
+    expect(resolve_translation_task_metrics({ snapshot: clone, now_seconds: 20 })).toMatchObject({
+      elapsed_seconds: 10,
+      remaining_seconds: 15,
+      average_generation_speed: 4,
     });
     expect(clone.progress.total_line).toBe(100);
     expect(clone.operation).toBe("translate");
@@ -113,7 +117,7 @@ describe("批量翻译展示", () => {
       }),
     ).toBe(last);
   });
-  it("进度计算完成度、剩余时间和生成速度", () => {
+  it("任务行进度用于剩余时间，用量用于生成速度", () => {
     const snapshot = create_empty_batch_translation_snapshot();
     snapshot.status = "running";
     Object.assign(snapshot.progress, {
@@ -128,8 +132,6 @@ describe("批量翻译展示", () => {
     });
     expect(resolve_translation_task_metrics({ snapshot, now_seconds: 8 })).toMatchObject({
       active: true,
-      completion_percent: 75,
-      processed_count: 2,
       elapsed_seconds: 6,
       remaining_seconds: 2,
       average_generation_speed: 50 / 6,

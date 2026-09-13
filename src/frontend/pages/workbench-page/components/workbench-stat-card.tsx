@@ -1,21 +1,16 @@
-import { ArrowLeftRight } from "lucide-react";
 import { Card, CardContent, CardTitle } from "@frontend/shadcn/card";
 import { cn } from "@frontend/shadcn/classnames";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
 type WorkbenchStatCardProps = {
   title: string;
-  value: number;
+  value: number | null;
   unit: string;
   accent?: "skipped" | "success" | "failure";
-  toggle_tooltip?: string;
-  on_toggle?: () => void;
 };
 
+/** 展示单项工程计数；统计尚未返回时保留占位。 */
 export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
-  const is_toggleable = props.on_toggle !== undefined;
-
-  const card = (
+  return (
     <Card className="workbench-page__stat-card">
       <CardContent className="workbench-page__stat-card-content">
         <div className="workbench-page__stat-card-stack">
@@ -32,53 +27,17 @@ export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
                   props.accent === "failure" && "workbench-page__stat-card-value--failure",
                 )}
               >
-                {props.value.toLocaleString()}
+                {props.value?.toLocaleString() ?? "—"}
               </p>
             </div>
           </div>
           <div className="workbench-page__stat-card-frame workbench-page__stat-card-frame--unit">
             <div className="workbench-page__stat-card-unit-row">
               <span className="workbench-page__stat-card-unit">{props.unit}</span>
-              {is_toggleable ? (
-                <ArrowLeftRight
-                  className="workbench-page__stat-card-toggle-icon"
-                  aria-hidden="true"
-                />
-              ) : null}
             </div>
           </div>
         </div>
       </CardContent>
     </Card>
-  );
-
-  if (!is_toggleable || props.toggle_tooltip === undefined) {
-    return card;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div
-            className="workbench-page__stat-card-trigger"
-            role="button"
-            tabIndex={0}
-            onClick={props.on_toggle}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                props.on_toggle?.();
-              }
-            }}
-          >
-            {card}
-          </div>
-        }
-      />
-      <TooltipContent side="bottom" sideOffset={8}>
-        <p>{props.toggle_tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
   );
 }

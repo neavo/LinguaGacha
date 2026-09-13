@@ -104,9 +104,6 @@ function create_batch_translation_task_fixture(
     translation_task_metrics: {
       active: false,
       stopping: false,
-      completion_percent: 0,
-      processed_count: 0,
-      failed_count: 0,
       elapsed_seconds: 0,
       remaining_seconds: 0,
       average_generation_speed: 0,
@@ -129,6 +126,10 @@ function create_batch_translation_task_fixture(
     ...overrides,
   };
 }
+
+vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
+  useProjectTranslationStats: () => ({ completion_percent: 80 }),
+}));
 
 describe("BatchTranslationSessionProvider", () => {
   let container: HTMLDivElement | null = null;
@@ -168,7 +169,6 @@ describe("BatchTranslationSessionProvider", () => {
     const task = task_runtime_mock.batch_translation_task!;
     task.translation_detail_sheet_open = true;
     task.translation_task_metrics.active = true;
-    task.translation_task_metrics.completion_percent = 25;
     await render_provider(<div>Agent 页面</div>);
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     await act(async () =>
@@ -179,6 +179,7 @@ describe("BatchTranslationSessionProvider", () => {
       ),
     );
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.body.textContent).toContain("80.00%");
     const stop = [...document.body.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("batch_translation.action.stop"),
     );
