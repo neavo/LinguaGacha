@@ -190,10 +190,7 @@ describe("GuiBackendBootstrap", () => {
       openOutputFolder: (path: string) => Promise<void>;
     };
     await service_options.openOutputFolder("E:/output");
-    expect(options.openInFileManager).toHaveBeenCalledExactlyOnceWith({
-      path: "E:/output",
-      kind: "directory",
-    });
+    expect(options.openDirectory).toHaveBeenCalledExactlyOnceWith("E:/output");
     expect(mocks.agent_options[0]).toMatchObject({
       batchTranslation: services.batchTranslation,
       sessionState: shared_state.session,
@@ -295,7 +292,8 @@ function create_options() {
     builtinRoot: "E:/app.asar/builtin",
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     agentWorkspaceRun: vi.fn(),
-    openInFileManager: vi.fn(),
+    openDirectory: vi.fn(),
+    pickSavePath: vi.fn(async () => null),
     workerExecution: { kind: "in_process" as const },
   };
 }

@@ -4,6 +4,9 @@ import type { Locale } from "./i18n/types";
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
+/** 一次工作区链接激活的完成结果；取消是正常交互。 */
+export type AgentWorkspaceLinkResult = Readonly<{ status: "saved" | "opened" | "cancelled" }>;
+
 /** skill 展示描述是按应用支持语言补全的 UI 值，不参与模型能力判断。 */
 export type AgentSkillDisplayDescriptions = JsonRecord & Record<Locale, string>;
 

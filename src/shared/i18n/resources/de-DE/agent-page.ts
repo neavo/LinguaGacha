@@ -138,8 +138,9 @@ export const de_de_agent_page = {
     error: "Fehlgeschlagen · {duration}",
     stopped: "Gestoppt · {duration}",
   },
+  file_saved: "Datei gespeichert.",
   error: {
-    open_link: "Der Link konnte nicht geöffnet werden.",
+    activate_link: "Der Link konnte nicht verarbeitet werden.",
     decision: "Die Entscheidung konnte nicht gesendet werden. Bitte erneut versuchen.",
     restore: "Die Sitzung konnte nicht wiederhergestellt werden. Bitte erneut versuchen.",
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",

@@ -17,7 +17,6 @@ import type {
   BackendRuntimeReady,
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
-  FileManagerTarget,
 } from "../../shared/backend-runtime";
 
 type PendingRequest = {
@@ -29,7 +28,6 @@ type PendingRequest = {
 export class BackendRuntimeClient {
   private worker: Worker | null = null;
   private readonly pending = new Map<string, PendingRequest>(); // requestId 隔离并发控制响应
-  private readonly active_host_operations = new Map<string, AbortController>(); // worker 可按 requestId 取消 main 副作用
   private start_promise: Promise<BackendRuntimeReady> | null = null; // 固化单次启动结果，禁止复用实例重启
   private start_reject: ((error: Error) => void) | null = null; // worker 提前退出时结算尚未 ready 的 start
   private ready = false; // 只有 ready 后退出才属于应用运行期故障
@@ -44,7 +42,8 @@ export class BackendRuntimeClient {
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
       agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
       resolveProxy: (url: string) => Promise<string>;
-      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+      openDirectory: (path: string) => Promise<void>;
+      pickSavePath: (defaultName: string) => Promise<string | null>;
       onUnexpectedExit: (error: Error) => void;
     },
   ) {}
@@ -145,10 +144,6 @@ export class BackendRuntimeClient {
 
   /** 分流宿主回调和普通控制响应；生命周期消息只由 start 监听器消费。 */
   private handle_message(message: BackendRuntimeWorkerMessage): void {
-    if (message.type === "host_cancel") {
-      this.active_host_operations.get(message.requestId)?.abort();
-      return;
-    }
     if (message.type === "host_request") {
       void this.handle_host_request(message.requestId, message.operation);
       return;
@@ -166,8 +161,6 @@ export class BackendRuntimeClient {
     request_id: string,
     operation: BackendRuntimeHostOperation,
   ): Promise<void> {
-    const controller = new AbortController();
-    this.active_host_operations.set(request_id, controller);
     let result: BackendRuntimeResult;
     try {
       let data: unknown;
@@ -175,15 +168,16 @@ export class BackendRuntimeClient {
         case "resolve_proxy":
           data = await this.options.resolveProxy(operation.url);
           break;
-        case "open_in_file_manager":
-          data = await this.options.openInFileManager(operation.target);
+        case "open_directory":
+          data = await this.options.openDirectory(operation.path);
+          break;
+        case "pick_save_path":
+          data = await this.options.pickSavePath(operation.defaultName);
           break;
       }
       result = { ok: true, data };
     } catch (error) {
       result = { ok: false, error: to_log_error(error) };
-    } finally {
-      this.active_host_operations.delete(request_id);
     }
     this.worker?.postMessage({ type: "host_response", requestId: request_id, result });
   }
@@ -196,8 +190,6 @@ export class BackendRuntimeClient {
     this.exit_handled = true;
     this.start_reject?.(error);
     this.start_reject = null;
-    for (const controller of this.active_host_operations.values()) controller.abort();
-    this.active_host_operations.clear();
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
     if (!this.stopped && this.ready) this.options.onUnexpectedExit(error);

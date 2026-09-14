@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";
 
-import type { BackendRuntimeReady, FileManagerTarget } from "../shared/backend-runtime";
+import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
 import { resolve_agent_workspace_runtime_paths, run_gui_entry } from "./gui-entry";
 
@@ -69,7 +69,7 @@ const mocks = vi.hoisted(() => {
     resolve_proxy: vi.fn(async () => "DIRECT"),
     session_fetch: vi.fn(async () => new Response()),
     open_path: vi.fn(async () => ""),
-    show_item_in_folder: vi.fn(),
+    show_save_dialog: vi.fn(),
     configure_public_path: vi.fn(),
     configure_debugging: vi.fn(),
     configure_crash_reporting: vi.fn(),
@@ -96,7 +96,8 @@ vi.mock("electron", () => ({
   session: {
     defaultSession: { fetch: mocks.session_fetch, resolveProxy: mocks.resolve_proxy },
   },
-  shell: { openPath: mocks.open_path, showItemInFolder: mocks.show_item_in_folder },
+  shell: { openPath: mocks.open_path },
+  dialog: { showSaveDialog: mocks.show_save_dialog },
 }));
 vi.mock("./runtime/backend-runtime-client", () => ({
   BackendRuntimeClient: mocks.BackendRuntimeClient,
@@ -180,24 +181,30 @@ describe("run_gui_entry", () => {
     await expect(ipc_options.readAppLanguage()).resolves.toBe("ZH");
   });
 
-  it("文件管理器入口区分文件定位和目录打开，并传回原生失败", async () => {
+  it("宿主打开目录并用主窗口弹出保存对话框，回传选择和取消", async () => {
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",
       backendRuntimeWorkerEntryUrl: new URL("file:///worker.js"),
     });
     await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
     const options = mocks.backend_instances[0] as {
-      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+      openDirectory: (path: string) => Promise<void>;
+      pickSavePath: (name: string) => Promise<string | null>;
     };
-    await options.openInFileManager({ path: "E:\\报告\\结果 # 1.md", kind: "file" });
-    expect(mocks.show_item_in_folder).toHaveBeenCalledExactlyOnceWith("E:\\报告\\结果 # 1.md");
-    expect(mocks.open_path).not.toHaveBeenCalled();
-    await options.openInFileManager({ path: "E:\\报告", kind: "directory" });
-    expect(mocks.open_path).toHaveBeenCalledExactlyOnceWith("E:\\报告");
+    await options.openDirectory("E:/报告");
+    expect(mocks.open_path).toHaveBeenCalledExactlyOnceWith("E:/报告");
     mocks.open_path.mockResolvedValueOnce("access denied");
-    await expect(
-      options.openInFileManager({ path: "E:\\报告", kind: "directory" }),
-    ).rejects.toMatchObject({ code: "file.io_failed" });
+    await expect(options.openDirectory("E:/报告")).rejects.toMatchObject({
+      code: "file.io_failed",
+    });
+    mocks.show_save_dialog.mockResolvedValueOnce({ canceled: false, filePath: "E:/报告/结果.md" });
+    await expect(options.pickSavePath("结果.md")).resolves.toBe("E:/报告/结果.md");
+    expect(mocks.show_save_dialog).toHaveBeenCalledWith(
+      { kind: "main" },
+      expect.objectContaining({ defaultPath: "结果.md" }),
+    );
+    mocks.show_save_dialog.mockResolvedValueOnce({ canceled: true });
+    await expect(options.pickSavePath("结果.md")).resolves.toBeNull();
   });
 
   it("Backend 完整就绪前不注册 macOS 恢复窗口入口", async () => {

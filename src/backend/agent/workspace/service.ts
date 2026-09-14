@@ -20,8 +20,7 @@ import {
   normalize_setting_snapshot,
 } from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
-import type { AgentPendingWriteSummary } from "../../../shared/agent";
-import type { FileManagerTarget } from "../../../shared/backend-runtime";
+import type { AgentPendingWriteSummary, AgentWorkspaceLinkResult } from "../../../shared/agent";
 import { normalize_quality_rule_entries } from "../../../shared/quality/quality-rule-entry";
 import {
   PROJECT_DATA_SECTIONS,
@@ -103,6 +102,12 @@ type AgentWorkspaceWorkSession = {
   languageKey: string; // 语言解释边界变化时旧工作材料失效
 };
 
+type WorkspacePath = Readonly<{
+  path: string;
+  kind: "file" | "directory";
+  scope: "work" | "sources" | "snapshot"; // 按真实目标所属目录匹配清理生命周期
+}>;
+
 /** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
@@ -110,6 +115,7 @@ export class AgentWorkspaceService {
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private work_session: AgentWorkspaceWorkSession | null = null; // 不读取目录内容，只拥有生命周期
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
+  private readonly link_versions = { work: 0, sources: 0, snapshot: 0 }; // 原生对话框等待期间的来源有效期
 
   /** 注入当前工程读侧、唯一写入口与 Deno 脚本端口。 */
   public constructor(
@@ -128,7 +134,8 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
-      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+      openDirectory: (path: string) => Promise<void>;
+      pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
     },
   ) {
@@ -145,8 +152,57 @@ export class AgentWorkspaceService {
     return path.join(this.root_path, AGENT_WORKSPACE_WORK_ROOT);
   }
 
-  /** 定位只读现存目标，不建立快照或占用覆盖整个脚本运行的互斥。 */
-  public async open_path(href: unknown): Promise<void> {
+  /** 文件保存确认时的内容；等待用户选择位置期间不占用脚本互斥。 */
+  public async activate_path(href: unknown): Promise<AgentWorkspaceLinkResult> {
+    const target = this.resolve_path(href);
+    const version = this.link_versions[target.scope];
+    try {
+      if (target.kind === "directory") {
+        await this.options.openDirectory(target.path);
+        return { status: "opened" };
+      }
+      const destination = await this.options.pickSavePath(path.basename(target.path));
+      if (destination === null) return { status: "cancelled" };
+      return await this.exclusive(async () => {
+        if (version !== this.link_versions[target.scope]) {
+          throw new AppErrors.AppError("file.not_found");
+        }
+        const current = this.resolve_path(href);
+        if (current.kind !== "file" || current.path !== target.path) {
+          throw new AppErrors.AppError("file.not_found");
+        }
+        if (!path.isAbsolute(destination)) {
+          throw new AppErrors.AppError("request.validation_failed");
+        }
+        const root = this.native_fs.real_path(this.root_path);
+        const parent = this.native_fs.real_path(path.dirname(destination));
+        // 目录联接与已存在的符号链接同样不得把保存写回 Agent 工作资产。
+        if (
+          is_inside_path(root, parent) ||
+          (this.native_fs.exists(destination) &&
+            is_inside_path(root, this.native_fs.real_path(destination)))
+        ) {
+          throw new AppErrors.AppError("request.validation_failed");
+        }
+        // 同步复制和替换在当前 worker 回合内完成，清理与脚本无法插入其中。
+        this.native_fs.copy_file_atomic(current.path, destination);
+        return { status: "saved" };
+      });
+    } catch (cause) {
+      if (AppErrors.is_app_error(cause)) throw cause;
+      throw new AppErrors.AppError("file.io_failed", { cause });
+    }
+  }
+
+  /** 会话开始失效时立即隔离待决保存，不等待旧模型和脚本停止。 */
+  public invalidate_links(): void {
+    this.link_versions.work += 1;
+    this.link_versions.sources += 1;
+    this.link_versions.snapshot += 1;
+  }
+
+  /** 两次检查共用 URL 解码、真实路径边界和文件类型判断。 */
+  private resolve_path(href: unknown): WorkspacePath {
     if (typeof href !== "string") {
       throw new AppErrors.AppError("request.validation_failed");
     }
@@ -166,17 +222,12 @@ export class AgentWorkspaceService {
     ) {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    let target: FileManagerTarget;
     try {
       const root = this.native_fs.real_path(this.root_path);
       const file_path = this.native_fs.real_path(path.resolve(root, relative_path));
       const inside_path = path.relative(root, file_path);
       // 真实路径检查阻止工作区内的符号链接把宿主定位引向工作区外。
-      if (
-        inside_path === ".." ||
-        inside_path.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(inside_path)
-      ) {
+      if (!is_inside_path(root, file_path)) {
         throw new AppErrors.AppError("request.validation_failed");
       }
       const stat = this.native_fs.stat(file_path);
@@ -184,9 +235,11 @@ export class AgentWorkspaceService {
         throw new AppErrors.AppError("file.invalid_structure");
       }
       // realpath 在 Windows 可能返回 namespaced path，shell 消费普通平台路径。
-      target = {
+      const scope = inside_path.split(path.sep)[0];
+      return {
         path: path.resolve(this.root_path, inside_path),
         kind: stat.isDirectory() ? "directory" : "file",
+        scope: scope === "work" || scope === "sources" ? scope : "snapshot",
       };
     } catch (cause) {
       if (AppErrors.is_app_error(cause)) throw cause;
@@ -196,15 +249,11 @@ export class AgentWorkspaceService {
         (cause.code === "ENOENT" || cause.code === "ENOTDIR");
       throw new AppErrors.AppError(missing ? "file.not_found" : "file.io_failed", { cause });
     }
-    try {
-      await this.options.openInFileManager(target);
-    } catch (cause) {
-      throw new AppErrors.AppError("file.io_failed", { cause });
-    }
   }
 
   /** 启动时清除崩溃遗留目录，工作区从不跨应用生命周期恢复。 */
   public async initialize(): Promise<void> {
+    this.invalidate_links();
     this.active = null;
     this.source_session = null;
     this.work_session = null;
@@ -472,12 +521,14 @@ export class AgentWorkspaceService {
 
   /** 显式 Agent reset 销毁当前快照和工作材料目录，同一工程会话继续复用源文件投影。 */
   public async reset_workspace(): Promise<void> {
+    this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
   }
 
   /** 工程切换先销毁旧投影；非空路径表示为当前工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
+    this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
     this.source_session = null;
@@ -560,6 +611,7 @@ export class AgentWorkspaceService {
       return current.files.map((file) => ({ ...file }));
     }
     const source_path = path.join(this.root_path, "sources");
+    this.link_versions.sources += 1;
     this.source_session = null;
     // reset_project 已隔离旧工作区，snapshot、run 与 apply 由 exclusive 串行；完整生成前应用内没有 sources 读者。
     await this.native_fs.remove_async(source_path, { recursive: true, force: true });
@@ -582,6 +634,7 @@ export class AgentWorkspaceService {
   /** 快照读取前已清除不相容身份；无身份时须删除可能残留的旧材料后再建立目录。 */
   private async ensure_work(args: AgentWorkspaceWorkSession): Promise<void> {
     if (this.work_session === null) {
+      this.link_versions.work += 1;
       await this.native_fs.remove_async(this.work_path, { recursive: true, force: true });
     }
     await this.native_fs.make_dir_async(this.work_path);
@@ -604,6 +657,7 @@ export class AgentWorkspaceService {
 
   /** 清除数据快照与工作变更，保留独立生命周期的 sources 和 work。 */
   private async clear_snapshot(): Promise<void> {
+    this.link_versions.snapshot += 1;
     this.active = null;
     const targets = [
       AGENT_WORKSPACE_PATHS.projectMeta,
@@ -625,6 +679,7 @@ export class AgentWorkspaceService {
 
   /** 先解除工作材料身份；删除失败的旧目录不会在下次 snapshot 建立时被静默复用。 */
   private async discard_work(): Promise<void> {
+    this.link_versions.work += 1;
     this.work_session = null;
     await this.remove_workspace_directory(this.work_path);
   }
@@ -653,7 +708,7 @@ export class AgentWorkspaceService {
   }
 }
 
-/** AgentService 通过工作区公开操作管理生命周期、执行工具与定位文件。 */
+/** AgentService 通过工作区公开操作管理生命周期、执行工具与交付文件。 */
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "initialize"
@@ -661,8 +716,15 @@ export type AgentWorkspacePort = Pick<
   | "apply_workspace"
   | "reset_workspace"
   | "reset_project"
-  | "open_path"
+  | "activate_path"
+  | "invalidate_links"
 >;
+
+/** 输入均为 realpath 结果，包含根目录本身。 */
+function is_inside_path(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
 
 /** 审批摘要只统计预演实际候选对象。 */
 function summarize_applied_changes(

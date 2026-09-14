@@ -128,8 +128,9 @@ export const zh_cn_agent_page = {
     error: "失败 · {duration}",
     stopped: "已停止 · {duration}",
   },
+  file_saved: "文件已保存。",
   error: {
-    open_link: "打开链接失败。",
+    activate_link: "处理链接失败。",
     decision: "决定提交失败，请重试。",
     restore: "会话恢复失败，请重试。",
     connection: "连接中断，正在等待重连。",

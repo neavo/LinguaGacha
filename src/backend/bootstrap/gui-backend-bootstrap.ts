@@ -3,7 +3,6 @@ import { WebSearchService } from "../agent/web-search-service";
 import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "../agent/workspace/service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
-import type { FileManagerTarget } from "../../shared/backend-runtime";
 import { t_main_log } from "../log/log-text";
 import type { SystemProxyResolver } from "../network/system-proxy-http-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
@@ -21,7 +20,8 @@ export interface GuiBackendBootstrapOptions {
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
   systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
   agentWorkspaceRun: AgentWorkspaceRunPort; // 固定 Deno runner 端口
-  openInFileManager: (target: FileManagerTarget) => Promise<void>; // Electron main 副作用端口
+  openDirectory: (path: string) => Promise<void>; // Electron main 副作用端口
+  pickSavePath: (defaultName: string) => Promise<string | null>; // 原生保存选择，取消返回 null
   workerExecution: BackendWorkerExecution; // 正式 worker_threads 与测试执行策略
 }
 
@@ -95,7 +95,7 @@ export class GuiBackendBootstrap {
         database: resources.database,
         logManager: resources.logManager,
         publishEvent: (topic, payload) => event_stream.publish(topic, payload),
-        openOutputFolder: (path) => this.options.openInFileManager({ path, kind: "directory" }),
+        openOutputFolder: this.options.openDirectory,
         workerExecution: this.options.workerExecution,
       });
       this.services = services;
@@ -112,7 +112,8 @@ export class GuiBackendBootstrap {
         writeStore: services.state.writes,
         logManager: resources.logManager,
         run: this.options.agentWorkspaceRun,
-        openInFileManager: this.options.openInFileManager,
+        openDirectory: this.options.openDirectory,
+        pickSavePath: this.options.pickSavePath,
       });
       const agent = new AgentService({
         batchTranslation: services.batchTranslation,

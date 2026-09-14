@@ -8,18 +8,21 @@ import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
 import { AppPathService } from "../app/app-path-service";
 
 describe("GuiBackendBootstrap 集成", () => {
-  it("启动真实 Agent 与 Gateway，公开 API 读取快照并定位工作区文件", async ({ onTestFinished }) => {
+  it("启动真实 Agent 与 Gateway，公开 API 保存工作区文件并打开目录", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gui-backend-"));
     onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
-    const open_in_file_manager = vi.fn(async () => undefined);
+    const destination = path.join(app_root, "saved.md");
+    const pick_save_path = vi.fn(async () => destination);
+    const open_directory = vi.fn(async () => undefined);
     const bootstrap = new GuiBackendBootstrap({
       appRoot: app_root,
       builtinRoot: path.resolve(process.cwd(), "builtin"),
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       agentWorkspaceRun: async (request) => ({ result: null, todos: [...request.todos] }),
-      openInFileManager: open_in_file_manager,
+      openDirectory: open_directory,
+      pickSavePath: pick_save_path,
       workerExecution: { kind: "in_process" },
     });
 
@@ -38,14 +41,22 @@ describe("GuiBackendBootstrap 集成", () => {
       fs.mkdirSync(directory, { recursive: true });
       const file = path.join(directory, "结果 # 1.md");
       fs.writeFileSync(file, "报告");
-      const open = await fetch(`${started.apiBaseUrl}/api/agent/workspace/open-path`, {
+      const open = await fetch(`${started.apiBaseUrl}/api/agent/workspace/activate-path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: "work/报告/结果%20%23%201.md" }),
       });
-      await expect(open.json()).resolves.toEqual({ ok: true, data: null });
-      expect(open_in_file_manager).toHaveBeenCalledExactlyOnceWith({ path: file, kind: "file" });
-      const missing = await fetch(`${started.apiBaseUrl}/api/agent/workspace/open-path`, {
+      await expect(open.json()).resolves.toEqual({ ok: true, data: { status: "saved" } });
+      expect(fs.readFileSync(destination)).toEqual(fs.readFileSync(file));
+      expect(pick_save_path).toHaveBeenCalledWith("结果 # 1.md");
+      const folder = await fetch(started.apiBaseUrl + "/api/agent/workspace/activate-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: "work/报告/" }),
+      });
+      await expect(folder.json()).resolves.toEqual({ ok: true, data: { status: "opened" } });
+      expect(open_directory).toHaveBeenCalledWith(directory);
+      const missing = await fetch(`${started.apiBaseUrl}/api/agent/workspace/activate-path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: "work/missing.md" }),

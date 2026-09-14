@@ -33,7 +33,7 @@ describe("AgentMarkdown", () => {
     mocks.open_external_url.mockReset();
     mocks.open_external_url.mockResolvedValue(undefined);
     mocks.api_fetch.mockReset();
-    mocks.api_fetch.mockResolvedValue(undefined);
+    mocks.api_fetch.mockResolvedValue({ status: "opened" });
     mocks.push_toast.mockReset();
   });
 
@@ -74,22 +74,46 @@ describe("AgentMarkdown", () => {
     );
   });
 
-  it("工作区链接把编码路径交给定位 API，失败只提示一次", async () => {
+  it("工作区链接把编码路径交给工作区 API，失败只提示一次", async () => {
     const view = await render_markdown(
       "[报告](work/报告%20%23%25.md)\n\n[目录](work/reports/)",
       false,
     );
     const links = view.querySelectorAll<HTMLAnchorElement>("a");
     await act(async () => links[0]?.click());
-    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/agent/workspace/open-path", {
+    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/agent/workspace/activate-path", {
       path: "work/%E6%8A%A5%E5%91%8A%20%23%25.md",
     });
     mocks.api_fetch.mockRejectedValueOnce(new Error("missing"));
     await act(async () => links[1]?.click());
-    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/agent/workspace/open-path", {
+    expect(mocks.api_fetch).toHaveBeenLastCalledWith("/api/agent/workspace/activate-path", {
       path: "work/reports/",
     });
     expect(mocks.open_external_url).not.toHaveBeenCalled();
+    expect(mocks.push_toast).toHaveBeenCalledOnce();
+  });
+
+  it("待决链接只提交一次，保存通知后可再次点击并安静取消", async () => {
+    const view = await render_markdown("[保存报告](work/report.md)", false);
+    let finish!: (value: { status: string }) => void;
+    mocks.api_fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const link = view.querySelector("a");
+    await act(async () => {
+      link?.click();
+      link?.click();
+    });
+    expect(mocks.api_fetch).toHaveBeenCalledOnce();
+    expect(mocks.push_toast).not.toHaveBeenCalled();
+    await act(async () => finish({ status: "saved" }));
+    expect(mocks.push_toast).toHaveBeenCalledExactlyOnceWith("success", "agent_page.file_saved");
+    mocks.api_fetch.mockResolvedValueOnce({ status: "cancelled" });
+    await act(async () => link?.click());
+    expect(mocks.api_fetch).toHaveBeenCalledTimes(2);
     expect(mocks.push_toast).toHaveBeenCalledOnce();
   });
 

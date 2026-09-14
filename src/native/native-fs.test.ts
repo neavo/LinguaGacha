@@ -24,6 +24,41 @@ afterEach(() => {
 });
 
 describe("原生文件系统门面", () => {
+  it("完整复制后替换目标，保留二进制源文件", () => {
+    const native_fs = new NativeFs();
+    const source = path.join(temp_dir, "source.bin");
+    const target = path.join(temp_dir, "target.bin");
+    const bytes = Buffer.from([0, 255, 13, 10, 128]);
+    fs.writeFileSync(source, bytes);
+    fs.writeFileSync(target, "旧文件");
+    native_fs.copy_file_atomic(source, target);
+    expect(fs.readFileSync(target)).toEqual(bytes);
+    expect(fs.readFileSync(source)).toEqual(bytes);
+    expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.bin", "target.bin"]);
+  });
+
+  it.each(["copy", "rename"])("%s 失败保留已有目标并清理半成品", (failure) => {
+    const native_fs = new NativeFs();
+    const source = path.join(temp_dir, "source.txt");
+    const target = path.join(temp_dir, "target.txt");
+    fs.writeFileSync(source, "新文件");
+    fs.writeFileSync(target, "旧文件");
+    const cause = new Error("disk failed");
+    if (failure === "copy") {
+      vi.spyOn(native_fs, "copy_file").mockImplementation((_source, temporary) => {
+        fs.writeFileSync(temporary, "半成品");
+        throw cause;
+      });
+    } else {
+      vi.spyOn(native_fs, "rename").mockImplementation(() => {
+        throw cause;
+      });
+    }
+    expect(() => native_fs.copy_file_atomic(source, target)).toThrow(cause);
+    expect(fs.readFileSync(target, "utf8")).toBe("旧文件");
+    expect(fs.readdirSync(temp_dir).sort()).toEqual(["source.txt", "target.txt"]);
+  });
+
   it("Windows 根目录创建视为已存在", () => {
     const native_fs = new NativeFs(new NativePathPolicy("win32"));
     const mkdir_sync = vi.spyOn(fs, "mkdirSync").mockImplementation(() => {

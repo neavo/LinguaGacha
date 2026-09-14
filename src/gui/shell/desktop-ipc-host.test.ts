@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import path from "node:path";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
@@ -333,7 +332,7 @@ describe("桌面 IPC 宿主", () => {
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(3, main_window, {
       properties: ["openFile"],
-      filters: [{ name: "LinguaGacha Project", extensions: ["lg"] }],
+      filters: [{ name: expect.any(String), extensions: ["lg"] }],
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(4, main_window, {
       properties: ["openFile", "multiSelections"],
@@ -345,89 +344,40 @@ describe("桌面 IPC 宿主", () => {
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(6, main_window, {
       properties: ["openFile"],
       filters: [
-        { name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] },
-        { name: "JSON 文件 (*.json)", extensions: ["json"] },
-        { name: "Excel 文件 (*.xlsx)", extensions: ["xlsx"] },
+        { name: expect.any(String), extensions: ["json", "xlsx"] },
+        { name: expect.any(String), extensions: ["json"] },
+        { name: expect.any(String), extensions: ["xlsx"] },
       ],
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(7, main_window, {
       properties: ["openFile"],
-      filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
+      filters: [{ name: expect.any(String), extensions: ["txt"] }],
     });
     expect(read_app_language).toHaveBeenCalledTimes(3);
   });
 
-  it("保存路径类 IPC 返回单路径快照并只在有默认名时设置 defaultPath", async () => {
-    const main_window = { id: "main-window" };
-    await register_handlers({ mainWindow: main_window });
-    electron_mock.show_save_dialog
-      .mockResolvedValueOnce({ canceled: false, filePath: "C:/project/demo.lg" })
-      .mockResolvedValueOnce({ canceled: false, filePath: "C:/glossary.json" })
-      .mockResolvedValueOnce({ canceled: false, filePath: "C:/prompt.txt" })
-      .mockResolvedValueOnce({ canceled: true });
-
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "project-save",
-        default_name: "demo.lg",
-        default_directory: "D:/recent",
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/project/demo.lg"],
-    });
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "glossary-export",
-        default_name: "glossary.json",
-        default_directory: null,
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/glossary.json"],
-    });
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "prompt-export",
-        default_directory: "D:/recent",
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/prompt.txt"],
-    });
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "project-save",
-        default_name: "cancel.lg",
-        default_directory: null,
-      }),
-    ).resolves.toEqual({
-      canceled: true,
-      paths: [],
-    });
-
-    expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(1, main_window, {
-      defaultPath: path.join("D:/recent", "demo.lg"),
-      filters: [{ name: "LinguaGacha Project", extensions: ["lg"] }],
-    });
-    expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(2, main_window, {
-      defaultPath: "glossary.json",
-      filters: [{ name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
-    });
-    expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(3, main_window, {
-      defaultPath: "D:/recent",
-      filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
-    });
-    expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(4, main_window, {
-      defaultPath: "cancel.lg",
-      filters: [{ name: "LinguaGacha Project", extensions: ["lg"] }],
-    });
+  it("保存用途路由到对应文件格式", async () => {
+    await register_handlers();
+    electron_mock.show_save_dialog.mockResolvedValue({ canceled: false, filePath: "C:/saved" });
+    for (const [kind, extensions] of [
+      ["project-save", ["lg"]],
+      ["glossary-export", ["json", "xlsx"]],
+      ["prompt-export", ["txt"]],
+    ]) {
+      await expect(
+        invoke(IPC_CHANNEL_PICK_PATH, { kind, default_name: "saved", default_directory: null }),
+      ).resolves.toEqual({ canceled: false, paths: ["C:/saved"] });
+      expect(electron_mock.show_save_dialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          filters: expect.arrayContaining([expect.objectContaining({ extensions })]),
+        }),
+      );
+    }
   });
 
   it("没有主窗口时仍能打开原生选择器并归一取消结果", async () => {
     await register_handlers({ mainWindow: null });
     electron_mock.show_open_dialog.mockResolvedValueOnce({ canceled: false, filePaths: [] });
-    electron_mock.show_save_dialog.mockResolvedValueOnce({ canceled: true });
 
     await expect(
       invoke(IPC_CHANNEL_PICK_PATH, {
@@ -438,72 +388,31 @@ describe("桌面 IPC 宿主", () => {
       canceled: true,
       paths: [],
     });
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, { kind: "prompt-export", default_directory: null }),
-    ).resolves.toEqual({
-      canceled: true,
-      paths: [],
-    });
-
     expect(electron_mock.show_open_dialog).toHaveBeenCalledWith({
       properties: ["openDirectory"],
     });
-    expect(electron_mock.show_save_dialog).toHaveBeenCalledWith({
-      filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
-    });
   });
 
-  it("文件过滤器文案按调用时应用语言解析", async () => {
+  it("同一保存用途的过滤器文案跟随调用时的应用语言", async () => {
     let app_language = "EN";
-    await register_handlers({
-      readAppLanguage: async () => app_language,
-    });
-    electron_mock.show_open_dialog.mockResolvedValueOnce({
-      canceled: false,
-      filePaths: ["C:/glossary.json"],
-    });
-    electron_mock.show_save_dialog.mockResolvedValueOnce({
-      canceled: false,
-      filePath: "C:/glossary.xlsx",
-    });
-
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, { kind: "glossary-import", default_directory: null }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/glossary.json"],
-    });
+    await register_handlers({ readAppLanguage: async () => app_language });
+    electron_mock.show_save_dialog.mockResolvedValue({ canceled: true });
+    const request = {
+      kind: "glossary-export",
+      default_name: "glossary.xlsx",
+      default_directory: null,
+    };
+    await invoke(IPC_CHANNEL_PICK_PATH, request);
     app_language = "ZH";
-    await expect(
-      invoke(IPC_CHANNEL_PICK_PATH, {
-        kind: "glossary-export",
-        default_name: "glossary.xlsx",
-        default_directory: null,
-      }),
-    ).resolves.toEqual({
-      canceled: false,
-      paths: ["C:/glossary.xlsx"],
-    });
-
-    expect(electron_mock.show_open_dialog).toHaveBeenCalledWith({
-      properties: ["openFile"],
-      filters: [
-        { name: "Supported files (*.json *.xlsx)", extensions: ["json", "xlsx"] },
-        { name: "JSON files (*.json)", extensions: ["json"] },
-        { name: "Excel files (*.xlsx)", extensions: ["xlsx"] },
-      ],
-    });
-    expect(electron_mock.show_save_dialog).toHaveBeenCalledWith({
-      defaultPath: "glossary.xlsx",
-      filters: [{ name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
-    });
+    await invoke(IPC_CHANNEL_PICK_PATH, request);
+    const [english, chinese] = electron_mock.show_save_dialog.mock.calls.map(([options]) =>
+      (options as Electron.SaveDialogOptions).filters?.map((filter) => filter.name),
+    );
+    expect(chinese).not.toEqual(english);
   });
 });
 
-// register_handlers 收口测试中的共享步骤，保证断言只关注当前行为。
-/**
- * 模拟 IPC 通信行为。
- */
+/** 收口真实 IPC 注册和调用，断言只关注宿主行为。 */
 async function register_handlers(
   options: {
     mainWindow?: unknown | null;

@@ -2,12 +2,9 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
-import type {
-  AgentWorkspaceRuntimePaths,
-  BackendRuntimeReady,
-  FileManagerTarget,
-} from "../shared/backend-runtime";
+import type { AgentWorkspaceRuntimePaths, BackendRuntimeReady } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
+import { pick_save_path } from "./shell/path-dialog";
 import {
   configure_development_remote_debugging,
   configure_renderer_public_path,
@@ -48,18 +45,13 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
   /**
-   * 文件显示所在目录并选中，目录直接进入；原生打开失败沿宿主通道回传。
+   * 原生目录打开失败沿宿主通道回传。
    */
-  async function open_in_file_manager(target: FileManagerTarget): Promise<void> {
-    if (target.kind === "file") {
-      // 此 API 无完成回执，成功仅表示已向系统发起定位。
-      shell.showItemInFolder(target.path);
-      return;
-    }
-    const error_message = await shell.openPath(target.path);
+  async function open_directory(path: string): Promise<void> {
+    const error_message = await shell.openPath(path);
     if (error_message !== "") {
       throw new AppErrors.AppError("file.io_failed", {
-        diagnostic_context: { path: target.path, reason: error_message },
+        diagnostic_context: { path, reason: error_message },
       });
     }
   }
@@ -78,7 +70,11 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     builtinRoot: builtin_root,
     agentWorkspaceRuntime: agent_workspace_runtime,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
-    openInFileManager: open_in_file_manager,
+    openDirectory: open_directory,
+    pickSavePath: async (default_name) => {
+      const result = await pick_save_path(win, null, default_name, []);
+      return result.canceled ? null : (result.paths[0] ?? null);
+    },
     onUnexpectedExit: (error) => {
       try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
       void quit_app_after_backend_shutdown(1);
