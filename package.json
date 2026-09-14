@@ -36,7 +36,7 @@
     "@hono/node-server": "^2.1.1",
     "@lezer/highlight": "^1.2.3",
     "@mdream/js": "^1.7.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
