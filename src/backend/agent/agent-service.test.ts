@@ -1758,7 +1758,8 @@ describe("AgentService", () => {
   it("Electron 工作区端口随两个工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
-      open_path: vi.fn(async () => undefined),
+      activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
+      invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
       run_script: vi.fn(async (_script, todos) => ({ result: null, todos: [...todos] })),
@@ -1779,10 +1780,23 @@ describe("AgentService", () => {
         "read_skill",
       ].sort(),
     );
-    await service.reset();
+    await expect(service.activate_workspace_path({ path: "work/report.md" })).resolves.toEqual({
+      status: "cancelled",
+    });
+    expect(workspace.activate_path).toHaveBeenCalledWith("work/report.md");
+    const reset = service.reset();
+    expect(workspace.invalidate_links).toHaveBeenCalledOnce();
+    await expect(service.activate_workspace_path({ path: "work/report.md" })).rejects.toMatchObject(
+      { code: "runtime.busy" },
+    );
+    await reset;
     expect(workspace.reset_workspace).toHaveBeenCalledOnce();
     await session_state.mark_loaded("next.lg");
     expect(workspace.reset_project).toHaveBeenCalledWith("next.lg");
+    const invalidations = workspace.invalidate_links.mock.calls.length;
+    const dispose = service.dispose();
+    expect(workspace.invalidate_links).toHaveBeenCalledTimes(invalidations + 1);
+    await dispose;
   });
 
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
@@ -2964,7 +2978,8 @@ describe("AgentService", () => {
       workspace ??
       ({
         initialize: vi.fn(async () => undefined),
-        open_path: vi.fn(async () => undefined),
+        activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
+        invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
         run_script: vi.fn<AgentWorkspacePort["run_script"]>(async (script, todos) => {

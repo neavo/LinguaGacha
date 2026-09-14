@@ -93,7 +93,8 @@ describe("BackendRuntimeClient", () => {
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
-    const { client, resolve_proxy, open_in_file_manager } = create_client();
+    const { client, resolve_proxy, open_directory, pick_save_path } = create_client();
+    pick_save_path.mockResolvedValueOnce("E:/结果.md");
     const start = client.start();
     const worker = get_worker();
     worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
@@ -107,12 +108,23 @@ describe("BackendRuntimeClient", () => {
     worker.emit("message", {
       type: "host_request",
       requestId: "open-1",
-      operation: { kind: "open_in_file_manager", target: { path: "E:/output", kind: "directory" } },
+      operation: { kind: "open_directory", path: "E:/output" },
     } satisfies BackendRuntimeWorkerMessage);
-    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(2));
+    worker.emit("message", {
+      type: "host_request",
+      requestId: "save-1",
+      operation: { kind: "pick_save_path", defaultName: "结果.md" },
+    } satisfies BackendRuntimeWorkerMessage);
+    await vi.waitFor(() => expect(worker.posted_messages).toHaveLength(3));
+    expect(pick_save_path).toHaveBeenCalledWith("结果.md");
+    expect(worker.posted_messages).toContainEqual({
+      type: "host_response",
+      requestId: "save-1",
+      result: { ok: true, data: "E:/结果.md" },
+    });
 
     expect(resolve_proxy).toHaveBeenCalledWith("https://example.com");
-    expect(open_in_file_manager).toHaveBeenCalledWith({ path: "E:/output", kind: "directory" });
+    expect(open_directory).toHaveBeenCalledWith("E:/output");
     expect(worker.posted_messages).toContainEqual({
       type: "host_response",
       requestId: "proxy-1",
@@ -193,9 +205,10 @@ describe("BackendRuntimeClient", () => {
 /** 默认宿主保留成功与失败两种结果，测试仅替换线程。 */
 function create_client() {
   const resolve_proxy = vi.fn(async () => "DIRECT");
-  const open_in_file_manager = vi.fn(async () => {
+  const open_directory = vi.fn(async () => {
     throw new Error("无法打开目录");
   });
+  const pick_save_path = vi.fn(async (_name: string): Promise<string | null> => null);
   const on_unexpected_exit = vi.fn();
   return {
     client: new BackendRuntimeClient({
@@ -207,11 +220,13 @@ function create_client() {
         runtimeEntryPath: "E:/runtime/deno-runtime.js",
       },
       resolveProxy: resolve_proxy,
-      openInFileManager: open_in_file_manager,
+      openDirectory: open_directory,
+      pickSavePath: pick_save_path,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,
-    open_in_file_manager,
+    open_directory,
+    pick_save_path,
     on_unexpected_exit,
   };
 }

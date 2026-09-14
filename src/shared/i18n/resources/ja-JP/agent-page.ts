@@ -135,8 +135,9 @@ export const ja_jp_agent_page = {
     error: "失敗 · {duration}",
     stopped: "停止済み · {duration}",
   },
+  file_saved: "ファイルを保存しました。",
   error: {
-    open_link: "リンクを開けませんでした。",
+    activate_link: "リンクを処理できませんでした。",
     decision: "回答を送信できませんでした。再試行してください。",
     restore: "セッションを復元できませんでした。再試行してください。",
     connection: "接続が切れました。再接続を待っています。",

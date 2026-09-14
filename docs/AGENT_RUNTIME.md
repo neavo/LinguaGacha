@@ -51,7 +51,8 @@
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
 - 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_script` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 - 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。
-- 工作区文件链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/open-path` 接收 `{ path }`，由 `AgentWorkspaceService` 解析现存目标并检查真实路径边界，再经宿主通道定位文件或进入目录。定位可与脚本运行并行，不建立快照或持久化副本；会话清理期间拒绝请求。
+- 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 解析现存目标并检查真实路径边界。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
+- 文件保存采用确认时的当前内容，不建立点击时副本。对话框等待期间释放工作区互斥；会话清理开始立即使待决链接失效，work、sources 与数据快照按各自清理生命周期失效。确认后重新检查来源与脚本互斥，拒绝向工作区内部保存；同目录临时文件完整复制后才替换目标，保留工作原件与失败前的已有目标。
 - 每次 `workspace_script` 启动一个 Deno 子进程，跨调用状态只由文件承担。脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
 
 ## 3. 模型、资源与 skill

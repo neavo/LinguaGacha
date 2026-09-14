@@ -4,7 +4,6 @@ import type {
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
   BackendRuntimeWorkerMessage,
-  FileManagerTarget,
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
@@ -119,7 +118,8 @@ describe("run_backend_runtime", () => {
       appRoot: string;
       builtinRoot: string;
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
-      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+      openDirectory: (path: string) => Promise<void>;
+      pickSavePath: (name: string) => Promise<string | null>;
       agentWorkspaceRun: (request: unknown, signal: AbortSignal) => Promise<unknown>;
     };
     expect(bootstrap_options).toMatchObject({
@@ -138,14 +138,26 @@ describe("run_backend_runtime", () => {
       systemProxyResolver: bootstrap_options.systemProxyResolver,
     });
 
-    const open = bootstrap_options.openInFileManager({ path: "E:/output", kind: "directory" });
-    const open_request = get_host_request(port, "open_in_file_manager");
+    const open = bootstrap_options.openDirectory("E:/output");
+    const open_request = get_host_request(port, "open_directory");
     port.emit({
       type: "host_response",
       requestId: open_request.requestId,
       result: { ok: false, error: { message: "无法打开目录" } },
     });
     await expect(open).rejects.toThrow("无法打开目录");
+
+    for (const destination of ["E:/结果.md", null]) {
+      const saved = bootstrap_options.pickSavePath("结果.md");
+      const save_request = get_host_request(port, "pick_save_path");
+      expect(save_request.operation).toEqual({ kind: "pick_save_path", defaultName: "结果.md" });
+      port.emit({
+        type: "host_response",
+        requestId: save_request.requestId,
+        result: { ok: true, data: destination },
+      });
+      await expect(saved).resolves.toBe(destination);
+    }
 
     const workspace_signal = new AbortController().signal;
     const workspace = bootstrap_options.agentWorkspaceRun(
@@ -185,7 +197,7 @@ describe("run_backend_runtime", () => {
     expect(runtime_mocks.stop).toHaveBeenCalledOnce();
   });
 
-  it("取消宿主操作后等待清理回执，再以原始原因结算", async () => {
+  it("取消宿主等待立即以原始原因结算，迟到响应无效", async () => {
     const port = create_port();
     await run_backend_runtime({
       appRoot: "E:/app",
@@ -204,21 +216,9 @@ describe("run_backend_runtime", () => {
       controller.signal,
     );
     const request = get_host_request(port, "resolve_proxy");
-    let settled = false;
-    void proxy.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
-    );
-
+    const rejection = expect(proxy).rejects.toBe(reason);
     controller.abort(reason);
-
-    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
-    await Promise.resolve();
-    expect(settled).toBe(false);
+    await rejection;
     expect(() =>
       port.emit({
         type: "host_response",
@@ -229,7 +229,7 @@ describe("run_backend_runtime", () => {
     await expect(proxy).rejects.toBe(reason);
   });
 
-  it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {
+  it("runtime 关闭时拒绝尚未结算的保存请求", async () => {
     const port = create_port();
     await run_backend_runtime({
       appRoot: "E:/app",
@@ -239,17 +239,16 @@ describe("run_backend_runtime", () => {
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
-      openInFileManager: (target: FileManagerTarget) => Promise<void>;
+      openDirectory: (path: string) => Promise<void>;
+      pickSavePath: (name: string) => Promise<string | null>;
     };
-    const pending = bootstrap_options.openInFileManager({ path: "E:/output", kind: "directory" });
+    const pending = bootstrap_options.pickSavePath("report.md");
     const rejection = expect(pending).rejects.toThrow("Backend runtime is closed.");
-    const request = get_host_request(port, "open_in_file_manager");
 
     port.emit({ type: "stop", requestId: "stop-pending" });
 
     await rejection;
     await vi.waitFor(() => expect(port.close).toHaveBeenCalledOnce());
-    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
   });
 
   it("启动失败时发送结构化错误、释放资源并关闭端口", async () => {

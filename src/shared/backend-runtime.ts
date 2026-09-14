@@ -22,13 +22,8 @@ export type BackendRuntimeResult<T = unknown> =
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
   | { kind: "resolve_proxy"; url: string }
-  | { kind: "open_in_file_manager"; target: FileManagerTarget };
-
-/** 后端已确认的文件管理器目标；main 只按类型选择原生动作。 */
-export type FileManagerTarget = Readonly<{
-  path: string; // 后端解析的绝对路径，main 不再解释工作区相对位置
-  kind: "file" | "directory";
-}>;
+  | { kind: "open_directory"; path: string }
+  | { kind: "pick_save_path"; defaultName: string };
 
 export type BackendRuntimeDiagnosticLevel = "warning" | "error" | "fatal";
 
@@ -55,7 +50,6 @@ export type BackendRuntimeWorkerMessage =
   | { type: "ready"; data: BackendRuntimeReady }
   | { type: "start_failed"; error: LogError }
   | { type: "response"; requestId: string; result: BackendRuntimeResult }
-  | { type: "host_cancel"; requestId: string }
   | {
       type: "host_request";
       requestId: string;

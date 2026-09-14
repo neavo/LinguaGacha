@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { NativePathPolicy, default_native_path_policy } from "./native-path";
@@ -210,6 +211,25 @@ export class NativeFs {
   public copy_file(source_path: string, destination_path: string): void {
     this.ensure_parent_dir(destination_path);
     fs.copyFileSync(this.to_native_path(source_path), this.to_native_path(destination_path));
+  }
+
+  /** 同目录临时文件完整复制后才替换目标，复制或替换失败保留已有目标。 */
+  public copy_file_atomic(source_path: string, destination_path: string): void {
+    const temporary_path = path.join(path.dirname(destination_path), `.${randomUUID()}.tmp`);
+    try {
+      this.copy_file(source_path, temporary_path);
+      this.rename(temporary_path, destination_path);
+    } catch (cause) {
+      try {
+        // 复制可能尚未建立临时文件，缺失时清理已完成。
+        this.remove(temporary_path, { force: true });
+      } catch (cleanup_error) {
+        throw new AggregateError([cause, cleanup_error], "File copy and cleanup failed.", {
+          cause,
+        });
+      }
+      throw cause;
+    }
   }
 
   /**

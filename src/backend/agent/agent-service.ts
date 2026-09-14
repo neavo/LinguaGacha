@@ -34,6 +34,7 @@ import {
   normalize_agent_revision_request,
   type AgentAssistantMessageParts,
   type AgentApprovalMode,
+  type AgentWorkspaceLinkResult,
   type AgentCommandAck,
   type AgentContextSnapshot,
   type AgentEntry,
@@ -264,12 +265,11 @@ export class AgentService {
     );
   }
 
-  /** 用户点击只触发现存文件定位；会话清理期间拒绝读取正在失效的目录。 */
-  public async open_workspace_path(request: JsonRecord): Promise<null> {
+  /** 会话清理期间拒绝激活工作区链接。 */
+  public async activate_workspace_path(request: JsonRecord): Promise<AgentWorkspaceLinkResult> {
     this.assert_not_disposed();
     if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
-    await this.workspace.open_path(is_json_record(request) ? request["path"] : undefined);
-    return null;
+    return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
   }
 
   /** 返回仅含不可变投影的公开快照；UI 排序不改写模型侧持有的原始 skill 顺序。 */
@@ -610,6 +610,7 @@ export class AgentService {
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.workspace.invalidate_links();
     this.clear_assistant_stream();
     this.decisions.reset();
     this.todos = [];
@@ -1583,6 +1584,7 @@ export class AgentService {
     project_path: string | null = null,
   ): Promise<void> {
     if (this.session_reset !== null) return this.session_reset;
+    this.workspace.invalidate_links();
     this.runtime_generation += 1;
     this.clear_assistant_stream();
     const runtime = this.runtime;

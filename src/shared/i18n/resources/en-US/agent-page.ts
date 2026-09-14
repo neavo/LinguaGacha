@@ -138,8 +138,9 @@ export const en_us_agent_page = {
     error: "Failed · {duration}",
     stopped: "Stopped · {duration}",
   },
+  file_saved: "File saved.",
   error: {
-    open_link: "Failed to open the link.",
+    activate_link: "Failed to process the link.",
     decision: "Could not submit your decision. Please try again.",
     restore: "The session could not be restored. Try again.",
     connection: "Connection interrupted. Waiting to reconnect.",

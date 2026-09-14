@@ -2,6 +2,7 @@ import {
   isValidElement,
   memo,
   useMemo,
+  useRef,
   useState,
   type ImgHTMLAttributes,
   type ReactNode,
@@ -15,6 +16,7 @@ import { open_external_url, api_fetch } from "@frontend/app/desktop/desktop-api"
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import type { AgentWorkspaceLinkResult } from "@shared/agent";
 import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
 import { AgentMermaidBlock } from "./agent-mermaid";
 
@@ -40,6 +42,7 @@ type CodeBlock = {
 export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
+  const pending_links = useRef(new Set<string>()); // 跨流式重渲染抑制当前消息的重复点击
   // 相对链接由工作区解释；页内锚点保留浏览器语义，外链交给桌面宿主。
   const components = useMemo<Components>(
     () => ({
@@ -50,19 +53,30 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
           <a
             {...anchor_props}
             href={href}
-            onClick={(event) => {
+            onClick={async (event) => {
               if (href.startsWith("#")) return;
               event.preventDefault();
               const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(href);
-              const opening = external
-                ? open_external_url(href.startsWith("//") ? `https:${href}` : href)
-                : api_fetch("/api/agent/workspace/open-path", { path: href });
-              void opening.catch((error: unknown) => {
+              if (pending_links.current.has(href)) return;
+              pending_links.current.add(href);
+              try {
+                if (external) {
+                  await open_external_url(href.startsWith("//") ? `https:${href}` : href);
+                } else {
+                  const result = await api_fetch<AgentWorkspaceLinkResult>(
+                    "/api/agent/workspace/activate-path",
+                    { path: href },
+                  );
+                  if (result.status === "saved") push_toast("success", t("agent_page.file_saved"));
+                }
+              } catch (error: unknown) {
                 push_toast(
                   "error",
-                  resolve_visible_error_message(error, t, t("agent_page.error.open_link")),
+                  resolve_visible_error_message(error, t, t("agent_page.error.activate_link")),
                 );
-              });
+              } finally {
+                pending_links.current.delete(href);
+              }
             }}
           >
             {children}

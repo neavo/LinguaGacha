@@ -30,9 +30,6 @@ type PendingHostRequest = {
   reject: (reason?: unknown) => void;
   signal?: AbortSignal; // Agent stop 的原始取消来源
   abortListener?: () => void; // 结算时必须解绑，避免长会话积累监听器
-  dispatched: boolean; // 已发给 main 的请求必须等待宿主清理回执
-  cancelled: boolean; // 防止同一 signal 重复发送 host_cancel
-  cancelReason?: unknown;
 };
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
@@ -44,7 +41,7 @@ export async function run_backend_runtime(args: {
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
-  // Electron 专属能力反向交给 main 执行，Backend worker 不导入 Electron。
+  // 原生宿主操作不支持中止；取消只结束 worker 的等待，迟到回包由 requestId 丢弃。
   const call_host = async (
     operation: BackendRuntimeHostOperation,
     signal?: AbortSignal,
@@ -56,41 +53,25 @@ export async function run_backend_runtime(args: {
         resolve,
         reject,
         signal,
-        dispatched: false,
-        cancelled: false,
       };
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
         const abort_listener = () => {
-          if (!pending_host_requests.has(request_id) || pending.cancelled) return;
-          pending.cancelled = true;
-          pending.cancelReason = signal.reason;
-          if (pending.dispatched) {
-            args.port.postMessage({ type: "host_cancel", requestId: request_id });
-          } else {
-            pending_host_requests.delete(request_id);
-            signal.removeEventListener("abort", abort_listener);
-            reject(signal.reason);
-          }
+          pending_host_requests.delete(request_id);
+          reject(signal.reason);
         };
         pending.abortListener = abort_listener;
         signal.addEventListener("abort", abort_listener, { once: true });
-        if (signal.aborted) abort_listener();
       }
     });
-    if (pending_host_requests.has(request_id)) {
-      const pending = pending_host_requests.get(request_id);
-      if (pending !== undefined) pending.dispatched = true;
-      args.port.postMessage({ type: "host_request", requestId: request_id, operation });
-    }
+    args.port.postMessage({ type: "host_request", requestId: request_id, operation });
     return await result;
   };
   const reject_pending_host_requests = (reason: unknown): void => {
-    for (const [request_id, pending] of pending_host_requests) {
+    for (const pending of pending_host_requests.values()) {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
         pending.signal.removeEventListener("abort", pending.abortListener);
       }
-      args.port.postMessage({ type: "host_cancel", requestId: request_id });
       pending.reject(reason);
     }
     pending_host_requests.clear();
@@ -110,8 +91,15 @@ export async function run_backend_runtime(args: {
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
     systemProxyResolver: system_proxy_resolver,
-    openInFileManager: async (target) => {
-      await call_host({ kind: "open_in_file_manager", target });
+    openDirectory: async (path) => {
+      await call_host({ kind: "open_directory", path });
+    },
+    pickSavePath: async (defaultName) => {
+      const result = await call_host({ kind: "pick_save_path", defaultName });
+      if (result !== null && (typeof result !== "string" || result === "")) {
+        throw new TypeError("Invalid save path response.");
+      }
+      return result;
     },
     agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
     workerExecution:
@@ -127,8 +115,7 @@ export async function run_backend_runtime(args: {
       if (pending.signal !== undefined && pending.abortListener !== undefined) {
         pending.signal.removeEventListener("abort", pending.abortListener);
       }
-      if (pending.cancelled) pending.reject(pending.cancelReason);
-      else if (message.result.ok) pending.resolve(message.result.data);
+      if (message.result.ok) pending.resolve(message.result.data);
       else pending.reject(to_error(message.result.error));
       return;
     }
