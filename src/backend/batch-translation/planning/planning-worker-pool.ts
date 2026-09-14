@@ -1,364 +1,241 @@
-import crypto from "node:crypto";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import { AppError, normalize_log_error } from "../../../shared/error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import type { BackendWorkerExecution } from "../../worker/worker-execution";
-import { create_o200k_base_token_counter, type TokenCounter } from "../core/token-counter";
 import type {
   PlanningWorkerIncomingMessage,
   PlanningWorkerOutgoingMessage,
 } from "./planning-worker-types";
-import type { TranslationTokenCountInput, TranslationTokenCountResult } from "./token-metric-cache";
 
-const PLANNING_CHUNK_SIZE = 2000; // 单条消息大小兼顾线程负载均衡和 postMessage 序列化成本。
-const IN_PROCESS_YIELD_EVERY_ITEMS = 256; // 同进程计数每处理一批主动让出事件循环，保证取消语义可观察。
+const BATCH_ITEM_LIMIT = 2000;
+const BATCH_TEXT_LENGTH_LIMIT = 256 * 1024; // UTF-16 长度限制消息规模；单条长文本始终完整计数。
+const BATCH_TEXT_LENGTH_MIN = 4096;
+const BATCHES_PER_WORKER = 4;
 
-interface PlanningWorkerPoolOptions {
-  execution: BackendWorkerExecution;
-}
-
-interface PendingPlanningTask {
-  id: string;
-  items: TranslationTokenCountInput[];
-  signal: AbortSignal;
-  resolve: (value: TranslationTokenCountResult[]) => void;
+type PendingBatch = {
+  id: number; // 匹配回包，隔离已结束批次的迟到消息。
+  length: number; // 消费边界要求每条文本恰好对应一个计数。
+  resolve: (counts: readonly number[]) => void;
   reject: (error: unknown) => void;
-  abort_listener: () => void;
-}
+};
 
-interface PlanningWorkerSlot {
+type WorkerSlot = {
   worker: Worker;
-  task: PendingPlanningTask | null;
-}
+  pending: PendingBatch | null; // 等待真实回包或 exit 后才释放。
+  closed: boolean; // 只由 exit 确认，下次有工作时重建。
+  error: unknown; // error 先于 exit 到达，保留原始原因到退出结算。
+};
 
-/**
- * planning worker 池把精确 token 计数移出 Backend 主线程，线程只计算，不拥有项目事实。
- */
+/** 单 run 互斥下只接受一次规划计数；多个执行循环按需领取批次，无逐批队列或取消监听。 */
 export class PlanningWorkerPool {
-  private readonly execution: BackendWorkerExecution; // 由启动入口显式注入，构建产物路径不在池内猜测。
-  private readonly worker_count: number; // 控制 CPU 计数并行度，不等同于 LLM 请求并发。
-  private readonly queue: PendingPlanningTask[] = [];
-  private readonly slots: PlanningWorkerSlot[] = [];
-  private readonly in_process_counter: TokenCounter | null = null;
-  private readonly in_process_in_flight = new Map<string, PendingPlanningTask>(); // 同进程模式也使用同一取消和释放入口。
-  private disposed = false; // 关闭后拒绝新任务，避免 BackendServices 释放后继续计数。
+  private readonly execution: BackendWorkerExecution; // 入口决定执行环境和发布资产位置。
+  private readonly worker_count: number; // CPU 并行上限，与模型请求并发独立。
+  private readonly slots: WorkerSlot[] = []; // 按需创建的线程，跨规划复用词表。
+  private next_batch_id = 0; // 跨请求递增，取消后不复用消息身份。
+  private active: { controller: AbortController; completion: Promise<number[]> } | null = null; // 请求取消与完成共用一个所有者。
+  private closing: Promise<void> | null = null; // 同时表达停止受理和可重复等待的关闭过程。
 
-  /**
-   * 根据 execution 创建 worker_threads 或同进程计数器，产品路径固定走 worker_threads。
-   */
-  public constructor(options: PlanningWorkerPoolOptions) {
+  /** 只确定执行容量，实际线程由首次缺失计数启动。 */
+  public constructor(options: { execution: BackendWorkerExecution; workerCount?: number }) {
     this.execution = options.execution;
     this.worker_count = resolve_default_worker_count({
-      availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
+      workerCount: options.workerCount,
+      availableParallelism: os.availableParallelism(),
     });
-    if (this.execution.kind === "in_process") {
-      this.in_process_counter = create_o200k_base_token_counter();
-      return;
-    }
-    for (let index = 0; index < this.worker_count; index += 1) {
-      this.slots.push(this.create_slot());
+  }
+
+  /** 同序返回全部结果，失败或取消等待活动批次收束后才释放本次请求。 */
+  public async count_items(texts: readonly string[], signal: AbortSignal): Promise<number[]> {
+    if (this.closing !== null) throw this.disposed_error();
+    if (this.active !== null) throw new AppError("runtime.busy");
+    if (signal.aborted) throw this.cancelled_error();
+    if (texts.length === 0) return [];
+    const controller = new AbortController();
+    const abort = () => controller.abort(this.cancelled_error());
+    signal.addEventListener("abort", abort, { once: true });
+    // 先登记 active 再进入异步执行，dispose 和同步取消均能观察同一完成链。
+    const completion = Promise.resolve().then(() => this.count_request(texts, controller));
+    this.active = { controller, completion };
+    try {
+      return await completion;
+    } finally {
+      signal.removeEventListener("abort", abort);
+      this.active = null;
     }
   }
 
-  /**
-   * 对外暴露批量 token 计数；调用方拿到的只是 cache_key 到 token_count 的值对象。
-   */
-  public async count_items(
-    items: TranslationTokenCountInput[],
-    signal: AbortSignal,
-  ): Promise<TranslationTokenCountResult[]> {
-    if (items.length === 0) {
-      return [];
+  /** 同步停止受理并取消活动请求，重复关闭复用同一完成链。 */
+  public dispose(): Promise<void> {
+    if (this.closing === null) {
+      // 先关闭受理入口，再同步取消；abort 回调中的重入也必须看到关闭状态。
+      this.closing = Promise.resolve().then(() => this.close());
+      this.active?.controller.abort(this.disposed_error());
     }
-    const chunks = this.split_items(items);
-    const results = await Promise.all(chunks.map((chunk) => this.enqueue(chunk, signal)));
-    return results.flat();
+    return this.closing;
   }
 
-  /**
-   * BackendServices 释放时拒绝队列、终止 worker，避免 CLI 或 GUI 退出后残留线程。
-   */
-  public async dispose(): Promise<void> {
-    this.disposed = true;
-    for (const task of this.queue.splice(0, this.queue.length)) {
-      this.reject_task(task, this.create_disposed_error());
-    }
-    for (const task of this.in_process_in_flight.values()) {
-      this.reject_task(task, this.create_disposed_error());
-    }
-    this.in_process_in_flight.clear();
-    for (const slot of this.slots) {
-      if (slot.task !== null) {
-        this.reject_task(slot.task, this.create_disposed_error());
-        slot.task = null;
-      }
-    }
-    const terminate_results = await Promise.allSettled(
+  /** 终止线程后等待活动执行收束，关闭失败保留每个终止原因。 */
+  private async close(): Promise<void> {
+    const active = this.active;
+    const terminations = await Promise.allSettled(
       this.slots.map((slot) => slot.worker.terminate()),
     );
+    // 活动请求的失败由调用者消费；关闭仍必须等待同进程执行或线程回包完成。
+    if (active !== null) await Promise.allSettled([active.completion]);
     this.slots.length = 0;
-    const terminate_errors = terminate_results
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    const errors = terminations
+      .filter((result) => result.status === "rejected")
       .map((result) => result.reason);
-    if (terminate_errors.length > 0) {
-      throw new AggregateError(terminate_errors, "Failed to terminate PlanningWorkerPool workers.");
+    if (errors.length > 0)
+      throw new AggregateError(errors, "Failed to terminate planning workers.");
+  }
+
+  /** 按文本量划分可领取批次；任一失败取消同请求的其它执行循环。 */
+  private async count_request(
+    texts: readonly string[],
+    controller: AbortController,
+  ): Promise<number[]> {
+    const { signal } = controller;
+    signal.throwIfAborted();
+    if (this.execution.kind === "in_process") {
+      const { count_token_batch } = await import("./token-counter");
+      return await count_token_batch(texts, signal);
+    }
+    const total_length = texts.reduce((sum, text) => sum + text.length, 0);
+    const batch_length = Math.max(
+      BATCH_TEXT_LENGTH_MIN,
+      Math.min(
+        BATCH_TEXT_LENGTH_LIMIT,
+        Math.ceil(total_length / (this.worker_count * BATCHES_PER_WORKER)),
+      ),
+    );
+    const results: number[] = [];
+    let next_index = 0; // 执行循环在首次 await 前领取不重叠的输入范围。
+    const cancel_batches = () => {
+      for (const slot of this.slots) {
+        if (!slot.closed && slot.pending !== null) {
+          slot.worker.postMessage({
+            id: slot.pending.id,
+            type: "cancel",
+          } satisfies PlanningWorkerIncomingMessage);
+        }
+      }
+    };
+    signal.addEventListener("abort", cancel_batches, { once: true });
+    const run_lane = async (index: number): Promise<void> => {
+      try {
+        while (next_index < texts.length) {
+          signal.throwIfAborted();
+          const start = next_index;
+          let length = 0;
+          do {
+            length += texts[next_index]!.length;
+            next_index += 1;
+          } while (
+            next_index < texts.length &&
+            next_index - start < BATCH_ITEM_LIMIT &&
+            length + texts[next_index]!.length <= batch_length
+          );
+          // 只为有工作可领的执行循环创建线程；后续请求复用该线程的词表和 BPE 缓存。
+          const counts = await this.count_batch(index, texts.slice(start, next_index));
+          signal.throwIfAborted();
+          for (const [offset, count] of counts.entries()) results[start + offset] = count;
+        }
+      } catch (error) {
+        // 首个失败取消其它执行循环；全部活动批次收束后，由请求完成链抛出同一原因。
+        controller.abort(error);
+      }
+    };
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(this.worker_count, texts.length) }, (_, index) =>
+          run_lane(index),
+        ),
+      );
+      signal.throwIfAborted();
+      return results;
+    } finally {
+      signal.removeEventListener("abort", cancel_batches);
     }
   }
 
-  /**
-   * 入队时绑定 AbortSignal；是否立即派发由 drain_queue 统一决定。
-   */
-  private enqueue(
-    items: TranslationTokenCountInput[],
-    signal: AbortSignal,
-  ): Promise<TranslationTokenCountResult[]> {
-    if (this.disposed) {
-      return Promise.reject(this.create_disposed_error());
+  /** 每个 slot 只派发一个批次，结果沿原输入位置回填。 */
+  private count_batch(index: number, texts: readonly string[]): Promise<readonly number[]> {
+    let slot = this.slots[index];
+    if (slot === undefined || slot.closed) {
+      slot = this.create_slot();
+      this.slots[index] = slot;
     }
-    if (signal.aborted) {
-      return Promise.reject(this.create_cancelled_error());
-    }
-    return new Promise((resolve, reject) => {
-      const task: PendingPlanningTask = {
-        id: crypto.randomUUID(),
-        items,
-        signal,
-        resolve,
-        reject,
-        abort_listener: () => this.cancel_task(task),
-      };
-      signal.addEventListener("abort", task.abort_listener, { once: true });
-      this.queue.push(task);
-      this.drain_queue();
+    const current_slot = slot;
+    return new Promise<readonly number[]>((resolve, reject) => {
+      const id = ++this.next_batch_id;
+      current_slot.pending = { id, length: texts.length, resolve, reject };
+      try {
+        current_slot.worker.postMessage({
+          id,
+          type: "count_tokens",
+          texts,
+        } satisfies PlanningWorkerIncomingMessage);
+      } catch (error) {
+        current_slot.pending = null; // 派发失败没有对应回包，立即释放批次引用。
+        reject(error);
+      }
     });
   }
 
-  /**
-   * 空闲 worker 会持续消费队列；同进程模式一次只执行一个批次，方便测试观察。
-   */
-  private drain_queue(): void {
-    if (this.in_process_counter !== null) {
-      this.drain_in_process_queue();
-      return;
-    }
-    for (const slot of this.slots) {
-      if (slot.task !== null || this.queue.length === 0) {
-        continue;
-      }
-      const task = this.queue.shift();
-      if (task !== undefined) {
-        this.dispatch_worker_task(slot, task);
-      }
-    }
-  }
-
-  /**
-   * worker_threads 派发只发送最小文本载荷，TranslationPlanner 仍留在主线程解释规划结果。
-   */
-  private dispatch_worker_task(slot: PlanningWorkerSlot, task: PendingPlanningTask): void {
-    slot.task = task;
-    const message: PlanningWorkerIncomingMessage = {
-      id: task.id,
-      type: "count_tokens",
-      items: task.items,
-    };
-    slot.worker.postMessage(message);
-  }
-
-  /**
-   * 同进程计数路径只为测试和显式源码执行保留，仍分批让出事件循环。
-   */
-  private drain_in_process_queue(): void {
-    if (this.in_process_in_flight.size > 0) {
-      return;
-    }
-    const task = this.queue.shift();
-    if (task === undefined) {
-      return;
-    }
-    this.in_process_in_flight.set(task.id, task);
-    void this.count_in_process(task);
-  }
-
-  /**
-   * 同进程模式复用同一个 tokenizer，方便单元测试验证取消和队列行为。
-   */
-  private async count_in_process(task: PendingPlanningTask): Promise<void> {
-    const counter = this.in_process_counter;
-    if (counter === null) {
-      return;
-    }
-    try {
-      const results: TranslationTokenCountResult[] = [];
-      for (const [index, item] of task.items.entries()) {
-        if (task.signal.aborted) {
-          throw this.create_cancelled_error();
-        }
-        results.push({ cache_key: item.cache_key, token_count: counter.count(item.text) });
-        if (index > 0 && index % IN_PROCESS_YIELD_EVERY_ITEMS === 0) {
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        }
-      }
-      this.finish_in_process_task(task.id, results, null);
-    } catch (error) {
-      this.finish_in_process_task(task.id, null, error);
-    }
-  }
-
-  /**
-   * Abort 对已派发 worker 立即拒绝主线程 Promise，worker 迟到返回会被忽略。
-   */
-  private cancel_task(task: PendingPlanningTask): void {
-    const queued_index = this.queue.findIndex((item) => item.id === task.id);
-    if (queued_index >= 0) {
-      this.queue.splice(queued_index, 1);
-      this.reject_task(task, this.create_cancelled_error());
-      return;
-    }
-    if (this.in_process_in_flight.delete(task.id)) {
-      this.reject_task(task, this.create_cancelled_error());
-      this.drain_queue();
-      return;
-    }
-    const slot = this.slots.find((item) => item.task?.id === task.id);
-    if (slot === undefined || slot.task === null) {
-      return;
-    }
-    slot.worker.postMessage({
-      id: task.id,
-      type: "cancel",
-    } satisfies PlanningWorkerIncomingMessage);
-    const cancelled_task = slot.task;
-    slot.task = null;
-    this.reject_task(cancelled_task, this.create_cancelled_error());
-    this.drain_queue();
-  }
-
-  /**
-   * 创建单个 planning worker slot，slot 一次只处理一个 token 计数批次。
-   */
-  private create_slot(): PlanningWorkerSlot {
-    if (this.execution.kind !== "worker_threads") {
-      throw new Error("PlanningWorkerPool requires worker_threads mode to create a worker slot.");
-    }
-    const slot: PlanningWorkerSlot = {
+  /** 将线程消息和退出事件收口为批次结算，异常退出也必须结束等待。 */
+  private create_slot(): WorkerSlot {
+    if (this.execution.kind !== "worker_threads") throw new AppError("runtime.internal_invariant");
+    const slot: WorkerSlot = {
       worker: new Worker(this.execution.planningWorkerEntryUrl),
-      task: null,
+      pending: null,
+      closed: false,
+      error: null,
     };
     slot.worker.on("message", (message: PlanningWorkerOutgoingMessage) => {
-      this.finish_worker_message(slot, message);
-    });
-    slot.worker.on("error", (error) => this.fail_slot(slot, error));
-    slot.worker.on("exit", (code) => {
-      if (!this.disposed && code !== 0) {
-        this.fail_slot(slot, new Error(`Planning worker exited unexpectedly: ${code.toString()}`));
+      const pending = slot.pending;
+      if (pending === null || message.id !== pending.id) return; // 已完成批次的迟到消息无消费方。
+      slot.pending = null;
+      if (
+        message.status === "done" &&
+        message.counts.length === pending.length &&
+        message.counts.every((count) => Number.isSafeInteger(count) && count >= 0)
+      ) {
+        pending.resolve(message.counts);
+      } else if (message.status === "cancelled") {
+        pending.reject(this.cancelled_error());
+      } else {
+        pending.reject(
+          new AppError("worker.execution_failed", {
+            diagnostic_context:
+              message.status === "error"
+                ? { failure: normalize_log_error(message.error, "Planning token counting failed.") }
+                : { batch_id: pending.id },
+          }),
+        );
       }
+    });
+    // Worker 的 error 后必有 exit；等待 exit 才释放批次，避免故障线程与下次请求重叠。
+    slot.worker.on("error", (error) => {
+      slot.error = error;
+    });
+    slot.worker.on("exit", (code) => {
+      slot.closed = true;
+      slot.pending?.reject(slot.error ?? new Error(`Planning worker exited: ${code.toString()}`));
+      slot.pending = null;
     });
     return slot;
   }
 
-  /**
-   * worker 返回后释放 slot 并继续消费队列；未知 id 属于取消后的迟到消息。
-   */
-  private finish_worker_message(
-    slot: PlanningWorkerSlot,
-    message: PlanningWorkerOutgoingMessage,
-  ): void {
-    const task = slot.task;
-    if (task === null || task.id !== message.id) {
-      return;
-    }
-    slot.task = null;
-    task.signal.removeEventListener("abort", task.abort_listener);
-    if (message.ok) {
-      task.resolve(message.data ?? []);
-    } else {
-      task.reject(
-        new AppError("worker.execution_failed", {
-          diagnostic_context: {
-            failure: normalize_log_error(message.error, "Planning worker counting failed."),
-          },
-        }),
-      );
-    }
-    this.drain_queue();
+  /** 对外沿用运行资源已释放的错误契约。 */
+  private disposed_error(): AppError {
+    return new AppError("runtime.disposed", { public_details: { resource: "PlanningWorkerPool" } });
   }
 
-  /**
-   * worker 异常只影响当前 slot 的批次，并补回固定线程数。
-   */
-  private fail_slot(slot: PlanningWorkerSlot, error: unknown): void {
-    const task = slot.task;
-    slot.task = null;
-    if (task !== null) {
-      this.reject_task(task, error);
-    }
-    const index = this.slots.indexOf(slot);
-    if (index >= 0 && !this.disposed) {
-      this.slots[index] = this.create_slot();
-      this.drain_queue();
-    }
-  }
-
-  /**
-   * 同进程批次完成后只结算仍在 in-flight 表中的任务，避免取消后重复 settle。
-   */
-  private finish_in_process_task(
-    id: string,
-    results: TranslationTokenCountResult[] | null,
-    error: unknown,
-  ): void {
-    const task = this.in_process_in_flight.get(id);
-    if (task === undefined) {
-      return;
-    }
-    this.in_process_in_flight.delete(id);
-    task.signal.removeEventListener("abort", task.abort_listener);
-    if (error === null) {
-      task.resolve(results ?? []);
-    } else {
-      task.reject(error);
-    }
-    this.drain_queue();
-  }
-
-  /**
-   * 拒绝任务前必须移除 abort listener，避免释放后再次进入 cancel_task。
-   */
-  private reject_task(task: PendingPlanningTask, error: unknown): void {
-    task.signal.removeEventListener("abort", task.abort_listener);
-    task.reject(error);
-  }
-
-  /**
-   * 大输入切成多个消息批次，让多个 worker 可以分担同一轮任务规划。
-   */
-  private split_items(items: TranslationTokenCountInput[]): TranslationTokenCountInput[][] {
-    const chunks: TranslationTokenCountInput[][] = [];
-    for (let index = 0; index < items.length; index += PLANNING_CHUNK_SIZE) {
-      chunks.push(items.slice(index, index + PLANNING_CHUNK_SIZE));
-    }
-    return chunks;
-  }
-
-  /**
-   * 释放后的错误使用稳定 shared AppError，调用方可按资源名定位问题。
-   */
-  private create_disposed_error(): AppError {
-    return new AppError("runtime.disposed", {
-      public_details: { resource: "PlanningWorkerPool" },
-      diagnostic_context: { queue_length: this.queue.length },
-    });
-  }
-
-  /**
-   * 主动取消和执行失败分离，避免任务日志把停止视作异常崩溃。
-   */
-  private create_cancelled_error(): AppError {
-    return new AppError("runtime.cancelled", {
-      public_details: { resource: "planning_worker" },
-    });
+  /** 用户取消与执行异常分开结算。 */
+  private cancelled_error(): AppError {
+    return new AppError("runtime.cancelled", { public_details: { resource: "planning_worker" } });
   }
 }
