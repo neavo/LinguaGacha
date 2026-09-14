@@ -55,16 +55,15 @@ describe("AgentMarkdown", () => {
     return container;
   }
 
-  it("渲染 GFM、富文本和远程图片，并把链接交给宿主", async () => {
+  it("渲染富文本和远程图片，并把链接交给宿主", async () => {
     const view = await render_markdown(
-      '| 名称 | 值 |\n| --- | --- |\n| A | 1 |\n\n<span style="color: red">重点</span>\n\n[证据](https://example.com)\n\n![示意图](https://example.com/a.png)',
+      '<span style="color: red">重点</span>\n\n[证据](https://example.com)\n\n![示意图](https://example.com/a.png)',
       false,
     );
     const link = view.querySelector<HTMLAnchorElement>('a[href="https://example.com"]');
     if (link === null) throw new Error("缺少 Markdown 链接");
 
     await act(async () => link.click());
-    expect(view.querySelector("table")?.textContent).toContain("名称");
     const rich_text = view.querySelector<HTMLSpanElement>("span");
     expect(rich_text?.textContent).toBe("重点");
     expect(rich_text?.style.color).toBe("red");
@@ -146,12 +145,6 @@ describe("AgentMarkdown", () => {
     expect(dialog?.querySelector(".agent-media-preview-dialog__viewport")).not.toBeNull();
   });
 
-  it("流式消息也渲染富文本", async () => {
-    const view = await render_markdown("<mark>进行中</mark>", true);
-
-    expect(view.querySelector("mark")?.textContent).toBe("进行中");
-  });
-
   it("代码使用官方高亮并提供复制和下载入口", async () => {
     const write_text = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     const source = 'const heroine = "Lingua";';
@@ -186,13 +179,13 @@ describe("AgentMarkdown", () => {
     });
   });
 
-  it("流式修复与结束展示使用同一正文，表格工具栏保留", async () => {
-    const view = await render_markdown("**进行中", true);
-    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("进行中");
+  it("流式正文保留富文本与未完成语法，结束后渲染表格", async () => {
+    const view = await render_markdown("<mark>进行中</mark>\n\n**进行中", true);
+    expect(view.querySelector("mark")?.textContent).toBe("进行中");
+    expect(view.querySelector("strong")?.textContent).toBe("进行中");
     await render_markdown("**已完成**\n\n| 名称 |\n| --- |\n| 内容 |", false);
-    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("已完成");
-    expect(view.querySelector('[title="agent_page.markdown.copy_table"]')).not.toBeNull();
-    expect(view.querySelector('[title="agent_page.markdown.download_table"]')).not.toBeNull();
+    expect(view.querySelector("strong")?.textContent).toBe("已完成");
+    expect(view.querySelector("table")?.textContent).toContain("内容");
     expect(
       [...view.querySelectorAll('[data-streamdown="table-wrapper"] > div:first-child button')].map(
         (button) => button.getAttribute("title"),
@@ -262,7 +255,7 @@ describe("AgentMarkdown", () => {
     const view = await render_markdown("> [!IMPORTANT]\n> 保留 **重点**。", false);
     const alert = view.querySelector(".markdown-alert-important");
     expect(alert?.querySelector(".markdown-alert-title")?.textContent).toBe("IMPORTANT");
-    expect(alert?.querySelector('[data-streamdown="strong"]')?.textContent).toBe("重点");
+    expect(alert?.querySelector("strong")?.textContent).toBe("重点");
     expect(alert?.textContent).not.toContain("[!IMPORTANT]");
   });
 });
