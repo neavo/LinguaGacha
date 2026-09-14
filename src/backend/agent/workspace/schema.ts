@@ -36,7 +36,7 @@ export const AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA = Type.Object(
   { additionalProperties: false },
 );
 
-/** 磁盘 contract、Deno 类型视图与模型声明共同消费的外壳 Schema。 */
+/** 磁盘 contract、脚本运行时与模型声明共同消费的外壳 Schema。 */
 export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
   {
     limits: Type.Object(

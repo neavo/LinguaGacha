@@ -2,7 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
-import type { AgentWorkspaceRuntimePaths, BackendRuntimeReady } from "../shared/backend-runtime";
+import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import { pick_save_path } from "./shell/path-dialog";
 import {
@@ -58,17 +58,16 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
   const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
-  const agent_workspace_runtime = resolve_agent_workspace_runtime_paths({
+  const agent_workspace_runtime = resolve_agent_workspace_runtime_entry_path({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
-    platform: process.platform,
   });
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
     builtinRoot: builtin_root,
-    agentWorkspaceRuntime: agent_workspace_runtime,
+    agentWorkspaceRuntimeEntryPath: agent_workspace_runtime,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openDirectory: open_directory,
     pickSavePath: async (default_name) => {
@@ -256,19 +255,12 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   });
 }
 
-/** 开发态与发布态都只解析固定 Deno 资产，不探测系统 PATH。 */
-export function resolve_agent_workspace_runtime_paths(args: {
+/** 发布 bundle 由 extraResources 复制；开发产物与桌面构建分别拥有输出目录。 */
+export function resolve_agent_workspace_runtime_entry_path(args: {
   packaged: boolean;
   resourcesPath: string;
   projectRoot: string;
-  platform: NodeJS.Platform;
-}): AgentWorkspaceRuntimePaths {
-  const executable_name = args.platform === "win32" ? "deno.exe" : "deno";
-  const root = args.packaged
-    ? path.join(args.resourcesPath, "deno")
-    : path.join(args.projectRoot, "resources", "deno");
-  return {
-    denoExecutablePath: path.join(root, executable_name),
-    runtimeEntryPath: path.join(root, "deno-runtime.js"),
-  };
+}): string {
+  const root = args.packaged ? args.resourcesPath : path.join(args.projectRoot, "build");
+  return path.join(root, "workspace-runtime", "runtime.mjs");
 }

@@ -1,4 +1,27 @@
-import { Agent, Dispatcher, ProxyAgent, Socks5ProxyAgent, fetch as undici_fetch } from "undici";
+import {
+  Agent,
+  Dispatcher,
+  ProxyAgent,
+  Socks5ProxyAgent,
+  fetch as undici_fetch,
+  Request as UndiciRequest,
+  Response as UndiciResponse,
+  Headers as UndiciHeaders,
+  FormData as UndiciFormData,
+} from "undici";
+
+type FetchGlobals = Pick<
+  typeof globalThis,
+  "fetch" | "Request" | "Response" | "Headers" | "FormData"
+>;
+
+// fetch 与其对象构造器必须来自同一 Undici 版本，避免 Node 内置版本的品牌和 dispatcher 协议差异。
+const FETCH_CONSTRUCTORS = {
+  Request: UndiciRequest,
+  Response: UndiciResponse,
+  Headers: UndiciHeaders,
+  FormData: UndiciFormData,
+} as unknown as Omit<FetchGlobals, "fetch">;
 
 export interface SystemProxyResolver {
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string>; // Electron session 是系统代理规则的唯一来源
@@ -13,14 +36,19 @@ export type SystemProxyRoute =
  * 当前线程唯一的普通远端 HTTP Client；每次请求重新解析路由，只缓存可复用的代理连接池。
  */
 export class SystemProxyHttpClient {
+  private readonly redirects: "error" | "request"; // 后端禁止重定向；工作区遵循 fetch 调用者选项
   private readonly resolver: SystemProxyResolver; // 请求时读取 Electron 当前路由，不保存启动快照
   private readonly direct_dispatcher: Dispatcher; // loopback 与显式 DIRECT 共用的自有连接池
   private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // 同一路由复用连接池
-  private previous_fetch: typeof globalThis.fetch | null = null; // 安装期保存线程原 transport，关闭时恢复
+  private previous_globals: FetchGlobals | null = null; // 安装期保存 fetch 及配套构造器，关闭时统一恢复
   private disposed = false; // 释放后拒绝新请求，避免重建已关闭资源
 
   /** 创建自有直连池；代理池延迟到首次命中对应路由时创建。 */
-  public constructor(resolver: SystemProxyResolver) {
+  public constructor(
+    resolver: SystemProxyResolver,
+    options: { redirects: "error" | "request" } = { redirects: "error" },
+  ) {
+    this.redirects = options.redirects;
     this.resolver = resolver;
     this.direct_dispatcher = new Agent();
   }
@@ -31,23 +59,27 @@ export class SystemProxyHttpClient {
       throw new Error("System proxy HTTP client is disposed.");
     }
     const url = read_request_url(input);
-    const signal = init?.signal ?? undefined;
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    signal?.throwIfAborted();
     const dispatcher = this.resolve_dispatcher(
       await resolve_system_proxy_route(this.resolver, url.href, signal),
     );
+    signal?.throwIfAborted();
     return (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
       ...(init as Parameters<typeof undici_fetch>[1]),
       dispatcher,
-      redirect: "error",
+      ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
     })) as unknown as Response;
   };
 
   /** Backend 线程只有一个普通 HTTP transport，第三方 SDK 也从同一全局入口取用。 */
   public install_as_global_fetch(): void {
-    if (this.disposed || this.previous_fetch !== null) {
+    if (this.disposed || this.previous_globals !== null) {
       throw new Error("System proxy HTTP client cannot be installed in its current state.");
     }
-    this.previous_fetch = globalThis.fetch;
+    const { fetch, Request, Response, Headers, FormData } = globalThis;
+    this.previous_globals = { fetch, Request, Response, Headers, FormData };
+    Object.assign(globalThis, FETCH_CONSTRUCTORS);
     globalThis.fetch = this.fetch;
   }
 
@@ -55,9 +87,9 @@ export class SystemProxyHttpClient {
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.previous_fetch !== null) {
-      globalThis.fetch = this.previous_fetch;
-      this.previous_fetch = null;
+    if (this.previous_globals !== null) {
+      Object.assign(globalThis, this.previous_globals);
+      this.previous_globals = null;
     }
     const dispatchers = [this.direct_dispatcher, ...this.proxy_dispatchers.values()];
     this.proxy_dispatchers.clear();

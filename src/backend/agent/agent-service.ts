@@ -215,7 +215,7 @@ export class AgentService {
   private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
-  private todos: string[] = []; // 对话级有序待办；Deno 脚本成功后才原子替换
+  private todos: string[] = []; // 对话级有序待办；Node 脚本成功后才原子替换
   private readonly input_queue = new AgentInputQueue(); // 当前产品会话的待发送输入；不写入 Pi follow-up
   private readonly decisions: AgentDecisionCoordinator; // 当前回合唯一用户决策及其取消生命周期
   private readonly unsubscribe_project_session: () => void;
@@ -1747,7 +1747,7 @@ export class AgentService {
     );
   }
 
-  /** 只有仍绑定当前会话的 SDK runtime 可以提交成功结束的 Deno Todo。 */
+  /** 只有仍绑定当前会话的 SDK runtime 可以提交成功结束的 Node Todo。 */
   private todo_port(): AgentTodoPort {
     return {
       read: () => [...this.todos],

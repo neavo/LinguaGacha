@@ -10,7 +10,6 @@ import {
 } from "../../shared/error";
 import type { LocaleKey } from "../../shared/i18n";
 import type {
-  AgentWorkspaceRuntimePaths,
   BackendRuntimeDiagnosticLevel,
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
@@ -40,7 +39,7 @@ export class BackendRuntimeClient {
       workerEntryUrl: URL;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
-      agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
+      agentWorkspaceRuntimeEntryPath: string;
       resolveProxy: (url: string) => Promise<string>;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -58,7 +57,7 @@ export class BackendRuntimeClient {
       workerData: {
         appRoot: this.options.appRoot,
         builtinRoot: this.options.builtinRoot,
-        agentWorkspaceRuntime: this.options.agentWorkspaceRuntime,
+        agentWorkspaceRuntimeEntryPath: this.options.agentWorkspaceRuntimeEntryPath,
       },
     });
     this.worker = worker;

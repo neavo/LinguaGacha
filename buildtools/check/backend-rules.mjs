@@ -11,9 +11,9 @@ import {
 const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
 const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
+const WORKSPACE_RUNTIME_ENTRY_PATH = "src/backend/agent/workspace/runtime/entry.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
-const WORKSPACE_PROXY_FETCH_RELATIVE_PATH = "src/backend/agent/workspace/runtime/proxy-fetch.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
 
 /**
@@ -59,7 +59,7 @@ function create_backend_module_ownership_rule() {
   };
 }
 
-/** Undici 归正式 Backend transport；全局 fetch 仅由 Backend 与 Workspace Deno 的系统代理入口安装。 */
+/** Undici dispatcher 与全局 fetch 统一由 network 的系统代理客户端拥有。 */
 function create_backend_outbound_network_rule() {
   return {
     name: "后端出站网络边界",
@@ -83,12 +83,9 @@ function create_backend_outbound_network_rule() {
             });
           }
         }
-        if (
-          relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH &&
-          relative_path !== WORKSPACE_PROXY_FETCH_RELATIVE_PATH
-        ) {
+        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
           const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
-            return "全局 fetch 只能由 Backend 或 Workspace Deno 的系统代理传输安装";
+            return "全局 fetch 只能由 network 的系统代理客户端安装";
           });
           errors.push(...matches.map((match) => ({ ...match, relative_path })));
         }
@@ -355,7 +352,11 @@ function create_native_fs_boundary_rule() {
           if (!["node:fs", "node:fs/promises"].includes(import_entry.specifier)) {
             continue;
           }
-          if (relative_path === NATIVE_FS_RELATIVE_PATH) {
+          // 独立工作区进程直接消费 Node 文件权限，宿主 NativeFs 仅用于主应用 IO。
+          if (
+            relative_path === NATIVE_FS_RELATIVE_PATH ||
+            relative_path === WORKSPACE_RUNTIME_ENTRY_PATH
+          ) {
             continue;
           }
           errors.push({

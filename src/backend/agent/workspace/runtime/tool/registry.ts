@@ -2,7 +2,7 @@ import type { Static } from "@earendil-works/pi-ai";
 import { Check } from "typebox/value";
 import { describe_agent_workspace_schema_error } from "../../validation";
 
-import type { JsonRecord, JsonValue } from "../../../../../domain/json";
+import type { JsonValue } from "../../../../../domain/json";
 import { deriveCommonLiteralRoots } from "./derive-common-literal-roots";
 import { groupQualityRuleEntries } from "./group-quality-rule-entries";
 import { matchLiterals } from "./match-literals";
@@ -37,7 +37,7 @@ export type AgentWorkspaceDataTools = Readonly<{
 export async function execute_agent_workspace_data_tool(
   name: AgentWorkspaceDataToolName,
   context: AgentWorkspaceDataToolContext,
-  args: JsonRecord,
+  args: unknown,
 ): Promise<JsonValue> {
   const tool = AGENT_WORKSPACE_DATA_TOOLS[name] as AnyAgentWorkspaceDataToolDefinition;
   if (!Check(tool.parameters, args)) {

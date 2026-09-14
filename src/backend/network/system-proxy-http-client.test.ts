@@ -37,6 +37,10 @@ vi.mock("undici", () => {
     ProxyAgent,
     Socks5ProxyAgent: ProxyAgent,
     fetch: mocks.fetch,
+    Request: globalThis.Request,
+    Response: globalThis.Response,
+    Headers: globalThis.Headers,
+    FormData: globalThis.FormData,
   };
 });
 
@@ -141,4 +145,33 @@ describe("SystemProxyHttpClient", () => {
     expect(mocks.direct_dispatchers[0]?.close).toHaveBeenCalledOnce();
     await expect(client.fetch("https://api.example/c")).rejects.toThrow("disposed");
   });
+});
+
+// 工作区的重定向与取消由原生 fetch / Request 语义决定，代理解析沿同一端口执行。
+it("工作区保留 Request 与调用选项，并转发 Request 的取消信号", async () => {
+  const resolve_proxy = vi.fn(async () => "DIRECT");
+  const client = new SystemProxyHttpClient(
+    { resolveProxy: resolve_proxy },
+    { redirects: "request" },
+  );
+  const controller = new AbortController();
+  const request = new Request("https://example.com/page", {
+    signal: controller.signal,
+    redirect: "manual",
+  });
+  await client.fetch(request);
+  expect(resolve_proxy).toHaveBeenCalledWith(request.url, request.signal);
+  expect(mocks.fetch).toHaveBeenCalledWith(
+    request,
+    expect.not.objectContaining({ redirect: expect.anything() }),
+  );
+  await client.fetch(request, { redirect: "follow" });
+  expect(mocks.fetch).toHaveBeenLastCalledWith(
+    request,
+    expect.objectContaining({ redirect: "follow" }),
+  );
+  controller.abort(new Error("stop"));
+  await expect(client.fetch(request)).rejects.toThrow("stop");
+  expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  await client.dispose();
 });

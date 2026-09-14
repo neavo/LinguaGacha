@@ -29,7 +29,7 @@ export type AgentWebSearchPort = (
   signal: AbortSignal,
 ) => Promise<AgentWebSearchResult>;
 
-/** 搜索只负责发现候选 URL；网页读取与处理由 Workspace Deno 脚本完成。 */
+/** 搜索只负责发现候选 URL；网页读取与处理由 Workspace Node 脚本完成。 */
 export function create_agent_web_search_tool(search: AgentWebSearchPort): ToolDefinition {
   return defineTool({
     name: "web_search",

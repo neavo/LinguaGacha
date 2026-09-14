@@ -5,6 +5,8 @@ import { LOCALES } from "../../src/shared/i18n/types";
 export default {
   appId: "me.neavo.linguagacha",
   asar: true,
+  electronFuses: { runAsNode: true }, // 工作区复用 Electron 的 Node 子进程入口
+  extraResources: [{ from: "build/workspace-runtime", to: "workspace-runtime" }],
   productName: "LinguaGacha",
   electronLanguages: [...LOCALES], // 发行包原生资源与应用界面 locale 共用同一集合
   directories: {

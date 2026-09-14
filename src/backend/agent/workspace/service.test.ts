@@ -922,7 +922,7 @@ function prompt_fp(workspace_path: string, kind: "translation" | "analysis"): st
   return String(read_json_record(prompts[kind])["fp"] ?? "");
 }
 
-/** 直接准备显式提交批次，文件读写权限由真实 Deno 测试负责。 */
+/** 直接准备显式提交批次，文件读写权限由真实 Node 测试负责。 */
 function write_rows(workspace_path: string, relative_path: string, rows: JsonRecord[]): void {
   fs.writeFileSync(
     path.join(workspace_path, relative_path),

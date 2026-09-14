@@ -65,10 +65,7 @@ describe("BackendRuntimeClient", () => {
     expect(worker.worker_data).toEqual({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntime: {
-        denoExecutablePath: "E:/runtime/deno.exe",
-        runtimeEntryPath: "E:/runtime/deno-runtime.js",
-      },
+      agentWorkspaceRuntimeEntryPath: "E:/runtime/runtime.mjs",
     });
 
     const language = client.readAppLanguage();
@@ -215,10 +212,7 @@ function create_client() {
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntime: {
-        denoExecutablePath: "E:/runtime/deno.exe",
-        runtimeEntryPath: "E:/runtime/deno-runtime.js",
-      },
+      agentWorkspaceRuntimeEntryPath: "E:/runtime/runtime.mjs",
       resolveProxy: resolve_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,

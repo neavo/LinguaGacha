@@ -1,26 +1,16 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
-import { createInterface } from "node:readline";
 
 import { is_json_record, type JsonValue } from "../../../../domain/json";
-import { default_native_fs } from "../../../../native/native-fs";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
-import deno_runtime_manifest from "../../../../../buildtools/builder/deno-runtime-manifest.json";
-import {
-  resolve_system_proxy_route,
-  type SystemProxyResolver,
-  type SystemProxyRoute,
-} from "../../../network/system-proxy-http-client";
+import type { SystemProxyResolver } from "../../../network/system-proxy-http-client";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import {
-  read_agent_workspace_runtime_child_message,
+  type AgentWorkspaceRuntimeChildMessage,
   type AgentWorkspaceRuntimeParentMessage,
 } from "./protocol";
 
-const INITIALIZE_TIMEOUT_MS = 15_000; // 启动探测不能长期阻塞 GUI Backend ready
-const DENO_VERSION_OUTPUT_BYTES = 16 * 1024; // 版本输出只应包含少量运行时元数据
-const STDERR_TAIL_BYTES = 32 * 1024; // 仅保留有界诊断，避免脚本日志撑高 Backend 内存
-const PROXY_ENV_KEYS = new Set(["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"]); // 代理事实只来自 Electron
+const DIAGNOSTIC_TAIL_BYTES = 32 * 1024; // stdout / stderr 共用有界诊断尾部，避免脚本日志撑高 Backend 内存
 
 export type AgentWorkspaceRunRequest = Readonly<{
   workspacePath: string;
@@ -30,42 +20,29 @@ export type AgentWorkspaceRunRequest = Readonly<{
 
 export type AgentWorkspaceRunResult = Readonly<{ result: JsonValue; todos: string[] }>;
 
-type WorkspaceProcessResult = { code: number | null; response: unknown; stderr: Buffer };
+type WorkspaceProcessResult = { code: number | null; response: unknown; diagnostic: Buffer };
 
 /** runtime 明确返回的可修复脚本错误，与进程或协议故障分开投影。 */
 export class AgentWorkspaceScriptError extends Error {}
 
-/** Backend Runtime 内唯一的 Deno 子进程执行器。 */
-export class DenoAgentWorkspaceRunner {
+/** Backend Runtime 内唯一的 Node 子进程执行器。 */
+export class AgentWorkspaceRunner {
   private readonly executable_path: string;
   private readonly runtime_entry_path: string;
   private readonly system_proxy_resolver: SystemProxyResolver;
 
   /** 固定解析资产路径；联网脚本的每次 fetch 通过同一 Electron 代理解析端口选路。 */
   public constructor(options: {
-    executablePath: string;
+    executablePath?: string; // 生产复用当前 Electron；真实运行时测试可指定 Electron 可执行文件
     runtimeEntryPath: string;
     systemProxyResolver: SystemProxyResolver;
   }) {
-    this.executable_path = path.resolve(options.executablePath);
+    this.executable_path = path.resolve(options.executablePath ?? process.execPath);
     this.runtime_entry_path = path.resolve(options.runtimeEntryPath);
     this.system_proxy_resolver = options.systemProxyResolver;
   }
 
-  /** 启动前验证固定文件与精确 Deno 版本，失败直接阻止 GUI Backend ready。 */
-  public async initialize(): Promise<void> {
-    assert_regular_file(this.executable_path, "Deno executable");
-    assert_regular_file(this.runtime_entry_path, "Agent Workspace runtime entry");
-    const stdout = await read_deno_version(this.executable_path);
-    const first_line = stdout.split(/\r?\n/u, 1)[0]?.trim();
-    if (first_line?.match(/^deno\s+([^\s]+)/u)?.[1] !== deno_runtime_manifest.version) {
-      throw new Error(
-        `Deno ${deno_runtime_manifest.version} is required; received ${first_line ?? "no version"}.`,
-      );
-    }
-  }
-
-  /** 每次脚本启动一次 Deno；代理 RPC 与最终结果共享流式 JSONL 控制通道。 */
+  /** 每次调用使用独立进程；权限防止意外越界读写，结果经原生 IPC 返回。 */
   public async run(
     request: AgentWorkspaceRunRequest,
     signal: AbortSignal,
@@ -77,16 +54,12 @@ export class DenoAgentWorkspaceRunner {
     );
     const result = await run_workspace_process({
       executablePath: this.executable_path,
+      runtimeEntryPath: this.runtime_entry_path,
       args: [
-        "run",
-        "--quiet",
-        "--no-prompt",
-        "--no-config",
-        "--no-lock",
-        ...AGENT_WORKSPACE_RUNTIME_POLICY.denoArgs,
-        `--allow-read=${workspace_path}`,
-        `--allow-write=${write_paths.join(",")}`,
-        this.runtime_entry_path,
+        "--permission",
+        `--allow-fs-read=${workspace_path}`,
+        `--allow-fs-read=${this.runtime_entry_path}`,
+        ...write_paths.map((file_path) => `--allow-fs-write=${file_path}`),
       ],
       cwd: workspace_path,
       start: {
@@ -95,105 +68,103 @@ export class DenoAgentWorkspaceRunner {
         todos: normalize_agent_todos(request.todos),
       },
       resolveProxy: async (url, proxy_signal) =>
-        await resolve_system_proxy_route(this.system_proxy_resolver, url, proxy_signal),
+        await this.system_proxy_resolver.resolveProxy(url, proxy_signal),
       timeoutMs: AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs,
       signal,
     });
     if (result.code !== 0) {
-      throw runtime_failure("Agent Workspace runtime exited unsuccessfully.", result.stderr);
+      throw runtime_failure("Agent Workspace runtime exited unsuccessfully.", result.diagnostic);
     }
     const envelope = result.response;
     if (!is_json_record(envelope) || typeof envelope["ok"] !== "boolean") {
-      throw runtime_failure("Agent Workspace runtime returned an invalid response.", result.stderr);
+      throw runtime_failure(
+        "Agent Workspace runtime returned an invalid response.",
+        result.diagnostic,
+      );
     }
     if (envelope["ok"] === false) {
-      if (Object.keys(envelope).length !== 2 || typeof envelope["message"] !== "string") {
+      if (typeof envelope["message"] !== "string") {
         throw runtime_failure(
           "Agent Workspace runtime returned an invalid error response.",
-          result.stderr,
+          result.diagnostic,
         );
       }
       throw new AgentWorkspaceScriptError(
         safe_error_message(envelope["message"], workspace_path),
-        result.stderr.length === 0
+        result.diagnostic.length === 0
           ? undefined
-          : { cause: new Error(result.stderr.toString("utf8")) },
+          : { cause: new Error(result.diagnostic.toString("utf8")) },
       );
     }
-    if (Object.keys(envelope).length !== 3 || !("result" in envelope) || !("todos" in envelope)) {
+    if (!("result" in envelope) || !("todos" in envelope)) {
       throw runtime_failure(
         "Agent Workspace runtime returned an invalid success response.",
-        result.stderr,
+        result.diagnostic,
       );
     }
     let todos: string[];
     try {
       todos = normalize_agent_todos(envelope["todos"]);
     } catch (cause) {
-      throw runtime_failure("Agent Workspace runtime returned invalid Todo.", result.stderr, cause);
+      throw runtime_failure(
+        "Agent Workspace runtime returned invalid Todo.",
+        result.diagnostic,
+        cause,
+      );
     }
     return { result: envelope["result"] as JsonValue, todos };
   }
 }
 
-/** initialize 只接受已落盘的普通文件资产。 */
-function assert_regular_file(file_path: string, label: string): void {
-  let stat;
-  try {
-    stat = default_native_fs.stat(file_path);
-  } catch (cause) {
-    throw new Error(`${label} is missing: ${file_path}.`, { cause });
-  }
-  if (!stat.isFile()) throw new Error(`${label} is not a regular file: ${file_path}.`);
-}
-
-/** 脚本协议逐行消费，不把代理请求与最终结果累计为一份 stdout。 */
+/** 父进程拥有退出与取消；等待 close 后才允许 WorkspaceService 释放工作区互斥。 */
 function run_workspace_process(options: {
   executablePath: string;
+  runtimeEntryPath: string;
   args: string[];
   cwd: string;
   start: AgentWorkspaceRuntimeParentMessage;
-  resolveProxy: (url: string, signal: AbortSignal) => Promise<SystemProxyRoute>;
+  resolveProxy: (url: string, signal: AbortSignal) => Promise<string>;
   timeoutMs: number;
   signal: AbortSignal;
 }): Promise<WorkspaceProcessResult> {
   options.signal.throwIfAborted();
   return new Promise((resolve, reject) => {
-    let child: ChildProcessWithoutNullStreams;
-    try {
-      child = spawn(options.executablePath, options.args, {
-        cwd: options.cwd,
-        env: build_workspace_runtime_env(process.env),
-        shell: false,
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-    const stdout_lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-    const proxy_requests = new Map<number, AbortController>();
-    let response: unknown;
-    let stderr_tail = Buffer.alloc(0);
-    let terminal_error: unknown;
-    let termination_reason: unknown;
-    let settled = false;
-
-    const terminate = (reason: unknown): void => {
-      if (termination_reason !== undefined) return;
-      termination_reason = reason;
-      child.kill();
+    // fork 将选项传给 spawn；Node 类型尚未包含 Windows 隐藏窗口选项。
+    const launch_options: ForkOptions & { windowsHide: boolean } = {
+      execPath: options.executablePath,
+      execArgv: options.args,
+      cwd: options.cwd,
+      // 清除父进程的 Node 启动选项，权限参数由 runner 唯一拥有。
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "" },
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
     };
-    const abort_all_proxy_requests = (reason: unknown): void => {
+    const child = fork(options.runtimeEntryPath, [], launch_options);
+    const proxy_requests = new Map<number, AbortController>(); // 每个请求独立取消，完成后立即移除
+    let response: unknown; // 完成回包先暂存，close 才决定本次调用是否成功
+    let diagnostic_tail = Buffer.alloc(0);
+    let terminal_error: unknown; // 首个终止原因拥有失败结果，后续退出事件只负责回收
+
+    /** 终止或完成时结束全部宿主等待，迟到回包由请求表丢弃。 */
+    const abort_proxy_requests = (reason: unknown): void => {
       for (const controller of proxy_requests.values()) controller.abort(reason);
       proxy_requests.clear();
     };
-    const write_message = (message: AgentWorkspaceRuntimeParentMessage): void => {
-      if (!child.stdin.destroyed && !child.stdin.writableEnded) {
-        child.stdin.write(`${JSON.stringify(message)}\n`);
-      }
+    /** 强制结束仍可能占用事件循环的脚本；结果仍等 close 后结算。 */
+    const terminate = (reason: unknown): void => {
+      if (terminal_error !== undefined) return;
+      terminal_error = reason;
+      abort_proxy_requests(reason);
+      child.kill("SIGKILL");
     };
+    /** IPC 发送失败归入同一进程终止路径。 */
+    const send = (message: AgentWorkspaceRuntimeParentMessage): void => {
+      if (!child.connected || terminal_error !== undefined) return;
+      child.send(message, (error) => {
+        if (error !== null) terminate(error);
+      });
+    };
+    /** 每个 ID 持有独立取消信号，宿主只返回规则文本。 */
     const handle_proxy_request = (id: number, url: string): void => {
       if (proxy_requests.has(id)) {
         terminate(new Error("Agent Workspace runtime reused a proxy request id."));
@@ -202,19 +173,15 @@ function run_workspace_process(options: {
       const controller = new AbortController();
       proxy_requests.set(id, controller);
       void options.resolveProxy(url, controller.signal).then(
-        (route) => {
+        (rules) => {
           if (proxy_requests.get(id) !== controller) return;
           proxy_requests.delete(id);
-          write_message({ type: "proxy_result", id, result: { ok: true, route } });
+          send({ type: "proxy_result", id, result: { ok: true, rules } });
         },
         (error: unknown) => {
           if (proxy_requests.get(id) !== controller) return;
           proxy_requests.delete(id);
-          write_message({
-            type: "proxy_result",
-            id,
-            result: { ok: false, message: error_message(error) },
-          });
+          send({ type: "proxy_result", id, result: { ok: false, message: error_message(error) } });
         },
       );
     };
@@ -223,118 +190,49 @@ function run_workspace_process(options: {
       () => terminate(new AgentWorkspaceScriptError("Agent Workspace script timed out.")),
       options.timeoutMs,
     );
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      options.signal.removeEventListener("abort", abort_listener);
-      stdout_lines.close();
-    };
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      action();
-    };
-
     options.signal.addEventListener("abort", abort_listener, { once: true });
-    stdout_lines.on("line", (line) => {
-      if (line.trim() === "") return;
+    child.on("message", (message: AgentWorkspaceRuntimeChildMessage) => {
+      if (terminal_error !== undefined) return;
       try {
-        const message = read_agent_workspace_runtime_child_message(JSON.parse(line) as unknown);
-        if (message.type === "proxy_request") {
-          handle_proxy_request(message.id, message.url);
-        } else if (message.type === "proxy_cancel") {
+        if (response !== undefined)
+          throw new Error("Agent Workspace runtime sent a message after completion.");
+        if (message.type === "proxy_request") handle_proxy_request(message.id, message.url);
+        else if (message.type === "proxy_cancel") {
           proxy_requests.get(message.id)?.abort(new Error("Proxy resolution was cancelled."));
           proxy_requests.delete(message.id);
         } else {
-          if (response !== undefined) {
-            terminate(new Error("Agent Workspace runtime returned more than one result."));
-            return;
-          }
           response = message.response;
-          abort_all_proxy_requests(new Error("Agent Workspace script completed."));
-          child.stdin.end();
+          abort_proxy_requests(new Error("Agent Workspace script completed."));
         }
       } catch (error) {
         terminate(error);
       }
     });
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      stderr_tail = Buffer.concat([stderr_tail, value]);
-      if (stderr_tail.length > STDERR_TAIL_BYTES) {
-        stderr_tail = stderr_tail.subarray(stderr_tail.length - STDERR_TAIL_BYTES);
-      }
-    });
-    child.stdin.once("error", (error) => {
-      terminal_error = error;
-      terminate(error);
-    });
-    child.once("error", (error) => {
-      terminal_error = error;
-    });
+    /** 只保留有界日志尾部，避免模型脚本的日志占满宿主内存。 */
+    const collect_diagnostic = (chunk: Buffer): void => {
+      diagnostic_tail = Buffer.concat([diagnostic_tail, chunk]).subarray(-DIAGNOSTIC_TAIL_BYTES);
+    };
+    child.stdout?.on("data", collect_diagnostic);
+    child.stderr?.on("data", collect_diagnostic);
+    child.once("error", terminate);
     child.once("close", (code) => {
-      abort_all_proxy_requests(new Error("Agent Workspace runtime exited."));
-      finish(() => {
-        if (termination_reason !== undefined) reject(termination_reason);
-        else if (terminal_error !== undefined) reject(terminal_error);
-        else if (response === undefined) {
-          reject(runtime_failure("Agent Workspace runtime returned no result.", stderr_tail));
-        } else resolve({ code, response, stderr: stderr_tail });
-      });
+      clearTimeout(timer);
+      options.signal.removeEventListener("abort", abort_listener);
+      abort_proxy_requests(new Error("Agent Workspace runtime exited."));
+      if (terminal_error !== undefined) reject(terminal_error);
+      else if (response === undefined)
+        reject(runtime_failure("Agent Workspace runtime returned no result.", diagnostic_tail));
+      else resolve({ code, response, diagnostic: diagnostic_tail });
     });
-    write_message(options.start);
+    send(options.start);
     if (options.signal.aborted) abort_listener();
   });
 }
 
-/** Deno 网络只消费 Electron 显式返回的路线，不继承环境或 Windows 注册表代理。 */
-function build_workspace_runtime_env(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env = Object.fromEntries(
-    Object.entries(source).filter(([name]) => !PROXY_ENV_KEYS.has(name.toUpperCase())),
-  );
-  return {
-    ...env,
-    HTTP_PROXY: "",
-    HTTPS_PROXY: "",
-    ALL_PROXY: "",
-    NO_PROXY: "",
-  };
-}
-
-/** 版本探测交给 Node 的一次性进程 API 处理超时、输出上限与回收。 */
-function read_deno_version(executable_path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      executable_path,
-      ["--version"],
-      {
-        cwd: path.dirname(executable_path),
-        encoding: "utf8",
-        maxBuffer: DENO_VERSION_OUTPUT_BYTES,
-        timeout: INITIALIZE_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error !== null) {
-          const diagnostic = stderr.trim();
-          reject(
-            new Error("Deno version check failed.", {
-              cause: diagnostic === "" ? error : new Error(diagnostic, { cause: error }),
-            }),
-          );
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-  });
-}
-
-/** 协议错误保留有界 stderr 作为本地 cause，不进入模型公开 message。 */
-function runtime_failure(message: string, stderr: Buffer, cause?: unknown): Error {
-  const diagnostic = stderr.toString("utf8").trim();
-  const nested =
-    diagnostic === "" ? cause : new Error(diagnostic, cause === undefined ? {} : { cause });
+/** 协议错误保留有界进程诊断 作为本地 cause，不进入模型公开 message。 */
+function runtime_failure(message: string, diagnostic: Buffer, cause?: unknown): Error {
+  const text = diagnostic.toString("utf8").trim();
+  const nested = text === "" ? cause : new Error(text, cause === undefined ? {} : { cause });
   return new Error(message, nested === undefined ? undefined : { cause: nested });
 }
 
@@ -353,7 +251,7 @@ function safe_error_message(raw: string, workspace_path: string): string {
   return (result === "" ? "工作区脚本执行失败。" : result).slice(0, 500);
 }
 
-/** 代理解析异常需要跨 JSONL 返回，因此只保留可序列化正文。 */
+/** 代理解析异常需要跨 IPC 返回，因此只保留可序列化正文。 */
 function error_message(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.trim() === "" ? "System proxy resolution failed." : message;

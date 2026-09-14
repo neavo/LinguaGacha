@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
-import { resolve_agent_workspace_runtime_paths, run_gui_entry } from "./gui-entry";
+import { resolve_agent_workspace_runtime_entry_path, run_gui_entry } from "./gui-entry";
 
 const mocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -150,10 +150,12 @@ describe("run_gui_entry", () => {
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
       builtinRoot: path.join("E:/app.asar", "builtin"),
-      agentWorkspaceRuntime: {
-        denoExecutablePath: path.join(process.cwd(), "resources", "deno", "deno.exe"),
-        runtimeEntryPath: path.join(process.cwd(), "resources", "deno", "deno-runtime.js"),
-      },
+      agentWorkspaceRuntimeEntryPath: path.join(
+        process.cwd(),
+        "build",
+        "workspace-runtime",
+        "runtime.mjs",
+      ),
     });
     expect(mocks.update_options).toEqual([
       {
@@ -268,17 +270,13 @@ describe("run_gui_entry", () => {
     expect(mocks.show_native_error).toHaveBeenCalledWith("LinguaGacha 后端异常退出", "worker gone");
   });
 
-  it("发布态按 resources 解析固定 Deno 与 runtime 路径", () => {
+  it("发布态按 resources 解析工作区入口", () => {
     expect(
-      resolve_agent_workspace_runtime_paths({
+      resolve_agent_workspace_runtime_entry_path({
         packaged: true,
         resourcesPath: "E:/app/resources",
         projectRoot: "E:/project",
-        platform: "win32",
       }),
-    ).toEqual({
-      denoExecutablePath: path.join("E:/app/resources", "deno", "deno.exe"),
-      runtimeEntryPath: path.join("E:/app/resources", "deno", "deno-runtime.js"),
-    });
+    ).toEqual(path.join("E:/app/resources", "workspace-runtime", "runtime.mjs"));
   });
 });

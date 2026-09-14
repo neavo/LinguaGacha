@@ -7,10 +7,7 @@ import type {
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
-const RUNTIME_PATHS = {
-  denoExecutablePath: "E:/runtime/deno.exe",
-  runtimeEntryPath: "E:/runtime/runner.js",
-};
+const RUNTIME_ENTRY_PATH = "E:/runtime/runtime.mjs";
 
 const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
@@ -22,15 +19,13 @@ const runtime_mocks = vi.hoisted(() => {
     error: vi.fn(),
     fatal: vi.fn(),
   };
-  const runner_initialize = vi.fn(async () => undefined);
   const runner_run = vi.fn(async () => ({ changed: 2 }));
-  /** 隔离 Deno 进程，保留初始化、运行和注入选项的观察入口。 */
-  class DenoAgentWorkspaceRunner {
+  /** 隔离脚本进程，保留运行和注入选项的观察入口。 */
+  class AgentWorkspaceRunner {
     /** 记录宿主注入，验证脚本沿正式 runner 端口执行。 */
     constructor(options: unknown) {
       runner_constructor_options.push(options);
     }
-    initialize = runner_initialize;
     run = runner_run;
   }
   /** 由测试决定启动和关闭结果，验证 worker 协议的生命周期。 */
@@ -45,10 +40,9 @@ const runtime_mocks = vi.hoisted(() => {
   }
   return {
     GuiBackendBootstrap,
-    DenoAgentWorkspaceRunner,
+    AgentWorkspaceRunner,
     constructor_options,
     log_manager,
-    runner_initialize,
     runner_constructor_options,
     runner_run,
     start,
@@ -60,7 +54,7 @@ vi.mock("./gui-backend-bootstrap", () => ({
   GuiBackendBootstrap: runtime_mocks.GuiBackendBootstrap,
 }));
 vi.mock("../agent/workspace/runtime/runner", () => ({
-  DenoAgentWorkspaceRunner: runtime_mocks.DenoAgentWorkspaceRunner,
+  AgentWorkspaceRunner: runtime_mocks.AgentWorkspaceRunner,
 }));
 vi.mock("../worker/worker-execution", () => ({
   resolve_desktop_bundle_dir_from_module_url: () => "E:/app/dist-electron",
@@ -79,7 +73,6 @@ describe("run_backend_runtime", () => {
     runtime_mocks.log_manager.warning.mockClear();
     runtime_mocks.log_manager.error.mockClear();
     runtime_mocks.log_manager.fatal.mockClear();
-    runtime_mocks.runner_initialize.mockClear();
     runtime_mocks.runner_run.mockClear();
     runtime_mocks.start.mockResolvedValue({
       apiBaseUrl: "http://127.0.0.1:4567",
@@ -102,7 +95,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
-      agentWorkspaceRuntime: RUNTIME_PATHS,
+      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
       port,
     });
 
@@ -168,7 +161,6 @@ describe("run_backend_runtime", () => {
       workspace_signal,
     );
     await expect(workspace).resolves.toEqual({ changed: 2 });
-    expect(runtime_mocks.runner_initialize).toHaveBeenCalledOnce();
     expect(runtime_mocks.runner_run).toHaveBeenCalledWith(
       { workspacePath: "E:/userdata/agent/workspace/run-1", script: "return { changed: 2 };" },
       workspace_signal,
@@ -203,7 +195,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: RUNTIME_PATHS,
+      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
       port,
     });
     const runner_options = runtime_mocks.runner_constructor_options[0] as {
@@ -235,7 +227,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: RUNTIME_PATHS,
+      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -259,7 +251,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntime: RUNTIME_PATHS,
+      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
       port,
     });
 

@@ -1,12 +1,6 @@
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
 
-/** Electron main 解析并跨线程传递的 Agent Workspace Runtime 固定资产。 */
-export type AgentWorkspaceRuntimePaths = Readonly<{
-  denoExecutablePath: string; // 当前目标的固定版本 Deno 可执行文件
-  runtimeEntryPath: string; // 与应用构建同步生成的自包含 runtime bundle
-}>;
-
 /** Backend 启动完成后 main 创建窗口所需的最小可克隆快照。 */
 export type BackendRuntimeReady = Readonly<{
   apiBaseUrl: string;
