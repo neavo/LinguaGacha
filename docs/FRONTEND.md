@@ -48,7 +48,7 @@
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
 - `useAgentInputTransition` 拥有 Agent 底部占位、离场内容和焦点恢复；测量目标尺寸时固定外部占位，避免滚动视口夹取阅读位置。Composer 持续挂载，输入锁保持至离场结束，焦点归还等待编辑器恢复可编辑；工具栏 Portal 菜单同步关闭。共享编辑器提供正文与附件能力，提交权限由主 Composer 和原位编辑器各自决定。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
+- `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。

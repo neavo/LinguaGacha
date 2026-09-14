@@ -304,6 +304,11 @@
   padding: 8px;
 }
 
+/* 明确 SVG 容器宽度，避免百分比 SVG 在自动宽度的 flex 子项中按固有尺寸收缩。 */
+.agent-markdown [data-streamdown="mermaid"] [role="img"] {
+  width: 100%;
+}
+
 .agent-markdown [data-streamdown="mermaid"] > div > div:has(> button) {
   border: 0;
   border-radius: var(--ui-radius-button);
