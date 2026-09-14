@@ -123,11 +123,6 @@
   flex: 0 1 auto;
 }
 
-.workbench-page__task-summary {
-  width: auto;
-  max-width: 100%;
-}
-
 .workbench-page__table [data-slot="table-cell"] {
   color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
 }

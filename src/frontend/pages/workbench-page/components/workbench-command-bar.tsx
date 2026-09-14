@@ -39,9 +39,7 @@ type CommandAction = {
   on_click: () => void;
 };
 
-/**
- * 汇总文件操作与两类常驻任务的入口，不在视图层复制任务状态机。
- */
+/** 组合文件操作与批量翻译入口，任务状态和动作由会话层提供。 */
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const model_selection = useModelSelection();
@@ -140,8 +138,10 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       }
       hint={
         <BatchTranslationSummary
-          class_name="workbench-page__task-summary"
+          variant="capsule"
+          open_tooltip_on_start={true}
           display={summary}
+          completion_percent={props.translation_stats?.completion_percent ?? null}
           on_open={props.batch_translation_task.open_translation_detail_sheet}
         />
       }

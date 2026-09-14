@@ -32,56 +32,6 @@
   font-weight: 600;
 }
 
-.batch-translation__summary {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.batch-translation__summary-trigger {
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.batch-translation__summary-badge {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-}
-
-.batch-translation__summary-badge--clickable {
-  cursor: pointer;
-}
-
-.batch-translation__summary-badge--neutral {
-  border-color: var(--border);
-  background: var(--background);
-  color: var(--muted-foreground);
-}
-
-.batch-translation__summary-badge--success {
-  border-color: color-mix(in srgb, var(--ui-success) 24%, var(--border));
-  background: color-mix(in srgb, var(--ui-success) 12%, var(--background));
-  color: color-mix(in srgb, var(--ui-success) 74%, var(--foreground) 26%);
-}
-
-.batch-translation__summary-badge--warning {
-  border-color: color-mix(in srgb, var(--ui-warning) 26%, var(--border));
-  background: color-mix(in srgb, var(--ui-warning) 12%, var(--background));
-  color: color-mix(in srgb, var(--ui-warning) 76%, var(--foreground) 24%);
-}
-
-.batch-translation__summary-trailing {
-  color: currentColor;
-  opacity: 0.82;
-  white-space: nowrap;
-}
-
 .batch-translation__sheet {
   top: 0;
   width: min(520px, 100vw);

@@ -1,0 +1,143 @@
+.batch-translation__summary {
+  position: relative;
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.batch-translation__summary--capsule {
+  height: 20px;
+  border-radius: var(--ui-radius-pill);
+  background: var(--background);
+}
+
+.batch-translation__summary--card {
+  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: var(--ui-radius-card);
+}
+
+.batch-translation__summary--idle {
+  color: var(--muted-foreground);
+}
+
+.batch-translation__summary-progress {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.batch-translation__summary-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  transform-origin: left;
+  transition: transform 150ms ease-out;
+}
+
+.batch-translation__summary-trigger {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 120ms ease;
+}
+
+.batch-translation__summary--card .batch-translation__summary-trigger {
+  display: grid;
+  /* 对称侧列让文字相对整张卡片居中，状态灯独占左列。 */
+  grid-template-columns: 12px minmax(0, 1fr) 12px;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.batch-translation__summary-trigger:hover,
+.batch-translation__summary-trigger:focus-visible {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.batch-translation__summary-trigger:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.batch-translation__summary-mark {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: var(--ui-radius-pill);
+  background: currentColor;
+  animation: batch-translation-summary-pulse 1s ease-out infinite;
+}
+
+.batch-translation__summary-mark--success {
+  color: var(--ui-success);
+}
+
+.batch-translation__summary-mark--warning {
+  color: var(--ui-warning);
+}
+
+.batch-translation__summary-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.batch-translation__summary-label {
+  flex: 0 0 auto;
+}
+
+.batch-translation__summary-speed {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.batch-translation__summary-separator {
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  white-space: pre;
+}
+
+/* 两种外观采用同一扩散范围，在紧凑胶囊内也保留边框与文字间隔。 */
+@keyframes batch-translation-summary-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+
+  70%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .batch-translation__summary-fill,
+  .batch-translation__summary-trigger {
+    transition: none;
+  }
+
+  .batch-translation__summary-mark {
+    animation: none;
+  }
+}

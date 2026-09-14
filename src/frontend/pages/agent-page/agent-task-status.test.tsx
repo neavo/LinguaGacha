@@ -44,7 +44,7 @@ describe("AgentTaskStatus", () => {
     status: "running" | "stopping" | "stopped",
     todos: string[],
     percent: number | null = 80,
-  ) {
+  ): Promise<HTMLDivElement> {
     task.percent = percent;
     task.metrics = resolve_translation_task_metrics({
       snapshot: {
@@ -89,18 +89,10 @@ describe("AgentTaskStatus", () => {
     expect(view.innerHTML).toBe("");
   });
 
-  it("卡片采用工程完成率，停止收尾仍保留工程进度", async () => {
+  it("工程统计就绪后将完成率传入摘要", async () => {
     const view = await render("running", [], null);
     expect(view.querySelector('[role="progressbar"]')).toBeNull();
-    expect(view.querySelector("button")?.textContent).toBe(
-      "batch_translation.summary.running · 10.00 T/S",
-    );
     await render("running", [], 80);
     expect(view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("80");
-    expect(view.textContent).not.toContain("%");
-    await render("stopping", [], 90);
-    expect(view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("90");
-    await render("stopped", [], 90);
-    expect(view.innerHTML).toBe("");
   });
 });

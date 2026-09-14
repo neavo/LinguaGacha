@@ -14,8 +14,11 @@ const running_display: BatchTranslationSummaryDisplay = {
 };
 
 type RenderSummaryProps = {
+  open_tooltip_on_start?: boolean;
   active?: boolean;
   on_open?: () => void;
+  completion_percent?: number | null;
+  stopping?: boolean;
 };
 
 describe("BatchTranslationSummary", () => {
@@ -24,18 +27,26 @@ describe("BatchTranslationSummary", () => {
 
   /** 以任务活跃态驱动摘要，观察提示与详情入口。 */
   async function render_summary(props: RenderSummaryProps = {}): Promise<void> {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+    const active = Boolean(props.active || props.stopping);
+    if (container === null) {
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+    }
 
     await act(async () => {
       root?.render(
         <TooltipProvider>
           <BatchTranslationSummary
+            variant="capsule"
+            open_tooltip_on_start={props.open_tooltip_on_start ?? false}
             display={{
               ...running_display,
-              speed_text: props.active ? running_display.speed_text : null,
+              speed_text: active ? running_display.speed_text : null,
+              status_text: props.stopping ? "停止中" : active ? "翻译中" : "无任务",
+              tone: props.stopping ? "warning" : active ? "success" : "neutral",
             }}
+            completion_percent={props.completion_percent ?? null}
             on_open={props.on_open ?? vi.fn()}
           />
         </TooltipProvider>,
@@ -55,18 +66,11 @@ describe("BatchTranslationSummary", () => {
     root = null;
   });
 
-  it("空闲时等待用户打开详情提示", async () => {
-    await render_summary();
-
-    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
-    expect(container?.textContent).not.toContain(running_display.speed_text);
-  });
-
   it("任务活跃时提示详情入口，点击后收起提示并打开详情", async () => {
     const on_open = vi.fn();
-    await render_summary({ active: true, on_open });
-    expect(container?.textContent).toContain(running_display.speed_text);
-    expect(container?.textContent).not.toContain("%");
+    await render_summary({ on_open, open_tooltip_on_start: true });
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+    await render_summary({ active: true, on_open, open_tooltip_on_start: true });
     expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
 
     const trigger = container?.querySelector("button");
@@ -78,5 +82,36 @@ describe("BatchTranslationSummary", () => {
 
     expect(on_open).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it("未开启主动提示时，任务开始后等待用户交互", async () => {
+    await render_summary({ active: true });
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it("获得工程统计后显示进度，并跟随统计增减和边界值", async () => {
+    await render_summary({ active: true });
+    expect(container?.querySelector('[role="progressbar"]')).toBeNull();
+
+    for (const completion_percent of [80, 40, 0, 100]) {
+      await render_summary({ active: true, completion_percent });
+      const progress = container?.querySelector('[role="progressbar"]');
+      expect(progress?.getAttribute("aria-valuenow")).toBe(String(completion_percent));
+      expect(progress?.closest("button")).toBeNull();
+    }
+  });
+
+  it("停止中继续更新进度，任务结束后收起填充", async () => {
+    await render_summary({ active: true, completion_percent: 40 });
+    await render_summary({ active: true, stopping: true, completion_percent: 60 });
+    const progress = container?.querySelector('[role="progressbar"]');
+    expect(progress?.getAttribute("aria-valuenow")).toBe("60");
+    expect(progress?.getAttribute("aria-label")).toBe("停止中");
+
+    await render_summary({ completion_percent: 60 });
+    expect(container?.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container?.querySelector("button")?.textContent).not.toContain(
+      running_display.speed_text,
+    );
   });
 });
