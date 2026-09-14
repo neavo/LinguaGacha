@@ -29,6 +29,10 @@ type ModelPageSnapshotPayload = {
   };
 };
 
+type ModelCopyPayload = ModelPageSnapshotPayload & {
+  copied_model_id: string; // 服务端本次创建的副本，属于同一回包快照。
+};
+
 type ModelListPayload = {
   models?: string[];
 };
@@ -46,6 +50,7 @@ type UseModelPageStateResult = {
   selector_state: ModelSelectorState;
   active_dialog_model: ModelEntrySnapshot | null;
   request_add_model: (model_type: ModelType) => Promise<void>;
+  request_copy_model: (model_id: string) => Promise<void>;
   request_delete_model: (model_id: string) => void;
   request_reset_model: (model_id: string) => void;
   request_reorder_models: (model_type: ModelType, ordered_model_ids: string[]) => Promise<void>;
@@ -545,6 +550,37 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
+  /** 服务端复制配置，成功后以完整快照展示目标分类中的副本。 */
+  const request_copy_model = useCallback(
+    async (model_id: string): Promise<void> => {
+      if (readonly) return;
+      set_is_action_running(true);
+      try {
+        const payload = await api_fetch<ModelCopyPayload>("/api/models/copy", {
+          model_id,
+        });
+        const next_snapshot = normalize_model_page_snapshot(payload);
+        const copied_model = find_model(next_snapshot, payload.copied_model_id)!;
+        set_snapshot(next_snapshot);
+        push_toast(
+          "success",
+          t("model_page.feedback.copy_success", {
+            CATEGORY: t(MODEL_TYPE_TITLE_KEY[copied_model.type]),
+            NAME: copied_model.name,
+          }),
+        );
+      } catch (error) {
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("model_page.feedback.copy_failed")),
+        );
+      } finally {
+        set_is_action_running(false);
+      }
+    },
+    [push_toast, readonly, t],
+  );
+
   /** 自定义分组会自动补齐至少一项；已下架预设允许清空分组。 */
   const request_delete_model = useCallback(
     (model_id: string): void => {
@@ -817,6 +853,7 @@ export function useModelPageState(): UseModelPageStateResult {
     selector_state,
     active_dialog_model,
     request_add_model,
+    request_copy_model,
     request_delete_model,
     request_reset_model,
     request_reorder_models,

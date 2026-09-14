@@ -19,7 +19,9 @@ export const ja_jp_model_page = {
       description: "Anthropic Claude API 形式に対応するカスタムモデル",
     },
   },
+  copy_name: "{NAME}_コピー",
   action: {
+    copy: "複製",
     basic_settings: "基本設定",
     task_settings: "タスク設定",
     advanced_settings: "詳細設定",
@@ -43,6 +45,8 @@ export const ja_jp_model_page = {
     },
   },
   feedback: {
+    copy_success: "接続先を複製しました …\nグループ：{CATEGORY}\n名前：{NAME}",
+    copy_failed: "モデルを複製できませんでした。しばらくしてから再試行してください …",
     refresh_failed: "モデル情報を更新できませんでした。しばらくしてから再試行してください …",
     add_failed: "モデルを追加できませんでした。しばらくしてから再試行してください …",
     update_failed: "モデル設定を保存できませんでした。しばらくしてから再試行してください …",

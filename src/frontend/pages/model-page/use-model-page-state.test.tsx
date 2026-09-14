@@ -6,10 +6,11 @@ import { MODEL_TYPES } from "@domain/model";
 
 import { useModelPageState } from "./use-model-page-state";
 
-const { api_fetch_mock, push_toast, translate } = vi.hoisted(() => ({
+const { api_fetch_mock, push_toast, translate, runtime } = vi.hoisted(() => ({
   api_fetch_mock: vi.fn(),
   push_toast: vi.fn(),
-  translate: (key: string) => key,
+  translate: vi.fn<(key: string, params?: Record<string, string>) => string>((key) => key),
+  runtime: { revision: 0, owner: null as "agent" | null },
 }));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => ({
@@ -17,8 +18,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
 }));
 
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ runtime_snapshot: { revision: 0, owner: null } }),
-  useRuntimeSnapshot: () => ({ revision: 0, owner: null }),
+  useRuntimeSnapshot: () => runtime,
 }));
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
@@ -90,6 +90,67 @@ describe("useModelPageState", () => {
     latest_state = null;
     api_fetch_mock.mockReset();
     push_toast.mockReset();
+    translate.mockClear();
+    runtime.owner = null;
+  });
+
+  it("复制期间锁定操作，成功提示目标分类和服务端避重后的副本名称", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    const before = latest_state!.snapshot;
+    const copy = create_deferred<
+      ReturnType<typeof create_snapshot> & { copied_model_id: string }
+    >();
+    api_fetch_mock.mockReturnValue(copy.promise);
+    let request!: Promise<void>;
+    await act(async () => {
+      request = latest_state!.request_copy_model("preset");
+    });
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/models/copy", { model_id: "preset" });
+    expect(latest_state!.readonly).toBe(true);
+    expect(latest_state!.snapshot).toBe(before);
+    const call_count = api_fetch_mock.mock.calls.length;
+    await act(async () => latest_state!.request_copy_model("preset"));
+    expect(api_fetch_mock).toHaveBeenCalledTimes(call_count);
+    const response = { ...create_snapshot(), copied_model_id: "copy" };
+    response.snapshot.models.splice(2, 0, {
+      id: "copy",
+      type: "CUSTOM_OPENAI",
+      name: "内置模型_副本_2",
+      can_reset: false,
+    });
+    copy.resolve(response);
+    await act(async () => request);
+    expect(latest_state!.snapshot).toMatchObject(response.snapshot);
+    expect(latest_state!.readonly).toBe(false);
+    expect(push_toast).toHaveBeenCalledWith("success", "model_page.feedback.copy_success");
+    expect(
+      translate.mock.calls.find(([key]) => key === "model_page.feedback.copy_success")?.[1],
+    ).toEqual({
+      CATEGORY: "app.model.type.openai",
+      NAME: "内置模型_副本_2",
+    });
+  });
+
+  it("复制失败保留当前列表并释放操作状态", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    const before = latest_state!.snapshot;
+    api_fetch_mock.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => latest_state!.request_copy_model("custom"));
+    expect(latest_state!.snapshot).toBe(before);
+    expect(latest_state!.readonly).toBe(false);
+    expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", "model_page.feedback.copy_failed");
+  });
+
+  it("运行忙碌时不发起复制请求", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    api_fetch_mock.mockClear();
+    runtime.owner = "agent";
+    await act(async () => root?.render(<Probe />));
+    await act(async () => latest_state!.request_copy_model("custom"));
+    expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 
   it("首次加载失败可重试，刷新失败保留已读取模型", async () => {
