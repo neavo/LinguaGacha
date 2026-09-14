@@ -131,4 +131,14 @@ describe("WorkbenchCommandBar", () => {
       props.batch_translation_task.request_start_or_continue_translation,
     ).toHaveBeenCalledOnce();
   });
+
+  it("运行中的摘要使用命令栏收到的工程完成率", async () => {
+    const props = create_workbench_command_bar_props();
+    props.batch_translation_task.translation_task_metrics.active = true;
+    await render_command_bar(props);
+
+    expect(container?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe(
+      "25",
+    );
+  });
 });

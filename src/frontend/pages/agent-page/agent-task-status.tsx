@@ -2,7 +2,7 @@ import { useProjectTranslationStats } from "@frontend/app/session/project-transl
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";
 import { AgentTodo } from "./agent-todo";
 import "./agent-task-status.css";
 
@@ -18,49 +18,13 @@ export function AgentTaskStatus(props: {
   const display = build_translation_task_summary_display(metrics, t);
   if (display.speed_text === null) return <AgentTodo {...props} />;
   return (
-    <div className="agent-translation-status">
-      {/* 进度与详情按钮为同级元素，分别保留数值和交互语义。 */}
-      {stats !== null ? (
-        <div
-          className="agent-translation-status__progress"
-          role="progressbar"
-          aria-label={display.status_text}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={stats.completion_percent}
-        >
-          <span
-            className="agent-translation-status__fill"
-            style={{ transform: `scaleX(${stats.completion_percent / 100})` }}
-          />
-        </div>
-      ) : null}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="agent-translation-status__button"
-              onClick={task.open_translation_detail_sheet}
-            >
-              <span
-                className={`agent-status-mark agent-status-mark--running agent-status-mark--${display.tone}`}
-                aria-hidden="true"
-              />
-              <span className="agent-translation-status__content">
-                <span className="agent-translation-status__label">{display.status_text}</span>
-                <span className="agent-translation-status__speed">
-                  <span className="agent-translation-status__separator"> · </span>
-                  {display.speed_text}
-                </span>
-              </span>
-            </button>
-          }
-        />
-        <TooltipContent side="top" sideOffset={8} className="whitespace-pre-line">
-          {display.detail_tooltip_text}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+    <BatchTranslationSummary
+      class_name="agent-translation-status"
+      variant="card"
+      open_tooltip_on_start={false}
+      display={display}
+      completion_percent={stats?.completion_percent ?? null}
+      on_open={task.open_translation_detail_sheet}
+    />
   );
 }
