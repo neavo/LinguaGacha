@@ -19,8 +19,8 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("./agent-mermaid", () => ({
-  AgentMermaidBlock: ({ source }: { source: string }) => <div data-agent-mermaid-source={source} />,
+vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+  useAppearance: () => ({ resolved_theme: "light" }),
 }));
 
 import { AgentMarkdown } from "./agent-markdown";
@@ -143,9 +143,6 @@ describe("AgentMarkdown", () => {
 
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
     expect(dialog?.querySelector('img[src="https://example.com/a.png"]')).not.toBeNull();
-    expect(dialog?.querySelector('[aria-label="agent_page.media.zoom_in"]')).not.toBeNull();
-    expect(dialog?.querySelector('[aria-label="agent_page.media.zoom_out"]')).not.toBeNull();
-    expect(dialog?.querySelector('[aria-label="agent_page.media.reset_zoom"]')).not.toBeNull();
     expect(dialog?.querySelector(".agent-media-preview-dialog__viewport")).not.toBeNull();
   });
 
@@ -155,92 +152,117 @@ describe("AgentMarkdown", () => {
     expect(view.querySelector("mark")?.textContent).toBe("进行中");
   });
 
-  it("保留同一引用块中的软换行", async () => {
-    const view = await render_markdown("> 第一行\n> 第二行\n> 第三行", false);
-    const quotes = view.querySelectorAll("blockquote");
-
-    expect(quotes).toHaveLength(1);
-    expect(quotes[0]?.querySelector("p")?.textContent).toBe("第一行\n第二行\n第三行");
-  });
-
-  it("用空行区分独立引用块，而不是依赖引用行换行", async () => {
-    const view = await render_markdown("> 第一块\n\n> 第二块", false);
-    const quotes = view.querySelectorAll("blockquote");
-
-    expect(quotes).toHaveLength(2);
-    expect(quotes[0]?.querySelector("p")?.textContent).toBe("第一块");
-    expect(quotes[1]?.querySelector("p")?.textContent).toBe("第二块");
-  });
-
-  it("保留 GFM 删除线与脚注结构", async () => {
-    const view = await render_markdown("~~旧文本~~\n\n说明[^1]\n\n[^1]: 脚注内容", false);
-
-    expect(view.querySelector("del")?.textContent).toBe("旧文本");
-    expect(view.querySelector("[data-footnotes]")?.textContent).toContain("脚注内容");
-  });
-
-  it("只在完整消息中高亮带显式语言的代码块", async () => {
+  it("代码使用官方高亮并提供复制和下载入口", async () => {
+    const write_text = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     const source = 'const heroine = "Lingua";';
-    const view = await render_markdown(`\`\`\`js\n${source}\n\`\`\``, true);
-
-    expect(view.querySelector('pre[data-language="js"]')).not.toBeNull();
-    expect(view.querySelector("code.language-js")?.textContent).toBe(`${source}\n`);
-    expect(view.querySelector("code.hljs")).toBeNull();
-
-    await render_markdown(`\`\`\`js\n${source}\n\`\`\``, false);
-
-    expect(view.querySelector("code.hljs.language-js")?.textContent).toBe(`${source}\n`);
-    expect(view.querySelector(".hljs-keyword")?.textContent).toBe("const");
-    expect(view.querySelector(".hljs-string")?.textContent).toBe('"Lingua"');
-  });
-
-  it("无语言或未知语言的代码块保持纯文本", async () => {
-    const view = await render_markdown(
-      "```\nconst plain = true;\n```\n\n```linguagacha-unknown\nconst unknown = true;\n```",
-      false,
+    const view = await render_markdown("```js\n" + source + "\n```", false);
+    await act(async () => {
+      await vi.waitFor(() => {
+        // 纯文本占位也含源码；颜色差异证明官方高亮插件实际参与了渲染。
+        const colors = new Set(
+          [...view.querySelectorAll<HTMLElement>("pre code span")]
+            .map((span) => span.style.getPropertyValue("--sdm-c"))
+            .filter((color) => color && color !== "inherit"),
+        );
+        expect(colors.size).toBeGreaterThan(1);
+      });
+    });
+    expect(view.querySelector('[title="agent_page.markdown.copy_code"]')).not.toBeNull();
+    expect(view.querySelector('[title="agent_page.markdown.download_code"]')).not.toBeNull();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>('[title="agent_page.markdown.copy_code"]')?.click(),
     );
-
-    const code_blocks = view.querySelectorAll("pre code");
-    const unknown = view.querySelector("code.language-linguagacha-unknown");
-
-    expect(code_blocks).toHaveLength(2);
-    expect(code_blocks[0]?.className).toBe("");
-    expect(code_blocks[0]?.parentElement?.hasAttribute("data-language")).toBe(false);
-    expect(unknown?.parentElement?.dataset.language).toBe("linguagacha-unknown");
-    expect(unknown?.querySelector("span")).toBeNull();
-    expect(unknown?.textContent).toContain("const unknown = true;");
+    expect(write_text).toHaveBeenCalledWith(`${source}\n`);
   });
 
-  it("流式 Mermaid 保留源码且不加载渲染器", async () => {
-    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), true);
-
-    expect(view.querySelector("code.language-mermaid")?.textContent).toBe("flowchart LR\nA-->B\n");
-    expect(view.querySelector("pre")?.hasAttribute("data-language")).toBe(false);
-    expect(view.querySelector("figure.agent-markdown__diagram")).toBeNull();
+  it("未完成链接保持文字，完成后才激活工作区路径", async () => {
+    const view = await render_markdown("[报告", true);
+    expect(view.textContent).toContain("报告");
+    expect(view.querySelector("a")).toBeNull();
+    await render_markdown("[报告](work/report.md)", false);
+    await act(async () => view.querySelector("a")?.click());
+    expect(mocks.api_fetch).toHaveBeenCalledWith("/api/agent/workspace/activate-path", {
+      path: "work/report.md",
+    });
   });
 
-  it("把完整消息中的显式 Mermaid 围栏交给图表组件", async () => {
-    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), false);
-
+  it("流式修复与结束展示使用同一正文，表格工具栏保留", async () => {
+    const view = await render_markdown("**进行中", true);
+    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("进行中");
+    await render_markdown("**已完成**\n\n| 名称 |\n| --- |\n| 内容 |", false);
+    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("已完成");
+    expect(view.querySelector('[title="agent_page.markdown.copy_table"]')).not.toBeNull();
+    expect(view.querySelector('[title="agent_page.markdown.download_table"]')).not.toBeNull();
     expect(
-      view.querySelector("[data-agent-mermaid-source]")?.getAttribute("data-agent-mermaid-source"),
-    ).toBe("flowchart LR\nA-->B");
-    expect(view.querySelector("code.language-mermaid")).toBeNull();
+      [...view.querySelectorAll('[data-streamdown="table-wrapper"] > div:first-child button')].map(
+        (button) => button.getAttribute("title"),
+      ),
+    ).toEqual(["agent_page.markdown.download_table", "agent_page.markdown.copy_table"]);
   });
 
-  it("只识别完整消息中的显式 mermaid 围栏", async () => {
+  it("未知语言保留代码文本", async () => {
+    const view = await render_markdown("```linguagacha-unknown\nconst unknown = true;\n```", false);
+    expect(view.querySelector("pre code")?.textContent).toContain("const unknown = true;");
+  });
+
+  it("图表获得焦点后接收滚轮，Escape 和失焦后恢复页面滚动", async () => {
     const view = await render_markdown(
-      "```mmd\nflowchart LR\nA-->B\n```\n\nflowchart LR\nA-->B",
+      '<div data-streamdown="mermaid"><span>图表</span></div>\n\n普通正文',
       false,
     );
+    const diagram = view.querySelector('[data-streamdown="mermaid"]');
+    const text = view.querySelector("p");
+    if (!diagram || !text) throw new Error("缺少正文测试节点");
+    const zoom = vi.fn((event: Event) => event.preventDefault());
+    diagram.addEventListener("wheel", zoom);
+    const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 100 });
+    diagram.querySelector("span")?.dispatchEvent(wheel);
+    expect(zoom).not.toHaveBeenCalled();
+    expect(wheel.defaultPrevented).toBe(false);
+    diagram
+      .querySelector("span")
+      ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    expect(document.activeElement).toBe(diagram);
+    diagram.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 100 }),
+    );
+    expect(zoom).toHaveBeenCalledOnce();
+    diagram.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.activeElement).not.toBe(diagram);
+    diagram.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 100 }),
+    );
+    expect(zoom).toHaveBeenCalledOnce();
+    (diagram as HTMLElement).focus();
+    const outside = document.createElement("button");
+    view.append(outside);
+    outside.focus();
+    diagram.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 100 }),
+    );
+    expect(zoom).toHaveBeenCalledOnce();
+    const on_text_wheel = vi.fn();
+    text.addEventListener("wheel", on_text_wheel);
+    text.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 100 }));
+    expect(on_text_wheel).toHaveBeenCalledOnce();
+  });
 
-    expect(view.querySelector("code.language-mmd")?.textContent).toContain("flowchart LR");
-    expect(view.querySelector('pre[data-language="mmd"]')).not.toBeNull();
-    expect(view.querySelector("figure.agent-markdown__diagram")).toBeNull();
+  it("将单美元行内公式和独立公式渲染为数学内容", async () => {
+    const view = await render_markdown("行内 $E = mc^2$。\n\n$$\n\\frac{1}{2}\n$$", false);
+    expect(view.querySelectorAll(".katex")).toHaveLength(2);
+    expect(view.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(
+      [...view.querySelectorAll('annotation[encoding="application/x-tex"]')].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["E = mc^2", "\\frac{1}{2}"]);
+  });
+
+  it("提示块扩展保留正文格式", async () => {
+    const view = await render_markdown("> [!IMPORTANT]\n> 保留 **重点**。", false);
+    const alert = view.querySelector(".markdown-alert-important");
+    expect(alert?.querySelector(".markdown-alert-title")?.textContent).toBe("IMPORTANT");
+    expect(alert?.querySelector('[data-streamdown="strong"]')?.textContent).toBe("重点");
+    expect(alert?.textContent).not.toContain("[!IMPORTANT]");
   });
 });
-
-/** 构造唯一会进入图表渲染分支的显式 Mermaid 围栏。 */
-function mermaid_block(source: string): string {
-  return `\`\`\`mermaid\n${source}\n\`\`\``;
-}

@@ -223,8 +223,49 @@ describe("AgentResponseAnnotation", () => {
 
     expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
   });
+
+  it("图表交互关闭旧批注入口，图内与跨图表选区不创建批注", async () => {
+    const view = await render_view(
+      <AgentResponseAnnotationSelection disabled={false} on_add={vi.fn()}>
+        <div data-agent-annotation-content="true">
+          <p>普通正文</p>
+          <div data-streamdown="mermaid">
+            <span>节点文字</span>
+            <button>放大</button>
+          </div>
+          <p>后续正文</p>
+        </div>
+      </AgentResponseAnnotationSelection>,
+    );
+    const messages = view.querySelector(".agent-page__messages")!;
+    const paragraphs = view.querySelectorAll("p");
+    const text = paragraphs[0].firstChild!;
+    const diagram = view.querySelector('[data-streamdown="mermaid"]')!;
+    const label = diagram.querySelector("span")!.firstChild!;
+    select_range(text, 0, text, 2);
+    await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    expect(document.body.querySelector('[role="toolbar"]')).not.toBeNull();
+    await act(async () => {
+      diagram
+        .querySelector("button")
+        ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      diagram
+        .querySelector("button")
+        ?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
+    for (const [start, end] of [
+      [label, label],
+      [text, paragraphs[1].firstChild!],
+    ]) {
+      select_range(start, 0, end, 2);
+      await act(async () => messages.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+      expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
+    }
+  });
 });
 
+/** 通过原生 setter 与 input 事件驱动 React 受控输入。 */
 function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
     textarea,
@@ -233,6 +274,7 @@ function set_textarea_value(textarea: HTMLTextAreaElement, value: string): void 
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** 构造真实 Range，让批注测试经过浏览器选区边界。 */
 function select_range(start: Node, start_offset: number, end: Node, end_offset: number): void {
   const range = document.createRange();
   range.setStart(start, start_offset);

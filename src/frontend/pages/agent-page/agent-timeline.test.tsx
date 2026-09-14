@@ -504,7 +504,7 @@ describe("AgentTimeline", () => {
     );
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.dataset.open).toBeUndefined();
-    expect(view.querySelector("strong")?.textContent).toBe("结论");
+    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("结论");
   });
 
   it("思考块上滚后完成也不自动收缩", async () => {

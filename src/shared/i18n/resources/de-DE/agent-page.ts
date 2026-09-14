@@ -8,10 +8,16 @@ export const de_de_agent_page = {
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {
-    open_preview: "Diagrammvorschau öffnen",
-    preview_title: "Diagrammvorschau",
-    rendering: "Diagramm wird gerendert …",
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
+  },
+  markdown: {
+    copy_code: "Code kopieren",
+    download_code: "Code herunterladen",
+    copy_table: "Tabelle kopieren",
+    download_table: "Tabelle herunterladen",
+    download_diagram: "Diagramm herunterladen",
+    copy_format: "Als {format} kopieren",
+    download_format: "Als {format} herunterladen",
   },
   image: { title: "Bild", open_preview: "Bildvorschau öffnen" },
   media: {

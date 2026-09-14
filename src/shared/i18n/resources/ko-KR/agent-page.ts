@@ -10,10 +10,16 @@ export const ko_kr_agent_page = {
   thinking: "생각 과정",
   thinking_active: "생각 중",
   diagram: {
-    open_preview: "다이어그램 확대 보기",
-    preview_title: "다이어그램 미리 보기",
-    rendering: "다이어그램 생성 중 …",
     render_failed: "다이어그램을 표시하지 못했습니다. Mermaid 소스를 표시합니다.",
+  },
+  markdown: {
+    copy_code: "코드 복사",
+    download_code: "코드 다운로드",
+    copy_table: "표 복사",
+    download_table: "표 다운로드",
+    download_diagram: "다이어그램 다운로드",
+    copy_format: "{format} 형식으로 복사",
+    download_format: "{format} 형식으로 다운로드",
   },
   image: { title: "이미지", open_preview: "이미지 미리 보기 열기" },
   media: {
