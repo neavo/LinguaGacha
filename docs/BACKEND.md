@@ -102,7 +102,7 @@ project, files, items, quality, prompts, proofreading
 - 模型容量与协议思考能力分别优先采用应用修正，再读取 Pi catalog。两者共用名称规则：精确匹配优先，变种 ID 在字母数字分隔边界内取最长且唯一的 canonical ID。容量跨协议聚合同 ID 的全部记录，分别取最大上下文与输出规格；思考使用当前协议适配的单一模板。缺少容量时使用 Agent 安全值，缺少思考证据时不猜测；解析保留真实请求 ID、归一后的 API URL 和请求头。修正只承载 Pi 缺失或落后的事实，Pi 更新并验证后按容量或协议删除。Agent 运行容量的合并规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态：供应商错误、长度截断和工具调用成为当前请求错误，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
-- 除 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) 定义的 Agent 公网 URL 安全抓取外，`src/backend/network` 是普通后端远端 HTTP 的唯一传输所有者；`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，模型 adapter、模型列表和 Web Search 不再各自传递 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
+- `src/backend/network` 是普通后端与 Agent 工作区 HTTP 的共用传输所有者；工作区调用和代理通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)；`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，同时安装同版本的 Request、Response、Headers 和 FormData，关闭时一起恢复，避免 Electron 内置 Undici 与应用依赖混用；模型 adapter、模型列表和 Web Search 从该入口取用 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。
 
 ## 5. 数据库与 `.lg` 存储

@@ -1706,7 +1706,7 @@ describe("AgentService", () => {
     ]);
   });
 
-  it("Deno Todo 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
+  it("Node Todo 跨普通回合保留、公开投影并随 Agent reset 清空", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "todo_write";
 

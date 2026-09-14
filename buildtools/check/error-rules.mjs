@@ -1,6 +1,6 @@
 import { parse } from "@babel/parser";
 
-import { is_test_file } from "./core.mjs";
+import { is_test_file, line_number_at, walk_ast } from "./core.mjs";
 
 const HAN_PATTERN = /\p{Script=Han}/u;
 const ERROR_IDENTIFIER_PATTERN = /^(?:error|cause|caught|[A-Za-z_$][\w$]*_error)$/u;
@@ -9,7 +9,8 @@ const EQUALITY_OPERATORS = new Set(["==", "!=", "===", "!=="]);
 
 /** 错误契约规则覆盖所有生产 JavaScript / TypeScript，不把测试夹具当作产品文本。 */
 export function create_error_contract_rules() {
-  const ast_by_path = new Map();
+  const ast_by_path = new Map(); // 两条错误规则复用同一次检查中的解析结果
+  /** 按文件缓存当前检查的 AST，规则只负责各自的位置判断。 */
   const read_ast = (context, file_path) => {
     let ast = ast_by_path.get(file_path);
     if (ast === undefined) {
@@ -41,6 +42,7 @@ export function create_error_contract_rules() {
   ];
 }
 
+/** 把 AST 位置转换为统一规则诊断，两个错误检查复用文件范围和行号口径。 */
 function create_source_rule(name, message, find_positions, read_ast) {
   return {
     name,
@@ -57,6 +59,7 @@ function create_source_rule(name, message, find_positions, read_ast) {
   };
 }
 
+/** 错误规则覆盖 JS / TS，测试夹具按仓库统一后缀排除。 */
 function is_production_source(file_path) {
   return /\.[cm]?[jt]sx?$/u.test(file_path) && !is_test_file(file_path);
 }
@@ -65,7 +68,7 @@ function is_production_source(file_path) {
 function find_han_error_text_positions(ast) {
   const positions = new Set();
 
-  walk(ast, (node) => {
+  walk_ast(ast, (node) => {
     if (node.type === "ThrowStatement") {
       collect_han_text_positions(node.argument, positions);
     }
@@ -80,8 +83,9 @@ function find_han_error_text_positions(ast) {
   return [...positions].sort((left, right) => left - right);
 }
 
+/** 遍历错误表达式中的字符串和模板片段，定位实际包含中文的部分。 */
 function collect_han_text_positions(node, positions) {
-  walk(node, (child) => {
+  walk_ast(node, (child) => {
     const text =
       child.type === "StringLiteral"
         ? child.value
@@ -93,6 +97,7 @@ function collect_han_text_positions(node, positions) {
   });
 }
 
+/** 直接构造和命名空间构造的 Error 子类沿同一命名约定识别。 */
 function is_error_callee(node) {
   const name =
     node.type === "Identifier"
@@ -107,7 +112,7 @@ function is_error_callee(node) {
 function find_error_message_control_flow_positions(ast) {
   const positions = new Set();
 
-  walk(ast, (node) => {
+  walk_ast(ast, (node) => {
     if (
       node.type === "BinaryExpression" &&
       EQUALITY_OPERATORS.has(node.operator) &&
@@ -131,6 +136,7 @@ function find_error_message_control_flow_positions(ast) {
   return [...positions].sort((left, right) => left - right);
 }
 
+/** 仅识别错误变量的 message，避免把业务对象同名字段当作错误控制流。 */
 function is_error_message_member(node) {
   return (
     is_member_expression(node) &&
@@ -142,23 +148,7 @@ function is_error_message_member(node) {
   );
 }
 
+/** 普通属性访问与可选链共享后续字段识别。 */
 function is_member_expression(node) {
   return node.type === "MemberExpression" || node.type === "OptionalMemberExpression";
-}
-
-function walk(node, visit) {
-  if (node === null || typeof node !== "object" || typeof node.type !== "string") return;
-  visit(node);
-  for (const [key, value] of Object.entries(node)) {
-    if (["comments", "errors", "extra", "loc", "tokens"].includes(key)) continue;
-    if (Array.isArray(value)) {
-      for (const child of value) walk(child, visit);
-    } else {
-      walk(value, visit);
-    }
-  }
-}
-
-function line_number_at(content, index) {
-  return content.slice(0, index).split(/\r?\n/u).length;
 }

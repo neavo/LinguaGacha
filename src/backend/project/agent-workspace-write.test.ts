@@ -25,6 +25,18 @@ describe("Agent 工作区对象写入规则", () => {
     );
     const prompt = project_agent_workspace_prompt("translation", "翻译提示词");
 
+    // 存储字段与工作区字段映射在投影所有者处验证，避免 contract 测试重复维护同一规则。
+    const { item_id, row_number, ...stored_item } = create_item(42);
+    expect(
+      project_agent_workspace_item({
+        ...stored_item,
+        id: item_id,
+        row: row_number,
+        name_src: null,
+        name_dst: null,
+      }),
+    ).toEqual(item);
+    expect(quality).toMatchObject({ id: "A12BC", src: "姫", dst: "公主", info: "称谓", sort: 2 });
     expect(String(item["fp"])).toMatch(/^[\w-]{4}$/u);
     expect(project_agent_workspace_item(create_item(42))["fp"]).toBe(item["fp"]);
     expect(

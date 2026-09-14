@@ -17,9 +17,9 @@ export type AgentWorkspaceData = Readonly<{
   quality: (kind: QualityRuleKind) => AsyncIterable<JsonRecord>;
 }>;
 
-/** Deno entry 独占真实文件端口；数据工具只消费按数据集命名的类型化流。 */
+/** Node entry 独占真实文件端口；数据工具只消费按数据集命名的类型化流。 */
 export type AgentWorkspaceReadPort = Readonly<{
-  contract: JsonRecord;
+  contract: unknown; // 磁盘 JSON 只在 context 创建时按完整 Schema 收窄
   iterateJsonl: (filePath: string) => AsyncIterable<JsonRecord>;
 }>;
 

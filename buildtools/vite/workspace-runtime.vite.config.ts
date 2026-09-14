@@ -1,21 +1,24 @@
+import { builtinModules } from "node:module";
 import { defineConfig } from "vite";
 
 import { project_path } from "./project-paths.js";
 
-/** 为 Deno 生成自包含单文件 ESM；库模式保留原生动态加载，避免浏览器包装器覆盖加载错误。 */
+/** 自包含 Node bundle 将运行时读取授权收口到单个程序文件，开发与发布共用产物。 */
 export default defineConfig({
   publicDir: false,
   build: {
-    target: "esnext",
-    outDir: project_path("resources", "deno"),
-    emptyOutDir: false,
+    target: "node24",
+    outDir: project_path("build", "workspace-runtime"),
+    emptyOutDir: true,
     minify: false,
     lib: {
       entry: project_path("src/backend/agent/workspace/runtime/entry.ts"),
       formats: ["es"],
-      fileName: () => "deno-runtime.js",
+      fileName: () => "runtime.mjs",
     },
     rolldownOptions: {
+      platform: "node",
+      external: [...builtinModules, /^node:/u],
       output: {
         codeSplitting: false,
       },

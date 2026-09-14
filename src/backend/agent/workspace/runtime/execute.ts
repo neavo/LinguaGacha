@@ -1,4 +1,4 @@
-import { is_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
+import type { JsonValue } from "../../../../domain/json";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import type { AgentWorkspaceRuntimeContract } from "../schema";
@@ -18,7 +18,7 @@ export type AgentWorkspaceRuntimeResponse =
   | { ok: true; result: JsonValue; todos: string[] }
   | { ok: false; message: string };
 
-export type AgentWorkspaceProgram = (ws: AgentWorkspaceRuntimeApi) => Promise<unknown>;
+type AgentWorkspaceProgram = (ws: AgentWorkspaceRuntimeApi) => Promise<unknown>;
 
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
@@ -29,7 +29,7 @@ export type AgentWorkspaceRuntimeApi = Readonly<{
   tool: Readonly<AgentWorkspaceDataTools & AgentWorkspaceHtmlTools>;
 }>;
 
-/** 把脚本作为 TypeScript 异步函数体交给 Deno 原生模块加载器转译。 */
+/** 加载并执行 JS 脚本，统一冻结端口、JSON 投影和失败回包。 */
 export async function execute_agent_workspace_script(
   script: string,
   read_port: AgentWorkspaceReadPort,
@@ -37,19 +37,6 @@ export async function execute_agent_workspace_script(
 ): Promise<AgentWorkspaceRuntimeResponse> {
   try {
     const program = await load_agent_workspace_program(script);
-    return await execute_agent_workspace_program(program, read_port, initial_todos);
-  } catch (error) {
-    return { ok: false, message: error_message(error) };
-  }
-}
-
-/** 用已加载程序验证冻结端口、JSON 投影与结果上限；Node 单测无需模拟 Deno 转译器。 */
-export async function execute_agent_workspace_program(
-  program: AgentWorkspaceProgram,
-  read_port: AgentWorkspaceReadPort,
-  initial_todos: readonly string[] = [],
-): Promise<AgentWorkspaceRuntimeResponse> {
-  try {
     let todos = normalize_agent_todos(initial_todos);
     const todo = Object.freeze({
       read: (): readonly string[] => Object.freeze([...todos]),
@@ -58,21 +45,11 @@ export async function execute_agent_workspace_program(
       },
     });
     const result = await program(create_agent_workspace_runtime_api(read_port, todo));
-    if (result === undefined) {
-      return { ok: false, message: "工作区脚本必须显式返回 JSON 结果。" };
-    }
-    let serialized: string | undefined;
-    try {
-      serialized = JSON.stringify(result);
-    } catch (error) {
-      return { ok: false, message: error_message(error) };
-    }
+    const serialized = JSON.stringify(result);
     if (serialized === undefined) {
       return { ok: false, message: "工作区脚本必须显式返回 JSON 结果。" };
     }
-    if (
-      new TextEncoder().encode(serialized).byteLength > AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes
-    ) {
+    if (Buffer.byteLength(serialized, "utf8") > AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes) {
       return {
         ok: false,
         message: "脚本返回结果过大；请在工作区内完成聚合并只返回摘要。",
@@ -84,24 +61,17 @@ export async function execute_agent_workspace_program(
   }
 }
 
-/** blob URL 保持脚本只存在于当前进程，并交给 Deno 的 TypeScript loader。 */
+/** data URL 让脚本只存在于当前进程，Node 内置模块通过动态 import 使用。 */
 async function load_agent_workspace_program(script: string): Promise<AgentWorkspaceProgram> {
   const source = [
-    "export default async function agentWorkspaceProgram(ws: any) {",
+    "export default async function agentWorkspaceProgram(ws) {",
     script,
     "}",
-    "//# sourceURL=agent-workspace-program.ts",
+    "//# sourceURL=agent-workspace-program.js",
   ].join("\n");
-  const module_url = URL.createObjectURL(new Blob([source], { type: "application/typescript" }));
-  try {
-    const module = (await import(module_url)) as { default?: unknown };
-    if (typeof module.default !== "function") {
-      throw new Error("Agent Workspace TypeScript program is missing its executable entry.");
-    }
-    return module.default as AgentWorkspaceProgram;
-  } finally {
-    URL.revokeObjectURL(module_url);
-  }
+  const module_url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+  const module = (await import(module_url)) as { default: AgentWorkspaceProgram };
+  return module.default;
 }
 
 /** contract、Todo 与工具树共同投影为脚本唯一全局端口。 */
@@ -114,27 +84,17 @@ function create_agent_workspace_runtime_api(
     Object.entries(AGENT_WORKSPACE_DATA_TOOLS).map(([name]) => [
       name,
       async (args: unknown) =>
-        await execute_agent_workspace_data_tool(
-          name as AgentWorkspaceDataToolName,
-          context,
-          require_data_tool_args(args, name),
-        ),
+        await execute_agent_workspace_data_tool(name as AgentWorkspaceDataToolName, context, args),
     ]),
   ) as AgentWorkspaceDataTools;
   return deep_freeze({
-    contract: deep_freeze(structuredClone(context.contract)),
+    contract: structuredClone(context.contract),
     todo,
     tool: {
       ...data_tools,
       ...AGENT_WORKSPACE_HTML_TOOLS,
     },
   });
-}
-
-/** 领域 Schema 细化前先统一拒绝非对象参数。 */
-function require_data_tool_args(value: unknown, name: string): JsonRecord {
-  if (!is_json_record(value)) throw new Error(`${name} args must be an object`);
-  return value;
 }
 
 /** 递归冻结注入对象，避免脚本在单次调用内改写共享契约或工具容器。 */

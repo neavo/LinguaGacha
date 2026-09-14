@@ -3,14 +3,13 @@ import { randomUUID } from "node:crypto";
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
 import type {
-  AgentWorkspaceRuntimePaths,
   BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
-import { DenoAgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
+import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { t_main_log } from "../log/log-text";
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -37,7 +36,7 @@ export async function run_backend_runtime(args: {
   appRoot: string; // 安装根继续决定版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
-  agentWorkspaceRuntime: AgentWorkspaceRuntimePaths;
+  agentWorkspaceRuntimeEntryPath: string;
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
@@ -77,14 +76,13 @@ export async function run_backend_runtime(args: {
     pending_host_requests.clear();
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
-  // 普通模型请求与 Deno fetch 共用同一宿主解析端口，避免两套代理事实漂移。
+  // 普通模型请求与 Node fetch 共用同一宿主解析端口，避免两套代理事实漂移。
   const system_proxy_resolver = {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
-  const agent_workspace_runner = new DenoAgentWorkspaceRunner({
-    executablePath: args.agentWorkspaceRuntime.denoExecutablePath,
-    runtimeEntryPath: args.agentWorkspaceRuntime.runtimeEntryPath,
+  const agent_workspace_runner = new AgentWorkspaceRunner({
+    runtimeEntryPath: args.agentWorkspaceRuntimeEntryPath,
     systemProxyResolver: system_proxy_resolver,
   });
   const bootstrap = new GuiBackendBootstrap({
@@ -158,7 +156,6 @@ export async function run_backend_runtime(args: {
   };
 
   try {
-    await agent_workspace_runner.initialize();
     start_result = await bootstrap.start();
     const ready: BackendRuntimeReady = {
       apiBaseUrl: start_result.apiBaseUrl,

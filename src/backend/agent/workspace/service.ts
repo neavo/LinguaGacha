@@ -74,7 +74,7 @@ type AgentWorkspaceStoreResult = {
   sectionRevisions: ProjectDataSectionRevisions;
 };
 
-/** WorkspaceService 调用 Deno runner 的唯一可取消端口。 */
+/** WorkspaceService 调用 Node runner 的唯一可取消端口。 */
 export type AgentWorkspaceRunPort = (
   request: AgentWorkspaceRunRequest,
   signal: AbortSignal,
@@ -117,7 +117,7 @@ export class AgentWorkspaceService {
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
   private readonly link_versions = { work: 0, sources: 0, snapshot: 0 }; // 原生对话框等待期间的来源有效期
 
-  /** 注入当前工程读侧、唯一写入口与 Deno 脚本端口。 */
+  /** 注入当前工程读侧、唯一写入口与 Node 脚本端口。 */
   public constructor(
     private readonly options: {
       paths: Pick<AppPathService, "get_agent_workspace_root_dir">;

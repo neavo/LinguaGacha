@@ -806,7 +806,7 @@ function normalize_optional_revision(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-/** Todo 与后端、Deno 共用边界规则；非法帧交给 revision 恢复权威快照。 */
+/** Todo 与后端和脚本运行时共用边界规则；非法帧交给 revision 恢复权威快照。 */
 function normalize_todos(value: unknown): string[] | null {
   try {
     return normalize_agent_todos(value);

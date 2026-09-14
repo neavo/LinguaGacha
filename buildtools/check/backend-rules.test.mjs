@@ -60,6 +60,7 @@ describe("backend boundary rules", () => {
           'undici_fetch("https://example.com");',
         ].join("\n"),
         "src/native/native-fs.ts": 'import "node:fs/promises";',
+        "src/backend/agent/workspace/runtime/entry.ts": 'import "node:fs/promises";',
         "src/shared/error/app-error.ts": [
           'export const APP_ERROR_DEFINITIONS = { ok: { status: 400, severity: "expected" } };',
           "export interface AppErrorOptions {}",

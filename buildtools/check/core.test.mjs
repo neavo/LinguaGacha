@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { find_import_specifiers, find_pattern_errors, format_boundary_errors } from "./core.mjs";
+import { find_import_specifiers, find_pattern_errors } from "./core.mjs";
 
 describe("check core", () => {
   it("提取静态、动态与转发导入并保留源码行号", () => {
@@ -18,26 +18,18 @@ export type { B } from "./b";
     ]);
   });
 
-  it("为规则命中生成稳定行号和统一错误文本", () => {
-    const errors = find_pattern_errors("ok\nforbidden\nok", /forbidden/g, () => "禁止项").map(
-      (error) => ({
-        rule_name: "示例规则",
-        relative_path: "src/example.ts",
-        ...error,
-      }),
-    );
+  it("忽略说明和注释中的 import 示例，仍识别模板表达式内的真实导入", () => {
+    const source = [
+      `const description = 'await import("node:fs/promises")';`,
+      '// import "node:fs";',
+      'const text = `example import("ignored") ${await import("./actual")}`;',
+    ].join("\n");
+    expect(find_import_specifiers(source)).toEqual([{ line: 3, specifier: "./actual" }]);
+  });
 
-    expect(errors).toEqual([
-      {
-        line: 2,
-        message: "禁止项",
-        relative_path: "src/example.ts",
-        rule_name: "示例规则",
-      },
+  it("为正则命中保留源码行号", () => {
+    expect(find_pattern_errors("ok\r\nforbidden\nok", /forbidden/g, () => "禁止项")).toEqual([
+      { line: 2, message: "禁止项" },
     ]);
-    expect(format_boundary_errors("边界检查", errors)).toBe(
-      "边界检查失败：\n- [示例规则] src/example.ts:2 禁止项",
-    );
-    expect(format_boundary_errors("边界检查", [])).toBe("边界检查通过。");
   });
 });

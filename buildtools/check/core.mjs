@@ -1,3 +1,4 @@
+import { parse } from "@babel/parser";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,13 +10,6 @@ const DEFAULT_IGNORED_DIRECTORIES = new Set([
   "dist-electron",
   "node_modules",
 ]);
-
-const IMPORT_SPECIFIER_PATTERNS = [
-  /\bimport\s+(?:type\s+)?[^'"]*?\s+from\s+["']([^"']+)["']/g,
-  /\bimport\s+["']([^"']+)["']/g,
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
-  /\bexport\s+(?:type\s+)?[^'"]*?\s+from\s+["']([^"']+)["']/g,
-];
 
 /**
  * 解析仓库根目录，所有 CLI 入口共享同一个路径口径。
@@ -103,22 +97,41 @@ export function run_check_cli(suites) {
  * 从源码中提取静态和动态 import specifier，供边界规则做路径判定。
  */
 export function find_import_specifiers(content) {
+  const ast = parse(content, {
+    sourceType: "unambiguous",
+    plugins: ["typescript", "jsx"],
+    allowReturnOutsideFunction: true,
+    attachComment: false,
+  });
   const specifiers = [];
+  walk_ast(ast, (node) => {
+    const source = [
+      "ImportDeclaration",
+      "ExportNamedDeclaration",
+      "ExportAllDeclaration",
+      "ImportExpression",
+    ].includes(node.type)
+      ? node.source
+      : undefined;
+    if (source?.type === "StringLiteral") {
+      specifiers.push({ line: node.loc.start.line, specifier: source.value });
+    }
+  });
+  return specifiers;
+}
 
-  for (const pattern of IMPORT_SPECIFIER_PATTERNS) {
-    pattern.lastIndex = 0;
-    for (const match of content.matchAll(pattern)) {
-      const specifier = match[1];
-      if (specifier !== undefined) {
-        specifiers.push({
-          line: line_number_at(content, match.index ?? 0),
-          specifier,
-        });
-      }
+/** 只访问 AST 节点，供导入边界与错误契约共用，避免把注释和提示词中的代码示例当作实现。 */
+export function walk_ast(node, visit) {
+  if (node === null || typeof node !== "object" || typeof node.type !== "string") return;
+  visit(node);
+  for (const [key, value] of Object.entries(node)) {
+    if (["comments", "errors", "extra", "loc", "tokens"].includes(key)) continue;
+    if (Array.isArray(value)) {
+      for (const child of value) walk_ast(child, visit);
+    } else {
+      walk_ast(value, visit);
     }
   }
-
-  return specifiers;
 }
 
 /**
@@ -169,6 +182,7 @@ export function to_relative_path(project_root, file_path) {
   return path.relative(project_root, file_path).replaceAll(path.sep, "/");
 }
 
+/** 下探前排除忽略目录，文件收集只维护一份结果数组。 */
 function collect_files_into(current_path, ignored_directories, files) {
   const current_stat = statSync(current_path);
   if (!current_stat.isDirectory()) {
@@ -184,6 +198,7 @@ function collect_files_into(current_path, ignored_directories, files) {
   }
 }
 
-function line_number_at(content, index) {
+/** 正则命中和 AST 文本位置共用一基行号，保留 LF / CRLF 口径。 */
+export function line_number_at(content, index) {
   return content.slice(0, index).split(/\r?\n/).length;
 }

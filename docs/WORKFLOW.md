@@ -50,7 +50,7 @@
 |共享 helper、状态写入口、公开契约|直接受影响的调用者及生产者、消费者相关测试|
 |测试配置、环境初始化、广泛共享基础设施|受影响的测试项目；影响面无法可靠界定时执行 `npm test`|
 |GUI / preload / native / Backend Runtime worker 行为|相关目标测试；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试|
-|Agent 工作区或 Deno runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；TypeScript 加载、权限、真实文件边界、系统代理或流式网页转换的环境语义存在风险时，对相应行为运行真实 Deno smoke|
+|Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或流式网页转换的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
 |端到端 UI 冒烟|用户明确要求时执行；或已识别具体高风险，且低层验证不足以证明结果时执行。需要启动真机应用时使用 `npm run dev`|
 |Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
@@ -58,6 +58,6 @@
 
 Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 初始化。使用 `npm test -- --project node <测试文件路径...>` 或 `npm test -- --project renderer <测试文件路径...>` 定位目标；省略文件路径运行对应项目。
 
-`buildtools/vite/deno-runtime.vite.config.test.mjs` 使用生产构建与真实 Deno 验证单文件、TypeScript 加载和语法诊断；运行前用 `node buildtools/builder/deno-runtime.mjs` 准备本地二进制。
+`src/backend/agent/workspace/runtime/entry.test.ts` 使用生产构建与项目安装的 Electron 验证单文件、JavaScript 执行、文件权限、原生 IPC、重定向和取消。发布资产或入口定位变化时，再使用发布包的可执行文件与 bundle 执行针对性验证。
 
-构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Deno runtime 为无外部 import 的单文件；manifest 校验发布资产与目标二进制并复用有效安装；afterPack 安装当前目标 Deno 与 runtime bundle；涉及平台启动器时测试并构建对应 Go module。
+构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Workspace runtime 为仅外部导入 Node 内置模块的单文件；extraResources 安装工作区 bundle，发布程序保持 runAsNode fuse 开启；涉及平台启动器时测试并构建对应 Go module。
