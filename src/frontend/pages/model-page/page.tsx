@@ -147,15 +147,15 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                   </AppButton>
                 ) : null
               }
-              on_reorder={(ordered_model_ids) => {
-                void model_page_state.request_reorder_models(category.type, ordered_model_ids);
-              }}
-            >
-              {category.models.map((model) => (
+              disabled={model_page_state.readonly}
+              on_reorder={(ordered_model_ids) =>
+                model_page_state.request_reorder_models(category.type, ordered_model_ids)
+              }
+              render_model={(model, index, drag_disabled) => (
                 <ModelItemChip
-                  key={model.id}
                   model={model}
-                  drag_disabled={model_page_state.readonly}
+                  index={index}
+                  drag_disabled={drag_disabled}
                   drag_aria_label={t("app.drag.handle")}
                   menu={
                     <AppDropdownMenuContent align="center">
@@ -209,8 +209,8 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                     </AppDropdownMenuContent>
                   }
                 />
-              ))}
-            </ModelCategoryCard>
+              )}
+            />
           ))}
         </section>
       </div>

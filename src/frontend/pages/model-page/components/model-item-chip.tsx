@@ -1,7 +1,7 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { SORTABLE_OPTIONS } from "@frontend/widgets/interactions/sortable";
 import { ChevronDown, GripVertical } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -9,6 +9,7 @@ import { AppDropdownMenu, AppDropdownMenuTrigger } from "@frontend/widgets/app-d
 
 type ModelItemChipProps = {
   model: ModelEntrySnapshot;
+  index: number;
   drag_disabled: boolean;
   drag_aria_label: string;
   menu: ReactNode;
@@ -16,22 +17,22 @@ type ModelItemChipProps = {
 
 /** 单个模型条目只承接拖拽与配置菜单，不表达任务用途选择。 */
 export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+  const {
+    isDragSource: isDragging,
+    handleRef,
+    ref,
+  } = useSortable({
+    ...SORTABLE_OPTIONS,
+    index: props.index,
     id: props.model.id,
     disabled: props.drag_disabled,
   });
 
-  const item_style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
     <div
-      ref={setNodeRef}
+      ref={ref}
       className="model-page__item-chip"
       data-dragging={isDragging ? "true" : undefined}
-      style={item_style}
     >
       <AppButton
         type="button"
@@ -40,11 +41,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
         disabled={props.drag_disabled}
         className="model-page__drag-handle"
         aria-label={props.drag_aria_label}
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
-        {...attributes}
-        {...listeners}
+        ref={handleRef}
       >
         <GripVertical />
       </AppButton>

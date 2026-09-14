@@ -36,7 +36,6 @@ import {
 } from "@frontend/widgets/app-context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
-import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
 import { read_optional_item_name_text } from "@shared/item-name";
 import type {
   AppTableColumn,
@@ -88,6 +87,7 @@ function run_after_context_menu_close(action: () => void): void {
   window.setTimeout(action, 0);
 }
 
+/** 将条目处理状态映射为当前表格的状态图标。 */
 function resolve_status_icon(status: string): typeof AlertCircle | null {
   if (status === "PROCESSED") {
     return CircleCheck;
@@ -111,6 +111,7 @@ function resolve_status_icon(status: string): typeof AlertCircle | null {
   return null;
 }
 
+/** 成功与失败突出显示，其余状态使用中性图标色。 */
 function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   if (status === "PROCESSED") {
     return "success";
@@ -304,16 +305,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         title: t("app.drag.handle"),
         head_class_name: "proofreading-page__table-drag-head",
         cell_class_name: "proofreading-page__table-drag-cell",
-        render_cell: (payload) => {
-          return (
-            <AppTableDragIndicator
-              row_number={String(payload.row_index + 1)}
-              can_drag={payload.can_drag}
-              dragging={payload.dragging}
-              drag_handle={payload.drag_handle}
-            />
-          );
-        },
       },
       {
         kind: "data",

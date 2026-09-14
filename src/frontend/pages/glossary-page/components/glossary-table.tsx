@@ -19,7 +19,6 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
-import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
 
 type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[];
@@ -102,17 +101,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         title: t("app.drag.handle"),
         head_class_name: "glossary-page__table-drag-head",
         cell_class_name: "glossary-page__table-drag-cell",
-        render_cell: (payload) => {
-          return (
-            <AppTableDragIndicator
-              row_number={String(payload.row_index + 1)}
-              can_drag={payload.can_drag}
-              dragging={payload.dragging}
-              drag_handle={payload.drag_handle}
-              show_tooltip={payload.presentation !== "overlay"}
-            />
-          );
-        },
       },
       {
         kind: "data",

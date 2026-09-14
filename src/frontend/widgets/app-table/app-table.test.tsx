@@ -1,7 +1,7 @@
 import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent, DragOverEvent, DragDropManager } from "@dnd-kit/react";
 
 const app_table_test_state = vi.hoisted(() => {
   return {
@@ -9,20 +9,24 @@ const app_table_test_state = vi.hoisted(() => {
     measure: vi.fn(),
     scrollToIndex: vi.fn(),
     on_drag_start: null as ((event: DragStartEvent) => void) | null,
+    on_drag_over: null as ((event: DragOverEvent) => void) | null,
     on_drag_end: null as ((event: DragEndEvent) => void) | null,
   };
 });
 
-vi.mock("@dnd-kit/core", async (import_original) => {
-  const actual = await import_original<typeof import("@dnd-kit/core")>();
+vi.mock("@dnd-kit/react", async (import_original) => {
+  const actual = await import_original<typeof import("@dnd-kit/react")>();
   const mock_module = {
     ...actual,
-    DndContext: (props: {
+    DragDropProvider: (props: {
       children?: ReactNode;
-      onDragStart?: (event: DragStartEvent) => void;
+      onDragStart?: (event: DragStartEvent, manager: DragDropManager) => void;
+      onDragOver?: (event: DragOverEvent) => void;
       onDragEnd?: (event: DragEndEvent) => void;
     }) => {
-      app_table_test_state.on_drag_start = props.onDragStart ?? null;
+      app_table_test_state.on_drag_start = (event) =>
+        props.onDragStart?.(event, { actions: { stop: vi.fn() } } as unknown as DragDropManager);
+      app_table_test_state.on_drag_over = props.onDragOver ?? null;
       app_table_test_state.on_drag_end = props.onDragEnd ?? null;
       return props.children;
     },
@@ -34,23 +38,13 @@ vi.mock("@dnd-kit/core", async (import_original) => {
   };
 });
 
-vi.mock("@dnd-kit/sortable", () => {
+vi.mock("@dnd-kit/react/sortable", () => {
   const mock_module = {
-    SortableContext: (props: { children: unknown; items: Array<string | number> }) => {
-      return props.children;
-    },
-    sortableKeyboardCoordinates: () => undefined,
-    useSortable: () => {
-      return {
-        attributes: {},
-        isDragging: false,
-        listeners: {},
-        setNodeRef: () => {},
-        transform: null,
-        transition: undefined,
-      };
-    },
-    verticalListSortingStrategy: {},
+    useSortable: () => ({
+      isDragSource: false,
+      ref: () => {},
+      handleRef: () => {},
+    }),
   };
   return {
     ...mock_module,
@@ -114,6 +108,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+/** 夹具提供固定矩形，尺寸观察只保留装配接口。 */
 class TestResizeObserver {
   observe(): void {}
   unobserve(): void {}
@@ -138,9 +133,6 @@ function create_drag_columns(): AppTableColumn<TestRow>[] {
     {
       kind: "drag",
       id: "drag",
-      render_cell: (payload) => {
-        return <span>{payload.drag_handle?.disabled === true ? "不可拖拽" : "可拖拽"}</span>;
-      },
     },
     ...create_columns(),
   ];
@@ -251,21 +243,42 @@ function create_reorder_rows(): TestRow[] {
 }
 
 function drag_table_row(active_row_id: string, over_row_id: string): void {
-  act(() => {
-    app_table_test_state.on_drag_start?.({ active: { id: active_row_id } } as DragStartEvent);
-  });
-  act(() => {
+  act(() =>
+    app_table_test_state.on_drag_start?.({
+      operation: { source: { id: active_row_id } },
+    } as DragStartEvent),
+  );
+  act(() =>
+    app_table_test_state.on_drag_over?.({
+      operation: { source: { id: active_row_id }, target: { id: over_row_id } },
+    } as DragOverEvent),
+  );
+  act(() =>
     app_table_test_state.on_drag_end?.({
-      active: { id: active_row_id },
-      over: { id: over_row_id },
-    } as DragEndEvent);
-  });
+      canceled: false,
+      operation: { source: { id: active_row_id }, target: { id: over_row_id } },
+    } as DragEndEvent),
+  );
 }
 
 function read_rendered_row_labels(container: HTMLDivElement): string[] {
   return Array.from(container.querySelectorAll(".app-table__table--body .app-table__row")).map(
     (row) =>
       row.querySelector(".app-table__body-cell:not(.app-table__drag-cell)")?.textContent ?? "",
+  );
+}
+
+function read_drag_handles(container: HTMLDivElement): HTMLButtonElement[] {
+  return [
+    ...container.querySelectorAll<HTMLButtonElement>(
+      ".app-table__table--body .app-table__drag-indicator",
+    ),
+  ];
+}
+
+function read_row_numbers(container: HTMLDivElement): string[] {
+  return read_drag_handles(container).map(
+    (handle) => handle.querySelector(".app-table__drag-row-index")?.textContent ?? "",
   );
 }
 
@@ -529,8 +542,9 @@ describe("AppTable", () => {
     drag_table_row("a", "c");
 
     expect(submitted_row_ids).toEqual(["b", "c", "a"]);
+    expect(read_row_numbers(container)).toEqual(["2", "3", "1"]);
     expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
-    expect(container.textContent).toContain("不可拖拽");
+    expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
 
     await act(async () => {
       persist.resolve();
@@ -539,6 +553,7 @@ describe("AppTable", () => {
     });
 
     expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+    expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
   });
 
   it("持久化失败后才恢复权威顺序", async () => {
@@ -567,6 +582,45 @@ describe("AppTable", () => {
     });
 
     expect(read_rendered_row_labels(container)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
+  });
+
+  it("拖动中的原行和浮层共用原序号，取消后恢复原行显示", async () => {
+    const save = vi.fn(async () => {});
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        columns: create_drag_columns(),
+        on_reorder: save,
+      }),
+    );
+    act(() =>
+      app_table_test_state.on_drag_start?.({
+        operation: { source: { id: "a" } },
+      } as DragStartEvent),
+    );
+    act(() =>
+      app_table_test_state.on_drag_over?.({
+        operation: { source: { id: "a" }, target: { id: "c" } },
+      } as DragOverEvent),
+    );
+    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+    expect(read_row_numbers(container)).toEqual(["2", "3", "1"]);
+    expect(
+      container.querySelector(".app-table__drag-overlay .app-table__drag-row-index")?.textContent,
+    ).toBe("1");
+    expect(container.querySelector("[data-overlay-source=true]")?.textContent).toContain("Alpha");
+    expect(save).not.toHaveBeenCalled();
+    act(() =>
+      app_table_test_state.on_drag_end?.({
+        canceled: true,
+        operation: { source: { id: "a" }, target: { id: "c" } },
+      } as DragEndEvent),
+    );
+    expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
+    expect(container.querySelector("[data-overlay-source]")).toBeNull();
+    expect(container.querySelector(".app-table__drag-overlay")).toBeNull();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("选中组内拖放没有改变顺序时不提交写入", async () => {
@@ -616,7 +670,7 @@ describe("AppTable", () => {
       await act(async () => get_menu_item(`app.action.move_to_${target}`).click());
       expect(submitted_row_ids).toEqual(expected_ids);
       expect(read_rendered_row_labels(container)).toEqual(expected_labels);
-      expect(container.textContent).toContain("不可拖拽");
+      expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
       expect(on_selection_change).not.toHaveBeenCalled();
 
       // 两个入口共用提交期间的互斥，重新打开菜单也不能重复写入。
@@ -1174,6 +1228,7 @@ describe("AppTable", () => {
     const container = await mount(
       create_default_props({
         rows: [],
+        columns: create_drag_columns(),
         row_model,
         selected_row_ids: ["b"],
         active_row_id: "b",
@@ -1182,6 +1237,7 @@ describe("AppTable", () => {
     );
 
     expect(container.textContent).toContain("Beta");
+    expect(read_row_numbers(container)).toEqual(["3"]);
     expect(container.querySelector('[data-row-index="2"]')?.getAttribute("data-state")).toBe(
       "selected",
     );
@@ -1513,7 +1569,7 @@ describe("AppTable", () => {
       }),
     );
 
-    expect(container.textContent).toContain("不可拖拽");
+    expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
   });
 
   it("可见范围没有变化时不会重复触发 on_visible_range_change", async () => {

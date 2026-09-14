@@ -92,6 +92,7 @@
 }
 
 .model-page__drag-handle {
+  touch-action: none;
   position: absolute;
   top: 50%;
   left: 0;

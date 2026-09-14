@@ -125,10 +125,6 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
                         row: event,
                         row_id,
                         row_index: index,
-                        active,
-                        selected,
-                        dragging: false,
-                        can_drag: false,
                         presentation: "body",
                       })}
                     </span>

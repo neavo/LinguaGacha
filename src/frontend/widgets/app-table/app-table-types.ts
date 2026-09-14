@@ -1,5 +1,3 @@
-import type { DraggableAttributes } from "@dnd-kit/core";
-import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import type { JSX, ReactNode } from "react";
 
 export type AppTableSelectionMode = "none" | "single" | "multiple";
@@ -50,21 +48,7 @@ export type AppTableRowModel<Row> = {
 type AppTableCellPresentation = "body" | "overlay";
 
 export type AppTableCellPayload<Row> = AppTableRowEvent<Row> & {
-  active: boolean;
-  selected: boolean;
-  dragging: boolean;
-  can_drag: boolean;
   presentation: AppTableCellPresentation;
-};
-
-export type AppTableDragHandle = {
-  attributes: DraggableAttributes;
-  listeners: SyntheticListenerMap | undefined;
-  disabled: boolean;
-};
-
-export type AppTableDragCellPayload<Row> = AppTableCellPayload<Row> & {
-  drag_handle: AppTableDragHandle | null;
 };
 
 type AppTableColumnBase = {
@@ -75,11 +59,9 @@ type AppTableColumnBase = {
   cell_class_name?: string;
 };
 
-type AppTableDragColumn<Row> = AppTableColumnBase & {
+type AppTableDragColumn = AppTableColumnBase & {
   kind: "drag";
   title?: ReactNode;
-  render_cell: (payload: AppTableDragCellPayload<Row>) => ReactNode;
-  render_placeholder?: () => ReactNode;
 };
 
 export type AppTableDataColumn<Row> = AppTableColumnBase & {
@@ -97,7 +79,7 @@ export type AppTableDataColumn<Row> = AppTableColumnBase & {
   render_placeholder?: () => ReactNode;
 };
 
-export type AppTableColumn<Row> = AppTableDragColumn<Row> | AppTableDataColumn<Row>;
+export type AppTableColumn<Row> = AppTableDragColumn | AppTableDataColumn<Row>;
 
 // 用 revision 区分同一行的多次主动定位请求。
 export type AppTableScrollTarget = {

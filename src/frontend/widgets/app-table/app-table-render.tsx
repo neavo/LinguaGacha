@@ -1,5 +1,10 @@
+import { resolve_app_table_row_zebra } from "./app-table-virtualization";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { SORTABLE_OPTIONS } from "@frontend/widgets/interactions/sortable";
+import { AppContextMenu, AppContextMenuTrigger } from "@frontend/widgets/app-context-menu";
+import { AppTableDragIndicator } from "./app-table-drag-indicator";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 
 import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -7,6 +12,8 @@ import { TableCell, TableHead, TableRow } from "@frontend/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import type {
   AppTableColumn,
+  AppTableCellPayload,
+  AppTableRowEvent,
   AppTableDataColumn,
   AppTableSortDirection,
 } from "@frontend/widgets/app-table/app-table-types";
@@ -143,7 +150,17 @@ export function AppTablePlaceholderRow<Row>(props: {
       style={row_style}
     >
       {props.columns.map((column, column_index) => {
-        const placeholder = column.render_placeholder?.() ?? <span>{"\u00A0"}</span>;
+        const placeholder =
+          column.kind === "drag" ? (
+            <AppTableDragIndicator
+              row_number={props.row_index + 1}
+              disabled
+              dragging={false}
+              show_tooltip={false}
+            />
+          ) : (
+            (column.render_placeholder?.() ?? <span>{"\u00A0"}</span>)
+          );
         return (
           <TableCell
             key={`${column.id}-placeholder-${column_index.toString()}`}
@@ -160,5 +177,178 @@ export function AppTablePlaceholderRow<Row>(props: {
         );
       })}
     </TableRow>
+  );
+}
+
+type AppTableSortableRowProps<Row> = {
+  row: Row;
+  row_id: string;
+  row_index: number;
+  row_number: number; // 序号跟随条目身份，位置索引供虚拟化与碰撞使用。
+  overlay_source: boolean; // 与 AppTable 浮层使用同一显示条件。
+  columns: AppTableColumn<Row>[];
+  selected: boolean;
+  active: boolean;
+  drag_enabled: boolean;
+  can_drag: boolean;
+  row_class_name?: string;
+  render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
+  should_ignore_click: () => boolean;
+  on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
+  on_row_context: (row_id: string) => void;
+  on_row_activate?: (row_id: string) => void;
+  register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
+};
+
+const APP_TABLE_IGNORE_ROW_CLICK_SELECTOR = '[data-app-table-ignore-row-click="true"]';
+/** 行内手柄与控件不触发行选择或双击激活。 */
+function should_ignore_app_table_row_click(target: HTMLElement): boolean {
+  return target.closest(APP_TABLE_IGNORE_ROW_CLICK_SELECTOR) !== null;
+}
+/** 普通行与拖拽浮层共用单元格结构，展示位置通过 payload 交给页面。 */
+export function AppTableRowCells<Row>(props: {
+  columns: AppTableColumn<Row>[];
+  payload: AppTableCellPayload<Row>;
+  dragging: boolean;
+  row_number: number;
+  drag_disabled: boolean;
+  handle_ref?: Ref<HTMLButtonElement>;
+}): JSX.Element {
+  return (
+    <>
+      {props.columns.map((column, index) => (
+        <TableCell
+          key={column.id}
+          className={cn(
+            "app-table__body-cell",
+            column.kind === "drag" ? "app-table__drag-cell" : undefined,
+            column.cell_class_name,
+          )}
+          data-align={column.align ?? (column.kind === "drag" ? "center" : "left")}
+          data-divider={index < props.columns.length - 1 ? "true" : undefined}
+        >
+          {column.kind === "drag" ? (
+            <AppTableDragIndicator
+              row_number={props.row_number}
+              disabled={props.drag_disabled}
+              dragging={props.dragging}
+              handle_ref={props.handle_ref}
+              show_tooltip={props.payload.presentation === "body"}
+            />
+          ) : (
+            column.render_cell(props.payload)
+          )}
+        </TableCell>
+      ))}
+    </>
+  );
+}
+/** 行拥有触发器与打开状态，菜单内容按需创建，避免逐行扫描完整选区。 */
+export function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Element {
+  const [context_menu_open, set_context_menu_open] = useState(false);
+  const {
+    isDragSource: isDragging,
+    handleRef,
+    ref: setNodeRef,
+  } = useSortable({
+    ...SORTABLE_OPTIONS,
+    id: props.row_id,
+    index: props.row_index,
+    disabled: !props.drag_enabled || !props.can_drag,
+  });
+
+  const row_event: AppTableRowEvent<Row> = {
+    row: props.row,
+    row_id: props.row_id,
+    row_index: props.row_index,
+  };
+
+  /** 同一 DOM 同时供排序测量和表格选区定位使用。 */
+  const set_row_element = (row_element: HTMLTableRowElement | null): void => {
+    setNodeRef(row_element);
+    props.register_row_element(props.row_id, row_element);
+  };
+
+  const row_body = (
+    <TableRow
+      ref={set_row_element}
+      data-index={props.row_index}
+      data-active={props.active ? "true" : undefined}
+      data-row-index={props.row_index}
+      data-zebra={resolve_app_table_row_zebra(props.row_index)}
+      data-state={props.selected ? "selected" : undefined}
+      data-dragging={isDragging ? "true" : undefined}
+      data-overlay-source={props.overlay_source ? "true" : undefined}
+      className={cn("app-table__row", props.row_class_name)}
+      onClick={(event) => {
+        if (props.should_ignore_click()) {
+          event.preventDefault();
+          return;
+        }
+
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
+          return;
+        }
+
+        props.on_row_click(props.row_id, props.row_index, event);
+      }}
+      onContextMenu={(event) => {
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
+          return;
+        }
+
+        props.on_row_context(props.row_id);
+      }}
+      onDoubleClick={(event) => {
+        if (props.should_ignore_click()) {
+          return;
+        }
+
+        if (
+          event.target instanceof HTMLElement &&
+          should_ignore_app_table_row_click(event.target)
+        ) {
+          return;
+        }
+
+        props.on_row_activate?.(props.row_id);
+      }}
+    >
+      <AppTableRowCells
+        columns={props.columns}
+        payload={{
+          ...row_event,
+          presentation: "body",
+        }}
+        dragging={isDragging}
+        row_number={props.row_number}
+        handle_ref={handleRef}
+        drag_disabled={!props.drag_enabled || !props.can_drag}
+      />
+    </TableRow>
+  );
+
+  if (props.render_row_context_menu === undefined) {
+    return row_body;
+  }
+
+  return (
+    <AppContextMenu
+      onOpenChange={(next_open) => {
+        set_context_menu_open(next_open);
+        if (next_open) {
+          props.on_row_context(props.row_id);
+        }
+      }}
+    >
+      <AppContextMenuTrigger render={row_body} />
+      {context_menu_open ? props.render_row_context_menu(row_event) : null}
+    </AppContextMenu>
   );
 }

@@ -10,7 +10,6 @@ import type { WorkbenchFileEntry } from "@frontend/pages/workbench-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
-import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
 import type {
   AppTableColumn,
   AppTableSelectionChange,
@@ -92,28 +91,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         title: t("app.drag.handle"),
         head_class_name: "workbench-page__table-drag-head",
         cell_class_name: "workbench-page__table-drag-cell",
-        render_cell: (payload) => {
-          return (
-            <AppTableDragIndicator
-              row_number={String(payload.row_index + 1)}
-              can_drag={payload.can_drag}
-              dragging={payload.dragging}
-              drag_handle={payload.drag_handle}
-              show_tooltip={payload.presentation !== "overlay"}
-            />
-          );
-        },
-        render_placeholder: () => {
-          return (
-            <AppTableDragIndicator
-              row_number={"88"}
-              can_drag
-              dragging={false}
-              drag_handle={null}
-              show_tooltip={false}
-            />
-          );
-        },
       },
       {
         kind: "data",
