@@ -40,12 +40,7 @@ type ScrollMetrics = {
   viewport: number;
 };
 
-/** 按浏览器夹取规则从测试几何计算底端。 */
-function scroll_end(metrics: ScrollMetrics): number {
-  return Math.max(0, metrics.height - metrics.viewport);
-}
-
-/** 只模拟可测几何与显式写入。 */
+/** 模拟可测几何，并按浏览器规则夹取滚动位置。 */
 function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): void {
   Object.defineProperties(target, {
     scrollHeight: { configurable: true, get: () => metrics.height },
@@ -54,7 +49,7 @@ function install_scroll_metrics(target: HTMLElement, metrics: ScrollMetrics): vo
       configurable: true,
       get: () => metrics.top,
       set: (value: number) => {
-        metrics.top = Math.max(0, Math.min(value, scroll_end(metrics)));
+        metrics.top = Math.max(0, Math.min(value, metrics.height - metrics.viewport));
       },
     },
   });
@@ -122,6 +117,7 @@ describe("AgentTimeline", () => {
     return container;
   }
 
+  /** 只读取当前工具页签，避免隐藏编辑器的内容混入断言。 */
   function get_tool_dialog_text(): string | undefined {
     const active_scope =
       document.body.querySelector<HTMLButtonElement>('button[role="tab"][data-active]')
@@ -135,6 +131,7 @@ describe("AgentTimeline", () => {
     );
   }
 
+  /** 按结构比较当前工具载荷，忽略编辑器的 JSON 排版。 */
   function get_tool_dialog_json(): unknown {
     return JSON.parse(get_tool_dialog_text() ?? "");
   }
@@ -495,7 +492,7 @@ describe("AgentTimeline", () => {
           "assistant-1",
           [
             { kind: "thinking", text: "检查术语完成" },
-            { kind: "text", text: "**结论**" },
+            { kind: "text", text: "结论" },
           ],
           "running",
           1,
@@ -504,7 +501,7 @@ describe("AgentTimeline", () => {
     );
     await act(async () => vi.runOnlyPendingTimers());
     expect(thinking.dataset.open).toBeUndefined();
-    expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("结论");
+    expect(view.querySelector(".agent-markdown")?.textContent).toBe("结论");
   });
 
   it("思考块上滚后完成也不自动收缩", async () => {

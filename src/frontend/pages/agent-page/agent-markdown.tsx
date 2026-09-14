@@ -71,8 +71,20 @@ const MERMAID_THEME_CSS = `
     ry: ${MERMAID_EDGE_LABEL_RADIUS}px;
   }
 `;
-// 产品组件接管链接和表格行为，稳定的映射身份避免流式更新重新挂载交互区域。
+// 普通正文使用原生标签，让产品 CSS 独立拥有排版；稳定映射避免流式更新重挂交互组件。
 const MARKDOWN_COMPONENTS: Components = {
+  h1: "h1",
+  h2: "h2",
+  h3: "h3",
+  h4: "h4",
+  h5: "h5",
+  h6: "h6",
+  ul: "ul",
+  ol: "ol",
+  li: "li",
+  blockquote: "blockquote",
+  hr: "hr",
+  strong: "strong",
   a: ({ node: _node, href, children, ...props }) =>
     href ? (
       <a {...props} href={href}>
@@ -85,7 +97,7 @@ const MARKDOWN_COMPONENTS: Components = {
   table: AgentMarkdownTable,
 };
 
-/** 流式语义、高亮和图表由 Streamdown 拥有；本入口只组装桌面交互。 */
+/** Streamdown 拥有流式语义、高亮和图表；本入口组装产品排版与桌面交互。 */
 export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
   const { resolved_theme } = useAppearance();
@@ -169,7 +181,9 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
       onPointerDownCapture={focus_inline_diagram}
       onKeyDownCapture={leave_inline_diagram}
     >
+      {/* 关闭默认块间距，避免原始 HTML 块额外叠加留白。 */}
       <Streamdown
+        className="agent-markdown__content space-y-0"
         isAnimating={props.streaming}
         parseIncompleteMarkdown={props.streaming}
         plugins={plugins}

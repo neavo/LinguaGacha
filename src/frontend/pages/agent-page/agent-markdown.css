@@ -91,6 +91,10 @@
 
 /* Links and inline syntax */
 
+.agent-markdown strong {
+  font-weight: 600;
+}
+
 .agent-markdown a {
   border-radius: var(--ui-radius-button);
   color: var(--primary);
@@ -124,14 +128,6 @@
 
 .agent-markdown blockquote > p {
   white-space: pre-line;
-}
-
-.agent-markdown blockquote > :first-child {
-  margin-top: 0;
-}
-
-.agent-markdown blockquote > :last-child {
-  margin-bottom: 0;
 }
 
 .agent-markdown hr {
@@ -175,10 +171,6 @@
 
 .agent-markdown [data-footnotes] ol {
   margin: 0;
-}
-
-.agent-markdown [data-footnotes] li + li {
-  margin-top: 4px;
 }
 
 /* Product-specific Markdown extensions */
@@ -426,10 +418,6 @@
   fill: currentColor;
 }
 
-.agent-markdown .markdown-alert > :last-child {
-  margin-bottom: 0;
-}
-
 /* 图表画布的交互与正文选区分离，焦点轮廓表明滚轮现在用于缩放。 */
 .agent-markdown [data-streamdown="mermaid"],
 .agent-markdown [data-streamdown="mermaid"] * {
@@ -443,4 +431,16 @@
 
 .agent-markdown [data-streamdown="mermaid"]:focus {
   outline: none;
+}
+
+/* 容器统一收口首尾留白；置于块样式之后，覆盖正文和富内容自身的外边距。 */
+.agent-markdown__content > :first-child,
+.agent-markdown blockquote > :first-child {
+  margin-top: 0;
+}
+
+.agent-markdown__content > :last-child,
+.agent-markdown blockquote > :last-child,
+.agent-markdown .markdown-alert > :last-child {
+  margin-bottom: 0;
 }
