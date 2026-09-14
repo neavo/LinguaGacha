@@ -9,9 +9,9 @@ const { use_sortable_mock } = vi.hoisted(() => ({
   use_sortable_mock: vi.fn(),
 }));
 
-vi.mock("@dnd-kit/sortable", async (import_original) => {
+vi.mock("@dnd-kit/react/sortable", async (import_original) => {
   const mock_module = {
-    ...(await import_original<typeof import("@dnd-kit/sortable")>()),
+    ...(await import_original<typeof import("@dnd-kit/react/sortable")>()),
     useSortable: use_sortable_mock,
   };
   return { ...mock_module, default: mock_module };
@@ -31,12 +31,9 @@ describe("ModelItemChip", () => {
   beforeEach(() => {
     use_sortable_mock.mockReset();
     use_sortable_mock.mockReturnValue({
-      attributes: {},
-      isDragging: false,
-      listeners: {},
-      setNodeRef: vi.fn(),
-      transform: null,
-      transition: undefined,
+      isDragSource: false,
+      ref: vi.fn(),
+      handleRef: vi.fn(),
     });
   });
 
@@ -57,6 +54,7 @@ describe("ModelItemChip", () => {
     await act(async () => {
       root?.render(
         <ModelItemChip
+          index={0}
           model={create_model_snapshot({ name: "翻译模型" })}
           drag_disabled={true}
           drag_aria_label="拖拽翻译模型"

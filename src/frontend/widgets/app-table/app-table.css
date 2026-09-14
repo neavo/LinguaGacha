@@ -331,6 +331,10 @@
 }
 
 .app-table__drag-indicator {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  touch-action: none;
   display: grid;
   grid-template-columns: 10px 3ch;
   align-items: center;
@@ -401,6 +405,7 @@
 }
 
 .app-table__drag-overlay {
+  background: var(--ui-card-table-surface);
   overflow: hidden;
   border-radius: var(--ui-radius-card);
   box-shadow: var(--ui-card-default-shadow);
@@ -409,4 +414,9 @@
 .app-table__table--overlay {
   --table-hover-current: var(--app-table-selected);
   --table-selected-current: var(--app-table-selected);
+}
+
+/* 浮层显示正文时原行只占位；opacity 保留测量、DOM 身份和键盘焦点。 */
+.app-table__table--body .app-table__row[data-overlay-source="true"] {
+  opacity: 0;
 }

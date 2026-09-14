@@ -1,19 +1,7 @@
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  type DragEndEvent,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
+import { DragDropProvider } from "@dnd-kit/react";
+import { SORTABLE_PROVIDER_OPTIONS } from "@frontend/widgets/interactions/sortable";
+import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent } from "@frontend/shadcn/card";
@@ -24,39 +12,19 @@ type ModelCategoryCardProps = {
   accent_color: string;
   models: ModelEntrySnapshot[];
   add_action: ReactNode;
-  children: ReactNode;
-  on_reorder: (ordered_model_ids: string[]) => void;
+  disabled: boolean;
+  render_model: (model: ModelEntrySnapshot, index: number, drag_disabled: boolean) => ReactNode;
+  on_reorder: (ordered_model_ids: string[]) => Promise<void>;
 };
 
 /** 展示单个模型分类，并把有效拖拽结果转换为完整模型 ID 顺序。 */
 export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 4,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  /** 无效落点与分类外 ID 不改变顺序，避免向写入口提交残缺载荷。 */
-  function handle_drag_end(event: DragEndEvent): void {
-    const { active, over } = event;
-    if (over === null || active.id === over.id) {
-      return;
-    }
-
-    const previous_index = props.models.findIndex((model) => model.id === active.id);
-    const next_index = props.models.findIndex((model) => model.id === over.id);
-    if (previous_index < 0 || next_index < 0) {
-      return;
-    }
-
-    const reordered_models = arrayMove(props.models, previous_index, next_index);
-    props.on_reorder(reordered_models.map((model) => model.id));
-  }
+  const reorder = useReorder({
+    ids: props.models.map((model) => model.id),
+    disabled: props.disabled,
+    on_reorder: props.on_reorder,
+  });
+  const models_by_id = new Map(props.models.map((model) => [model.id, model]));
 
   return (
     <Card className="model-page__category-card">
@@ -76,18 +44,19 @@ export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
           <div className="model-page__category-action">{props.add_action}</div>
         </header>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handle_drag_end}
-        >
-          <SortableContext
-            items={props.models.map((model) => model.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="model-page__flow-list">{props.children}</div>
-          </SortableContext>
-        </DndContext>
+        <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
+          <div className="model-page__flow-list">
+            {reorder.ordered_ids.map((id, index) => (
+              <Fragment key={id}>
+                {props.render_model(
+                  models_by_id.get(id)!,
+                  index,
+                  props.disabled || reorder.pending,
+                )}
+              </Fragment>
+            ))}
+          </div>
+        </DragDropProvider>
       </CardContent>
     </Card>
   );

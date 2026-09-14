@@ -2,56 +2,37 @@ import { GripVertical } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import type { AppTableDragHandle } from "@frontend/widgets/app-table/app-table-types";
+import type { Ref } from "react";
 
 type AppTableDragIndicatorProps = {
-  row_number: string;
-  can_drag: boolean;
+  row_number: number;
+  disabled: boolean;
   dragging: boolean;
-  drag_handle: AppTableDragHandle | null;
+  handle_ref?: Ref<HTMLButtonElement>;
   show_tooltip?: boolean;
 };
 
-type AppTableDragIndicatorState = "enabled" | "disabled" | "dragging";
-
-function resolve_drag_indicator_state(
-  props: AppTableDragIndicatorProps,
-): AppTableDragIndicatorState {
-  // 为什么：拖拽中的 overlay 没有 handle，但视觉上仍然应该保持“可拖拽中”的手型语义
-  if (props.dragging && props.can_drag) {
-    return "dragging";
-  }
-
-  if (props.drag_handle !== null && !props.drag_handle.disabled) {
-    return "enabled";
-  }
-
-  return "disabled";
-}
-
+/** 序号与手柄共用显示状态；浮层保留拖动手型而不注册交互。 */
 export function AppTableDragIndicator(props: AppTableDragIndicatorProps): JSX.Element {
   const { t } = useI18n();
-  const drag_state = resolve_drag_indicator_state(props);
+  const drag_state = props.dragging ? "dragging" : props.disabled ? "disabled" : "enabled";
   const tooltip_label = drag_state === "disabled" ? t("app.drag.disabled") : t("app.drag.enabled");
-  const drag_handle_attributes =
-    drag_state === "enabled" ? (props.drag_handle?.attributes ?? {}) : {};
-  const drag_handle_listeners =
-    drag_state === "enabled" ? (props.drag_handle?.listeners ?? {}) : {};
   const indicator = (
-    <div
+    <button
+      type="button"
+      ref={props.handle_ref}
+      disabled={props.disabled}
       className="app-table__drag-indicator"
       data-drag-state={drag_state}
       data-app-table-ignore-box-select="true"
       data-app-table-ignore-row-click="true"
       aria-label={tooltip_label}
-      {...drag_handle_attributes}
-      {...drag_handle_listeners}
     >
       <span className="app-table__drag-icon" aria-hidden="true">
         <GripVertical />
       </span>
       <span className="app-table__drag-row-index">{props.row_number}</span>
-    </div>
+    </button>
   );
 
   if (props.show_tooltip === false) {

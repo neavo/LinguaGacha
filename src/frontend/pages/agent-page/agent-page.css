@@ -980,6 +980,7 @@
 }
 
 .agent-input-queue__drag {
+  touch-action: none;
   color: var(--muted-foreground);
   opacity: 0.6;
   cursor: grab;

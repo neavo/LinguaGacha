@@ -1,22 +1,6 @@
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  type DragEndEvent,
-  type DragStartEvent,
-  type UniqueIdentifier,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { DragDropProvider, DragOverlay } from "@dnd-kit/react";
+import { SORTABLE_PROVIDER_OPTIONS } from "@frontend/widgets/interactions/sortable";
+import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import {
   Fragment,
@@ -37,18 +21,18 @@ import { cn } from "@frontend/shadcn/classnames";
 import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
-  AppContextMenu,
-  AppContextMenuTrigger,
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
   AppContextMenuSeparator,
 } from "@frontend/widgets/app-context-menu";
 import { ScrollArea } from "@frontend/shadcn/scroll-area";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "@frontend/shadcn/table";
+import { Table, TableBody, TableHeader, TableRow } from "@frontend/shadcn/table";
 import "@frontend/widgets/app-table/app-table.css";
-import { build_app_table_reordered_row_ids } from "@frontend/widgets/app-table/app-table-reorder";
+import { move_ordered_ids } from "@frontend/widgets/interactions/reorder";
 import {
+  AppTableSortableRow,
+  AppTableRowCells,
   AppTableHeadCell,
   AppTablePlaceholderRow,
   AppTableSpacerRow,
@@ -63,9 +47,6 @@ import {
   resolve_app_table_target_row_ids,
 } from "@frontend/widgets/app-table/app-table-selection";
 import type {
-  AppTableCellPayload,
-  AppTableColumn,
-  AppTableDragCellPayload,
   AppTableProps,
   AppTableRowModel,
   AppTableRowEvent,
@@ -91,26 +72,7 @@ type SelectionBoxState = {
 // 区分普通键盘滚动和 session 恢复滚动的对齐策略。
 type AppTableScrollAlignment = "nearest" | "start";
 
-type AppTableSortableRowProps<Row> = {
-  row: Row;
-  row_id: string;
-  row_index: number;
-  columns: AppTableColumn<Row>[];
-  selected: boolean;
-  active: boolean;
-  drag_enabled: boolean;
-  can_drag: boolean;
-  row_class_name?: string;
-  render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
-  should_ignore_click: () => boolean;
-  on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
-  on_row_context: (row_id: string) => void;
-  on_row_activate?: (row_id: string) => void;
-  register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
-};
-
 // 通用 data 标记由表格统一解释，页面不再复制点击与框选的排除选择器。
-const APP_TABLE_IGNORE_ROW_CLICK_SELECTOR = '[data-app-table-ignore-row-click="true"]';
 const APP_TABLE_IGNORE_BOX_SELECTION_SELECTOR = [
   '[data-app-table-ignore-box-select="true"]',
   '[data-slot="scroll-area-scrollbar"]',
@@ -118,10 +80,7 @@ const APP_TABLE_IGNORE_BOX_SELECTION_SELECTOR = [
   '[data-slot="scroll-area-corner"]',
 ].join(", ");
 
-function should_ignore_app_table_row_click(target_element: HTMLElement): boolean {
-  return target_element.closest(APP_TABLE_IGNORE_ROW_CLICK_SELECTOR) !== null;
-}
-
+/** 行内控件和滚动条由自身处理指针输入，避免同时开始框选。 */
 function should_ignore_app_table_box_selection(target_element: HTMLElement): boolean {
   return target_element.closest(APP_TABLE_IGNORE_BOX_SELECTION_SELECTOR) !== null;
 }
@@ -158,66 +117,6 @@ function create_array_row_model<Row>(
     get_row_id_at_index: (index) => loaded_row_ids[index],
     resolve_row_index: (row_id) => row_index_by_id.get(row_id),
   };
-}
-
-/** 用待提交身份顺序投影最新 rows；集合已变化时放弃临时顺序。 */
-function materialize_pending_rows<Row>(
-  source_row_model: AppTableRowModel<Row>,
-  ordered_row_ids: string[],
-): Row[] | null {
-  if (ordered_row_ids.length !== source_row_model.row_count) {
-    return null;
-  }
-
-  const ordered_rows: Row[] = [];
-  for (const row_id of ordered_row_ids) {
-    const row_index = source_row_model.resolve_row_index(row_id);
-    const row = row_index === undefined ? undefined : source_row_model.get_row_at_index(row_index);
-    if (row === undefined) {
-      return null;
-    }
-    ordered_rows.push(row);
-  }
-  return ordered_rows;
-}
-
-/** 临时顺序只投影最新 rows，身份集合变化后回退到权威数据。 */
-function use_array_row_model<Row>(
-  rows: Row[],
-  get_row_id: (row: Row, index: number) => string,
-  pending_ordered_row_ids: string[] | null,
-): AppTableRowModel<Row> {
-  const get_row_id_ref = useRef(get_row_id);
-
-  useEffect(() => {
-    get_row_id_ref.current = get_row_id;
-  }, [get_row_id]);
-
-  return useMemo(() => {
-    const source_row_model = create_array_row_model(rows, (row, index) =>
-      get_row_id_ref.current(row, index),
-    );
-    if (pending_ordered_row_ids === null) {
-      return source_row_model;
-    }
-
-    const pending_rows = materialize_pending_rows(source_row_model, pending_ordered_row_ids);
-    if (pending_rows === null) {
-      return source_row_model;
-    }
-    return create_array_row_model(pending_rows, (row, index) => get_row_id_ref.current(row, index));
-  }, [pending_ordered_row_ids, rows]);
-}
-
-/** 拖拽容器只注册当前挂载的行，完整顺序仍由行模型拥有。 */
-function resolve_visible_sortable_row_ids(args: {
-  virtual_rows: Array<VirtualItem>;
-  resolve_row_id_at_index: (index: number) => string | undefined;
-}): UniqueIdentifier[] {
-  return args.virtual_rows.flatMap((virtual_row) => {
-    const row_id = args.resolve_row_id_at_index(virtual_row.index);
-    return row_id === undefined ? [] : [row_id];
-  });
 }
 
 /** 把虚拟行范围转换为页面窗口请求，空视口不发请求。 */
@@ -305,6 +204,7 @@ function sync_selection_box_element_style(args: {
   args.selection_box_element.style.height = `${String(next_style.height ?? 0)}px`;
 }
 
+/** 统一 Windows Ctrl 与 macOS Command 的多选语义。 */
 function has_primary_keyboard_modifier(event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean {
   return event.ctrlKey || event.metaKey;
 }
@@ -353,139 +253,6 @@ function normalize_row_range(
     start: normalized_start,
     count: normalized_end - normalized_start,
   };
-}
-/** 行拥有触发器与打开状态，菜单内容按需创建，避免逐行扫描完整选区。 */
-function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Element {
-  const [context_menu_open, set_context_menu_open] = useState(false);
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
-    id: props.row_id,
-    disabled: !props.drag_enabled || !props.can_drag,
-  });
-
-  const row_style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  const row_event: AppTableRowEvent<Row> = {
-    row: props.row,
-    row_id: props.row_id,
-    row_index: props.row_index,
-  };
-
-  const set_row_element = (row_element: HTMLTableRowElement | null): void => {
-    setNodeRef(row_element);
-    props.register_row_element(props.row_id, row_element);
-  };
-
-  const row_body = (
-    <TableRow
-      ref={set_row_element}
-      data-index={props.row_index}
-      data-active={props.active ? "true" : undefined}
-      data-row-index={props.row_index}
-      data-zebra={resolve_app_table_row_zebra(props.row_index)}
-      data-state={props.selected ? "selected" : undefined}
-      data-dragging={isDragging ? "true" : undefined}
-      className={cn("app-table__row", props.row_class_name)}
-      style={row_style}
-      onClick={(event) => {
-        if (props.should_ignore_click()) {
-          event.preventDefault();
-          return;
-        }
-
-        if (
-          event.target instanceof HTMLElement &&
-          should_ignore_app_table_row_click(event.target)
-        ) {
-          return;
-        }
-
-        props.on_row_click(props.row_id, props.row_index, event);
-      }}
-      onContextMenu={(event) => {
-        if (
-          event.target instanceof HTMLElement &&
-          should_ignore_app_table_row_click(event.target)
-        ) {
-          return;
-        }
-
-        props.on_row_context(props.row_id);
-      }}
-      onDoubleClick={(event) => {
-        if (props.should_ignore_click()) {
-          return;
-        }
-
-        if (
-          event.target instanceof HTMLElement &&
-          should_ignore_app_table_row_click(event.target)
-        ) {
-          return;
-        }
-
-        props.on_row_activate?.(props.row_id);
-      }}
-    >
-      {props.columns.map((column, column_index) => {
-        const cell_payload: AppTableCellPayload<Row> = {
-          ...row_event,
-          active: props.active,
-          selected: props.selected,
-          dragging: isDragging,
-          can_drag: props.can_drag,
-          presentation: "body",
-        };
-        const drag_payload: AppTableDragCellPayload<Row> = {
-          ...cell_payload,
-          drag_handle:
-            column.kind === "drag"
-              ? {
-                  attributes,
-                  listeners,
-                  disabled: !props.drag_enabled || !props.can_drag,
-                }
-              : null,
-        };
-
-        return (
-          <TableCell
-            key={`${props.row_id}-${column.id}`}
-            className={cn(
-              "app-table__body-cell",
-              column.kind === "drag" ? "app-table__drag-cell" : undefined,
-              column.cell_class_name,
-            )}
-            data-align={column.align ?? (column.kind === "drag" ? "center" : "left")}
-            data-divider={column_index < props.columns.length - 1 ? "true" : undefined}
-          >
-            {column.kind === "drag"
-              ? column.render_cell(drag_payload)
-              : column.render_cell(cell_payload)}
-          </TableCell>
-        );
-      })}
-    </TableRow>
-  );
-
-  if (props.render_row_context_menu === undefined) {
-    return row_body;
-  }
-
-  return (
-    <AppContextMenu
-      onOpenChange={(next_open) => {
-        set_context_menu_open(next_open);
-        if (next_open) {
-          props.on_row_context(props.row_id);
-        }
-      }}
-    >
-      <AppContextMenuTrigger render={row_body} />
-      {context_menu_open ? props.render_row_context_menu(row_event) : null}
-    </AppContextMenu>
-  );
 }
 /** 统一数组和远端窗口的选择交互；页面仍拥有数据与持久化。 */
 export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
@@ -548,26 +315,69 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const row_height = row_height_prop ?? APP_TABLE_DEFAULT_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
   const [viewport_height, set_viewport_height] = useState(row_height);
-  const [active_drag_row_id, set_active_drag_row_id] = useState<string | null>(null);
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null);
-  // 重排期间用目标身份顺序接管展示，处理结束后交还页面传入的权威数据。
-  const [pending_ordered_row_ids, set_pending_ordered_row_ids] = useState<string[] | null>(null);
+  const source_row_model = useMemo(
+    () => create_array_row_model(rows, get_row_id),
+    [rows, get_row_id],
+  );
+  const source_row_ids = source_row_model.loaded_row_ids;
+  const disabled_row_ids = useMemo(
+    () =>
+      rows.flatMap((row, index) =>
+        get_row_can_drag?.(row, index) === false ? [source_row_ids[index]!] : [],
+      ),
+    [rows, get_row_can_drag, source_row_ids],
+  );
+  const reorder = useReorder({
+    ids: source_row_ids,
+    disabled:
+      reorder_disabled ||
+      sort_state !== null ||
+      row_model_prop !== undefined ||
+      on_reorder === undefined,
+    disabled_ids: disabled_row_ids,
+    moving_ids: (source_id) =>
+      resolve_app_table_target_row_ids(source_id, selected_row_ids, selection_mode),
+    on_reorder,
+  });
+  const active_drag_row_id = reorder.active_id;
+  const source_row_numbers = useMemo(
+    () =>
+      reorder.source_ids === null
+        ? null
+        : new Map(reorder.source_ids.map((id, index) => [id, index + 1])),
+    [reorder.source_ids],
+  );
+  // 有效重排覆盖完整身份集合；普通/远端窗口则沿用完整视图索引。
+  function resolve_row_number(row_id: string, row_index: number): number {
+    return source_row_numbers === null ? row_index + 1 : source_row_numbers.get(row_id)!;
+  }
+
   // 菜单移动按身份跟随目标；保存失败后也能在权威顺序中重新定位。
   const reorder_scroll_row_id_ref = useRef<string | null>(null);
   const [selection_box_active, set_selection_box_active] = useState(false);
   const [selection_preview_state, set_selection_preview_state] =
     useState<AppTableSelectionState | null>(null);
 
-  const array_row_model = use_array_row_model(rows, get_row_id, pending_ordered_row_ids);
+  // 重排 Hook 已保证完整身份集合；这里只投影行内容，不重复校验或复制回退路径。
+  const array_row_model = useMemo(() => {
+    if (reorder.ordered_ids === source_row_ids) return source_row_model;
+    const ordered_rows = reorder.ordered_ids.map(
+      (id) => rows[source_row_model.resolve_row_index(id)!]!,
+    );
+    return create_array_row_model(ordered_rows, (_row, index) => reorder.ordered_ids[index]!);
+  }, [reorder.ordered_ids, rows, source_row_ids, source_row_model]);
   const row_model = row_model_prop ?? array_row_model;
   const row_count = row_model.row_count;
   const row_ids = row_model.loaded_row_ids;
+  /** 从当前展示模型读取正文，预览顺序与内容更新共用入口。 */
   const resolve_row_at_index = useCallback(
     (index: number): Row | undefined => {
       return row_model.get_row_at_index(index);
     },
     [row_model],
   );
+  /** 为虚拟行提供当前展示位置对应的稳定身份。 */
   const resolve_row_id_at_index = useCallback(
     (index: number): string | undefined => {
       return row_model.get_row_id_at_index(index);
@@ -608,7 +418,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     on_reorder !== undefined &&
     !reorder_disabled &&
     sort_state === null &&
-    pending_ordered_row_ids === null &&
+    !reorder.pending &&
     row_model_prop === undefined;
   const drag_enabled = reorder_enabled && drag_column_present;
   const box_selection_enabled =
@@ -634,17 +444,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       row_index: active_row_index,
     };
   }, [active_drag_row_id, resolve_row_at_index, row_index_by_id]);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 4,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
+  /** 仅定位当前模型已知的身份，异步远端定位由调用方另行处理。 */
   const resolve_known_row_index = useCallback(
     (row_id: string | null): number | null => {
       if (row_id === null) {
@@ -673,15 +473,18 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     selection_request_epoch_ref.current += 1;
   }, [row_model, row_count, selection_state]);
 
+  /** 新选择请求使尚未返回的远端范围查询失效。 */
   const begin_selection_request = useCallback((): number => {
     selection_request_epoch_ref.current += 1;
     return selection_request_epoch_ref.current;
   }, []);
 
+  /** 阻止迟到的选择结果覆盖后续用户操作。 */
   const is_selection_request_current = useCallback((request_epoch: number): boolean => {
     return selection_request_epoch_ref.current === request_epoch;
   }, []);
 
+  /** 先规范化选区并同步活动位置，再向页面发布一次选择变化。 */
   const emit_selection_change = useCallback(
     (
       next_state: AppTableSelectionState,
@@ -738,6 +541,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       return;
     }
 
+    /** 按滚动宿主尺寸补齐短表占位高度。 */
     const update_viewport_height = (): void => {
       set_viewport_height(Math.max(table_scroll_host_element.clientHeight, row_height));
     };
@@ -814,6 +618,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     spacer_heights.virtual_bottom_spacer_height + placeholder_fill.residual_spacer_height;
   const show_bottom_spacer = bottom_spacer_height > 0.5;
 
+  /** 按身份维护已挂载行，供选区命中和滚动锚点测量。 */
   const register_row_element = useCallback(
     (row_id: string, row_element: HTMLTableRowElement | null): void => {
       if (row_element === null) {
@@ -964,6 +769,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     };
   }, [on_selection_error, restore_scroll_anchor_offset, row_count, row_model, virtual_rows]);
 
+  /** 归还表格键盘入口时保持现有滚动位置。 */
   const focus_table_scroll_host = useCallback((): void => {
     const table_scroll_host_element = table_scroll_host_ref.current;
 
@@ -974,6 +780,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     }
   }, []);
 
+  /** 优先定位真实行，跨虚拟窗口时按完整索引滚动。 */
   const scroll_row_index_into_view = useCallback(
     (
       row_index: number | null,
@@ -1014,10 +821,10 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     // 菜单关闭与新顺序布局完成后再定位，避免焦点恢复把视口带回旧位置。
     const frame_id = requestAnimationFrame(() => {
       scroll_row_index_into_view(row_model.resolve_row_index(row_id) ?? null, row_id);
-      if (pending_ordered_row_ids === null) reorder_scroll_row_id_ref.current = null;
+      if (!reorder.pending) reorder_scroll_row_id_ref.current = null;
     });
     return () => cancelAnimationFrame(frame_id);
-  }, [pending_ordered_row_ids, row_model, scroll_row_index_into_view]);
+  }, [reorder.pending, row_model, scroll_row_index_into_view]);
 
   const scroll_to_row_id = scroll_to_row?.row_id;
   const scroll_to_row_revision = scroll_to_row?.revision;
@@ -1027,6 +834,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     const request_epoch = scroll_to_row_request_epoch_ref.current + 1;
     scroll_to_row_request_epoch_ref.current = request_epoch;
     let request_active = true;
+    /** 卸载或新定位请求使旧异步定位失效。 */
     const is_current_request = (): boolean => {
       return request_active && scroll_to_row_request_epoch_ref.current === request_epoch;
     };
@@ -1110,6 +918,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     scroll_to_row_revision,
   ]);
 
+  /** 选择范围按完整列表解析，远端窗口可补取未挂载身份。 */
   const resolve_row_ids_range = useCallback(
     async (range: { start: number; count: number }): Promise<string[]> => {
       const normalized_range = normalize_row_range(row_count, range.start, range.count);
@@ -1130,6 +939,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [row_count, row_model],
   );
 
+  /** 先读取已加载身份，缺失时复用范围解析补取一行。 */
   const resolve_single_row_id = useCallback(
     async (row_index: number): Promise<string | null> => {
       const loaded_row_id = row_model.get_row_id_at_index(row_index);
@@ -1146,13 +956,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [resolve_row_ids_range, row_model],
   );
 
-  const report_selection_error = useCallback(
-    (error: unknown): void => {
-      on_selection_error?.(error);
-    },
-    [on_selection_error],
-  );
-
+  /** 框选预览共用同步引用，并跳过相同选区的重复渲染。 */
   const apply_selection_preview_state = useCallback(
     (next_state: AppTableSelectionState | null): void => {
       selection_preview_state_ref.current = next_state;
@@ -1171,12 +975,14 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [],
   );
 
+  /** 结束框选时释放手势起点、候选身份和原选区。 */
   const clear_selection_refs = useCallback((): void => {
     selection_box_ref.current = null;
     selection_box_ids_ref.current = [];
     selection_origin_state_ref.current = null;
   }, []);
 
+  /** 撤销尚未执行的框选帧，避免结束后再次写入预览。 */
   const cancel_selection_animation_frame = useCallback((): void => {
     if (selection_frame_id_ref.current === null) {
       return;
@@ -1186,6 +992,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     selection_frame_id_ref.current = null;
   }, []);
 
+  /** 一次测量并同步框选矩形及选中行，松手前也可主动刷新。 */
   const flush_selection_box_update = useCallback((): void => {
     cancel_selection_animation_frame();
 
@@ -1239,6 +1046,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     selection_state,
   ]);
 
+  /** 将连续指针移动合并到一帧内计算。 */
   const schedule_selection_box_update = useCallback((): void => {
     if (selection_frame_id_ref.current !== null) {
       return;
@@ -1250,6 +1058,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     });
   }, [flush_selection_box_update]);
 
+  /** 取消未完成的帧，并将显示与临时引用一起交回页面选区。 */
   const reset_selection_interaction = useCallback(
     (options?: { commit_selection_preview?: boolean }): void => {
       cancel_selection_animation_frame();
@@ -1342,10 +1151,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     schedule_selection_box_update,
   ]);
 
+  /** 阻止框选松手产生的合成点击再次改变选区。 */
   const should_ignore_click = useCallback((): boolean => {
     return suppress_click_ref.current;
   }, []);
 
+  /** 在合法空白区域启动框选，并保留修饰键对应的原选区。 */
   const handle_box_selection_start = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       if (!box_selection_enabled || event.button !== 0) {
@@ -1389,6 +1200,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     ],
   );
 
+  /** 统一普通点击、切换选择和跨窗口范围选择。 */
   const handle_row_click = useCallback(
     (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>): void => {
       focus_table_scroll_host();
@@ -1428,7 +1240,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
               return;
             }
 
-            report_selection_error(error);
+            on_selection_error?.(error);
           });
         return;
       }
@@ -1453,7 +1265,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       emit_selection_change,
       focus_table_scroll_host,
       is_selection_request_current,
-      report_selection_error,
+      on_selection_error,
       resolve_row_ids_range,
       row_ids,
       selection_mode,
@@ -1461,6 +1273,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     ],
   );
 
+  /** 右键已选行保持整组，右键未选行仅定位该行。 */
   const handle_row_context = useCallback(
     (row_id: string): void => {
       focus_table_scroll_host();
@@ -1475,6 +1288,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [emit_selection_change, focus_table_scroll_host, selection_mode, selection_state],
   );
 
+  /** 在表格焦点下处理选择、导航和激活，拖动时交给排序键盘入口。 */
   const handle_table_keydown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>): void => {
       const primary_modifier_pressed = has_primary_keyboard_modifier(event);
@@ -1526,7 +1340,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
               return;
             }
 
-            report_selection_error(error);
+            on_selection_error?.(error);
           });
         return;
       }
@@ -1616,7 +1430,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                 return;
               }
 
-              report_selection_error(error);
+              on_selection_error?.(error);
             });
           return;
         }
@@ -1658,7 +1472,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
               return;
             }
 
-            report_selection_error(error);
+            on_selection_error?.(error);
           });
       }
     },
@@ -1668,7 +1482,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       emit_selection_change,
       is_selection_request_current,
       on_row_activate,
-      report_selection_error,
+      on_selection_error,
       resolve_row_ids_range,
       resolve_single_row_id,
       row_count,
@@ -1678,6 +1492,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     ],
   );
 
+  /** 起拖时按表格整体宽度固定浮层，跨虚拟窗口仍保持列对齐。 */
   const sync_drag_overlay_width = useCallback((): void => {
     const table_body_element = table_body_ref.current;
     if (table_body_element === null) {
@@ -1694,78 +1509,16 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     set_drag_overlay_width(null);
   }, []);
 
-  const reset_drag_state = useCallback((): void => {
-    set_active_drag_row_id(null);
-    set_drag_overlay_width(null);
-  }, []);
-
+  /** 页面提供行级限制，未限制的行使用表格统一重排能力。 */
   const resolve_row_can_drag = useCallback(
     (row: Row, row_index: number): boolean => {
       return get_row_can_drag?.(row, row_index) ?? true;
     },
     [get_row_can_drag],
   );
-  /** 以当前行身份启动拖拽，浮层宽度跟随表格。 */
-  function handle_drag_start(event: DragStartEvent): void {
-    if (!drag_enabled) {
-      return;
-    }
-
-    const next_active_row_id = String(event.active.id);
-    const active_row_index = row_index_by_id.get(next_active_row_id);
-    const active_row =
-      active_row_index === undefined ? null : (resolve_row_at_index(active_row_index) ?? null);
-
-    if (
-      active_row_index === undefined ||
-      active_row === null ||
-      !resolve_row_can_drag(active_row, active_row_index)
-    ) {
-      reset_drag_state();
-      return;
-    }
-
-    set_active_drag_row_id(next_active_row_id);
-    sync_drag_overlay_width();
-  }
-  /** 将拖拽落点交给共享重排规则，松手只结束浮层状态。 */
-  function handle_drag_end(event: DragEndEvent): void {
-    const over_row_id = event.over === null ? null : String(event.over.id);
-    const current_active_drag_row_id = active_drag_row_id;
-    reset_drag_state();
-
-    if (!drag_enabled || current_active_drag_row_id === null || over_row_id === null) {
-      return;
-    }
-
-    const moving_row_ids = resolve_app_table_target_row_ids(
-      current_active_drag_row_id,
-      selection_state.selected_row_ids,
-      selection_mode,
-    );
-    submit_reorder(
-      build_app_table_reordered_row_ids({
-        ordered_row_ids: row_ids,
-        moving_row_ids,
-        target: { row_id: over_row_id },
-      }),
-    );
-  }
-
-  /** 拖拽和菜单共用临时顺序及提交锁；无变化时不进入页面写入口。 */
+  /** 菜单和拖拽共享顺序预览与提交锁，菜单额外按身份跟随滚动目标。 */
   function submit_reorder(ordered_row_ids: string[], reveal_row_id: string | null = null): void {
-    if (
-      !reorder_enabled ||
-      on_reorder === undefined ||
-      ordered_row_ids.every((row_id, index) => row_id === row_ids[index])
-    )
-      return;
-
-    reorder_scroll_row_id_ref.current = reveal_row_id;
-    set_pending_ordered_row_ids(ordered_row_ids);
-    // 页面负责错误反馈；resolve/reject 均只表示处理结束，最终展示以权威 rows 为准。
-    const settle_reorder = (): void => set_pending_ordered_row_ids(null);
-    void on_reorder(ordered_row_ids).then(settle_reorder, settle_reorder);
+    if (reorder.submit(ordered_row_ids)) reorder_scroll_row_id_ref.current = reveal_row_id;
   }
 
   // 只在菜单打开时计算完整目标顺序，页面业务项与通用操作使用同一选区裁决。
@@ -1788,9 +1541,9 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                   <AppContextMenuGroup>
                     {(["top", "bottom"] as const).map((target) => {
                       const ordered_row_ids = reorder_enabled
-                        ? build_app_table_reordered_row_ids({
-                            ordered_row_ids: row_ids,
-                            moving_row_ids: target_row_ids,
+                        ? move_ordered_ids({
+                            ordered_ids: row_ids,
+                            moving_ids: target_row_ids,
                             target,
                           })
                         : row_ids;
@@ -1819,6 +1572,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
           );
         };
 
+  /** 表头、正文与浮层共用列宽声明。 */
   const render_colgroup = (): JSX.Element => {
     return (
       <colgroup>
@@ -1898,48 +1652,21 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
               data-dragging="true"
               className={cn("app-table__row", row_class_name?.(active_drag_row))}
             >
-              {columns.map((column, column_index) => {
-                const overlay_payload: AppTableCellPayload<Row> = {
+              <AppTableRowCells
+                columns={columns}
+                payload={{
                   ...active_drag_row,
-                  active: rendered_selection_state.active_row_id === active_drag_row.row_id,
-                  selected: selected_row_id_set.has(active_drag_row.row_id),
-                  dragging: true,
-                  can_drag: resolve_row_can_drag(active_drag_row.row, active_drag_row.row_index),
                   presentation: "overlay",
-                };
-                const overlay_drag_payload: AppTableDragCellPayload<Row> = {
-                  ...overlay_payload,
-                  drag_handle: null,
-                };
-
-                return (
-                  <TableCell
-                    key={`${active_drag_row.row_id}-overlay-${column.id}`}
-                    className={cn(
-                      "app-table__body-cell",
-                      column.kind === "drag" ? "app-table__drag-cell" : undefined,
-                      column.cell_class_name,
-                    )}
-                    data-align={column.align ?? (column.kind === "drag" ? "center" : "left")}
-                    data-divider={column_index < columns.length - 1 ? "true" : undefined}
-                  >
-                    {column.kind === "drag"
-                      ? column.render_cell(overlay_drag_payload)
-                      : column.render_cell(overlay_payload)}
-                  </TableCell>
-                );
-              })}
+                }}
+                dragging
+                row_number={resolve_row_number(active_drag_row.row_id, active_drag_row.row_index)}
+                drag_disabled
+              />
             </TableRow>
           </TableBody>
         </Table>
       </div>
     );
-  const sortable_items = useMemo<UniqueIdentifier[]>(() => {
-    return resolve_visible_sortable_row_ids({
-      virtual_rows,
-      resolve_row_id_at_index,
-    });
-  }, [resolve_row_id_at_index, virtual_rows]);
   const root_style = {
     "--app-table-row-height": `${row_height.toString()}px`,
   } as CSSProperties;
@@ -1955,79 +1682,77 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         onPointerDownCapture={handle_box_selection_start}
       >
         <ScrollArea className="app-table__scroll">
-          <DndContext
-            collisionDetection={closestCenter}
-            sensors={drag_enabled ? sensors : []}
-            onDragStart={handle_drag_start}
-            onDragCancel={reset_drag_state}
-            onDragEnd={handle_drag_end}
+          <DragDropProvider
+            {...SORTABLE_PROVIDER_OPTIONS}
+            {...reorder.events}
+            onDragStart={(event, manager) => {
+              reorder.events.onDragStart(event, manager);
+              sync_drag_overlay_width();
+            }}
           >
             <Table className={cn("app-table__table app-table__table--body", table_class_name)}>
               {render_colgroup()}
               <TableBody ref={table_body_ref}>
-                <SortableContext items={sortable_items} strategy={verticalListSortingStrategy}>
-                  {show_top_spacer ? (
-                    <AppTableSpacerRow
-                      column_count={columns.length}
-                      height={spacer_heights.top_spacer_height}
-                    />
-                  ) : null}
-                  {virtual_rows.map((virtual_row) => {
-                    const row = resolve_row_at_index(virtual_row.index);
-                    const row_id = resolve_row_id_at_index(virtual_row.index);
-                    if (row === undefined || row_id === undefined) {
-                      return null;
-                    }
+                {show_top_spacer ? (
+                  <AppTableSpacerRow
+                    column_count={columns.length}
+                    height={spacer_heights.top_spacer_height}
+                  />
+                ) : null}
+                {virtual_rows.map((virtual_row) => {
+                  const row = resolve_row_at_index(virtual_row.index);
+                  const row_id = resolve_row_id_at_index(virtual_row.index);
+                  if (row === undefined || row_id === undefined) {
+                    return null;
+                  }
 
-                    const row_event: AppTableRowEvent<Row> = {
-                      row,
-                      row_id,
-                      row_index: virtual_row.index,
-                    };
+                  const row_event: AppTableRowEvent<Row> = {
+                    row,
+                    row_id,
+                    row_index: virtual_row.index,
+                  };
 
-                    return (
-                      <AppTableSortableRow
-                        key={row_id}
-                        row={row}
-                        row_id={row_id}
-                        row_index={virtual_row.index}
-                        columns={columns}
-                        selected={selected_row_id_set.has(row_id)}
-                        active={rendered_selection_state.active_row_id === row_id}
-                        drag_enabled={drag_enabled}
-                        can_drag={resolve_row_can_drag(row, virtual_row.index)}
-                        row_class_name={row_class_name?.(row_event)}
-                        render_row_context_menu={render_row_context_menu}
-                        should_ignore_click={should_ignore_click}
-                        on_row_click={handle_row_click}
-                        on_row_context={handle_row_context}
-                        on_row_activate={on_row_activate}
-                        register_row_element={register_row_element}
-                      />
-                    );
-                  })}
-                  {placeholder_fill.placeholder_row_heights.map(
-                    (placeholder_height, placeholder_index) => (
-                      <AppTablePlaceholderRow
-                        key={`app-table-placeholder-${placeholder_index.toString()}`}
-                        columns={columns}
-                        row_index={row_count + placeholder_index}
-                        height={placeholder_height}
-                      />
-                    ),
-                  )}
-                  {show_bottom_spacer ? (
-                    <AppTableSpacerRow
-                      column_count={columns.length}
-                      height={bottom_spacer_height}
+                  return (
+                    <AppTableSortableRow
+                      key={row_id}
+                      row={row}
+                      row_id={row_id}
+                      row_index={virtual_row.index}
+                      row_number={resolve_row_number(row_id, virtual_row.index)}
+                      overlay_source={active_drag_row?.row_id === row_id}
+                      columns={columns}
+                      selected={selected_row_id_set.has(row_id)}
+                      active={rendered_selection_state.active_row_id === row_id}
+                      drag_enabled={drag_enabled}
+                      can_drag={resolve_row_can_drag(row, virtual_row.index)}
+                      row_class_name={row_class_name?.(row_event)}
+                      render_row_context_menu={render_row_context_menu}
+                      should_ignore_click={should_ignore_click}
+                      on_row_click={handle_row_click}
+                      on_row_context={handle_row_context}
+                      on_row_activate={on_row_activate}
+                      register_row_element={register_row_element}
                     />
-                  ) : null}
-                </SortableContext>
+                  );
+                })}
+                {placeholder_fill.placeholder_row_heights.map(
+                  (placeholder_height, placeholder_index) => (
+                    <AppTablePlaceholderRow
+                      key={`app-table-placeholder-${placeholder_index.toString()}`}
+                      columns={columns}
+                      row_index={row_count + placeholder_index}
+                      height={placeholder_height}
+                    />
+                  ),
+                )}
+                {show_bottom_spacer ? (
+                  <AppTableSpacerRow column_count={columns.length} height={bottom_spacer_height} />
+                ) : null}
               </TableBody>
             </Table>
             {/* 本地顺序已在松手时接管展示，无需叠加回落动画。 */}
             <DragOverlay dropAnimation={null}>{overlay}</DragOverlay>
-          </DndContext>
+          </DragDropProvider>
         </ScrollArea>
         {selection_box_active ? (
           <div ref={selection_box_element_ref} className="app-table__selection-box" />

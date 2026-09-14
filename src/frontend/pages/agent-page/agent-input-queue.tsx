@@ -1,20 +1,10 @@
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
 import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+  SORTABLE_OPTIONS,
+  SORTABLE_PROVIDER_OPTIONS,
+} from "@frontend/widgets/interactions/sortable";
+import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 import { GripVertical, LoaderCircle, Pencil, Send, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -35,43 +25,36 @@ type AgentInputQueueProps = {
   render_item_editor?: (item: AgentQueuedInput) => ReactNode | null;
   on_edit: (item: AgentQueuedInput) => void;
   on_delete: (id: string) => void;
-  on_reorder: (ids: readonly string[]) => void;
+  on_reorder: (ids: readonly string[]) => Promise<void>;
   on_send_now: (id: string) => void;
 };
 
 /** 当前会话输入队列；顺序、状态和能力全部来自后端快照。 */
 export function AgentInputQueue(props: AgentInputQueueProps): JSX.Element | null {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const editing = props.active_edit_item_id != null;
+  const reorder = useReorder({
+    ids: props.queue.items.map((item) => item.id),
+    disabled: props.disabled || editing,
+    disabled_ids: props.queue.items
+      .filter((item) => item.status === "sending")
+      .map((item) => item.id),
+    on_reorder: props.on_reorder,
+  });
   if (props.queue.items.length === 0) return null;
-
-  /** DnD 只提交完整身份顺序，权威排列等待后端快照返回。 */
-  const finish_drag = (event: DragEndEvent): void => {
-    if (event.over === null || event.active.id === event.over.id) return;
-    const ids = props.queue.items.map((item) => item.id);
-    const from = ids.indexOf(String(event.active.id));
-    const to = ids.indexOf(String(event.over.id));
-    if (from >= 0 && to >= 0) props.on_reorder(arrayMove(ids, from, to));
-  };
+  const items_by_id = new Map(props.queue.items.map((item) => [item.id, item]));
 
   return (
     <div className="agent-input-queue">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={finish_drag}>
-        <SortableContext
-          items={props.queue.items.map((item) => item.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <ol className="agent-input-queue__items">
-            {props.queue.items.map((item) => (
+      <DragDropProvider {...SORTABLE_PROVIDER_OPTIONS} {...reorder.events}>
+        <ol className="agent-input-queue__items">
+          {reorder.ordered_ids.map((id, index) => {
+            const item = items_by_id.get(id)!;
+            return (
               <AgentInputQueueItem
                 key={item.id}
                 item={item}
-                disabled={
-                  props.disabled ||
-                  (props.active_edit_item_id !== undefined && props.active_edit_item_id !== null)
-                }
+                index={index}
+                disabled={props.disabled || editing || reorder.pending}
                 can_send_now={props.queue.canSendNow}
                 editing={props.active_edit_item_id === item.id}
                 render_editor={props.render_item_editor}
@@ -79,10 +62,10 @@ export function AgentInputQueue(props: AgentInputQueueProps): JSX.Element | null
                 on_delete={props.on_delete}
                 on_send_now={props.on_send_now}
               />
-            ))}
-          </ol>
-        </SortableContext>
-      </DndContext>
+            );
+          })}
+        </ol>
+      </DragDropProvider>
     </div>
   );
 }
@@ -90,6 +73,7 @@ export function AgentInputQueue(props: AgentInputQueueProps): JSX.Element | null
 /** 单行根据 queued / sending 状态收口可用操作，不维护第二份本地状态。 */
 function AgentInputQueueItem(props: {
   item: AgentQueuedInput;
+  index: number;
   disabled: boolean;
   can_send_now: boolean;
   editing: boolean;
@@ -105,19 +89,14 @@ function AgentInputQueueItem(props: {
   const editor = props.editing ? (props.render_editor?.(props.item) ?? null) : null;
   const item_actions_disabled = props.disabled || sending || editor !== null;
   const sortable = useSortable({
+    ...SORTABLE_OPTIONS,
+    index: props.index,
     id: props.item.id,
     disabled: item_actions_disabled,
   });
   if (editor !== null) {
     return (
-      <li
-        ref={sortable.setNodeRef}
-        className="agent-input-queue__item agent-input-queue__item--editing"
-        style={{
-          transform: CSS.Transform.toString(sortable.transform),
-          transition: sortable.transition,
-        }}
-      >
+      <li ref={sortable.ref} className="agent-input-queue__item agent-input-queue__item--editing">
         {editor}
       </li>
     );
@@ -125,14 +104,7 @@ function AgentInputQueueItem(props: {
   const attachment_count = props.item.attachments.length;
   const preview = props.item.text || t("agent_page.queue.no_message_text");
   return (
-    <li
-      ref={sortable.setNodeRef}
-      className="agent-input-queue__item"
-      style={{
-        transform: CSS.Transform.toString(sortable.transform),
-        transition: sortable.transition,
-      }}
-    >
+    <li ref={sortable.ref} className="agent-input-queue__item">
       <Tooltip>
         <TooltipTrigger
           render={tooltip_trigger_target(
@@ -143,8 +115,7 @@ function AgentInputQueueItem(props: {
               className="agent-input-queue__drag"
               disabled={item_actions_disabled}
               aria-label={t("agent_page.queue.reorder")}
-              {...sortable.attributes}
-              {...sortable.listeners}
+              ref={sortable.handleRef}
             >
               <GripVertical aria-hidden="true" />
             </AppButton>,

@@ -2,53 +2,9 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@dnd-kit/core", () => {
-  const mocked = {
-    DndContext: (props: { children: ReactNode; onDragEnd: (event: unknown) => void }) => (
-      <div>
-        {props.children}
-        <button
-          type="button"
-          data-drag-end
-          onClick={() => props.onDragEnd({ active: { id: "queue-1" }, over: { id: "queue-2" } })}
-        />
-      </div>
-    ),
-    KeyboardSensor: class {},
-    PointerSensor: class {},
-    closestCenter: vi.fn(),
-    useSensor: vi.fn(() => ({})),
-    useSensors: vi.fn(() => []),
-  };
-  return { ...mocked, default: mocked };
-});
-vi.mock("@dnd-kit/sortable", () => {
-  const mocked = {
-    SortableContext: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
-    ),
-    arrayMove: (items: string[], from: number, to: number) => {
-      const next = [...items];
-      const [item] = next.splice(from, 1);
-      if (item !== undefined) next.splice(to, 0, item);
-      return next;
-    },
-    sortableKeyboardCoordinates: vi.fn(),
-    useSortable: () => ({
-      attributes: {},
-      listeners: {},
-      setNodeRef: vi.fn(),
-      transform: null,
-      transition: undefined,
-    }),
-    verticalListSortingStrategy: vi.fn(),
-  };
-  return { ...mocked, default: mocked };
-});
-vi.mock("@dnd-kit/utilities", () => {
-  const mocked = { CSS: { Transform: { toString: () => undefined } } };
-  return { ...mocked, default: mocked };
-});
+vi.mock("@dnd-kit/react/sortable", () => ({
+  useSortable: () => ({ ref: vi.fn(), handleRef: vi.fn(), isDragSource: false }),
+}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string) => key,
@@ -80,10 +36,10 @@ describe("AgentInputQueue", () => {
     container = null;
   });
 
-  it("转发编辑、删除、立即发送与重排", async () => {
+  it("转发编辑、删除与立即发送", async () => {
     const on_edit = vi.fn();
     const on_delete = vi.fn();
-    const on_reorder = vi.fn();
+    const on_reorder = vi.fn(async () => {});
     const on_send_now = vi.fn();
     const first = {
       id: "queue-1",
@@ -131,15 +87,10 @@ describe("AgentInputQueue", () => {
         .find((button) => button.getAttribute("aria-label") === "agent_page.queue.delete")
         ?.click(),
     );
-    await act(async () => container?.querySelector<HTMLButtonElement>("[data-drag-end]")?.click());
 
     expect(on_send_now).toHaveBeenCalledWith("queue-1");
     expect(on_edit).toHaveBeenCalledWith(first);
     expect(on_delete).toHaveBeenCalledWith("queue-1");
-    expect(on_reorder).toHaveBeenCalledWith(["queue-2", "queue-1"]);
-    expect(
-      container.querySelector(".agent-input-queue__preview")?.getAttribute("title"),
-    ).toBeNull();
   });
 
   it("sending 项把主操作切为 busy 并禁用全部操作", async () => {

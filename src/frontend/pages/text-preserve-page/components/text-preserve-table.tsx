@@ -20,7 +20,6 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
-import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
 
 type TextPreserveTableProps = {
   title_key: LocaleKey;
@@ -56,17 +55,6 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         title: t("app.drag.handle"),
         head_class_name: "text-preserve-page__table-drag-head",
         cell_class_name: "text-preserve-page__table-drag-cell",
-        render_cell: (payload) => {
-          return (
-            <AppTableDragIndicator
-              row_number={String(payload.row_index + 1)}
-              can_drag={payload.can_drag}
-              dragging={payload.dragging}
-              drag_handle={payload.drag_handle}
-              show_tooltip={payload.presentation !== "overlay"}
-            />
-          );
-        },
       },
       {
         kind: "data",

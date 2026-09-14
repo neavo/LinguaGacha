@@ -53,7 +53,8 @@
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
-- `AppTable` 统一拥有行菜单容器、选区裁决和重排交互；页面提供业务菜单项、重排限制、持久化与错误反馈。拖拽和菜单共用临时顺序与提交锁；`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，表格随后交回页面 `rows`，正常返回不等同于保存成功。
+- `widgets/interactions/use-reorder` 拥有表格、模型分类和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
+- `AppTable` 拥有选区裁决、行菜单和内置拖动列，页面只提供业务列、菜单项及重排限制。拖拽与菜单共用重排入口；拖动及等待保存期间按起始身份顺序显示序号，位置索引独立服务交互。原行和浮层共用渲染，浮层显示时原行透明占位以保留测量与焦点，浮层使用不透明底色。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 
 ### 批量翻译与工程导出

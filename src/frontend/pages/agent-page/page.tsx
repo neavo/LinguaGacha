@@ -422,8 +422,11 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
 
   /** 队列窄命令共享页面 Toast 映射，不污染会话状态。 */
-  const run_queue_command = (command: () => Promise<void>, fallback_key: LocaleKey): void => {
-    void command().catch((error: unknown) => show_command_error(error, fallback_key));
+  const run_queue_command = (
+    command: () => Promise<void>,
+    fallback_key: LocaleKey,
+  ): Promise<void> => {
+    return command().catch((error: unknown) => show_command_error(error, fallback_key));
   };
 
   /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
