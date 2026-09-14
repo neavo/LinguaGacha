@@ -1,7 +1,8 @@
-import { parse } from "@babel/parser";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { create_source_reader, line_number_at } from "./source-reader.mjs";
 
 const DEFAULT_IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -21,31 +22,36 @@ export function resolve_project_root(import_meta_url) {
 /**
  * 递归收集检查范围内的文件，跳过构建产物和依赖目录。
  */
-export function collect_files(start_paths, options = {}) {
-  const ignored_directories = options.ignored_directories ?? DEFAULT_IGNORED_DIRECTORIES;
+function collect_files(start_paths) {
   const files = [];
 
   for (const start_path of start_paths) {
     if (!existsSync(start_path)) {
       continue;
     }
-    collect_files_into(start_path, ignored_directories, files);
+    collect_files_into(start_path, files);
   }
 
   return files.sort((left, right) => left.localeCompare(right));
 }
 
-/**
- * 执行规则集合并返回结构化错误，测试和 CLI 共享同一入口。
- */
-export function run_boundary_rules({ project_root, roots, rules }) {
-  const files = collect_files(roots);
-  const context = {
+/** 为规则提供文件范围与源码读取能力，测试和 CLI 共用这一构造入口。 */
+export function create_check_context({ project_root, files, source_reader }) {
+  return {
     files,
     project_root,
-    read_file: (file_path) => readFileSync(file_path, "utf8"),
+    ...source_reader,
     relative_path: (file_path) => to_relative_path(project_root, file_path),
   };
+}
+
+/** 执行一组规则，源码快照由 CLI 统一注入。 */
+function run_boundary_rules({ project_root, roots, rules }, source_reader) {
+  const context = create_check_context({
+    project_root,
+    files: collect_files(roots),
+    source_reader,
+  });
   return rules.flatMap((rule) => {
     return rule.check(context).map((error) => ({
       rule_name: rule.name,
@@ -57,7 +63,7 @@ export function run_boundary_rules({ project_root, roots, rules }) {
 /**
  * CLI 报错保持统一格式，方便 AGENT 和人工直接定位违规文件。
  */
-export function format_boundary_errors(title, errors) {
+function format_boundary_errors(title, errors) {
   if (errors.length === 0) {
     return `${title}通过。`;
   }
@@ -75,11 +81,12 @@ export function format_boundary_errors(title, errors) {
  * 统一执行多个检查集合，保留各集合独立标题但只暴露一个 npm 入口。
  */
 export function run_check_cli(suites) {
+  const source_reader = create_source_reader();
   const messages = [];
   let has_errors = false;
 
   for (const suite of suites) {
-    const errors = run_boundary_rules(suite);
+    const errors = run_boundary_rules(suite, source_reader);
     messages.push(format_boundary_errors(suite.title, errors));
     has_errors = has_errors || errors.length > 0;
   }
@@ -91,47 +98,6 @@ export function run_check_cli(suites) {
   }
 
   console.log(output);
-}
-
-/**
- * 从源码中提取静态和动态 import specifier，供边界规则做路径判定。
- */
-export function find_import_specifiers(content) {
-  const ast = parse(content, {
-    sourceType: "unambiguous",
-    plugins: ["typescript", "jsx"],
-    allowReturnOutsideFunction: true,
-    attachComment: false,
-  });
-  const specifiers = [];
-  walk_ast(ast, (node) => {
-    const source = [
-      "ImportDeclaration",
-      "ExportNamedDeclaration",
-      "ExportAllDeclaration",
-      "ImportExpression",
-    ].includes(node.type)
-      ? node.source
-      : undefined;
-    if (source?.type === "StringLiteral") {
-      specifiers.push({ line: node.loc.start.line, specifier: source.value });
-    }
-  });
-  return specifiers;
-}
-
-/** 只访问 AST 节点，供导入边界与错误契约共用，避免把注释和提示词中的代码示例当作实现。 */
-export function walk_ast(node, visit) {
-  if (node === null || typeof node !== "object" || typeof node.type !== "string") return;
-  visit(node);
-  for (const [key, value] of Object.entries(node)) {
-    if (["comments", "errors", "extra", "loc", "tokens"].includes(key)) continue;
-    if (Array.isArray(value)) {
-      for (const child of value) walk_ast(child, visit);
-    } else {
-      walk_ast(value, visit);
-    }
-  }
 }
 
 /**
@@ -167,7 +133,7 @@ export function find_pattern_errors(content, pattern, build_message) {
 
   for (const match of content.matchAll(pattern)) {
     errors.push({
-      line: line_number_at(content, match.index ?? 0),
+      line: line_number_at(content, match.index),
       message: build_message(match),
     });
   }
@@ -183,7 +149,7 @@ export function to_relative_path(project_root, file_path) {
 }
 
 /** 下探前排除忽略目录，文件收集只维护一份结果数组。 */
-function collect_files_into(current_path, ignored_directories, files) {
+function collect_files_into(current_path, files) {
   const current_stat = statSync(current_path);
   if (!current_stat.isDirectory()) {
     files.push(current_path);
@@ -191,14 +157,9 @@ function collect_files_into(current_path, ignored_directories, files) {
   }
 
   for (const entry of readdirSync(current_path)) {
-    if (ignored_directories.has(entry)) {
+    if (DEFAULT_IGNORED_DIRECTORIES.has(entry)) {
       continue;
     }
-    collect_files_into(path.join(current_path, entry), ignored_directories, files);
+    collect_files_into(path.join(current_path, entry), files);
   }
-}
-
-/** 正则命中和 AST 文本位置共用一基行号，保留 LF / CRLF 口径。 */
-export function line_number_at(content, index) {
-  return content.slice(0, index).split(/\r?\n/).length;
 }

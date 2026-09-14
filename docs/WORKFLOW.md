@@ -40,6 +40,8 @@
 |`src/`、`buildtools/` 中受架构和错误规则检查的源码或规则实现变化|`npm run check`，覆盖错误契约及 GUI、前端、后端边界|
 |格式化脚本支持的源码、CSS、JSON 或相关配置变化|`npm run format -- --check <文件路径...>`；需要修复时对相同文件执行 `npm run format -- <文件路径...>` 后复查|
 
+`npm run check` 的源码快照由 `buildtools/check/source-reader.mjs` 按次执行持有，四组规则共享。导入边界包含类型导入和转发导出；解析失败携带文件位置终止检查。
+
 格式化入口 `buildtools/format-related-files.mjs` 支持显式文件路径；省略路径时收集暂存、未暂存和未跟踪的变更文件。工作区有其它任务改动时传入本任务路径。Markdown 与 YAML 通过文本或元数据检查验证。
 
 ### 行为与运行环境
