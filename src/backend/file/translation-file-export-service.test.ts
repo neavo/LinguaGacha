@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
-import type { LogManager } from "../log/log-manager";
 import { default_native_fs } from "../../native/native-fs";
+import { create_text_resolver } from "../../shared/i18n";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import {
@@ -24,6 +24,7 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
+/** 只提供导出消费的设置，避免启动应用配置存储。 */
 function create_setting_service(
   options: {
     app_language?: string;
@@ -42,45 +43,7 @@ function create_setting_service(
   } as unknown as AppSettingService;
 }
 
-interface CollectedLogEntry {
-  level: "info" | "error";
-  message: string;
-  payload: Parameters<LogManager["info"]>[1];
-}
-
-interface LogCollector extends Pick<LogManager, "info" | "error"> {
-  entries: CollectedLogEntry[];
-}
-
-function create_log_collector(): LogCollector {
-  const entries: CollectedLogEntry[] = [];
-  return {
-    entries,
-    info: (message, payload = {}) => {
-      entries.push({ level: "info", message, payload });
-    },
-    error: (message, payload = {}) => {
-      entries.push({ level: "error", message, payload });
-    },
-  };
-}
-
-function create_output_folder_opener(error?: Error): {
-  opened_paths: string[];
-  open: OutputFolderOpener;
-} {
-  const opened_paths: string[] = [];
-  return {
-    opened_paths,
-    open: async (output_path) => {
-      opened_paths.push(output_path);
-      if (error !== undefined) {
-        throw error;
-      }
-    },
-  };
-}
-
+/** 隔离数据库读取，文件写出仍使用真实格式处理器和临时目录。 */
 function create_database(
   items: Array<Record<string, unknown>>,
   assets: Record<string, Buffer> = {},
@@ -116,23 +79,19 @@ describe("TranslationFileExportService", () => {
         row: 1,
       },
     ]);
-    const output_folder_opener = create_output_folder_opener();
+    const output_folder_opener = vi.fn<OutputFolderOpener>();
     const service = new TranslationFileExportService(
       database,
       create_setting_service(),
       session_state,
-      output_folder_opener.open,
-      create_log_collector(),
+      output_folder_opener,
     );
 
-    await expect(service.export_files()).resolves.toEqual({
-      accepted: true,
-      output_path: path.join(temp_dir, "demo_译文"),
-    });
-    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.txt"), "utf-8")).toBe(
+    const result = await service.export_files();
+    expect(fs.readFileSync(path.join(String(result.output_path), "script.txt"), "utf-8")).toBe(
       "译文\n译文",
     );
-    expect(output_folder_opener.opened_paths).toEqual([]);
+    expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
   it("MESSAGEJSON 导出只在相同可见角色间复用译文", async () => {
@@ -181,14 +140,13 @@ describe("TranslationFileExportService", () => {
       database,
       create_setting_service(),
       session_state,
-      create_output_folder_opener().open,
-      create_log_collector(),
+      vi.fn<OutputFolderOpener>(),
     );
 
-    await service.export_files();
+    const result = await service.export_files();
 
     expect(
-      JSON.parse(fs.readFileSync(path.join(temp_dir, "actors_译文", "actors.json"), "utf-8")),
+      JSON.parse(fs.readFileSync(path.join(String(result.output_path), "actors.json"), "utf-8")),
     ).toEqual([
       { name: "阿比盖尔", message: "嗷呜……。" },
       { name: "阿比盖尔", message: "嗷呜……。" },
@@ -230,13 +188,12 @@ describe("TranslationFileExportService", () => {
       database,
       create_setting_service(),
       session_state,
-      create_output_folder_opener().open,
-      create_log_collector(),
+      vi.fn<OutputFolderOpener>(),
     );
 
-    await service.export_files();
+    const result = await service.export_files();
 
-    expect(fs.readFileSync(path.join(temp_dir, "mixed_译文", "readme.md"), "utf-8")).toBe(
+    expect(fs.readFileSync(path.join(String(result.output_path), "readme.md"), "utf-8")).toBe(
       "# Title\n\n![Cover](data:image/png;base64,AAAA)\n",
     );
   });
@@ -256,16 +213,23 @@ describe("TranslationFileExportService", () => {
         row: 0,
       },
     ]);
-    const log_collector = create_log_collector();
+    const log_collector = { info: vi.fn(), error: vi.fn() };
     const service = new TranslationFileExportService(
       database,
       create_setting_service({ app_language: "DE" }),
       session_state,
-      create_output_folder_opener().open,
+      vi.fn<OutputFolderOpener>(),
       log_collector,
     );
-    const translated_path = path.join(temp_dir, "demo_Übersetzung");
-    const bilingual_path = path.join(temp_dir, "demo_Übersetzung_Zweisprachig");
+    const text = create_text_resolver("de-DE"); // 验证语言选择与参数传递，文案由当前词典决定。
+    const translated_path = path.join(
+      temp_dir,
+      `demo_${text("app.translation_export.directory.translated")}`,
+    );
+    const bilingual_path = path.join(
+      temp_dir,
+      `demo_${text("app.translation_export.directory.bilingual")}`,
+    );
 
     await expect(service.export_files()).resolves.toEqual({
       accepted: true,
@@ -274,8 +238,9 @@ describe("TranslationFileExportService", () => {
 
     expect(fs.readFileSync(path.join(translated_path, "script.txt"), "utf-8")).toBe("Übersetzung");
     expect(fs.existsSync(path.join(bilingual_path, "script.txt"))).toBe(true);
-    expect(log_collector.entries.map(({ message }) => message)).toContain(
-      `Übersetzungsdateien gespeichert unter ${translated_path} …`,
+    expect(log_collector.info).toHaveBeenCalledWith(
+      text("app.log.generate_translation_done", { PATH: translated_path }),
+      { source: "file-export" },
     );
   });
 
@@ -294,21 +259,16 @@ describe("TranslationFileExportService", () => {
         row: 0,
       },
     ]);
-    const output_folder_opener = create_output_folder_opener();
+    const output_folder_opener = vi.fn<OutputFolderOpener>().mockResolvedValue(undefined);
     const service = new TranslationFileExportService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
-      output_folder_opener.open,
-      create_log_collector(),
+      output_folder_opener,
     );
 
-    await expect(service.export_files()).resolves.toEqual({
-      accepted: true,
-      output_path: path.join(temp_dir, "demo_译文"),
-    });
-
-    expect(output_folder_opener.opened_paths).toEqual([path.join(temp_dir, "demo_译文")]);
+    const result = await service.export_files();
+    expect(output_folder_opener).toHaveBeenCalledExactlyOnceWith(result.output_path);
   });
 
   it("CLI 导出写入指定 output-dir 并固定生成 bilingual 子目录", async () => {
@@ -327,13 +287,12 @@ describe("TranslationFileExportService", () => {
         row: 0,
       },
     ]);
-    const output_folder_opener = create_output_folder_opener();
+    const output_folder_opener = vi.fn<OutputFolderOpener>();
     const service = new TranslationFileExportService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
-      output_folder_opener.open,
-      create_log_collector(),
+      output_folder_opener,
     );
 
     await expect(service.export_files_to_directory(output_dir)).resolves.toEqual({
@@ -344,7 +303,7 @@ describe("TranslationFileExportService", () => {
 
     expect(fs.readFileSync(path.join(output_dir, "script.txt"), "utf-8")).toBe("译文");
     expect(fs.existsSync(path.join(output_dir, "bilingual", "script.txt"))).toBe(true);
-    expect(output_folder_opener.opened_paths).toEqual([]);
+    expect(output_folder_opener).not.toHaveBeenCalled();
   });
 
   it("打开输出目录失败不改变导出成功结果并记录诊断日志", async () => {
@@ -362,34 +321,26 @@ describe("TranslationFileExportService", () => {
         row: 0,
       },
     ]);
-    const log_collector = create_log_collector();
-    const output_folder_opener = create_output_folder_opener(new Error("open failed"));
+    const log_collector = { info: vi.fn(), error: vi.fn() };
+    const error = new Error("open failed");
+    const output_folder_opener = vi.fn<OutputFolderOpener>().mockRejectedValue(error);
     const service = new TranslationFileExportService(
       database,
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
-      output_folder_opener.open,
+      output_folder_opener,
       log_collector,
     );
 
-    await expect(service.export_files()).resolves.toEqual({
-      accepted: true,
-      output_path: path.join(temp_dir, "demo_译文"),
-    });
+    await expect(service.export_files()).resolves.toMatchObject({ accepted: true });
 
-    expect(log_collector.entries.map(({ level, message }) => [level, message])).toContainEqual([
-      "error",
-      "打开输出文件夹失败 …",
-    ]);
-    expect(log_collector.entries.at(-1)?.payload).toEqual(
-      expect.objectContaining({
-        source: "file-export",
-        error: expect.objectContaining({ message: "open failed" }),
-      }),
+    expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
+      create_text_resolver("zh-CN")("app.diagnostic.file_export.open_output_folder_failed"),
+      { source: "file-export", error },
     );
   });
 
-  it("写文件失败时按旧导出口径记录文件写入和导出失败日志", async () => {
+  it("写文件失败时记录写入与导出诊断并传播异常", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -404,28 +355,23 @@ describe("TranslationFileExportService", () => {
         row: 0,
       },
     ]);
-    const log_collector = create_log_collector();
-    vi.spyOn(default_native_fs, "write_file").mockRejectedValue(new Error("boom"));
+    const log_collector = { info: vi.fn(), error: vi.fn() };
+    const error = new Error("boom");
+    vi.spyOn(default_native_fs, "write_file").mockRejectedValue(error);
     const service = new TranslationFileExportService(
       database,
       create_setting_service(),
       session_state,
-      create_output_folder_opener().open,
+      vi.fn<OutputFolderOpener>(),
       log_collector,
     );
 
-    await expect(service.export_files()).rejects.toThrow("boom");
+    await expect(service.export_files()).rejects.toBe(error);
 
-    const error_entries = log_collector.entries.filter((entry) => entry.level === "error");
-    expect(error_entries.map(({ message }) => message)).toEqual([
-      "文件写入失败 …",
-      "译文生成失败 …",
+    const text = create_text_resolver("zh-CN");
+    expect(log_collector.error.mock.calls).toEqual([
+      [text("app.diagnostic.file_export.write_file_failed"), { source: "file-export", error }],
+      [text("app.diagnostic.file_export.translation_failed"), { source: "file-export", error }],
     ]);
-    expect(error_entries[0]?.payload).toEqual(
-      expect.objectContaining({
-        source: "file-export",
-        error: expect.objectContaining({ message: "boom" }),
-      }),
-    );
   });
 });

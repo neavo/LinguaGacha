@@ -3,34 +3,7 @@ import { describe, expect, it } from "vitest";
 import { run_compute_worker_task } from "./compute-worker-task";
 
 describe("run_compute_worker_task", () => {
-  it("执行繁简转换 task 并返回转换后的条目", async () => {
-    const result = await run_compute_worker_task({
-      type: "ts_conversion",
-      input: {
-        items: [
-          {
-            item_id: 1,
-            dst: "鼠标",
-            name_dst: "鼠标",
-            text_type: "NONE",
-          },
-        ],
-        direction: "s2t",
-        convert_name: true,
-        preserve_text: false,
-        text_preserve_mode: "off",
-        text_preserve_entries: [],
-      },
-    });
-
-    expect(result[0]).toMatchObject({
-      item_id: 1,
-      dst: "鼠標",
-      name_dst: "鼠標",
-    });
-  });
-
-  it("执行校对 sync task 并只返回可序列化评估分片", async () => {
+  it("执行校对 sync task 并返回对应项目的评估分片", async () => {
     const result = await run_compute_worker_task({
       type: "proofreading_sync",
       input: {

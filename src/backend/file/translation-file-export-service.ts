@@ -8,7 +8,7 @@ import { FileFormatService } from "./file-format-service";
 import { Item, type ItemNameField } from "../../domain/item";
 import { is_json_record, type JsonRecord } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
-import { normalize_setting_snapshot } from "../../domain/setting";
+import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ExportPaths } from "./formats/file-format-shared";
@@ -57,17 +57,18 @@ export class TranslationFileExportService {
   }
 
   /**
-   * 生成译文读取项目全部条目，并先补齐重复条目的译文
+   * GUI 导出固定本次设置快照，读取项目条目并补齐重复译文。
    */
   public async export_files(): Promise<JsonRecord> {
     const project_path = this.session_state.require_loaded_project_path();
-    const config = this.app_setting_service.read_setting();
+    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
-      const output_path = await this.write_export(project_path, items, "", config);
-      await this.complete_export_success(config, output_path);
-      return { accepted: true, output_path };
+      const paths = this.build_export_paths(project_path, config.app_language);
+      await this.write_export_to_paths(project_path, items, paths, config);
+      await this.complete_export_success(config, paths.translated_path);
+      return { accepted: true, output_path: paths.translated_path };
     } catch (error) {
       this.log_export_failed(config, error);
       throw error;
@@ -79,7 +80,7 @@ export class TranslationFileExportService {
    */
   public async export_files_to_directory(output_dir: string): Promise<JsonRecord> {
     const project_path = this.session_state.require_loaded_project_path();
-    const config = this.app_setting_service.read_setting();
+    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
@@ -98,60 +99,20 @@ export class TranslationFileExportService {
   }
 
   /**
-   * 后端内部转换服务传入已由当前项目事实计算的导出快照，避免渲染进程提交计算 items。
-   */
-  public async export_items_with_suffix(
-    items: Item[],
-    suffix: "_S2T" | "_T2S",
-  ): Promise<JsonRecord> {
-    const project_path = this.session_state.require_loaded_project_path();
-    const config = this.app_setting_service.read_setting();
-    this.log_export_start(config);
-    try {
-      const output_path = await this.write_export(project_path, items, suffix, config);
-      await this.complete_export_success(config, output_path);
-      return { accepted: true, output_path };
-    } catch (error) {
-      this.log_export_failed(config, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 实际写回统一进入文件域，避免文件格式能力在多个入口分叉
-   */
-  private async write_export(
-    project_path: string,
-    items: Item[],
-    custom_suffix: string,
-    config: JsonRecord,
-  ): Promise<string> {
-    const setting_snapshot = normalize_setting_snapshot(config);
-    const paths = this.build_export_paths(
-      project_path,
-      custom_suffix,
-      setting_snapshot.app_language,
-    );
-    await this.write_export_to_paths(project_path, items, paths, config);
-    return paths.translated_path;
-  }
-
-  /**
    * 按调用方指定的目录组写出译文，GUI 和 CLI 共享格式分发与 asset 读取逻辑。
    */
   private async write_export_to_paths(
     project_path: string,
     items: Item[],
     paths: ExportPaths,
-    config: JsonRecord,
+    config: SettingSnapshot,
   ): Promise<void> {
-    const setting_snapshot = normalize_setting_snapshot(config);
     this.fill_duplicated_translations(items);
     const format_service = new FileFormatService(
       {
-        target_language: setting_snapshot.target_language,
-        deduplication_in_bilingual: setting_snapshot.deduplication_in_bilingual,
-        write_translated_name_fields_to_file: setting_snapshot.write_translated_name_fields_to_file,
+        target_language: config.target_language,
+        deduplication_in_bilingual: config.deduplication_in_bilingual,
+        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.native_fs,
     );
@@ -180,10 +141,12 @@ export class TranslationFileExportService {
   /**
    * 导出成功后的宿主附加动作不能推翻译文已经写出的事实
    */
-  private async complete_export_success(config: JsonRecord, output_path: string): Promise<void> {
-    const setting_snapshot = normalize_setting_snapshot(config);
+  private async complete_export_success(
+    config: SettingSnapshot,
+    output_path: string,
+  ): Promise<void> {
     this.log_export_done(config, output_path);
-    if (!setting_snapshot.output_folder_open_on_finish) {
+    if (!config.output_folder_open_on_finish) {
       return;
     }
     try {
@@ -196,18 +159,14 @@ export class TranslationFileExportService {
   /**
    * 导出目录若已存在则加时间戳，避免覆盖用户已有译文目录
    */
-  private build_export_paths(
-    project_path: string,
-    custom_suffix: string,
-    app_language: AppLanguage,
-  ): { translated_path: string; bilingual_path: string } {
+  private build_export_paths(project_path: string, app_language: AppLanguage): ExportPaths {
     const text = create_text_resolver(resolve_app_locale(app_language));
     const translated_suffix = text("app.translation_export.directory.translated");
     const bilingual_suffix = text("app.translation_export.directory.bilingual");
     const project_dir = path.dirname(project_path);
     const stem = path.parse(project_path).name;
-    const translated_base = `${stem}_${translated_suffix}${custom_suffix}`;
-    const bilingual_base = `${stem}_${bilingual_suffix}${custom_suffix}`;
+    const translated_base = `${stem}_${translated_suffix}`;
+    const bilingual_base = `${stem}_${bilingual_suffix}`;
     const needs_timestamp =
       this.native_fs.exists(path.join(project_dir, translated_base)) ||
       this.native_fs.exists(path.join(project_dir, bilingual_base));
@@ -275,21 +234,17 @@ export class TranslationFileExportService {
    * 导出日志文案跟随应用语言，保持文件写回路径和既有导出提示一致
    */
   private export_log_text(
-    config: JsonRecord,
+    config: SettingSnapshot,
     key: LocaleKey,
     params: Record<string, string> = {},
   ): string {
-    return format_i18n_message(
-      resolve_app_locale(normalize_setting_snapshot(config).app_language),
-      key,
-      params,
-    );
+    return format_i18n_message(resolve_app_locale(config.app_language), key, params);
   }
 
   /**
    * 开始日志在真实文件写回前输出，便于日志窗口定位用户触发的导出动作
    */
-  private log_export_start(config: JsonRecord): void {
+  private log_export_start(config: SettingSnapshot): void {
     this.log_manager?.info(this.export_log_text(config, "app.log.generate_translation_start"), {
       source: FILE_EXPORT_LOG_SOURCE,
     });
@@ -298,7 +253,7 @@ export class TranslationFileExportService {
   /**
    * 完成日志输出前后空行，避免连续任务日志挤在一起
    */
-  private log_export_done(config: JsonRecord, output_path: string): void {
+  private log_export_done(config: SettingSnapshot, output_path: string): void {
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
     this.log_manager?.info(
       this.export_log_text(config, "app.log.generate_translation_done", { PATH: output_path }),
@@ -310,7 +265,7 @@ export class TranslationFileExportService {
   /**
    * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败
    */
-  private log_write_failed(config: JsonRecord, error: unknown): void {
+  private log_write_failed(config: SettingSnapshot, error: unknown): void {
     this.log_manager?.error(
       this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
       {
@@ -323,7 +278,7 @@ export class TranslationFileExportService {
   /**
    * 打开输出目录失败只影响宿主体验，不改变导出成功结果
    */
-  private log_open_output_folder_failed(config: JsonRecord, error: unknown): void {
+  private log_open_output_folder_failed(config: SettingSnapshot, error: unknown): void {
     this.log_manager?.error(
       this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
       {
@@ -336,7 +291,7 @@ export class TranslationFileExportService {
   /**
    * 导出失败日志输出终态提示，同时保留异常详情给日志文件
    */
-  private log_export_failed(config: JsonRecord, error: unknown): void {
+  private log_export_failed(config: SettingSnapshot, error: unknown): void {
     this.log_manager?.error(
       this.export_log_text(config, "app.diagnostic.file_export.translation_failed"),
       {

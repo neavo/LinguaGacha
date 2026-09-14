@@ -68,7 +68,7 @@
 - 기능 설명
   - [명령줄 모드](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [용어집](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[텍스트 보호](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[텍스트 치환](https://github.com/neavo/LinguaGacha/wiki/Replacement)
-  - [MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[도구 모음 - 중국어 번체·간체 변환](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
+  - [MTool 최적화 도구](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
 - 각 기능에 대한 더 자세한 설명은 [Wiki](https://github.com/neavo/LinguaGacha/wiki)에서 확인할 수 있습니다. [토론 게시판](https://github.com/neavo/LinguaGacha/discussions)에 사용 경험을 공유해 주세요
 
 ## 지원 파일 형식 🏷️

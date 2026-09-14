@@ -18,8 +18,6 @@ import { de_de_quality_rule_editor } from "./quality-rule-editor";
 import { de_de_task_progress } from "./task-progress";
 import { de_de_text_preserve_page } from "./text-preserve-page";
 import { de_de_text_replacement_page } from "./text-replacement-page";
-import { de_de_toolbox_page } from "./toolbox-page";
-import { de_de_ts_conversion_page } from "./ts-conversion-page";
 import { de_de_workbench_page } from "./workbench-page";
 import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
@@ -44,8 +42,6 @@ export const de_de_messages = {
   task_progress: de_de_task_progress,
   text_preserve_page: de_de_text_preserve_page,
   text_replacement_page: de_de_text_replacement_page,
-  toolbox_page: de_de_toolbox_page,
-  ts_conversion_page: de_de_ts_conversion_page,
   workbench_page: de_de_workbench_page,
   batch_translation: de_de_batch_translation,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;

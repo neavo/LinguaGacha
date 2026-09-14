@@ -8,6 +8,7 @@ import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
 
 /** 路由集合是公开面契约，注册顺序不是。 */
+// 公开 HTTP 路径属于客户端契约，独立清单用于发现误删、改名与重复注册。
 const GET_PATHS = new Set([
   "/api/health",
   "/api/events/stream",
@@ -79,7 +80,6 @@ const POST_PATHS = new Set([
   "/api/quality/prompts/presets/rename",
   "/api/quality/prompts/presets/delete",
   "/api/translation/files/export",
-  "/api/toolbox/ts-conversion/files/export",
   "/api/settings/app",
   "/api/settings/update",
   "/api/settings/recent-projects/add",
@@ -313,15 +313,13 @@ function create_route_fixture() {
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
       lifecycle: { summarize_source_files },
-      data: {},
-      sessionState: {},
       summary: {},
       content: {},
       resetPreview: {},
     },
     proofreading: { query: {}, commands: {} },
     quality: { statistics: {}, rules: {}, prompts: {} },
-    files: { preview: {}, translationExport: {}, tsConversionExport: {} },
+    files: { preview: {}, translationExport: {} },
     model: {
       get_selection_snapshot: vi.fn(() => ({
         model_selection: { translation: "a", agent: "c" },

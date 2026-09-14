@@ -18,8 +18,6 @@ import { zh_cn_quality_rule_editor } from "./quality-rule-editor";
 import { zh_cn_task_progress } from "./task-progress";
 import { zh_cn_text_preserve_page } from "./text-preserve-page";
 import { zh_cn_text_replacement_page } from "./text-replacement-page";
-import { zh_cn_toolbox_page } from "./toolbox-page";
-import { zh_cn_ts_conversion_page } from "./ts-conversion-page";
 import { zh_cn_workbench_page } from "./workbench-page";
 
 export const zh_cn_messages = {
@@ -42,8 +40,6 @@ export const zh_cn_messages = {
   task_progress: zh_cn_task_progress,
   text_preserve_page: zh_cn_text_preserve_page,
   text_replacement_page: zh_cn_text_replacement_page,
-  toolbox_page: zh_cn_toolbox_page,
-  ts_conversion_page: zh_cn_ts_conversion_page,
   workbench_page: zh_cn_workbench_page,
   batch_translation: zh_cn_batch_translation,
 } as const;
