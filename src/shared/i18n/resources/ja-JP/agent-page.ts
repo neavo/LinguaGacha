@@ -10,10 +10,16 @@ export const ja_jp_agent_page = {
   thinking: "思考過程",
   thinking_active: "思考中",
   diagram: {
-    open_preview: "図を拡大表示",
-    preview_title: "図のプレビュー",
-    rendering: "図を生成中 …",
     render_failed: "図を表示できませんでした。Mermaid ソースを表示しています。",
+  },
+  markdown: {
+    copy_code: "コードをコピー",
+    download_code: "コードをダウンロード",
+    copy_table: "表をコピー",
+    download_table: "表をダウンロード",
+    download_diagram: "図をダウンロード",
+    copy_format: "{format} としてコピー",
+    download_format: "{format} としてダウンロード",
   },
   image: { title: "画像", open_preview: "画像のプレビューを開く" },
   media: {

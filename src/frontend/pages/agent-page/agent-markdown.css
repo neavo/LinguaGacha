@@ -1,10 +1,9 @@
-/*
- * Agent Markdown presentation contract.
- * The parser owns Markdown semantics; this file owns the product's compact,
- * selectable reading surface and its Agent-specific extensions.
- */
+/* Markdown 语义归解析器，这里只维护紧凑阅读表面和产品交互样式。 */
 
 .agent-markdown {
+  --agent-markdown-toolbar-height: 36px;
+  --agent-markdown-toolbar-padding: 10px;
+  --agent-markdown-toolbar-background: color-mix(in srgb, var(--muted) 35%, var(--popover));
   min-width: 0;
   width: 100%;
   margin: 0;
@@ -16,14 +15,6 @@
 }
 
 /* Block flow */
-
-.agent-markdown > :first-child {
-  margin-top: 0;
-}
-
-.agent-markdown > :last-child {
-  margin-bottom: 0;
-}
 
 .agent-markdown h1,
 .agent-markdown h2,
@@ -172,100 +163,6 @@
   padding: 0;
 }
 
-.agent-markdown pre[data-language] {
-  overflow: hidden;
-  padding: 0;
-}
-
-.agent-markdown pre[data-language]::before {
-  content: attr(data-language);
-  display: block;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--muted) 34%, transparent);
-  padding: 3px 8px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: right;
-  white-space: normal;
-}
-
-.agent-markdown pre[data-language] code {
-  display: block;
-  overflow-x: auto;
-  padding: 10px;
-}
-
-.agent-markdown .hljs-comment,
-.agent-markdown .hljs-quote {
-  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
-  font-style: italic;
-}
-
-.agent-markdown .hljs-keyword,
-.agent-markdown .hljs-selector-tag,
-.agent-markdown .hljs-type,
-.agent-markdown .hljs-variable.language_ {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.agent-markdown .hljs-title,
-.agent-markdown .hljs-title.class_,
-.agent-markdown .hljs-title.function_,
-.agent-markdown .hljs-section {
-  color: var(--secondary-foreground);
-  font-weight: 600;
-}
-
-.agent-markdown .hljs-string,
-.agent-markdown .hljs-regexp,
-.agent-markdown .hljs-template-variable,
-.agent-markdown .hljs-addition {
-  color: color-mix(in srgb, var(--primary) 68%, var(--foreground));
-}
-
-.agent-markdown .hljs-number,
-.agent-markdown .hljs-literal,
-.agent-markdown .hljs-symbol,
-.agent-markdown .hljs-bullet {
-  color: var(--accent-foreground);
-}
-
-.agent-markdown .hljs-attr,
-.agent-markdown .hljs-attribute,
-.agent-markdown .hljs-property,
-.agent-markdown .hljs-selector-attr,
-.agent-markdown .hljs-selector-class,
-.agent-markdown .hljs-selector-id,
-.agent-markdown .hljs-variable {
-  color: color-mix(in srgb, var(--primary) 42%, var(--secondary-foreground));
-}
-
-.agent-markdown .hljs-built_in,
-.agent-markdown .hljs-doctag,
-.agent-markdown .hljs-meta,
-.agent-markdown .hljs-name,
-.agent-markdown .hljs-operator,
-.agent-markdown .hljs-selector-pseudo,
-.agent-markdown .hljs-subst {
-  color: var(--foreground);
-}
-
-.agent-markdown .hljs-deletion {
-  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--foreground));
-  text-decoration: line-through;
-}
-
-.agent-markdown .hljs-emphasis {
-  font-style: italic;
-}
-
-.agent-markdown .hljs-strong {
-  font-weight: 600;
-}
-
 /* GFM footnotes */
 
 .agent-markdown [data-footnotes] {
@@ -285,65 +182,6 @@
 }
 
 /* Product-specific Markdown extensions */
-
-.agent-markdown__diagram {
-  max-width: 100%;
-  margin: 8px 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-button);
-  background: var(--popover);
-}
-
-.agent-markdown__diagram-content {
-  min-width: 0;
-  overflow: hidden;
-  padding: 12px;
-}
-
-.agent-markdown__diagram-trigger {
-  display: block;
-  width: 100%;
-  margin: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 12px;
-  font: inherit;
-  text-align: inherit;
-  cursor: zoom-in;
-}
-
-.agent-markdown__diagram-trigger:hover {
-  background: var(--accent);
-}
-
-.agent-markdown__diagram-trigger:focus-visible {
-  outline: 1px solid var(--ring);
-  outline-offset: -1px;
-}
-
-.agent-markdown__diagram-trigger > span {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.agent-markdown__diagram-trigger svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-}
-
-.agent-markdown__diagram-pending {
-  display: grid;
-  min-height: 96px;
-  place-items: center;
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
 
 .agent-markdown__diagram-error {
   margin: 8px 0;
@@ -390,7 +228,219 @@
 
 .agent-markdown th,
 .agent-markdown td {
-  border: 1px solid var(--border);
-  padding: 6px 8px;
   text-align: left;
+}
+
+/* 三类内容只保留外层边界，工具栏和内容共用同一阅读表面。 */
+.agent-markdown
+  :is(
+    [data-streamdown="code-block"],
+    [data-streamdown="table-wrapper"],
+    [data-streamdown="mermaid-block"]
+  ) {
+  margin: 10px 0;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: var(--popover);
+  padding: 0;
+}
+
+.agent-markdown
+  :is(
+    [data-streamdown="code-block-header"],
+    [data-streamdown="table-wrapper"] > div:first-child,
+    [data-streamdown="mermaid-block"] > div:first-child
+  ) {
+  height: var(--agent-markdown-toolbar-height);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--agent-markdown-toolbar-background);
+  padding: 0 var(--agent-markdown-toolbar-padding);
+}
+
+.agent-markdown
+  :is(
+    [data-streamdown="code-block-body"],
+    [data-streamdown="table-wrapper"] > div:last-child,
+    [data-streamdown="mermaid-block"] > div:last-child
+  ) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agent-markdown [data-streamdown="code-block-body"] {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.agent-markdown [data-streamdown="code-block-body"] pre {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+/* 工具栏保留官方操作，去掉按钮组自身的卡片装饰。 */
+.agent-markdown
+  :is([data-streamdown="code-block"], [data-streamdown="mermaid-block"])
+  > div:has(> [data-streamdown$="-actions"]) {
+  /* 官方操作栏在文档流中覆盖标题行；负外边距必须随标题高度一起变化。 */
+  position: sticky;
+  top: 0;
+  right: auto;
+  height: var(--agent-markdown-toolbar-height);
+  flex-shrink: 0;
+  justify-content: flex-end;
+  margin-top: calc(-1 * var(--agent-markdown-toolbar-height));
+  padding: 0 var(--agent-markdown-toolbar-padding);
+}
+
+.agent-markdown
+  :is([data-streamdown="code-block-actions"], [data-streamdown="mermaid-block-actions"]) {
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  backdrop-filter: none;
+}
+
+.agent-markdown [data-streamdown="mermaid-block"] > div:last-child {
+  padding: 8px;
+}
+
+.agent-markdown [data-streamdown="mermaid"] > div > div:has(> button) {
+  border: 0;
+  border-radius: var(--ui-radius-button);
+  background: var(--popover);
+  backdrop-filter: none;
+  left: 4px;
+  bottom: 4px;
+  gap: 2px;
+  padding: 0;
+}
+
+/* 表格只保留行列分隔线，外围轮廓由正文容器负责。 */
+.agent-markdown [data-streamdown="table"] {
+  margin: 0;
+  border: 0;
+}
+
+.agent-markdown :is([data-streamdown="table-cell"], [data-streamdown="table-header-cell"]) {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.agent-markdown
+  :is([data-streamdown="table-cell"], [data-streamdown="table-header-cell"]):not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.agent-markdown tbody tr:last-child [data-streamdown="table-cell"] {
+  border-bottom: 0;
+}
+
+/* 只匹配操作栏的直接按钮和下拉触发器，菜单内部文字按钮保持整行布局。 */
+.agent-markdown
+  :is(
+    [data-streamdown="code-block-actions"],
+    [data-streamdown="mermaid-block-actions"],
+    [data-streamdown="table-wrapper"] > div:first-child
+  ) {
+  > button[title],
+  > div > button[title] {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--ui-radius-button);
+    padding: 6px;
+    color: var(--muted-foreground);
+
+    &:hover:not(:disabled) {
+      background: var(--muted);
+      color: var(--foreground);
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--ring);
+      outline-offset: 1px;
+    }
+  }
+}
+
+.agent-markdown [data-streamdown="table-header"] {
+  background: var(--popover);
+}
+
+.agent-markdown .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+/* Alerts 的类型和图标由 remark 插件解析，展示只消费应用语义色。 */
+.agent-markdown .markdown-alert {
+  --agent-alert-color: var(--muted-foreground);
+  margin: 10px 0;
+  border-left: 1px solid var(--agent-alert-color);
+  background: color-mix(in srgb, var(--agent-alert-color) 6%, transparent);
+  padding: 10px 12px;
+  font-style: normal;
+}
+
+.agent-markdown .markdown-alert-tip {
+  --agent-alert-color: color-mix(in srgb, var(--ui-success) 60%, var(--foreground));
+}
+
+.agent-markdown .markdown-alert-important {
+  --agent-alert-color: var(--primary);
+}
+
+.agent-markdown .markdown-alert-warning {
+  --agent-alert-color: color-mix(in srgb, var(--ui-warning) 65%, var(--foreground));
+}
+
+.agent-markdown .markdown-alert-caution {
+  --agent-alert-color: var(--ui-failure);
+}
+
+.agent-markdown .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--agent-alert-color);
+  font-weight: 600;
+}
+
+.agent-markdown .markdown-alert-title svg {
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+.agent-markdown .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+/* 图表画布的交互与正文选区分离，焦点轮廓表明滚轮现在用于缩放。 */
+.agent-markdown [data-streamdown="mermaid"],
+.agent-markdown [data-streamdown="mermaid"] * {
+  user-select: none;
+}
+
+/* 激活画布时着色已有外边框，标题栏按钮的焦点不会表示滚轮缩放已激活。 */
+.agent-markdown [data-streamdown="mermaid-block"]:has([data-streamdown="mermaid"]:focus-within) {
+  border-color: var(--ring);
+}
+
+.agent-markdown [data-streamdown="mermaid"]:focus {
+  outline: none;
 }

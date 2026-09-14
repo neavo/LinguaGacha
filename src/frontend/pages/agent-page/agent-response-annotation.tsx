@@ -233,6 +233,10 @@ export function AgentResponseAnnotationSelection(
     if (!selection_open) return;
     const handle_pointer_down = (event: PointerEvent): void => {
       const target = event.target;
+      if (target instanceof Element && target.closest('[data-streamdown="mermaid"]')) {
+        set_selection(null);
+        return;
+      }
       if (
         target instanceof Node &&
         (root_ref.current?.contains(target) || refs.floating.current?.contains(target))
@@ -253,8 +257,12 @@ export function AgentResponseAnnotationSelection(
   }, [refs.floating, selection_open]);
 
   /** 原生选区必须完整落在同一个最终回复正文内，避免跨工具或消息构造伪引用。 */
-  const read_selection = (focus_action: boolean): void => {
+  const read_selection = (focus_action: boolean, target: EventTarget | null): void => {
     if (props.disabled) return;
+    if (target instanceof Element && target.closest('[data-streamdown="mermaid"]')) {
+      set_selection(null);
+      return;
+    }
     const native_selection = window.getSelection();
     const root = root_ref.current;
     if (
@@ -274,6 +282,10 @@ export function AgentResponseAnnotationSelection(
       start_surface === null ||
       start_surface !== end_surface ||
       !root.contains(start_surface) ||
+      // 图表是交互画布，批注只接收正文；跨过图表的选区也不能混入节点文本。
+      [...start_surface.querySelectorAll('[data-streamdown="mermaid"]')].some((diagram) =>
+        range.intersectsNode(diagram),
+      ) ||
       selected_text === ""
     ) {
       set_selection(null);
@@ -310,9 +322,9 @@ export function AgentResponseAnnotationSelection(
       <div
         ref={root_ref}
         className="agent-page__messages"
-        onPointerUp={() => read_selection(false)}
+        onPointerUp={(event) => read_selection(false, event.target)}
         onKeyUp={(event: ReactKeyboardEvent<HTMLDivElement>) => {
-          if (event.shiftKey) read_selection(true);
+          if (event.shiftKey) read_selection(true, event.target);
         }}
       >
         {props.children}

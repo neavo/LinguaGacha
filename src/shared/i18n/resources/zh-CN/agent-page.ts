@@ -8,10 +8,16 @@ export const zh_cn_agent_page = {
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: {
-    open_preview: "放大预览图表",
-    preview_title: "图表预览",
-    rendering: "正在生成图表 …",
     render_failed: "图表渲染失败，已显示 Mermaid 源码。",
+  },
+  markdown: {
+    copy_code: "复制代码",
+    download_code: "下载代码",
+    copy_table: "复制表格",
+    download_table: "下载表格",
+    download_diagram: "下载图表",
+    copy_format: "复制为 {format}",
+    download_format: "下载为 {format}",
   },
   image: { title: "图片", open_preview: "打开图片预览" },
   media: {

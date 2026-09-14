@@ -8,10 +8,16 @@ export const en_us_agent_page = {
   thinking: "Thinking",
   thinking_active: "Thinking",
   diagram: {
-    open_preview: "Open diagram preview",
-    preview_title: "Diagram preview",
-    rendering: "Rendering diagram …",
     render_failed: "Diagram rendering failed. Mermaid source is shown.",
+  },
+  markdown: {
+    copy_code: "Copy code",
+    download_code: "Download code",
+    copy_table: "Copy table",
+    download_table: "Download table",
+    download_diagram: "Download diagram",
+    copy_format: "Copy as {format}",
+    download_format: "Download as {format}",
   },
   image: { title: "Image", open_preview: "Open image preview" },
   media: {
