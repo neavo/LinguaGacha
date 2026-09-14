@@ -1,11 +1,7 @@
 import { CircleEllipsis, Recycle } from "lucide-react";
 
 import { AppButton } from "@frontend/widgets/app-button";
-import {
-  AppContextMenuContent,
-  AppContextMenuGroup,
-  AppContextMenuItem,
-} from "@frontend/widgets/app-context-menu";
+import { AppContextMenuGroup, AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -25,18 +21,7 @@ type WorkbenchTableMenuActionProps = {
   disabled: boolean;
   on_reset: () => void;
 };
-function WorkbenchTableActionMenuContent(props: WorkbenchTableMenuActionProps): JSX.Element {
-  const { t } = useI18n();
-
-  return (
-    <AppDropdownMenuGroup>
-      <AppDropdownMenuItem disabled={props.disabled} onClick={props.on_reset}>
-        <Recycle data-icon="inline-start" />
-        {t("workbench_page.action.reset")}
-      </AppDropdownMenuItem>
-    </AppDropdownMenuGroup>
-  );
-}
+/** 菜单打开时先准备操作目标，避免重置沿用上一组选区。 */
 export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): JSX.Element {
   const { t } = useI18n();
 
@@ -66,24 +51,26 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
         }
       />
       <AppDropdownMenuContent align="center">
-        <WorkbenchTableActionMenuContent disabled={props.disabled} on_reset={props.on_reset} />
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem disabled={props.disabled} onClick={props.on_reset}>
+            <Recycle data-icon="inline-start" />
+            {t("workbench_page.action.reset")}
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
       </AppDropdownMenuContent>
     </AppDropdownMenu>
   );
 }
-export function WorkbenchTableContextMenuContent(
-  props: WorkbenchTableMenuActionProps,
-): JSX.Element {
+/** 右键目标由表格提前裁决，此处只提供工作台业务动作。 */
+export function WorkbenchTableContextMenuItems(props: WorkbenchTableMenuActionProps): JSX.Element {
   const { t } = useI18n();
 
   return (
-    <AppContextMenuContent>
-      <AppContextMenuGroup>
-        <AppContextMenuItem disabled={props.disabled} onClick={props.on_reset}>
-          <Recycle data-icon="inline-start" />
-          {t("workbench_page.action.reset")}
-        </AppContextMenuItem>
-      </AppContextMenuGroup>
-    </AppContextMenuContent>
+    <AppContextMenuGroup>
+      <AppContextMenuItem disabled={props.disabled} onClick={props.on_reset}>
+        <Recycle data-icon="inline-start" />
+        {t("workbench_page.action.reset")}
+      </AppContextMenuItem>
+    </AppContextMenuGroup>
   );
 }

@@ -2,7 +2,7 @@ import { CaseSensitive, Regex } from "lucide-react";
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { TextReplacementContextMenuContent } from "@frontend/pages/text-replacement-page/components/text-replacement-context-menu";
+import { TextReplacementContextMenuItems } from "@frontend/pages/text-replacement-page/components/text-replacement-context-menu";
 import type {
   TextReplacementEntryId,
   TextReplacementHitBadgeState,
@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { resolve_quality_rule_boolean_menu_state } from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
-import { resolve_app_table_context_target_row_ids } from "@frontend/widgets/app-table/app-table-selection";
 import type {
   AppTableColumn,
   AppTableSelectionChange,
@@ -25,7 +24,7 @@ type TextReplacementTableProps = {
   title_key: LocaleKey;
   entries: TextReplacementVisibleEntry[];
   sort_state: AppTableSortState | null;
-  drag_disabled: boolean;
+  reorder_disabled: boolean;
   hit_running: boolean;
   hit_ready: boolean;
   readonly: boolean;
@@ -251,13 +250,11 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
           }
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
-          on_reorder={props.drag_disabled ? undefined : props.on_reorder}
+          on_reorder={props.on_reorder}
+          reorder_disabled={props.reorder_disabled}
           on_row_activate={props.on_open_edit}
-          render_row_context_menu={(payload) => {
-            const target_entry_ids = resolve_app_table_context_target_row_ids(
-              payload.row_id,
-              props.selected_entry_ids,
-            );
+          render_row_context_menu_items={(payload) => {
+            const target_entry_ids = payload.target_row_ids;
             const regex_state = resolve_quality_rule_boolean_menu_state({
               entry_by_id: visible_entry_by_id,
               target_entry_ids,
@@ -270,7 +267,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
             });
 
             return (
-              <TextReplacementContextMenuContent
+              <TextReplacementContextMenuItems
                 regex_state={regex_state}
                 case_sensitive_state={case_sensitive_state}
                 readonly={props.readonly}

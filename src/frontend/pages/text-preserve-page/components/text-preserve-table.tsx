@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { TextPreserveContextMenuContent } from "@frontend/pages/text-preserve-page/components/text-preserve-context-menu";
+import { PencilLine } from "lucide-react";
+import {
+  AppContextMenuGroup,
+  AppContextMenuItem,
+  AppContextMenuShortcut,
+} from "@frontend/widgets/app-context-menu";
 import type {
   TextPreserveEntryId,
   TextPreserveHitBadgeState,
@@ -22,7 +27,7 @@ type TextPreserveTableProps = {
   entries: TextPreserveVisibleEntry[];
   sort_state: AppTableSortState | null;
   readonly: boolean;
-  drag_disabled: boolean;
+  reorder_disabled: boolean;
   hit_running: boolean;
   hit_ready: boolean;
   selected_entry_ids: TextPreserveEntryId[];
@@ -163,15 +168,21 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
           }
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
-          on_reorder={props.drag_disabled ? undefined : props.on_reorder}
+          on_reorder={props.on_reorder}
+          reorder_disabled={props.reorder_disabled}
           on_row_activate={props.on_open_edit}
-          render_row_context_menu={(payload) => {
+          render_row_context_menu_items={(payload) => {
             return (
-              <TextPreserveContextMenuContent
-                on_open_edit={() => {
-                  props.on_open_edit(payload.row_id);
-                }}
-              />
+              <AppContextMenuGroup>
+                <AppContextMenuItem
+                  aria-keyshortcuts="Enter"
+                  onClick={() => props.on_open_edit(payload.row_id)}
+                >
+                  <PencilLine />
+                  {t("app.action.edit")}
+                  <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
+                </AppContextMenuItem>
+              </AppContextMenuGroup>
             );
           }}
           box_selection_enabled

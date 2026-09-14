@@ -32,6 +32,8 @@ export const de_de_app = {
     },
   },
   action: {
+    move_to_top: "An den Anfang verschieben",
+    move_to_bottom: "An das Ende verschieben",
     add: "Hinzufügen",
     cancel: "Abbrechen",
     confirm: "Bestätigen",

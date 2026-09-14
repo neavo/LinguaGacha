@@ -32,6 +32,8 @@ export const ko_kr_app = {
     },
   },
   action: {
+    move_to_top: "맨 위로 이동",
+    move_to_bottom: "맨 아래로 이동",
     add: "추가",
     cancel: "취소",
     confirm: "확인",

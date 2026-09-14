@@ -553,7 +553,7 @@ export function useTextReplacementPageState(
   }, [visible_entry_ids]);
 
   const readonly = is_runtime_busy(runtime_snapshot);
-  const drag_disabled = !can_reorder_quality_rule_entries({
+  const reorder_disabled = !can_reorder_quality_rule_entries({
     readonly,
     has_active_query: has_active_filters || sort_state !== null,
     visible_entry_ids,
@@ -983,10 +983,10 @@ export function useTextReplacementPageState(
     [entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
   );
 
-  /** 按拖动结果保存规则顺序。 */
-  const reorder_selected_entries = useCallback(
+  /** 按表格裁决的完整身份顺序保存规则。 */
+  const reorder_entries = useCallback(
     async (ordered_entry_ids: TextReplacementEntryId[]): Promise<void> => {
-      if (drag_disabled) {
+      if (reorder_disabled) {
         return;
       }
 
@@ -994,7 +994,7 @@ export function useTextReplacementPageState(
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
     },
-    [drag_disabled, entries, entry_ids, save_entries_snapshot],
+    [reorder_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
   /** 用所选规则发起校对页查找。 */
@@ -1690,7 +1690,7 @@ export function useTextReplacementPageState(
     sort_state,
     invalid_filter_message: result_snapshot?.invalid_message ?? filter_result.invalid_regex_message,
     readonly,
-    drag_disabled,
+    reorder_disabled,
     hit_state,
     hit_ready,
     hit_badge_by_entry_id,
@@ -1727,7 +1727,7 @@ export function useTextReplacementPageState(
     delete_selected_entries,
     toggle_regex_for_selected,
     toggle_case_sensitive_for_selected,
-    reorder_selected_entries,
+    reorder_entries,
     query_entry_source,
     search_entry_relations_from_hit,
     save_dialog_entry,
