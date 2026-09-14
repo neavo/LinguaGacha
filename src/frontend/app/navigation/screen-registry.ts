@@ -10,9 +10,7 @@ import { ModelPage } from "@frontend/pages/model-page/page";
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
-import { ToolboxPage } from "@frontend/pages/toolbox-page/page";
 import { TextReplacementPage } from "@frontend/pages/text-replacement-page/page";
-import { TsConversionPage } from "@frontend/pages/ts-conversion-page/page";
 import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
 import type { ScreenComponentProps, ScreenRegistry } from "@frontend/app/navigation/types";
 
@@ -85,13 +83,5 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   laboratory: {
     component: LaboratoryPage,
     title_key: "laboratory_page.title",
-  },
-  toolbox: {
-    component: ToolboxPage,
-    title_key: "toolbox_page.title",
-  },
-  "ts-conversion": {
-    component: TsConversionPage,
-    title_key: "ts_conversion_page.title",
   },
 };

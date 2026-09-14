@@ -18,8 +18,6 @@ import { ko_kr_quality_rule_editor } from "./quality-rule-editor";
 import { ko_kr_task_progress } from "./task-progress";
 import { ko_kr_text_preserve_page } from "./text-preserve-page";
 import { ko_kr_text_replacement_page } from "./text-replacement-page";
-import { ko_kr_toolbox_page } from "./toolbox-page";
-import { ko_kr_ts_conversion_page } from "./ts-conversion-page";
 import { ko_kr_workbench_page } from "./workbench-page";
 import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
@@ -45,7 +43,5 @@ export const ko_kr_messages = {
   task_progress: ko_kr_task_progress,
   text_preserve_page: ko_kr_text_preserve_page,
   text_replacement_page: ko_kr_text_replacement_page,
-  toolbox_page: ko_kr_toolbox_page,
-  ts_conversion_page: ko_kr_ts_conversion_page,
   workbench_page: ko_kr_workbench_page,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;

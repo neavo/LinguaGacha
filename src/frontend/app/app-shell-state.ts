@@ -15,11 +15,13 @@ type AppTranslator = (
   key: "app.action.confirm" | "app.update.launching" | "app.update.restart_confirm",
 ) => string;
 
+// 无项目时允许点击并记录目标，加载完成后恢复访问。
 const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "agent",
   "proofreading",
   "workbench",
 ]);
+// 依赖已有项目内容的页面在项目未加载时禁用。
 const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "glossary",
   "text-preserve",
@@ -27,7 +29,6 @@ const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "post-translation-replacement",
   "custom-prompt",
   "laboratory",
-  "toolbox",
 ]);
 
 /** 识别需要项目会话才能进入的路由。 */

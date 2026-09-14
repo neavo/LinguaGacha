@@ -11,7 +11,6 @@ import { BatchTranslationRuntime } from "../batch-translation/batch-translation-
 import { BatchTranslationService } from "../batch-translation/batch-translation-service";
 import { TranslationWorkerPool } from "../batch-translation/work-unit/translation-worker-pool";
 import { FilePreviewService } from "../file/file-preview-service";
-import { TsConversionExportService } from "../file/ts-conversion-export-service";
 import {
   TranslationFileExportService,
   type OutputFolderOpener,
@@ -97,21 +96,20 @@ export interface BackendQualityServices {
 export interface BackendFileServices {
   preview: FilePreviewService;
   translationExport: TranslationFileExportService;
-  tsConversionExport: TsConversionExportService;
 }
 
 /**
  * GUI 与 CLI 共享的业务服务组合根；状态拥有者只在这里装配。
  */
 export class BackendServices {
-  private readonly app_setting_service: AppSettingService;
-  private readonly cache_manager: CacheManager;
-  private readonly compute_worker_client: ComputeWorkerClient;
-  private readonly task_runtime: BatchTranslationRuntime;
+  private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
+  private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
+  private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
+  private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
   private readonly runtime_gate = new RuntimeOperationGate(); // task、GUI Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
-  private task_stream_unsubscribe: (() => void) | null;
+  private task_stream_unsubscribe: (() => void) | null; // dispose 时先切断任务事件发布
   private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止发布已关闭业务根的事件
 
   public readonly app: BackendAppServices;
@@ -173,14 +171,6 @@ export class BackendServices {
       handle_project_event,
       write_store,
     );
-    const translation_export = new TranslationFileExportService(
-      options.database,
-      this.app_setting_service,
-      session_state,
-      options.openOutputFolder,
-      this.logManager,
-    );
-
     this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
       execution: options.workerExecution,
@@ -251,15 +241,14 @@ export class BackendServices {
         write_store,
       ),
     };
-    const quality_rules = new QualityRuleService(
-      paths,
-      session_state,
-      write_store,
-      this.runtime_gate,
-      this.cache_manager,
-    );
     this.quality = {
-      rules: quality_rules,
+      rules: new QualityRuleService(
+        paths,
+        session_state,
+        write_store,
+        this.runtime_gate,
+        this.cache_manager,
+      ),
       prompts: new QualityPromptService(
         paths,
         this.app_setting_service,
@@ -276,13 +265,13 @@ export class BackendServices {
     };
     this.files = {
       preview: new FilePreviewService(this.app_setting_service, this.logManager),
-      translationExport: translation_export,
-      tsConversionExport: new TsConversionExportService({
-        sessionState: session_state,
-        cache: this.cache_manager,
-        workerClient: this.compute_worker_client,
-        fileExportService: translation_export,
-      }),
+      translationExport: new TranslationFileExportService(
+        options.database,
+        this.app_setting_service,
+        session_state,
+        options.openOutputFolder,
+        this.logManager,
+      ),
     };
     this.model = new ModelService(
       paths,

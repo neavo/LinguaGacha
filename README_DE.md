@@ -68,7 +68,7 @@
 - Funktionsbeschreibungen
   - [Befehlszeilenmodus](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [Glossar](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[Textschutz](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[Textersetzung](https://github.com/neavo/LinguaGacha/wiki/Replacement)
-  - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[Werkzeugkasten – Umwandlung zwischen traditionellem und vereinfachtem Chinesisch](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
+  - [MTool-Optimierer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
 - Ausführlichere Informationen zu den Funktionen finden Sie im [Wiki](https://github.com/neavo/LinguaGacha/wiki). Teilen Sie Ihre Erfahrungen gerne in den [Diskussionen](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Unterstützte Formate 🏷️

@@ -151,9 +151,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/translation/files/export", () =>
     services.files.translationExport.export_files(),
   );
-  context.postJson("/api/toolbox/ts-conversion/files/export", (body) =>
-    services.files.tsConversionExport.export_files(body),
-  );
 
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());

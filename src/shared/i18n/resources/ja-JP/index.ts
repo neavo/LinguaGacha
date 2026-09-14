@@ -18,8 +18,6 @@ import { ja_jp_quality_rule_editor } from "./quality-rule-editor";
 import { ja_jp_task_progress } from "./task-progress";
 import { ja_jp_text_preserve_page } from "./text-preserve-page";
 import { ja_jp_text_replacement_page } from "./text-replacement-page";
-import { ja_jp_toolbox_page } from "./toolbox-page";
-import { ja_jp_ts_conversion_page } from "./ts-conversion-page";
 import { ja_jp_workbench_page } from "./workbench-page";
 import type { zh_cn_messages } from "../zh-CN";
 import type { LocaleMessageSchema } from "../../types";
@@ -45,7 +43,5 @@ export const ja_jp_messages = {
   task_progress: ja_jp_task_progress,
   text_preserve_page: ja_jp_text_preserve_page,
   text_replacement_page: ja_jp_text_replacement_page,
-  toolbox_page: ja_jp_toolbox_page,
-  ts_conversion_page: ja_jp_ts_conversion_page,
   workbench_page: ja_jp_workbench_page,
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;
