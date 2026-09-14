@@ -2,20 +2,9 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { create_check_context } from "./core.mjs";
+import { create_source_reader } from "./source-reader.mjs";
 import { create_frontend_boundary_rules } from "./frontend-rules.mjs";
-
-const EXPECTED_RULE_NAMES = new Set([
-  "frontend interactions 所有权边界",
-  "frontend page 所有权边界",
-  "frontend 旧混合目录边界",
-  "renderer px-first 尺寸边界",
-  "renderer 共享状态写入口边界",
-  "renderer 可见文案边界",
-  "renderer 圆角语义边界",
-  "renderer 全局 token 边界",
-  "renderer 导入边界",
-  "后端 API 接入边界",
-]);
 
 describe("frontend boundary rules", () => {
   it("每条 renderer 边界都能从公开规则入口报告对应违规", () => {
@@ -38,8 +27,23 @@ describe("frontend boundary rules", () => {
       "src/frontend/widgets/interactions/action.ts": "api_fetch('/api/direct');",
     });
 
-    expect(new Set(errors.map((error) => error.rule_name))).toEqual(EXPECTED_RULE_NAMES);
-    expect(errors.every((error) => error.relative_path.startsWith("src/frontend/"))).toBe(true);
+    expect(
+      errors.map(({ relative_path, line }) => `${relative_path}:${line ?? "-"}`).sort(),
+    ).toEqual(
+      [
+        "src/frontend/hooks/legacy.ts:-",
+        "src/frontend/hooks/legacy.ts:1",
+        "src/frontend/pages/alpha/page.tsx:1",
+        "src/frontend/pages/alpha/page.tsx:2",
+        "src/frontend/pages/alpha/page.tsx:3",
+        "src/frontend/pages/alpha/page.tsx:4",
+        "src/frontend/pages/alpha/page.tsx:5",
+        "src/frontend/pages/alpha/style.css:2",
+        "src/frontend/pages/alpha/style.css:3",
+        "src/frontend/pages/alpha/style.css:4",
+        "src/frontend/widgets/interactions/action.ts:1",
+      ].sort(),
+    );
   });
 
   it("允许桌面 API、全局 token 所有者和同页实现使用各自合法入口", () => {
@@ -65,6 +69,7 @@ describe("frontend boundary rules", () => {
   });
 });
 
+/** 用内存源码执行真实规则，避免测试依赖当前工作区内容。 */
 function run_rules(files) {
   const project_root = path.resolve("boundary-test-project");
   const source_by_path = new Map(
@@ -73,14 +78,11 @@ function run_rules(files) {
       content,
     ]),
   );
-  const context = {
+  const context = create_check_context({
     files: [...source_by_path.keys()],
     project_root,
-    read_file: (file_path) => source_by_path.get(file_path) ?? "",
-    relative_path: (file_path) => path.relative(project_root, file_path).replaceAll(path.sep, "/"),
-  };
+    source_reader: create_source_reader((file_path) => source_by_path.get(file_path)),
+  });
 
-  return create_frontend_boundary_rules().flatMap((rule) =>
-    rule.check(context).map((error) => ({ rule_name: rule.name, ...error })),
-  );
+  return create_frontend_boundary_rules().flatMap((rule) => rule.check(context));
 }

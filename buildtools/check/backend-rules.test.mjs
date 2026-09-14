@@ -2,22 +2,9 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { create_check_context } from "./core.mjs";
+import { create_source_reader } from "./source-reader.mjs";
 import { create_backend_boundary_rules } from "./backend-rules.mjs";
-
-const EXPECTED_RULE_NAMES = new Set([
-  "API 注册边界",
-  "CLI 后端依赖边界",
-  "LLM 模型依赖方向",
-  "NativeFs 落点边界",
-  "SQLite 落点边界",
-  "SSE JSON 序列化边界",
-  "后端 API 依赖方向",
-  "后端模块所有权",
-  "后端出站网络边界",
-  "共享 Backend 组合根边界",
-  "模型供应商边界",
-  "错误定义表边界",
-]);
 
 describe("backend boundary rules", () => {
   it("每条后端边界都能从公开规则入口报告对应违规", () => {
@@ -45,8 +32,26 @@ describe("backend boundary rules", () => {
       ].join("\n"),
     });
 
-    expect(new Set(errors.map((error) => error.rule_name))).toEqual(EXPECTED_RULE_NAMES);
-    expect(errors.every((error) => error.relative_path.startsWith("src/"))).toBe(true);
+    expect(
+      errors.map(({ relative_path, line }) => `${relative_path}:${line ?? "-"}`).sort(),
+    ).toEqual(
+      [
+        "src/backend/analysis/legacy.ts:-",
+        "src/backend/api/api-routes.ts:1",
+        "src/backend/api/api-stream-hub.ts:1",
+        "src/backend/cache/store.ts:1",
+        "src/backend/bootstrap/backend-services.ts:1",
+        "src/backend/llm/client.ts:1",
+        "src/backend/model/catalog.ts:1",
+        "src/backend/model/network.ts:1",
+        "src/backend/model/network.ts:2",
+        "src/backend/quality/service.ts:1",
+        "src/backend/quality/service.ts:2",
+        "src/backend/quality/service.ts:3",
+        "src/cli/main.ts:-",
+        "src/shared/error/app-error.ts:1",
+      ].sort(),
+    );
   });
 
   it("允许各事实所有者使用自己的合法依赖和入口", () => {
@@ -94,13 +99,13 @@ describe("backend boundary rules", () => {
 
     expect(errors).toContainEqual(
       expect.objectContaining({
-        rule_name: "CLI 后端依赖边界",
         relative_path: "src/cli/main.ts",
       }),
     );
   });
 });
 
+/** 用内存源码执行真实规则，避免测试依赖当前工作区内容。 */
 function run_rules(files) {
   const project_root = path.resolve("boundary-test-project");
   const source_by_path = new Map(
@@ -109,14 +114,11 @@ function run_rules(files) {
       content,
     ]),
   );
-  const context = {
+  const context = create_check_context({
     files: [...source_by_path.keys()],
     project_root,
-    read_file: (file_path) => source_by_path.get(file_path) ?? "",
-    relative_path: (file_path) => path.relative(project_root, file_path).replaceAll(path.sep, "/"),
-  };
+    source_reader: create_source_reader((file_path) => source_by_path.get(file_path)),
+  });
 
-  return create_backend_boundary_rules().flatMap((rule) =>
-    rule.check(context).map((error) => ({ rule_name: rule.name, ...error })),
-  );
+  return create_backend_boundary_rules().flatMap((rule) => rule.check(context));
 }

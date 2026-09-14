@@ -1,11 +1,6 @@
 import path from "node:path";
 
-import {
-  find_import_specifiers,
-  is_test_file,
-  is_typescript_source,
-  resolve_relative_specifier,
-} from "./core.mjs";
+import { is_test_file, is_typescript_source, resolve_relative_specifier } from "./core.mjs";
 
 const ALLOWED_BACKEND_FILE = "src/backend/api/api-base-url"; // preload 参数编码仍与 Gateway 公共地址契约共用实现
 
@@ -19,7 +14,7 @@ export function create_gui_boundary_rules() {
         return context.files
           .filter((file_path) => is_typescript_source(file_path) && !is_test_file(file_path))
           .flatMap((file_path) =>
-            find_import_specifiers(context.read_file(file_path)).flatMap((import_entry) => {
+            context.read_imports(file_path).flatMap((import_entry) => {
               const target = resolve_relative_specifier(file_path, import_entry.specifier);
               if (target === null || !target.startsWith(backend_root + path.sep)) return [];
               const relative_target = context.relative_path(target);

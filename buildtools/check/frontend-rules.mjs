@@ -1,11 +1,11 @@
 import path from "node:path";
 
 import {
-  find_import_specifiers,
   find_pattern_errors,
   is_test_file,
   is_typescript_source,
   resolve_relative_specifier,
+  to_relative_path,
 } from "./core.mjs";
 
 const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
@@ -62,6 +62,7 @@ export function create_frontend_boundary_rules() {
   ];
 }
 
+/** 限制旧技术分类目录回流，前端实现按业务所有权落位。 */
 function create_legacy_frontend_project_directory_rule() {
   return {
     name: "frontend 旧混合目录边界",
@@ -106,7 +107,7 @@ function create_frontend_page_ownership_rule() {
           continue;
         }
 
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           const target_page_owner = resolve_imported_page_owner(
             context.project_root,
             file_path,
@@ -136,6 +137,7 @@ function create_frontend_page_ownership_rule() {
   };
 }
 
+/** 通用交互层只处理 UI 行为，宿主通信与共享运行态由消费方注入。 */
 function create_frontend_interactions_boundary_rule() {
   return {
     name: "frontend interactions 所有权边界",
@@ -147,7 +149,7 @@ function create_frontend_interactions_boundary_rule() {
           continue;
         }
         const content = context.read_file(file_path);
-        for (const import_entry of find_import_specifiers(content)) {
+        for (const import_entry of context.read_imports(file_path)) {
           if (
             import_entry.specifier.startsWith("@frontend/app/") ||
             import_entry.specifier.startsWith("@frontend/pages/")
@@ -179,15 +181,15 @@ function create_frontend_interactions_boundary_rule() {
   };
 }
 
+/** 统一检查包名、别名和相对路径，防止通过不同写法越过宿主边界。 */
 function create_renderer_import_boundary_rule() {
   return {
     name: "renderer 导入边界",
     check: (context) => {
       const errors = [];
       for (const file_path of context.files.filter(is_frontend_production_source)) {
-        const content = context.read_file(file_path);
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(content)) {
+        for (const import_entry of context.read_imports(file_path)) {
           const message = validate_renderer_import(
             context.project_root,
             file_path,
@@ -208,6 +210,7 @@ function create_renderer_import_boundary_rule() {
   };
 }
 
+/** 后端请求与 SSE 统一经桌面 API 入口管理。 */
 function create_desktop_api_boundary_rule() {
   return {
     name: "后端 API 接入边界",
@@ -285,6 +288,7 @@ function create_desktop_runtime_snapshot_write_rule() {
   };
 }
 
+/** JSX 正文和可见属性共用 i18n 文案约束。 */
 function create_renderer_visible_text_rule() {
   return {
     name: "renderer 可见文案边界",
@@ -313,6 +317,7 @@ function create_renderer_visible_text_rule() {
   };
 }
 
+/** 产品布局范围使用 px 尺寸，基础控件按自身样式策略维护。 */
 function create_renderer_px_first_literal_rule() {
   return {
     name: "renderer px-first 尺寸边界",
@@ -339,6 +344,7 @@ function create_renderer_px_first_literal_rule() {
   };
 }
 
+/** 产品圆角消费语义 token，测试夹具按统一后缀排除。 */
 function create_renderer_radius_literal_rule() {
   return {
     name: "renderer 圆角语义边界",
@@ -365,6 +371,7 @@ function create_renderer_radius_literal_rule() {
   };
 }
 
+/** 全局 token 定义只由入口样式持有。 */
 function create_renderer_token_owner_rule() {
   return {
     name: "renderer 全局 token 边界",
@@ -391,6 +398,7 @@ function create_renderer_token_owner_rule() {
   };
 }
 
+/** 排除注释示例并保留行结构，诊断仍指向原始源码。 */
 function strip_comments_preserving_lines(content) {
   return content
     .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\r\n]/g, " "))
@@ -399,6 +407,7 @@ function strip_comments_preserving_lines(content) {
     });
 }
 
+/** 别名约束先于相对路径解析，避免包名提前返回绕过产品入口。 */
 function validate_renderer_import(project_root, file_path, specifier) {
   if (specifier === "electron" || specifier.startsWith("electron/")) {
     return "renderer 不能直接导入 Electron，只能通过 window.desktopApp 接入宿主能力";
@@ -414,6 +423,14 @@ function validate_renderer_import(project_root, file_path, specifier) {
   }
   if (specifier.startsWith("@backend/") && specifier !== "@backend/api/api-base-url") {
     return "renderer 只能通过 @backend/api/api-base-url 读取后端 API 地址契约";
+  }
+
+  if (
+    specifier === "@frontend/shadcn/button" &&
+    to_relative_path(project_root, file_path) !== APP_BUTTON_RELATIVE_PATH &&
+    !to_relative_path(project_root, file_path).startsWith("src/frontend/shadcn/")
+  ) {
+    return "业务 renderer 只能通过 widgets/app-button.tsx 使用产品按钮入口";
   }
 
   const resolved_path = resolve_relative_specifier(file_path, specifier);
@@ -439,20 +456,7 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "renderer 不能读取 native 实现";
   }
 
-  if (
-    specifier === "@frontend/shadcn/button" &&
-    relative_project_path(project_root, file_path) !== APP_BUTTON_RELATIVE_PATH &&
-    !relative_project_path(project_root, file_path).startsWith("src/frontend/shadcn/")
-  ) {
-    return "业务 renderer 只能通过 widgets/app-button.tsx 使用产品按钮入口";
-  }
-
   return null;
-}
-
-function relative_project_path(project_root, file_path) {
-  // 统一分隔符后再比较仓库相对路径，确保 Windows 与 CI 的规则结果一致。
-  return path.relative(project_root, file_path).replaceAll(path.sep, "/");
 }
 
 // 别名和相对导入必须落到同一 page owner 口径，避免换一种路径写法绕过边界。
@@ -477,6 +481,7 @@ function resolve_page_owner(project_root, file_path) {
   return page_owner === undefined || page_owner === "" ? null : page_owner;
 }
 
+/** 前端生产源码参与边界检查，测试夹具不作为产品依赖。 */
 function is_frontend_production_source(file_path) {
   return (
     is_typescript_source(file_path) &&
@@ -485,10 +490,12 @@ function is_frontend_production_source(file_path) {
   );
 }
 
+/** 可见文案规则只检查承载 JSX 的生产文件。 */
 function is_frontend_production_tsx(file_path) {
   return file_path.endsWith(".tsx") && is_frontend_production_source(file_path);
 }
 
+/** 尺寸规则覆盖产品布局和全局样式入口。 */
 function is_px_first_literal_scope(relative_path) {
   return (
     relative_path === TOKEN_OWNER_RELATIVE_PATH ||
@@ -496,6 +503,7 @@ function is_px_first_literal_scope(relative_path) {
   );
 }
 
+/** 圆角规则覆盖产品与基础控件源码，排除测试。 */
 function is_renderer_radius_semantic_scope(relative_path, file_path) {
   return (
     !is_test_file(file_path) &&
@@ -504,6 +512,7 @@ function is_renderer_radius_semantic_scope(relative_path, file_path) {
   );
 }
 
+/** 以目录边界判断归属，同时排除跨盘与父目录路径。 */
 function is_inside(file_path, directory_path) {
   const relative_path = path.relative(directory_path, file_path);
   return (

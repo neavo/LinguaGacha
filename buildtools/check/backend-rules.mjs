@@ -1,7 +1,6 @@
 import path from "node:path";
 
 import {
-  find_import_specifiers,
   find_pattern_errors,
   is_test_file,
   is_typescript_source,
@@ -70,25 +69,23 @@ function create_backend_outbound_network_rule() {
           is_backend_production_source(file_path) || is_cli_production_source(file_path),
       )) {
         const relative_path = context.relative_path(file_path);
+        if (relative_path === SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) continue;
         const content = context.read_file(file_path);
-        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
-          for (const import_entry of find_import_specifiers(content)) {
-            if (import_entry.specifier !== "undici") {
-              continue;
-            }
-            errors.push({
-              line: import_entry.line,
-              message: "Undici 传输只能由 system-proxy-http-client 拥有",
-              relative_path,
-            });
+        for (const import_entry of context.read_imports(file_path)) {
+          if (import_entry.specifier !== "undici") {
+            continue;
           }
-        }
-        if (relative_path !== SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH) {
-          const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
-            return "全局 fetch 只能由 network 的系统代理客户端安装";
+          errors.push({
+            line: import_entry.line,
+            message: "Undici 传输只能由 system-proxy-http-client 拥有",
+            relative_path,
           });
-          errors.push(...matches.map((match) => ({ ...match, relative_path })));
         }
+
+        const matches = find_pattern_errors(content, /\bglobalThis\.fetch\s*=/g, () => {
+          return "全局 fetch 只能由 network 的系统代理客户端安装";
+        });
+        errors.push(...matches.map((match) => ({ ...match, relative_path })));
       }
       return errors;
     },
@@ -104,7 +101,7 @@ function create_backend_api_dependency_rule() {
       const api_root = path.join(context.project_root, "src", "backend", "api");
       for (const file_path of context.files.filter(is_backend_feature_source)) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           const target = resolve_relative_specifier(file_path, import_entry.specifier);
           if (target === null || !is_path_inside(target, api_root)) {
             continue;
@@ -142,7 +139,7 @@ function create_cli_dependency_rule() {
       const cli_files = context.files.filter(is_cli_production_source);
       for (const file_path of cli_files) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           const target = resolve_relative_specifier(file_path, import_entry.specifier);
           if (
             target === null ||
@@ -201,7 +198,7 @@ function collect_reachable_forbidden_imports(
   if (visited.has(file_path)) return new Set();
   visited.add(file_path);
   const result = new Set();
-  for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+  for (const import_entry of context.read_imports(file_path)) {
     const target = resolve_relative_specifier(file_path, import_entry.specifier);
     if (target === null) continue;
     if (forbidden_roots.some((root) => is_path_inside(target, root))) {
@@ -236,7 +233,7 @@ function create_backend_services_dependency_rule() {
       for (const file_path of context.files) {
         const relative_path = context.relative_path(file_path);
         if (relative_path !== BACKEND_SERVICES_RELATIVE_PATH) continue;
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           const target = resolve_relative_specifier(file_path, import_entry.specifier);
           if (target === null || !forbidden_roots.some((root) => is_path_inside(target, root))) {
             continue;
@@ -262,7 +259,7 @@ function create_model_provider_sdk_rule() {
       const errors = [];
       for (const file_path of context.files.filter(is_model_production_source)) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           if (!provider_packages.has(import_entry.specifier)) {
             continue;
           }
@@ -287,7 +284,7 @@ function create_llm_model_dependency_rule() {
       const model_root = path.join(context.project_root, "src", "backend", "model");
       for (const file_path of context.files.filter(is_llm_production_source)) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           const target = resolve_relative_specifier(file_path, import_entry.specifier);
           if (target === null || !is_path_inside(target, model_root)) {
             continue;
@@ -348,7 +345,7 @@ function create_native_fs_boundary_rule() {
       const errors = [];
       for (const file_path of context.files.filter(is_backend_production_source)) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           if (!["node:fs", "node:fs/promises"].includes(import_entry.specifier)) {
             continue;
           }
@@ -379,7 +376,7 @@ function create_sqlite_boundary_rule() {
       const errors = [];
       for (const file_path of context.files.filter(is_backend_production_source)) {
         const relative_path = context.relative_path(file_path);
-        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+        for (const import_entry of context.read_imports(file_path)) {
           if (import_entry.specifier !== "node:sqlite") {
             continue;
           }
