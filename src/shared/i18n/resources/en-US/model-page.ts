@@ -20,7 +20,9 @@ export const en_us_model_page = {
       description: "Custom models compatible with Anthropic Claude API format",
     },
   },
+  copy_name: "{NAME}_copy",
   action: {
+    copy: "Duplicate",
     basic_settings: "Basic Settings",
     task_settings: "Task Settings",
     advanced_settings: "Advanced Settings",
@@ -44,6 +46,8 @@ export const en_us_model_page = {
     },
   },
   feedback: {
+    copy_success: "Endpoint duplicated …\nGroup: {CATEGORY}\nName: {NAME}",
+    copy_failed: "Failed to duplicate the model. Please try again later",
     refresh_failed: "Failed to refresh the model snapshot. Please try again later",
     add_failed: "Failed to add the model. Please try again later",
     update_failed: "Failed to save the model configuration. Please try again later",

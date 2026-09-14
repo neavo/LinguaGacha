@@ -37,6 +37,121 @@ afterEach(async () => {
 });
 
 describe("ModelService 配置管理", () => {
+  it.each([
+    ["Google", "CUSTOM_GOOGLE"],
+    ["OpenAI", "CUSTOM_OPENAI"],
+    ["OpenAIResponses", "CUSTOM_OPENAI_RESPONSES"],
+    ["Anthropic", "CUSTOM_ANTHROPIC"],
+  ] as const)("复制 %s 预设的当前完整配置到 %s 末尾", async (api_format, model_type) => {
+    const preset = create_model({ id: "source", type: "PRESET", api_format });
+    const { service, app_setting_service } = await create_model_service(
+      [preset, create_model({ id: "target", type: model_type, api_format })],
+      { builtin_models: [preset] },
+    );
+    const before = read_request_model_snapshot(
+      service.update_model({
+        model_id: "source",
+        patch: {
+          name: "已编辑模型",
+          api_key: "first-key\nsecond-key",
+          api_url: "https://edited.example.test/v1",
+          agent: { context_window: 100_000, max_output_tokens: 10_000 },
+          threshold: { rpm_limit: 12, concurrency_limit: 3 },
+          generation: { temperature: 0.7, temperature_custom_enable: true },
+          request: {
+            extra_headers: { Authorization: "Bearer secret" },
+            extra_headers_custom_enable: true,
+            extra_body: { options: { values: [1, 2] } },
+            extra_body_custom_enable: true,
+          },
+        },
+      }),
+    ).models.find((model) => model["id"] === "source")!;
+    service.select_model({ target: "translation", model_id: "source" });
+    service.select_model({ target: "agent", model_id: "source" });
+    service.select_model({ target: "agent_batch_translation", model_id: "source" });
+    const selection = app_setting_service.read_setting()["model_selection"];
+    const save = vi.spyOn(app_setting_service, "save_setting");
+
+    const response = service.copy_model({ model_id: "source" });
+    const copied = read_request_model_snapshot(response);
+    const group = copied.models.filter((model) => model["type"] === model_type);
+    const copy = copied.models.find((model) => model["id"] === response["copied_model_id"])!;
+    expect(group.map((model) => model["id"])).toEqual(["target", copy["id"]]);
+    expect(copy["id"]).not.toBe("source");
+    expect(copy["id"]).not.toBe("target");
+    expect(copy).toEqual({
+      ...before,
+      id: copy["id"],
+      type: model_type,
+      name: "已编辑模型_副本",
+      can_reset: false,
+    });
+    expect(save).toHaveBeenCalledOnce();
+    expect(app_setting_service.read_setting()["model_selection"]).toEqual(selection);
+
+    const updated = read_request_model_snapshot(
+      service.update_model({
+        model_id: copy["id"],
+        patch: { request: { extra_body: { options: { values: [9] } } }, api_key: "copy-key" },
+      }),
+    );
+    expect(updated.models.find((model) => model["id"] === "source")).toEqual(before);
+  });
+
+  it("复制自定义模型时跨分类避开重名，副本重载后可删除", async () => {
+    const { service, paths, runtime_gate, llm_request } = await create_model_service([
+      create_model({ id: "source" }),
+      create_model({ id: "collision", type: "PRESET", name: "模型_副本" }),
+    ]);
+    service.get_snapshot();
+    service.copy_model({ model_id: "source" });
+    service.copy_model({ model_id: "source" });
+    const reloaded = new ModelService(
+      paths,
+      new AppSettingService(paths),
+      { request: llm_request },
+      runtime_gate,
+    );
+    const group = read_request_model_snapshot(reloaded.get_snapshot()).models.filter(
+      (model) => model["type"] === "CUSTOM_OPENAI",
+    );
+    expect(group.map((model) => model["name"])).toEqual(["模型", "模型_副本_2", "模型_副本_3"]);
+    expect(new Set(group.map((model) => model["id"])).size).toBe(3);
+    const copy_id = group.at(-1)!["id"];
+    expect(
+      read_request_model_snapshot(reloaded.delete_model({ model_id: copy_id })).models.some(
+        (model) => model["id"] === copy_id,
+      ),
+    ).toBe(false);
+  });
+
+  it("复制请求非法或协议不支持时拒绝写入，保存失败保留原配置", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({ id: "source" }),
+      create_model({ id: "sakura", type: "PRESET", api_format: "SakuraLLM" }),
+    ]);
+    service.get_snapshot();
+    const before = app_setting_service.read_setting();
+    const save = vi.spyOn(app_setting_service, "save_setting");
+    const invalid_requests: JsonRecord[] = [
+      {},
+      { model_id: " " },
+      { model_id: 12 },
+      { model_id: "sakura" },
+    ];
+    for (const request of invalid_requests) {
+      expect(() => service.copy_model(request)).toThrow("request.validation_failed");
+    }
+    expect(() => service.copy_model({ model_id: "missing" })).toThrow("model.not_found");
+    expect(save).not.toHaveBeenCalled();
+    save.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    expect(() => service.copy_model({ model_id: "source" })).toThrow("disk full");
+    expect(app_setting_service.read_setting()).toEqual(before);
+  });
+
   it("保留有效关闭配置，切换思考后可保存并重新关闭", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({
@@ -861,6 +976,7 @@ describe("ModelService 配置管理", () => {
     for (const operation of [
       () => service.update_model({}),
       () => service.add_model({}),
+      () => service.copy_model({}),
       () => service.delete_model({}),
       () => service.reset_preset_model({}),
       () => service.reorder_model({}),

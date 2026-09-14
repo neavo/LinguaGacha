@@ -17,7 +17,9 @@ export const zh_cn_model_page = {
       description: "兼容 Anthropic Claude API 格式的自定义模型",
     },
   },
+  copy_name: "{NAME}_副本",
   action: {
+    copy: "复制",
     basic_settings: "基础设置",
     task_settings: "任务设置",
     advanced_settings: "高级设置",
@@ -41,6 +43,8 @@ export const zh_cn_model_page = {
     },
   },
   feedback: {
+    copy_success: "接入点已复制 …\n分组：{CATEGORY}\n名称：{NAME}",
+    copy_failed: "复制模型失败，请稍后再试 …",
     refresh_failed: "模型快照刷新失败，请稍后再试 …",
     add_failed: "新增模型失败，请稍后再试 …",
     update_failed: "模型配置保存失败，请稍后再试 …",

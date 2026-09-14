@@ -19,7 +19,9 @@ export const ko_kr_model_page = {
       description: "Anthropic Claude API 형식과 호환되는 사용자 지정 모델",
     },
   },
+  copy_name: "{NAME}_사본",
   action: {
+    copy: "복제",
     basic_settings: "기본 설정",
     task_settings: "작업 설정",
     advanced_settings: "고급 설정",
@@ -43,6 +45,8 @@ export const ko_kr_model_page = {
     },
   },
   feedback: {
+    copy_success: "접속 지점을 복제했습니다 …\n그룹: {CATEGORY}\n이름: {NAME}",
+    copy_failed: "모델을 복제하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     refresh_failed: "모델 정보를 새로 고치지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     add_failed: "모델을 추가하지 못했습니다. 잠시 후 다시 시도해 주세요 …",
     update_failed: "모델 설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요 …",

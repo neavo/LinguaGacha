@@ -89,6 +89,7 @@ const POST_PATHS = new Set([
   "/api/models/select",
   "/api/models/thinking-level/update",
   "/api/models/add",
+  "/api/models/copy",
   "/api/models/delete",
   "/api/models/reset-preset",
   "/api/models/reorder",
@@ -246,6 +247,15 @@ describe("register_api_routes", () => {
     expect(fixture.select_model).toHaveBeenCalledExactlyOnceWith(request);
   });
 
+  it("复制路由原样转交源 ID 并返回副本身份和快照", () => {
+    const fixture = create_route_fixture();
+    const request = { model_id: "source" };
+    const response = { copied_model_id: "copy", snapshot: { models: [] } };
+    fixture.copy_model.mockReturnValue(response);
+    expect(read_post_handler(fixture.post_json, "/api/models/copy")(request)).toBe(response);
+    expect(fixture.copy_model).toHaveBeenCalledExactlyOnceWith(request);
+  });
+
   it("思考档位更新原样转交模型服务", () => {
     const fixture = create_route_fixture();
     const request = { usage: "agent", thinking_level: "HIGH" };
@@ -278,6 +288,7 @@ function create_route_fixture() {
   const reset = vi.fn(async () => acknowledgement);
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const select_model = vi.fn((request: JsonRecord) => ({ selected: request }));
+  const copy_model = vi.fn();
   const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
     updated: request,
   }));
@@ -326,6 +337,7 @@ function create_route_fixture() {
         models: [],
       })),
       select_model,
+      copy_model,
       update_selected_model_thinking_level,
     },
     batchTranslation: { start: start_task },
@@ -367,6 +379,7 @@ function create_route_fixture() {
     update_selected_model_thinking_level,
     update_settings,
     select_model,
+    copy_model,
   };
 }
 

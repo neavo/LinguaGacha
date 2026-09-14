@@ -61,8 +61,8 @@ vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
 }));
 
 /** 隔离页面动作分发，交互效果由对应 Hook 测试负责。 */
-function create_model_page_state(overrides: Partial<ModelEntrySnapshot> = {}) {
-  const model = create_model_snapshot({ id: "model-openai-1", name: "OpenAI 模型", ...overrides });
+function create_model_page_state() {
+  const model = create_model_snapshot({ id: "model-openai-1", name: "OpenAI 模型" });
   const open_dialog = vi.fn();
 
   return {
@@ -104,6 +104,7 @@ function create_model_page_state(overrides: Partial<ModelEntrySnapshot> = {}) {
       confirm_dialog: vi.fn(),
       close_confirm: vi.fn(),
       request_add_model: vi.fn(),
+      request_copy_model: vi.fn(),
       request_reorder_models: vi.fn(),
       request_reset_model: vi.fn(),
       request_delete_model: vi.fn(),
@@ -126,32 +127,11 @@ describe("ModelPage", () => {
     push_toast_mock.mockReset();
   });
 
-  it.each([
-    { type: "PRESET", can_reset: true, action: "reset" },
-    { type: "PRESET", can_reset: false, action: "delete" },
-    { type: "CUSTOM_OPENAI", can_reset: false, action: "delete" },
-  ] as const)(
-    "$type can_reset=$can_reset 展示并触发 $action",
-    async ({ type, can_reset, action }) => {
-      const { state } = create_model_page_state({ type, can_reset });
-      use_model_page_state_mock.mockReturnValue(state);
-      container = document.createElement("div");
-      document.body.append(container);
-      root = createRoot(container);
-      await act(async () => root?.render(<ModelPage is_sidebar_collapsed={false} />));
-      const actions = [...container.querySelectorAll("button")].filter((button) =>
-        ["app.action.reset", "app.action.delete"].includes(button.textContent?.trim() ?? ""),
-      );
-      expect(actions.map((button) => button.textContent?.trim())).toEqual([`app.action.${action}`]);
-      await act(async () => actions[0]!.click());
-      expect(
-        state[action === "reset" ? "request_reset_model" : "request_delete_model"],
-      ).toHaveBeenCalledWith("model-openai-1");
-    },
-  );
-
-  it("配置动作携带对应类型与模型标识", async () => {
+  it("菜单动作提交所在条目的模型 ID", async () => {
     const { open_dialog, state } = create_model_page_state();
+    const other = create_model_snapshot({ id: "other", name: "另一个模型", can_reset: false });
+    state.snapshot.models.push(other);
+    state.grouped_categories[0]!.models.push(other);
     use_model_page_state_mock.mockReturnValue(state);
     container = document.createElement("div");
     document.body.append(container);
@@ -161,26 +141,22 @@ describe("ModelPage", () => {
       root?.render(<ModelPage is_sidebar_collapsed={false} />);
     });
 
-    const find_button = (label: string): HTMLButtonElement => {
-      const button = [...(container?.querySelectorAll("button") ?? [])].find(
-        (candidate) => candidate.textContent?.trim() === label,
-      );
-      if (button === undefined) {
-        throw new Error(`找不到按钮：${label}`);
-      }
-      return button;
-    };
+    const source = container.querySelector<HTMLElement>('article[aria-label="OpenAI 模型"]')!;
+    const target = container.querySelector<HTMLElement>('article[aria-label="另一个模型"]')!;
+    /** 限定条目后查找可见动作，检验页面闭包是否误用了其它模型 ID。 */
+    const find_button = (entry: HTMLElement, label: string): HTMLButtonElement =>
+      [...entry.querySelectorAll("button")].find((button) => button.textContent === label)!;
 
     await act(async () => {
-      find_button("model_page.action.basic_settings").click();
-      find_button("model_page.action.task_settings").click();
-      find_button("model_page.action.advanced_settings").click();
+      find_button(source, "app.action.reset").click();
+      find_button(target, "app.action.delete").click();
+      find_button(target, "model_page.action.copy").click();
+      find_button(target, "model_page.action.basic_settings").click();
     });
 
-    expect(open_dialog.mock.calls).toEqual([
-      ["basic", "model-openai-1"],
-      ["task", "model-openai-1"],
-      ["advanced", "model-openai-1"],
-    ]);
+    expect(state.request_reset_model).toHaveBeenCalledExactlyOnceWith("model-openai-1");
+    expect(state.request_delete_model).toHaveBeenCalledExactlyOnceWith("other");
+    expect(state.request_copy_model).toHaveBeenCalledExactlyOnceWith("other");
+    expect(open_dialog).toHaveBeenCalledExactlyOnceWith("basic", "other");
   });
 });

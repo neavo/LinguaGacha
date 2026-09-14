@@ -213,6 +213,48 @@ export class ModelService {
     return this.persist_config_and_build_snapshot(config, presets);
   }
 
+  /** 按当前协议复制完整配置，一次保存副本身份、名称和目标分类。 */
+  public copy_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
+    const model_id = request["model_id"];
+    if (typeof model_id !== "string" || model_id.trim() === "") {
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { field: "model_id" },
+      });
+    }
+    const { config, presets } = this.load_setting_with_models(false);
+    const models = read_config_model_records(config);
+    const index = this.find_model_index_or_raise(models, model_id);
+    const source = Model.from_json(models[index], model_id);
+    const model_type = Model.resolve_custom_type(source.api_format);
+    if (model_type === null) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        public_details: { field: "api_format" },
+      });
+    }
+    const base_name = this.t(config["app_language"], "model_page.copy_name", {
+      NAME: source.name,
+    });
+    const existing_names = new Set(models.map((model) => String(model["name"])));
+    let name = base_name;
+    for (let suffix = 2; existing_names.has(name); suffix += 1) {
+      name = `${base_name}_${suffix}`;
+    }
+    // to_json 隔离嵌套配置；统一排序会将追加的副本放到目标分类末尾。
+    const copy = {
+      ...source.to_json(),
+      id: crypto.randomUUID(),
+      type: model_type,
+      name,
+    };
+    models.push(copy);
+    config["models"] = models as unknown as JsonValue;
+    return {
+      ...this.persist_config_and_build_snapshot(config, presets),
+      copied_model_id: copy.id, // 让消费方按身份定位结果，展示顺序只负责排列。
+    };
+  }
+
   /**
    * 删除模型并为所有引用该模型的用途重选，防止配置留下悬空引用
    */
@@ -538,7 +580,7 @@ export class ModelService {
   }
 
   /**
-   * 模型探测日志按当前应用语言解析，后台不固定语言。
+   * 模型日志和自动命名按当前应用语言解析。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_app_locale(app_language), key, params);
@@ -712,7 +754,7 @@ export class ModelService {
   }
 
   /**
-   * 按 sort_index 排序模型，保持配置和页面顺序一致
+   * 按分类稳定排序，保留各分类内部顺序。
    */
   private sort_models(models: JsonRecord[]): JsonRecord[] {
     return [...models].sort((a, b) => {

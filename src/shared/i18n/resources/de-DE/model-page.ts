@@ -20,7 +20,9 @@ export const de_de_model_page = {
       description: "Benutzerdefinierte Modelle, kompatibel mit dem Anthropic Claude API-Format",
     },
   },
+  copy_name: "{NAME}_Kopie",
   action: {
+    copy: "Duplizieren",
     basic_settings: "Grundeinstellungen",
     task_settings: "Aufgabeneinstellungen",
     advanced_settings: "Erweiterte Einstellungen",
@@ -44,6 +46,8 @@ export const de_de_model_page = {
     },
   },
   feedback: {
+    copy_success: "Endpunkt dupliziert …\nGruppe: {CATEGORY}\nName: {NAME}",
+    copy_failed: "Fehler beim Duplizieren des Modells. Bitte versuchen Sie es später erneut",
     refresh_failed:
       "Fehler beim Aktualisieren der Modellübersicht. Bitte versuchen Sie es später erneut",
     add_failed: "Fehler beim Hinzufügen des Modells. Bitte versuchen Sie es später erneut",

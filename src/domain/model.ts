@@ -48,6 +48,15 @@ export type ModelSelection = {
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
 
+/** 协议决定复制目标分类；没有自定义分类的协议不支持复制。 */
+const CUSTOM_MODEL_TYPE_BY_API_FORMAT = {
+  OpenAI: "CUSTOM_OPENAI",
+  OpenAIResponses: "CUSTOM_OPENAI_RESPONSES",
+  SakuraLLM: null,
+  Google: "CUSTOM_GOOGLE",
+  Anthropic: "CUSTOM_ANTHROPIC",
+} as const satisfies Record<ModelApiFormat, CustomModelType | null>;
+
 type ModelRequestConfig = {
   extra_headers: JsonRecord; // 请求层额外 headers
   extra_headers_custom_enable: boolean; // 是否启用自定义 headers
@@ -257,6 +266,11 @@ export class Model {
    */
   public static custom_types(): CustomModelType[] {
     return MODEL_TYPES.filter(Model.is_custom_type);
+  }
+
+  /** 菜单与配置写入口共用协议归属，避免复制能力和实际分类分离。 */
+  public static resolve_custom_type(api_format: ModelApiFormat): CustomModelType | null {
+    return CUSTOM_MODEL_TYPE_BY_API_FORMAT[api_format];
   }
 
   /** 补齐请求配置并复制扩展对象，隔离调用方的嵌套引用。 */

@@ -1,23 +1,18 @@
 import { AppContentState } from "@frontend/widgets/app-content-state";
-import { GraduationCap, ListTodo, Plus, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/pages/model-page/model-page.css";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { ModelCategoryCard } from "@frontend/pages/model-page/components/model-category-card";
 import { ModelItemChip } from "@frontend/pages/model-page/components/model-item-chip";
+import { ModelItemMenu } from "@frontend/pages/model-page/components/model-item-menu";
 import { ModelAdvancedSettingsDialog } from "@frontend/pages/model-page/dialogs/model-advanced-settings-dialog";
 import { ModelBasicSettingsDialog } from "@frontend/pages/model-page/dialogs/model-basic-settings-dialog";
 import { ModelSelectorDialog } from "@frontend/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@frontend/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@frontend/pages/model-page/use-model-page-state";
 import { AppButton } from "@frontend/widgets/app-button";
-import {
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuSeparator,
-} from "@frontend/widgets/app-dropdown-menu";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 
 type ModelPageProps = {
@@ -158,55 +153,16 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                   drag_disabled={drag_disabled}
                   drag_aria_label={t("app.drag.handle")}
                   menu={
-                    <AppDropdownMenuContent align="center">
-                      <AppDropdownMenuGroup>
-                        <AppDropdownMenuItem
-                          onClick={() => {
-                            model_page_state.open_dialog("basic", model.id);
-                          }}
-                        >
-                          <SlidersHorizontal />
-                          {t("model_page.action.basic_settings")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          onClick={() => {
-                            model_page_state.open_dialog("task", model.id);
-                          }}
-                        >
-                          <ListTodo />
-                          {t("model_page.action.task_settings")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          onClick={() => {
-                            model_page_state.open_dialog("advanced", model.id);
-                          }}
-                        >
-                          <GraduationCap />
-                          {t("model_page.action.advanced_settings")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
-                        {model.can_reset ? (
-                          <AppDropdownMenuItem
-                            onClick={() => {
-                              model_page_state.request_reset_model(model.id);
-                            }}
-                          >
-                            <Recycle />
-                            {t("app.action.reset")}
-                          </AppDropdownMenuItem>
-                        ) : (
-                          <AppDropdownMenuItem
-                            variant="destructive"
-                            onClick={() => {
-                              model_page_state.request_delete_model(model.id);
-                            }}
-                          >
-                            <Trash2 />
-                            {t("app.action.delete")}
-                          </AppDropdownMenuItem>
-                        )}
-                      </AppDropdownMenuGroup>
-                    </AppDropdownMenuContent>
+                    <ModelItemMenu
+                      model={model}
+                      readonly={model_page_state.readonly}
+                      on_open_settings={(kind) => model_page_state.open_dialog(kind, model.id)}
+                      on_copy={() => {
+                        void model_page_state.request_copy_model(model.id);
+                      }}
+                      on_reset={() => model_page_state.request_reset_model(model.id)}
+                      on_delete={() => model_page_state.request_delete_model(model.id)}
+                    />
                   }
                 />
               )}
