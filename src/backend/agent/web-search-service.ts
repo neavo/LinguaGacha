@@ -1,9 +1,11 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
+  Client,
+  SdkError,
+  SdkErrorCode,
+  SdkHttpError,
   StreamableHTTPClientTransport,
-  StreamableHTTPError,
-} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+  type CallToolResult,
+} from "@modelcontextprotocol/client";
 
 import { is_json_record } from "../../domain/json";
 import { AgentToolError } from "./model-tools/definition";
@@ -13,7 +15,7 @@ import type {
   AgentWebSearchResult,
 } from "./model-tools/web-search";
 
-const WEB_SEARCH_PROVIDER_TIMEOUT_MS = 8_000; // 单家只限制连接与调用，整次搜索服从调用方 signal
+const WEB_SEARCH_PROVIDER_TIMEOUT_MS = 8_000; // 单家连接、调用与会话重建共用一次预算
 const WEB_SEARCH_RESULT_LIMIT = 10; // 仅约束支持数量参数的供应商，不构成模型侧契约
 
 /** 供应商内部失败分类；只有全部来源一致时才提升为同名产品错误。 */
@@ -91,147 +93,19 @@ class SearchProviderError extends Error {
     public readonly code: SearchProviderFailureCode,
     cause?: unknown,
   ) {
-    super(
-      `Web search provider ${provider} failed with ${code}.`,
-      cause === undefined ? undefined : { cause },
-    );
+    super(`Web search provider ${provider} failed with ${code}.`, { cause });
     this.name = "SearchProviderError";
-  }
-}
-
-/** 复用一套固定工具 MCP 生命周期；供应商差异只存在于不可变描述。 */
-class McpSearchProvider {
-  private client: Client | null = null; // 当前可复用的已初始化协议会话
-  private transport: StreamableHTTPClientTransport | null = null; // 与 client 同生命周期
-  private disposed = false; // 组合根释放后禁止重新建立远端会话
-
-  /** 注入应用版本与唯一供应商描述，不自行发现远端工具。 */
-  public constructor(
-    private readonly client_version: string,
-    private readonly spec: SearchProviderSpec,
-  ) {}
-
-  /** 暴露稳定供应商身份，不泄漏可变连接状态。 */
-  public get name(): AgentWebSearchProvider {
-    return this.spec.name;
-  }
-
-  /** 会话 404 只表示远端状态失效；搜索只读且幂等，可重建后安全重试一次。 */
-  public async search(query: string, signal: AbortSignal): Promise<string> {
-    try {
-      try {
-        return await this.call_search(query, signal);
-      } catch (error) {
-        if (!(error instanceof StreamableHTTPError && error.code === 404)) throw error;
-      }
-      await this.close_connection();
-      return await this.call_search(query, signal);
-    } catch (error) {
-      if (signal.aborted) throw signal.reason;
-      throw normalize_provider_error(this.name, error);
-    }
-  }
-
-  /** 关闭活动连接；未触达过的延迟供应商没有资源可释放。 */
-  public async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
-    await this.close_connection();
-  }
-
-  /** 固定调用已声明工具，只接受模型可消费的非空文本块。 */
-  private async call_search(query: string, signal: AbortSignal): Promise<string> {
-    const client = await this.require_client(signal);
-    const result = (await client.callTool(
-      {
-        name: this.spec.tool,
-        arguments: this.spec.create_arguments(query),
-      },
-      CallToolResultSchema,
-      {
-        signal,
-        timeout: WEB_SEARCH_PROVIDER_TIMEOUT_MS,
-        maxTotalTimeout: WEB_SEARCH_PROVIDER_TIMEOUT_MS,
-      },
-    )) as CallToolResult;
-    const text = result.content
-      .filter(
-        (block): block is Extract<(typeof result.content)[number], { type: "text" }> =>
-          block.type === "text",
-      )
-      .map((block) => block.text.trim())
-      .filter((block) => block !== "")
-      .join("\n\n");
-    if (result.isError === true) {
-      throw new SearchProviderError(
-        this.name,
-        "upstream_failed",
-        text === "" ? undefined : new Error(text),
-      );
-    }
-    if (text === "") throw new SearchProviderError(this.name, "empty_result");
-    const failure_code = this.spec.classify_failure?.(text);
-    if (failure_code) throw new SearchProviderError(this.name, failure_code);
-    return text;
-  }
-
-  /** 首次搜索才连接；Header 与客户端身份由固定边界注入，HTTP 使用进程 transport。 */
-  private async require_client(signal: AbortSignal): Promise<Client> {
-    if (this.disposed) throw new SearchProviderError(this.name, "unavailable");
-    if (this.client !== null) return this.client;
-    const transport = new StreamableHTTPClientTransport(
-      new URL(this.spec.url),
-      this.spec.headers === undefined ? {} : { requestInit: { headers: this.spec.headers } },
-    );
-    const client = new Client({ name: "LinguaGacha", version: this.client_version });
-    this.client = client;
-    this.transport = transport;
-    client.onclose = () => {
-      if (this.client === client) {
-        this.client = null;
-        this.transport = null;
-      }
-    };
-    try {
-      await client.connect(transport, {
-        signal,
-        timeout: WEB_SEARCH_PROVIDER_TIMEOUT_MS,
-        maxTotalTimeout: WEB_SEARCH_PROVIDER_TIMEOUT_MS,
-      });
-      return client;
-    } catch (error) {
-      if (this.client === client) {
-        this.client = null;
-        this.transport = null;
-      }
-      await transport.close();
-      throw error;
-    }
-  }
-
-  /** 先隔离活动引用再关闭底层资源，避免关闭回调改写后续连接。 */
-  private async close_connection(): Promise<void> {
-    const client = this.client;
-    const transport = this.transport;
-    this.client = null;
-    this.transport = null;
-    if (client !== null) await client.close();
-    else if (transport !== null) await transport.close();
   }
 }
 
 /** 应用级固定搜索服务；成功来源晋升，并在后续失败时环形回访其它来源。 */
 export class WebSearchService {
-  private readonly providers: readonly McpSearchProvider[]; // 固定顺序的应用级延迟连接
+  private readonly clients = new Map<AgentWebSearchProvider, Client>(); // 拥有连接中的客户端及可复用会话
   private preferred_provider_index = 0; // 仅随应用进程存在，工程切换不重置
   private disposed = false; // 组合根释放后阻止重新触达任何供应商
 
-  /** 创建固定五源但不建立连接，避免未使用 Web 工具产生启动网络请求。 */
-  public constructor(client_version: string) {
-    this.providers = SEARCH_PROVIDER_SPECS.map(
-      (spec) => new McpSearchProvider(client_version, spec),
-    );
-  }
+  /** 工具按 sequential 调用，组合根先等待 Agent 释放，再关闭本服务。 */
+  public constructor(private readonly client_version: string) {}
 
   /** 从当前首选开始串行尝试，成功来源晋升；调用方取消不触发后续来源。 */
   public readonly search: AgentWebSearchPort = async (
@@ -242,17 +116,21 @@ export class WebSearchService {
     if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
     const failures: SearchProviderError[] = [];
     // 只在成功后改写首选，失败请求始终能遍历每个来源一次且自然环回恢复来源。
-    for (let offset = 0; offset < this.providers.length; offset += 1) {
-      const provider_index = (this.preferred_provider_index + offset) % this.providers.length;
-      const provider = this.providers[provider_index]!;
+    for (let offset = 0; offset < SEARCH_PROVIDER_SPECS.length; offset += 1) {
+      const provider_index =
+        (this.preferred_provider_index + offset) % SEARCH_PROVIDER_SPECS.length;
+      const provider = SEARCH_PROVIDER_SPECS[provider_index]!;
       const timeout_signal = AbortSignal.timeout(WEB_SEARCH_PROVIDER_TIMEOUT_MS);
       const signal = AbortSignal.any([caller_signal, timeout_signal]);
       try {
-        const text = await provider.search(query, signal);
+        const text = await this.search_provider(provider, query, signal);
+        signal.throwIfAborted();
+        if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
         this.preferred_provider_index = provider_index;
         return { provider: provider.name, text };
       } catch (error) {
         if (caller_signal.aborted) throw caller_signal.reason;
+        if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
         failures.push(
           timeout_signal.aborted
             ? new SearchProviderError(provider.name, "timeout", error)
@@ -268,7 +146,7 @@ export class WebSearchService {
     if (this.disposed) return;
     this.disposed = true;
     const results = await Promise.allSettled(
-      this.providers.map(async (provider) => provider.dispose()),
+      [...this.clients.keys()].map((provider) => this.close_client(provider)),
     );
     const errors = results
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -277,6 +155,96 @@ export class WebSearchService {
       throw new AggregateError(errors, "Failed to close web search provider connections.");
     }
   }
+
+  /** 仅已携带会话的工具调用 404 才重建；第二次失败也释放会话，预算始终由外层拥有。 */
+  private async search_provider(
+    spec: SearchProviderSpec,
+    query: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    for (let attempt = 0; ; attempt += 1) {
+      const client = await this.require_client(spec, signal);
+      const has_session = client.transport?.sessionId !== undefined; // 记录发送时的会话事实，关闭后 transport 可能清空
+      try {
+        const result = await client.callTool(
+          { name: spec.tool, arguments: spec.create_arguments(query) },
+          { signal },
+        );
+        return read_search_text(spec, result);
+      } catch (error) {
+        // initialize 协议的取消只发送通知；关闭本地连接才能同时终止尚未返回的 HTTP。
+        if (
+          signal.aborted ||
+          (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout)
+        ) {
+          await this.close_client(spec.name, error);
+          throw error;
+        }
+        if (!(has_session && error instanceof SdkHttpError && error.status === 404)) throw error;
+        await this.close_client(spec.name, error);
+        if (attempt > 0) throw error;
+      }
+    }
+  }
+
+  /** 延迟创建并登记所有权；默认 initialize 握手与全局 fetch 共用现有供应商及系统代理契约。 */
+  private async require_client(spec: SearchProviderSpec, signal: AbortSignal): Promise<Client> {
+    signal.throwIfAborted();
+    if (this.disposed) throw new AgentToolError({ code: "web_search.unavailable" });
+    const existing = this.clients.get(spec.name);
+    if (existing !== undefined) return existing;
+    const client = new Client({ name: "LinguaGacha", version: this.client_version });
+    const transport = new StreamableHTTPClientTransport(new URL(spec.url), {
+      requestInit: { headers: spec.headers },
+    });
+    this.clients.set(spec.name, client);
+    // 迟到的旧连接关闭通知只能释放自身，不能删除已经替换的新连接。
+    client.onclose = () => {
+      if (this.clients.get(spec.name) === client) this.clients.delete(spec.name);
+    };
+    try {
+      await client.connect(transport, { signal });
+      signal.throwIfAborted();
+      return client;
+    } catch (error) {
+      await this.close_client(spec.name, error);
+      throw error;
+    }
+  }
+
+  /** 先移除拥有的引用再关闭；清理失败时同时保留触发清理的原始原因。 */
+  private async close_client(provider: AgentWebSearchProvider, cause?: unknown): Promise<void> {
+    const client = this.clients.get(provider);
+    this.clients.delete(provider);
+    try {
+      await client?.close();
+    } catch (error) {
+      throw new AggregateError(
+        cause === undefined ? [error] : [cause, error],
+        `Failed to close web search provider ${provider}.`,
+      );
+    }
+  }
+}
+
+/** 协议结构由 SDK 校验；业务只接收非空文本并识别供应商自己的失败结果。 */
+function read_search_text(spec: SearchProviderSpec, result: CallToolResult): string {
+  const text = result.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text.trim())
+    .filter((block) => block !== "")
+    .join("\n\n");
+  if (result.isError === true) {
+    throw new SearchProviderError(
+      spec.name,
+      "upstream_failed",
+      text === "" ? undefined : new Error(text),
+    );
+  }
+  if (text === "") throw new SearchProviderError(spec.name, "empty_result");
+  const failure_code = spec.classify_failure?.(text);
+  if (failure_code) throw new SearchProviderError(spec.name, failure_code);
+  return text;
 }
 
 /** Tavily 的 keyless 额度耗尽以成功工具正文返回，需恢复为真实限流失败。 */
@@ -298,19 +266,21 @@ function normalize_provider_error(
   error: unknown,
 ): SearchProviderError {
   if (error instanceof SearchProviderError) return error;
-  if (error instanceof StreamableHTTPError && error.code === 429) {
+  if (error instanceof SdkHttpError && error.status === 429) {
     return new SearchProviderError(provider, "rate_limited", error);
+  }
+  if (error instanceof SdkError && error.code === SdkErrorCode.RequestTimeout) {
+    return new SearchProviderError(provider, "timeout", error);
   }
   return new SearchProviderError(provider, "unavailable", error);
 }
 
-/** 只有全部来源共享同一明确原因时保留细分错误，否则统一视为不可用。 */
+/** 固定的非空供应商集合全部失败后汇总；只有原因一致时保留细分错误。 */
 function create_search_error(failures: readonly SearchProviderError[]): AgentToolError {
-  const first_code = failures[0]?.code;
-  const code =
-    first_code !== undefined && failures.every((failure) => failure.code === first_code)
-      ? first_code
-      : "unavailable";
+  const first_code = failures[0]!.code;
+  const code = failures.every((failure) => failure.code === first_code)
+    ? first_code
+    : "unavailable";
   return new AgentToolError(
     { code: `web_search.${code}` },
     new AggregateError(failures, "All web search providers failed."),

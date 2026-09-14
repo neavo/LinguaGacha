@@ -72,6 +72,8 @@
 
 ## 4. 产品工具与宿主能力
 
+- GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
+
 - `run_batch_translation` 是顺序工具，接收全量或明确 item ID 范围及是否纳入失败条目的决定，以当前 round 的 Agent lease 调用共享 `BatchTranslationService`；由批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮进度和工程累计进度。范围、失败条目决定与执行分流归 Agent 工作流；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
 - 工具模块拥有模型可见的用途、调用要求、结果、副作用与特有恢复说明，参数 Schema 只描述字段含义和约束。`workspace_script` 从运行策略生成环境与限制；`workspace_apply` 从 `contract` 的同一份提交语义投影关键副作用和回执。System Prompt 保留通用协作、信任边界与任务流程。
