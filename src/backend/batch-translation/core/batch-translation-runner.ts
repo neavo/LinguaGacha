@@ -22,6 +22,7 @@ import type {
 import type {
   TranslationCommitEntry,
   TranslationContext,
+  TranslationTokenMetric,
 } from "../planning/translation-plan-types";
 import { LimiterPool, TranslationLimiter } from "./limiter-pool";
 import { ModelKeyLeasePool } from "./model-key-lease-pool";
@@ -102,7 +103,7 @@ export class BatchTranslationRunner {
       run_progress = TranslationProgressAccumulator.empty(prepared.target_ids.size);
       await this.update_translation_progress_if_current(handle, progress);
       await this.task_runtime.publish_progress(handle, [], run_progress);
-      const contexts = await this.task_planner.build_translation_contexts(
+      const plan = await this.task_planner.build_translation_plan(
         prepared.items,
         run_context.config_snapshot,
         run_context.model,
@@ -117,6 +118,7 @@ export class BatchTranslationRunner {
           this.execute_translation_context(
             handle,
             context,
+            plan.metrics,
             run_context,
             quality_snapshot,
             limiter,
@@ -131,7 +133,7 @@ export class BatchTranslationRunner {
           );
         },
       });
-      await pipeline.run(contexts);
+      await pipeline.run(plan.contexts);
       if (handle.signal.aborted) {
         final_status = "stopped";
       }
@@ -184,6 +186,7 @@ export class BatchTranslationRunner {
   private async execute_translation_context(
     handle: BatchTranslationRunHandle,
     context: TranslationContext,
+    metrics: ReadonlyMap<number, TranslationTokenMetric>,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
     limiter: TranslationLimiter,
@@ -220,7 +223,7 @@ export class BatchTranslationRunner {
           .then((unit_result) => this.to_translation_work_unit_result(unit_result)),
     );
     this.log_replay.work_unit_logs(result.logs);
-    return await this.build_translation_worker_result(context, result, signal);
+    return this.build_translation_worker_result(context, result, metrics, signal);
   }
 
   /**
@@ -285,9 +288,10 @@ export class BatchTranslationRunner {
   /**
    * 翻译 worker 结果拆成可提交终态 items 与需要重试的上下文
    */
-  private async build_translation_worker_result(
+  private build_translation_worker_result(
     context: TranslationContext,
     result: TranslationWorkUnitResult,
+    metrics: ReadonlyMap<number, TranslationTokenMetric>,
     signal: AbortSignal,
   ) {
     if (result.stopped) {
@@ -297,9 +301,10 @@ export class BatchTranslationRunner {
     const terminal_items = returned_items.filter((item) =>
       TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
     );
-    const retry_plan = await this.task_planner.build_translation_retry_plan(
+    const retry_plan = this.task_planner.build_translation_retry_plan(
       context,
       returned_items,
+      metrics,
       TRANSLATION_RETRY_LIMIT,
       (item) => this.mark_translation_item_error(item),
       signal,

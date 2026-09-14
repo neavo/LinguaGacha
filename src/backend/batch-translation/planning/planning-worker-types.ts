@@ -1,34 +1,12 @@
-import type { TranslationTokenCountInput, TranslationTokenCountResult } from "./token-metric-cache";
 import type { LogError } from "../../../shared/error";
 
-/**
- * planning worker 的 token 计算请求；id 只服务线程消息匹配，不进入任务事实。
- */
-export interface PlanningCountTokensMessage {
-  id: string;
-  type: "count_tokens";
-  items: TranslationTokenCountInput[];
-}
+/** 批次身份只用于线程通信；缓存键和条目身份留在父线程。 */
+export type PlanningWorkerIncomingMessage =
+  | { readonly id: number; readonly type: "count_tokens"; readonly texts: readonly string[] }
+  | { readonly id: number; readonly type: "cancel" };
 
-/**
- * planning worker 的取消请求；取消只影响对应消息，不关闭整个 worker。
- */
-export interface PlanningCancelMessage {
-  id: string;
-  type: "cancel";
-}
-
-/**
- * 主线程发给 planning worker 的全部消息形状。
- */
-export type PlanningWorkerIncomingMessage = PlanningCountTokensMessage | PlanningCancelMessage;
-
-/**
- * planning worker 返回的成功或失败结果，错误诊断必须保持结构化。
- */
-export interface PlanningWorkerOutgoingMessage {
-  id: string;
-  ok: boolean;
-  data?: TranslationTokenCountResult[];
-  error?: LogError;
-}
+/** 成功计数与请求文本同序；取消是正常终态，不伪装成执行异常。 */
+export type PlanningWorkerOutgoingMessage =
+  | { readonly id: number; readonly status: "done"; readonly counts: readonly number[] }
+  | { readonly id: number; readonly status: "cancelled" }
+  | { readonly id: number; readonly status: "error"; readonly error: LogError };

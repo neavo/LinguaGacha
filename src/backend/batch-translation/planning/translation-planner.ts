@@ -5,14 +5,14 @@ import { is_task_skipped_item_status } from "../../../domain/batch-translation";
 import { read_json_integer, read_json_record, type MutableJsonRecord } from "../../../domain/json";
 import { project_text_resource_references } from "../../../shared/text/text-resource-reference";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
-import {
-  build_task_token_metric_cache_key,
-  count_non_empty_source_lines,
-  TranslationTokenMetricCache,
-  type TranslationTokenCountInput,
-  type TranslationTokenMetric,
-} from "./token-metric-cache";
-import type { TranslationContext, TranslationRetryPlan } from "./translation-plan-types";
+import { build_token_count_cache_key, TokenCountCache } from "./token-count-cache";
+import type {
+  TranslationContext,
+  TranslationRetryPlan,
+  TranslationPlan,
+  TranslationTokenMetric,
+} from "./translation-plan-types";
+import { AppError } from "../../../shared/error";
 import { read_task_item_id, read_task_item_status } from "../translation-item";
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
@@ -22,72 +22,80 @@ const SAKURA_MAX_ITEMS_PER_WORK_UNIT = 1; // 纯文本响应没有 item 边界�
 const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率。
 
 /**
- * 主线程为 planning worker 准备的最小计数输入及其缓存身份。
- */
-interface MetricSeed {
-  item_id: number; // 计数结果回填到原 item 的稳定键
-  cache_key: string; // 模型 tokenizer 与源文共同决定的缓存键
-  src: string; // 交给 worker 精确计数的源文
-  line_count: number; // 主线程即可确定的非空行数
-}
-
-/**
  * TranslationPlanner 是后台任务唯一规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
  */
 export class TranslationPlanner {
-  private readonly planning_worker_pool: PlanningWorkerPool; // 只做纯计算，不接触数据库和事件。
-  private readonly metric_cache: TranslationTokenMetricCache; // 进程内计算指标缓存，随 BackendServices 生命周期释放。
+  private readonly planning_worker_pool: Pick<PlanningWorkerPool, "count_items">; // 只做纯计算，不接触数据库和事件。
+  private readonly token_cache = new TokenCountCache(); // 进程内计算指标缓存，随 BackendServices 生命周期释放。
 
   /**
    * 注入 planning worker，规划缓存由 planner 自己持有。
    */
-  public constructor(options: { planningWorkerPool: PlanningWorkerPool }) {
+  public constructor(options: { planningWorkerPool: Pick<PlanningWorkerPool, "count_items"> }) {
     this.planning_worker_pool = options.planningWorkerPool;
-    this.metric_cache = new TranslationTokenMetricCache();
   }
 
   /**
    * 构建翻译初始上下文，切块使用精确 token 指标并按模型协议准备 preceding。
    */
-  public async build_translation_contexts(
+  public async build_translation_plan(
     items: TextTaskItemRecord[],
     config: MutableJsonRecord,
     model: MutableJsonRecord,
     signal: AbortSignal,
     target_ids?: ReadonlySet<number>,
-  ): Promise<TranslationContext[]> {
+  ): Promise<TranslationPlan> {
     const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
     const is_sakura = String(model["api_format"] ?? "") === "SakuraLLM"; // 纯文本响应要求单 item 且不携带 preceding。
-    const chunks = await this.generate_item_chunks(
+    const metrics = await this.resolve_item_metrics(
+      target_ids === undefined
+        ? items
+        : items.filter((item) => target_ids.has(read_task_item_id(item))),
+      signal,
+    );
+    const chunks = this.generate_item_chunks(
       items,
+      metrics,
       threshold,
       is_sakura ? 0 : read_json_integer(config["preceding_lines_threshold"], 0),
       signal,
       is_sakura ? SAKURA_MAX_ITEMS_PER_WORK_UNIT : Number.POSITIVE_INFINITY,
-      target_ids,
     );
-    return chunks.map(({ chunk_items, precedings }) => ({
-      work_unit_id: crypto.randomUUID(),
-      items: chunk_items,
-      precedings,
-      token_threshold: threshold,
-      split_count: 0,
-      retry_count: 0,
-      is_initial: true,
-    }));
+    return {
+      metrics,
+      contexts: chunks.map(({ chunk_items, precedings }) => ({
+        work_unit_id: crypto.randomUUID(),
+        items: chunk_items,
+        precedings,
+        token_threshold: threshold,
+        split_count: 0,
+        retry_count: 0,
+        is_initial: true,
+      })),
+    };
   }
 
   /**
-   * 翻译失败上下文先拆分，单条最多重试三次，超限条目由 BatchTranslationRunner 标 ERROR。
+   * 重试复用本轮源文指标；单条按调用方给定上限重试，超限写回由 Runner 决定。
    */
-  public async build_translation_retry_plan(
+  public build_translation_retry_plan(
     context: TranslationContext,
     returned_items: TextTaskItemRecord[],
+    metrics: ReadonlyMap<number, TranslationTokenMetric>,
     retry_limit: number,
     mark_error: (item: TextTaskItemRecord) => void,
     signal: AbortSignal,
-  ): Promise<TranslationRetryPlan> {
-    const pending_items = returned_items.filter((item) => read_task_item_status(item) === "NONE");
+  ): TranslationRetryPlan {
+    this.throw_if_aborted(signal);
+    const pending_by_id = new Map(
+      returned_items
+        .filter((item) => read_task_item_status(item) === "NONE")
+        .map((item) => [read_task_item_id(item), item]),
+    );
+    // worker 仅决定待重试集合；拆块始终使用本轮原始源文与文件顺序。
+    const pending_items = context.items.filter((item) =>
+      pending_by_id.has(read_task_item_id(item)),
+    );
     if (pending_items.length === 0) {
       return { retry_contexts: [], forced_error_items: [] };
     }
@@ -108,14 +116,16 @@ export class TranslationPlanner {
           forced_error_items: [],
         };
       }
-      mark_error(item);
-      return { retry_contexts: [], forced_error_items: [item] };
+      // 终态提交消费 worker 的写回快照；本轮源文快照仅用于再次规划。
+      const failed_item = pending_by_id.get(read_task_item_id(item))!;
+      mark_error(failed_item);
+      return { retry_contexts: [], forced_error_items: [failed_item] };
     }
     const next_threshold = Math.max(
       1,
       Math.floor(context.token_threshold * this.get_split_factor(context.token_threshold)),
     );
-    const sub_chunks = await this.generate_item_chunks(pending_items, next_threshold, 0, signal);
+    const sub_chunks = this.generate_item_chunks(pending_items, metrics, next_threshold, 0, signal);
     return {
       retry_contexts: sub_chunks.map(({ chunk_items }) => ({
         work_unit_id: crypto.randomUUID(),
@@ -133,21 +143,14 @@ export class TranslationPlanner {
   /**
    * 共享切块实现，只依赖 item 快照和已解析 token 指标，不在主线程执行 tokenizer。
    */
-  private async generate_item_chunks(
+  private generate_item_chunks(
     items: TextTaskItemRecord[],
+    metric_by_id: ReadonlyMap<number, TranslationTokenMetric>,
     input_token_threshold: number,
     preceding_lines_threshold: number,
     signal: AbortSignal,
     max_items_per_chunk = Number.POSITIVE_INFINITY, // 普通模型不设上限，纯文本协议按 item 边界收敛。
-    target_ids?: ReadonlySet<number>,
-  ): Promise<Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }>> {
-    // 指标只覆盖可执行目标，完整条目序列仍用于读取前文。
-    const metric_by_id = await this.resolve_item_metrics(
-      target_ids === undefined
-        ? items
-        : items.filter((item) => target_ids.has(read_task_item_id(item))),
-      signal,
-    );
+  ): Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> {
     const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
     const chunks: Array<{ chunk_items: TextTaskItemRecord[]; precedings: TextTaskItemRecord[] }> =
       [];
@@ -207,83 +210,57 @@ export class TranslationPlanner {
     items: TextTaskItemRecord[],
     signal: AbortSignal,
   ): Promise<Map<number, TranslationTokenMetric>> {
-    const seeds = await this.build_metric_seeds(items, signal);
-    const metric_by_id = new Map<number, TranslationTokenMetric>();
-    const missing_by_key = new Map<string, TranslationTokenCountInput>();
-    for (const seed of seeds) {
-      const cached_metric = this.metric_cache.get(seed.cache_key);
-      if (cached_metric !== null) {
-        metric_by_id.set(seed.item_id, cached_metric);
-        continue;
+    const metrics = new Map<number, TranslationTokenMetric>();
+    const missing = new Map<
+      string,
+      {
+        text: string;
+        targets: Array<{ item_id: number; line_count: number }>;
       }
-      missing_by_key.set(seed.cache_key, { cache_key: seed.cache_key, text: seed.src });
-    }
-    if (missing_by_key.size > 0) {
-      await this.count_missing_metrics([...missing_by_key.values()], seeds, metric_by_id, signal);
-    }
-    return metric_by_id;
-  }
-
-  /**
-   * 批量调用 planning worker，并把结果写入进程内 cache 后回填本次规划所需指标。
-   */
-  private async count_missing_metrics(
-    missing_inputs: TranslationTokenCountInput[],
-    seeds: MetricSeed[],
-    metric_by_id: Map<number, TranslationTokenMetric>,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const results = await this.planning_worker_pool.count_items(missing_inputs, signal);
-    const token_count_by_key = new Map(
-      results.map((result) => [result.cache_key, result.token_count]),
-    );
-    for (const seed of seeds) {
-      if (metric_by_id.has(seed.item_id)) {
-        continue;
-      }
-      const token_count = token_count_by_key.get(seed.cache_key);
-      if (token_count === undefined) {
-        continue;
-      }
-      const metric = { token_count, line_count: seed.line_count };
-      this.metric_cache.set(seed.cache_key, metric);
-      metric_by_id.set(seed.item_id, metric);
-    }
-  }
-
-  /**
-   * 构建 cache 校验种子；hash 计算留在主线程但分批让出，避免大项目启动阶段长卡顿。
-   */
-  private async build_metric_seeds(
-    items: TextTaskItemRecord[],
-    signal: AbortSignal,
-  ): Promise<MetricSeed[]> {
-    const seeds: MetricSeed[] = [];
+    >(); // 仅缺失文本保存回填位置，同文条目共用一次计数。
     const seen_item_ids = new Set<number>();
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
-      if (read_task_item_status(item) !== "NONE") {
-        continue;
-      }
+      if (read_task_item_status(item) !== "NONE") continue;
       const item_id = read_task_item_id(item);
-      if (item_id <= 0 || seen_item_ids.has(item_id)) {
-        continue;
-      }
+      if (item_id <= 0 || seen_item_ids.has(item_id)) continue;
       seen_item_ids.add(item_id);
       const raw_src = String(item["src"] ?? "");
-      // token 指标使用短投影，行数仍以原文为准，避免资源载荷改变切块成本。
-      const src = project_text_resource_references(raw_src).text;
-      seeds.push({
-        item_id,
-        cache_key: build_task_token_metric_cache_key(src),
-        src,
-        line_count: count_non_empty_source_lines(raw_src),
-      });
+      // token 指标使用短投影，行数仍以原文为准。
+      const text = project_text_resource_references(raw_src).text;
+      const line_count = raw_src.split(/\r?\n/).filter((line) => line.trim() !== "").length;
+      const key = build_token_count_cache_key(text);
+      const token_count = this.token_cache.get(key);
+      if (token_count !== undefined) {
+        metrics.set(item_id, { token_count, line_count });
+      } else {
+        let pending = missing.get(key);
+        if (pending === undefined) {
+          pending = { text, targets: [] };
+          missing.set(key, pending);
+        }
+        pending.targets.push({ item_id, line_count });
+      }
       if (index > 0 && index % HASH_YIELD_EVERY_ITEMS === 0) {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
-    return seeds;
+    if (missing.size === 0) return metrics;
+    const results = await this.planning_worker_pool.count_items(
+      [...missing.values()].map((pending) => pending.text),
+      signal,
+    );
+    this.throw_if_aborted(signal);
+    let index = 0;
+    for (const [key, pending] of missing) {
+      const token_count = results[index++];
+      if (token_count === undefined) throw new AppError("runtime.internal_invariant");
+      this.token_cache.set(key, token_count);
+      for (const { item_id, line_count } of pending.targets) {
+        metrics.set(item_id, { token_count, line_count });
+      }
+    }
+    return metrics;
   }
 
   /**
@@ -330,7 +307,7 @@ export class TranslationPlanner {
    * 输入 token 阈值读取集中处理，保护模型配置缺字段场景。
    */
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
-    const threshold = { ...read_json_record(model["threshold"]) };
+    const threshold = read_json_record(model["threshold"]);
     return Math.max(16, read_json_integer(threshold["input_token_limit"], fallback));
   }
 

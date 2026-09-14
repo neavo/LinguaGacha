@@ -17,12 +17,10 @@ import type { BatchTranslationStartCommand } from "../../../domain/batch-transla
 import type { BatchTranslationSnapshot } from "../../../domain/batch-translation";
 import type { TranslationWorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
-import type { TranslationTokenCountInput } from "../planning/token-metric-cache";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import { BatchTranslationRunner } from "./batch-translation-runner";
 import type { BatchTranslationRunnerOptions } from "./batch-translation-runner-options";
-import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
 import { TranslationPlanner } from "../planning/translation-planner";
 import { log_error_from_message } from "../../../shared/error";
 import { format_log_content_text } from "../../../shared/log";
@@ -144,11 +142,11 @@ describe("BatchTranslationRunner", () => {
       executorClient: create_unused_executor(),
       logManager: create_log_manager(),
       taskPlanner: {
-        build_translation_contexts: async (_items, _config, model) => {
+        build_translation_plan: async (_items, _config, model) => {
           model_ids.push(String(model.id));
-          return [];
+          return { contexts: [], metrics: new Map() };
         },
-        build_translation_retry_plan: async () => ({ retry_contexts: [], forced_error_items: [] }),
+        build_translation_retry_plan: () => ({ retry_contexts: [], forced_error_items: [] }),
       },
     });
     const run_context = {
@@ -621,9 +619,8 @@ describe("BatchTranslationRunner", () => {
   function create_test_task_planner(token_count = 1): TranslationPlanner {
     return new TranslationPlanner({
       planningWorkerPool: {
-        count_items: async (items: TranslationTokenCountInput[]) =>
-          items.map((item) => ({ cache_key: item.cache_key, token_count })),
-      } as unknown as PlanningWorkerPool,
+        count_items: async (items: readonly string[]) => items.map(() => token_count),
+      },
     });
   }
 
