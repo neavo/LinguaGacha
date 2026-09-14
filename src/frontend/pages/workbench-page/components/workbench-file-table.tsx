@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   WorkbenchTableActionMenu,
-  WorkbenchTableContextMenuContent,
+  WorkbenchTableContextMenuItems,
 } from "@frontend/pages/workbench-page/components/workbench-table-action-menu";
 import type { WorkbenchFileEntry } from "@frontend/pages/workbench-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -68,6 +68,7 @@ function sort_workbench_entries(
   return sorted_entries;
 }
 
+/** 页面内排序只改变展示；手动重排通过回调保存工程顺序。 */
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n();
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
@@ -199,11 +200,11 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           get_row_id={(entry) => entry.rel_path}
           on_selection_change={props.on_selection_change}
           on_sort_change={set_sort_state}
-          // 排序视图是临时顺序，不等于工程真实顺序，因此只在原始顺序下开放拖拽。
-          on_reorder={props.readonly || sort_state !== null ? undefined : props.on_reorder}
-          render_row_context_menu={(payload) => {
+          on_reorder={props.on_reorder}
+          reorder_disabled={props.readonly}
+          render_row_context_menu_items={(payload) => {
             return (
-              <WorkbenchTableContextMenuContent
+              <WorkbenchTableContextMenuItems
                 disabled={props.readonly}
                 on_reset={() => props.on_reset(payload.row_id)}
               />

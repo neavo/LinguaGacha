@@ -1677,7 +1677,7 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);
-    expect(latest_state?.drag_disabled).toBe(true);
+    expect(latest_state?.reorder_disabled).toBe(true);
 
     act(() => {
       latest_state?.update_filter_keyword("苹果");

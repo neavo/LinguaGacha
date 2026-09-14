@@ -494,7 +494,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [visible_entry_ids]);
 
   const readonly = is_runtime_busy(runtime_snapshot);
-  const drag_disabled = !can_reorder_quality_rule_entries({
+  const reorder_disabled = !can_reorder_quality_rule_entries({
     readonly,
     has_active_query: has_active_filters || sort_state !== null,
     visible_entry_ids,
@@ -875,10 +875,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     });
   }, [readonly, selected_entry_ids]);
 
-  /** 按拖动结果保存规则顺序。 */
-  const reorder_selected_entries = useCallback(
+  /** 按表格裁决的完整身份顺序保存规则。 */
+  const reorder_entries = useCallback(
     async (ordered_entry_ids: TextPreserveEntryId[]): Promise<void> => {
-      if (drag_disabled) {
+      if (reorder_disabled) {
         return;
       }
 
@@ -886,7 +886,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
     },
-    [drag_disabled, entries, entry_ids, save_entries_snapshot],
+    [reorder_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
   /** 用所选规则发起校对页查找。 */
@@ -1500,7 +1500,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     sort_state,
     invalid_filter_message: result_snapshot?.invalid_message ?? filter_result.invalid_regex_message,
     readonly,
-    drag_disabled,
+    reorder_disabled,
     hit_state,
     hit_ready,
     hit_badge_by_entry_id,
@@ -1535,7 +1535,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_default_preset,
     cancel_default_preset,
     delete_selected_entries,
-    reorder_selected_entries,
+    reorder_entries,
     query_entry_source,
     save_dialog_entry,
     request_close_dialog,

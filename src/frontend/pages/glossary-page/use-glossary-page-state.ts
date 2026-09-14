@@ -299,7 +299,7 @@ type UseGlossaryPageStateResult = {
   sort_state: GlossarySortState;
   invalid_filter_message: string | null;
   readonly: boolean;
-  drag_disabled: boolean;
+  reorder_disabled: boolean;
   hit_ready: boolean;
   hit_sort_available: boolean;
   hit_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState>;
@@ -335,7 +335,7 @@ type UseGlossaryPageStateResult = {
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;
   toggle_case_sensitive_for_selected: (next_value: boolean) => Promise<void>;
-  reorder_selected_entries: (ordered_entry_ids: GlossaryEntryId[]) => Promise<void>;
+  reorder_entries: (ordered_entry_ids: GlossaryEntryId[]) => Promise<void>;
   query_entry_source_from_hit: (entry_id: GlossaryEntryId) => Promise<void>;
   search_entry_relations_from_hit: (entry_id: GlossaryEntryId) => void;
   save_dialog_entry: () => Promise<void>;
@@ -558,7 +558,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [visible_entry_ids]);
   const has_active_sort = sort_state.field !== null;
   const readonly = is_runtime_busy(runtime_snapshot);
-  const drag_disabled = !can_reorder_quality_rule_entries({
+  const reorder_disabled = !can_reorder_quality_rule_entries({
     readonly,
     has_active_query: has_active_filters || has_active_sort,
     visible_entry_ids,
@@ -999,10 +999,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
   );
 
-  /** 按拖动结果保存规则顺序。 */
-  const reorder_selected_entries = useCallback(
+  /** 按表格裁决的完整身份顺序保存规则。 */
+  const reorder_entries = useCallback(
     async (ordered_entry_ids: GlossaryEntryId[]): Promise<void> => {
-      if (drag_disabled) {
+      if (reorder_disabled) {
         return;
       }
 
@@ -1010,7 +1010,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_REFRESH);
     },
-    [drag_disabled, entries, entry_ids, save_entries_snapshot],
+    [reorder_disabled, entries, entry_ids, save_entries_snapshot],
   );
 
   /** 校验并提交弹窗草稿，失败时恢复编辑入口。 */
@@ -1626,7 +1626,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       sort_state,
       invalid_filter_message: invalid_regex_message,
       readonly,
-      drag_disabled,
+      reorder_disabled,
       hit_ready,
       hit_sort_available,
       hit_badge_by_entry_id,
@@ -1662,7 +1662,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       cancel_default_preset,
       delete_selected_entries,
       toggle_case_sensitive_for_selected,
-      reorder_selected_entries,
+      reorder_entries,
       query_entry_source_from_hit,
       search_entry_relations_from_hit,
       save_dialog_entry,
@@ -1689,7 +1689,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     confirm_state,
     delete_selected_entries,
     dialog_state,
-    drag_disabled,
+    reorder_disabled,
     enabled,
     export_entries_from_picker,
     filter_state,
@@ -1707,7 +1707,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     preset_input_state,
     preset_menu_open,
     query_entry_source_from_hit,
-    reorder_selected_entries,
+    reorder_entries,
     request_delete_preset,
     request_close_dialog,
     request_rename_preset,

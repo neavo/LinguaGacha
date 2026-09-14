@@ -8,14 +8,18 @@ function dedupe_row_ids(row_ids: string[]): string[] {
   return Array.from(new Set(row_ids));
 }
 
-/** 右键已选行时作用于整组选择；右键未选行时只作用于该行。 */
-export function resolve_app_table_context_target_row_ids<Id extends string>(
+/** 右键和拖拽共用目标：多选模式下操作已选行时作用于整组，其余情况只作用于该行。 */
+export function resolve_app_table_target_row_ids<Id extends string>(
   row_id: Id,
   selected_row_ids: Id[],
+  selection_mode: AppTableSelectionMode,
 ): Id[] {
-  return selected_row_ids.includes(row_id) ? selected_row_ids : [row_id];
+  return selection_mode === "multiple" && selected_row_ids.includes(row_id)
+    ? selected_row_ids
+    : [row_id];
 }
 
+/** 选区顺序、活动行和锚点共同决定交互状态是否变化。 */
 export function are_app_table_selection_states_equal(
   left_state: AppTableSelectionState,
   right_state: AppTableSelectionState,
@@ -37,6 +41,7 @@ export function are_app_table_selection_states_equal(
   });
 }
 
+/** 完整列表可裁掉失效身份；远端窗口传 null，保留尚未加载的选择。 */
 export function normalize_app_table_selection_state(
   state: AppTableSelectionState,
   ordered_row_ids: string[] | null,
@@ -69,6 +74,7 @@ export function normalize_app_table_selection_state(
   };
 }
 
+/** 范围包含两端；锚点失效时从目标行重新建立范围。 */
 function collect_app_table_range_selection(
   ordered_row_ids: string[],
   anchor_row_id: string | null,
@@ -90,38 +96,7 @@ function collect_app_table_range_selection(
   return ordered_row_ids.slice(start_index, end_index + 1);
 }
 
-type AppTableKeyboardNavigationAction = "previous" | "next" | "first" | "last";
-
-function resolve_keyboard_navigation_target_index(args: {
-  ordered_row_ids: string[];
-  current_state: AppTableSelectionState;
-  action: AppTableKeyboardNavigationAction;
-}): number {
-  const row_count = args.ordered_row_ids.length;
-  const current_index =
-    args.current_state.active_row_id === null
-      ? -1
-      : args.ordered_row_ids.indexOf(args.current_state.active_row_id);
-
-  if (row_count === 0) {
-    return -1;
-  } else if (args.action === "first") {
-    return 0;
-  } else if (args.action === "last") {
-    return row_count - 1;
-  } else if (args.action === "previous") {
-    if (current_index < 0) {
-      return row_count - 1;
-    } else {
-      return Math.max(current_index - 1, 0);
-    }
-  } else if (current_index < 0) {
-    return 0;
-  } else {
-    return Math.min(current_index + 1, row_count - 1);
-  }
-}
-
+/** 按单选、范围扩选和逐行切换裁决点击选区。 */
 export function build_app_table_click_selection_change(args: {
   selection_mode: AppTableSelectionMode;
   ordered_row_ids: string[];
@@ -179,6 +154,7 @@ export function build_app_table_click_selection_change(args: {
   };
 }
 
+/** 右键已选组时保留选区和锚点，并把目标行设为活动行。 */
 export function build_app_table_context_selection_change(args: {
   selection_mode: AppTableSelectionMode;
   current_state: AppTableSelectionState;
@@ -210,6 +186,7 @@ export function build_app_table_context_selection_change(args: {
   };
 }
 
+/** 框选以首尾建立锚点和活动行，空框保留原定位身份。 */
 export function build_app_table_box_selection_change(args: {
   current_state: AppTableSelectionState;
   next_row_ids: string[];
@@ -224,56 +201,7 @@ export function build_app_table_box_selection_change(args: {
   };
 }
 
-export function build_app_table_keyboard_selection_change(args: {
-  selection_mode: AppTableSelectionMode;
-  ordered_row_ids: string[];
-  current_state: AppTableSelectionState;
-  action: AppTableKeyboardNavigationAction;
-  extend: boolean;
-}): AppTableSelectionChange {
-  const target_index = resolve_keyboard_navigation_target_index({
-    ordered_row_ids: args.ordered_row_ids,
-    current_state: args.current_state,
-    action: args.action,
-  });
-  const target_row_id = args.ordered_row_ids[target_index] ?? null;
-
-  if (target_row_id === null) {
-    return args.current_state;
-  } else if (args.selection_mode === "none") {
-    return {
-      selected_row_ids: [],
-      active_row_id: target_row_id,
-      anchor_row_id: null,
-    };
-  } else if (args.selection_mode === "single") {
-    return {
-      selected_row_ids: [target_row_id],
-      active_row_id: target_row_id,
-      anchor_row_id: target_row_id,
-    };
-  } else if (args.extend) {
-    const anchor_row_id =
-      args.current_state.anchor_row_id ?? args.current_state.active_row_id ?? target_row_id;
-
-    return {
-      selected_row_ids: collect_app_table_range_selection(
-        args.ordered_row_ids,
-        anchor_row_id,
-        target_row_id,
-      ),
-      active_row_id: target_row_id,
-      anchor_row_id,
-    };
-  } else {
-    return {
-      selected_row_ids: [target_row_id],
-      active_row_id: target_row_id,
-      anchor_row_id: target_row_id,
-    };
-  }
-}
-
+/** 全选保留已有活动行和锚点，缺省时使用首行。 */
 export function build_app_table_select_all_selection_change(args: {
   ordered_row_ids: string[];
   current_state: AppTableSelectionState;

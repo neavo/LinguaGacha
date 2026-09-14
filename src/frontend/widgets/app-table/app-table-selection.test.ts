@@ -4,10 +4,9 @@ import {
   build_app_table_box_selection_change,
   build_app_table_click_selection_change,
   build_app_table_context_selection_change,
-  build_app_table_keyboard_selection_change,
   build_app_table_select_all_selection_change,
   normalize_app_table_selection_state,
-  resolve_app_table_context_target_row_ids,
+  resolve_app_table_target_row_ids,
 } from "./app-table-selection";
 
 const ordered_row_ids = ["a", "b", "c", "d"];
@@ -35,7 +34,7 @@ describe("app table selection", () => {
     });
   });
 
-  it("点击与键盘扩展都从锚点形成连续选区", () => {
+  it("点击范围选择从锚点形成连续选区", () => {
     expect(
       build_app_table_click_selection_change({
         selection_mode: "multiple",
@@ -50,24 +49,13 @@ describe("app table selection", () => {
       active_row_id: "d",
       anchor_row_id: "b",
     });
-    expect(
-      build_app_table_keyboard_selection_change({
-        selection_mode: "multiple",
-        ordered_row_ids,
-        current_state: initial_state,
-        action: "next",
-        extend: true,
-      }),
-    ).toEqual({
-      selected_row_ids: ["b", "c"],
-      active_row_id: "c",
-      anchor_row_id: "b",
-    });
   });
 
   it("上下文、框选与全选保留稳定的活动行和锚点", () => {
-    expect(resolve_app_table_context_target_row_ids("b", ["a", "b"])).toEqual(["a", "b"]);
-    expect(resolve_app_table_context_target_row_ids("c", ["a", "b"])).toEqual(["c"]);
+    expect(resolve_app_table_target_row_ids("b", ["a", "b"], "multiple")).toEqual(["a", "b"]);
+    expect(resolve_app_table_target_row_ids("c", ["a", "b"], "multiple")).toEqual(["c"]);
+    expect(resolve_app_table_target_row_ids("b", ["a", "b"], "single")).toEqual(["b"]);
+    expect(resolve_app_table_target_row_ids("b", ["a", "b"], "none")).toEqual(["b"]);
     expect(
       build_app_table_context_selection_change({
         selection_mode: "multiple",

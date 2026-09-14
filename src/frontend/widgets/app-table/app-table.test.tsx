@@ -98,6 +98,7 @@ vi.mock("@tanstack/react-virtual", () => {
 
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
+import { AppContextMenuItem } from "@frontend/widgets/app-context-menu";
 import type {
   AppTableColumn,
   AppTableRowModel,
@@ -266,6 +267,26 @@ function read_rendered_row_labels(container: HTMLDivElement): string[] {
     (row) =>
       row.querySelector(".app-table__body-cell:not(.app-table__drag-cell)")?.textContent ?? "",
   );
+}
+
+async function open_row_menu(container: HTMLDivElement, row_index: number): Promise<void> {
+  const row = container.querySelector<HTMLElement>(
+    `.app-table__table--body [data-row-index="${row_index}"]`,
+  );
+  expect(row).not.toBeNull();
+  await act(async () => {
+    row?.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+    );
+  });
+}
+
+function get_menu_item(label: string): HTMLElement {
+  const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+    (element) => element.textContent === label,
+  );
+  expect(item).toBeDefined();
+  return item!;
 }
 
 function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
@@ -563,6 +584,207 @@ describe("AppTable", () => {
     drag_table_row("b", "c");
 
     expect(on_reorder).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["top", ["a", "c", "b"], ["Alpha", "Gamma", "Beta"]],
+    ["bottom", ["b", "a", "c"], ["Beta", "Alpha", "Gamma"]],
+  ] as const)(
+    "菜单移至 %s 保留非连续选区的原顺序，并由保存后的 rows 接管",
+    async (target, expected_ids, expected_labels) => {
+      const persist = create_controlled_promise<void>();
+      const on_selection_change = vi.fn();
+      let submitted_row_ids: string[] = [];
+      function Fixture(): JSX.Element {
+        const [rows, set_rows] = useState(create_reorder_rows());
+        return create_default_props({
+          rows,
+          columns: create_drag_columns(),
+          selected_row_ids: ["c", "a"],
+          active_row_id: "c",
+          anchor_row_id: "a",
+          on_selection_change,
+          on_reorder: async (ids) => {
+            submitted_row_ids = ids;
+            await persist.promise;
+            set_rows(ids.map((id) => rows.find((row) => row.id === id)!));
+          },
+        });
+      }
+      const container = await mount(<Fixture />);
+      await open_row_menu(container, 2);
+      await act(async () => get_menu_item(`app.action.move_to_${target}`).click());
+      expect(submitted_row_ids).toEqual(expected_ids);
+      expect(read_rendered_row_labels(container)).toEqual(expected_labels);
+      expect(container.textContent).toContain("不可拖拽");
+      expect(on_selection_change).not.toHaveBeenCalled();
+
+      // 两个入口共用提交期间的互斥，重新打开菜单也不能重复写入。
+      drag_table_row("b", "a");
+      await open_row_menu(container, 0);
+      expect(get_menu_item("app.action.move_to_top").getAttribute("aria-disabled")).toBe("true");
+      expect(get_menu_item("app.action.move_to_bottom").getAttribute("aria-disabled")).toBe("true");
+      await act(async () => {
+        persist.resolve();
+        await persist.promise;
+      });
+      expect(submitted_row_ids).toEqual(expected_ids);
+      expect(read_rendered_row_labels(container)).toEqual(expected_labels);
+    },
+  );
+
+  it("右键未选行只移动该行，页面处理保存失败后恢复权威顺序", async () => {
+    const persist = create_controlled_promise<void>();
+    const on_reorder = vi.fn(async () => {
+      await persist.promise;
+    });
+    const on_selection_change = vi.fn();
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        selected_row_ids: ["a", "b"],
+        active_row_id: "a",
+        anchor_row_id: "a",
+        on_selection_change,
+        on_reorder,
+      }),
+    );
+    await open_row_menu(container, 2);
+    await act(async () => get_menu_item("app.action.move_to_top").click());
+    expect(on_selection_change).toHaveBeenCalledWith({
+      selected_row_ids: ["c"],
+      active_row_id: "c",
+      anchor_row_id: "c",
+    });
+    expect(on_reorder).toHaveBeenCalledWith(["c", "a", "b"]);
+    expect(read_rendered_row_labels(container)).toEqual(["Gamma", "Alpha", "Beta"]);
+    // 页面内部已经提示失败，回调正常结束，权威 rows 仍保留原顺序。
+    await act(async () => {
+      persist.resolve();
+      await persist.promise;
+    });
+    expect(read_rendered_row_labels(container)).toEqual(["Alpha", "Beta", "Gamma"]);
+  });
+
+  it.each(["readonly", "sort", "remote"] as const)(
+    "%s 状态保留菜单但禁止重排",
+    async (restriction) => {
+      const rows = create_reorder_rows();
+      const on_reorder = vi.fn(async () => {});
+      const container = await mount(
+        create_default_props({
+          rows,
+          columns: create_drag_columns(),
+          on_reorder,
+          reorder_disabled: restriction === "readonly",
+          sort_state:
+            restriction === "sort" ? { column_id: "label", direction: "ascending" } : null,
+          row_model:
+            restriction === "remote"
+              ? create_remote_row_model({ rows, loaded_indices: [0, 1, 2] })
+              : undefined,
+        }),
+      );
+      await open_row_menu(container, 1);
+      const top = get_menu_item("app.action.move_to_top");
+      const bottom = get_menu_item("app.action.move_to_bottom");
+      expect(top.getAttribute("aria-disabled")).toBe("true");
+      expect(bottom.getAttribute("aria-disabled")).toBe("true");
+      await act(async () => {
+        top.click();
+        bottom.click();
+      });
+      drag_table_row("b", "a");
+      expect(on_reorder).not.toHaveBeenCalled();
+    },
+  );
+
+  it("全选时两项首尾操作均禁用且不提交写入", async () => {
+    const on_reorder = vi.fn(async () => {});
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        selected_row_ids: ["c", "b", "a"],
+        on_reorder,
+      }),
+    );
+    await open_row_menu(container, 1);
+    for (const target of ["top", "bottom"]) {
+      const item = get_menu_item(`app.action.move_to_${target}`);
+      expect(item.getAttribute("aria-disabled")).toBe("true");
+      await act(async () => item.click());
+    }
+    expect(on_reorder).not.toHaveBeenCalled();
+  });
+
+  it("业务菜单消费表格裁决的目标，不支持重排时仅显示业务项", async () => {
+    const on_action = vi.fn();
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        selected_row_ids: ["a", "c"],
+        render_row_context_menu_items: (payload) => (
+          <AppContextMenuItem onClick={() => on_action(payload.target_row_ids)}>
+            编辑
+          </AppContextMenuItem>
+        ),
+      }),
+    );
+    await open_row_menu(container, 2);
+    expect(document.querySelector('[role="menu"]')?.textContent).not.toContain(
+      "app.action.move_to_",
+    );
+    await act(async () => get_menu_item("编辑").click());
+    expect(on_action).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("菜单移动到未挂载位置后按行身份滚动并归还表格焦点", async () => {
+    const rows = create_rows(30);
+    const persist = create_controlled_promise<void>();
+    app_table_test_state.virtual_item_indices = [0, 1, 2];
+    const container = await mount(
+      create_default_props({
+        rows,
+        on_reorder: async () => {
+          await persist.promise;
+        },
+      }),
+    );
+    await open_row_menu(container, 1);
+    await act(async () => get_menu_item("app.action.move_to_bottom").click());
+    await vi.waitFor(() => {
+      expect(app_table_test_state.scrollToIndex).toHaveBeenCalledWith(29, { align: "auto" });
+      expect(document.activeElement).toBe(get_table_host(container));
+    });
+    await act(async () => {
+      persist.resolve();
+      await persist.promise;
+    });
+  });
+
+  it("Shift 加方向键通过真实表格入口扩展选区并保留锚点", async () => {
+    const on_selection_change = vi.fn();
+    const container = await mount(
+      create_default_props({
+        rows: create_reorder_rows(),
+        selected_row_ids: ["b"],
+        active_row_id: "b",
+        anchor_row_id: "b",
+        on_selection_change,
+      }),
+    );
+    const host = get_table_host(container);
+    await act(async () => {
+      host.focus();
+      host.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(on_selection_change).toHaveBeenCalledWith({
+      selected_row_ids: ["b", "c"],
+      active_row_id: "c",
+      anchor_row_id: "b",
+    });
   });
 
   it("行内交互标记阻止点击和框选同时改变表格选区", async () => {

@@ -114,7 +114,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             title_key={page_state.title_key}
             entries={page_state.filtered_entries}
             sort_state={page_state.sort_state}
-            drag_disabled={page_state.drag_disabled}
+            reorder_disabled={page_state.reorder_disabled}
             hit_running={page_state.hit_state.running}
             hit_ready={page_state.hit_ready}
             readonly={page_state.readonly}
@@ -128,7 +128,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             on_open_edit={page_state.open_edit_dialog}
             on_toggle_regex={page_state.toggle_regex_for_selected}
             on_toggle_case_sensitive={page_state.toggle_case_sensitive_for_selected}
-            on_reorder={page_state.reorder_selected_entries}
+            on_reorder={page_state.reorder_entries}
             on_query_entry_source={page_state.query_entry_source}
             on_search_entry_relations={page_state.search_entry_relations_from_hit}
           />

@@ -32,6 +32,8 @@ export const ja_jp_app = {
     },
   },
   action: {
+    move_to_top: "先頭へ移動",
+    move_to_bottom: "末尾へ移動",
     add: "追加",
     cancel: "キャンセル",
     confirm: "確認",

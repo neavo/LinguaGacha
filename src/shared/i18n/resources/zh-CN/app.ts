@@ -31,6 +31,8 @@ export const zh_cn_app = {
     },
   },
   action: {
+    move_to_top: "移至顶部",
+    move_to_bottom: "移至底部",
     add: "新增",
     cancel: "取消",
     confirm: "确认",

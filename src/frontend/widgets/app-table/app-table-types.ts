@@ -31,6 +31,10 @@ export type AppTableRowEvent<Row> = {
   row_index: number;
 };
 
+export type AppTableRowContextMenuEvent<Row> = AppTableRowEvent<Row> & {
+  target_row_ids: string[];
+};
+
 export type AppTableRowModel<Row> = {
   row_count: number;
   loaded_row_ids: string[];
@@ -125,11 +129,14 @@ export type AppTableProps<Row> = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error?: (error: unknown) => void;
   on_sort_change: (payload: AppTableSortState | null) => void;
-  // 回调存在即开放拖拽；表格维持临时顺序直到页面完成持久化与权威数据刷新。
+  // 回调声明重排能力；结束表示保存与刷新处理结束，最终顺序始终由页面 rows 决定。
   on_reorder?: (ordered_row_ids: string[]) => Promise<void>;
+  // 页面提供只读、筛选及结果完整性限制；表格统一处理列排序和提交期间的互斥。
+  reorder_disabled?: boolean;
   // 双击目标行或在表格焦点下按 Enter 激活当前活动行。
   on_row_activate?: (row_id: string) => void;
-  render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
+  // 页面只提供业务菜单项，表格拥有菜单容器、目标选区和通用重排操作。
+  render_row_context_menu_items?: (payload: AppTableRowContextMenuEvent<Row>) => ReactNode;
   box_selection_enabled?: boolean;
   virtual_overscan?: number;
   row_height?: number;

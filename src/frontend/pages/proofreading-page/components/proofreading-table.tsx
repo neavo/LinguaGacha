@@ -27,7 +27,6 @@ import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { Spinner } from "@frontend/shadcn/spinner";
 import {
-  AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
   AppContextMenuShortcut,
@@ -38,7 +37,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
-import { resolve_app_table_context_target_row_ids } from "@frontend/widgets/app-table/app-table-selection";
 import { read_optional_item_name_text } from "@shared/item-name";
 import type {
   AppTableColumn,
@@ -85,8 +83,8 @@ type ProofreadingTableProps = {
 
 type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
 
+// 菜单选择后会恢复焦点，弹窗动作延后一拍以免同轮抢焦点。
 function run_after_context_menu_close(action: () => void): void {
-  // ContextMenu 会在选择后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
   window.setTimeout(action, 0);
 }
 
@@ -409,74 +407,69 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_selection_error={props.on_selection_error}
           on_sort_change={props.on_sort_change}
           on_row_activate={props.on_open_edit}
-          render_row_context_menu={(payload) => {
-            const target_row_ids = resolve_app_table_context_target_row_ids(
-              payload.row_id,
-              props.selected_row_ids,
-            );
+          render_row_context_menu_items={(payload) => {
+            const target_row_ids = payload.target_row_ids;
 
             return (
-              <AppContextMenuContent>
-                <AppContextMenuGroup>
-                  <AppContextMenuItem
-                    aria-keyshortcuts="Enter"
-                    onClick={() => {
-                      run_after_context_menu_close(() => {
-                        props.on_open_edit(payload.row_id);
-                      });
-                    }}
-                  >
-                    <PencilLine />
-                    {t("app.action.edit")}
-                    <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
-                  </AppContextMenuItem>
-                  <AppContextMenuItem
-                    disabled={props.readonly}
-                    onClick={() => {
-                      run_after_context_menu_close(() => {
-                        props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
-                      });
-                    }}
-                  >
-                    <RefreshCcw />
-                    {t("proofreading_page.action.retranslate")}
-                  </AppContextMenuItem>
-                  <AppContextMenuItem
-                    disabled={props.readonly}
-                    onClick={() => {
-                      run_after_context_menu_close(() => {
-                        props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
-                      });
-                    }}
-                  >
-                    <Eraser />
-                    {t("proofreading_page.action.clear_translation")}
-                  </AppContextMenuItem>
-                  <AppContextMenuSub>
-                    <AppContextMenuSubTrigger disabled={props.readonly}>
-                      <ListChecks />
-                      {t("proofreading_page.action.set_translation_status")}
-                    </AppContextMenuSubTrigger>
-                    <AppContextMenuSubContent>
-                      {ITEM_MANUAL_STATUSES.map((status) => (
-                        <AppContextMenuItem
-                          key={status}
-                          disabled={props.readonly}
-                          onClick={() => {
-                            props.on_request_set_translation_status_row_ids(
-                              target_row_ids,
-                              status,
-                              payload.row_id,
-                            );
-                          }}
-                        >
-                          {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
-                        </AppContextMenuItem>
-                      ))}
-                    </AppContextMenuSubContent>
-                  </AppContextMenuSub>
-                </AppContextMenuGroup>
-              </AppContextMenuContent>
+              <AppContextMenuGroup>
+                <AppContextMenuItem
+                  aria-keyshortcuts="Enter"
+                  onClick={() => {
+                    run_after_context_menu_close(() => {
+                      props.on_open_edit(payload.row_id);
+                    });
+                  }}
+                >
+                  <PencilLine />
+                  {t("app.action.edit")}
+                  <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
+                </AppContextMenuItem>
+                <AppContextMenuItem
+                  disabled={props.readonly}
+                  onClick={() => {
+                    run_after_context_menu_close(() => {
+                      props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
+                    });
+                  }}
+                >
+                  <RefreshCcw />
+                  {t("proofreading_page.action.retranslate")}
+                </AppContextMenuItem>
+                <AppContextMenuItem
+                  disabled={props.readonly}
+                  onClick={() => {
+                    run_after_context_menu_close(() => {
+                      props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
+                    });
+                  }}
+                >
+                  <Eraser />
+                  {t("proofreading_page.action.clear_translation")}
+                </AppContextMenuItem>
+                <AppContextMenuSub>
+                  <AppContextMenuSubTrigger disabled={props.readonly}>
+                    <ListChecks />
+                    {t("proofreading_page.action.set_translation_status")}
+                  </AppContextMenuSubTrigger>
+                  <AppContextMenuSubContent>
+                    {ITEM_MANUAL_STATUSES.map((status) => (
+                      <AppContextMenuItem
+                        key={status}
+                        disabled={props.readonly}
+                        onClick={() => {
+                          props.on_request_set_translation_status_row_ids(
+                            target_row_ids,
+                            status,
+                            payload.row_id,
+                          );
+                        }}
+                      >
+                        {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                      </AppContextMenuItem>
+                    ))}
+                  </AppContextMenuSubContent>
+                </AppContextMenuSub>
+              </AppContextMenuGroup>
             );
           }}
           box_selection_enabled

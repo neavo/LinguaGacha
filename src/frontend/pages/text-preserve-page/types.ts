@@ -72,7 +72,7 @@ export type UseTextPreservePageStateResult = {
   sort_state: TextPreserveSortState;
   invalid_filter_message: string | null;
   readonly: boolean;
-  drag_disabled: boolean;
+  reorder_disabled: boolean;
   hit_state: TextPreserveHitState;
   hit_ready: boolean;
   hit_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState>;
@@ -109,7 +109,7 @@ export type UseTextPreservePageStateResult = {
   set_default_preset: (virtual_id: string) => Promise<void>;
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;
-  reorder_selected_entries: (ordered_entry_ids: TextPreserveEntryId[]) => Promise<void>;
+  reorder_entries: (ordered_entry_ids: TextPreserveEntryId[]) => Promise<void>;
   query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
   save_dialog_entry: () => Promise<void>;
   request_close_dialog: () => Promise<void>;

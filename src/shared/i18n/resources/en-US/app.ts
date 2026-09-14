@@ -32,6 +32,8 @@ export const en_us_app = {
     },
   },
   action: {
+    move_to_top: "Move to Top",
+    move_to_bottom: "Move to Bottom",
     add: "Add",
     cancel: "Cancel",
     confirm: "Confirm",

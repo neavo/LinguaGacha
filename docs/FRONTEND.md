@@ -52,6 +52,7 @@
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
+- `AppTable` 统一拥有行菜单容器、选区裁决和重排交互；页面提供业务菜单项、重排限制、持久化与错误反馈。拖拽和菜单共用临时顺序与提交锁；`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，表格随后交回页面 `rows`，正常返回不等同于保存成功。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 
 ### 批量翻译与工程导出

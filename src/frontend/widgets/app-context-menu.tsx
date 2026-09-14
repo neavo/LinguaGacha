@@ -40,6 +40,20 @@ function AppContextMenuGroup(props: ContextMenuPrimitive.Group.Props): JSX.Eleme
   return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />;
 }
 
+function AppContextMenuSeparator({
+  className,
+  ...props
+}: ContextMenuPrimitive.Separator.Props): JSX.Element {
+  return (
+    <ContextMenuPrimitive.Separator
+      data-slot="context-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+/** 子菜单共用鼠标命中规则，避免跨过触发器时提前关闭。 */
 function AppContextMenuSub({
   onOpenChange,
   ...props
@@ -213,6 +227,7 @@ export {
   AppContextMenuItem,
   AppContextMenuRadioGroup,
   AppContextMenuRadioItem,
+  AppContextMenuSeparator,
   AppContextMenuShortcut,
   AppContextMenuSub,
   AppContextMenuSubContent,
