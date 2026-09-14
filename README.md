@@ -1,11 +1,9 @@
-
-
 <div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
 <p align='center'>使用 AI 能力一键翻译 小说、游戏、字幕 等文本内容的次世代文本翻译器</p>
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ]
 
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，使用 AI 技术次世代文本翻译器
@@ -87,13 +85,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 2026091 v0.120.1
-  - 支持 `deepseek-flash` 模型
-  - 修复与改进 [#866](../../issues/866) [#867](../../issues/867) [#868](../../issues/868) [#871](../../issues/871)
-
-- 20260907 v0.120.0
-  - `AGENT` - 批量翻译 [#856](../../issues/856)
-  - 修复与改进 [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
+- 20260914 v0.121.0
+  - 若干 UI 优化
+    - 新增 UI 语言 `日文` `韩文` [#875](../../issues/875)
+    - 全新的 `Markdown` 渲染效果 [#884](../../issues/884)
+    - 其他交互细节改善 [#878](../../issues/878) [#882](../../issues/882)
+  - 修复与改进 [#876](../../issues/876) [#879](../../issues/879) [#880](../../issues/880) [#883](../../issues/883) [#885](../../issues/885)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]

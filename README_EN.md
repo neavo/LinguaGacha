@@ -1,4 +1,4 @@
-<div align=center><img src="https://github.com/user-attachments/assets/cdf990fb-cf03-4370-a402-844f87b2fab8" width="256px;"></div>
+<div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
 <p align='center'>Next-generation text translator utilizing AI capabilities for one-click translation of novels, games, subtitles, and more</p>
 
@@ -6,7 +6,7 @@
 &ensp;
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ]
 
 ## Overview 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), is an AI-powered next-generation text translator
@@ -88,13 +88,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 2026091 v0.120.1
-  - Support for the `deepseek-flash` model
-  - Fixes and improvements [#866](../../issues/866) [#867](../../issues/867) [#868](../../issues/868) [#871](../../issues/871)
-
-- 20260907 v0.120.0
-  - `AGENT` - Batch translation [#856](../../issues/856)
-  - Fixes and improvements [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
+- 20260914 v0.121.0
+  - Various UI improvements
+    - Added UI languages: `Japanese` and `Korean` [#875](../../issues/875)
+    - New `Markdown` rendering [#884](../../issues/884)
+    - Other interaction improvements [#878](../../issues/878) [#882](../../issues/882)
+  - Fixes and improvements [#876](../../issues/876) [#879](../../issues/879) [#880](../../issues/880) [#883](../../issues/883) [#885](../../issues/885)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org)

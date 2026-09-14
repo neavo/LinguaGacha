@@ -1,4 +1,4 @@
-<div align=center><img src="https://github.com/user-attachments/assets/de19ec3f-246c-432d-9636-ff16f82b094e" width="256px;"></div>
+<div align=center><img width="640px"  alt="hero-wide-v1" src="https://github.com/user-attachments/assets/ca23dd6d-a676-4c6b-a33e-0a2687bff534" /></div>
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
 <p align='center'>AIの能力を活用して小説、ゲーム、字幕などのテキストをワンクリックで翻訳する次世代のテキスト翻訳ツール</p>
 
@@ -6,7 +6,7 @@
 &ensp;
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ] | [ [한국어](./README_KO.md) ] | [ [Deutsch](./README_DE.md) ]
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、AIを活用した次世代のテキスト翻訳ツールです
@@ -87,13 +87,12 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 2026091 v0.120.1
-  - `deepseek-flash` モデルに対応
-  - 修正と改善 [#866](../../issues/866) [#867](../../issues/867) [#868](../../issues/868) [#871](../../issues/871)
-
-- 20260907 v0.120.0
-  - `AGENT` - 一括翻訳 [#856](../../issues/856)
-  - 修正と改善 [#860](../../issues/860) [#861](../../issues/861) [#862](../../issues/862) [#864](../../issues/864)
+- 20260914 v0.121.0
+  - UI の各種改善
+    - UI 言語に `日本語` と `韓国語` を追加 [#875](../../issues/875)
+    - `Markdown` の表示を刷新 [#884](../../issues/884)
+    - その他の操作性を改善 [#878](../../issues/878) [#882](../../issues/882)
+  - 修正と改善 [#876](../../issues/876) [#879](../../issues/879) [#880](../../issues/880) [#883](../../issues/883) [#885](../../issues/885)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストール
