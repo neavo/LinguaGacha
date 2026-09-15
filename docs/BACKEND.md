@@ -93,8 +93,10 @@ project, files, items, quality, prompts, proofreading
 - Runner 等待规划、worker 和增量提交收束，保存最终进度并释放本轮数据库 lease 后返回独立结果；Runtime 冲刷请求压力、发布同一结果的终态、移除父监听并释放自己取得的 lease，最后结算 completion。完成、取消与执行失败分别为 `done`、`stopped`、`error`，`idle` 表示没有运行任务；已提交译文保留。首次取消在发出信号前记录 `stop_source: user | parent | shutdown`，重复停止返回未受理，新运行与工程切换清空来源。基础设施异常拒绝 completion；取消后的 `BatchTranslationCompletionError` 携带结果与原始 cause；dispose 等待同一完成链。
 - 生命周期与已提交进度立即发布快照，请求压力按 500ms 合并且在终态前冲刷。请求压力只计已发出的模型请求。每次项目会话切换重置为空闲并推进 revision，迟到 run 和旧帧不能覆盖新工程。
 - work-unit worker 负责提示词与响应处理，通过本次执行携带的父线程请求端口访问 LLM；线程与同进程模式共用该端口和原 work unit 的取消信号。worker 崩溃必须中止所属父线程请求，作为基础设施错误结束任务。
-- `TranslationRequestScheduler` 是本轮唯一请求队列与派发入口，同时检查模型并发、速率和 Key 可用性。网络失败保持原请求回到队尾，重新选择可用 Key；收到响应后交给内容处理。`RequestRatePool` 跨任务保留同配置的速率时钟，Key 状态与请求队列属于单轮任务。
-- Key 首次失败暂停派发并收束在途请求；并发失败只建立首次故障，成功清零，随后失败重新计数。冷却后只用一个真实请求恢复，成功恢复正常并发，恢复机会耗尽则本轮放弃 Key；其他 Key 继续处理共享队列。全部 Key 暂时不可用时等待，全部耗尽返回翻译端口的 `keys_exhausted`，worker 保留预处理完成项并终结仍需模型的条目为 `ERROR`，由 Runner 提交并正常收尾。响应终态错误进入内容重试，不惩罚 Key。
+- `TranslationRequestScheduler` 是本轮唯一请求队列、并发额度与派发入口，同时检查速率和 Key 可用性。网络失败保持原请求回到队尾，重新选择可用 Key；收到响应后交给内容处理。`RequestRatePool` 跨任务保留同配置的速率时钟，Key、并发额度与请求队列属于单轮任务。
+- 并发与 RPM 双零启用本轮探测，显式并发优先，仅 RPM 非零时并发取 RPM。降档版本在真实派发时记录，重派重新取值；旧版本不调整额度，但继续参与结果与 Key 恢复。默认 RPS 随额度变化，跨轮保留速率时钟并重新探测。
+- `TranslationPipeline` 只读取请求额度来供应 work unit，完成后优先补充内容重试；降档保留在途任务，真实网络派发立即受新额度约束。活动 work unit 包含预处理与响应处理，其数量与网络在途计数、线程池容量各自独立。
+- Key 首次失败暂停派发并收束在途请求；并发失败只建立首次故障，成功清零，随后失败重新计数。冷却后只用一个真实请求恢复，成功后按当前额度派发，恢复机会耗尽则本轮放弃 Key；其他 Key 继续处理共享队列。全部 Key 暂时不可用时等待，全部耗尽返回翻译端口的 `keys_exhausted`，worker 保留预处理完成项并终结仍需模型的条目为 `ERROR`，由 Runner 提交并正常收尾。响应终态错误进入内容重试，不惩罚 Key。
 - `TranslationPlanner` 首次建立本轮源文指标，Runner 持有到任务完成；token 数按短引用投影后的 `o200k_base` 正文计算，特殊标记按普通文本处理，行数来自原文。内容重试按本轮条目和指标同步拆块，worker 返回值只决定待重试集合；最终提交消费 worker 写回快照。指标不进入 work-unit 载荷、计费统计或项目存储。
 - Planner 独占跨任务计数 LRU，同轮缺失文本去重后交给 planning worker；每个线程独占 BPE 片段缓存并按需启动、跨规划复用。池依赖单 run 互斥，只受理一个计数请求；取消停止新批次派发，在完整条目之间响应，并等待全部活动批次终态后释放请求。线程异常使本次请求失败，后续请求按需重建已退出线程；显式同进程执行共用计数循环。
 - 翻译 work-unit 以 item 为唯一请求、响应和提交单位：普通模型每个请求 item 使用一条 JSONL 记录（`id`、`text`，actor 模式再加 `actor`），`text` 可包含换行。`id` 在请求内从 0 按实际记录分配，与数据库 item ID 独立；响应按原值匹配，允许乱序。唯一匹配的非空译文独立提交，缺失、重复、未知或空白正文只影响对应 item；请求失败、零有效译文、部分有效和全部有效分别形成 error、error、warning 和 info 结果日志，结构变化的译文保留模型完整文本并由校对实时派生 `LINE_COUNT_MISMATCH` warning。SakuraLLM 每个 work-unit 只发送一个 item，并以完整纯文本承载译文；worker 内部才保留逐行准备与恢复事实。
@@ -107,6 +109,7 @@ project, files, items, quality, prompts, proofreading
 - 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态，Pi 固定 `maxRetries: 0`：供应商请求失败归 `request_error`，长度截断和不支持的工具调用归 `response_error`，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。
 - `src/backend/network` 是普通后端与 Agent 工作区 HTTP 的共用传输所有者；工作区调用和代理通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)；`BackendResources` 在业务服务启动前把它安装为当前 Backend Runtime worker 或 CLI 进程的 `globalThis.fetch`，同时安装同版本的 Request、Response、Headers 和 FormData，关闭时一起恢复，避免 Electron 内置 Undici 与应用依赖混用；模型 adapter、模型列表和 Web Search 从该入口取用 transport。每次请求按当前 Electron session 代理规则选路，loopback 固定直连；解析失败、路由不受支持或代理失败都结束请求，不绕过代理静默直连，也不改写进程全局 dispatcher。
+- OneShot 的 HTTP 状态由统一 transport 在请求异步上下文中采集，再附到 `LLMClient` 结果；该边界保留 SDK 压平错误后丢失的状态码，网络层不解释翻译语义。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型配置归一化时统一把失效思考档位调整为当前模型可用值并在配置写入口持久化，模型快照不会向消费方暴露失效档位，请求阶段只保留 `off` 兜底。两种协议的原生思考载荷与 Responses 连续性由 `pi-ai` 生成，项目只补协议生成字段、把 Responses 系统指令规范为 `developer`，并让显式 `extra_body` 最终覆盖。
 
 ## 5. 数据库与 `.lg` 存储

@@ -9,6 +9,7 @@ import {
   Headers as UndiciHeaders,
   FormData as UndiciFormData,
 } from "undici";
+import { record_http_response_status } from "./http-response-status";
 
 type FetchGlobals = Pick<
   typeof globalThis,
@@ -65,11 +66,13 @@ export class SystemProxyHttpClient {
       await resolve_system_proxy_route(this.resolver, url.href, signal),
     );
     signal?.throwIfAborted();
-    return (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
+    const response = (await undici_fetch(input as Parameters<typeof undici_fetch>[0], {
       ...(init as Parameters<typeof undici_fetch>[1]),
       dispatcher,
       ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
     })) as unknown as Response;
+    record_http_response_status(response.status);
+    return response;
   };
 
   /** Backend 线程只有一个普通 HTTP transport，第三方 SDK 也从同一全局入口取用。 */

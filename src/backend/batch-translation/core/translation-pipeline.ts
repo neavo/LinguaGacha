@@ -7,7 +7,7 @@ import type { TranslationPipelineWorkerResult } from "./batch-translation-runner
 export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 500; // worker 结果提交窗口固定为每秒 2 次，避免高频写库
 
 interface TranslationPipelineOptions {
-  worker_count: number;
+  get_concurrency_limit: () => number;
   signal: AbortSignal;
   execute: (
     context: TranslationContext,
@@ -17,7 +17,7 @@ interface TranslationPipelineOptions {
 }
 
 /**
- * 批量翻译流水线，负责普通队列、高优重试队列、worker pool 和批量提交
+ * 批量翻译流水线，按当前额度供应 work unit，并负责内容重试与批量提交。
  */
 export class TranslationPipeline {
   private readonly queue: TranslationContext[] = []; // 保存初次 work unit，停止时会被直接清空
@@ -26,7 +26,7 @@ export class TranslationPipeline {
 
   private readonly commit_queue: TranslationCommitEntry[] = []; // 聚合 worker 产物，再按固定窗口批量提交
 
-  private readonly worker_count: number;
+  private readonly get_concurrency_limit: () => number;
   private readonly upstream_signal: AbortSignal;
   private readonly abort_controller: AbortController;
   private readonly signal: AbortSignal;
@@ -38,11 +38,12 @@ export class TranslationPipeline {
   private readonly upstream_abort_listener: () => void;
   private commit_timer: ReturnType<typeof setTimeout> | null = null;
   private commit_promise: Promise<void> = Promise.resolve();
-  private commit_error: unknown = null;
-  private worker_error: unknown = null;
+  private commit_error: unknown = null; // 定时提交失败单独保留，收尾时禁止再次提交。
+  private execution_error: unknown = null; // 首次执行失败在活动任务和已有提交收束后抛出。
 
+  /** 将上游取消传入执行链，额度始终从请求调度器读取。 */
   public constructor(options: TranslationPipelineOptions) {
-    this.worker_count = Math.max(1, Math.trunc(options.worker_count));
+    this.get_concurrency_limit = options.get_concurrency_limit;
     this.upstream_signal = options.signal;
     this.abort_controller = new AbortController();
     this.signal = this.abort_controller.signal;
@@ -59,62 +60,50 @@ export class TranslationPipeline {
   }
 
   /**
-   * 执行完整流水线；所有 worker 停止后会强制冲刷最后一批提交
+   * 按额度供应任务，等待全部活动任务收束后冲刷最后一批提交。
    */
   public async run(initial_contexts: TranslationContext[]): Promise<void> {
     this.queue.push(...initial_contexts);
-    const workers = Array.from({ length: this.worker_count }, () => this.run_worker());
-    const worker_results = await Promise.allSettled(workers);
-    this.capture_worker_errors(worker_results);
+    const active = new Set<Promise<void>>();
     try {
-      this.clear_commit_timer();
+      for (;;) {
+        while (!this.signal.aborted && active.size < this.get_concurrency_limit()) {
+          const context = this.retry_queue.shift() ?? this.queue.shift(); // 内容重试优先。
+          if (context === undefined) break;
+          const task = this.run_context(context).finally(() => active.delete(task));
+          active.add(task);
+        }
+        if (active.size === 0) break;
+        // 请求成功先更新额度，再返回 work unit；完成后读取即可，无需另建通知链。
+        await Promise.race(active);
+      }
+      if (this.commit_timer !== null) clearTimeout(this.commit_timer);
+      this.commit_timer = null;
       await this.commit_promise;
-      this.throw_commit_error_if_any();
+      if (this.commit_error !== null) throw this.commit_error;
       await this.flush_commit_queue();
-      this.throw_commit_error_if_any();
-      this.throw_worker_error_if_any();
+      if (this.execution_error !== null) throw this.execution_error;
     } finally {
-      this.detach_upstream_abort_listener();
+      this.upstream_signal.removeEventListener("abort", this.upstream_abort_listener);
     }
   }
 
   /**
-   * 单个 worker 持续优先消费 retry 队列，直到队列耗尽或收到停止信号
+   * 单个 work unit 完成后先回收结果和重试；失败取消入口并等待其余活动任务收束。
    */
-  private async run_worker(): Promise<void> {
+  private async run_context(context: TranslationContext): Promise<void> {
     try {
-      for (;;) {
-        if (this.signal.aborted) {
-          this.clear_queues();
-          return;
-        }
-        const context = this.next_context();
-        if (context === null) {
-          return;
-        }
-        this.throw_commit_error_if_any();
-        const result = await this.execute(context, this.signal);
-        if (this.signal.aborted) {
-          return;
-        }
-        if (result.commit_entries.length > 0) {
-          this.push_commit_entries(result.commit_entries);
-        }
-        if (result.retry_contexts.length > 0) {
-          this.retry_queue.push(...result.retry_contexts);
-        }
+      const result = await this.execute(context, this.signal);
+      if (this.signal.aborted) return;
+      if (result.commit_entries.length > 0) {
+        this.push_commit_entries(result.commit_entries);
+      }
+      if (result.retry_contexts.length > 0) {
+        this.retry_queue.push(...result.retry_contexts);
       }
     } catch (error) {
       this.abort_pipeline(error);
-      throw error;
     }
-  }
-
-  /**
-   * 取下一份上下文；重试队列优先，普通队列次之
-   */
-  private next_context(): TranslationContext | null {
-    return this.retry_queue.shift() ?? this.queue.shift() ?? null;
   }
 
   /**
@@ -148,70 +137,16 @@ export class TranslationPipeline {
   }
 
   /**
-   * 清理定时器，避免任务结束后仍有悬挂提交回调
-   */
-  private clear_commit_timer(): void {
-    if (this.commit_timer === null) {
-      return;
-    }
-    clearTimeout(this.commit_timer);
-    this.commit_timer = null;
-  }
-
-  /**
-   * 任一 worker 或提交失败时立即关闭入口，并阻止后续 worker 继续取新任务
+   * 执行或提交失败时立即关闭入口，活动任务沿取消信号自然收束。
    */
   private abort_pipeline(error?: unknown): void {
-    if (error !== undefined && this.worker_error === null) {
-      this.worker_error = error;
+    if (error !== undefined && this.execution_error === null) {
+      this.execution_error = error;
     }
-    this.clear_queues();
-    if (!this.abort_controller.signal.aborted) {
-      this.abort_controller.abort();
-    }
-  }
-
-  /**
-   * 清空所有未执行队列，保证失败后不会启动新的 work unit
-   */
-  private clear_queues(): void {
     this.queue.length = 0;
     this.retry_queue.length = 0;
-  }
-
-  /**
-   * worker 结果必须等全部收束后再提取错误，避免第一处 reject 让 run 提前返回
-   */
-  private capture_worker_errors(results: PromiseSettledResult<void>[]): void {
-    for (const result of results) {
-      if (result.status === "rejected" && this.worker_error === null) {
-        this.worker_error = result.reason;
-      }
-    }
-  }
-
-  /**
-   * run 结束时移除上游停止监听，避免复用测试对象时残留闭包引用
-   */
-  private detach_upstream_abort_listener(): void {
-    this.upstream_signal.removeEventListener("abort", this.upstream_abort_listener);
-  }
-
-  /**
-   * 定时提交发生在 worker 外侧，必须显式回传错误给 run 调用方
-   */
-  private throw_commit_error_if_any(): void {
-    if (this.commit_error !== null) {
-      throw this.commit_error;
-    }
-  }
-
-  /**
-   * worker 错误等 pending 提交处理完成后再抛，让 BatchTranslationRunner 统一发布终态
-   */
-  private throw_worker_error_if_any(): void {
-    if (this.worker_error !== null) {
-      throw this.worker_error;
+    if (!this.abort_controller.signal.aborted) {
+      this.abort_controller.abort();
     }
   }
 }

@@ -5,6 +5,7 @@ import { read_model_request_snapshot, read_request_timeout_ms } from "./llm-clie
 import { resolve_one_shot_pi_request } from "./llm-pi";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
 import type { ModelRequestSnapshot } from "./policy/policy-types";
+import { with_http_response_status } from "../network/http-response-status";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
@@ -19,8 +20,13 @@ export class LLMClient implements LLMClientPort {
     this.user_agent = options.userAgent;
   }
 
-  /** 单次解析模型快照，并把取消、总时限和 Pi 流统一收敛为 LLMRequestResult。 */
-  public async request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
+  /** 在单次请求上下文内附加 HTTP 事实，避免依赖 SDK 的错误文本。 */
+  public request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
+    return with_http_response_status(() => this.execute(body, signal));
+  }
+
+  /** 解析模型快照，将取消、总时限和 Pi 终态收敛为请求结果。 */
+  private async execute(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
     const snapshot = read_model_request_snapshot(body.model, this.user_agent);
     const controller = new AbortController();
     const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);

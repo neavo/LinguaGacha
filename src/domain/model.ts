@@ -67,8 +67,8 @@ type ModelRequestConfig = {
 type ModelThresholdConfig = {
   input_token_limit: number; // 输入 token 限制
   output_token_limit: number; // 输出 token 限制
-  rpm_limit: number; // 每分钟请求数限制，0 表示不限制
-  concurrency_limit: number; // 并发限制，0 表示沿用全局策略
+  rpm_limit: number; // 每分钟请求数限制，0 表示按并发额度控制默认发起节奏。
+  concurrency_limit: number; // 并发限制；与 RPM 均为 0 时自动探测，仅此项为 0 时取 RPM。
 };
 
 type ModelThinkingConfig = {

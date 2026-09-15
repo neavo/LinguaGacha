@@ -47,7 +47,7 @@ export class BatchTranslationRunner {
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
   private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly rate_pool = new RequestRatePool(); // 同一模型资源跨任务复用速率时钟。
-  private readonly llm_client: BatchTranslationRunnerOptions["llmClient"];
+  private readonly llm_client: BatchTranslationRunnerOptions["llmClient"]; // 父线程真实请求入口，由本轮调度器统一派发。
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
@@ -118,7 +118,7 @@ export class BatchTranslationRunner {
           this.log_replay.request_failure(key_index, error, app_language),
       });
       const pipeline = new TranslationPipeline({
-        worker_count: rate.max_concurrency,
+        get_concurrency_limit: () => request_scheduler.get_concurrency_limit(),
         signal: handle.signal,
         execute: (context, signal) =>
           this.execute_translation_context(

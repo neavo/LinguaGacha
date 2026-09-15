@@ -1,23 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  RequestRatePool,
-  TranslationRequestRate,
-  resolve_effective_concurrency_limit,
-} from "./request-rate";
+import { RequestRatePool, TranslationRequestRate } from "./request-rate";
 
 describe("TranslationRequestRate", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("并发按显式值、RPM、默认值依次解析", () => {
-    expect(resolve_effective_concurrency_limit({ concurrency_limit: 16, rpm_limit: 60 })).toBe(16);
-    expect(resolve_effective_concurrency_limit({ rpm_limit: 60 })).toBe(60);
-    expect(resolve_effective_concurrency_limit({})).toBeGreaterThan(0);
-  });
-
   it("默认节奏允许冷启动填满并发，再按 RPS 补充启动资格", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const rate = new TranslationRequestRate({ max_concurrency: 2 });
+    const rate = new TranslationRequestRate({ rps_limit: 2 });
     rate.consume_dispatch_permit(0);
     rate.consume_dispatch_permit(0);
     expect(rate.get_dispatch_permit_delay_ms()).toBe(500);
@@ -25,6 +15,21 @@ describe("TranslationRequestRate", () => {
     expect(rate.get_dispatch_permit_delay_ms()).toBe(0);
     rate.consume_dispatch_permit(500);
     expect(rate.get_dispatch_permit_delay_ms()).toBe(500);
+  });
+
+  it("升档先按旧速率补充且不赠送令牌，降档裁剪余额", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const rate = new TranslationRequestRate({ rps_limit: 2 });
+    rate.consume_dispatch_permit(0);
+    rate.consume_dispatch_permit(0);
+    vi.setSystemTime(250);
+    rate.set_rps_limit(4);
+    expect(rate.get_dispatch_permit_delay_ms()).toBe(125);
+    vi.setSystemTime(1_250);
+    rate.set_rps_limit(1);
+    rate.consume_dispatch_permit(1_250);
+    expect(rate.get_dispatch_permit_delay_ms()).toBe(1_000);
   });
 
   it("RPM 节奏跨同配置任务保留，修改容量时重新建立时钟", () => {

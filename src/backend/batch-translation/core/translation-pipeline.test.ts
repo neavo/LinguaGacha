@@ -7,11 +7,80 @@ describe("TranslationPipeline", () => {
     vi.useRealTimers();
   });
 
+  it("升档补充活动任务，降档等待自然收束后再补发", async () => {
+    vi.useFakeTimers();
+    let limit = 4;
+    let hold = true;
+    const releases: Array<() => void> = [];
+    const committed: number[] = [];
+    const pipeline = new TranslationPipeline({
+      get_concurrency_limit: () => limit,
+      signal: new AbortController().signal,
+      execute: async (unit) => {
+        if (hold) await new Promise<void>((resolve) => releases.push(resolve));
+        return { commit_entries: [commit(Number(unit.work_unit_id))], retry_contexts: [] };
+      },
+      commit: async (entries) => {
+        committed.push(...entries.map((entry) => entry.input_tokens));
+      },
+    });
+    const run = pipeline.run(Array.from({ length: 10 }, (_, index) => context(index + 1)));
+    expect(releases).toHaveLength(4);
+    limit = 6;
+    releases[0]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(releases).toHaveLength(7);
+    limit = 2;
+    for (const release of releases.slice(1, 5)) release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(releases).toHaveLength(7);
+    releases[5]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(releases).toHaveLength(8);
+    hold = false;
+    for (const release of releases) release();
+    await run;
+    expect(committed.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("队列收尾产生切分后仍填满额度，取消等待活动任务全部收束", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const releases: Array<() => void> = [];
+    const executed: number[] = [];
+    const pipeline = new TranslationPipeline({
+      get_concurrency_limit: () => 4,
+      signal: controller.signal,
+      execute: async (unit) => {
+        const id = Number(unit.work_unit_id);
+        executed.push(id);
+        if (id === 1) return { commit_entries: [], retry_contexts: [2, 3, 4, 5, 6].map(context) };
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return { commit_entries: [], retry_contexts: [] };
+      },
+      commit: async () => {},
+    });
+    let done = false;
+    const run = pipeline.run([context(1)]).then(() => {
+      done = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(executed).toEqual([1, 2, 3, 4, 5]);
+    controller.abort();
+    releases[0]!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toBe(false);
+    expect(executed).toEqual([1, 2, 3, 4, 5]);
+    for (const release of releases.slice(1)) release();
+    await run;
+    expect(done).toBe(true);
+  });
+
   it("优先执行重试队列并按批次提交结果", async () => {
     const executed: number[] = [];
     const committed: number[][] = [];
     const pipeline = new TranslationPipeline({
-      worker_count: 1,
+      get_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         executed.push(Number(unit.work_unit_id));
@@ -36,7 +105,7 @@ describe("TranslationPipeline", () => {
     let release_second_context: () => void = () => {};
     let second_context_started = false;
     const pipeline = new TranslationPipeline({
-      worker_count: 1,
+      get_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         if (Number(unit.work_unit_id) === 2) {
@@ -70,7 +139,7 @@ describe("TranslationPipeline", () => {
     let second_worker_saw_abort = false;
     let settled = false;
     const pipeline = new TranslationPipeline({
-      worker_count: 2,
+      get_concurrency_limit: () => 2,
       signal: new AbortController().signal,
       execute: async (unit, signal) => {
         executed.push(Number(unit.work_unit_id));
@@ -125,7 +194,7 @@ describe("TranslationPipeline", () => {
     const committed: number[][] = [];
     let release_second_context: () => void = () => {};
     const pipeline = new TranslationPipeline({
-      worker_count: 1,
+      get_concurrency_limit: () => 1,
       signal: new AbortController().signal,
       execute: async (unit) => {
         if (Number(unit.work_unit_id) === 2) {
@@ -157,6 +226,7 @@ describe("TranslationPipeline", () => {
   });
 });
 
+/** 仅推进有界微任务，等待流水线完成一次调度。 */
 async function wait_until(predicate: () => boolean): Promise<void> {
   for (let index = 0; index < 10; index += 1) {
     if (predicate()) {
@@ -167,6 +237,7 @@ async function wait_until(predicate: () => boolean): Promise<void> {
   expect(predicate()).toBe(true);
 }
 
+/** 用请求身份构造最小上下文，测试只观察供给与重试顺序。 */
 function context(id: number) {
   return {
     work_unit_id: String(id),
@@ -178,6 +249,7 @@ function context(id: number) {
     is_initial: true,
   };
 }
+/** 通过提交载荷区分已完成任务，无需建立项目存储。 */
 function commit(id: number) {
   return { items: [], input_tokens: id, reasoning_tokens: 0, output_tokens: 0 };
 }
