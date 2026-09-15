@@ -85,7 +85,7 @@ function normalize_pi_result(
     ...usage,
     cancelled: false,
     timeout: false,
-    ...(finish_error === undefined ? {} : { request_error: finish_error }),
+    ...(finish_error === undefined ? {} : { response_error: finish_error }),
   };
 }
 

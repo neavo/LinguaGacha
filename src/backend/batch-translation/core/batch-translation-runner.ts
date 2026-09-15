@@ -6,7 +6,6 @@ import { prepare_translation_targets } from "../planning/translation-targets";
 
 import type { BatchTranslationRunHandle } from "../batch-translation-runtime";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
-import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type {
   BatchTranslationStartCommand,
   BatchTranslationResult,
@@ -15,7 +14,6 @@ import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
 import type { BatchTranslationProgress } from "../../../domain/batch-translation";
 import type {
-  TranslationWorkUnitResult,
   BatchTranslationRunnerOptions,
   BatchTranslationRunContext,
 } from "./batch-translation-runner-options";
@@ -24,13 +22,12 @@ import type {
   TranslationContext,
   TranslationTokenMetric,
 } from "../planning/translation-plan-types";
-import { LimiterPool, TranslationLimiter } from "./limiter-pool";
-import { ModelKeyLeasePool } from "./model-key-lease-pool";
+import { RequestRatePool } from "./request-rate";
+import { TranslationRequestScheduler } from "./translation-request-scheduler";
 import { TranslationPipeline } from "./translation-pipeline";
 import { TranslationProgressAccumulator } from "./progress-accumulator";
 import { TranslationLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../domain/batch-translation";
-import { type MutableJsonRecord } from "../../../domain/json";
 
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import { read_task_item_status, read_task_item_id } from "../translation-item";
@@ -49,8 +46,8 @@ export class BatchTranslationRunner {
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: BatchTranslationRunnerOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
   private readonly log_replay: TranslationLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
-  private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
-  private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
+  private readonly rate_pool = new RequestRatePool(); // 同一模型资源跨任务复用速率时钟。
+  private readonly llm_client: BatchTranslationRunnerOptions["llmClient"];
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
@@ -59,6 +56,7 @@ export class BatchTranslationRunner {
     this.task_store = options.taskStore;
     this.task_runtime = options.taskRuntime;
     this.executor_client = options.executorClient;
+    this.llm_client = options.llmClient;
     this.task_planner = options.taskPlanner;
     this.log_replay = new TranslationLogReplay(options.logManager);
   }
@@ -110,9 +108,17 @@ export class BatchTranslationRunner {
         handle.signal,
         prepared.target_ids,
       );
-      const limiter = this.resolve_task_limiter(run_context.model);
+      const rate = this.rate_pool.resolve(run_context.model);
+      const request_scheduler = new TranslationRequestScheduler({
+        model: run_context.model,
+        client: this.llm_client,
+        rate,
+        on_pressure: (delta) => this.task_runtime.change_request_in_flight_count(handle, delta),
+        on_failure: (key_index, error) =>
+          this.log_replay.request_failure(key_index, error, app_language),
+      });
       const pipeline = new TranslationPipeline({
-        worker_count: limiter.max_concurrency,
+        worker_count: rate.max_concurrency,
         signal: handle.signal,
         execute: (context, signal) =>
           this.execute_translation_context(
@@ -121,7 +127,7 @@ export class BatchTranslationRunner {
             plan.metrics,
             run_context,
             quality_snapshot,
-            limiter,
+            request_scheduler,
             signal,
           ),
         commit: async (entries) => {
@@ -189,100 +195,33 @@ export class BatchTranslationRunner {
     metrics: ReadonlyMap<number, TranslationTokenMetric>,
     run_context: BatchTranslationRunContext,
     quality_snapshot: TextQualitySnapshot,
-    limiter: TranslationLimiter,
+    request_scheduler: TranslationRequestScheduler,
     signal: AbortSignal,
   ) {
-    const result = await this.call_translation_executor_with_retryable_transport(
-      context,
-      handle,
+    const result = await this.executor_client.execute_unit(
+      {
+        run_id: handle.run_id,
+        unit_id: context.work_unit_id,
+        kind: "translation",
+        model: run_context.model,
+        config_snapshot: run_context.config_snapshot,
+        quality_snapshot,
+        payload: {
+          items: context.items,
+          precedings: context.precedings,
+        },
+        diagnostics: {
+          split_count: context.split_count,
+          retry_count: context.retry_count,
+          token_threshold: context.token_threshold,
+          is_initial: context.is_initial,
+        },
+      },
       signal,
-      limiter,
-      () =>
-        this.executor_client
-          .execute_unit(
-            {
-              run_id: handle.run_id,
-              unit_id: context.work_unit_id,
-              kind: "translation",
-              model: this.model_key_lease_pool.lease_model(run_context.model),
-              config_snapshot: run_context.config_snapshot,
-              quality_snapshot,
-              payload: {
-                items: context.items,
-                precedings: context.precedings,
-              },
-              diagnostics: {
-                split_count: context.split_count,
-                retry_count: context.retry_count,
-                token_threshold: context.token_threshold,
-                is_initial: context.is_initial,
-              },
-            },
-            signal,
-          )
-          .then((unit_result) => this.to_translation_work_unit_result(unit_result)),
+      request_scheduler,
     );
     this.log_replay.work_unit_logs(result.logs);
     return this.build_translation_worker_result(context, result, metrics, signal);
-  }
-
-  /**
-   * executor 网络抖动只让当前 chunk 进入翻译重试计划，不能中止整场任务和丢弃其它完成结果
-   */
-  private async call_translation_executor_with_retryable_transport(
-    context: TranslationContext,
-    handle: BatchTranslationRunHandle,
-    signal: AbortSignal,
-    limiter: TranslationLimiter,
-    callback: () => Promise<TranslationWorkUnitResult>,
-  ): Promise<TranslationWorkUnitResult> {
-    try {
-      return await this.call_with_limiter(handle, limiter, signal, callback);
-    } catch (error) {
-      if (signal.aborted || !(error instanceof WorkUnitExecutorTransportError)) {
-        throw error;
-      }
-      return {
-        items: context.items,
-        input_tokens: 0,
-        reasoning_tokens: 0,
-        output_tokens: 0,
-        stopped: false,
-      };
-    }
-  }
-
-  /**
-   * 带限流执行 work unit 请求，同时维护 服务端真实 request_in_flight_count
-   */
-  private async call_with_limiter<T>(
-    handle: BatchTranslationRunHandle,
-    limiter: TranslationLimiter,
-    signal: AbortSignal,
-    callback: () => Promise<T>,
-  ): Promise<T> {
-    const lease = await limiter.acquire(signal);
-    this.task_runtime.change_request_in_flight_count(handle, 1);
-    try {
-      return await callback();
-    } finally {
-      this.task_runtime.change_request_in_flight_count(handle, -1);
-      lease.release();
-    }
-  }
-
-  /** 将 worker 信封投影为重试与提交所需的执行结果。 */
-  private to_translation_work_unit_result(
-    result: WorkUnitExecutionResult,
-  ): TranslationWorkUnitResult {
-    return {
-      items: result.output.items,
-      input_tokens: result.metrics.input_tokens,
-      reasoning_tokens: result.metrics.reasoning_tokens,
-      output_tokens: result.metrics.output_tokens,
-      stopped: result.outcome === "stopped",
-      logs: result.logs,
-    };
   }
 
   /**
@@ -290,14 +229,14 @@ export class BatchTranslationRunner {
    */
   private build_translation_worker_result(
     context: TranslationContext,
-    result: TranslationWorkUnitResult,
+    result: WorkUnitExecutionResult,
     metrics: ReadonlyMap<number, TranslationTokenMetric>,
     signal: AbortSignal,
   ) {
-    if (result.stopped) {
+    if (result.outcome === "stopped") {
       return { commit_entries: [], retry_contexts: [] };
     }
-    const returned_items = result.items.length > 0 ? result.items : context.items;
+    const returned_items = result.output.items.length > 0 ? result.output.items : context.items;
     const terminal_items = returned_items.filter((item) =>
       TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
     );
@@ -310,15 +249,15 @@ export class BatchTranslationRunner {
       signal,
     );
     const commit_items = [...terminal_items, ...retry_plan.forced_error_items];
+    // 用量与条目终态独立提交，内容重试也保留已经报告的消耗。
+    const has_usage = Object.values(result.metrics).some((tokens) => tokens > 0);
     return {
       commit_entries:
-        commit_items.length > 0
+        commit_items.length > 0 || has_usage
           ? [
               {
                 items: commit_items,
-                input_tokens: result.input_tokens,
-                reasoning_tokens: result.reasoning_tokens,
-                output_tokens: result.output_tokens,
+                ...result.metrics,
               },
             ]
           : [],
@@ -444,13 +383,6 @@ export class BatchTranslationRunner {
       ).build_main();
     }
     this.log_replay.task_run_start(run_context.model, app_language, prompt_text);
-  }
-
-  /**
-   * 解析任务限流器；同一模型配置下后台任务共享并发和 RPM 节奏
-   */
-  private resolve_task_limiter(model: MutableJsonRecord): TranslationLimiter {
-    return this.limiter_pool.resolve(model);
   }
 
   /**

@@ -1,3 +1,4 @@
+import type { LogError } from "../../../shared/error";
 import type { LogManager } from "../../log/log-manager";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import { resolve_app_locale } from "../../../domain/app-language";
@@ -77,6 +78,16 @@ export class TranslationLogReplay {
         error: entry.error,
       });
     }
+  }
+
+  /** 每次实际网络失败保留诊断，以本轮序号区分 Key，不记录凭据。 */
+  public request_failure(key_index: number, error: LogError, app_language: unknown): void {
+    this.log_manager.append({
+      level: "warning",
+      content: `${this.t(app_language, "app.log.request_failed", { ERROR: error.message })} (Key ${key_index + 1})`,
+      source: "engine",
+      error,
+    });
   }
 
   /**

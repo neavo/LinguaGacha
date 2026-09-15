@@ -4,23 +4,25 @@ import {
   flush_worker_microtasks,
   install_worker_threads_mock,
 } from "../../../test/worker-port-harness";
-import type { LLMClientPort } from "../../llm/llm-types";
+import type { TranslationRequestPort } from "../protocol/translation-request";
 import type { WorkUnitWorkerCommand } from "./work-unit-worker-protocol";
 
 type RunnerMock = { run: ReturnType<typeof vi.fn> };
 
 const TEST_BUILTIN_ROOT = "E:/linguagacha-work-unit-test/builtin";
 
+/** 替换业务 runner，保留生产消息分发与请求端口。 */
 function install_runner_mock(
   runner: RunnerMock,
-  read_llm_client?: (client: LLMClientPort) => void,
+  read_llm_client?: (client: TranslationRequestPort) => void,
 ): void {
   vi.doMock("./runners/translation-runner", () => {
     /** 只替换入口的业务协作者，消息分发仍运行生产实现。 */
     class WorkUnitRunnerMock {
       public execute_unit = runner.run;
 
-      public constructor(_root: string, llm_client: LLMClientPort) {
+      /** 捕获实际注入的父线程请求代理供契约断言。 */
+      public constructor(_root: string, llm_client: TranslationRequestPort) {
         read_llm_client?.(llm_client);
       }
     }
@@ -29,6 +31,7 @@ function install_runner_mock(
   });
 }
 
+/** 模块导入完成后入口已绑定消息监听。 */
 async function import_worker_entry(): Promise<void> {
   await import("./work-unit-worker-entry");
 }
@@ -63,17 +66,17 @@ describe("work-unit-worker-entry", () => {
     });
   });
 
-  it("worker LLMClientPort 通过父线程请求并按 request id 结算", async () => {
+  it("worker 请求端口按请求 ID 保留父线程 Key 耗尽结果", async () => {
     const harness = install_worker_threads_mock<WorkUnitWorkerCommand>({
       builtinRoot: TEST_BUILTIN_ROOT,
     });
-    const llm_clients: LLMClientPort[] = [];
+    const llm_clients: TranslationRequestPort[] = [];
     install_runner_mock({ run: vi.fn() }, (client) => {
       llm_clients.push(client);
     });
     await import_worker_entry();
     const llm_client = llm_clients[0];
-    if (llm_client === undefined) throw new Error("worker 未向 runner 注入 LLMClientPort");
+    if (llm_client === undefined) throw new Error("worker 未向 runner 注入 TranslationRequestPort");
 
     const body = {
       run_id: "run-1",
@@ -97,7 +100,8 @@ describe("work-unit-worker-entry", () => {
         ok: true,
         data: {
           response_think: "",
-          response_result: "ok",
+          response_result: "",
+          keys_exhausted: true,
           input_tokens: 1,
           reasoning_tokens: 0,
           output_tokens: 2,
@@ -107,7 +111,10 @@ describe("work-unit-worker-entry", () => {
       },
     });
 
-    await expect(request).resolves.toMatchObject({ response_result: "ok" });
+    await expect(request).resolves.toMatchObject({
+      response_result: "",
+      keys_exhausted: true,
+    });
   });
 
   it("cancel 只中断同 id 的运行中消息", async () => {

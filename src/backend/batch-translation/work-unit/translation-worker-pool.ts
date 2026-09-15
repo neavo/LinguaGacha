@@ -6,10 +6,9 @@ import type { BackendWorkerExecution } from "../../worker/worker-execution";
 import type { TranslationWorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { read_translation_worker_result } from "../protocol/work-unit-result";
-import type { LLMClientPort } from "../../llm/llm-types";
+import type { TranslationRequestPort } from "../protocol/translation-request";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
-import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import { AppError, normalize_log_error, to_log_error, type LogError } from "../../../shared/error";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
@@ -20,7 +19,6 @@ import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-wor
 interface TranslationWorkerPoolOptions {
   builtinRoot: string; // worker 与同进程 runner 共用的只读内置资产根
   execution: BackendWorkerExecution; // 明确选择 worker_threads 或 in_process
-  llmClient: LLMClientPort; // 父线程真实模型请求入口
   workerCount?: number; // 只控制线程数，不是 LLM 并发上限
 }
 
@@ -30,6 +28,7 @@ interface TranslationWorkerPoolOptions {
 interface PendingTask {
   id: string; // 跨线程消息与 Promise 的唯一关联键
   unit: TranslationWorkUnit; // 不可变 work-unit 载荷
+  request_client: TranslationRequestPort; // 本次执行所属任务的父线程请求入口，不跨线程传函数。
   caller_signal: AbortSignal; // 只用于监听调用方取消并在完成后解绑
   execution_controller: AbortController; // 同时控制 runner、父线程 LLM 与池释放
   resolve: (value: unknown) => void; // 完成原 execute_unit Promise
@@ -51,10 +50,8 @@ interface WorkerSlot {
 export class TranslationWorkerPool implements WorkUnitExecutor {
   private readonly builtin_root: string; // 提供 worker_threads 和同进程 runner 读取内置模板的根目录
   private readonly execution: BackendWorkerExecution; // 由入口层显式决定，池内不做入口探测或模式回退
-  private readonly llm_client: LLMClientPort; // 正式 worker 只通过消息调用此父线程端口
   private readonly worker_count: number; // worker_threads 模式下的固定线程数
   private readonly slots: WorkerSlot[] = []; // worker_threads 模式下的固定线程集合
-  private readonly in_process_runner: TranslationWorkUnitRunner | null = null; // 测试和源码执行的无跨线程路径
   private readonly in_process_in_flight = new Map<string, PendingTask>(); // 同进程任务的取消与释放索引
   private disposed = false; // 关闭入队入口，避免 BackendServices 关闭 后继续派发新任务
 
@@ -64,13 +61,11 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
   public constructor(options: TranslationWorkerPoolOptions) {
     this.builtin_root = options.builtinRoot;
     this.execution = options.execution;
-    this.llm_client = options.llmClient;
     this.worker_count = resolve_default_worker_count({
       workerCount: options.workerCount,
       availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
     });
     if (this.execution.kind === "in_process") {
-      this.in_process_runner = new TranslationWorkUnitRunner(this.builtin_root, this.llm_client);
       return;
     }
     for (let index = 0; index < this.worker_count; index += 1) {
@@ -84,8 +79,9 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
   public async execute_unit(
     unit: TranslationWorkUnit,
     signal: AbortSignal,
+    request_client: TranslationRequestPort,
   ): Promise<WorkUnitExecutionResult> {
-    return read_translation_worker_result(await this.enqueue(unit, signal));
+    return read_translation_worker_result(await this.enqueue(unit, signal, request_client));
   }
 
   /**
@@ -125,7 +121,11 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
   /**
    * 绑定取消监听并立即交给同进程 runner 或当前负载最小的 worker。
    */
-  private enqueue(unit: TranslationWorkUnit, signal: AbortSignal): Promise<unknown> {
+  private enqueue(
+    unit: TranslationWorkUnit,
+    signal: AbortSignal,
+    request_client: TranslationRequestPort,
+  ): Promise<unknown> {
     if (this.disposed) {
       return Promise.reject(this.create_disposed_error());
     }
@@ -133,6 +133,7 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
       const task: PendingTask = {
         id: crypto.randomUUID(),
         unit,
+        request_client,
         caller_signal: signal,
         execution_controller: new AbortController(),
         resolve,
@@ -147,7 +148,7 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
         return;
       }
       signal.addEventListener("abort", task.abort_listener, { once: true });
-      if (this.in_process_runner !== null) {
+      if (this.execution.kind === "in_process") {
         this.dispatch_in_process_task(task);
         return;
       }
@@ -177,10 +178,7 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
    * 同进程 runner 用于测试和源码环境。
    */
   private dispatch_in_process_task(task: PendingTask): void {
-    const runner = this.in_process_runner;
-    if (runner === null) {
-      return;
-    }
+    const runner = new TranslationWorkUnitRunner(this.builtin_root, task.request_client);
     this.in_process_in_flight.set(task.id, task);
     const task_promise = runner.execute_unit(task.unit, task.execution_controller.signal);
     task_promise.then(
@@ -283,7 +281,7 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
       try {
         result = {
           ok: true,
-          data: await this.llm_client.request(message.body, task.execution_controller.signal),
+          data: await task.request_client.request(message.body, task.execution_controller.signal),
         };
       } catch (error) {
         result = { ok: false, error: to_log_error(error, { execution: "llm_parent" }) };
@@ -322,12 +320,14 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
     const failed_tasks = [...slot.in_flight.values()];
     slot.in_flight.clear();
     for (const task of failed_tasks) {
+      // worker 已退出，父线程的请求与冷却等待也必须结束，才能释放本轮调度状态。
+      task.execution_controller.abort();
       this.clear_task_listener(task);
       task.reject(
-        new WorkUnitExecutorTransportError(
-          to_log_error(error, { worker_failure: "slot_error" }),
-          error,
-        ),
+        new AppError("worker.failed", {
+          cause: error,
+          diagnostic_context: { failure: to_log_error(error, { worker_failure: "slot_error" }) },
+        }),
       );
     }
     const index = this.slots.indexOf(slot);
@@ -372,10 +372,11 @@ export class TranslationWorkerPool implements WorkUnitExecutor {
       return;
     }
     task.reject(
-      new WorkUnitExecutorTransportError(
-        normalize_log_error(message.error, "Work unit execution failed."),
-        null,
-      ),
+      new AppError("worker.failed", {
+        diagnostic_context: {
+          failure: normalize_log_error(message.error, "Work unit execution failed."),
+        },
+      }),
     );
   }
 

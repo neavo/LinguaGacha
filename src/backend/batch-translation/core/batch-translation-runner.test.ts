@@ -1,3 +1,5 @@
+import { TranslationWorkerPool } from "../work-unit/translation-worker-pool";
+import { log_error_from_message } from "../../../shared/error";
 import type { BatchTranslationRunContext } from "./batch-translation-runner-options";
 import { Model } from "../../../domain/model";
 import { normalize_setting_snapshot } from "../../../domain/setting";
@@ -7,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectDataReader } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
@@ -18,11 +20,10 @@ import type { BatchTranslationSnapshot } from "../../../domain/batch-translation
 import type { TranslationWorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
-import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import { BatchTranslationRunner } from "./batch-translation-runner";
 import type { BatchTranslationRunnerOptions } from "./batch-translation-runner-options";
 import { TranslationPlanner } from "../planning/translation-planner";
-import { log_error_from_message } from "../../../shared/error";
+import { AppError } from "../../../shared/error";
 import { format_log_content_text } from "../../../shared/log";
 import type { JsonRecord, MutableJsonRecord } from "../../../domain/json";
 
@@ -30,6 +31,8 @@ describe("BatchTranslationRunner", () => {
   const cleanup_paths: string[] = [];
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     for (const cleanup_path of cleanup_paths.splice(0)) {
       fs.rmSync(cleanup_path, { force: true, recursive: true });
     }
@@ -40,6 +43,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => [create_pending_item()],
@@ -82,9 +86,9 @@ describe("BatchTranslationRunner", () => {
       error_line: 1,
     });
     expect(committed_batches[0]?.["translation_extras"]).toMatchObject({
-      total_input_tokens: 1,
-      total_output_tokens: 2,
-      total_tokens: 3,
+      total_input_tokens: 4,
+      total_output_tokens: 8,
+      total_tokens: 12,
     });
   });
 
@@ -96,6 +100,7 @@ describe("BatchTranslationRunner", () => {
     });
     const item = { ...create_pending_item(), status: "PROCESSED", dst: "译文" };
     const runner = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => [item],
@@ -136,6 +141,7 @@ describe("BatchTranslationRunner", () => {
     const done = create_status_waiter("done");
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: create_template_root(),
       taskStore: create_task_store(),
       taskRuntime: task_runtime,
@@ -193,6 +199,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
@@ -245,6 +252,7 @@ describe("BatchTranslationRunner", () => {
       }
     });
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
@@ -279,72 +287,101 @@ describe("BatchTranslationRunner", () => {
     await task_runtime.dispose();
   });
 
-  it("executor 传输失败时只重试当前翻译 chunk 并继续提交成功结果", async () => {
-    const committed_items: MutableJsonRecord[] = [];
-    const done = create_status_waiter("done");
-    const failed_once_ids = new Set<number>();
-    const task_runtime = create_task_runtime(done.listener);
-    const run_context = create_run_context(2);
-    const task_engine = new BatchTranslationRunner({
+  it("executor 基础设施失败终止任务且不进入内容切分", async () => {
+    const finished = create_status_waiter("error");
+    const runtime = create_task_runtime(finished.listener);
+    const execute = vi.fn(async () => {
+      throw new AppError("worker.failed");
+    });
+    const runner = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
-      taskStore: create_task_store({
-        get_translation_items: () => [
-          create_pending_item(1, "a.txt"),
-          create_pending_item(2, "b.txt"),
-        ],
-        commit_translation_items: async (items: MutableJsonRecord[]) => {
-          committed_items.push(...items);
-          return { changed_item_ids: [], section_revisions: {} };
-        },
-      }),
-      taskRuntime: task_runtime,
-      executorClient: {
-        execute_unit: async (unit: TranslationWorkUnit) => {
-          const payload =
-            typeof unit["payload"] === "object" && unit["payload"] !== null
-              ? (unit["payload"] as MutableJsonRecord)
-              : {};
-          const items = (
-            Array.isArray(payload["items"]) ? payload["items"] : []
-          ) as MutableJsonRecord[];
-          const item_id = Number(items[0]?.["id"] ?? 0);
-          if (item_id === 1 && !failed_once_ids.has(item_id)) {
-            failed_once_ids.add(item_id);
-            throw new WorkUnitExecutorTransportError(
-              log_error_from_message("fetch failed"),
-              new TypeError("fetch failed"),
-            );
-          }
-          return create_translation_worker_result(
-            items.map((item) => ({
-              ...item,
-              dst: `译文${String(item["id"] ?? "")}`,
-              status: "PROCESSED",
-            })),
-            1,
-            1,
-          );
-        },
-      },
+      taskStore: create_task_store({ get_translation_items: () => [create_pending_item()] }),
+      taskRuntime: runtime,
+      executorClient: { execute_unit: execute },
       taskPlanner: create_test_task_planner(),
       logManager: create_log_manager(),
     });
+    await start_task(runner, runtime, {
+      operation: "translate",
+      mode: "new",
+      scope: { kind: "all" },
+    });
+    await finished.promise;
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await runtime.build_snapshot()).status).toBe("error");
+  });
 
-    await start_task(
-      task_engine,
-      task_runtime,
-      {
-        operation: "translate",
-        mode: "new",
-        scope: { kind: "all" },
-      },
-      run_context,
-    );
-    await done.promise;
-
-    expect(committed_items).toHaveLength(2);
-    expect(committed_items.map((item) => item["id"]).sort()).toEqual([1, 2]);
-    expect(committed_items.every((item) => item["status"] === "PROCESSED")).toBe(true);
+  it("真实 work unit 在所有 Key 耗尽后整批提交 ERROR，正常完成且不切分", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const builtin_root = create_template_root();
+    const pool = new TranslationWorkerPool({
+      builtinRoot: builtin_root,
+      execution: { kind: "in_process" },
+    });
+    const finished = create_status_waiter("done");
+    const runtime = create_task_runtime(finished.listener);
+    const committed: MutableJsonRecord[] = [];
+    let started!: () => void;
+    const first_request = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const request = vi.fn(async () => {
+      started();
+      return {
+        response_result: "",
+        response_think: "",
+        input_tokens: 0,
+        reasoning_tokens: 0,
+        output_tokens: 0,
+        cancelled: false,
+        timeout: false,
+        request_error: log_error_from_message("429"),
+      };
+    });
+    const runner = new BatchTranslationRunner({
+      llmClient: { request },
+      builtinRoot: builtin_root,
+      taskRuntime: runtime,
+      executorClient: pool,
+      taskPlanner: create_test_task_planner(),
+      logManager: create_log_manager(),
+      taskStore: create_task_store({
+        get_translation_items: () => [create_pending_item(1), create_pending_item(2)],
+        commit_translation_items: async (items) => {
+          committed.push(...items);
+          return { changed_item_ids: [], section_revisions: {} };
+        },
+      }),
+    });
+    const base_context = create_run_context(2);
+    const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
+    try {
+      await start_task(
+        runner,
+        runtime,
+        { operation: "translate", mode: "new", scope: { kind: "all" } },
+        context,
+      );
+      await first_request;
+      await vi.advanceTimersByTimeAsync(100_000);
+      await finished.promise;
+      expect(request).toHaveBeenCalledTimes(6);
+      expect(committed.map((item) => [item.id, item.status])).toEqual([
+        [1, "ERROR"],
+        [2, "ERROR"],
+      ]);
+      expect((await runtime.build_snapshot()).run_progress).toMatchObject({
+        line: 2,
+        processed_line: 0,
+        error_line: 2,
+      });
+      expect((await runtime.build_snapshot()).request_in_flight_count).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      await pool.dispose();
+    }
   });
 
   it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
@@ -353,6 +390,7 @@ describe("BatchTranslationRunner", () => {
     const task_runtime = create_task_runtime(done.listener);
     const run_context = create_run_context(1, 16);
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         get_translation_items: () => [
@@ -409,6 +447,7 @@ describe("BatchTranslationRunner", () => {
       prompt_enhancement_enable: false,
     });
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: builtin_root,
       taskStore: create_task_store({
         get_translation_items: () => [],
@@ -448,6 +487,7 @@ describe("BatchTranslationRunner", () => {
     let lease_release_count = 0;
     const task_runtime = create_task_runtime();
     const task_engine = new BatchTranslationRunner({
+      llmClient: create_unused_llm_client(),
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: create_task_store({
         acquire_project_lease: () => () => {
@@ -601,6 +641,15 @@ describe("BatchTranslationRunner", () => {
 
       update_translation_progress: () => ({ accepted: true }),
       ...overrides,
+    };
+  }
+
+  /** 使用 executor 替身的场景不应触达真实请求边界。 */
+  function create_unused_llm_client(): BatchTranslationRunnerOptions["llmClient"] {
+    return {
+      request: async () => {
+        throw new Error("本用例不应发送模型请求。");
+      },
     };
   }
 

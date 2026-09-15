@@ -1,20 +1,24 @@
+import type {
+  TranslationRequestPort,
+  TranslationRequestResult,
+} from "../protocol/translation-request";
 import crypto from "node:crypto";
 import { parentPort, workerData, type MessagePort } from "node:worker_threads";
 
-import { normalize_log_error, to_log_error } from "../../../shared/error";
-import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../llm/llm-types";
+import { AppError, normalize_log_error, to_log_error } from "../../../shared/error";
+import type { LLMRequestBody } from "../../llm/llm-types";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import type { WorkUnitWorkerCommand, WorkUnitWorkerEvent } from "./work-unit-worker-protocol";
 
 type WorkUnitWorkerData = { builtinRoot: string };
 
 /** worker 只通过结构化请求访问父线程 LLMClient，不持有供应商网络能力。 */
-class WorkerLLMClient implements LLMClientPort {
+class WorkerLLMClient implements TranslationRequestPort {
   private readonly port: MessagePort; // 父线程拥有真实 LLMClient 与网络生命周期
   /** request id 隔离同一 worker 内的并发模型请求。 */
   private readonly pending = new Map<
     string,
-    { resolve: (value: LLMRequestResult) => void; reject: (error: unknown) => void }
+    { resolve: (value: TranslationRequestResult) => void; reject: (error: unknown) => void }
   >();
 
   /** 绑定当前 worker 的唯一父线程端口。 */
@@ -23,7 +27,7 @@ class WorkerLLMClient implements LLMClientPort {
   }
 
   /** 发送中性请求体；真正的取消信号由父线程对应 work unit 持有。 */
-  public request(body: LLMRequestBody, _signal: AbortSignal): Promise<LLMRequestResult> {
+  public request(body: LLMRequestBody, _signal: AbortSignal): Promise<TranslationRequestResult> {
     return new Promise((resolve, reject) => {
       const request_id = crypto.randomUUID();
       this.pending.set(request_id, { resolve, reject });
@@ -43,7 +47,11 @@ class WorkerLLMClient implements LLMClientPort {
     if (message.result.ok) request.resolve(message.result.data);
     else
       request.reject(
-        new Error(normalize_log_error(message.result.error, "LLM request failed.").message),
+        new AppError("worker.failed", {
+          diagnostic_context: {
+            failure: normalize_log_error(message.result.error, "LLM request failed."),
+          },
+        }),
       );
   }
 }

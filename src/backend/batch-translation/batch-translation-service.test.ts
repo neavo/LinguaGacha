@@ -18,6 +18,7 @@ import { ProjectDataReader } from "../project/project-data-reader";
 import { BatchTranslationRunner } from "./core/batch-translation-runner";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 
+/** 组合真实任务服务与可控协作者，观察启动和停止命令。 */
 function setup(loaded = true, line = 0) {
   const session = new ProjectSessionState();
   if (loaded) session.mark_loaded("E:/Project/test.lg");
@@ -228,6 +229,11 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
     );
     expect(cache.prompts.readBlock()).not.toHaveProperty("analysis");
     const runner = new BatchTranslationRunner({
+      llmClient: {
+        request: async () => {
+          throw new Error("Unexpected LLM request");
+        },
+      },
       builtinRoot: path.join(process.cwd(), "builtin"),
       taskStore: new BatchTranslationProjectStore(database, session, cache, writes),
       taskRuntime: runtime,
