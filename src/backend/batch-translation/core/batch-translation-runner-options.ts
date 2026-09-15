@@ -1,4 +1,4 @@
-import type { TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { LLMClientPort } from "../../llm/llm-types";
 import type {
   TranslationContext,
   TranslationCommitEntry,
@@ -11,7 +11,6 @@ import type { BatchTranslationRuntime } from "../batch-translation-runtime";
 import type { BatchTranslationProjectStore } from "../batch-translation-project-store";
 import type { TranslationPlanner } from "../planning/translation-planner";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
-import type { WorkUnitLogEntry } from "../protocol/work-unit";
 
 /** Service 在运行 lease 内准备的单次执行上下文，Runner 与 worker 共用。 */
 export type BatchTranslationRunContext = Readonly<{
@@ -42,21 +41,10 @@ export interface BatchTranslationRunnerOptions {
     | "publish_config"
     | "read_progress"
   >; // 任务锁、取消、快照和请求压力的最小能力集合
+  llmClient: LLMClientPort; // 每轮请求调度器使用的单次网络请求入口。
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
   taskPlanner: Pick<TranslationPlanner, "build_translation_plan" | "build_translation_retry_plan">; // 精确 token 切块、cache 复用和后台规划的最小能力集合
   logManager: Pick<LogManager, "append" | "info" | "warning" | "error">; // append 承接结构化 worker 日志，其余入口承接普通任务日志
-}
-
-/**
- * work-unit executor 返回的翻译类结果
- */
-export interface TranslationWorkUnitResult {
-  items: TextTaskItemRecord[]; // 只承载本 chunk 最终写回快照，BatchTranslationRunner 决定是否提交
-  input_tokens: number; // 请求输入 token，用于任务统计
-  reasoning_tokens: number; // 请求思考 token，与输出分开累计
-  output_tokens: number; // 请求输出 token，不作为成功与否依据
-  stopped: boolean; // 主动取消，区别于失败后可重试
-  logs?: WorkUnitLogEntry[]; // 统一回放到 LogManager，worker 不直接写日志
 }
 
 /**

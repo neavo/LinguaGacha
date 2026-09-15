@@ -30,7 +30,11 @@ import {
 import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
 import { split_translation_response } from "../response/split-translation-response";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
+import type { LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
+import type {
+  TranslationRequestPort,
+  TranslationRequestResult,
+} from "../../protocol/translation-request";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import type { LogError } from "../../../../shared/error";
@@ -65,7 +69,7 @@ export class TranslationWorkUnitRunner {
   /** 显式持有提示词资源和唯一 LLM 边界，便于 worker 测试。 */
   public constructor(
     private readonly builtin_root: string,
-    private readonly llm_client: LLMClientPort,
+    private readonly llm_client: TranslationRequestPort,
   ) {}
 
   /** 执行一个翻译单元；提交与重试决策由 BatchTranslationRunner 负责。 */
@@ -138,7 +142,7 @@ export class TranslationWorkUnitRunner {
         request,
         start_time,
         items,
-        request_error: response.request_error,
+        request_error: response.request_error ?? response.response_error,
         request_timeout: response.timeout,
       },
       response,
@@ -220,7 +224,7 @@ export class TranslationWorkUnitRunner {
       request_error?: LogError;
       request_timeout: boolean;
     },
-    response: LLMRequestResult,
+    response: TranslationRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const request_failed = context.request_error !== undefined || context.request_timeout;
     // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
@@ -275,8 +279,12 @@ export class TranslationWorkUnitRunner {
         dsts.push("");
         actor_dsts.push(null);
       }
-      if (!valid && item && context.request_items.length === 1)
-        item.retry_count = read_json_integer(item.retry_count, 0) + 1;
+      if (!valid && item) {
+        // 此循环只消费实际请求条目，预处理完成项保留；Key 耗尽不消耗内容重试次数。
+        if (response.keys_exhausted) item.status = "ERROR";
+        else if (context.request_items.length === 1)
+          item.retry_count = read_json_integer(item.retry_count, 0) + 1;
+      }
     }
     return {
       items: context.items,

@@ -146,7 +146,7 @@ describe("LLMClient", () => {
     ["OpenAIResponses", "incomplete", "status"],
     ["Anthropic", "max_tokens", "stop_reason"],
     ["Anthropic", "tool_use", "stop_reason"],
-  ] as const)("把 %s/%s 保持为当前请求错误", async (api_format, raw_reason, field) => {
+  ] as const)("把 %s/%s 保留为响应终态错误", async (api_format, raw_reason, field) => {
     const mock =
       api_format === "Anthropic"
         ? api_mocks.streamSimple
@@ -184,14 +184,14 @@ describe("LLMClient", () => {
       response_result: "",
       input_tokens: 4,
       output_tokens: 5,
-      request_error: {
-        message: is_length ? "供应商返回长度截断。" : "供应商返回工具调用，当前任务不支持。",
+      response_error: {
         context: { [field]: raw_reason },
       },
     });
+    expect(result).not.toHaveProperty("request_error");
   });
 
-  it("把 Google 长度截断保持为当前请求错误", async () => {
+  it("把 Google 长度截断保留为响应终态错误", async () => {
     api_mocks.streamSimple.mockImplementation(() =>
       completed_stream(
         create_message({
@@ -212,11 +212,11 @@ describe("LLMClient", () => {
 
     expect(result).toMatchObject({
       response_result: "",
-      request_error: {
-        message: "供应商返回长度截断。",
+      response_error: {
         context: { finish_reason: "MAX_TOKENS" },
       },
     });
+    expect(result).not.toHaveProperty("request_error");
   });
 
   it("正常终止但没有正文时把空结果交给消费方校验", async () => {
@@ -395,6 +395,7 @@ function abortable_stream(
   return stream;
 }
 
+/** 构造 Pi 的完整终态消息，场景只覆盖被验证的事实。 */
 function create_message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
   return {
     role: "assistant",
@@ -409,6 +410,7 @@ function create_message(overrides: Partial<AssistantMessage> = {}): AssistantMes
   };
 }
 
+/** 构造供应商 usage，验证缓存与思考用量归一。 */
 function create_usage(
   overrides: Partial<AssistantMessage["usage"]> = {},
 ): AssistantMessage["usage"] {
@@ -423,6 +425,7 @@ function create_usage(
   };
 }
 
+/** 固定单次请求上下文，隔离模型配置对场景的影响。 */
 function create_body(
   model_overrides: JsonRecord = {},
   config_snapshot: JsonValue = { request_timeout: 120 },
@@ -446,6 +449,7 @@ function create_body(
   };
 }
 
+/** 构造完整客户端结果用于对比取消与失败分支。 */
 function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
   return {
     response_think: "",

@@ -38,7 +38,6 @@ describe("TranslationWorkerPool", () => {
     const pool = new TranslationWorkerPool({
       builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
-      llmClient: llm_client,
     });
 
     const result = await pool.execute_unit(
@@ -75,6 +74,7 @@ describe("TranslationWorkerPool", () => {
         },
       },
       new AbortController().signal,
+      llm_client,
     );
     await pool.dispose();
 
@@ -139,7 +139,6 @@ parentPort?.on("message", (message) => {
         planningWorkerEntryUrl: pathToFileURL(worker_path),
         computeWorkerEntryUrl: pathToFileURL(worker_path),
       },
-      llmClient: { request: llm_request },
       workerCount: 1,
     });
 
@@ -148,6 +147,7 @@ parentPort?.on("message", (message) => {
         pool.execute_unit(
           create_translation_unit("worker-thread-unit"),
           new AbortController().signal,
+          { request: llm_request },
         ),
       ).resolves.toEqual({
         unit_id: "worker-thread-unit",
@@ -179,17 +179,76 @@ parentPort?.on("message", (message) => {
     }
   });
 
+  it("worker 崩溃会中止所属父线程请求并保留基础设施诊断", async () => {
+    const temp_root = await create_temp_root();
+    const worker_path = path.join(temp_root, "crashing-worker.mjs");
+    await writeFile(
+      worker_path,
+      `import { parentPort } from "node:worker_threads";
+parentPort.on("message", (message) => {
+  if (message.type !== "execute") return;
+  parentPort.postMessage({ type: "llm_request", requestId: "request", body: {
+    run_id: message.unit.run_id, work_unit_id: message.unit.unit_id,
+    model: message.unit.model, config_snapshot: message.unit.config_snapshot, messages: [],
+  } });
+  throw new Error("worker crashed");
+});`,
+      "utf-8",
+    );
+    const entry = pathToFileURL(worker_path);
+    const pool = new TranslationWorkerPool({
+      builtinRoot: temp_root,
+      workerCount: 1,
+      execution: {
+        kind: "worker_threads",
+        workUnitWorkerEntryUrl: entry,
+        planningWorkerEntryUrl: entry,
+        computeWorkerEntryUrl: entry,
+      },
+    });
+    const signals: AbortSignal[] = [];
+    let request_finished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      request_finished = resolve;
+    });
+    try {
+      await expect(
+        pool.execute_unit(create_translation_unit("crash"), new AbortController().signal, {
+          request: async (_body, signal) => {
+            signals.push(signal);
+            try {
+              return await new Promise<never>((_resolve, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              });
+            } finally {
+              request_finished();
+            }
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "worker.failed",
+        diagnostic_context: { failure: { message: "worker crashed" } },
+      });
+      expect(signals).toHaveLength(1);
+      expect(signals[0]?.aborted).toBe(true);
+      await finished;
+    } finally {
+      await pool.dispose();
+    }
+  });
+
   it("释放后拒绝新任务并返回结构化运行时错误", async () => {
     const pool = new TranslationWorkerPool({
       builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
-      llmClient: { request: vi.fn() },
     });
 
     await pool.dispose();
 
     await expect(
-      pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
+      pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal, {
+        request: vi.fn(),
+      }),
     ).rejects.toMatchObject({ code: "runtime.disposed" });
   });
 
@@ -199,23 +258,24 @@ parentPort?.on("message", (message) => {
     const request_started = new Promise<void>((resolve) => {
       resolve_request_started = resolve;
     });
+    const llm_client: import("../protocol/translation-request").TranslationRequestPort = {
+      request: vi.fn(async (_body, signal) => {
+        request_signals.push(signal);
+        resolve_request_started();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+        throw new Error("unreachable");
+      }),
+    };
     const pool = new TranslationWorkerPool({
       builtinRoot: await create_template_root(),
       execution: { kind: "in_process" },
-      llmClient: {
-        request: vi.fn(async (_body, signal) => {
-          request_signals.push(signal);
-          resolve_request_started();
-          await new Promise<void>((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-          });
-          throw new Error("unreachable");
-        }),
-      },
     });
     const execution = pool.execute_unit(
       create_translation_unit("unit-dispose-request"),
       new AbortController().signal,
+      llm_client,
     );
     await request_started;
 

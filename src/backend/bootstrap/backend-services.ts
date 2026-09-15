@@ -174,12 +174,12 @@ export class BackendServices {
     this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
       execution: options.workerExecution,
-      llmClient: llm_client,
     });
     this.planning_worker_pool = new PlanningWorkerPool({
       execution: options.workerExecution,
     });
     const task_engine = new BatchTranslationRunner({
+      llmClient: llm_client,
       builtinRoot: paths.get_builtin_root(),
       taskStore: new BatchTranslationProjectStore(
         options.database,

@@ -465,8 +465,9 @@ export class ModelService {
         }),
       };
     }
-    if (result.request_error !== undefined) {
-      return { reason: result.request_error.message, error: result.request_error };
+    const error = result.request_error ?? result.response_error;
+    if (error !== undefined) {
+      return { reason: error.message, error };
     }
     if (result.response_result.trim() === "") {
       return { reason: this.t(config["app_language"], "app.log.model_response_invalid") };
