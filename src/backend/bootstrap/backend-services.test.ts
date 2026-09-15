@@ -33,7 +33,6 @@ import { BatchTranslationService } from "../batch-translation/batch-translation-
 import { BatchTranslationRuntime } from "../batch-translation/batch-translation-runtime";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
-import { AppError } from "../../shared/error";
 
 const TEST_APP_ROOT = "E:/linguagacha-backend-test";
 
@@ -153,19 +152,17 @@ describe("BackendServices", () => {
     });
   });
 
-  it("设置更新在持久化前经过统一运行时门禁", async () => {
+  it("运行中允许保存纯应用设置", async () => {
     const options = create_backend_services_options();
-    const assert_idle_spy = vi
-      .spyOn(RuntimeOperationGate.prototype, "assert_runtime_idle")
-      .mockImplementation(() => {
-        throw new AppError("runtime.busy");
-      });
     const services = new BackendServices(options);
-
-    expect(() => services.app.updateSettings({ app_language: "ZH" })).toThrow("runtime.busy");
-    expect(options.appSettingService.update_app_settings).not.toHaveBeenCalled();
-
-    assert_idle_spy.mockRestore();
+    const lease = services.state.runtimeGate.begin_runtime("agent");
+    await expect(services.app.updateSettings({ app_language: "ZH" })).resolves.toMatchObject({
+      settings: { app_language: "ZH" },
+    });
+    expect(options.appSettingService.update_app_settings).toHaveBeenCalledWith({
+      app_language: "ZH",
+    });
+    services.state.runtimeGate.finish_runtime(lease);
     await services.dispose();
   });
 

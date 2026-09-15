@@ -195,7 +195,11 @@ export class GuiBackendBootstrap {
     this.state = "stopping";
     const gateway = this.gateway;
     this.gateway = null;
-    await collect_failure(failures, async () => await gateway?.stop());
+    // Gateway 先停止受理；接口测试属于在途 HTTP，必须同时取消才能完成请求排空。
+    await Promise.all([
+      collect_failure(failures, async () => await gateway?.stop()),
+      collect_failure(failures, async () => await this.services?.model.dispose()),
+    ]);
 
     this.resources?.settings.set_stream_publisher(null);
     const agent = this.agent;

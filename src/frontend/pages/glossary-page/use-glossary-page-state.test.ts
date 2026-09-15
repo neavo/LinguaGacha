@@ -1672,7 +1672,7 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.filtered_entries).toEqual([]);
   });
 
-  it("Agent 运行中锁定术语表写入，但保留筛选和已有项查看可用", async () => {
+  it("Agent 运行中锁定术语表写入，筛选、查看与另存预设仍可用", async () => {
     runtime_snapshot = { revision: 1, owner: "agent" };
     await mount_probe();
 
@@ -1705,6 +1705,11 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(api_fetch_mock).not.toHaveBeenCalled();
+    act(() => {
+      latest_state?.request_save_preset();
+    });
+    expect(latest_state?.preset_input_state.open).toBe(true);
+    expect(latest_state?.preset_input_state.mode).toBe("save");
   });
 
   it("重新进入术语表页时保留搜索排序和选中位置", async () => {

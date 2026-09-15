@@ -28,7 +28,8 @@ export function normalize_runtime_activity_snapshot(
       typeof revision === "number" && Number.isSafeInteger(revision) && revision >= 0
         ? revision
         : 0,
-    owner: owner === "batch_translation" || owner === "agent" ? owner : null,
+    owner:
+      owner === "batch_translation" || owner === "agent" || owner === "model_test" ? owner : null,
   };
 }
 
@@ -59,7 +60,7 @@ export function createRuntimeActivityStore(): {
   };
 }
 
-/** owner 是否存在是所有页面写锁的唯一判断。 */
+/** 工程写入与额外执行受运行占用约束，纯配置和查询不消费此限制。 */
 export function is_runtime_busy(snapshot: Pick<RuntimeActivitySnapshot, "owner">): boolean {
   return snapshot.owner !== null;
 }

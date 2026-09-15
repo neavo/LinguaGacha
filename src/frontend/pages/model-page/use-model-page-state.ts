@@ -45,6 +45,7 @@ type UseModelPageStateResult = {
   snapshot: ModelPageSnapshot;
   grouped_categories: ModelCategorySnapshot[];
   readonly: boolean;
+  test_disabled: boolean;
   dialog_state: ModelDialogState;
   confirm_state: ModelConfirmState;
   selector_state: ModelSelectorState;
@@ -423,6 +424,7 @@ export function useModelPageState(): UseModelPageStateResult {
   const loaded_ref = useRef(false); // 稳定刷新闭包据此区分首刷和已有快照。
   const load_request_ref = useRef(0); // 重试与卸载使旧查询失效。
   const [is_action_running, set_is_action_running] = useState(false);
+  const [is_testing, set_is_testing] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ModelDialogState>(close_dialog_state());
   const [confirm_state, set_confirm_state] = useState<ModelConfirmState>(close_confirm_state());
   const [selector_state, set_selector_state] =
@@ -485,7 +487,8 @@ export function useModelPageState(): UseModelPageStateResult {
     return find_model(snapshot, dialog_state.model_id);
   }, [dialog_state.model_id, snapshot]);
 
-  const readonly = is_runtime_busy(runtime_snapshot) || is_action_running;
+  const readonly = is_action_running;
+  const test_disabled = is_runtime_busy(runtime_snapshot) || is_testing || is_action_running;
 
   /** 提交模型字段修改并同步后端快照。 */
   const update_model_patch = useCallback(
@@ -661,11 +664,11 @@ export function useModelPageState(): UseModelPageStateResult {
   /** 执行连接测试并展示服务端测试结果。 */
   const request_test_model = useCallback(
     async (model_id: string): Promise<void> => {
-      if (readonly) {
+      if (test_disabled) {
         return;
       }
 
-      set_is_action_running(true);
+      set_is_testing(true);
 
       try {
         const payload = await api_fetch<ModelTestPayload>("/api/models/test", {
@@ -686,10 +689,10 @@ export function useModelPageState(): UseModelPageStateResult {
           resolve_visible_error_message(error, t, t("model_page.feedback.test_failed")),
         );
       } finally {
-        set_is_action_running(false);
+        set_is_testing(false);
       }
     },
-    [push_toast, readonly, t],
+    [push_toast, test_disabled, t],
   );
 
   /** 打开指定模型的配置面板。 */
@@ -848,6 +851,7 @@ export function useModelPageState(): UseModelPageStateResult {
     snapshot,
     grouped_categories,
     readonly,
+    test_disabled,
     dialog_state,
     confirm_state,
     selector_state,

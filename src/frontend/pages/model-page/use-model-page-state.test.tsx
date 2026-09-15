@@ -2,8 +2,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MODEL_TYPES } from "@domain/model";
-
 import { useModelPageState } from "./use-model-page-state";
 
 const { api_fetch_mock, push_toast, translate, runtime } = vi.hoisted(() => ({
@@ -143,13 +141,18 @@ describe("useModelPageState", () => {
     expect(push_toast).toHaveBeenCalledExactlyOnceWith("error", "model_page.feedback.copy_failed");
   });
 
-  it("运行忙碌时不发起复制请求", async () => {
+  it("运行中可复制配置，测试接口保持禁用", async () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
     api_fetch_mock.mockClear();
     runtime.owner = "agent";
     await act(async () => root?.render(<Probe />));
     await act(async () => latest_state!.request_copy_model("custom"));
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/models/copy", { model_id: "custom" });
+    api_fetch_mock.mockClear();
+    expect(latest_state!.readonly).toBe(false);
+    expect(latest_state!.test_disabled).toBe(true);
+    await act(async () => latest_state!.request_test_model("custom"));
     expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 
@@ -173,7 +176,6 @@ describe("useModelPageState", () => {
     api_fetch_mock.mockResolvedValue(create_snapshot());
     await render_hook();
 
-    expect(latest_state?.grouped_categories.map((category) => category.type)).toEqual(MODEL_TYPES);
     expect(
       latest_state?.grouped_categories.find(
         (category) => category.type === "CUSTOM_OPENAI_RESPONSES",

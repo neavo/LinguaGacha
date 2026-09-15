@@ -49,7 +49,7 @@ type RuntimeSnapshot = {
   taskProcessedLine: number;
   taskOutputTokens: number;
   taskRequestInFlightCount: number;
-  runtimeOwner: "batch_translation" | "agent" | null;
+  runtimeOwner: "batch_translation" | "agent" | "model_test" | null;
   sourceLanguage: string;
 };
 
@@ -402,7 +402,7 @@ type RuntimeApiMockOptions = {
   settings?: Record<string, unknown>;
   project_path?: string;
   batch_translation?: Record<string, unknown>;
-  runtime_owner?: "batch_translation" | "agent" | null;
+  runtime_owner?: "batch_translation" | "agent" | "model_test" | null;
   project_read?: {
     projectRevision?: number;
     sectionRevisions?: Record<string, number>;

@@ -950,43 +950,114 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it.each(["agent", "batch_translation"] as const)(
-    "%s 运行中允许保存下次模型选择和思考档位",
-    async (owner) => {
-      const { service, runtime_gate } = await create_model_service([
-        create_model({ id: "a", type: "CUSTOM_OPENAI" }),
-        create_model({ id: "b", type: "CUSTOM_OPENAI" }),
-      ]);
-      const lease = runtime_gate.begin_runtime(owner);
-      service.select_model({ target: "agent", model_id: "b" });
-      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" });
-      service.select_model({ target: "agent_batch_translation", model_id: "a" });
-      const snapshot = service.get_selection_snapshot();
-      expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });
-      expect(snapshot.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");
-      expect(runtime_gate.get_snapshot().owner).toBe(owner);
-      runtime_gate.finish_runtime(lease);
-    },
-  );
+  it("运行中可保存后续执行的模型选择和思考档位", async () => {
+    const { service, runtime_gate } = await create_model_service([
+      create_model({ id: "a", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+    ]);
+    const lease = runtime_gate.begin_runtime("agent");
+    service.select_model({ target: "agent", model_id: "b" });
+    service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" });
+    service.select_model({ target: "agent_batch_translation", model_id: "a" });
+    const snapshot = service.get_selection_snapshot();
+    expect(snapshot.model_selection).toMatchObject({ agent: "b", agent_batch_translation: "a" });
+    expect(snapshot.models.find((model) => model.id === "b")?.thinking_level).toBe("HIGH");
+    expect(runtime_gate.get_snapshot().owner).toBe("agent");
+    runtime_gate.finish_runtime(lease);
+  });
 
-  it("运行期间模型管理保持互斥", async () => {
-    const { service, runtime_gate } = await create_model_service([create_model({})]);
-    runtime_gate.begin_runtime("agent");
-
-    for (const operation of [
-      () => service.update_model({}),
-      () => service.add_model({}),
-      () => service.copy_model({}),
-      () => service.delete_model({}),
-      () => service.reset_preset_model({}),
-      () => service.reorder_model({}),
-    ]) {
-      expect(operation).toThrow("runtime.busy");
-    }
+  it("运行中可管理模型配置", async () => {
+    const { service, runtime_gate } = await create_model_service([
+      create_model({ id: "a", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+    ]);
+    const lease = runtime_gate.begin_runtime("agent");
+    service.update_model({ model_id: "a", patch: { name: "新名称" } });
+    const copy = service.copy_model({ model_id: "a" });
+    const copied_id = String(copy.copied_model_id);
+    expect(copied_id).not.toBe("a");
+    service.delete_model({ model_id: copied_id });
+    service.reorder_model({ ordered_model_ids: ["b", "a"] });
+    expect(service.get_selection_snapshot().models.find((model) => model.id === "a")?.name).toBe(
+      "新名称",
+    );
+    runtime_gate.finish_runtime(lease);
   });
 });
 
 describe("ModelService 远端模型能力", () => {
+  it("接口测试持有运行占用，配置修改与删除不改变当前请求", async () => {
+    const { service, runtime_gate, llm_request } = await create_model_service([
+      create_model({ id: "a", type: "CUSTOM_OPENAI", api_key: "first-key\nsecond-key" }),
+      create_model({ id: "b", type: "CUSTOM_OPENAI" }),
+    ]);
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    llm_request.mockImplementation(async () => {
+      await waiting;
+      return {
+        cancelled: false,
+        timeout: false,
+        input_tokens: 1,
+        reasoning_tokens: 0,
+        output_tokens: 1,
+        response_result: "ok",
+        response_think: "",
+      };
+    });
+    const test = service.test_model({ model_id: "a" });
+    expect(runtime_gate.get_snapshot().owner).toBe("model_test");
+    expect(() => runtime_gate.begin_runtime("agent")).toThrow("runtime.busy");
+    await expect(runtime_gate.run_project_write(() => undefined)).rejects.toThrow("runtime.busy");
+    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("runtime.busy");
+    service.update_model({ model_id: "a", patch: { api_key: "changed" } });
+    service.delete_model({ model_id: "a" });
+    release();
+    await expect(test).resolves.toMatchObject({ total_count: 2 });
+    expect(
+      llm_request.mock.calls.map(([request]) => (request.model as JsonRecord).api_key),
+    ).toEqual(["first-key", "second-key"]);
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+  });
+
+  it("任务期间拒绝接口测试；请求失败后可以再次运行", async () => {
+    const { service, runtime_gate, llm_request } = await create_model_service([
+      create_model({ id: "a" }),
+    ]);
+    const lease = runtime_gate.begin_runtime("batch_translation");
+    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("runtime.busy");
+    expect(llm_request).not.toHaveBeenCalled();
+    runtime_gate.finish_runtime(lease);
+    llm_request.mockRejectedValueOnce(new Error("request failure"));
+    await expect(service.test_model({ model_id: "a" })).rejects.toThrow("request failure");
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+  });
+
+  it("关闭取消在途接口测试并等待占用释放，不再发下一个 Key", async () => {
+    const { service, runtime_gate, llm_request } = await create_model_service([
+      create_model({ id: "a", api_key: "first\nsecond" }),
+    ]);
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    llm_request.mockImplementation(async (_request, signal) => {
+      started();
+      return await new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    });
+    const test = service.test_model({ model_id: "a" });
+    const result = Promise.allSettled([test]);
+    await ready;
+    await service.dispose();
+    expect((await result)[0]?.status).toBe("rejected");
+    expect(llm_request).toHaveBeenCalledTimes(1);
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+  });
+
   it("远端列表按 model_id 返回结果并拒绝缺失模型", async () => {
     const { service, process_fetch } = await create_model_service([
       create_model({

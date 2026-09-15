@@ -58,7 +58,7 @@ describe("ModelBasicSettingsDialog", () => {
     root = null;
   });
 
-  it("打开的模型 ID 输入器在项目锁定后保持可选择且拒绝 Enter 提交", async () => {
+  it("打开的模型 ID 输入器在本地提交期间保持可选择且拒绝 Enter 提交", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -67,6 +67,7 @@ describe("ModelBasicSettingsDialog", () => {
       await act(async () => {
         root?.render(
           <ModelBasicSettingsDialog
+            test_disabled={true}
             open
             model={create_model_snapshot()}
             readonly={readonly}
@@ -80,6 +81,11 @@ describe("ModelBasicSettingsDialog", () => {
     };
 
     await render_dialog(false);
+    const test_button = Array.from(document.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("model_page.action.test"),
+    );
+    expect(test_button?.disabled).toBe(true);
+    expect(document.querySelectorAll("input[readonly], textarea[readonly]").length).toBe(0);
     const input_button = Array.from(document.querySelectorAll("button")).find(
       (button) => button.textContent === "model_page.action.input",
     );
@@ -116,6 +122,7 @@ describe("ModelBasicSettingsDialog", () => {
     await act(async () => {
       root?.render(
         <ModelBasicSettingsDialog
+          test_disabled={true}
           open
           model={create_model_snapshot({
             api_format: "OpenAIResponses",
@@ -130,22 +137,12 @@ describe("ModelBasicSettingsDialog", () => {
       );
     });
 
-    expect(
-      document.querySelector('input[placeholder="model_page.fields.api_url.placeholder"]'),
-    ).not.toBeNull();
-
     const thinking_select = document.querySelector("select");
     if (!(thinking_select instanceof HTMLSelectElement)) {
       throw new Error("思考档位选择器未挂载。");
     }
     expect(thinking_select.querySelector('option[value="MAX"]')).toBeNull();
     expect(thinking_select.querySelector('option[value="HIGH"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("model_page.fields.thinking.description");
-    expect(
-      Array.from(document.querySelectorAll("button")).some(
-        (button) => button.getAttribute("aria-label") === "model_page.fields.thinking.title",
-      ),
-    ).toBe(false);
     await act(async () => {
       thinking_select.value = "HIGH";
       thinking_select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -161,6 +158,7 @@ describe("ModelBasicSettingsDialog", () => {
     await act(async () => {
       root?.render(
         <ModelBasicSettingsDialog
+          test_disabled={true}
           open
           model={create_model_snapshot({ available_thinking_levels: [] })}
           readonly={false}

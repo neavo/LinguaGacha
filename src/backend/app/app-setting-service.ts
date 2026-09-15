@@ -55,9 +55,9 @@ export class AppSettingService {
   }
 
   /**
-   * 更新应用设置白名单字段，并通过 API stream 广播设置变化
+   * 保存白名单字段；跨工程命令延后广播，待两个存储完成后发布设置
    */
-  public update_app_settings(request: JsonRecord): JsonRecord {
+  public update_app_settings(request: JsonRecord, publish = true): JsonRecord {
     let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
@@ -68,7 +68,7 @@ export class AppSettingService {
     }
     if (changed_keys.length > 0) {
       this.save_setting(setting.to_json() as JsonRecord);
-      this.publish_settings_changed(changed_keys, setting.to_json() as JsonRecord);
+      if (publish) this.publish_settings_changed(changed_keys, setting.to_json() as JsonRecord);
     }
     return { settings: setting.to_snapshot() as JsonRecord };
   }
@@ -158,7 +158,10 @@ export class AppSettingService {
   /**
    * 设置广播直接接发布，后续任务读取服务缓存即可看到最新值。
    */
-  private publish_settings_changed(changed_keys: string[], setting: JsonRecord): void {
+  public publish_settings_changed(
+    changed_keys: string[],
+    setting: JsonRecord = this.read_setting(),
+  ): void {
     this.stream_publisher?.publish("settings.changed", {
       keys: changed_keys as unknown as JsonValue,
       settings: this.build_setting_snapshot(setting),

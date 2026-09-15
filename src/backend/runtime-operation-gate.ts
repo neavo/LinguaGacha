@@ -5,7 +5,7 @@ export type RuntimeLease = Readonly<{ owner: RuntimeActivityOwner }>;
 export type RuntimeActivityListener = (snapshot: Readonly<RuntimeActivitySnapshot>) => void;
 
 /**
- * 普通任务、Agent 与结构性项目写入的唯一互斥所有者。
+ * 翻译、Agent、接口测试与工程写入的唯一互斥所有者。
  */
 export class RuntimeOperationGate {
   private active_runtime: RuntimeLease | null = null; // 对象身份同时承担迟到释放校验
@@ -52,11 +52,6 @@ export class RuntimeOperationGate {
     if (this.active_runtime !== lease) return;
     this.active_runtime = null;
     this.publish_snapshot();
-  }
-
-  /** 设置与模型管理等同步写入口在提交前复用同一空闲检查。 */
-  public assert_runtime_idle(): void {
-    if (this.active_runtime !== null) throw new AppErrors.AppError("runtime.busy");
   }
 
   /** 用户写入和工程生命周期操作要求整个模型运行时空闲。 */

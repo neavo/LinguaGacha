@@ -64,6 +64,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
 
       <ModelBasicSettingsDialog
         open={model_page_state.dialog_state.kind === "basic"}
+        test_disabled={model_page_state.test_disabled}
         model={model_page_state.active_dialog_model}
         readonly={model_page_state.readonly}
         onPatch={(patch) =>

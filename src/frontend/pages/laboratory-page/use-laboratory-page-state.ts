@@ -2,11 +2,9 @@ import { useCallback } from "react";
 
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
+import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { apply_prefilter_settings_write } from "@frontend/features/settings-editor/prefilter-settings-write";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import {
   build_laboratory_snapshot,
@@ -23,7 +21,6 @@ const LABORATORY_PENDING_FIELDS = [
   ...LABORATORY_PREFILTER_FIELDS,
 ] as const;
 
-type LaboratoryPrefilterField = (typeof LABORATORY_PREFILTER_FIELDS)[number];
 type LaboratoryPendingField = (typeof LABORATORY_PENDING_FIELDS)[number];
 
 type UseLaboratoryPageStateResult = {
@@ -39,7 +36,7 @@ type UseLaboratoryPageStateResult = {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
-  const { project_snapshot, commit_project_write } = useDesktopState();
+  const { project_snapshot } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
@@ -49,129 +46,53 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     refresh_error_key: "laboratory_page.feedback.refresh_failed",
     update_error_key: "laboratory_page.feedback.update_failed",
   });
-  const runtime_locked = is_runtime_busy(runtime_snapshot);
+  const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 
-  // 设置写入成功后再以权威快照刷新项目预过滤，避免提交前端临时状态。
-  const apply_prefilter_from_settings = useCallback(
-    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
-      if (!project_snapshot.loaded) {
-        return;
-      }
-
-      await apply_prefilter_settings_write({
-        operation: "laboratory.prefilter_settings",
-        settings: next_settings_snapshot,
-        commit_project_write,
-      });
-    },
-    [commit_project_write, project_snapshot.loaded],
-  );
-
-  // 两个实验设置共用同一提交/补偿顺序，预过滤失败时把设置恢复到操作前值。
-  const update_prefilter_setting = useCallback(
-    async (
-      field: LaboratoryPrefilterField,
-      next_checked: boolean,
-      loading_toast_key: LocaleKey,
-    ): Promise<void> => {
-      const previous_snapshot = snapshot;
-      if (runtime_locked || previous_snapshot[field] === next_checked) {
-        return;
-      }
-
-      try {
-        await run_modal_progress_toast({
-          message: t(loading_toast_key),
-          task: async () => {
-            const next_settings_snapshot = await commit_update(field, {
-              [field]: next_checked,
-            });
-            if (next_settings_snapshot === null) {
-              return;
-            }
-
-            await apply_prefilter_from_settings(next_settings_snapshot);
-            if (project_snapshot.loaded) {
-              push_toast(
-                "info",
-                format_project_settings_aligned_toast({
-                  settings: {
-                    source_language: next_settings_snapshot.source_language,
-                    target_language: next_settings_snapshot.target_language,
-                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-                    skip_duplicate_source_text_enable:
-                      next_settings_snapshot.skip_duplicate_source_text_enable,
-                  },
-                  changed_fields: {
-                    [field]: true,
-                  },
-                  t,
-                }),
-              );
-            }
-          },
-        });
-      } catch {
-        const rollback_settings_snapshot = await commit_update(field, {
-          [field]: previous_snapshot[field],
-        });
-        if (rollback_settings_snapshot !== null) {
-          push_toast("error", t("laboratory_page.feedback.update_failed"));
+  const update_setting = useCallback(
+    async (field: LaboratoryPendingField, next_checked: boolean): Promise<void> => {
+      const affects_project = field !== "prompt_enhancement_enable";
+      if ((affects_project && runtime_locked) || snapshot[field] === next_checked) return;
+      const save = async (): Promise<void> => {
+        const settings = await commit_update(field, { [field]: next_checked });
+        if (settings !== null && affects_project && project_snapshot.loaded) {
+          push_toast(
+            "info",
+            format_project_settings_aligned_toast({
+              settings,
+              changed_fields: { [field]: true },
+              t,
+            }),
+          );
         }
+      };
+      if (affects_project && project_snapshot.loaded) {
+        const message =
+          field === "mtool_optimizer_enable"
+            ? "laboratory_page.feedback.mtool_optimizer_loading_toast"
+            : "laboratory_page.feedback.skip_duplicate_source_text_loading_toast";
+        await run_modal_progress_toast({ message: t(message), task: save });
+      } else {
+        await save();
       }
     },
     [
-      apply_prefilter_from_settings,
       commit_update,
-      runtime_locked,
       project_snapshot.loaded,
       push_toast,
       run_modal_progress_toast,
+      runtime_locked,
       snapshot,
       t,
     ],
-  );
-
-  const update_prompt_enhancement_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      if (runtime_locked || snapshot.prompt_enhancement_enable === next_checked) {
-        return;
-      }
-      await commit_update("prompt_enhancement_enable", {
-        prompt_enhancement_enable: next_checked,
-      });
-    },
-    [commit_update, runtime_locked, snapshot.prompt_enhancement_enable],
-  );
-
-  const update_mtool_optimizer_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      await update_prefilter_setting(
-        "mtool_optimizer_enable",
-        next_checked,
-        "laboratory_page.feedback.mtool_optimizer_loading_toast",
-      );
-    },
-    [update_prefilter_setting],
-  );
-
-  const update_skip_duplicate_source_text_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      await update_prefilter_setting(
-        "skip_duplicate_source_text_enable",
-        next_checked,
-        "laboratory_page.feedback.skip_duplicate_source_text_loading_toast",
-      );
-    },
-    [update_prefilter_setting],
   );
 
   return {
     snapshot,
     pending_state,
     runtime_locked,
-    update_prompt_enhancement_enable,
-    update_mtool_optimizer_enable,
-    update_skip_duplicate_source_text_enable,
+    update_prompt_enhancement_enable: (value) => update_setting("prompt_enhancement_enable", value),
+    update_mtool_optimizer_enable: (value) => update_setting("mtool_optimizer_enable", value),
+    update_skip_duplicate_source_text_enable: (value) =>
+      update_setting("skip_duplicate_source_text_enable", value),
   };
 }

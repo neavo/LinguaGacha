@@ -35,6 +35,7 @@ type GlossaryCommandBarProps = {
   on_cancel_default_preset: () => Promise<void>;
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
+/** 工程锁限制条目写入，导出和预设文件管理保持独立。 */
 export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
@@ -112,7 +113,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
           <PresetMenu
             items={props.preset_items}
             open={props.preset_menu_open}
-            readonly={props.readonly}
+            project_write_disabled={props.readonly}
             trigger_label={t("glossary_page.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}

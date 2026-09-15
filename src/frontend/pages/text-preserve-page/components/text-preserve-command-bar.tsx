@@ -45,6 +45,7 @@ const MODE_LABEL_KEY_BY_MODE: Record<TextPreserveMode, LocaleKey> = {
   custom: "text_preserve_page.mode.options.custom",
 };
 
+/** 模式和条目操作消费工程锁，预设管理只传递应用与重置的限制。 */
 export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const mode_options: readonly SegmentedToggleOption<TextPreserveMode>[] = [
@@ -135,7 +136,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
           <PresetMenu
             items={props.preset_items}
             open={props.preset_menu_open}
-            readonly={props.readonly}
+            project_write_disabled={props.readonly}
             trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}

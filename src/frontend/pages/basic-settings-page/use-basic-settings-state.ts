@@ -1,14 +1,11 @@
 import { useCallback } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { apply_prefilter_settings_write } from "@frontend/features/settings-editor/prefilter-settings-write";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import {
   REQUEST_TIMEOUT_MAX,
@@ -48,7 +45,7 @@ function clamp_request_timeout(next_value: number): number {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
-  const { settings_snapshot, project_snapshot, commit_project_write } = useDesktopState();
+  const { project_snapshot } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
@@ -58,175 +55,41 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     refresh_error_key: "basic_settings_page.feedback.refresh_failed",
     update_error_key: "basic_settings_page.feedback.update_failed",
   });
-  const runtime_locked = is_runtime_busy(runtime_snapshot);
+  const runtime_locked = project_snapshot.loaded && is_runtime_busy(runtime_snapshot);
 
-  // 预过滤写入失败回滚设置后，只恢复项目设置镜像，不再次执行失败的预过滤。
-  const apply_project_settings_only_alignment = useCallback(
-    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
-      if (!project_snapshot.loaded) {
-        return;
-      }
-
-      await api_fetch("/api/workbench/settings-alignment/apply", {
-        mode: "settings_only",
-        project_settings: {
-          source_language: next_settings_snapshot.source_language,
-          target_language: next_settings_snapshot.target_language,
-          mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-          skip_duplicate_source_text_enable:
-            next_settings_snapshot.skip_duplicate_source_text_enable,
-        },
-      });
-    },
-    [project_snapshot.loaded],
-  );
-
-  // 设置写入成功后再用后端快照刷新项目预过滤，避免提交前端自行推导的事实。
-  const apply_prefilter_from_settings = useCallback(
-    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
-      if (!project_snapshot.loaded) {
-        return;
-      }
-
-      await apply_prefilter_settings_write({
-        operation: "basic-settings.prefilter_settings",
-        settings: next_settings_snapshot,
-        commit_project_write,
-      });
-    },
-    [commit_project_write, project_snapshot.loaded],
-  );
-
-  // source_language 横跨设置与项目预过滤，两步失败时按相反顺序补偿。
-  const rollback_source_language_after_prefilter_error = useCallback(
-    async (
-      previous_snapshot: BasicSettingsSnapshot,
-      previous_settings_snapshot: SettingsSnapshot,
-    ): Promise<void> => {
-      const rollback_settings_snapshot = await commit_update("source_language", {
-        source_language: previous_snapshot.source_language,
-      });
-      if (rollback_settings_snapshot === null) {
-        return;
-      }
-
-      try {
-        await apply_project_settings_only_alignment(previous_settings_snapshot);
-      } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("basic_settings_page.feedback.update_failed")),
-        );
-        return;
-      }
-
-      push_toast("error", t("basic_settings_page.feedback.update_failed"));
-    },
-    [apply_project_settings_only_alignment, commit_update, push_toast, t],
-  );
-
-  const update_source_language = useCallback(
-    async (next_language: string): Promise<void> => {
-      const previous_snapshot = snapshot;
-      const previous_settings_snapshot = settings_snapshot;
-
-      if (runtime_locked || previous_snapshot.source_language === next_language) {
-        return;
-      }
-
-      try {
+  // 后端拥有设置和工程的完整保存；页面只负责输入与反馈。
+  const update_language = useCallback(
+    async (field: "source_language" | "target_language", next_language: string): Promise<void> => {
+      if (runtime_locked || snapshot[field] === next_language) return;
+      const save = async (): Promise<void> => {
+        const settings = await commit_update(field, { [field]: next_language });
+        if (settings !== null && project_snapshot.loaded) {
+          push_toast(
+            "info",
+            format_project_settings_aligned_toast({
+              settings,
+              changed_fields: { [field]: true },
+              t,
+            }),
+          );
+        }
+      };
+      if (field === "source_language" && project_snapshot.loaded) {
         await run_modal_progress_toast({
           message: t("basic_settings_page.feedback.source_language_loading_toast"),
-          task: async () => {
-            const next_settings_snapshot = await commit_update("source_language", {
-              source_language: next_language,
-            });
-            if (next_settings_snapshot === null) {
-              return;
-            }
-
-            await apply_prefilter_from_settings(next_settings_snapshot);
-            if (project_snapshot.loaded) {
-              push_toast(
-                "info",
-                format_project_settings_aligned_toast({
-                  settings: {
-                    source_language: next_settings_snapshot.source_language,
-                    target_language: next_settings_snapshot.target_language,
-                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-                    skip_duplicate_source_text_enable:
-                      next_settings_snapshot.skip_duplicate_source_text_enable,
-                  },
-                  changed_fields: {
-                    source_language: true,
-                  },
-                  t,
-                }),
-              );
-            }
-          },
+          task: save,
         });
-      } catch {
-        await rollback_source_language_after_prefilter_error(
-          previous_snapshot,
-          previous_settings_snapshot,
-        );
+      } else {
+        await save();
       }
     },
     [
-      apply_prefilter_from_settings,
       commit_update,
-      runtime_locked,
       project_snapshot.loaded,
       push_toast,
-      rollback_source_language_after_prefilter_error,
       run_modal_progress_toast,
-      settings_snapshot,
-      snapshot,
-      t,
-    ],
-  );
-
-  const update_target_language = useCallback(
-    async (next_language: string): Promise<void> => {
-      if (runtime_locked || snapshot.target_language === next_language) {
-        return;
-      }
-
-      const next_settings_snapshot = await commit_update("target_language", {
-        target_language: next_language,
-      });
-      if (next_settings_snapshot === null) {
-        return;
-      }
-
-      await apply_project_settings_only_alignment(next_settings_snapshot);
-      if (project_snapshot.loaded) {
-        push_toast(
-          "info",
-          format_project_settings_aligned_toast({
-            settings: {
-              source_language: next_settings_snapshot.source_language,
-              target_language: next_settings_snapshot.target_language,
-              mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-              skip_duplicate_source_text_enable:
-                next_settings_snapshot.skip_duplicate_source_text_enable,
-            },
-            changed_fields: {
-              target_language: true,
-            },
-            t,
-          }),
-        );
-      }
-    },
-    [
-      apply_project_settings_only_alignment,
-      commit_update,
       runtime_locked,
-      project_snapshot.loaded,
-      push_toast,
-      snapshot.target_language,
+      snapshot,
       t,
     ],
   );
@@ -302,8 +165,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     snapshot,
     pending_state,
     runtime_locked,
-    update_source_language,
-    update_target_language,
+    update_source_language: (value) => update_language("source_language", value),
+    update_target_language: (value) => update_language("target_language", value),
     update_project_save_mode,
     update_output_folder_open_on_finish,
     update_request_timeout,

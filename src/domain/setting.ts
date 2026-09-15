@@ -52,13 +52,14 @@ export type SettingSnapshot = {
   recent_projects: RecentProjectSetting[];
 };
 
-export type ProjectSettingsSnapshot = Pick<
-  SettingSnapshot,
-  | "source_language"
-  | "target_language"
-  | "mtool_optimizer_enable"
-  | "skip_duplicate_source_text_enable"
->;
+export const PROJECT_SETTING_KEYS = [
+  "source_language",
+  "target_language",
+  "mtool_optimizer_enable",
+  "skip_duplicate_source_text_enable",
+] as const;
+
+export type ProjectSettingsSnapshot = Pick<SettingSnapshot, (typeof PROJECT_SETTING_KEYS)[number]>;
 
 export const SETTING_KEYS = [
   "app_language",

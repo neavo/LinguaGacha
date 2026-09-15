@@ -1216,10 +1216,6 @@ export function useTextReplacementPageState(
 
   /** 为当前内容打开预设命名流程。 */
   const request_save_preset = useCallback((): void => {
-    if (readonly) {
-      return;
-    }
-
     set_preset_input_state({
       open: true,
       mode: "save",
@@ -1227,53 +1223,35 @@ export function useTextReplacementPageState(
       submitting: false,
       target_virtual_id: null,
     });
-  }, [readonly]);
+  }, []);
 
   /** 记录预设身份和当前名称供重命名。 */
-  const request_rename_preset = useCallback(
-    (preset_item: TextReplacementPresetItem): void => {
-      if (readonly) {
-        return;
-      }
-
-      set_preset_input_state({
-        open: true,
-        mode: "rename",
-        value: preset_item.name,
-        submitting: false,
-        target_virtual_id: preset_item.virtual_id,
-      });
-    },
-    [readonly],
-  );
+  const request_rename_preset = useCallback((preset_item: TextReplacementPresetItem): void => {
+    set_preset_input_state({
+      open: true,
+      mode: "rename",
+      value: preset_item.name,
+      submitting: false,
+      target_virtual_id: preset_item.virtual_id,
+    });
+  }, []);
 
   /** 删除确认只保存目标身份。 */
-  const request_delete_preset = useCallback(
-    (preset_item: TextReplacementPresetItem): void => {
-      if (readonly) {
-        return;
-      }
-
-      set_confirm_state({
-        open: true,
-        kind: "delete-preset",
-        selection_count: 0,
-        preset_name: preset_item.name,
-        preset_input_value: "",
-        submitting: false,
-        target_virtual_id: preset_item.virtual_id,
-      });
-    },
-    [readonly],
-  );
+  const request_delete_preset = useCallback((preset_item: TextReplacementPresetItem): void => {
+    set_confirm_state({
+      open: true,
+      kind: "delete-preset",
+      selection_count: 0,
+      preset_name: preset_item.name,
+      preset_input_value: "",
+      submitting: false,
+      target_virtual_id: preset_item.virtual_id,
+    });
+  }, []);
 
   /** 校验名称并写入当前内容，完成后刷新预设列表。 */
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
-      if (readonly) {
-        return false;
-      }
-
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("preset_editor.feedback.name_required"));
@@ -1304,16 +1282,12 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [config.rule_type, entries, push_toast, readonly, refresh_preset_menu, t],
+    [config.rule_type, entries, push_toast, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
-      if (readonly) {
-        return false;
-      }
-
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("preset_editor.feedback.name_required"));
@@ -1351,16 +1325,12 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [apply_settings_snapshot, config, preset_items, push_toast, readonly, refresh_preset_menu, t],
+    [apply_settings_snapshot, config, preset_items, push_toast, refresh_preset_menu, t],
   );
 
   /** 通过设置回包推进默认标记。 */
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
-      if (readonly) {
-        return;
-      }
-
       try {
         const payload = await api_fetch<SettingsSnapshotPayload>(
           "/api/settings/update",
@@ -1378,28 +1348,14 @@ export function useTextReplacementPageState(
         );
       }
     },
-    [apply_settings_snapshot, config, push_toast, readonly, t],
+    [apply_settings_snapshot, config, push_toast, t],
   );
 
-  /** 清除默认引用，由设置快照更新菜单。 */
-  const cancel_default_preset = useCallback(async (): Promise<void> => {
-    if (readonly) {
-      return;
-    }
-
-    try {
-      const payload = await api_fetch<SettingsSnapshotPayload>(
-        "/api/settings/update",
-        build_default_preset_update_payload(config, ""),
-      );
-      apply_settings_snapshot(payload);
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("text_replacement_page.feedback.preset_failed")),
-      );
-    }
-  }, [apply_settings_snapshot, config, push_toast, readonly, t]);
+  /** 空标识通过同一保存入口清除默认引用。 */
+  const cancel_default_preset = useCallback(
+    (): Promise<void> => set_default_preset(""),
+    [set_default_preset],
+  );
 
   /** 校验并提交弹窗草稿，失败时恢复编辑入口。 */
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
@@ -1516,7 +1472,7 @@ export function useTextReplacementPageState(
 
   /** 按保存或重命名意图校验重名并推进确认流程。 */
   const submit_preset_input = useCallback(async (): Promise<void> => {
-    if (readonly || !preset_input_state.open || preset_input_state.mode === null) {
+    if (!preset_input_state.open || preset_input_state.mode === null) {
       return;
     }
 
@@ -1579,7 +1535,7 @@ export function useTextReplacementPageState(
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, readonly, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
 
   /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {
@@ -1599,7 +1555,11 @@ export function useTextReplacementPageState(
 
   /** 执行已确认的操作，失败时恢复确认界面的可操作状态。 */
   const confirm_pending_action = useCallback(async (): Promise<void> => {
-    if (readonly || !confirm_state.open || confirm_state.kind === null) {
+    if (
+      !confirm_state.open ||
+      confirm_state.kind === null ||
+      (readonly && (confirm_state.kind === "reset" || confirm_state.kind === "delete-selection"))
+    ) {
       return;
     }
 
