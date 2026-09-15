@@ -31,6 +31,7 @@ export interface LLMRequestResult {
   output_tokens: number; // 只表示扣除思考后的输出 token
   cancelled: boolean; // 以下标记保留单次请求事实，消费方决定恢复与内容处理
   timeout: boolean;
+  http_status?: number; // 本次真实 HTTP 响应状态；传输未取得响应时缺失。
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
   response_error?: LogError; // 已收到响应但终态不适合消费，例如输出截断；由业务决定内容重试。
 }

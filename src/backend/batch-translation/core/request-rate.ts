@@ -1,29 +1,37 @@
 import { read_json_integer, read_json_record } from "../../../domain/json";
 
-const DEFAULT_CONCURRENCY_LIMIT = 8;
+export const AUTO_CONCURRENCY_INITIAL = 4; // 自动模式的启动额度与上下界由产品规则固定。
+export const AUTO_CONCURRENCY_MIN = 1;
+export const AUTO_CONCURRENCY_MAX = 32;
 const ONE_MINUTE_MS = 60_000;
 const ONE_SECOND_MS = 1_000;
 type RequestModelRecord = Record<string, unknown>;
 interface RequestRateOptions {
   rpm_limit?: number;
-  max_concurrency: number;
+  rps_limit: number;
 }
 
 /** 仅持有速率时钟；跨任务复用，派发队列和并发由本轮请求调度器拥有。 */
 export class TranslationRequestRate {
-  public readonly max_concurrency: number; // 同时也是未配置 RPM 时的每秒补充量与令牌上限。
+  private rps_limit: number; // 默认发起速率与令牌容量，由调度器同步当前并发。
   private readonly rpm_permit_interval_ms: number; // 零表示使用默认令牌桶。
   private next_rpm_permit_at: number | null = null; // 同一模型跨任务保留的下次启动时刻。
-  private hidden_rps_tokens: number;
-  private hidden_rps_refilled_at: number;
-  /** 归一容量并初始化冷启动资格，后续只在真实派发时扣减。 */
+  private hidden_rps_tokens: number; // 默认 RPS 的剩余启动资格，升档保留余额。
+  private hidden_rps_refilled_at: number; // 余额已结算到的时间，调整速率前按旧值结算。
+  /** 使用已解析的额度初始化冷启动资格，后续只在真实派发时扣减。 */
   public constructor(options: RequestRateOptions) {
-    const raw_concurrency = Math.trunc(Number(options.max_concurrency));
-    this.max_concurrency = raw_concurrency > 0 ? raw_concurrency : DEFAULT_CONCURRENCY_LIMIT;
-    const rpm_limit = Math.max(0, Math.trunc(Number(options.rpm_limit ?? 0)));
+    this.rps_limit = options.rps_limit;
+    const rpm_limit = options.rpm_limit ?? 0;
     this.rpm_permit_interval_ms = rpm_limit > 0 ? ONE_MINUTE_MS / rpm_limit : 0;
-    this.hidden_rps_tokens = this.max_concurrency;
+    this.hidden_rps_tokens = this.rps_limit;
     this.hidden_rps_refilled_at = Date.now();
+  }
+
+  /** 先按旧速率结算；升档不赠送令牌，降档裁剪已有余额。 */
+  public set_rps_limit(limit: number): void {
+    this.refill_hidden_rps_tokens(Date.now());
+    this.rps_limit = limit;
+    this.hidden_rps_tokens = Math.min(this.hidden_rps_tokens, limit);
   }
 
   /** 距离下一次启动资格的等待时间；查询不消耗资格。 */
@@ -38,7 +46,7 @@ export class TranslationRequestRate {
     if (this.hidden_rps_tokens >= 1) {
       return 0;
     }
-    return ((1 - this.hidden_rps_tokens) / this.max_concurrency) * ONE_SECOND_MS;
+    return ((1 - this.hidden_rps_tokens) / this.rps_limit) * ONE_SECOND_MS;
   }
 
   /**
@@ -61,8 +69,8 @@ export class TranslationRequestRate {
     if (elapsed_ms <= 0) {
       return;
     }
-    const refill_tokens = (elapsed_ms / ONE_SECOND_MS) * this.max_concurrency;
-    this.hidden_rps_tokens = Math.min(this.max_concurrency, this.hidden_rps_tokens + refill_tokens);
+    const refill_tokens = (elapsed_ms / ONE_SECOND_MS) * this.rps_limit;
+    this.hidden_rps_tokens = Math.min(this.rps_limit, this.hidden_rps_tokens + refill_tokens);
     this.hidden_rps_refilled_at = current_time;
   }
 }
@@ -73,20 +81,17 @@ export class RequestRatePool {
 
   /** 同一资源和容量复用时钟，配置变化才重新建立启动节奏。 */
   public resolve(model: RequestModelRecord): TranslationRequestRate {
-    const threshold = read_json_record(model["threshold"]);
-    const rpm_limit = read_json_integer(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0);
-    const concurrency_limit = read_json_integer(threshold["concurrency_limit"], 0);
+    const limits = resolve_request_limits(model);
     const key = JSON.stringify({
       id: String(model["id"] ?? ""),
       api_url: String(model["api_url"] ?? ""),
       model_id: String(model["model_id"] ?? ""),
-      concurrency_limit,
-      rpm_limit,
+      ...limits,
     });
     if (this.shared_rate?.key === key) return this.shared_rate.rate;
     const rate = new TranslationRequestRate({
-      max_concurrency: resolve_effective_concurrency_limit({ concurrency_limit, rpm_limit }),
-      rpm_limit,
+      rps_limit: limits.concurrency_limit,
+      rpm_limit: limits.rpm_limit,
     });
     this.shared_rate = { key, rate };
     return rate;
@@ -94,22 +99,22 @@ export class RequestRatePool {
 }
 
 /**
- * 并发推导规则保持固定顺序：显式并发优先；否则 RPM 一比一作为自动并发；两者都没有时回退 8。
+ * 统一解析配置语义：双零启用探测，其余按显式并发或 RPM 确定固定额度。
  */
-export function resolve_effective_concurrency_limit(options: {
-  concurrency_limit?: number;
-  rpm_limit?: number;
-}): number {
-  const concurrency_limit = Math.trunc(Number(options.concurrency_limit ?? 0));
-  if (concurrency_limit > 0) {
-    return concurrency_limit;
-  }
-
-  // 仍由 pacer 控制发起速率；并发等于 RPM 不代表突破每分钟请求数。
-  const rpm_limit = Math.trunc(Number(options.rpm_limit ?? 0));
-  if (rpm_limit > 0) {
-    return rpm_limit;
-  }
-
-  return DEFAULT_CONCURRENCY_LIMIT;
+export function resolve_request_limits(model: RequestModelRecord): Readonly<{
+  auto_concurrency: boolean;
+  concurrency_limit: number;
+  rpm_limit: number;
+}> {
+  const threshold = read_json_record(model["threshold"]);
+  const concurrency_limit = Math.max(0, read_json_integer(threshold["concurrency_limit"], 0));
+  const rpm_limit = Math.max(
+    0,
+    read_json_integer(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+  );
+  return {
+    auto_concurrency: concurrency_limit === 0 && rpm_limit === 0,
+    concurrency_limit: concurrency_limit || rpm_limit || AUTO_CONCURRENCY_INITIAL,
+    rpm_limit,
+  };
 }
