@@ -146,14 +146,6 @@ describe("useLaboratoryPageState", () => {
     return null;
   }
 
-  async function flush_async_updates(): Promise<void> {
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-  }
-
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -164,86 +156,22 @@ describe("useLaboratoryPageState", () => {
     await act(async () => {
       root?.render(createElement(LaboratoryProbe));
     });
-    await flush_async_updates();
   }
 
-  it("提示词增强只更新应用设置，不触发项目预过滤对齐", async () => {
-    vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
-      if (path !== "/api/settings/update") {
-        throw new Error(`unexpected path: ${path}`);
-      }
-      return {
-        settings: create_settings_snapshot({
-          ...runtime_fixture.current.settings_snapshot,
-          ...body,
-        }),
-      } as never;
-    });
-
+  it("Agent 运行中可提交提示词增强，预过滤仍锁定", async () => {
+    runtime_fixture.current.runtime_snapshot = { revision: 1, owner: "agent" };
+    vi.mocked(api_fetch).mockResolvedValue({
+      settings: create_settings_snapshot({ prompt_enhancement_enable: false }),
+    } as never);
     await render_hook();
     await act(async () => {
       await latest_state?.update_prompt_enhancement_enable(false);
+      await latest_state?.update_mtool_optimizer_enable(true);
     });
-    await flush_async_updates();
-
-    expect(latest_state?.snapshot.prompt_enhancement_enable).toBe(false);
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { prompt_enhancement_enable: false }],
     ]);
+    expect(latest_state?.snapshot.prompt_enhancement_enable).toBe(false);
     expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
-  });
-
-  it("Agent 运行中不提交提示词增强设置", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      runtime_snapshot: { revision: 1, owner: "agent" },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.update_prompt_enhancement_enable(false);
-    });
-
-    expect(api_fetch).not.toHaveBeenCalled();
-  });
-
-  it("后端预过滤提交失败时会回滚 mtool_optimizer_enable 并只显示通用失败提示", async () => {
-    vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
-      if (path === "/api/settings/update") {
-        return {
-          settings: create_settings_snapshot({
-            ...runtime_fixture.current.settings_snapshot,
-            ...body,
-          }),
-        } as never;
-      }
-
-      if (path === "/api/workbench/settings-alignment/apply") {
-        throw new Error("prefilter_failed");
-      }
-      if (path === "/api/workbench/snapshot") {
-        return {
-          sectionRevisions: {
-            items: 0,
-          },
-        } as never;
-      }
-
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.update_mtool_optimizer_enable(true);
-    });
-    await flush_async_updates();
-
-    expect(latest_state?.snapshot.mtool_optimizer_enable).toBe(false);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "laboratory_page.feedback.update_failed",
-    );
   });
 });

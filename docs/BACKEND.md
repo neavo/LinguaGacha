@@ -8,7 +8,7 @@
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview、`/api/session/source-files/summary` 和打开前 settings alignment 是可以接收显式路径的生命周期例外。source-files summary 只按共享互斥扩展名目录递归发现并去重，返回文件总数与各格式命中数，不读取内容或向 renderer 公开文件路径。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
-- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | null`。
+- 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
 - `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零；该口径独立于本轮任务进度。响应携带工程路径供切换隔离，工作台文件查询独立提供列表。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
@@ -29,7 +29,7 @@
 |---|---|---|
 |应用设置、最近工程、语言|`AppSettingService`|设置 API、CLI transient overrides、`settings.changed`|
 |模型集合、配置与按用途选择|`ModelService`|模型 API；经 `AppSettingService` 持久化到应用设置|
-|普通任务 / Agent 活动所有者与项目写互斥|`RuntimeOperationGate`|运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed`|
+|翻译 / Agent / 接口测试占用与工程写互斥|`RuntimeOperationGate`|运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed`|
 |loaded 工程身份|`ProjectSessionState`|`ProjectLifecycleService`|
 |loaded 工程热读数据|`CacheManager`|工程热机、committed event、功能 query|
 |Agent 工程数据快照与 change 准备|`AgentWorkspaceService`|完整 load / run / apply 生命周期|
@@ -42,7 +42,11 @@
 |平台 IO 与路径身份|`NativeFs` / `NativePathPolicy`|`src/native`|
 |后端日志|`LogManager`|正文文件、可重建索引与按位置查询|
 
-`RuntimeOperationGate` 是普通任务、Agent 与项目结构性写入的唯一互斥边界。task / Agent 的运行 lease 从受理持有到最终 settle，二者完全互斥；普通项目写入的准备与提交持有同一项目写 lease，普通设置与模型管理写入必须先确认运行时空闲；模型选择、Agent 批量翻译模型偏好和所选模型思考档位允许在运行中保存，模型校验与持久化统一归 `ModelService`，执行入口冻结所用配置。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
+`RuntimeOperationGate` 是批量翻译、Agent、接口测试与工程写入 / 生命周期操作的唯一互斥边界。三类执行从受理到最终收尾持有运行 lease；普通工程写入的准备与提交持有同一工程写 lease。纯应用设置、模型配置管理、预设文件管理与只读查询不占用运行时；模型列表探测只请求元数据，接口测试才取得 `model_test` lease。执行入口冻结所用配置，运行中修改或删除配置只影响后续执行。Agent 工作区变更在自己的运行 lease 内由 `AgentWorkspaceService` 串行调用 `ProjectWriteStore`；Agent 发起的批量翻译复用该 lease，由共享批量翻译链路经 `ProjectWriteStore` 提交。冲突统一返回 `runtime.busy`。
+
+`POST /api/settings/update` 由 `AppSettingsCommandService` 编排，返回 `settings + accepted + changes`。语言和预过滤修改涉及已加载工程时，准备、配置保存、工程提交及失败补偿持有同一写 lease；目标语言只同步设置，其余工程设置重算预过滤。提交前失败只补偿本次字段，已提交错误保留新配置；设置通知在两个存储完成后发布。配置与工程持久化分别归 `AppSettingService` 和 `ProjectWriteStore`。
+
+接口测试的多 Key 请求共用取消信号和配置副本。GUI 关闭先停止 Gateway 受理，并同时取消接口测试，避免 Gateway 排空在途 HTTP 时等待无法取消的请求；业务根释放前等待测试完成链。重置预览不取得运行 lease，在异步解析前固定工程资产内容与条目身份，真实重置仍走工程写入口。
 
 ## 3. 项目读取与写入
 

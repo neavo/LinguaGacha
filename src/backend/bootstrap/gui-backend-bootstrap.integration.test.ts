@@ -6,8 +6,78 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GuiBackendBootstrap } from "./gui-backend-bootstrap";
 import { AppPathService } from "../app/app-path-service";
+import { LLMClient } from "../llm/llm-client";
 
 describe("GuiBackendBootstrap 集成", () => {
+  it("关闭真实 Gateway 时取消在途接口测试并完成请求排空", async ({ onTestFinished }) => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-gateway-model-test-"));
+    onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
+    let started_request!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started_request = resolve;
+    });
+    const cancelled = vi.fn();
+    const request = vi
+      .spyOn(LLMClient.prototype, "request")
+      .mockImplementation(async (_input, signal) => {
+        started_request();
+        return await new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              cancelled();
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      });
+    onTestFinished(() => request.mockRestore());
+    const bootstrap = new GuiBackendBootstrap({
+      appRoot: app_root,
+      builtinRoot: path.resolve("builtin"),
+      logTargets: { console: false, window: false },
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+      agentWorkspaceRun: async (input) => ({ result: null, todos: [...input.todos] }),
+      openDirectory: async () => undefined,
+      pickSavePath: async () => null,
+      workerExecution: { kind: "in_process" },
+    });
+    try {
+      const started = await bootstrap.start();
+      const response = await fetch(`${started.apiBaseUrl}/api/models/snapshot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const snapshot = (await response.json()) as {
+        data: { snapshot: { models: Array<{ id: string }> } };
+      };
+      const model_id = snapshot.data.snapshot.models[0]!.id;
+      const update = await fetch(`${started.apiBaseUrl}/api/models/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_id, patch: { api_key: "test-key" } }),
+      });
+      expect(update.ok).toBe(true);
+      const pending = Promise.allSettled([
+        fetch(`${started.apiBaseUrl}/api/models/test`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model_id }),
+        }),
+      ]);
+      await ready;
+      await bootstrap.stop();
+      await pending;
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(bootstrap.isStopped()).toBe(true);
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+
   it("启动真实 Agent 与 Gateway，公开 API 保存工作区文件并打开目录", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gui-backend-"));
     onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));

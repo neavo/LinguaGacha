@@ -37,6 +37,7 @@ type TextReplacementCommandBarProps = {
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
 
+/** 组合规则写入与预设管理，工程锁只限制当前工程的修改。 */
 export function TextReplacementCommandBar(props: TextReplacementCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const toggle_state_key = props.enabled ? "app.state.enabled" : "app.state.disabled";
@@ -114,7 +115,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
           <PresetMenu
             items={props.preset_items}
             open={props.preset_menu_open}
-            readonly={props.readonly}
+            project_write_disabled={props.readonly}
             trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}

@@ -1,13 +1,13 @@
 import type { JsonRecord } from "../domain/json";
 
-/** 普通任务与 Agent 共享的运行占用类型。 */
-export type RuntimeActivityOwner = "batch_translation" | "agent";
+/** 翻译、Agent 与接口测试共享同一执行占用。 */
+export type RuntimeActivityOwner = "batch_translation" | "agent" | "model_test";
 
 /** 后端与 renderer 共享的轻量运行占用快照。 */
 export type RuntimeActivitySnapshot = Readonly<
   JsonRecord & {
     revision: number; // owner 每次变化后单调递增
-    owner: RuntimeActivityOwner | null; // null 表示 task 与 Agent 均未占用
+    owner: RuntimeActivityOwner | null; // null 表示没有活动执行
   }
 >;
 

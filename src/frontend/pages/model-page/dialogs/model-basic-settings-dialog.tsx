@@ -24,6 +24,7 @@ type ModelBasicSettingsDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
   readonly: boolean;
+  test_disabled: boolean;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onRequestOpenSelector: () => void;
   onRequestTestModel: () => void;
@@ -174,7 +175,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={props.readonly}
+                    disabled={props.test_disabled}
                     onClick={() => {
                       void props.onRequestTestModel();
                     }}

@@ -6,9 +6,6 @@ import type { ExpertSettingsSnapshot } from "./types";
 import { useExpertSettingsState } from "./use-expert-settings-state";
 
 const commit_update = vi.fn(async () => null);
-const runtime = {
-  owner: null as "batch_translation" | "agent" | null,
-};
 const snapshot: ExpertSettingsSnapshot = {
   preceding_lines_threshold: 3,
   clean_ruby: false,
@@ -16,13 +13,6 @@ const snapshot: ExpertSettingsSnapshot = {
   write_translated_name_fields_to_file: false,
   auto_process_prefix_suffix_preserved_text: false,
 };
-
-vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({
-    runtime_snapshot: runtime,
-  }),
-  useRuntimeSnapshot: () => runtime,
-}));
 
 vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
   useSettingsEditor: () => ({
@@ -53,7 +43,6 @@ describe("useExpertSettingsState", () => {
     container = null;
     root = null;
     latest_state = null;
-    runtime.owner = null;
     commit_update.mockClear();
   });
 
@@ -83,17 +72,5 @@ describe("useExpertSettingsState", () => {
     expect(commit_update).toHaveBeenCalledWith("preceding_lines_threshold", {
       preceding_lines_threshold: 0,
     });
-  });
-
-  it("项目写锁生效时不提交设置", async () => {
-    runtime.owner = "agent";
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.update_clean_ruby(true);
-    });
-
-    expect(latest_state?.runtime_locked).toBe(true);
-    expect(commit_update).not.toHaveBeenCalled();
   });
 });

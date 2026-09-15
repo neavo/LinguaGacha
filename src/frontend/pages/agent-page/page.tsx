@@ -158,7 +158,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ? "restoring"
         : agent_settling
           ? "settling"
-          : runtime_snapshot.owner === "batch_translation"
+          : runtime_snapshot.owner !== null && runtime_snapshot.owner !== "agent"
             ? "runtime_busy"
             : null;
 

@@ -40,6 +40,7 @@ const resources = {
   dispose: mocks.resource_dispose,
 };
 const services = {
+  model: { dispose: vi.fn(async () => undefined) },
   batchTranslation: { marker: "batch-translation" },
   state: shared_state,
   proofreading: { query: { marker: "proofreading" } },

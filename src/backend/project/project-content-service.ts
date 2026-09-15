@@ -10,7 +10,10 @@ import { log_source_file_parse_failures } from "../file/source-file-parse-failur
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
-import { require_project_expected_section_revisions } from "./project-write-request";
+import {
+  require_project_expected_section_revisions,
+  type ProjectExpectedSectionRevisions,
+} from "./project-write-request";
 import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import {
@@ -380,38 +383,56 @@ export class ProjectContentService {
       throw new AppErrors.AppError("request.validation_failed");
     }
     return this.runtime_gate.run_project_write(async () => {
+      if (mode === "prefiltered_items")
+        this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const project_path = await this.resolve_project_path(request);
-      const settings_meta = this.build_project_settings_only_meta(request["project_settings"]);
-      if (mode === "settings_only") {
-        return await this.write_store.apply_project_settings_meta({
+      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
+      return await this.prepare_settings_alignment(
+        project_path,
+        settings,
+        mode === "prefiltered_items",
+        mode === "prefiltered_items"
+          ? require_project_expected_section_revisions(request["expected_section_revisions"])
+          : undefined,
+      )();
+    });
+  }
+
+  /** 调用方持有工程写 lease；同步完成准备，使配置保存前就能发现预过滤错误。 */
+  public prepare_settings_alignment(
+    project_path: string,
+    settings: ProjectSettingsSnapshot,
+    prefilter: boolean,
+    expected_section_revisions?: ProjectExpectedSectionRevisions,
+  ): () => Promise<ProjectWriteResult> {
+    const settings_meta = this.build_project_settings_only_meta(settings);
+    if (!prefilter) {
+      return () =>
+        this.write_store.apply_project_settings_meta({
           projectPath: project_path,
           meta: settings_meta,
         });
-      }
-      this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
-      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
-      const snapshot = this.read_project_write_snapshot(project_path);
-      const write_output = this.compute_prefilter_output({
-        project_path,
-        files: snapshot.files,
-        items: this.public_item_record_from_map(snapshot.public_items_by_id),
-        settings,
-      });
-      return await this.write_store.replace_project_items_and_files({
+    }
+    const snapshot = this.read_project_write_snapshot(project_path);
+    const write_output = this.compute_prefilter_output({
+      project_path,
+      files: snapshot.files,
+      items: this.public_item_record_from_map(snapshot.public_items_by_id),
+      settings,
+    });
+    return () =>
+      this.write_store.replace_project_items_and_files({
         projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
+        // 设置命令在 lease 内读取当前事实；来自预演的调用仍保留消费方 revision。
+        ...(expected_section_revisions === undefined
+          ? { requireExpectedSectionRevisions: false as const }
+          : { expectedSectionRevisions: expected_section_revisions }),
         revisionSections: ["items"],
         source: "settings_alignment",
         updatedSections: ["items"],
         items: build_project_item_persistent_records(write_output.items),
-        meta: {
-          ...settings_meta,
-          ...this.build_prefilter_reset_meta(settings, write_output),
-        },
+        meta: { ...settings_meta, ...this.build_prefilter_reset_meta(settings, write_output) },
       });
-    });
   }
 
   /**

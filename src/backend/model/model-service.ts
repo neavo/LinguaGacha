@@ -63,10 +63,13 @@ const MODEL_AGENT_PATCH_KEYS = new Set(["context_window", "max_output_tokens"]);
  * 封装模型配置 CRUD 与按用途选择；任务执行时由调用方解析不可变模型快照
  */
 export class ModelService {
+  private active_test: { controller: AbortController; completion: Promise<JsonRecord> } | null =
+    null; // 退出等待同一次测试收尾
+  private disposed = false; // Gateway 排空时阻止已受理但尚未开始的测试启动
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_client: LLMClientPort; // 父线程真实模型请求入口，与任务共用网络边界
-  private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入统一要求共享运行时空闲
+  private readonly runtime_gate: RuntimeOperationGate; // 接口测试独占运行时，配置管理不占用
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
 
@@ -107,7 +110,6 @@ export class ModelService {
    * 更新模型白名单字段，避免页面写入未知配置
    */
   public update_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
@@ -199,7 +201,6 @@ export class ModelService {
    * 新增自定义模型，避免调用方复制默认字段补齐规则
    */
   public add_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const model_type = String(request["model_type"] ?? "");
     if (!Model.is_custom_type(model_type)) {
       throw new AppErrors.AppError("request.validation_failed", {
@@ -215,7 +216,6 @@ export class ModelService {
 
   /** 按当前协议复制完整配置，一次保存副本身份、名称和目标分类。 */
   public copy_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const model_id = request["model_id"];
     if (typeof model_id !== "string" || model_id.trim() === "") {
       throw new AppErrors.AppError("request.validation_failed", {
@@ -259,7 +259,6 @@ export class ModelService {
    * 删除模型并为所有引用该模型的用途重选，防止配置留下悬空引用
    */
   public delete_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -285,7 +284,6 @@ export class ModelService {
    * 用内置预设重置模型，保持 preset 事实来自资源目录
    */
   public reset_preset_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const { config, presets } = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -306,7 +304,6 @@ export class ModelService {
    * 重排同组模型，确保 ordered ids 完整覆盖当前分组
    */
   public reorder_model(request: JsonRecord): JsonRecord {
-    this.runtime_gate.assert_runtime_idle();
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
       throw new AppErrors.AppError("request.validation_failed");
@@ -346,16 +343,47 @@ export class ModelService {
   }
 
   /**
-   * 模型连通性测试复用同一 LLM request client，确保模型页和任务请求走同一策略。
+   * 接口测试独占运行租约；固定配置后登记完成链，供退出取消和等待。
    */
   public async test_model(request: JsonRecord): Promise<JsonRecord> {
+    if (this.disposed) throw new AppErrors.AppError("runtime.disposed");
     const { config } = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
+    const lease = this.runtime_gate.begin_runtime("model_test");
+    const controller = new AbortController();
+    const completion = Promise.resolve().then(() =>
+      this.execute_model_test(config, model, controller.signal),
+    );
+    this.active_test = { controller, completion };
+    try {
+      return await completion;
+    } finally {
+      this.active_test = null;
+      this.runtime_gate.finish_runtime(lease);
+    }
+  }
+
+  /** 请求失败由调用者报告；关闭只等待它退出并让 test_model 释放 lease。 */
+  public async dispose(): Promise<void> {
+    this.disposed = true;
+    const active = this.active_test;
+    if (active === null) return;
+    active.controller.abort();
+    await Promise.allSettled([active.completion]);
+  }
+
+  /** 配置副本在首个请求前固定；多 Key 测试共用同一取消信号。 */
+  private async execute_model_test(
+    config: JsonRecord,
+    model: JsonRecord,
+    signal: AbortSignal,
+  ): Promise<JsonRecord> {
     const keys = collect_api_keys(String(model["api_key"] ?? ""));
     const key_results: Array<JsonRecord> = [];
     const app_language = config["app_language"];
     const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
     for (const api_key of keys) {
+      signal.throwIfAborted();
       const model_for_test = { ...model, api_key };
       const masked_key = this.mask_api_key(api_key);
       this.log_model_test_key_start(app_language, masked_key, messages);
@@ -368,7 +396,7 @@ export class ModelService {
           config_snapshot: config as unknown as JsonValue,
           messages,
         },
-        new AbortController().signal,
+        signal,
       );
       const response_time_ms = Math.max(0, Date.now() - started_at);
       const failure = this.build_model_test_failure(result, config);

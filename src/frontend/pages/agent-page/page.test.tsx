@@ -36,7 +36,7 @@ type AgentPageState = AgentTimelineSlice &
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
 const runtime_state = vi.hoisted(() => ({
-  current: { revision: 0, owner: null as "batch_translation" | "agent" | null },
+  current: { revision: 0, owner: null as "batch_translation" | "agent" | "model_test" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
 const model_thinking_state = vi.hoisted(() => ({
@@ -341,32 +341,35 @@ describe("AgentPage", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("只为空闲且无需压缩的指令显示简短说明", async () => {
-    const view = await render_page({
-      context: { tokens: 1_000, compactable: false, limits: null },
-    });
-    const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
-    if (editor === null) throw new Error("缺少 Composer");
-    await act(async () =>
-      editor.dispatch({
-        changes: { from: 0, insert: "@compact" },
-        selection: EditorSelection.cursor(8),
-      }),
-    );
-    const idle_instruction = view.querySelector<HTMLButtonElement>(
-      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
-    );
-    expect(idle_instruction?.disabled).toBe(true);
-    expect(idle_instruction?.querySelector("small")).not.toBeNull();
+  it.each(["batch_translation", "model_test"] as const)(
+    "%s 占用时暂停额外 Agent 执行入口",
+    async (owner) => {
+      const view = await render_page({
+        context: { tokens: 1_000, compactable: false, limits: null },
+      });
+      const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
+      if (editor === null) throw new Error("缺少 Composer");
+      await act(async () =>
+        editor.dispatch({
+          changes: { from: 0, insert: "@compact" },
+          selection: EditorSelection.cursor(8),
+        }),
+      );
+      const idle_instruction = view.querySelector<HTMLButtonElement>(
+        '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+      );
+      expect(idle_instruction?.disabled).toBe(true);
+      expect(idle_instruction?.querySelector("small")).not.toBeNull();
 
-    runtime_state.current = { revision: 1, owner: "batch_translation" };
-    await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
-    const busy_instruction = view.querySelector<HTMLButtonElement>(
-      '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
-    );
-    expect(busy_instruction?.disabled).toBe(true);
-    expect(busy_instruction?.querySelector("small")).toBeNull();
-  });
+      runtime_state.current = { revision: 1, owner };
+      await render_page({ context: { tokens: 1_000, compactable: false, limits: null } });
+      const busy_instruction = view.querySelector<HTMLButtonElement>(
+        '[aria-labelledby="agent-mention-instructions-label"] [role="option"]',
+      );
+      expect(busy_instruction?.disabled).toBe(true);
+      expect(busy_instruction?.querySelector("small")).toBeNull();
+    },
+  );
 
   it("恢复失败时显示单一重试入口并重新连接", async () => {
     const reconnect = vi.fn();

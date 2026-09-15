@@ -101,7 +101,7 @@ describe("LaboratoryPage", () => {
     );
   });
 
-  it("运行时占用时禁用提示词增强开关", async () => {
+  it("运行时占用只禁用会同步工程的开关", async () => {
     laboratory_state_fixture.current = {
       ...create_laboratory_state_fixture(),
       runtime_locked: true,
@@ -111,6 +111,11 @@ describe("LaboratoryPage", () => {
     const toggle = container?.querySelector(
       'button[aria-label="laboratory_page.fields.prompt_enhancement_enable.title"]',
     );
-    expect((toggle as HTMLButtonElement | null)?.disabled).toBe(true);
+    expect((toggle as HTMLButtonElement | null)?.disabled).toBe(false);
+    expect(
+      container?.querySelector<HTMLButtonElement>(
+        'button[aria-label="laboratory_page.fields.mtool_optimizer_enable.title"]',
+      )?.disabled,
+    ).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PROJECT_SETTING_KEYS } from "@domain/setting";
+import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -45,7 +47,8 @@ export function useSettingsEditor<
     patch: Partial<Snapshot>,
   ) => Promise<SettingsSnapshot | null>;
 } {
-  const { settings_snapshot, apply_settings_snapshot, refresh_settings } = useDesktopState();
+  const { settings_snapshot, apply_settings_snapshot, refresh_settings, commit_project_write } =
+    useDesktopState();
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState(() => options.select_snapshot(settings_snapshot));
@@ -92,25 +95,37 @@ export function useSettingsEditor<
         [field]: true,
       }));
 
+      const affects_project = PROJECT_SETTING_KEYS.some((key) => Object.hasOwn(patch, key));
       try {
-        const payload = await api_fetch<SettingsSnapshotPayload>(
-          "/api/settings/update",
-          patch as Record<string, unknown>,
-        );
+        const run = () =>
+          api_fetch<SettingsSnapshotPayload & ProjectWriteResultPayload>(
+            "/api/settings/update",
+            patch as Record<string, unknown>,
+          );
+        const payload = affects_project
+          ? (await commit_project_write({ operation: "settings.update", run })).payload
+          : await run();
         const next_settings_snapshot = apply_settings_snapshot(payload);
         sync_snapshot(next_settings_snapshot);
         return next_settings_snapshot;
       } catch (error) {
-        // 从请求开始前的快照恢复本次 patch 字段，其它字段保留当前最新值。
-        const rollback_patch = Object.fromEntries(
-          Object.keys(patch).map((key) => [key, previous_snapshot[key as keyof Snapshot]]),
-        ) as Partial<Snapshot>;
-        const reverted_snapshot = {
-          ...snapshot_ref.current,
-          ...rollback_patch,
-        };
-        snapshot_ref.current = reverted_snapshot;
-        set_snapshot(reverted_snapshot);
+        // 工程可能已提交；优先恢复权威值，查询失败时使用提交前值，始终只替换本次字段。
+        let restored = previous_snapshot;
+        if (affects_project) {
+          try {
+            restored = options.select_snapshot(await refresh_settings());
+          } catch (refresh_error) {
+            push_toast(
+              "error",
+              resolve_visible_error_message(refresh_error, t, t(options.refresh_error_key)),
+            );
+          }
+        }
+        const restored_patch = Object.fromEntries(
+          Object.keys(patch).map((key) => [key, restored[key as keyof Snapshot]]),
+        );
+        snapshot_ref.current = { ...snapshot_ref.current, ...restored_patch };
+        set_snapshot(snapshot_ref.current);
         push_toast("error", resolve_visible_error_message(error, t, t(options.update_error_key)));
         return null;
       } finally {
@@ -120,7 +135,17 @@ export function useSettingsEditor<
         }));
       }
     },
-    [apply_settings_snapshot, options.update_error_key, push_toast, sync_snapshot, t],
+    [
+      apply_settings_snapshot,
+      commit_project_write,
+      options.update_error_key,
+      options.refresh_error_key,
+      options.select_snapshot,
+      push_toast,
+      refresh_settings,
+      sync_snapshot,
+      t,
+    ],
   );
 
   return {

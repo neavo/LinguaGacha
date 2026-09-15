@@ -71,7 +71,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
           <PresetMenu
             items={props.preset_items}
             open={props.preset_menu_open}
-            readonly={props.readonly}
+            project_write_disabled={props.readonly}
             trigger_label={t("app.action.preset")}
             on_open={props.on_open_preset_menu}
             on_open_change={props.on_preset_menu_open_change}

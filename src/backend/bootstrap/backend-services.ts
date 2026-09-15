@@ -1,5 +1,6 @@
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
+import { AppSettingsCommandService } from "../app/app-settings-command-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -66,7 +67,7 @@ export interface BackendAppServices {
   paths: AppPathService;
   metadata: AppMetadataService;
   settings: AppSettingService;
-  updateSettings: (request: JsonRecord) => JsonRecord; // 设置 API 的统一运行时门禁入口
+  updateSettings: (request: JsonRecord) => Promise<JsonRecord>; // 设置命令统一编排工程同步与补偿
 }
 
 export interface BackendRuntimeServices {
@@ -106,7 +107,7 @@ export class BackendServices {
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
-  private readonly runtime_gate = new RuntimeOperationGate(); // task、GUI Agent 与结构性写入共享的唯一门禁
+  private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
   private readonly work_unit_worker_pool: TranslationWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
   private task_stream_unsubscribe: (() => void) | null; // dispose 时先切断任务事件发布
@@ -195,16 +196,6 @@ export class BackendServices {
       logManager: this.logManager,
     });
 
-    this.app = {
-      paths,
-      metadata,
-      settings: this.app_setting_service,
-      // 设置持久化是同步操作，检查与提交之间不会让出事件循环。
-      updateSettings: (request) => {
-        this.runtime_gate.assert_runtime_idle();
-        return this.app_setting_service.update_app_settings(request);
-      },
-    };
     this.runtime = {
       // 只暴露公开快照，不把 gate 或 lease 交给 API 层。
       getSnapshot: () => ({ runtime: this.runtime_gate.get_snapshot() }),
@@ -223,11 +214,19 @@ export class BackendServices {
         undefined,
         this.logManager,
       ),
-      resetPreview: new ProjectResetPreviewService(
-        options.database,
-        this.runtime_gate,
-        session_state,
-      ),
+      resetPreview: new ProjectResetPreviewService(options.database, session_state),
+    };
+    const settings_commands = new AppSettingsCommandService(
+      this.app_setting_service,
+      this.runtime_gate,
+      session_state,
+      this.project.content,
+    );
+    this.app = {
+      paths,
+      metadata,
+      settings: this.app_setting_service,
+      updateSettings: (request) => settings_commands.update(request),
     };
     this.proofreading = {
       query: new ProofreadingQueryService({
@@ -319,6 +318,7 @@ export class BackendServices {
       errors.push(error);
     }
     const worker_results = await Promise.allSettled([
+      this.model.dispose(),
       this.work_unit_worker_pool.dispose(),
       this.planning_worker_pool.dispose(),
       this.compute_worker_client.dispose(),

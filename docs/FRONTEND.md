@@ -24,7 +24,7 @@
 - `DesktopStateProvider.load_initial_state` 统一初始化与重试，读取后端现有会话的设置、项目、任务和运行态快照；请求世代隔离迟到响应，`initial_state_status` 为 `ready` 后挂载工作区会话与页面。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `BatchTranslationSnapshotStore` 独占 renderer 当前批量翻译快照，HTTP 与 SSE 共用同形载荷并按 `revision` 丢弃旧帧；Hook 通过 `useBatchTranslationSnapshot` 直接消费，不保存或回写本地当前快照。metrics 随快照与显示时钟计算，输入、思考和输出 token 保持互斥累计口径。
-- `RuntimeActivityStore` 缓存 `revision + owner` 并丢弃旧帧，消费方通过 `useRuntimeSnapshot` 订阅；入口互斥遵循 [`BACKEND.md`](BACKEND.md)。Agent owner 期间允许输入排队，Pi steer 使用 Agent snapshot 的 `canSendNow`；batch_translation owner 下暂停 Agent 会话命令。批量翻译活跃态由 status 派生。
+- `RuntimeActivityStore` 缓存 `revision + owner` 并丢弃旧帧，消费方通过 `useRuntimeSnapshot` 订阅；入口互斥遵循 [`BACKEND.md`](BACKEND.md)。Agent owner 期间允许输入排队，Pi steer 使用 Agent snapshot 的 `canSendNow`；batch_translation / model_test owner 下暂停额外 Agent 执行命令。批量翻译活跃态由 status 派生。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步；Agent 普通命令 ack 只含 `revision`，公开会话事实由同 revision 的 Agent SSE 事件同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
@@ -37,8 +37,9 @@
 - 首次查询失败由内容区提供重试；已有快照刷新失败时保留内容并通知。规则页共用 `useQualityRuleQuery` 的请求入口和项目隔离；`AppContentState` 负责展示。
 - query 顶层 `sectionRevisions` 是快照派生写入与预演提交的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。任务启动和面向当前项目事实的 reset 只提交意图，不为它们预取或转发 revision。
 - 页面写入只提交用户意图、必要的设置镜像、显式 operation，以及快照派生操作所依赖的 query revision，不提交前端计算出的 canonical facts。普通翻译启动以 Store 当前权威进度选择 new 或 continue，历史展示快照只服务显示。
-- 预设菜单只缓存条目，默认标记由当前 settings 快照计算。
-- 模型页按后端快照的 `can_reset` 展示重置或删除，类型只用于分组；自定义分组最后一项保留，已下架预设可清空分组。模型菜单写操作随运行忙碌或提交状态禁用，设置仍可只读查看；复制提示按回包的副本 ID 读取分类和名称。模型生命周期与复制契约归 [`BACKEND.md`](BACKEND.md)。
+- `useSettingsEditor` 经 `commit_project_write` 提交涉及工程的设置命令并回灌 `changes`，同步与补偿归后端；失败优先恢复本次字段的权威值，保留其它字段的在途编辑。
+- 预设菜单只缓存条目，默认标记由当前 settings 快照计算。工程写锁只限制应用预设和重置当前内容，预设文件的保存、重命名、删除及默认项设置保持可用。
+- 模型页按后端快照的 `can_reset` 展示重置或删除，类型只用于分组；自定义分组最后一项保留，已下架预设可清空分组。模型配置编辑只随本地提交状态暂停；接口测试独立消费运行占用和本地测试状态；复制提示按回包的副本 ID 读取分类和名称。模型生命周期与复制契约归 [`BACKEND.md`](BACKEND.md)。
 - `SCREEN_REGISTRY` 是页面组件、标题 key 与工作区布局模式的唯一入口；页面缺省消费 Shell 标准边距，Agent 使用占满 WorkspaceFrame 的 `edge-to-edge` 画布并在页面内部约束阅读区与操作区。
 - `PageLeaveProvider` 保存当前页面唯一的异步离开前动作，路由选择与确认退出等待其成功。提示词编辑 Hook 拥有草稿、成功基线与串行保存，页面注册 `flush_prompt_change`；失败保留草稿供编辑或离页重试，Toast 可撤销到成功基线。重试与页面身份变化使恢复通知失效；卸载取消延迟任务并失效旧请求。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。

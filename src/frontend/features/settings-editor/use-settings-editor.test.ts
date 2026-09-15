@@ -14,6 +14,7 @@ type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
+  commit_project_write: ReturnType<typeof vi.fn>;
 };
 
 type EditorSnapshot = Pick<SettingsSnapshot, "source_language" | "request_timeout">;
@@ -73,6 +74,9 @@ function create_runtime_fixture(): RuntimeFixture {
       };
       return next_settings_snapshot;
     }),
+    commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => ({
+      payload: await run(),
+    })),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
   };
 }
@@ -166,83 +170,95 @@ describe("useSettingsEditor", () => {
     });
   });
 
-  it("提交期间乐观更新并在失败时只回滚本次 patch 字段", async () => {
-    const source_request = create_deferred<SettingsSnapshotPayload>();
-    const timeout_request = create_deferred<SettingsSnapshotPayload>();
-    vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
-      if ("source_language" in (body ?? {})) {
-        return await source_request.promise;
+  it.each([false, true])(
+    "提交失败后恢复本次字段的后端事实（已提交：%s），保留其它在途编辑",
+    async (committed) => {
+      const source_request = create_deferred<SettingsSnapshotPayload>();
+      const timeout_request = create_deferred<SettingsSnapshotPayload>();
+      vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
+        if ("source_language" in (body ?? {})) {
+          return await source_request.promise;
+        }
+        return await timeout_request.promise;
+      });
+      await render_hook();
+      if (latest_state === null) {
+        throw new Error("设置编辑器测试状态尚未初始化。");
       }
-      return await timeout_request.promise;
-    });
-    await render_hook();
-    if (latest_state === null) {
-      throw new Error("设置编辑器测试状态尚未初始化。");
-    }
 
-    let source_update: Promise<SettingsSnapshot | null> | null = null;
-    await act(async () => {
-      source_update =
-        latest_state?.commit_update("source_language", {
-          source_language: "EN",
-        }) ?? null;
-      await Promise.resolve();
-    });
-    let timeout_update: Promise<SettingsSnapshot | null> | null = null;
-    await act(async () => {
-      timeout_update =
-        latest_state?.commit_update("request_timeout", {
-          request_timeout: 600,
-        }) ?? null;
-      await Promise.resolve();
-    });
+      let source_update: Promise<SettingsSnapshot | null> | null = null;
+      await act(async () => {
+        source_update =
+          latest_state?.commit_update("source_language", {
+            source_language: "EN",
+          }) ?? null;
+        await Promise.resolve();
+      });
+      let timeout_update: Promise<SettingsSnapshot | null> | null = null;
+      await act(async () => {
+        timeout_update =
+          latest_state?.commit_update("request_timeout", {
+            request_timeout: 600,
+          }) ?? null;
+        await Promise.resolve();
+      });
 
-    expect(latest_state?.snapshot).toEqual({
-      source_language: "EN",
-      request_timeout: 600,
-    });
-    expect(latest_state?.pending_state).toEqual({
-      source_language: true,
-      request_timeout: true,
-    });
+      expect(latest_state?.snapshot).toEqual({
+        source_language: "EN",
+        request_timeout: 600,
+      });
+      expect(latest_state?.pending_state).toEqual({
+        source_language: true,
+        request_timeout: true,
+      });
 
-    source_request.reject(new Error("update_failed"));
-    await act(async () => {
-      await source_update;
-    });
+      runtime_fixture.current.refresh_settings.mockResolvedValue(
+        create_settings_snapshot({
+          source_language: committed ? "EN" : "JA",
+        }),
+      );
+      source_request.reject(new Error("update_failed"));
+      await act(async () => {
+        await source_update;
+      });
 
-    expect(latest_state?.snapshot).toEqual({
-      source_language: "JA",
-      request_timeout: 600,
-    });
-    expect(latest_state?.pending_state).toEqual({
-      source_language: false,
-      request_timeout: true,
-    });
-    expect(push_toast).toHaveBeenCalledWith("error", "basic_settings_page.feedback.update_failed");
+      expect(latest_state?.snapshot).toEqual({
+        source_language: committed ? "EN" : "JA",
+        request_timeout: 600,
+      });
+      expect(latest_state?.pending_state).toEqual({
+        source_language: false,
+        request_timeout: true,
+      });
+      expect(push_toast).toHaveBeenCalledWith(
+        "error",
+        "basic_settings_page.feedback.update_failed",
+      );
 
-    timeout_request.resolve({
-      settings: create_settings_snapshot({
+      timeout_request.resolve({
+        settings: create_settings_snapshot({
+          source_language: committed ? "EN" : "JA",
+          request_timeout: 601,
+        }),
+      });
+      await act(async () => {
+        await timeout_update;
+      });
+
+      expect(latest_state?.snapshot).toEqual({
+        source_language: committed ? "EN" : "JA",
         request_timeout: 601,
-      }),
-    });
-    await act(async () => {
-      await timeout_update;
-    });
-
-    expect(latest_state?.snapshot).toEqual({
-      source_language: "JA",
-      request_timeout: 601,
-    });
-    expect(latest_state?.pending_state).toEqual({
-      source_language: false,
-      request_timeout: false,
-    });
-    expect(vi.mocked(api_fetch).mock.calls).toEqual([
-      ["/api/settings/update", { source_language: "EN" }],
-      ["/api/settings/update", { request_timeout: 600 }],
-    ]);
-  });
+      });
+      expect(latest_state?.pending_state).toEqual({
+        source_language: false,
+        request_timeout: false,
+      });
+      expect(vi.mocked(api_fetch).mock.calls).toEqual([
+        ["/api/settings/update", { source_language: "EN" }],
+        ["/api/settings/update", { request_timeout: 600 }],
+      ]);
+    },
+  );
 
   it("刷新失败时保留当前投影并显示页面指定的错误", async () => {
     runtime_fixture.current.refresh_settings = vi.fn(async () => {

@@ -7,7 +7,6 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 
 import * as AppErrors from "../../shared/error";
 import { ProjectSessionState } from "./project-session-state";
-import type { RuntimeOperationGate } from "../runtime-operation-gate";
 
 /**
  * 承载公开 reset preview；当前服务负责预演响应和 asset 重解析
@@ -18,7 +17,6 @@ export class ProjectResetPreviewService {
    */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly runtime_gate: RuntimeOperationGate,
     private readonly session_state: ProjectSessionState,
   ) {}
 
@@ -30,7 +28,7 @@ export class ProjectResetPreviewService {
     if (mode !== "all") {
       throw new AppErrors.AppError("request.validation_failed");
     }
-    const project_path = await this.require_idle_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const asset_records = this.get_asset_records(project_path);
     const current_item_id_by_identity = this.build_current_item_id_by_identity(project_path);
     const parsed_files = await this.parse_database_assets(
@@ -63,8 +61,11 @@ export class ProjectResetPreviewService {
       target_language: default_settings.target_language,
     });
     const parsed_files: Array<{ rel_path: string; items: JsonRecord[] }> = [];
-    for (const rel_path of rel_paths) {
-      const content = this.database.read_asset_content(project_path, rel_path);
+    const assets = rel_paths.map((rel_path) => ({
+      rel_path,
+      content: this.database.read_asset_content(project_path, rel_path),
+    }));
+    for (const { rel_path, content } of assets) {
       if (content === null) {
         parsed_files.push({ rel_path, items: [] });
         continue;
@@ -73,18 +74,6 @@ export class ProjectResetPreviewService {
       parsed_files.push({ rel_path, items: items.map((item) => Item.from_json(item).to_json()) });
     }
     return parsed_files;
-  }
-
-  /**
-   * reset 预演和真实 reset 一样要求工程已加载且后台任务空闲
-   */
-  private async require_idle_project_path(): Promise<string> {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.AppError("project.not_loaded");
-    }
-    this.runtime_gate.assert_runtime_idle();
-    return state.projectPath;
   }
 
   /**

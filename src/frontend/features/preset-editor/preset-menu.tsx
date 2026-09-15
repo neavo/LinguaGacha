@@ -30,7 +30,7 @@ import type { PresetItem } from "./preset-types";
 type PresetMenuProps = {
   items: readonly PresetItem[];
   open: boolean;
-  readonly: boolean;
+  project_write_disabled: boolean;
   trigger_label: string;
   on_open: () => Promise<void>;
   on_open_change: (next_open: boolean) => void;
@@ -48,7 +48,6 @@ type PresetMenuProps = {
  */
 function PresetDefaultMenuItem(props: {
   item: PresetItem;
-  readonly: boolean;
   on_set_default: (virtual_id: string) => Promise<void>;
   on_cancel_default: () => Promise<void>;
 }): JSX.Element {
@@ -56,7 +55,6 @@ function PresetDefaultMenuItem(props: {
 
   return props.item.is_default ? (
     <AppDropdownMenuItem
-      disabled={props.readonly}
       onClick={() => {
         void props.on_cancel_default();
       }}
@@ -66,7 +64,6 @@ function PresetDefaultMenuItem(props: {
     </AppDropdownMenuItem>
   ) : (
     <AppDropdownMenuItem
-      disabled={props.readonly}
       onClick={() => {
         void props.on_set_default(props.item.virtual_id);
       }}
@@ -105,11 +102,14 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
       />
       <AppDropdownMenuContent align="center">
         <AppDropdownMenuGroup>
-          <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_request_reset}>
+          <AppDropdownMenuItem
+            disabled={props.project_write_disabled}
+            onClick={props.on_request_reset}
+          >
             <Recycle />
             {t("app.action.reset")}
           </AppDropdownMenuItem>
-          <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_request_save}>
+          <AppDropdownMenuItem onClick={props.on_request_save}>
             <Save />
             {t("preset_editor.action.save")}
           </AppDropdownMenuItem>
@@ -125,7 +125,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                 </AppDropdownMenuSubTrigger>
                 <AppDropdownMenuSubContent>
                   <AppDropdownMenuItem
-                    disabled={props.readonly}
+                    disabled={props.project_write_disabled}
                     onClick={() => {
                       void props.on_apply(item.virtual_id);
                     }}
@@ -136,7 +136,6 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                   <AppDropdownMenuSeparator />
                   <PresetDefaultMenuItem
                     item={item}
-                    readonly={props.readonly}
                     on_set_default={props.on_set_default}
                     on_cancel_default={props.on_cancel_default}
                   />
@@ -156,7 +155,7 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                 </AppDropdownMenuSubTrigger>
                 <AppDropdownMenuSubContent>
                   <AppDropdownMenuItem
-                    disabled={props.readonly}
+                    disabled={props.project_write_disabled}
                     onClick={() => {
                       void props.on_apply(item.virtual_id);
                     }}
@@ -165,7 +164,6 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                     {t("preset_editor.action.apply")}
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
-                    disabled={props.readonly}
                     onClick={() => {
                       props.on_request_rename(item);
                     }}
@@ -175,7 +173,6 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                   </AppDropdownMenuItem>
                   <AppDropdownMenuItem
                     variant="destructive"
-                    disabled={props.readonly}
                     onClick={() => {
                       props.on_request_delete(item);
                     }}
@@ -186,7 +183,6 @@ export function PresetMenu(props: PresetMenuProps): JSX.Element {
                   <AppDropdownMenuSeparator />
                   <PresetDefaultMenuItem
                     item={item}
-                    readonly={props.readonly}
                     on_set_default={props.on_set_default}
                     on_cancel_default={props.on_cancel_default}
                   />

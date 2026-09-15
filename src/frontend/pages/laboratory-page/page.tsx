@@ -6,7 +6,7 @@ import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-togg
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
-/** 实验选项通过页面状态入口保存，并随运行态锁定。 */
+/** 实验选项通过页面状态入口保存，仅工程预过滤操作消费运行锁。 */
 export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n();
   const laboratory_page_state = useLaboratoryPageState();
@@ -77,9 +77,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
           action={render_boolean_toggle({
             title_key: "laboratory_page.fields.prompt_enhancement_enable.title",
             value: laboratory_page_state.snapshot.prompt_enhancement_enable,
-            disabled:
-              laboratory_page_state.runtime_locked ||
-              laboratory_page_state.pending_state.prompt_enhancement_enable,
+            disabled: laboratory_page_state.pending_state.prompt_enhancement_enable,
             on_value_change: (next_value) => {
               void laboratory_page_state.update_prompt_enhancement_enable(next_value);
             },
