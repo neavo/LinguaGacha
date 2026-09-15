@@ -19,7 +19,7 @@ export const zh_cn_model_page = {
   },
   copy_name: "{NAME}_副本",
   action: {
-    copy: "复制",
+    copy: "生成副本",
     basic_settings: "基础设置",
     task_settings: "任务设置",
     advanced_settings: "高级设置",

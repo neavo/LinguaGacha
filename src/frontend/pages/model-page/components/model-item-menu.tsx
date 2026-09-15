@@ -39,10 +39,13 @@ export function ModelItemMenu(props: ModelItemMenuProps): JSX.Element {
         </AppDropdownMenuItem>
         <AppDropdownMenuSeparator />
         {Model.resolve_custom_type(props.model.api_format) !== null ? (
-          <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_copy}>
-            <Copy />
-            {t("model_page.action.copy")}
-          </AppDropdownMenuItem>
+          <>
+            <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_copy}>
+              <Copy />
+              {t("model_page.action.copy")}
+            </AppDropdownMenuItem>
+            <AppDropdownMenuSeparator />
+          </>
         ) : null}
         {props.model.can_reset ? (
           <AppDropdownMenuItem disabled={props.readonly} onClick={props.on_reset}>
