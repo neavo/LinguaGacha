@@ -6,6 +6,53 @@ import { Item } from "../../../../domain/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
+  it("未闭合 br 包住后续段落时继续提取正文", () => {
+    const items = new EpubAst().extract_items_from_document(
+      "chapter.xhtml",
+      Buffer.from(
+        "<html><body><div><p>首段<br>换行后正文<p>后续段落</p><p>末段</p></div></body></html>",
+      ),
+      0,
+      "book.epub",
+    );
+    expect(items.map((item) => item.src.trim())).toEqual([
+      "首段",
+      "换行后正文",
+      "后续段落",
+      "末段",
+    ]);
+  });
+
+  it("按原树片段提取 body 和引文中的连续内联正文，保留资源与既有段落边界", () => {
+    const ast = new EpubAst();
+    const html = `<html><head><title>元信息</title></head><body>
+      开头<span>文字</span><p> </p>前<ruby>漢<rt>かん</rt></ruby>后
+      <img src="picture.png"/><span id="target">锚点正文</span><a href="#target">链接正文</a>
+      <blockquote><span>引文</span>尾文</blockquote><p>已有段落</p>
+      <script>隐藏</script>结尾
+    </body></html>`;
+    const items = ast.extract_items_from_document(
+      "chapter.xhtml",
+      Buffer.from(html),
+      0,
+      "book.epub",
+    );
+    expect(items.map((item) => item.src.trim())).toEqual([
+      "开头文字",
+      "前漢后",
+      "锚点正文",
+      "链接正文",
+      "引文尾文",
+      "已有段落",
+      "结尾",
+    ]);
+    expect(read_epub_extra(items[0] as Item)?.["mode"]).toBe("text_run");
+    expect(read_epub_extra(items[5] as Item)).toMatchObject({
+      mode: "slot_per_line",
+      block_path: "/html[1]/body[1]/p[2]",
+    });
+  });
+
   it("归一化 slot 文本时压缩行内空白", () => {
     const ast = new EpubAst();
 
@@ -256,7 +303,6 @@ describe("EpubAst", () => {
     expect(() => ast.parse_xhtml_or_html(new Uint8Array())).toThrow(
       expect.objectContaining({ code: "file.parse_failed" }),
     );
-    expect(() => ast.parse_xhtml_or_html(new Uint8Array())).toThrow("file.parse_failed");
   });
 
   it("EPUB 入口缺少 OPF rootfile 时抛出文件结构错误", async () => {
@@ -267,6 +313,5 @@ describe("EpubAst", () => {
     await expect(ast.parse_container_opf_path(zip)).rejects.toMatchObject({
       code: "file.invalid_structure",
     });
-    await expect(ast.parse_container_opf_path(zip)).rejects.toThrow("file.invalid_structure");
   });
 });

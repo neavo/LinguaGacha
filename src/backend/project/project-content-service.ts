@@ -66,11 +66,6 @@ type ImportProjectFileCommand = {
   target_rel_path: string; // 写入 .lg asset 的相对路径，提交阶段重新做唯一性校验
 };
 
-type TranslationResetParsedItemDraft = {
-  identity_key: string; // 只表达解析条目的稳定身份，不绑定当前 item id
-  identity_item: JsonRecord; // 重解析后的公开字段底稿，提交阶段再补当前 id
-};
-
 /**
  * 承载项目同步写入，把 API Gateway 的业务写入收口到 ProjectDatabase 窄操作
  */
@@ -449,15 +444,19 @@ export class ProjectContentService {
     ]);
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
-        const reset_item_drafts = await this.reparse_all_asset_identity_items(project_path);
+        const parsed_items = await this.reparse_all_assets(project_path);
         const settings = this.read_project_write_settings(
           project_path,
           request["project_settings"],
         );
         const snapshot = this.read_project_write_snapshot(project_path);
-        const reset_items = this.bind_reset_all_items_to_current_ids(
-          snapshot.item_records,
-          reset_item_drafts,
+        // 重建条目分配全新身份；旧行号不承担跨解析版本的内容匹配责任。
+        let next_item_id = this.next_item_id_seed(snapshot.public_items_by_id);
+        const reset_items = parsed_items.map((item) =>
+          this.normalize_public_item({
+            ...item.to_json(),
+            id: ++next_item_id,
+          }),
         );
         const files = this.build_file_section_from_item_records(
           snapshot.asset_records,
@@ -939,110 +938,25 @@ export class ProjectContentService {
     });
   }
 
-  /**
-   * reset-all 慢准备阶段只解析当前 asset 内容和稳定身份，不读取或绑定当前 item id
-   */
-  private async reparse_all_asset_identity_items(
-    project_path: string,
-  ): Promise<TranslationResetParsedItemDraft[]> {
-    const asset_records = this.get_asset_records(project_path);
+  /** 全部重置从工程资产完整重建；任何资产不可读或无法解析时均不提交部分结果。 */
+  private async reparse_all_assets(project_path: string): Promise<Item[]> {
     const format_service = this.create_format_service();
-    const item_drafts: TranslationResetParsedItemDraft[] = [];
-    for (const record of asset_records) {
+    const items: Item[] = [];
+    for (const record of this.get_asset_records(project_path)) {
       const content = this.database.read_asset_content(project_path, record.path);
       if (content === null) {
-        continue;
+        throw new AppErrors.AppError("file.not_found", {
+          diagnostic_context: { asset_path: record.path },
+        });
       }
-      const parsed_items = await format_service.parse_asset(record.path, content);
-      for (const parsed_item of parsed_items) {
-        const identity_item = Item.from_json({
-          ...Item.from_json(parsed_item).to_json(),
-          file_path: record.path,
-        }).to_json();
-        const identity_key = this.build_item_identity_key(identity_item);
-        if (identity_key === null) {
-          this.throw_translation_reset_identity_error("preview_item_identity_mismatch");
-        }
-        item_drafts.push({ identity_key, identity_item });
+      if (!format_service.is_supported_file(record.path)) {
+        throw new AppErrors.AppError("file.parse_failed", {
+          diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
+        });
       }
-    }
-    return item_drafts;
-  }
-
-  /**
-   * reset-all 提交阶段用最新 item 身份表回填 id，避免解析窗口内旧 id 映射覆盖并发提交
-   */
-  private bind_reset_all_items_to_current_ids(
-    current_item_records: MutableJsonRecord[],
-    item_drafts: TranslationResetParsedItemDraft[],
-  ): ProjectItemPublicRecord[] {
-    const current_item_id_by_identity =
-      this.build_current_item_id_by_identity(current_item_records);
-    const seen_identity_keys = new Set<string>();
-    const items: ProjectItemPublicRecord[] = [];
-    for (const item_draft of item_drafts) {
-      const item_id = current_item_id_by_identity.get(item_draft.identity_key);
-      if (item_id === undefined || seen_identity_keys.has(item_draft.identity_key)) {
-        this.throw_translation_reset_identity_error("preview_item_identity_mismatch");
-      }
-      seen_identity_keys.add(item_draft.identity_key);
-      items.push(
-        this.normalize_public_item({
-          ...item_draft.identity_item,
-          id: item_id,
-        }),
-      );
-    }
-    if (items.length !== current_item_id_by_identity.size) {
-      this.throw_translation_reset_identity_error("translation_reset_all_item_count_mismatch", {
-        current_count: current_item_id_by_identity.size,
-        preview_count: items.length,
-      });
+      items.push(...(await format_service.parse_asset(record.path, content)));
     }
     return items;
-  }
-
-  /**
-   * 当前 item 身份由 file_path + row 决定，reset-all 用它绑定重新解析结果
-   */
-  private build_current_item_id_by_identity(items: MutableJsonRecord[]): Map<string, number> {
-    const item_id_by_identity = new Map<string, number>();
-    for (const item of items) {
-      const item_id = this.read_number(item["id"], 0);
-      const identity_key = this.build_item_identity_key(item);
-      if (item_id <= 0 || identity_key === null || item_id_by_identity.has(identity_key)) {
-        this.throw_translation_reset_identity_error("current_item_identity_invalid");
-      }
-      item_id_by_identity.set(identity_key, item_id);
-    }
-    return item_id_by_identity;
-  }
-
-  /**
-   * 构造不依赖数组位置的 item 身份键，避免文件重排改变 item id
-   */
-  private build_item_identity_key(item: JsonRecord): string | null {
-    const file_path = String(item["file_path"] ?? "").trim();
-    const row = this.read_number(item["row"] ?? item["row_number"], NaN);
-    if (file_path === "" || !Number.isInteger(row) || row < 0) {
-      return null;
-    }
-    return `${file_path}\u0000${row}`;
-  }
-
-  /**
-   * reset-all 身份错误统一转成请求校验失败，并保留诊断原因
-   */
-  private throw_translation_reset_identity_error(
-    reason: string,
-    diagnostic_context: JsonRecord = {},
-  ): never {
-    throw new AppErrors.AppError("request.validation_failed", {
-      diagnostic_context: {
-        reason,
-        ...diagnostic_context,
-      },
-    });
   }
 
   /**

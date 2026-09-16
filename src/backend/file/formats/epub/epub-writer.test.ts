@@ -7,7 +7,7 @@ import JSZip from "jszip";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../../test/epub-fixture";
 import { Item } from "../../../../domain/item";
-import { EpubAst } from "./epub-ast";
+import { EpubAst, read_epub_extra } from "./epub-ast";
 import { distribute_text_to_slots, EpubWriter } from "./epub-writer";
 
 /**
@@ -166,6 +166,7 @@ async function create_translated_epub_item(epub_asset: Buffer, dst: string): Pro
   });
 }
 
+/** 以正文选择待译条目，避免书名和目录影响写回用例的定位。 */
 async function create_translated_epub_item_by_src(
   epub_asset: Buffer,
   src: string,
@@ -445,5 +446,111 @@ describe("EpubWriter", () => {
     expect(css_text).not.toContain("writing-mode: vertical-rl");
     expect(xhtml_text).toContain('class="keep"');
     expect(xhtml_text).not.toContain("writing-mode: vertical-rl");
+  });
+});
+
+describe("EPUB manifest 路径写回", () => {
+  it.each([
+    ["chapter%20%28one%29.xhtml", "chapter (one).xhtml"],
+    ["China%E2%80%99s.xhtml", "China’s.xhtml"],
+    ["literal%2520.xhtml", "literal%20.xhtml"],
+    ["100%.xhtml", "100%.xhtml"],
+    ["one+two.xhtml", "one+two.xhtml"],
+  ])("按 manifest href %s 读取并写回原 ZIP 文件名", async (href, file_name) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-href-"));
+    const zip = await JSZip.loadAsync(await create_epub_fixture("正文"));
+    const chapter = await zip.file("OPS/chapter.xhtml")!.async("string");
+    const opf = await zip.file("OPS/package.opf")!.async("string");
+    zip.remove("OPS/chapter.xhtml");
+    zip.file(`OPS/${file_name}`, chapter);
+    zip.file("OPS/package.opf", opf.replace('href="chapter.xhtml"', `href="${href}"`));
+    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const items = await new EpubAst().read_from_stream(bytes, "book.epub");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ src: "正文", tag: `OPS/${file_name}` });
+    expect(read_epub_extra(items[0]!)).toMatchObject({ doc_path: `OPS/${file_name}` });
+    items[0]!.dst = "译文";
+    items[0]!.status = "PROCESSED";
+    for (const bilingual of [false, true]) {
+      const out = path.join(temp.path, `${bilingual}.epub`);
+      await create_writer().build_epub(bytes, items, out, bilingual);
+      const output = await JSZip.loadAsync(fs.readFileSync(out));
+      const text = await output.file(`OPS/${file_name}`)!.async("string");
+      expect(text).toContain("译文");
+      expect(text.includes("正文")).toBe(bilingual);
+      expect(await output.file("OPS/package.opf")!.async("string")).toContain(`href="${href}"`);
+      expect(Object.keys(output.files).sort()).toEqual(Object.keys(zip.files).sort());
+    }
+  });
+});
+
+describe("EPUB 正文片段写回", () => {
+  it.each([false, true])("连续片段与旧块共同写回，双语=%s 时保留资源和锚点", async (bilingual) => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-runs-"));
+    const ast = new EpubAst();
+    const zip = await JSZip.loadAsync(await create_epub_fixture("旧段落"));
+    zip.file(
+      "OPS/chapter.xhtml",
+      `<html xmlns="http://www.w3.org/1999/xhtml"><body>
+      第一<span>片段</span><p> </p>前<ruby>漢<rt>かん</rt></ruby>后
+      <img src="cover.png" alt=""/><span id="target">锚点</span><a href="#target">链接</a>
+      <blockquote><span>引文</span>尾文</blockquote><p>旧段落</p><br/>结尾
+    </body></html>`,
+    );
+    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const items = await ast.read_from_stream(bytes, "book.epub");
+    const expected_sources = ["第一片段", "前漢后", "锚点", "链接", "引文尾文", "旧段落", "结尾"];
+    expect(items.map((item) => item.src.trim())).toEqual(expected_sources);
+    for (const [index, item] of items.entries()) {
+      item.dst = `译文${index}`;
+      item.status = "PROCESSED";
+    }
+    const out = path.join(temp.path, "book.epub");
+    await create_writer().build_epub(bytes, items, out, bilingual);
+    const text = await read_epub_entry_text(fs.readFileSync(out));
+    const root = ast.parse_xhtml_or_html(Buffer.from(text));
+    expect(ast.find_descendants(root, "body")).toHaveLength(1);
+    expect(ast.find_descendants(root, "img")[0]?.attribs).toEqual({ src: "cover.png", alt: "" });
+    expect(text).toContain('alt=""');
+    expect(ast.find_descendants(root, "a")[0]?.attribs["href"]).toBe("#target");
+    expect(
+      ast.flatten_elements(root).filter((node) => node.attribs["id"] === "target"),
+    ).toHaveLength(1);
+    const visible = ast.build_canonical_block_text(ast.find_descendants(root, "body")[0]!);
+    for (const [index, source] of expected_sources.entries()) {
+      expect(visible).toContain(`译文${index}`);
+      expect(visible.includes(source)).toBe(bilingual);
+    }
+  });
+
+  it("旧定位继续写回，片段摘要不匹配时保留源文，未译片段保留内联排版", async () => {
+    using temp = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "epub-runs-"));
+    const ast = new EpubAst();
+    const zip = await JSZip.loadAsync(await create_epub_fixture("旧段落"));
+    const [old] = await ast.read_from_stream(
+      await zip.generateAsync({ type: "nodebuffer" }),
+      "book.epub",
+    );
+    zip.file(
+      "OPS/chapter.xhtml",
+      '<html><body><span class="italic">新片段</span><p>旧段落</p>尾文</body></html>',
+    );
+    const bytes = await zip.generateAsync({ type: "nodebuffer" });
+    const runs = (await ast.read_from_stream(bytes, "book.epub")).filter(
+      (item) => read_epub_extra(item)?.["mode"] === "text_run",
+    );
+    const corrupt = runs[1]!;
+    read_epub_extra(corrupt)!["src_digest"] = "mismatch";
+    corrupt.dst = "错误译文";
+    corrupt.status = "PROCESSED";
+    old!.dst = "旧译文";
+    old!.status = "PROCESSED";
+    const out = path.join(temp.path, "book.epub");
+    await create_writer().build_epub(bytes, [old!, ...runs], out, false);
+    const text = await read_epub_entry_text(fs.readFileSync(out));
+    expect(text).toContain('<span class="italic">新片段</span>');
+    expect(text).toContain("旧译文");
+    expect(text).toContain("尾文");
+    expect(text).not.toContain("错误译文");
   });
 });

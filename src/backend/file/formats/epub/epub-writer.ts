@@ -9,7 +9,7 @@ import {
   write_binary_file,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
-import { EpubAst, read_epub_extra } from "./epub-ast";
+import { EpubAst, read_epub_extra, read_epub_text_run } from "./epub-ast";
 import { split_text_lines } from "../../../../shared/text/text-lines";
 
 /** Deterministically maps item text lines to a fixed number of EPUB slots. */
@@ -32,12 +32,14 @@ const EPUB_LEGACY_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "div"
 
 type EpubDocumentSyntax = "xml" | "html";
 
+type EpubTextRun = { container: Element; nodes: ChildNode[] };
+
 /**
  * EPUB 写回器，优先使用 AST 定位，缺少正式 metadata 时回退顺序写回
  */
 export class EpubWriter {
   /**
-   * AST 工具集中提供路径、slot、解析和正文正文组装能力，写回器不重复实现 DOM 细节
+   * AST 工具集中提供路径、slot、解析和正文组装能力，写回器不重复实现 DOM 细节
    */
   private readonly ast = new EpubAst();
 
@@ -54,11 +56,14 @@ export class EpubWriter {
   }
 
   /**
-   * slot_per_line 和 block_text 都是正式 AST metadata，旧无 metadata 项才走 legacy
+   * 三种正式 AST 模式共用原树定位，旧无 metadata 项才走 legacy
    */
   public has_epub_ast_metadata(item: Item): boolean {
     const epub = read_epub_extra(item);
     const mode = String(epub?.["mode"] ?? "");
+    if (mode === "text_run" && epub !== null) {
+      return read_epub_text_run(epub) !== null && typeof epub["src_digest"] === "string";
+    }
     if (mode === "block_text") {
       return (
         typeof epub?.["doc_path"] === "string" &&
@@ -305,6 +310,8 @@ export class EpubWriter {
     const allow_bilingual_insert =
       bilingual && !this.ast.is_nav_page(root) && !is_nav_flag && !is_ncx && !is_opf;
     const elem_by_path = this.ast.build_elem_by_path(root);
+    // 区间基于原始 DOM，必须在任何条目改写或双语插入之前解析为节点引用。
+    const text_runs = this.resolve_text_runs(elem_by_path, items);
     const block_refs: Array<[Element, Element]> = [];
     const inserted_block_paths = new Set<string>();
 
@@ -316,6 +323,16 @@ export class EpubWriter {
         continue;
       }
       const item_dst = Item.from_json(item).effective_dst();
+      if (mode === "text_run") {
+        const run = text_runs.get(item);
+        if (run === undefined) {
+          skipped += 1;
+        } else {
+          this.apply_text_run(run, item, item_dst, allow_bilingual_insert);
+          applied += 1;
+        }
+        continue;
+      }
       if (mode === "block_text") {
         if (
           this.apply_block_text_item_to_tree(
@@ -427,6 +444,46 @@ export class EpubWriter {
     }
 
     return [applied, skipped];
+  }
+
+  /** 以原节点范围和摘要核验片段，避免解析变化后把译文写到其它正文。 */
+  private resolve_text_runs(
+    elem_by_path: Map<string, Element>,
+    items: Item[],
+  ): Map<Item, EpubTextRun> {
+    const runs = new Map<Item, EpubTextRun>();
+    for (const item of items) {
+      const epub = read_epub_extra(item);
+      if (epub?.["mode"] !== "text_run") continue;
+      const ref = read_epub_text_run(epub);
+      if (ref === null) continue;
+      const container = elem_by_path.get(ref.container_path);
+      if (container === undefined || ref.end > container.children.length) continue;
+      const nodes = container.children.slice(ref.start, ref.end);
+      if (this.ast.sha1_hex(this.ast.build_canonical_nodes_text(nodes)) !== epub["src_digest"])
+        continue;
+      runs.set(item, { container, nodes });
+    }
+    return runs;
+  }
+
+  /** 片段不含图片、链接或锚点边界；译文替换片段，双语只复制该片段的原文。 */
+  private apply_text_run(run: EpubTextRun, item: Item, text: string, bilingual: boolean): void {
+    // 未翻译片段保留原内联排版；双语明确要求重复原文时才继续插入。
+    if (item.src === text && (!bilingual || this.config.deduplication_in_bilingual === true))
+      return;
+    const { container, nodes } = run;
+    const start = container.children.indexOf(nodes[0] as ChildNode);
+    const replacements: ChildNode[] = [];
+    if (bilingual && !(this.config.deduplication_in_bilingual === true && item.src === text)) {
+      const original = new Element("span", { style: "opacity:0.50;" }, []);
+      this.ast.replace_element_children(original, nodes);
+      replacements.push(original, new Element("br", {}, []));
+    }
+    replacements.push(new Text(this.ast.sanitize_xml_text(text)));
+    const children = [...container.children];
+    children.splice(start, nodes.length, ...replacements);
+    this.ast.replace_element_children(container, children);
   }
 
   /**
@@ -769,7 +826,7 @@ export class EpubWriter {
     try {
       return render(root, {
         decodeEntities: true,
-        emptyAttrs: false,
+        emptyAttrs: true,
         encodeEntities: false,
         selfClosingTags: true,
         xmlMode: true,

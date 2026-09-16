@@ -24,7 +24,6 @@ import { create_project_change_publisher } from "../project/project-write-event-
 import { ProjectDataReader } from "../project/project-data-reader";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
-import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectSummaryService } from "../project/project-summary-service";
 import { ProjectWriteStore } from "../project/project-write-store";
@@ -80,7 +79,6 @@ export interface BackendProjectServices {
 
   summary: ProjectSummaryService;
   content: ProjectContentService;
-  resetPreview: ProjectResetPreviewService;
 }
 
 export interface BackendProofreadingServices {
@@ -214,7 +212,6 @@ export class BackendServices {
         undefined,
         this.logManager,
       ),
-      resetPreview: new ProjectResetPreviewService(options.database, session_state),
     };
     const settings_commands = new AppSettingsCommandService(
       this.app_setting_service,
