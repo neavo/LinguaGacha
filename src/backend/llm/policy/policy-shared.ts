@@ -1,7 +1,31 @@
 import type { JsonRecord } from "../../../domain/json";
 import type { ModelApiFormat } from "../../../domain/model";
 import * as AppErrors from "../../../shared/error";
-import type { ModelRequestSnapshot } from "./policy-types";
+import type { ModelRequestIdentity, ModelRequestSnapshot } from "./policy-types";
+
+const OPENCODE_HOST = "opencode.ai";
+const OPENCODE_SESSION_HEADER = "x-opencode-session";
+
+/** 组装跨协议身份与扩展头；HTTP 合法性由 adapter 在请求错误边界内校验。 */
+export function build_request_headers(
+  base_url: string,
+  identity: ModelRequestIdentity,
+  extra_headers: Readonly<JsonRecord>,
+): Record<string, string> {
+  const headers = Object.fromEntries(
+    Object.entries(extra_headers).map(([key, value]) => [key.toLowerCase(), String(value)]),
+  );
+  // Pi Google adapter 用对象展开覆盖默认 User-Agent，必须保留它的键名拼写。
+  const user_agent = headers["user-agent"] ?? identity.user_agent;
+  delete headers["user-agent"];
+  return {
+    "User-Agent": user_agent,
+    ...(URL.parse(base_url)?.hostname === OPENCODE_HOST
+      ? { [OPENCODE_SESSION_HEADER]: identity.session_id }
+      : {}),
+    ...headers,
+  };
+}
 
 /** 统一构造 Pi payload 结构异常，保留 API 格式与可选字段定位。 */
 export function invalid_pi_payload(api_format: ModelApiFormat, field?: string): AppErrors.AppError {

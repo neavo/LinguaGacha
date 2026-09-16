@@ -127,15 +127,18 @@ describe("TranslationRequestScheduler", () => {
 
   it("失败批次立即转用健康 Key，冷却不占请求压力或等待原 Key", async () => {
     const calls: string[] = [];
+    const run_ids: string[] = [];
     const { scheduler, pressure, failures } = setup(async (body) => {
       const key = (body.model as { api_key: string }).api_key;
       calls.push(key);
+      run_ids.push(body.run_id);
       return key === "A" ? failure() : response();
     }, "A\nB");
     expect(await scheduler.request(body(), new AbortController().signal)).toMatchObject({
       response_result: "ok",
     });
     expect(calls).toEqual(["A", "B"]);
+    expect(run_ids).toEqual(["run", "run"]);
     expect(Date.now()).toBe(0);
     expect(pressure.mock.calls.map(([delta]) => delta)).toEqual([1, -1, 1, -1]);
     expect(failures).toHaveBeenCalledTimes(1);

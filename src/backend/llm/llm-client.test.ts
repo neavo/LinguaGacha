@@ -55,6 +55,23 @@ beforeEach(() => {
 });
 
 describe("LLMClient", () => {
+  it("非法扩展头在实际 adapter 边界归一为请求错误", async () => {
+    const { openAICompletionsApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
+    >("@earendil-works/pi-ai/api/openai-completions.lazy");
+    api_mocks.openai.mockImplementationOnce(openAICompletionsApi().stream);
+    const body = create_body({
+      request: { extra_headers_custom_enable: true, extra_headers: { "invalid header": "value" } },
+    });
+    await expect(
+      create_client().request(body, new AbortController().signal),
+    ).resolves.toMatchObject({
+      cancelled: false,
+      timeout: false,
+      request_error: expect.any(Object),
+    });
+  });
+
   it("通过 Pi stream 返回正文、思考和 OpenAI token 口径", async () => {
     api_mocks.openai.mockImplementation(() =>
       completed_stream(
@@ -69,7 +86,8 @@ describe("LLMClient", () => {
     );
     const client = create_client();
 
-    const result = await client.request(create_body(), new AbortController().signal);
+    const body = create_body({ api_url: "https://opencode.ai/zen/go/v1" });
+    const result = await client.request(body, new AbortController().signal);
 
     expect(result).toEqual(
       create_result({
@@ -84,6 +102,7 @@ describe("LLMClient", () => {
     expect(options).toMatchObject({
       maxRetries: 0,
       cacheRetention: "none",
+      headers: { "x-opencode-session": body.run_id },
     });
     expect(options).not.toHaveProperty("timeoutMs");
   });

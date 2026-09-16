@@ -111,6 +111,7 @@ project, files, items, quality, prompts, proofreading
 - 翻译 work unit 在 pre-pipeline 前从原始 source fields 计算术语覆盖，再以全局开关和非空 `dst` 裁出 Prompt 激活条目；PromptBuilder 只格式化已激活条目，不根据预处理或模型输入文本再次匹配。
 - 批量翻译以外的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、统一模型能力解析、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot、Agent、模型管理快照与模型选择快照共用同一能力结果和 `pi-ai` adapter，模型列表探测仍直接调用供应商 REST API。持久化 `Model` 只记录用户配置，不持有由模型 ID 推导的第二套容量或思考事实。
+- 跨协议请求头由 `policy/policy-shared.ts` 定义，`llm-client-policy.ts` 收窄配置并组合策略，最终仅在 adapter 调用选项中发送。只对 hostname 为 `opencode.ai` 的推理端点自动附加会话头，已启用的扩展头按大小写不敏感覆盖默认值。OneShot 复用 `run_id`：批量任务的分块与重试共享身份，每次批量任务和每个 Key 的模型测试各自独立；Agent 对话身份归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 模型容量与协议思考能力分别优先采用应用修正，再读取 Pi catalog。两者共用名称规则：精确匹配优先，变种 ID 在字母数字分隔边界内取最长且唯一的 canonical ID。容量跨协议聚合同 ID 的全部记录，分别取最大上下文与输出规格；思考使用当前协议适配的单一模板。缺少容量时使用 Agent 安全值，缺少思考证据时不猜测；解析保留真实请求 ID、归一后的 API URL 和请求头。修正只承载 Pi 缺失或落后的事实，Pi 更新并验证后按容量或协议删除。Agent 运行容量的合并规则归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - 产品思考档位按操作语义合并同效果别名，包括关闭思考；共享映射由 Pi adapter 转为供应商接口值。
 - `LLMClient` 独立拥有 OneShot 的总时限、取消和请求终态，Pi 固定 `maxRetries: 0`：供应商请求失败归 `request_error`，长度截断和不支持的工具调用归 `response_error`，正常终止的正文原样交给消费方按任务协议校验，空正文因此属于零有效任务数据；成功 usage 归一为输入、思考与输出三个互斥口径并分别进入任务快照。

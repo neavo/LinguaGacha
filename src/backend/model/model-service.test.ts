@@ -1116,6 +1116,9 @@ describe("ModelService 远端模型能力", () => {
     const result = await service.test_model({ model_id: "test-1" });
 
     expect(request_mock).toHaveBeenCalledTimes(2);
+    const run_ids = request_mock.mock.calls.map(([body]) => body.run_id);
+    for (const run_id of run_ids) expect(run_id).not.toBe("");
+    expect(new Set(run_ids).size).toBe(2);
     expect(result).toMatchObject({
       failure_count: 1,
       success: false,

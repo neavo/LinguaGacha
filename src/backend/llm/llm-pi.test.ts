@@ -9,6 +9,7 @@ import { resolve_one_shot_pi_request, resolve_pi_model } from "./llm-pi";
 import { resolve_model_capability } from "./model-capability";
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
+const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("pi-ai 请求适配", () => {
   it.each(["OpenAI", "OpenAIResponses"] as const)(
@@ -96,7 +97,10 @@ describe("pi-ai 请求适配", () => {
     ["Anthropic", "anthropic", "anthropic-messages"],
     ["Google", "google", "google-generative-ai"],
   ] as const)("把 %s 映射到 %s/%s", (api_format, provider, api) => {
-    const snapshot = read_model_request_snapshot(create_model({ api_format }), TEST_USER_AGENT);
+    const snapshot = read_model_request_snapshot(
+      create_model({ api_format }),
+      TEST_REQUEST_IDENTITY,
+    );
     const resolved = resolve_pi_model(snapshot, {
       name: "Test",
       contextWindow: 32_000,
@@ -107,12 +111,18 @@ describe("pi-ai 请求适配", () => {
     expect(resolved.model).toMatchObject({ provider, api, name: "Test" });
   });
 
-  it("Google adapter 使用进程 HTTP transport", async () => {
+  it.each([
+    ["OpenAI", "gpt-5-mini"],
+    ["OpenAIResponses", "gpt-5-mini"],
+    ["SakuraLLM", "sakura"],
+    ["Anthropic", "claude-sonnet-4-5"],
+    ["Google", "gemini-2.5-flash"],
+  ] as const)("%s adapter 在实际 HTTP 请求中发送应用会话身份", async (api_format, model_id) => {
     const original_fetch = globalThis.fetch;
     const process_fetch = vi.fn<typeof globalThis.fetch>(
       async () =>
-        new Response(JSON.stringify({ error: { code: 500, message: "fake upstream" } }), {
-          status: 500,
+        new Response(JSON.stringify({ error: { code: 400, message: "fake upstream" } }), {
+          status: 400,
           headers: { "content-type": "application/json" },
         }),
     );
@@ -120,11 +130,11 @@ describe("pi-ai 请求适配", () => {
     try {
       const snapshot = read_model_request_snapshot(
         create_model({
-          api_format: "Google",
-          api_url: "https://google.example/v1beta",
-          model_id: "gemini-2.5-flash",
+          api_format,
+          api_url: "https://opencode.ai/zen/go/v1",
+          model_id,
         }),
-        TEST_USER_AGENT,
+        TEST_REQUEST_IDENTITY,
       );
       const request = resolve_one_shot_pi_request(
         snapshot,
@@ -135,6 +145,10 @@ describe("pi-ai 请求适配", () => {
       await request.stream(request.model, request.context, request.options).result();
 
       expect(process_fetch).toHaveBeenCalledOnce();
+      const call = process_fetch.mock.calls[0]!;
+      const headers = new Request(...call).headers;
+      expect(headers.get("x-opencode-session")).toBe("test-session");
+      expect(headers.get("user-agent")).toBe(TEST_USER_AGENT);
     } finally {
       globalThis.fetch = original_fetch;
     }
@@ -143,7 +157,7 @@ describe("pi-ai 请求适配", () => {
   it("在协议转换前拒绝空业务提示词", () => {
     const snapshot = read_model_request_snapshot(
       create_model({ api_format: "OpenAIResponses" }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(() =>
@@ -195,7 +209,7 @@ describe("pi-ai 请求适配", () => {
       maxRetries: 0,
       temperature: 0.2,
       maxTokens: 4096,
-      headers: { "User-Agent": TEST_USER_AGENT, "X-Test": "yes" },
+      headers: { "User-Agent": TEST_USER_AGENT, "x-test": "yes" },
     });
     expect(request.options).not.toHaveProperty("timeoutMs");
     expect(payload).toMatchObject({
@@ -592,7 +606,7 @@ type ResolvedRequest = ReturnType<typeof resolve_one_shot_pi_request>;
 
 /** 使用统一模型夹具生成可直接交给 Pi adapter 的 OneShot 请求。 */
 function resolve_request(overrides: JsonRecord): ResolvedRequest {
-  const snapshot = read_model_request_snapshot(create_model(overrides), TEST_USER_AGENT);
+  const snapshot = read_model_request_snapshot(create_model(overrides), TEST_REQUEST_IDENTITY);
   return resolve_one_shot_pi_request(
     snapshot,
     [

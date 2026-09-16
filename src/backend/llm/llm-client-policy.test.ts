@@ -12,6 +12,7 @@ import {
 } from "./llm-client-policy";
 
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
+const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 describe("LLM 请求策略", () => {
   it("把模型配置收窄为共享请求快照", () => {
@@ -27,7 +28,7 @@ describe("LLM 请求策略", () => {
           extra_body: { custom: true },
         },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(snapshot).toMatchObject({
@@ -35,7 +36,7 @@ describe("LLM 请求策略", () => {
       api_keys: ["key-1", "key-2"],
       base_url: "https://example.com/v1",
       model_id: "gpt-5-mini",
-      headers: { "User-Agent": TEST_USER_AGENT, "X-Test": "yes" },
+      headers: { "User-Agent": TEST_USER_AGENT, "x-test": "yes" },
       extra_body: { custom: true },
       output_token_limit: 4096,
       thinking_level: "OFF",
@@ -61,6 +62,26 @@ describe("LLM 请求策略", () => {
     );
   });
 
+  it("关闭的扩展配置不进入请求策略", () => {
+    const snapshot = read_model_request_snapshot(
+      create_model({
+        api_url: "https://opencode.ai/zen/go/v1",
+        request: {
+          extra_headers_custom_enable: false,
+          extra_headers: { "x-opencode-session": "manual-session" },
+          extra_body_custom_enable: false,
+          extra_body: { custom: true },
+        },
+      }),
+      TEST_REQUEST_IDENTITY,
+    );
+    expect(snapshot.headers).toEqual({
+      "User-Agent": TEST_USER_AGENT,
+      "x-opencode-session": "test-session",
+    });
+    expect(snapshot.extra_body).toEqual({});
+  });
+
   it("归一多行 API key 并提供模型列表使用的主 key", () => {
     expect(collect_api_keys(" key-1 \n\nkey-2\r\n ")).toEqual(["key-1", "key-2"]);
     expect(collect_api_keys("   ")).toEqual(["no_key_required"]);
@@ -79,7 +100,7 @@ describe("LLM 请求策略", () => {
         generation: { temperature_custom_enable: true, temperature: 0.3 },
         threshold: { output_token_limit: 0 },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
     const anthropic = read_model_request_snapshot(
       create_model({
@@ -87,11 +108,11 @@ describe("LLM 请求策略", () => {
         thinking: { level: "HIGH" },
         threshold: { output_token_limit: 0 },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
     const anthropic_explicit = read_model_request_snapshot(
       create_model({ api_format: "Anthropic" }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolve_one_shot_generation_options(openai)).toEqual({ temperature: 0.3 });
@@ -100,14 +121,14 @@ describe("LLM 请求策略", () => {
   });
 
   it("拒绝不符合 Pi adapter 契约的 Agent payload", () => {
-    const openai = read_model_request_snapshot(create_model(), TEST_USER_AGENT);
+    const openai = read_model_request_snapshot(create_model(), TEST_REQUEST_IDENTITY);
     const google = read_model_request_snapshot(
       create_model({ api_format: "Google" }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
     const responses = read_model_request_snapshot(
       create_model({ api_format: "OpenAIResponses" }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(() => apply_agent_request_overrides(openai, null)).toThrow("runtime.internal_invariant");
@@ -120,6 +141,7 @@ describe("LLM 请求策略", () => {
   });
 });
 
+/** 模型配置夹具保留原始 JSON 形状，由生产入口收窄。 */
 function create_model(overrides: JsonRecord = {}): JsonRecord {
   return {
     api_format: "OpenAI",

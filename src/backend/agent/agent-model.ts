@@ -14,6 +14,7 @@ import {
 import { resolve_model_capability } from "../llm/model-capability";
 import { resolve_pi_model } from "../llm/llm-pi";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
+import type { ModelRequestIdentity } from "../llm/policy/policy-types";
 
 type AgentApi =
   | "openai-completions"
@@ -25,7 +26,7 @@ type AgentApi =
 export function register_agent_model(
   model_runtime: ModelRuntime,
   config: JsonRecord,
-  user_agent: string,
+  identity: ModelRequestIdentity,
 ): {
   model: PiModel<AgentApi>;
   thinkingLevel: PiModelThinkingLevel;
@@ -35,21 +36,20 @@ export function register_agent_model(
   if (raw_model === null) throw new AppErrors.AppError("model.not_found");
   const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
   const capability = resolve_model_capability(configured_model);
-  const snapshot = read_model_request_snapshot(raw_model, user_agent);
+  const snapshot = read_model_request_snapshot(raw_model, identity);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
-  const request_headers = Object.freeze({ ...snapshot.headers });
   const pi = resolve_pi_model(snapshot, {
     name: configured_name || snapshot.model_id,
     contextWindow: capability.agent_limits.context_window,
     maxTokens: capability.agent_limits.max_output_tokens,
     input: ["text", "image"],
   });
-  // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。
+  // SDK 会为压缩分配独立路由身份；最终请求统一使用产品对话身份及本轮配置。
   const force_request_policy = <TOptions extends object>(options?: TOptions) => ({
     ...options,
     apiKey: api_key,
-    headers: { ...request_headers },
+    headers: { ...snapshot.headers },
     onPayload: (payload: unknown) => apply_agent_request_overrides(snapshot, payload),
   });
   const provider_config = {
@@ -57,7 +57,6 @@ export function register_agent_model(
     baseUrl: pi.model.baseUrl,
     apiKey: api_key,
     api: pi.model.api,
-    headers: { ...request_headers },
     authHeader: false,
     models: [pi.model],
     streamSimple: (active_model, context, options) =>
