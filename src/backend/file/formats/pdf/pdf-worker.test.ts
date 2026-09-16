@@ -53,7 +53,7 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
     const document = (await worker.run({ kind: "read", bytes })) as PDFDocument;
     expect(document.source.pages).toHaveLength(3);
     document.translation = {
-      sections: [{ page_start: 1, page_end: 2, markdown: "# Translation" }],
+      sections: [{ kind: "translate", page_start: 1, page_end: 2, markdown: "# Translation" }],
       reviewed_pages: [],
       notes: "",
     };

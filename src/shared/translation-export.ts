@@ -3,6 +3,7 @@ export type PDFFileExportResult = {
   file_path: string;
   translated_pages: number;
   original_pages: number;
+  omitted_pages: number;
 };
 export type TranslationFileExportResult = {
   accepted: true;

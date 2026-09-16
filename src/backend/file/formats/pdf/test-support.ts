@@ -12,6 +12,7 @@ export function create_pdf_execution(print?: PDFHost): PDFExecution {
 /** 有文字、跨页片段和纯图页的独立 PDF 夹具，直接构造标准对象和 xref。 */
 export function create_pdf_fixture(
   texts: readonly (string | null)[] = ["First half", "second half", null],
+  size: readonly [number, number] = [300, 300],
 ): Uint8Array {
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
@@ -27,7 +28,7 @@ export function create_pdf_fixture(
         ? "0.1 0.4 0.8 rg 40 40 120 80 re f"
         : `BT /F1 18 Tf 40 240 Td (${text.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)")}) Tj ET`;
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Resources << /Font << /F1 3 0 R >> >> /Contents ${page + 1} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size[0]} ${size[1]}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${page + 1} 0 R >>`,
     );
     objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
   }

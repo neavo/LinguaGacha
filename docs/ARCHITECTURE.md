@@ -19,7 +19,7 @@
 - GUI 的完整 Backend Runtime 运行在独立 `worker_thread`，其中由 `GuiBackendBootstrap` 组装共享资源、业务服务、Agent、事件流与 Gateway；Electron main 只拥有应用、窗口、IPC、shell 和更新器。renderer 仍通过本机 HTTP / SSE 消费 Gateway，不直接使用线程消息。
 - GUI main 与 Backend Runtime 只交换 `src/shared/backend-runtime.ts` 定义的结构化控制协议和工作区运行目录：ready、stop、语言读取、宿主诊断，以及代理解析、打开目录、选择保存路径以及图片处理和 HTML 打印的宿主回调（导出与 Agent 共用目录打开能力）。宿主操作以 requestId 隔离并发。图片与打印取消通过 host_cancel 传回 main，关闭窗口并等待结果结算；其它原生操作的取消只结束 worker 等待，迟到回包丢弃。runtime 关闭或 worker 退出同时中止待决图片与打印窗口。Agent 工作区子进程的请求通信归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。worker 意外退出直接结束应用，不回退同进程、不自动重启。
 - 图片宿主 `src/native/agent-image-host.ts` 在独立隐藏窗口执行 Chromium 编解码，策略与缓存归 Agent 后端。窗口超时、取消和资源释放沿宿主请求生命周期完成。
-- HTML 打印宿主在 `src/native/pdf-host.ts`，由 GUI main 持有；惰性创建专用 session 和隐藏窗口，串行复用窗口且每次加载新文档。宿主施加 CSP，禁止脚本、外部资源、Node 集成、弹窗与权限请求；取消、超时和失败销毁窗口，结算后才能执行下一任务，入口关闭时 dispose。
+- HTML 打印宿主在 `src/native/pdf-host.ts`，由 GUI main 持有；惰性创建专用 session 和隐藏窗口，串行复用窗口且每次加载新文档。宿主从工作区部署目录加载并缓存打印资源，字体与图片使用内嵌 data 资源。宿主独占 CSP，禁止文档脚本、外部资源、Node 集成、弹窗与权限请求；打印前等待字体与图片，并测量标题和图注以限制图片高度；取消、超时和失败销毁窗口，结算后才能执行下一任务，入口关闭时 dispose。
 - PDF 计算在独立线程中执行：BackendServices 拥有单文档串行 PDFWorker，入口注入共享运行目录；文件格式、预览、项目导入与导出服务必须显式接收其 PDFExecution，打印回调由 PDFWorker 持有。取消须等待线程终止及关联打印收尾，下次任务再启动。测试和源码运行通过显式同进程模式复用文档实现。Agent 已有独立 Node 进程，直接执行同一 PDF 模块。最终文件写入仍由后端文件服务拥有。
 - CLI 在当前进程线性创建 `BackendResources` 与 `BackendServices`，通过窄 `CLIJobServices` 消费类型化业务能力、批量翻译快照订阅和 completion。
 - GUI Backend Runtime 在发布态固定运行于独立 `worker_thread`；work-unit、planning 和 compute 的正式执行统一注入 `worker_threads`，三者的 `in_process` 只允许测试或源码运行显式选择，不作为失败回退。

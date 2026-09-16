@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import * as mupdf from "mupdf";
 import type { PDFDocument, PDFRegion } from "../../../../shared/pdf";
 import { render_pdf_translation, render_pdf_html } from "./pdf-translation";
 
 const PDF_MAX_PIXELS = 32_000_000;
+const PDF_COORDINATE_DECIMALS = 6;
 
 /** 原稿身份由字节决定；阅读和渲染共用旋转后的左上角页面坐标。 */
 export function read_pdf_document(bytes: Uint8Array): PDFDocument {
@@ -117,12 +119,18 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
   if (!translation?.sections.length) return args.source_bytes;
   const output = new mupdf.PDFDocument(args.source_bytes);
   try {
-    const order: number[] = [];
+    const order: number[] = []; // 组合完成前保存原页索引，最后一次重排保持引用有效。
     let next_page = 0;
     for (let index = 0; index < translation.sections.length;) {
       args.signal?.throwIfAborted();
       const section = translation.sections[index]!;
       while (next_page < section.page_start - 1) order.push(next_page++);
+      if (section.kind === "omit") {
+        next_page = section.page_end;
+        index++;
+        continue;
+      }
+      const size = source.pages[section.page_start - 1]!;
       const group = [rendered[index]!];
       let end = section.page_end;
       index++;
@@ -130,11 +138,21 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
         index < translation.sections.length &&
         translation.sections[index]!.page_start === end + 1
       ) {
+        const next = translation.sections[index]!;
+        const next_size = source.pages[next.page_start - 1]!;
+        if (
+          next.kind !== "translate" ||
+          next_size.width !== size.width ||
+          next_size.height !== size.height ||
+          !isDeepStrictEqual(next.background, section.background)
+        )
+          break;
         group.push(rendered[index]!);
         end = translation.sections[index++]!.page_end;
       }
       const html = await render_pdf_html({
         title: args.title,
+        size,
         rendered: group,
         renderImage: async (region) => {
           args.signal?.throwIfAborted();
@@ -146,6 +164,20 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
       const printed = new mupdf.PDFDocument(bytes);
       const map = output.newGraftMap();
       try {
+        if (section.background) {
+          const image = new mupdf.Image(
+            render_pdf_page(output, {
+              page: section.background.page,
+              scale: 2,
+              region: section.background,
+            }),
+          );
+          try {
+            apply_pdf_background(printed, image);
+          } finally {
+            image.destroy();
+          }
+        }
         const offset = output.countPages();
         for (let page = 0; page < printed.countPages(); page++) {
           map.graftPage(-1, printed, page);
@@ -193,5 +225,69 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
     }
   } finally {
     output.destroy();
+  }
+}
+
+/** 在实际输出页底层绘制背景，页面裁切负责出血；一组页面共享一个图像对象。 */
+function apply_pdf_background(pdf: mupdf.PDFDocument, image: mupdf.Image): void {
+  const reference = pdf.addImage(image);
+  try {
+    for (let index = 0; index < pdf.countPages(); index++) {
+      const page = pdf.loadPage(index);
+      const object = page.getObject();
+      const resources = object.getInheritable("Resources");
+      const contents = object.get("Contents");
+      const sequence = pdf.newArray();
+      try {
+        const [x0, y0, x1, y1] = page.getBounds();
+        const width = x1 - x0;
+        const height = y1 - y0;
+        // 按覆盖比例缩放，页面边界负责裁切，图像纵横比保持原值。
+        const scale = Math.max(width / image.getWidth(), height / image.getHeight());
+        const w = image.getWidth() * scale;
+        const h = image.getHeight() * scale;
+        let xobjects = resources.get("XObject");
+        if (xobjects.isNull()) {
+          xobjects.destroy();
+          xobjects = pdf.newDictionary();
+          resources.put("XObject", xobjects);
+        }
+        try {
+          xobjects.put("LGBackground", reference);
+        } finally {
+          xobjects.destroy();
+        }
+        object.put("Resources", resources);
+        // PDF 数字不接受指数记法；比例缩放的浮点尾差必须以十进制写入内容流。
+        const matrix = [w, 0, 0, h, x0 + (width - w) / 2, y0 + (height - h) / 2]
+          .map((value) => value.toFixed(PDF_COORDINATE_DECIMALS))
+          .join(" ");
+        const stream = pdf.addStream(`q ${matrix} cm /LGBackground Do Q\n`, {});
+        try {
+          sequence.push(stream); // 背景先绘制，已有正文和插图继续覆盖它。
+        } finally {
+          stream.destroy();
+        }
+        if (contents.isArray()) {
+          for (let i = 0; i < contents.length; i++) {
+            const entry = contents.get(i);
+            try {
+              sequence.push(entry);
+            } finally {
+              entry.destroy();
+            }
+          }
+        } else if (!contents.isNull()) sequence.push(contents);
+        object.put("Contents", sequence);
+      } finally {
+        sequence.destroy();
+        contents.destroy();
+        resources.destroy();
+        object.destroy();
+        page.destroy();
+      }
+    }
+  } finally {
+    reference.destroy();
   }
 }

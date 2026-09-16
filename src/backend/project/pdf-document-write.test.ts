@@ -11,7 +11,7 @@ const document: PDFDocument = {
   translation: null,
 };
 const translation: PDFTranslation = {
-  sections: [{ page_start: 1, page_end: 1, markdown: "跨页完整译稿" }],
+  sections: [{ kind: "translate", page_start: 1, page_end: 1, markdown: "跨页完整译稿" }],
   reviewed_pages: [1, 2],
   notes: "",
 };
@@ -45,7 +45,7 @@ it("部分译稿一次保存，更新正文同时保留核对记录和续做说�
   expect(saved.translation).toEqual(translation);
   const changed = {
     ...translation,
-    sections: [{ page_start: 1, page_end: 2, markdown: "更新译稿" }],
+    sections: [{ kind: "translate" as const, page_start: 1, page_end: 2, markdown: "更新译稿" }],
   };
   expect(
     resolve_pdf_updates(

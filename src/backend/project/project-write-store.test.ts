@@ -56,7 +56,9 @@ describe("ProjectWriteStore", () => {
           line: 1,
           translation_path: "work/draft.json",
           translation: {
-            sections: [{ page_start: 1, page_end: 1, markdown: "草稿" }],
+            sections: [
+              { kind: "translate" as const, page_start: 1, page_end: 1, markdown: "草稿" },
+            ],
             reviewed_pages: [1],
             notes: "继续第 2 页",
           },

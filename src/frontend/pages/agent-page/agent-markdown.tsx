@@ -11,9 +11,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { code } from "@streamdown/code";
-import { cjk } from "@streamdown/cjk";
-import { createMathPlugin } from "@streamdown/math";
-import { remarkAlert } from "remark-github-blockquote-alert";
+import { MARKDOWN_CJK, MARKDOWN_MATH, MARKDOWN_ALERT } from "@shared/markdown-plugins";
 import { createMermaidPlugin, type MermaidConfig } from "@streamdown/mermaid";
 import {
   Streamdown,
@@ -49,8 +47,7 @@ const MARKDOWN_DIAGRAM_OPTIONS = { errorComponent: AgentMarkdownDiagramError };
 const MARKDOWN_CONTROLS = { mermaid: { fullscreen: false } };
 // 保留产品的原始 HTML 展示；URL 在唯一转换入口沿用既有协议边界。
 const MARKDOWN_REHYPE_PLUGINS = [defaultRehypePlugins.raw];
-const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAlert];
-const MARKDOWN_MATH = createMathPlugin({ singleDollarTextMath: true });
+const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), MARKDOWN_ALERT];
 const MARKDOWN_URL_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/iu;
 const MERMAID_NODE_RADIUS = 4;
 const MERMAID_EDGE_LABEL_RADIUS = 3;
@@ -117,7 +114,7 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
   const plugins = useMemo(
     () => ({
       code,
-      cjk,
+      cjk: MARKDOWN_CJK,
       math: MARKDOWN_MATH,
       mermaid: createMermaidPlugin({ config: diagram_config }),
     }),

@@ -213,15 +213,18 @@ export class TranslationFileExportService {
       signal,
     });
     return documents.map(({ file_path, document }) => {
-      const translated_pages =
-        document.translation?.sections.reduce(
-          (count, section) => count + section.page_end - section.page_start + 1,
-          0,
-        ) ?? 0;
+      let translated_pages = 0;
+      let omitted_pages = 0;
+      for (const section of document.translation?.sections ?? []) {
+        const count = section.page_end - section.page_start + 1;
+        if (section.kind === "translate") translated_pages += count;
+        else omitted_pages += count;
+      }
       return {
         file_path,
         translated_pages,
-        original_pages: document.source.pages.length - translated_pages,
+        original_pages: document.source.pages.length - translated_pages - omitted_pages,
+        omitted_pages,
       };
     });
   }

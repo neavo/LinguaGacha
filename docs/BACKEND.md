@@ -51,9 +51,9 @@
 ## 3. 项目读取与写入
 
 - 格式解析用显式联合结果区分文本 Item 与 PDFDocument。PDF 导入只读取原稿摘要和 PDFPage 元信息，原始资产与文档同事务保存，资产导入和替换明确携带 PDFDocument 或表示文本格式的 null，零 Item 的 PDF 工程有效。文件列表由统一组装入口合并 asset、文本格式身份和 PDF 文档身份。
-- PDFDocument 的 translation 保存 sections、核对页码与续做说明。翻译语言由工程设置提供，译稿不重复保存语言配置。每段以 page_start / page_end 闭区间和非空 Markdown 表达对完整原页范围的替换，范围有序且互不重叠。核对记录独立于译稿覆盖，不证明语义完整性。Agent 以文档指纹整体提交全部段，事务内复验范围与内容后接受或拒绝；同批同一文档重复意图拒绝。
+- PDFDocument 的 translation 保存 sections、核对页码与续做说明。翻译语言由工程设置提供，译稿不重复保存语言配置。每段以 page_start / page_end 闭区间表达处理范围，有序且互不重叠。translate 段携带非空 Markdown 和可选 background 原稿区域，omit 段携带非空 reason；未覆盖范围保留原页，禁止省略全部页面。旧段由 pdf-section-kind 写回迁移补为 translate，运行时只接收当前联合契约。核对记录独立于译稿覆盖，不证明语义完整性。Agent 以文档指纹整体提交全部段，事务内复验范围与内容后接受或拒绝；同批同一文档重复意图拒绝。
 - PDF 内容使用独立 pdf section revision 和轻量摘要事件，更新不推进 items / proofreading / files revision。文件替换清空译稿，文件删除同时删除文档；指定文件或全部翻译重置在同事务清空相应译稿。
-- PDF 提交、预览与导出共用范围和 Markdown 校验。原始 HTML 转义为文本，图片仅引用本原稿的有效区域，坐标为旋转后、左上角原点的 scale=1 页面坐标。预览与导出共用页面生成：相邻译稿连续排版，缺口保留原页及批注，译文链接在导入后重建，输出页数可变化。无译稿时原样输出 asset；工程语言变化不影响已有译稿的保存与导出。计算失败终止导出，最终落盘由文件服务负责。宿主边界归 [ARCHITECTURE](ARCHITECTURE.md)，工作区入口归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
+- PDF 提交、预览与导出共用范围和 Markdown 编译，公式错误在提交前报告段范围与位置。聊天和 PDF 共用 Markdown 语法配置，注释与锚点按译稿段隔离；原始 HTML 转义为文本，图片仅引用本原稿有效区域。译文采用段首原页的旋转后可见尺寸；仅合并原页范围连续、尺寸和背景相同的 translate 段。省略段跳过，缺口保留原页与批注，译文链接在导入后重建。背景从原稿区域渲染，在每张译文页底层按比例覆盖并裁切，不参与正文分页。无处理段时原样输出 asset；输出页数可变化，工程语言变化不影响已有译稿。计算失败终止导出，最终落盘由文件服务负责。宿主边界归 [ARCHITECTURE](ARCHITECTURE.md)，工作区入口归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 
 项目数据 section 固定为：
 
@@ -67,7 +67,7 @@ project, files, items, pdf, quality, prompts, proofreading
 - 文本源文件与需要重读原始 asset 的格式统一通过 shared 解码入口把 bytes 转成字符串，固定按 BOM、调用方声明编码、严格 UTF-8、传统编码探测的顺序裁决；无法确定或不支持的编码按文件解析失败处理。
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
-- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI、CLI 及 Agent 单文件的格式写回和输出目录语义。PDF 在写文件前固定译稿并校验范围与内容，批量回执的 pdf_files 记录每个文件的译稿覆盖原页数与保留原页数。
+- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI、CLI 及 Agent 单文件的格式写回和输出目录语义。PDF 在写文件前固定译稿并校验范围与内容，批量回执的 pdf_files 分别记录 translated_pages、original_pages 与 omitted_pages，均按原页计数；列表摘要的 translated_pages 仅计 translate 范围。
 - 三个导出入口共用开始、完成和失败处理。未知导出异常统一为 `translation.export_failed`，已有业务错误保留原码；界面兜底与导出失败日志复用同一文案，导出服务记录一次原始异常及其调用栈、原因链，Gateway 另保留请求诊断。格式写回依赖的原始 asset 缺失时必须报错，失败终止本次导出，已写出的产物可能保留；打开输出目录失败只记录附加动作错误。
 - EPUB 的 `slot_per_line`、`block_text` 和历史无 AST 条目继续按原协议写回；`text_run` 绑定原始 DOM 片段，全部片段定位在修改节点前核验并解析。manifest href 在读取入口解码一次，ZIP 键和持久定位不重复解码。打开项目不重建条目；旧 ruby 迁移只转换节点与正文匹配的候选，保留 ID、行号及用户事实。
 - “全部重置”在项目写 lease 内从工程保存的全部 asset 重建条目（PDF 仅清空文档译稿），分配新 ID 并重新预过滤；格式 reader 恢复源文件自带译文并据此重算完成进度，耗时和 token 累计清零。条目数允许变化，读取或解析失败时不提交部分结果；成功后经 `ProjectWriteStore` 原子替换并发布 items 全量失效。指定文件或失败条目的重置保留既有身份。

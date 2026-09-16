@@ -208,6 +208,7 @@ export class ProjectDatabase {
     );
   }
 
+  /** 资产和 PDF 元数据同属一次导入，由调用方事务保证一起提交。 */
   public add_asset_from_source(
     project_path: string,
     asset_path: string,
@@ -221,6 +222,7 @@ export class ProjectDatabase {
     });
   }
 
+  /** 替换资产同时更新 PDF 来源；摘要不符时由外层事务回滚两者。 */
   public update_asset_from_source(
     project_path: string,
     asset_path: string,
@@ -289,7 +291,8 @@ export class ProjectDatabase {
              json_array_length(p.data, '$.source.pages') AS pages,
              json_array_length(p.data, '$.translation.reviewed_pages') AS reviewed_pages,
              (SELECT COALESCE(SUM(json_extract(s.value, '$.page_end') - json_extract(s.value, '$.page_start') + 1), 0)
-              FROM json_each(p.data, '$.translation.sections') s) AS translated_pages
+              FROM json_each(p.data, '$.translation.sections') s
+              WHERE json_extract(s.value, '$.kind') = 'translate') AS translated_pages
            FROM pdf_documents p JOIN assets a ON a.path = p.file_path
            ORDER BY a.sort_order, a.id`,
           )
@@ -327,6 +330,7 @@ export class ProjectDatabase {
     });
   }
 
+  /** PDF 文档与源资产一起删除，调用方负责整个项目写入的事务。 */
   public delete_asset(project_path: string, asset_path: string): void {
     this.with_project_connection(project_path, (db) => {
       db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);

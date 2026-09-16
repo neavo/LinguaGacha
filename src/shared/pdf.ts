@@ -8,12 +8,14 @@ export type PDFPage = {
   rotation: number;
   label: string | null;
 };
-/** 每段译稿替换完整的原页闭区间；范围按原页顺序排列且互不重叠。 */
+/** 按原页闭区间声明翻译或省略；范围有序且互不重叠，未覆盖的原页保留。 */
 export type PDFTranslationSection = {
   page_start: number;
   page_end: number;
-  markdown: string;
-};
+} & (
+  | { kind: "translate"; markdown: string; background?: PDFRegion }
+  | { kind: "omit"; reason: string }
+);
 export type PDFTranslation = {
   sections: PDFTranslationSection[];
   reviewed_pages: number[]; // Agent 的核对记录，不作为语义完整性的机器证明

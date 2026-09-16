@@ -5,8 +5,6 @@ description: 读取、分析和处理 PDF，提取文字与页面信息，结合
 
 # PDF
 
-按用户任务读取、分析或处理 PDF，结合文字提取与页面图像理解内容。工程 PDF 以 PDFDocument 保存原稿信息与正式译稿。
-
 ## 读取与看图
 
 1. 读取 `ws.contract`、`project_meta` 和 `ws.contract.datasets.pdf` 指向的 JSONL。每行包含 `file_path`、`fp`、`source` 和 `translation`。
@@ -16,21 +14,25 @@ description: 读取、分析和处理 PDF，提取文字与页面信息，结合
 
 ## 翻译与续做
 
-执行翻译任务时加载 `translation-rules`，沿用用户范围、工程语言和 `report / apply` 决定。PDF 由 Agent 整理、翻译和核对，按下文保存译稿与完成交付。
+翻译时加载 `translation-rules`，遵循用户范围、工程语言和 `report / apply`。
 
-正式译稿由 `translation.sections` 按原页顺序保存。每段包含 `page_start`、`page_end` 和 `markdown`，页码从 1 开始且包含两端，范围不能重叠。每段译稿完整替换所声明原页范围的内容，跨页段落或表格可放进同一连续范围。相邻段导出时连续排版，缺少译稿的范围保留原始页面。
+正式译稿由 `translation.sections` 按原页顺序保存。每段包含 `kind`、`page_start` 和 `page_end`，页码从 1 开始且包含两端，范围不能重叠。`kind: "translate"` 携带非空 `markdown`，完整替换所声明原页范围，跨页段落或表格可放进同一连续范围。`kind: "omit"` 携带非空 `reason`，用于用户要求省略的装饰空页等范围。未覆盖的范围保留原始页面；整份输出至少保留一页。
+
+译文采用该段首个原页的可见尺寸。原页范围连续、页面尺寸和背景相同的翻译段连续排版；尺寸或背景改变时开始新页，译文页数可以增加。
 
 按用户指定范围选择完整单元。尚未整理完整的单元先保存在 work，正文覆盖完整范围后再提交，避免局部译文替换整页而遗漏内容。修改一个范围时读取并保留其它已保存段。
 
-PDFTranslation 的完整形状见 datasets.pdf 的 Schema：
+完整载荷以 datasets.pdf 的 Schema 为准。`sections` 为空或删除某段会恢复对应原页；`reviewed_pages` 保存已核对原页，`notes` 保存待办和续做说明。Markdown 支持标题、强调、列表、引用、代码、GFM 表格列对齐、提示块、公式和编号注释。
 
-- `sections`：有序译稿段，每段 Markdown 非空，支持标题、强调、列表、引用、代码和简单表格。空数组表示全部保留原文，删除某段恢复对应原页。
-- `reviewed_pages`：已经结合原稿核对的页码，逐步更新。
-- `notes`：剩余范围、跨页接续、术语与需复核问题。重开工程后据此继续。
+图片写为 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`，DIGEST 使用当前 source.digest，区域位于对应原页。地图、图表和公式截图属于正文插图。裁剪应保留标记、比例尺和必要图例，按标题、图片、连续说明组织，避免图注与标题重复或图片打断编号说明。
 
-图片写为 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`，DIGEST 使用当前 source.digest，区域位于对应原页。公式和复杂图表按可读性保留原图并附译文说明。链接使用 HTTP(S)、mailto 或按当前段标题出现顺序编号的段内锚点 `#heading-1`、`#heading-2`。原始 HTML 标签与注释按字面文本输出，换行使用 Markdown 语法。应用控制 HTML 和资源加载。
+`background: { page, x, y, width, height }` 只引用本原稿的干净装饰区域，按比例覆盖该段输出页且不占正文空间。先看图确认区域不含正文或地图；整页截图中的原文也会叠印到译文后方。装饰页是否省略由用户要求决定，不能根据没有提取文字自动判定。
 
-核对页码表达独立工作记录，修改译稿时同步维护对应核对记录和说明。译稿范围决定替换哪些原页。实际仍需检查遗漏、表格数字、图例、术语和引用。明确排除的原稿内容在 notes 记录理由。译稿正文按用户要求交付。
+行内公式使用 `$...$`，独立公式使用 `$$` 单独成行的块。货币美元符号使用 `\$`，普通代码保持字面内容。提示块使用 `> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING`、`CAUTION`。注释使用 `[^id]` 与 `[^id]: 内容`，引用和定义放在同一翻译段，输出在段末并提供回链。公式错误会附带段范围与行列位置拒绝提交，应修正，或在确实需要时使用清晰的原稿截图。
+
+链接使用 HTTP(S)、mailto 或按当前段标题出现顺序编号的段内锚点 `#heading-1`、`#heading-2`。原始 HTML 标签与注释按字面文本输出，换行使用 Markdown 语法。应用控制字体、HTML、样式和资源加载。
+
+核对遗漏、表格数字、图例、术语与引用后更新 reviewed_pages，并在 notes 记录待办和排除内容的理由。核对记录不代表正文自动完整。
 
 ## 保存与导出
 
@@ -41,7 +43,7 @@ PDFTranslation 的完整形状见 datasets.pdf 的 Schema：
 5. 用本技能的 `scripts/preview.mjs` 生成预览，以返回的工作区 path 渲染并查看风险页面。脚本默认读取本次工程快照，也可传入 work 中的草稿路径，在 report 模式下先核对版式。修正内容后重新保存、核对。
 6. 按用户需要导出当前保存结果。在新的 workspace_run 中读取最新 fp，用 `ws.host` 的 `export_pdf` 导出。部分译稿与未翻译原页自动组合；没有译稿时直接输出原文。
 
-export 返回的 output_path 位于工作区外，按导出回执交付。视觉核验使用 work 中相同页面组合的预览，检查译文与保留原页的衔接。译文排版后的页数可以不同于原页范围。图片请求或宿主失败时保存续做说明并报告实际阻塞。
+export 返回的 output_path 位于工作区外，按导出回执交付。回执分别统计翻译、保留与省略的原页数。视觉核验使用 work 中相同页面组合的预览，检查译文与保留原页的衔接、背景、公式、大图图注和长表格分页。译文排版后的页数可以不同于原页范围。图片请求或宿主失败时保存续做说明并报告实际阻塞。
 
 ## JS 操作示例
 
@@ -67,8 +69,6 @@ try {
 
 ```
 
-提取顺序只作为调查证据。跨页与多栏的阅读顺序结合页面图像决定。
-
 ### 渲染与裁剪
 
 ```js
@@ -85,7 +85,7 @@ try {
 } finally { pdf.destroy(); }
 ```
 
-原稿路径使用 project_meta 给出的 source_binary_path，预览使用生成的 work 路径。需要裁剪时传入 `region: { page, x, y, width, height }`，region.page 与请求 page 一致。一次程序处理一批所需页面，按需提高局部图像分辨率。
+裁剪时传入 `region: { page, x, y, width, height }`，region.page 与请求 page 一致。
 
 ### 生成预览
 
@@ -94,7 +94,7 @@ import { preview } from '../../skills/pdf/scripts/preview.mjs';
 console.log(await preview('book.pdf', 'work/translation.json'));
 ```
 
-省略第二个参数时使用工程快照译稿。脚本直接导入 `@lg/pdf`，与正式输出共用校验、排版和页面合并，在本进程通过 MuPDF 嵌入原图，并通过 print_pdf 完成打印。输出同时包含译文和保留的原页。按任务需要阅读、导入或组合此模块。静态 HTML 也可通过 `ws.host({ kind: 'print_pdf', html })` 打印到 work；它只是工作材料，正式交付仍从工程导出。
+省略第二个参数时使用工程快照译稿。预览复用 `@lg/pdf` 的正式生成入口，经 print_pdf 打印到 work。静态 HTML 也可用 `ws.host({ kind: 'print_pdf', html })` 打印为工作材料，正式交付使用工程导出。
 
 ### 导出当前译稿与原页
 
@@ -105,5 +105,3 @@ const documents = (await readFile(ws.contract.datasets.pdf.path, 'utf8'))
 const document = documents.find(row => row.file_path === 'book.pdf');
 console.log(await ws.host({ kind: 'export_pdf', file_path: document.file_path, fp: document.fp }));
 ```
-
-宿主校验版本并沿导出服务读取当前保存的译稿范围，输出目录由工程设置决定。版本变化时重读快照并核对，避免交付未经确认的译稿。

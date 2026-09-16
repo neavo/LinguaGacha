@@ -97,7 +97,9 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     const source_path = path.join(root, "sources/book.pdf/original.pdf");
     const source_mtime = fs.statSync(source_path).mtimeMs;
     const draft = {
-      sections: [{ page_start: 1, page_end: 1, markdown: "跨页段落\n\n图中是蓝色矩形。" }],
+      sections: [
+        { kind: "translate", page_start: 1, page_end: 1, markdown: "跨页段落\n\n图中是蓝色矩形。" },
+      ],
       reviewed_pages: [1, 2, 3],
       notes: "等待版式核对",
     };

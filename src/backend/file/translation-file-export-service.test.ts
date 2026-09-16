@@ -72,7 +72,10 @@ describe("TranslationFileExportService", () => {
       const partial: PDFDocument = {
         ...document,
         translation: {
-          sections: [{ page_start: 2, page_end: 2, markdown: "已有译稿" }],
+          sections: [
+            { kind: "translate", page_start: 2, page_end: 2, markdown: "已有译稿" },
+            { kind: "omit", page_start: 3, page_end: 3, reason: "装饰空页" },
+          ],
           reviewed_pages: [],
           notes: "待继续",
         },
@@ -103,7 +106,7 @@ describe("TranslationFileExportService", () => {
       if (entry === "single") {
         const result = await service.export_pdf_file("book.pdf");
         const exported = read_pdf_document(new Uint8Array(fs.readFileSync(result.output_path)));
-        expect(exported.source.pages).toHaveLength(3);
+        expect(exported.source.pages).toHaveLength(2);
         const original = await service.export_pdf_file("original.pdf");
         expect(fs.readFileSync(original.output_path)).toEqual(Buffer.from(source));
       } else {
@@ -112,8 +115,8 @@ describe("TranslationFileExportService", () => {
             ? await service.export_files()
             : await service.export_files_to_directory(path.join(temp_dir, "out"));
         expect(result.pdf_files).toEqual([
-          { file_path: "book.pdf", translated_pages: 1, original_pages: 2 },
-          { file_path: "original.pdf", translated_pages: 0, original_pages: 3 },
+          { file_path: "book.pdf", translated_pages: 1, original_pages: 1, omitted_pages: 1 },
+          { file_path: "original.pdf", translated_pages: 0, original_pages: 3, omitted_pages: 0 },
         ]);
         expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
           Buffer.from(source),
@@ -121,10 +124,10 @@ describe("TranslationFileExportService", () => {
         const exported = read_pdf_document(
           new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
         );
-        expect(exported.source.pages).toHaveLength(3);
+        expect(exported.source.pages).toHaveLength(2);
       }
       expect(host).toHaveBeenCalledTimes(1);
-      expect(partial.translation?.sections).toHaveLength(1);
+      expect(partial.translation?.sections).toHaveLength(2);
     },
   );
 
@@ -158,7 +161,7 @@ describe("TranslationFileExportService", () => {
     const output = await service.export_pdf_file("book.pdf");
     expect(fs.readFileSync(output.output_path)).toEqual(Buffer.from(source));
     document.translation = {
-      sections: [{ page_start: 1, page_end: 4, markdown: "translation" }],
+      sections: [{ kind: "translate", page_start: 1, page_end: 4, markdown: "translation" }],
       reviewed_pages: [],
       notes: "",
     };
@@ -473,7 +476,7 @@ describe("TranslationFileExportService", () => {
       const source = create_pdf_fixture();
       const document = read_pdf_document(source);
       document.translation = {
-        sections: [{ page_start: 1, page_end: 1, markdown: "译文" }],
+        sections: [{ kind: "translate", page_start: 1, page_end: 1, markdown: "译文" }],
         reviewed_pages: [],
         notes: "",
       };

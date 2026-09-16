@@ -18,14 +18,27 @@ export const PDF_REGION_SCHEMA = Type.Object(
 export const PDF_TRANSLATION_SCHEMA = Type.Object(
   {
     sections: Type.Array(
-      Type.Object(
-        {
-          page_start: Type.Integer({ minimum: 1 }),
-          page_end: Type.Integer({ minimum: 1 }),
-          markdown: Type.String({ minLength: 1 }),
-        },
-        { additionalProperties: false },
-      ),
+      Type.Union([
+        Type.Object(
+          {
+            kind: Type.Literal("translate"),
+            page_start: Type.Integer({ minimum: 1 }),
+            page_end: Type.Integer({ minimum: 1 }),
+            markdown: Type.String({ minLength: 1 }),
+            background: Type.Optional(PDF_REGION_SCHEMA),
+          },
+          { additionalProperties: false },
+        ),
+        Type.Object(
+          {
+            kind: Type.Literal("omit"),
+            page_start: Type.Integer({ minimum: 1 }),
+            page_end: Type.Integer({ minimum: 1 }),
+            reason: Type.String({ minLength: 1 }),
+          },
+          { additionalProperties: false },
+        ),
+      ]),
     ),
     reviewed_pages: Type.Array(Type.Integer({ minimum: 1 }), { uniqueItems: true }),
     notes: Type.String(),

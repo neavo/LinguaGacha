@@ -241,7 +241,9 @@ describe("ProjectContentService", () => {
       });
       const old = database.read_pdf_document(lg_path, "book.pdf")!;
       const translation = {
-        sections: [{ page_start: 1, page_end: 1, markdown: "已有译文" }],
+        sections: [
+          { kind: "translate" as const, page_start: 1, page_end: 1, markdown: "已有译文" },
+        ],
         reviewed_pages: [1],
         notes: "继续",
       };

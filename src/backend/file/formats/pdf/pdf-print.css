@@ -1,0 +1,162 @@
+@page {
+  margin: 48pt;
+}
+.pdf-document {
+  --pdf-content-height: calc(var(--pdf-page-height) - 96pt);
+  margin: 0;
+  color: #25272c;
+  font-family: "LGBaseFont", sans-serif;
+  font-size: 11pt;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+.pdf-document :is(h1, h2, h3, h4, h5, h6) {
+  line-height: 1.3;
+  break-after: avoid;
+  margin: 1.4em 0 0.6em;
+  font-weight: 700;
+}
+.pdf-document h1 {
+  font-size: 24pt;
+}
+.pdf-document h2 {
+  font-size: 18pt;
+}
+.pdf-document h3 {
+  font-size: 14pt;
+}
+.pdf-document h4 {
+  font-size: 12pt;
+}
+.pdf-document :is(h5, h6) {
+  font-size: 11pt;
+}
+.pdf-document > :first-child {
+  margin-top: 0;
+}
+.pdf-document p {
+  margin: 0.65em 0;
+  orphans: 3;
+  widows: 3;
+}
+.pdf-document :is(ul, ol) {
+  padding-left: 1.7em;
+  margin: 0.65em 0;
+}
+.pdf-document li {
+  margin: 0.25em 0;
+}
+.pdf-document blockquote {
+  border-left: 2pt solid #b7b0a6;
+  margin: 1em 0;
+  padding: 0.1em 1em;
+  color: #50535a;
+}
+.pdf-document table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 9.5pt;
+  line-height: 1.5;
+  margin: 1em 0;
+}
+.pdf-document :is(th, td) {
+  border-bottom: 0.5pt solid #c7c3bc;
+  padding: 5pt 7pt;
+  vertical-align: top;
+}
+.pdf-document th {
+  background: #efede8;
+  text-align: left;
+}
+.pdf-document tr {
+  break-inside: avoid;
+}
+.pdf-document figure {
+  margin: 1em 0;
+  text-align: center;
+}
+.pdf-document img {
+  display: block;
+  margin: auto;
+  max-width: 100%;
+  max-height: var(--pdf-content-height);
+  break-after: avoid;
+}
+.pdf-document figcaption {
+  font-size: 9pt;
+  line-height: 1.4;
+  margin-top: 5pt;
+  color: #57595f;
+  orphans: 2;
+  widows: 2;
+}
+.pdf-document pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f0efec;
+  padding: 10pt;
+  font-size: 9pt;
+}
+.pdf-document code {
+  font-family: "LGMono", "LGBaseFont", monospace;
+}
+.pdf-document :not(pre) > code {
+  background: #f0efec;
+  padding: 0.1em 0.25em;
+}
+.pdf-document a {
+  color: #765330;
+}
+.pdf-document hr {
+  border: 0;
+  border-top: 0.5pt solid #c7c3bc;
+  margin: 1.5em 0;
+}
+.pdf-document .markdown-alert {
+  border-left: 2pt solid #7a8897;
+  background: #f0f2f4;
+  padding: 0.5em 1em;
+  margin: 1em 0;
+}
+.pdf-document .markdown-alert-title {
+  font-weight: 700;
+  break-after: avoid;
+}
+.pdf-document .markdown-alert-title svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  vertical-align: -0.12em;
+  margin-right: 0.4em;
+}
+.pdf-document .markdown-alert-tip {
+  border-color: #62806a;
+  background: #eff4ef;
+}
+.pdf-document .markdown-alert-important {
+  border-color: #81708f;
+  background: #f3f0f5;
+}
+.pdf-document :is(.markdown-alert-warning, .markdown-alert-caution) {
+  border-color: #a46c36;
+  background: #f8f1e8;
+}
+.pdf-document .footnotes {
+  font-size: 9pt;
+  border-top: 0.5pt solid #c7c3bc;
+  margin-top: 1.5em;
+}
+.pdf-document .footnote-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.pdf-document .katex {
+  overflow-wrap: normal;
+}
+.pdf-document .katex-display {
+  margin: 1em 0;
+  break-inside: avoid;
+}

@@ -66,7 +66,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
   });
-  const pdf_host = create_pdf_host();
+  const pdf_host = create_pdf_host(path.join(workspace_runtime_directory, "pdf-print.css"));
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,

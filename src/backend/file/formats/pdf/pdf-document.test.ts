@@ -4,10 +4,68 @@ import { create_pdf_fixture } from "./test-support";
 import { read_pdf_document, build_pdf_document, render_pdf_page } from "./pdf-document";
 import { type PDFTranslation, type PDFTranslationSection } from "../../../../shared/pdf";
 
+/** 用完整译稿载荷驱动真实页面组合。 */
 function translation(sections: PDFTranslationSection[]): PDFTranslation {
   return { sections, reviewed_pages: [], notes: "" };
 }
 
+it("按原页尺寸和背景分组，省略页不占位置，背景位于每张译文页底层", async () => {
+  const original = new mupdf.PDFDocument(
+    create_pdf_fixture(["One", "Two", null, "Four", "Five", "Six"]),
+  );
+  const changed = original.loadPage(4);
+  changed.setPageBox("MediaBox", [0, 0, 400, 300]);
+  changed.destroy();
+  const saved = original.saveToBuffer("");
+  const bytes = new Uint8Array(saved.asUint8Array());
+  saved.destroy();
+  original.destroy();
+  const document = read_pdf_document(bytes);
+  const background = { page: 3, x: 40, y: 180, width: 80, height: 73 };
+  document.translation = translation([
+    { kind: "translate", page_start: 1, page_end: 1, markdown: "First", background },
+    {
+      kind: "translate",
+      page_start: 2,
+      page_end: 2,
+      markdown: "Second",
+      background: { ...background },
+    },
+    { kind: "omit", page_start: 3, page_end: 3, reason: "装饰页" },
+    { kind: "translate", page_start: 4, page_end: 4, markdown: "Fourth" },
+    { kind: "translate", page_start: 5, page_end: 5, markdown: "Fifth" },
+  ]);
+  const print = vi.fn(async (html: string) =>
+    create_pdf_fixture(html.includes("First") ? ["A", "B"] : [html.includes("Fourth") ? "C" : "D"]),
+  );
+  const result = await build_pdf_document({ title: "test", document, source_bytes: bytes, print });
+  expect(print).toHaveBeenCalledTimes(3);
+  expect(print.mock.calls[0]![0]).toContain("Second");
+  expect(print.mock.calls[0]![0]).toContain("size:300pt 300pt");
+  expect(print.mock.calls[2]![0]).toContain("size:400pt 300pt");
+  expect(await read_text(result)).toEqual(["A", "B", "C", "D", "Six"]);
+  const pdf = new mupdf.PDFDocument(result);
+  try {
+    for (const [index, color] of [
+      [0, [25, 102, 204]],
+      [1, [25, 102, 204]],
+      [2, [255, 255, 255]],
+    ] as const) {
+      const page = pdf.loadPage(index);
+      const pixmap = page.toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false);
+      try {
+        expect(Array.from(pixmap.getPixels().subarray(0, 3))).toEqual(color);
+      } finally {
+        pixmap.destroy();
+        page.destroy();
+      }
+    }
+  } finally {
+    pdf.destroy();
+  }
+});
+
+/** 从最终 PDF 页序读取文本，验证替换与保留的实际结果。 */
 async function read_text(bytes: Uint8Array): Promise<string[]> {
   const pdf = new mupdf.PDFDocument(bytes);
   try {
@@ -66,9 +124,9 @@ it("混合导出保留头尾与中间原页，相邻译稿一起打印，译文�
   original.destroy();
   const document = read_pdf_document(bytes);
   document.translation = translation([
-    { page_start: 2, page_end: 2, markdown: "# Second" },
-    { page_start: 3, page_end: 3, markdown: "# Third" },
-    { page_start: 5, page_end: 6, markdown: "# Fifth and sixth" },
+    { kind: "translate", page_start: 2, page_end: 2, markdown: "# Second" },
+    { kind: "translate", page_start: 3, page_end: 3, markdown: "# Third" },
+    { kind: "translate", page_start: 5, page_end: 6, markdown: "# Fifth and sixth" },
   ]);
   const print = vi.fn(async (html: string) =>
     html.includes("Second")
@@ -99,7 +157,9 @@ it("混合导出保留头尾与中间原页，相邻译稿一起打印，译文�
 it("全篇译稿替换全部原页，打印失败和取消不回退原文", async () => {
   const bytes = create_pdf_fixture();
   const document = read_pdf_document(bytes);
-  document.translation = translation([{ page_start: 1, page_end: 3, markdown: "全部译稿" }]);
+  document.translation = translation([
+    { kind: "translate", page_start: 1, page_end: 3, markdown: "全部译稿" },
+  ]);
   const args = {
     title: "book",
     document,
@@ -214,7 +274,9 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
   print_buffer.destroy();
   printed.destroy();
   const document = read_pdf_document(bytes);
-  document.translation = translation([{ page_start: 2, page_end: 2, markdown: "Translation" }]);
+  document.translation = translation([
+    { kind: "translate", page_start: 2, page_end: 2, markdown: "Translation" },
+  ]);
   const result = new mupdf.PDFDocument(
     await build_pdf_document({
       title: "test",

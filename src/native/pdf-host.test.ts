@@ -11,7 +11,7 @@ import { expect, it } from "vitest";
 import { create_pdf_fixture } from "../backend/file/formats/pdf/test-support";
 import * as mupdf from "mupdf";
 
-it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后释放", async () => {
+it("真实打印加载字体、保持图文分页并在取消后释放窗口", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-pdf-host-"));
   try {
     const runtime =
@@ -39,7 +39,7 @@ it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后
         minify: false,
       },
     });
-    const source = create_pdf_fixture();
+    const source = create_pdf_fixture(undefined, [612, 792]);
     await fs.writeFile(path.join(directory, "source.pdf"), source);
     const parsed = read_pdf_document(source);
     parsed.translation = {
@@ -47,6 +47,7 @@ it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后
       notes: "",
       sections: [
         {
+          kind: "translate",
           page_start: 1,
           page_end: 1,
           markdown:
@@ -70,18 +71,32 @@ it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后
       await app.whenReady();
       app.on('window-all-closed', () => {});
       try {
-        const host = create_pdf_host();
+        const host = create_pdf_host(${JSON.stringify(path.join(runtime, "pdf-print.css"))});
         const source = new Uint8Array(await fs.readFile(${JSON.stringify(path.join(directory, "source.pdf"))}));
-        const source_pdf = new mupdf.PDFDocument(source);
-        const image = render_pdf_page(source_pdf,{page:3,scale:1,region:{page:3,x:40,y:180,width:120,height:80}}); source_pdf.destroy();
-        await fs.writeFile(${JSON.stringify(path.join(directory, "crop.png"))}, image);
-        assert.equal(Buffer.from(image).toString('ascii',1,4), 'PNG');
         const document = JSON.parse(await fs.readFile(${JSON.stringify(path.join(directory, "document.json"))}, 'utf8'));
         const output = await build_pdf_document({
           title: '中文 PDF 验证', document, source_bytes: source,
           print: html => host({kind:'print_pdf',html: html + '<script>document.body.textContent="UNSAFE_SCRIPT_EXECUTED"</script>'}),
         });
         await fs.writeFile(${JSON.stringify(path.join(directory, "translated.pdf"))}, output);
+        document.translation.sections[0].background = {page:3,x:40,y:672,width:120,height:80};
+        document.translation.sections[0].markdown += '\\n\\n公式 $E=mc^2$。\\n\\n$$\\n\\\\frac{1}{2}\\n$$\\n\\n> [!NOTE]\\n> 说明正文。\\n\\n带注释的正文[^a]。\\n\\n[^a]: 注释内容。';
+        const decorated = await build_pdf_document({title:'公式与背景',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
+        const fonts = await BrowserWindow.getAllWindows()[0].webContents.executeJavaScript('Array.from(document.fonts, font => ({family:font.family,status:font.status}))');
+        assert.ok(fonts.some(font => font.family === 'KaTeX_Main' && font.status === 'loaded'));
+        assert.ok(fonts.some(font => font.family === 'KaTeX_Math' && font.status === 'loaded'));
+        assert.ok(fonts.some(font => font.family === 'LGBaseFont' && font.status === 'loaded'));
+        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.pdf"))}, decorated);
+        const decoratedPdf = new mupdf.PDFDocument(decorated);
+        await fs.writeFile(${JSON.stringify(path.join(directory, "decorated.png"))}, render_pdf_page(decoratedPdf,{page:1,scale:1.5}));
+        decoratedPdf.destroy();
+        delete document.translation.sections[0].background;
+        document.translation.sections[0].markdown = '# 地图与图注\\n\\n![完整图注](pdf-image:' + document.source.digest + '/3/0,0,612,792)';
+        const illustrated = await build_pdf_document({title:'插图分页',document,source_bytes:source,print:html=>host({kind:'print_pdf',html})});
+        const illustratedPdf = new mupdf.PDFDocument(illustrated);
+        assert.equal(illustratedPdf.countPages(),3,'标题、整页比例插图与短图注应能一起排入一页');
+        await fs.writeFile(${JSON.stringify(path.join(directory, "illustrated.png"))},render_pdf_page(illustratedPdf,{page:1,scale:1.5}));
+        illustratedPdf.destroy();
         const output_pdf = new mupdf.PDFDocument(output);
         const rendered = render_pdf_page(output_pdf,{page:1,scale:1.5});
         await fs.writeFile(${JSON.stringify(path.join(directory, "translated.png"))}, rendered);
@@ -119,6 +134,7 @@ it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后
     );
     try {
       expect(document.countPages()).toBe(3);
+      // 用实际 PDF 文本验证中文保留和脚本隔离，忽略 Chromium 的空白分段。
       const read_text = (index: number) => {
         const page = document.loadPage(index);
         const text = page.toStructuredText("");
@@ -138,7 +154,14 @@ it("真实 Electron 复用打印窗口，MuPDF 裁剪、中文合并与取消后
     // 可选 QA 目录只保留本次生成物，便于人工检查真实 Chromium 版式。
     if (process.env.LINGUAGACHA_PDF_QA_DIR) {
       await fs.mkdir(process.env.LINGUAGACHA_PDF_QA_DIR, { recursive: true });
-      for (const name of ["translated.pdf", "translated.png", "crop.png", "original.png"])
+      for (const name of [
+        "translated.pdf",
+        "translated.png",
+        "original.png",
+        "decorated.pdf",
+        "decorated.png",
+        "illustrated.png",
+      ])
         await fs.copyFile(
           path.join(directory, name),
           path.join(process.env.LINGUAGACHA_PDF_QA_DIR, name),

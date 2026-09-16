@@ -1,4 +1,5 @@
 import type { MigrationDescriptor } from "./migration-types";
+import { pdf_section_kind_migration } from "./migrations/pdf-section-kind-migration";
 import { epub_ruby_block_text_migration } from "./migrations/epub-ruby-block-text-migration";
 import { legacy_default_config_migration } from "./migrations/legacy-default-config-migration";
 import { markdown_v2_block_migration } from "./migrations/markdown-v2-block-migration";
@@ -34,6 +35,7 @@ export const MIGRATIONS: readonly MigrationDescriptor[] = [
   translation_prompt_legacy_slot_migration,
   epub_ruby_block_text_migration,
   markdown_v2_block_migration,
+  pdf_section_kind_migration,
 ];
 
 /**
