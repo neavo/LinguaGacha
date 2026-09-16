@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type Ref,
+  type RefObject,
   type ReactNode,
 } from "react";
 import { ImagePlus, LoaderCircle, Shrink, Sparkles } from "lucide-react";
@@ -62,6 +63,7 @@ import {
 } from "./agent-mention";
 import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
 import { AgentMessageAttachments } from "./agent-message-attachments";
+import { AgentImageDropTarget } from "./agent-image-drop-target";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -87,6 +89,7 @@ type AgentEditorState = { has_content: boolean; image_processing: boolean };
 
 type AgentMessageEditorProps = {
   ref?: Ref<AgentMessageEditorHandle>;
+  image_drop_target_ref?: RefObject<HTMLElement | null>; // 缺省接收当前表单，主输入由页面指定整页区域
   presentation?: "composer" | "inline";
   role?: "user" | "assistant";
   read_only: boolean;
@@ -170,6 +173,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       : "agent_page.input.placeholder",
   );
   const host_ref = useRef<HTMLDivElement | null>(null);
+  const form_ref = useRef<HTMLFormElement | null>(null);
   const file_input_ref = useRef<HTMLInputElement | null>(null);
   const menu_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
@@ -189,13 +193,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     structuredClone(props.input_session.read_draft().attachments),
   );
   const image_processing_ref = useRef(false);
-  const image_drag_depth_ref = useRef(0);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [draft_attachments, set_draft_attachments] = useState<AgentMessageAttachment[]>(() => [
     ...draft_attachments_ref.current,
   ]);
   const [image_processing, set_image_processing] = useState(false);
-  const [image_drop_active, set_image_drop_active] = useState(false);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
@@ -224,6 +226,8 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     0,
   );
   const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
+  const can_append_images =
+    !editor_read_only && !assistant_editing && !image_processing && !image_limit_reached;
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
@@ -355,7 +359,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     draft_attachments_ref.current = structuredClone(draft.attachments);
     set_draft_attachments([...draft_attachments_ref.current]);
     write_agent_message_text(view, draft.text, input_session_sync_annotations);
-  }, [input_revision]);
+  }, [props.input_session, input_revision]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -459,7 +463,16 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
   const append_image_files = async (files: Iterable<File>): Promise<void> => {
-    if (assistant_editing || image_processing_ref.current) return;
+    if (!can_append_images || image_processing_ref.current) return;
+    const view = view_ref.current;
+    if (view === null) return;
+    const session = input_session_ref.current;
+    const revision = session.revision;
+    // 转换属于发起时的编辑器和草稿；卸载或替换后丢弃结果及错误，避免污染新输入。
+    const is_current = (): boolean =>
+      view_ref.current === view &&
+      input_session_ref.current === session &&
+      session.revision === revision;
     const current_image_count = draft_attachments_ref.current.filter(
       (attachment) => attachment.kind === "image",
     ).length;
@@ -471,28 +484,18 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     set_image_processing(true);
     try {
       const images = await normalize_agent_images(input_files);
-      const current = draft_attachments_ref.current;
-      const available_slots =
-        AGENT_MESSAGE_IMAGE_LIMIT -
-        current.filter((attachment) => attachment.kind === "image").length;
+      if (!is_current()) return;
+      // 批次互斥且草稿仍有效，转换期间图片数量不会增加；读取最新附件以保留期间加入的批注。
       write_draft_attachments([
-        ...current,
-        ...images
-          .slice(0, available_slots)
-          .map<AgentMessageAttachment>((webpBase64) => ({ kind: "image", webpBase64 })),
+        ...draft_attachments_ref.current,
+        ...images.map<AgentMessageAttachment>((webpBase64) => ({ kind: "image", webpBase64 })),
       ]);
     } catch {
-      props.on_image_error();
+      if (is_current()) props.on_image_error();
     } finally {
       image_processing_ref.current = false;
-      set_image_processing(false);
+      if (view_ref.current === view) set_image_processing(false);
     }
-  };
-
-  /** 嵌套元素产生的 dragenter / dragleave 通过深度归零后统一关闭遮罩。 */
-  const reset_image_drop = (): void => {
-    image_drag_depth_ref.current = 0;
-    set_image_drop_active(false);
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
@@ -550,55 +553,23 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
 
   return (
     <form
+      ref={form_ref}
       className={`agent-operation-surface agent-composer${inline ? " agent-composer--inline" : ""}`}
-      data-image-drop-active={image_drop_active && !editor_read_only ? "true" : undefined}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
       onPaste={(event) => {
-        if (editor_read_only || assistant_editing || event.clipboardData.files.length === 0) return;
+        if (event.clipboardData.files.length === 0) return;
         event.preventDefault();
         void append_image_files(event.clipboardData.files);
       }}
-      onDragEnter={(event) => {
-        if (
-          editor_read_only ||
-          assistant_editing ||
-          !Array.from(event.dataTransfer.types).includes("Files")
-        ) {
-          return;
-        }
-        event.preventDefault();
-        if (image_limit_reached) return;
-        image_drag_depth_ref.current += 1;
-        set_image_drop_active(true);
-      }}
-      onDragOver={(event) => {
-        if (
-          editor_read_only ||
-          assistant_editing ||
-          !Array.from(event.dataTransfer.types).includes("Files")
-        ) {
-          return;
-        }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = image_limit_reached ? "none" : "copy";
-      }}
-      onDragLeave={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-        event.preventDefault();
-        image_drag_depth_ref.current = Math.max(0, image_drag_depth_ref.current - 1);
-        if (image_drag_depth_ref.current === 0) set_image_drop_active(false);
-      }}
-      onDrop={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
-        event.preventDefault();
-        reset_image_drop();
-        if (!editor_read_only && !assistant_editing)
-          void append_image_files(event.dataTransfer.files);
-      }}
     >
+      <AgentImageDropTarget
+        target_ref={props.image_drop_target_ref ?? form_ref}
+        enabled={can_append_images}
+        on_files={append_image_files}
+      />
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {matching_skills.length > 0 && (
@@ -661,9 +632,6 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           event.currentTarget.value = "";
         }}
       />
-      <div className="agent-composer__drop-overlay" aria-hidden={!image_drop_active}>
-        {t("agent_page.input.drop_images")}
-      </div>
       <div className="agent-composer__footer">
         <div className="agent-composer__footer-actions">
           {!assistant_editing ? (
@@ -675,7 +643,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                     size="icon-sm"
                     variant="ghost"
                     className="agent-composer__image-trigger"
-                    disabled={editor_read_only || image_processing || image_limit_reached}
+                    disabled={!can_append_images}
                     aria-label={t("agent_page.action.add_image")}
                     onClick={() => file_input_ref.current?.click()}
                   >

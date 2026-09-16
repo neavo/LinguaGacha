@@ -39,6 +39,11 @@ const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "batch_translation" | "agent" | "model_test" | null },
 }));
 const push_toast = vi.hoisted(() => vi.fn());
+vi.mock("./agent-image", async (import_original) => ({
+  ...(await import_original<typeof import("./agent-image")>()),
+  normalize_agent_images: async (files: Iterable<File>) =>
+    Array.from(files, (file) => `webp-${file.name}`),
+}));
 const model_thinking_state = vi.hoisted(() => ({
   thinking_level: "OFF" as ModelThinkingLevel,
   available_thinking_levels: [] as ModelThinkingLevel[],
@@ -208,7 +213,10 @@ describe("AgentPage", () => {
 
   /** 只替换页面拥有者的公开快照，并复用 root 验证真实状态迁移。 */
   async function render_page(overrides: Partial<AgentPageState> = {}): Promise<HTMLDivElement> {
+    // 真实 Store 在草稿 revision 变化前保留输入端口；普通运行态更新继续消费同一份草稿。
+    const previous_input = root === null ? undefined : page_state.current.input;
     page_state.current = build_state(overrides);
+    page_state.current.input = overrides.input ?? previous_input ?? page_state.current.input;
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
@@ -223,6 +231,53 @@ describe("AgentPage", () => {
     );
     return container;
   }
+
+  it("页面留白、消息区与输入框拖入图片均只追加一次", async () => {
+    const input = build_state().input;
+    const view = await render_page({ input, state: "running" });
+    for (const selector of [".agent-page", ".agent-page__conversation", ".cm-content"]) {
+      const target = view.querySelector(selector)!;
+      await drop_image(target, "page.png");
+    }
+    expect(input.write_draft).toHaveBeenLastCalledWith({
+      text: "",
+      attachments: Array.from({ length: 3 }, () => ({
+        kind: "image",
+        webpBase64: "webp-page.png",
+      })),
+    });
+  });
+
+  it("原位编辑时整页暂停接收，局部图片只写入编辑消息", async () => {
+    const input = build_state().input;
+    const reviseLatestRound = vi.fn(async () => undefined);
+    const view = await render_page({ input, reviseLatestRound });
+    const edit = [
+      ...view.querySelectorAll<HTMLButtonElement>(
+        ".agent-message-frame--user .agent-message-actions button",
+      ),
+    ].find((button) => button.textContent === "agent_page.action.edit")!;
+    await act(async () => edit.click());
+    await drop_image(view.querySelector(".agent-page")!, "ignored.png");
+    const inline_editor = view.querySelector(".agent-composer--inline")!;
+    const over = new DragEvent("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(over, "dataTransfer", {
+      value: { types: ["Files"], dropEffect: "none" },
+    });
+    await act(async () => inline_editor.dispatchEvent(over));
+    expect(over.dataTransfer?.dropEffect).toBe("copy");
+    await drop_image(inline_editor, "inline.png");
+    expect(input.write_draft).not.toHaveBeenCalled();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>(".agent-composer__inline-submit")!.click(),
+    );
+    expect(reviseLatestRound).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        attachments: [{ kind: "image", webpBase64: "webp-inline.png" }],
+      }),
+    );
+  });
 
   it("空会话建议写入草稿而不直接发送", async () => {
     const send = vi.fn(async () => undefined);
@@ -1087,6 +1142,15 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     reconnect: vi.fn(),
     ...overrides,
   };
+}
+
+/** 从实际页面区域分发文件输入，观察最终草稿和保存行为。 */
+async function drop_image(target: Element, name: string): Promise<void> {
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { types: ["Files"], files: [new File([], name, { type: "image/png" })] },
+  });
+  await act(async () => target.dispatchEvent(event));
 }
 
 /** 构造带回合归属与完成时间的用户消息。 */

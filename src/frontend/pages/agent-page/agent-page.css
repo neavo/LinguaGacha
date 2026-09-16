@@ -1202,7 +1202,7 @@
   display: none;
 }
 
-.agent-composer__drop-overlay {
+.agent-image-drop-overlay {
   position: absolute;
   inset: 5px;
   z-index: 12;
@@ -1210,7 +1210,7 @@
   place-items: center;
   border: 1px dashed var(--primary);
   border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--popover) 90%, var(--primary));
+  background: color-mix(in srgb, var(--popover) 90%, transparent);
   color: var(--foreground);
   font-size: 13px;
   font-weight: 600;
@@ -1219,7 +1219,7 @@
   transition: opacity 120ms ease-out;
 }
 
-.agent-composer[data-image-drop-active="true"] .agent-composer__drop-overlay {
+.agent-image-drop-overlay[data-active="true"] {
   opacity: 1;
 }
 
@@ -1826,7 +1826,7 @@
   .agent-thinking-entry__content,
   .agent-tool-entry,
   .agent-decision-action,
-  .agent-composer__drop-overlay,
+  .agent-image-drop-overlay,
   .agent-page__suggestion,
   .agent-page__suggestion-icon,
   .agent-composer {

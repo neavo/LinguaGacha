@@ -94,6 +94,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const agent_actions = useAgentSessionActions();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
+  const page_ref = useRef<HTMLDivElement | null>(null);
   const conversation_ref = useRef<HTMLElement | null>(null);
   const conversation_content_ref = useRef<HTMLDivElement | null>(null);
   const composer_ref = useRef<AgentComposerHandle | null>(null);
@@ -492,7 +493,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
 
   return (
-    <div className="agent-page">
+    <div ref={page_ref} className="agent-page">
       <section
         ref={conversation_ref}
         className="agent-page__conversation"
@@ -664,6 +665,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             >
               <AgentComposer
                 ref={composer_ref}
+                image_drop_target_ref={page_ref}
                 locked={active_inline_edit !== null || input_transition.locked}
                 skills={skills}
                 instructions={instructions}
