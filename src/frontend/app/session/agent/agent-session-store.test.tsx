@@ -471,13 +471,15 @@ describe("AgentSessionStore", () => {
     expect(latest.command).toBeNull();
   });
 
-  it("写入决定通过单一命令受理并立即清除 pending", async () => {
+  it.each([
+    { pdf: 0, items: 2, glossary: 1 },
+    { pdf: 2, items: 0, glossary: 0 },
+  ])("写入决定保留完整数量并通过单一命令受理：%j", async (counts) => {
     const waiting = {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
-        items: 2,
-        glossary: 1,
+        ...counts,
         textPreserve: 0,
         preReplacement: 0,
         postReplacement: 0,
@@ -498,6 +500,7 @@ describe("AgentSessionStore", () => {
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
 
+    expect(latest.pendingDecision).toEqual(waiting);
     await act(async () => latest.resolveWriteApproval("allow_session"));
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/write-approval/resolve", {
       id: "apply-1",
@@ -552,6 +555,7 @@ describe("AgentSessionStore", () => {
         kind: "write_approval",
         id: "countdown-write",
         summary: {
+          pdf: 0,
           items: 1,
           glossary: 0,
           textPreserve: 0,
@@ -668,6 +672,7 @@ describe("AgentSessionStore", () => {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
+        pdf: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,
@@ -693,6 +698,14 @@ describe("AgentSessionStore", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "approval_mode" });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "pending_decision" });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "pending_decision",
+        pendingDecision: {
+          ...pending,
+          id: "incomplete-summary",
+          summary: { ...pending.summary, pdf: undefined },
+        },
+      });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "pending_decision",
         pendingDecision: {
@@ -891,7 +904,7 @@ describe("AgentSessionStore", () => {
           toolName: "workspace_run",
           input: '{"script":"console.log([])"}',
           status: "success",
-          output: '{"items":[]}',
+          output: ['{"items":[]}', "第二块\n", ""],
           createdAt: 2,
         },
         {
@@ -900,7 +913,7 @@ describe("AgentSessionStore", () => {
           toolName: "missing_tool",
           input: "{}",
           status: "error",
-          output: "工具不存在",
+          output: ["工具不存在"],
           createdAt: 3,
         },
         {
@@ -936,6 +949,24 @@ describe("AgentSessionStore", () => {
           input: "{}",
           status: "success",
           output: null,
+          createdAt: 7,
+        },
+        ...["旧字符串", ["正文", 1]].map((output, index) => ({
+          kind: "tool_call",
+          id: `invalid-output-blocks-${index}`,
+          toolName: "workspace_run",
+          input: "{}",
+          status: "success",
+          output,
+          createdAt: 7,
+        })),
+        {
+          kind: "tool_call",
+          id: "empty-output",
+          toolName: "workspace_run",
+          input: "{}",
+          status: "success",
+          output: [],
           createdAt: 7,
         },
         {
@@ -1082,7 +1113,7 @@ describe("AgentSessionStore", () => {
         toolName: "workspace_run",
         input: '{"script":"console.log([])"}',
         status: "success",
-        output: '{"items":[]}',
+        output: ['{"items":[]}', "第二块\n", ""],
         createdAt: 2,
       },
       {
@@ -1091,8 +1122,17 @@ describe("AgentSessionStore", () => {
         toolName: "missing_tool",
         input: "{}",
         status: "error",
-        output: "工具不存在",
+        output: ["工具不存在"],
         createdAt: 3,
+      },
+      {
+        kind: "tool_call",
+        id: "empty-output",
+        toolName: "workspace_run",
+        input: "{}",
+        status: "success",
+        output: [],
+        createdAt: 7,
       },
       {
         kind: "assistant_message",

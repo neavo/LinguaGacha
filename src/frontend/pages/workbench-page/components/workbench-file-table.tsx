@@ -50,7 +50,9 @@ function sort_workbench_entries(
     if (sort_state.column_id === "file") {
       compare_result = collator.compare(left_entry.rel_path, right_entry.rel_path);
     } else if (sort_state.column_id === "line") {
-      compare_result = left_entry.item_count - right_entry.item_count;
+      compare_result =
+        (left_entry.pdf?.pages ?? left_entry.item_count) -
+        (right_entry.pdf?.pages ?? right_entry.item_count);
     }
 
     if (compare_result === 0) {
@@ -103,7 +105,17 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-file-head",
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
-          return <span className="workbench-page__table-file-text">{payload.row.rel_path}</span>;
+          return (
+            <span className="workbench-page__table-file-text">
+              {payload.row.rel_path}
+              {payload.row.pdf
+                ? ` · ${t("workbench_page.pdf.coverage", {
+                    translated: String(payload.row.pdf.translated_pages),
+                    pages: String(payload.row.pdf.pages),
+                  })}`
+                : ""}
+            </span>
+          );
         },
         render_placeholder: () => {
           return <span className="workbench-page__table-file-text">{"\u00A0"}</span>;
@@ -112,8 +124,12 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
       {
         kind: "data",
         id: "line",
-        title: t("workbench_page.table.line_count"),
-        width: 108,
+        title: t(
+          props.entries.some((entry) => entry.pdf)
+            ? "workbench_page.pdf.content"
+            : "workbench_page.table.line_count",
+        ),
+        width: props.entries.some((entry) => entry.pdf) ? 160 : 108,
         align: "center",
         sortable: {
           action_labels: sort_action_labels,
@@ -121,7 +137,16 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         head_class_name: "workbench-page__table-line-head",
         cell_class_name: "workbench-page__table-line-cell",
         render_cell: (payload) => {
-          return <span className="workbench-page__table-line-text">{payload.row.item_count}</span>;
+          return (
+            <span className="workbench-page__table-line-text">
+              {payload.row.pdf
+                ? t("workbench_page.pdf.pages", {
+                    reviewed: String(payload.row.pdf.reviewed_pages),
+                    pages: String(payload.row.pdf.pages),
+                  })
+                : payload.row.item_count}
+            </span>
+          );
         },
       },
       {
@@ -161,7 +186,14 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         },
       },
     ];
-  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, sort_action_labels, t]);
+  }, [
+    props.entries,
+    props.on_prepare_entry_action,
+    props.on_reset,
+    props.readonly,
+    sort_action_labels,
+    t,
+  ]);
 
   return (
     <Card variant="table" className="workbench-page__table-card">

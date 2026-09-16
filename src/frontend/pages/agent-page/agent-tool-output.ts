@@ -21,13 +21,30 @@ function read_output_value(value: JsonValue): JsonValue {
   return value;
 }
 
-/** 一次生成阅读文本与高亮范围；原始输出由调用者保留，展示文本不作为 JSON 回写。 */
-export function format_agent_tool_output(content: string): AgentToolOutput {
+/** 每块独立解释 JSON 并补齐行尾，共用一份阅读文档和高亮坐标；原始块由会话保留。 */
+export function format_agent_tool_output(contents: readonly string[]): AgentToolOutput {
+  const chunks: string[] = [];
+  const ranges: AppViewerRange[] = [];
+  let length = 0;
+  for (const content of contents) {
+    const block = format_output_block(content);
+    const text = block.text.endsWith("\n") ? block.text : `${block.text}\n`;
+    chunks.push(text);
+    for (const range of block.ranges) {
+      ranges.push({ ...range, start: range.start + length, end: range.end + length });
+    }
+    length += text.length;
+  }
+  return { text: chunks.join(""), ranges };
+}
+
+/** 单块递归解释完整 JSON，换行统一为编辑器使用的 LF，保证后续高亮偏移准确。 */
+function format_output_block(content: string): AgentToolOutput {
   let root: JsonValue;
   try {
     root = JSON.parse(content) as JsonValue;
   } catch {
-    return { text: content, ranges: [] };
+    return { text: content.replace(/\r\n?/gu, "\n"), ranges: [] };
   }
   root = read_output_value(root);
   if (typeof root === "string") return { text: root.replace(/\r\n?/gu, "\n"), ranges: [] };

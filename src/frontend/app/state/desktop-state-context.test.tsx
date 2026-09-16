@@ -546,6 +546,7 @@ describe("DesktopStateProvider", () => {
         "project",
         "files",
         "items",
+        "pdf",
         "quality",
         "prompts",
         "proofreading",

@@ -744,7 +744,7 @@ function resolve_project_loading_stage_message(
   if (stage === "project") {
     return t("project_page.loading_stages.project");
   }
-  if (stage === "files") {
+  if (stage === "files" || stage === "pdf") {
     return t("project_page.loading_stages.files");
   }
   if (stage === "items") {
@@ -1582,15 +1582,17 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                             </li>
                           }
                         />
-                        <TooltipContent
-                          side="top"
-                          sideOffset={8}
-                          className="flex-col items-start gap-1"
-                        >
-                          {format.description_keys.map((description_key) => (
-                            <span key={description_key}>{t(description_key)}</span>
-                          ))}
-                        </TooltipContent>
+                        {format.description_keys.length > 0 && (
+                          <TooltipContent
+                            side="top"
+                            sideOffset={8}
+                            className="flex-col items-start gap-1"
+                          >
+                            {format.description_keys.map((description_key) => (
+                              <span key={description_key}>{t(description_key)}</span>
+                            ))}
+                          </TooltipContent>
+                        )}
                       </Tooltip>
                     );
                   })}

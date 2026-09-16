@@ -1,12 +1,13 @@
 import path from "node:path";
 
 import type { JsonRecord } from "../../domain/json";
-import { Item, type ItemFileType } from "../../domain/item";
+import { Item } from "../../domain/item";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "../file/file-format-service";
-import type { ProjectSourceFileEntry } from "../file/formats/file-format-shared";
+import type { PDFDocument } from "../../shared/pdf";
+import type { ProjectSourceFileEntry, ProjectFileType } from "../file/formats/file-format-shared";
 
 export type SourceFileParseCommand = {
   source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取
@@ -14,7 +15,8 @@ export type SourceFileParseCommand = {
 };
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
-  file_type: ItemFileType; // 只来自格式解析结果，不由调用方猜测
+  file_type: ProjectFileType; // 只来自格式解析结果，不由调用方猜测
+  pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Array<JsonRecord>; // 已过 Item JSON 边界的公开草稿
 };
 
@@ -28,8 +30,9 @@ export type SourceFileProjectDraft = {
   files: Array<{
     rel_path: string;
     source_path: string;
-    file_type: ItemFileType;
+    file_type: ProjectFileType;
     sort_index: number;
+    pdf_document: PDFDocument | null;
   }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
   items: Array<JsonRecord>; // 已分配临时 id、file_path 和 file_type
   file_state: Record<string, JsonRecord>; // 供预过滤算法消费
@@ -75,6 +78,7 @@ export class SourceFileParsePipeline {
         source_path: draft.source_path,
         file_type: draft.file_type,
         sort_index,
+        pdf_document: draft.pdf_document,
       });
       file_state[draft.rel_path] = {
         rel_path: draft.rel_path,
@@ -151,15 +155,19 @@ export class SourceFileParsePipeline {
     const failed_files: SourceFileParseFailureRecord[] = [];
     for (const entry of entries) {
       try {
-        const parsed_items = await this.format_service.parse_asset(
+        const parsed = await this.format_service.parse_asset(
           entry.rel_path,
           this.native_fs.read_file(entry.source_path),
         );
         file_drafts.push({
           source_path: entry.source_path,
           rel_path: entry.rel_path,
-          file_type: this.format_service.pick_file_type(parsed_items),
-          parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
+          file_type: parsed.file_type,
+          pdf_document: parsed.kind === "pdf" ? parsed.document : null,
+          parsed_items:
+            parsed.kind === "items"
+              ? parsed.items.map((item) => Item.from_json(item).to_json())
+              : [],
         });
       } catch (error) {
         failed_files.push(this.build_failure(entry, error));

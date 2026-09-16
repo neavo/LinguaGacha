@@ -60,6 +60,7 @@ export const ja_jp_project_page = {
     task: "タスクの状態を読み込み中 …",
   },
   formats: {
+    pdf: "PDF",
     title: "対応ファイル形式",
     txt: "プレーンテキスト",
     md: "Markdown",

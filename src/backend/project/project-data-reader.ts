@@ -1,3 +1,4 @@
+import { build_project_file_records } from "./project-file-records";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
 import { TRANSLATION_PROMPT } from "../../domain/prompt";
@@ -38,7 +39,7 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
   if (section === "prompts") {
     return read_revision_meta(meta[TRANSLATION_PROMPT.revision_meta_key]);
   }
-  if (section === "files" || section === "items") {
+  if (section === "files" || section === "items" || section === "pdf") {
     return read_revision_meta(meta[`project_runtime_revision.${section}`]);
   }
   if (section === "proofreading") {
@@ -168,20 +169,15 @@ export class ProjectDataReader {
     const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
     const files: JsonRecord = {};
 
-    if (asset_records.length > 0) {
-      for (const asset_record of asset_records) {
-        const rel_path = asset_record.rel_path.trim();
-        if (rel_path === "") {
-          continue;
-        }
-        files[rel_path] = {
-          rel_path,
-          file_type: snapshot.records_by_path.get(rel_path)?.file_type ?? "NONE",
-          sort_index: asset_record.sort_index,
-        };
-      }
-      return files;
-    }
+    if (asset_records.length > 0)
+      return build_project_file_records(
+        asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index })),
+        [...snapshot.records_by_path.values()].map((item) => ({
+          file_path: item.rel_path,
+          file_type: item.file_type,
+        })),
+        Object.keys(this.database.read_pdf_summaries(project_path)),
+      );
 
     for (const [sort_index, record] of [...snapshot.records_by_path.values()].entries()) {
       files[record.rel_path] = {
@@ -373,6 +369,8 @@ export class ProjectDataReader {
     if (args.section === "items") {
       return this.build_items_record_block(args.projectPath, args.readItemsSnapshot());
     }
+    if (args.section === "pdf")
+      return args.projectPath === "" ? {} : this.database.read_pdf_summaries(args.projectPath);
     if (args.section === "quality") {
       return args.projectPath === ""
         ? this.build_empty_quality_block()

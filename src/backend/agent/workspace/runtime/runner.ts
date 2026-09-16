@@ -1,3 +1,9 @@
+import { Check } from "typebox/value";
+import {
+  WORKSPACE_HOST_REQUEST_SCHEMA,
+  type WorkspaceHostPort,
+  type WorkspaceRequest,
+} from "./host-contract";
 import { fork, type ForkOptions } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -5,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { is_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import { default_native_fs } from "../../../../native/native-fs";
+import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { SystemProxyResolver } from "../../../network/system-proxy-http-client";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import type {
@@ -18,6 +25,8 @@ export type AgentWorkspaceRunRequest = Readonly<{
   stdoutPath: string;
   stderrPath: string;
   todos: readonly string[];
+  host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
+  emitImage?: (path: string, signal: AbortSignal) => Promise<void>;
 }>;
 
 export type AgentWorkspaceOutputContent = string | JsonRecord | JsonValue[];
@@ -64,17 +73,17 @@ export class AgentWorkspaceRunError extends Error {
 /** 父进程拥有执行、取消与回收；Node 自身拥有程序及其异步任务的完成语义。 */
 export class AgentWorkspaceRunner {
   private readonly executable_path: string;
-  private readonly bootstrap_path: string;
+  private readonly runtime_directory: string;
   private readonly system_proxy_resolver: SystemProxyResolver;
 
   /** 保存当前应用版本的启动资源与宿主代理端口。 */
   public constructor(options: {
     executablePath?: string;
-    runtimeBootstrapPath: string;
+    runtimeDirectory: string;
     systemProxyResolver: SystemProxyResolver;
   }) {
     this.executable_path = path.resolve(options.executablePath ?? process.execPath);
-    this.bootstrap_path = path.resolve(options.runtimeBootstrapPath);
+    this.runtime_directory = path.resolve(options.runtimeDirectory);
     this.system_proxy_resolver = options.systemProxyResolver;
   }
 
@@ -86,14 +95,19 @@ export class AgentWorkspaceRunner {
     signal.throwIfAborted();
     // 宿主先解析祖先链接，cwd、预加载与授权使用同一真实位置，子进程无需读取上层链接。
     const workspace_path = default_native_fs.real_path(request.workspacePath);
-    const bootstrap_path = default_native_fs.real_path(this.bootstrap_path);
+    const runtime_directory = default_native_fs.real_path(this.runtime_directory);
+    const bootstrap_path = resolve_workspace_runtime_entry(
+      runtime_directory,
+      "@lg/workspace/bootstrap",
+    );
     const write_paths = new Set(
       AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.flatMap((name) => {
         const entry = path.join(workspace_path, name);
         return [entry, default_native_fs.real_path(entry)];
       }),
     );
-    const read_paths = new Set([workspace_path, path.dirname(bootstrap_path), ...write_paths]);
+    // 包入口和共享资源处在不同层级，读取权限由整套运行目录拥有。
+    const read_paths = new Set([workspace_path, runtime_directory, ...write_paths]);
     // 标准异步资源释放在返回或抛错前关闭句柄，第二路打开失败也会释放第一路。
     await using stdout = await default_native_fs.open_file(
       path.join(workspace_path, request.stdoutPath),
@@ -127,6 +141,8 @@ export class AgentWorkspaceRunner {
       request.todos,
       launch_options,
       signal,
+      request.host,
+      request.emitImage,
     );
     const execution: AgentWorkspaceExecution = {
       scriptPath: request.scriptPath,
@@ -146,58 +162,80 @@ export class AgentWorkspaceRunner {
     initial_todos: readonly string[],
     launch_options: ForkOptions,
     signal: AbortSignal,
+    host: WorkspaceHostPort | undefined,
+    emit_image: AgentWorkspaceRunRequest["emitImage"],
   ): Promise<WorkspaceProcessResult> {
     signal.throwIfAborted();
     return new Promise((resolve, reject) => {
       const child = fork(script_path, [], launch_options);
-      const proxy_requests = new Map<number, AbortController>();
+      const requests = new Map<number, AbortController>();
+      const operations = new Set<Promise<void>>(); // 回收前等待宿主资源实际结算
+      let closed = false;
       let todos = [...initial_todos]; // 只有正常退出才提交最后一份有效 Todo
       let terminal_error: unknown; // 首个终止原因拥有结果，close 只负责回收与结算
       const timeout_error = new Error("Workspace program timed out.");
 
       /** 终止当前进程时取消宿主等待，迟到响应不再投递。 */
-      const abort_proxy_requests = (reason: unknown): void => {
-        for (const controller of proxy_requests.values()) controller.abort(reason);
-        proxy_requests.clear();
+      const abort_requests = (reason: unknown): void => {
+        for (const controller of requests.values()) controller.abort(reason);
+        requests.clear();
       };
       /** 所有强制终止路径共用一次回收；输出等 close 后收齐。 */
       const terminate = (reason: unknown): void => {
         if (terminal_error !== undefined) return;
         terminal_error = reason;
-        abort_proxy_requests(reason);
+        abort_requests(reason);
         child.kill("SIGKILL");
       };
       /** IPC 发送失败沿同一终止路径处理。 */
       const send = (message: AgentWorkspaceRuntimeParentMessage): void => {
-        if (!child.connected || terminal_error !== undefined) return;
+        if (closed || !child.connected || terminal_error !== undefined) return;
         child.send(message, (error) => {
           if (error !== null) terminate(error);
         });
       };
-      /** 每个代理请求独立关联响应和取消状态。 */
-      const handle_proxy_request = (id: number, url: string): void => {
-        if (proxy_requests.has(id)) throw new Error("Workspace runtime reused a proxy request id.");
+      /** 参数在父进程信任边界收窄，脚本不能借宿主绕过工作区权限。 */
+      const handle_request = (id: number, request: WorkspaceRequest): void => {
+        if (requests.has(id)) throw new Error("Workspace runtime reused a request id.");
         const controller = new AbortController();
-        proxy_requests.set(id, controller);
-        void this.system_proxy_resolver.resolveProxy(url, controller.signal).then(
-          (rules) => {
-            if (proxy_requests.get(id) !== controller) return;
-            proxy_requests.delete(id);
-            send({ type: "proxy_result", id, result: { ok: true, rules } });
-          },
-          (error: unknown) => {
-            if (proxy_requests.get(id) !== controller) return;
-            proxy_requests.delete(id);
-            send({
-              type: "proxy_result",
-              id,
-              result: {
-                ok: false,
-                message: error instanceof Error ? error.message : String(error),
-              },
-            });
-          },
-        );
+        requests.set(id, controller);
+        const execute = async () => {
+          if (request.kind === "emit_image") {
+            if (typeof request.path !== "string" || request.path.length === 0 || !emit_image)
+              throw new Error("Invalid workspace image request.");
+            await emit_image(request.path, controller.signal);
+            return null;
+          }
+          if (request.kind === "resolve_proxy" && typeof request.url === "string")
+            return await this.system_proxy_resolver.resolveProxy(request.url, controller.signal);
+          if (!Check(WORKSPACE_HOST_REQUEST_SCHEMA, request))
+            throw new Error("Invalid workspace host request.");
+          if (!host) throw new Error("Workspace host unavailable.");
+          return await host(request, controller.signal);
+        };
+        const operation = execute()
+          .then(
+            (value) => {
+              if (requests.get(id) !== controller || controller.signal.aborted) return;
+              send({ type: "response", id, result: { ok: true, value } });
+            },
+            (error: unknown) => {
+              if (requests.get(id) !== controller || controller.signal.aborted) return;
+              send({
+                type: "response",
+                id,
+                result: {
+                  ok: false,
+                  message: error instanceof Error ? error.message : String(error),
+                },
+              });
+            },
+          )
+          .finally(() => {
+            requests.delete(id);
+            operations.delete(operation);
+          });
+        operations.add(operation);
       };
       const abort_listener = (): void => terminate(signal.reason);
       const timer = setTimeout(
@@ -209,12 +247,11 @@ export class AgentWorkspaceRunner {
         if (terminal_error !== undefined) return;
         try {
           switch (message.type) {
-            case "proxy_request":
-              handle_proxy_request(message.id, message.url);
+            case "request":
+              handle_request(message.id, message.request);
               break;
-            case "proxy_cancel":
-              proxy_requests.get(message.id)?.abort(new Error("Proxy resolution was cancelled."));
-              proxy_requests.delete(message.id);
+            case "cancel":
+              requests.get(message.id)?.abort(new Error("Workspace request was cancelled."));
               break;
             case "todos":
               todos = normalize_agent_todos(message.todos);
@@ -228,23 +265,26 @@ export class AgentWorkspaceRunner {
       });
       child.once("error", terminate);
       child.once("close", (exitCode, exitSignal) => {
+        closed = true;
         clearTimeout(timer);
         signal.removeEventListener("abort", abort_listener);
-        abort_proxy_requests(new Error("Workspace process closed."));
-        if (terminal_error !== undefined && terminal_error !== timeout_error)
-          reject(terminal_error);
-        else
-          resolve({
-            exitCode,
-            signal: exitSignal ?? null,
-            todos,
-            failure:
-              terminal_error === timeout_error
-                ? timeout_error.message
-                : exitCode !== 0
-                  ? "Workspace program exited unsuccessfully."
-                  : undefined,
-          });
+        abort_requests(new Error("Workspace process closed."));
+        void Promise.allSettled(operations).then(() => {
+          if (terminal_error !== undefined && terminal_error !== timeout_error)
+            reject(terminal_error);
+          else
+            resolve({
+              exitCode,
+              signal: exitSignal ?? null,
+              todos,
+              failure:
+                terminal_error === timeout_error
+                  ? timeout_error.message
+                  : exitCode !== 0
+                    ? "Workspace program exited unsuccessfully."
+                    : undefined,
+            });
+        });
       });
       send({ type: "start", todos });
       if (signal.aborted) abort_listener();

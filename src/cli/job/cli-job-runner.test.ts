@@ -26,6 +26,20 @@ afterEach(() => {
 });
 
 describe("run_cli_job", () => {
+  it("纯 PDF 输入报告排除文件并跳过模型与批量运行", async () => {
+    const harness = create_backend_services_harness();
+    const paths = create_cli_paths();
+    vi.spyOn(harness.backend_services.project.summary, "read").mockReturnValue({
+      snapshot: { entries: [{ rel_path: "book.pdf", file_type: "PDF", item_count: 0 }] },
+    });
+    await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
+    expect(harness.start_task).not.toHaveBeenCalled();
+    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir, ["book.pdf"]);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("done", undefined, [
+      "book.pdf",
+    ]);
+  });
+
   it("等待翻译终态后按顺序应用资源、导出并清理", async () => {
     const paths = create_cli_paths();
     const harness = create_backend_services_harness();
@@ -68,7 +82,7 @@ describe("run_cli_job", () => {
       }),
     );
     expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
-    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
+    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir, []);
     expect(
       harness.events.filter((event) =>
         ["apply", "start", "translation_export", "unload", "finished:done"].includes(event),
@@ -277,6 +291,11 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
         },
       },
       project: {
+        summary: {
+          read: () => ({
+            snapshot: { entries: [{ rel_path: "input.txt", file_type: "TXT", item_count: 4 }] },
+          }),
+        },
         lifecycle: { apply_task_input, create_project_commit, unload_project },
       },
       files: { translationExport: { export_files_to_directory } },

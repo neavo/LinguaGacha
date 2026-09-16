@@ -13,7 +13,6 @@ import { AgentWorkspaceRunner, type AgentWorkspaceRunRequest } from "./runner";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 
 let directory = "";
-let bootstrap_path = "";
 let request: AgentWorkspaceRunRequest;
 let handles: FileHandle[] = [];
 
@@ -21,10 +20,19 @@ beforeEach(() => {
   fork.mockReset();
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-runner-"));
   const workspacePath = path.join(directory, "workspace");
-  bootstrap_path = path.join(directory, "bootstrap.mjs");
+  const package_directory = path.join(directory, "node_modules/@lg/workspace");
+  fs.mkdirSync(package_directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(package_directory, "package.json"),
+    JSON.stringify({
+      name: "@lg/workspace",
+      type: "module",
+      exports: { "./bootstrap": "./bootstrap.mjs" },
+    }),
+  );
   fs.mkdirSync(path.join(workspacePath, "work/runs"), { recursive: true });
   fs.mkdirSync(path.join(workspacePath, "changes"));
-  fs.writeFileSync(bootstrap_path, "");
+  fs.writeFileSync(path.join(package_directory, "bootstrap.mjs"), "");
   request = {
     workspacePath,
     scriptPath: "work/runs/test.mjs",
@@ -67,7 +75,7 @@ describe("AgentWorkspaceRunner", () => {
 
   it("并发代理请求传回宿主规则，取消后丢弃迟到响应", async () => {
     let pending_signal: AbortSignal | undefined;
-    let finish_pending: (rules: string) => void = () => undefined;
+    let finish_pending: (value: string) => void = () => undefined;
     const { child, result } = await start_run(async (url, signal) => {
       if (url.endsWith("/ready")) return "PROXY proxy.example:8080";
       pending_signal = signal;
@@ -75,20 +83,60 @@ describe("AgentWorkspaceRunner", () => {
         finish_pending = resolve;
       });
     });
-    child.emit("message", { type: "proxy_request", id: 1, url: "https://example.com/ready" });
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "resolve_proxy", url: "https://example.com/ready" },
+    });
     await vi.waitFor(() =>
       expect(child.send).toHaveBeenCalledWith(
-        { type: "proxy_result", id: 1, result: { ok: true, rules: "PROXY proxy.example:8080" } },
+        { type: "response", id: 1, result: { ok: true, value: "PROXY proxy.example:8080" } },
         expect.any(Function),
       ),
     );
-    child.emit("message", { type: "proxy_request", id: 2, url: "https://example.com/pending" });
-    child.emit("message", { type: "proxy_cancel", id: 2 });
+    child.emit("message", {
+      type: "request",
+      id: 2,
+      request: { kind: "resolve_proxy", url: "https://example.com/pending" },
+    });
+    child.emit("message", { type: "cancel", id: 2 });
     expect(pending_signal?.aborted).toBe(true);
     finish_pending("DIRECT");
     child.emit("close", 0);
     await result;
     expect(child.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("程序退出后等待宿主回收，取消后不发送迟到结果", async () => {
+    let host_signal: AbortSignal | undefined;
+    let finish: () => void = () => undefined;
+    request = {
+      ...request,
+      host: async (_request, signal) => {
+        host_signal = signal;
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { path: "work/result.pdf" };
+      },
+    };
+    const { child, result } = await start_run();
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "print_pdf", html: "<p>test</p>" },
+    });
+    let settled = false;
+    void result.then(() => {
+      settled = true;
+    });
+    child.emit("close", 0);
+    expect(host_signal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await result;
+    expect(child.send).toHaveBeenCalledTimes(1);
   });
 
   it.each([0, 1])("退出码 %s 的小输出优先结构化，文件保留原始文本", async (code) => {
@@ -239,7 +287,7 @@ function build_runner(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
   return new AgentWorkspaceRunner({
-    runtimeBootstrapPath: bootstrap_path,
+    runtimeDirectory: directory,
     systemProxyResolver: { resolveProxy },
   });
 }

@@ -7,6 +7,7 @@ import { Item } from "../../../domain/item";
  * 键值 JSON 格式把 key 作为原文，value 作为已有译文
  */
 export class KVJSONFormat {
+  public readonly file_type = "KVJSON" as const;
   /**
    * 读取对象型 JSON，非字符串键值对不进入翻译条目
    */

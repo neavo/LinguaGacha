@@ -1,4 +1,5 @@
 import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { PDFExecution } from "./formats/pdf/pdf-worker";
 import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "../file/file-format-service";
 import { normalize_setting_snapshot } from "../../domain/setting";
@@ -23,6 +24,7 @@ export class FilePreviewService {
    */
   public constructor(
     app_setting_service: AppSettingService,
+    private readonly pdf_execution: PDFExecution,
     log_manager: Pick<LogManager, "warning"> | null = null,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -98,6 +100,7 @@ export class FilePreviewService {
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
+      this.pdf_execution,
       this.native_fs,
     );
   }

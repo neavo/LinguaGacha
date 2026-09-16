@@ -37,15 +37,17 @@ export function create_agent_skill_tools(
   session_skills: readonly AgentSkillDefinition[],
   paths: AgentSkillPaths,
   log_manager: AgentSkillLog,
+  mount_skill: (name: string, source: string) => Promise<string>,
   native_fs: AgentSkillNativeFs = default_native_fs,
 ): ToolDefinition[] {
   return [
     defineTool({
       name: "read_skill",
+      executionMode: "sequential",
       label: "读技能",
       description: [
         "读取指定技能的正文或包内参考文件。",
-        "读取成功后，content 提供正文。资源缺失或路径无效时，按返回信息修正技能名称或包内路径。",
+        "读取成功后，content 提供正文，workspace_path 提供只读技能包路径，可从 workspace_run 标准导入包内脚本。资源缺失或路径无效时，按返回信息修正技能名称或包内路径。",
       ].join("\n\n"),
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
@@ -97,10 +99,12 @@ export function create_agent_skill_tools(
               path: resource_path,
             });
           }
+          const workspace_path = await mount_skill(params.name, skill_root);
           return agent_tool_result({
             name: params.name,
             path: resource_path,
             content: native_fs.read_text_file(target),
+            workspace_path,
           });
         } catch (error) {
           if (error instanceof AgentToolError) throw error;

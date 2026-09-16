@@ -21,9 +21,12 @@ export const en_us_workbench_page = {
     add_file_loading_toast: "Adding file and refreshing cache …",
     no_valid_file: "No valid files can be added.",
     file_action_failed: "File operation failed. Please try again later.",
-    generate_translation_failed:
-      "Failed to generate available translation files. Please try again later.",
     close_project_failed: "Failed to close the project. Please try again later.",
+  },
+  pdf: {
+    content: "Content",
+    pages: "Reviewed {reviewed}/{pages}",
+    coverage: "Translation covers {translated}/{pages} pages",
   },
   action: {
     add_file: "Add",

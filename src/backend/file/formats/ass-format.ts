@@ -14,6 +14,7 @@ import { Item } from "../../../domain/item";
  * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回
  */
 export class ASSFormat {
+  public readonly file_type = "ASS" as const;
   /**
    * 配置用于目标和双语输出路径，以及双语去重策略
    */

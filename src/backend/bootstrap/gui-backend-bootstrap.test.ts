@@ -289,11 +289,14 @@ describe("GuiBackendBootstrap", () => {
 /** 为每个用例提供独立宿主回调，避免副作用调用记录串扰。 */
 function create_options() {
   return {
+    imageHost: async () => {
+      throw new Error("Unexpected image request.");
+    },
     appRoot: "E:/app",
     builtinRoot: "E:/app.asar/builtin",
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     agentWorkspaceRun: vi.fn(),
-    agentWorkspaceRuntimeDirectory: "runtime",
+    workspaceRuntimeDirectory: "runtime",
     openDirectory: vi.fn(),
     pickSavePath: vi.fn(async () => null),
     workerExecution: { kind: "in_process" as const },

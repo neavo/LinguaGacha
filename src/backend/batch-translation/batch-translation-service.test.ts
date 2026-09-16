@@ -173,7 +173,7 @@ it("历史工程批量翻译保留旧分析物理数据、正式术语与资产�
   database.set_meta(project_path, "translation_prompt_enable", true);
   const source = path.join(directory.path, "text.txt");
   fs.writeFileSync(source, "Hello");
-  database.add_asset_from_source(project_path, "text.txt", source);
+  database.add_asset_from_source(project_path, "text.txt", source, null);
   database.close();
   {
     using raw = new DatabaseSync(project_path);

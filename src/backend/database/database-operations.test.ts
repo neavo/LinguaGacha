@@ -1,3 +1,5 @@
+import { read_pdf_document } from "../file/formats/pdf/pdf-document";
+import { create_pdf_fixture } from "../file/formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -281,7 +283,7 @@ describe("ProjectDatabase", () => {
     fs.writeFileSync(source_path, Buffer.from("hello"));
 
     database.create_project(lg_path, "asset");
-    database.add_asset_from_source(lg_path, "source.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "source.txt", source_path, null, 0);
 
     expect(database.read_asset_content(lg_path, "source.txt")).toEqual(Buffer.from("hello"));
   });
@@ -340,11 +342,11 @@ describe("ProjectDatabase", () => {
     fs.writeFileSync(cover_path, Buffer.from("cover"));
     fs.writeFileSync(updated_beta_path, Buffer.from("updated-beta"));
 
-    database.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, 10);
-    database.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path);
-    database.add_asset_from_source(lg_path, "cover.bin", cover_path, 0);
+    database.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, null, 10);
+    database.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path, null);
+    database.add_asset_from_source(lg_path, "cover.bin", cover_path, null, 0);
     database.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]);
-    database.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path);
+    database.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path, null);
 
     expect(database.get_asset_count(lg_path)).toBe(3);
     expect(database.get_all_asset_records(lg_path)).toEqual([
@@ -379,7 +381,7 @@ describe("ProjectDatabase", () => {
     const source_path = project_path("chapter.txt");
     fs.writeFileSync(source_path, "chapter");
 
-    database.add_asset_from_source(lg_path, "chapter.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "chapter.txt", source_path, null, 0);
     database.set_items(lg_path, [
       { id: 1, src: "完成", status: "PROCESSED" },
       { id: 2, src: "失败后修复", status: "ERROR" },
@@ -490,4 +492,23 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     expect(database.read_asset_content(lg_path, "legacy.txt")).toEqual(Buffer.from("legacy"));
   });
+});
+
+it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", async () => {
+  const { database, lg_path } = create_database_project("pdf-source-conflict");
+  const source = project_path("book.pdf");
+  const bytes = create_pdf_fixture();
+  fs.writeFileSync(source, bytes);
+  const document = read_pdf_document(bytes);
+  database.transaction(lg_path, () =>
+    database.add_asset_from_source(lg_path, "book.pdf", source, document, 0),
+  );
+  fs.writeFileSync(source, create_pdf_fixture(["changed after parse"]));
+  expect(() =>
+    database.transaction(lg_path, () =>
+      database.update_asset_from_source(lg_path, "book.pdf", source, document),
+    ),
+  ).toThrow("file.parse_failed");
+  expect(database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
+  expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentImageHost } from "../../shared/agent-image";
 
 import type {
   BackendRuntimeHostOperation,
@@ -7,7 +8,7 @@ import type {
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
-const RUNTIME_ENTRY_PATH = "E:/runtime/bootstrap.mjs";
+const RUNTIME_DIRECTORY = "E:/runtime";
 
 const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
@@ -65,6 +66,47 @@ vi.mock("../worker/worker-execution", () => ({
 vi.mock("../log/log-text", () => ({ t_main_log: (key: string) => `translated:${key}` }));
 
 describe("run_backend_runtime", () => {
+  it("图片宿主取消等待清理回包，迟到成功也不能恢复已取消调用", async () => {
+    const port = create_port();
+    await run_backend_runtime({
+      appRoot: "E:/app",
+      builtinRoot: "E:/app/builtin",
+      moduleUrl: import.meta.url,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
+      port,
+    });
+    const { imageHost } = runtime_mocks.constructor_options[0] as { imageHost: AgentImageHost };
+    const controller = new AbortController();
+    const reason = new Error("cancel image");
+    const pending = imageHost(
+      {
+        kind: "prepare_image",
+        bytes: new Uint8Array([1]),
+        mimeType: "image/png",
+        policy: { maxEdge: 1920, maxPixels: 32_000_000, maxBytes: 1024, quality: 0.85 },
+      },
+      controller.signal,
+    );
+    const rejected = expect(pending).rejects.toBe(reason);
+    const request = get_host_request(port, "prepare_image");
+    controller.abort(reason);
+    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
+    port.emit({
+      type: "host_response",
+      requestId: request.requestId,
+      result: {
+        ok: true,
+        data: {
+          bytes: new Uint8Array([1]),
+          width: 1,
+          height: 1,
+          originalWidth: 1,
+          originalHeight: 1,
+        },
+      },
+    });
+    await rejected;
+  });
   beforeEach(() => {
     runtime_mocks.constructor_options.length = 0;
     runtime_mocks.runner_constructor_options.length = 0;
@@ -95,7 +137,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
-      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
       port,
     });
 
@@ -195,7 +237,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
       port,
     });
     const runner_options = runtime_mocks.runner_constructor_options[0] as {
@@ -227,7 +269,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -251,7 +293,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
+      workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
       port,
     });
 

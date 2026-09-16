@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AppError } from "../../../../shared/error";
 
 import { decode_text_content } from "../../../../shared/utils/text-tool";
 import {
@@ -29,6 +30,7 @@ const DEFAULT_CONFIG: FileFormatServiceConfig = {
  * RenPy 翻译脚本格式门面，只编排 AST 管线和文件读写。
  */
 export class RenPyFormat {
+  public readonly file_type = "RENPY" as const;
   /**
    * 构造时固定配置，确保姓名字段写回策略和导出服务一致。
    */
@@ -60,7 +62,7 @@ export class RenPyFormat {
     for (const [rel_path, group] of group_items(items, "RENPY")) {
       const original = asset_reader(rel_path);
       if (original === null) {
-        continue;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
       const lines = split_text_lines_for_items(await decode_text_content(original));
       const normalized_items = build_items_for_writeback(rel_path, lines, group);

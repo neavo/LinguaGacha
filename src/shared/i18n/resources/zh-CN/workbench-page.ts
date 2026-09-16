@@ -18,8 +18,12 @@ export const zh_cn_workbench_page = {
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
     no_valid_file: "没有可添加的有效文件。",
     file_action_failed: "文件操作失败，请稍后重试。",
-    generate_translation_failed: "生成当前可用译文失败，请稍后重试。",
     close_project_failed: "关闭工程失败，请稍后重试。",
+  },
+  pdf: {
+    content: "内容",
+    pages: "核对 {reviewed}/{pages} 页",
+    coverage: "译稿覆盖 {translated}/{pages} 页",
   },
   action: {
     add_file: "添加",

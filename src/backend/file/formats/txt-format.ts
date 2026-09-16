@@ -14,6 +14,7 @@ import { Item } from "../../../domain/item";
  * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则
  */
 export class TXTFormat {
+  public readonly file_type = "TXT" as const;
   /**
    * 配置只用于导出路径和双语去重，不参与 TXT 解析
    */

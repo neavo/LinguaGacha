@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AppError } from "../../../../shared/error";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import { Item } from "../../../../domain/item";
@@ -19,6 +20,7 @@ import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
  * TRANS 格式处理器，负责 .trans 的读入、引擎处理器选择和最小补丁写回
  */
 export class TRANSFormat {
+  public readonly file_type = "TRANS" as const;
   /**
    * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters
    */
@@ -85,12 +87,12 @@ export class TRANSFormat {
     for (const [rel_path, group] of group_items(items, "TRANS")) {
       const original = asset_reader(rel_path);
       if (original === null) {
-        continue;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
 
       const root = JsonTool.parseStrict<MutableJsonRecord>(original);
       if (typeof root !== "object" || root === null || Array.isArray(root)) {
-        continue;
+        throw new AppError("file.invalid_structure", { public_details: { file: rel_path } });
       }
       const project = to_mutable_record(root["project"]);
       const files = to_mutable_record(project["files"]);

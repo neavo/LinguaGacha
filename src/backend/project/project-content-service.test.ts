@@ -1,3 +1,6 @@
+import { create_pdf_execution } from "../file/formats/pdf/test-support";
+import { create_pdf_fixture } from "../file/formats/pdf/test-support";
+import { ProjectDataReader } from "./project-data-reader";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -68,6 +71,7 @@ function create_service(
       runtime_gate,
       session_state,
       write_store,
+      create_pdf_execution(),
       null,
       undefined,
       log_manager,
@@ -189,13 +193,15 @@ function pause_next_parse_asset(): {
   const parse_released = new Promise<void>((resolve) => {
     release_parse = resolve;
   });
-  vi.spyOn(FileFormatService.prototype, "parse_asset").mockImplementationOnce(
-    async function (this: FileFormatService, rel_path, content) {
-      mark_parse_started();
-      await parse_released;
-      return original_parse_asset.call(this, rel_path, content);
-    },
-  );
+  vi.spyOn(FileFormatService.prototype, "parse_asset").mockImplementationOnce(async function (
+    this: FileFormatService,
+    rel_path,
+    content,
+  ) {
+    mark_parse_started();
+    await parse_released;
+    return original_parse_asset.call(this, rel_path, content);
+  });
   return { parse_started, release_parse };
 }
 
@@ -209,6 +215,55 @@ afterEach(() => {
 });
 
 describe("ProjectContentService", () => {
+  it("混合导入仅文本生成 Item，PDF 替换和全部重置清空独立译稿", async () => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const source = project_path("book.pdf");
+      const text = project_path("story.txt");
+      fs.writeFileSync(source, create_pdf_fixture());
+      fs.writeFileSync(text, "Hello world");
+      const revisions = () =>
+        new ProjectDataReader(database).build_manifest({ loaded: true, projectPath: lg_path })[
+          "sectionRevisions"
+        ];
+      await service.import_files({
+        files: [
+          { source_path: source, target_rel_path: "book.pdf" },
+          { source_path: text, target_rel_path: "story.txt" },
+        ],
+        conflict_action: "replace",
+        expected_section_revisions: revisions(),
+      });
+      expect(database.get_item_count(lg_path)).toBe(1);
+      expect(new ProjectDataReader(database).build_files_record_block(lg_path)).toMatchObject({
+        "book.pdf": { file_type: "PDF" },
+        "story.txt": { file_type: "TXT" },
+      });
+      const old = database.read_pdf_document(lg_path, "book.pdf")!;
+      const translation = {
+        sections: [{ page_start: 1, page_end: 1, markdown: "已有译文" }],
+        reviewed_pages: [1],
+        notes: "继续",
+      };
+      database.write_pdf_document(lg_path, "book.pdf", { ...old, translation });
+      fs.writeFileSync(source, create_pdf_fixture(["replacement"]));
+      await service.import_files({
+        files: [{ source_path: source, target_rel_path: "book.pdf" }],
+        conflict_action: "replace",
+        expected_section_revisions: revisions(),
+      });
+      const next = database.read_pdf_document(lg_path, "book.pdf")!;
+      expect(next.translation).toBeNull();
+      expect(next.source.digest).not.toBe(old.source.digest);
+      expect(next.source.pages).toHaveLength(1);
+      database.write_pdf_document(lg_path, "book.pdf", { ...next, translation });
+      await service.reset_translation({ mode: "all" });
+      expect(database.read_pdf_document(lg_path, "book.pdf")?.translation).toBeNull();
+      expect(database.get_item_count(lg_path)).toBe(1);
+    } finally {
+      database.close();
+    }
+  });
   it("写入 settings-only 对齐结果且不 bump 运行态 section", async () => {
     const publish_project_change = vi.fn();
     const { database, service, lg_path } = create_service(publish_project_change);
@@ -255,7 +310,7 @@ describe("ProjectContentService", () => {
     const other_source_path = project_path("other.txt");
     fs.writeFileSync(other_source_path, "旧", "utf-8");
     database.create_project(other_lg_path, "other");
-    database.add_asset_from_source(other_lg_path, "other.txt", other_source_path, 0);
+    database.add_asset_from_source(other_lg_path, "other.txt", other_source_path, null, 0);
     database.set_items(other_lg_path, [
       create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 }),
     ]);
@@ -327,7 +382,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "a.txt", source_path, null, 0);
     database.set_items(lg_path, [
       create_persistent_item({
         src: "旧",
@@ -397,7 +452,7 @@ describe("ProjectContentService", () => {
     try {
       const source = project_path(file);
       fs.writeFileSync(source, content, "utf-8");
-      database.add_asset_from_source(lg_path, file, source, 0);
+      database.add_asset_from_source(lg_path, file, source, null, 0);
       // 重置读取工程内的源文件快照，外部文件后续变化不参与恢复。
       fs.writeFileSync(source, "外部文件已变更", "utf-8");
       database.set_items(lg_path, [
@@ -457,7 +512,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service();
     const source = project_path("a.txt");
     fs.writeFileSync(source, content, "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", source, 0);
+    database.add_asset_from_source(lg_path, "a.txt", source, null, 0);
     database.set_items(lg_path, [
       create_persistent_item({ item_id: 20, row_number: 0, dst: "旧译文", status: "PROCESSED" }),
       create_persistent_item({ item_id: 21, row_number: 1 }),
@@ -480,7 +535,7 @@ describe("ProjectContentService", () => {
       const file = failure === "parse" ? "a.json" : "a.txt";
       const source = project_path(file);
       fs.writeFileSync(source, "新正文", "utf-8");
-      database.add_asset_from_source(lg_path, file, source, 0);
+      database.add_asset_from_source(lg_path, file, source, null, 0);
       database.set_items(lg_path, [
         create_persistent_item({ file_path: file, dst: "已有译文", status: "PROCESSED" }),
       ]);
@@ -524,7 +579,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "a.txt", source_path, null, 0);
     database.set_items(lg_path, [
       create_persistent_item({
         src: "新",
@@ -588,7 +643,7 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "旧", "utf-8");
     fs.writeFileSync(second_source, "新", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
+    database.add_asset_from_source(lg_path, "a.txt", first_source, null, 0);
     database.set_items(lg_path, [
       create_persistent_item({
         src: "旧",
@@ -646,7 +701,7 @@ describe("ProjectContentService", () => {
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(conflict_source, "替换候选", "utf-8");
     fs.writeFileSync(new_source, "新", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", old_source, 0);
+    database.add_asset_from_source(lg_path, "a.txt", old_source, null, 0);
     database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
 
     await service.import_files({
@@ -755,7 +810,7 @@ describe("ProjectContentService", () => {
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(replace_source, "新", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", old_source, 3);
+    database.add_asset_from_source(lg_path, "a.txt", old_source, null, 3);
     database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
 
     const ack = await service.import_files({
@@ -796,7 +851,7 @@ describe("ProjectContentService", () => {
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "同文", "utf-8");
     fs.writeFileSync(replace_source, "同文", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", old_source, 2);
+    database.add_asset_from_source(lg_path, "a.txt", old_source, null, 2);
     database.set_items(lg_path, [
       create_persistent_item({
         src: "同文",
@@ -833,8 +888,8 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
-    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
+    database.add_asset_from_source(lg_path, "a.txt", first_source, null, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, null, 1);
 
     const ack = await service.reorder_files({
       ordered_rel_paths: ["b.txt", "a.txt"],
@@ -872,7 +927,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "a.txt", source_path, null, 0);
     database.set_items(lg_path, [
       create_persistent_item({
         src: "旧",
@@ -918,8 +973,8 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
-    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
+    database.add_asset_from_source(lg_path, "a.txt", first_source, null, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, null, 1);
     database.set_items(lg_path, [
       create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
       create_persistent_item({
@@ -997,8 +1052,8 @@ describe("ProjectContentService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
-    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
+    database.add_asset_from_source(lg_path, "a.txt", first_source, null, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, null, 1);
     runtime_gate.begin_runtime("batch_translation");
 
     await expect(
@@ -1019,7 +1074,7 @@ describe("ProjectContentService", () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "a.txt", source_path, null, 0);
     const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(() => {
       throw new Error("事务失败");
     });

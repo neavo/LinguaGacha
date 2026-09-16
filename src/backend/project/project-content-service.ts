@@ -1,3 +1,6 @@
+import { build_project_file_records } from "./project-file-records";
+import type { PDFDocument } from "../../shared/pdf";
+import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
@@ -92,6 +95,7 @@ export class ProjectContentService {
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
+    private readonly pdf_execution: PDFExecution,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
@@ -132,6 +136,7 @@ export class ProjectContentService {
       const imported_item_ids: number[] = [];
       const imported_files: Array<{
         mode: "add" | "replace";
+        pdf_document: PDFDocument | null;
         source_path: string;
         target_rel_path: string;
         file_record: {
@@ -189,6 +194,7 @@ export class ProjectContentService {
         }
         imported_files.push({
           mode: existing_record === undefined ? "add" : "replace",
+          pdf_document: file.pdf_document,
           source_path: file.source_path,
           target_rel_path,
           file_record,
@@ -230,12 +236,14 @@ export class ProjectContentService {
               kind: "add_from_source",
               path: file.target_rel_path,
               sourcePath: file.source_path,
+              pdfDocument: file.pdf_document,
               sortOrder: file.file_record.sort_index,
             }
           : {
               kind: "update_from_source",
               path: file.target_rel_path,
               sourcePath: file.source_path,
+              pdfDocument: file.pdf_document,
             },
       );
       const write_result = await this.write_store.replace_project_items_and_files({
@@ -286,13 +294,17 @@ export class ProjectContentService {
         items,
         settings,
       });
+      const pdf_paths = rel_paths.filter(
+        (file_path) => snapshot.files[file_path]?.file_type === "PDF",
+      );
       return await this.write_store.replace_project_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["items"],
+        revisionSections: pdf_paths.length ? ["items", "pdf"] : ["items"],
         source: "project_reset_files",
+        resetPDFPaths: pdf_paths,
         updatedSections: ["items"],
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
@@ -474,6 +486,7 @@ export class ProjectContentService {
           requireExpectedSectionRevisions: false,
           revisionSections: ["items"],
           source: "translation_reset",
+          resetPDFPaths: Object.keys(this.database.read_pdf_summaries(project_path)),
           updatedSections: ["items"],
           items: build_project_item_persistent_records(write_output.items),
           meta: this.build_prefilter_reset_meta(settings, write_output),
@@ -619,6 +632,7 @@ export class ProjectContentService {
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
+      this.pdf_execution,
       this.native_fs,
     );
   }
@@ -664,22 +678,16 @@ export class ProjectContentService {
     asset_records: ProjectAssetRecord[],
     item_records: Array<MutableJsonRecord | ProjectItemPublicRecord>,
   ): ProjectFileSection {
-    const file_type_by_path = new Map<string, string>();
-    for (const item of item_records) {
-      const rel_path = String(item["file_path"] ?? "");
-      if (rel_path !== "" && !file_type_by_path.has(rel_path)) {
-        file_type_by_path.set(rel_path, String(item["file_type"] ?? "NONE"));
-      }
-    }
-    const files: ProjectFileSection = {};
-    for (const record of asset_records) {
-      files[record.path] = {
-        rel_path: record.path,
-        file_type: file_type_by_path.get(record.path) ?? "NONE",
-        sort_index: record.sort_order,
-      };
-    }
-    return files;
+    return build_project_file_records(
+      asset_records,
+      item_records.map((item) => ({
+        file_path: String(item["file_path"] ?? ""),
+        file_type: String(item["file_type"] ?? "NONE"),
+      })),
+      Object.keys(
+        this.database.read_pdf_summaries(this.session_state.require_loaded_project_path()),
+      ),
+    );
   }
 
   /**
@@ -954,7 +962,9 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
-      items.push(...(await format_service.parse_asset(record.path, content)));
+      if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
+      const parsed = await format_service.parse_asset(record.path, content);
+      if (parsed.kind === "items") items.push(...parsed.items);
     }
     return items;
   }

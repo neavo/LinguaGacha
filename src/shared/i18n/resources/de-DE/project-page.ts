@@ -62,6 +62,7 @@ export const de_de_project_page = {
     task: "Aufgabenstatus wird geladen …",
   },
   formats: {
+    pdf: "PDF",
     title: "Unterstützte Dateiformate",
     txt: "Nur Text",
     md: "Markdown",

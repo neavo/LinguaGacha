@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
+import type { AgentImageHostResult } from "../../shared/agent-image";
 
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
@@ -37,7 +37,7 @@ export async function run_backend_runtime(args: {
   appRoot: string; // 安装根继续决定版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
-  agentWorkspaceRuntimeBootstrapPath: string;
+  workspaceRuntimeDirectory: string;
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
@@ -57,6 +57,10 @@ export async function run_backend_runtime(args: {
       pending_host_requests.set(request_id, pending);
       if (signal !== undefined) {
         const abort_listener = () => {
+          if (operation.kind === "print_pdf" || operation.kind === "prepare_image") {
+            args.port.postMessage({ type: "host_cancel", requestId: request_id });
+            return; // 等窗口释放后的回包，工作区互斥仍由原调用持有。
+          }
           pending_host_requests.delete(request_id);
           reject(signal.reason);
         };
@@ -83,10 +87,21 @@ export async function run_backend_runtime(args: {
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
   const agent_workspace_runner = new AgentWorkspaceRunner({
-    runtimeBootstrapPath: args.agentWorkspaceRuntimeBootstrapPath,
+    runtimeDirectory: args.workspaceRuntimeDirectory,
     systemProxyResolver: system_proxy_resolver,
   });
   const bootstrap = new GuiBackendBootstrap({
+    imageHost: async (operation, signal) => {
+      const result = (await call_host(operation, signal)) as AgentImageHostResult;
+      signal.throwIfAborted();
+      return result;
+    },
+    pdfHost: async (operation, signal) => {
+      const result = await call_host(operation, signal);
+      signal?.throwIfAborted();
+      if (!(result instanceof Uint8Array)) throw new TypeError("Invalid PDF host bytes.");
+      return result;
+    },
     appRoot: args.appRoot,
     builtinRoot: args.builtinRoot,
     systemProxyResolver: system_proxy_resolver,
@@ -101,7 +116,7 @@ export async function run_backend_runtime(args: {
       return result;
     },
     agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
-    agentWorkspaceRuntimeDirectory: path.dirname(args.agentWorkspaceRuntimeBootstrapPath),
+    workspaceRuntimeDirectory: args.workspaceRuntimeDirectory,
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });

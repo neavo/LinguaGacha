@@ -62,6 +62,7 @@ export const en_us_project_page = {
     task: "Loading task status …",
   },
   formats: {
+    pdf: "PDF",
     title: "Supported File Formats",
     txt: "Plain Text",
     md: "Markdown",

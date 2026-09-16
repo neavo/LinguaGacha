@@ -1,3 +1,4 @@
+import type { ProjectDatabase } from "../database/database-operations";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { JsonValue, MutableJsonRecord } from "../../domain/json";
 import type {
@@ -22,7 +23,11 @@ export class ProjectSummaryService {
   /**
    * session_state 提供工程身份，cache 提供当前项目热读事实。
    */
-  public constructor(session_state: ProjectSessionState, cache: CacheReadPort) {
+  public constructor(
+    session_state: ProjectSessionState,
+    cache: CacheReadPort,
+    private readonly database: Pick<ProjectDatabase, "read_pdf_summaries">,
+  ) {
     this.session_state = session_state;
     this.cache = cache;
   }
@@ -34,11 +39,17 @@ export class ProjectSummaryService {
     const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
+    const pdf = file_entries.some((entry) => entry["file_type"] === "PDF")
+      ? this.database.read_pdf_summaries(project_path)
+      : {};
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
       snapshot: {
-        entries: file_entries as unknown as JsonValue,
+        entries: file_entries.map((entry) => ({
+          ...entry,
+          ...(pdf[String(entry["rel_path"])] ? { pdf: pdf[String(entry["rel_path"])] } : {}),
+        })) as unknown as JsonValue,
       },
     };
   }

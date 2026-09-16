@@ -4,10 +4,11 @@ export type WorkbenchPlannerSettings = {
   skip_duplicate_source_text_enable: boolean; // 后端同文件重复原文过滤开关
 };
 
-type WorkbenchCommandSection = "files" | "items";
+type WorkbenchCommandSection = "files" | "items" | "pdf";
 type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
 type WorkbenchPlannerFileRecord = {
+  file_type?: string; // PDF 内容重置需要其独立 revision
   rel_path: string; // 后端 query 返回的项目内相对路径
 };
 
@@ -34,6 +35,7 @@ function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | nul
 
   return {
     rel_path: String((value as WorkbenchPlannerFileRecord).rel_path ?? "").trim(),
+    file_type: (value as WorkbenchPlannerFileRecord).file_type,
   };
 }
 
@@ -148,12 +150,14 @@ export function create_workbench_reset_file_plan(args: {
     throw new Error("Target file was not found in the current workbench.");
   }
 
+  const sections: WorkbenchCommandSection[] =
+    file_map.get(target_rel_path)?.file_type === "PDF" ? ["items", "pdf"] : ["items"];
   return {
-    updatedSections: ["items"],
+    updatedSections: sections,
     requestBody: {
       rel_paths: [target_rel_path],
       project_settings: create_workbench_planner_settings(args.settings),
-      expected_section_revisions: build_expected_revisions(args.state, ["items"]),
+      expected_section_revisions: build_expected_revisions(args.state, sections),
     },
   };
 }

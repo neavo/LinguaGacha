@@ -4,7 +4,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
-export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // 只表达当前表结构能力，不承载业务写回完成状态
+export const PROJECT_DATABASE_SCHEMA_VERSION = 3; // 只表达当前表结构能力，不承载业务写回完成状态
 
 /**
  * 迁移背景：
@@ -34,6 +34,7 @@ export const project_schema_migration: MigrationDescriptor = {
 export function run_project_schema_migration(db: DatabaseSync): void {
   ensure_current_schema(db);
   ensure_asset_sort_order_column(db);
+
   write_meta_version(db, "schema_version", PROJECT_DATABASE_SCHEMA_VERSION);
 }
 
@@ -53,6 +54,10 @@ function ensure_current_schema(db: DatabaseSync): void {
         data BLOB NOT NULL,
         original_size INTEGER NOT NULL,
         compressed_size INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pdf_documents (
+        file_path TEXT PRIMARY KEY,
+        data TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

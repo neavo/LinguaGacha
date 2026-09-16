@@ -1,3 +1,8 @@
+import {
+  PDF_UPDATE_SCHEMA,
+  PDF_TRANSLATION_SCHEMA,
+  type PDFUpdateIntent,
+} from "../../file/formats/pdf/pdf-source";
 import path from "node:path";
 
 import { Check } from "typebox/value";
@@ -5,7 +10,6 @@ import type { TSchema } from "@earendil-works/pi-ai";
 import { is_json_record, type JsonRecord } from "../../../domain/json";
 import { PROMPT_KINDS } from "../../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../../domain/quality";
-import * as AppErrors from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { iterate_utf8_lf_lines } from "../../../shared/utils/text-tool";
 import type { NativeFs } from "../../../native/native-fs";
@@ -50,6 +54,43 @@ export async function prepare_agent_workspace_changes(args: {
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.items.updates),
   );
+  const pdf: PDFUpdateIntent[] = [];
+  for (const row of await read_change_rows(
+    args.nativeFs,
+    path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates),
+  )) {
+    if (!Check(PDF_UPDATE_SCHEMA, row.value)) {
+      rejected.push(invalid_change(PDF_UPDATE_SCHEMA, row, "pdf", "update"));
+      continue;
+    }
+    try {
+      const work_root = args.nativeFs.real_path(path.join(args.workspacePath, "work"));
+      const target = args.nativeFs.real_path(
+        path.resolve(args.workspacePath, row.value.translation_path),
+      );
+      const relative = path.relative(work_root, target);
+      if (
+        relative === "" ||
+        relative === ".." ||
+        relative.startsWith(".." + path.sep) ||
+        path.isAbsolute(relative)
+      )
+        throw new Error("PDF translation must be inside work.");
+      const translation: unknown = JSON.parse(args.nativeFs.read_file(target).toString("utf8"));
+      if (!Check(PDF_TRANSLATION_SCHEMA, translation)) throw new Error("Invalid PDF translation.");
+      pdf.push({ ...row.value, line: row.line, translation });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      rejected.push({
+        scope: "pdf",
+        op: "update",
+        file_path: row.value.file_path,
+        line: row.line,
+        reason: "invalid_change",
+        message: error.message,
+      });
+    }
+  }
   const prompt_rows = await read_change_rows(
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates),
@@ -94,7 +135,7 @@ export async function prepare_agent_workspace_changes(args: {
     }
     quality[kind] = { creates, updates, deletes };
   }
-  return { batch: { items, prompts, quality }, rejected };
+  return { batch: { items, prompts, quality, pdf }, rejected };
 }
 
 /** Schema 负责记录结构，解析器只把合法记录转换为领域意图。 */
@@ -194,7 +235,8 @@ function invalid_change(
 
 /** 保留物理行号，单行解析错误不会中断同批其它意图。 */
 async function read_change_rows(native_fs: NativeFs, file_path: string): Promise<ParsedRow[]> {
-  if (!native_fs.exists(file_path)) throw new AppErrors.AppError("runtime.internal_invariant");
+  // Agent 可删除未使用的清单，缺失与空文件都表示没有意图。
+  if (!native_fs.exists(file_path)) return [];
   if (native_fs.stat(file_path).size === 0) return [];
   const rows: ParsedRow[] = [];
   let line = 0;

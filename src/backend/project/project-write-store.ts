@@ -1,3 +1,4 @@
+import type { PDFDocument } from "../../shared/pdf";
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
 import { Item } from "../../domain/item";
 import {
@@ -55,7 +56,7 @@ import {
 import type { PromptKind } from "../../domain/prompt";
 import { QUALITY_RULE_KINDS, type QualityRuleKind } from "../../domain/quality";
 
-type RevisionBackedSection = "files" | "items" | "proofreading";
+type RevisionBackedSection = "files" | "items" | "proofreading" | "pdf";
 type ProjectWriteRevisionContext = {
   project_path: string;
   meta: MutableJsonRecord;
@@ -70,12 +71,14 @@ export type ProjectAssetWrite =
       kind: "add_from_source";
       path: string;
       sourcePath: string;
+      pdfDocument: PDFDocument | null;
       sortOrder: number;
     }
   | {
       kind: "update_from_source";
       path: string;
       sourcePath: string;
+      pdfDocument: PDFDocument | null;
     }
   | {
       kind: "delete";
@@ -269,6 +272,7 @@ export class ProjectWriteStore {
       source: string;
       updatedSections: ProjectDataSection[];
       assetWrites?: ProjectAssetWrite[];
+      resetPDFPaths?: string[];
       items?: MutableJsonRecord[];
       meta?: MutableJsonRecord;
 
@@ -312,7 +316,21 @@ export class ProjectWriteStore {
       sections: request.sections,
       sectionModes: request.sectionModes,
       prepare: (revision_context) => {
+        const pdf_changed =
+          (request.resetPDFPaths?.length ?? 0) > 0 ||
+          (request.assetWrites ?? []).some(
+            (write) =>
+              (write.kind !== "delete" && write.pdfDocument != null) ||
+              this.database.read_pdf_document(request.projectPath, write.path) !== null,
+          );
+        const updated_sections = pdf_changed
+          ? [...new Set([...request.updatedSections, "pdf" as const])]
+          : request.updatedSections;
         const writes: ProjectDatabaseWrite[] = [];
+        if (request.resetPDFPaths?.length)
+          writes.push((db) =>
+            db.reset_pdf_translations(request.projectPath, request.resetPDFPaths!),
+          );
         for (const write of request.assetWrites ?? []) {
           writes.push(this.build_asset_write(request.projectPath, write));
         }
@@ -330,8 +348,13 @@ export class ProjectWriteStore {
           );
         }
 
-        writes.push(...this.build_section_revision_writes(revision_context));
-        return { writes };
+        writes.push(
+          ...this.build_section_revision_writes({
+            ...revision_context,
+            sections: updated_sections,
+          }),
+        );
+        return { writes, updatedSections: updated_sections };
       },
     });
   }
@@ -670,6 +693,10 @@ export class ProjectWriteStore {
       batch: request.batch,
       current: {
         items: Array.isArray(items) ? items.filter(is_json_record) : [],
+        pdf: request.batch.pdf.flatMap((intent) => {
+          const document = this.database.read_pdf_document(request.projectPath, intent.file_path);
+          return document ? [{ file_path: intent.file_path, document }] : [];
+        }),
         quality: Object.fromEntries(
           quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
         ),
@@ -683,6 +710,7 @@ export class ProjectWriteStore {
   /** 只有包含实际变化的 section 才参与 revision、缓存与公开事件。 */
   private build_agent_updated_sections(outcome: AgentWorkspaceWriteOutcome): ProjectDataSection[] {
     const sections: ProjectDataSection[] = [];
+    if (outcome.pdfChanges.length > 0) sections.push("pdf");
     if (outcome.itemChanges.length > 0) sections.push("items", "proofreading");
     if (outcome.qualityChanges.length > 0) sections.push("quality");
     if (outcome.promptChanges.length > 0) sections.push("prompts");
@@ -697,6 +725,8 @@ export class ProjectWriteStore {
     updated_sections: ProjectDataSection[],
   ): ProjectDatabaseWrite[] {
     const writes: ProjectDatabaseWrite[] = [];
+    for (const change of outcome.pdfChanges)
+      writes.push((db) => db.write_pdf_document(project_path, change.file_path, change.document));
     if (outcome.itemChanges.length > 0) {
       const item_patches = outcome.itemChanges.map((change) => ({
         item_id: change.item_id,
@@ -956,7 +986,10 @@ export class ProjectWriteStore {
   private filter_revision_backed_sections(sections: ProjectDataSection[]): RevisionBackedSection[] {
     return sections.filter(
       (section): section is RevisionBackedSection =>
-        section === "files" || section === "items" || section === "proofreading",
+        section === "files" ||
+        section === "items" ||
+        section === "proofreading" ||
+        section === "pdf",
     );
   }
 
@@ -1033,6 +1066,8 @@ export class ProjectWriteStore {
       });
     }
 
+    if (request.updatedSections.includes("pdf"))
+      events.push({ ...common, type: "project.pdf.changed" });
     if (request.updatedSections.includes("project")) {
       events.push({ ...common, type: "project.settings.changed" });
     }
@@ -1045,11 +1080,22 @@ export class ProjectWriteStore {
   private build_asset_write(project_path: string, write: ProjectAssetWrite): ProjectDatabaseWrite {
     if (write.kind === "add_from_source") {
       return (database) =>
-        database.add_asset_from_source(project_path, write.path, write.sourcePath, write.sortOrder);
+        database.add_asset_from_source(
+          project_path,
+          write.path,
+          write.sourcePath,
+          write.pdfDocument,
+          write.sortOrder,
+        );
     }
     if (write.kind === "update_from_source") {
       return (database) =>
-        database.update_asset_from_source(project_path, write.path, write.sourcePath);
+        database.update_asset_from_source(
+          project_path,
+          write.path,
+          write.sourcePath,
+          write.pdfDocument,
+        );
     }
     return (database) => database.delete_asset(project_path, write.path);
   }

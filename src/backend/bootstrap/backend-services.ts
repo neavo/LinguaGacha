@@ -1,3 +1,7 @@
+import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
+import { pathToFileURL } from "node:url";
+import { PDFWorker } from "../file/formats/pdf/pdf-worker";
+import type { PDFHost } from "../../shared/pdf";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingsCommandService } from "../app/app-settings-command-service";
@@ -44,6 +48,9 @@ import {
 const BATCH_TRANSLATION_SNAPSHOT_EVENT_TOPIC = "batch_translation.snapshot_changed";
 
 export interface BackendServicesOptions {
+  pdfHost?: PDFHost;
+  workspaceRuntimeDirectory?: string; // 入口注入包含 MuPDF 与 PDF worker 的运行目录
+
   paths: AppPathService; // 启动阶段解析出的应用根与数据根权威
   metadata: AppMetadataService; // 只读应用版本和 User-Agent，不参与运行态写入
   appSettingService: AppSettingService; // 配置文件唯一读写入口
@@ -103,6 +110,7 @@ export interface BackendFileServices {
 export class BackendServices {
   private readonly app_setting_service: AppSettingService; // 引用 Bootstrap 提供的唯一设置服务
   private readonly cache_manager: CacheManager; // 所有领域服务共用的项目热读缓存
+  private readonly pdf_worker: PDFWorker; // 独立文档计算与取消，随业务根释放
   private readonly compute_worker_client: ComputeWorkerClient; // 缓存的校对与质量统计共享，随业务根释放
   private readonly task_runtime: BatchTranslationRuntime; // 关闭时先等待任务收束，再释放执行池
   private readonly runtime_gate = new RuntimeOperationGate(); // 执行占用与工程写入共享的唯一门禁
@@ -135,6 +143,16 @@ export class BackendServices {
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
     const llm_client = new LLMClient({ userAgent: user_agent });
+    if (options.workerExecution.kind === "worker_threads" && !options.workspaceRuntimeDirectory)
+      throw new Error("PDF runtime directory is required for worker execution.");
+    this.pdf_worker = new PDFWorker(
+      options.workerExecution.kind === "in_process"
+        ? null
+        : pathToFileURL(
+            resolve_workspace_runtime_entry(options.workspaceRuntimeDirectory!, "@lg/pdf/worker"),
+          ),
+      options.pdfHost,
+    );
     this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
     });
@@ -169,6 +187,7 @@ export class BackendServices {
       this.logManager,
       handle_project_event,
       write_store,
+      this.pdf_worker.run,
     );
     this.work_unit_worker_pool = new TranslationWorkerPool({
       builtinRoot: paths.get_builtin_root(),
@@ -202,12 +221,13 @@ export class BackendServices {
       lifecycle,
       readManifest: () => data_reader.build_manifest(session_state.snapshot()),
 
-      summary: new ProjectSummaryService(session_state, this.cache_manager),
+      summary: new ProjectSummaryService(session_state, this.cache_manager, options.database),
       content: new ProjectContentService(
         options.database,
         this.runtime_gate,
         session_state,
         write_store,
+        this.pdf_worker.run,
         this.app_setting_service,
         undefined,
         this.logManager,
@@ -260,12 +280,17 @@ export class BackendServices {
       }),
     };
     this.files = {
-      preview: new FilePreviewService(this.app_setting_service, this.logManager),
+      preview: new FilePreviewService(
+        this.app_setting_service,
+        this.pdf_worker.run,
+        this.logManager,
+      ),
       translationExport: new TranslationFileExportService(
         options.database,
         this.app_setting_service,
         session_state,
         options.openOutputFolder,
+        this.pdf_worker.run,
         this.logManager,
       ),
     };
@@ -319,6 +344,7 @@ export class BackendServices {
       this.work_unit_worker_pool.dispose(),
       this.planning_worker_pool.dispose(),
       this.compute_worker_client.dispose(),
+      this.pdf_worker.dispose(),
     ]);
     for (const result of worker_results) {
       if (result.status === "rejected") {

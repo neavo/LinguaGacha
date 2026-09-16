@@ -281,6 +281,13 @@ function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
       current = current.cause;
       continue;
     }
+    // worker 在本地 Error.cause 中保留 LogError 快照，继续展开才能保留远端调用栈。
+    if (is_log_error_like(current) && typeof current["message"] === "string") {
+      const snapshot = normalize_log_error(current, "unknown_error");
+      const causes = normalize_cause_chain([snapshot, ...(snapshot.cause_chain ?? [])]);
+      chain.push(...causes.slice(0, MAX_LOG_ERROR_CAUSE_CHAIN_LENGTH - chain.length));
+      break;
+    }
     chain.push({
       name: typeof current,
       message: trim_log_error_text(String(current), MAX_LOG_ERROR_MESSAGE_LENGTH),

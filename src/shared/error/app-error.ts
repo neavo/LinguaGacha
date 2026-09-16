@@ -33,6 +33,7 @@ export const APP_ERROR_DEFINITIONS = {
     status: 404,
     severity: "expected",
   },
+  "translation.export_failed": { status: 500, severity: "fault" },
   "file.not_found": {
     status: 404,
     severity: "expected",

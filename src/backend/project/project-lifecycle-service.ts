@@ -1,3 +1,5 @@
+import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
+import type { PDFDocument } from "../../shared/pdf";
 import path from "node:path";
 
 import type { AppPathService } from "../app/app-path-service";
@@ -66,6 +68,7 @@ type JsonRecordLike = Record<string, JsonValue | undefined>;
  * 新建工程提交阶段的 asset 写入清单。
  */
 interface CreateCommitFileRecord {
+  pdf_document: PDFDocument | null;
   rel_path: string; // .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
   source_path: string; // 只传给 database workflow 读取 bytes，项目域不理解压缩格式
   sort_index: number; // 决定工作台文件顺序，必须随 asset 一起落库
@@ -120,6 +123,7 @@ export class ProjectLifecycleService {
     log_manager: LogManager,
     project_event_handler: ProjectEventHandler,
     write_store: ProjectWriteStore,
+    private readonly pdf_execution: PDFExecution,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
@@ -342,6 +346,7 @@ export class ProjectLifecycleService {
     const files: CreateCommitFileRecord[] = parsed_draft.files.map((file) => ({
       rel_path: file.rel_path,
       source_path: file.source_path,
+      pdf_document: file.pdf_document,
       sort_index: file.sort_index,
     }));
     const items: Record<string, ProjectItemPublicRecord> = {};
@@ -433,6 +438,7 @@ export class ProjectLifecycleService {
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
+      this.pdf_execution,
       this.native_fs,
     );
   }
@@ -573,6 +579,7 @@ export class ProjectLifecycleService {
             project_path,
             file.rel_path,
             file.source_path,
+            file.pdf_document,
             file.sort_index,
           ),
       );

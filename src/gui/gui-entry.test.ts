@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
-import { resolve_agent_workspace_runtime_bootstrap_path, run_gui_entry } from "./gui-entry";
+import { run_gui_entry } from "./gui-entry";
 
 const mocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -150,12 +150,7 @@ describe("run_gui_entry", () => {
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
       builtinRoot: path.join("E:/app.asar", "builtin"),
-      agentWorkspaceRuntimeBootstrapPath: path.join(
-        process.cwd(),
-        "resources",
-        "workspace",
-        "bootstrap.mjs",
-      ),
+      workspaceRuntimeDirectory: path.join(process.cwd(), "build", "resources", "workspace"),
     });
     expect(mocks.update_options).toEqual([
       {
@@ -268,15 +263,5 @@ describe("run_gui_entry", () => {
     await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(1));
 
     expect(mocks.show_native_error).toHaveBeenCalledWith("LinguaGacha 后端异常退出", "worker gone");
-  });
-
-  it("发布态按 resources 解析工作区入口", () => {
-    expect(
-      resolve_agent_workspace_runtime_bootstrap_path({
-        packaged: true,
-        resourcesPath: "E:/app/resources",
-        projectRoot: "E:/project",
-      }),
-    ).toEqual(path.join("E:/app/resources", "workspace", "bootstrap.mjs"));
   });
 });

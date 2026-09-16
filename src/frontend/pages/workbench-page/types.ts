@@ -1,3 +1,4 @@
+import type { PDFSummary } from "@shared/pdf";
 type WorkbenchActionKind =
   | "confirm-import-files"
   | "inherit-import-files"
@@ -6,6 +7,7 @@ type WorkbenchActionKind =
   | "close-project";
 
 export type WorkbenchFileEntry = {
+  pdf?: PDFSummary;
   rel_path: string;
   file_type: string;
   sort_index: number;

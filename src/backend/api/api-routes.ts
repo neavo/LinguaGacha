@@ -66,6 +66,7 @@ export function register_api_routes(context: ApiRouteContext): void {
     hono_context.json(ok(agent.get_snapshot())),
   );
   context.postJson("/api/agent/message", (body) => agent.send_message(body));
+  context.postJson("/api/agent/image/prepare", (body) => agent.prepare_image(body));
   context.postJson("/api/agent/workspace/activate-path", (body) =>
     agent.activate_workspace_path(body),
   );

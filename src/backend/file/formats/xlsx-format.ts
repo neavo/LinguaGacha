@@ -10,6 +10,7 @@ import { Item } from "../../../domain/item";
  * 通用双列表格格式，第一列原文、第二列译文
  */
 export class XLSXFormat {
+  public readonly file_type = "XLSX" as const;
   /**
    * WOLF 专用表头由 WOLFXLSXFormat 处理，普通格式在这里按双列读取
    */

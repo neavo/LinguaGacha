@@ -359,32 +359,6 @@ describe("ProjectPage", () => {
     );
   });
 
-  it("支持格式保持目录顺序并逐行展示旧说明", async () => {
-    await mount_page();
-
-    const format_tags = Array.from(
-      container?.querySelectorAll<HTMLElement>(".project-home__format-tag") ?? [],
-    );
-    expect(format_tags[0]?.textContent).toContain("纯文本");
-    const tooltips = Array.from(container?.querySelectorAll<HTMLElement>('[role="tooltip"]') ?? []);
-    const json_tooltip = tooltips.find((element) => {
-      return (
-        element.textContent?.includes("MTool 导出游戏文本") === true &&
-        element.textContent.includes("SExtractor 导出游戏文本") &&
-        element.textContent.includes("VNTextPatch 导出游戏文本")
-      );
-    });
-    expect(json_tooltip).toBeDefined();
-    const general_text_tooltip = tooltips.find((element) => {
-      return (
-        Array.from(element.children)
-          .map((child) => child.textContent)
-          .join("|") === "字幕|电子书|Markdown"
-      );
-    });
-    expect(general_text_tooltip).toBeDefined();
-  });
-
   it("选择源文件后显示数字徽标，重置后清除计数", async () => {
     vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,

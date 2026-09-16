@@ -13,7 +13,12 @@ describe("Agent 技能读取工具", () => {
     write_file(path.join(fixture.builtin_root, "shared", "references", "guide.md"), "参考正文");
 
     await expect(execute(fixture.tool, { name: "shared" })).resolves.toMatchObject({
-      details: { name: "shared", path: "SKILL.md", content: expect.stringContaining("内置正文") },
+      details: {
+        name: "shared",
+        path: "SKILL.md",
+        content: expect.stringContaining("内置正文"),
+        workspace_path: "skills/shared",
+      },
     });
     await expect(
       execute(fixture.tool, { name: "shared", path: "references/guide.md" }),
@@ -151,6 +156,7 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
       get_agent_builtin_skill_dir: () => builtin_root,
     },
     { warning: vi.fn(), error: vi.fn() },
+    async (name) => `skills/${name}`,
   );
   if (tool === undefined) throw new Error("缺少 read_skill");
   return {

@@ -68,6 +68,7 @@
     "jszip": "^3.10.2",
     "katex": "^0.18.7",
     "lucide-react": "^1.46.0",
+    "mupdf": "1.28.1",
     "next-themes": "^0.4.6",
     "oxc-parser": "^0.150.0",
     "oxfmt": "^0.68.0",
@@ -96,5 +97,11 @@
     "exceljs": {
       "uuid": "^14.0.2"
     }
-  }
+  },
+  "workspacePackages": [
+    "mupdf",
+    "remark-gfm",
+    "remark-parse",
+    "unified"
+  ]
 }

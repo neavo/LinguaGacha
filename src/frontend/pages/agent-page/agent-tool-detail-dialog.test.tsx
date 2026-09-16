@@ -125,7 +125,30 @@ describe("AgentToolDetailDialog", () => {
     const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
     expect(
       [...(output?.querySelectorAll(".cm-line") ?? [])].map((line) => line.textContent),
-    ).toEqual(["第一行", "第二行 <tag>"]);
+    ).toEqual(["第一行", "第二行 <tag>", ""]);
+  });
+
+  it("多个结果块在同一查看器内逐块换行并保留各自的 JSON 高亮", async () => {
+    await render_dialog({
+      ...tool_success("workspace_run", "{}", ""),
+      status: "success",
+      output: ["完成🌸\n", '{"first":1}', '{"second":2}'],
+    });
+    const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
+    expect([...output!.querySelectorAll(".cm-line")].map((line) => line.textContent)).toEqual([
+      "完成🌸",
+      "{",
+      '  "first": 1',
+      "}",
+      "{",
+      '  "second": 2',
+      "}",
+      "",
+    ]);
+    expect([...output!.querySelectorAll(".cm-line span")].map((span) => span.textContent)).toEqual(
+      expect.arrayContaining(['"first"', '"second"']),
+    );
+    expect(document.body.querySelectorAll(".cm-editor")).toHaveLength(1);
   });
 
   it("隐藏结果延迟格式化，切换和刷新复用文档，实际 DOM 显示多行文本", async () => {
@@ -156,7 +179,7 @@ describe("AgentToolDetailDialog", () => {
     await act(async () => input_tab?.click());
     await act(async () => output_tab?.click());
     expect(format).toHaveBeenCalledTimes(1);
-    await render_dialog({ ...entry, status: "success", output: '{"new": 2}' });
+    await render_dialog({ ...entry, status: "success", output: ['{"new": 2}'] });
     expect(format).toHaveBeenCalledTimes(2);
     expect(
       document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]')?.textContent,
@@ -185,7 +208,7 @@ function tool_success(tool_name: string, input: string, output: string): AgentTo
     toolName: tool_name,
     input,
     status: "success",
-    output,
+    output: [output],
     createdAt: 1,
   };
 }

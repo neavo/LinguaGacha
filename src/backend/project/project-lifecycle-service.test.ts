@@ -1,3 +1,4 @@
+import { create_pdf_execution } from "../file/formats/pdf/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSessionState } from "./project-session-state";
 import fs from "node:fs";
@@ -686,6 +687,7 @@ describe("ProjectLifecycleService", () => {
       options.log_manager ?? create_log_manager(),
       project_event_handler,
       new ProjectWriteStore(options.database, project_event_handler, null),
+      create_pdf_execution(),
     );
   }
 

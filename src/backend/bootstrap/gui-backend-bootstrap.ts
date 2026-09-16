@@ -1,3 +1,6 @@
+import type { PDFHost } from "../../shared/pdf";
+import type { AgentImageHost } from "../../shared/agent-image";
+import { AgentImageService } from "../agent/agent-image-service";
 import { AgentService } from "../agent/agent-service";
 import { WebSearchService } from "../agent/web-search-service";
 import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "../agent/workspace/service";
@@ -15,12 +18,14 @@ import { BackendServices } from "./backend-services";
 type GuiBackendBootstrapState = "idle" | "starting" | "ready" | "stopping" | "stopped" | "failed";
 
 export interface GuiBackendBootstrapOptions {
+  pdfHost?: PDFHost;
+  imageHost: AgentImageHost;
   appRoot: string; // 安装根与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
   systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
   agentWorkspaceRun: AgentWorkspaceRunPort; // 工作区脚本的可取消执行端口
-  agentWorkspaceRuntimeDirectory: string; // 与 runner 同版本的标准 npm 环境
+  workspaceRuntimeDirectory: string; // 与 runner 同版本的标准 npm 环境
   openDirectory: (path: string) => Promise<void>; // Electron main 副作用端口
   pickSavePath: (defaultName: string) => Promise<string | null>; // 原生保存选择，取消返回 null
   workerExecution: BackendWorkerExecution; // 正式 worker_threads 与测试执行策略
@@ -39,6 +44,7 @@ export class GuiBackendBootstrap {
   private services: BackendServices | null = null;
   private event_stream: ApiStreamHub | null = null;
   private agent: AgentService | null = null;
+  private images: AgentImageService | null = null; // 关闭 Gateway 前取消上传，避免等待窗口超时才排空 HTTP
   private web_search: WebSearchService | null = null;
   private gateway: ApiGatewayServer | null = null;
   private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null;
@@ -97,12 +103,17 @@ export class GuiBackendBootstrap {
         logManager: resources.logManager,
         publishEvent: (topic, payload) => event_stream.publish(topic, payload),
         openOutputFolder: this.options.openDirectory,
+        pdfHost: this.options.pdfHost,
+        workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
         workerExecution: this.options.workerExecution,
       });
       this.services = services;
       const web_search = new WebSearchService(resources.metadata.read_version_or_default());
       this.web_search = web_search;
+      const images = new AgentImageService(this.options.imageHost);
+      this.images = images;
       const workspace = new AgentWorkspaceService({
+        images,
         paths: resources.paths,
         settings: resources.settings,
         sessionState: services.state.session,
@@ -113,11 +124,15 @@ export class GuiBackendBootstrap {
         writeStore: services.state.writes,
         logManager: resources.logManager,
         run: this.options.agentWorkspaceRun,
-        runtimeDirectory: this.options.agentWorkspaceRuntimeDirectory,
+        pdfHost: this.options.pdfHost,
+        exportPDF: (file_path, signal) =>
+          services.files.translationExport.export_pdf_file(file_path, signal),
+        runtimeDirectory: this.options.workspaceRuntimeDirectory,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
       });
       const agent = new AgentService({
+        images,
         batchTranslation: services.batchTranslation,
         paths: resources.paths,
         settings: resources.settings,
@@ -195,6 +210,8 @@ export class GuiBackendBootstrap {
   private async dispose_runtime(failures: unknown[]): Promise<void> {
     if (this.state === "stopped" && this.resources === null) return;
     this.state = "stopping";
+    this.images?.clear();
+    this.images = null;
     const gateway = this.gateway;
     this.gateway = null;
     // Gateway 先停止受理；接口测试属于在途 HTTP，必须同时取消才能完成请求排空。

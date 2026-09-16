@@ -47,9 +47,14 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 };
 
 // 页面缓存只有消费完这些 section revision 才能标记为 ready。
-const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items"];
+const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "pdf"];
 // 工作台列表 query 的项目事实依赖范围。
-const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = ["project", "files", "items"];
+const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
+  "project",
+  "files",
+  "items",
+  "pdf",
+];
 // 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
@@ -332,6 +337,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     return {
       files: entries_ref.current.map((entry) => ({
         rel_path: entry.rel_path,
+        file_type: entry.file_type,
       })),
       section_revisions: consumed_revisions,
     };

@@ -20,10 +20,13 @@ export const ja_jp_workbench_page = {
     add_file_loading_toast: "ファイルを追加し、キャッシュを更新中 …",
     no_valid_file: "追加できる有効なファイルがありません。",
     file_action_failed: "ファイル操作に失敗しました。しばらくしてから再試行してください。",
-    generate_translation_failed:
-      "現在の訳文を出力できませんでした。しばらくしてから再試行してください。",
     close_project_failed:
       "プロジェクトを閉じられませんでした。しばらくしてから再試行してください。",
+  },
+  pdf: {
+    content: "内容",
+    pages: "確認 {reviewed}/{pages}",
+    coverage: "訳文 {translated}/{pages} ページ",
   },
   action: {
     add_file: "追加",

@@ -1,4 +1,13 @@
+import type { PDFExecution } from "./formats/pdf/pdf-worker";
+import { AppError, is_app_error } from "../../shared/error";
+import type {
+  PDFFileExportResult,
+  TranslationFileExportResult,
+} from "../../shared/translation-export";
+import { render_pdf_translation } from "./formats/pdf/pdf-translation";
+import { PDFFormat } from "./formats/pdf/pdf-format";
 import path from "node:path";
+import type { PDFDocumentRecord } from "../../shared/pdf";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -6,7 +15,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { Item, type ItemNameField } from "../../domain/item";
-import { is_json_record, type JsonRecord } from "../../domain/json";
+import { is_json_record } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot, type SettingSnapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
@@ -45,6 +54,7 @@ export class TranslationFileExportService {
     app_setting_service: AppSettingService,
     session_state: ProjectSessionState,
     output_folder_opener: OutputFolderOpener,
+    private readonly pdf_execution: PDFExecution,
     log_manager?: FileExportLogManager,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -59,42 +69,87 @@ export class TranslationFileExportService {
   /**
    * GUI 导出固定本次设置快照，读取项目条目并补齐重复译文。
    */
-  public async export_files(): Promise<JsonRecord> {
-    const project_path = this.session_state.require_loaded_project_path();
-    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    this.log_export_start(config);
-    try {
+  public async export_files(): Promise<TranslationFileExportResult> {
+    return this.run_export(async (project_path, config) => {
       const items = this.read_project_items(project_path);
+      const documents = this.read_export_pdf_files(
+        project_path,
+        Object.keys(this.database.read_pdf_summaries(project_path)),
+      );
       const paths = this.build_export_paths(project_path, config.app_language);
       await this.write_export_to_paths(project_path, items, paths, config);
-      await this.complete_export_success(config, paths.translated_path);
-      return { accepted: true, output_path: paths.translated_path };
-    } catch (error) {
-      this.log_export_failed(config, error);
-      throw error;
-    }
+      const pdf_files = await this.write_pdf_files(project_path, paths, documents);
+      return { accepted: true as const, output_path: paths.translated_path, pdf_files };
+    }, true);
+  }
+
+  /** Agent 的单文件导出复用目录、快照与正式 writer，不把工作预览当作工程交付。 */
+  public async export_pdf_file(
+    file_path: string,
+    signal?: AbortSignal,
+  ): Promise<{ output_path: string }> {
+    const result = await this.run_export(async (project_path, config) => {
+      const documents = this.read_export_pdf_files(project_path, [file_path]);
+      const paths = this.build_export_paths(project_path, config.app_language);
+      await this.write_pdf_files(project_path, paths, documents, signal);
+      return { output_path: paths.translated_path };
+    }, true);
+    return { output_path: path.join(result.output_path, file_path) };
   }
 
   /**
    * CLI 导出直接写入用户指定目录，覆盖既有文件且不触发 GUI 打开目录副作用。
    */
-  public async export_files_to_directory(output_dir: string): Promise<JsonRecord> {
+  public async export_files_to_directory(
+    output_dir: string,
+    excluded_files: readonly string[] = [],
+  ): Promise<TranslationFileExportResult> {
+    return this.run_export(async (project_path, config) => {
+      const items = this.read_project_items(project_path);
+      const documents = this.read_export_pdf_files(
+        project_path,
+        Object.keys(this.database.read_pdf_summaries(project_path)).filter(
+          (file_path) => !excluded_files.includes(file_path),
+        ),
+      );
+      const paths = this.build_cli_export_paths(output_dir);
+      await this.write_export_to_paths(
+        project_path,
+        items.filter((item) => !excluded_files.includes(item.file_path)),
+        paths,
+        config,
+      );
+      const pdf_files = await this.write_pdf_files(project_path, paths, documents);
+      return {
+        accepted: true as const,
+        output_path: paths.translated_path,
+        bilingual_output_path: paths.bilingual_path,
+        pdf_files,
+      };
+    }, false);
+  }
+
+  /** 三个导出入口共享任务终态和未知异常归属，日志直接保留原始原因与调用栈。 */
+  private async run_export<T extends { output_path: string }>(
+    write: (project_path: string, config: SettingSnapshot) => Promise<T>,
+    open_output_folder: boolean,
+  ): Promise<T> {
     const project_path = this.session_state.require_loaded_project_path();
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     this.log_export_start(config);
     try {
-      const items = this.read_project_items(project_path);
-      const paths = this.build_cli_export_paths(output_dir);
-      await this.write_export_to_paths(project_path, items, paths, config);
-      this.log_export_done(config, paths.translated_path);
-      return {
-        accepted: true,
-        output_path: paths.translated_path,
-        bilingual_output_path: paths.bilingual_path,
-      };
+      const result = await write(project_path, config);
+      this.log_export_done(config, result.output_path);
+      if (open_output_folder) await this.open_output_folder(config, result.output_path);
+      return result;
     } catch (error) {
-      this.log_export_failed(config, error);
-      throw error;
+      this.log_manager?.error(
+        this.export_log_text(config, "app.error.translation.export_failed.message"),
+        { source: FILE_EXPORT_LOG_SOURCE, error },
+      );
+      throw is_app_error(error)
+        ? error
+        : new AppError("translation.export_failed", { cause: error });
     }
   }
 
@@ -114,17 +169,61 @@ export class TranslationFileExportService {
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
+      this.pdf_execution,
       this.native_fs,
     );
-    try {
-      await format_service.write_items(items, {
-        paths,
-        asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
-      });
-    } catch (error) {
-      this.log_write_failed(config, error);
-      throw error;
-    }
+    await format_service.write_items(items, {
+      paths,
+      asset_reader: (rel_path) => this.database.read_asset_content(project_path, rel_path),
+    });
+  }
+
+  /** 在任何输出落盘前固定译稿并验证可确定条件，避免不同入口各自解释 PDF 规则。 */
+  private read_export_pdf_files(
+    project_path: string,
+    file_paths: readonly string[],
+  ): PDFDocumentRecord[] {
+    return file_paths.map((file_path) => {
+      const document = this.database.read_pdf_document(project_path, file_path);
+      if (!document) throw new AppError("file.not_found", { public_details: { file: file_path } });
+      if (document.translation) {
+        try {
+          render_pdf_translation(document.translation, document.source);
+        } catch (error) {
+          throw new AppError("file.invalid_structure", {
+            public_details: { file: file_path },
+            cause: error,
+          });
+        }
+      }
+      return { file_path, document };
+    });
+  }
+
+  /** 落盘成功后按原页覆盖生成回执，输出页数由打印排版决定。 */
+  private async write_pdf_files(
+    project_path: string,
+    paths: ExportPaths,
+    documents: readonly PDFDocumentRecord[],
+    signal?: AbortSignal,
+  ): Promise<PDFFileExportResult[]> {
+    await new PDFFormat(this.pdf_execution).write_to_path(documents, {
+      paths,
+      asset_reader: (file_path) => this.database.read_asset_content(project_path, file_path),
+      signal,
+    });
+    return documents.map(({ file_path, document }) => {
+      const translated_pages =
+        document.translation?.sections.reduce(
+          (count, section) => count + section.page_end - section.page_start + 1,
+          0,
+        ) ?? 0;
+      return {
+        file_path,
+        translated_pages,
+        original_pages: document.source.pages.length - translated_pages,
+      };
+    });
   }
 
   /**
@@ -141,11 +240,7 @@ export class TranslationFileExportService {
   /**
    * 导出成功后的宿主附加动作不能推翻译文已经写出的事实
    */
-  private async complete_export_success(
-    config: SettingSnapshot,
-    output_path: string,
-  ): Promise<void> {
-    this.log_export_done(config, output_path);
+  private async open_output_folder(config: SettingSnapshot, output_path: string): Promise<void> {
     if (!config.output_folder_open_on_finish) {
       return;
     }
@@ -263,37 +358,11 @@ export class TranslationFileExportService {
   }
 
   /**
-   * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败
-   */
-  private log_write_failed(config: SettingSnapshot, error: unknown): void {
-    this.log_manager?.error(
-      this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
-      {
-        source: FILE_EXPORT_LOG_SOURCE,
-        error,
-      },
-    );
-  }
-
-  /**
    * 打开输出目录失败只影响宿主体验，不改变导出成功结果
    */
   private log_open_output_folder_failed(config: SettingSnapshot, error: unknown): void {
     this.log_manager?.error(
       this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
-      {
-        source: FILE_EXPORT_LOG_SOURCE,
-        error,
-      },
-    );
-  }
-
-  /**
-   * 导出失败日志输出终态提示，同时保留异常详情给日志文件
-   */
-  private log_export_failed(config: SettingSnapshot, error: unknown): void {
-    this.log_manager?.error(
-      this.export_log_text(config, "app.diagnostic.file_export.translation_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
         error,

@@ -96,7 +96,7 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
 
         <AppDropdownMenuGroup>
           <AppDropdownMenuItem
-            disabled={action_items_disabled}
+            disabled={action_items_disabled || props.workbench_stats?.total_items === 0}
             onClick={() => {
               void props.on_start_or_continue();
             }}

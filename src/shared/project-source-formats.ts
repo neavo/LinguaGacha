@@ -12,6 +12,12 @@ const GENERAL_TEXT_FORMAT_DESCRIPTION_KEYS = [
  */
 export const PROJECT_SOURCE_FORMATS = [
   {
+    id: "pdf",
+    extension: ".pdf",
+    title_key: "project_page.formats.pdf",
+    description_keys: [],
+  },
+  {
     id: "txt",
     extension: ".txt",
     title_key: "project_page.formats.txt",

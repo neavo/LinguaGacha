@@ -1,3 +1,4 @@
+import { create_pdf_execution } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,11 +12,14 @@ import { PROJECT_SOURCE_FORMATS } from "../../shared/project-source-formats";
  * 测试统一使用显式配置，避免依赖用户本机设置
  */
 function create_service(): FileFormatService {
-  return new FileFormatService({
-    target_language: "ZH",
-    deduplication_in_bilingual: true,
-    write_translated_name_fields_to_file: true,
-  });
+  return new FileFormatService(
+    {
+      target_language: "ZH",
+      deduplication_in_bilingual: true,
+      write_translated_name_fields_to_file: true,
+    },
+    create_pdf_execution(),
+  );
 }
 
 describe("FileFormatService", () => {
@@ -32,9 +36,11 @@ describe("FileFormatService", () => {
       new TextEncoder().encode(JSON.stringify([{ name: "名", message: "台词" }])),
     );
 
-    expect(txt_items.map((item) => item.file_type)).toEqual(["TXT"]);
-    expect(kv_items.map((item) => item.file_type)).toEqual(["KVJSON"]);
-    expect(message_items.map((item) => item.file_type)).toEqual(["MESSAGEJSON"]);
+    if (txt_items.kind !== "items" || kv_items.kind !== "items" || message_items.kind !== "items")
+      throw new Error("Expected text items");
+    expect(txt_items.items.map((item) => item.file_type)).toEqual(["TXT"]);
+    expect(kv_items.items.map((item) => item.file_type)).toEqual(["KVJSON"]);
+    expect(message_items.items.map((item) => item.file_type)).toEqual(["MESSAGEJSON"]);
   });
 
   it.each([
@@ -50,15 +56,18 @@ describe("FileFormatService", () => {
 
     const items = await service.parse_asset(rel_path, new TextEncoder().encode(content));
 
-    expect(items.at(-1)?.file_type).toBe(expected_type);
+    if (items.kind !== "items") throw new Error("Expected text items");
+    expect(items.items.at(-1)?.file_type).toBe(expected_type);
   });
 
   it("未知扩展名解析为空列表", async () => {
     const service = create_service();
 
-    await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual(
-      [],
-    );
+    await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual({
+      file_type: "NONE",
+      items: [],
+      kind: "items",
+    });
   });
 
   it("收集目录源文件时保留入口目录名并去重输入路径", () => {
@@ -131,15 +140,20 @@ describe("FileFormatService", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-file-format-service-"),
     );
-    const service = new FileFormatService({
-      target_language: "ZH",
-      deduplication_in_bilingual: true,
-      write_translated_name_fields_to_file: false,
-    });
+    const service = new FileFormatService(
+      {
+        target_language: "ZH",
+        deduplication_in_bilingual: true,
+        write_translated_name_fields_to_file: false,
+      },
+      create_pdf_execution(),
+    );
     const text = ["translate schinese start:", "", '    # "Alice" "Hello"', '    "艾丽丝" ""'].join(
       "\n",
     );
-    const [item] = await service.parse_asset("script.rpy", new TextEncoder().encode(text));
+    const parsed = await service.parse_asset("script.rpy", new TextEncoder().encode(text));
+    if (parsed.kind !== "items") throw new Error("Expected RenPy items");
+    const [item] = parsed.items;
     if (item === undefined) {
       throw new Error("测试样本应生成 RenPy 条目。");
     }

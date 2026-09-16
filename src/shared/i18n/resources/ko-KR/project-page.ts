@@ -60,6 +60,7 @@ export const ko_kr_project_page = {
     task: "작업 상태 불러오는 중 …",
   },
   formats: {
+    pdf: "PDF",
     title: "지원 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",

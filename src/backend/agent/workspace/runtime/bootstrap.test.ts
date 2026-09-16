@@ -1,3 +1,7 @@
+import { project_workspace_skill } from "../skills";
+import { default_native_fs } from "../../../../native/native-fs";
+import type { WorkspaceHostPort } from "./host-contract";
+import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -8,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
+import { create_pdf_fixture } from "../../../file/formats/pdf/test-support";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -30,8 +35,7 @@ beforeAll(async () => {
     });
   await mkdir(path.join(workspace, AGENT_WORKSPACE_RUN_ROOT), { recursive: true });
   await mkdir(path.join(workspace, "changes"));
-  for (const name of ["package.json", "package-lock.json"])
-    await cp(path.join(runtime, name), path.join(workspace, name));
+  await cp(path.join(runtime, "package.json"), path.join(workspace, "package.json"));
   await symlink(
     path.join(runtime, "node_modules"),
     path.join(workspace, "node_modules"),
@@ -94,6 +98,82 @@ it("独立部署目录支持原生模块、主程序身份、自然退出和异�
   }
 });
 
+it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
+  await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
+  const result = await run(`
+    import { readFile } from 'node:fs/promises';
+    import * as mupdf from 'mupdf';
+    import {render_pdf_page} from '@lg/pdf';
+    import { unified } from 'unified';
+    import remarkParse from 'remark-parse';
+    import remarkGfm from 'remark-gfm';
+    const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('work/source.pdf')));
+    try {
+      const page = pdf.loadPage(0); const text = page.toStructuredText();
+      try { console.log(JSON.stringify({ pages:pdf.countPages(), text:text.asText(), image:render_pdf_page(pdf,{page:3,scale:1}).length, markdown:unified().use(remarkParse).use(remarkGfm).parse('# Title').children[0].type })); }
+      finally { text.destroy(); page.destroy(); }
+    } finally { pdf.destroy(); }
+
+  `);
+  expect(result.execution.exitCode).toBe(0);
+  expect(JSON.stringify(output_content(result.execution.stdout))).toContain("First half");
+  expect(JSON.stringify(output_content(result.execution.stdout))).toContain("heading");
+});
+
+it("只读技能模块可导入 npm 与应用模板，并通过 IPC 调用宿主", async () => {
+  await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
+  await writeFile(
+    path.join(workspace, "work/printed.pdf"),
+    create_pdf_fixture(["Printed fixture"]),
+  );
+  const source = path.join(root, "skill-fixture");
+  await mkdir(path.join(source, "scripts"), { recursive: true });
+  await writeFile(
+    path.join(source, "scripts/entry.mjs"),
+    `
+    import { unified } from 'unified';
+    import remarkParse from 'remark-parse';
+    import { build_pdf_document } from '@lg/pdf';
+    import { readFile, writeFile } from 'node:fs/promises';
+    export async function inspect() {
+      const bytes = await build_pdf_document({
+        title:'fixture', source_bytes: new Uint8Array(await readFile('work/source.pdf')),
+        document:{source:{digest:'a'.repeat(64),pages:[{number:1,width:300,height:300,rotation:0,label:null},{number:2,width:300,height:300,rotation:0,label:null},{number:3,width:300,height:300,rotation:0,label:null}]},translation:{sections:[{page_start:2,page_end:2,markdown:'# fixture'}],reviewed_pages:[],notes:''}},
+        print:async html => new Uint8Array(await readFile((await ws.host({kind:'print_pdf',html})).path)),
+      });
+      await writeFile('work/fixture.pdf', bytes);
+      return {type:unified().use(remarkParse).parse('# fixture').children[0].type,path:'work/fixture.pdf'};
+    }
+  `,
+  );
+  project_workspace_skill(default_native_fs, workspace, "fixture", source);
+  const result = await run(
+    `
+    import {inspect} from '../../skills/fixture/scripts/entry.mjs';
+    import {writeFile} from 'node:fs/promises';
+    const result = await inspect();
+    try { await writeFile('skills/fixture/scripts/entry.mjs', 'changed'); throw new Error('write allowed'); }
+    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
+    console.log(JSON.stringify(result));
+  `,
+    undefined,
+    undefined,
+    async (request) => {
+      expect(request.kind).toBe("print_pdf");
+      if (request.kind === "print_pdf") expect(request.html).toContain("fixture");
+      return { path: "work/printed.pdf" };
+    },
+  ).catch((error: unknown) => {
+    if (error instanceof AgentWorkspaceRunError)
+      throw new Error(JSON.stringify(error.execution), { cause: error });
+    throw error;
+  });
+  expect(output_content(result.execution.stdout)).toEqual({
+    type: "heading",
+    path: "work/fixture.pdf",
+  });
+});
+
 it("超额输出完整落盘，主动错误输出与未捕获异常都保留", async () => {
   const limit = AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes;
   let error: unknown;
@@ -123,7 +203,7 @@ it("超额输出完整落盘，主动错误输出与未捕获异常都保留", a
   expect(stderr).toContain("Error: automatic error");
 });
 
-it("原生 npm 子路径、网页流与代理等待在真实子进程中工作", async () => {
+it("网页流、重定向与代理等待在真实子进程中工作", async () => {
   const server = createServer((request, response) => {
     if (request.url === "/redirect") {
       response.writeHead(302, { location: "/page" });
@@ -139,20 +219,18 @@ it("原生 npm 子路径、网页流与代理等待在真实子进程中工作",
   const url = `http://127.0.0.1:${address.port}/redirect`;
   try {
     const result = await run(`
-      import { htmlToMarkdown, streamHtmlToMarkdown } from '@mdream/js/core';
-      import { isolateMainPlugin } from '@mdream/js/plugins';
       const response = await fetch(${JSON.stringify(url)});
-      const text = htmlToMarkdown(await response.text(), { origin: response.url, plugins: [isolateMainPlugin()] });
+      const text = await response.text();
       const streamed = await fetch(${JSON.stringify(url)});
-      let markdown = '';
-      for await (const chunk of streamHtmlToMarkdown(streamed.body, { origin: streamed.url })) markdown += chunk;
-      console.log(JSON.stringify({ text, markdown }));
+      let html = '';
+      for await (const chunk of streamed.body.pipeThrough(new TextDecoderStream())) html += chunk;
+      console.log(JSON.stringify({ text, html, url: response.url }));
     `);
-    const output = output_content(result.execution.stdout) as { text: string; markdown: string };
-    for (const text of Object.values(output)) {
-      expect(text).toContain("# Hello");
-      expect(text).toContain(`http://127.0.0.1:${address.port}/target`);
-    }
+    expect(output_content(result.execution.stdout)).toEqual({
+      text: '<article><h1>Hello</h1><p><a href="/target">世界</a></p></article>',
+      html: '<article><h1>Hello</h1><p><a href="/target">世界</a></p></article>',
+      url: `http://127.0.0.1:${address.port}/page`,
+    });
     // 先收到代理请求，再返回错误；等待宿主期间 IPC 必须维持子进程存活。
     let release!: (rules: string) => void;
     let started!: () => void;
@@ -191,7 +269,7 @@ it("权限保护部署与快照，失败保留输出、位置和已写文件", a
       () => fs.readFile('../outside.txt'),
       () => fs.writeFile('contract.json', '{}'),
       () => fs.writeFile('package.json', '{}'),
-      () => fs.writeFile('node_modules/@mdream/js/package.json', '{}'),
+      () => fs.writeFile('node_modules/unified/package.json', '{}'),
     ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
     console.log(JSON.stringify(failures));
   `);
@@ -287,9 +365,10 @@ it.each([false, true])(
         path.join(logical_workspace, scriptPath),
         `
       import fs from 'node:fs/promises';
-      import { htmlToMarkdown } from '@mdream/js/core';
+      import { unified } from 'unified';
+      import remarkParse from 'remark-parse';
       import { title } from '../output/helper.mjs';
-      const text = htmlToMarkdown('<h1>' + title + '</h1>');
+      const text = unified().use(remarkParse).parse('# ' + title).children[0].children[0].value;
       await fs.writeFile('work/output/result.md', text);
       await fs.writeFile('changes/result.json', JSON.stringify({title}));
       console.log(await fs.readFile('work/output/result.md', 'utf8'));
@@ -297,7 +376,7 @@ it.each([false, true])(
       );
       const result = await new AgentWorkspaceRunner({
         executablePath: electron_path,
-        runtimeBootstrapPath: path.join(runtime_link, "bootstrap.mjs"),
+        runtimeDirectory: runtime_link,
         systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       }).run(
         {
@@ -310,8 +389,8 @@ it.each([false, true])(
         AbortSignal.timeout(RUN_TIMEOUT_MS),
       );
       expect(result.execution.exitCode).toBe(0);
-      expect(output_content(result.execution.stdout)).toMatch(/^# linked\s*$/u);
-      expect(await readFile(path.join(external, "result.md"), "utf8")).toContain("# linked");
+      expect(output_content(result.execution.stdout)).toMatch(/^linked\s*$/u);
+      expect(await readFile(path.join(external, "result.md"), "utf8")).toBe("linked");
       expect(
         JSON.parse(await readFile(path.join(actual_workspace, "changes/result.json"), "utf8")),
       ).toEqual({ title: "linked" });
@@ -322,17 +401,40 @@ it.each([false, true])(
   },
 );
 
+it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", async () => {
+  const paths: string[] = [];
+  const result = await run(
+    `
+    await ws.emitImage('work/第一页.webp');
+    try { await ws.emitImage('invalid'); } catch (error) { console.log(error.message); }
+    await ws.emitImage('work/第二页.webp');
+  `,
+    undefined,
+    undefined,
+    undefined,
+    async (path) => {
+      if (path === "invalid") throw new Error("image rejected");
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      paths.push(path);
+    },
+  );
+  expect(paths).toEqual(["work/第一页.webp", "work/第二页.webp"]);
+  expect(output_content(result.execution.stdout)).toContain("image rejected");
+});
+
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */
 async function run(
   script: string,
   signal: AbortSignal = AbortSignal.timeout(RUN_TIMEOUT_MS),
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
+  host?: WorkspaceHostPort,
+  emitImage?: AgentWorkspaceRunRequest["emitImage"],
 ) {
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
     executablePath: electron_path,
-    runtimeBootstrapPath: path.join(runtime, "bootstrap.mjs"),
+    runtimeDirectory: runtime,
     systemProxyResolver: { resolveProxy },
   }).run(
     {
@@ -341,6 +443,8 @@ async function run(
       stdoutPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stdout.log`,
       stderrPath: `${AGENT_WORKSPACE_RUN_ROOT}/task-${sequence}.stderr.log`,
       todos: ["发现目标"],
+      host,
+      emitImage,
     },
     signal,
   );

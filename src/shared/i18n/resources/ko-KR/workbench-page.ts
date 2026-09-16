@@ -20,8 +20,12 @@ export const ko_kr_workbench_page = {
     add_file_loading_toast: "파일 추가 및 캐시 새로 고치는 중 …",
     no_valid_file: "추가할 수 있는 유효한 파일이 없습니다.",
     file_action_failed: "파일 작업에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-    generate_translation_failed: "현재 번역문을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.",
     close_project_failed: "프로젝트를 닫지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  pdf: {
+    content: "내용",
+    pages: "검토 {reviewed}/{pages}",
+    coverage: "번역문 {translated}/{pages}페이지",
   },
   action: {
     add_file: "추가",

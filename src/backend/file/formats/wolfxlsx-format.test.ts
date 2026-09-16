@@ -177,33 +177,31 @@ describe("WOLFXLSXFormat", () => {
     expect(workbook.worksheets[0]?.getCell(3, 6).value).toBe("'=SUM(F1:F2)");
   });
 
-  it("原始资产缺失时新建工作簿并写入固定列", async () => {
+  it("原始资产缺失时拒绝写回，避免丢失工作簿其它内容", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"),
     );
     const format = new WOLFXLSXFormat();
 
-    await format.write_to_path(
-      [
-        Item.from_json({
-          src: "原文",
-          dst: "译文",
-          row: 2,
-          file_type: "WOLFXLSX",
-          file_path: "wolf/game.xlsx",
-        }),
-      ],
-      {
-        translated_path: temp_dir.path,
-        bilingual_path: path.join(temp_dir.path, "bilingual"),
-      },
-      () => null,
-    );
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf", "game.xlsx"));
-
-    expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
-    expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
+    await expect(
+      format.write_to_path(
+        [
+          Item.from_json({
+            src: "原文",
+            dst: "译文",
+            row: 2,
+            file_type: "WOLFXLSX",
+            file_path: "wolf/game.xlsx",
+          }),
+        ],
+        {
+          translated_path: temp_dir.path,
+          bilingual_path: path.join(temp_dir.path, "bilingual"),
+        },
+        () => null,
+      ),
+    ).rejects.toMatchObject({ code: "file.not_found", public_details: { file: "wolf/game.xlsx" } });
+    expect(fs.existsSync(path.join(temp_dir.path, "wolf", "game.xlsx"))).toBe(false);
   });
 
   it("写回时保留空译文为空单元格", async () => {
@@ -211,6 +209,9 @@ describe("WOLFXLSXFormat", () => {
       path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"),
     );
     const format = new WOLFXLSXFormat();
+    const original = new ExcelJS.Workbook();
+    original.addWorksheet("Sheet");
+    const asset = Buffer.from(await original.xlsx.writeBuffer());
 
     await format.write_to_path(
       [
@@ -226,7 +227,7 @@ describe("WOLFXLSXFormat", () => {
         translated_path: temp_dir.path,
         bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
-      () => null,
+      () => asset,
     );
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf", "empty.xlsx"));

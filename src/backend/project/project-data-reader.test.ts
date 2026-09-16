@@ -22,6 +22,7 @@ type ProjectDataDatabase = Pick<
 
 function create_database_stub(overrides: Partial<ProjectDataDatabase> = {}): ProjectDatabase {
   return {
+    read_pdf_summaries: () => ({}),
     get_all_meta: () => ({}),
     get_all_items: () => [],
     get_all_asset_records: () => [],
@@ -71,6 +72,7 @@ describe("project section revision", () => {
       }),
     ).toEqual({
       project: 0,
+      pdf: 0,
       files: 3,
       items: 9,
       quality: 2,

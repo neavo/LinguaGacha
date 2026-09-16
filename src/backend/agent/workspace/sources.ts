@@ -28,6 +28,7 @@ const ARCHIVE_TEXT_EXTENSIONS = new Set([
 export type AgentWorkspaceSourceFile = {
   file_path: string; // 工程内原始文件身份
   file_type: string; // items 使用的既有格式类型
+  source_binary_path?: string; // PDF 原始字节
   source_text_path?: string; // 普通文本资产的工作区路径
   source_text_root?: string; // 容器资产的工作区文本树根
 };
@@ -46,6 +47,16 @@ export async function write_agent_workspace_sources(args: {
     const content = args.readAsset(file.file_path);
     if (content === null) throw new Error(`Project source asset is missing: ${file.file_path}`);
     const extension = path.posix.extname(relative_path).toLowerCase();
+    if (file.file_type === "PDF") {
+      const source_binary_path = `sources/${relative_path}/original.pdf`;
+      await args.nativeFs.write_file(
+        path.join(args.sourceRoot, relative_path, "original.pdf"),
+        content,
+      );
+
+      projected.push({ ...file, source_binary_path });
+      continue;
+    }
     if (ARCHIVE_EXTENSIONS.has(extension)) {
       const source_text_root = `sources/${relative_path}`;
       await write_archive_text_entries(

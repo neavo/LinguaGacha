@@ -51,6 +51,60 @@ describe("AgentWorkspaceService", () => {
     vi.restoreAllMocks();
   });
 
+  it("脚本图片按调用顺序固定字节，文件覆盖与删除不改变已接收内容", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      const file = path.join(request.workspacePath, "work", "页面 # %23.webp");
+      fs.writeFileSync(file, "first");
+      await request.emitImage!("work/页面 # %23.webp", signal);
+      fs.writeFileSync(file, "second");
+      await request.emitImage!("work/页面 # %23.webp", signal);
+      fs.unlinkSync(file);
+      await expect(request.emitImage!("../outside.webp", signal)).rejects.toBeDefined();
+      return { execution: workspace_execution(), todos: [] };
+    });
+    const result = await fixture.service.run(
+      VALID_WORKSPACE_SCRIPT,
+      [],
+      new AbortController().signal,
+    );
+    expect(result.images.map(({ image }) => Buffer.from(image.data, "base64").toString())).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("失败输出只携带图片摘要，恢复时可读取保留的文件", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      fs.writeFileSync(path.join(request.workspacePath, "work/image.webp"), "image");
+      await request.emitImage!("work/image.webp", signal);
+      throw new AgentWorkspaceRunError("failed after image", {
+        ...workspace_execution(),
+        exitCode: 1,
+      });
+    });
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      public_details: {
+        images: [
+          {
+            path: "work/image.webp",
+            mime_type: "image/webp",
+            width: 1,
+            height: 1,
+            original_width: 1,
+            original_height: 1,
+          },
+        ],
+      },
+    });
+    expect(fs.readFileSync(path.join(fixture.workspace_root, "work/image.webp"), "utf8")).toBe(
+      "image",
+    );
+  });
+
   it("保存编码文件链接并打开目录，保留源文件且不建立快照", async () => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(
@@ -262,11 +316,9 @@ describe("AgentWorkspaceService", () => {
     expect(fs.realpathSync(modules)).toBe(deployed);
     expect(fs.readFileSync(marker, "utf8")).toBe("installed");
     expect(fs.existsSync(path.join(fixture.workspace_root, "work"))).toBe(false);
-    for (const name of ["package.json", "package-lock.json"]) {
-      expect(fs.readFileSync(path.join(fixture.workspace_root, name), "utf8")).toBe(
-        fs.readFileSync(path.join(temp_dir, "runtime", name), "utf8"),
-      );
-    }
+    expect(fs.readFileSync(path.join(fixture.workspace_root, "package.json"), "utf8")).toBe(
+      fs.readFileSync(path.join(temp_dir, "runtime", "package.json"), "utf8"),
+    );
   });
 
   it("sources 只在工程或 files revision 变化时重新生成", async () => {
@@ -449,6 +501,8 @@ describe("AgentWorkspaceService", () => {
         stdoutPath: expect.stringMatching(/^work\/runs\/task-.*\.stdout\.log$/u),
         stderrPath: expect.stringMatching(/^work\/runs\/task-.*\.stderr\.log$/u),
         todos: ["恢复任务"],
+        host: expect.any(Function),
+        emitImage: expect.any(Function),
       },
       expect.any(AbortSignal),
     );
@@ -503,9 +557,10 @@ describe("AgentWorkspaceService", () => {
       },
       rejected: [],
       destroyed: true,
-      revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2 },
+      revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2, pdf: 0 },
     });
     expect(request_approval).toHaveBeenCalledWith({
+      pdf: 0,
       items: 1,
       glossary: 1,
       textPreserve: 0,
@@ -703,7 +758,7 @@ describe("AgentWorkspaceService", () => {
       applied: {},
       rejected: [],
       destroyed: false,
-      revisions: { items: 1, proofreading: 1, quality: 1, prompts: 1 },
+      revisions: { items: 1, proofreading: 1, quality: 1, prompts: 1, pdf: 0 },
     });
     expect(request_approval).not.toHaveBeenCalled();
     expect(fixture.write_store).not.toHaveBeenCalled();
@@ -813,6 +868,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     const outcome = resolve_agent_workspace_writes({
       batch: request.batch,
       current: {
+        pdf: [],
         items: items as unknown as JsonRecord[],
         quality: Object.fromEntries(
           QUALITY_RULE_KINDS.map((kind) => [
@@ -876,6 +932,16 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const open_directory = vi.fn(async (_path: string) => undefined);
   const pick_save_path = vi.fn(async (_default_name: string): Promise<string | null> => null);
   const service = new AgentWorkspaceService({
+    images: {
+      prepare: async (bytes) => ({
+        data: Buffer.from(bytes).toString("base64"),
+        mimeType: "image/webp",
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      }),
+    },
     runtimeDirectory: create_workspace_runtime_fixture(temp_dir),
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
@@ -887,6 +953,8 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     database: {
       get_all_meta: () => ({}),
       read_asset_content,
+      read_pdf_document: () => null,
+      read_pdf_documents: () => [],
     },
     runtimeGate: { run_agent_project_write: runtime_gate },
     writeStore: { apply_agent_workspace_changes: write_store },

@@ -58,6 +58,7 @@ export const zh_cn_project_page = {
     task: "正在加载任务状态 …",
   },
   formats: {
+    pdf: "PDF",
     title: "支持文件格式",
     txt: "纯文本",
     md: "Markdown",

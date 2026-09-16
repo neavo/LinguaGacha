@@ -12,6 +12,20 @@ import {
 } from "./log-error";
 
 describe("log error", () => {
+  it("跨线程错误快照作为 cause 时保留原始原因链和调用栈", () => {
+    const root = new Error("打印失败");
+    root.stack = "Error: 打印失败\n    at print_pdf";
+    const worker_error = new Error("PDF 生成失败", { cause: root });
+    worker_error.stack = "Error: PDF 生成失败\n    at build_pdf_document";
+    const snapshot = structuredClone(to_log_error(worker_error));
+    const error = new Error(snapshot.message, { cause: snapshot });
+
+    expect(to_log_error(error).cause_chain).toEqual([
+      { name: "Error", message: "PDF 生成失败", stack: worker_error.stack },
+      { name: "Error", message: "打印失败", stack: root.stack },
+    ]);
+  });
+
   it("把 Error 归一为可跨边界传递的结构化错误快照", () => {
     const error = new Error("供应商爆炸") as Error & { cause?: unknown };
     error.cause = new Error("底层连接失败");

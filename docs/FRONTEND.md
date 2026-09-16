@@ -48,10 +48,10 @@
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端质量统计结果窄投影；页面只缓存 `entry_ids`、`hits_by_entry_id` 和 `subset_parents_by_entry_id`，不保存后端依赖签名或重复 revision。项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - Agent 页面外层信息流默认跟随最新内容，用户向上滚离底部超过容差或点击“跟随最新”可退出跟随；内容伸缩与程序归底不改变跟随状态，再次点击或按当前平台快捷键（Ctrl+E / ⌘E）会归底并重新激活，同时重置当前活动思考视口；跟随按钮同步公开 `aria-keyshortcuts`。每个活动思考视口独立默认跟随流式内容，用户在该视口内上滚后取消自身跟随与完成后的自动收起，历史思考视口保留自己的阅读位置。
 - `useAgentInputTransition` 拥有 Agent 底部占位、离场内容和焦点恢复；测量目标尺寸时固定外部占位，避免滚动视口夹取阅读位置。Composer 持续挂载，输入锁保持至离场结束，焦点归还等待编辑器恢复可编辑；工具栏 Portal 菜单同步关闭。共享编辑器提供正文与附件能力，提交权限由主 Composer 和原位编辑器各自决定。
-- Agent 主输入接收整页图片拖入，原位编辑时仅接收编辑器局部拖入。`AgentImageDropTarget` 拥有区域事件与反馈；共享编辑器统一处理选择、粘贴和拖入，转换结果只写回发起时仍有效的草稿。
+- Agent 主输入接收整页图片拖入，原位编辑时仅接收编辑器局部拖入。`AgentImageDropTarget` 拥有区域事件与反馈；共享编辑器统一处理选择、粘贴和拖入，原图交给后端图片准备 API，返回结果只写回发起时仍有效的草稿。图片处理与缓存归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
-- Agent 工具详情在首次查看标签时生成阅读文档，弹窗内按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出统一递归解释完整的内嵌 JSON，并将多行字符串显示为文本块；这种解释只属于前端阅读，会话保留原始输出。Agent 格式化器生成文本和语义范围，`AppEditor` 通过单个 CodeMirror 视口渲染范围，不重新把阅读文档当作 JSON 解析；文档与范围在同一事务中更新，避免错位。
+- Agent 工具详情在首次查看标签时生成阅读文档，弹窗内按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出按会话提供的文本块顺序逐块递归解释完整的内嵌 JSON，并将多行字符串显示为文本块；各块行尾缺少换行时补一个 LF，已有空行保留，空文本块占一行，空数组生成空文档。这种解释只属于前端阅读，会话保留原始块。Agent 格式化器生成文本和语义范围，`AppEditor` 通过单个 CodeMirror 视口渲染范围，不重新把阅读文档当作 JSON 解析；文档与范围在同一事务中更新，避免错位。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
@@ -66,6 +66,8 @@
 - 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认；Agent 批量结果由工具承接后续步骤。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 时保留已有草稿，仅为空草稿填入审校请求；该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
+
+- 工作台 PDF 摘要分别展示译稿覆盖原页数与核对页数，文本条目统计独立；pdf section 变化触发摘要补读。Agent 审批按文档数量显示变更，PDF 正文不进入前端共享缓存。
 
 ## 4. 样式消费
 

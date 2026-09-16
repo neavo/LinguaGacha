@@ -1,3 +1,4 @@
+import { create_pdf_execution } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,11 +8,14 @@ import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 
 function create_format_service(): FileFormatService {
-  return new FileFormatService({
-    target_language: "ZH",
-    deduplication_in_bilingual: true,
-    write_translated_name_fields_to_file: true,
-  });
+  return new FileFormatService(
+    {
+      target_language: "ZH",
+      deduplication_in_bilingual: true,
+      write_translated_name_fields_to_file: true,
+    },
+    create_pdf_execution(),
+  );
 }
 
 describe("SourceFileParsePipeline", () => {
@@ -33,6 +37,7 @@ describe("SourceFileParsePipeline", () => {
       {
         rel_path: "script.txt",
         source_path: source_file,
+        pdf_document: null,
         file_type: "TXT",
         sort_index: 0,
       },

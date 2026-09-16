@@ -15,6 +15,7 @@ type MarkdownV2ItemMetadata = {
  * 当前 Markdown 格式以 AST 块为持久和写回单元，块内资源引用保持原始文本。
  */
 export class MDV2Format {
+  public readonly file_type = "MD_V2" as const;
   /** 把 Markdown AST 块转换为通用 Item，并只持久化重建布局需要的 metadata。 */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     return this.read_text(await decode_text_content(content), rel_path);

@@ -7,7 +7,7 @@ export default {
   asar: true,
   electronFuses: { runAsNode: true }, // 工作区复用 Electron 的 Node 子进程入口
   // builder 会过滤复制源直属的 node_modules；从 resources 映射整棵运行目录以保留标准依赖树。
-  extraResources: [{ from: "resources", to: ".", filter: ["workspace/**/*"] }],
+  extraResources: [{ from: "build/resources", to: ".", filter: ["workspace/**/*"] }],
   productName: "LinguaGacha",
   electronLanguages: [...LOCALES], // 发行包原生资源与应用界面 locale 共用同一集合
   directories: {

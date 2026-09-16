@@ -196,6 +196,9 @@ export const zh_cn_app = {
         message: "工程文件不存在 …",
       },
     },
+    translation: {
+      export_failed: { message: "译文导出失败 …" },
+    },
     file: {
       not_found: {
         message: "文件不存在 …",
@@ -315,8 +318,6 @@ export const zh_cn_app = {
     },
     file_export: {
       open_output_folder_failed: "打开输出文件夹失败 …",
-      translation_failed: "译文生成失败 …",
-      write_file_failed: "文件写入失败 …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",

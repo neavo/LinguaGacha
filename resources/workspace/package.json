@@ -1,8 +1,0 @@
-{
-  "name": "lg-workspace",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@mdream/js": "1.7.2"
-  }
-}

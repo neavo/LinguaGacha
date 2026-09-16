@@ -11,6 +11,7 @@ export default defineConfig({
     build: {
       outDir: desktop_dist_dir,
       rolldownOptions: {
+        external: ["mupdf"], // MuPDF 只在共享运行目录的 PDF worker / 工作区进程中加载
         input: {
           index: project_path("src/index.ts"),
           "backend-runtime-worker-entry": project_path(

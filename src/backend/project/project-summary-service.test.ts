@@ -114,6 +114,7 @@ describe("ProjectSummaryService", () => {
     service: ProjectSummaryService;
   }> {
     const database = {
+      read_pdf_summaries: () => ({}),
       get_all_meta: () => ({
         "project_runtime_revision.items": 7,
         "project_runtime_revision.prompts": 3,
@@ -153,7 +154,7 @@ describe("ProjectSummaryService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     return {
-      service: new ProjectSummaryService(session_state, cache),
+      service: new ProjectSummaryService(session_state, cache, database),
     };
   }
 });

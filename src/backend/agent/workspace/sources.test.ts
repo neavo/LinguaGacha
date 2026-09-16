@@ -19,6 +19,20 @@ describe("Agent 工作区源文件投影", () => {
     fs.rmSync(temp_dir, { recursive: true, force: true });
   });
 
+  it("PDF 保留原始字节并投影已保存的来源索引", async () => {
+    const bytes = Buffer.from([0, 128, 255]); // 非 UTF-8 字节能揭示误入文本解码的回归。
+    const files = await write_agent_workspace_sources({
+      nativeFs: new NativeFs(),
+      sourceRoot: path.join(temp_dir, "sources"),
+      files: [{ file_path: "book.pdf", file_type: "PDF" }],
+      readAsset: () => bytes,
+    });
+    expect(files[0]).toMatchObject({
+      source_binary_path: "sources/book.pdf/original.pdf",
+    });
+    expect(fs.readFileSync(path.join(temp_dir, files[0]!.source_binary_path!))).toEqual(bytes);
+  });
+
   it("文本转为 UTF-8，EPUB 与 XLSX 保留包内文本结构并排除二进制成员", async () => {
     const epub = new JSZip();
     epub.file("mimetype", "application/epub+zip");

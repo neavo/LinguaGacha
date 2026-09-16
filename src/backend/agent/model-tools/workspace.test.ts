@@ -13,6 +13,56 @@ import {
 type WorkspaceToolResult = { details: unknown; content: { type: string; text: string }[] };
 
 describe("Agent 工作区工具", () => {
+  it("工作区图片作为 SDK image content 返回，摘要不包含图片字节", async () => {
+    const workspace = build_workspace_port();
+    workspace.run = vi.fn(async () => ({
+      execution: workspace_execution(),
+      todos: [],
+      images: [
+        {
+          path: "work/image.webp",
+          image: {
+            mimeType: "image/webp" as const,
+            data: "aW1hZ2U=",
+            width: 100,
+            height: 50,
+            originalWidth: 100,
+            originalHeight: 50,
+          },
+        },
+      ],
+    }));
+    const tools = create_agent_workspace_tools({
+      workspace,
+      todo: build_todo_port(),
+      approval: build_approval_port(),
+    });
+    const result = await read_tool(tools, "workspace_run").execute(
+      "image",
+      { script: "await ws.emitImage('work/image.webp');" },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(result.content).toContainEqual({
+      type: "image",
+      mimeType: "image/webp",
+      data: "aW1hZ2U=",
+    });
+    expect(result.details).toMatchObject({
+      images: [
+        {
+          path: "work/image.webp",
+          mime_type: "image/webp",
+          width: 100,
+          height: 50,
+          original_width: 100,
+          original_height: 50,
+        },
+      ],
+    });
+    expect(JSON.stringify(result.details)).not.toContain("aW1hZ2U=");
+  });
   it("两个工具只适配脚本参数、取消信号与服务结果", async () => {
     const workspace = build_workspace_port();
     const todo = build_todo_port(["发现目标"]);
@@ -77,7 +127,7 @@ describe("Agent 工作区工具", () => {
     });
     workspace.run = vi.fn(async () => {
       await run_released;
-      return { execution: workspace_execution(), todos: ["迟到事项"] };
+      return { images: [], execution: workspace_execution(), todos: ["迟到事项"] };
     });
     const todo = build_todo_port(["原有事项"]);
     const script_tool = read_tool(
@@ -152,11 +202,13 @@ function read_tool(
 function build_workspace_port(): Pick<AgentWorkspacePort, "run" | "apply_workspace"> {
   return {
     run: vi.fn(async () => ({
+      images: [],
       execution: workspace_execution({ changed: 2 }),
       todos: ["核验结果"],
     })),
     apply_workspace: vi.fn(async (request_approval) => {
       await request_approval?.({
+        pdf: 0,
         items: 2,
         glossary: 0,
         textPreserve: 0,

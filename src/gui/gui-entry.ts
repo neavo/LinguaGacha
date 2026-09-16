@@ -1,7 +1,10 @@
+import { resolve_workspace_runtime_directory } from "../native/workspace-runtime";
 import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import * as AppErrors from "../shared/error";
+import { create_pdf_host } from "../native/pdf-host";
+import { prepare_agent_image } from "../native/agent-image-host";
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import { pick_save_path } from "./shell/path-dialog";
@@ -58,16 +61,19 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
   const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
-  const agent_workspace_runtime = resolve_agent_workspace_runtime_bootstrap_path({
+  const workspace_runtime_directory = resolve_workspace_runtime_directory({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
   });
+  const pdf_host = create_pdf_host();
   const backend_runtime = new BackendRuntimeClient({
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
     builtinRoot: builtin_root,
-    agentWorkspaceRuntimeBootstrapPath: agent_workspace_runtime,
+    workspaceRuntimeDirectory: workspace_runtime_directory,
+    pdfHost: pdf_host,
+    imageHost: prepare_agent_image,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openDirectory: open_directory,
     pickSavePath: async (default_name) => {
@@ -123,6 +129,8 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       onClosed: () => {
         win = null;
         log_window_host?.close();
+        // 常驻打印窗口不参与用户窗口生命周期，主窗口关闭仍进入统一退出路径。
+        void quit_app_after_backend_shutdown(0);
       },
       recordHostDiagnostic: record_host_diagnostic,
     });
@@ -167,7 +175,11 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     try {
       await backend_runtime.stop();
     } finally {
-      app.exit(exit_code);
+      try {
+        await pdf_host.dispose();
+      } finally {
+        app.exit(exit_code);
+      }
     }
   }
 
@@ -218,7 +230,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       register_runtime_ipc_handlers();
       // Backend、更新器和 IPC 完整就绪后才允许 macOS Dock 恢复窗口。
       app.on("activate", () => {
-        if (!is_app_shutdown_in_progress && BrowserWindow.getAllWindows().length === 0) {
+        if (!is_app_shutdown_in_progress && (win === null || win.isDestroyed())) {
           create_main_window_for_runtime();
         }
       });
@@ -253,14 +265,4 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       }
     }
   });
-}
-
-/** 预加载模块与 npm 依赖共用部署目录，extraResources 完整复制当前应用版本的运行环境。 */
-export function resolve_agent_workspace_runtime_bootstrap_path(args: {
-  packaged: boolean;
-  resourcesPath: string;
-  projectRoot: string;
-}): string {
-  const root = args.packaged ? args.resourcesPath : path.join(args.projectRoot, "resources");
-  return path.join(root, "workspace", "bootstrap.mjs");
 }

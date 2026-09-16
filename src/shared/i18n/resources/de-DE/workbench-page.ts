@@ -21,10 +21,13 @@ export const de_de_workbench_page = {
     add_file_loading_toast: "Datei wird hinzugefügt und Cache aktualisiert …",
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden.",
     file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut.",
-    generate_translation_failed:
-      "Fehler beim Erstellen verfügbarer Übersetzungsdateien. Bitte versuchen Sie es später erneut.",
     close_project_failed:
       "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut.",
+  },
+  pdf: {
+    content: "Inhalt",
+    pages: "Geprüft: {reviewed}/{pages}",
+    coverage: "Übersetzung: {translated}/{pages} Seiten",
   },
   action: {
     add_file: "Hinzufügen",
