@@ -59,10 +59,26 @@ export interface EpubBlockTextDocumentUnit {
   text: string; // 排除注音后组装的可见正文
 }
 
+/** 原始 DOM 中连续兄弟节点的半开区间；不插入包装节点，保持旧项目路径有效。 */
+export interface EpubTextRunRef {
+  container_path: string; // 原始 DOM 中父容器的元素路径
+  start: number; // children 起始索引，包含文本与注释节点
+  end: number; // children 结束索引，不含该节点
+}
+
+/** 容器中的连续正文片段，位置绑定原树，可见文本已排除注音。 */
+export interface EpubTextRunDocumentUnit extends EpubTextRunRef {
+  mode: "text_run";
+  text: string;
+}
+
 /**
  * 单个可翻译块的抽象单位，mode 决定后续 item metadata 与 writer 写回策略
  */
-export type EpubDocumentUnit = EpubSlotPerLineDocumentUnit | EpubBlockTextDocumentUnit;
+export type EpubDocumentUnit =
+  | EpubSlotPerLineDocumentUnit
+  | EpubBlockTextDocumentUnit
+  | EpubTextRunDocumentUnit;
 
 /**
  * 元素路径片段使用本地名和同名序号，规避命名空间前缀变化造成的定位漂移
@@ -109,6 +125,7 @@ const BLOCK_TAGS = new Set([
  * 代码、样式、注音等子树不参与翻译抽取，避免破坏语义或生成不可写回文本
  */
 const SKIP_SUBTREE_TAGS = new Set([
+  "head",
   "script",
   "style",
   "code",
@@ -118,6 +135,35 @@ const SKIP_SUBTREE_TAGS = new Set([
   "var",
   "noscript",
   "rt",
+]);
+
+/** 资源节点不能随着正文片段被替换；链接和锚点容器单独递归，保留目标与属性。 */
+const TEXT_RUN_RESOURCE_TAGS = new Set(["svg", "math", "video", "audio", "iframe", "object"]);
+
+// br/img 等 void 标签只作边界；宽松 XML 解析可能让它们带有后续正文，仍需沿原树遍历。
+const TEXT_RUN_BOUNDARY_TAGS = new Set([
+  "br",
+  "hr",
+  "img",
+  "body",
+  "section",
+  "article",
+  "blockquote",
+  "nav",
+  "aside",
+  "header",
+  "footer",
+  "address",
+  "figure",
+  "ol",
+  "ul",
+  "dl",
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "a",
 ]);
 
 /**
@@ -153,7 +199,7 @@ function is_valid_xml_text_code_point(code_point: number): boolean {
 }
 
 /**
- * EPUB AST 抽取器，统一维护 slot_per_line 与 block_text 两种写回协议
+ * EPUB AST 抽取器，生成可按原树定位写回的正文条目
  */
 export class EpubAst {
   /**
@@ -207,10 +253,16 @@ export class EpubAst {
   }
 
   /**
-   * href 解析以 OPF 所在目录为基准，匹配 EPUB manifest 的相对路径语义
+   * manifest href 在入口解码一次；ZIP 文件名与已保存的 doc_path 保持原样，避免误解码字面百分号。
    */
   public resolve_href(base_dir: string, href: string): string {
-    const normalized_href = this.normalize_epub_path(href);
+    let decoded_href = href;
+    try {
+      decoded_href = decodeURIComponent(href);
+    } catch {
+      // 部分制作工具直接写入带字面百分号的文件名，URI 解码失败时仍按原名读取。
+    }
+    const normalized_href = this.normalize_epub_path(decoded_href);
     return posix.normalize(posix.join(base_dir, normalized_href)).replace(/^\.\//u, "");
   }
 
@@ -644,25 +696,20 @@ export class EpubAst {
    * 收集跳过子树之外的可见文本，并统一归一成 block_text 的规范正文
    */
   public build_canonical_block_text(block: Element): string {
+    return this.build_canonical_nodes_text([block]);
+  }
+
+  /** 片段和整块共用可见正文口径，注音与跳过子树不混入译文。 */
+  public build_canonical_nodes_text(nodes: readonly ChildNode[]): string {
     const parts: string[] = [];
-    const walk = (elem: Element): void => {
-      const name = this.local_name(elem.name);
-      if (SKIP_SUBTREE_TAGS.has(name)) {
-        return;
-      }
-      const text = this.read_text_slot(elem);
-      if (text !== "") {
-        parts.push(text);
-      }
-      for (const child of this.iter_children_elements(elem)) {
-        walk(child);
-        const tail = this.read_tail_slot(child);
-        if (tail !== "") {
-          parts.push(tail);
-        }
+    const walk = (node: ChildNode): void => {
+      if (isText(node)) {
+        parts.push(node.data);
+      } else if (isTag(node) && !SKIP_SUBTREE_TAGS.has(this.local_name(node.name))) {
+        for (const child of node.children) walk(child);
       }
     };
-    walk(block);
+    for (const node of nodes) walk(node);
     return this.normalize_slot_text(parts.join(""));
   }
 
@@ -674,16 +721,15 @@ export class EpubAst {
   }
 
   /**
-   * 将 DOM 树切分成翻译单位，嵌套块保留直接 text/tail，叶子块聚合内部 slot
+   * 将 DOM 树切分成翻译单位，叶子块保持旧协议，容器内连续正文使用原树片段
    */
-  public collect_document_units(
+  private collect_document_units(
     root: Element,
     elem: Element,
     path_map: Map<Element, string>,
-    in_skipped_map: Map<Element, boolean>,
     has_block_descendant_map: Map<Element, boolean>,
   ): EpubDocumentUnit[] {
-    if (in_skipped_map.get(elem) === true) {
+    if (SKIP_SUBTREE_TAGS.has(this.local_name(elem.name))) {
       return [];
     }
 
@@ -712,35 +758,37 @@ export class EpubAst {
       return units;
     }
 
-    const collect_direct_slots = is_block && has_block_descendant;
-    const text = this.read_text_slot(elem);
-    if (collect_direct_slots && text !== "") {
-      units.push({
-        mode: "slot_per_line",
-        block_path: elem_path,
-        slots: [[{ slot: "text", path: elem_path }, text]],
-      });
-    }
-
-    for (const child of this.iter_children_elements(elem)) {
-      units.push(
-        ...this.collect_document_units(
-          root,
-          child,
-          path_map,
-          in_skipped_map,
-          has_block_descendant_map,
-        ),
-      );
-      const tail = this.read_tail_slot(child);
-      if (collect_direct_slots && tail !== "") {
-        units.push({
-          mode: "slot_per_line",
-          block_path: elem_path,
-          slots: [[{ slot: "tail", path: path_map.get(child) ?? "" }, tail]],
-        });
+    let start = 0; // 当前片段在父容器 children 中的起点
+    const flush = (end: number): void => {
+      const text = this.build_canonical_nodes_text(elem.children.slice(start, end));
+      if (text.trim() !== "") {
+        units.push({ mode: "text_run", container_path: elem_path, start, end, text });
       }
+    };
+    for (const [index, child] of elem.children.entries()) {
+      if (!isTag(child)) continue;
+      const name = this.local_name(child.name);
+      const boundary =
+        this.is_block_candidate(child) ||
+        has_block_descendant_map.get(child) === true ||
+        this.flatten_elements(child).some((node) => {
+          const tag = this.local_name(node.name);
+          return (
+            TEXT_RUN_BOUNDARY_TAGS.has(tag) ||
+            TEXT_RUN_RESOURCE_TAGS.has(tag) ||
+            (SKIP_SUBTREE_TAGS.has(tag) && tag !== "rt") ||
+            node.attribs["id"] !== undefined ||
+            node.attribs["name"] !== undefined
+          );
+        });
+      if (!boundary) continue;
+      flush(index);
+      if (!TEXT_RUN_RESOURCE_TAGS.has(name)) {
+        units.push(...this.collect_document_units(root, child, path_map, has_block_descendant_map));
+      }
+      start = index + 1;
     }
+    flush(elem.children.length);
 
     return units;
   }
@@ -756,61 +804,31 @@ export class EpubAst {
     is_nav = false,
   ): Item[] {
     const root = this.parse_xhtml_or_html(raw);
-    const elem_list = this.flatten_elements(root);
     const path_map = this.build_elem_path_map(root);
-    const in_skipped_map = new Map<Element, boolean>();
-    for (const elem of elem_list) {
-      const parent = elem.parent;
-      const parent_in_skip =
-        parent instanceof Element ? in_skipped_map.get(parent) === true : false;
-      in_skipped_map.set(elem, parent_in_skip || SKIP_SUBTREE_TAGS.has(this.local_name(elem.name)));
-    }
-
-    const has_block_in_subtree_map = new Map<Element, boolean>();
+    // 路径表按文档前序插入，反向遍历即可自底向上确定块边界。
     const has_block_descendant_map = new Map<Element, boolean>();
-    for (const elem of [...elem_list].reverse()) {
+    for (const elem of [...path_map.keys()].reverse()) {
       const has_child_block = this.iter_children_elements(elem).some(
-        (child) => has_block_in_subtree_map.get(child) === true,
+        (child) => this.is_block_candidate(child) || has_block_descendant_map.get(child) === true,
       );
       has_block_descendant_map.set(elem, has_child_block);
-      has_block_in_subtree_map.set(elem, this.is_block_candidate(elem) || has_child_block);
     }
 
-    const units = this.collect_document_units(
-      root,
-      root,
-      path_map,
-      in_skipped_map,
-      has_block_descendant_map,
-    );
+    const units = this.collect_document_units(root, root, path_map, has_block_descendant_map);
     const items: Item[] = [];
-    let unit_index = 0;
     for (const unit of units) {
-      const item =
-        unit.mode === "block_text"
-          ? this.create_item_from_block_text(
-              doc_path,
-              rel_path,
-              spine_index,
-              unit_index,
-              unit.block_path,
-              unit.text,
-              is_nav,
-            )
-          : this.create_item_from_slots(
-              doc_path,
-              rel_path,
-              spine_index,
-              unit_index,
-              unit.block_path,
-              unit.slots,
-              is_nav,
-            );
+      const item = this.create_item_from_unit(
+        unit,
+        doc_path,
+        rel_path,
+        spine_index,
+        items.length,
+        is_nav,
+      );
       if (item === null) {
         continue;
       }
       items.push(item);
-      unit_index += 1;
     }
     return items;
   }
@@ -821,19 +839,18 @@ export class EpubAst {
   public extract_items_from_ncx(ncx_path: string, raw: Uint8Array, rel_path: string): Item[] {
     const root = this.parse_ncx_xml(raw);
     const items: Item[] = [];
-    let unit_index = 0;
-    for (const elem of this.find_descendants(root, "text")) {
+    for (const [elem, elem_path] of this.iter_elem_path_pairs(root)) {
+      if (this.local_name(elem.name) !== "text") continue;
       const text = this.normalize_slot_text(this.read_text_slot(elem));
       if (text.trim() === "") {
         continue;
       }
-      const elem_path = this.build_elem_path_map(root).get(elem) ?? "";
       items.push(
         Item.from_json({
           src: text,
           dst: "",
           tag: ncx_path,
-          row: ROW_BASE_NCX + unit_index,
+          row: ROW_BASE_NCX + items.length,
           file_type: "EPUB",
           file_path: rel_path,
           extra_field: {
@@ -848,72 +865,44 @@ export class EpubAst {
           } as JsonValue,
         }),
       );
-      unit_index += 1;
     }
     return items;
   }
 
-  /**
-   * slot 列表组装成 Item，摘要和路径 metadata 是 AST 写回的契约
-   */
-  public create_item_from_slots(
+  /** 三种正文模式共用 Item 组装；slot 摘要使用 NUL 分隔，整块和片段使用可见正文摘要。 */
+  private create_item_from_unit(
+    unit: EpubDocumentUnit,
     doc_path: string,
     rel_path: string,
     spine_index: number,
     unit_index: number,
-    block_path: string,
-    slots: Array<[EpubPartRef, string]>,
     is_nav: boolean,
   ): Item | null {
-    const part_defs: EpubPartRef[] = [];
-    const part_texts: string[] = [];
-    let has_non_empty_text = false;
-    for (const [ref, text] of slots) {
-      part_defs.push({ slot: ref.slot, path: ref.path });
-      part_texts.push(this.normalize_slot_text(text));
-      if (text.trim() !== "") {
-        has_non_empty_text = true;
-      }
-    }
-    if (!has_non_empty_text) {
-      return null;
-    }
+    const texts =
+      unit.mode === "slot_per_line"
+        ? unit.slots.map(([, text]) => this.normalize_slot_text(text))
+        : [this.normalize_slot_text(unit.text)];
+    const src = texts.join("\n");
+    if (src.trim() === "") return null;
 
-    const epub_extra: JsonRecord = {
-      mode: "slot_per_line",
+    const epub: JsonRecord = {
+      mode: unit.mode,
       doc_path,
-      block_path,
-      parts: part_defs as unknown as JsonValue,
-      src_digest: this.sha1_hex_with_null_separator(part_texts),
       is_nav,
+      src_digest:
+        unit.mode === "slot_per_line"
+          ? this.sha1_hex_with_null_separator(texts)
+          : this.sha1_hex(src),
     };
-
-    return Item.from_json({
-      src: part_texts.join("\n"),
-      dst: "",
-      tag: doc_path,
-      row: spine_index * ROW_MULTIPLIER + unit_index,
-      file_type: "EPUB",
-      file_path: rel_path,
-      extra_field: { epub: epub_extra } as JsonValue,
-    });
-  }
-
-  /**
-   * 含 ruby 块组装成单条 block_text Item，src_digest 只绑定去注音后的可见正文
-   */
-  public create_item_from_block_text(
-    doc_path: string,
-    rel_path: string,
-    spine_index: number,
-    unit_index: number,
-    block_path: string,
-    text: string,
-    is_nav: boolean,
-  ): Item | null {
-    const src = this.normalize_slot_text(text);
-    if (src.trim() === "") {
-      return null;
+    if (unit.mode === "text_run") {
+      epub["container_path"] = unit.container_path;
+      epub["start"] = unit.start;
+      epub["end"] = unit.end;
+    } else {
+      epub["block_path"] = unit.block_path;
+      if (unit.mode === "slot_per_line") {
+        epub["parts"] = unit.slots.map(([ref]) => ({ slot: ref.slot, path: ref.path }));
+      }
     }
     return Item.from_json({
       src,
@@ -922,15 +911,7 @@ export class EpubAst {
       row: spine_index * ROW_MULTIPLIER + unit_index,
       file_type: "EPUB",
       file_path: rel_path,
-      extra_field: {
-        epub: {
-          mode: "block_text",
-          doc_path,
-          block_path,
-          src_digest: this.sha1_hex(src),
-          is_nav,
-        },
-      } as JsonValue,
+      extra_field: { epub },
     });
   }
 
@@ -1000,9 +981,12 @@ export class EpubAst {
    * block_text 写回会接管整个块的 children，统一重连 DOM 节点关系
    */
   public replace_element_children_with_text(elem: Element, text: string): void {
-    const text_node = new Text(text);
-    text_node.parent = elem;
-    elem.children = [text_node];
+    this.replace_element_children(elem, [new Text(text)]);
+  }
+
+  /** 修改兄弟节点集合后统一重连 DOM，供片段写回和整块替换复用。 */
+  public replace_element_children(elem: Element, children: ChildNode[]): void {
+    elem.children = children;
     this.relink_children(elem);
   }
 
@@ -1226,6 +1210,21 @@ export class EpubAst {
       previous.next = null;
     }
   }
+}
+
+/** 在 EPUB 私有载荷边界收窄片段定位，非法区间交由 writer 作为定位失败处理。 */
+export function read_epub_text_run(epub: JsonRecord): EpubTextRunRef | null {
+  const { container_path, start, end } = epub;
+  return typeof container_path === "string" &&
+    container_path !== "" &&
+    typeof start === "number" &&
+    Number.isInteger(start) &&
+    start >= 0 &&
+    typeof end === "number" &&
+    Number.isInteger(end) &&
+    end > start
+    ? { container_path, start, end }
+    : null;
 }
 
 /**

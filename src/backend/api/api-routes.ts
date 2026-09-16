@@ -85,7 +85,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/agent/reset", () => agent.reset());
 
   const project_content = services.project.content;
-  const reset_preview = services.project.resetPreview;
   context.postJson("/api/workbench/snapshot", () => services.project.summary.read());
   context.postJson("/api/project/translation-stats", () =>
     services.project.summary.read_translation_stats(),
@@ -100,9 +99,6 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
   context.postJson("/api/workbench/translation/reset", (body) =>
     project_content.reset_translation(body),
-  );
-  context.postJson("/api/workbench/translation/reset-preview", (body) =>
-    reset_preview.preview_translation_reset(body),
   );
 
   const proofreading_query = services.proofreading.query;

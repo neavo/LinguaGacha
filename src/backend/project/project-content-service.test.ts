@@ -77,12 +77,14 @@ function create_service(
   };
 }
 
+/** 收集解析警告供断言，避免测试写入真实日志。 */
 function create_log_manager(): Pick<LogManager, "warning"> {
   return {
     warning: vi.fn(),
   } as unknown as Pick<LogManager, "warning">;
 }
 
+/** 从真实数据库读取修订号，模拟提交后的项目事件。 */
 function create_test_project_change_publisher(
   database: ProjectDatabase,
   lg_path: string,
@@ -116,6 +118,7 @@ function create_test_project_change_publisher(
   });
 }
 
+/** 固定修订号，用于只验证写入及事件形状的用例。 */
 function create_static_project_change_publisher(section_revisions: Record<string, number>) {
   return {
     publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
@@ -138,6 +141,7 @@ function create_static_project_change_publisher(section_revisions: Record<string
   };
 }
 
+/** 补齐公开条目默认字段，用例只声明影响当前行为的差异。 */
 function create_public_item(overrides: JsonRecord = {}): JsonRecord {
   return {
     item_id: 1,
@@ -158,6 +162,7 @@ function create_public_item(overrides: JsonRecord = {}): JsonRecord {
   };
 }
 
+/** 从同一份默认条目转换数据库字段，避免维护两套测试数据。 */
 function create_persistent_item(overrides: JsonRecord = {}): JsonRecord {
   const item = create_public_item(overrides);
   const { item_id, row_number, ...rest_item } = item;
@@ -315,7 +320,7 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("提交 translation reset all 时替换 items 并清分析事实", async () => {
+  it("全部重置重建条目并发布全量失效", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
       items: 1,
     });
@@ -350,6 +355,7 @@ describe("ProjectContentService", () => {
     });
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
+        item_id: 2,
         src: "新",
         row_number: 0,
       }),
@@ -363,6 +369,137 @@ describe("ProjectContentService", () => {
     });
     database.close();
   });
+
+  it.each([
+    {
+      file: "source.json",
+      file_type: "KVJSON",
+      content: JSON.stringify({ 翻訳済みの文章: "源文件译文", 未翻訳の文章: "" }),
+    },
+    {
+      file: "source.trans",
+      file_type: "TRANS",
+      content: JSON.stringify({
+        project: {
+          files: {
+            chapter: {
+              data: [
+                ["翻訳済みの文章", "源文件译文"],
+                ["未翻訳の文章", ""],
+              ],
+            },
+          },
+        },
+      }),
+    },
+  ])("全部重置从 $file 的工程资产恢复自带译文并重建进度", async ({ file, file_type, content }) => {
+    const { database, service, lg_path } = create_service();
+    try {
+      const source = project_path(file);
+      fs.writeFileSync(source, content, "utf-8");
+      database.add_asset_from_source(lg_path, file, source, 0);
+      // 重置读取工程内的源文件快照，外部文件后续变化不参与恢复。
+      fs.writeFileSync(source, "外部文件已变更", "utf-8");
+      database.set_items(lg_path, [
+        create_persistent_item({
+          item_id: 10,
+          file_path: file,
+          file_type,
+          row_number: 0,
+          src: "翻訳済みの文章",
+          dst: "项目中修改后的译文",
+          status: "PROCESSED",
+        }),
+        create_persistent_item({
+          item_id: 11,
+          file_path: file,
+          file_type,
+          row_number: 1,
+          src: "未翻訳の文章",
+          dst: "项目中新增的译文",
+          status: "PROCESSED",
+        }),
+      ]);
+      database.set_meta(lg_path, "translation_extras", {
+        total_line: 2,
+        line: 2,
+        processed_line: 2,
+        error_line: 0,
+        total_tokens: 100,
+        total_input_tokens: 60,
+        total_output_tokens: 40,
+        time: 12,
+      });
+
+      await service.reset_translation({ mode: "all", project_settings: { source_language: "JA" } });
+
+      const items = database.get_all_items(lg_path) as JsonRecord[];
+      expect(items.map(({ src, dst, status }) => ({ src, dst, status }))).toEqual([
+        { src: "翻訳済みの文章", dst: "源文件译文", status: "PROCESSED" },
+        { src: "未翻訳の文章", dst: "", status: "NONE" },
+      ]);
+      expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
+        total_line: 2,
+        line: 1,
+        processed_line: 1,
+        error_line: 0,
+        total_tokens: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        time: 0,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it.each(["第一行\n第二行\n第三行", "一行", ""])("全部重置允许条目数变化：%s", async (content) => {
+    const { database, service, lg_path } = create_service();
+    const source = project_path("a.txt");
+    fs.writeFileSync(source, content, "utf-8");
+    database.add_asset_from_source(lg_path, "a.txt", source, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({ item_id: 20, row_number: 0, dst: "旧译文", status: "PROCESSED" }),
+      create_persistent_item({ item_id: 21, row_number: 1 }),
+    ]);
+    await service.reset_translation({ mode: "all" });
+    const items = database.get_all_items(lg_path) as JsonRecord[];
+    const expected = content === "" ? [] : content.split("\n");
+    expect(items.map((item) => item["src"])).toEqual(expected);
+    expect(items.every((item) => Number(item["id"]) > 21 && item["dst"] === "")).toBe(true);
+    database.close();
+    const reopened = new ProjectDatabase();
+    expect(reopened.get_all_items(lg_path)).toEqual(items);
+    reopened.close();
+  });
+
+  it.each(["missing", "parse", "commit"])(
+    "全部重置在 %s 失败时保留条目和项目元数据",
+    async (failure) => {
+      const { database, service, lg_path } = create_service();
+      const file = failure === "parse" ? "a.json" : "a.txt";
+      const source = project_path(file);
+      fs.writeFileSync(source, "新正文", "utf-8");
+      database.add_asset_from_source(lg_path, file, source, 0);
+      database.set_items(lg_path, [
+        create_persistent_item({ file_path: file, dst: "已有译文", status: "PROCESSED" }),
+      ]);
+      const before_items = database.get_all_items(lg_path);
+      const before_meta = database.get_all_meta(lg_path);
+      if (failure === "missing") vi.spyOn(database, "read_asset_content").mockReturnValueOnce(null);
+      if (failure === "commit") {
+        const set_items = database.set_items.bind(database);
+        vi.spyOn(database, "set_items").mockImplementationOnce((...args) => {
+          set_items(...args);
+          throw new Error("commit probe");
+        });
+      }
+      await expect(service.reset_translation({ mode: "all" })).rejects.toThrow();
+      expect(database.get_all_items(lg_path)).toEqual(before_items);
+      expect(database.get_all_meta(lg_path)).toEqual(before_meta);
+      database.close();
+    },
+  );
 
   it("translation reset 拒绝旧最终事实载荷且不清空既有 items", async () => {
     const { database, service, lg_path } = create_service();
@@ -416,6 +553,7 @@ describe("ProjectContentService", () => {
     await expect(reset_all_promise).resolves.toMatchObject({ accepted: true });
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
+        item_id: 2,
         src: "新",
         dst: "",
         status: "NONE",

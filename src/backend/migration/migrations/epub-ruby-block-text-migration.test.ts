@@ -1,3 +1,5 @@
+import JSZip from "jszip";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../../domain/json";
@@ -10,7 +12,7 @@ describe("EpubRubyBlockTextMigration", () => {
     const epub_asset = await create_epub_fixture(
       '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
     );
-    const { database, migration, write_names } = create_migration({
+    const { database, migration } = create_migration({
       items: [
         {
           id: 7,
@@ -79,10 +81,71 @@ describe("EpubRubyBlockTextMigration", () => {
         src_digest: expect.any(String),
       }),
     );
-    expect(write_names).toEqual(["setItems", "bumpSectionRevisions"]);
+    expect(database.bump_section_revisions).toHaveBeenCalledWith("demo.lg", ["items"]);
   });
 
-  it("旧 EPUB asset 缺失时不生成运行时兼容写回", async () => {
+  it("正文扩展改变提取序号时仅转换旧 ruby 条目，保留同文件其它记录", async () => {
+    const zip = await JSZip.loadAsync(await create_epub_fixture("正文"));
+    zip.file(
+      "OPS/chapter.xhtml",
+      "<html><body>新增正文<p>既有段落</p><p><ruby>漢<rt>かん</rt></ruby></p></body></html>",
+    );
+    const plain = {
+      id: 8,
+      src: "既有段落",
+      dst: "已有译文",
+      file_type: "EPUB",
+      file_path: "book.epub",
+      tag: "OPS/chapter.xhtml",
+      row: 0,
+      status: "PROCESSED",
+    };
+    const ruby = {
+      id: 9,
+      src: "漢",
+      dst: "汉",
+      file_type: "EPUB",
+      file_path: "book.epub",
+      tag: "OPS/chapter.xhtml",
+      row: 1,
+      status: "PROCESSED",
+      skip_internal_filter: true,
+      extra_field: {
+        epub: {
+          mode: "slot_per_line",
+          doc_path: "OPS/chapter.xhtml",
+          block_path: "/html[1]/body[1]/p[2]",
+          ruby_clean_candidate: { cleaned_src: "漢" },
+        },
+      },
+    };
+    const { database, migration } = create_migration({
+      items: [plain, ruby],
+      asset_content_by_path: { "book.epub": await zip.generateAsync({ type: "nodebuffer" }) },
+    });
+    for (const write of await migration.build_writes("demo.lg")) write(database);
+    const items = vi.mocked(database.set_items).mock.calls[0]?.[1];
+    expect(items).toEqual([
+      expect.objectContaining(plain),
+      expect.objectContaining({
+        id: 9,
+        src: "漢",
+        dst: "汉",
+        row: 1,
+        status: "PROCESSED",
+        skip_internal_filter: true,
+        extra_field: { epub: expect.objectContaining({ mode: "block_text" }) },
+      }),
+    ]);
+    ruby.extra_field.epub.ruby_clean_candidate.cleaned_src = "不同正文";
+    const unsafe = create_migration({
+      items: [plain, ruby],
+      asset_content_by_path: { "book.epub": await zip.generateAsync({ type: "nodebuffer" }) },
+    });
+    expect(await unsafe.migration.build_writes("demo.lg")).toEqual([]);
+  });
+
+  it("原始 EPUB 缺失时保留旧工程", async () => {
     const { migration } = create_migration({
       items: [
         {
@@ -115,33 +178,17 @@ function create_migration(options: {
 }): {
   database: ProjectDatabase;
   migration: EpubRubyBlockTextMigration;
-  write_names: string[];
 } {
-  const write_names: string[] = [];
   const database = {
     get_all_items: vi.fn(() => options.items ?? []),
     read_asset_content: vi.fn((_project_path: string, asset_path: string) => {
       return options.asset_content_by_path?.[asset_path] ?? null;
     }),
-    set_items: vi.fn(() => {
-      write_names.push("setItems");
-    }),
-    delete_analysis_item_checkpoints: vi.fn(() => {
-      write_names.push("deleteAnalysisItemCheckpoints");
-    }),
-    clear_analysis_candidate_aggregates: vi.fn(() => {
-      write_names.push("clearAnalysisCandidateAggregates");
-    }),
-    upsert_meta_entries: vi.fn(() => {
-      write_names.push("upsertMetaEntries");
-    }),
-    bump_section_revisions: vi.fn(() => {
-      write_names.push("bumpSectionRevisions");
-    }),
+    set_items: vi.fn(),
+    bump_section_revisions: vi.fn(),
   } as unknown as ProjectDatabase;
   return {
     database,
     migration: new EpubRubyBlockTextMigration(database),
-    write_names,
   };
 }

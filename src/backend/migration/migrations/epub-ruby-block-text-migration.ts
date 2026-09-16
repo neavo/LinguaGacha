@@ -7,16 +7,19 @@ import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migrat
 
 /**
  * 迁移背景：
- * 旧 EPUB ruby 实现把去注音正文塞进 `ruby_clean_candidate`，再让 shared 文本层和 writer
- * 读取 EPUB 私有字段完成翻译与导出。当前契约要求 EPUB reader 直接产出应用内可见正文，
- * writer 只消费正式的 `slot_per_line` / `block_text` metadata，`clean_ruby` 只处理字面文本标记。
+ * 旧 EPUB ruby 实现把去注音正文放入 `ruby_clean_candidate`，由 shared 文本层和 writer
+ * 读取这一私有字段完成翻译与导出。当前 reader 直接产出应用内可见正文，AST 写回使用
+ * `slot_per_line` / `block_text` / `text_run` 定位，不再消费旧候选；`clean_ruby` 只处理字面文本标记。
  *
  * 生效场景：
- * `load_project` 打开旧 EPUB 工程时，若 item metadata 中仍含 `ruby_clean_candidate`，
- * 则按原始 EPUB asset 用当前 reader 重建该文件 item，并迁移用户翻译、姓名、状态和重试事实。
+ * `load_project` 打开旧 EPUB 工程时，若旧候选含 `cleaned_src` 或 `cleaned_digest` 字符串，
+ * 则读取工程保存的原始 EPUB asset，按文档路径、原块路径及去注音正文核验对应的 block_text；
+ * 缺少正文字符串时比较摘要。只更新这些旧条目的原文和格式定位，保留 ID、行号、译文、姓名、
+ * 状态、重试次数及其它条目事实，同文件的普通条目保持原样。
  *
  * 不处理范围：
- * 无法重新解析 asset 或存在无法映射的用户事实时保留旧项目事实，不提供运行时兼容旁路。
+ * 不将当前 reader 新发现的正文补入旧项目。asset 缺失、解析失败，或任一旧候选无法匹配、
+ * 正文或摘要不符、重复占用同一原块时，保留该 EPUB 的全部旧条目；其它文件仍可独立迁移。
  */
 export const epub_ruby_block_text_migration: MigrationDescriptor = {
   id: "epub-ruby-block-text",
@@ -32,10 +35,10 @@ export const epub_ruby_block_text_migration: MigrationDescriptor = {
 };
 
 /**
- * 负责在项目打开期把旧 EPUB ruby item 重建为当前 block_text item，并迁移用户事实。
+ * 负责在项目打开期把旧 EPUB ruby item 转为 block_text；同文件其它条目保持原样。
  */
 export class EpubRubyBlockTextMigration {
-  private readonly ast = new EpubAst(); // 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
+  private readonly ast = new EpubAst(); // 用当前 reader 核验旧 ruby 块，避免复制解析规则
 
   /**
    * database 是 `.lg` 唯一读写入口；本类只读取快照并生成类型化写入。
@@ -43,7 +46,7 @@ export class EpubRubyBlockTextMigration {
   public constructor(private readonly database: ProjectDatabase) {}
 
   /**
-   * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 重建当前 item 形状并迁移用户事实。
+   * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 核验正文并更新对应条目。
    */
   public async build_writes(project_path: string): Promise<ProjectDatabaseWrite[]> {
     const current_items = this.read_all_items(project_path);
@@ -131,173 +134,47 @@ export class EpubRubyBlockTextMigration {
   }
 
   /**
-   * 新旧 item 以结构 key 优先对齐，ruby 旧候选再用 block_path 补齐映射。
+   * 迁移只处理旧注音条目。当前 reader 可以发现更多正文，但不能借打开旧项目改变条目集合。
+   * 原路径与去注音正文共同确认身份，避免提取顺序变化后按行号误继承译文。
    */
   private merge_file_items(parsed_items: Item[], old_items: Item[]): Item[] | null {
-    const consumed_old_items = new Set<Item>();
-    const by_structural_key = this.build_item_index(old_items, (item) =>
-      this.structural_item_key(item),
-    );
-    const by_ruby_block_key = this.build_item_index(old_items, (item) =>
-      this.legacy_ruby_block_key(item),
-    );
-    const by_row_key = this.build_item_index(old_items, (item) => this.row_item_key(item));
-    const merged_items: Item[] = [];
-
-    for (const parsed_item of parsed_items) {
-      const old_item =
-        this.take_indexed_item(
-          by_structural_key,
-          this.structural_item_key(parsed_item),
-          consumed_old_items,
-        ) ??
-        this.take_indexed_item(
-          by_ruby_block_key,
-          this.block_text_item_key(parsed_item),
-          consumed_old_items,
-        ) ??
-        this.take_indexed_item(by_row_key, this.row_item_key(parsed_item), consumed_old_items);
-      if (old_item === null) {
-        merged_items.push(parsed_item);
+    const parsed_by_block = new Map<string, Item>();
+    for (const item of parsed_items) {
+      const epub = read_epub_extra(item);
+      if (epub?.["mode"] === "block_text") {
+        parsed_by_block.set(this.block_key(item, epub["block_path"]), item);
+      }
+    }
+    const merged: Item[] = [];
+    for (const old of old_items) {
+      if (!this.has_legacy_ruby_candidate(old)) {
+        merged.push(old);
         continue;
       }
-      consumed_old_items.add(old_item);
-      merged_items.push(this.merge_user_facts(parsed_item, old_item));
+      const epub = read_epub_extra(old);
+      const candidate = read_json_record(epub?.["ruby_clean_candidate"]);
+      const key = this.block_key(old, candidate["block_path"] ?? epub?.["block_path"]);
+      const parsed = parsed_by_block.get(key);
+      if (parsed === undefined) return null;
+      const matches =
+        typeof candidate["cleaned_src"] === "string"
+          ? candidate["cleaned_src"] === parsed.src
+          : candidate["cleaned_digest"] === read_epub_extra(parsed)?.["src_digest"];
+      if (!matches) return null;
+      parsed_by_block.delete(key); // 同一原块只能迁移一次，避免把重复候选当成独立条目。
+      merged.push(
+        Item.from_json({
+          ...old.to_json(),
+          src: parsed.src,
+          extra_field: parsed.extra_field,
+        }),
+      );
     }
-
-    const unsafe_unmapped_item = old_items.some(
-      (old_item) => !consumed_old_items.has(old_item) && this.has_user_fact(old_item),
-    );
-    return unsafe_unmapped_item ? null : merged_items;
+    return merged;
   }
 
-  /**
-   * 迁移只替换 EPUB 结构 metadata，用户已经产生的翻译、姓名和状态事实必须保留。
-   */
-  private merge_user_facts(parsed_item: Item, old_item: Item): Item {
-    return Item.from_json({
-      ...parsed_item.to_json(),
-      id: old_item.id,
-      dst: old_item.dst,
-      name_src: old_item.name_src,
-      name_dst: old_item.name_dst,
-      text_type: old_item.text_type,
-      status: old_item.status,
-      retry_count: old_item.retry_count,
-    });
-  }
-
-  /**
-   * 有用户事实的旧 item 若无法映射，整本 EPUB 保留原状，避免静默丢译文。
-   */
-  private has_user_fact(item: Item): boolean {
-    return (
-      item.dst !== "" ||
-      this.has_name_value(item.name_src) ||
-      this.has_name_value(item.name_dst) ||
-      item.status !== "NONE" ||
-      item.retry_count > 0
-    );
-  }
-
-  /**
-   * 姓名字段可能是单列或多列，只要含非空文本就视为用户事实。
-   */
-  private has_name_value(value: string | string[] | null): boolean {
-    if (typeof value === "string") {
-      return value !== "";
-    }
-    return Array.isArray(value) && value.some((entry) => entry !== "");
-  }
-
-  /**
-   * 构建一对多索引，重复 key 按原 item 顺序消费，避免相同文本块互相抢占。
-   */
-  private build_item_index(
-    items: Item[],
-    key_reader: (item: Item) => string | null,
-  ): Map<string, Item[]> {
-    const index = new Map<string, Item[]>();
-    for (const item of items) {
-      const key = key_reader(item);
-      if (key === null) {
-        continue;
-      }
-      const bucket = index.get(key) ?? [];
-      bucket.push(item);
-      index.set(key, bucket);
-    }
-    return index;
-  }
-
-  /**
-   * 从索引中取第一个未消费 item，保证同一个旧事实只能迁移一次。
-   */
-  private take_indexed_item(
-    index: Map<string, Item[]>,
-    key: string | null,
-    consumed_items: Set<Item>,
-  ): Item | null {
-    if (key === null) {
-      return null;
-    }
-    const bucket = index.get(key);
-    while (bucket !== undefined && bucket.length > 0) {
-      const item = bucket.shift() as Item;
-      if (!consumed_items.has(item)) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * 结构 key 绑定文件、文档、行号和块路径，覆盖普通 slot 与新 block_text 项。
-   */
-  private structural_item_key(item: Item): string | null {
-    const epub = read_epub_extra(item);
-    if (epub === null) {
-      return null;
-    }
-    const doc_path = String(epub["doc_path"] ?? item.tag);
-    const block_path = String(epub["block_path"] ?? "");
-    return [item.file_path, item.tag, String(item.row), doc_path, block_path].join("\u0000");
-  }
-
-  /**
-   * 行号 key 只作为最后兜底，服务旧 metadata 缺少 block_path 的低风险场景。
-   */
-  private row_item_key(item: Item): string | null {
-    if (item.file_type !== "EPUB") {
-      return null;
-    }
-    return [item.file_path, item.tag, String(item.row)].join("\u0000");
-  }
-
-  /**
-   * 新 block_text 项使用正式 block_path 与旧候选的 block_path 对齐。
-   */
-  private block_text_item_key(item: Item): string | null {
-    const epub = read_epub_extra(item);
-    if (epub?.["mode"] !== "block_text") {
-      return null;
-    }
-    const doc_path = String(epub["doc_path"] ?? item.tag);
-    const block_path = String(epub["block_path"] ?? "");
-    return block_path === "" ? null : [item.file_path, doc_path, block_path].join("\u0000");
-  }
-
-  /**
-   * 旧候选的 block_path 是从旧 reader 写入的唯一稳定 ruby 块定位。
-   */
-  private legacy_ruby_block_key(item: Item): string | null {
-    const epub = read_epub_extra(item);
-    const candidate = read_json_record(epub?.["ruby_clean_candidate"]);
-    const block_path = String(candidate["block_path"] ?? epub?.["block_path"] ?? "");
-    if (epub === null || block_path === "") {
-      return null;
-    }
-    const doc_path = String(epub["doc_path"] ?? item.tag);
-    return [item.file_path, doc_path, block_path].join("\u0000");
+  /** 文档和原块路径确定身份，提取序号变化不影响匹配。 */
+  private block_key(item: Item, block_path: JsonValue | undefined): string {
+    return JSON.stringify([read_epub_extra(item)?.["doc_path"] ?? item.tag, block_path]);
   }
 }

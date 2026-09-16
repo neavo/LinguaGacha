@@ -46,7 +46,7 @@
 
 `POST /api/settings/update` 由 `AppSettingsCommandService` 编排，返回 `settings + accepted + changes`。语言和预过滤修改涉及已加载工程时，准备、配置保存、工程提交及失败补偿持有同一写 lease；目标语言只同步设置，其余工程设置重算预过滤。提交前失败只补偿本次字段，已提交错误保留新配置；设置通知在两个存储完成后发布。配置与工程持久化分别归 `AppSettingService` 和 `ProjectWriteStore`。
 
-接口测试的多 Key 请求共用取消信号和配置副本。GUI 关闭先停止 Gateway 受理，并同时取消接口测试，避免 Gateway 排空在途 HTTP 时等待无法取消的请求；业务根释放前等待测试完成链。重置预览不取得运行 lease，在异步解析前固定工程资产内容与条目身份，真实重置仍走工程写入口。
+接口测试的多 Key 请求共用取消信号和配置副本。GUI 关闭先停止 Gateway 受理，并同时取消接口测试，避免 Gateway 排空在途 HTTP 时等待无法取消的请求；业务根释放前等待测试完成链。
 
 ## 3. 项目读取与写入
 
@@ -63,6 +63,8 @@ project, files, items, quality, prompts, proofreading
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
 - 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI 与 CLI 的格式写回和输出目录语义。
+- EPUB 的 `slot_per_line`、`block_text` 和历史无 AST 条目继续按原协议写回；`text_run` 绑定原始 DOM 片段，全部片段定位在修改节点前核验并解析。manifest href 在读取入口解码一次，ZIP 键和持久定位不重复解码。打开项目不重建条目；旧 ruby 迁移只转换节点与正文匹配的候选，保留 ID、行号及用户事实。
+- “全部重置”在项目写 lease 内从工程保存的全部 asset 重建条目，分配新 ID 并重新预过滤；格式 reader 恢复源文件自带译文并据此重算完成进度，耗时和 token 累计清零。条目数允许变化，读取或解析失败时不提交部分结果；成功后经 `ProjectWriteStore` 原子替换并发布 items 全量失效。指定文件或失败条目的重置保留既有身份。
 - 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - `builtin/text_preserve/preset/*.json` 是内置文本保护规则的唯一内容来源；`base.json` 在所有模式下启用，其余预设按 `text_type` 提供智能规则，`custom` 叠加项目规则。翻译与校对复用同一逐行源文准备顺序。
