@@ -488,6 +488,45 @@ describe("AgentMessageEditor", () => {
     ]);
   });
 
+  it.each(["replacement", "revision", "unmount"] as const)(
+    "图片转换结束时只写入仍有效的草稿：%s",
+    async (change) => {
+      const pending = Promise.withResolvers<string[]>();
+      image_mocks.normalize_agent_images.mockReturnValueOnce(pending.promise);
+      const input_session = create_input_session();
+      const view = await render_editor({ input_session });
+      const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
+      Object.defineProperty(input, "files", {
+        value: [new File([], "old.png", { type: "image/png" })],
+      });
+      await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+
+      const next_session = change === "replacement" ? create_input_session() : input_session;
+      if (change === "unmount") {
+        await act(async () => root?.unmount());
+        root = null;
+      } else {
+        if (change === "revision") input_session.accept_message();
+        await render_editor({ input_session: next_session });
+      }
+      await act(async () => pending.resolve(["old-image"]));
+      expect(next_session.read_draft().attachments).toEqual([]);
+    },
+  );
+
+  it("文件选择返回时遵循当前编辑锁", async () => {
+    const input_session = create_input_session();
+    const view = await render_editor({ input_session });
+    await render_editor({ input_session, read_only: true });
+    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
+    Object.defineProperty(input, "files", {
+      value: [new File([], "locked.png", { type: "image/png" })],
+    });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(input_session.read_draft().attachments).toEqual([]);
+    expect(image_mocks.normalize_agent_images).not.toHaveBeenCalled();
+  });
+
   it("图片转换失败时保留原草稿并交给页面提示", async () => {
     image_mocks.normalize_agent_images.mockRejectedValueOnce(new Error("decode failed"));
     const on_image_error = vi.fn();

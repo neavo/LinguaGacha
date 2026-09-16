@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import type { Ref, RefObject } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import type { ModelThinkingLevel } from "@domain/model";
 import {
@@ -25,6 +25,7 @@ export type AgentComposerHandle = AgentMessageEditorHandle;
 type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disconnected";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
+  image_drop_target_ref?: RefObject<HTMLElement | null>;
   locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[];
@@ -69,6 +70,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   return (
     <AgentMessageEditor
       ref={props.ref}
+      image_drop_target_ref={props.image_drop_target_ref}
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}
