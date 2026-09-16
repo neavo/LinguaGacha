@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
 import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
-import { resolve_agent_workspace_runtime_entry_path, run_gui_entry } from "./gui-entry";
+import { resolve_agent_workspace_runtime_bootstrap_path, run_gui_entry } from "./gui-entry";
 
 const mocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -150,11 +150,11 @@ describe("run_gui_entry", () => {
       workerEntryUrl: worker_url,
       appRoot: process.cwd(),
       builtinRoot: path.join("E:/app.asar", "builtin"),
-      agentWorkspaceRuntimeEntryPath: path.join(
+      agentWorkspaceRuntimeBootstrapPath: path.join(
         process.cwd(),
-        "build",
-        "workspace-runtime",
-        "runtime.mjs",
+        "resources",
+        "workspace",
+        "bootstrap.mjs",
       ),
     });
     expect(mocks.update_options).toEqual([
@@ -272,11 +272,11 @@ describe("run_gui_entry", () => {
 
   it("发布态按 resources 解析工作区入口", () => {
     expect(
-      resolve_agent_workspace_runtime_entry_path({
+      resolve_agent_workspace_runtime_bootstrap_path({
         packaged: true,
         resourcesPath: "E:/app/resources",
         projectRoot: "E:/project",
       }),
-    ).toEqual(path.join("E:/app/resources", "workspace-runtime", "runtime.mjs"));
+    ).toEqual(path.join("E:/app/resources", "workspace", "bootstrap.mjs"));
   });
 });

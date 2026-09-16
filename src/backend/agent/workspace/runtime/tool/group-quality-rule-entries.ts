@@ -11,7 +11,7 @@ const pagination = {
     Type.Integer({
       minimum: 0,
       default: 0,
-      description: "目标筛选后的组偏移；后续页使用 next_offset。",
+      description: "目标筛选后的组偏移。后续页使用 next_offset。",
     }),
   ),
   limit: Type.Optional(
@@ -29,7 +29,7 @@ const relation_schema = Type.Union([
     {
       reason: Type.Union([Type.Literal("equivalent"), Type.Literal("contains")]),
       entry_ids: Type.Array(Type.String(), {
-        description: "关系涉及的对象；contains 按 [包含者, 被包含者] 排列。",
+        description: "关系涉及的对象。contains 按 [包含者, 被包含者] 排列。",
       }),
     },
     { additionalProperties: false },
@@ -68,7 +68,7 @@ const entry_fields = {
   id: Type.String({
     minLength: 1,
     pattern: "\\S",
-    description: "完整分析集合中唯一的对象身份；当前工程条目沿用快照 id。",
+    description: "完整分析集合中唯一的对象身份。当前工程条目沿用快照 id。",
   }),
   src: Type.String({ minLength: 1, pattern: "\\S", description: "对象的完整原文或正则源码。" }),
 };
@@ -78,12 +78,12 @@ const glossary_entry_schema = Type.Object(
 );
 const preserve_entry_schema = Type.Object(entry_fields, { additionalProperties: true });
 const entries_description =
-  "省略时读取该类型当前全部规则；提供时以此数组作为完整分析集合，空数组表示空集合。";
+  "省略时读取该类型当前全部规则。提供时以此数组作为完整分析集合。空数组表示空集合。";
 const target_fields = {
   target_entry_ids: Type.Optional(
     Type.Array(Type.String({ minLength: 1, pattern: "\\S" }), {
       uniqueItems: true,
-      description: "在完整集合分析后筛选涉及这些目标的组；省略取全部，空数组返回零组。",
+      description: "在完整集合分析后筛选涉及这些目标的组。省略时取全部组。空数组返回零组。",
     }),
   ),
   ...pagination,
@@ -113,10 +113,13 @@ const parameters = Type.Union([
 
 const result = Type.Object(
   {
-    total_entry_count: Type.Integer({ minimum: 0 }),
-    total_target_entry_count: Type.Integer({ minimum: 0 }),
-    total_component_count: Type.Integer({ minimum: 0 }),
-    total_group_count: Type.Integer({ minimum: 0 }),
+    total_entry_count: Type.Integer({ minimum: 0, description: "完整分析集合中的对象数量。" }),
+    total_target_entry_count: Type.Integer({ minimum: 0, description: "实际存在的目标对象数量。" }),
+    total_component_count: Type.Integer({
+      minimum: 0,
+      description: "完整分析集合中的 component 数量。",
+    }),
+    total_group_count: Type.Integer({ minimum: 0, description: "目标筛选后的全部组数。" }),
     groups: Type.Array(
       Type.Object(
         {
@@ -128,19 +131,20 @@ const result = Type.Object(
         },
         { additionalProperties: false },
       ),
+      { description: "本页返回的结构组。" },
     ),
     cross_group_relations: Type.Array(cross_group_relation_schema, {
       description: "至少涉及本页一个组的跨组关系，分页间可能重复。",
     }),
     missing_target_entry_ids: Type.Array(Type.String()),
     next_offset: Type.Optional(
-      Type.Integer({ minimum: 0, description: "存在下一页时返回；省略表示本次目标组已遍历完毕。" }),
+      Type.Integer({ minimum: 0, description: "存在下一页时返回。省略表示本次目标组已遍历完毕。" }),
     ),
   },
   {
     additionalProperties: false,
     description:
-      "强关系仅保留连接 component 所需的边；缺少直接边不能排除关系。text_preserve 的强关系只检测相同正则源码。total_entry_count 与 total_component_count 覆盖完整输入；total_target_entry_count 为存在的目标数，total_group_count 为目标筛选后的全部组数，groups 为当前页。",
+      "强关系仅保留连接 component 所需的边，因此缺少直接边不能排除关系。text_preserve 的强关系只检测相同正则源码。",
   },
 );
 
@@ -174,7 +178,7 @@ const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "graphem
  */
 export const groupQualityRuleEntries = define_agent_workspace_data_tool({
   description:
-    "为 glossary 或 text_preserve 对象生成共同审查的结构组；关系用于组织证据，最终语义判断由模型完成。",
+    "为 glossary 或 text_preserve 对象生成共同审查的结构组。关系用于组织证据。最终语义判断由模型完成。",
   parameters,
   result,
   /** 完整集合先分析，再按目标和分页投影关联组及跨组证据。 */

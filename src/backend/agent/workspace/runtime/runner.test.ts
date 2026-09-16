@@ -1,60 +1,80 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { default_native_fs } from "../../../../native/native-fs";
 
 const { fork } = vi.hoisted(() => ({ fork: vi.fn() }));
 vi.mock("node:child_process", () => ({ fork }));
 
-import { AgentWorkspaceRunner, AgentWorkspaceScriptError } from "./runner";
+import { AgentWorkspaceRunner, type AgentWorkspaceRunRequest } from "./runner";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 
-const workspace_path = path.resolve("workspace");
-const runtime_entry_path = path.resolve("runtime/runtime.mjs");
-const request = { workspacePath: workspace_path, script: "return null;", todos: [] };
-const complete = {
-  type: "complete",
-  response: { ok: true, result: { changed: 2 }, todos: ["核验结果"] },
-};
+let directory = "";
+let bootstrap_path = "";
+let request: AgentWorkspaceRunRequest;
+let handles: FileHandle[] = [];
 
-beforeEach(() => fork.mockReset());
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  fork.mockReset();
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), "lg-runner-"));
+  const workspacePath = path.join(directory, "workspace");
+  bootstrap_path = path.join(directory, "bootstrap.mjs");
+  fs.mkdirSync(path.join(workspacePath, "work/runs"), { recursive: true });
+  fs.mkdirSync(path.join(workspacePath, "changes"));
+  fs.writeFileSync(bootstrap_path, "");
+  request = {
+    workspacePath,
+    scriptPath: "work/runs/test.mjs",
+    stdoutPath: "work/runs/test.stdout.log",
+    stderrPath: "work/runs/test.stderr.log",
+    todos: [],
+  };
+  handles = [];
+  const open = default_native_fs.open_file.bind(default_native_fs);
+  vi.spyOn(default_native_fs, "open_file").mockImplementation(async (file, flags) => {
+    const handle = await open(file, flags);
+    handles.push(handle);
+    return handle;
+  });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  fs.rmSync(directory, { recursive: true, force: true });
+});
 
 describe("AgentWorkspaceRunner", () => {
-  it("复用当前可执行文件并通过 IPC 返回结果", async () => {
-    const child = fake_process();
-    fork.mockReturnValue(child);
-    const result = build_runner().run(request, new AbortController().signal);
-    expect(child.send).toHaveBeenCalledWith(
-      { type: "start", script: request.script, todos: [] },
-      expect.any(Function),
-    );
-    expect(fork).toHaveBeenCalledWith(
-      runtime_entry_path,
-      [],
-      expect.objectContaining({
-        execPath: process.execPath,
-        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "" }),
-      }),
-    );
-    child.emit("message", complete);
+  it("两路文件始终建立，正常退出后结算 Todo 并关闭句柄", async () => {
+    const { child, result } = await start_run();
+    expect(child.send).toHaveBeenCalledWith({ type: "start", todos: [] }, expect.any(Function));
+    child.emit("message", { type: "todos", todos: ["核验结果"] });
     child.emit("close", 0);
-    await expect(result).resolves.toEqual({ result: { changed: 2 }, todos: ["核验结果"] });
+    await expect(result).resolves.toMatchObject({
+      execution: {
+        exitCode: 0,
+        stdout: { path: request.stdoutPath, bytes: 0, content: "" },
+        stderr: { path: request.stderrPath, bytes: 0, content: "" },
+      },
+      todos: ["核验结果"],
+    });
+    expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe("");
+    expect(fs.readFileSync(output_path("stderr"), "utf8")).toBe("");
+    expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
   it("并发代理请求传回宿主规则，取消后丢弃迟到响应", async () => {
-    const child = fake_process();
-    fork.mockReturnValue(child);
     let pending_signal: AbortSignal | undefined;
     let finish_pending: (rules: string) => void = () => undefined;
-    const runner = build_runner(async (url, signal) => {
+    const { child, result } = await start_run(async (url, signal) => {
       if (url.endsWith("/ready")) return "PROXY proxy.example:8080";
       pending_signal = signal;
       return await new Promise<string>((resolve) => {
         finish_pending = resolve;
       });
     });
-    const result = runner.run(request, new AbortController().signal);
     child.emit("message", { type: "proxy_request", id: 1, url: "https://example.com/ready" });
     await vi.waitFor(() =>
       expect(child.send).toHaveBeenCalledWith(
@@ -66,32 +86,72 @@ describe("AgentWorkspaceRunner", () => {
     child.emit("message", { type: "proxy_cancel", id: 2 });
     expect(pending_signal?.aborted).toBe(true);
     finish_pending("DIRECT");
-    await Promise.resolve();
-    child.emit("message", complete);
     child.emit("close", 0);
     await result;
     expect(child.send).toHaveBeenCalledTimes(2);
   });
 
-  it("脚本错误隐藏工作区绝对路径", async () => {
-    const child = fake_process();
-    fork.mockReturnValue(child);
-    const result = build_runner().run(request, new AbortController().signal);
-    child.emit("message", {
-      type: "complete",
-      response: { ok: false, message: `${workspace_path}/work/file failed\ntrace` },
-    });
-    child.emit("close", 0);
-    await expect(result).rejects.toBeInstanceOf(AgentWorkspaceScriptError);
-    await expect(result).rejects.toThrow("[workspace]/work/file failed");
+  it.each([0, 1])("退出码 %s 的小输出优先结构化，文件保留原始文本", async (code) => {
+    const { child, result } = await start_run();
+    const stdout = ' {"items":[{"id":1,"literal":"{\\"nested\\":true}"}]}\n';
+    child.write_stdout(stdout.slice(0, 10));
+    child.write_stdout(stdout.slice(10));
+    child.write_stderr('[{"code":"notice"}]\n');
+    child.emit("close", code);
+    const execution = {
+      exitCode: code,
+      stdout: {
+        path: request.stdoutPath,
+        bytes: Buffer.byteLength(stdout),
+        content: { items: [{ id: 1, literal: '{"nested":true}' }] },
+      },
+      stderr: { path: request.stderrPath, content: [{ code: "notice" }] },
+    };
+    if (code === 0) await expect(result).resolves.toMatchObject({ execution });
+    else await expect(result).rejects.toMatchObject({ execution });
+    expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(stdout);
+    expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
-  it.each(["abort", "timeout"])("%s 先终止子进程，等 close 后结算", async (kind) => {
+  it.each(["123\n", '"{}"\n', 'progress\n{"ok":true}\n'])(
+    "文本输出按原样返回并落盘：%j",
+    async (text) => {
+      const { child, result } = await start_run();
+      child.write_stdout(text);
+      child.emit("close", 0);
+      await expect(result).resolves.toMatchObject({ execution: { stdout: { content: text } } });
+      expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe(text);
+    },
+  );
+
+  it("两路独立判断额度，超限内容完整保存且不读入返回值", async () => {
+    const { child, result } = await start_run();
+    const json = '{"value":true}'.padEnd(AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes, " ");
+    child.write_stdout(json);
+    child.write_stdout("末尾");
+    child.write_stderr(json);
+    const read = vi.spyOn(default_native_fs, "read_text_file");
+    child.emit("close", 0);
+    const { execution } = await result;
+    expect(execution.stdout).toEqual({
+      path: request.stdoutPath,
+      bytes: Buffer.byteLength(json) + 6,
+      message: expect.any(String),
+    });
+    expect(execution.stderr).toEqual({
+      path: request.stderrPath,
+      bytes: Buffer.byteLength(json),
+      content: { value: true },
+    });
+    expect(read).not.toHaveBeenCalledWith(output_path("stdout"));
+    expect(fs.readFileSync(output_path("stdout"), "utf8").endsWith("末尾")).toBe(true);
+  });
+
+  it.each(["abort", "timeout"])("%s 等 close 后结算，保留输出并关闭句柄", async (kind) => {
     vi.useFakeTimers();
-    const child = fake_process();
-    fork.mockReturnValue(child);
     const controller = new AbortController();
-    const result = build_runner().run(request, controller.signal);
+    const { child, result } = await start_run(undefined, controller.signal);
+    child.write_stdout("已完成部分");
     let settled = false;
     void result.catch(() => {
       settled = true;
@@ -101,42 +161,85 @@ describe("AgentWorkspaceRunner", () => {
     expect(child.kill).toHaveBeenCalledOnce();
     await Promise.resolve();
     expect(settled).toBe(false);
-    child.emit("close", null);
+    child.emit("close", null, "SIGKILL");
     await expect(result).rejects.toThrow(kind === "abort" ? "stop" : "timed out");
+    expect(fs.readFileSync(output_path("stdout"), "utf8")).toBe("已完成部分");
+    expect(handles.map((handle) => handle.fd)).toEqual([-1, -1]);
   });
 
-  it.each([
-    ["非零退出", complete, 1],
-    ["无结果", undefined, 0],
-    ["坏结果", { type: "complete", response: {} }, 0],
-    ["坏 Todo", { type: "complete", response: { ok: true, result: null, todos: [" "] } }, 0],
-  ])("%s 返回执行错误", async (_label, message, code) => {
-    const child = fake_process();
-    fork.mockReturnValue(child);
-    const result = build_runner().run(request, new AbortController().signal);
-    if (message !== undefined) child.emit("message", message);
-    child.emit("close", code);
+  it("第二路文件打开失败时关闭第一路句柄", async () => {
+    vi.mocked(default_native_fs.open_file)
+      .mockImplementationOnce(async (file) => {
+        const handle = await fs.promises.open(file, "w");
+        handles.push(handle);
+        return handle;
+      })
+      .mockRejectedValueOnce(new Error("output unavailable"));
+    await expect(build_runner().run(request, new AbortController().signal)).rejects.toThrow(
+      "output unavailable",
+    );
+    expect(fork).not.toHaveBeenCalled();
+    expect(handles[0]?.fd).toBe(-1);
+  });
+
+  it("非法 Todo 是协议失败，回收后才结算", async () => {
+    const { child, result } = await start_run();
+    child.emit("message", { type: "todos", todos: [" "] });
+    expect(child.kill).toHaveBeenCalledOnce();
+    child.emit("close", null);
     await expect(result).rejects.toThrow();
   });
 });
 
-/** 子进程 close 由用例触发，验证等待实际退出的契约。 */
-function fake_process() {
+/** 等文件句柄就绪后再模拟子进程行为，输出通过生产 stdio 中的真实描述符写入。 */
+async function start_run(
+  resolveProxy?: (url: string, signal?: AbortSignal) => Promise<string>,
+  signal = new AbortController().signal,
+) {
+  let child!: ReturnType<typeof fake_process>;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  fork.mockImplementation((_file, _args, options) => {
+    const stdout: unknown = options.stdio[1];
+    const stderr: unknown = options.stdio[2];
+    if (typeof stdout !== "number" || typeof stderr !== "number")
+      throw new Error("Expected file descriptors");
+    child = fake_process(stdout, stderr);
+    started();
+    return child;
+  });
+  const result = build_runner(resolveProxy).run(request, signal);
+  await Promise.race([ready, result]);
+  return { child, result };
+}
+
+/** close 由用例触发，用于观察进程退出前后的互斥和句柄生命周期。 */
+function fake_process(stdout: number, stderr: number) {
   return Object.assign(new EventEmitter(), {
     connected: true,
-    stdout: new PassThrough(),
-    stderr: new PassThrough(),
+    write_stdout: (text: string) => fs.writeSync(stdout, text),
+    write_stderr: (text: string) => fs.writeSync(stderr, text),
     send: vi.fn((_message: unknown, callback: (error: Error | null) => void) => callback(null)),
     kill: vi.fn(() => true),
   });
 }
 
-/** 测试只替换宿主代理端口，启动路径由统一 fixture 提供。 */
+/** 日志路径由执行请求提供，测试不另行生成一套文件名。 */
+function output_path(channel: "stdout" | "stderr") {
+  return path.join(
+    request.workspacePath,
+    channel === "stdout" ? request.stdoutPath : request.stderrPath,
+  );
+}
+
+/** 测试只替换宿主代理端口。 */
 function build_runner(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
   return new AgentWorkspaceRunner({
-    runtimeEntryPath: runtime_entry_path,
+    runtimeBootstrapPath: bootstrap_path,
     systemProxyResolver: { resolveProxy },
   });
 }

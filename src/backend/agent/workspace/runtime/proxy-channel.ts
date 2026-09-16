@@ -19,6 +19,7 @@ export class AgentWorkspaceProxyChannel implements SystemProxyResolver {
   /** 通道只负责并发请求的关联与取消，规则解析由共用 HTTP 客户端拥有。 */
   public constructor(
     private readonly send: (message: AgentWorkspaceRuntimeChildMessage) => Promise<void>,
+    private readonly set_pending: (pending: boolean) => void,
   ) {}
 
   /** 为单次 fetch 建立可取消请求，并等待父进程返回对应路线。 */
@@ -30,6 +31,7 @@ export class AgentWorkspaceProxyChannel implements SystemProxyResolver {
       if (signal !== undefined) {
         request.abortListener = () => {
           if (!this.pending.delete(id)) return;
+          this.set_pending(this.pending.size > 0);
           void this.send({ type: "proxy_cancel", id }).catch(() => {
             // 原请求已取消；关闭中的 IPC 无法投递取消消息时，进程退出负责回收。
           });
@@ -38,6 +40,7 @@ export class AgentWorkspaceProxyChannel implements SystemProxyResolver {
         signal.addEventListener("abort", request.abortListener, { once: true });
       }
       this.pending.set(id, request);
+      this.set_pending(true);
     });
     void this.send({ type: "proxy_request", id, url }).catch((error: unknown) => {
       this.accept({
@@ -56,6 +59,7 @@ export class AgentWorkspaceProxyChannel implements SystemProxyResolver {
     const request = this.pending.get(message.id);
     if (request === undefined) return;
     this.pending.delete(message.id);
+    this.set_pending(this.pending.size > 0);
     if (request.signal !== undefined && request.abortListener !== undefined) {
       request.signal.removeEventListener("abort", request.abortListener);
     }

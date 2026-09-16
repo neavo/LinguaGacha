@@ -35,7 +35,7 @@ export function create_agent_web_search_tool(search: AgentWebSearchPort): ToolDe
     name: "web_search",
     label: "搜索网页",
     description:
-      "自然语言搜索公开互联网并返回带 URL 的结果摘要；正文截断时附加不完整提示。需要网页正文时通过 workspace_script 读取并处理对应 URL。",
+      "搜索公开互联网，优先使用自然语言而非关键词组合，需要网页正文时，通过 workspace_run 读取并处理对应 URL。",
     executionMode: "sequential",
     parameters: WEB_SEARCH_PARAMETERS,
     execute: async (_tool_call_id, params, signal) => {

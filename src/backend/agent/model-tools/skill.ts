@@ -23,7 +23,7 @@ const READ_SKILL_PARAMETERS = Type.Object(
     }),
     path: Type.Optional(
       Type.String({
-        description: "使用 / 分隔的技能包内相对文件路径；省略时读取 SKILL.md。",
+        description: `技能包内的相对文件路径。使用 / 分隔。省略时读取 ${DEFAULT_SKILL_RESOURCE_PATH}。`,
       }),
     ),
   },
@@ -45,7 +45,7 @@ export function create_agent_skill_tools(
       label: "读技能",
       description: [
         "读取指定技能的正文或包内参考文件。",
-        "返回 name、相对 path 与 content。资源缺失返回 skill.resource_not_found，路径越界或不符合格式返回 skill.resource_not_allowed；依据错误修正名称或包内路径。",
+        "读取成功后，content 提供正文。资源缺失或路径无效时，按返回信息修正技能名称或包内路径。",
       ].join("\n\n"),
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {

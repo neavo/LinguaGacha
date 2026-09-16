@@ -20,6 +20,7 @@ export interface GuiBackendBootstrapOptions {
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
   systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
   agentWorkspaceRun: AgentWorkspaceRunPort; // 工作区脚本的可取消执行端口
+  agentWorkspaceRuntimeDirectory: string; // 与 runner 同版本的标准 npm 环境
   openDirectory: (path: string) => Promise<void>; // Electron main 副作用端口
   pickSavePath: (defaultName: string) => Promise<string | null>; // 原生保存选择，取消返回 null
   workerExecution: BackendWorkerExecution; // 正式 worker_threads 与测试执行策略
@@ -112,6 +113,7 @@ export class GuiBackendBootstrap {
         writeStore: services.state.writes,
         logManager: resources.logManager,
         run: this.options.agentWorkspaceRun,
+        runtimeDirectory: this.options.agentWorkspaceRuntimeDirectory,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,
       });

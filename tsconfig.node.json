@@ -25,6 +25,7 @@
     "src/index.ts",
     "src/native",
     "src/shared",
-    "src/test"
+    "src/test",
+    "resources/workspace/package.json"
   ]
 }

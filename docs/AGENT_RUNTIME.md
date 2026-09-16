@@ -22,7 +22,7 @@
 |当前唯一用户决定、取消与一次性裁决|`AgentDecisionCoordinator`|各类用户决定 resolve API 与 `agent.session_event`|
 |当前决定的自动选择倒计时|renderer `AgentSessionStore` 持有的 `AgentDecisionCountdown`|已确认决定、连接与命令状态、自定义输入焦点|
 |工程写入审批模式|`AgentService`|approval mode API 与 `workspace_apply` 成功结果|
-|当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_script`、`workspace_apply`|
+|当前对话工作材料 `work`、数据快照与显式变更清单准备|`AgentWorkspaceService`|`workspace_run`、`workspace_apply`|
 
 ### 用户决定与会话配置
 
@@ -49,9 +49,9 @@
 ### 工作区投影
 
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
-- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_script` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
+- 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_run` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
 - 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。
-- 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 解析现存目标并检查真实路径边界。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
+- 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 校验工作区相对入口，文件访问自然跟随目录链接，允许目标位于工作区外；来源失效范围按 work、sources 或快照入口确定。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
 - 文件保存采用确认时的当前内容，不建立点击时副本。对话框等待期间释放工作区互斥；会话清理开始立即使待决链接失效，work、sources 与数据快照按各自清理生命周期失效。确认后重新检查来源与脚本互斥，拒绝向工作区内部保存；同目录临时文件完整复制后才替换目标，保留工作原件与失败前的已有目标。
 - 脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
 
@@ -66,7 +66,7 @@
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
 - `read_skill` 只接收 skill `name` 与可选包内相对 `path`，默认读取 `SKILL.md`，不向模型暴露来源或磁盘位置。skill 正文声明的前置或条件组合技能统一由模型调用 `read_skill` 加载，组合本身不改变任务对象、范围或工作区权限。当前 catalog 已有的名称始终使用会话冻结的获胜 skill 包；未知名称在调用时按同一优先级实时发现，因此会话中新增长出的名称可显式读取但不进入 System Prompt、mention 或 marker，同名新覆盖则到下一会话才生效。正文与包内文件实时读取，同名 skill 不合并目录或向失败者回退；目录穿越、绝对路径、非规范路径和真实目标越出获胜包均拒绝。
 - System Prompt 拥有人格、信任边界、任务类型 `report / apply`、共同流程、工程写入边界、工作材料保存与恢复、异常处理和对外输出。工程处理任务默认 `apply`，用户限定只读时使用 `report`；任务类型不扩大请求范围。`report` 共用业务准备与检查，跳过工程写入及依赖持久化结果的步骤；该限制也适用于直接写入工具，由模型执行，后端不持有任务类型状态机。
-- 静态 Markdown 模板拥有完整 Agent 工作区章节与顺序。资源加载器只在原位填充权限范围和模块限制，形成跨会话字节稳定的基础 System 前缀，再拼接会话 skill catalog。
+- System Prompt 直接读取静态 Markdown 正文。会话技能目录附加在正文之后。运行环境、权限和工具限制由工具说明提供。
 - 业务工作流拥有默认任务、对象范围、执行方式、检查与提交安排、后继核验、完成依据和可恢复记录；领域技能拥有对象与文本质量判据。翻译执行与已有译文调查分别组织流程，批量分流先确认工具能力再考虑规模。模型按用户请求与技能描述编排阶段，复用有效工程事实、拟议方案和证据；正式工具参数以 Schema 为准。
 - 领域记录由模型保存在工作资产中，对象结论与实际提交结果分别记录；技能加载器和后端不维护领域流程状态。完整 `items` 提供条目范围，`warnings` 提供按身份关联的问题证据，调查范围与警告集合分别确定。Agent 页面消费模型 Markdown、Mermaid 和结构化决策状态，不从标题或 emoji 推断领域状态。
 
@@ -76,17 +76,18 @@
 
 - `run_batch_translation` 是顺序工具，接收全量或明确 item ID 范围及是否纳入失败条目的决定，以当前 round 的 Agent lease 调用共享 `BatchTranslationService`；由批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮进度和工程累计进度。范围、失败条目决定与执行分流归 Agent 工作流；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
-- 工具模块拥有模型可见的用途、调用要求、结果、副作用与特有恢复说明，参数 Schema 只描述字段含义和约束。`workspace_script` 从运行策略生成环境与限制；`workspace_apply` 从 `contract` 的同一份提交语义投影关键副作用和回执。System Prompt 保留通用协作、信任边界与任务流程。
+- System Prompt 拥有通用决策规则，skill 拥有领域流程，工具说明提供调用与恢复语义。参数约束归 Schema，`workspace_run` 的限制与包名来自运行策略和依赖清单，`workspace_apply` 从 contract 投影提交与回执语义。
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。宿主提交固定选择时返回 `selected` 与其 `optionId`，自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。工程写入授权使用独立权限入口，`allow_once` 仅允许当前批次写入。
-- 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据、百分比、完成历史或完成判据。每次 `workspace_script` 启动时以当前 Todo 初始化 `ws.todo`；脚本通过同步 `read()` 读取不可变副本，通过同步 `write(todos)` 替换本次脚本副本。脚本成功时最终 Todo 随结果 envelope 返回并由 `AgentService` 原子提交，脚本失败、停止或超时保留调用前状态；公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
-- 工作区工具由 `workspace_script` 与 `workspace_apply` 组成，并随每个 `AgentService` 恒定注册。`AgentService` 负责会话和工具注册，`AgentWorkspaceService` 拥有工程数据快照与显式变更提交协调。
-- 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；机器可读注册表只列举工具集合，`workspace_script` 执行 JavaScript 异步函数体，`ws.tool` 与模型可见 TypeScript 协议由该集合投影，以紧凑声明提供完整能力发现。对象字段规则集中说明，常见标量约束使用公共别名；字段语义、局部限制和默认值保留在声明旁，命名类型引用不重复注释。脚本内数据工具可使用判别联合表达相关参数。未知参数在统一分发边界按 Schema 收窄，结构错误返回字段路径与要求，领域实现通过按数据集命名的流式只读端口消费类型化快照，结果在同一边界复核模型契约。HTML 字符串与响应流转换同样位于 `ws.tool`，只公开稳定的 `baseUrl`、正文选择和 CSS selector 参数，底层 npm 实现随单文件 runtime 构建而不进入产品契约。
-- `matchLiterals` 在单次调用内扫描一次完整快照，返回完整计数与全部或限量字段证据；覆盖核验消费完整证据并检查结果完整性。工具结果直接留在 Node 进程内，脚本负责保存工作资产与聚合，结果字节上限只约束脚本最终返回值。证据随快照与模式确定，变化后重新取得受影响证据；工具不持有跨调用查询状态。字段范围与收集参数归工具 Schema。
+- 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据或完成历史。每次 `workspace_run` 以当前 Todo 初始化 `ws.todo`；同步 `read()` 返回不可变副本，`write(todos)` 替换本次程序副本并通过 IPC 发送独立快照。runner 暂存最后有效值，进程成功退出且调用未取消时由 `AgentService` 原子提交；失败、停止或超时保留调用前状态。公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
+- 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；注册表只列举应用数据能力，`ws.tool` 与模型可见 TypeScript 声明由该集合投影。未知参数在分发边界按 Schema 收窄，结构错误返回字段路径与要求；领域实现通过流式只读端口消费快照，结果在同一边界校验。对象字段语义、局部限制和默认值归声明，命名类型引用不重复注释。第三方库由程序直接按 npm 公开 API 导入。
+- `matchLiterals` 在单次调用内扫描一次完整快照，返回完整计数与全部或限量字段证据；覆盖核验消费完整证据并检查结果完整性。数据工具结果留在 Node 进程内，程序负责保存工作资产与输出摘要；stdout/stderr 的输出限制不约束内部查询结果。证据随快照与模式确定，变化后重新取得受影响证据；工具不持有跨调用查询状态。字段范围与收集参数归工具 Schema。
 - `ws.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；`workspace/schema` 统一拥有快照与变更记录结构，`contract` 组合布局与提交语义，`changes` 按相同 Schema 校验 JSONL 后转换为领域意图。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则。标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。运行时注入的冻结 `ws` 由 contract、Todo 与工具树组成，文件访问统一使用 Node 标准文件 API。
 - `items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
-- Backend 的 `AgentWorkspaceRunner` 每次复用当前 Electron 启动独立 Node 进程。Node 权限用于防止意外越界：工作区与 runtime bundle 可读，仅 `changes`、`work` 可写；runtime entry 直接使用 Node 文件 API，主应用 IO 继续由 NativeFs 拥有。同版本父子进程通过类型化原生 IPC 交换启动、代理和完成消息，runner 校验脚本结果与 Todo。脚本完成或父通道断开后退出；停止与超时强制终止子进程并取消代理等待，等 close 后释放工作区互斥。
-- 工作区 bundle 将 npm 实现打入单文件，仅外部导入 Node 内置模块，避免为运行时加载放开应用其它目录的读取权限。开发产物位于 `build/workspace-runtime/runtime.mjs`，发布通过 extraResources 复制到 `resources/workspace-runtime/runtime.mjs`；main 只向 Backend 传入口路径，runAsNode fuse 保持开启。脚本启动失败沿工具错误通道返回。
+- `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区和 bootstrap 的真实路径，再生成 cwd 与权限。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
+- 子进程直接写入 stdout/stderr 文件，close 后两路独立按额度返回完整 content 或文件补读提示，JSON 对象与数组优先结构化。成功、非零退出和超时共用执行记录，取消保留已写文件。IPC 只传初始化、Todo 和代理消息，空闲不保活，代理等待期间保活。停止、超时或父通道断开时回收进程并取消代理等待，进程与文件句柄收尾后才释放工作区互斥。
+- `resources/workspace` 的清单与独立锁文件拥有预装依赖。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，生成 bootstrap 与标准 node_modules。extraResources 从 resources 根复制整棵 workspace，以避开 builder 对复制源直属 node_modules 的过滤。main 注入预加载路径，runAsNode fuse 保持开启。
+- 初始化复制部署清单与锁文件，并链接真实 node_modules（Windows 使用 junction）。这些环境文件跨快照与对话重置保留，清理只删除链接入口。work、changes 同时授权入口与实际目标，内部链接沿入口权限使用。bootstrap 直接调用 Node 文件 API，主应用 IO 归 NativeFs。
 
 ## 5. 前端消费
 

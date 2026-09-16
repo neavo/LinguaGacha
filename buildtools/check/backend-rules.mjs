@@ -10,7 +10,7 @@ import {
 const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
 const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
-const WORKSPACE_RUNTIME_ENTRY_PATH = "src/backend/agent/workspace/runtime/entry.ts";
+const WORKSPACE_RUNTIME_BOOTSTRAP_PATH = "src/backend/agent/workspace/runtime/bootstrap.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 const SYSTEM_PROXY_HTTP_CLIENT_RELATIVE_PATH = "src/backend/network/system-proxy-http-client.ts";
 const BACKEND_SERVICES_RELATIVE_PATH = "src/backend/bootstrap/backend-services.ts";
@@ -352,7 +352,7 @@ function create_native_fs_boundary_rule() {
           // 独立工作区进程直接消费 Node 文件权限，宿主 NativeFs 仅用于主应用 IO。
           if (
             relative_path === NATIVE_FS_RELATIVE_PATH ||
-            relative_path === WORKSPACE_RUNTIME_ENTRY_PATH
+            relative_path === WORKSPACE_RUNTIME_BOOTSTRAP_PATH
           ) {
             continue;
           }

@@ -39,7 +39,7 @@ export class BackendRuntimeClient {
       workerEntryUrl: URL;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
-      agentWorkspaceRuntimeEntryPath: string;
+      agentWorkspaceRuntimeBootstrapPath: string; // 当前版本的工作区预加载入口
       resolveProxy: (url: string) => Promise<string>;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -57,7 +57,7 @@ export class BackendRuntimeClient {
       workerData: {
         appRoot: this.options.appRoot,
         builtinRoot: this.options.builtinRoot,
-        agentWorkspaceRuntimeEntryPath: this.options.agentWorkspaceRuntimeEntryPath,
+        agentWorkspaceRuntimeBootstrapPath: this.options.agentWorkspaceRuntimeBootstrapPath,
       },
     });
     this.worker = worker;

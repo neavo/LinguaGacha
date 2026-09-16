@@ -60,6 +60,6 @@
 
 Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 初始化。使用 `npm test -- --project node <测试文件路径...>` 或 `npm test -- --project renderer <测试文件路径...>` 定位目标；省略文件路径运行对应项目。
 
-`src/backend/agent/workspace/runtime/entry.test.ts` 使用生产构建与项目安装的 Electron 验证单文件、JavaScript 执行、文件权限、原生 IPC、重定向和取消。发布资产或入口定位变化时，再使用发布包的可执行文件与 bundle 执行针对性验证。
+`src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、流式转换与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
 
-构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Workspace runtime 为仅外部导入 Node 内置模块的单文件；extraResources 安装工作区 bundle，发布程序保持 runAsNode fuse 开启；涉及平台启动器时测试并构建对应 Go module。
+构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Workspace runtime 包含 bootstrap、清单、锁文件及完整 npm 安装目录；extraResources 安装整套运行环境，发布程序保持 runAsNode fuse 开启；涉及平台启动器时测试并构建对应 Go module。

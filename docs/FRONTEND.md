@@ -51,6 +51,7 @@
 - Agent 主输入接收整页图片拖入，原位编辑时仅接收编辑器局部拖入。`AgentImageDropTarget` 拥有区域事件与反馈；共享编辑器统一处理选择、粘贴和拖入，转换结果只写回发起时仍有效的草稿。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
+- Agent 工具详情在首次查看标签时生成阅读文档，弹窗内按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出统一递归解释完整的内嵌 JSON，并将多行字符串显示为文本块；这种解释只属于前端阅读，会话保留原始输出。Agent 格式化器生成文本和语义范围，`AppEditor` 通过单个 CodeMirror 视口渲染范围，不重新把阅读文档当作 JSON 解析；文档与范围在同一事务中更新，避免错位。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。

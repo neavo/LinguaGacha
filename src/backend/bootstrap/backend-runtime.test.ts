@@ -7,7 +7,7 @@ import type {
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
 
-const RUNTIME_ENTRY_PATH = "E:/runtime/runtime.mjs";
+const RUNTIME_ENTRY_PATH = "E:/runtime/bootstrap.mjs";
 
 const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
@@ -95,7 +95,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: "file:///E:/app/dist-electron/backend-runtime-worker-entry.js",
-      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
+      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
       port,
     });
 
@@ -195,7 +195,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
+      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
       port,
     });
     const runner_options = runtime_mocks.runner_constructor_options[0] as {
@@ -227,7 +227,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
+      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
       port,
     });
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
@@ -251,7 +251,7 @@ describe("run_backend_runtime", () => {
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
       moduleUrl: import.meta.url,
-      agentWorkspaceRuntimeEntryPath: RUNTIME_ENTRY_PATH,
+      agentWorkspaceRuntimeBootstrapPath: RUNTIME_ENTRY_PATH,
       port,
     });
 

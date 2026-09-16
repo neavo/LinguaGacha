@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 import { normalize_app_language } from "../../domain/app-language";
 import { normalize_log_error, to_log_error, type LogError } from "../../shared/error";
@@ -36,7 +37,7 @@ export async function run_backend_runtime(args: {
   appRoot: string; // 安装根继续决定版本与便携数据位置
   builtinRoot: string; // 当前版本只读内置资产根
   moduleUrl: string;
-  agentWorkspaceRuntimeEntryPath: string;
+  agentWorkspaceRuntimeBootstrapPath: string;
   port: BackendRuntimePort;
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
@@ -82,7 +83,7 @@ export async function run_backend_runtime(args: {
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
   const agent_workspace_runner = new AgentWorkspaceRunner({
-    runtimeEntryPath: args.agentWorkspaceRuntimeEntryPath,
+    runtimeBootstrapPath: args.agentWorkspaceRuntimeBootstrapPath,
     systemProxyResolver: system_proxy_resolver,
   });
   const bootstrap = new GuiBackendBootstrap({
@@ -100,6 +101,7 @@ export async function run_backend_runtime(args: {
       return result;
     },
     agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
+    agentWorkspaceRuntimeDirectory: path.dirname(args.agentWorkspaceRuntimeBootstrapPath),
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });

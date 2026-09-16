@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -29,6 +30,11 @@ export function normalize_native_file_bytes(content: unknown): Uint8Array {
  * Backend / worker 唯一文件系统门面，所有真实磁盘 IO 都先经过平台路径策略。
  */
 export class NativeFs {
+  /** 打开供调用方持有的原生文件句柄。调用方负责在所有结束路径关闭句柄。 */
+  public async open_file(file_path: string, flags: string): Promise<FileHandle> {
+    return await fs.promises.open(this.to_native_path(file_path), flags);
+  }
+
   /** 日志按字节定位，范围读取不把当天完整文件加载到内存。 */
   public async read_range(file_path: string, offset: number, length: number): Promise<Buffer> {
     const handle = await fs.promises.open(this.to_native_path(file_path), "r");
@@ -263,6 +269,15 @@ export class NativeFs {
    */
   public unlink(target_path: string): void {
     fs.unlinkSync(this.to_native_path(target_path));
+  }
+
+  /** 依赖目录由应用部署，工作区仅持有绝对目标链接；Windows 使用无需提权的目录联接。 */
+  public create_directory_link(target_path: string, link_path: string): void {
+    fs.symlinkSync(
+      this.to_native_path(path.resolve(target_path)),
+      this.to_native_path(link_path),
+      process.platform === "win32" ? "junction" : "dir",
+    );
   }
 
   /**

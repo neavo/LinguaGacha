@@ -1,6 +1,6 @@
-/** 同一应用构建的父子进程使用 Node IPC 复制消息；脚本结果保留 unknown，由 runner 校验。 */
+/** 同一应用构建的父子进程通过 Node IPC 复制应用状态；执行结果由进程退出和标准流表达。 */
 export type AgentWorkspaceRuntimeParentMessage =
-  | { type: "start"; script: string; todos: string[] }
+  | { type: "start"; todos: string[] }
   | {
       type: "proxy_result";
       id: number;
@@ -10,4 +10,4 @@ export type AgentWorkspaceRuntimeParentMessage =
 export type AgentWorkspaceRuntimeChildMessage =
   | { type: "proxy_request"; id: number; url: string }
   | { type: "proxy_cancel"; id: number }
-  | { type: "complete"; response: unknown };
+  | { type: "todos"; todos: string[] };

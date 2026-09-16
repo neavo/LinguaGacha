@@ -11,7 +11,7 @@ const parameters = Type.Object(
     forms: Type.Array(Type.String({ minLength: 1, pattern: "\\S" }), {
       minItems: MIN_FORM_COUNT,
       description:
-        "已确认语义相关的短词形；经 Unicode 归一化和大小写折叠后，至少包含两种不同词形。",
+        "已确认语义相关的短词形。经 Unicode 归一化和大小写折叠后，至少包含两种不同词形。",
     }),
   },
   { additionalProperties: false },
@@ -27,7 +27,8 @@ const result = Type.Object(
           }),
           grapheme_length: Type.Integer({
             minimum: 1,
-            description: "候选原始写法的可见字符数；候选按此长度升序，等长按首项发现顺序排列。",
+            description:
+              "候选原始写法的可见字符数。候选按此长度升序排列。等长时按首项发现顺序排列。",
           }),
         },
         { additionalProperties: false },

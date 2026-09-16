@@ -2,7 +2,6 @@ import type { TSchema } from "@earendil-works/pi-ai";
 
 import { AGENT_TODO_ITEM_LIMIT, AGENT_TODO_TEXT_LIMIT } from "../../../../../shared/agent-todo";
 import { AGENT_WORKSPACE_CONTRACT_SCHEMA, AGENT_WORKSPACE_ITEM_SCHEMA } from "../../schema";
-import { format_agent_workspace_html_tools_typescript_api } from "./html-to-markdown";
 import { AGENT_WORKSPACE_DATA_TOOLS } from "./registry";
 
 const NAMED_SCHEMAS = new Map<TSchema, string>([
@@ -45,22 +44,21 @@ export function format_agent_workspace_typescript_api(): string {
     `    ${name}(args: ${render_schema(tool.parameters)}): Promise<${render_schema(tool.result)}>;`,
   ]);
   return [
-    "/** 对象参数仅接受声明字段；带索引签名的对象允许额外字段，其值须符合索引签名的类型。 */",
+    "/** 对象参数仅接受声明字段。带索引签名的对象允许额外字段。字段值须符合索引签名的类型。 */",
     ...COMMON_TYPES.map(
       ({ name, type, description }) => `/** ${description} */ type ${name} = ${type};`,
     ),
     ...aliases,
-    ...format_agent_workspace_html_tools_typescript_api(),
     "",
     "declare const ws: Readonly<{",
     "  contract: WorkspaceContract;",
     "  todo: Readonly<{",
     "    /** 读取当前有序 Todo。 */",
     "    read(): readonly string[];",
-    `    /** 设置脚本成功后提交的完整有序 Todo；最多 ${AGENT_TODO_ITEM_LIMIT.toString()} 项，每项为不超过 ${AGENT_TODO_TEXT_LIMIT.toString()} 字符的短行动标签，首尾空白裁剪后须非空；空数组清空 Todo。 */`,
+    `    /** 设置程序成功后提交的完整有序 Todo。最多 ${AGENT_TODO_ITEM_LIMIT.toString()} 项。每项为不超过 ${AGENT_TODO_TEXT_LIMIT.toString()} 字符的短行动标签。首尾空白裁剪后须非空。空数组清空 Todo。 */`,
     "    write(todos: readonly string[]): void;",
     "  }>;",
-    "  tool: Readonly<WorkspaceHtmlTools & {",
+    "  tool: Readonly<{",
     ...tools,
     "  }>;",
     "}>;",
@@ -170,7 +168,7 @@ function schema_comment(schema: TSchema): string {
     if (value[key] !== undefined) parts.push(`${label}: ${JSON.stringify(value[key])}`);
   }
   // 转义注释结束符，避免字段说明中的文本改变生成声明的语法。
-  return parts.length === 0 ? "" : `/** ${parts.join("；").replaceAll("*/", "*\\/")} */ `;
+  return parts.length === 0 ? "" : `/** ${parts.join("。").replaceAll("*/", "*\\/")} */ `;
 }
 
 /** 标识符键保持简洁，其余属性名使用 JSON 字符串语法。 */

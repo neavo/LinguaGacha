@@ -65,7 +65,7 @@ describe("BackendRuntimeClient", () => {
     expect(worker.worker_data).toEqual({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntimeEntryPath: "E:/runtime/runtime.mjs",
+      agentWorkspaceRuntimeBootstrapPath: "E:/runtime/bootstrap.mjs",
     });
 
     const language = client.readAppLanguage();
@@ -212,7 +212,7 @@ function create_client() {
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntimeEntryPath: "E:/runtime/runtime.mjs",
+      agentWorkspaceRuntimeBootstrapPath: "E:/runtime/bootstrap.mjs",
       resolveProxy: resolve_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
