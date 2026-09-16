@@ -21,7 +21,9 @@ import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,
   create_app_editor_text_mark_hover_extension,
+  create_app_viewer_ranges,
   type AppEditorSyntax,
+  type AppViewerRange,
   type AppTextMark,
   normalize_app_text_marks,
   resolve_app_editor_readonly_extensions,
@@ -69,6 +71,7 @@ type AppEditorFieldProps = AppEditorBaseProps &
 type AppEditorViewerProps = AppEditorBaseProps & {
   variant: "viewer";
   syntax?: AppEditorSyntax;
+  ranges?: readonly AppViewerRange[];
 };
 
 type AppEditorProps = AppEditorDocumentProps | AppEditorFieldProps | AppEditorViewerProps;
@@ -92,7 +95,9 @@ const editor_syntax_compartment = new Compartment();
 const editor_variant_compartment = new Compartment();
 const editor_keymap_compartment = new Compartment();
 const editor_placeholder_compartment = new Compartment();
+const editor_viewer_ranges_compartment = new Compartment();
 const empty_app_text_marks: readonly AppTextMark[] = Object.freeze([]);
+const empty_viewer_ranges: readonly AppViewerRange[] = Object.freeze([]);
 
 /** 把互斥的公开形态收口为 CodeMirror 唯一运行配置。 */
 function normalize_app_editor_props(props: AppEditorProps): NormalizedAppEditorProps {
@@ -279,6 +284,8 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const [wrap_lines, set_wrap_lines] = useState(true);
   const wrap_lines_enabled = variant !== "field" && wrap_lines;
   const value = resolve_app_editor_value(props.value, variant);
+  const ranges =
+    props.variant === "viewer" ? (props.ranges ?? empty_viewer_ranges) : empty_viewer_ranges;
   const editor_mount_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
   useImperativeHandle(props.ref, () => ({ focus: () => editor_view_ref.current?.focus() }), []);
@@ -287,6 +294,8 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const suppress_change_ref = useRef(false);
   // EditorView 生命周期独立于 React 重渲染，首帧配置固定后只通过 Compartment 同步。
   const initial_value_ref = useRef(value);
+  const initial_ranges_ref = useRef(ranges);
+  const applied_document_ref = useRef({ value, ranges, variant });
   const initial_aria_label_ref = useRef(props.aria_label);
   const initial_aria_invalid_ref = useRef(config.aria_invalid);
   const initial_read_only_ref = useRef(read_only);
@@ -315,26 +324,32 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
 
     const editor_state = EditorState.create({
       doc: initial_value_ref.current,
-      extensions: create_editor_extensions({
-        theme_extension: initial_theme_extension_ref.current,
-        syntax_extension: resolve_app_editor_syntax_extensions(initial_syntax_ref.current),
-        variant_extension: resolve_app_editor_variant_extensions(initial_variant_ref.current, true),
-        keymap_extension: editor_keymap_compartment.of(
-          resolve_app_editor_keymap_extension(initial_indent_with_tab_ref.current),
-        ),
-        placeholder_extension: resolve_app_editor_placeholder_extension(
-          initial_placeholder_ref.current,
-        ),
-        read_only: initial_read_only_ref.current,
-        on_change: (next_value) => {
-          on_change_ref.current?.(next_value);
-        },
-        on_blur: () => {
-          on_blur_ref.current?.();
-        },
-        suppress_change_ref,
-        marks_ref,
-      }),
+      extensions: [
+        editor_viewer_ranges_compartment.of(create_app_viewer_ranges(initial_ranges_ref.current)),
+        ...create_editor_extensions({
+          theme_extension: initial_theme_extension_ref.current,
+          syntax_extension: resolve_app_editor_syntax_extensions(initial_syntax_ref.current),
+          variant_extension: resolve_app_editor_variant_extensions(
+            initial_variant_ref.current,
+            true,
+          ),
+          keymap_extension: editor_keymap_compartment.of(
+            resolve_app_editor_keymap_extension(initial_indent_with_tab_ref.current),
+          ),
+          placeholder_extension: resolve_app_editor_placeholder_extension(
+            initial_placeholder_ref.current,
+          ),
+          read_only: initial_read_only_ref.current,
+          on_change: (next_value) => {
+            on_change_ref.current?.(next_value);
+          },
+          on_blur: () => {
+            on_blur_ref.current?.();
+          },
+          suppress_change_ref,
+          marks_ref,
+        }),
+      ],
     });
 
     const editor_view = new EditorView({
@@ -451,8 +466,14 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       return;
     }
 
-    const current_value = editor_view.state.doc.toString();
-    if (current_value === value) {
+    const previous = applied_document_ref.current;
+    // 可编辑文档可能已由用户输入更新；只读查看器直接复用上次外部值，免去全文拼接。
+    const current_value =
+      variant === "viewer" && previous.variant === "viewer"
+        ? previous.value
+        : editor_view.state.doc.toString();
+    if (current_value === value && previous.ranges === ranges) {
+      applied_document_ref.current = { value, ranges, variant };
       return;
     }
 
@@ -461,17 +482,22 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     suppress_change_ref.current = true;
     try {
       editor_view.dispatch({
-        changes: {
-          from: 0,
-          to: current_value.length,
-          insert: value,
-        },
+        changes:
+          current_value === value
+            ? undefined
+            : {
+                from: 0,
+                to: editor_view.state.doc.length,
+                insert: value,
+              },
+        effects: editor_viewer_ranges_compartment.reconfigure(create_app_viewer_ranges(ranges)),
         selection: next_selection,
       });
+      applied_document_ref.current = { value, ranges, variant };
     } finally {
       suppress_change_ref.current = false;
     }
-  }, [value]);
+  }, [ranges, value, variant]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;

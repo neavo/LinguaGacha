@@ -1,3 +1,4 @@
+import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
@@ -19,7 +20,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebSearchPort } from "./model-tools/web-search";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -106,10 +107,10 @@ const agent_resource_fixture = vi.hoisted(() => {
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 // 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
 const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
-const FAKE_WORKSPACE_SCRIPT = "return { items: [] };";
-const FAKE_TODO_WRITE_SCRIPT = 'ws.todo.write(["基础扫描"]); return null;';
-const FAKE_TODO_READ_SCRIPT = "return { todos: ws.todo.read() };";
-const FAKE_TODO_CLEAR_SCRIPT = "ws.todo.write([]); return null;";
+const FAKE_WORKSPACE_SCRIPT = "console.log(JSON.stringify({ items: [] }));";
+const FAKE_TODO_WRITE_SCRIPT = 'ws.todo.write(["基础扫描"]); console.log(null);';
+const FAKE_TODO_READ_SCRIPT = "console.log(JSON.stringify({ todos: ws.todo.read() }));";
+const FAKE_TODO_CLEAR_SCRIPT = "ws.todo.write([]); console.log(null);";
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -327,7 +328,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     }
     return fauxAssistantMessage(
       fauxToolCall(
-        "workspace_script",
+        "workspace_run",
         { script: FAKE_WORKSPACE_SCRIPT },
         { id: "tool-compaction-query" },
       ),
@@ -403,31 +404,31 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
+      fauxToolCall("workspace_run", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "todo_write") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: FAKE_TODO_WRITE_SCRIPT }, { id: "todo-write" }),
+      fauxToolCall("workspace_run", { script: FAKE_TODO_WRITE_SCRIPT }, { id: "todo-write" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "todo_read") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: FAKE_TODO_READ_SCRIPT }, { id: "todo-read" }),
+      fauxToolCall("workspace_run", { script: FAKE_TODO_READ_SCRIPT }, { id: "todo-read" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "todo_clear") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: FAKE_TODO_CLEAR_SCRIPT }, { id: "todo-clear" }),
+      fauxToolCall("workspace_run", { script: FAKE_TODO_CLEAR_SCRIPT }, { id: "todo-clear" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
-      fauxToolCall("workspace_script", { script: "" }, { id: "schema-invalid" }),
+      fauxToolCall("workspace_run", { script: "" }, { id: "schema-invalid" }),
       { stopReason: "toolUse" },
     );
   }
@@ -435,7 +436,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall("workspace_script", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-1" }),
+        fauxToolCall("workspace_run", { script: FAKE_WORKSPACE_SCRIPT }, { id: "tool-1" }),
       ],
       { stopReason: "toolUse" },
     );
@@ -1363,7 +1364,7 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "tool-1",
           status: "running",
-          toolName: "workspace_script",
+          toolName: "workspace_run",
           input: JSON.stringify({ script: FAKE_WORKSPACE_SCRIPT }),
           output: null,
         }),
@@ -1390,7 +1391,7 @@ describe("AgentService", () => {
       {
         kind: "tool_call",
         id: "tool-1",
-        toolName: "workspace_script",
+        toolName: "workspace_run",
         input: JSON.stringify({ script: FAKE_WORKSPACE_SCRIPT }),
         status: "success",
         output: expect.stringContaining('"items"'),
@@ -1695,7 +1696,7 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "run_batch_translation",
       "ask_user",
-      "workspace_script",
+      "workspace_run",
       "workspace_apply",
       "read_skill",
     ]);
@@ -1721,9 +1722,9 @@ describe("AgentService", () => {
     fake_agent_state.mode = "todo_read";
     await service.send_message({ text: "下一回合读取 Todo", attachments: [] });
     await wait_for_idle(service);
-    expect(read_tool_output(service, "todo-read")).toEqual({
-      result: { todos: ["基础扫描"] },
-    });
+    expect(read_tool_output(service, "todo-read")).toEqual(
+      workspace_execution({ todos: ["基础扫描"] }),
+    );
 
     fake_agent_state.mode = "todo_clear";
     await service.send_message({ text: "完成剩余工作", attachments: [] });
@@ -1739,7 +1740,7 @@ describe("AgentService", () => {
     await service.send_message({ text: "读取 Todo", attachments: [] });
     await wait_for_idle(service);
 
-    expect(read_tool_output(service, "todo-read")).toEqual({ result: { todos: [] } });
+    expect(read_tool_output(service, "todo-read")).toEqual(workspace_execution({ todos: [] }));
   });
 
   it("仅在宿主搜索能力可用时注册 web_search", async () => {
@@ -1762,7 +1763,10 @@ describe("AgentService", () => {
       invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
-      run_script: vi.fn(async (_script, todos) => ({ result: null, todos: [...todos] })),
+      run: vi.fn(async (_script, todos) => ({
+        execution: workspace_execution(),
+        todos: [...todos],
+      })),
       apply_workspace: vi.fn(),
     } satisfies AgentWorkspacePort;
     const { service, session_state } = await create_service(true, undefined, workspace);
@@ -1775,7 +1779,7 @@ describe("AgentService", () => {
       [
         "run_batch_translation",
         "ask_user",
-        "workspace_script",
+        "workspace_run",
         "workspace_apply",
         "read_skill",
       ].sort(),
@@ -2982,16 +2986,18 @@ describe("AgentService", () => {
         invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),
         reset_project: vi.fn(async () => undefined),
-        run_script: vi.fn<AgentWorkspacePort["run_script"]>(async (script, todos) => {
+        run: vi.fn<AgentWorkspacePort["run"]>(async (script, todos) => {
           await wait_for_held_tool();
-          if (script === FAKE_TODO_WRITE_SCRIPT) return { result: null, todos: ["基础扫描"] };
+          if (script === FAKE_TODO_WRITE_SCRIPT)
+            return { execution: workspace_execution(), todos: ["基础扫描"] };
           if (script === FAKE_TODO_READ_SCRIPT) {
-            const result: JsonValue = { todos: [...todos] };
-            return { result, todos: [...todos] };
+            const result = { todos: [...todos] };
+            return { execution: workspace_execution(result), todos: [...todos] };
           }
-          if (script === FAKE_TODO_CLEAR_SCRIPT) return { result: null, todos: [] };
-          const result: JsonValue = { items: read_items() };
-          return { result, todos: [...todos] };
+          if (script === FAKE_TODO_CLEAR_SCRIPT)
+            return { execution: workspace_execution(), todos: [] };
+          const result = { items: read_items() };
+          return { execution: workspace_execution(result), todos: [...todos] };
         }),
         apply_workspace: vi.fn(async (request_approval) => {
           await request_approval?.({

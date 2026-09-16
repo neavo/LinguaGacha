@@ -29,10 +29,15 @@ import {
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./contract";
-import { AgentWorkspaceScriptError } from "./runtime/runner";
+import { AgentWorkspaceRunError } from "./runtime/runner";
 import { AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 
-const VALID_WORKSPACE_SCRIPT = "return null;";
+import {
+  workspace_execution,
+  create_workspace_runtime_fixture,
+} from "../../../test/agent-workspace-fixture";
+
+const VALID_WORKSPACE_SCRIPT = "console.log(null);";
 
 describe("AgentWorkspaceService", () => {
   let temp_dir = "";
@@ -78,19 +83,34 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.pick_save_path).not.toHaveBeenCalled();
   });
 
-  it("文件不存在与符号链接越界时不调用宿主", async () => {
+  it("跟随 work 内链接交付文件，重置使入口失效并保留外部目标", async () => {
     const fixture = await create_file_fixture(temp_dir);
     await expect(fixture.service.activate_path("work/missing.md")).rejects.toMatchObject({
       code: "file.not_found",
     });
     const outside = path.join(temp_dir, "outside");
     fs.mkdirSync(outside);
-    fs.symlinkSync(outside, path.join(fixture.workspace_root, "escape"), "junction");
-    await expect(fixture.service.activate_path("escape/")).rejects.toMatchObject({
-      code: "request.validation_failed",
+    const linked = path.join(fixture.workspace_root, "work", "output");
+    fs.symlinkSync(outside, linked, process.platform === "win32" ? "junction" : "dir");
+    const report = path.join(outside, "report.md");
+    fs.writeFileSync(report, "外部译文");
+    await expect(fixture.service.activate_path("work/output/")).resolves.toEqual({
+      status: "opened",
     });
-    expect(fixture.pick_save_path).not.toHaveBeenCalled();
-    expect(fixture.open_directory).not.toHaveBeenCalled();
+    expect(fixture.open_directory).toHaveBeenCalledWith(linked);
+    await expect(fixture.service.activate_path("work/output/report.md")).resolves.toEqual({
+      status: "saved",
+    });
+    expect(fs.readFileSync(fixture.destination, "utf8")).toBe("外部译文");
+    fixture.pick_save_path.mockImplementationOnce(async () => {
+      await fixture.service.reset_workspace();
+      return fixture.destination;
+    });
+    await expect(fixture.service.activate_path("work/output/report.md")).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+    expect(fs.existsSync(linked)).toBe(false);
+    expect(fs.readFileSync(report, "utf8")).toBe("外部译文");
   });
 
   it("取消保存不产生文件，宿主失败保留原因", async () => {
@@ -111,12 +131,12 @@ describe("AgentWorkspaceService", () => {
   it("保存确认时的内容，普通快照刷新保留 work 链接", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const file = path.join(fixture.workspace_root, "work", "report.md");
     fs.writeFileSync(file, "初稿");
     fixture.pick_save_path.mockImplementationOnce(async () => {
       fixture.snapshot.sectionRevisions.items = 2;
-      await run_workspace_script(fixture);
+      await run_workspace(fixture);
       fs.writeFileSync(file, "定稿");
       return path.join(temp_dir, "saved.md");
     });
@@ -154,9 +174,9 @@ describe("AgentWorkspaceService", () => {
         code: "runtime.busy",
       });
       await expect(fixture.service.activate_path("work/")).resolves.toEqual({ status: "opened" });
-      return { result: null, todos: [] };
+      return { execution: workspace_execution(), todos: [] };
     });
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fs.existsSync(path.join(temp_dir, "saved.md"))).toBe(false);
   });
 
@@ -174,14 +194,20 @@ describe("AgentWorkspaceService", () => {
     expect(fs.existsSync(path.join(fixture.workspace_root, "copy.md"))).toBe(false);
   });
 
-  it("首次 workspace_script 生成只读快照和空 change 文件", async () => {
+  it("首次 workspace_run 生成只读快照和空 change 文件", async () => {
     const fixture = create_fixture(temp_dir);
     fs.mkdirSync(path.join(fixture.workspace_root, "stale"), { recursive: true });
     fs.writeFileSync(path.join(fixture.workspace_root, "stale", "partial.json"), "{}");
     await fixture.service.initialize();
-    expect(fs.readdirSync(fixture.workspace_root)).toEqual([]);
+    expect(fs.existsSync(path.join(fixture.workspace_root, "stale"))).toBe(false);
 
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
+
+    const first_script = fixture.run.mock.calls[0]![0].scriptPath;
+    expect(path.posix.dirname(first_script)).toBe("work/runs");
+    expect(fs.readFileSync(path.join(fixture.workspace_root, first_script), "utf8")).toBe(
+      VALID_WORKSPACE_SCRIPT,
+    );
 
     const active_path = fixture.active_path();
     expect(read_json(path.join(active_path, AGENT_WORKSPACE_PATHS.projectMeta))).toMatchObject({
@@ -220,16 +246,27 @@ describe("AgentWorkspaceService", () => {
     for (const relative_path of all_change_paths()) {
       expect(fs.readFileSync(path.join(active_path, relative_path), "utf-8")).toBe("");
     }
-    expect(list_files(active_path).sort()).toEqual(
-      [
-        ...Object.values(AGENT_WORKSPACE_PATHS),
-        ...Object.values(AGENT_WORKSPACE_QUALITY_ENTRY_PATHS),
-        ...all_change_paths(),
-        "sources/script.txt",
-      ].sort(),
-    );
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fixture.active_path()).toBe(active_path);
+  });
+
+  it("重新初始化解除旧依赖链接并清理工作材料，部署目录保持完整", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    const modules = path.join(fixture.workspace_root, "node_modules");
+    const deployed = fs.realpathSync(modules);
+    const marker = path.join(deployed, "installed.txt");
+    fs.writeFileSync(marker, "installed");
+    await run_workspace(fixture);
+    await fixture.service.initialize();
+    expect(fs.realpathSync(modules)).toBe(deployed);
+    expect(fs.readFileSync(marker, "utf8")).toBe("installed");
+    expect(fs.existsSync(path.join(fixture.workspace_root, "work"))).toBe(false);
+    for (const name of ["package.json", "package-lock.json"]) {
+      expect(fs.readFileSync(path.join(fixture.workspace_root, name), "utf8")).toBe(
+        fs.readFileSync(path.join(temp_dir, "runtime", name), "utf8"),
+      );
+    }
   });
 
   it("sources 只在工程或 files revision 变化时重新生成", async () => {
@@ -242,19 +279,19 @@ describe("AgentWorkspaceService", () => {
     ).toBe("源文件正文");
     expect(fixture.read_asset_content).toHaveBeenCalledOnce();
 
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     await fixture.service.reset_workspace();
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledOnce();
 
     await fixture.service.reset_project("test.lg");
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(2);
 
     fixture.snapshot.sectionRevisions.files = 2;
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fixture.read_asset_content).toHaveBeenCalledTimes(3);
 
     await fixture.service.reset_project(null);
@@ -279,7 +316,7 @@ describe("AgentWorkspaceService", () => {
   it("work 跨快照、apply 与普通 revision 变化保留，显式 reset 时清理", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(
       fixture.workspace_root,
       AGENT_WORKSPACE_WORK_ROOT,
@@ -289,21 +326,21 @@ describe("AgentWorkspaceService", () => {
     fs.mkdirSync(path.dirname(work_file));
     fs.writeFileSync(work_file, '{"step":1}\n');
 
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
     await expect(fixture.service.apply_workspace()).resolves.toMatchObject({ status: "unchanged" });
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     fixture.snapshot.sectionRevisions.items = 2;
-    await fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
     expect(fs.readFileSync(work_file, "utf-8")).toBe('{"step":1}\n');
 
     await fixture.service.reset_workspace();
     expect(fs.existsSync(path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT))).toBe(false);
   });
 
-  it("sources 生成失败不阻断工程加载，并由 workspace_script 触发重试", async () => {
+  it("sources 生成失败不阻断工程加载，并由 workspace_run 触发重试", async () => {
     const fixture = create_fixture(temp_dir);
     fixture.read_asset_content.mockImplementation(() => {
       throw new Error("asset read failed");
@@ -314,24 +351,24 @@ describe("AgentWorkspaceService", () => {
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources"))).toBe(false);
 
     fixture.read_asset_content.mockReturnValue(Buffer.from("源文件正文", "utf-8"));
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(fs.existsSync(path.join(fixture.workspace_root, "sources", "script.txt"))).toBe(true);
   });
 
   it("stale 快照的数据读取失败时保留此前完整快照与兼容 work", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const previous_path = fixture.active_path();
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     fixture.snapshot.sectionRevisions.items = 2;
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
-    await expect(run_workspace_script(fixture)).rejects.toThrow("warning query failed");
+    await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
     expect(fixture.active_path()).toBe(previous_path);
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
-    await fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
   });
 
   it("并行落盘失败会等待其它写入结算后再清理半成品", async () => {
@@ -371,30 +408,48 @@ describe("AgentWorkspaceService", () => {
     const fixture = create_fixture(temp_dir, native_fs);
     await fixture.service.initialize();
 
-    const script = run_workspace_script(fixture);
+    const environment_files = fs.readdirSync(fixture.workspace_root);
+    const script = run_workspace(fixture);
     await delayed_write_started;
     await new Promise<void>((resolve) => setImmediate(resolve));
     release_delayed_write();
 
     await expect(script).rejects.toThrow("contract write failed");
     expect(cleanup_started_while_write_pending).toBe(false);
-    expect(fs.readdirSync(fixture.workspace_root)).toEqual(["sources"]);
+    expect(fs.readdirSync(fixture.workspace_root)).toEqual([...environment_files, "sources"]);
   });
 
   it("脚本错误和 runtime 故障都保留已经写入的工作文件", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const active_path = fixture.active_path();
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
-    fixture.run.mockRejectedValueOnce(new AgentWorkspaceScriptError("脚本失败"));
+    fixture.run.mockRejectedValueOnce(
+      new AgentWorkspaceRunError("脚本失败", {
+        ...workspace_execution({ completed: 1 }, { message: "脚本失败" }),
+        exitCode: 1,
+      }),
+    );
 
     await expect(
-      fixture.service.run_script("throw new Error();", ["恢复任务"], new AbortController().signal),
-    ).rejects.toMatchObject({ public_details: { action: "workspace_script" } });
+      fixture.service.run("throw new Error();", ["恢复任务"], new AbortController().signal),
+    ).rejects.toMatchObject({
+      public_details: {
+        action: "workspace_run",
+        stdout: { content: { completed: 1 } },
+        stderr: { content: { message: "脚本失败" } },
+      },
+    });
     expect(fixture.run).toHaveBeenCalledWith(
-      { workspacePath: active_path, script: "throw new Error();", todos: ["恢复任务"] },
+      {
+        workspacePath: active_path,
+        scriptPath: expect.stringMatching(/^work\/runs\/task-.*\.mjs$/u),
+        stdoutPath: expect.stringMatching(/^work\/runs\/task-.*\.stdout\.log$/u),
+        stderrPath: expect.stringMatching(/^work\/runs\/task-.*\.stderr\.log$/u),
+        todos: ["恢复任务"],
+      },
       expect.any(AbortSignal),
     );
     expect(fixture.active_path()).not.toBe("");
@@ -402,8 +457,8 @@ describe("AgentWorkspaceService", () => {
 
     fixture.run.mockRejectedValueOnce(new Error("host disconnected"));
     await expect(
-      fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal),
-    ).rejects.toMatchObject({ public_details: { action: "workspace_script" } });
+      fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal),
+    ).rejects.toMatchObject({ public_details: { action: "workspace_run" } });
     expect(fixture.active_path()).not.toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
   });
@@ -411,7 +466,7 @@ describe("AgentWorkspaceService", () => {
   it("apply 只提交显式 change，成功后销毁快照并保留 work", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(
       fixture.workspace_root,
       AGENT_WORKSPACE_WORK_ROOT,
@@ -471,7 +526,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
 
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     for (const relative_path of all_change_paths()) {
       expect(fs.readFileSync(path.join(fixture.active_path(), relative_path), "utf-8")).toBe("");
     }
@@ -483,7 +538,7 @@ describe("AgentWorkspaceService", () => {
   it("部分成功只保留规范化后的拒绝并按实际对象生成状态", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
@@ -505,7 +560,7 @@ describe("AgentWorkspaceService", () => {
   it("审批拒绝不触达项目写入口并保留已准备工作区", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
       { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
@@ -522,7 +577,7 @@ describe("AgentWorkspaceService", () => {
   it("对象内冲突返回 rejected 并保留工作区供脚本修复", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
       { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "甲" },
       { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "乙" },
@@ -544,7 +599,7 @@ describe("AgentWorkspaceService", () => {
   it("未匹配活动基线的 quality 与 prompt fp 归为输入错误并保留工作区", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_QUALITY_CHANGE_PATHS.glossary.updates, [
       { id: "glossary-1", fp: "AAAA", dst: "姬" },
     ]);
@@ -573,7 +628,7 @@ describe("AgentWorkspaceService", () => {
   it("数据库回滚失败保留工作区并允许安全重试", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
       { item_id: 1, fp: item_fp(fixture.active_path(), 1), dst: "译文" },
     ]);
@@ -589,7 +644,7 @@ describe("AgentWorkspaceService", () => {
   it("目标事实漂移销毁快照、保留 work 并拒绝旧对象写入", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
@@ -605,7 +660,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.write_store).not.toHaveBeenCalled();
     expect(fixture.active_path()).toBe("");
     expect(fs.readFileSync(work_file, "utf-8")).toBe("state");
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     expect(
       read_jsonl(path.join(fixture.active_path(), AGENT_WORKSPACE_PATHS.items))[0],
     ).toMatchObject({
@@ -617,7 +672,7 @@ describe("AgentWorkspaceService", () => {
   it("提交后同步失败保留 committed 事实、销毁快照并保留 work", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     write_rows(fixture.active_path(), AGENT_WORKSPACE_CHANGE_PATHS.items.updates, [
@@ -640,7 +695,7 @@ describe("AgentWorkspaceService", () => {
   it("无真实 change 不触达项目写入口并保留工作区", async () => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
 
     const request_approval = vi.fn(async () => undefined);
     await expect(fixture.service.apply_workspace(request_approval)).resolves.toEqual({
@@ -655,7 +710,7 @@ describe("AgentWorkspaceService", () => {
     expect(fixture.active_path()).not.toBe("");
   });
 
-  it("workspace_script 派生数据读取期间 revision 漂移时拒绝生成混合快照", async () => {
+  it("workspace_run 派生数据读取期间 revision 漂移时拒绝生成混合快照", async () => {
     const fixture = create_fixture(temp_dir);
     const query_warnings = fixture.query_warnings.getMockImplementation();
     if (query_warnings === undefined) throw new Error("缺少校对查询 fixture");
@@ -665,17 +720,18 @@ describe("AgentWorkspaceService", () => {
       return result;
     });
     await fixture.service.initialize();
+    const environment_files = fs.readdirSync(fixture.workspace_root);
 
-    await expect(run_workspace_script(fixture)).rejects.toMatchObject({
-      public_details: { action: "workspace_script" },
+    await expect(run_workspace(fixture)).rejects.toMatchObject({
+      public_details: { action: "workspace_run" },
     });
-    expect(fs.readdirSync(fixture.workspace_root)).toEqual([]);
+    expect(fs.readdirSync(fixture.workspace_root)).toEqual(environment_files);
   });
 
   it.each(PROJECT_DATA_SECTIONS)("%s revision 变化会替换旧快照", async (section) => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const change_file = path.join(
       fixture.active_path(),
       AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
@@ -683,31 +739,31 @@ describe("AgentWorkspaceService", () => {
     fs.writeFileSync(change_file, "pending");
     fixture.snapshot.sectionRevisions[section] = 2;
 
-    await fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
     expect(fs.readFileSync(change_file, "utf-8")).toBe("");
   });
 
   it.each(["epoch", "language"] as const)("%s 变化先清除旧 work，再读取快照", async (field) => {
     const fixture = create_fixture(temp_dir);
     await fixture.service.initialize();
-    await run_workspace_script(fixture);
+    await run_workspace(fixture);
     const work_file = path.join(fixture.workspace_root, AGENT_WORKSPACE_WORK_ROOT, "state.json");
     fs.writeFileSync(work_file, "state");
     if (field === "epoch") fixture.snapshot.epoch += 1;
     else fixture.setting.target_language = "EN";
     fixture.query_warnings.mockRejectedValueOnce(new Error("warning query failed"));
 
-    await expect(run_workspace_script(fixture)).rejects.toThrow("warning query failed");
+    await expect(run_workspace(fixture)).rejects.toThrow("warning query failed");
     expect(fs.existsSync(work_file)).toBe(false);
 
-    await fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+    await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
     expect(fs.existsSync(work_file)).toBe(false);
   });
 });
 
 /** 通过公开脚本入口按需建立或刷新工作区。 */
-async function run_workspace_script(fixture: ReturnType<typeof create_fixture>): Promise<void> {
-  await fixture.service.run_script(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+async function run_workspace(fixture: ReturnType<typeof create_fixture>): Promise<void> {
+  await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
 }
 
 /** 用真实磁盘工作区替换宿主脚本端口，其余协作者保持最小可观察 fake。 */
@@ -750,7 +806,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     snapshot: () => ({ ...snapshot, sectionRevisions: { ...snapshot.sectionRevisions } }),
   };
   const run = vi.fn<AgentWorkspaceRunPort>(async (request) => ({
-    result: null,
+    execution: workspace_execution(),
     todos: [...request.todos],
   }));
   const write_store = vi.fn<ProjectWriteStore["apply_agent_workspace_changes"]>(async (request) => {
@@ -820,6 +876,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   const open_directory = vi.fn(async (_path: string) => undefined);
   const pick_save_path = vi.fn(async (_default_name: string): Promise<string | null> => null);
   const service = new AgentWorkspaceService({
+    runtimeDirectory: create_workspace_runtime_fixture(temp_dir),
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
     },
@@ -929,15 +986,6 @@ function write_rows(workspace_path: string, relative_path: string, rows: JsonRec
     rows.length === 0 ? "" : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
     "utf-8",
   );
-}
-
-/** 递归列出工作区实际文件，空目录不参与固定布局断言。 */
-function list_files(root: string, relative = ""): string[] {
-  const directory = path.join(root, relative);
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const child = path.posix.join(relative.replace(/\\/g, "/"), entry.name);
-    return entry.isDirectory() ? list_files(root, child) : [child];
-  });
 }
 
 /** 测试初始化与生产 snapshot 共享同一固定 change 路径集合。 */

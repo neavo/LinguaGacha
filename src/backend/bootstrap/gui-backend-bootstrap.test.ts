@@ -293,6 +293,7 @@ function create_options() {
     builtinRoot: "E:/app.asar/builtin",
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
     agentWorkspaceRun: vi.fn(),
+    agentWorkspaceRuntimeDirectory: "runtime",
     openDirectory: vi.fn(),
     pickSavePath: vi.fn(async () => null),
     workerExecution: { kind: "in_process" as const },

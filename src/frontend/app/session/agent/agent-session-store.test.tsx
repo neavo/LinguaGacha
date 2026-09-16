@@ -888,8 +888,8 @@ describe("AgentSessionStore", () => {
         {
           kind: "tool_call",
           id: "success",
-          toolName: "workspace_script",
-          input: '{"script":"return []"}',
+          toolName: "workspace_run",
+          input: '{"script":"console.log([])"}',
           status: "success",
           output: '{"items":[]}',
           createdAt: 2,
@@ -923,7 +923,7 @@ describe("AgentSessionStore", () => {
         {
           kind: "tool_call",
           id: "invalid-running-output",
-          toolName: "workspace_script",
+          toolName: "workspace_run",
           input: "{}",
           status: "running",
           output: "不应存在",
@@ -932,7 +932,7 @@ describe("AgentSessionStore", () => {
         {
           kind: "tool_call",
           id: "invalid-success-output",
-          toolName: "workspace_script",
+          toolName: "workspace_run",
           input: "{}",
           status: "success",
           output: null,
@@ -1079,8 +1079,8 @@ describe("AgentSessionStore", () => {
       {
         kind: "tool_call",
         id: "success",
-        toolName: "workspace_script",
-        input: '{"script":"return []"}',
+        toolName: "workspace_run",
+        input: '{"script":"console.log([])"}',
         status: "success",
         output: '{"items":[]}',
         createdAt: 2,

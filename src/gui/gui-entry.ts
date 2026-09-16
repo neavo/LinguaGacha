@@ -58,7 +58,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
   const builtin_root = path.join(app.getAppPath(), "builtin"); // app.asar 内当前版本只读资产根
-  const agent_workspace_runtime = resolve_agent_workspace_runtime_entry_path({
+  const agent_workspace_runtime = resolve_agent_workspace_runtime_bootstrap_path({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     projectRoot: process.cwd(),
@@ -67,7 +67,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
     appRoot: app_root,
     builtinRoot: builtin_root,
-    agentWorkspaceRuntimeEntryPath: agent_workspace_runtime,
+    agentWorkspaceRuntimeBootstrapPath: agent_workspace_runtime,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openDirectory: open_directory,
     pickSavePath: async (default_name) => {
@@ -255,12 +255,12 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   });
 }
 
-/** 发布 bundle 由 extraResources 复制；开发产物与桌面构建分别拥有输出目录。 */
-export function resolve_agent_workspace_runtime_entry_path(args: {
+/** 预加载模块与 npm 依赖共用部署目录，extraResources 完整复制当前应用版本的运行环境。 */
+export function resolve_agent_workspace_runtime_bootstrap_path(args: {
   packaged: boolean;
   resourcesPath: string;
   projectRoot: string;
 }): string {
-  const root = args.packaged ? args.resourcesPath : path.join(args.projectRoot, "build");
-  return path.join(root, "workspace-runtime", "runtime.mjs");
+  const root = args.packaged ? args.resourcesPath : path.join(args.projectRoot, "resources");
+  return path.join(root, "workspace", "bootstrap.mjs");
 }

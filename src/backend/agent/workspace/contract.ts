@@ -106,7 +106,6 @@ const quality_changes = Object.fromEntries(
 /** 磁盘契约与工具说明共用完整类型，保留提交语义供调用前发现。 */
 export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
   limits: {
-    result_bytes: AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes,
     query_page_default: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageDefault,
     query_page_max: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageMax,
   },
@@ -183,12 +182,12 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
   },
   apply: {
     quality_operations:
-      "按完整批次处理 creates、updates、deletes；已接受的删除使同对象更新进入 merge_conflict，依赖删除的新增或更新在删除失败时可能进入 dependency_conflict。",
+      "按完整批次处理 creates、updates、deletes。已接受的删除会使同对象更新进入 merge_conflict。依赖删除的新增或更新在删除失败时可能进入 dependency_conflict。",
     quality_sort:
-      "先移除删除对象与显式排序对象，保留其余相对顺序；按非负 sort 升序插入，-1 最后追加。同位置先更新后创建，各自按 change 文件行序排列；最终执行领域归一化。",
-    freshness: "工程身份、语言与 epoch 必须兼容；既有目标的 fp 必须匹配事务内当前对象",
-    transaction: "全部实际成功对象在一个数据库事务中提交",
-    partial_success: "单行或单对象失败进入 rejected，不阻塞无关对象",
+      "先移除删除对象与显式排序对象。其余对象保留相对顺序。sort 为非负数时，按升序插入。sort 为 -1 时，在末尾追加。同位置先更新后创建。各自按 change 文件行序排列。最后执行领域归一化。",
+    freshness: "工程身份、语言与 epoch 必须兼容。既有目标的 fp 必须匹配事务内当前对象",
+    transaction: "已接受的修改在同一事务中提交。事务失败时全部回滚",
+    partial_success: "单行或单对象被拒绝时，原因记录在 rejected。无关对象仍可提交",
     rejection_reasons: [
       "invalid_change",
       "fp_mismatch",
@@ -205,7 +204,7 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
       },
       fields: ["status", "applied", "rejected", "destroyed", "revisions"],
       destroyed:
-        "真实提交或目标事实漂移后为 true，表示数据快照与当前变更清单已销毁，相容的 work/** 保留；输入错误、无变化和事务回滚后为 false",
+        "真实提交或目标事实漂移后为 true。此时数据快照与当前变更清单已销毁。相容的 work/** 保留。输入错误、无变化和事务回滚后为 false",
     },
   },
 } satisfies AgentWorkspaceRuntimeContract);

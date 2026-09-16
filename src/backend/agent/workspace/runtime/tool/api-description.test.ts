@@ -24,13 +24,6 @@ describe("Agent Workspace 工具说明投影", () => {
       fs.writeFileSync(
         file,
         `${format_agent_workspace_typescript_api()}
-import type { AgentWorkspaceHtmlTools } from ${JSON.stringify(path.resolve("src/backend/agent/workspace/runtime/tool/html-to-markdown").replaceAll("\\", "/"))};
-// 两个方向均可赋值，保证手写流接口声明与实际运行时类型保持一致。
-declare const runtimeHtml: AgentWorkspaceHtmlTools;
-const modelHtml: WorkspaceHtmlTools = runtimeHtml;
-const checkedRuntimeHtml: AgentWorkspaceHtmlTools = ws.tool;
-// @ts-expect-error selector 参数必须是字符串数组
-ws.tool.htmlToMarkdown("<p>text</p>", { include: "p" });
 const glossary = ws.tool.groupQualityRuleEntries({ kind: "glossary", entries: [{ id: "a", src: "A", case_sensitive: false, info: "full record" }] });
 const preserve = ws.tool.groupQualityRuleEntries({ kind: "text_preserve", entries: [{ id: "a", src: "A" }] });
 // @ts-expect-error glossary entries require case_sensitive

@@ -12,7 +12,7 @@ const parameters = Type.Object(
           key: Type.String({
             minLength: 1,
             pattern: "\\S",
-            description: "本次 patterns 中唯一的关联标识，结果按输入顺序返回。",
+            description: "本次 patterns 中唯一的关联标识。结果按输入顺序返回。",
           }),
           text: Type.String({
             minLength: 1,
@@ -20,7 +20,7 @@ const parameters = Type.Object(
             description: "完整连续字面模式，保留原始空白。",
           }),
           case_sensitive: Type.Boolean({
-            description: "执行 Unicode 归一化；false 时同时折叠大小写。",
+            description: "执行 Unicode 归一化。false 时还会折叠大小写。",
           }),
         },
         { additionalProperties: false },
@@ -31,7 +31,7 @@ const parameters = Type.Object(
       Type.Integer({
         minimum: 0,
         description:
-          "每个模式最多收集的 (item_id, field) 证据数；省略时收集全部，0 仅统计，正整数收集最先出现的至多 N 条。所有调用均返回完整计数。",
+          "每个模式最多收集的 (item_id, field) 证据数。省略时收集全部。0 仅统计。正整数收集最先出现的至多 N 条。所有调用均返回完整计数。",
       }),
     ),
   },
@@ -49,7 +49,7 @@ const result = Type.Object(
           key: Type.String(),
           matches_complete: Type.Boolean({
             description:
-              "matches 是否包含本模式全部字段证据；无命中时为 true，限量或仅统计时按实际收集量判断。",
+              "matches 是否包含本模式全部字段证据。无命中时为 true。限量或仅统计时按实际收集量判断。",
           }),
           matched_item_count: Type.Integer({
             minimum: 0,
@@ -77,7 +77,7 @@ const result = Type.Object(
                       end: Type.Integer({
                         minimum: 0,
                         description:
-                          "原始字段 UTF-16 结束偏移，不包含该位置；使用原字段 slice(start, end) 提取证据。",
+                          "原始字段 UTF-16 结束偏移，不包含该位置。使用原字段 slice(start, end) 提取证据。",
                       }),
                     },
                     { additionalProperties: false },
@@ -88,7 +88,7 @@ const result = Type.Object(
             ),
             {
               description:
-                "按快照条目、src、name_src 顺序返回；每条记录包含该字段全部命中范围，同一条目可有两个字段记录。",
+                "按快照条目、src、name_src 顺序返回。每条记录包含该字段全部命中范围。同一条目可有两个字段记录。",
             },
           ),
         },

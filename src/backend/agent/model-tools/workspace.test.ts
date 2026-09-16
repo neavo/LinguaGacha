@@ -1,3 +1,4 @@
+import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
@@ -9,7 +10,7 @@ import {
   type AgentWorkspaceApprovalPort,
 } from "./workspace";
 
-type WorkspaceToolResult = { details: unknown };
+type WorkspaceToolResult = { details: unknown; content: { type: string; text: string }[] };
 
 describe("Agent 工作区工具", () => {
   it("两个工具只适配脚本参数、取消信号与服务结果", async () => {
@@ -20,15 +21,12 @@ describe("Agent 工作区工具", () => {
       todo,
       approval: build_approval_port(),
     });
-    expect(new Set(tools.map((tool) => tool.name))).toEqual(
-      new Set(["workspace_script", "workspace_apply"]),
-    );
-    const script_tool = read_tool(tools, "workspace_script");
+    const script_tool = read_tool(tools, "workspace_run");
     const apply_tool = read_tool(tools, "workspace_apply");
 
     const script = (await script_tool.execute(
       "script",
-      { script: "return { changed: 2 };" },
+      { script: "console.log(JSON.stringify({ changed: 2 }));" },
       undefined,
       undefined,
       undefined as never,
@@ -41,14 +39,15 @@ describe("Agent 工作区工具", () => {
       undefined as never,
     )) as WorkspaceToolResult;
 
-    expect(workspace.run_script).toHaveBeenCalledWith(
-      "return { changed: 2 };",
+    expect(workspace.run).toHaveBeenCalledWith(
+      "console.log(JSON.stringify({ changed: 2 }));",
       ["发现目标"],
       expect.any(AbortSignal),
     );
     expect(todo.write).toHaveBeenCalledWith(["核验结果"]);
     expect(workspace.apply_workspace).toHaveBeenCalledOnce();
-    expect(script.details).toEqual({ result: { changed: 2 } });
+    expect(script.details).toEqual(workspace_execution({ changed: 2 }));
+    expect(JSON.parse(script.content[0]!.text)).toEqual(script.details);
     expect(applied.details).toEqual({ status: "applied", changes: { items: { updated: 2 } } });
   });
 
@@ -58,12 +57,12 @@ describe("Agent 工作区工具", () => {
       todo: build_todo_port(),
       approval: build_approval_port(),
     });
-    const script_tool = read_tool(tools, "workspace_script");
+    const script_tool = read_tool(tools, "workspace_run");
     const apply_tool = read_tool(tools, "workspace_apply");
 
     expect(script_tool.description).toContain(format_agent_workspace_typescript_api());
-    expect(validate(script_tool, { script: "return null;" })).toEqual({
-      script: "return null;",
+    expect(validate(script_tool, { script: "console.log(null);" })).toEqual({
+      script: "console.log(null);",
     });
     expect(validate(apply_tool, {})).toEqual({});
     expect(() => validate(script_tool, { script: "" })).toThrow();
@@ -76,9 +75,9 @@ describe("Agent 工作区工具", () => {
     const run_released = new Promise<void>((resolve) => {
       release_run = resolve;
     });
-    workspace.run_script = vi.fn(async () => {
+    workspace.run = vi.fn(async () => {
       await run_released;
-      return { result: null, todos: ["迟到事项"] };
+      return { execution: workspace_execution(), todos: ["迟到事项"] };
     });
     const todo = build_todo_port(["原有事项"]);
     const script_tool = read_tool(
@@ -87,19 +86,19 @@ describe("Agent 工作区工具", () => {
         todo,
         approval: build_approval_port(),
       }),
-      "workspace_script",
+      "workspace_run",
     );
     const controller = new AbortController();
     const reason = new Error("停止任务");
 
     const result = script_tool.execute(
       "script",
-      { script: "return null;" },
+      { script: "console.log(null);" },
       controller.signal,
       undefined,
       undefined as never,
     );
-    await vi.waitFor(() => expect(workspace.run_script).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(workspace.run).toHaveBeenCalledOnce());
     controller.abort(reason);
     release_run();
 
@@ -109,11 +108,11 @@ describe("Agent 工作区工具", () => {
 
   it("脚本失败时保留调用前 Todo", async () => {
     const workspace = build_workspace_port();
-    workspace.run_script = vi.fn(async () => Promise.reject(new Error("脚本失败")));
+    workspace.run = vi.fn(async () => Promise.reject(new Error("脚本失败")));
     const todo = build_todo_port(["恢复任务"]);
     const script_tool = read_tool(
       create_agent_workspace_tools({ workspace, todo, approval: build_approval_port() }),
-      "workspace_script",
+      "workspace_run",
     );
 
     await expect(
@@ -150,9 +149,12 @@ function read_tool(
 }
 
 /** 测试替换工作区业务边界，不伪造具体服务的私有状态。 */
-function build_workspace_port(): Pick<AgentWorkspacePort, "run_script" | "apply_workspace"> {
+function build_workspace_port(): Pick<AgentWorkspacePort, "run" | "apply_workspace"> {
   return {
-    run_script: vi.fn(async () => ({ result: { changed: 2 }, todos: ["核验结果"] })),
+    run: vi.fn(async () => ({
+      execution: workspace_execution({ changed: 2 }),
+      todos: ["核验结果"],
+    })),
     apply_workspace: vi.fn(async (request_approval) => {
       await request_approval?.({
         items: 2,

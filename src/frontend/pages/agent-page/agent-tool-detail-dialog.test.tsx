@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentToolEntry } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import * as tool_output from "./agent-tool-output";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -27,8 +28,10 @@ describe("AgentToolDetailDialog", () => {
     container?.remove();
     root = null;
     container = null;
+    vi.restoreAllMocks();
   });
 
+  /** 当前对话框随同一 root 更新，观察输入与输出面板的实际挂载。 */
   async function render_dialog(entry: AgentToolEntry): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -69,7 +72,7 @@ describe("AgentToolDetailDialog", () => {
     expect(JSON.parse(input?.textContent ?? "")).toEqual({
       search: { keywords: ["Alice"] },
     });
-    expect(dialog?.textContent).not.toContain('"items": []');
+    expect(dialog?.textContent).not.toContain('"items"');
   });
 
   it("运行工具默认显示输入，同 id 完成后保留当前面板", async () => {
@@ -90,9 +93,9 @@ describe("AgentToolDetailDialog", () => {
     ).toContain("SKILL.md");
   });
 
-  it("workspace_script 输入直接显示保持原文的 TypeScript 脚本", async () => {
-    const script = "const contract = ws.contract;\nreturn { limits: contract.limits };";
-    await render_dialog(tool_running("workspace_script", JSON.stringify({ script })));
+  it("workspace_run 输入直接显示保持原文的 JavaScript 程序", async () => {
+    const script = "const contract = ws.contract;\nconsole.log(contract.limits);";
+    await render_dialog(tool_running("workspace_run", JSON.stringify({ script })));
 
     const input = document.body.querySelector<HTMLElement>(
       '.cm-content[aria-label="agent_page.tool.input"]',
@@ -103,9 +106,9 @@ describe("AgentToolDetailDialog", () => {
     expect(input?.querySelector(".cm-line span")).not.toBeNull();
   });
 
-  it("workspace_script 输入包含其他字段时完整显示 JSON", async () => {
-    const input_value = { script: "return {};", timeout: 1 };
-    await render_dialog(tool_running("workspace_script", JSON.stringify(input_value)));
+  it("workspace_run 输入包含其他字段时完整显示 JSON", async () => {
+    const input_value = { script: "console.log({});", timeout: 1 };
+    await render_dialog(tool_running("workspace_run", JSON.stringify(input_value)));
 
     const input = document.body.querySelector<HTMLElement>(
       '.cm-content[aria-label="agent_page.tool.input"]',
@@ -124,8 +127,44 @@ describe("AgentToolDetailDialog", () => {
       [...(output?.querySelectorAll(".cm-line") ?? [])].map((line) => line.textContent),
     ).toEqual(["第一行", "第二行 <tag>"]);
   });
+
+  it("隐藏结果延迟格式化，切换和刷新复用文档，实际 DOM 显示多行文本", async () => {
+    const format = vi.spyOn(tool_output, "format_agent_tool_output");
+    await render_dialog(tool_running("any_tool", "{}"));
+    const entry = tool_success(
+      "any_tool",
+      "{}",
+      JSON.stringify({ data: JSON.stringify({ text: "一\n\n\t二" }) }),
+    );
+    await render_dialog(entry);
+    expect(format).not.toHaveBeenCalled();
+    const tabs = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const input_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.input");
+    const output_tab = tabs.find((tab) => tab.textContent === "agent_page.tool.output");
+    await act(async () => output_tab?.click());
+    expect(format).toHaveBeenCalledTimes(1);
+    const output = document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]');
+    expect([...output!.querySelectorAll(".cm-line")].map((line) => line.textContent)).toEqual(
+      expect.arrayContaining(["      一", "      ", "      \t二"]),
+    );
+    expect(output?.querySelector(".cm-viewer-text")).not.toBeNull();
+    expect(document.body.querySelectorAll(".cm-editor")).toHaveLength(1);
+    await render_dialog({ ...entry });
+    expect(document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]')).toBe(
+      output,
+    );
+    await act(async () => input_tab?.click());
+    await act(async () => output_tab?.click());
+    expect(format).toHaveBeenCalledTimes(1);
+    await render_dialog({ ...entry, status: "success", output: '{"new": 2}' });
+    expect(format).toHaveBeenCalledTimes(2);
+    expect(
+      document.body.querySelector('.cm-content[aria-label="agent_page.tool.output"]')?.textContent,
+    ).toContain('"new": 2');
+  });
 });
 
+/** 构造尚未返回输出的工具条目。 */
 function tool_running(tool_name: string, input: string): AgentToolEntry {
   return {
     kind: "tool_call",
@@ -138,6 +177,7 @@ function tool_running(tool_name: string, input: string): AgentToolEntry {
   };
 }
 
+/** 构造含完整模型输出的已完成条目。 */
 function tool_success(tool_name: string, input: string, output: string): AgentToolEntry {
   return {
     kind: "tool_call",

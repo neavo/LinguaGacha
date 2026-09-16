@@ -1,4 +1,5 @@
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -59,12 +60,12 @@ import {
   project_agent_workspace_warning,
 } from "./contract";
 import {
-  AgentWorkspaceScriptError,
+  AgentWorkspaceRunError,
   type AgentWorkspaceRunRequest,
   type AgentWorkspaceRunResult,
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
-import { AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
+import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 
 type AgentWorkspaceStoreResult = {
@@ -105,7 +106,7 @@ type AgentWorkspaceWorkSession = {
 type WorkspacePath = Readonly<{
   path: string;
   kind: "file" | "directory";
-  scope: "work" | "sources" | "snapshot"; // 按真实目标所属目录匹配清理生命周期
+  scope: "work" | "sources" | "snapshot"; // 按工作区访问入口匹配清理生命周期，链接目标可在外部
 }>;
 
 /** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
@@ -134,6 +135,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      runtimeDirectory: string; // 当前应用版本部署的预加载模块与 npm 依赖目录
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
       nativeFs?: NativeFs;
@@ -201,7 +203,7 @@ export class AgentWorkspaceService {
     this.link_versions.snapshot += 1;
   }
 
-  /** 两次检查共用 URL 解码、真实路径边界和文件类型判断。 */
+  /** 两次检查共用工作区相对路径解码；文件访问沿目录链接自然到达目标。 */
   private resolve_path(href: unknown): WorkspacePath {
     if (typeof href !== "string") {
       throw new AppErrors.AppError("request.validation_failed");
@@ -223,21 +225,15 @@ export class AgentWorkspaceService {
       throw new AppErrors.AppError("request.validation_failed");
     }
     try {
-      const root = this.native_fs.real_path(this.root_path);
-      const file_path = this.native_fs.real_path(path.resolve(root, relative_path));
-      const inside_path = path.relative(root, file_path);
-      // 真实路径检查阻止工作区内的符号链接把宿主定位引向工作区外。
-      if (!is_inside_path(root, file_path)) {
-        throw new AppErrors.AppError("request.validation_failed");
-      }
+      const file_path = path.resolve(this.root_path, relative_path);
+      const inside_path = path.relative(this.root_path, file_path);
       const stat = this.native_fs.stat(file_path);
       if (!stat.isFile() && !stat.isDirectory()) {
         throw new AppErrors.AppError("file.invalid_structure");
       }
-      // realpath 在 Windows 可能返回 namespaced path，shell 消费普通平台路径。
       const scope = inside_path.split(path.sep)[0];
       return {
-        path: path.resolve(this.root_path, inside_path),
+        path: file_path,
         kind: stat.isDirectory() ? "directory" : "file",
         scope: scope === "work" || scope === "sources" ? scope : "snapshot",
       };
@@ -257,8 +253,19 @@ export class AgentWorkspaceService {
     this.active = null;
     this.source_session = null;
     this.work_session = null;
+    // 按工作区入口清理；Node 删除遇到的目录链接本身，外部部署目录不参与递归。
     await this.native_fs.remove_async(this.root_path, { recursive: true, force: true });
     await this.native_fs.make_dir_async(this.root_path);
+    for (const name of ["package.json", "package-lock.json"]) {
+      this.native_fs.copy_file(
+        path.join(this.options.runtimeDirectory, name),
+        path.join(this.root_path, name),
+      );
+    }
+    this.native_fs.create_directory_link(
+      this.native_fs.real_path(path.join(this.options.runtimeDirectory, "node_modules")),
+      path.join(this.root_path, "node_modules"),
+    );
   }
 
   /** 工作区工具按需建立完整只读快照和空 change 文件。 */
@@ -394,7 +401,7 @@ export class AgentWorkspaceService {
   }
 
   /** 脚本直接修改可写工作目录；失败、超时和停止都保留已经完成的文件写入。 */
-  public async run_script(
+  public async run(
     script: string,
     todos: readonly string[],
     signal: AbortSignal,
@@ -405,13 +412,26 @@ export class AgentWorkspaceService {
         await this.create_snapshot_locked();
       }
       try {
-        return await this.options.run({ workspacePath: this.root_path, script, todos }, signal);
+        signal.throwIfAborted();
+        const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/task-${randomUUID()}`;
+        const script_path = `${run_path}.mjs`;
+        await this.native_fs.write_file(path.join(this.root_path, script_path), script);
+        return await this.options.run(
+          {
+            workspacePath: this.root_path,
+            scriptPath: script_path,
+            stdoutPath: `${run_path}.stdout.log`,
+            stderrPath: `${run_path}.stderr.log`,
+            todos,
+          },
+          signal,
+        );
       } catch (error) {
         if (signal.aborted) throw error;
-        if (error instanceof AgentWorkspaceScriptError) {
+        if (error instanceof AgentWorkspaceRunError) {
           throw new AppErrors.AppError("request.validation_failed", {
             cause: error,
-            public_details: { action: "workspace_script", message: error.message },
+            public_details: { action: "workspace_run", message: error.message, ...error.execution },
             diagnostic_context: { reason: "agent_workspace_execution_failed" },
           });
         }
@@ -547,7 +567,7 @@ export class AgentWorkspaceService {
         })),
       });
     } catch (error) {
-      // sources 是 Agent 附属投影，生成失败不能回滚已经成功的工程加载；下一次 workspace_script 会重试。
+      // sources 是 Agent 附属投影，生成失败不能回滚已经成功的工程加载；下一次 workspace_run 会重试。
       this.options.logManager.warning("Agent 工程源文件投影生成失败。", {
         source: "agent_workspace",
         error,
@@ -595,7 +615,7 @@ export class AgentWorkspaceService {
     return this.active;
   }
 
-  /** 每个工程文件快照只展开一次；连续 workspace_script 复用同一个 sources 目录。 */
+  /** 每个工程文件快照只展开一次；连续 workspace_run 复用同一个 sources 目录。 */
   private async ensure_sources(args: {
     projectPath: string;
     projectEpoch: number;
@@ -712,7 +732,7 @@ export class AgentWorkspaceService {
 export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "initialize"
-  | "run_script"
+  | "run"
   | "apply_workspace"
   | "reset_workspace"
   | "reset_project"
@@ -1031,20 +1051,20 @@ async function write_jsonl_file(
 /** 工作区业务校验统一返回下一步恢复动作。 */
 function workspace_validation_error(reason: string): AppErrors.AppError {
   return new AppErrors.AppError("request.validation_failed", {
-    public_details: { action: "workspace_script" },
+    public_details: { action: "workspace_run" },
     diagnostic_context: { reason },
   });
 }
 
 /** 无法继续使用当前目录的错误统一回到按需工作区脚本。 */
 function workspace_recovery_error(error: unknown, reason: string): AppErrors.AppError {
-  return workspace_error_with_action(error, "workspace_script", reason);
+  return workspace_error_with_action(error, "workspace_run", reason);
 }
 
 /** 包装错误时保留稳定 code、公开详情、诊断上下文和原始 cause。 */
 function workspace_error_with_action(
   error: unknown,
-  action: "workspace_script" | "workspace_apply",
+  action: "workspace_run" | "workspace_apply",
   reason?: string,
 ): AppErrors.AppError {
   if (AppErrors.is_app_error(error)) {

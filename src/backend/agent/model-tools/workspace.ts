@@ -4,9 +4,13 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import type { AgentApprovalMode, AgentPendingWriteSummary } from "../../../shared/agent";
 import { agent_tool_result } from "./definition";
 import { AGENT_WORKSPACE_CONTRACT } from "../workspace/contract";
-import { AGENT_WORKSPACE_RUNTIME_POLICY } from "../workspace/runtime/policy";
+import {
+  AGENT_WORKSPACE_RUN_ROOT,
+  AGENT_WORKSPACE_RUNTIME_POLICY,
+} from "../workspace/runtime/policy";
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/tool/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
+import workspace_package from "../../../../resources/workspace/package.json";
 
 /** AgentService 提供的窄审批端口，工作区服务不感知会话或 UI 状态。 */
 export type AgentWorkspaceApprovalPort = {
@@ -26,62 +30,98 @@ export type AgentTodoPort = {
 };
 
 /** 参数只描述脚本输入；环境和完整 API 随工具说明公开。 */
-const WORKSPACE_SCRIPT_PARAMETERS = Type.Object(
+const WORKSPACE_RUN_PARAMETERS = Type.Object(
   {
     script: Type.String({
       minLength: 1,
-      description: "JavaScript 异步函数体，支持顶层 await，通过显式 return 返回可序列化 JSON。",
+      description: "要执行的完整 JavaScript ESM 源码。",
     }),
   },
   { additionalProperties: false },
 );
 
 /** 运行限制从真实策略生成，声明从工具 Schema 生成。 */
-const WORKSPACE_SCRIPT_DESCRIPTION: string = [
-  "按需建立或刷新工程快照，在受限 Node.js 进程中执行 JS 脚本，读取事实、计算、维护工作资产和准备变更清单。",
+const WORKSPACE_RUN_DESCRIPTION: string = [
+  "在工程工作区运行脚本，用于读取工程事实、处理文件和准备变更清单，工具按需自动刷新工程快照。",
   "",
-  "运行环境：",
-  "- 宿主注入冻结的 ws 接口。",
-  "- 数据工具参数与结果由运行时 Schema 校验。",
-  "- 每次调用都是新进程，普通内存变量不跨调用保留，工作数据通过文件交接。",
+  "### 工作方式",
   "",
-  "文件与工作区：",
-  "- 当前目录为工作区根，相对路径从该目录解析。",
-  "- 可读范围：完整工作区。",
-  `- 可写范围：${AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.map((root) => `${root}/**`).join("、")}。`,
-  "- 通过 ws.contract 发现数据集、路径、字段与变更格式，按需编写脚本处理，返回所需数据、准备变更清单。",
-  '- 文件读写通过 await import("node:fs") 或 await import("node:fs/promises")，其他逻辑使用 Node 标准 API。',
+  "- 每次调用启动独立 Node.js 进程，跨调用的数据通过文件交接。",
+  `- 脚本保存到 ${AGENT_WORKSPACE_RUN_ROOT}/*.mjs`,
+  "- cwd 是工作区根目录，文件相对路径从这里解析，脚本内的相对 import 从脚本文件所在目录解析。",
+  "- ws.contract 提供数据集、路径和变更格式。",
+  `- 预装包：${Object.keys(workspace_package.dependencies).join("、")}，通过标准 import 使用。`,
+  "- 包版本、类型和详细 API 可从 node_modules 中读取。",
+  "- 依赖由应用管理。禁止自行安装或下载依赖。",
   "",
-  "执行与结果：",
-  `- 执行时限：${(AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000).toString()} 秒。`,
-  `- 返回长度上限：${AGENT_WORKSPACE_RUNTIME_POLICY.resultBytes.toString()} 字节。`,
-  "- 返回形式：{ result: 脚本返回值 }。",
+  "### 文件与权限",
   "",
-  "失败与恢复：",
-  "- 脚本失败、停止或超时后，已完成的文件写入仍保留。",
-  "- 确认语法解析失败时，脚本正文尚未执行。",
-  "- 执行中失败或阶段不明时，先读取并核验受影响资产，复用完整部分并修复其余部分。",
+  "- 可以读取整个工作区，包括 node_modules 中的预装包、类型声明和文档。",
+  `- 可以写入 ${AGENT_WORKSPACE_RUNTIME_POLICY.writeRoots.map((root) => `${root}/**`).join("、")}。目录链接沿入口权限使用。`,
+  "- 禁止创建子进程、启动 worker 或加载原生扩展（native addons）。",
   "",
-  "以下 TypeScript 声明仅用于描述可用 API，执行脚本使用 JavaScript 语法：",
+  "### 输出",
+  "",
+  `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒。程序在事件循环空闲时自然退出。`,
+  "- 按任务需要选择输出内容和格式，使用 console.log 输出结果。",
+  "- 每次执行都会保存 stdout 和 stderr 文件，无输出时文件为空。",
+  `- 每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容。超额时返回文件路径和补读提示。请读取当前任务所需的部分。`,
+  "",
+  "|返回字段|含义|",
+  "|---|---|",
+  "|scriptPath|本次程序的工作区相对路径|",
+  "|exitCode、signal|进程退出码与退出信号|",
+  "|stdout、stderr|两路输出各自的文件信息|",
+  "|path、bytes|文件的工作区相对路径与字节数|",
+  "|content 或 message|直接返回的内容，或超额时的补读提示|",
+  "",
+  "### 失败与恢复",
+  "",
+  "- 程序失败或超时会携带执行记录。",
+  "- 程序失败、停止或超时后，已完成的文件写入仍然保留。",
+  "- 继续前核验受影响资产。复用完整部分。修复其余部分。",
+  "",
+  "### 示例",
+  "",
+  "`ws` 由运行环境预先提供，直接使用，无需导入，以下为示例：",
+  "",
+  "```js",
+  'import { readFile } from "node:fs/promises";',
+  "",
+  "const path = ws.contract.datasets.project_meta.path;",
+  'const meta = JSON.parse(await readFile(path, "utf8"));',
+  "console.log(JSON.stringify(meta, null, 2));",
+  "```",
+  "",
+  "### 应用 API",
+  "",
+  "以下 TypeScript 声明用于描述接口，执行程序请使用 JavaScript。",
+  "```ts",
   format_agent_workspace_typescript_api(),
+  "```",
 ].join("\n");
 
-/** 提交副作用从磁盘契约投影，工具另补调用前准备与回执后的恢复动作。 */
+/** 提交语义由 contract 提供。工具说明补充调用准备与回执后的恢复动作。 */
 const WORKSPACE_APPLY_DESCRIPTION: string = [
-  "将当前工作区内的变更清单应用到项目数据。",
+  "将当前工作区的变更清单提交到工程。",
   "",
-  "提交规则：",
-  `- 提交前确认变更文件只包含本批次要提交的内容，避免旧批次遗留变更被一并提交。`,
+  "### 提交前",
+  "",
+  "- 只保留本批次要提交的变更。清除旧批次遗留内容。",
+  "- 工具按当前审批模式处理写入请求。需要用户授权时，工具会等待决定。",
+  "",
+  "### 提交与回执",
+  "",
   `- ${AGENT_WORKSPACE_CONTRACT.apply.transaction}。`,
   `- ${AGENT_WORKSPACE_CONTRACT.apply.partial_success}。`,
-  "",
-  "返回回执：",
-  `- 字段：${AGENT_WORKSPACE_CONTRACT.apply.result.fields.join("、")}。`,
+  "- 根据回执区分已提交与被拒绝的对象。",
   `- destroyed：${AGENT_WORKSPACE_CONTRACT.apply.result.destroyed}。`,
-  "- 详细状态与拒绝原因见 ws.contract.apply。",
+  "- 详细状态和拒绝原因见 ws.contract.apply。",
   "",
-  "提交后处理：",
-  "- 回执 destroyed 为 true 时，先通过 workspace_script 建立新快照。",
+  "### 后续操作",
+  "",
+  "- destroyed 为 true 时，先通过 workspace_run 建立新快照。",
+  "- 核实拒绝原因后，只重新准备尚未成功的修改。",
 ].join("\n");
 
 /** apply 消费当前活动工作区中的一个提交批次，身份与对象 fp 由服务持有。 */
@@ -89,30 +129,30 @@ const WORKSPACE_APPLY_PARAMETERS = Type.Object({}, { additionalProperties: false
 
 /** 工作区由单一服务持有，模型接口由脚本与提交批次组成。 */
 export function create_agent_workspace_tools(options: {
-  workspace: Pick<AgentWorkspacePort, "run_script" | "apply_workspace">;
+  workspace: Pick<AgentWorkspacePort, "run" | "apply_workspace">;
   todo: AgentTodoPort;
   approval: AgentWorkspaceApprovalPort;
 }): ToolDefinition[] {
   return [
     defineTool({
-      name: "workspace_script",
-      label: "运行工作区脚本",
-      description: WORKSPACE_SCRIPT_DESCRIPTION,
+      name: "workspace_run",
+      label: "运行工作区程序",
+      description: WORKSPACE_RUN_DESCRIPTION,
       executionMode: "sequential",
-      parameters: WORKSPACE_SCRIPT_PARAMETERS,
+      parameters: WORKSPACE_RUN_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
         const effective_signal = signal ?? new AbortController().signal;
         effective_signal.throwIfAborted();
-        const execution = await options.workspace.run_script(
+        const { execution, todos } = await options.workspace.run(
           params.script,
           options.todo.read(),
           effective_signal,
         );
-        // run_script 的协作者可能在取消后才结算；Todo 只提交仍有效的工具调用结果。
+        // run 的协作者可能在取消后才结算；Todo 只提交仍有效的工具调用结果。
         effective_signal.throwIfAborted();
-        const result = agent_tool_result({ result: execution.result });
-        options.todo.write(execution.todos);
+        const result = agent_tool_result(execution);
+        options.todo.write(todos);
         return result;
       },
     }),

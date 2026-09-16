@@ -26,6 +26,31 @@ import {
 } from "@codemirror/view";
 
 export type AppEditorSyntax = "plain" | "markdown" | "json" | "typescript";
+/** 展示文档的有序语义范围，由文本生产者提供，与编辑校验标记独立。 */
+export type AppViewerRange = {
+  start: number;
+  end: number;
+  kind: "property" | "string" | "number" | "keyword" | "text";
+};
+
+const viewer_decorations: Record<AppViewerRange["kind"], Decoration> = {
+  property: Decoration.mark({ class: "cm-viewer-property" }),
+  string: Decoration.mark({ class: "cm-viewer-string" }),
+  number: Decoration.mark({ class: "cm-viewer-number" }),
+  keyword: Decoration.mark({ class: "cm-viewer-keyword" }),
+  text: Decoration.mark({ class: "cm-viewer-text" }),
+};
+
+/** 静态范围集合只随文档更换，CodeMirror 负责可见区域 DOM 的投影。 */
+export function create_app_viewer_ranges(ranges: readonly AppViewerRange[]): Extension {
+  if (ranges.length === 0) return [];
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const range of ranges) {
+    builder.add(range.start, range.end, viewer_decorations[range.kind]);
+  }
+  return EditorView.decorations.of(builder.finish());
+}
+
 export type AppTextMarkTone = "success" | "warning";
 
 export type AppTextMark = {
@@ -149,10 +174,12 @@ const fullwidth_space_highlight_extension = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
 
+    /** 首次挂载只为当前视口建立全角空格标记。 */
     constructor(view: EditorView) {
       this.decorations = fullwidth_space_matcher.createDeco(view);
     }
 
+    /** 将文本和视口变化交给匹配器增量更新。 */
     update(update: ViewUpdate): void {
       this.decorations = fullwidth_space_matcher.updateDeco(update, this.decorations);
     }
@@ -327,6 +354,11 @@ function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
       ".cm-content": {
         caretColor: "var(--primary)",
       },
+      ".cm-viewer-property": { color: palette.code.property },
+      ".cm-viewer-string": { color: palette.code.string },
+      ".cm-viewer-number": { color: palette.code.number },
+      ".cm-viewer-keyword": { color: palette.code.keyword },
+      ".cm-viewer-text": { backgroundColor: palette.active_line_background },
       ".cm-cursor, .cm-dropCursor": {
         borderLeftColor: "var(--primary)",
       },

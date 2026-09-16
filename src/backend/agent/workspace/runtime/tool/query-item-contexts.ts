@@ -29,7 +29,7 @@ const result = Type.Object(
       ),
     ),
     items: Type.Array(AGENT_WORKSPACE_ITEM_SCHEMA, {
-      description: "所有上下文共享的完整条目，按 item_id 去重；通过 ID 与 contexts 关联。",
+      description: "所有上下文共享的完整条目。按 item_id 去重。通过 ID 与 contexts 关联。",
     }),
     missing_item_ids: Type.Array(Type.Integer({ minimum: 1 })),
   },

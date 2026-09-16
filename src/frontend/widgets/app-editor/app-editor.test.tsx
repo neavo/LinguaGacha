@@ -1,6 +1,7 @@
 import { act, createRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
 
 import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 
@@ -173,6 +174,47 @@ describe("AppEditor", () => {
 
     expect(container.querySelector(".app-editor--wrap-lines")).toBeNull();
     expect(get_editor_content(container).textContent).toBe("Gamma Delta");
+  });
+
+  it("查看器同步替换文本与语义范围，选区按新长度裁剪且可以直接读取文本", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        <AppEditor
+          variant="viewer"
+          value={"name\n第一行\n第二行"}
+          aria_label="结果"
+          ranges={[
+            { start: 0, end: 4, kind: "property" },
+            { start: 5, end: 12, kind: "text" },
+          ]}
+        />,
+      ),
+    );
+    const content = get_editor_content(container);
+    const view = EditorView.findFromDOM(content)!;
+    await act(async () => view.dispatch({ selection: { anchor: 5, head: 12 } }));
+    expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe(
+      "第一行\n第二行",
+    );
+    expect(content.querySelector(".cm-viewer-property")?.textContent).toBe("name");
+    await act(async () =>
+      root?.render(
+        <AppEditor
+          variant="viewer"
+          value="null"
+          aria_label="结果"
+          ranges={[{ start: 0, end: 4, kind: "keyword" }]}
+        />,
+      ),
+    );
+    expect(get_editor_content(container)).toBe(content);
+    expect(content.querySelector(".cm-viewer-property")).toBeNull();
+    expect(content.querySelector(".cm-viewer-keyword")?.textContent).toBe("null");
+    expect(view.state.selection.main.head).toBe(4);
+    expect(content.getAttribute("contenteditable")).toBe("false");
   });
 
   it("响应占位文案更新", async () => {

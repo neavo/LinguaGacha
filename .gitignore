@@ -1,4 +1,4 @@
-# system
+# System
 /.vscode/*
 !/.vscode/extensions.json
 /.idea
@@ -9,14 +9,15 @@
 *.sln
 *.sw?
 
-# NodeJS
+# Node
 /build
-/node_modules
 /dist
 /dist-electron
 /release
 /dist-ssr
 /.vitest
+node_modules
+/resources/workspace/bootstrap.mjs
 *.local
 *.tsbuildinfo
 npm-debug.log*
@@ -34,7 +35,6 @@ __pycache__
 /input
 /output
 /userdata
-/resources
 /.zcode/skills/
 /.agents/skills/
 
@@ -44,5 +44,5 @@ __pycache__
 /*.json
 
 # extra
-!/package-lock.json
 !/tsconfig*.json
+!/package-lock.json
