@@ -25,11 +25,12 @@ import {
   normalize_openai_sdk_base_url,
 } from "./policy/openai-policy";
 import {
+  build_request_headers,
   invalid_pi_payload,
   read_custom_number,
   resolve_max_tokens_for_request,
 } from "./policy/policy-shared";
-import type { ModelRequestSnapshot } from "./policy/policy-types";
+import type { ModelRequestIdentity, ModelRequestSnapshot } from "./policy/policy-types";
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096; // 旧配置缺少 threshold 时保持既有单次输出上限
 
@@ -61,19 +62,24 @@ export function normalize_pi_api_url(url: string, api_format: ModelApiFormat): s
 /** 从模型 JSON 读取 OneShot 与 Agent 共用的请求事实。 */
 export function read_model_request_snapshot(
   model: JsonValue,
-  user_agent: string,
+  identity: ModelRequestIdentity,
 ): ModelRequestSnapshot {
   const record = read_json_record(model);
   const api_format = Model.normalize_api_format(record["api_format"]);
   const request = read_json_record(record["request"]);
   const threshold = read_json_record(record["threshold"]);
   const thinking = read_json_record(record["thinking"]);
+  const base_url = normalize_pi_api_url(String(record["api_url"] ?? ""), api_format);
   return {
     api_format,
     api_keys: collect_api_keys(String(record["api_key"] ?? "")),
-    base_url: normalize_pi_api_url(String(record["api_url"] ?? ""), api_format),
+    base_url,
     model_id: String(record["model_id"] ?? ""),
-    headers: read_extra_headers(request, user_agent),
+    headers: build_request_headers(
+      base_url,
+      identity,
+      read_enabled_record(request, "extra_headers", "extra_headers_custom_enable"),
+    ),
     extra_body: read_enabled_record(request, "extra_body", "extra_body_custom_enable"),
     generation: read_json_record(record["generation"]),
     output_token_limit: read_json_integer(
@@ -162,20 +168,6 @@ export function apply_agent_request_overrides(
     return apply_openai_responses_request_overrides(record, snapshot);
   }
   return apply_openai_completions_request_overrides(record, snapshot);
-}
-
-/** 自定义 header 只有显式启用才覆盖默认 User-Agent。 */
-function read_extra_headers(request: JsonRecord, user_agent: string): Record<string, string> {
-  const headers: Record<string, string> = { "User-Agent": user_agent };
-  const extra_headers = read_enabled_record(
-    request,
-    "extra_headers",
-    "extra_headers_custom_enable",
-  );
-  for (const [key, value] of Object.entries(extra_headers)) {
-    headers[key] = String(value);
-  }
-  return headers;
 }
 
 /** 读取带启用开关的 JSON 对象，关闭时不泄漏 UI 默认值。 */

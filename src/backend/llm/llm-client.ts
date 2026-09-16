@@ -27,7 +27,10 @@ export class LLMClient implements LLMClientPort {
 
   /** 解析模型快照，将取消、总时限和 Pi 终态收敛为请求结果。 */
   private async execute(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
-    const snapshot = read_model_request_snapshot(body.model, this.user_agent);
+    const snapshot = read_model_request_snapshot(body.model, {
+      user_agent: this.user_agent,
+      session_id: body.run_id,
+    });
     const controller = new AbortController();
     const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
     // AbortController 只传递中止；两个标记保留触发原因并决定最终结果优先级。

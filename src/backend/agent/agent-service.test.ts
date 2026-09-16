@@ -231,11 +231,7 @@ function create_fake_agent_stream(
 }
 
 /** 根据测试配置选择模型身份，远程行为统一交给同一个可控流边界。 */
-function register_fake_agent_model(
-  model_runtime: ModelRuntime,
-  config: JsonRecord,
-  _user_agent: string,
-) {
+function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonRecord) {
   const selection = config["model_selection"];
   const selected =
     typeof selection === "object" && selection !== null && !Array.isArray(selection)
@@ -1486,6 +1482,38 @@ describe("AgentService", () => {
         },
       ],
     });
+  });
+
+  it("产品会话身份跨修订和换模保留，reset 与工程切换后更换", async () => {
+    const fixture = await create_service();
+    const { service } = fixture;
+    await service.send_message({ text: "原任务", attachments: [] });
+    await wait_for_idle(service);
+    const identity = agent_model_registrar.mock.calls[0]?.[2];
+    expect(identity).toEqual({ user_agent: "LinguaGacha/Test", session_id: expect.any(String) });
+    const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
+    if (user === undefined) throw new Error("缺少 user 条目");
+    await service.revise_latest_round({
+      entryId: user.id,
+      message: { text: user.text, attachments: [] },
+    });
+    await wait_for_idle(service);
+    fixture.select_agent_model("next");
+    await service.send_message({ text: "继续", attachments: [] });
+    await wait_for_idle(service);
+    for (const call of agent_model_registrar.mock.calls) expect(call[2]).toEqual(identity);
+
+    await service.reset();
+    await service.send_message({ text: "新对话", attachments: [] });
+    await wait_for_idle(service);
+    const reset_identity = agent_model_registrar.mock.calls.at(-1)?.[2];
+    expect(reset_identity.session_id).not.toBe(identity.session_id);
+
+    await fixture.session_state.mark_loaded("next.lg");
+    await service.send_message({ text: "新工程", attachments: [] });
+    await wait_for_idle(service);
+    const project_identity = agent_model_registrar.mock.calls.at(-1)?.[2];
+    expect(project_identity.session_id).not.toBe(reset_identity.session_id);
   });
 
   it("以相同 user 输入修订轮次时删除旧尝试并重新调用模型", async () => {

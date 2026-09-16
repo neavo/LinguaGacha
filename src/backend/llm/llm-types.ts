@@ -13,8 +13,8 @@ export interface LLMMessage {
  * 调用方发送 LLM 请求时使用的唯一请求壳。
  */
 export interface LLMRequestBody {
-  run_id: string; // / work_unit_id 只用于诊断与迟到结果隔离，不代表 client 持有任务状态
-  work_unit_id: string;
+  run_id: string; // OneShot 运行身份，同时用于供应商会话路由、诊断与迟到结果隔离
+  work_unit_id: string; // 本轮分块的诊断身份，重试和 Key 轮换继续复用 run_id
   model: JsonValue; // 保留任务启动快照形状，policy 在边界处收窄供应商字段
   config_snapshot: JsonValue; // 与任务启动时一致，确保重试不读取后续 UI 修改
   messages: LLMMessage[]; // 已由 PromptBuilder 拼好，policy 只做协议转换

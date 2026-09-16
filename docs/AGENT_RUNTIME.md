@@ -35,6 +35,7 @@
 ### 运行控制与恢复
 
 - Agent 的公开会话与模型历史完全内存化，持久化日志不参与会话恢复。消息受理到当前 round 及自动 FIFO 链最终 settle 期间持有同一 [`RuntimeOperationGate`](BACKEND.md) lease，等待用户决定也不释放；Pi 在 SDK run 内拥有工具循环、自动压缩和压缩后的续跑。
+- Agent runtime 冻结初始 SDK 会话 UUID 作为产品对话请求身份，跨轮次、修订、换模和压缩复用，随 runtime 重建更换。SDK 修订与压缩可能分配新 ID，因此发送边界使用冻结身份；请求头策略归 [`BACKEND.md`](BACKEND.md)。
 - 手动压缩只在稳定空闲且有可压缩旧段时受理，以独立 Agent lease 更新模型配置、发布 running 条目并后台调用同一压缩入口，不建立公开 round。ack 返回后仍持有 lease，关闭屏障等待 settlement 退出。
 - Pi `agent_start / agent_end`、压缩事件和 `pendingDecision` 共同决定 `canSendNow`，使异步预检、用户决定、压缩与结算窗口中的 steer 受同一条件约束。
 - continue 在同一 lease 内恢复失败 round 或启动队首；失败 user 原位保留历史，不追加公开“继续”user，恢复失败时重新暂停队列。stop 同步封口 round 并异步取消 SDK，到最终 settle 才释放 lease；压缩和 `workspace_apply` 不可 stop。

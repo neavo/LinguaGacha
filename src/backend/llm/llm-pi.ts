@@ -86,7 +86,6 @@ export function resolve_pi_model(
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: settings.contextWindow ?? capability.context_window ?? 0,
     maxTokens: settings.maxTokens ?? capability.max_tokens ?? settings.fallbackMaxTokens ?? 0,
-    headers: { ...snapshot.headers },
     ...(Object.keys(compat).length === 0 ? {} : { compat }),
   };
   return {

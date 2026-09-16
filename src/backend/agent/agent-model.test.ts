@@ -20,12 +20,50 @@ vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
+const TEST_REQUEST_IDENTITY = { user_agent: TEST_USER_AGENT, session_id: "test-session" };
 
 beforeEach(() => {
   api_mocks.streamSimple.mockClear();
 });
 
 describe("Agent 模型注册", () => {
+  it("真实 ModelRuntime 与 adapter 最终发送产品会话身份", async () => {
+    const { openAICompletionsApi } = await vi.importActual<
+      typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")
+    >("@earendil-works/pi-ai/api/openai-completions.lazy");
+    api_mocks.streamSimple.mockImplementationOnce(openAICompletionsApi().streamSimple);
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAI", { api_url: "https://opencode.ai/zen/go/v1" }),
+      TEST_REQUEST_IDENTITY,
+    );
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response(JSON.stringify({ error: { message: "fake upstream" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    await runtime
+      .streamSimple(
+        resolved.model,
+        { messages: [{ role: "user", content: "ping", timestamp: 0 }] },
+        {
+          fetch,
+          maxRetries: 0,
+          // SDK 压缩与供应商归属层可能提供独立身份，最终发送仍归产品策略拥有。
+          sessionId: "sdk-summary",
+          transformHeaders: () => ({ "x-opencode-session": "sdk-summary", "User-Agent": "pi" }),
+        },
+      )
+      .result();
+    expect(fetch).toHaveBeenCalledOnce();
+    const headers = new Request(...fetch.mock.calls[0]!).headers;
+    expect(headers.get("x-opencode-session")).toBe("test-session");
+    expect(headers.get("user-agent")).toBe(TEST_USER_AGENT);
+  });
+
   it("将统一解析的 Agent 自动容量注册到运行时", async () => {
     const runtime = await create_model_runtime();
     const config = { api_format: "OpenAIResponses", model_id: "deepseek-flash" };
@@ -33,7 +71,7 @@ describe("Agent 模型注册", () => {
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAIResponses", config),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
     expect(resolved.model).toMatchObject({
       id: "deepseek-flash",
@@ -49,7 +87,7 @@ describe("Agent 模型注册", () => {
       const resolved = register_agent_model(
         runtime,
         build_config(api_format, { model_id: "doubao-seed-evolving" }),
-        TEST_USER_AGENT,
+        TEST_REQUEST_IDENTITY,
       );
       expect(resolved.thinkingLevel).toBe("off");
       expect(resolved.model_config.thinking.level).toBe("OFF");
@@ -85,7 +123,7 @@ describe("Agent 模型注册", () => {
         },
         threshold: { input_token_limit: 4096, output_token_limit: 1024 },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolved.model).toMatchObject({
@@ -98,11 +136,6 @@ describe("Agent 模型注册", () => {
       api: "openai-completions",
       apiKey: "secret-1",
       authHeader: false,
-      headers: {
-        "User-Agent": TEST_USER_AGENT,
-        "X-Test": "yes",
-        "X-Number": "7",
-      },
       models: [
         expect.objectContaining({
           id: "kimi-k3",
@@ -112,11 +145,6 @@ describe("Agent 模型注册", () => {
     expect(await runtime.getAuth(resolved.model)).toMatchObject({
       auth: {
         apiKey: "secret-1",
-        headers: {
-          "User-Agent": TEST_USER_AGENT,
-          "X-Test": "yes",
-          "X-Number": "7",
-        },
       },
     });
     if (provider_config?.streamSimple === undefined) {
@@ -144,8 +172,8 @@ describe("Agent 模型注册", () => {
       apiKey: "secret-1",
       headers: {
         "User-Agent": TEST_USER_AGENT,
-        "X-Test": "yes",
-        "X-Number": "7",
+        "x-test": "yes",
+        "x-number": "7",
       },
     });
     expect(options?.headers).not.toHaveProperty("X-SDK-Injected");
@@ -160,13 +188,13 @@ describe("Agent 模型注册", () => {
 
   it("同一运行时重新注册模型时采用最新容量", async () => {
     const runtime = await create_model_runtime();
-    register_agent_model(runtime, build_config("OpenAI"), TEST_USER_AGENT);
+    register_agent_model(runtime, build_config("OpenAI"), TEST_REQUEST_IDENTITY);
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", {
         agent: { context_window: 400_000, max_output_tokens: 50_000 },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolved.model).toMatchObject({ contextWindow: 400_000, maxTokens: 50_000 });
@@ -185,7 +213,7 @@ describe("Agent 模型注册", () => {
           extra_body: { custom_flag: true },
         },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolved.model).toMatchObject({
@@ -237,7 +265,7 @@ describe("Agent 模型注册", () => {
         model_id: "custom-reasoning-model",
         thinking: { level: "HIGH" },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolved.model.reasoning).toBe(false);
@@ -257,26 +285,30 @@ describe("Agent 模型注册", () => {
           extra_body: { custom_flag: true },
         },
       }),
-      TEST_USER_AGENT,
+      TEST_REQUEST_IDENTITY,
     );
 
     expect(resolved.model.reasoning).toBe(false);
     expect(resolved.thinkingLevel).toBe("off");
     expect(resolved.model_config.thinking.level).toBe("OFF");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
-    expect(provider_config?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 provider streamSimple");
     }
     void provider_config.streamSimple(resolved.model, { messages: [] });
     const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
+    expect(options?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
     if (options?.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");
     expect(await options.onPayload({ messages: [] }, resolved.model)).toEqual({ messages: [] });
   });
 
   it("Agent 使用统一 policy 归一后的模型 URL", async () => {
     const runtime = await create_model_runtime();
-    const resolved = register_agent_model(runtime, build_config("SakuraLLM"), TEST_USER_AGENT);
+    const resolved = register_agent_model(
+      runtime,
+      build_config("SakuraLLM"),
+      TEST_REQUEST_IDENTITY,
+    );
 
     expect(resolved.model).toMatchObject({
       api: "openai-completions",
@@ -301,7 +333,9 @@ describe("Agent 模型注册", () => {
     ];
     const runtime = await create_model_runtime();
 
-    expect(register_agent_model(runtime, config, TEST_USER_AGENT).model.id).toBe("test-model");
+    expect(register_agent_model(runtime, config, TEST_REQUEST_IDENTITY).model.id).toBe(
+      "test-model",
+    );
   });
 });
 

@@ -124,6 +124,7 @@ function select_agent_skills(
 }
 
 type AgentRuntime = {
+  readonly session_id: string; // 冻结初始 UUID，修订重建 SDK 历史和压缩均沿用产品对话身份
   log: AgentSessionLog; // 跟随 SDK 生命周期，独立于公开时间线的提前封口
   session: AgentSession;
   model_config: Model; // 随 SDK 成功换模同步的应用配置；批量翻译跟随时以此作为继承来源
@@ -971,11 +972,10 @@ export class AgentService {
     runtime: AgentRuntime,
     model_settings: JsonRecord,
   ): Promise<void> {
-    const resolved_model = register_agent_model(
-      runtime.session.modelRuntime,
-      model_settings,
-      this.user_agent,
-    );
+    const resolved_model = register_agent_model(runtime.session.modelRuntime, model_settings, {
+      user_agent: this.user_agent,
+      session_id: runtime.session_id,
+    });
     await runtime.session.setModel(resolved_model.model);
     runtime.session.settingsManager.applyOverrides(build_agent_session_settings());
     runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
@@ -989,12 +989,17 @@ export class AgentService {
     model_settings: JsonRecord,
   ): Promise<AgentRuntime> {
     const app_root = this.paths.get_app_root();
+    const session_manager = SessionManager.inMemory(app_root);
+    const session_id = session_manager.getSessionId();
     const model_runtime = await ModelRuntime.create({
       credentials: new InMemoryCredentialStore(),
       modelsPath: null,
       allowModelNetwork: false,
     });
-    const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
+    const resolved_model = register_agent_model(model_runtime, model_settings, {
+      user_agent: this.user_agent,
+      session_id,
+    });
     const settings_manager = SettingsManager.inMemory(build_agent_session_settings(), {
       projectTrusted: false,
     });
@@ -1011,7 +1016,6 @@ export class AgentService {
       appendSystemPrompt: [],
     });
     await resource_loader.reload();
-    const session_manager = SessionManager.inMemory(app_root);
     append_agent_session_seed(session_manager, resources.sessionSeed, resolved_model.model);
     const { session } = await createAgentSession({
       cwd: app_root,
@@ -1077,6 +1081,7 @@ export class AgentService {
       settingsManager: settings_manager,
     });
     const runtime: AgentRuntime = {
+      session_id,
       log: new AgentSessionLog(this.log_manager),
       session,
       model_config: resolved_model.model_config,
