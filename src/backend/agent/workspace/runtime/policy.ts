@@ -10,7 +10,5 @@ export const AGENT_WORKSPACE_RUNTIME_POLICY = Object.freeze({
   inlineOutputBytes: 64 * 1024, // 每路直接返回的额度，完整输出始终保存在文件中
   imageCount: 10,
   imageOutputBytes: 20 * 1024 * 1024, // 模型图片 base64 累计额度，独立于 stdout/stderr
-  queryPageDefault: 20,
-  queryPageMax: 100,
   writeRoots: Object.freeze(["changes", AGENT_WORKSPACE_WORK_ROOT] as const),
 });

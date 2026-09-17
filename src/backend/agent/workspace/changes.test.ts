@@ -8,10 +8,6 @@ import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
 } from "./contract";
-import { Check } from "typebox/value";
-import type { TSchema } from "@earendil-works/pi-ai";
-import { AGENT_WORKSPACE_CONTRACT } from "./contract";
-import { read_json_record } from "../../../domain/json";
 import { QUALITY_RULE_KINDS } from "../../../domain/quality";
 
 const workspaces: string[] = [];
@@ -43,7 +39,7 @@ describe("Agent workspace change parser", () => {
     };
     write(
       workspace,
-      AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
+      AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
       [page, { ...page, page: 2, reviewed: "invalid" }]
         .map((row) => JSON.stringify(row))
         .join("\n"),
@@ -52,10 +48,10 @@ describe("Agent workspace change parser", () => {
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
-    expect(parsed.batch.pdf).toEqual([{ ...page, line: 1 }]);
+    expect(parsed.batch.pages).toEqual([{ ...page, line: 1 }]);
     expect(parsed.rejected).toContainEqual(
       expect.objectContaining({
-        scope: "pdf",
+        scope: "pages",
         file_path: "book.pdf",
         page: 2,
         line: 2,
@@ -176,18 +172,13 @@ describe("Agent workspace change parser", () => {
       }),
     );
   });
-  it("磁盘契约与解析入口共用 fp 格式及至少一个变更字段的约束", async () => {
+  it("解析入口执行 fp 格式及至少一个变更字段的约束", async () => {
     const workspace = create_workspace();
     const rows = [
       { item_id: 1, fp: "abcd", dst: "" },
       { item_id: 2, fp: "!!!!", dst: "X" },
       { item_id: 3, fp: "abcd" },
     ];
-    const updates = read_json_record(
-      read_json_record(read_json_record(AGENT_WORKSPACE_CONTRACT["changes"])["items"])["updates"],
-    );
-    const schema = updates["schema"] as unknown as TSchema;
-    expect(rows.map((row) => Check(schema, row))).toEqual([true, false, false]);
     write(
       workspace,
       AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
@@ -211,7 +202,7 @@ function create_workspace(): string {
   workspaces.push(workspace);
   for (const relative of [
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
-    AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
+    AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
       AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((op) => AGENT_WORKSPACE_CHANGE_PATHS[kind][op]),

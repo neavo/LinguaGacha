@@ -743,7 +743,7 @@ describe("AgentPage", () => {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
-        pdf: 0,
+        pages: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,

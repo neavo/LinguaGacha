@@ -89,7 +89,7 @@ describe("Agent 工作区对象写入规则", () => {
           { line: 2, item_id: 1, fp, update: { status: "EXCLUDED" } },
         ],
       }),
-      { pdf: [], items: [current], quality: {}, prompts: {} },
+      { pdfDocuments: [], items: [current], quality: {}, prompts: {} },
     );
     const conflict = resolve(
       batch({
@@ -98,7 +98,7 @@ describe("Agent 工作区对象写入规则", () => {
           { line: 2, item_id: 1, fp, update: { dst: "乙" } },
         ],
       }),
-      { pdf: [], items: [current], quality: {}, prompts: {} },
+      { pdfDocuments: [], items: [current], quality: {}, prompts: {} },
     );
 
     expect(merged.itemChanges).toHaveLength(1);
@@ -128,7 +128,7 @@ describe("Agent 工作区对象写入规则", () => {
         ],
       }),
       current: {
-        pdf: [],
+        pdfDocuments: [],
         items: [representative, duplicate],
         quality: {},
         prompts: {},
@@ -153,7 +153,7 @@ describe("Agent 工作区对象写入规则", () => {
           { kind: "translation", line: 2, fp: translation_fp, text: "另一个翻译" },
         ],
       }),
-      { pdf: [], items: [], quality: {}, prompts: { translation: "旧翻译" } },
+      { pdfDocuments: [], items: [], quality: {}, prompts: { translation: "旧翻译" } },
     );
 
     expect(result.promptChanges).toEqual([]);
@@ -177,7 +177,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary).toEqual({ created: 1, updated: 0, deleted: 1 });
@@ -196,7 +196,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.qualityChanges[0]?.entries.map((entry) => entry["src"])).toEqual([
@@ -222,7 +222,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
     const sorted = resolve(
       batch({
@@ -234,7 +234,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(ordinary.qualityChanges[0]?.entries.map((entry) => entry["entry_id"])).toEqual([
@@ -254,11 +254,11 @@ describe("Agent 工作区对象写入规则", () => {
     const fp = quality_fp("glossary", current[0]!);
     const moved = resolve(
       batch({ quality: { glossary: quality_ops([quality_update(1, "A", fp, {}, -1)]) } }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
     const same = resolve(
       batch({ quality: { glossary: quality_ops([quality_update(1, "A", fp, {}, 0)]) } }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(moved.applied.quality?.glossary?.updated).toBe(1);
@@ -278,7 +278,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary?.created).toBe(1);
@@ -304,7 +304,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied).toEqual({});
@@ -334,7 +334,7 @@ describe("Agent 工作区对象写入规则", () => {
           },
         },
       }),
-      { pdf: [], items: [], quality: { glossary: current }, prompts: {} },
+      { pdfDocuments: [], items: [], quality: { glossary: current }, prompts: {} },
     );
 
     expect(result.applied.quality?.glossary).toEqual({ created: 0, updated: 0, deleted: 1 });
@@ -365,7 +365,7 @@ function batch(args: {
 }): AgentWorkspaceIntentBatch {
   const empty = create_empty_agent_workspace_intent_batch();
   return {
-    pdf: [],
+    pages: [],
     items: args.items ?? [],
     prompts: args.prompts ?? [],
     quality: Object.fromEntries(

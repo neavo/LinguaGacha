@@ -1,16 +1,8 @@
 import type { WorkspaceHostRequest, WorkspaceHostResult } from "./host-contract";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import type { AgentWorkspaceRuntimeContract } from "../schema";
-import {
-  AGENT_WORKSPACE_DATA_TOOLS,
-  execute_agent_workspace_data_tool,
-  type AgentWorkspaceDataToolName,
-  type AgentWorkspaceDataTools,
-} from "./tool/registry";
-import {
-  create_agent_workspace_data_tool_context,
-  type AgentWorkspaceReadPort,
-} from "./tool/data-tool";
+import { Check } from "typebox/value";
+import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "../schema";
 
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
@@ -20,12 +12,11 @@ export type AgentWorkspaceRuntimeApi = Readonly<{
     read: () => readonly string[];
     write: (todos: readonly string[]) => void;
   }>;
-  tool: Readonly<AgentWorkspaceDataTools>;
 }>;
 
 /** 只投影应用契约；普通 Node API 与 npm 模块由原生运行环境提供。 */
 export function create_agent_workspace_runtime_api(
-  read_port: AgentWorkspaceReadPort,
+  contract: unknown,
   initial_todos: readonly string[],
   write_todos: (todos: string[]) => void,
   host: AgentWorkspaceRuntimeApi["host"] = async () => {
@@ -35,19 +26,14 @@ export function create_agent_workspace_runtime_api(
     throw new Error("Workspace image output unavailable.");
   },
 ): AgentWorkspaceRuntimeApi {
-  const context = create_agent_workspace_data_tool_context(read_port);
+  if (!Check(AGENT_WORKSPACE_CONTRACT_SCHEMA, contract)) {
+    throw new Error("Workspace contract does not match the runtime schema.");
+  }
   let todos = normalize_agent_todos(initial_todos); // 当前程序副本，宿主只在执行成功后提交
-  const data_tools = Object.fromEntries(
-    Object.keys(AGENT_WORKSPACE_DATA_TOOLS).map((name) => [
-      name,
-      (args: unknown) =>
-        execute_agent_workspace_data_tool(name as AgentWorkspaceDataToolName, context, args),
-    ]),
-  ) as AgentWorkspaceDataTools;
   return deep_freeze({
     emitImage,
     host,
-    contract: structuredClone(context.contract), // 冻结公开接口不能改动借入的数据上下文
+    contract: structuredClone(contract), // 冻结公开接口不能改动借入的数据上下文
     todo: {
       /** 读者只能取得不可变副本。 */
       read: () => Object.freeze([...todos]),
@@ -57,7 +43,6 @@ export function create_agent_workspace_runtime_api(
         write_todos([...todos]);
       },
     },
-    tool: data_tools,
   });
 }
 

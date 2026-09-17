@@ -1,0 +1,10 @@
+{
+  "order": 200,
+  "displayDescriptions": {
+    "zh-CN": "基于 AI 智能，翻译和审校文本",
+    "en-US": "Translate and review text with AI",
+    "de-DE": "Texte mit KI übersetzen und prüfen",
+    "ja-JP": "AI を活用してテキストを翻訳・校正する",
+    "ko-KR": "AI를 활용해 텍스트를 번역하고 검토합니다"
+  }
+}

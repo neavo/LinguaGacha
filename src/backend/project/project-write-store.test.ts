@@ -1,6 +1,6 @@
 import { read_pdf_document } from "../file/formats/pdf/pdf-document";
 import { create_pdf_fixture } from "../file/formats/pdf/test-support";
-import { pdf_page_fingerprint } from "../file/formats/pdf/pdf-source";
+import { agent_workspace_page_fingerprint } from "./agent-workspace-page-write";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,10 +49,10 @@ describe("ProjectWriteStore", () => {
     });
     const batch = {
       ...create_empty_agent_workspace_intent_batch(),
-      pdf: document.pages.slice(0, 2).map((page) => ({
+      pages: document.pages.slice(0, 2).map((page) => ({
         file_path: "book.pdf",
         page: page.page,
-        fp: pdf_page_fingerprint("book.pdf", document.digest, page),
+        fp: agent_workspace_page_fingerprint("book.pdf", document.digest, page),
         line: page.page,
         translation: { kind: "translate" as const, markdown: "草稿" },
         reviewed: true,
@@ -936,7 +936,7 @@ describe("ProjectWriteStore", () => {
   ): AgentWorkspaceIntentBatch {
     const empty = create_empty_agent_workspace_intent_batch();
     return {
-      pdf: [],
+      pages: [],
       items: args.items,
       prompts: args.prompts,
       quality: { ...empty.quality, ...args.quality },

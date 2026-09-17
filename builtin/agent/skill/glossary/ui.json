@@ -1,0 +1,10 @@
+{
+  "order": 300,
+  "displayDescriptions": {
+    "zh-CN": "基于 AI 智能，提取和检查术语规则",
+    "en-US": "Extract and check glossary rules with AI",
+    "de-DE": "Terminologieregeln mit KI extrahieren und prüfen",
+    "ja-JP": "AI を活用して用語ルールを抽出・確認する",
+    "ko-KR": "AI를 활용해 용어 규칙을 추출하고 검토합니다"
+  }
+}

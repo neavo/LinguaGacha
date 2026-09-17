@@ -1,3 +1,8 @@
+import {
+  PDF_DOCUMENT_SCHEMA,
+  PDF_PAGE_SCHEMA,
+  PDF_PAGE_UPDATE_SCHEMA,
+} from "../../file/formats/pdf/pdf-source";
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
 
 import { ITEM_MANUAL_STATUSES, ITEM_STATUSES, ITEM_TEXT_TYPES } from "../../../domain/item";
@@ -19,7 +24,7 @@ export const AGENT_WORKSPACE_DATASET_CONTRACT_SCHEMA = Type.Object(
   {
     path: Type.String(),
     format: Type.Union([Type.Literal("json"), Type.Literal("jsonl")]),
-    schema: open_record_schema,
+    reference: Type.String(),
     purpose: Type.Optional(Type.String()),
     identity: Type.Optional(Type.Array(Type.String())),
   },
@@ -30,7 +35,7 @@ export const AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA = Type.Object(
   {
     path: Type.String(),
     format: Type.Literal("jsonl"),
-    schema: open_record_schema,
+    reference: Type.String(),
     identity: Type.Optional(Type.Array(Type.String())),
   },
   { additionalProperties: false },
@@ -39,20 +44,11 @@ export const AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA = Type.Object(
 /** 磁盘 contract、脚本运行时与模型声明共同消费的外壳 Schema。 */
 export const AGENT_WORKSPACE_CONTRACT_SCHEMA = Type.Object(
   {
-    limits: Type.Object(
-      {
-        query_page_default: Type.Integer({ minimum: 1 }),
-        query_page_max: Type.Integer({ minimum: 1 }),
-      },
-      { additionalProperties: false },
-    ),
     datasets: Type.Record(Type.String(), AGENT_WORKSPACE_DATASET_CONTRACT_SCHEMA),
     changes: Type.Record(
       Type.String(),
       Type.Record(Type.String(), AGENT_WORKSPACE_CHANGE_CONTRACT_SCHEMA),
     ),
-    effects: open_record_schema,
-    guidance: open_record_schema,
     apply: open_record_schema,
   },
   { additionalProperties: false },
@@ -66,8 +62,28 @@ export const AGENT_WORKSPACE_FP_SCHEMA = Type.String({
   minLength: AGENT_WORKSPACE_FP_LENGTH,
   maxLength: AGENT_WORKSPACE_FP_LENGTH,
   pattern: "^[A-Za-z0-9_-]+$",
-  description: "从当前快照原样复制的对象事实指纹，用于提交时校验对象是否变化。",
+  description: "从当前快照原样复制对象指纹，提交时用它检查对象是否已变化。",
 });
+
+/** pages 复用 PDF 内容结构，工作区只增加对象身份与并发校验字段。 */
+export const AGENT_WORKSPACE_PAGE_SCHEMA = Type.Object(
+  {
+    file_path: Type.String({ minLength: 1 }),
+    fp: AGENT_WORKSPACE_FP_SCHEMA,
+    digest: PDF_DOCUMENT_SCHEMA.properties.digest,
+    ...PDF_PAGE_SCHEMA.properties,
+  },
+  { additionalProperties: false },
+);
+export const AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA = Type.Object(
+  {
+    file_path: Type.String({ minLength: 1 }),
+    page: PDF_PAGE_SCHEMA.properties.page,
+    fp: AGENT_WORKSPACE_FP_SCHEMA,
+    ...PDF_PAGE_UPDATE_SCHEMA.properties,
+  },
+  { additionalProperties: false },
+);
 
 export const AGENT_WORKSPACE_ITEM_SCHEMA = Type.Object(
   {
@@ -145,7 +161,7 @@ export const AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA = Type.Object(
   {
     additionalProperties: false,
     minProperties: UPDATE_MIN_PROPERTIES,
-    description: "携带对象身份与至少一个实际修改的字段；省略字段保持当前值。",
+    description: "提供对象身份、指纹和至少一个待修改字段，省略的字段保留当前值。",
   },
 );
 
@@ -180,6 +196,7 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
       {
         files: Type.Integer({ minimum: 0 }),
         items: Type.Integer({ minimum: 0 }),
+        pages: Type.Integer({ minimum: 0 }),
         items_with_warnings: Type.Integer({ minimum: 0 }),
         glossary: Type.Integer({ minimum: 0 }),
         text_preserve: Type.Integer({ minimum: 0 }),
@@ -238,10 +255,10 @@ const QUALITY_FIELD_SCHEMAS = {
 const QUALITY_SORT_SCHEMA = Type.Integer({
   minimum: -1,
   description:
-    "-1 表示追加，非负值为零基插入位置，超出当前长度时追加；更新时省略保留相对顺序。批次内顺序见 contract.apply.quality_sort。",
+    "-1 表示追加到末尾。非负值表示从 0 开始的插入位置，超出当前长度时追加到末尾。更新时省略此字段可保留相对顺序。批次内的处理顺序见当前规则的参考文档。",
 });
 
-/** 每类记录的结构在此生成，磁盘契约与变更解析使用同一对象。 */
+/** 每类记录的结构在此生成，参考文档与变更解析使用同一对象。 */
 function create_quality_schemas(kind: QualityRuleKind) {
   const fields = QUALITY_FIELD_SCHEMAS[kind];
   return {
@@ -249,7 +266,7 @@ function create_quality_schemas(kind: QualityRuleKind) {
       {
         id: Type.String(),
         fp: AGENT_WORKSPACE_FP_SCHEMA,
-        sort: Type.Integer({ minimum: 0, description: "当前零基数组位置。" }),
+        sort: Type.Integer({ minimum: 0, description: "当前在数组中的位置，从 0 开始。" }),
         ...fields,
       },
       { additionalProperties: false },
@@ -258,7 +275,7 @@ function create_quality_schemas(kind: QualityRuleKind) {
       { ...fields, sort: QUALITY_SORT_SCHEMA },
       {
         additionalProperties: false,
-        description: "完整业务字段和明确排序意图；身份由宿主分配。",
+        description: "提供全部业务字段和排序位置，由宿主分配对象标识。",
       },
     ),
     updates: Type.Object(
@@ -273,7 +290,7 @@ function create_quality_schemas(kind: QualityRuleKind) {
       {
         additionalProperties: false,
         minProperties: UPDATE_MIN_PROPERTIES,
-        description: "携带对象身份与至少一个业务字段或排序意图；省略字段保持当前值。",
+        description: "提供对象身份、指纹，以及至少一个业务字段或排序位置。省略的字段保留当前值。",
       },
     ),
     deletes: Type.Object(
