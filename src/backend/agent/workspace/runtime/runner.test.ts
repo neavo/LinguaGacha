@@ -110,6 +110,30 @@ describe("AgentWorkspaceRunner", () => {
     expect(child.send).toHaveBeenCalledTimes(2);
   });
 
+  it("父进程拒绝专用工程导出请求，不调用打印宿主", async () => {
+    const host = vi.fn(async () => ({ path: "work/result.pdf" }));
+    request = { ...request, host };
+    const { child, result } = await start_run();
+    child.emit("message", {
+      type: "request",
+      id: 1,
+      request: { kind: "export_pdf", file_path: "book.pdf", fp: "old-version" },
+    });
+    await vi.waitFor(() =>
+      expect(child.send).toHaveBeenCalledWith(
+        {
+          type: "response",
+          id: 1,
+          result: { ok: false, message: expect.any(String) },
+        },
+        expect.any(Function),
+      ),
+    );
+    expect(host).not.toHaveBeenCalled();
+    child.emit("close", 0);
+    await result;
+  });
+
   it("程序退出后等待宿主回收，取消后不发送迟到结果", async () => {
     let host_signal: AbortSignal | undefined;
     let finish: () => void = () => undefined;

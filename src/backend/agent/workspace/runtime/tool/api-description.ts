@@ -55,7 +55,7 @@ export function format_agent_workspace_typescript_api(): string {
     "  contract: WorkspaceContract;",
     "  /** 将工作区图片作为本次工具的视觉输出。后端自动处理格式与尺寸。await 完成后内容已固定，模型在程序成功返回后看到图片。 */",
     "  emitImage(path: string): Promise<void>;",
-    `  host(request: ${render_schema(WORKSPACE_HOST_REQUEST_SCHEMA)}, signal?: AbortSignal): Promise<{ path: string } | { output_path: string }>;`,
+    `  host(request: ${render_schema(WORKSPACE_HOST_REQUEST_SCHEMA)}, signal?: AbortSignal): Promise<{ path: string }>;`,
     "  todo: Readonly<{",
     "    /** 读取当前有序 Todo。 */",
     "    read(): readonly string[];",

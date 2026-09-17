@@ -47,8 +47,8 @@ export class GuiBackendBootstrap {
   private images: AgentImageService | null = null; // 关闭 Gateway 前取消上传，避免等待窗口超时才排空 HTTP
   private web_search: WebSearchService | null = null;
   private gateway: ApiGatewayServer | null = null;
-  private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null;
-  private stop_promise: Promise<void> | null = null;
+  private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null; // stop 等待在途启动后再释放资源
+  private stop_promise: Promise<void> | null = null; // 并发 stop 共用一次清理，清理期间拒绝 start
 
   /** 保存入口注入的宿主端口，资源只在 start 中创建。 */
   public constructor(private readonly options: GuiBackendBootstrapOptions) {}
@@ -131,8 +131,6 @@ export class GuiBackendBootstrap {
         logManager: resources.logManager,
         run: runner.run.bind(runner),
         pdfHost: this.options.pdfHost,
-        exportPDF: (file_path, signal) =>
-          services.files.translationExport.export_pdf_file(file_path, signal),
         runtimeDirectory: this.options.workspaceRuntimeDirectory,
         openDirectory: this.options.openDirectory,
         pickSavePath: this.options.pickSavePath,

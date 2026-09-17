@@ -178,7 +178,7 @@ it.each(["user", "builtin"])(
       undefined,
       async (request) => {
         expect(request.kind).toBe("print_pdf");
-        if (request.kind === "print_pdf") expect(request.html).toContain("fixture");
+        expect(request.html).toContain("fixture");
         return { path: "work/printed.pdf" };
       },
     ).catch((error: unknown) => {

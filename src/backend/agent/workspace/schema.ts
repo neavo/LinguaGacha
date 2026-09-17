@@ -194,9 +194,6 @@ export const AGENT_WORKSPACE_PROJECT_META_SCHEMA = Type.Object(
           file_path: Type.String(),
           file_type: Type.String(),
           source_binary_path: Type.Optional(Type.String()),
-          pdf_fp: Type.Optional(
-            Type.String({ description: "PDF 整份导出版本指纹，页面写入使用 datasets.pdf 的 fp" }),
-          ),
           source_text_path: Type.Optional(Type.String({ description: "普通文本源文件的只读路径" })),
           source_text_root: Type.Optional(
             Type.String({ description: "EPUB 或 XLSX 包内文本树的只读根目录" }),

@@ -1,6 +1,5 @@
 import { create_empty_agent_workspace_intent_batch } from "../../project/agent-workspace-write";
 import { read_pdf_document } from "../../file/formats/pdf/pdf-document";
-import type { WorkspaceHostPort, WorkspaceHostResult } from "./runtime/host-contract";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,9 +14,9 @@ import {
 import { create_pdf_fixture } from "../../file/formats/pdf/test-support";
 import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import { ProjectDataReader } from "../../project/project-data-reader";
-import type { PDFPageUpdate } from "../../../shared/pdf";
+import type { PDFHost, PDFPageUpdate } from "../../../shared/pdf";
 
-it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工作区继续并导出", async () => {
+it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工作区继续并通过统一入口导出", async () => {
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-pdf-workspace-"));
   fs.writeFileSync(path.join(directory.path, "version.txt"), "0.0.0");
   const source = path.join(directory.path, "book.pdf");
@@ -31,6 +30,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     logTargets: { console: false, window: false },
     systemProxyResolver: { resolveProxy: async () => "DIRECT" },
   });
+  const pdfHost = vi.fn<PDFHost>(async () => create_pdf_fixture(["Translated page"]));
   const services = new BackendServices({
     paths: resources.paths,
     metadata: resources.metadata,
@@ -39,7 +39,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     logManager: resources.logManager,
     publishEvent: () => {},
     openOutputFolder: async () => {},
-    pdfHost: async () => create_pdf_fixture(["Translated page"]),
+    pdfHost,
     workerExecution: { kind: "in_process" },
   });
   try {
@@ -54,8 +54,6 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         mtool_optimizer_enable: false,
       },
     });
-    let operation: ((host: WorkspaceHostPort) => Promise<WorkspaceHostResult>) | undefined;
-    let output: WorkspaceHostResult | undefined;
     const workspace = new AgentWorkspaceService({
       images: {
         prepare: async (bytes) => ({
@@ -76,16 +74,10 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       runtimeGate: { run_agent_project_write: async (operation) => operation() },
       writeStore: services.state.writes,
       logManager: resources.logManager,
-      run: async (request) => {
-        if (operation) output = await operation(request.host!);
-        return { execution: workspace_execution(), todos: [] };
-      },
+      run: async () => ({ execution: workspace_execution(), todos: [] }),
       runtimeDirectory: create_workspace_runtime_fixture(directory.path),
       openDirectory: async () => {},
       pickSavePath: async () => null,
-      pdfHost: async () => create_pdf_fixture(["Translated page"]),
-      exportPDF: (file_path, signal) =>
-        services.files.translationExport.export_pdf_file(file_path, signal),
     });
     await workspace.initialize();
     await workspace.run("", [], new AbortController().signal);
@@ -231,6 +223,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       completion_percent: 100,
     });
     draft.notes = "重新读取工程设置后继续核对";
+    draft.translation.markdown = "核对后的最新译稿";
     expect(
       (
         await save(
@@ -239,28 +232,15 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
         )
       )["status"],
     ).toBe("applied");
-    operation = (host) =>
-      host(
-        { kind: "export_pdf", file_path: "book.pdf", fp: original_fp },
-        new AbortController().signal,
-      );
-    await expect(workspace.run("", [], new AbortController().signal)).rejects.toThrow();
-    operation = (host) =>
-      host(
-        {
-          kind: "export_pdf",
-          file_path: "book.pdf",
-          fp: JSON.parse(fs.readFileSync(path.join(root, "project_meta.json"), "utf8")).files[0]
-            .pdf_fp,
-        },
-        new AbortController().signal,
-      );
-    await workspace.run("", [], new AbortController().signal);
-    expect(output && "output_path" in output).toBe(true);
-    if (output && "output_path" in output) {
-      const exported = read_pdf_document(new Uint8Array(fs.readFileSync(output.output_path)));
-      expect(exported.pages).toHaveLength(2);
-    }
+    const output = await services.files.translationExport.export_files();
+    expect(pdfHost.mock.calls[0]?.[0].html).toContain(draft.translation.markdown);
+    expect(output.pdf_files).toEqual([
+      { file_path: "book.pdf", translated_pages: 2, original_pages: 1, omitted_pages: 0 },
+    ]);
+    const exported = read_pdf_document(
+      new Uint8Array(fs.readFileSync(path.join(output.output_path, "book.pdf"))),
+    );
+    expect(exported.pages).toHaveLength(2);
     expect(read_document().pages[0]).toMatchObject(draft);
     // 重置和删除使用当前 revision，避免沿用先前提交的快照。
     const revision = () =>

@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import type { PDFDocument } from "../../../../shared/pdf";
-import { read_pdf_document, pdf_document_fingerprint, pdf_page_fingerprint } from "./pdf-source";
+import { read_pdf_document, pdf_page_fingerprint } from "./pdf-source";
 
-it("页指纹绑定来源和页面事实，邻页修改只改变整份导出版本", () => {
+it("页指纹绑定来源和页面事实，邻页修改不影响当前页", () => {
   const document: PDFDocument = {
     digest: "a".repeat(64),
     pages: [1, 2].map((page) => ({
@@ -20,9 +20,6 @@ it("页指纹绑定来源和页面事实，邻页修改只改变整份导出版�
   const first = pdf_page_fingerprint("book.pdf", document.digest, document.pages[0]!);
   copy.pages[1]!.notes = "继续第 2 页";
   expect(pdf_page_fingerprint("book.pdf", copy.digest, copy.pages[0]!)).toBe(first);
-  expect(pdf_document_fingerprint("book.pdf", copy)).not.toBe(
-    pdf_document_fingerprint("book.pdf", document),
-  );
   expect(pdf_page_fingerprint("other.pdf", copy.digest, copy.pages[0]!)).not.toBe(first);
   expect(pdf_page_fingerprint("book.pdf", "b".repeat(64), copy.pages[0]!)).not.toBe(first);
   copy.pages[0]!.reviewed = true;

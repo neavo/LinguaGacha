@@ -78,8 +78,8 @@
 - 图片缓存只保存成功结果，以输入和规范输出字节摘要关联同一不可变图片，按内存预算淘汰；草稿和历史直接持有图片，淘汰不影响既有消息。缓存不落盘，重置、工程切换和 dispose 清空并取消旧转换，迟到结果不能回填。图片准备失败沿公开错误返回，base64 不进入诊断。
 
 - `ws.emitImage(path)` 在本次执行持有的工作区互斥内读取图片，调用统一图片服务，在 await 完成时固定内容。按请求接收顺序收集，成功时由 workspace_run 返回 SDK image content；失败执行记录只保留已接收图片的路径与格式、原图和输出尺寸摘要，可从保留工作文件重新输出。图片不进入 stdout/stderr，数量与累计 base64 额度由 runtime policy 独立限制；公开工具结果与日志只保留摘要。
-- PDF 调查直接导入 `mupdf`；`@lg/pdf` 提供页面渲染与文档生成。`ws.host` 桥接静态 HTML 打印和工程导出，请求 Schema 同时生成模型声明并在父进程校验。打印产物进入 work，正式导出校验工程身份与文档指纹后调用文件服务。技能预览以 changes 结构的草稿 JSONL 覆盖页面快照副本，复用正式生成函数。
-- PDF 数据集与 changes 均以 `(file_path, page)` 为身份，changes 直接携带整页可修改事实。预演以同一身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 work。页 fp 用于写入，`project_meta.files[].pdf_fp` 用于宿主整份导出。页面与导出规则归 [BACKEND](BACKEND.md)。
+- PDF 调查直接导入 `mupdf`；`@lg/pdf` 提供页面渲染与文档生成。`ws.host` 桥接静态 HTML 打印，请求 Schema 同时生成模型声明并在父进程校验，打印产物进入 work。技能预览以 changes 结构的草稿 JSONL 覆盖页面快照副本，复用正式生成函数。Agent 负责处理、保存与预览核验，正式 PDF 由用户通过应用统一导出。
+- PDF 数据集与 changes 均以 `(file_path, page)` 为身份，changes 直接携带整页可修改事实。预演以同一身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 work。页面与导出规则归 [BACKEND](BACKEND.md)。
 
 - GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
 

@@ -39,32 +39,18 @@ export type OutputFolderOpener = (output_path: string) => Promise<void>;
  * 文件导出服务承载全部公开文件格式写回和导出目录语义
  */
 export class TranslationFileExportService {
-  private readonly database: ProjectDatabase; // 导出读取项目事实和 asset bytes 的唯一入口
-  private readonly app_setting_service: AppSettingService; // 提供导出语言、格式和完成后动作配置
-  private readonly session_state: ProjectSessionState; // 决定当前导出的 .lg 工程
-  private readonly output_folder_opener: OutputFolderOpener; // 隔离宿主打开目录副作用
-  private readonly log_manager?: FileExportLogManager; // 只承接导出诊断日志
-  private readonly native_fs: NativeFs; // 负责导出目录存在性判断和格式写盘策略传递
-
   /**
    * 导出服务依赖当前 .lg 数据库、设置和项目会话，不直接读取渲染进程状态
    */
   public constructor(
-    database: ProjectDatabase,
-    app_setting_service: AppSettingService,
-    session_state: ProjectSessionState,
-    output_folder_opener: OutputFolderOpener,
-    private readonly pdf_execution: PDFExecution,
-    log_manager?: FileExportLogManager,
-    native_fs: NativeFs = default_native_fs,
-  ) {
-    this.database = database;
-    this.app_setting_service = app_setting_service;
-    this.session_state = session_state;
-    this.output_folder_opener = output_folder_opener;
-    this.log_manager = log_manager;
-    this.native_fs = native_fs;
-  }
+    private readonly database: ProjectDatabase, // 导出读取工程事实和原稿资产的入口
+    private readonly app_setting_service: AppSettingService, // 导出语言、格式和完成后动作
+    private readonly session_state: ProjectSessionState, // 当前 .lg 工程身份
+    private readonly output_folder_opener: OutputFolderOpener, // 宿主打开目录的副作用
+    private readonly pdf_execution: PDFExecution, // 独立线程的 PDF 计算端口
+    private readonly log_manager?: FileExportLogManager, // 导出诊断
+    private readonly native_fs: NativeFs = default_native_fs, // 目录检查与文件写盘
+  ) {}
 
   /**
    * GUI 导出固定本次设置快照，读取项目条目并补齐重复译文。
@@ -81,20 +67,6 @@ export class TranslationFileExportService {
       const pdf_files = await this.write_pdf_files(project_path, paths, documents);
       return { accepted: true as const, output_path: paths.translated_path, pdf_files };
     }, true);
-  }
-
-  /** Agent 的单文件导出复用目录、快照与正式 writer，不把工作预览当作工程交付。 */
-  public async export_pdf_file(
-    file_path: string,
-    signal?: AbortSignal,
-  ): Promise<{ output_path: string }> {
-    const result = await this.run_export(async (project_path, config) => {
-      const documents = this.read_export_pdf_files(project_path, [file_path]);
-      const paths = this.build_export_paths(project_path, config.app_language);
-      await this.write_pdf_files(project_path, paths, documents, signal);
-      return { output_path: paths.translated_path };
-    }, true);
-    return { output_path: path.join(result.output_path, file_path) };
   }
 
   /**
@@ -129,11 +101,11 @@ export class TranslationFileExportService {
     }, false);
   }
 
-  /** 三个导出入口共享任务终态和未知异常归属，日志直接保留原始原因与调用栈。 */
-  private async run_export<T extends { output_path: string }>(
-    write: (project_path: string, config: SettingSnapshot) => Promise<T>,
+  /** GUI 与 CLI 共享任务终态和未知异常归属，日志直接保留原始原因与调用栈。 */
+  private async run_export(
+    write: (project_path: string, config: SettingSnapshot) => Promise<TranslationFileExportResult>,
     open_output_folder: boolean,
-  ): Promise<T> {
+  ): Promise<TranslationFileExportResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     this.log_export_start(config);
@@ -203,12 +175,10 @@ export class TranslationFileExportService {
     project_path: string,
     paths: ExportPaths,
     documents: readonly PDFDocumentRecord[],
-    signal?: AbortSignal,
   ): Promise<PDFFileExportResult[]> {
     await new PDFFormat(this.pdf_execution).write_to_path(documents, {
       paths,
       asset_reader: (file_path) => this.database.read_asset_content(project_path, file_path),
-      signal,
     });
     return documents.map(({ file_path, document }) => {
       let translated_pages = 0;
@@ -247,7 +217,10 @@ export class TranslationFileExportService {
     try {
       await this.output_folder_opener(output_path);
     } catch (error) {
-      this.log_open_output_folder_failed(config, error);
+      this.log_manager?.error(
+        this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
+        { source: FILE_EXPORT_LOG_SOURCE, error },
+      );
     }
   }
 
@@ -355,18 +328,5 @@ export class TranslationFileExportService {
       { source: FILE_EXPORT_LOG_SOURCE },
     );
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
-  }
-
-  /**
-   * 打开输出目录失败只影响宿主体验，不改变导出成功结果
-   */
-  private log_open_output_folder_failed(config: SettingSnapshot, error: unknown): void {
-    this.log_manager?.error(
-      this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
-      {
-        source: FILE_EXPORT_LOG_SOURCE,
-        error,
-      },
-    );
   }
 }

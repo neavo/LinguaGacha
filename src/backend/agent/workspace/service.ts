@@ -2,7 +2,7 @@ import { create_workspace_host } from "./host";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
-import { pdf_document_fingerprint, pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
+import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import type { PDFHost } from "../../../shared/pdf";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -123,7 +123,7 @@ type WorkspacePath = Readonly<{
 /** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
-  private active: ActiveAgentWorkspace | null = null;
+  private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的工程身份、语言和版本基线
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private work_session: AgentWorkspaceWorkSession | null = null; // 不读取目录内容，只拥有生命周期
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
@@ -151,7 +151,6 @@ export class AgentWorkspaceService {
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
       pdfHost?: PDFHost;
-      exportPDF?: (file_path: string, signal: AbortSignal) => Promise<{ output_path: string }>;
       runtimeDirectory: string; // 当前应用版本部署的预加载模块与 npm 依赖目录
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -347,12 +346,6 @@ export class AgentWorkspaceService {
     const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
       ? this.options.database.read_pdf_documents(project_path)
       : [];
-    const pdf_fingerprints = new Map( // 导出版本与页快照来自同一批文档事实。
-      pdf_documents.map(({ file_path, document }) => [
-        file_path,
-        pdf_document_fingerprint(file_path, document),
-      ]),
-    );
     const project_meta: JsonRecord = {
       ...language,
       counts: {
@@ -363,10 +356,7 @@ export class AgentWorkspaceService {
           QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
         ),
       },
-      files: files.map((file) => {
-        const pdf_fp = pdf_fingerprints.get(file.file_path);
-        return { ...file, ...(pdf_fp === undefined ? {} : { pdf_fp }) };
-      }),
+      files,
     };
     await this.clear_snapshot();
     try {
@@ -526,21 +516,6 @@ export class AgentWorkspaceService {
               root: this.root_path,
               nativeFs: this.native_fs,
               pdfHost: this.options.pdfHost,
-              exportPDF: async (file_path, fp, host_signal) => {
-                const current = this.require_active();
-                if (!this.read_freshness(current).workCompatible)
-                  throw new Error("Workspace project changed.");
-                const document = this.options.database.read_pdf_document(
-                  current.projectPath,
-                  file_path,
-                );
-                if (!document || pdf_document_fingerprint(file_path, document) !== fp)
-                  throw new Error(
-                    "PDF document changed. Read the current snapshot before exporting.",
-                  );
-                if (!this.options.exportPDF) throw new Error("PDF export unavailable.");
-                return await this.options.exportPDF(file_path, host_signal);
-              },
             }),
           },
           signal,

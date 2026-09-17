@@ -1,6 +1,5 @@
 import { read_pdf_document } from "./formats/pdf/pdf-document";
-import { create_pdf_execution } from "./formats/pdf/test-support";
-import { create_pdf_fixture } from "./formats/pdf/test-support";
+import { create_pdf_execution, create_pdf_fixture } from "./formats/pdf/test-support";
 import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
@@ -64,7 +63,7 @@ function create_database(
 }
 
 describe("TranslationFileExportService", () => {
-  it.each(["gui", "directory", "single"] as const)(
+  it.each(["gui", "directory"] as const)(
     "%s 导出已存译稿与确认保留的原页，全保留文件原样写出",
     async (entry) => {
       const source = create_pdf_fixture();
@@ -72,7 +71,6 @@ describe("TranslationFileExportService", () => {
       const partial = structuredClone(document);
       partial.pages[0]!.translation = { kind: "keep", reason: "无需翻译" };
       partial.pages[1]!.translation = { kind: "translate", markdown: "已有译稿" };
-      partial.pages[1]!.notes = "待继续";
       partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
       for (const page of document.pages)
         page.translation = { kind: "keep", reason: "按用户要求保留原稿" };
@@ -84,44 +82,28 @@ describe("TranslationFileExportService", () => {
       const session = new ProjectSessionState();
       session.mark_loaded(path.join(temp_dir, "project.lg"));
       const host = vi.fn(async () => create_pdf_fixture(["Translated"]));
-      const settings = create_setting_service();
       const service = new TranslationFileExportService(
         database,
-        settings,
+        create_setting_service(),
         session,
         async () => {},
         create_pdf_execution(host),
-        undefined,
-        default_native_fs,
       );
-      vi.spyOn(settings, "read_setting").mockReturnValue({
-        ...settings.read_setting(),
-        source_language: "ALL",
-        target_language: "DE",
-      });
-      if (entry === "single") {
-        const result = await service.export_pdf_file("book.pdf");
-        const exported = read_pdf_document(new Uint8Array(fs.readFileSync(result.output_path)));
-        expect(exported.pages).toHaveLength(2);
-        const original = await service.export_pdf_file("original.pdf");
-        expect(fs.readFileSync(original.output_path)).toEqual(Buffer.from(source));
-      } else {
-        const result =
-          entry === "gui"
-            ? await service.export_files()
-            : await service.export_files_to_directory(path.join(temp_dir, "out"));
-        expect(result.pdf_files).toEqual([
-          { file_path: "book.pdf", translated_pages: 1, original_pages: 1, omitted_pages: 1 },
-          { file_path: "original.pdf", translated_pages: 0, original_pages: 3, omitted_pages: 0 },
-        ]);
-        expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
-          Buffer.from(source),
-        );
-        const exported = read_pdf_document(
-          new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
-        );
-        expect(exported.pages).toHaveLength(2);
-      }
+      const result =
+        entry === "gui"
+          ? await service.export_files()
+          : await service.export_files_to_directory(path.join(temp_dir, "out"));
+      expect(result.pdf_files).toEqual([
+        { file_path: "book.pdf", translated_pages: 1, original_pages: 1, omitted_pages: 1 },
+        { file_path: "original.pdf", translated_pages: 0, original_pages: 3, omitted_pages: 0 },
+      ]);
+      expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
+        Buffer.from(source),
+      );
+      const exported = read_pdf_document(
+        new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
+      );
+      expect(exported.pages).toHaveLength(2);
       expect(host).toHaveBeenCalledTimes(1);
     },
   );
@@ -153,8 +135,8 @@ describe("TranslationFileExportService", () => {
       async () => {},
       create_pdf_execution(),
     );
-    const output = await service.export_pdf_file("book.pdf");
-    expect(fs.readFileSync(output.output_path)).toEqual(Buffer.from(source));
+    const output = await service.export_files();
+    expect(fs.readFileSync(path.join(output.output_path, "book.pdf"))).toEqual(Buffer.from(source));
     document.pages[0]!.page = 4;
     const directory = path.join(temp_dir, "conflict");
     await expect(service.export_files_to_directory(directory)).rejects.toMatchObject({
@@ -458,7 +440,7 @@ describe("TranslationFileExportService", () => {
     );
   });
 
-  it.each(["gui-write", "directory-prepare", "single-pdf"] as const)(
+  it.each(["gui-write", "directory-prepare", "directory-pdf"] as const)(
     "%s 失败时统一报告导出错误并保留一份原始诊断",
     async (entry) => {
       const project_path = path.join(temp_dir, "demo.lg");
@@ -498,7 +480,7 @@ describe("TranslationFileExportService", () => {
         create_setting_service({ output_folder_open_on_finish: true }),
         session_state,
         vi.fn<OutputFolderOpener>(),
-        entry === "single-pdf"
+        entry === "directory-pdf"
           ? async () => {
               throw error;
             }
@@ -509,9 +491,7 @@ describe("TranslationFileExportService", () => {
       const result =
         entry === "gui-write"
           ? service.export_files()
-          : entry === "directory-prepare"
-            ? service.export_files_to_directory(path.join(temp_dir, "out"))
-            : service.export_pdf_file("book.pdf");
+          : service.export_files_to_directory(path.join(temp_dir, "out"));
       await expect(result).rejects.toMatchObject({
         code: "translation.export_failed",
         cause: error,
@@ -526,7 +506,7 @@ describe("TranslationFileExportService", () => {
         text("app.log.generate_translation_start"),
         { source: "file-export" },
       );
-      if (entry !== "gui-write") expect(write_file).not.toHaveBeenCalled();
+      if (entry === "directory-prepare") expect(write_file).not.toHaveBeenCalled();
     },
   );
 

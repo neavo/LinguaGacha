@@ -92,18 +92,11 @@ export function read_pdf_document(value: unknown): PDFDocument {
   return value;
 }
 
-/** 与工作区其它对象使用同一摘要长度；调用者用固定顺序元组消除 JSON 键序影响。 */
-function fingerprint(value: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(value))
-    .digest("base64url")
-    .slice(0, AGENT_WORKSPACE_FP_LENGTH);
-}
-
 /** 页指纹绑定路径与原稿摘要；邻页修改不影响本页，来源替换会使旧快照失效。 */
 export function pdf_page_fingerprint(file_path: string, digest: string, page: PDFPage): string {
   const translation = page.translation;
-  return fingerprint([
+  const facts = [
+    // 固定字段顺序消除 JSON 键序差异，页指纹与其它工作区对象使用同一摘要长度。
     file_path,
     digest,
     page.page,
@@ -130,14 +123,11 @@ export function pdf_page_fingerprint(file_path: string, digest: string, page: PD
           ],
     page.reviewed,
     page.notes,
-  ]);
-}
-
-/** 整份版本仅用于导出核对，不参与页面写入冲突。 */
-export function pdf_document_fingerprint(file_path: string, document: PDFDocument): string {
-  return fingerprint(
-    document.pages.map((page) => pdf_page_fingerprint(file_path, document.digest, page)),
-  );
+  ];
+  return createHash("sha256")
+    .update(JSON.stringify(facts))
+    .digest("base64url")
+    .slice(0, AGENT_WORKSPACE_FP_LENGTH);
 }
 
 /** 图片引用按原稿页尺寸收窄，阻止越界或无效坐标进入渲染。 */

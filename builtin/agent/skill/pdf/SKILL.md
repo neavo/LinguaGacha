@@ -43,17 +43,17 @@ Markdown 每页独立校验和编译，支持标题、强调、列表、引用�
 
 链接使用 HTTP(S)、`mailto:` 或按当前页译稿标题出现顺序编号的页内锚点 `#heading-1`、`#heading-2`。原始 HTML 标签与注释按字面文本输出，换行使用 Markdown 语法。应用控制字体、HTML、样式和资源加载。
 
-## 保存与导出
+## 保存与核验
 
 1. 在 `ws.contract.changes.pdf.updates` 指定的 JSONL 中，每行写入一个页面的 `file_path`、`page`、当前页 `fp`、`translation`、`reviewed` 和 `notes`。同批同页只写一次。
 2. 页面独立接受或拒绝，回执按文件和原页码定位，审批与 `applied.pdf.updated` 均按变化页数计数。
 3. 指纹失效时重读页面快照，结合已保存 `work` 修正。原稿摘要变化会使该文件的旧页指纹失效，单页变化不影响邻页指纹。
 4. 页面处置、核对记录和 `notes` 随 `.lg` 保存。续做时重新读取页面快照，定位待处理页及已保存的待办。`work` 是临时材料，重置对话或应用重启后以已提交的工程事实恢复。
 5. 用本技能的 `scripts/preview.mjs` 生成预览，以返回的工作区 `path` 渲染并查看风险页面。默认读取本次页面快照，也可传入使用相同 `changes` 结构的草稿 JSONL 路径，按页覆盖快照副本后生成。修正后重新保存、核对。
-6. 完成前重新读取页面快照，检查用户范围内各页的处置、跨页归属和待办。仍有待处理页或影响完整性的待办时说明未完成范围。
-7. 按用户需要导出已保存结果。在新的 `workspace_run` 中读取 `project_meta.files` 对应文件的最新 `pdf_fp`，作为 `ws.host` 的 `export_pdf` 请求的 `fp`。部分译稿与保留原页自动组合。
+6. 完成前重新读取页面快照，检查用户范围内各页的处置、跨页归属和待办。
+7. 汇报已保存的处理范围、未完成页和待办。需要正式 PDF 时，由用户通过应用统一导出。
 
-`export_pdf` 返回的 `output_path` 位于工作区外，按导出回执交付。回执分别统计翻译、原样输出与省略的原页数，原样输出包含待处理页和确认保留页，完成情况以页面处置为准。视觉核验使用 `work` 中相同页面组合的预览，检查译文与保留原页的衔接、背景、公式、大图图注和长表格分页。译文排版后的页数可以不同于原稿页数。图片请求或宿主失败时保存续做说明并报告实际阻塞。
+视觉核验使用 `work` 中的预览，检查译文与保留原页的衔接、背景、公式、大图图注和长表格分页。译文排版后的页数可以不同于原稿页数。图片请求或宿主失败时保存续做说明并报告实际阻塞。
 
 ## JS 操作示例
 
@@ -104,13 +104,4 @@ const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
 console.log(await preview('book.pdf', 'work/pdf-updates.jsonl'));
 ```
 
-省略第二个参数时使用工程快照译稿。预览复用 `@lg/pdf` 的正式生成入口，经 `print_pdf` 打印到 `work`。静态 HTML 也可用 `ws.host({ kind: 'print_pdf', html })` 打印为工作材料，正式交付使用工程导出。
-
-### 导出当前译稿与原页
-
-```js
-import { readFile } from 'node:fs/promises';
-const meta = JSON.parse(await readFile(ws.contract.datasets.project_meta.path, 'utf8'));
-const file = meta.files.find(file => file.file_path === 'book.pdf');
-console.log(await ws.host({ kind: 'export_pdf', file_path: file.file_path, fp: file.pdf_fp }));
-```
+省略第二个参数时使用工程快照译稿。预览复用 `@lg/pdf` 的正式生成入口，经 `print_pdf` 打印到 `work`。静态 HTML 也可用 `ws.host({ kind: 'print_pdf', html })` 打印为工作材料。

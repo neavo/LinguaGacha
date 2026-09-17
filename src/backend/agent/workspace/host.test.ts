@@ -9,7 +9,6 @@ it("停止后的迟到打印结果不落盘", async () => {
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-workspace-host-"));
   const root = path.join(directory.path, "workspace");
   fs.mkdirSync(path.join(root, "work"), { recursive: true });
-  fs.writeFileSync(path.join(root, "work/source.pdf"), "source");
   const controller = new AbortController();
   const pdfHost = vi.fn(async () => {
     controller.abort();
@@ -19,10 +18,9 @@ it("停止后的迟到打印结果不落盘", async () => {
     root,
     nativeFs: default_native_fs,
     pdfHost,
-    exportPDF: async () => ({ output_path: "unused" }),
   });
   await expect(
     host({ kind: "print_pdf", html: "<p>test</p>" }, controller.signal),
   ).rejects.toThrow();
-  expect(fs.readdirSync(path.join(root, "work")).sort()).toEqual(["source.pdf"]);
+  expect(fs.readdirSync(path.join(root, "work"))).toEqual([]);
 });
