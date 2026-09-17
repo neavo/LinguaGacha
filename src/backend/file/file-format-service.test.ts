@@ -2,6 +2,7 @@ import { create_pdf_execution } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import ExcelJS from "exceljs";
 
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +24,25 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
+  it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    if (file_type === "WOLFXLSX") {
+      sheet.addRow(["code", "flag", "type", "info"]);
+      sheet.getCell(2, 6).value = "正文";
+    } else {
+      sheet.addRow(["正文", "译文"]);
+    }
+    const result = await create_service().parse_asset(
+      "book.xlsx",
+      new Uint8Array(await workbook.xlsx.writeBuffer()),
+    );
+    expect(result).toMatchObject({
+      kind: "items",
+      items: [expect.objectContaining({ src: "正文", file_type })],
+    });
+  });
+
   it("按扩展名分发解析器，并保持 JSON 的 KV 优先与 MESSAGE fallback", async () => {
     const service = create_service();
 
@@ -64,7 +84,6 @@ describe("FileFormatService", () => {
     const service = create_service();
 
     await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual({
-      file_type: "NONE",
       items: [],
       kind: "items",
     });

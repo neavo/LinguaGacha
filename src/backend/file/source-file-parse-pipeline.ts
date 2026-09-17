@@ -15,7 +15,7 @@ export type SourceFileParseCommand = {
 };
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
-  file_type: ProjectFileType; // 只来自格式解析结果，不由调用方猜测
+  file_type: ProjectFileType; // 普通格式取首个 Item，零条目为 NONE；PDF 使用文档身份
   pdf_document: PDFDocument | null; // PDF 独立文档，文本格式为空
   parsed_items: Array<JsonRecord>; // 已过 Item JSON 边界的公开草稿
 };
@@ -112,6 +112,7 @@ export class SourceFileParsePipeline {
   public async parse_import_commands(
     commands: SourceFileParseCommand[],
   ): Promise<SourceFileParseResult> {
+    // 异步解析前固定目标路径，避免调用方修改命令影响本次导入。
     return this.parse_source_entries(
       commands.map((command) => ({
         source_path: command.source_path,
@@ -127,13 +128,25 @@ export class SourceFileParsePipeline {
     source_paths: string[];
     current_rel_path?: string;
   }): Promise<ProjectFilePreviewParseResult> {
-    if (args.current_rel_path !== undefined) {
-      return this.parse_project_file_replace_preview(args.source_paths, args.current_rel_path);
+    const current_rel_path = args.current_rel_path;
+    let entries: ProjectSourceFileEntry[];
+    if (current_rel_path === undefined) {
+      entries = this.format_service.collect_source_file_entries(args.source_paths);
+    } else {
+      // 替换保留工程内父目录，失败明细则只显示所选源文件名。
+      const parent = path.dirname(current_rel_path);
+      entries = this.format_service
+        .normalize_source_paths(args.source_paths)
+        .filter((source_path) => this.format_service.is_supported_file(source_path))
+        .map((source_path) => ({
+          source_path,
+          rel_path:
+            current_rel_path === "" || parent === "."
+              ? path.basename(source_path)
+              : path.join(parent, path.basename(source_path)),
+        }));
     }
-
-    const parse_result = await this.parse_source_entries(
-      this.format_service.collect_source_file_entries(args.source_paths),
-    );
+    const parse_result = await this.parse_source_entries(entries);
     return {
       files: parse_result.file_drafts.map((draft) => ({
         source_path: draft.source_path,
@@ -141,7 +154,13 @@ export class SourceFileParsePipeline {
         file_type: draft.file_type,
         parsed_items: draft.parsed_items,
       })),
-      failed_files: parse_result.failed_files,
+      failed_files:
+        current_rel_path === undefined
+          ? parse_result.failed_files
+          : parse_result.failed_files.map((failure) => ({
+              ...failure,
+              rel_path: path.basename(failure.source_path),
+            })),
     };
   }
 
@@ -149,7 +168,7 @@ export class SourceFileParsePipeline {
    * 解析一组已确定目标相对路径的源文件，返回成功草稿和失败明细。
    */
   private async parse_source_entries(
-    entries: ProjectSourceFileEntry[],
+    entries: readonly ProjectSourceFileEntry[],
   ): Promise<SourceFileParseResult> {
     const file_drafts: SourceFileParsedDraft[] = [];
     const failed_files: SourceFileParseFailureRecord[] = [];
@@ -162,7 +181,7 @@ export class SourceFileParsePipeline {
         file_drafts.push({
           source_path: entry.source_path,
           rel_path: entry.rel_path,
-          file_type: parsed.file_type,
+          file_type: parsed.kind === "pdf" ? "PDF" : (parsed.items[0]?.file_type ?? "NONE"),
           pdf_document: parsed.kind === "pdf" ? parsed.document : null,
           parsed_items:
             parsed.kind === "items"
@@ -170,57 +189,9 @@ export class SourceFileParsePipeline {
               : [],
         });
       } catch (error) {
-        failed_files.push(this.build_failure(entry, error));
+        failed_files.push(build_source_file_parse_failure({ ...entry, error }));
       }
     }
     return { file_drafts, failed_files };
-  }
-
-  /**
-   * 项目文件替换预览保留格式服务的目标路径规则，不重新实现目录拼接。
-   */
-  private async parse_project_file_replace_preview(
-    source_paths: string[],
-    current_rel_path: string,
-  ): Promise<ProjectFilePreviewParseResult> {
-    const parent = path.dirname(current_rel_path);
-    const parse_result = await this.parse_source_entries(
-      this.format_service
-        .normalize_source_paths(source_paths)
-        .filter((source_path) => this.format_service.is_supported_file(source_path))
-        .map((source_path) => ({
-          source_path,
-          rel_path:
-            current_rel_path === "" || parent === "."
-              ? path.basename(source_path)
-              : path.join(parent, path.basename(source_path)),
-        })),
-    );
-    return {
-      files: parse_result.file_drafts.map((draft) => ({
-        source_path: draft.source_path,
-        target_rel_path: draft.rel_path,
-        file_type: draft.file_type,
-        parsed_items: draft.parsed_items,
-      })),
-      failed_files: parse_result.failed_files.map((failure) => ({
-        ...failure,
-        rel_path: path.basename(failure.source_path),
-      })),
-    };
-  }
-
-  /**
-   * 失败记录统一走 reporter，保证 Toast、日志和错误 details 使用同一语义。
-   */
-  private build_failure(
-    entry: ProjectSourceFileEntry,
-    error: unknown,
-  ): SourceFileParseFailureRecord {
-    return build_source_file_parse_failure({
-      source_path: entry.source_path,
-      rel_path: entry.rel_path,
-      error,
-    });
   }
 }

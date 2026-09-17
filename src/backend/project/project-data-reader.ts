@@ -76,8 +76,8 @@ function read_revision_meta(value: JsonValue | undefined): number {
  * items 快照同时服务 files 回退索引和 items section，调用方负责按需触发读取
  */
 export type ProjectDataItemsSnapshot = {
-  item_records: ProjectItemPublicRecord[];
-  records_by_path: Map<string, { rel_path: string; file_type: string }>;
+  item_records: ProjectItemPublicRecord[]; // files/items 共用同次读取，类型由文件组装入口确定
+  file_paths: Set<string>; // 缺少 asset 时按 Item 首次出现顺序回退文件集合与计数
 };
 
 /**
@@ -167,26 +167,13 @@ export class ProjectDataReader {
     snapshot = this.build_runtime_items_snapshot(project_path),
   ): JsonRecord {
     const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
-    const files: JsonRecord = {};
-
-    if (asset_records.length > 0)
-      return build_project_file_records(
-        asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index })),
-        [...snapshot.records_by_path.values()].map((item) => ({
-          file_path: item.rel_path,
-          file_type: item.file_type,
-        })),
-        Object.keys(this.database.read_pdf_summaries(project_path)),
-      );
-
-    for (const [sort_index, record] of [...snapshot.records_by_path.values()].entries()) {
-      files[record.rel_path] = {
-        rel_path: record.rel_path,
-        file_type: record.file_type,
-        sort_index,
-      };
-    }
-    return files;
+    return build_project_file_records(
+      asset_records.length > 0
+        ? asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index }))
+        : [...snapshot.file_paths].map((path, sort_order) => ({ path, sort_order })),
+      snapshot.item_records,
+      asset_records.length > 0 ? Object.keys(this.database.read_pdf_summaries(project_path)) : [],
+    );
   }
 
   /**
@@ -286,26 +273,23 @@ export class ProjectDataReader {
    */
   public build_runtime_items_snapshot(project_path: string): ProjectDataItemsSnapshot {
     const item_records: ProjectItemPublicRecord[] = [];
-    const records_by_path = new Map<string, { rel_path: string; file_type: string }>();
+    const file_paths = new Set<string>();
     for (const item of this.get_all_items(project_path)) {
       const record = this.normalize_item_record(item);
       item_records.push(record);
       const file_path = String(record["file_path"] ?? "");
       if (file_path !== "") {
-        records_by_path.set(file_path, {
-          rel_path: file_path,
-          file_type: String(record["file_type"] ?? "NONE"),
-        });
+        file_paths.add(file_path);
       }
     }
-    return { item_records, records_by_path };
+    return { item_records, file_paths };
   }
 
   /**
    * 未加载工程使用空快照，避免读取路径触碰空 projectPath 的数据库
    */
   public empty_items_snapshot(): ProjectDataItemsSnapshot {
-    return { item_records: [], records_by_path: new Map() };
+    return { item_records: [], file_paths: new Set() };
   }
 
   /**
@@ -342,7 +326,7 @@ export class ProjectDataReader {
       files:
         asset_count > 0
           ? asset_count
-          : this.build_runtime_items_snapshot(project_path).records_by_path.size,
+          : this.build_runtime_items_snapshot(project_path).file_paths.size,
       items: item_count,
     };
   }

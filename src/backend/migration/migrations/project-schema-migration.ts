@@ -1,21 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
-export const PROJECT_DATABASE_SCHEMA_VERSION = 4; // 只表达当前表结构能力，不承载业务写回完成状态
-
 /**
- * 迁移背景：
- * 当前 `.lg` 是 SQLite 项目文件，所有工程在业务读取前必须具备同一组表、索引和基础列。
- * 旧工程可能缺少新表或 `assets.sort_order`，而当前文件顺序、asset 读取和后续写回迁移都依赖它。
- *
- * 生效场景：
- * `ProjectDatabase` 首次打开任意 `.lg` 连接时执行，先补齐 schema，再允许其它迁移读取项目事实。
- *
- * 不处理范围：
- * 本文件只补物理结构和当前 schema 版本；规则、item、checkpoint 等业务数据写回由独立迁移点处理。
+ * 每次首次打开 .lg 连接时，先补齐物理结构，再允许业务写回迁移读取。
+ * 幂等建表与实际列检查同时适用于空库和旧工程。
  */
 export const project_schema_migration: MigrationDescriptor = {
   id: "project-schema",
@@ -29,13 +19,11 @@ export const project_schema_migration: MigrationDescriptor = {
 };
 
 /**
- * schema 迁移先建表/索引，再补旧 asset 排序列，最后写 schema_version。
+ * schema 迁移先建表/索引，再补旧 asset 排序列。
  */
 export function run_project_schema_migration(db: DatabaseSync): void {
   ensure_current_schema(db);
   ensure_asset_sort_order_column(db);
-
-  write_meta_version(db, "schema_version", PROJECT_DATABASE_SCHEMA_VERSION);
 }
 
 /**
@@ -96,14 +84,4 @@ function ensure_asset_sort_order_column(db: DatabaseSync): void {
   for (const [index, row] of rows.entries()) {
     statement.run(index, row_number(row, "id"));
   }
-}
-
-/**
- * schema_version 使用严格 JSON 数字写入 meta，与其它 meta 序列化保持一致。
- */
-function write_meta_version(db: DatabaseSync, key: string, version: number): void {
-  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-    key,
-    JsonTool.stringifyStrict(version),
-  );
 }

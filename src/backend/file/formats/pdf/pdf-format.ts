@@ -1,10 +1,6 @@
 import path from "node:path";
-import type { PDFDocumentRecord } from "../../../../shared/pdf";
-import {
-  write_binary_file,
-  type FileFormatReadResult,
-  type FileFormatWriteContext,
-} from "../file-format-shared";
+import type { PDFDocument, PDFDocumentRecord } from "../../../../shared/pdf";
+import { write_binary_file, type FileFormatWriteContext } from "../file-format-shared";
 import type { PDFExecution } from "./pdf-worker";
 import { AppError } from "../../../../shared/error";
 
@@ -12,8 +8,6 @@ import { AppError } from "../../../../shared/error";
 export class PDFFormat {
   /** 计算端口由组合根注入，格式层负责资产读取和最终落盘。 */
   public constructor(private readonly execute: PDFExecution) {}
-
-  public readonly file_type = "PDF" as const;
 
   /** 无译稿直接复制原字节，其余文档交给计算线程组合页面。 */
   public async write_to_path(
@@ -36,12 +30,9 @@ export class PDFFormat {
   }
 
   /** 返回独立文档，PDF 页面不进入文本 Item 管线。 */
-  public async read_from_stream(
-    content: Uint8Array,
-    _rel_path: string,
-  ): Promise<Extract<FileFormatReadResult, { kind: "pdf" }>> {
+  public async read_from_stream(content: Uint8Array): Promise<PDFDocument> {
     const document = await this.execute({ kind: "read", bytes: content });
     if (document instanceof Uint8Array) throw new TypeError("Invalid PDF document.");
-    return { kind: "pdf", file_type: this.file_type, document };
+    return document;
   }
 }

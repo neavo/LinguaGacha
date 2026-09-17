@@ -2,11 +2,11 @@ import { default_native_fs, normalize_native_file_bytes } from "../../../native/
 import type { PDFDocument } from "../../../shared/pdf";
 import { Item, type ItemFileType } from "../../../domain/item";
 
-/** 文件身份独立于 Item 数量，PDF 通过文档参与同一导入流程。 */
+/** 普通文件类型取自 Item，PDF 通过独立文档参与同一导入流程。 */
 export type ProjectFileType = ItemFileType | "PDF";
 export type FileFormatReadResult =
-  | { kind: "items"; file_type: ItemFileType; items: Item[] }
-  | { kind: "pdf"; file_type: "PDF"; document: PDFDocument };
+  | { kind: "items"; items: Item[] }
+  | { kind: "pdf"; document: PDFDocument };
 
 /** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */
 export interface FileFormatServiceConfig {

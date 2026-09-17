@@ -14,7 +14,6 @@ import { Item } from "../../../domain/item";
  * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field
  */
 export class SRTFormat {
-  public readonly file_type = "SRT" as const;
   /**
    * 配置用于输出路径和双语去重策略
    */

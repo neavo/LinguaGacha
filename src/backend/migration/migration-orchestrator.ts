@@ -1,9 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { JsonRecord } from "../../domain/json";
 import type { ProjectDatabaseWrite } from "../database/database-operations";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { MIGRATIONS, PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
+import { MIGRATIONS } from "./migration-registry";
 import type {
   MigrationDescriptor,
   ProjectDatabaseMigrationContext,
@@ -11,10 +10,8 @@ import type {
   StartupMigrationContext,
 } from "./migration-types";
 import { row_text } from "./migration-row";
-import { PROJECT_DATABASE_SCHEMA_VERSION } from "./migrations/project-schema-migration";
 
-export { PROJECT_DATABASE_SCHEMA_VERSION } from "./migrations/project-schema-migration";
-export { PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS };
+export { PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
 
 /**
  * `.lg` meta 中记录已完成写回迁移的当前键名；schema 迁移不写入这里。
@@ -160,14 +157,3 @@ export class MigrationOrchestrator {
 }
 
 export const migration_orchestrator = new MigrationOrchestrator(); // 生产态共享编排器，避免各入口重复装配 registry
-
-/**
- * 新建工程的 meta 必须与当前 registry 对齐，避免新工程再次执行旧写回迁移。
- */
-export function build_current_project_database_meta(): JsonRecord {
-  return {
-    schema_version: PROJECT_DATABASE_SCHEMA_VERSION,
-    [PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY]:
-      PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
-  };
-}

@@ -5,14 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it } from "vitest";
 
-import { JsonTool } from "../../../shared/utils/json-tool";
-import {
-  PROJECT_DATABASE_SCHEMA_VERSION,
-  run_project_schema_migration,
-} from "./project-schema-migration";
+import { run_project_schema_migration } from "./project-schema-migration";
 
 describe("run_project_schema_migration", () => {
-  it("新建工程按文件与原页唯一保存页面，并记录 schema 版本", () => {
+  it("新建工程按文件与原页唯一保存页面", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-schema-migration-"),
     );
@@ -24,7 +20,6 @@ describe("run_project_schema_migration", () => {
     insert.run("a.pdf", 1, "{}");
     insert.run("b.pdf", 1, "{}");
     expect(() => insert.run("a.pdf", 1, "{}")).toThrow("UNIQUE constraint failed");
-    expect(read_meta_number(db, "schema_version")).toBe(PROJECT_DATABASE_SCHEMA_VERSION);
   });
 
   it("旧 assets 缺少 sort_order 时按 id 顺序补齐稳定文件顺序", () => {
@@ -61,11 +56,3 @@ describe("run_project_schema_migration", () => {
     ]);
   });
 });
-
-/**
- * schema_version 按 JSON 数字存储，测试读取时保持同一序列化规则。
- */
-function read_meta_number(db: DatabaseSync, key: string): number {
-  const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
-  return row === undefined ? 0 : Number(JsonTool.parseStrict(String(row["value"])));
-}

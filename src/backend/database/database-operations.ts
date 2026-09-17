@@ -4,10 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  build_current_project_database_meta,
-  migration_orchestrator,
-} from "../migration/migration-orchestrator";
+import { migration_orchestrator } from "../migration/migration-orchestrator";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
@@ -194,14 +191,17 @@ export class ProjectDatabase {
     this.with_project_connection(project_path, () => this.write_meta(project_path, key, value));
   }
 
+  /** 合并提交的 meta 键，保留其它工程元数据。 */
   public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
     this.with_project_connection(project_path, () => this.write_meta_entries(project_path, meta));
   }
 
+  /** 读取工程元数据，供上层一次组装设置与 revision。 */
   public get_all_meta(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_meta(project_path));
   }
 
+  /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
   public bump_section_revisions(project_path: string, sections: string[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.advance_section_revisions(project_path, sections),
@@ -348,54 +348,64 @@ export class ProjectDatabase {
     });
   }
 
+  /** 按持久化顺序返回路径与排序位，不读取资产正文。 */
   public get_all_asset_records(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_all_asset_records(project_path),
     );
   }
 
+  /** 直接统计资产数量，避免文件列表全量读取。 */
   public get_asset_count(project_path: string): number {
     return this.with_project_connection(project_path, () => this.read_asset_count(project_path));
   }
 
+  /** 按调用方顺序重排资产，多步写入由调用方事务包裹。 */
   public update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
     this.with_project_connection(project_path, () =>
       this.write_asset_sort_orders(project_path, ordered_paths),
     );
   }
 
+  /** 按数据库 id 顺序返回条目及其持久身份。 */
   public get_all_items(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_items(project_path));
   }
 
+  /** 直接统计条目数量，避免解析 JSON 正文。 */
   public get_item_count(project_path: string): number {
     return this.with_project_connection(project_path, () => this.read_item_count(project_path));
   }
 
+  /** 通过 SQL 聚合条目状态，供进度统计读取。 */
   public get_item_status_summary(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_status_summary(project_path),
     );
   }
 
+  /** 按请求 id 顺序回查存在的条目，并去重请求。 */
   public get_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_items_by_ids(project_path, item_ids),
     );
   }
 
+  /** 只读取字段写回所需事实，减少校对提交的回查开销。 */
   public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_write_facts_by_ids(project_path, item_ids),
     );
   }
 
+  /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
   public set_items(project_path: string, items: JsonValue[]): number[] {
     return this.with_project_connection(project_path, () =>
       this.replace_items(project_path, items),
     );
   }
 
+  /** 按条目 id 更新允许写入的字段，保留其它持久事实。 */
   public patch_item_fields_by_ids(
     project_path: string,
     item_ids: number[],
@@ -406,36 +416,42 @@ export class ProjectDatabase {
     );
   }
 
+  /** 批量更新译文字段，保持条目原文与定位信息。 */
   public patch_item_translation_fields(project_path: string, patches: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_item_translation_fields(project_path, patches),
     );
   }
 
+  /** 读取指定规则类型的持久载荷，由领域层校验内容。 */
   public get_rules(project_path: string, rule_type: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_rules(project_path, rule_type),
     );
   }
 
+  /** 替换指定类型的规则载荷，其它规则类型继续保留。 */
   public set_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_rules(project_path, rule_type, rules),
     );
   }
 
+  /** 将提示词等文本规则的持久载荷收窄为字符串。 */
   public get_rule_text(project_path: string, rule_type: string): string {
     return this.with_project_connection(project_path, () =>
       this.read_rule_text(project_path, rule_type),
     );
   }
 
+  /** 以统一文本规则形状保存提示词内容。 */
   public set_rule_text(project_path: string, rule_type: string, text: string): void {
     this.with_project_connection(project_path, () =>
       this.write_rule_text(project_path, rule_type, text),
     );
   }
 
+  /** 聚合工程元数据和条目进度，供列表与状态读取。 */
   public get_project_summary(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_project_summary(project_path),
@@ -630,7 +646,6 @@ export class ProjectDatabase {
     const db = this.open_project(normalized_path);
     const now = new Date().toISOString();
     this.upsert_meta_entries_with_db(db, {
-      ...build_current_project_database_meta(),
       name,
       created_at: now,
       updated_at: now,

@@ -1,4 +1,4 @@
-import { create_pdf_execution } from "./formats/pdf/test-support";
+import { create_pdf_execution, create_pdf_fixture } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
+import { ProjectDatabase } from "../database/database-operations";
+import { ProjectDataReader } from "../project/project-data-reader";
 
+/** 固定解析配置，避免读取本机设置。 */
 function create_format_service(): FileFormatService {
   return new FileFormatService(
     {
@@ -19,6 +22,58 @@ function create_format_service(): FileFormatService {
 }
 
 describe("SourceFileParsePipeline", () => {
+  it("预览、导入草稿与重新打开的文件类型一致，零条目文本为 NONE，PDF 保留身份", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
+    );
+    const samples = [
+      ["empty.txt", ""],
+      ["object.json", "{}"],
+      ["array.json", "[]"],
+      ["text.txt", "正文"],
+      ["book.pdf", create_pdf_fixture()],
+    ] as const;
+    const source_paths = samples.map(([name, content]) => {
+      const source_path = path.join(temp_dir.path, name);
+      fs.writeFileSync(source_path, content);
+      return source_path;
+    });
+    const expected_types = ["NONE", "NONE", "NONE", "TXT", "PDF"];
+    const pipeline = new SourceFileParsePipeline(create_format_service());
+    const preview = await pipeline.parse_project_file_preview({ source_paths });
+    const draft = await pipeline.build_project_draft(source_paths);
+    expect(preview.failed_files).toEqual([]);
+    expect(draft.failed_files).toEqual([]);
+    expect(preview.files.map((file) => file["file_type"])).toEqual(expected_types);
+    expect(draft.files.map((file) => file.file_type)).toEqual(expected_types);
+
+    const database = new ProjectDatabase();
+    const project_path = path.join(temp_dir.path, "project.lg");
+    try {
+      database.create_project(project_path, "文件类型", () => {
+        for (const file of draft.files) {
+          database.add_asset_from_source(
+            project_path,
+            file.rel_path,
+            file.source_path,
+            file.pdf_document,
+            file.sort_index,
+          );
+        }
+        database.set_items(project_path, draft.items);
+      });
+      const reader = new ProjectDataReader(database);
+      // create_project 已结束 scoped 连接，此次读取会重新打开真实 .lg。
+      expect(
+        Object.values(reader.build_files_record_block(project_path)).map(
+          (file) => (file as { file_type: string }).file_type,
+        ),
+      ).toEqual(expected_types);
+    } finally {
+      database.close();
+    }
+  });
+
   it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),

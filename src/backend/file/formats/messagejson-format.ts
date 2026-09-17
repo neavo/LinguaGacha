@@ -17,7 +17,6 @@ import { resolve_export_item_name } from "../../../shared/item-name";
  * message JSON 格式用于 KAG 风格 name/message 数组结构
  */
 export class MESSAGEJSONFormat {
-  public readonly file_type = "MESSAGEJSON" as const;
   /**
    * 配置决定人名字段写回策略
    */

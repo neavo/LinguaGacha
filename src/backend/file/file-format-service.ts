@@ -86,7 +86,10 @@ export class FileFormatService {
   public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatReadResult> {
     const ext = path.extname(rel_path).toLowerCase();
     if (ext === ".pdf")
-      return new PDFFormat(this.pdf_execution).read_from_stream(content, rel_path);
+      return {
+        kind: "pdf",
+        document: await new PDFFormat(this.pdf_execution).read_from_stream(content),
+      };
     let format;
     switch (ext) {
       case ".md":
@@ -103,13 +106,13 @@ export class FileFormatService {
         break;
       case ".xlsx": {
         const items = await this.wolfxlsx.read_from_stream(content, rel_path);
-        if (items.length > 0) return { file_type: this.wolfxlsx.file_type, items, kind: "items" };
+        if (items.length > 0) return { items, kind: "items" };
         format = this.xlsx;
         break;
       }
       case ".json": {
         const items = await this.kvjson.read_from_stream(content, rel_path);
-        if (items.length > 0) return { file_type: this.kvjson.file_type, items, kind: "items" };
+        if (items.length > 0) return { items, kind: "items" };
         format = this.messagejson;
         break;
       }
@@ -123,10 +126,9 @@ export class FileFormatService {
         format = this.epub;
         break;
       default:
-        return { file_type: "NONE", items: [], kind: "items" };
+        return { items: [], kind: "items" };
     }
     return {
-      file_type: format.file_type,
       items: await format.read_from_stream(content, rel_path),
       kind: "items",
     };

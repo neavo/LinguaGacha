@@ -16,7 +16,6 @@ const FILL_COLOR_WHITELIST = new Set([9]); // 只有白色填充的源文列参�
  * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐旧实现
  */
 export class WOLFXLSXFormat {
-  public readonly file_type = "WOLFXLSX" as const;
   /**
    * 只处理识别为 WOLF 表头的工作表，普通 XLSX 留给 XLSXFormat
    */

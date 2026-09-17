@@ -30,7 +30,6 @@ const DEFAULT_CONFIG: FileFormatServiceConfig = {
  * RenPy 翻译脚本格式门面，只编排 AST 管线和文件读写。
  */
 export class RenPyFormat {
-  public readonly file_type = "RENPY" as const;
   /**
    * 构造时固定配置，确保姓名字段写回策略和导出服务一致。
    */

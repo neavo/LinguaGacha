@@ -20,7 +20,6 @@ import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
  * TRANS 格式处理器，负责 .trans 的读入、引擎处理器选择和最小补丁写回
  */
 export class TRANSFormat {
-  public readonly file_type = "TRANS" as const;
   /**
    * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters
    */

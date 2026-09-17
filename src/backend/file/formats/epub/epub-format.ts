@@ -11,10 +11,9 @@ import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
 /**
- * EPUB 格式门面，解析和写回都收口在 Electron main 的文件域
+ * EPUB 格式门面，在后端文件域编排 AST 解析和资产写回。
  */
 export class EPUBFormat {
-  public readonly file_type = "EPUB" as const;
   /**
    * AST 抽取器在读取时生成可回放定位信息，写回器会复用同一协议
    */

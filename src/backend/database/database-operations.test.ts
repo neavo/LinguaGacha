@@ -20,6 +20,7 @@ import { ProjectDatabase } from "./database-operations";
 let temp_dir = "";
 let cleanup_databases: ProjectDatabase[] = [];
 
+/** 将测试工程限制在本例临时目录。 */
 function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
@@ -31,6 +32,7 @@ function create_database(): ProjectDatabase {
   return database;
 }
 
+/** 创建真实工程并登记连接清理。 */
 function create_database_project(name: string): { database: ProjectDatabase; lg_path: string } {
   const database = create_database();
   const lg_path = project_path(`${name}.lg`);
@@ -38,6 +40,7 @@ function create_database_project(name: string): { database: ProjectDatabase; lg_
   return { database, lg_path };
 }
 
+/** 从公开读取结果取得指定 meta，保持数据库序列化边界。 */
 function read_meta(
   database: ProjectDatabase,
   project_path: string,
@@ -47,12 +50,9 @@ function read_meta(
   return (database.get_all_meta(project_path) as Record<string, unknown>)[key] ?? default_value;
 }
 
-function project_sidecar_paths(lg_path: string): string[] {
-  return [`${lg_path}-wal`, `${lg_path}-shm`];
-}
-
+/** 观察 SQLite 是否仍保留 WAL 侧文件。 */
 function has_project_sidecar(lg_path: string): boolean {
-  return project_sidecar_paths(lg_path).some((sidecar_path) => fs.existsSync(sidecar_path));
+  return [`${lg_path}-wal`, `${lg_path}-shm`].some((sidecar_path) => fs.existsSync(sidecar_path));
 }
 
 /** 读取 SQLite 文件头中的自动回收模式，直接观察 .lg 物理契约。 */
@@ -167,7 +167,7 @@ describe("ProjectDatabase", () => {
     const { database, lg_path } = create_database_project("legacy-quality-rule-identity");
     database.set_rules(lg_path, "glossary", [{ src: "缺失身份", dst: "译文" }]);
     database.close_project(lg_path);
-    // 新工程默认标记全部迁移，移除目标 id 才能模拟历史工程首次打开。
+    // 新工程已执行全部迁移，移除目标 id 才能模拟历史工程首次打开。
     {
       using legacy_db = new DatabaseSync(lg_path);
       const applied_ids = PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS.filter(

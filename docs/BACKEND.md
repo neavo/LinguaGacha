@@ -50,7 +50,8 @@
 
 ## 3. 项目读取与写入
 
-- 格式解析用显式联合结果区分文本 Item 与 PDFDocument。PDF 导入只读取原稿摘要和 PDFPage 元信息，原始资产与文档同事务保存，资产导入和替换明确携带 PDFDocument 或表示文本格式的 null，零 Item 的 PDF 工程有效。文件列表由统一组装入口合并 asset、文本格式身份和 PDF 文档身份。
+- 文件列表按 asset 组装；普通文件类型取首个 Item，零条目为 NONE，PDF 类型来自文档身份。预览与持久化读取采用相同规则。
+- PDF 导入只读取原稿摘要和 PDFPage 元信息，原始资产与文档同事务保存，资产导入和替换明确携带 PDFDocument 或表示文本格式的 null，零 Item 的 PDF 工程有效。
 - PDF 以原稿页为持久化和修改单位，未提交页保留。translation 为 null 时保留原页，空 translate 表示内容已归入其它页，omit 须提供理由。跨页内容由 Agent 安排；核对记录不证明译稿完整，语言由工程设置提供。
 - 页指纹绑定文件路径、来源摘要和该页全部事实。重复意图、旧指纹和非法内容只拒绝对应页，合法页沿用工程写入事务；原稿替换使旧页指纹失效。PDF 更新独立推进 pdf revision 和摘要事件；文件替换重建页面，删除清理来源与页面，翻译重置清空译稿、核对与续做记录。
 - 提交、预览与导出共用逐页 Markdown 编译，脚注与标题链接在页内隔离，公式错误报告原页码与位置。聊天和 PDF 共用语法配置，HTML 按文本输出，图片仅引用本原稿区域。正文使用原页可见尺寸，尺寸和背景相同的相邻译稿连续排版，空译稿不输出也不打断正文；保留页和省略页结束当前排版。原页批注保留，译文链接在导入后重建。背景覆盖每张译文页底层，不参与正文分页。
@@ -136,6 +137,6 @@ project, files, items, pdf, quality, prompts, proofreading
 - 连接运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
 - `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
-- `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
-- 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
+- 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
+- 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
 - 历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。
