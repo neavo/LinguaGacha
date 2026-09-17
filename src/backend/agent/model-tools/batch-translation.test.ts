@@ -1,9 +1,9 @@
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
-import { create_agent_batch_translation_tool } from "./batch-translation";
+import { create_agent_batch_item_translation_tool } from "./batch-translation";
 import { normalize_batch_translation_progress } from "../../../domain/batch-translation";
 
-describe("Agent 批量翻译工具", () => {
+describe("Agent 条目批量翻译工具", () => {
   it("顺序工具传递范围与失败策略并等待完整结果", async () => {
     let complete!: () => void;
     const pending = new Promise<void>((resolve) => {
@@ -17,8 +17,7 @@ describe("Agent 批量翻译工具", () => {
       await pending;
       return summary;
     });
-    const tool = create_agent_batch_translation_tool(run);
-    expect(tool.name).toBe("run_batch_translation");
+    const tool = create_agent_batch_item_translation_tool(run);
     expect(tool.executionMode).toBe("sequential");
     const call = (args: unknown) =>
       validateToolArguments(tool, {
@@ -29,6 +28,7 @@ describe("Agent 批量翻译工具", () => {
       } as ToolCall);
     const request = { scope: { kind: "items" as const, item_ids: [1, 2] }, include_errors: true };
     expect(call(request)).toEqual(request);
+    expect(() => call({ scope: { kind: "pages" }, include_errors: false })).toThrow();
     expect(() => call({})).toThrow();
     const signal = new AbortController().signal;
     const settled = vi.fn();

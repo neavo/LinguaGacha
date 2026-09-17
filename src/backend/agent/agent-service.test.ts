@@ -312,7 +312,7 @@ function create_fake_response(context: Context): FauxResponseStep {
       ? fauxAssistantMessage("翻译完成")
       : fauxAssistantMessage(
           fauxToolCall(
-            "run_batch_translation",
+            "run_batch_item_translation",
             { scope: { kind: "all" }, include_errors: false },
             { id: "batch-translation" },
           ),
@@ -1822,13 +1822,15 @@ describe("AgentService", () => {
 
     await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
     await wait_for_idle(service);
-    expect(fake_agent_state.tool_names.at(-1)).toEqual([
-      "run_batch_translation",
-      "ask_user",
-      "workspace_run",
-      "workspace_apply",
-      "read_skill",
-    ]);
+    expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
+      [
+        "run_batch_item_translation",
+        "ask_user",
+        "workspace_run",
+        "workspace_apply",
+        "read_skill",
+      ].sort(),
+    );
     expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
       "user_message",
@@ -1885,7 +1887,7 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_search");
   });
 
-  it("Electron 工作区端口随工具注册，并区分会话与工程 reset", async () => {
+  it("Electron 工作区端口初始化并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
@@ -1905,15 +1907,6 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(workspace.initialize).toHaveBeenCalledOnce();
-    expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
-      [
-        "run_batch_translation",
-        "ask_user",
-        "workspace_run",
-        "workspace_apply",
-        "read_skill",
-      ].sort(),
-    );
     await expect(service.activate_workspace_path({ path: "work/report.md" })).resolves.toEqual({
       status: "cancelled",
     });

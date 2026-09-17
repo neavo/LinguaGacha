@@ -5,7 +5,7 @@ import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { resolve_agent_batch_translation_model } from "../model/model-config-resolver";
 import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
-import { create_agent_batch_translation_tool } from "./model-tools/batch-translation";
+import { create_agent_batch_item_translation_tool } from "./model-tools/batch-translation";
 import {
   InMemoryCredentialStore,
   type AssistantMessage,
@@ -1075,7 +1075,7 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
-        create_agent_batch_translation_tool(async (request, signal) => {
+        create_agent_batch_item_translation_tool(async (request, signal) => {
           const lease = this.runtime_lease;
           if (lease === null) throw new AppErrors.AppError("runtime.internal_invariant");
           if (this.translation_paused_result !== null) return this.translation_paused_result;
@@ -1107,7 +1107,7 @@ export class AgentService {
               this.log_manager.error(t_main_log("app.diagnostic.agent.tool_execution_failed"), {
                 source: "agent",
                 error,
-                context: { tool_name: "run_batch_translation" },
+                context: { tool_name: "run_batch_item_translation" },
               });
               throw new AgentToolError({ code: "tool_failed", ...error.result }, error);
             }
