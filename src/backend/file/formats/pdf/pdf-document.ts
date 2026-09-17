@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import * as mupdf from "mupdf";
 import type { PDFDocument, PDFRegion } from "../../../../shared/pdf";
-import { render_pdf_translation, render_pdf_html } from "./pdf-translation";
+import { is_pdf_original_page, render_pdf_translation, render_pdf_html } from "./pdf-translation";
 
 const PDF_MAX_PIXELS = 32_000_000;
 const PDF_COORDINATE_DECIMALS = 6;
@@ -118,8 +118,8 @@ export type BuildPDFDocumentArgs = {
 export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Uint8Array> {
   args.signal?.throwIfAborted();
   const document = args.document;
-  const rendered = render_pdf_translation(document);
-  if (document.pages.every((page) => page.translation === null)) return args.source_bytes;
+  const rendered = render_pdf_translation(document); // 原页直出也先校验处置理由和文档结构。
+  if (document.pages.every(is_pdf_original_page)) return args.source_bytes;
   const output = new mupdf.PDFDocument(args.source_bytes);
   try {
     const order: number[] = []; // 最后一次重排保留原页对象与批注。
@@ -127,11 +127,11 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
       args.signal?.throwIfAborted();
       const page = document.pages[index]!;
       const translation = page.translation;
-      if (translation === null) {
+      if (is_pdf_original_page(page)) {
         order.push(index++);
         continue;
       }
-      if (translation.kind === "omit" || rendered[index] === null) {
+      if (translation?.kind !== "translate" || rendered[index] === null) {
         index++;
         continue;
       }

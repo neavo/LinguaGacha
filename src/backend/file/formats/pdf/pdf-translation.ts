@@ -4,6 +4,11 @@ import { validate_pdf_region, read_pdf_document } from "./pdf-source";
 import { pdf_markdown, type PDFMarkdown } from "./pdf-markdown";
 import styles from "./pdf-print.css?raw";
 
+/** 待处理与确认保留都输出原页，完成率由页面处置另行统计。 */
+export function is_pdf_original_page(page: PDFPage): boolean {
+  return page.translation === null || page.translation.kind === "keep";
+}
+
 /** 调用方已校验载荷与页身份；这里独立编译正文、隔离引用，保存允许暂时没有输出页。 */
 export function render_pdf_page_translation(
   page: PDFPage,
@@ -11,8 +16,9 @@ export function render_pdf_page_translation(
 ): PDFMarkdown | null {
   const translation = page.translation;
   if (translation === null) return null;
-  if (translation.kind === "omit") {
-    if (!translation.reason.trim()) throw new Error("Omitted PDF pages require a reason.");
+  if (translation.kind !== "translate") {
+    if (!translation.reason.trim())
+      throw new Error(`PDF ${translation.kind} pages require a reason.`);
     return null;
   }
   if (translation.background) validate_pdf_region(source, translation.background);
@@ -31,7 +37,7 @@ export function render_pdf_page_translation(
 export function render_pdf_translation(document: PDFDocument): (PDFMarkdown | null)[] {
   read_pdf_document(document);
   const rendered = document.pages.map((page) => render_pdf_page_translation(page, document));
-  if (!document.pages.some((page, index) => page.translation === null || rendered[index] !== null))
+  if (!document.pages.some((page, index) => is_pdf_original_page(page) || rendered[index] !== null))
     throw new Error("PDF output must retain at least one page.");
   return rendered;
 }

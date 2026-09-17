@@ -27,6 +27,14 @@ it("页指纹绑定来源和页面事实，邻页修改只改变整份导出版�
   expect(pdf_page_fingerprint("book.pdf", "b".repeat(64), copy.pages[0]!)).not.toBe(first);
   copy.pages[0]!.reviewed = true;
   expect(pdf_page_fingerprint("book.pdf", copy.digest, copy.pages[0]!)).not.toBe(first);
+  copy.pages[0]!.reviewed = false;
+  copy.pages[0]!.translation = { kind: "keep", reason: "无需翻译" };
+  const kept = pdf_page_fingerprint("book.pdf", copy.digest, copy.pages[0]!);
+  expect(kept).not.toBe(first);
+  copy.pages[0]!.translation.reason = "原页只有插画";
+  expect(pdf_page_fingerprint("book.pdf", copy.digest, copy.pages[0]!)).not.toBe(kept);
+  copy.pages[0]!.translation = { kind: "omit", reason: "无需翻译" };
+  expect(pdf_page_fingerprint("book.pdf", copy.digest, copy.pages[0]!)).not.toBe(kept);
   expect(() => read_pdf_document({ ...document, extra: true })).toThrow();
   copy.pages.reverse();
   expect(() => read_pdf_document(copy)).toThrow("source order");

@@ -33,6 +33,10 @@ const PDF_PAGE_UPDATE_SCHEMA = Type.Object(
         { additionalProperties: false },
       ),
       Type.Object(
+        { kind: Type.Literal("keep"), reason: Type.String({ minLength: 1 }) },
+        { additionalProperties: false },
+      ),
+      Type.Object(
         { kind: Type.Literal("omit"), reason: Type.String({ minLength: 1 }) },
         { additionalProperties: false },
       ),
@@ -109,8 +113,8 @@ export function pdf_page_fingerprint(file_path: string, digest: string, page: PD
     page.label,
     translation === null
       ? null
-      : translation.kind === "omit"
-        ? ["omit", translation.reason]
+      : translation.kind !== "translate"
+        ? [translation.kind, translation.reason]
         : [
             "translate",
             translation.markdown,

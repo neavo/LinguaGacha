@@ -292,15 +292,15 @@ export class ProjectDatabase {
     );
   }
 
-  /** 列表只统计页面处理种类和核对页数，正文按单文档读取。 */
+  /** 列表按页面处置统计，正文按单文档读取。 */
   public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
     return this.with_project_connection(project_path, (db) =>
       Object.fromEntries(
         db
           .prepare(
             `SELECT p.file_path, COUNT(*) AS pages,
-             SUM(json_extract(p.data, '$.reviewed')) AS reviewed_pages,
              SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'translate' THEN 1 ELSE 0 END) AS translated_pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'keep' THEN 1 ELSE 0 END) AS kept_pages,
              SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'omit' THEN 1 ELSE 0 END) AS omitted_pages
            FROM pdf_pages p JOIN assets a ON a.path = p.file_path
            GROUP BY p.file_path ORDER BY a.sort_order, a.id`,
@@ -310,8 +310,8 @@ export class ProjectDatabase {
             row_text(row, "file_path"),
             {
               pages: Number(row["pages"]),
-              reviewed_pages: Number(row["reviewed_pages"] ?? 0),
               translated_pages: Number(row["translated_pages"]),
+              kept_pages: Number(row["kept_pages"]),
               omitted_pages: Number(row["omitted_pages"]),
             },
           ]),

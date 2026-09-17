@@ -73,9 +73,10 @@ async function read_text(bytes: Uint8Array): Promise<string[]> {
   }
 }
 
-it("没有译稿时原样输出资产，不调用打印或图片宿主", async () => {
+it("待处理与确认保留页共同原样输出资产，无需打印", async () => {
   const bytes = create_pdf_fixture();
   const document = read_pdf_document(bytes);
+  document.pages[0]!.translation = { kind: "keep", reason: "已确认无需翻译" };
   const print = vi.fn();
   expect(await build_pdf_document({ title: "book", document, source_bytes: bytes, print })).toEqual(
     bytes,
@@ -97,6 +98,7 @@ it("混合导出保留头尾与中间原页，译稿跨过空页连续打印，�
   saved.destroy();
   original.destroy();
   const document = read_pdf_document(bytes);
+  document.pages[4]!.translation = { kind: "keep", reason: "原页无需翻译" };
   document.pages[1]!.translation = { kind: "translate", markdown: "# Second" };
   document.pages[2]!.translation = { kind: "translate", markdown: "" };
   document.pages[3]!.translation = { kind: "translate", markdown: "# Fourth" };
@@ -248,6 +250,7 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
   print_buffer.destroy();
   printed.destroy();
   const document = read_pdf_document(bytes);
+  document.pages[0]!.translation = { kind: "keep", reason: "保留原页与批注" };
   document.pages[1]!.translation = { kind: "translate", markdown: "Translation" };
   const result = new mupdf.PDFDocument(
     await build_pdf_document({

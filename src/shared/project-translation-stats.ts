@@ -13,13 +13,15 @@ export type ProjectTranslationStatsResponse = {
   stats: ProjectTranslationStats;
 };
 
-/** 成功和跳过均计入完成，工程与文件共用整数完成率。 */
+/** 成功和跳过均计入完成；仍有未完成对象时取整最高为 99%。 */
 export function calculate_completion_percent(
   total: number,
   completed: number,
   skipped: number,
 ): number {
-  return total === 0 ? 0 : Math.round(((completed + skipped) / total) * 100);
+  if (total === 0) return 0;
+  const finished = completed + skipped;
+  return finished === total ? 100 : Math.min(99, Math.round((finished / total) * 100));
 }
 
 /** 只读取条目状态，供磁盘预览和已加载工程使用同一统计口径。 */

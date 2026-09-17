@@ -112,9 +112,9 @@ describe("ProjectSummaryService", () => {
     ]);
   });
 
-  it("PDF 使用原页的译稿与省略统计，核对数量不影响进度且失败状态不适用", async () => {
+  it("PDF 按原页汇总译稿、确认保留和省略，失败状态不适用", async () => {
     const { service } = await create_service([], [{ path: "book.pdf", sort_order: 0 }], {
-      "book.pdf": { pages: 3, translated_pages: 1, omitted_pages: 1, reviewed_pages: 3 },
+      "book.pdf": { pages: 4, translated_pages: 1, omitted_pages: 1, kept_pages: 1 },
     });
     expect(service.read().snapshot.entries).toEqual([
       {
@@ -123,12 +123,12 @@ describe("ProjectSummaryService", () => {
         sort_index: 0,
         progress: {
           unit: "page",
-          total_count: 3,
+          total_count: 4,
           completed_count: 1,
-          skipped_count: 1,
+          skipped_count: 2,
           failed_count: null,
           pending_count: 1,
-          completion_percent: 67,
+          completion_percent: 75,
         },
       },
     ]);

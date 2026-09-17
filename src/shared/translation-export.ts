@@ -2,7 +2,7 @@
 export type PDFFileExportResult = {
   file_path: string;
   translated_pages: number;
-  original_pages: number;
+  original_pages: number; // 实际输出的原稿页，包含待处理与确认保留页
   omitted_pages: number;
 };
 export type TranslationFileExportResult = {

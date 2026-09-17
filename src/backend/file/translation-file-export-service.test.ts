@@ -65,14 +65,17 @@ function create_database(
 
 describe("TranslationFileExportService", () => {
   it.each(["gui", "directory", "single"] as const)(
-    "%s 在工程语言变化后导出已存译稿并保留原页，无译稿文件原样写出",
+    "%s 导出已存译稿与确认保留的原页，全保留文件原样写出",
     async (entry) => {
       const source = create_pdf_fixture();
       const document = read_pdf_document(source);
       const partial = structuredClone(document);
+      partial.pages[0]!.translation = { kind: "keep", reason: "无需翻译" };
       partial.pages[1]!.translation = { kind: "translate", markdown: "已有译稿" };
       partial.pages[1]!.notes = "待继续";
       partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
+      for (const page of document.pages)
+        page.translation = { kind: "keep", reason: "按用户要求保留原稿" };
       const database = create_database(
         [],
         { "book.pdf": Buffer.from(source), "original.pdf": Buffer.from(source) },
@@ -120,7 +123,6 @@ describe("TranslationFileExportService", () => {
         expect(exported.pages).toHaveLength(2);
       }
       expect(host).toHaveBeenCalledTimes(1);
-      expect(partial.pages.filter((page) => page.translation !== null)).toHaveLength(2);
     },
   );
 

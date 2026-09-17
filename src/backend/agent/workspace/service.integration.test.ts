@@ -15,6 +15,7 @@ import {
 import { create_pdf_fixture } from "../../file/formats/pdf/test-support";
 import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import { ProjectDataReader } from "../../project/project-data-reader";
+import type { PDFPageUpdate } from "../../../shared/pdf";
 
 it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工作区继续并导出", async () => {
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-pdf-workspace-"));
@@ -108,10 +109,10 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     const second_fp = pdf_page_fingerprint("book.pdf", original.digest, original.pages[1]!);
     const request_approval = vi.fn(async () => undefined);
     // 通过真实 JSONL 接口提交单页，保留其它页的持久状态。
-    const save = async (fp: string, update: typeof draft) => {
+    const save = async (fp: string, update: PDFPageUpdate, page = 1) => {
       fs.writeFileSync(
         path.join(root, "changes/pdf/updates.jsonl"),
-        JSON.stringify({ file_path: "book.pdf", page: 1, fp, ...update }),
+        JSON.stringify({ file_path: "book.pdf", page, fp, ...update }),
       );
       return workspace.apply_workspace(request_approval);
     };
@@ -188,6 +189,20 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
     ]);
     expect(read_document().pages[0]!.notes).toBe("等待版式核对");
     expect(read_document().pages[2]).toEqual(original.pages[2]);
+    await workspace.run("", [], new AbortController().signal);
+    expect(
+      (
+        await save(
+          pdf_page_fingerprint("book.pdf", original.digest, original.pages[2]!),
+          {
+            translation: { kind: "keep", reason: "已查看纯图页，无需翻译" },
+            reviewed: true,
+            notes: "",
+          },
+          3,
+        )
+      )["status"],
+    ).toBe("applied");
     await workspace.initialize();
     resources.settings.set_transient_overrides({ source_language: "ALL", target_language: "DE" });
     resources.database.upsert_meta_entries(project_path, {
@@ -208,7 +223,13 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       translation: { kind: "translate", markdown: "" },
       notes: "正文归入第 1 页",
     });
-    expect(rows[2].fp).toBe(pdf_page_fingerprint("book.pdf", original.digest, original.pages[2]!));
+    expect(rows[2].translation).toEqual({ kind: "keep", reason: "已查看纯图页，无需翻译" });
+    expect(services.project.summary.read().snapshot.entries[0]!.progress).toMatchObject({
+      completed_count: 2,
+      skipped_count: 1,
+      pending_count: 0,
+      completion_percent: 100,
+    });
     draft.notes = "重新读取工程设置后继续核对";
     expect(
       (
@@ -241,6 +262,7 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       expect(exported.pages).toHaveLength(2);
     }
     expect(read_document().pages[0]).toMatchObject(draft);
+    // 重置和删除使用当前 revision，避免沿用先前提交的快照。
     const revision = () =>
       new ProjectDataReader(resources.database).build_manifest({
         loaded: true,

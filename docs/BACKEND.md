@@ -11,8 +11,8 @@
 - 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
 - `POST /api/session/project/preview` 直接读取磁盘，不加载或切换会话；文件路径与工作台共用 asset 顺序及历史条目补齐规则，统计复用 `build_project_translation_stats`。
-- `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零；该口径独立于本轮任务进度。响应携带工程路径供切换隔离。
-- `POST /api/workbench/snapshot` 的文本文件复用工程统计口径；PDF 按原页统计译稿覆盖、省略和等待，失败计数为 null 表示不适用。PDF 空 translate 页计入覆盖，核对标记不参与完成率；工程统计仍只汇总文本条目。
+- `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零，仍有未完成对象时最高为 99%；该口径独立于本轮任务进度。响应携带工程路径供切换隔离。
+- `POST /api/workbench/snapshot` 的文本文件复用工程统计口径；PDF 按原页处置计数，translate（含空译稿）为完成，keep 与 omit 为跳过，其余为等待，失败计数为 null。完成率复用工程取整规则，与核对标记独立；工程统计仍只汇总文本条目。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影省略 `LogError.message`、保留调用栈。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
@@ -54,7 +54,7 @@
 
 - 文件列表按 asset 组装；普通文件类型取首个 Item，零条目为 NONE，PDF 类型来自文档身份。预览与持久化读取采用相同规则。
 - PDF 导入只读取原稿摘要和 PDFPage 元信息，原始资产与文档同事务保存，资产导入和替换明确携带 PDFDocument 或表示文本格式的 null，零 Item 的 PDF 工程有效。
-- PDF 以原稿页为持久化和修改单位，未提交页保留。translation 为 null 时保留原页，空 translate 表示内容已归入其它页，omit 须提供理由。跨页内容由 Agent 安排；核对记录不证明译稿完整，语言由工程设置提供。
+- PDF 以原稿页为持久化和修改单位，未提交页沿用已保存事实。translation 为 null 表示待处理并暂时输出原页，keep 确认无需翻译并保留原页，omit 按用户要求省略原页，后两者须提供非空白理由。空 translate 表示内容已归入其它页。跨页归属由 Agent 安排，语言由工程设置提供。
 - 页指纹绑定文件路径、来源摘要和该页全部事实。重复意图、旧指纹和非法内容只拒绝对应页，合法页沿用工程写入事务；原稿替换使旧页指纹失效。PDF 更新独立推进 pdf revision 和摘要事件；文件替换重建页面，删除清理来源与页面，翻译重置清空译稿、核对与续做记录。
 - 提交、预览与导出共用逐页 Markdown 编译，脚注与标题链接在页内隔离，公式错误报告原页码与位置。聊天和 PDF 共用语法配置，HTML 按文本输出，图片仅引用本原稿区域。正文使用原页可见尺寸，尺寸和背景相同的相邻译稿连续排版，空译稿不输出也不打断正文；保留页和省略页结束当前排版。原页批注保留，译文链接在导入后重建。背景覆盖每张译文页底层，不参与正文分页。
 - 全部保留时原样输出 asset，译文页数可变化。保存允许暂时没有输出页，预览和导出至少保留一页。整份导出版本由有序页指纹计算，独立于页级写入冲突。计算失败终止导出，文件服务负责落盘。宿主边界归 [ARCHITECTURE](ARCHITECTURE.md)，工作区入口归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
@@ -71,7 +71,7 @@ project, files, items, pdf, quality, prompts, proofreading
 - 文本源文件与需要重读原始 asset 的格式统一通过 shared 解码入口把 bytes 转成字符串，固定按 BOM、调用方声明编码、严格 UTF-8、传统编码探测的顺序裁决；无法确定或不支持的编码按文件解析失败处理。
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
-- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI、CLI 及 Agent 单文件的格式写回和输出目录语义。PDF 在写文件前固定页面并校验内容，PDF 摘要与导出回执均按原页计数，translated_pages 包含空译稿页。
+- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI、CLI 及 Agent 单文件的格式写回和输出目录语义。PDF 在写文件前固定页面并校验内容，回执按原页计数，translated_pages 包含空译稿页，original_pages 包含待处理与确认保留页，不表示完成数量。
 - 三个导出入口共用开始、完成和失败处理。未知导出异常统一为 `translation.export_failed`，已有业务错误保留原码；界面兜底与导出失败日志复用同一文案，导出服务记录一次原始异常及其调用栈、原因链，Gateway 另保留请求诊断。格式写回依赖的原始 asset 缺失时必须报错，失败终止本次导出，已写出的产物可能保留；打开输出目录失败只记录附加动作错误。
 - EPUB 的 `slot_per_line`、`block_text` 和历史无 AST 条目继续按原协议写回；`text_run` 绑定原始 DOM 片段，全部片段定位在修改节点前核验并解析。manifest href 在读取入口解码一次，ZIP 键和持久定位不重复解码。打开项目不重建条目；旧 ruby 迁移只转换节点与正文匹配的候选，保留 ID、行号及用户事实。
 - “全部重置”在项目写 lease 内从工程保存的全部 asset 重建条目（PDF 清空页面译稿、核对与续做记录），分配新 ID 并重新预过滤；格式 reader 恢复源文件自带译文并据此重算完成进度，耗时和 token 累计清零。条目数允许变化，读取或解析失败时不提交部分结果；成功后经 `ProjectWriteStore` 原子替换并发布 items 全量失效。指定文件或失败条目的重置保留既有身份。

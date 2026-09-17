@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { PDFDocument, PDFDocumentRecord } from "../../../../shared/pdf";
+import { is_pdf_original_page } from "./pdf-translation";
 import { write_binary_file, type FileFormatWriteContext } from "../file-format-shared";
 import type { PDFExecution } from "./pdf-worker";
 import { AppError } from "../../../../shared/error";
@@ -9,7 +10,7 @@ export class PDFFormat {
   /** 计算端口由组合根注入，格式层负责资产读取和最终落盘。 */
   public constructor(private readonly execute: PDFExecution) {}
 
-  /** 无译稿直接复制原字节，其余文档交给计算线程组合页面。 */
+  /** 导出服务已校验文档；全部输出原页时省去计算线程，其余由线程组合。 */
   public async write_to_path(
     documents: readonly PDFDocumentRecord[],
     context: FileFormatWriteContext & { signal?: AbortSignal },
@@ -17,7 +18,7 @@ export class PDFFormat {
     for (const { file_path, document } of documents) {
       const bytes = context.asset_reader(file_path);
       if (bytes === null) throw new AppError("file.not_found");
-      const output = document.pages.every((page) => page.translation === null)
+      const output = document.pages.every(is_pdf_original_page)
         ? bytes
         : await this.execute(
             { kind: "build", title: path.basename(file_path), document, bytes },

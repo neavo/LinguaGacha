@@ -8,10 +8,11 @@ export type PDFPage = PDFPageUpdate & {
   rotation: number;
   label: string | null;
 };
-/** null 保留原页，translate 接管原页，omit 按明确理由跳过。 */
+/** null 待处理，translate 接管原页，keep 确认保留，omit 按用户要求省略。 */
 export type PDFPageTranslation =
   | null
   | { kind: "translate"; markdown: string; background?: PDFRegion }
+  | { kind: "keep"; reason: string }
   | { kind: "omit"; reason: string };
 /** 整页替换的可修改事实；空译稿接管原页，但不生成独立正文。 */
 export type PDFPageUpdate = {
@@ -26,8 +27,8 @@ export type PDFDocument = {
 };
 export type PDFSummary = {
   pages: number;
-  reviewed_pages: number;
   translated_pages: number; // 译稿覆盖的原页数，不是输出 PDF 的页数
+  kept_pages: number; // 已确认无需翻译并保留原页
   omitted_pages: number;
 };
 export type PDFDocumentRecord = { file_path: string; document: PDFDocument };

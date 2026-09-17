@@ -34,8 +34,12 @@ it("空译稿和省略页可独立保存，全部没有输出页时仅拒绝预�
   expect(() => render_pdf_translation(document)).toThrow("at least one page");
   document.pages[0]!.translation = null;
   expect(render_pdf_translation(document)).toEqual([null, null, null]);
-  document.pages[1]!.translation = { kind: "omit", reason: " " };
-  expect(() => render_pdf_translation(document)).toThrow("require a reason");
+  document.pages[0]!.translation = { kind: "keep", reason: "保留原页" };
+  expect(render_pdf_translation(document)).toEqual([null, null, null]);
+  for (const kind of ["keep", "omit"] as const) {
+    document.pages[1]!.translation = { kind, reason: " " };
+    expect(() => render_pdf_translation(document)).toThrow("require a reason");
+  }
 });
 
 it("背景区域按原稿边界校验，空译稿也不能保存越界引用", () => {

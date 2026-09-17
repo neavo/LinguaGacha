@@ -525,22 +525,24 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
   expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });
 
-it("PDF 摘要只将译稿页面计入已翻译页，省略页保留独立语义", () => {
+it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", () => {
   const { database, lg_path } = create_database_project("pdf-summary");
   const source = project_path("summary.pdf");
-  const bytes = create_pdf_fixture();
+  const bytes = create_pdf_fixture(["Text", null, null, null, "Pending"]);
   fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
   document.pages[0]!.translation = { kind: "translate", markdown: "正文" };
   document.pages[1]!.translation = { kind: "omit", reason: "装饰页" };
-  document.pages[0]!.reviewed = document.pages[1]!.reviewed = true;
+  document.pages[2]!.translation = { kind: "keep", reason: "纯图页无需翻译" };
+  document.pages[3]!.translation = { kind: "translate", markdown: "" };
+  for (const page of document.pages) page.reviewed = true;
   database.transaction(lg_path, () =>
     database.add_asset_from_source(lg_path, "summary.pdf", source, document, 0),
   );
   expect(database.read_pdf_summaries(lg_path)["summary.pdf"]).toEqual({
-    pages: 3,
-    reviewed_pages: 2,
-    translated_pages: 1,
+    pages: 5,
+    translated_pages: 2,
+    kept_pages: 1,
     omitted_pages: 1,
   });
 });

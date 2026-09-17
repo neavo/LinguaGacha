@@ -101,17 +101,18 @@ export class ProjectSummaryService {
     let progress: WorkbenchFileProgress;
     if (file_entry.file_type === "PDF") {
       const pdf = pdf_summaries[file_entry.rel_path];
+      const skipped_count = pdf.kept_pages + pdf.omitted_pages; // 两种处置均完成处理，导出时仍区分保留与省略。
       progress = {
         unit: "page",
         total_count: pdf.pages,
         completed_count: pdf.translated_pages,
-        skipped_count: pdf.omitted_pages,
+        skipped_count,
         failed_count: null,
-        pending_count: pdf.pages - pdf.translated_pages - pdf.omitted_pages,
+        pending_count: pdf.pages - pdf.translated_pages - skipped_count,
         completion_percent: calculate_completion_percent(
           pdf.pages,
           pdf.translated_pages,
-          pdf.omitted_pages,
+          skipped_count,
         ),
       };
     } else {
