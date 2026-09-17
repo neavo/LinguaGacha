@@ -1,9 +1,6 @@
-import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isBuiltin, registerHooks } from "node:module";
 
-import { is_json_record, type JsonRecord } from "../../../../domain/json";
-import { iterate_utf8_lf_lines } from "../../../../shared/utils/text-tool";
 import { SystemProxyHttpClient } from "../../../network/system-proxy-http-client";
 import { create_agent_workspace_runtime_api } from "./api";
 import type {
@@ -63,7 +60,7 @@ client.install_as_global_fetch();
 const contract: unknown = JSON.parse(await readFile("contract.json", "utf8"));
 Object.defineProperty(globalThis, "ws", {
   value: create_agent_workspace_runtime_api(
-    { contract, iterateJsonl: iterate_jsonl },
+    contract,
     start.todos,
     (todos) => {
       // send 自身负责刷新待发送消息；发送失败成为程序失败，不能提交未送达的 Todo。
@@ -93,19 +90,4 @@ function send_message(message: AgentWorkspaceRuntimeChildMessage): Promise<void>
     }
     process.send(message, (error) => (error === null ? resolve() : reject(error)));
   });
-}
-
-/** 按行读取快照，提前结束迭代时也关闭文件。 */
-async function* iterate_jsonl(file_path: string): AsyncIterable<JsonRecord> {
-  const stream = createReadStream(file_path);
-  try {
-    for await (const line of iterate_utf8_lf_lines(stream)) {
-      if (line.trim() === "") continue;
-      const value: unknown = JSON.parse(line);
-      if (!is_json_record(value)) throw new Error(`Workspace JSONL entry is invalid: ${file_path}`);
-      yield value;
-    }
-  } finally {
-    stream.destroy();
-  }
 }

@@ -472,8 +472,8 @@ describe("AgentSessionStore", () => {
   });
 
   it.each([
-    { pdf: 0, items: 2, glossary: 1 },
-    { pdf: 2, items: 0, glossary: 0 },
+    { pages: 0, items: 2, glossary: 1 },
+    { pages: 2, items: 0, glossary: 0 },
   ])("写入决定保留完整数量并通过单一命令受理：%j", async (counts) => {
     const waiting = {
       kind: "write_approval" as const,
@@ -555,7 +555,7 @@ describe("AgentSessionStore", () => {
         kind: "write_approval",
         id: "countdown-write",
         summary: {
-          pdf: 0,
+          pages: 0,
           items: 1,
           glossary: 0,
           textPreserve: 0,
@@ -672,7 +672,7 @@ describe("AgentSessionStore", () => {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
-        pdf: 0,
+        pages: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,
@@ -703,7 +703,7 @@ describe("AgentSessionStore", () => {
         pendingDecision: {
           ...pending,
           id: "incomplete-summary",
-          summary: { ...pending.summary, pdf: undefined },
+          summary: { ...pending.summary, pages: undefined },
         },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {

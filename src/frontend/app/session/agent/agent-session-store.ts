@@ -1007,7 +1007,7 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
   if (value["kind"] !== "write_approval") return undefined;
   const raw_summary = value["summary"];
   if (!is_json_record(raw_summary)) return undefined;
-  const pdf = raw_summary["pdf"];
+  const pages = raw_summary["pages"];
   const items = raw_summary["items"];
   const glossary = raw_summary["glossary"];
   const text_preserve = raw_summary["textPreserve"];
@@ -1015,10 +1015,10 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
   const post_replacement = raw_summary["postReplacement"];
   const prompts = raw_summary["prompts"];
   if (
-    ![pdf, items, glossary, text_preserve, pre_replacement, post_replacement, prompts].every(
+    ![pages, items, glossary, text_preserve, pre_replacement, post_replacement, prompts].every(
       (count) => typeof count === "number" && Number.isInteger(count) && count >= 0,
     ) ||
-    (pdf as number) +
+    (pages as number) +
       (items as number) +
       (glossary as number) +
       (text_preserve as number) +
@@ -1030,7 +1030,7 @@ function normalize_pending_decision(value: unknown): AgentPendingDecision | null
     return undefined;
   }
   const summary: AgentPendingWriteSummary = {
-    pdf: pdf as number,
+    pages: pages as number,
     items: items as number,
     glossary: glossary as number,
     textPreserve: text_preserve as number,

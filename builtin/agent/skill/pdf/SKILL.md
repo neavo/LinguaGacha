@@ -1,107 +1,91 @@
 ---
 name: pdf
-description: 读取、分析和处理 PDF 文件时使用
+description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿保存、排版或预览时使用。
 ---
 
-# PDF
+# PDF 处理能力
 
-## 读取与看图
+## 原稿与 `pages`
 
-1. 读取 `ws.contract`、`project_meta` 和 `ws.contract.datasets.pdf` 指向的 JSONL。每行是一个原稿页，身份为 `file_path` 与 `page`，`fp` 用于该页提交，完整载荷以数据集的 `schema` 为准。
-2. 页码从 1 开始，同一文件的页面按原稿顺序排列。原稿路径来自 `project_meta.files[].source_binary_path`。直接导入 `mupdf`，一次打开文档并按需批量提取文字、字体与坐标，把调查材料存入 `work`。
-3. 在 JS 中用 `@lg/pdf` 的 `render_pdf_page` 渲染已打开文档的页面或区域，保存到 `work`，再用 `await ws.emitImage(path)` 把图片交给模型。多栏、表格、图注、公式和无提取文本的页面结合图像判断。跨页内容连同相邻页阅读。
-4. MuPDF 文档、页面和提取结果用 `try/finally` 与 `destroy()` 释放。同一程序复用文档，处理完一页及时释放页面和图片。区域坐标采用旋转后、左上角原点的 `scale=1` 页面坐标，放大只改变 `scale`。
+通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以对应 `reference` 为准。`project_meta.files[].source_binary_path` 提供原稿路径。`page` 字段是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。
 
-## 翻译与续做
+用 `mupdf` 提取文字、字体与坐标，用 `@lg/pdf` 的 `render_pdf_page` 渲染页面或区域，再通过 `ws.emitImage` 查看。多栏、表格、扫描页、图注和公式需要结合图像判断，跨页内容连同邻页读取。
 
-翻译时加载 `translation-rules`。PDF 的处理单位是原稿 `page`。
+区域坐标以旋转后的页面左上角为原点，按 `scale=1` 计算。放大图像时调整渲染 `scale`，`region.page` 须与请求页一致。
 
-正式译稿按原稿页独立保存。每次提交该页完整的 `translation`、`reviewed` 和 `notes`，未提交页沿用已保存事实。`translation` 表达该页的处置：
-
-- `null`：待处理，导出时暂时输出原页。恢复为此值表示清除该页的完成处置。
-- `{ kind: "translate", markdown, background? }`：输出归属于该页的译文，`markdown` 可为空。
-- `{ kind: "keep", reason }`：确认无需翻译并保留原始页面，`reason` 说明判断依据。
-- `{ kind: "omit", reason }`：按用户要求省略该原页，`reason` 必须说明原因。
-
-没有提取文字时先看图，检查扫描正文、图片标注和图例，确认没有待翻译内容后提交 `keep`。仍缺判断依据时保持待处理，并在 `notes` 记录缺口。译稿覆盖、确认保留和省略页都计入完成。
-
-跨页段落、表格和图注由 Agent 决定归属。可以把完整内容放在其中一页，其余已被接管的页面提交空译稿，并在相关页的 `notes` 记录内容来源与去向。空译稿不恢复原文、不生成空白页，也不打断连续正文。尚未整理完整的页面先在 `work` 留草稿，避免局部正文替换整页造成遗漏。跨页调整提交涉及的全部页面，并根据逐页回执修复失败页。
-
-译文采用所属原页的可见尺寸。相邻有正文的译稿尺寸和背景相同时连续排版，尺寸或背景改变时开始新页，译文页数可以增加。保留原页和省略页结束当前连续排版。保存允许暂时全部为空译稿或省略，预览与导出要求至少有一张输出页。
-
-核对遗漏、表格数字、图例、术语与引用后更新 `reviewed`，在 `notes` 记录该页待办和续做说明。这两个字段不决定完成率。
-
-## 排版与引用
-
-Markdown 每页独立校验和编译，支持标题、强调、列表、引用、代码、GFM 表格列对齐、提示块、公式和编号注释。
-
-图片写为 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`，`DIGEST` 使用当前 `digest`，区域位于对应原页。地图、图表和公式截图属于正文插图。裁剪应保留标记、比例尺和必要图例，按标题、图片、连续说明组织，避免图注与标题重复或图片打断编号说明。
-
-`background: { page, x, y, width, height }` 只引用本原稿的干净装饰区域，按比例覆盖该页译稿生成的输出页且不占正文空间。先看图确认区域不含正文或地图；整页截图中的原文也会叠印到译文后方。
-
-行内公式使用 `$...$`，独立公式使用 `$$` 单独成行的块。货币美元符号使用 `\$`，普通代码保持字面内容。提示块使用 `> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING`、`CAUTION`。注释使用 `[^id]` 与 `[^id]: 内容`，引用和定义放在同一页译稿，输出在该页译稿末尾并提供回链。公式错误会附带原页码与行列位置拒绝提交，应修正，或在确实需要时使用清晰的原稿截图。
-
-链接使用 HTTP(S)、`mailto:` 或按当前页译稿标题出现顺序编号的页内锚点 `#heading-1`、`#heading-2`。原始 HTML 标签与注释按字面文本输出，换行使用 Markdown 语法。应用控制字体、HTML、样式和资源加载。
-
-## 保存与核验
-
-1. 在 `ws.contract.changes.pdf.updates` 指定的 JSONL 中，每行写入一个页面的 `file_path`、`page`、当前页 `fp`、`translation`、`reviewed` 和 `notes`。同批同页只写一次。
-2. 页面独立接受或拒绝，回执按文件和原页码定位，审批与 `applied.pdf.updated` 均按变化页数计数。
-3. 指纹失效时重读页面快照，结合已保存 `work` 修正。原稿摘要变化会使该文件的旧页指纹失效，单页变化不影响邻页指纹。
-4. 页面处置、核对记录和 `notes` 随 `.lg` 保存。续做时重新读取页面快照，定位待处理页及已保存的待办。`work` 是临时材料，重置对话或应用重启后以已提交的工程事实恢复。
-5. 用本技能的 `scripts/preview.mjs` 生成预览，以返回的工作区 `path` 渲染并查看风险页面。默认读取本次页面快照，也可传入使用相同 `changes` 结构的草稿 JSONL 路径，按页覆盖快照副本后生成。修正后重新保存、核对。
-6. 完成前重新读取页面快照，检查用户范围内各页的处置、跨页归属和待办。
-7. 汇报已保存的处理范围、未完成页和待办。需要正式 PDF 时，由用户通过应用统一导出。
-
-视觉核验使用 `work` 中的预览，检查译文与保留原页的衔接、背景、公式、大图图注和长表格分页。译文排版后的页数可以不同于原稿页数。图片请求或宿主失败时保存续做说明并报告实际阻塞。
-
-## JS 操作示例
-
-下面的 `base_url` 使用 `read_skill` 或显式技能注入提供的值，在 `workspace_run` 中直接导入脚本。
-
-### 提取文字与位置
-
-```js
-import { readFile, writeFile } from 'node:fs/promises';
-import * as mupdf from 'mupdf';
-const meta = JSON.parse(await readFile(ws.contract.datasets.project_meta.path, 'utf8'));
-const source = meta.files.find(file => file.file_path === 'book.pdf');
-const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile(source.source_binary_path)));
-try {
-  const page = pdf.loadPage(0); // MuPDF 页索引从 0 开始，工程页码从 1 开始。
-  try {
-    const text = page.toStructuredText('');
-    try { await writeFile('work/page-1.json', text.asJSON()); }
-    finally { text.destroy(); }
-  } finally { page.destroy(); }
-  console.log({ pages: pdf.countPages() });
-} finally { pdf.destroy(); }
-
-```
-
-### 渲染与裁剪
+在同一程序中复用文档，用 `try/finally` 及时释放逐页资源、提取结果和文档。
 
 ```js
 import { readFile, writeFile } from 'node:fs/promises';
 import * as mupdf from 'mupdf';
 import { render_pdf_page } from '@lg/pdf';
-const pdf = new mupdf.PDFDocument(new Uint8Array(await readFile('sources/book.pdf/original.pdf')));
+const meta = JSON.parse(await readFile(ws.contract.datasets.project_meta.path, 'utf8'));
+const source = meta.files.find(file => file.file_path === 'book.pdf');
+const document = new mupdf.PDFDocument(new Uint8Array(await readFile(source.source_binary_path)));
 try {
-  for (const page of [1, 2]) {
-    const path = 'work/page-' + page + '.png';
-    await writeFile(path, render_pdf_page(pdf, { page, scale: 1.5 }));
-    await ws.emitImage(path);
-  }
-} finally { pdf.destroy(); }
+  const page = document.loadPage(0);
+  try {
+    const text = page.toStructuredText('');
+    try { await writeFile('work/page-1.json', text.asJSON()); }
+    finally { text.destroy(); }
+  } finally { page.destroy(); }
+  await writeFile('work/page-1.png', render_pdf_page(document, { page: 1, scale: 1.5 }));
+  await ws.emitImage('work/page-1.png');
+} finally { document.destroy(); }
 ```
 
-裁剪时传入 `region: { page, x, y, width, height }`，`region.page` 与请求 `page` 一致。
+将示例文件名替换为当前工程中的文件名。裁剪使用 `region: { page, x, y, width, height }`。
 
-### 生成预览
+## 保存页面译稿
+
+每页保存完整的 `translation`、`reviewed` 和 `notes`。`translation` 的含义为：
+
+|值|页面处置|
+|---|---|
+|`null`|待处理，导出暂用原页。恢复此值会清除完成处置|
+|`{ kind: "translate", markdown, background? }`|输出归属该页的译稿，`markdown` 可以为空|
+|`{ kind: "keep", reason }`|确认保留原页，`reason` 记录依据|
+|`{ kind: "omit", reason }`|按用户要求省略原页，`reason` 记录原因|
+
+译稿覆盖、确认保留和省略均计入完成。`reviewed` 记录内容核对，`notes` 保存待办与续做说明，两者不决定完成率。
+
+跨页内容可以完整归入其中一页，其余已接管页面使用空译稿，并在相关 `notes` 中记录来源与去向。排版时跳过空译稿，直接衔接前后译稿。
+
+每页载荷会整体替换已有值，局部修改也需准备完整页面内容。
+
+译稿采用所属原页的可见尺寸。相邻正文译稿的尺寸和背景相同时连续排版，变化时开始新页。保留和省略页面会结束连续排版。输出页数可以增加。保存可暂时全部为空译稿或省略，预览与导出至少需要一张输出页。
+
+## Markdown 与资源
+
+每个原页的 Markdown 独立校验、编译，支持标题、强调、列表、引用、代码、GFM 表格列对齐、提示块、公式和编号注释。
+
+- 图片使用 `![译文图注](pdf-image:DIGEST/PAGE/X,Y,WIDTH,HEIGHT)`，`DIGEST` 为当前原稿摘要，区域位于对应原页。地图、图表和公式截图作为正文插图，裁剪保留标记、比例尺及必要图例。
+- `background: { page, x, y, width, height }` 引用本原稿的干净装饰区域，按比例覆盖译稿生成页且不占正文空间。先看图确认裁剪范围，背景中的文字和图形都会叠印到译稿上，因此应选择干净的装饰区域。
+- 行内公式用 `$...$`，独立公式用单独成行的 `$$` 包围块，货币美元符号用 `\$`。公式错误按返回位置修正，确需截图时使用清晰原稿区域。
+- 提示块使用 `> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING`、`CAUTION`。注释以 `[^id]` 和 `[^id]: 内容` 表达，引用与定义放在同一原页译稿，输出在该页译稿末尾并提供回链。
+- 链接支持 HTTP(S)、`mailto:` 和按当前原页译稿标题顺序编号的页内锚点 `#heading-1`、`#heading-2`。HTML 标签与注释按字面显示，换行使用 Markdown 语法，字体、样式及资源加载由应用控制。
+
+## 保存与恢复
+
+通过 `ws.contract.changes.pages.updates.path` 指定的 JSONL 提交，载荷按对应 `reference` 准备，每个 `page` 在同批提交一次。逐个 `page` 核对接受或拒绝回执，审批和 `applied.pages.updated` 按实际变化的 `pages` 数量计数。
+
+跨页调整需要提交涉及的全部 `pages`。部分成功时结合逐页回执与最新快照恢复一致归属。单页变化不影响邻页指纹，原稿摘要变化会使该文件的旧指纹失效，此时重读快照并更新方案。
+
+`page` 处置、`reviewed` 和 `notes` 随 `.lg` 保存。`work/` 保存临时材料，对话重置或应用重启后依据工程现值与已保存 `notes` 恢复。
+
+## 预览与视觉检查
+
+使用本包脚本生成工作区预览。`base_url` 取自本技能的 `read_skill` 返回值或显式注入，是原包根目录地址：
 
 ```js
 const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
-console.log(await preview('book.pdf', 'work/pdf-updates.jsonl'));
+console.log(await preview('book.pdf', 'work/page-updates.jsonl'));
 ```
 
-省略第二个参数时使用工程快照译稿。预览复用 `@lg/pdf` 的正式生成入口，经 `print_pdf` 打印到 `work`。静态 HTML 也可用 `ws.host({ kind: 'print_pdf', html })` 打印为工作材料。
+第二个参数是 `pages` 草稿的 JSONL 路径，格式须符合 `ws.contract.changes.pages.updates.reference` 中的更新要求。脚本用草稿覆盖快照副本，供提交前或只读方案预览。省略该参数时，使用当前工程快照。
+
+脚本通过 `@lg/pdf` 的正式生成入口和宿主打印能力，将 PDF 保存到 `work/`。返回的 `path` 指向生成文件，可再次渲染查看。正式文件由用户通过应用导出。
+
+视觉检查关注译文与保留原页衔接、背景、公式、大图与图注、长表格分页和实际阅读顺序。内容归属按 `page` 身份追踪，呈现问题按渲染后的输出页定位，修正后复查受影响输出。图片请求或宿主失败时保留材料并说明未完成的核验。
+
+静态 HTML 工作材料也可通过 `ws.host({ kind: 'print_pdf', html })` 打印到 `work/` 目录，格式与权限遵循宿主契约。

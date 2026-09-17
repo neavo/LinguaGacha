@@ -61,17 +61,17 @@ const AGENT_TASK_SUGGESTIONS = [
     Icon: Drama,
   },
   {
-    skillName: "quality-rule-workflow",
+    skillName: "glossary",
     suggestionKey: "agent_page.empty.suggestions.extract_terminology",
     Icon: ListChecks,
   },
   {
-    skillName: "translation-task",
+    skillName: "translation",
     suggestionKey: "agent_page.empty.suggestions.translate_full_text",
     Icon: BookOpenText,
   },
   {
-    skillName: "translation-review",
+    skillName: "translation",
     suggestionKey: "agent_page.empty.suggestions.review_translation",
     Icon: ScanText,
   },

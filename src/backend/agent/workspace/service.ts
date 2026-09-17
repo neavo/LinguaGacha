@@ -2,9 +2,9 @@ import { create_workspace_host } from "./host";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
-import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
+import { agent_workspace_page_fingerprint } from "../../project/agent-workspace-page-write";
 import type { PDFHost } from "../../../shared/pdf";
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -58,6 +58,7 @@ import type { AgentWorkspaceRejectedChange } from "../../project/agent-workspace
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_CONTRACT,
+  AGENT_WORKSPACE_REFERENCES,
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
@@ -76,6 +77,8 @@ import {
   AGENT_WORKSPACE_RUNTIME_POLICY,
 } from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
+
+const RUN_ID_BYTES = 6; // 会话内执行记录使用 48 位随机标识，缩短返回给模型的文件路径
 
 type AgentWorkspaceStoreResult = {
   applied: AgentWorkspaceAppliedSummary;
@@ -351,6 +354,7 @@ export class AgentWorkspaceService {
       counts: {
         files: files.length,
         items: current_items.length,
+        pages: pdf_documents.reduce((count, { document }) => count + document.pages.length, 0),
         items_with_warnings: warning_result.data.items.length,
         ...Object.fromEntries(
           QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
@@ -362,13 +366,16 @@ export class AgentWorkspaceService {
     try {
       // 所有并行写入必须结算后再清理；否则迟到写入会在失败目录删除后复活半成品。
       const write_results = await Promise.allSettled([
+        ...Object.entries(AGENT_WORKSPACE_REFERENCES).map(([relative_path, content]) =>
+          this.native_fs.write_file(path.join(this.root_path, relative_path), content),
+        ),
         write_jsonl_file(
           this.native_fs,
-          path.join(this.root_path, AGENT_WORKSPACE_PATHS.pdf),
+          path.join(this.root_path, AGENT_WORKSPACE_PATHS.pages),
           pdf_documents.flatMap(({ file_path, document }) =>
             document.pages.map((page) => ({
               file_path,
-              fp: pdf_page_fingerprint(file_path, document.digest, page),
+              fp: agent_workspace_page_fingerprint(file_path, document.digest, page),
               digest: document.digest,
               ...page,
             })),
@@ -470,7 +477,7 @@ export class AgentWorkspaceService {
       }
       try {
         signal.throwIfAborted();
-        const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/task-${randomUUID()}`;
+        const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/${randomBytes(RUN_ID_BYTES).toString("hex")}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
         const result = await this.options.run(
@@ -574,7 +581,7 @@ export class AgentWorkspaceService {
       try {
         const current: AgentWorkspaceCurrentFacts = {
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
-          pdf: [...new Set(parsed.batch.pdf.map((intent) => intent.file_path))].flatMap(
+          pdfDocuments: [...new Set(parsed.batch.pages.map((intent) => intent.file_path))].flatMap(
             (file_path) => {
               const document = this.options.database.read_pdf_document(
                 active.projectPath,
@@ -796,8 +803,9 @@ export class AgentWorkspaceService {
     const targets = [
       AGENT_WORKSPACE_PATHS.projectMeta,
       AGENT_WORKSPACE_PATHS.contract,
+      AGENT_WORKSPACE_PATHS.reference,
       "items",
-      "pdf",
+      "pages",
       AGENT_WORKSPACE_PATHS.prompts,
       ...QUALITY_RULE_KINDS,
       "changes",
@@ -872,7 +880,7 @@ function summarize_applied_changes(
   };
   return {
     items: applied.items?.updated ?? 0,
-    pdf: applied.pdf?.updated ?? 0,
+    pages: applied.pages?.updated ?? 0,
     glossary: count_quality("glossary"),
     textPreserve: count_quality("text_preserve"),
     preReplacement: count_quality("pre_replacement"),
@@ -924,9 +932,9 @@ function normalize_workspace_rejections(
       ),
     ]),
   ) as Partial<Record<QualityRuleKind, Map<string, string>>>;
-  const baseline_pdf = drift_candidates.some((rejection) => rejection.scope === "pdf")
+  const baseline_pages = drift_candidates.some((rejection) => rejection.scope === "pages")
     ? new Map(
-        read_workspace_jsonl(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.pdf)).map(
+        read_workspace_jsonl(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.pages)).map(
           (row) => [JSON.stringify([row["file_path"], row["page"]]), String(row["fp"])],
         ),
       )
@@ -939,9 +947,9 @@ function normalize_workspace_rejections(
   return rejections.map((rejection) => {
     if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
       return rejection;
-    if (rejection.scope === "pdf") {
-      const fp = baseline_pdf.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
-      const intents = batch.pdf.filter(
+    if (rejection.scope === "pages") {
+      const fp = baseline_pages.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
+      const intents = batch.pages.filter(
         (intent) =>
           intent.file_path === rejection["file_path"] && intent.page === rejection["page"],
       );
@@ -1052,7 +1060,7 @@ function baseline_prompts_entry(prompts: JsonRecord, kind: PromptKind): JsonReco
 function all_change_paths(): string[] {
   return [
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
-    AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
+    AGENT_WORKSPACE_CHANGE_PATHS.pages.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
       AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map(

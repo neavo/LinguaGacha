@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { AGENT_WORKSPACE_CONTRACT } from "../contract";
+import { AGENT_WORKSPACE_CONTRACT, AGENT_WORKSPACE_REFERENCES } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import { create_pdf_fixture } from "../../../file/formats/pdf/test-support";
@@ -51,6 +51,10 @@ beforeAll(async () => {
     process.platform === "win32" ? "junction" : "dir",
   );
   await writeFile(path.join(workspace, "contract.json"), JSON.stringify(AGENT_WORKSPACE_CONTRACT));
+  for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
+    await mkdir(path.dirname(path.join(workspace, relative_path)), { recursive: true });
+    await writeFile(path.join(workspace, relative_path), content);
+  }
   await writeFile(path.join(root, "outside.txt"), "outside");
 }, 60_000);
 
@@ -153,7 +157,13 @@ it.each(["user", "builtin"])(
     import { build_pdf_document } from '@lg/pdf';
     import { readFile, writeFile } from 'node:fs/promises';
     import { title } from './helper.mjs';
+    import { queryItemContexts } from '@lg/workspace/item-contexts';
+    import { compile_literal_patterns } from '@lg/text';
     export async function inspect() {
+      await writeFile('work/items.jsonl', JSON.stringify({item_id:1,file_path:'a',src:'Straße'}));
+      const contexts = await queryItemContexts([JSON.parse(await readFile('work/items.jsonl', 'utf8'))], [1]);
+      const matcher = compile_literal_patterns([{key:'street',text:'STRASSE',case_sensitive:false}]);
+      if (contexts.items.length !== 1 || !matcher.matches(contexts.items[0].src)) throw new Error('Item contexts or text import failed');
       const bytes = await build_pdf_document({
         title, source_bytes: new Uint8Array(await readFile('work/source.pdf')),
         document:{digest:'a'.repeat(64),pages:[1,2,3].map(page=>({page,width:300,height:300,rotation:0,label:null,translation:page===2?{kind:'translate',markdown:'# fixture'}:null,reviewed:false,notes:''}))},
@@ -324,6 +334,8 @@ it("直接执行技能、apply、再次执行和重置均读取原包当前文�
       import { readFile, writeFile } from 'node:fs/promises';
       export async function update() {
         const row = JSON.parse((await readFile(ws.contract.datasets.items.path, 'utf8')).trim().split('\\n')[0]);
+        const reference = await readFile(ws.contract.changes.items.updates.reference, 'utf8');
+        if (!reference.includes(ws.contract.changes.items.updates.path)) throw new Error('Missing update reference');
         const dst = ${JSON.stringify(value)};
         await writeFile(ws.contract.changes.items.updates.path, JSON.stringify({item_id:row.item_id,fp:row.fp,dst}));
         console.log(JSON.stringify({before:row.dst,after:dst}));
@@ -445,12 +457,13 @@ it("权限保护部署与快照，失败保留输出、位置和已写文件", a
     for (const operation of [
       () => fs.readFile('../outside.txt'),
       () => fs.writeFile('contract.json', '{}'),
+      () => fs.writeFile(ws.contract.datasets.items.reference, 'changed'),
       () => fs.writeFile('package.json', '{}'),
       () => fs.writeFile('node_modules/unified/package.json', '{}'),
     ]) { try { await operation(); } catch (error) { failures.push(error.code); } }
     console.log(JSON.stringify(failures));
   `);
-  expect(output_content(result.execution.stdout)).toEqual(Array(4).fill("ERR_ACCESS_DENIED"));
+  expect(output_content(result.execution.stdout)).toEqual(Array(5).fill("ERR_ACCESS_DENIED"));
   await expect(
     run(
       `import fs from 'node:fs/promises'; await fs.writeFile('work/kept.txt','kept'); console.log('before error'); throw new Error('program failed');`,

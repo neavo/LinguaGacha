@@ -114,7 +114,7 @@ describe("AgentDecision", () => {
         kind: "write_approval",
         id: "apply-1",
         summary: {
-          pdf: 0,
+          pages: 2,
           items: 12,
           glossary: 3,
           textPreserve: 1,
@@ -135,7 +135,7 @@ describe("AgentDecision", () => {
       [...container.querySelectorAll(".agent-write-summary__value")].map(
         (value) => value.textContent,
       ),
-    ).toEqual(["12", "3", "1"]);
+    ).toEqual(["2", "12", "3", "1"]);
     await act(async () => actions[1]?.click());
     expect(on_resolve_write_approval).toHaveBeenCalledWith("allow_once");
   });
@@ -151,7 +151,7 @@ describe("AgentDecision", () => {
               kind,
               id: "write-tooltip",
               summary: {
-                pdf: 0,
+                pages: 0,
                 items: 1,
                 glossary: 0,
                 textPreserve: 0,

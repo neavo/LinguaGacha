@@ -30,7 +30,7 @@
 - 自动选择由前端会话时钟拥有，通过现有 resolve API 提交默认答案；后端只等待宿主裁决。同一决定的快照恢复与切页保留剩余时间，前端重载重新计时；输入聚焦、断线、快照恢复或命令占用期间冻结，条件解除后续计，卸载输入框释放聚焦。提交受理后停止计时，失败通知一次并保留问题供手动重试。逐秒变化通过独立 countdown 订阅发布。
 - Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
 - Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
-- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量，所有数量字段必填，无变化时为 0；pdf 按实际变化的原稿页数计数；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
+- 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量，所有数量字段必填，无变化时为 0；`pages` 按实际变化的对象数计数；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
 
 ### 运行控制与恢复
 
@@ -51,7 +51,7 @@
 
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
 - 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_run` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
-- 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。PDF 投影保留原始二进制，`project_meta.files` 公开 source_binary_path；原页基线随数据快照逐页投影到 pdf/entries.jsonl。
+- 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。PDF 投影保留原始二进制，`project_meta.files` 公开 source_binary_path；`pages` 基线随数据快照逐页投影到 `pages/entries.jsonl`。
 - 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 校验工作区相对入口，文件访问自然跟随目录链接，允许目标位于工作区外；来源失效范围按 work、sources 或快照入口确定。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
 - 文件保存采用确认时的当前内容，不建立点击时副本。对话框等待期间释放工作区互斥；会话清理开始立即使待决链接失效，work、sources 与数据快照按各自清理生命周期失效。确认后重新检查来源与脚本互斥，拒绝向工作区内部保存；同目录临时文件完整复制后才替换目标，保留工作原件与失败前的已有目标。
 - 脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
@@ -64,13 +64,12 @@
 - Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
-- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理，UI 配置不进入模型上下文。
+- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理。`displayDescriptions` 面向用户解释能力，技能触发依据 `SKILL.md` 的描述，UI 配置不进入模型上下文。
 - `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 与显式 marker 注入共用宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
-- 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。正文声明的组合技能由模型读取，组合不改变任务范围或工作区权限。
-- System Prompt 拥有人格、信任边界、任务类型 `report / apply`、按处理单位分组与提交的共同流程、工程写入边界、工作材料保存与恢复、异常处理和对外输出。工程处理任务默认 `apply`，用户限定只读时使用 `report`；任务类型不扩大请求范围。`report` 共用业务准备与检查，跳过工程写入及依赖持久化结果的步骤；该限制也适用于直接写入工具，由模型执行，后端不持有任务类型状态机。
-- System Prompt 直接读取静态 Markdown 正文。会话技能目录附加在正文之后。运行环境、权限和工具限制由工具说明提供。
-- 业务工作流拥有默认任务、对象范围、执行方式、检查与提交安排、后继核验、完成依据和可恢复记录；领域技能拥有对象与文本质量判据。翻译执行与已有译文调查分别组织流程，批量分流先确认工具能力再考虑规模。模型按用户请求与技能描述编排阶段，复用有效工程事实、拟议方案和证据；正式工具参数以 Schema 为准。
-- 领域记录由模型保存在工作资产中，对象结论与实际提交结果分别记录；技能加载器和后端不维护领域流程状态。完整 `items` 提供条目范围，`warnings` 提供按身份关联的问题证据，调查范围与警告集合分别确定。Agent 页面消费模型 Markdown、Mermaid 和结构化决策状态，不从标题或 emoji 推断领域状态。
+- 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。
+- System Prompt 从静态 Markdown 加载，会话技能目录附加在正文之后。它拥有人格、任务范围、技能选择、程序先行、业务单元组织、通用后继调查、提交恢复与交付要求。任务类型 `report / apply` 由模型遵守，后端不持有任务类型状态机；`report` 允许分析和准备工作材料，跳过工程写入及依赖持久化结果的步骤，包括直接写入工具。运行环境与权限归工具说明，参数、回执及快照恢复语义归工具 Schema 和 `ws.contract`。
+- 技能入口区分领域意图、必要初探与包内资源分派，组合任务共用 System Prompt 的交互和事实复用规则。包内判据拥有对象资格与安全条件，流程拥有领域取证、后继调查方向、提交时机和验收成果，格式与文本质量参考提供专业知识。共同调查机制在 System Prompt 维护，领域流程保留具体触发条件及回到对象判断的入口。`writing-guide-` 前缀扩展由所属技能正文驱动加载，宿主不维护依赖图。
+- 领域证据、关系图、方案与覆盖记录由模型按任务规模保存在工作资产中，工程事实以有效快照与实际回执为准；技能加载器和后端不维护领域流程状态。完整 `items` 决定条目范围，`warnings` 仅提供关联证据；`pages` 以来源页追踪内容，视觉核验定位到渲染后的输出页。Agent 页面消费 Markdown、Mermaid 和结构化决策状态，不从标题或表情符号推断领域状态。
 
 ## 4. 产品工具与宿主能力
 
@@ -79,7 +78,8 @@
 
 - `ws.emitImage(path)` 在本次执行持有的工作区互斥内读取图片，调用统一图片服务，在 await 完成时固定内容。按请求接收顺序收集，成功时由 workspace_run 返回 SDK image content；失败执行记录只保留已接收图片的路径与格式、原图和输出尺寸摘要，可从保留工作文件重新输出。图片不进入 stdout/stderr，数量与累计 base64 额度由 runtime policy 独立限制；公开工具结果与日志只保留摘要。
 - PDF 调查直接导入 `mupdf`；`@lg/pdf` 提供页面渲染与文档生成。`ws.host` 桥接静态 HTML 打印，请求 Schema 同时生成模型声明并在父进程校验，打印产物进入 work。技能预览以 changes 结构的草稿 JSONL 覆盖页面快照副本，复用正式生成函数。Agent 负责处理、保存与预览核验，正式 PDF 由用户通过应用统一导出。
-- PDF 数据集与 changes 均以 `(file_path, page)` 为身份，changes 直接携带整页可修改事实。预演以同一身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 work。页面与导出规则归 [BACKEND](BACKEND.md)。
+- 翻译对象统一使用 `items/pages`，单个对象使用 `item/page`。`items` 以 `item_id` 为身份，正文与姓名属于同一对象；`pages` 以 `(file_path, page)` 为身份，对应原稿页，与渲染后的输出页分别计数。`project_meta.counts.items` 和 `project_meta.counts.pages` 分别从对应快照的同一份事实计算。
+- `datasets.pages` 与 `changes.pages.updates` 分别公开页面快照和完整可修改载荷，路径为 `pages/entries.jsonl` 与 `changes/pages/updates.jsonl`。页面提交、拒绝 scope、实际写入回执及审批计数统一使用 `pages`。工作区 Schema 复用 PDF 内容结构；提交意图、指纹和更新解析归工程写入层。预演以对象身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 `work/`。PDF 来源与导出规则归 [BACKEND](BACKEND.md)。
 
 - GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
 
@@ -89,15 +89,16 @@
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。宿主提交固定选择时返回 `selected` 与其 `optionId`，自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。工程写入授权使用独立权限入口，`allow_once` 仅允许当前批次写入。
 - 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据或完成历史。每次 `workspace_run` 以当前 Todo 初始化 `ws.todo`；同步 `read()` 返回不可变副本，`write(todos)` 替换本次程序副本并通过 IPC 发送独立快照。runner 暂存最后有效值，进程成功退出且调用未取消时由 `AgentService` 原子提交；失败、停止或超时保留调用前状态。公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
-- 每个 Workspace 数据工具模块共同拥有用途、参数 Schema、结果 Schema 与类型化执行入口；注册表只列举应用数据能力，`ws.tool` 与模型可见 TypeScript 声明由该集合投影。未知参数在分发边界按 Schema 收窄，结构错误返回字段路径与要求；领域实现通过流式只读端口消费快照，结果在同一边界校验。对象字段语义、局部限制和默认值归声明，命名类型引用不重复注释。第三方库由程序直接按 npm 公开 API 导入。
-- `matchLiterals` 在单次调用内扫描一次完整快照，返回完整计数与全部或限量字段证据；覆盖核验消费完整证据并检查结果完整性。数据工具结果留在 Node 进程内，程序负责保存工作资产与输出摘要；stdout/stderr 的输出限制不约束内部查询结果。证据随快照与模式确定，变化后重新取得受影响证据；工具不持有跨调用查询状态。字段范围与收集参数归工具 Schema。
-- `ws.contract` 的类型外壳、磁盘对象和模型声明共用同一 Schema；`workspace/schema` 统一拥有快照与变更记录结构，`contract` 组合布局与提交语义，`changes` 按相同 Schema 校验 JSONL 后转换为领域意图，缺失或空清单表示该类意图为空。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则。标准 JSON Schema 描述当前快照的数据集与变更记录，路径、`limits`、`effects`、`guidance` 和 `apply` 契约也由该对象拥有，`warnings` 直接使用 shared 校对词表和证据字段。运行时注入的冻结 `ws` 由 contract、Todo、数据工具树、emitImage 与 host 请求入口组成，文件访问统一使用 Node 标准文件 API。
-- `items`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按 `items`、`prompts` 和各质量规则类型的 create/update/delete 分开，记录形状由 contract 中对应 Schema 唯一声明。
+- `ws` 只提供当前契约、Todo、图片输出与宿主请求。领域程序按技能 `base_url` 从原包导入普通脚本，输入与返回值留在 Node 进程内，由程序保存工作资产并选择模型输出。技能的领域算法及调用说明随包维护；全局接口声明只描述运行时应用边界。
+- `@lg/workspace/item-contexts` 提供条目邻近语境查询，调用约定归导出函数注释，随可读模块一起部署。调用方使用 Node 标准文件 API 读取数据，领域扫描接收条目数组或异步流。JSONL 记录按 LF 分行，正文中的 Unicode 分隔符属于字段内容。`@lg/text` 从正式字面匹配源码导出规范化与匹配能力，技能和应用共用 Unicode、大小写与原文坐标语义。领域扫描负责范围、完整计数与证据收集量，完整性由扫描结果表达；stdout/stderr 限额只限制输出，不改变内部计算。
+- `ws.contract` 的类型外壳、磁盘索引和模型声明共用同一 Schema，索引只承载数据集与变更路径、`reference` 入口和通用 `apply` 契约。`workspace/schema` 拥有快照与变更记录结构，`contract` 关联路径、Schema 和对象语义，并生成轻量索引与按业务主题聚合的只读 `reference/*.md`。参考文档与工具 API 说明共用 `schema-description`，从原 Schema 生成字段和约束；对象特有副作用、排序与批次建议随主题提供。参考文档随快照创建、失败清理和刷新，模型使用 Node 文件 API 按需读取。
+- `changes` 按相同记录 Schema 校验 JSONL 后转换为领域意图，缺失或空清单表示该类意图为空。纯指纹格式常量与业务字段词表位于无宿主依赖的 `shared/project/agent-workspace`，项目写入器负责事实、冲突与领域规则，`warnings` 直接使用 shared 校对词表和证据字段。运行时注入的冻结 `ws` 由 contract、Todo、emitImage 与 host 请求入口组成；运行时初始化按外壳 Schema 校验磁盘契约，再冻结独立副本。
+- `items`、`pages`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按对象类型及其支持的操作分开，记录形状由源码 Schema 唯一定义，模型通过索引中的 `reference` 读取生成说明。
 - `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次 run 从与 catalog 共用的 AppPathService 取得两个技能根，授予逻辑入口与真实路径只读权限；授权独立于同名选择，缺失目录不阻断执行，后续 run 重新解析。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
 - 子进程直接写入 stdout/stderr 文件，close 后两路独立按额度返回完整 content 或文件补读提示，JSON 对象与数组优先结构化。成功、非零退出和超时共用执行记录，取消保留已写文件。IPC 传初始化、Todo、图片输出与具名宿主请求。代理查询和宿主操作共用请求关联、取消和保活通道，空闲不保活。停止、超时或父通道断开时回收进程并取消待决请求；父进程等待宿主操作实际结算及进程、文件句柄收尾后才释放工作区互斥。运行中的宿主调用使用本次执行绑定的内部端口，不重新进入工作区公开互斥入口。
-- 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 只声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。依赖部署通过 npm query 查询根安装树中的预装包及其间接依赖，保留安装相对位置和完整包资源，生成记录实际版本的 package.json；发布构建以前置根 npm ci 保证安装来源可复现。同一构建从 public/fonts 与 KaTeX 包生成工作区根目录的 pdf-print.css，字体内嵌且只由打印宿主加载。应用源码构建为 `@lg/workspace` 与 `@lg/pdf` 内部包，清单通过 exports 声明 `@lg/workspace/bootstrap`、`@lg/pdf` 和 `@lg/pdf/worker` 入口；宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析入口，解析阶段不执行模块。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 只部署一份，worker 和工作区均从此处解析。extraResources 从 build/resources 根复制整棵 workspace，以避开 builder 对复制源直属 node_modules 的过滤。GUI 与 CLI 共用运行目录定位，GUI 跨线程仅传 `workspaceRuntimeDirectory`，runAsNode fuse 保持开启。
+- 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 只声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。依赖部署通过 npm query 查询根安装树中的预装包及其间接依赖，保留安装相对位置和完整包资源，生成记录实际版本的 package.json；发布构建以前置根 npm ci 保证安装来源可复现。同一构建从 public/fonts 与 KaTeX 包生成工作区根目录的 pdf-print.css，字体内嵌且只由打印宿主加载。应用源码构建为 `@lg/workspace`、`@lg/text` 与 `@lg/pdf` 内部包，清单通过 exports 声明 `@lg/workspace/bootstrap`、`@lg/workspace/item-contexts`、`@lg/text`、`@lg/pdf` 和 `@lg/pdf/worker` 入口；宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析入口，解析阶段不执行模块。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 只部署一份，worker 和工作区均从此处解析。extraResources 从 build/resources 根复制整棵 workspace，以避开 builder 对复制源直属 node_modules 的过滤。GUI 与 CLI 共用运行目录定位，GUI 跨线程仅传 `workspaceRuntimeDirectory`，runAsNode fuse 保持开启。
 - bootstrap 通过同步 resolve hook 将技能脚本的 npm 导入基准设为自身 URL，复用部署依赖树；内置模块、文件 URL、相对路径和依赖内部导入沿用 Node 默认规则及 exports 语义。内置技能保留在 app.asar，Electron Node 模式配合现有 preserve-symlinks 参数直接读取脚本与资源。
-- 初始化复制生成的部署清单，并链接真实 node_modules（Windows 使用 junction）。这些环境文件跨快照与对话重置保留，清理只删除链接入口。work、changes 同时授权入口与实际目标，内部链接沿入口权限使用。bootstrap 直接调用 Node 文件 API，主应用 IO 归 NativeFs。
+- 初始化复制生成的部署清单，并链接真实 node_modules（Windows 使用 junction）。这些环境文件跨快照与对话重置保留，清理只删除链接入口。work、changes 同时授权入口与实际目标，内部链接沿入口权限使用。工作区初始化与技能程序直接调用 Node 文件 API，主应用 IO 归 NativeFs。
 
 ## 5. 前端消费
 

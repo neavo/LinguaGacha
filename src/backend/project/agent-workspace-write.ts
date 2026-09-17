@@ -1,6 +1,8 @@
 import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
-import type { PDFUpdateIntent } from "../file/formats/pdf/pdf-source";
-import { resolve_pdf_updates } from "./pdf-page-write";
+import {
+  resolve_agent_workspace_page_updates,
+  type AgentWorkspacePageUpdateIntent,
+} from "./agent-workspace-page-write";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
@@ -39,7 +41,7 @@ export type AgentWorkspaceRejectionReason =
   | "dependency_conflict";
 
 export type AgentWorkspaceRejectedChange = JsonRecord & {
-  scope: "items" | "quality" | "prompts" | "pdf";
+  scope: "items" | "quality" | "prompts" | "pages";
   op: "create" | "update" | "delete";
   reason: AgentWorkspaceRejectionReason;
 };
@@ -88,14 +90,14 @@ export type AgentWorkspaceQualityIntents = Readonly<{
 }>;
 
 export type AgentWorkspaceIntentBatch = Readonly<{
-  pdf: readonly PDFUpdateIntent[];
+  pages: readonly AgentWorkspacePageUpdateIntent[];
   items: readonly AgentWorkspaceItemUpdateIntent[];
   prompts: readonly AgentWorkspacePromptUpdateIntent[];
   quality: Readonly<Record<QualityRuleKind, AgentWorkspaceQualityIntents>>;
 }>;
 
 export type AgentWorkspaceCurrentFacts = Readonly<{
-  pdf: readonly PDFDocumentRecord[];
+  pdfDocuments: readonly PDFDocumentRecord[];
   items: readonly JsonRecord[]; // 当前完整 Item 集合，供指纹校验与重复组协调
   quality: Partial<Record<QualityRuleKind, readonly JsonRecord[]>>; // 本批涉及的质量规则
   prompts: Partial<Record<PromptKind, string>>; // 本批涉及的提示词
@@ -109,7 +111,7 @@ export type AgentWorkspaceQualitySummary = Readonly<{
 }>;
 
 export type AgentWorkspaceAppliedSummary = Readonly<{
-  pdf?: Readonly<{ updated: number }>;
+  pages?: Readonly<{ updated: number }>;
   items?: Readonly<{ updated: number }>;
   quality?: Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   prompts?: Readonly<{ updated: PromptKind[] }>;
@@ -126,7 +128,7 @@ export type AgentWorkspacePromptWrite = Readonly<{
 }>;
 
 export type AgentWorkspaceWriteResolution = Readonly<{
-  pdfChanges: PDFPageRecord[];
+  pageChanges: PDFPageRecord[];
   itemChanges: ProjectItemWriteChange[];
   qualityChanges: AgentWorkspaceQualityWrite[];
   promptChanges: AgentWorkspacePromptWrite[];
@@ -145,7 +147,7 @@ const DUPLICATE_RULE_TYPE_BY_KIND = Object.freeze({
 /** 构造完整的空意图批次，供 parser、测试与调用方复用。 */
 export function create_empty_agent_workspace_intent_batch(): AgentWorkspaceIntentBatch {
   return {
-    pdf: [],
+    pages: [],
     items: [],
     prompts: [],
     quality: Object.fromEntries(
@@ -199,7 +201,7 @@ export function resolve_agent_workspace_writes(args: {
   current: AgentWorkspaceCurrentFacts;
   createQualityEntryId?: (entryIds: Set<string>) => string;
 }): AgentWorkspaceWriteResolution {
-  const pdf = resolve_pdf_updates(args.batch.pdf, args.current.pdf);
+  const pages = resolve_agent_workspace_page_updates(args.batch.pages, args.current.pdfDocuments);
   const item_result = resolve_items(args.batch.items, args.current.items);
   const item_changes = plan_project_item_changes({
     items: args.current.items.flatMap(to_item_write_record),
@@ -225,24 +227,24 @@ export function resolve_agent_workspace_writes(args: {
   ) as Partial<Record<QualityRuleKind, AgentWorkspaceQualitySummary>>;
   const prompt_kinds = prompt_result.changes.map((change) => change.kind);
   return {
-    pdfChanges: pdf.changes,
+    pageChanges: pages.changes,
     itemChanges: item_changes,
     qualityChanges: quality_changes,
     promptChanges: prompt_result.changes,
     applied: {
-      ...(pdf.changes.length ? { pdf: { updated: pdf.changes.length } } : {}),
+      ...(pages.changes.length ? { pages: { updated: pages.changes.length } } : {}),
       ...(item_changes.length === 0 ? {} : { items: { updated: item_changes.length } }),
       ...(quality_changes.length === 0 ? {} : { quality: quality_summary }),
       ...(prompt_kinds.length === 0 ? {} : { prompts: { updated: prompt_kinds } }),
     },
     rejected: [
-      ...pdf.rejected,
+      ...pages.rejected,
       ...item_result.rejected,
       ...quality_results.flatMap((result) => result.rejected),
       ...prompt_result.rejected,
     ],
     candidates: {
-      pdf: pdf.candidates,
+      pages: pages.candidates,
       items: item_result.candidates,
       prompts: prompt_result.candidates,
       quality: Object.fromEntries(

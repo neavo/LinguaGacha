@@ -2,7 +2,7 @@ import { workspace_execution } from "../../../test/agent-workspace-fixture";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
-import { format_agent_workspace_typescript_api } from "../workspace/runtime/tool/api-description";
+import { format_agent_workspace_typescript_api } from "../workspace/runtime/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
 import {
   create_agent_workspace_tools,
@@ -208,7 +208,7 @@ function build_workspace_port(): Pick<AgentWorkspacePort, "run" | "apply_workspa
     })),
     apply_workspace: vi.fn(async (request_approval) => {
       await request_approval?.({
-        pdf: 0,
+        pages: 0,
         items: 2,
         glossary: 0,
         textPreserve: 0,

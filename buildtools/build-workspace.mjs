@@ -12,8 +12,16 @@ await build_pdf_print_assets();
 
 await build_package(
   "@lg/workspace",
-  { bootstrap: "src/backend/agent/workspace/runtime/bootstrap.ts" },
-  { "./bootstrap": "./bootstrap.mjs" },
+  {
+    bootstrap: "src/backend/agent/workspace/runtime/bootstrap.ts",
+    "item-contexts": "src/backend/agent/workspace/runtime/item-contexts.ts",
+  },
+  { "./bootstrap": "./bootstrap.mjs", "./item-contexts": "./item-contexts.mjs" },
+);
+await build_package(
+  "@lg/text",
+  { index: "src/shared/text/literal-matcher.ts" },
+  { ".": "./index.mjs" },
 );
 // 库与计算线程共用包内 chunk；MuPDF JS/WASM 从同一预装依赖加载。
 await build_package(

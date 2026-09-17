@@ -3,24 +3,24 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build_pdf_document } from "@lg/pdf";
 
-/** 页面快照和草稿共用逐行载荷，空行不构成更新。 */
-async function read_jsonl(file) {
-  return (await readFile(file, "utf8"))
-    .split(/\r?\n/u)
-    .filter(Boolean)
+/** 页面组合需要完整集合；只按 LF 拆分，保留正文中的 Unicode 分隔符。 */
+async function read_pages(file_path) {
+  return (await readFile(file_path, "utf8"))
+    .split("\n")
+    .filter((line) => line.trim())
     .map((line) => JSON.parse(line));
 }
 
 /** 草稿使用与 changes 相同的逐页 JSONL，覆盖快照副本后复用正式页面组合。 */
 export async function preview(file_path, updates_path) {
-  const rows = (await read_jsonl(ws.contract.datasets.pdf.path)).filter(
+  const rows = (await read_pages(ws.contract.datasets.pages.path)).filter(
     (row) => row.file_path === file_path,
   );
   if (!rows.length) throw new Error(`PDF document not found: ${file_path}`);
   const pages = rows.map(({ file_path: _file, fp: _fp, digest: _digest, ...page }) => page);
   if (updates_path) {
     const seen = new Set(); // 重复页不能以最后一行覆盖，否则预览与实际提交会不一致。
-    for (const update of await read_jsonl(updates_path)) {
+    for (const update of await read_pages(updates_path)) {
       if (update.file_path !== file_path) continue;
       const index = update.page - 1;
       if (seen.has(update.page)) throw new Error(`Duplicate PDF page: ${update.page}`);

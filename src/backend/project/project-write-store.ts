@@ -693,7 +693,7 @@ export class ProjectWriteStore {
       batch: request.batch,
       current: {
         items: Array.isArray(items) ? items.filter(is_json_record) : [],
-        pdf: [...new Set(request.batch.pdf.map((intent) => intent.file_path))].flatMap(
+        pdfDocuments: [...new Set(request.batch.pages.map((intent) => intent.file_path))].flatMap(
           (file_path) => {
             const document = this.database.read_pdf_document(request.projectPath, file_path);
             return document ? [{ file_path, document }] : [];
@@ -712,7 +712,8 @@ export class ProjectWriteStore {
   /** 只有包含实际变化的 section 才参与 revision、缓存与公开事件。 */
   private build_agent_updated_sections(outcome: AgentWorkspaceWriteOutcome): ProjectDataSection[] {
     const sections: ProjectDataSection[] = [];
-    if (outcome.pdfChanges.length > 0) sections.push("pdf");
+    // pages 是 Agent 对象类型，持久化后归 PDF 来源文档所在的数据分区。
+    if (outcome.pageChanges.length > 0) sections.push("pdf");
     if (outcome.itemChanges.length > 0) sections.push("items", "proofreading");
     if (outcome.qualityChanges.length > 0) sections.push("quality");
     if (outcome.promptChanges.length > 0) sections.push("prompts");
@@ -727,7 +728,7 @@ export class ProjectWriteStore {
     updated_sections: ProjectDataSection[],
   ): ProjectDatabaseWrite[] {
     const writes: ProjectDatabaseWrite[] = [];
-    for (const change of outcome.pdfChanges)
+    for (const change of outcome.pageChanges)
       writes.push((db) => db.write_pdf_page(project_path, change.file_path, change.page));
     if (outcome.itemChanges.length > 0) {
       const item_patches = outcome.itemChanges.map((change) => ({

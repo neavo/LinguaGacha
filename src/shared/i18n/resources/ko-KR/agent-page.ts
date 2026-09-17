@@ -72,8 +72,8 @@ export const ko_kr_agent_page = {
     tooltip: "쓰기 권한 승인 모드",
     title: "프로젝트 데이터 쓰는 중",
     summary: {
-      pdf: "PDF {count}페이지",
-      items: "텍스트 데이터 {count}개",
+      pages: "페이지 데이터 {count}페이지",
+      items: "항목 데이터 {count}개",
       glossary: "용어 규칙 {count}개",
       text_preserve: "텍스트 보호 규칙 {count}개",
       pre_replacement: "번역 전 치환 규칙 {count}개",

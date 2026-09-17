@@ -1,22 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { Check } from "typebox/value";
 
-import { read_json_record, type JsonRecord } from "../../../domain/json";
-import { AGENT_WORKSPACE_CONTRACT, project_agent_workspace_warning } from "./contract";
+import { check_typescript } from "../../../test/typescript-fixture";
+import {
+  AGENT_WORKSPACE_CONTRACT,
+  AGENT_WORKSPACE_REFERENCES,
+  project_agent_workspace_warning,
+} from "./contract";
 import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "./schema";
 
 describe("Agent 工作区 contract", () => {
-  it("完整 contract 满足 Node 与模型声明共用的外壳 Schema", () => {
+  it("轻量 contract 满足 Node 与模型声明共用的外壳 Schema", () => {
     expect(Check(AGENT_WORKSPACE_CONTRACT_SCHEMA, AGENT_WORKSPACE_CONTRACT)).toBe(true);
   });
 
-  it("数据集与变更路径互斥", () => {
-    const datasets = read_json_record(AGENT_WORKSPACE_CONTRACT["datasets"]);
-    const changes = read_json_record(AGENT_WORKSPACE_CONTRACT["changes"]);
-    const dataset_paths = new Set(
-      Object.values(datasets).map((dataset) => String(read_json_record(dataset)["path"])),
+  it("索引指向包含对应数据路径的参考，各主题声明可独立使用", () => {
+    const entries = [
+      ...Object.values(AGENT_WORKSPACE_CONTRACT.datasets),
+      ...Object.values(AGENT_WORKSPACE_CONTRACT.changes).flatMap(Object.values),
+    ];
+    for (const entry of entries) {
+      expect(AGENT_WORKSPACE_REFERENCES[entry.reference]).toContain(entry.path);
+    }
+    expect(new Set(entries.map((entry) => entry.reference))).toEqual(
+      new Set(Object.keys(AGENT_WORKSPACE_REFERENCES)),
     );
-    const change_paths = collect_change_paths(changes);
+    check_typescript(
+      Object.values(AGENT_WORKSPACE_REFERENCES).map((content) => {
+        const declaration = content.match(/```ts\n([\s\S]*?)\n```/u)?.[1];
+        expect(declaration).toBeDefined();
+        return declaration!;
+      }),
+    );
+  });
+
+  it("数据集与变更路径互斥", () => {
+    const { datasets, changes } = AGENT_WORKSPACE_CONTRACT;
+    const dataset_paths = new Set(Object.values(datasets).map((dataset) => dataset.path));
+    const change_paths = Object.values(changes).flatMap((operations) =>
+      Object.values(operations).map((entry) => entry.path),
+    );
 
     expect(change_paths.every((change_path) => change_path.startsWith("changes/"))).toBe(true);
     expect(change_paths.every((change_path) => !dataset_paths.has(change_path))).toBe(true);
@@ -49,9 +72,3 @@ describe("Agent 工作区 contract", () => {
     });
   });
 });
-
-/** 递归读取 contract 中所有叶子变更描述，不复制质量类型与操作清单。 */
-function collect_change_paths(value: JsonRecord): string[] {
-  if (typeof value["path"] === "string") return [value["path"]];
-  return Object.values(value).flatMap((child) => collect_change_paths(read_json_record(child)));
-}

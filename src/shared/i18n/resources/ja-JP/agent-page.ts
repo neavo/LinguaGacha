@@ -72,8 +72,8 @@ export const ja_jp_agent_page = {
     tooltip: "書き込み権限の承認モード",
     title: "プロジェクトデータを書き込み中",
     summary: {
-      pdf: "PDF {count} ページ",
-      items: "テキストデータ {count} 件",
+      pages: "ページデータ {count} ページ",
+      items: "項目データ {count} 件",
       glossary: "用語ルール {count} 件",
       text_preserve: "テキスト保護ルール {count} 件",
       pre_replacement: "翻訳前置換ルール {count} 件",

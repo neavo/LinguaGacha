@@ -70,8 +70,8 @@ export const de_de_agent_page = {
     tooltip: "Genehmigungsmodus für Schreibzugriffe",
     title: "Projektdaten werden geschrieben",
     summary: {
-      pdf: "PDF {count} Seiten",
-      items: "{count} Texteinträge",
+      pages: "Seitendaten: {count} Seiten",
+      items: "Eintragsdaten: {count} Einträge",
       glossary: "{count} Glossarregeln",
       text_preserve: "{count} Textschutzregeln",
       pre_replacement: "{count} Vorersetzungsregeln",

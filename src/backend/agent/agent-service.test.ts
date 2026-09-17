@@ -623,7 +623,7 @@ describe("AgentService", () => {
         expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
           kind: "write_approval",
           summary: {
-            pdf: 0,
+            pages: 0,
             items: 1,
             glossary: 0,
             textPreserve: 0,
@@ -3142,7 +3142,7 @@ describe("AgentService", () => {
         }),
         apply_workspace: vi.fn(async (request_approval) => {
           await request_approval?.({
-            pdf: 0,
+            pages: 0,
             items: 1,
             glossary: 0,
             textPreserve: 0,

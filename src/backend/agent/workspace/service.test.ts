@@ -24,13 +24,14 @@ import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "./service";
 import {
   AGENT_WORKSPACE_CHANGE_PATHS,
   AGENT_WORKSPACE_CONTRACT,
+  AGENT_WORKSPACE_REFERENCES,
   AGENT_WORKSPACE_PATHS,
   AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS,
   AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./contract";
 import { AgentWorkspaceRunError } from "./runtime/runner";
-import { AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
+import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
 
 import {
   workspace_execution,
@@ -277,6 +278,9 @@ describe("AgentWorkspaceService", () => {
       fs.readFileSync(path.join(fixture.workspace_root, "sources", "script.txt"), "utf-8"),
     ).toBe("源文件正文");
     expect(read_json(path.join(active_path, "contract.json"))).toEqual(AGENT_WORKSPACE_CONTRACT);
+    for (const [relative_path, content] of Object.entries(AGENT_WORKSPACE_REFERENCES)) {
+      expect(fs.readFileSync(path.join(active_path, relative_path), "utf8")).toBe(content);
+    }
     expect(read_jsonl(path.join(active_path, AGENT_WORKSPACE_PATHS.items))).toEqual([
       expect.objectContaining({ item_id: 1, text_type: expect.any(String) }),
       expect.objectContaining({ item_id: 2, text_type: expect.any(String) }),
@@ -438,7 +442,7 @@ describe("AgentWorkspaceService", () => {
     const original_write_file = native_fs.write_file.bind(native_fs);
     vi.spyOn(native_fs, "write_file").mockImplementation(async (file_path, content) => {
       const normalized_path = file_path.replaceAll("\\", "/");
-      if (normalized_path.endsWith(AGENT_WORKSPACE_CHANGE_PATHS.items.updates)) {
+      if (normalized_path.endsWith(AGENT_WORKSPACE_CONTRACT.datasets.items.reference)) {
         delayed_write_pending = true;
         mark_delayed_write_started();
         await delayed_write_release;
@@ -494,12 +498,16 @@ describe("AgentWorkspaceService", () => {
         stderr: { content: { message: "脚本失败" } },
       },
     });
-    expect(fixture.run).toHaveBeenCalledWith(
+    const { scriptPath } = fixture.run.mock.lastCall![0];
+    expect(path.posix.dirname(scriptPath)).toBe(AGENT_WORKSPACE_RUN_ROOT);
+    expect(path.posix.extname(scriptPath)).toBe(".mjs");
+    const run_path = scriptPath.slice(0, -".mjs".length);
+    expect(fixture.run).toHaveBeenLastCalledWith(
       {
         workspacePath: active_path,
-        scriptPath: expect.stringMatching(/^work\/runs\/task-.*\.mjs$/u),
-        stdoutPath: expect.stringMatching(/^work\/runs\/task-.*\.stdout\.log$/u),
-        stderrPath: expect.stringMatching(/^work\/runs\/task-.*\.stderr\.log$/u),
+        scriptPath,
+        stdoutPath: `${run_path}.stdout.log`,
+        stderrPath: `${run_path}.stderr.log`,
         todos: ["恢复任务"],
         host: expect.any(Function),
         emitImage: expect.any(Function),
@@ -560,7 +568,7 @@ describe("AgentWorkspaceService", () => {
       revisions: { items: 2, proofreading: 2, quality: 2, prompts: 2, pdf: 0 },
     });
     expect(request_approval).toHaveBeenCalledWith({
-      pdf: 0,
+      pages: 0,
       items: 1,
       glossary: 1,
       textPreserve: 0,
@@ -868,7 +876,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
     const outcome = resolve_agent_workspace_writes({
       batch: request.batch,
       current: {
-        pdf: [],
+        pdfDocuments: [],
         items: items as unknown as JsonRecord[],
         quality: Object.fromEntries(
           QUALITY_RULE_KINDS.map((kind) => [

@@ -1,4 +1,4 @@
-import { PDF_UPDATE_SCHEMA, type PDFUpdateIntent } from "../../file/formats/pdf/pdf-source";
+import type { AgentWorkspacePageUpdateIntent } from "../../project/agent-workspace-page-write";
 import path from "node:path";
 
 import { Check } from "typebox/value";
@@ -25,6 +25,7 @@ import {
 } from "../../project/agent-workspace-write";
 
 import {
+  AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
@@ -50,16 +51,16 @@ export async function prepare_agent_workspace_changes(args: {
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.items.updates),
   );
-  const pdf: PDFUpdateIntent[] = [];
+  const pages: AgentWorkspacePageUpdateIntent[] = [];
   for (const row of await read_change_rows(
     args.nativeFs,
-    path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates),
+    path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
   )) {
-    if (!Check(PDF_UPDATE_SCHEMA, row.value)) {
-      rejected.push(invalid_change(PDF_UPDATE_SCHEMA, row, "pdf", "update"));
+    if (!Check(AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA, row.value)) {
+      rejected.push(invalid_change(AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA, row, "pages", "update"));
       continue;
     }
-    pdf.push({ ...row.value, line: row.line });
+    pages.push({ ...row.value, line: row.line });
   }
   const prompt_rows = await read_change_rows(
     args.nativeFs,
@@ -105,7 +106,7 @@ export async function prepare_agent_workspace_changes(args: {
     }
     quality[kind] = { creates, updates, deletes };
   }
-  return { batch: { items, prompts, quality, pdf }, rejected };
+  return { batch: { items, prompts, quality, pages }, rejected };
 }
 
 /** Schema 负责记录结构，解析器只把合法记录转换为领域意图。 */
@@ -194,10 +195,10 @@ function invalid_change(
     op,
     reason: "invalid_change",
     line: row.line,
-    ...(scope === "pdf" && typeof row.value["file_path"] === "string"
+    ...(scope === "pages" && typeof row.value["file_path"] === "string"
       ? { file_path: row.value["file_path"] }
       : {}),
-    ...(scope === "pdf" && typeof row.value["page"] === "number"
+    ...(scope === "pages" && typeof row.value["page"] === "number"
       ? { page: row.value["page"] }
       : {}),
     ...(kind === undefined ? {} : { kind }),
