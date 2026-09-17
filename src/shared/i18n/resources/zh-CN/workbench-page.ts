@@ -5,7 +5,9 @@ export const zh_cn_workbench_page = {
   },
   table: {
     file_name: "文件名",
-    line_count: "行数",
+    progress: "进度",
+    agent: "AGENT",
+    agent_only: "此文件仅能使用 AGENT 翻译",
     actions: "操作",
   },
   sort: {
@@ -19,11 +21,6 @@ export const zh_cn_workbench_page = {
     no_valid_file: "没有可添加的有效文件。",
     file_action_failed: "文件操作失败，请稍后重试。",
     close_project_failed: "关闭工程失败，请稍后重试。",
-  },
-  pdf: {
-    content: "内容",
-    pages: "核对 {reviewed}/{pages} 页",
-    coverage: "译稿覆盖 {translated}/{pages} 页",
   },
   action: {
     add_file: "添加",

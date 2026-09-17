@@ -1450,20 +1450,7 @@
 }
 
 .agent-decision-badge {
-  display: inline-flex;
   min-width: 24px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--ui-radius-pill);
-  background: var(--muted);
-  padding: 0 7px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .agent-decision-icon {

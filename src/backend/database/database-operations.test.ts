@@ -387,7 +387,7 @@ describe("ProjectDatabase", () => {
       { id: 1, src: "完成", status: "PROCESSED" },
       { id: 2, src: "失败后修复", status: "ERROR" },
       { id: 3, src: "待处理", status: "NONE" },
-      { id: 4, src: "跳过", status: "SKIPPED" },
+      { id: 4, src: "跳过", status: "RULE_SKIPPED" },
     ]);
     database.set_rule_text(lg_path, "prompt.translation", "请保持语气");
     database.transaction(lg_path, () => {
@@ -404,11 +404,8 @@ describe("ProjectDatabase", () => {
     expect(database.get_rules(lg_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
     expect(database.get_project_summary(lg_path)).toEqual(
       expect.objectContaining({
-        name: "summary",
-        source_language: "JA",
-        target_language: "ZH_CN",
+        file_paths: ["chapter.txt"],
         updated_at: "2026-05-16T00:00:00.000Z",
-        file_count: 1,
         translation_stats: {
           total_items: 4,
           completed_count: 2,
@@ -419,6 +416,20 @@ describe("ProjectDatabase", () => {
         },
       }),
     );
+  });
+
+  it("工程预览在重排并重新打开后返回完整文件顺序", () => {
+    const { database, lg_path } = create_database_project("preview-order");
+    const source_path = project_path("source.txt");
+    fs.writeFileSync(source_path, "source");
+    for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
+      database.add_asset_from_source(lg_path, file_path, source_path, null);
+    }
+    database.update_asset_sort_orders(lg_path, ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"]);
+    database.close_project(lg_path);
+    expect(database.get_project_summary(lg_path)).toMatchObject({
+      file_paths: ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"],
+    });
   });
 
   it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", () => {

@@ -1,3 +1,4 @@
+import { badgeVariants } from "@frontend/shadcn/badge";
 import { useEffect, useState } from "react";
 
 import "./batch-translation-summary.css";
@@ -35,6 +36,7 @@ export function BatchTranslationSummary(props: BatchTranslationSummaryProps): JS
   return (
     <span
       className={cn(
+        props.variant === "capsule" && badgeVariants(),
         "batch-translation__summary",
         props.class_name,
         `batch-translation__summary--${props.variant}`,

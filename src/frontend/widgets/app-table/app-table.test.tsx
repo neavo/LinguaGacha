@@ -128,7 +128,9 @@ function create_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
-function create_drag_columns(): AppTableColumn<TestRow>[] {
+/** 两种手柄位置共用行内容，行为断言只观察序号、排序与禁用状态。 */
+function create_drag_columns(inline = false): AppTableColumn<TestRow>[] {
+  if (inline) return create_columns().map((column) => ({ ...column, drag_handle: true }));
   return [
     {
       kind: "drag",
@@ -264,7 +266,9 @@ function drag_table_row(active_row_id: string, over_row_id: string): void {
 function read_rendered_row_labels(container: HTMLDivElement): string[] {
   return Array.from(container.querySelectorAll(".app-table__table--body .app-table__row")).map(
     (row) =>
-      row.querySelector(".app-table__body-cell:not(.app-table__drag-cell)")?.textContent ?? "",
+      row.querySelector(".app-table__cell-content")?.textContent ??
+      row.querySelector(".app-table__body-cell:not(.app-table__drag-cell)")?.textContent ??
+      "",
   );
 }
 
@@ -519,42 +523,45 @@ describe("AppTable", () => {
     });
   });
 
-  it("松手后立即呈现目标顺序，并由完成后的权威 rows 无缝接管", async () => {
-    const initial_rows = create_reorder_rows();
-    const persist = create_controlled_promise<void>();
-    let submitted_row_ids: string[] = [];
+  it.each([false, true])(
+    "松手后立即呈现目标顺序，并由完成后的权威 rows 无缝接管（嵌入手柄=%s）",
+    async (inline) => {
+      const initial_rows = create_reorder_rows();
+      const persist = create_controlled_promise<void>();
+      let submitted_row_ids: string[] = [];
 
-    function ReorderFixture(): JSX.Element {
-      const [rows, set_rows] = useState(initial_rows);
-      return create_default_props({
-        rows,
-        columns: create_drag_columns(),
-        on_reorder: async (ordered_row_ids) => {
-          submitted_row_ids = ordered_row_ids;
-          await persist.promise;
-          const row_by_id = new Map(rows.map((row) => [row.id, row]));
-          set_rows(ordered_row_ids.map((row_id) => row_by_id.get(row_id)!));
-        },
+      function ReorderFixture(): JSX.Element {
+        const [rows, set_rows] = useState(initial_rows);
+        return create_default_props({
+          rows,
+          columns: create_drag_columns(inline),
+          on_reorder: async (ordered_row_ids) => {
+            submitted_row_ids = ordered_row_ids;
+            await persist.promise;
+            const row_by_id = new Map(rows.map((row) => [row.id, row]));
+            set_rows(ordered_row_ids.map((row_id) => row_by_id.get(row_id)!));
+          },
+        });
+      }
+
+      const container = await mount(<ReorderFixture />);
+      drag_table_row("a", "c");
+
+      expect(submitted_row_ids).toEqual(["b", "c", "a"]);
+      expect(read_row_numbers(container)).toEqual(["2", "3", "1"]);
+      expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+      expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
+
+      await act(async () => {
+        persist.resolve();
+        await persist.promise;
+        await Promise.resolve();
       });
-    }
 
-    const container = await mount(<ReorderFixture />);
-    drag_table_row("a", "c");
-
-    expect(submitted_row_ids).toEqual(["b", "c", "a"]);
-    expect(read_row_numbers(container)).toEqual(["2", "3", "1"]);
-    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
-    expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
-
-    await act(async () => {
-      persist.resolve();
-      await persist.promise;
-      await Promise.resolve();
-    });
-
-    expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
-    expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
-  });
+      expect(read_rendered_row_labels(container)).toEqual(["Beta", "Gamma", "Alpha"]);
+      expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
+    },
+  );
 
   it("持久化失败后才恢复权威顺序", async () => {
     const initial_rows = create_reorder_rows();
@@ -585,12 +592,12 @@ describe("AppTable", () => {
     expect(read_row_numbers(container)).toEqual(["1", "2", "3"]);
   });
 
-  it("拖动中的原行和浮层共用原序号，取消后恢复原行显示", async () => {
+  it("拖动中的原行和浮层共用原序号，取消后恢复原行显示（嵌入手柄）", async () => {
     const save = vi.fn(async () => {});
     const container = await mount(
       create_default_props({
         rows: create_reorder_rows(),
-        columns: create_drag_columns(),
+        columns: create_drag_columns(true),
         on_reorder: save,
       }),
     );
@@ -720,38 +727,39 @@ describe("AppTable", () => {
     expect(read_rendered_row_labels(container)).toEqual(["Alpha", "Beta", "Gamma"]);
   });
 
-  it.each(["readonly", "sort", "remote"] as const)(
-    "%s 状态保留菜单但禁止重排",
-    async (restriction) => {
-      const rows = create_reorder_rows();
-      const on_reorder = vi.fn(async () => {});
-      const container = await mount(
-        create_default_props({
-          rows,
-          columns: create_drag_columns(),
-          on_reorder,
-          reorder_disabled: restriction === "readonly",
-          sort_state:
-            restriction === "sort" ? { column_id: "label", direction: "ascending" } : null,
-          row_model:
-            restriction === "remote"
-              ? create_remote_row_model({ rows, loaded_indices: [0, 1, 2] })
-              : undefined,
-        }),
-      );
-      await open_row_menu(container, 1);
-      const top = get_menu_item("app.action.move_to_top");
-      const bottom = get_menu_item("app.action.move_to_bottom");
-      expect(top.getAttribute("aria-disabled")).toBe("true");
-      expect(bottom.getAttribute("aria-disabled")).toBe("true");
-      await act(async () => {
-        top.click();
-        bottom.click();
-      });
-      drag_table_row("b", "a");
-      expect(on_reorder).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    { restriction: "sort", inline: false },
+    { restriction: "readonly", inline: true },
+    { restriction: "remote", inline: true },
+  ])("$restriction 状态保留菜单但禁止重排（嵌入手柄=$inline）", async ({ restriction, inline }) => {
+    const rows = create_reorder_rows();
+    const on_reorder = vi.fn(async () => {});
+    const container = await mount(
+      create_default_props({
+        rows,
+        columns: create_drag_columns(inline),
+        on_reorder,
+        reorder_disabled: restriction === "readonly",
+        sort_state: restriction === "sort" ? { column_id: "label", direction: "ascending" } : null,
+        row_model:
+          restriction === "remote"
+            ? create_remote_row_model({ rows, loaded_indices: [0, 1, 2] })
+            : undefined,
+      }),
+    );
+    expect(read_drag_handles(container).every((handle) => handle.disabled)).toBe(true);
+    await open_row_menu(container, 1);
+    const top = get_menu_item("app.action.move_to_top");
+    const bottom = get_menu_item("app.action.move_to_bottom");
+    expect(top.getAttribute("aria-disabled")).toBe("true");
+    expect(bottom.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      top.click();
+      bottom.click();
+    });
+    drag_table_row("b", "a");
+    expect(on_reorder).not.toHaveBeenCalled();
+  });
 
   it("全选时两项首尾操作均禁用且不提交写入", async () => {
     const on_reorder = vi.fn(async () => {});

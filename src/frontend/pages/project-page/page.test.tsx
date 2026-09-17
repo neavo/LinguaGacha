@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act } from "react";
+import { act, cloneElement, isValidElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -119,7 +119,11 @@ vi.mock("@frontend/shadcn/tooltip", () => {
     ),
     TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
     TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
-      <>{props.render ?? props.children}</>
+      <>
+        {isValidElement(props.render) && props.children !== undefined
+          ? cloneElement(props.render, undefined, props.children)
+          : (props.render ?? props.children)}
+      </>
     ),
   };
 });
@@ -287,6 +291,67 @@ describe("ProjectPage", () => {
     });
   }
 
+  it("保留预览文件顺序并用当前工程文件名记录最近打开", async () => {
+    const paths = [
+      "folder/chapter03.txt",
+      "chapter01.txt",
+      "chapter02.txt",
+      "chapter04.txt",
+      "chapter05.txt",
+    ];
+    const project_path = "E:/Source/renamed.lg";
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      recent_projects: [{ path: project_path, name: "旧来源名称" }],
+    });
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/session/project/preview")
+        return {
+          preview: {
+            file_paths: paths,
+            created_at: "2020-12-12T12:12:12",
+            updated_at: "2026-09-17T14:05:54",
+            translation_stats: {
+              total_items: 3,
+              completed_count: 1,
+              skipped_count: 0,
+              failed_count: 0,
+              pending_count: 2,
+              completion_percent: 33,
+            },
+          },
+        };
+      return {};
+    });
+    await mount_page();
+    await act(async () => {
+      get_button_by_text(container!, "旧来源名称").click();
+      await flush_async_updates();
+    });
+    expect(container!.textContent).toContain("2020-12-12 12:12:12");
+    expect(container!.textContent).toContain("2026-09-17 14:05:54");
+    const files_row = container!.querySelector(".project-home__preview-files-row")!;
+    const files_badge = files_row.querySelector('[data-slot="badge"]');
+    expect(files_badge?.textContent).toBe(`${paths.length} 个文件`);
+    expect(
+      [...files_row.querySelectorAll('[role="tooltip"] li')].map((element) => element.textContent),
+    ).toEqual(paths);
+    const progress = container!.querySelector(
+      '.project-home__preview-progress [data-slot="badge"]',
+    );
+    expect(progress?.textContent).toBe("33.00%");
+    await act(async () => {
+      get_button_by_text(container!, "打开工程").click();
+      await flush_async_updates();
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/session/project/open", {
+      path: project_path,
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/settings/recent-projects/add", {
+      path: project_path,
+      name: "renamed",
+    });
+  });
+
   it("新建工程默认提交 stem.lg，并用后端真实路径写入最近工程", async () => {
     await mount_page();
 
@@ -379,13 +444,13 @@ describe("ProjectPage", () => {
       container?.querySelectorAll<HTMLElement>(".project-home__format-tag") ?? [],
     );
     const json_tag = selected_tags.find((tag) => tag.textContent?.includes("JSON 游戏文本"));
-    expect(json_tag?.querySelector(".project-home__format-count")?.textContent).toBe("1");
+    expect(json_tag?.querySelector('[data-slot="badge"]')?.textContent).toBe("1");
     expect(container?.textContent).not.toContain("命中");
 
     await act(async () => {
       container?.querySelector<HTMLButtonElement>('button[aria-label="重置"]')?.click();
     });
 
-    expect(container?.querySelector(".project-home__format-count")).toBeNull();
+    expect(container?.querySelector('[data-slot="badge"]')).toBeNull();
   });
 });

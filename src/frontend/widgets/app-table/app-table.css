@@ -330,6 +330,23 @@
   transform: scaleY(1);
 }
 
+.app-table__cell-with-drag {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-table__cell-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-table__cell-with-drag > .app-table__drag-indicator {
+  flex-shrink: 0;
+  margin: 0;
+}
+
 .app-table__drag-indicator {
   padding: 0;
   border: 0;

@@ -34,11 +34,12 @@ import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/pr
 
 import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
 import { resolveProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
+import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 import type {
-  WorkbenchDialogState,
   WorkbenchFileEntry,
   WorkbenchSnapshot,
-} from "@frontend/pages/workbench-page/types";
+  WorkbenchQueryResponse,
+} from "@shared/workbench/workbench-query";
 
 type WorkbenchCacheErrorContext = Pick<RendererErrorContextInput, "stage" | "signalSeq">; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
 
@@ -59,12 +60,6 @@ const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
-
-type WorkbenchQueryResponse = {
-  projectPath: string;
-  sectionRevisions: ProjectDataSectionRevisions;
-  snapshot: WorkbenchSnapshot;
-};
 
 type WorkbenchSelectionState = {
   selected_entry_ids: string[];

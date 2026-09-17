@@ -1,3 +1,6 @@
+import type { ProjectPreview } from "../../shared/project-preview";
+import { build_project_translation_stats } from "../../shared/project-translation-stats";
+import { build_project_file_paths } from "../../shared/project/project-file-paths";
 import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
 import { read_pdf_document } from "../file/formats/pdf/pdf-source";
 import path from "node:path";
@@ -45,8 +48,6 @@ interface ProjectDatabaseConnectionRecord {
   scoped_use_count: number; // 当前同步 workflow 正在使用连接，归零后才能收尾
   closed: boolean; // 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
 }
-
-const CURRENT_NONE = "NONE";
 
 /**
  * 将 SQLite 文本列按严格 JSON 协议解析，非文本空值统一为 null。
@@ -452,7 +453,7 @@ export class ProjectDatabase {
   }
 
   /** 聚合工程元数据和条目进度，供列表与状态读取。 */
-  public get_project_summary(project_path: string): JsonValue {
+  public get_project_summary(project_path: string): ProjectPreview {
     return this.with_project_connection(project_path, () =>
       this.read_project_summary(project_path),
     );
@@ -1209,50 +1210,29 @@ export class ProjectDatabase {
   /**
    * 读取工程摘要，供打开预览和运行态快速判断使用
    */
-  private read_project_summary(project_path: string): JsonValue {
+  private read_project_summary(project_path: string): ProjectPreview {
     const meta = this.value_record(this.get_all_meta(project_path));
     const db = this.open_project(project_path);
-    const file_count_row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
-    const item_rows = db.prepare("SELECT data FROM items").all();
-    let completed_count = 0;
-    let failed_count = 0;
-    let pending_count = 0;
-    let skipped_count = 0;
-    for (const row of item_rows) {
-      let status = CURRENT_NONE;
-      try {
+    const assets = db.prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC").all();
+    const items = db
+      .prepare("SELECT data FROM items ORDER BY id ASC")
+      .all()
+      .map((row) => {
         const item = this.value_record(json_parse(row["data"]));
-        status = String(item["status"] ?? CURRENT_NONE);
-      } catch {
-        status = CURRENT_NONE;
-      }
-      if (status === "PROCESSED") {
-        completed_count += 1;
-      } else if (status === "ERROR") {
-        failed_count += 1;
-      } else if (status === "NONE") {
-        pending_count += 1;
-      } else {
-        skipped_count += 1;
-      }
-    }
-    const total_items = item_rows.length;
+        return {
+          file_path: String(item["file_path"] ?? ""),
+          status: String(item["status"] ?? "NONE"),
+        };
+      });
+    const file_paths = build_project_file_paths(
+      assets.map((asset) => row_text(asset, "path")),
+      items.map((item) => item.file_path),
+    );
     return {
-      name: String(meta["name"] ?? path.parse(project_path).name),
-      source_language: String(meta["source_language"] ?? ""),
-      target_language: String(meta["target_language"] ?? ""),
+      file_paths,
       created_at: String(meta["created_at"] ?? ""),
       updated_at: String(meta["updated_at"] ?? ""),
-      file_count: file_count_row === undefined ? 0 : row_number(file_count_row, "count"),
-      translation_stats: {
-        total_items,
-        completed_count,
-        failed_count,
-        pending_count,
-        skipped_count,
-        completion_percent:
-          total_items > 0 ? ((completed_count + skipped_count) / total_items) * 100 : 0,
-      },
+      translation_stats: build_project_translation_stats(items),
     };
   }
 

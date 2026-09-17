@@ -413,7 +413,9 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const selected_row_id_set = useMemo(() => {
     return new Set(rendered_selection_state.selected_row_ids);
   }, [rendered_selection_state.selected_row_ids]);
-  const drag_column_present = columns.some((column) => column.kind === "drag");
+  const drag_column_present = columns.some(
+    (column) => column.kind === "drag" || column.drag_handle === true,
+  );
   const reorder_enabled =
     on_reorder !== undefined &&
     !reorder_disabled &&

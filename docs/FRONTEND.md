@@ -51,13 +51,13 @@
 - Agent 主输入接收整页图片拖入，原位编辑时仅接收编辑器局部拖入。`AgentImageDropTarget` 拥有区域事件与反馈；共享编辑器统一处理选择、粘贴和拖入，原图交给后端图片准备 API，返回结果只写回发起时仍有效的草稿。图片处理与缓存归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
 - Agent renderer 由 `AgentSessionStore` 作为唯一会话镜像，按 timeline、controls、queue、todo、skills、input 与 countdown 切片订阅；command、queue、todo、pending decision 和 transport 的变化不重建其它切片。entry upsert 只替换目标条目，正常命令不回传完整历史；时间线 round 与 Markdown 组件按稳定 entry / 真实文本输入复用，发送按钮在 command 开始后立即以 `aria-busy` 表示受理中。页面拥有主 Composer 的宿主指令列表及其标题、描述、禁用态和动作，Composer 只负责筛选与即时触发；原位编辑器不提供指令。Agent 会话恢复、用户决定与连接世代的跨层消费契约归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
 - `AgentMarkdown` 将正文解析、高亮与图表交给 Streamdown 插件，接入桌面链接、图片预览和交互边界；Mermaid 配置消费应用主题令牌。图表容器的可用宽度由应用 CSS 提供，SVG 布局与自然尺寸由 Mermaid 决定。图表激活态由 DOM 焦点拥有，失焦或 Escape 后滚轮恢复页面滚动；图表文字和经过图表的选区不进入正文批注。
-- Agent 工具详情在首次查看标签时生成阅读文档，弹窗内按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出按会话提供的文本块顺序逐块递归解释完整的内嵌 JSON，并将多行字符串显示为文本块；各块行尾缺少换行时补一个 LF，已有空行保留，空文本块占一行，空数组生成空文档。这种解释只属于前端阅读，会话保留原始块。Agent 格式化器生成文本和语义范围，`AppEditor` 通过单个 CodeMirror 视口渲染范围，不重新把阅读文档当作 JSON 解析；文档与范围在同一事务中更新，避免错位。
+- Agent 工具详情在首次查看标签时生成阅读文档，按原始内容复用输入、输出各一份结果，只挂载当前查看器。输出逐块递归解释完整的内嵌 JSON，统一 LF 并裁剪首尾空白行，保留正文缩进与内部空行；空白块占一行，无输出生成空文档。会话保留原始块。格式化器在清理后生成文本和语义范围，`AppEditor` 在同一事务更新文档与范围，通过单个 CodeMirror 视口显示，不重新解析阅读文档。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
 - 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
 - `widgets/interactions/use-reorder` 拥有表格、模型分类和 Agent 队列的临时 ID 顺序与提交互斥；拖动中身份顺序或可操作状态变化即取消。页面拥有数据、持久化和一次错误反馈，`on_reorder` 的 resolve/reject 均表示保存与刷新处理结束，随后交回当前权威顺序；Agent 队列等待命令事件重放或快照恢复。React 拥有排序 DOM 和虚拟索引，dnd-kit 的 DOM 乐观排序插件保持禁用。
-- `AppTable` 拥有选区裁决、行菜单和内置拖动列，页面只提供业务列、菜单项及重排限制。拖拽与菜单共用重排入口；拖动及等待保存期间按起始身份顺序显示序号，位置索引独立服务交互。原行和浮层共用渲染，浮层显示时原行透明占位以保留测量与焦点，浮层使用不透明底色。
+- `AppTable` 拥有选区裁决、行菜单与拖动手柄，手柄可使用独立拖动列或数据列的 `drag_handle` 嵌入，页面只声明位置并提供业务列、菜单项及重排限制。拖拽与菜单共用重排入口；拖动及等待保存期间按起始身份顺序显示序号，位置索引独立服务交互。原行、占位与浮层共用手柄布局，浮层显示时原行透明占位以保留测量与焦点，浮层使用不透明底色。
 - 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 
 ### 批量翻译与工程导出
@@ -67,13 +67,15 @@
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
 
-- 工作台 PDF 摘要分别展示译稿覆盖原页数与核对页数，文本条目统计独立；pdf section 变化触发摘要补读。PDF 正文不进入前端共享缓存。
+- 工程主页消费磁盘预览，创建与打开成功后的最近工程名称取当前 `.lg` 文件名。工程概览与工作台共用 `features/translation-progress`，只格式化后端统计，口径归 [`BACKEND.md`](BACKEND.md)。
+- 工作台在 items 与 pdf section 变化时补读文件列表，PDF 正文不进入前端共享缓存。
 
 ## 4. 样式消费
 
 - 本文不定义视觉风格，只记录工程消费落点；具体方向来自当前任务输入、既有界面证据和适用设计流程，不绑定固定文件名。
 - `AppearanceProvider` 是各 renderer 窗口持久化主题 / 字体偏好、解析系统主题、同步根节点视觉状态与原生标题栏的唯一入口；宿主桥只接收已解析的 `light / dark`，不持有 `system` 等用户偏好。
 - `src/frontend/index.css` 拥有全局 token 与主题样式，`src/frontend/shadcn` 拥有基础控件，`widgets`、`features` 与 `pages` 只消费外观运行态、token，并组合各自所有权内的界面。
+- 信息胶囊外观归 `shadcn/badge`，组合控件通过 `badgeVariants` 复用；业务组件只映射状态并提供布局与交互。
 - Agent Markdown 的普通正文排版归 `agent-markdown.css`，通过 Streamdown 公开组件映射使用原生标签。
 - 应用自绘界面的快捷键提示统一复用 `Kbd` 键帽，动作键位文案由 `ShortcutKbd` 提供。
 - 下拉与右键菜单主、子定位层共用 `widgets/app-menu` 的鼠标命中样式，覆盖宿主透明容器经 Portal 继承的穿透规则。菜单与 Tooltip 通过 `useWindowDeactivation` 及 Base UI 公开入口响应失焦和页面隐藏；Tooltip 在新交互后恢复悬停，窗口切换保持触发器 DOM 身份。

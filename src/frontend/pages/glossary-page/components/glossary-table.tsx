@@ -208,10 +208,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
               entry_id={payload.row_id}
               running={false}
               badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
-              badge_class_name="glossary-page__hit-badge"
-              running_class_name=""
-              wrap_class_name="glossary-page__hit-badge-wrap"
-              button_class_name="glossary-page__hit-badge-button"
               query_label={t("glossary_page.hit.action.query_source")}
               relation_label={t("glossary_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}

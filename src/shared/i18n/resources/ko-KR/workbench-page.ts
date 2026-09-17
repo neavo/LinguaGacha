@@ -7,7 +7,9 @@ export const ko_kr_workbench_page = {
   },
   table: {
     file_name: "파일 이름",
-    line_count: "줄 수",
+    progress: "진행률",
+    agent: "AGENT",
+    agent_only: "이 파일은 AGENT로만 번역할 수 있습니다",
     actions: "작업",
   },
   sort: {
@@ -21,11 +23,6 @@ export const ko_kr_workbench_page = {
     no_valid_file: "추가할 수 있는 유효한 파일이 없습니다.",
     file_action_failed: "파일 작업에 실패했습니다. 잠시 후 다시 시도해 주세요.",
     close_project_failed: "프로젝트를 닫지 못했습니다. 잠시 후 다시 시도해 주세요.",
-  },
-  pdf: {
-    content: "내용",
-    pages: "검토 {reviewed}/{pages}",
-    coverage: "번역문 {translated}/{pages}페이지",
   },
   action: {
     add_file: "추가",

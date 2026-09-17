@@ -130,8 +130,15 @@ it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工
       entries: [
         {
           file_type: "PDF",
-          item_count: 0,
-          pdf: { pages: 3, reviewed_pages: 1, translated_pages: 1, omitted_pages: 0 },
+          progress: {
+            unit: "page",
+            total_count: 3,
+            completed_count: 1,
+            skipped_count: 0,
+            failed_count: null,
+            pending_count: 2,
+            completion_percent: 33,
+          },
         },
       ],
     });

@@ -8,7 +8,9 @@ export const en_us_workbench_page = {
   },
   table: {
     file_name: "File Name",
-    line_count: "Lines",
+    progress: "Progress",
+    agent: "AGENT",
+    agent_only: "This file can only be translated using AGENT",
     actions: "Actions",
   },
   sort: {
@@ -22,11 +24,6 @@ export const en_us_workbench_page = {
     no_valid_file: "No valid files can be added.",
     file_action_failed: "File operation failed. Please try again later.",
     close_project_failed: "Failed to close the project. Please try again later.",
-  },
-  pdf: {
-    content: "Content",
-    pages: "Reviewed {reviewed}/{pages}",
-    coverage: "Translation covers {translated}/{pages} pages",
   },
   action: {
     add_file: "Add",

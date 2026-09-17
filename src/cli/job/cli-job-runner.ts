@@ -8,7 +8,7 @@ import type { BatchTranslationService } from "../../backend/batch-translation/ba
 import type { TranslationFileExportService } from "../../backend/file/translation-file-export-service";
 import type { ProjectLifecycleService } from "../../backend/project/project-lifecycle-service";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
-import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { build_cli_task_input } from "./cli-task-input";
@@ -69,15 +69,11 @@ export async function run_cli_job(
     });
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    const snapshot = backend_services.project.summary.read()["snapshot"];
-    const entries =
-      is_json_record(snapshot) && Array.isArray(snapshot["entries"])
-        ? snapshot["entries"].filter(is_json_record)
-        : [];
+    const { entries } = backend_services.project.summary.read().snapshot;
     excluded_files = entries
-      .filter((entry) => entry["file_type"] === "PDF")
-      .map((entry) => String(entry["rel_path"]));
-    if (entries.some((entry) => Number(entry["item_count"]) > 0))
+      .filter((entry) => entry.file_type === "PDF")
+      .map((entry) => entry.rel_path);
+    if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
       await start_and_wait_for_translation(backend_services, status_reporter);
     await backend_services.files.translationExport.export_files_to_directory(
       command.outputDir,

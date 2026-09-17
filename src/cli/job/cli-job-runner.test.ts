@@ -30,7 +30,26 @@ describe("run_cli_job", () => {
     const harness = create_backend_services_harness();
     const paths = create_cli_paths();
     vi.spyOn(harness.backend_services.project.summary, "read").mockReturnValue({
-      snapshot: { entries: [{ rel_path: "book.pdf", file_type: "PDF", item_count: 0 }] },
+      projectPath: "test.lg",
+      sectionRevisions: {},
+      snapshot: {
+        entries: [
+          {
+            rel_path: "book.pdf",
+            file_type: "PDF",
+            sort_index: 0,
+            progress: {
+              unit: "page",
+              total_count: 3,
+              completed_count: 0,
+              skipped_count: 0,
+              failed_count: null,
+              pending_count: 3,
+              completion_percent: 0,
+            },
+          },
+        ],
+      },
     });
     await run_cli_job(harness.backend_services, create_command(paths), harness.status_reporter);
     expect(harness.start_task).not.toHaveBeenCalled();
@@ -293,7 +312,26 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
       project: {
         summary: {
           read: () => ({
-            snapshot: { entries: [{ rel_path: "input.txt", file_type: "TXT", item_count: 4 }] },
+            projectPath: "test.lg",
+            sectionRevisions: {},
+            snapshot: {
+              entries: [
+                {
+                  rel_path: "input.txt",
+                  file_type: "TXT",
+                  sort_index: 0,
+                  progress: {
+                    unit: "line",
+                    total_count: 4,
+                    completed_count: 0,
+                    skipped_count: 0,
+                    failed_count: 0,
+                    pending_count: 4,
+                    completion_percent: 0,
+                  },
+                },
+              ],
+            },
           }),
         },
         lifecycle: { apply_task_input, create_project_commit, unload_project },

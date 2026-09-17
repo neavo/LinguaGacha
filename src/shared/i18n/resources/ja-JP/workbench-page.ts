@@ -7,7 +7,9 @@ export const ja_jp_workbench_page = {
   },
   table: {
     file_name: "ファイル名",
-    line_count: "行数",
+    progress: "進捗",
+    agent: "AGENT",
+    agent_only: "このファイルは AGENT でのみ翻訳できます",
     actions: "操作",
   },
   sort: {
@@ -22,11 +24,6 @@ export const ja_jp_workbench_page = {
     file_action_failed: "ファイル操作に失敗しました。しばらくしてから再試行してください。",
     close_project_failed:
       "プロジェクトを閉じられませんでした。しばらくしてから再試行してください。",
-  },
-  pdf: {
-    content: "内容",
-    pages: "確認 {reviewed}/{pages}",
-    coverage: "訳文 {translated}/{pages} ページ",
   },
   action: {
     add_file: "追加",

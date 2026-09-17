@@ -157,7 +157,7 @@ describe("AgentToolDetailDialog", () => {
     const entry = tool_success(
       "any_tool",
       "{}",
-      JSON.stringify({ data: JSON.stringify({ text: "一\n\n\t二" }) }),
+      JSON.stringify({ data: JSON.stringify({ text: " \r\n一\n\n\t二\n\t " }) }),
     );
     await render_dialog(entry);
     expect(format).not.toHaveBeenCalled();

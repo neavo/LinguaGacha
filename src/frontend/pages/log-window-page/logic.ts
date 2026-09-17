@@ -1,3 +1,4 @@
+import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
 import type { LogEntry, LogLevel } from "@frontend/app/desktop/desktop-api";
 
 export type LogLevelFilter = "all" | LogLevel;
@@ -67,17 +68,5 @@ function build_log_filter_regex(pattern: string): RegExp | null {
 
 // 日志窗口使用本地可读时间，无法解析时保留原始时间戳用于诊断
 export function format_log_timestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  const year = date.getFullYear().toString().padStart(4, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const day = date.getDate().toString().padStart(2, "0");
-  const hour = date.getHours().toString().padStart(2, "0");
-  const minute = date.getMinutes().toString().padStart(2, "0");
-  const second = date.getSeconds().toString().padStart(2, "0");
-
-  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  return format_local_timestamp(value) ?? value;
 }

@@ -41,15 +41,12 @@ export const de_de_project_page = {
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",
   },
   preview: {
-    project_name: "Projektname",
+    title: "Projektübersicht",
     file_count: "Dateianzahl",
+    files: "{COUNT} Dateien",
     created_at: "Erstellt am",
     updated_at: "Zuletzt aktualisiert",
     progress: "Fortschritt",
-    translated: "Übersetzt:",
-    skipped: "Keine Übersetzung nötig:",
-    total: "Gesamt:",
-    rows_unit: "",
   },
   loading_stages: {
     project: "Projektgrundgerüst wird geladen …",

@@ -9,4 +9,6 @@ export const de_de_task_progress = {
   translation_skipped: "Keine Übersetzung nötig",
 
   toggle_tooltip: "Zum Umschalten klicken",
+  line: "{status} - {count} Zeilen",
+  page: "{status} - {count} Seiten",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

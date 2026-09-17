@@ -1,5 +1,5 @@
-import { cn } from "@frontend/shadcn/classnames";
 import { Badge } from "@frontend/shadcn/badge";
+import "./quality-rule-hit-badge.css";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import {
@@ -21,26 +21,19 @@ type QualityRuleHitBadgeProps = {
   entry_id: string;
   running: boolean;
   badge_state: QualityRuleHitBadgeState | null;
-  badge_class_name: string;
-  running_class_name: string;
-  wrap_class_name: string;
-  button_class_name: string;
   query_label: string;
   relation_label?: string;
   on_query_entry_source: (entry_id: string) => Promise<void>;
   on_search_entry_relations?: (entry_id: string) => void;
 };
 
-const COLOR_CLASS_NAME_BY_KIND = {
-  matched:
-    "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400",
-  related:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400",
-  unmatched:
-    "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+const TONE_BY_KIND = {
+  matched: "success",
+  related: "warning",
+  unmatched: "failure",
 } as const;
 
-/** 三类质量规则表共用命中状态、查询动作与关系菜单，页面只提供样式和文案。 */
+/** 三类质量规则表共用命中状态、查询动作与关系菜单，页面提供业务动作与文案。 */
 export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Element | null {
   const { t } = useI18n();
 
@@ -49,13 +42,10 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
       <span
         data-app-table-ignore-box-select="true"
         data-app-table-ignore-row-click="true"
-        className={props.wrap_class_name}
+        className="quality-rule-hit-badge"
         aria-label={t("app.action.loading")}
       >
-        <Badge
-          variant="outline"
-          className={cn(props.badge_class_name, props.running_class_name, "[&>svg]:!size-[10px]")}
-        >
+        <Badge>
           <Spinner data-icon="inline-start" />
         </Badge>
       </span>
@@ -67,9 +57,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
   }
 
   const badge = (
-    <Badge className={cn(props.badge_class_name, COLOR_CLASS_NAME_BY_KIND[props.badge_state.kind])}>
-      {props.badge_state.hits.toString()}
-    </Badge>
+    <Badge tone={TONE_BY_KIND[props.badge_state.kind]}>{props.badge_state.hits.toString()}</Badge>
   );
   const tooltip_content = (
     <TooltipContent side="top" sideOffset={8}>
@@ -85,7 +73,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
             <span
               data-app-table-ignore-box-select="true"
               data-app-table-ignore-row-click="true"
-              className={props.wrap_class_name}
+              className="quality-rule-hit-badge"
               aria-label={props.badge_state.tooltip}
             >
               {badge}
@@ -110,7 +98,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
               type="button"
               data-app-table-ignore-box-select="true"
               data-app-table-ignore-row-click="true"
-              className={props.button_class_name}
+              className="quality-rule-hit-badge quality-rule-hit-badge__button"
               aria-label={props.badge_state.tooltip}
               onClick={(event) => {
                 event.stopPropagation();
@@ -137,7 +125,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
                   type="button"
                   data-app-table-ignore-box-select="true"
                   data-app-table-ignore-row-click="true"
-                  className={props.button_class_name}
+                  className="quality-rule-hit-badge quality-rule-hit-badge__button"
                   aria-label={props.badge_state.tooltip}
                   onClick={(event) => {
                     event.stopPropagation();

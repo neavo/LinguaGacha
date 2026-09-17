@@ -1,3 +1,4 @@
+import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
 import { CircleEllipsis } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -6,7 +7,9 @@ import {
   WorkbenchTableActionMenu,
   WorkbenchTableContextMenuItems,
 } from "@frontend/pages/workbench-page/components/workbench-table-action-menu";
-import type { WorkbenchFileEntry } from "@frontend/pages/workbench-page/types";
+import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
+import { Badge } from "@frontend/shadcn/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
@@ -49,10 +52,9 @@ function sort_workbench_entries(
 
     if (sort_state.column_id === "file") {
       compare_result = collator.compare(left_entry.rel_path, right_entry.rel_path);
-    } else if (sort_state.column_id === "line") {
+    } else if (sort_state.column_id === "progress") {
       compare_result =
-        (left_entry.pdf?.pages ?? left_entry.item_count) -
-        (right_entry.pdf?.pages ?? right_entry.item_count);
+        left_entry.progress.completion_percent - right_entry.progress.completion_percent;
     }
 
     if (compare_result === 0) {
@@ -86,16 +88,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   const columns = useMemo<AppTableColumn<WorkbenchFileEntry>[]>(() => {
     return [
       {
-        kind: "drag",
-        id: "drag",
-        width: 64,
-        align: "center",
-        title: t("app.drag.handle"),
-        head_class_name: "workbench-page__table-drag-head",
-        cell_class_name: "workbench-page__table-drag-cell",
-      },
-      {
         kind: "data",
+        drag_handle: true,
         id: "file",
         title: t("workbench_page.table.file_name"),
         align: "left",
@@ -106,15 +100,33 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         cell_class_name: "workbench-page__table-file-cell",
         render_cell: (payload) => {
           return (
-            <span className="workbench-page__table-file-text">
-              {payload.row.rel_path}
-              {payload.row.pdf
-                ? ` · ${t("workbench_page.pdf.coverage", {
-                    translated: String(payload.row.pdf.translated_pages),
-                    pages: String(payload.row.pdf.pages),
-                  })}`
-                : ""}
-            </span>
+            <div className="workbench-page__table-file">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className="workbench-page__table-file-text"
+                      tabIndex={payload.presentation === "body" ? 0 : -1}
+                    />
+                  }
+                >
+                  {payload.row.rel_path}
+                </TooltipTrigger>
+                <TooltipContent>{payload.row.rel_path}</TooltipContent>
+              </Tooltip>
+              {payload.row.file_type === "PDF" ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Badge tone="brand" tabIndex={payload.presentation === "body" ? 0 : -1} />
+                    }
+                  >
+                    {t("workbench_page.table.agent")}
+                  </TooltipTrigger>
+                  <TooltipContent>{t("workbench_page.table.agent_only")}</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
           );
         },
         render_placeholder: () => {
@@ -123,29 +135,23 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
       },
       {
         kind: "data",
-        id: "line",
-        title: t(
-          props.entries.some((entry) => entry.pdf)
-            ? "workbench_page.pdf.content"
-            : "workbench_page.table.line_count",
-        ),
-        width: props.entries.some((entry) => entry.pdf) ? 160 : 108,
+        id: "progress",
+        title: t("workbench_page.table.progress"),
+        width: 120,
         align: "center",
         sortable: {
           action_labels: sort_action_labels,
         },
-        head_class_name: "workbench-page__table-line-head",
-        cell_class_name: "workbench-page__table-line-cell",
+        head_class_name: "workbench-page__table-progress-head",
+        cell_class_name: "workbench-page__table-progress-cell",
         render_cell: (payload) => {
           return (
-            <span className="workbench-page__table-line-text">
-              {payload.row.pdf
-                ? t("workbench_page.pdf.pages", {
-                    reviewed: String(payload.row.pdf.reviewed_pages),
-                    pages: String(payload.row.pdf.pages),
-                  })
-                : payload.row.item_count}
-            </span>
+            <TranslationProgressBadge
+              progress={payload.row.progress}
+              total={payload.row.progress.total_count}
+              unit={payload.row.progress.unit}
+              tabIndex={payload.presentation === "body" ? 0 : -1}
+            />
           );
         },
       },
@@ -186,14 +192,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         },
       },
     ];
-  }, [
-    props.entries,
-    props.on_prepare_entry_action,
-    props.on_reset,
-    props.readonly,
-    sort_action_labels,
-    t,
-  ]);
+  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, sort_action_labels, t]);
 
   return (
     <Card variant="table" className="workbench-page__table-card">

@@ -554,51 +554,30 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("preview 从 database summary 收窄为公开摘要载荷", () => {
-    const project_path = write_file(path.join(create_temp_dir(), "demo.lg"));
-    const database = create_database({
-      summary: {
-        name: "demo",
-        source_language: "JA",
-        target_language: "ZH",
-        file_count: 2,
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-02T00:00:00.000Z",
-        translation_stats: {
-          total_items: 10,
-          completed_count: 4,
-          failed_count: 1,
-          pending_count: 3,
-          skipped_count: 2,
-          completion_percent: 60,
-        },
-        hidden_field: "不会外泄",
-      },
+  it("preview 在任务运行时读取另一工程的磁盘概览并保留当前会话", () => {
+    const project_path = path.join(create_temp_dir(), "preview.lg");
+    const database = new ProjectDatabase();
+    database.create_project(project_path, "preview");
+    const session_state = create_session_state({ loaded: true, projectPath: "current.lg" });
+    const project_event_handler = vi.fn();
+    const service = create_service({
+      database,
+      session_state,
+      project_event_handler,
+      task_busy: true,
     });
-    const service = create_service({ database });
-
-    expect(service.get_project_preview({ path: project_path })).toEqual({
-      preview: {
-        path: project_path,
-        name: "demo",
-        source_language: "JA",
-        target_language: "ZH",
-        file_count: 2,
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-02T00:00:00.000Z",
-        translation_stats: {
-          total_items: 10,
-          completed_count: 4,
-          failed_count: 1,
-          pending_count: 3,
-          skipped_count: 2,
-          completion_percent: 60,
-        },
-      },
-    });
+    try {
+      expect(service.get_project_preview({ path: project_path })).toMatchObject({
+        preview: { file_paths: [], translation_stats: { total_items: 0 } },
+      });
+      expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: "current.lg" });
+      expect(project_event_handler).not.toHaveBeenCalled();
+    } finally {
+      database.close();
+    }
   });
 
-  it("preview 在project.not_found时抛出 ENOENT", () => {
+  it("preview 在文件缺失时抛出 project.not_found", () => {
     const service = create_service({ database: create_database() });
 
     expect(() =>
@@ -700,7 +679,6 @@ describe("ProjectLifecycleService", () => {
   // 数据库 fake 只提供无需真实持久化的生命周期场景所需读取面。
   function create_database(
     options: {
-      summary?: MutableJsonRecord;
       meta?: MutableJsonRecord;
       items?: MutableJsonRecord[];
       asset_records?: Array<{ path: string; sort_order: number }>;
@@ -708,7 +686,7 @@ describe("ProjectLifecycleService", () => {
       calls?: string[];
     } = {},
   ): TestProjectDatabase {
-    const get_project_summary = vi.fn(() => options.summary ?? {});
+    const get_project_summary = vi.fn();
     const close_project = vi.fn(() => {
       options.calls?.push("closeProject");
     });

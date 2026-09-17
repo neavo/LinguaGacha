@@ -1,3 +1,4 @@
+import type { ProjectPreviewResponse } from "../../shared/project-preview";
 import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
 import type { PDFDocument } from "../../shared/pdf";
 import path from "node:path";
@@ -58,11 +59,6 @@ import {
 } from "./project-task-input";
 
 const INITIAL_PRESET_REVISION = 1;
-
-/**
- * database 与 API 读取结果的共同窄化视图。
- */
-type JsonRecordLike = Record<string, JsonValue | undefined>;
 
 /**
  * 新建工程提交阶段的 asset 写入清单。
@@ -183,7 +179,7 @@ export class ProjectLifecycleService {
         write(this.database);
       }
     });
-    const meta = this.to_record(this.database.get_all_meta(project_path) as JsonValue);
+    const meta = read_json_record(this.database.get_all_meta(project_path) as JsonValue);
     await this.project_event_handler(
       create_project_opened_for_cache_event({
         projectPath: project_path,
@@ -535,22 +531,10 @@ export class ProjectLifecycleService {
   /**
    * 读取 .lg 摘要预览，不加载工程会话
    */
-  public get_project_preview(body: JsonRecord): JsonRecord {
+  public get_project_preview(body: JsonRecord): ProjectPreviewResponse {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
-    const summary = this.to_record(this.database.get_project_summary(project_path));
-    return {
-      preview: {
-        path: project_path,
-        name: this.string_field(summary, "name"),
-        source_language: this.string_field(summary, "source_language"),
-        target_language: this.string_field(summary, "target_language"),
-        file_count: this.number_field(summary, "file_count"),
-        created_at: this.string_field(summary, "created_at"),
-        updated_at: this.string_field(summary, "updated_at"),
-        translation_stats: this.normalize_translation_stats(summary["translation_stats"]),
-      },
-    };
+    return { preview: this.database.get_project_summary(project_path) };
   }
 
   /**
@@ -801,60 +785,6 @@ export class ProjectLifecycleService {
     return {
       ...read_json_record(this.database.get_all_meta(project_path) as JsonValue),
     };
-  }
-
-  /**
-   * 归一翻译进度摘要，公开 preview 不透出数据库内部额外字段
-   */
-  private normalize_translation_stats(value: JsonValue | JsonValue | undefined) {
-    const stats = this.to_record(value);
-    return {
-      total_items: this.number_field(stats, "total_items"),
-      completed_count: this.number_field(stats, "completed_count"),
-      failed_count: this.number_field(stats, "failed_count"),
-      pending_count: this.number_field(stats, "pending_count"),
-      skipped_count: this.number_field(stats, "skipped_count"),
-      completion_percent: this.number_field(stats, "completion_percent"),
-    };
-  }
-
-  /**
-   * preview 摘要字段读取使用宽类型，兼容 database 返回值与 API 值
-   */
-  private to_record(value: JsonValue | JsonValue | undefined): JsonRecordLike {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return {};
-    }
-    return value as JsonRecordLike;
-  }
-
-  /**
-   * 从对象字段读取字符串，避免 undefined 泄漏到响应体
-   */
-  private string_field(record: JsonRecordLike, key: string): string {
-    return this.string_value(record[key]);
-  }
-
-  /**
-   * 从对象字段读取数字，避免 NaN 泄漏到响应体
-   */
-  private number_field(record: JsonRecordLike, key: string): number {
-    return this.number_value(record[key], 0);
-  }
-
-  /**
-   * 从未知值读取字符串，保持 null / undefined 统一为空串
-   */
-  private string_value(value: JsonValue | JsonValue | undefined): string {
-    return typeof value === "string" ? value : String(value ?? "");
-  }
-
-  /**
-   * 从未知值读取数字，非法数字回落到调用方提供的默认值
-   */
-  private number_value(value: JsonValue | JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? number_value : fallback;
   }
 
   /**

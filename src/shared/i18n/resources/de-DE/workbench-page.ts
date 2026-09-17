@@ -8,7 +8,9 @@ export const de_de_workbench_page = {
   },
   table: {
     file_name: "Dateiname",
-    line_count: "Zeilen",
+    progress: "Fortschritt",
+    agent: "AGENT",
+    agent_only: "Diese Datei kann nur mit AGENT übersetzt werden",
     actions: "Aktionen",
   },
   sort: {
@@ -23,11 +25,6 @@ export const de_de_workbench_page = {
     file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut.",
     close_project_failed:
       "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut.",
-  },
-  pdf: {
-    content: "Inhalt",
-    pages: "Geprüft: {reviewed}/{pages}",
-    coverage: "Übersetzung: {translated}/{pages} Seiten",
   },
   action: {
     add_file: "Hinzufügen",
