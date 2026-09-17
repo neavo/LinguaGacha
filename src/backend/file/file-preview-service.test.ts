@@ -1,3 +1,4 @@
+import { create_pdf_execution } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,7 +33,11 @@ describe("FilePreviewService", () => {
     fs.writeFileSync(broken_json, "{", "utf-8");
     fs.writeFileSync(ignored_file, "noise", "utf-8");
     const log_manager = create_log_manager();
-    const service = new FilePreviewService(create_setting_service(), log_manager);
+    const service = new FilePreviewService(
+      create_setting_service(),
+      create_pdf_execution(),
+      log_manager,
+    );
 
     await expect(
       service.parse_project_file({
@@ -65,7 +70,7 @@ describe("FilePreviewService", () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const epub_file = path.join(temp_dir.path, "book.epub");
     await write_epub_fixture(epub_file, "章节");
-    const service = new FilePreviewService(create_setting_service());
+    const service = new FilePreviewService(create_setting_service(), create_pdf_execution());
 
     await expect(
       service.parse_project_file({
@@ -111,7 +116,7 @@ describe("FilePreviewService", () => {
       epub_file,
       await zip.generateAsync({ compression: "STORE", type: "nodebuffer" }),
     );
-    const service = new FilePreviewService(create_setting_service());
+    const service = new FilePreviewService(create_setting_service(), create_pdf_execution());
 
     await expect(service.parse_project_file({ source_paths: [epub_file] })).resolves.toEqual({
       files: [],
@@ -132,7 +137,7 @@ describe("FilePreviewService", () => {
     const epub_file = path.join(temp_dir.path, "book.epub");
     fs.writeFileSync(txt_file, "文本", "utf-8");
     await write_epub_fixture(epub_file, "章节");
-    const service = new FilePreviewService(create_setting_service());
+    const service = new FilePreviewService(create_setting_service(), create_pdf_execution());
 
     const result = await service.build_create_preview({ source_paths: [txt_file, epub_file] });
     const draft = result["draft"] as {
@@ -156,7 +161,11 @@ describe("FilePreviewService", () => {
     const broken_json = path.join(temp_dir.path, "broken.json");
     fs.writeFileSync(txt_file, "文本", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
-    const service = new FilePreviewService(create_setting_service(), create_log_manager());
+    const service = new FilePreviewService(
+      create_setting_service(),
+      create_pdf_execution(),
+      create_log_manager(),
+    );
 
     const result = await service.build_create_preview({ source_paths: [txt_file, broken_json] });
     const draft = result["draft"] as { files: Array<{ rel_path: string }> };

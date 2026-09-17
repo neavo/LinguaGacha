@@ -41,15 +41,12 @@ export const en_us_project_page = {
     missing_file_description: "The project file is invalid. Remove it from the list …?",
   },
   preview: {
-    project_name: "Project Name",
-    file_count: "File Count",
+    title: "Project overview",
+    file_count: "File count",
+    files: "{COUNT} files",
     created_at: "Created At",
     updated_at: "Last Updated",
     progress: "Progress",
-    translated: "Translated:",
-    skipped: "No Translation Needed:",
-    total: "Total:",
-    rows_unit: "",
   },
   loading_stages: {
     project: "Loading project skeleton …",
@@ -62,6 +59,7 @@ export const en_us_project_page = {
     task: "Loading task status …",
   },
   formats: {
+    pdf: "PDF",
     title: "Supported File Formats",
     txt: "Plain Text",
     md: "Markdown",

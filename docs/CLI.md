@@ -32,6 +32,8 @@
 
 ## 4. 输出协议
 
+CLI job 根据工程文件摘要排除 PDF，在存在文本条目时才启动批量翻译，完成事件的可选 `excluded_files` 列出这些工程相对路径，导出阶段同样排除它们。全 PDF 输入不发模型请求，也不生成伪完成的译文。当前 CLI job 不创建 Agent 会话，PDF 翻译须在 Agent 中执行。
+
 help / version 输出普通文本。进入 job 后，stdout 每行输出一个紧凑 JSON 对象：
 
 |`type`|稳定字段|语义|

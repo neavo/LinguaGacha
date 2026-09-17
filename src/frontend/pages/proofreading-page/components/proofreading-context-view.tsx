@@ -48,7 +48,7 @@ function render_context_text(name: string | null, text: string): JSX.Element {
   return (
     <dd className="proofreading-page__context-text">
       {name === null ? null : (
-        <Badge variant="secondary" title={name} className="proofreading-page__context-name">
+        <Badge title={name} className="proofreading-page__context-name">
           <span className="proofreading-page__context-name-label">{name}</span>
         </Badge>
       )}

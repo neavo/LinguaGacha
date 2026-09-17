@@ -16,10 +16,11 @@ import { format_agent_tool_output } from "./agent-tool-output";
 type AgentToolPayloadChannel = "input" | "output";
 type AgentToolPayloadOptions = {
   tool_name: string;
-  channel: AgentToolPayloadChannel;
-  content: string | null;
   fallback?: string;
-};
+} & (
+  | { channel: "input"; content: string }
+  | { channel: "output"; content: readonly string[] | null }
+);
 type AgentToolPayloadDocument = {
   text: string;
   syntax: AppEditorSyntax;

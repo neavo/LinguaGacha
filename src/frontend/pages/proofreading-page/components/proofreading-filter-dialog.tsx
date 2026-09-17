@@ -36,6 +36,7 @@ const KNOWN_PROOFREADING_OUTCOMES = new Set<string>(
   PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [...group.outcome_codes]),
 );
 
+/** 切换一项筛选并返回新数组，供页面更新受控筛选状态。 */
 function toggle_string(values: string[], target_value: string): string[] {
   return values.includes(target_value)
     ? values.filter((value) => value !== target_value)
@@ -76,12 +77,7 @@ function FilterToggleButton(props: {
       onClick={props.onClick}
     >
       <span className="proofreading-page__filter-toggle-label">{props.label}</span>
-      <Badge
-        variant="secondary"
-        className="proofreading-page__filter-count-badge proofreading-page__filter-count-badge--toggle justify-center tabular-nums"
-      >
-        {props.count.toString()}
-      </Badge>
+      <Badge className="proofreading-page__filter-count-badge">{props.count.toString()}</Badge>
     </AppButton>
   );
 }
@@ -146,6 +142,7 @@ function FilterGroupHeader(props: {
   );
 }
 
+/** 文件与术语筛选共用列表行，提示保留被截断的完整标签。 */
 function FilterListRow(props: {
   label: string;
   count: number;
@@ -163,10 +160,7 @@ function FilterListRow(props: {
             onClick={props.onClick}
           >
             <span className="proofreading-page__filter-list-row-copy">{props.label}</span>
-            <Badge
-              variant="secondary"
-              className="proofreading-page__filter-count-badge min-w-5 justify-center tabular-nums"
-            >
+            <Badge className="proofreading-page__filter-count-badge">
               {props.count.toString()}
             </Badge>
           </button>
@@ -178,6 +172,7 @@ function FilterListRow(props: {
     </Tooltip>
   );
 }
+/** 弹窗持有局部搜索词，筛选结果与提交动作交由页面管理。 */
 export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): JSX.Element {
   const { t } = useI18n();
   const [file_keyword, set_file_keyword] = useState("");

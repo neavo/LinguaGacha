@@ -199,6 +199,9 @@ export const ja_jp_app = {
         message: "プロジェクトファイルが見つかりません …",
       },
     },
+    translation: {
+      export_failed: { message: "訳文のエクスポートに失敗しました …" },
+    },
     file: {
       not_found: {
         message: "ファイルが見つかりません …",
@@ -319,8 +322,6 @@ export const ja_jp_app = {
     },
     file_export: {
       open_output_folder_failed: "出力フォルダーを開けませんでした …",
-      translation_failed: "訳文を生成できませんでした …",
-      write_file_failed: "ファイルに書き込めませんでした …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha を起動できませんでした …",

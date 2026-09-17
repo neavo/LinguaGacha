@@ -117,23 +117,28 @@ describe("TRANSFormat", () => {
     expect(written.project.files["/demo.map"].data[0]).toEqual(["原文", "译文"]);
   });
 
-  it("缺失资产时跳过写回", async () => {
+  it.each([
+    [null, "file.not_found"],
+    [Buffer.from("[]"), "file.invalid_structure"],
+  ] as const)("资产为 %s 时拒绝写回并报告 %s", async (asset, code) => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-trans-format-"));
-    await new TRANSFormat().write_to_path(
-      [
-        Item.from_json({
-          src: "原文",
-          dst: "译文",
-          tag: "/demo.map",
-          row: 0,
-          file_type: "TRANS",
-          file_path: "missing.trans",
-          status: "PROCESSED",
-        }),
-      ],
-      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
-      () => null,
-    );
+    await expect(
+      new TRANSFormat().write_to_path(
+        [
+          Item.from_json({
+            src: "原文",
+            dst: "译文",
+            tag: "/demo.map",
+            row: 0,
+            file_type: "TRANS",
+            file_path: "missing.trans",
+            status: "PROCESSED",
+          }),
+        ],
+        { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
+        () => asset,
+      ),
+    ).rejects.toMatchObject({ code, public_details: { file: "missing.trans" } });
 
     expect(fs.existsSync(path.join(temp_dir.path, "missing.trans"))).toBe(false);
   });

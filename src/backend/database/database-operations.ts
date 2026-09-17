@@ -1,10 +1,13 @@
+import type { ProjectPreview } from "../../shared/project-preview";
+import { build_project_translation_stats } from "../../shared/project-translation-stats";
+import { build_project_file_paths } from "../../shared/project/project-file-paths";
+import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
+import { read_pdf_document } from "../file/formats/pdf/pdf-source";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  build_current_project_database_meta,
-  migration_orchestrator,
-} from "../migration/migration-orchestrator";
+import { migration_orchestrator } from "../migration/migration-orchestrator";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
@@ -45,8 +48,6 @@ interface ProjectDatabaseConnectionRecord {
   scoped_use_count: number; // 当前同步 workflow 正在使用连接，归零后才能收尾
   closed: boolean; // 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
 }
-
-const CURRENT_NONE = "NONE";
 
 /**
  * 将 SQLite 文本列按严格 JSON 协议解析，非文本空值统一为 null。
@@ -191,93 +192,221 @@ export class ProjectDatabase {
     this.with_project_connection(project_path, () => this.write_meta(project_path, key, value));
   }
 
+  /** 合并提交的 meta 键，保留其它工程元数据。 */
   public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
     this.with_project_connection(project_path, () => this.write_meta_entries(project_path, meta));
   }
 
+  /** 读取工程元数据，供上层一次组装设置与 revision。 */
   public get_all_meta(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_meta(project_path));
   }
 
+  /** 推进 files/items revision，重复 section 在同次调用中只计一次。 */
   public bump_section_revisions(project_path: string, sections: string[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.advance_section_revisions(project_path, sections),
     );
   }
 
+  /** 资产和 PDF 元数据同属一次导入，由调用方事务保证一起提交。 */
   public add_asset_from_source(
     project_path: string,
     asset_path: string,
     source_path: string,
+    document: PDFDocument | null,
     sort_order: number | null = null,
   ): void {
-    this.with_project_connection(project_path, () =>
-      this.insert_asset_from_source(project_path, asset_path, source_path, sort_order),
-    );
+    this.with_project_connection(project_path, () => {
+      this.insert_asset_from_source(project_path, asset_path, source_path, sort_order);
+      this.replace_pdf_source(project_path, asset_path, document);
+    });
   }
 
+  /** 替换资产同时更新 PDF 来源；摘要不符时由外层事务回滚两者。 */
   public update_asset_from_source(
     project_path: string,
     asset_path: string,
     source_path: string,
+    document: PDFDocument | null,
   ): void {
-    this.with_project_connection(project_path, () =>
-      this.replace_asset_from_source(project_path, asset_path, source_path),
+    this.with_project_connection(project_path, () => {
+      this.replace_asset_from_source(project_path, asset_path, source_path);
+      this.replace_pdf_source(project_path, asset_path, document);
+    });
+  }
+
+  /** 导入准备与资产写入之间源文件可能变化；摘要校验与文档替换共用外层事务。 */
+  private replace_pdf_source(
+    project_path: string,
+    file_path: string,
+    document: PDFDocument | null,
+  ): void {
+    const db = this.open_project(project_path); // 导入入口已持有连接与资产事务。
+    db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(file_path);
+    if (document === null) {
+      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(file_path);
+      return;
+    }
+    read_pdf_document(document);
+    const bytes = this.read_asset_content(project_path, file_path);
+    if (bytes === null || createHash("sha256").update(bytes).digest("hex") !== document.digest)
+      throw new AppErrors.AppError("file.parse_failed", {
+        diagnostic_context: { reason: "source_changed_after_parse", file_path },
+      });
+    db.prepare(
+      "INSERT INTO pdf_documents(file_path, data) VALUES (?, ?) ON CONFLICT(file_path) DO UPDATE SET data = excluded.data",
+    ).run(file_path, JSON.stringify({ digest: document.digest }));
+    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
+    for (const page of document.pages) insert.run(file_path, page.page, JSON.stringify(page));
+  }
+
+  /** 按工程相对路径读取并校验文档，缺失用 null 表达。 */
+  public read_pdf_document(project_path: string, file_path: string): PDFDocument | null {
+    return this.with_project_connection(project_path, (db) => {
+      const row = db.prepare("SELECT data FROM pdf_documents WHERE file_path = ?").get(file_path);
+      return row
+        ? read_pdf_document({
+            ...(json_parse(row["data"]) as JsonRecord),
+            pages: db
+              .prepare("SELECT data FROM pdf_pages WHERE file_path = ? ORDER BY page")
+              .all(file_path)
+              .map((page) => json_parse(page["data"])),
+          })
+        : null;
+    });
+  }
+
+  /** 快照按 asset 顺序组合文档，页面正文按原页顺序读取。 */
+  public read_pdf_documents(project_path: string): PDFDocumentRecord[] {
+    return this.with_project_connection(project_path, (db) =>
+      db
+        .prepare(
+          "SELECT p.file_path FROM pdf_documents p JOIN assets a ON a.path = p.file_path ORDER BY a.sort_order, a.id",
+        )
+        .all()
+        .map((row) => {
+          const file_path = row_text(row, "file_path");
+          return { file_path, document: this.read_pdf_document(project_path, file_path)! };
+        }),
     );
   }
 
-  public delete_asset(project_path: string, asset_path: string): void {
-    this.with_project_connection(project_path, () => this.remove_asset(project_path, asset_path));
+  /** 列表按页面处置统计，正文按单文档读取。 */
+  public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
+    return this.with_project_connection(project_path, (db) =>
+      Object.fromEntries(
+        db
+          .prepare(
+            `SELECT p.file_path, COUNT(*) AS pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'translate' THEN 1 ELSE 0 END) AS translated_pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'keep' THEN 1 ELSE 0 END) AS kept_pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'omit' THEN 1 ELSE 0 END) AS omitted_pages
+           FROM pdf_pages p JOIN assets a ON a.path = p.file_path
+           GROUP BY p.file_path ORDER BY a.sort_order, a.id`,
+          )
+          .all()
+          .map((row) => [
+            row_text(row, "file_path"),
+            {
+              pages: Number(row["pages"]),
+              translated_pages: Number(row["translated_pages"]),
+              kept_pages: Number(row["kept_pages"]),
+              omitted_pages: Number(row["omitted_pages"]),
+            },
+          ]),
+      ),
+    );
   }
 
+  /** 页级正式写入仅由 ProjectWriteStore 在复验后调用，事务负责整体回滚。 */
+  public write_pdf_page(project_path: string, file_path: string, page: PDFPage): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("UPDATE pdf_pages SET data = ? WHERE file_path = ? AND page = ?").run(
+        JSON.stringify(page),
+        file_path,
+        page.page,
+      );
+    });
+  }
+
+  /** 重置清空各页译稿、核对与续做记录，保留原稿身份与页面信息。 */
+  public reset_pdf_translations(project_path: string, file_paths: readonly string[]): void {
+    this.with_project_connection(project_path, (db) => {
+      const statement = db.prepare(
+        "UPDATE pdf_pages SET data = json_set(data, '$.translation', NULL, '$.reviewed', json('false'), '$.notes', '') WHERE file_path = ?",
+      );
+      for (const file_path of file_paths) statement.run(file_path);
+    });
+  }
+
+  /** PDF 文档与源资产一起删除，调用方负责整个项目写入的事务。 */
+  public delete_asset(project_path: string, asset_path: string): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
+      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
+      this.remove_asset(project_path, asset_path);
+    });
+  }
+
+  /** 按持久化顺序返回路径与排序位，不读取资产正文。 */
   public get_all_asset_records(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_all_asset_records(project_path),
     );
   }
 
+  /** 直接统计资产数量，避免文件列表全量读取。 */
   public get_asset_count(project_path: string): number {
     return this.with_project_connection(project_path, () => this.read_asset_count(project_path));
   }
 
+  /** 按调用方顺序重排资产，多步写入由调用方事务包裹。 */
   public update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
     this.with_project_connection(project_path, () =>
       this.write_asset_sort_orders(project_path, ordered_paths),
     );
   }
 
+  /** 按数据库 id 顺序返回条目及其持久身份。 */
   public get_all_items(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_items(project_path));
   }
 
+  /** 直接统计条目数量，避免解析 JSON 正文。 */
   public get_item_count(project_path: string): number {
     return this.with_project_connection(project_path, () => this.read_item_count(project_path));
   }
 
+  /** 通过 SQL 聚合条目状态，供进度统计读取。 */
   public get_item_status_summary(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_status_summary(project_path),
     );
   }
 
+  /** 按请求 id 顺序回查存在的条目，并去重请求。 */
   public get_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_items_by_ids(project_path, item_ids),
     );
   }
 
+  /** 只读取字段写回所需事实，减少校对提交的回查开销。 */
   public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_write_facts_by_ids(project_path, item_ids),
     );
   }
 
+  /** 替换整个条目集合，调用方事务负责与相关工程事实一起提交。 */
   public set_items(project_path: string, items: JsonValue[]): number[] {
     return this.with_project_connection(project_path, () =>
       this.replace_items(project_path, items),
     );
   }
 
+  /** 按条目 id 更新允许写入的字段，保留其它持久事实。 */
   public patch_item_fields_by_ids(
     project_path: string,
     item_ids: number[],
@@ -288,37 +417,43 @@ export class ProjectDatabase {
     );
   }
 
+  /** 批量更新译文字段，保持条目原文与定位信息。 */
   public patch_item_translation_fields(project_path: string, patches: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_item_translation_fields(project_path, patches),
     );
   }
 
+  /** 读取指定规则类型的持久载荷，由领域层校验内容。 */
   public get_rules(project_path: string, rule_type: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_rules(project_path, rule_type),
     );
   }
 
+  /** 替换指定类型的规则载荷，其它规则类型继续保留。 */
   public set_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_rules(project_path, rule_type, rules),
     );
   }
 
+  /** 将提示词等文本规则的持久载荷收窄为字符串。 */
   public get_rule_text(project_path: string, rule_type: string): string {
     return this.with_project_connection(project_path, () =>
       this.read_rule_text(project_path, rule_type),
     );
   }
 
+  /** 以统一文本规则形状保存提示词内容。 */
   public set_rule_text(project_path: string, rule_type: string, text: string): void {
     this.with_project_connection(project_path, () =>
       this.write_rule_text(project_path, rule_type, text),
     );
   }
 
-  public get_project_summary(project_path: string): JsonValue {
+  /** 聚合工程元数据和条目进度，供列表与状态读取。 */
+  public get_project_summary(project_path: string): ProjectPreview {
     return this.with_project_connection(project_path, () =>
       this.read_project_summary(project_path),
     );
@@ -512,7 +647,6 @@ export class ProjectDatabase {
     const db = this.open_project(normalized_path);
     const now = new Date().toISOString();
     this.upsert_meta_entries_with_db(db, {
-      ...build_current_project_database_meta(),
       name,
       created_at: now,
       updated_at: now,
@@ -1076,50 +1210,29 @@ export class ProjectDatabase {
   /**
    * 读取工程摘要，供打开预览和运行态快速判断使用
    */
-  private read_project_summary(project_path: string): JsonValue {
+  private read_project_summary(project_path: string): ProjectPreview {
     const meta = this.value_record(this.get_all_meta(project_path));
     const db = this.open_project(project_path);
-    const file_count_row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
-    const item_rows = db.prepare("SELECT data FROM items").all();
-    let completed_count = 0;
-    let failed_count = 0;
-    let pending_count = 0;
-    let skipped_count = 0;
-    for (const row of item_rows) {
-      let status = CURRENT_NONE;
-      try {
+    const assets = db.prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC").all();
+    const items = db
+      .prepare("SELECT data FROM items ORDER BY id ASC")
+      .all()
+      .map((row) => {
         const item = this.value_record(json_parse(row["data"]));
-        status = String(item["status"] ?? CURRENT_NONE);
-      } catch {
-        status = CURRENT_NONE;
-      }
-      if (status === "PROCESSED") {
-        completed_count += 1;
-      } else if (status === "ERROR") {
-        failed_count += 1;
-      } else if (status === "NONE") {
-        pending_count += 1;
-      } else {
-        skipped_count += 1;
-      }
-    }
-    const total_items = item_rows.length;
+        return {
+          file_path: String(item["file_path"] ?? ""),
+          status: String(item["status"] ?? "NONE"),
+        };
+      });
+    const file_paths = build_project_file_paths(
+      assets.map((asset) => row_text(asset, "path")),
+      items.map((item) => item.file_path),
+    );
     return {
-      name: String(meta["name"] ?? path.parse(project_path).name),
-      source_language: String(meta["source_language"] ?? ""),
-      target_language: String(meta["target_language"] ?? ""),
+      file_paths,
       created_at: String(meta["created_at"] ?? ""),
       updated_at: String(meta["updated_at"] ?? ""),
-      file_count: file_count_row === undefined ? 0 : row_number(file_count_row, "count"),
-      translation_stats: {
-        total_items,
-        completed_count,
-        failed_count,
-        pending_count,
-        skipped_count,
-        completion_percent:
-          total_items > 0 ? ((completed_count + skipped_count) / total_items) * 100 : 0,
-      },
+      translation_stats: build_project_translation_stats(items),
     };
   }
 

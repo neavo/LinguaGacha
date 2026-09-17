@@ -139,7 +139,6 @@
 .log-detail-view__name-badge {
   max-width: min(128px, 36%);
   margin-right: 8px;
-  font-size: inherit;
   vertical-align: baseline;
 }
 

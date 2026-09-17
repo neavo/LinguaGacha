@@ -166,8 +166,13 @@ describe("useTranslationExportFlow", () => {
       })
       .mockImplementationOnce(
         () =>
-          new Promise<void>((resolve) => {
-            resolve_export = resolve;
+          new Promise((resolve) => {
+            resolve_export = () =>
+              resolve({
+                accepted: true,
+                output_path: "output",
+                pdf_files: [{ file_path: "book.pdf", translated_pages: 2, original_pages: 1 }],
+              });
           }),
       );
     await render_probe();
@@ -187,6 +192,41 @@ describe("useTranslationExportFlow", () => {
 
     await act(async () => resolve_export?.());
     expect(latest_flow?.state.phase).toBe("closed");
+    expect(mocks.push_toast).not.toHaveBeenCalled();
+  });
+
+  it("导出业务错误与传输失败共用失败提示并允许重试", async () => {
+    const error = Object.assign(new Error("translation.export_failed"), {
+      name: "DesktopApiError",
+      code: "translation.export_failed",
+      details: {},
+    });
+    mocks.api_fetch
+      .mockResolvedValueOnce({
+        projectPath: mocks.project_snapshot.path,
+        warningSummary: { total_count: 0, entries: [] },
+      })
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(new Error("transport failed"));
+    await render_probe();
+    act(() => latest_flow?.request_export());
+    await flush_microtasks();
+    await act(async () => {
+      await latest_flow?.confirm_export();
+    });
+    expect(mocks.push_toast).toHaveBeenLastCalledWith(
+      "error",
+      "app.error.translation.export_failed.message",
+    );
+    expect(latest_flow?.state.phase).toBe("ready");
+    await act(async () => {
+      await latest_flow?.confirm_export();
+    });
+    expect(mocks.push_toast).toHaveBeenLastCalledWith(
+      "error",
+      "app.error.translation.export_failed.message",
+    );
+    expect(latest_flow?.state.phase).toBe("ready");
   });
 
   it("警告查询失败后允许重新检查", async () => {

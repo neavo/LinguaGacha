@@ -114,6 +114,7 @@ describe("AgentDecision", () => {
         kind: "write_approval",
         id: "apply-1",
         summary: {
+          pdf: 0,
           items: 12,
           glossary: 3,
           textPreserve: 1,
@@ -150,6 +151,7 @@ describe("AgentDecision", () => {
               kind,
               id: "write-tooltip",
               summary: {
+                pdf: 0,
                 items: 1,
                 glossary: 0,
                 textPreserve: 0,

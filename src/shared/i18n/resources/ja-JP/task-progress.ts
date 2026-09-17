@@ -8,4 +8,6 @@ export const ja_jp_task_progress = {
   translation_skipped: "翻訳不要",
 
   toggle_tooltip: "クリックして切り替え",
+  line: "{status} - {count} 行",
+  page: "{status} - {count} ページ",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

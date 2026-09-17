@@ -202,6 +202,9 @@ export const de_de_app = {
         message: "Die Projektdatei existiert nicht …",
       },
     },
+    translation: {
+      export_failed: { message: "Export der Übersetzung fehlgeschlagen …" },
+    },
     file: {
       not_found: {
         message: "Die Datei existiert nicht …",
@@ -327,8 +330,6 @@ export const de_de_app = {
     },
     file_export: {
       open_output_folder_failed: "Fehler beim Öffnen des Ausgabeordners …",
-      translation_failed: "Fehler beim Erstellen der Übersetzungsdateien …",
-      write_file_failed: "Dateischreiben fehlgeschlagen …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha konnte nicht gestartet werden …",

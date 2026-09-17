@@ -199,6 +199,9 @@ export const en_us_app = {
         message: "The project file does not exist …",
       },
     },
+    translation: {
+      export_failed: { message: "Translation export failed …" },
+    },
     file: {
       not_found: {
         message: "The file does not exist …",
@@ -319,8 +322,6 @@ export const en_us_app = {
     },
     file_export: {
       open_output_folder_failed: "Failed to open the output folder …",
-      translation_failed: "Failed to generate translation files …",
-      write_file_failed: "File writing failed …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",

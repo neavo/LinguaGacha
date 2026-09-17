@@ -5,7 +5,9 @@ export const zh_cn_workbench_page = {
   },
   table: {
     file_name: "文件名",
-    line_count: "行数",
+    progress: "进度",
+    agent: "AGENT",
+    agent_only: "此文件仅能使用 AGENT 翻译",
     actions: "操作",
   },
   sort: {
@@ -18,7 +20,6 @@ export const zh_cn_workbench_page = {
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
     no_valid_file: "没有可添加的有效文件。",
     file_action_failed: "文件操作失败，请稍后重试。",
-    generate_translation_failed: "生成当前可用译文失败，请稍后重试。",
     close_project_failed: "关闭工程失败，请稍后重试。",
   },
   action: {

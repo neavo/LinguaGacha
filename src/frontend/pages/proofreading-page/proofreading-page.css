@@ -363,13 +363,6 @@
   flex: 0 0 auto;
 }
 
-.proofreading-page__filter-count-badge--toggle {
-  min-width: 24px;
-  height: 16px;
-  padding: 0 4px;
-  line-height: 1;
-}
-
 .proofreading-page__filter-list-row-tooltip {
   max-width: 420px;
   margin: 0;
@@ -629,7 +622,6 @@
 .proofreading-page__context-name {
   max-width: min(128px, 36%);
   margin-right: 8px;
-  font-size: inherit;
   vertical-align: baseline;
 }
 
@@ -669,36 +661,8 @@
   gap: 8px;
 }
 
-.proofreading-page__dialog-status-badge {
-  min-height: 22px;
-  border-color: color-mix(in srgb, var(--border) 90%, white 10%);
-}
-
 .proofreading-page__dialog-status-badge-wrap {
   display: inline-flex;
-}
-
-.proofreading-page__dialog-status-badge--tone-neutral {
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
-  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
-}
-
-.proofreading-page__dialog-status-badge--tone-success {
-  border-color: color-mix(in srgb, var(--ui-success) 36%, var(--border));
-  background: color-mix(in srgb, var(--ui-success) 14%, var(--popover));
-  color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
-}
-
-.proofreading-page__dialog-status-badge--tone-warning {
-  border-color: color-mix(in srgb, var(--ui-warning) 40%, var(--border));
-  background: color-mix(in srgb, var(--ui-warning) 14%, var(--popover));
-  color: color-mix(in srgb, var(--ui-warning) 80%, var(--foreground) 20%);
-}
-
-.proofreading-page__dialog-status-badge--tone-failure {
-  border-color: color-mix(in srgb, var(--ui-failure) 48%, var(--border));
-  background: color-mix(in srgb, var(--ui-failure) 12%, var(--popover));
-  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
 }
 
 .proofreading-page__dialog-badge-tooltip {

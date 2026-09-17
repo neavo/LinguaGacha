@@ -1,7 +1,7 @@
 import { CircleStop } from "lucide-react";
 
 import "./batch-translation.css";
-import { cn } from "@frontend/shadcn/classnames";
+import { Badge } from "@frontend/shadcn/badge";
 import type { BatchTranslationDetailDisplay } from "@frontend/features/batch-translation/batch-translation-display";
 import { BatchTranslationWaveform } from "@frontend/features/batch-translation/batch-translation-waveform";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -51,14 +51,9 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
                   <h3 className="batch-translation__section-title">
                     {props.display.waveform_title}
                   </h3>
-                  <span
-                    className={cn(
-                      "batch-translation__percent-pill",
-                      `batch-translation__percent-pill--${props.display.percent_tone}`,
-                    )}
-                  >
+                  <Badge tone={props.display.percent_tone}>
                     {props.display.completion_percent_text}
-                  </span>
+                  </Badge>
                 </div>
                 <BatchTranslationWaveform history={props.display.waveform_history} />
               </section>

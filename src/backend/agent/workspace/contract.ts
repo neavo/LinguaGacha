@@ -1,3 +1,4 @@
+import { PDF_UPDATE_SCHEMA, PDF_WORKSPACE_SCHEMA } from "../../file/formats/pdf/pdf-source";
 import type { TSchema } from "@earendil-works/pi-ai";
 
 import { read_json_integer, type JsonRecord } from "../../../domain/json";
@@ -21,6 +22,7 @@ export const AGENT_WORKSPACE_PATHS = Object.freeze({
   projectMeta: "project_meta.json",
   contract: "contract.json",
   items: "items/entries.jsonl",
+  pdf: "pdf/entries.jsonl",
   warnings: "items/warnings.jsonl",
   prompts: "prompts.json",
 } as const);
@@ -63,6 +65,7 @@ export const AGENT_WORKSPACE_QUALITY_CHANGE_PATHS = Object.freeze(
 
 /** 模型可写的全部固定 change 路径；datasets 本身始终只读。 */
 export const AGENT_WORKSPACE_CHANGE_PATHS = Object.freeze({
+  pdf: Object.freeze({ updates: "changes/pdf/updates.jsonl" }),
   items: Object.freeze({ updates: "changes/items/updates.jsonl" }),
   prompts: Object.freeze({ updates: "changes/prompts/updates.jsonl" }),
   ...AGENT_WORKSPACE_QUALITY_CHANGE_PATHS,
@@ -110,6 +113,12 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
     query_page_max: AGENT_WORKSPACE_RUNTIME_POLICY.queryPageMax,
   },
   datasets: {
+    pdf: {
+      path: AGENT_WORKSPACE_PATHS.pdf,
+      format: "jsonl",
+      schema: schema_record(PDF_WORKSPACE_SCHEMA),
+      purpose: "每行一个原稿页，changes.pdf 完整替换单页可修改内容。",
+    },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,
       format: "json",
@@ -140,6 +149,13 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
     ...quality_entry_datasets,
   },
   changes: {
+    pdf: {
+      updates: {
+        path: AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
+        format: "jsonl",
+        schema: schema_record(PDF_UPDATE_SCHEMA),
+      },
+    },
     items: {
       updates: {
         path: AGENT_WORKSPACE_CHANGE_PATHS.items.updates,

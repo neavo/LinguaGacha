@@ -6,6 +6,8 @@ import type {
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 import { BackendRuntimeClient } from "./backend-runtime-client";
+import type { PDFHost } from "../../shared/pdf";
+import type { AgentImageHost } from "../../shared/agent-image";
 
 const worker_threads_mock = await vi.hoisted(async () => {
   const { EventEmitter } = await import("node:events");
@@ -51,6 +53,70 @@ const READY: BackendRuntimeReady = {
   appVersion: "1.2.3",
 };
 describe("BackendRuntimeClient", () => {
+  it("图片处理沿宿主通道返回字节，取消传到当前窗口操作", async () => {
+    const image = {
+      bytes: new Uint8Array([1, 2]),
+      width: 2,
+      height: 1,
+      originalWidth: 2,
+      originalHeight: 1,
+    };
+    let cancelled = false;
+    const host = vi
+      .fn<AgentImageHost>()
+      .mockResolvedValueOnce(image)
+      .mockImplementation(
+        async (_operation, signal) =>
+          await new Promise((_resolve, reject) =>
+            signal.addEventListener(
+              "abort",
+              () => {
+                cancelled = true;
+                reject(signal.reason);
+              },
+              { once: true },
+            ),
+          ),
+      );
+    const { client } = create_client(undefined, host);
+    const start = client.start();
+    const worker = get_worker();
+    worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
+    await start;
+    const request = (requestId: string) =>
+      worker.emit("message", {
+        type: "host_request",
+        requestId,
+        operation: {
+          kind: "prepare_image",
+          bytes: new Uint8Array([1]),
+          mimeType: "image/png",
+          policy: { maxEdge: 1920, maxPixels: 32_000_000, maxBytes: 1024, quality: 0.85 },
+        },
+      } satisfies BackendRuntimeWorkerMessage);
+    request("image");
+    await vi.waitFor(() =>
+      expect(worker.posted_messages).toContainEqual({
+        type: "host_response",
+        requestId: "image",
+        result: { ok: true, data: image },
+      }),
+    );
+    request("cancel");
+    worker.emit("message", {
+      type: "host_cancel",
+      requestId: "cancel",
+    } satisfies BackendRuntimeWorkerMessage);
+    await vi.waitFor(() =>
+      expect(worker.posted_messages).toContainEqual(
+        expect.objectContaining({
+          requestId: "cancel",
+          result: expect.objectContaining({ ok: false }),
+        }),
+      ),
+    );
+    expect(cancelled).toBe(true);
+  });
   beforeEach(() => {
     worker_threads_mock.FakeWorker.instances.length = 0;
   });
@@ -65,7 +131,7 @@ describe("BackendRuntimeClient", () => {
     expect(worker.worker_data).toEqual({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntimeBootstrapPath: "E:/runtime/bootstrap.mjs",
+      workspaceRuntimeDirectory: "E:/runtime",
     });
 
     const language = client.readAppLanguage();
@@ -87,6 +153,56 @@ describe("BackendRuntimeClient", () => {
     await expect(stop).resolves.toBeUndefined();
     expect(worker.terminate_count).toBe(1);
     expect(on_unexpected_exit).not.toHaveBeenCalled();
+  });
+
+  it("PDF 字节回包保留类型，取消和 worker 退出传递到宿主", async () => {
+    const signals: AbortSignal[] = [];
+    const host = vi
+      .fn<PDFHost>()
+      .mockResolvedValueOnce(new Uint8Array([1, 2, 3]))
+      .mockImplementation(async (_operation, signal) => {
+        if (!signal) throw new Error("Missing signal");
+        signals.push(signal);
+        return await new Promise<Uint8Array>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+        );
+      });
+    const { client } = create_client(host);
+    const start = client.start();
+    const worker = get_worker();
+    worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
+    await start;
+    const request = (id: string) =>
+      worker.emit("message", {
+        type: "host_request",
+        requestId: id,
+        operation: { kind: "print_pdf", html: "<p>译文</p>" },
+      } satisfies BackendRuntimeWorkerMessage);
+    request("bytes");
+    await vi.waitFor(() =>
+      expect(worker.posted_messages).toContainEqual({
+        type: "host_response",
+        requestId: "bytes",
+        result: { ok: true, data: new Uint8Array([1, 2, 3]) },
+      }),
+    );
+    request("cancel");
+    worker.emit("message", {
+      type: "host_cancel",
+      requestId: "cancel",
+    } satisfies BackendRuntimeWorkerMessage);
+    await vi.waitFor(() =>
+      expect(worker.posted_messages).toContainEqual(
+        expect.objectContaining({
+          requestId: "cancel",
+          result: expect.objectContaining({ ok: false }),
+        }),
+      ),
+    );
+    expect(signals[0]?.aborted).toBe(true);
+    request("exit");
+    worker.emit("exit", 1);
+    expect(signals[1]?.aborted).toBe(true);
   });
 
   it("把宿主回调结果送回 worker，并保留失败诊断", async () => {
@@ -200,7 +316,12 @@ describe("BackendRuntimeClient", () => {
 });
 
 /** 默认宿主保留成功与失败两种结果，测试仅替换线程。 */
-function create_client() {
+function create_client(
+  pdfHost?: PDFHost,
+  imageHost: AgentImageHost = async () => {
+    throw new Error("Unexpected image request.");
+  },
+) {
   const resolve_proxy = vi.fn(async () => "DIRECT");
   const open_directory = vi.fn(async () => {
     throw new Error("无法打开目录");
@@ -212,10 +333,12 @@ function create_client() {
       workerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntimeBootstrapPath: "E:/runtime/bootstrap.mjs",
+      workspaceRuntimeDirectory: "E:/runtime",
       resolveProxy: resolve_proxy,
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
+      pdfHost,
+      imageHost,
       onUnexpectedExit: on_unexpected_exit,
     }),
     resolve_proxy,

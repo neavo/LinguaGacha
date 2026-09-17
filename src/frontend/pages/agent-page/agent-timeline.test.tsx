@@ -704,7 +704,7 @@ function tool_entry(
     return { ...base, status, output: null };
   }
   if (output === null) throw new Error("成功或失败工具必须携带输出");
-  return { ...base, status, output };
+  return { ...base, status, output: [output] };
 }
 
 /** 以独立压缩事件验证其在时间线中的顺序与状态。 */

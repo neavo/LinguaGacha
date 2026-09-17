@@ -461,7 +461,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     });
   }, []);
 
-  /** 三类输入共用原生转换入口；同步锁避免同一帧重复批次打乱图片顺序。 */
+  /** 三类输入共用后端图片准备入口；同步锁避免同一帧重复批次打乱图片顺序。 */
   const append_image_files = async (files: Iterable<File>): Promise<void> => {
     if (!can_append_images || image_processing_ref.current) return;
     const view = view_ref.current;

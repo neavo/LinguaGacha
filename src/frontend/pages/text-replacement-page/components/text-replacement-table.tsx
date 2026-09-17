@@ -197,10 +197,6 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
               entry_id={payload.row_id}
               running={props.hit_running}
               badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
-              badge_class_name="replacement-page__hit-badge"
-              running_class_name="replacement-page__hit-badge--running"
-              wrap_class_name="text-replacement-page__hit-badge-wrap"
-              button_class_name="replacement-page__hit-badge-button"
               query_label={t("app.action.query")}
               relation_label={t("text_replacement_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}

@@ -131,6 +131,38 @@ export function AppTableSpacerRow(props: { column_count: number; height: number 
     </TableRow>
   );
 }
+
+/** 独立列和嵌入手柄共用内容入口，正文、占位与浮层保持相同结构。 */
+function AppTableCellContent<Row>(props: {
+  column: AppTableColumn<Row>;
+  children?: ReactNode;
+  row_number: number;
+  disabled: boolean;
+  dragging: boolean;
+  handle_ref?: Ref<HTMLButtonElement>;
+  show_tooltip: boolean;
+}): ReactNode {
+  if (props.column.kind !== "drag" && !props.column.drag_handle) {
+    return props.children;
+  }
+  const indicator = (
+    <AppTableDragIndicator
+      row_number={props.row_number}
+      disabled={props.disabled}
+      dragging={props.dragging}
+      handle_ref={props.handle_ref}
+      show_tooltip={props.show_tooltip}
+    />
+  );
+  return props.column.kind === "drag" ? (
+    indicator
+  ) : (
+    <div className="app-table__cell-with-drag">
+      {indicator}
+      <div className="app-table__cell-content">{props.children}</div>
+    </div>
+  );
+}
 /** 虚拟行未加载时保留列宽、斑马纹和分隔线。 */
 export function AppTablePlaceholderRow<Row>(props: {
   columns: AppTableColumn<Row>[];
@@ -150,23 +182,25 @@ export function AppTablePlaceholderRow<Row>(props: {
       style={row_style}
     >
       {props.columns.map((column, column_index) => {
-        const placeholder =
-          column.kind === "drag" ? (
-            <AppTableDragIndicator
-              row_number={props.row_index + 1}
-              disabled
-              dragging={false}
-              show_tooltip={false}
-            />
-          ) : (
-            (column.render_placeholder?.() ?? <span>{"\u00A0"}</span>)
-          );
+        const placeholder = (
+          <AppTableCellContent
+            column={column}
+            row_number={props.row_index + 1}
+            disabled
+            dragging={false}
+            show_tooltip={false}
+          >
+            {column.kind === "data"
+              ? (column.render_placeholder?.() ?? <span>{"\u00A0"}</span>)
+              : null}
+          </AppTableCellContent>
+        );
         return (
           <TableCell
             key={`${column.id}-placeholder-${column_index.toString()}`}
             className={cn(
               "app-table__placeholder-cell",
-              column.kind === "drag" ? "app-table__drag-cell" : undefined,
+              column.kind === "drag" || column.drag_handle ? "app-table__drag-cell" : undefined,
               column.cell_class_name,
             )}
             data-align={column.align ?? (column.kind === "drag" ? "center" : "left")}
@@ -221,23 +255,22 @@ export function AppTableRowCells<Row>(props: {
           key={column.id}
           className={cn(
             "app-table__body-cell",
-            column.kind === "drag" ? "app-table__drag-cell" : undefined,
+            column.kind === "drag" || column.drag_handle ? "app-table__drag-cell" : undefined,
             column.cell_class_name,
           )}
           data-align={column.align ?? (column.kind === "drag" ? "center" : "left")}
           data-divider={index < props.columns.length - 1 ? "true" : undefined}
         >
-          {column.kind === "drag" ? (
-            <AppTableDragIndicator
-              row_number={props.row_number}
-              disabled={props.drag_disabled}
-              dragging={props.dragging}
-              handle_ref={props.handle_ref}
-              show_tooltip={props.payload.presentation === "body"}
-            />
-          ) : (
-            column.render_cell(props.payload)
-          )}
+          <AppTableCellContent
+            column={column}
+            row_number={props.row_number}
+            disabled={props.drag_disabled}
+            dragging={props.dragging}
+            handle_ref={props.handle_ref}
+            show_tooltip={props.payload.presentation === "body"}
+          >
+            {column.kind === "data" ? column.render_cell(props.payload) : null}
+          </AppTableCellContent>
         </TableCell>
       ))}
     </>

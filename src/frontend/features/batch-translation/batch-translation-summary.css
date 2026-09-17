@@ -4,22 +4,25 @@
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
-  border: 1px solid var(--border);
-  color: var(--foreground);
 }
 
-.batch-translation__summary--capsule {
-  height: 20px;
-  border-radius: var(--ui-radius-pill);
-  background: var(--background);
+.batch-translation__summary--capsule.app-badge {
+  /* 内边距由可点击按钮承接，让胶囊边缘也能打开详情。 */
+  padding: 0;
+  overflow: visible;
 }
 
 .batch-translation__summary--card {
-  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--ui-radius-card);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
-.batch-translation__summary--idle {
+.batch-translation__summary--card.batch-translation__summary--idle {
   color: var(--muted-foreground);
 }
 
@@ -48,16 +51,14 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: inherit;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+  font: inherit;
+  font-variant-numeric: inherit;
   transition: background-color 120ms ease;
 }
 

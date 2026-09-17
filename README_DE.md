@@ -73,7 +73,7 @@
 
 ## Unterstützte Formate 🏷️
 - Untertitel `.srt .ass`
-- E-Books `.txt .epub`
+- E-Books `.txt .pdf .epub`
 - Markdown `.md`
 - Mit [RenPy](https://www.renpy.org) exportierte Spieltexte `.rpy`
 - Mit [MTool](https://mtool.app) exportierte Spieltexte `.json`

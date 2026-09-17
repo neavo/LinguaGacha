@@ -44,6 +44,7 @@ export type AgentApprovalMode = "manual" | "auto";
 
 /** 待审批写入的结构化变更摘要；按业务种类统计受影响对象数量。 */
 export type AgentPendingWriteSummary = Readonly<{
+  pdf: number; // 本批实际变化的 PDF 原页数
   items: number;
   glossary: number;
   textPreserve: number;
@@ -101,7 +102,7 @@ export type AgentPendingDecision = JsonRecord &
 export const AGENT_MESSAGE_IMAGE_LIMIT = 10;
 /** 当前会话最多保留的待发送输入数；renderer 与 AgentService 共用同一产品上限。 */
 export const AGENT_INPUT_QUEUE_LIMIT = 5;
-/** 用户消息附件只有 renderer 归一的 WebP 与已确认的回复批注两种公开形状。 */
+/** 用户消息附件包含后端归一的 WebP 与已确认的回复批注。 */
 export type AgentMessageAttachment = JsonRecord &
   (
     | { kind: "image"; webpBase64: string }
@@ -147,11 +148,11 @@ type AgentToolEntryBase = JsonRecord & {
   createdAt: number;
 };
 
-/** 工具条目冻结完整输入；只有 SDK 工具终帧能产生带文本输出的成功或失败终态。 */
+/** 工具终帧按顺序保留文本块原文；数组为空表示没有文本输出，块间排版由前端负责。 */
 export type AgentToolEntry = AgentToolEntryBase &
   (
     | { status: "running" | "stopped"; output: null }
-    | { status: "success" | "error"; output: string }
+    | { status: "success" | "error"; output: string[] }
   );
 
 /** 上下文压缩沿用时间线条目状态；压缩不可停止，因此不公开 stopped。 */

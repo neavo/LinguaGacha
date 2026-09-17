@@ -8,4 +8,6 @@ export const ko_kr_task_progress = {
   translation_skipped: "번역 불필요",
 
   toggle_tooltip: "클릭하여 전환",
+  line: "{status} - {count}행",
+  page: "{status} - {count}페이지",
 } satisfies LocaleMessageSchema<typeof zh_cn_task_progress>;

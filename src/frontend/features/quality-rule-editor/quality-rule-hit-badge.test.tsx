@@ -69,10 +69,6 @@ describe("QualityRuleHitBadge", () => {
           entry_id="rule-1"
           running={false}
           badge_state={{ kind: "matched", hits: 2, tooltip: "命中 2" }}
-          badge_class_name="badge"
-          running_class_name="running"
-          wrap_class_name="wrap"
-          button_class_name="button"
           query_label="查询"
           relation_label="关系"
           on_query_entry_source={async () => {}}

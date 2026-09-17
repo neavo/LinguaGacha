@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AppError } from "../../../../shared/error";
 
 import type { Item } from "../../../../domain/item";
 import {
@@ -10,7 +11,7 @@ import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
 /**
- * EPUB 格式门面，解析和写回都收口在 Electron main 的文件域
+ * EPUB 格式门面，在后端文件域编排 AST 解析和资产写回。
  */
 export class EPUBFormat {
   /**
@@ -38,7 +39,7 @@ export class EPUBFormat {
   }
 
   /**
-   * 写回时同时生成译文版和双语对照版，缺失原始 asset 时跳过该 EPUB
+   * 写回依赖原始 asset 的书籍结构，同时生成译文版和双语对照版。
    */
   public async write_to_path(
     items: Item[],
@@ -48,7 +49,7 @@ export class EPUBFormat {
     for (const [rel_path, file_items] of group_file_items(items, "EPUB")) {
       const original_content = asset_reader(rel_path);
       if (original_content === null) {
-        continue;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
       await this.writer.build_epub(
         original_content,

@@ -1,3 +1,4 @@
+import type { ProjectSummaryService } from "../../backend/project/project-summary-service";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,6 +24,7 @@ export interface CLIJobServices {
     settings: Pick<AppSettingService, "read_setting" | "set_transient_overrides">;
   };
   project: {
+    summary: Pick<ProjectSummaryService, "read">;
     lifecycle: Pick<
       ProjectLifecycleService,
       "create_project_commit" | "apply_task_input" | "unload_project"
@@ -45,6 +47,7 @@ export async function run_cli_job(
   status_reporter.emit_started();
   let temp_root: string | null = null; // 只有成功创建后才需要卸载工程和删目录
   let transient_overrides_active = false; // 防止输入校验失败时写入多余撤销调用
+  let excluded_files: string[] = [];
   const failures: unknown[] = []; // 按发生顺序保留业务与收尾错误，同时继续后续清理
 
   try {
@@ -66,8 +69,16 @@ export async function run_cli_job(
     });
     await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    await start_and_wait_for_translation(backend_services, status_reporter);
-    await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
+    const { entries } = backend_services.project.summary.read().snapshot;
+    excluded_files = entries
+      .filter((entry) => entry.file_type === "PDF")
+      .map((entry) => entry.rel_path);
+    if (entries.some((entry) => entry.progress.unit === "line" && entry.progress.total_count > 0))
+      await start_and_wait_for_translation(backend_services, status_reporter);
+    await backend_services.files.translationExport.export_files_to_directory(
+      command.outputDir,
+      excluded_files,
+    );
   } catch (error) {
     failures.push(error);
   }
@@ -101,7 +112,7 @@ export async function run_cli_job(
     throw error;
   }
 
-  status_reporter.emit_finished("done");
+  status_reporter.emit_finished("done", undefined, excluded_files);
 }
 
 /**

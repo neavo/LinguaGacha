@@ -11,6 +11,21 @@ import {
   normalize_agent_tool_log_output,
   type AgentLogContent,
 } from "./agent-log";
+
+it("图片工具日志只保留来源摘要和媒体类型", () => {
+  const result = normalize_agent_tool_log_output({
+    content: [
+      { type: "text", text: '{"path":"work/page.webp"}' },
+      { type: "image", mimeType: "image/webp", data: "private-image-bytes" },
+    ],
+    details: { path: "work/page.webp" },
+  });
+  expect(JSON.stringify(result)).not.toContain("private-image-bytes");
+  expect(result).toMatchObject({
+    kind: "content",
+    content: [{ type: "text" }, { type: "image", mimeType: "image/webp" }],
+  });
+});
 import { agent_tool_result } from "./model-tools/definition";
 
 describe("AgentSessionLog", () => {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AppError } from "../../../../shared/error";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import { Item } from "../../../../domain/item";
@@ -85,12 +86,12 @@ export class TRANSFormat {
     for (const [rel_path, group] of group_items(items, "TRANS")) {
       const original = asset_reader(rel_path);
       if (original === null) {
-        continue;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
 
       const root = JsonTool.parseStrict<MutableJsonRecord>(original);
       if (typeof root !== "object" || root === null || Array.isArray(root)) {
-        continue;
+        throw new AppError("file.invalid_structure", { public_details: { file: rel_path } });
       }
       const project = to_mutable_record(root["project"]);
       const files = to_mutable_record(project["files"]);

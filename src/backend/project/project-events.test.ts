@@ -18,7 +18,7 @@ describe("app-events", () => {
       type: "project.opened_for_cache",
       projectPath: "E:/Project/demo.lg",
       source: "project_lifecycle",
-      affectedSections: ["project", "files", "items", "quality", "prompts", "proofreading"],
+      affectedSections: ["project", "files", "items", "pdf", "quality", "prompts", "proofreading"],
       sectionRevisions: {
         project: 1,
         items: 2,

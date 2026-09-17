@@ -34,11 +34,12 @@ import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/pr
 
 import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
 import { resolveProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
+import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 import type {
-  WorkbenchDialogState,
   WorkbenchFileEntry,
   WorkbenchSnapshot,
-} from "@frontend/pages/workbench-page/types";
+  WorkbenchQueryResponse,
+} from "@shared/workbench/workbench-query";
 
 type WorkbenchCacheErrorContext = Pick<RendererErrorContextInput, "stage" | "signalSeq">; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
 
@@ -47,19 +48,18 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 };
 
 // 页面缓存只有消费完这些 section revision 才能标记为 ready。
-const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items"];
+const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "pdf"];
 // 工作台列表 query 的项目事实依赖范围。
-const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = ["project", "files", "items"];
+const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
+  "project",
+  "files",
+  "items",
+  "pdf",
+];
 // 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
-
-type WorkbenchQueryResponse = {
-  projectPath: string;
-  sectionRevisions: ProjectDataSectionRevisions;
-  snapshot: WorkbenchSnapshot;
-};
 
 type WorkbenchSelectionState = {
   selected_entry_ids: string[];
@@ -332,6 +332,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
     return {
       files: entries_ref.current.map((entry) => ({
         rel_path: entry.rel_path,
+        file_type: entry.file_type,
       })),
       section_revisions: consumed_revisions,
     };

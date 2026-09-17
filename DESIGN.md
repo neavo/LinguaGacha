@@ -152,19 +152,21 @@ components:
     height: "{spacing.control-height}"
     padding: "0 10px"
   badge-brand:
-    backgroundColor: "color-mix(in srgb, {colors.primary} 14%, transparent)"
-    textColor: "{colors.primary}"
+    backgroundColor: "color-mix(in srgb, {colors.primary} 14%, {colors.popover})"
+    border: "0.5px solid color-mix(in srgb, {colors.primary} 35%, {colors.border})"
+    textColor: "color-mix(in srgb, {colors.primary} 85%, {colors.foreground})"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
     height: "20px"
-    padding: "2px 8px"
-  badge-secondary:
+    padding: "0px 8px"
+  badge-neutral:
     backgroundColor: "{colors.secondary}"
+    border: "0.5px solid {colors.border}"
     textColor: "{colors.secondary-foreground}"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
     height: "20px"
-    padding: "2px 8px"
+    padding: "0px 8px"
   card-default:
     backgroundColor: "var(--ui-card-default-surface)"
     textColor: "{colors.foreground}"
@@ -405,8 +407,9 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 
 ### Chips
 
-- **Style:** 徽标高 20px、999px 胶囊圆角、12px 字号和 8px 水平内边距；品牌徽标使用低透明暖橙底与主色文字。
-- **Variants:** default 使用主色实底，brand 使用 14% 主色底，secondary 使用次级面与次级前景；destructive、outline、ghost 与 link 按各自语义表达错误、边界、弱提示或链接。
+- **Style:** 姓名、状态、计数与序号共用信息胶囊：20px 高、999px 圆角、12px 字号、500 字重、8px 水平内边距、0.5px 描边和等宽数字。
+- **Tones:** neutral、brand、success、warning、failure 共用全局语义色，默认 neutral。彩色胶囊使用浅底与细描边，文字混入 foreground 保证明暗主题的小字对比；brand 保留更高的主色占比。
+- **Composition:** 翻译任务胶囊由内部按钮承接内边距，保留进度填充和状态灯；工程格式标签高 30px，内部数量使用标准胶囊。
 - **State:** 选中、筛选和状态徽标必须辅以文字、图标或明确语义，禁止只依赖颜色。
 
 ### Tabs
@@ -478,7 +481,7 @@ Portal 浮层遵循固定语义栈：Dialog 与 Sheet 使用 `--ui-layer-overlay
 ### Agent Decision
 
 - **Frame:** 选择框最大宽 720px，水平居中、距底边 16px，横向安全边距 16px；使用 popover 面、1px 边界与 4px 圆角。选择期间状态区与完整输入器收起：输入器两侧向中心、上缘向底部收拢，再从同一底部位置向上展开选择框。进入约 400ms，恢复输入约 300ms；减少动态效果时直接切换布局并保留短淡入。交互区按实际高度为信息流留出空间。标题、说明、动作标签和写入摘要均保持单行，超长时以省略号截断。
-- **Question:** 顶部标题由主题色语义图标和等大的 14px 问题组成，可选 12px 共同说明位于下一行；普通选择使用 `CircleQuestionMark`，取消按钮位于统一的 24px 尾部图标轨。固定选项是开放动作行，仅以弱分割线组织；每行依次使用序号胶囊、单行截断的常规字重 13px 动作标签和圆形箭头操作位。第一项的箭头外框从完整主题色开始按五分钟期限逐秒缩短，并以持续向外扩散的淡化圆环提示等待中的决定；剩余四分之一时，期限与提示圆环共同切换为 warning 语义，减少动态效果时隐藏扩散环并保留期限与颜色状态。
+- **Question:** 顶部标题由主题色语义图标和等大的 14px 问题组成，可选 12px 共同说明位于下一行；普通选择使用 `CircleQuestionMark`，取消按钮位于统一的 24px 尾部图标轨。固定选项是开放动作行，仅以弱分割线组织；每行依次使用标准中性序号胶囊、单行截断的常规字重 13px 动作标签和圆形箭头操作位。第一项的箭头外框从完整主题色开始按五分钟期限逐秒缩短，并以持续向外扩散的淡化圆环提示等待中的决定；剩余四分之一时，期限与提示圆环共同切换为 warning 语义，减少动态效果时隐藏扩散环并保留期限与颜色状态。
 - **Actions:** 点击固定选项立即提交；自定义答案使用“自定义”胶囊、单行输入和圆形箭头按钮组成同一行，底部间距只由决策面内边距提供。标题取消、固定选项箭头与自定义提交共用尾部图标轨。写入授权使用固定标题“正在写入工程数据”，说明区按业务顺序列出所有非零变更类别，数量使用主题色等宽数字；下方只显示拒绝、允许本次、允许本次及本会话后续全部写入三个即时动作，控件不声明专用快捷键。
 
 ### Command Bar

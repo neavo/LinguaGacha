@@ -8,7 +8,9 @@ export const de_de_workbench_page = {
   },
   table: {
     file_name: "Dateiname",
-    line_count: "Zeilen",
+    progress: "Fortschritt",
+    agent: "AGENT",
+    agent_only: "Diese Datei kann nur mit AGENT übersetzt werden",
     actions: "Aktionen",
   },
   sort: {
@@ -21,8 +23,6 @@ export const de_de_workbench_page = {
     add_file_loading_toast: "Datei wird hinzugefügt und Cache aktualisiert …",
     no_valid_file: "Keine gültigen Dateien können hinzugefügt werden.",
     file_action_failed: "Dateioperation fehlgeschlagen. Bitte versuchen Sie es später erneut.",
-    generate_translation_failed:
-      "Fehler beim Erstellen verfügbarer Übersetzungsdateien. Bitte versuchen Sie es später erneut.",
     close_project_failed:
       "Fehler beim Schließen des Projekts. Bitte versuchen Sie es später erneut.",
   },

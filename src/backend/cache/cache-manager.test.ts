@@ -62,6 +62,7 @@ function create_database(
   });
   const get_rule_text = vi.fn(() => "");
   return {
+    read_pdf_summaries: () => ({}),
     get_all_meta: vi.fn(() => options.meta ?? {}),
     get_all_items,
     get_items_by_ids,

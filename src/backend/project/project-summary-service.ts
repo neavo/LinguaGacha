@@ -1,44 +1,49 @@
-import type { ProjectItemPublicRecord } from "../../domain/item";
-import type { JsonValue, MutableJsonRecord } from "../../domain/json";
-import type {
-  ProjectTranslationStats,
-  ProjectTranslationStatsResponse,
+import { build_project_file_paths } from "../../shared/project/project-file-paths";
+import {
+  build_project_translation_stats,
+  calculate_completion_percent,
 } from "../../shared/project-translation-stats";
+import type { ProjectDatabase } from "../database/database-operations";
+import type { ProjectItemPublicRecord } from "../../domain/item";
+import type { PDFSummary } from "../../shared/pdf";
+import type {
+  WorkbenchFileEntry,
+  WorkbenchFileProgress,
+  WorkbenchQueryResponse,
+} from "../../shared/workbench/workbench-query";
+import type { ProjectTranslationStatsResponse } from "../../shared/project-translation-stats";
 import type { CacheFileEntry, CacheReadPort } from "../cache/cache-types";
 
 import type { ProjectSessionState } from "./project-session-state";
-
-const COMPLETED_STATUSES = new Set(["PROCESSED"]);
-const FAILED_STATUSES = new Set(["ERROR"]);
-const SKIPPED_STATUSES = new Set(["EXCLUDED", "RULE_SKIPPED", "LANGUAGE_SKIPPED", "DUPLICATED"]);
 
 /**
  * 后端查询服务从 cache 门面读取热数据，并返回页面级快照。
  */
 export class ProjectSummaryService {
-  private readonly session_state: ProjectSessionState;
-  private readonly cache: CacheReadPort;
-
   /**
    * session_state 提供工程身份，cache 提供当前项目热读事实。
    */
-  public constructor(session_state: ProjectSessionState, cache: CacheReadPort) {
-    this.session_state = session_state;
-    this.cache = cache;
-  }
+  public constructor(
+    private readonly session_state: ProjectSessionState,
+    private readonly cache: CacheReadPort,
+    private readonly database: Pick<ProjectDatabase, "read_pdf_summaries">,
+  ) {}
 
   /**
    * 工作台快照承接文件列表，跨页面翻译统计由独立查询提供。
    */
-  public read(): MutableJsonRecord {
+  public read(): WorkbenchQueryResponse {
     const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
-    const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
+    const cached_file_entries = this.cache.files.readFileEntries();
+    const pdf = cached_file_entries.some((entry) => entry.file_type === "PDF")
+      ? this.database.read_pdf_summaries(project_path)
+      : {};
     return {
       projectPath: project_path,
-      sectionRevisions: this.cache.readSectionRevisions() as unknown as JsonValue,
+      sectionRevisions: this.cache.readSectionRevisions(),
       snapshot: {
-        entries: file_entries as unknown as JsonValue,
+        entries: this.build_file_entries(items, cached_file_entries, pdf),
       },
     };
   }
@@ -48,20 +53,21 @@ export class ProjectSummaryService {
     const projectPath = this.session_state.require_loaded_project_path();
     return {
       projectPath,
-      stats: this.build_item_stats(this.cache.items.readItems()),
+      stats: build_project_translation_stats(this.cache.items.readItems()),
     };
   }
 
   /**
-   * 按文件路径聚合项目列表和文件条目数。
+   * 按文件路径聚合列表与进度，顺序由 FileCache 拥有。
    */
   private build_file_entries(
     items: ProjectItemPublicRecord[],
     cached_file_entries: CacheFileEntry[],
-  ): MutableJsonRecord[] {
+    pdf_summaries: Record<string, PDFSummary>,
+  ): WorkbenchFileEntry[] {
     const entries_by_path = new Map<string, ProjectItemPublicRecord[]>();
     for (const item of items) {
-      const file_path = String(item["file_path"] ?? "");
+      const file_path = item.file_path;
       if (file_path === "") {
         continue;
       }
@@ -69,75 +75,55 @@ export class ProjectSummaryService {
       bucket.push(item);
       entries_by_path.set(file_path, bucket);
     }
-    const emitted_paths = new Set<string>();
-    const result: MutableJsonRecord[] = [];
-    for (const file_entry of cached_file_entries) {
-      const rel_path = file_entry.rel_path;
-      const file_items = entries_by_path.get(rel_path) ?? [];
-      emitted_paths.add(rel_path);
-      result.push(this.build_project_file_entry(file_entry, file_items));
-    }
-    for (const [rel_path, file_items] of entries_by_path.entries()) {
-      if (emitted_paths.has(rel_path)) {
-        continue;
-      }
-      result.push(
-        this.build_project_file_entry(
-          {
-            rel_path,
-            file_type: String(file_items[0]?.["file_type"] ?? "NONE"),
-            sort_index: result.length,
-          },
-          file_items,
-        ),
-      );
-    }
-    return result;
+    // files section 在存在 asset 时只包含 asset；摘要还需补齐历史条目独有的路径。
+    const files_by_path = new Map(cached_file_entries.map((entry) => [entry.rel_path, entry]));
+    return build_project_file_paths([...files_by_path.keys()], [...entries_by_path.keys()]).map(
+      (rel_path, index) => {
+        const file_items = entries_by_path.get(rel_path) ?? [];
+        const file_entry = files_by_path.get(rel_path) ?? {
+          rel_path,
+          file_type: file_items[0]?.file_type ?? "NONE",
+          sort_index: index,
+        };
+        return this.build_project_file_entry(file_entry, file_items, pdf_summaries);
+      },
+    );
   }
 
   /**
-   * FileCache 已过滤空路径并归一序号，项目文件行补充条目数及非负展示顺序。
+   * PDF 摘要按原页计数，核对标记独立于翻译完成率。
    */
   private build_project_file_entry(
     file_entry: CacheFileEntry,
     file_items: ProjectItemPublicRecord[],
-  ): MutableJsonRecord {
+    pdf_summaries: Record<string, PDFSummary>,
+  ): WorkbenchFileEntry {
+    let progress: WorkbenchFileProgress;
+    if (file_entry.file_type === "PDF") {
+      const pdf = pdf_summaries[file_entry.rel_path];
+      const skipped_count = pdf.kept_pages + pdf.omitted_pages; // 两种处置均完成处理，导出时仍区分保留与省略。
+      progress = {
+        unit: "page",
+        total_count: pdf.pages,
+        completed_count: pdf.translated_pages,
+        skipped_count,
+        failed_count: null,
+        pending_count: pdf.pages - pdf.translated_pages - skipped_count,
+        completion_percent: calculate_completion_percent(
+          pdf.pages,
+          pdf.translated_pages,
+          skipped_count,
+        ),
+      };
+    } else {
+      const { total_items, ...stats } = build_project_translation_stats(file_items);
+      progress = { unit: "line", total_count: total_items, ...stats };
+    }
     return {
       rel_path: file_entry.rel_path,
       file_type: file_entry.file_type,
-      sort_index: Math.max(0, file_entry.sort_index),
-      item_count: file_items.length,
-    };
-  }
-
-  /**
-   * 项目进度统计只基于 item status，任务运行态进度由 BatchTranslationSnapshot 单独提供。
-   */
-  private build_item_stats(items: ProjectItemPublicRecord[]): ProjectTranslationStats {
-    let completed_count = 0;
-    let failed_count = 0;
-    let skipped_count = 0;
-    for (const item of items) {
-      const status = String(item["status"] ?? "NONE");
-      if (COMPLETED_STATUSES.has(status)) {
-        completed_count += 1;
-      } else if (FAILED_STATUSES.has(status)) {
-        failed_count += 1;
-      } else if (SKIPPED_STATUSES.has(status)) {
-        skipped_count += 1;
-      }
-    }
-    const total_items = items.length;
-    const pending_count = total_items - completed_count - failed_count - skipped_count;
-    return {
-      total_items,
-      completed_count,
-      failed_count,
-      pending_count,
-      skipped_count,
-      // 跳过项视作已处理，沿用工作台的整数完成率。
-      completion_percent:
-        total_items === 0 ? 0 : Math.round(((completed_count + skipped_count) / total_items) * 100),
+      sort_index: file_entry.sort_index,
+      progress,
     };
   }
 }

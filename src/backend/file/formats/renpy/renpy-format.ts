@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AppError } from "../../../../shared/error";
 
 import { decode_text_content } from "../../../../shared/utils/text-tool";
 import {
@@ -60,7 +61,7 @@ export class RenPyFormat {
     for (const [rel_path, group] of group_items(items, "RENPY")) {
       const original = asset_reader(rel_path);
       if (original === null) {
-        continue;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
       const lines = split_text_lines_for_items(await decode_text_content(original));
       const normalized_items = build_items_for_writeback(rel_path, lines, group);

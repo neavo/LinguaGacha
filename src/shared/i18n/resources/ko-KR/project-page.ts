@@ -39,15 +39,12 @@ export const ko_kr_project_page = {
     missing_file_description: "프로젝트 파일을 사용할 수 없습니다. 목록에서 제거할까요?",
   },
   preview: {
-    project_name: "프로젝트 이름",
+    title: "프로젝트 개요",
     file_count: "파일 수",
+    files: "파일 {COUNT}개",
     created_at: "생성 시간",
     updated_at: "마지막 수정",
     progress: "번역 진행률",
-    translated: "번역 완료:",
-    skipped: "번역 불필요:",
-    total: "합계:",
-    rows_unit: "줄",
   },
   loading_stages: {
     project: "프로젝트 구조 불러오는 중 …",
@@ -60,6 +57,7 @@ export const ko_kr_project_page = {
     task: "작업 상태 불러오는 중 …",
   },
   formats: {
+    pdf: "PDF",
     title: "지원 파일 형식",
     txt: "일반 텍스트",
     md: "Markdown",

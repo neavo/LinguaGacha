@@ -1,3 +1,5 @@
+import type { AgentImageService } from "./agent-image-service";
+import type { AgentImage } from "../../shared/agent-image";
 import { BatchTranslationCompletionError } from "../batch-translation/batch-translation-runtime";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { resolve_agent_batch_translation_model } from "../model/model-config-resolver";
@@ -5,11 +7,11 @@ import type { BatchTranslationResult } from "../../domain/batch-translation";
 import type { Model } from "../../domain/model";
 import { create_agent_batch_translation_tool } from "./model-tools/batch-translation";
 import {
-  contentText,
   InMemoryCredentialStore,
   type AssistantMessage,
   type AssistantMessageEvent,
   type ImageContent,
+  type TextContent,
   uuidv7,
 } from "@earendil-works/pi-ai";
 import {
@@ -90,6 +92,7 @@ const AGENT_IMAGE_MIME_TYPE = "image/webp";
 /** 产品会话使用固定压缩预算，不读取 coding-agent 用户设置。 */
 function build_agent_session_settings() {
   return {
+    images: { autoResize: false }, // 所有产品图片已由唯一后端入口处理，SDK 直接消费固定字节。
     enableInstallTelemetry: false,
     enableSkillCommands: false,
     compaction: {
@@ -188,6 +191,7 @@ type AgentServiceOptions = {
   runtimeGate: RuntimeOperationGate;
   webSearch: AgentWebSearchPort | undefined;
   workspace: AgentWorkspacePort;
+  images: Pick<AgentImageService, "prepare_base64" | "clear">;
   logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -214,6 +218,7 @@ export class AgentService {
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly web_search: AgentWebSearchPort | undefined; // 缺失即不向模型注册 GUI 专属搜索能力
   private readonly workspace: AgentWorkspacePort; // Agent 恒定工作面；初始化失败直接阻止会话启动
+  private readonly images: AgentServiceOptions["images"];
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private todos: string[] = []; // 对话级有序待办；Node 脚本成功后才原子替换
@@ -251,6 +256,7 @@ export class AgentService {
     this.runtime_gate = options.runtimeGate;
     this.web_search = options.webSearch;
     this.workspace = options.workspace;
+    this.images = options.images;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.decisions = new AgentDecisionCoordinator(() => {
@@ -271,6 +277,35 @@ export class AgentService {
     this.assert_not_disposed();
     if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
     return this.workspace.activate_path(is_json_record(request) ? request["path"] : undefined);
+  }
+
+  /** 附件入口提交原始字节，草稿接收与模型相同的规范图片。 */
+  public async prepare_image(request: JsonRecord): Promise<AgentImage> {
+    this.assert_not_disposed();
+    if (this.session_reset !== null) throw new AppErrors.AppError("runtime.busy");
+    const generation = this.runtime_generation;
+    const image = await this.images.prepare_base64(
+      is_json_record(request) ? request["data"] : undefined,
+    );
+    this.assert_not_disposed();
+    if (generation !== this.runtime_generation) throw new AppErrors.AppError("runtime.cancelled");
+    return image;
+  }
+
+  /** 图片在进入队列或历史前归一；纯文本命令保持同步受理，异步结果不能跨会话回写。 */
+  private prepare_message_images(message: AgentMessageInput): Promise<void> | null {
+    const attachments = message.attachments.filter((attachment) => attachment.kind === "image");
+    if (attachments.length === 0) return null;
+    const generation = this.runtime_generation;
+    return Promise.all(
+      attachments.map(async (attachment) => {
+        const image = await this.images.prepare_base64(attachment.webpBase64);
+        this.assert_not_disposed();
+        if (generation !== this.runtime_generation)
+          throw new AppErrors.AppError("runtime.cancelled");
+        attachment.webpBase64 = image.data;
+      }),
+    ).then(() => undefined);
   }
 
   /** 返回仅含不可变投影的公开快照；UI 排序不改写模型侧持有的原始 skill 顺序。 */
@@ -357,6 +392,10 @@ export class AgentService {
         diagnostic_context: { reason: "empty_agent_message" },
       });
     }
+    const preparation = this.prepare_message_images(message);
+    if (preparation !== null) await preparation;
+    if (this.session_reset !== null || this.decisions.has_pending)
+      throw new AppErrors.AppError("runtime.busy");
     this.session_state.require_loaded_project_path();
     if (this.state === "running") {
       this.input_queue.enqueue(message);
@@ -376,9 +415,12 @@ export class AgentService {
   }
 
   /** 只允许修改仍在等待的队列项；发送中的内容已经交给 Pi，不能再改写。 */
-  public update_queued_message(request: JsonRecord): AgentCommandAck {
+  public async update_queued_message(request: JsonRecord): Promise<AgentCommandAck> {
     this.assert_queue_command_available();
     const { id, message } = read_queue_message_request(request);
+    const preparation = this.prepare_message_images(message);
+    if (preparation !== null) await preparation;
+    this.assert_queue_command_available();
     this.input_queue.update(id, message);
     this.publish_input_queue();
     return this.get_acknowledgement();
@@ -450,6 +492,9 @@ export class AgentService {
         diagnostic_context: { reason: "agent_revision_unavailable" },
       });
     }
+    const preparation = this.prepare_message_images(revision.message);
+    if (preparation !== null) await preparation;
+    this.assert_revision_available();
     const user_index = this.entries.findLastIndex(
       (entry) => entry.kind === "user_message" && entry.delivery === "round",
     );
@@ -503,6 +548,10 @@ export class AgentService {
     }
     this.session_state.require_loaded_project_path();
     const message = read_agent_continue_message(request);
+    const preparation = message === null ? null : this.prepare_message_images(message);
+    if (preparation !== null) await preparation;
+    if (this.session_reset !== null || this.state !== "idle")
+      throw new AppErrors.AppError("runtime.busy");
     const runtime = this.runtime;
     const continue_failed_round =
       this.entries.findLast((entry) => entry.kind === "user_message" && entry.delivery === "round")
@@ -611,6 +660,7 @@ export class AgentService {
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.images.clear();
     this.workspace.invalidate_links();
     this.clear_assistant_stream();
     this.decisions.reset();
@@ -1317,7 +1367,9 @@ export class AgentService {
       this.upsert_entry({
         ...running_entry,
         status: event.isError ? "error" : "success",
-        output: contentText(event.result.content, ""),
+        output: event.result.content.flatMap((part: TextContent | ImageContent) =>
+          part.type === "text" ? [part.text] : [],
+        ),
       });
     }
   }
@@ -1589,6 +1641,7 @@ export class AgentService {
     project_path: string | null = null,
   ): Promise<void> {
     if (this.session_reset !== null) return this.session_reset;
+    this.images.clear();
     this.workspace.invalidate_links();
     this.runtime_generation += 1;
     this.clear_assistant_stream();
@@ -1835,8 +1888,13 @@ function read_agent_approval_mode(request: JsonRecord): AgentApprovalMode {
 }
 
 /** 修改请求在服务边界拆出身份与待归一化消息。 */
-function read_queue_message_request(request: JsonRecord): { id: string; message: unknown } {
-  return { id: read_queue_id(request), message: request["message"] };
+function read_queue_message_request(request: JsonRecord): {
+  id: string;
+  message: AgentMessageInput;
+} {
+  const message = normalize_agent_message_input(request["message"]);
+  if (message === null) throw agent_queue_validation_error("agent_input_queue_invalid_message");
+  return { id: read_queue_id(request), message };
 }
 
 /** 空 continue 不制造消息；携带 message 时仍复用完整用户消息边界。 */

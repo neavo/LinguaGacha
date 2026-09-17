@@ -1,3 +1,5 @@
+import type { PDFHostOperation } from "./pdf";
+import type { AgentImageHostOperation } from "./agent-image";
 import type { LogError, LogErrorContext } from "./error";
 import type { LocaleKey } from "./i18n";
 
@@ -15,6 +17,8 @@ export type BackendRuntimeResult<T = unknown> =
 
 /** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
+  | PDFHostOperation
+  | AgentImageHostOperation
   | { kind: "resolve_proxy"; url: string }
   | { kind: "open_directory"; path: string }
   | { kind: "pick_save_path"; defaultName: string };
@@ -41,6 +45,7 @@ export type BackendRuntimeMainMessage =
 
 /** Backend Runtime worker 发往 Electron main 的生命周期与响应消息。 */
 export type BackendRuntimeWorkerMessage =
+  | { type: "host_cancel"; requestId: string }
   | { type: "ready"; data: BackendRuntimeReady }
   | { type: "start_failed"; error: LogError }
   | { type: "response"; requestId: string; result: BackendRuntimeResult }

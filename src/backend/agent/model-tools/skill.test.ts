@@ -1,24 +1,32 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentSkillDefinition } from "../agent-skills";
+import { format_agent_skill_invocation, type AgentSkillDefinition } from "../agent-skills";
 import { create_agent_skill_tools } from "./skill";
 
 describe("Agent 技能读取工具", () => {
   it("按名称读取会话 skill 的默认正文和包内相对文件", async () => {
     using fixture = create_fixture("builtin", "shared", "内置正文");
     write_file(path.join(fixture.builtin_root, "shared", "references", "guide.md"), "参考正文");
+    const base_url = pathToFileURL(path.join(fixture.builtin_root, "shared") + path.sep).href;
+    expect(format_agent_skill_invocation(fixture.skills[0]!)).toContain(`base_url="${base_url}"`);
 
     await expect(execute(fixture.tool, { name: "shared" })).resolves.toMatchObject({
-      details: { name: "shared", path: "SKILL.md", content: expect.stringContaining("内置正文") },
+      details: {
+        name: "shared",
+        path: "SKILL.md",
+        content: expect.stringContaining("内置正文"),
+        base_url,
+      },
     });
     await expect(
       execute(fixture.tool, { name: "shared", path: "references/guide.md" }),
     ).resolves.toMatchObject({
-      details: { name: "shared", path: "references/guide.md", content: "参考正文" },
+      details: { name: "shared", path: "references/guide.md", content: "参考正文", base_url },
     });
   });
 
@@ -27,7 +35,19 @@ describe("Agent 技能读取工具", () => {
     write_skill(fixture.user_root, "shared", "后来新增的用户正文");
 
     await expect(execute(fixture.tool, { name: "shared" })).resolves.toMatchObject({
-      details: { content: expect.stringContaining("会话内置正文") },
+      details: {
+        content: expect.stringContaining("会话内置正文"),
+        base_url: pathToFileURL(path.join(fixture.builtin_root, "shared") + path.sep).href,
+      },
+    });
+    write_skill(fixture.builtin_root, "shared", "磁盘更新正文");
+    await expect(execute(fixture.tool, { name: "shared" })).resolves.toMatchObject({
+      details: { content: expect.stringContaining("磁盘更新正文") },
+    });
+    expect(format_agent_skill_invocation(fixture.skills[0]!)).toContain("会话内置正文");
+    fs.unlinkSync(path.join(fixture.builtin_root, "shared", "SKILL.md"));
+    await expect(execute(fixture.tool, { name: "shared" })).rejects.toMatchObject({
+      details: { code: "skill.resource_not_found" },
     });
   });
 
@@ -159,6 +179,7 @@ function create_fixture(source?: "user" | "builtin", name = "shared", body = "�
     user_root,
     builtin_root,
     tool,
+    skills,
   };
 }
 

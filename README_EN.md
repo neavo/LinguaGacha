@@ -76,7 +76,7 @@
 
 ## Supported Formats 🏷️
 - Subtitles `.srt .ass`
-- E-books `.txt .epub`
+- E-books `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org) exports `.rpy`
 - [MTool](https://mtool.app) exports `.json`

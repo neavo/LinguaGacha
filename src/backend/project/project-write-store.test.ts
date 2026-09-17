@@ -1,3 +1,6 @@
+import { read_pdf_document } from "../file/formats/pdf/pdf-document";
+import { create_pdf_fixture } from "../file/formats/pdf/test-support";
+import { pdf_page_fingerprint } from "../file/formats/pdf/pdf-source";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +31,45 @@ describe("ProjectWriteStore", () => {
     while (cleanup_callbacks.length > 0) {
       cleanup_callbacks.pop()?.();
     }
+  });
+
+  it("PDF 译稿与 revision 同事务回滚，失败不发布提交事件", async () => {
+    const { database, project_path, store, published_changes } = create_store("pdf-rollback");
+    const bytes = create_pdf_fixture();
+    const source = path.join(path.dirname(project_path), "source.pdf");
+    fs.writeFileSync(source, bytes);
+    const document = read_pdf_document(bytes);
+    database.transaction(project_path, () => {
+      database.add_asset_from_source(project_path, "book.pdf", source, document, 0);
+    });
+    const original = database.set_meta.bind(database);
+    const failure = vi.spyOn(database, "set_meta").mockImplementation((project, key, value) => {
+      if (key === "project_runtime_revision.pdf") throw new Error("revision write failed");
+      original(project, key, value);
+    });
+    const batch = {
+      ...create_empty_agent_workspace_intent_batch(),
+      pdf: document.pages.slice(0, 2).map((page) => ({
+        file_path: "book.pdf",
+        page: page.page,
+        fp: pdf_page_fingerprint("book.pdf", document.digest, page),
+        line: page.page,
+        translation: { kind: "translate" as const, markdown: "草稿" },
+        reviewed: true,
+        notes: "继续第 3 页",
+      })),
+    };
+    await expect(
+      store.apply_agent_workspace_changes({
+        projectPath: project_path,
+        source: "agent_workspace_apply",
+        batch,
+      }),
+    ).rejects.toThrow("revision write failed");
+    failure.mockRestore();
+    expect(database.read_pdf_document(project_path, "book.pdf")).toEqual(document);
+    expect(get_section_revision(read_meta(database, project_path), "pdf")).toBe(0);
+    expect(published_changes).toEqual([]);
   });
 
   it("按 item_id 局部提交翻译 patch 并保留持久 item 事实", async () => {
@@ -740,6 +782,7 @@ describe("ProjectWriteStore", () => {
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
   });
 
+  /** 每例持有独立数据库与事件记录，并统一登记资源清理。 */
   function create_store(
     name: string,
     options: {
@@ -777,6 +820,7 @@ describe("ProjectWriteStore", () => {
     };
   }
 
+  /** 从提交后的元数据组装事件，供用例观察 revision 与实际写入的一致性。 */
   function create_project_change_publisher(
     database: ProjectDatabase,
     project_path: string,
@@ -871,6 +915,7 @@ describe("ProjectWriteStore", () => {
     return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
   }
 
+  /** 通过正式资产导入入口落盘，保持文件集合与来源读取一致。 */
   function add_test_asset(
     database: ProjectDatabase,
     project_path: string,
@@ -880,7 +925,7 @@ describe("ProjectWriteStore", () => {
   ): void {
     const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
     fs.writeFileSync(source_path, content);
-    database.add_asset_from_source(project_path, asset_path, source_path, sort_order);
+    database.add_asset_from_source(project_path, asset_path, source_path, null, sort_order);
   }
 
   /** 为 Store 集成场景补齐未受影响 kind 的空意图。 */
@@ -891,6 +936,7 @@ describe("ProjectWriteStore", () => {
   ): AgentWorkspaceIntentBatch {
     const empty = create_empty_agent_workspace_intent_batch();
     return {
+      pdf: [],
       items: args.items,
       prompts: args.prompts,
       quality: { ...empty.quality, ...args.quality },

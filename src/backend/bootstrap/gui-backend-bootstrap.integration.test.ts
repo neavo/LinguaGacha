@@ -1,7 +1,4 @@
-import {
-  workspace_execution,
-  create_workspace_runtime_fixture,
-} from "../../test/agent-workspace-fixture";
+import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +10,56 @@ import { AppPathService } from "../app/app-path-service";
 import { LLMClient } from "../llm/llm-client";
 
 describe("GuiBackendBootstrap 集成", () => {
+  it("关闭 Gateway 时取消正在准备的图片并排空请求", async ({ onTestFinished }) => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-image-upload-"));
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
+    onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let cancelled = false;
+    const bootstrap = new GuiBackendBootstrap({
+      appRoot: app_root,
+      builtinRoot: path.resolve("builtin"),
+      logTargets: { console: false, window: false },
+      imageHost: async (_request, signal) => {
+        entered();
+        return await new Promise((_resolve, reject) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              cancelled = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          ),
+        );
+      },
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+      workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
+      openDirectory: async () => undefined,
+      pickSavePath: async () => null,
+      workerExecution: { kind: "in_process" },
+    });
+    try {
+      const { apiBaseUrl } = await bootstrap.start();
+      const pending = Promise.allSettled([
+        fetch(`${apiBaseUrl}/api/agent/image/prepare`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: Buffer.from("RIFF0000WEBPfixture").toString("base64") }),
+        }),
+      ]);
+      await ready;
+      await bootstrap.stop();
+      await pending;
+      expect(cancelled).toBe(true);
+      expect(bootstrap.isStopped()).toBe(true);
+    } finally {
+      await bootstrap.stop();
+    }
+  });
   it("关闭真实 Gateway 时取消在途接口测试并完成请求排空", async ({ onTestFinished }) => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-gateway-model-test-"));
     onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
@@ -39,15 +86,14 @@ describe("GuiBackendBootstrap 集成", () => {
       });
     onTestFinished(() => request.mockRestore());
     const bootstrap = new GuiBackendBootstrap({
+      imageHost: async () => {
+        throw new Error("Unexpected image request.");
+      },
       appRoot: app_root,
       builtinRoot: path.resolve("builtin"),
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
-      agentWorkspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
-      agentWorkspaceRun: async (input) => ({
-        execution: workspace_execution(),
-        todos: [...input.todos],
-      }),
+      workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
       openDirectory: async () => undefined,
       pickSavePath: async () => null,
       workerExecution: { kind: "in_process" },
@@ -94,15 +140,14 @@ describe("GuiBackendBootstrap 集成", () => {
     const pick_save_path = vi.fn(async () => destination);
     const open_directory = vi.fn(async () => undefined);
     const bootstrap = new GuiBackendBootstrap({
+      imageHost: async () => {
+        throw new Error("Unexpected image request.");
+      },
       appRoot: app_root,
       builtinRoot: path.resolve(process.cwd(), "builtin"),
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
-      agentWorkspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
-      agentWorkspaceRun: async (request) => ({
-        execution: workspace_execution(),
-        todos: [...request.todos],
-      }),
+      workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
       workerExecution: { kind: "in_process" },

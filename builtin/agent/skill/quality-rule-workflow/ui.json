@@ -1,5 +1,5 @@
 {
-  "order": 300,
+  "order": 500,
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能对术语与文本保护规则进行自动化提取",
     "en-US": "Use AI to discover glossary and text-protection rules in the current project",
