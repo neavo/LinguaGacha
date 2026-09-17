@@ -21,5 +21,3 @@ description: 翻译、补译、重译工程内文本或文档，或检查、审�
 |---|---|---|---|
 |`pages`|`references/page-translate.md`|`references/page-review.md`|PDF 文件|
 |`items`|`references/item-translate.md`|`references/item-review.md`|其他文件格式|
-
-按对应流程确定具体目标、恢复进度，并选择由 Agent 或批量工具执行。

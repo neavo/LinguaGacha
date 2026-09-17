@@ -38,7 +38,7 @@ flowchart LR
     BC --> CS["BackendServices"]
     GS --> S["BatchTranslationService"]
     CS --> S
-    D -->|"run_batch_translation"| S
+    D -->|"run_batch_item_translation"| S
     S --> E["BatchTranslationRunner"]
     E --> W["worker_threads"]
     BG -->|"HTTP / SSE"| R["preload / renderer"]

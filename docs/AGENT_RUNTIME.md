@@ -28,7 +28,7 @@
 
 - 当前回合至多建立一个 `pendingDecision`，由 `AgentDecisionCoordinator` 持有普通问题与写入授权的待回答状态、取消和一次性裁决，各自使用窄 resolve API。后端等待宿主提交答案，公开决定不携带期限；裁决先清除 pending，再在下一事件循环恢复工具。reset、工程切换和 dispose 取消当前等待。
 - 自动选择由前端会话时钟拥有，通过现有 resolve API 提交默认答案；后端只等待宿主裁决。同一决定的快照恢复与切页保留剩余时间，前端重载重新计时；输入聚焦、断线、快照恢复或命令占用期间冻结，条件解除后续计，卸载输入框释放聚焦。提交受理后停止计时，失败通知一次并保留问题供手动重试。逐秒变化通过独立 countdown 订阅发布。
-- Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
+- Agent 批量翻译模型偏好属于应用设置 `model_selection.agent_batch_translation`，默认 `null` 表示跟随，显式模型 ID 表示固定选择，跨会话与工程保留；由 `ModelService` 校验并保存，运行中允许修改，删除被引用的模型或修复失效配置时恢复跟随。`run_batch_item_translation` 调用时同步解析偏好：跟随使用成功建会话或换模后保存的 Agent 生效配置与思考档位，固定选择使用该模型自身保存配置，即使其 ID 等于当前 Agent 模型也保持固定语义。批量入口选择模型及等级通过统一选模命令保存，等级仍属于模型全局配置，引用同一模型的入口共享该值；跟随项不编辑等级。每次批量翻译调用冻结所用配置，运行中修改偏好影响后续调用。
 - Agent 模型与思考档位属于应用设置，运行中保存后在下一次普通轮次、失败继续或手动压缩开始前采用。普通命令在受理前完成模型预检；FIFO 自动轮次在实际执行时通过同一模型同步方法预检，失败记入该轮并暂停剩余队列。轮内工具循环与 steer 使用当前轮次配置。公开 context 携带当前会话的历史 tokens 与实际 limits。
 - 写入请求审批模式默认 `manual`，`auto` 直接提交工程数据变更，`manual` 为每个实际提交批次建立写入授权。待决状态使用同一份已准备差异生成按业务种类聚合的受影响对象数量，所有数量字段必填，无变化时为 0；`pages` 按实际变化的对象数计数；允许后续写入在当前批次成功且用户未更新模式时切换为 `auto`；允许本次写入、拒绝或提交失败沿用当前模式。reset、工程切换和应用重启恢复为 `manual`。运行中可切换模式，每批开始时确定审批方式，已展示的审批继续等待原裁决。
 
@@ -83,7 +83,7 @@
 
 - GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
 
-- `run_batch_translation` 是顺序工具，接收全量或明确 item ID 范围及是否纳入失败条目的决定，以当前 round 的 Agent lease 调用共享 `BatchTranslationService`；由批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮进度和工程累计进度。范围、失败条目决定与执行分流归 Agent 工作流；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
+- `run_batch_item_translation` 是处理 `items` 的顺序工具，接收全部条目或明确 `item_id` 范围及是否纳入失败条目的决定。工具以当前轮次的 Agent lease 调用共享 `BatchTranslationService`，批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮条目进度和工程条目累计进度。范围、失败条目决定与执行分流归 Agent 工作流；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
 - System Prompt 拥有通用决策规则，skill 拥有领域流程，工具说明提供调用与恢复语义。参数约束归 Schema，`workspace_run` 的限制与包名来自运行策略和依赖清单，`workspace_apply` 从 contract 投影提交与回执语义。
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
