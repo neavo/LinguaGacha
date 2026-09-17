@@ -73,7 +73,7 @@
 
 ## 지원 파일 형식 🏷️
 - 자막 `.srt .ass`
-- 전자책 `.txt .epub`
+- 전자책 `.txt .pdf .epub`
 - Markdown `.md`
 - [RenPy](https://www.renpy.org)로 내보낸 게임 텍스트 `.rpy`
 - [MTool](https://mtool.app)로 내보낸 게임 텍스트 `.json`

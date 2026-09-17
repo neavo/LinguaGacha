@@ -1,6 +1,8 @@
+import type { PDFExecution } from "./formats/pdf/pdf-worker";
+import { PDFFormat } from "./formats/pdf/pdf-format";
 import path from "node:path";
 
-import { Item, type ItemFileType } from "../../domain/item";
+import { Item } from "../../domain/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDV2Format } from "./formats/markdown/md-v2-format";
@@ -14,6 +16,7 @@ import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
+  type FileFormatReadResult,
   type FileFormatWriteContext,
   type FileFormatServiceConfig,
   type ProjectSourceFileEntry,
@@ -51,7 +54,11 @@ export class FileFormatService {
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
    */
-  public constructor(config: FileFormatServiceConfig, native_fs: NativeFs = default_native_fs) {
+  public constructor(
+    config: FileFormatServiceConfig,
+    private readonly pdf_execution: PDFExecution,
+    native_fs: NativeFs = default_native_fs,
+  ) {
     this.native_fs = native_fs;
     this.txt = new TXTFormat(config);
     this.md = new MDV2Format();
@@ -76,42 +83,55 @@ export class FileFormatService {
   /**
    * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序
    */
-  public async parse_asset(rel_path: string, content: Uint8Array): Promise<Item[]> {
+  public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatReadResult> {
     const ext = path.extname(rel_path).toLowerCase();
-    if (ext === ".md") {
-      return this.md.read_from_stream(content, rel_path);
+    if (ext === ".pdf")
+      return {
+        kind: "pdf",
+        document: await new PDFFormat(this.pdf_execution).read_from_stream(content),
+      };
+    let format;
+    switch (ext) {
+      case ".md":
+        format = this.md;
+        break;
+      case ".txt":
+        format = this.txt;
+        break;
+      case ".ass":
+        format = this.ass;
+        break;
+      case ".srt":
+        format = this.srt;
+        break;
+      case ".xlsx": {
+        const items = await this.wolfxlsx.read_from_stream(content, rel_path);
+        if (items.length > 0) return { items, kind: "items" };
+        format = this.xlsx;
+        break;
+      }
+      case ".json": {
+        const items = await this.kvjson.read_from_stream(content, rel_path);
+        if (items.length > 0) return { items, kind: "items" };
+        format = this.messagejson;
+        break;
+      }
+      case ".trans":
+        format = this.trans;
+        break;
+      case ".rpy":
+        format = this.renpy;
+        break;
+      case ".epub":
+        format = this.epub;
+        break;
+      default:
+        return { items: [], kind: "items" };
     }
-    if (ext === ".txt") {
-      return this.txt.read_from_stream(content, rel_path);
-    }
-    if (ext === ".ass") {
-      return this.ass.read_from_stream(content, rel_path);
-    }
-    if (ext === ".srt") {
-      return this.srt.read_from_stream(content, rel_path);
-    }
-    if (ext === ".xlsx") {
-      const wolf_items = await this.wolfxlsx.read_from_stream(content, rel_path);
-      return wolf_items.length > 0
-        ? wolf_items
-        : await this.xlsx.read_from_stream(content, rel_path);
-    }
-    if (ext === ".json") {
-      const kv_items = await this.kvjson.read_from_stream(content, rel_path);
-      return kv_items.length > 0
-        ? kv_items
-        : await this.messagejson.read_from_stream(content, rel_path);
-    }
-    if (ext === ".trans") {
-      return this.trans.read_from_stream(content, rel_path);
-    }
-    if (ext === ".rpy") {
-      return this.renpy.read_from_stream(content, rel_path);
-    }
-    if (ext === ".epub") {
-      return this.epub.read_from_stream(content, rel_path);
-    }
-    return [];
+    return {
+      items: await format.read_from_stream(content, rel_path),
+      kind: "items",
+    };
   }
 
   /**
@@ -202,18 +222,6 @@ export class FileFormatService {
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);
-  }
-
-  /**
-   * 预览文件类型取第一个有效条目，空文件或无法识别时返回 NONE
-   */
-  public pick_file_type(items: Item[]): ItemFileType {
-    for (const item of items) {
-      if (item.file_type !== "NONE") {
-        return item.file_type;
-      }
-    }
-    return "NONE";
   }
 
   /**

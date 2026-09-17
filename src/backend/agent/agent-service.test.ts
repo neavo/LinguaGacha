@@ -17,12 +17,15 @@ import {
   type Model,
   type ProviderStreams,
   type StreamOptions,
+  type TextContent,
+  type ImageContent,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AppLanguage } from "../../domain/app-language";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentCommandAck, AgentSessionEvent } from "../../shared/agent";
 import type { AgentWebSearchPort } from "./model-tools/web-search";
+import * as workspace_tools from "./model-tools/workspace";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 
@@ -620,6 +623,7 @@ describe("AgentService", () => {
         expect(fixture.service.get_snapshot().pendingDecision).toMatchObject({
           kind: "write_approval",
           summary: {
+            pdf: 0,
             items: 1,
             glossary: 0,
             textPreserve: 0,
@@ -712,7 +716,7 @@ describe("AgentService", () => {
           kind: "tool_call",
           toolName: "workspace_apply",
           status: "error",
-          output: expect.stringContaining('"action":"await_user"'),
+          output: [expect.stringContaining('"action":"await_user"')],
         }),
       ]),
     );
@@ -810,6 +814,61 @@ describe("AgentService", () => {
     });
   });
 
+  it("附件准备与消息受理都使用后端结果，图片准备不能跨 reset 提交", async () => {
+    const images = {
+      clear: vi.fn(),
+      prepare_base64: vi.fn(async (_data: unknown) => ({
+        data: "prepared",
+        mimeType: "image/webp" as const,
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      })),
+    };
+    const { service } = await create_service(true, undefined, undefined, undefined, images);
+    expect(await service.prepare_image({ data: "raw" })).toMatchObject({ data: "prepared" });
+    await service.send_message({
+      text: "image",
+      attachments: [{ kind: "image", webpBase64: "raw" }],
+    });
+    await wait_for_idle(service);
+    expect(service.get_snapshot().entries[0]).toMatchObject({
+      attachments: [{ kind: "image", webpBase64: "prepared" }],
+    });
+    expect(
+      fake_agent_state.model_contexts.at(-1)?.findLast((message) => message.role === "user"),
+    ).toMatchObject({
+      content: expect.arrayContaining([
+        { type: "image", data: "prepared", mimeType: "image/webp" },
+      ]),
+    });
+    let release!: (image: Awaited<ReturnType<typeof images.prepare_base64>>) => void;
+    images.prepare_base64.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = service.send_message({
+      text: "late",
+      attachments: [{ kind: "image", webpBase64: "raw" }],
+    });
+    const rejected = expect(pending).rejects.toMatchObject({ code: "runtime.cancelled" });
+    await service.reset();
+    release({
+      data: "late",
+      mimeType: "image/webp",
+      width: 1,
+      height: 1,
+      originalWidth: 1,
+      originalHeight: 1,
+    });
+    await rejected;
+    expect(images.clear).toHaveBeenCalled();
+    expect(service.get_snapshot().entries).toEqual([]);
+  });
+
   it("把含空评论的回复批注写入公开时间线，并只向模型投影选文与评论", async () => {
     const fixture = await create_service();
 
@@ -890,7 +949,7 @@ describe("AgentService", () => {
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
     expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
-    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill">');
+    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill" base_url="file:');
   });
 
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
@@ -1344,6 +1403,48 @@ describe("AgentService", () => {
     expect(read_items).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    { label: "多个文本块", texts: ["第一块", '{"second":2}\n', ""] },
+    { label: "无文本块", texts: [] },
+  ])("工具终帧将 $label 原样投影到事件和快照", async ({ texts }) => {
+    const content: (TextContent | ImageContent)[] = [
+      ...texts.map((text): TextContent => ({ type: "text", text })),
+      { type: "image", data: "image-fixture", mimeType: "image/webp" },
+    ];
+    const create_tools = workspace_tools.create_agent_workspace_tools;
+    const mock = vi
+      .spyOn(workspace_tools, "create_agent_workspace_tools")
+      .mockImplementation((options) =>
+        create_tools(options).map((tool) =>
+          tool.name === "workspace_run"
+            ? { ...tool, execute: async () => ({ content, details: {} }) }
+            : tool,
+        ),
+      );
+    try {
+      const { service, publish } = await create_service();
+      fake_agent_state.mode = "tool_only";
+      await service.send_message({ text: "查询", attachments: [] });
+      await wait_for_idle(service);
+      expect(service.get_snapshot().entries).toContainEqual(
+        expect.objectContaining({
+          kind: "tool_call",
+          status: "success",
+          output: texts,
+        }),
+      );
+      expect(publish).toHaveBeenCalledWith(
+        "agent.session_event",
+        expect.objectContaining({
+          type: "entry_upsert",
+          entry: expect.objectContaining({ kind: "tool_call", status: "success", output: texts }),
+        }),
+      );
+    } finally {
+      mock.mockRestore();
+    }
+  });
+
   it("模型回合按 user、assistant、tool_call、assistant 的真实时序追加条目", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "tools";
@@ -1390,7 +1491,7 @@ describe("AgentService", () => {
         toolName: "workspace_run",
         input: JSON.stringify({ script: FAKE_WORKSPACE_SCRIPT }),
         status: "success",
-        output: expect.stringContaining('"items"'),
+        output: [expect.stringContaining('"items"')],
         createdAt: expect.any(Number),
       },
       {
@@ -1784,7 +1885,7 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toContain("web_search");
   });
 
-  it("Electron 工作区端口随两个工具注册，并区分会话与工程 reset", async () => {
+  it("Electron 工作区端口随工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
@@ -1792,6 +1893,7 @@ describe("AgentService", () => {
       reset_workspace: vi.fn(async () => undefined),
       reset_project: vi.fn(async () => undefined),
       run: vi.fn(async (_script, todos) => ({
+        images: [],
         execution: workspace_execution(),
         todos: [...todos],
       })),
@@ -2953,6 +3055,17 @@ describe("AgentService", () => {
       import("../batch-translation/batch-translation-service").BatchTranslationService,
       "run_under_agent"
     >,
+    images: ConstructorParameters<typeof AgentService>[0]["images"] = {
+      clear: vi.fn(),
+      prepare_base64: async (data) => ({
+        data: String(data),
+        mimeType: "image/webp",
+        width: 1,
+        height: 1,
+        originalWidth: 1,
+        originalHeight: 1,
+      }),
+    },
   ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -3017,18 +3130,19 @@ describe("AgentService", () => {
         run: vi.fn<AgentWorkspacePort["run"]>(async (script, todos) => {
           await wait_for_held_tool();
           if (script === FAKE_TODO_WRITE_SCRIPT)
-            return { execution: workspace_execution(), todos: ["基础扫描"] };
+            return { images: [], execution: workspace_execution(), todos: ["基础扫描"] };
           if (script === FAKE_TODO_READ_SCRIPT) {
             const result = { todos: [...todos] };
-            return { execution: workspace_execution(result), todos: [...todos] };
+            return { images: [], execution: workspace_execution(result), todos: [...todos] };
           }
           if (script === FAKE_TODO_CLEAR_SCRIPT)
-            return { execution: workspace_execution(), todos: [] };
+            return { images: [], execution: workspace_execution(), todos: [] };
           const result = { items: read_items() };
-          return { execution: workspace_execution(result), todos: [...todos] };
+          return { images: [], execution: workspace_execution(result), todos: [...todos] };
         }),
         apply_workspace: vi.fn(async (request_approval) => {
           await request_approval?.({
+            pdf: 0,
             items: 1,
             glossary: 0,
             textPreserve: 0,
@@ -3058,6 +3172,7 @@ describe("AgentService", () => {
     const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
+      images,
       batchTranslation: batch_translation ?? {
         run_under_agent: async () => ({
           status: "done",
@@ -3156,7 +3271,8 @@ function read_tool_output(service: AgentService, id: string): JsonRecord {
   if (entry?.kind !== "tool_call" || entry.output === null) {
     throw new Error(`缺少工具结果: ${id}`);
   }
-  return JSON.parse(entry.output) as JsonRecord;
+  expect(entry.output).toHaveLength(1);
+  return JSON.parse(entry.output[0]!) as JsonRecord;
 }
 
 /** 事件数量本身是 reset/生命周期只发布一次 seed 的公开契约。 */

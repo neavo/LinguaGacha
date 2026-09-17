@@ -1,3 +1,4 @@
+import { create_pdf_execution } from "../file/formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -42,7 +43,14 @@ function create_service() {
   settings.set_stream_publisher({ publish });
   const on_commit = vi.fn();
   const writes = new ProjectWriteStore(database, on_commit, null);
-  const content = new ProjectContentService(database, gate, session, writes, settings);
+  const content = new ProjectContentService(
+    database,
+    gate,
+    session,
+    writes,
+    create_pdf_execution(),
+    settings,
+  );
   return {
     service: new AppSettingsCommandService(settings, gate, session, content),
     settings,

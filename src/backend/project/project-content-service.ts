@@ -1,3 +1,6 @@
+import { build_project_file_records } from "./project-file-records";
+import type { PDFDocument } from "../../shared/pdf";
+import type { PDFExecution } from "../file/formats/pdf/pdf-worker";
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
@@ -43,8 +46,6 @@ import {
 import * as AppErrors from "../../shared/error";
 import { t_main_log } from "../log/log-text";
 
-type ProjectWriteSettings = ProjectSettingsSnapshot; // 同步写入只消费设置领域定义的项目镜像窄字段
-
 type ProjectAssetRecord = { path: string; sort_order: number };
 
 type ProjectFileSection = Record<
@@ -54,7 +55,7 @@ type ProjectFileSection = Record<
 
 type ProjectWriteSnapshot = {
   asset_records: ProjectAssetRecord[];
-  item_records: MutableJsonRecord[];
+  pdf_paths: string[]; // 与资产、条目来自同一目标工程，供文件组装和翻译重置共用
   public_items_by_id: Map<number, ProjectItemPublicRecord>;
   files: ProjectFileSection;
 };
@@ -92,6 +93,7 @@ export class ProjectContentService {
     runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
+    private readonly pdf_execution: PDFExecution,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
@@ -132,6 +134,7 @@ export class ProjectContentService {
       const imported_item_ids: number[] = [];
       const imported_files: Array<{
         mode: "add" | "replace";
+        pdf_document: PDFDocument | null;
         source_path: string;
         target_rel_path: string;
         file_record: {
@@ -189,6 +192,7 @@ export class ProjectContentService {
         }
         imported_files.push({
           mode: existing_record === undefined ? "add" : "replace",
+          pdf_document: file.pdf_document,
           source_path: file.source_path,
           target_rel_path,
           file_record,
@@ -204,7 +208,7 @@ export class ProjectContentService {
       let write_output = this.compute_prefilter_output({
         project_path,
         files: current_files,
-        items: this.public_item_record_from_map(next_items),
+        items: this.public_item_record(next_items.values()),
         settings,
       });
       if (String(request["inheritance_mode"] ?? "none") === "inherit") {
@@ -230,12 +234,14 @@ export class ProjectContentService {
               kind: "add_from_source",
               path: file.target_rel_path,
               sourcePath: file.source_path,
+              pdfDocument: file.pdf_document,
               sortOrder: file.file_record.sort_index,
             }
           : {
               kind: "update_from_source",
               path: file.target_rel_path,
               sourcePath: file.source_path,
+              pdfDocument: file.pdf_document,
             },
       );
       const write_result = await this.write_store.replace_project_items_and_files({
@@ -269,7 +275,7 @@ export class ProjectContentService {
       const snapshot = this.read_project_write_snapshot(project_path);
       this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
       const rel_path_set = new Set(rel_paths);
-      const items = this.public_item_record_from_map(snapshot.public_items_by_id);
+      const items = this.public_item_record(snapshot.public_items_by_id.values());
       for (const item of Object.values(items)) {
         if (!rel_path_set.has(item.file_path)) {
           continue;
@@ -286,13 +292,17 @@ export class ProjectContentService {
         items,
         settings,
       });
+      const pdf_paths = rel_paths.filter(
+        (file_path) => snapshot.files[file_path]?.file_type === "PDF",
+      );
       return await this.write_store.replace_project_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        revisionSections: ["items"],
+        revisionSections: pdf_paths.length ? ["items", "pdf"] : ["items"],
         source: "project_reset_files",
+        resetPDFPaths: pdf_paths,
         updatedSections: ["items"],
         items: build_project_item_persistent_records(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
@@ -318,7 +328,7 @@ export class ProjectContentService {
       for (const rel_path of rel_paths) {
         delete files[rel_path];
       }
-      const items = this.public_item_record_from_map(snapshot.public_items_by_id);
+      const items = this.public_item_record(snapshot.public_items_by_id.values());
       for (const item_id of Object.keys(items)) {
         const item = items[item_id];
         if (item !== undefined && rel_path_set.has(item.file_path)) {
@@ -380,7 +390,7 @@ export class ProjectContentService {
     return this.runtime_gate.run_project_write(async () => {
       if (mode === "prefiltered_items")
         this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
-      const project_path = await this.resolve_project_path(request);
+      const project_path = this.resolve_project_path(request);
       const settings = this.read_project_write_settings(project_path, request["project_settings"]);
       return await this.prepare_settings_alignment(
         project_path,
@@ -412,7 +422,7 @@ export class ProjectContentService {
     const write_output = this.compute_prefilter_output({
       project_path,
       files: snapshot.files,
-      items: this.public_item_record_from_map(snapshot.public_items_by_id),
+      items: this.public_item_record(snapshot.public_items_by_id.values()),
       settings,
     });
     return () =>
@@ -458,14 +468,15 @@ export class ProjectContentService {
             id: ++next_item_id,
           }),
         );
-        const files = this.build_file_section_from_item_records(
+        const files = build_project_file_records(
           snapshot.asset_records,
           reset_items,
+          snapshot.pdf_paths,
         );
         const write_output = this.compute_prefilter_output({
           project_path,
           files,
-          items: this.public_item_record_from_array(reset_items),
+          items: this.public_item_record(reset_items),
           settings,
           task_snapshot: create_empty_translation_task_snapshot(),
         });
@@ -474,6 +485,7 @@ export class ProjectContentService {
           requireExpectedSectionRevisions: false,
           revisionSections: ["items"],
           source: "translation_reset",
+          resetPDFPaths: snapshot.pdf_paths,
           updatedSections: ["items"],
           items: build_project_item_persistent_records(write_output.items),
           meta: this.build_prefilter_reset_meta(settings, write_output),
@@ -619,6 +631,7 @@ export class ProjectContentService {
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
+      this.pdf_execution,
       this.native_fs,
     );
   }
@@ -629,7 +642,7 @@ export class ProjectContentService {
   private read_project_write_settings(
     project_path: string,
     value: JsonValue | undefined,
-  ): ProjectWriteSettings {
+  ): ProjectSettingsSnapshot {
     const request_settings = { ...read_json_record(value) };
     const meta = this.get_all_meta(project_path);
     const prefilter_config = { ...read_json_record(meta["prefilter_config"]) };
@@ -643,43 +656,26 @@ export class ProjectContentService {
   }
 
   /**
-   * 结构性写入先集中读取一次 asset 与 item，后续只做内存派生
+   * 按本次操作的目标路径读取 asset、item 和 PDF 身份，支持打开前的设置对齐。
    */
   private read_project_write_snapshot(project_path: string): ProjectWriteSnapshot {
     const asset_records = this.get_asset_records(project_path);
     const item_records = this.get_all_items(project_path);
+    const pdf_paths = Object.keys(this.database.read_pdf_summaries(project_path));
     const public_items_by_id = this.to_public_items_by_id(item_records);
     return {
       asset_records,
-      item_records,
+      pdf_paths,
       public_items_by_id,
-      files: this.build_file_section_from_item_records(asset_records, item_records),
+      files: build_project_file_records(
+        asset_records,
+        item_records.map((item) => ({
+          file_path: String(item["file_path"] ?? ""),
+          file_type: String(item["file_type"] ?? "NONE"),
+        })),
+        pdf_paths,
+      ),
     };
-  }
-
-  /**
-   * 从调用方给定的 asset 与 item 快照构建预过滤输入中的 files section
-   */
-  private build_file_section_from_item_records(
-    asset_records: ProjectAssetRecord[],
-    item_records: Array<MutableJsonRecord | ProjectItemPublicRecord>,
-  ): ProjectFileSection {
-    const file_type_by_path = new Map<string, string>();
-    for (const item of item_records) {
-      const rel_path = String(item["file_path"] ?? "");
-      if (rel_path !== "" && !file_type_by_path.has(rel_path)) {
-        file_type_by_path.set(rel_path, String(item["file_type"] ?? "NONE"));
-      }
-    }
-    const files: ProjectFileSection = {};
-    for (const record of asset_records) {
-      files[record.path] = {
-        rel_path: record.path,
-        file_type: file_type_by_path.get(record.path) ?? "NONE",
-        sort_index: record.sort_order,
-      };
-    }
-    return files;
   }
 
   /**
@@ -702,27 +698,14 @@ export class ProjectContentService {
   private to_public_item_record(
     items: MutableJsonRecord[],
   ): Record<string, ProjectItemPublicRecord> {
-    return this.public_item_record_from_map(this.to_public_items_by_id(items));
+    return this.public_item_record(this.to_public_items_by_id(items).values());
   }
 
   /**
-   * Map 形状的公开 item 索引转为 record，保持后端预过滤工具输入稳定
+   * 按 item_id 组装预过滤输入并复制条目，避免预过滤或继承修改上游快照。
    */
-  private public_item_record_from_map(
-    items: Map<number, ProjectItemPublicRecord>,
-  ): Record<string, ProjectItemPublicRecord> {
-    const record: Record<string, ProjectItemPublicRecord> = {};
-    for (const item of items.values()) {
-      record[String(item.item_id)] = { ...item };
-    }
-    return record;
-  }
-
-  /**
-   * 数组形状的公开 item 集合转为 record，用于 reset-all 重新解析结果
-   */
-  private public_item_record_from_array(
-    items: ProjectItemPublicRecord[],
+  private public_item_record(
+    items: Iterable<ProjectItemPublicRecord>,
   ): Record<string, ProjectItemPublicRecord> {
     const record: Record<string, ProjectItemPublicRecord> = {};
     for (const item of items) {
@@ -754,7 +737,7 @@ export class ProjectContentService {
     project_path: string;
     files: Record<string, unknown>;
     items: Record<string, ProjectItemPublicRecord>;
-    settings: ProjectWriteSettings;
+    settings: ProjectSettingsSnapshot;
     task_snapshot?: Record<string, unknown>;
   }): ProjectPrefilterWriteOutput {
     return compute_project_prefilter_write({
@@ -775,7 +758,7 @@ export class ProjectContentService {
    * 预过滤类写入重建条目状态与翻译进度，并写入当前项目设置镜像
    */
   private build_prefilter_reset_meta(
-    settings: ProjectWriteSettings,
+    settings: ProjectSettingsSnapshot,
     output: ProjectPrefilterWriteOutput,
   ): MutableJsonRecord {
     return {
@@ -954,7 +937,9 @@ export class ProjectContentService {
           diagnostic_context: { asset_path: record.path, reason: "unsupported_format" },
         });
       }
-      items.push(...(await format_service.parse_asset(record.path, content)));
+      if (this.database.read_pdf_document(project_path, record.path) !== null) continue;
+      const parsed = await format_service.parse_asset(record.path, content);
+      if (parsed.kind === "items") items.push(...parsed.items);
     }
     return items;
   }
@@ -962,7 +947,7 @@ export class ProjectContentService {
   /**
    * 多数写入绑定 loaded 工程；仅打开前的 settings alignment 允许显式既有 path。
    */
-  private async resolve_project_path(request: JsonRecord): Promise<string> {
+  private resolve_project_path(request: JsonRecord): string {
     const explicit_path = String(request["path"] ?? "").trim();
     if (explicit_path !== "") {
       this.assert_explicit_project_file_exists(explicit_path);

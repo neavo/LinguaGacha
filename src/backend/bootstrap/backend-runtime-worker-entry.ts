@@ -10,7 +10,7 @@ if (parentPort === null) {
 const data = workerData as {
   appRoot?: unknown;
   builtinRoot?: unknown;
-  agentWorkspaceRuntimeBootstrapPath?: unknown;
+  workspaceRuntimeDirectory?: unknown;
 };
 if (typeof data.appRoot !== "string" || data.appRoot === "") {
   throw new Error("Backend runtime worker is missing appRoot.");
@@ -18,17 +18,14 @@ if (typeof data.appRoot !== "string" || data.appRoot === "") {
 if (typeof data.builtinRoot !== "string" || data.builtinRoot === "") {
   throw new Error("Backend runtime worker is missing builtinRoot.");
 }
-if (
-  typeof data.agentWorkspaceRuntimeBootstrapPath !== "string" ||
-  data.agentWorkspaceRuntimeBootstrapPath === ""
-) {
-  throw new Error("Backend runtime worker is missing agentWorkspaceRuntimeBootstrapPath.");
+if (typeof data.workspaceRuntimeDirectory !== "string" || data.workspaceRuntimeDirectory === "") {
+  throw new Error("Backend runtime worker is missing workspaceRuntimeDirectory.");
 }
 
 void run_backend_runtime({
   appRoot: data.appRoot,
   builtinRoot: data.builtinRoot,
-  agentWorkspaceRuntimeBootstrapPath: data.agentWorkspaceRuntimeBootstrapPath,
+  workspaceRuntimeDirectory: data.workspaceRuntimeDirectory,
   moduleUrl: import.meta.url,
   port: parentPort,
 });

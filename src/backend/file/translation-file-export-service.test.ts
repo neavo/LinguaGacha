@@ -1,3 +1,6 @@
+import { read_pdf_document } from "./formats/pdf/pdf-document";
+import { create_pdf_execution, create_pdf_fixture } from "./formats/pdf/test-support";
+import type { PDFDocument } from "../../shared/pdf";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import { default_native_fs } from "../../native/native-fs";
 import { create_text_resolver } from "../../shared/i18n";
+import { AppError } from "../../shared/error";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import {
@@ -47,14 +51,101 @@ function create_setting_service(
 function create_database(
   items: Array<Record<string, unknown>>,
   assets: Record<string, Buffer> = {},
+  documents: Record<string, PDFDocument> = {},
 ): ProjectDatabase {
   return {
+    read_pdf_summaries: () =>
+      Object.fromEntries(Object.keys(documents).map((file_path) => [file_path, {}])),
+    read_pdf_document: (_project_path: string, file_path: string) => documents[file_path] ?? null,
     get_all_items: () => items,
     read_asset_content: (_project_path: string, rel_path: string) => assets[rel_path] ?? null,
   } as unknown as ProjectDatabase;
 }
 
 describe("TranslationFileExportService", () => {
+  it.each(["gui", "directory"] as const)(
+    "%s 导出已存译稿与确认保留的原页，全保留文件原样写出",
+    async (entry) => {
+      const source = create_pdf_fixture();
+      const document = read_pdf_document(source);
+      const partial = structuredClone(document);
+      partial.pages[0]!.translation = { kind: "keep", reason: "无需翻译" };
+      partial.pages[1]!.translation = { kind: "translate", markdown: "已有译稿" };
+      partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
+      for (const page of document.pages)
+        page.translation = { kind: "keep", reason: "按用户要求保留原稿" };
+      const database = create_database(
+        [],
+        { "book.pdf": Buffer.from(source), "original.pdf": Buffer.from(source) },
+        { "book.pdf": partial, "original.pdf": document },
+      );
+      const session = new ProjectSessionState();
+      session.mark_loaded(path.join(temp_dir, "project.lg"));
+      const host = vi.fn(async () => create_pdf_fixture(["Translated"]));
+      const service = new TranslationFileExportService(
+        database,
+        create_setting_service(),
+        session,
+        async () => {},
+        create_pdf_execution(host),
+      );
+      const result =
+        entry === "gui"
+          ? await service.export_files()
+          : await service.export_files_to_directory(path.join(temp_dir, "out"));
+      expect(result.pdf_files).toEqual([
+        { file_path: "book.pdf", translated_pages: 1, original_pages: 1, omitted_pages: 1 },
+        { file_path: "original.pdf", translated_pages: 0, original_pages: 3, omitted_pages: 0 },
+      ]);
+      expect(fs.readFileSync(path.join(result.output_path, "original.pdf"))).toEqual(
+        Buffer.from(source),
+      );
+      const exported = read_pdf_document(
+        new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
+      );
+      expect(exported.pages).toHaveLength(2);
+      expect(host).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("原文导出不要求打印宿主，页面顺序错误在文本文件落盘前报告", async () => {
+    const source = create_pdf_fixture();
+    const document = read_pdf_document(source);
+    const database = create_database(
+      [
+        {
+          id: 1,
+          src: "source",
+          dst: "text",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "text.txt",
+          row: 0,
+        },
+      ],
+      { "book.pdf": Buffer.from(source) },
+      { "book.pdf": document },
+    );
+    const session = new ProjectSessionState();
+    session.mark_loaded(path.join(temp_dir, "project.lg"));
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(),
+      session,
+      async () => {},
+      create_pdf_execution(),
+    );
+    const output = await service.export_files();
+    expect(fs.readFileSync(path.join(output.output_path, "book.pdf"))).toEqual(Buffer.from(source));
+    document.pages[0]!.page = 4;
+    const directory = path.join(temp_dir, "conflict");
+    await expect(service.export_files_to_directory(directory)).rejects.toMatchObject({
+      code: "file.invalid_structure",
+      public_details: { file: "book.pdf" },
+    });
+    expect(fs.existsSync(directory)).toBe(false);
+  });
+
   it("普通导出补齐同文件重复译文并写出 TXT 格式文件", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
@@ -85,6 +176,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       output_folder_opener,
+      create_pdf_execution(),
     );
 
     const result = await service.export_files();
@@ -141,6 +233,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       vi.fn<OutputFolderOpener>(),
+      create_pdf_execution(),
     );
 
     const result = await service.export_files();
@@ -189,6 +282,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service(),
       session_state,
       vi.fn<OutputFolderOpener>(),
+      create_pdf_execution(),
     );
 
     const result = await service.export_files();
@@ -219,6 +313,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ app_language: "DE" }),
       session_state,
       vi.fn<OutputFolderOpener>(),
+      create_pdf_execution(),
       log_collector,
     );
     const text = create_text_resolver("de-DE"); // 验证语言选择与参数传递，文案由当前词典决定。
@@ -233,6 +328,7 @@ describe("TranslationFileExportService", () => {
 
     await expect(service.export_files()).resolves.toEqual({
       accepted: true,
+      pdf_files: [],
       output_path: translated_path,
     });
 
@@ -265,6 +361,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
+      create_pdf_execution(),
     );
 
     const result = await service.export_files();
@@ -293,10 +390,12 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
+      create_pdf_execution(),
     );
 
     await expect(service.export_files_to_directory(output_dir)).resolves.toEqual({
       accepted: true,
+      pdf_files: [],
       output_path: output_dir,
       bilingual_output_path: path.join(output_dir, "bilingual"),
     });
@@ -329,6 +428,7 @@ describe("TranslationFileExportService", () => {
       create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener,
+      create_pdf_execution(),
       log_collector,
     );
 
@@ -340,38 +440,91 @@ describe("TranslationFileExportService", () => {
     );
   });
 
-  it("写文件失败时记录写入与导出诊断并传播异常", async () => {
-    const project_path = path.join(temp_dir, "demo.lg");
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded(project_path);
-    const database = create_database([
-      {
-        id: 1,
-        src: "原文",
-        dst: "译文",
-        status: "PROCESSED",
-        file_type: "TXT",
-        file_path: "script.txt",
-        row: 0,
-      },
-    ]);
-    const log_collector = { info: vi.fn(), error: vi.fn() };
-    const error = new Error("boom");
-    vi.spyOn(default_native_fs, "write_file").mockRejectedValue(error);
+  it.each(["gui-write", "directory-prepare", "directory-pdf"] as const)(
+    "%s 失败时统一报告导出错误并保留一份原始诊断",
+    async (entry) => {
+      const project_path = path.join(temp_dir, "demo.lg");
+      const session_state = new ProjectSessionState();
+      session_state.mark_loaded(project_path);
+      const source = create_pdf_fixture();
+      const document = read_pdf_document(source);
+      document.pages[0]!.translation = { kind: "translate", markdown: "译文" };
+      const database = create_database(
+        [
+          {
+            id: 1,
+            src: "原文",
+            dst: "译文",
+            status: "PROCESSED",
+            file_type: "TXT",
+            file_path: "script.txt",
+            row: 0,
+          },
+        ],
+        { "book.pdf": Buffer.from(source) },
+        { "book.pdf": document },
+      );
+      const log_collector = { info: vi.fn(), error: vi.fn() };
+      const cause = new Error("底层原因");
+      const error = new Error("导出故障", { cause });
+      const write_file = vi.spyOn(default_native_fs, "write_file");
+      if (entry === "gui-write") write_file.mockRejectedValue(error);
+      if (entry === "directory-prepare") {
+        vi.spyOn(default_native_fs, "make_dir").mockImplementation(() => {
+          throw error;
+        });
+      }
+      const execute = create_pdf_execution();
+      const service = new TranslationFileExportService(
+        database,
+        create_setting_service({ output_folder_open_on_finish: true }),
+        session_state,
+        vi.fn<OutputFolderOpener>(),
+        entry === "directory-pdf"
+          ? async () => {
+              throw error;
+            }
+          : execute,
+        log_collector,
+      );
+
+      const result =
+        entry === "gui-write"
+          ? service.export_files()
+          : service.export_files_to_directory(path.join(temp_dir, "out"));
+      await expect(result).rejects.toMatchObject({
+        code: "translation.export_failed",
+        cause: error,
+      });
+
+      const text = create_text_resolver("zh-CN");
+      expect(log_collector.error).toHaveBeenCalledExactlyOnceWith(
+        text("app.error.translation.export_failed.message"),
+        { source: "file-export", error },
+      );
+      expect(log_collector.info).toHaveBeenCalledExactlyOnceWith(
+        text("app.log.generate_translation_start"),
+        { source: "file-export" },
+      );
+      if (entry === "directory-prepare") expect(write_file).not.toHaveBeenCalled();
+    },
+  );
+
+  it("已有业务错误保留原始错误码和详情", async () => {
+    const session = new ProjectSessionState();
+    session.mark_loaded(path.join(temp_dir, "project.lg"));
+    const database = create_database([]);
+    const error = new AppError("file.invalid_structure", { public_details: { file: "book.epub" } });
+    vi.spyOn(database, "get_all_items").mockImplementation(() => {
+      throw error;
+    });
     const service = new TranslationFileExportService(
       database,
       create_setting_service(),
-      session_state,
-      vi.fn<OutputFolderOpener>(),
-      log_collector,
+      session,
+      async () => {},
+      create_pdf_execution(),
     );
-
     await expect(service.export_files()).rejects.toBe(error);
-
-    const text = create_text_resolver("zh-CN");
-    expect(log_collector.error.mock.calls).toEqual([
-      [text("app.diagnostic.file_export.write_file_failed"), { source: "file-export", error }],
-      [text("app.diagnostic.file_export.translation_failed"), { source: "file-export", error }],
-    ]);
   });
 });

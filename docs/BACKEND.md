@@ -10,7 +10,9 @@
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error: { code, details? } }`；`APP_ERROR_DEFINITIONS` 是错误码、严重度和 HTTP 状态的唯一词表。公开错误不携带服务端本地化文案、request id、diagnostic context、cause、stack 或供应商原始异常，request id 只保留在后端日志上下文中。
 - 公开 SSE topic 固定为 `project.data_changed`、`batch_translation.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `batch_translation | agent | model_test | null`。
 - 通用质量规则由切片 query / update 读写，校对 query 统一分发列表、上下文、筛选面板与真实 warning 类型计数。items update 对正文译文的实际修改统一完成条目并清零 `retry_count`，相同非空译文可以确认 `ERROR` 结果，显式人工状态最后覆盖且同样清零，姓名译文保持正文状态与重试历史；清空命令以必填 `reset_status` 决定是否同时恢复状态和重试次数，替换保留独立的后端意图命令。
-- `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零；该口径独立于本轮任务进度。响应携带工程路径供切换隔离，工作台文件查询独立提供列表。
+- `POST /api/session/project/preview` 直接读取磁盘，不加载或切换会话；文件路径与工作台共用 asset 顺序及历史条目补齐规则，统计复用 `build_project_translation_stats`。
+- `POST /api/project/translation-stats` 提供当前工程统计，成功与跳过条目占全部条目的比例取整为完成率，空工程为零，仍有未完成对象时最高为 99%；该口径独立于本轮任务进度。响应携带工程路径供切换隔离。
+- `POST /api/workbench/snapshot` 的文本文件复用工程统计口径；PDF 按原页处置计数，translate（含空译稿）为完成，keep 与 omit 为跳过，其余为等待，失败计数为 null。完成率复用工程取整规则，与核对标记独立；工程统计仍只汇总文本条目。
 - 模型管理 API 只负责配置 CRUD；任务入口读取窄选项，通过组合选模或按用途更新等级命令修改配置。选项只携带显示身份、解析后的非敏感 Agent 容量、当前等级与可用等级，不公开自动配置、密钥、请求覆盖或生成参数。
 - `LogManager` 统一日志入口，`LogFileStore` 拥有每日正文 `.jsonl` 与可重建索引 `.idx.jsonl`。文件和 API 传递同一份正文，控制台和索引消费文本投影；Agent 事件字段由后端生产者约束，读取端按 JSON 展示。翻译摘要冻结本地化文案，其投影省略 `LogError.message`、保留调用栈。日志写入时间由 `LogManager` 生成；翻译起止时间由 worker 在模型请求开始和响应处理收尾时捕获，回放保留原值。
 - 日志身份采用日期和物理行号，隐藏与损坏行同样计数；字节定位只留在索引。每个日期在进程首次访问时重建索引，随后通过文件身份、大小和时间戳区别自身追加与外部编辑；编辑或索引失效更换内容代次，旧游标与详情请求过期。正文先写、索引后写；同日期恢复任务共享，失败保留正文，日志自身故障走 stderr。
@@ -50,10 +52,17 @@
 
 ## 3. 项目读取与写入
 
+- 文件列表按 asset 组装；普通文件类型取首个 Item，零条目为 NONE，PDF 类型来自文档身份。预览与持久化读取采用相同规则。
+- PDF 导入只读取原稿摘要和 PDFPage 元信息，原始资产与文档同事务保存，资产导入和替换明确携带 PDFDocument 或表示文本格式的 null，零 Item 的 PDF 工程有效。
+- PDF 以原稿页为持久化和修改单位，未提交页沿用已保存事实。translation 为 null 表示待处理并暂时输出原页，keep 确认无需翻译并保留原页，omit 按用户要求省略原页，后两者须提供非空白理由。空 translate 表示内容已归入其它页。跨页归属由 Agent 安排，语言由工程设置提供。
+- 页指纹绑定文件路径、来源摘要和该页全部事实。重复意图、旧指纹和非法内容只拒绝对应页，合法页沿用工程写入事务；原稿替换使旧页指纹失效。PDF 更新独立推进 pdf revision 和摘要事件；文件替换重建页面，删除清理来源与页面，翻译重置清空译稿、核对与续做记录。
+- 提交、预览与导出共用逐页 Markdown 编译，脚注与标题链接在页内隔离，公式错误报告原页码与位置。聊天和 PDF 共用语法配置，HTML 按文本输出，图片仅引用本原稿区域。正文使用原页可见尺寸，尺寸和背景相同的相邻译稿连续排版，空译稿不输出也不打断正文；保留页和省略页结束当前排版。原页批注保留，译文链接在导入后重建。背景覆盖每张译文页底层，不参与正文分页。
+- 全部保留时原样输出 asset，译文页数可变化。保存允许暂时没有输出页，预览和导出至少保留一页。计算失败终止导出，文件服务负责落盘。宿主边界归 [ARCHITECTURE](ARCHITECTURE.md)，工作区入口归 [AGENT_RUNTIME](AGENT_RUNTIME.md)。
+
 项目数据 section 固定为：
 
 ```text
-project, files, items, quality, prompts, proofreading
+project, files, items, pdf, quality, prompts, proofreading
 ```
 
 - `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
@@ -62,9 +71,10 @@ project, files, items, quality, prompts, proofreading
 - 文本源文件与需要重读原始 asset 的格式统一通过 shared 解码入口把 bytes 转成字符串，固定按 BOM、调用方声明编码、严格 UTF-8、传统编码探测的顺序裁决；无法确定或不支持的编码按文件解析失败处理。
 - 文本内资源引用由 shared 纯规则统一识别 Base64 data URI、带 `://` scheme 的 URI 和带已知扩展名的无 scheme 路径；格式 reader 在拥有完整格式语义时立即决定槽位范围与格式规则状态，已生成 Item 的自动规则统一写为 `RULE_SKIPPED`，`EXCLUDED` 只表达用户手动排除。项目预过滤重新扫描通用文本内容，只有移除引用后各行均无正文时才跳过整个 Item；语言过滤使用独立状态。
 - Markdown 文本统一由 Markdown V2 的 AST 块 reader / writer 处理：`.md` 生成 `file_type: MD_V2`、`text_type: MD` Item，`row` 是 Markdown 块起始物理行，块内 URI 与 Base64 保持原始文本并随普通块直接写回。
-- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI 与 CLI 的格式写回和输出目录语义。
+- 译文导出由 `TranslationFileExportService` 从当前项目数据库读取条目与 asset，统一编排 GUI 与 CLI 的格式写回和输出目录语义。PDF 在写文件前固定页面并校验内容，回执按原页计数，translated_pages 包含空译稿页，original_pages 包含待处理与确认保留页，不表示完成数量。
+- GUI 与 CLI 导出共用开始、完成和失败处理。未知导出异常统一为 `translation.export_failed`，已有业务错误保留原码；界面兜底与导出失败日志复用同一文案，导出服务记录一次原始异常及其调用栈、原因链，Gateway 另保留请求诊断。格式写回依赖的原始 asset 缺失时必须报错，失败终止本次导出，已写出的产物可能保留；打开输出目录失败只记录附加动作错误。
 - EPUB 的 `slot_per_line`、`block_text` 和历史无 AST 条目继续按原协议写回；`text_run` 绑定原始 DOM 片段，全部片段定位在修改节点前核验并解析。manifest href 在读取入口解码一次，ZIP 键和持久定位不重复解码。打开项目不重建条目；旧 ruby 迁移只转换节点与正文匹配的候选，保留 ID、行号及用户事实。
-- “全部重置”在项目写 lease 内从工程保存的全部 asset 重建条目，分配新 ID 并重新预过滤；格式 reader 恢复源文件自带译文并据此重算完成进度，耗时和 token 累计清零。条目数允许变化，读取或解析失败时不提交部分结果；成功后经 `ProjectWriteStore` 原子替换并发布 items 全量失效。指定文件或失败条目的重置保留既有身份。
+- “全部重置”在项目写 lease 内从工程保存的全部 asset 重建条目（PDF 清空页面译稿、核对与续做记录），分配新 ID 并重新预过滤；格式 reader 恢复源文件自带译文并据此重算完成进度，耗时和 token 累计清零。条目数允许变化，读取或解析失败时不提交部分结果；成功后经 `ProjectWriteStore` 原子替换并发布 items 全量失效。指定文件或失败条目的重置保留既有身份。
 - 项目内质量规则条目统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；运行期只要求每个 kind 内的 `entry_id` 非空且唯一，不校验身份格式。无项目身份的导入文件、预设、CLI 资源只能经显式创建入口取得新身份，外部文件和预设不持久化项目身份；入口不得另建字段、身份回退或正则容错。
 - 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
 - `builtin/text_preserve/preset/*.json` 是内置文本保护规则的唯一内容来源；`base.json` 在所有模式下启用，其余预设按 `text_type` 提供智能规则，`custom` 叠加项目规则。翻译与校对复用同一逐行源文准备顺序。
@@ -86,11 +96,13 @@ project, files, items, quality, prompts, proofreading
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
 - Agent 磁盘工作区承载可修改的工作资产和显式 change 准备；`AgentWorkspaceService` 以工程身份、epoch 与语言守卫快照边界，以对象指纹校验写入目标，普通 section revision 漂移不阻塞对象级 apply。工作资产生命周期与恢复语义归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。
-- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、quality、prompt 尽可能一次提交。Item 显式变化与受影响重复组的被动变化形成同一实际变化集合，共同驱动写入、翻译统计、revision、cache 和 canonical delta；对象冲突形成逻辑部分成功，quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
+- `ProjectWriteStore.apply_agent_workspace_changes` 是工作区唯一物理写入口：在 `BEGIN IMMEDIATE` 内读取当前目标、按对象 `fp` 重算 resolver，并将合法 item、PDF 页面、quality、prompt 尽可能一次提交。Item 显式变化与受影响重复组的被动变化形成同一实际变化集合，共同驱动写入、翻译统计、revision、cache 和 canonical delta；对象冲突形成逻辑部分成功，quality 每个变化 kind 只写一次并共享一次 aggregate revision，实际变化 section 才推进 revision。
 - 工作区无实际 change 时不写数据库、不推进 revision、不发布事件。数据库失败回滚本次事务全部事实与 revision；提交后 cache / 公开事件只依据 actual applied sections，后置同步失败按已提交处理并返回 reload 语义。
 - create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 
 ## 4. 任务、worker 与 LLM
+
+- 批量引擎处理 Item。PDF 的格式识别、Agent 指引和 CLI 排除在文件与任务入口处理，具体 CLI 协议归 CLI.md。
 
 - 工作台、校对页、CLI 与 Agent 共用 `BackendServices.batchTranslation`。`POST /api/batch-translation/start` 接收显式 `operation` 与 `scope`：`translate` 携带 `new | continue | reset` 模式和可选 `include_errors`，`retranslate` 只接收指定 item 范围；`stop` 与 `snapshot` 接收空对象。HTTP 与 `batch_translation.snapshot_changed` 共用 `{ batch_translation: BatchTranslationSnapshot }`，快照包含 `revision`、`status`、`source`、`request_in_flight_count`、工程累计 `progress` 与 `scope`，预约后包含 `operation`，目标准备后包含本轮 `run_progress`；可选 `config` 承载本次运行的非敏感配置摘要，本轮取消后携带 `stop_source`；`requested | running | stopping` 唯一决定活跃态。
 - `BatchTranslationService` 收窄命令并确认 loaded 工程，在运行 lease 内准备单次执行上下文：普通入口按 translation 用途读取模型，Agent 入口采用调用方解析出的模型配置，设置与模型在交给 Runner 时隔离引用。`BatchTranslationRuntime` 在首次异步发布前建立 run、controller 和唯一 completion；standalone 原子取得运行 lease，Agent 内运行校验真实 lease 并单向连接工具取消信号。两种入口共享一个活动翻译 run。Runtime 在预约时按入口写入 `source: standalone | agent`，本轮终态保留，新预约覆盖，工程切换清空为 `null`；来源只属于内存运行态，预约发布失败随快照回滚。快照 `scope.kind` 保留本轮范围类型，指定范围的 `item_ids` 随成功提交的执行结果移除，同值结果也完成本次尝试，任一终态清空 ID。
@@ -125,7 +137,8 @@ project, files, items, quality, prompts, proofreading
 - `transaction(projectPath, callback)` 只为该路径的连接建立事务；回调内的类型化方法仍显式接收路径，跨 `.lg` 写入不具备原子性。`create_project` 完成基础建库后在该路径事务内执行可选初始化回调；回调失败时关闭并移除新文件。
 - `.lg` 使用 SQLite `FULL auto_vacuum` 回收完整空闲页；`ProjectDatabase` 遇到其它模式时在 schema/writeback migration 前尝试 `VACUUM`，物理整理未完成时保留现有模式并继续正常 workflow。
 - 连接运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
+- `pdf_documents` 保存来源摘要，`pdf_pages` 以 `(file_path, page)` 保存页面 JSON，原始字节归 assets。读取按原页序组合，写入仅更新目标页。导入事务核对资产 SHA-256，拒绝解析后变化的来源。文字、字体与坐标提取作为可再生工作材料，不进入存储。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
-- `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
-- 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
-- 当前 schema 创建 items、assets、rules 与 meta；历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。
+- 新建与既有工程共用打开迁移入口：按实际表和列补齐结构，再执行业务写回迁移。执行成功后在同一事务内记录 `applied_writeback_migrations`，完成记录由迁移执行器唯一写入。迁移清单归 registry。
+- 启动期迁移先处理 userdata 与历史安装布局，再读取设置；版本内置资产始终只读。project-open 文件迁移在事务执行时按目标文件合并当前可见 Item，使多个格式迁移可以串行组合；历史 `file_type: MD` 在缓存热机和 session loaded 前一次性转为 `MD_V2`。
+- 历史工程中已停用能力的表、规则与 meta 保留物理原值，当前 manifest、section、提示词与运行快照只投影现行事实。翻译提示词的路径和存储键由 `TRANSLATION_PROMPT` 固定描述对象拥有。

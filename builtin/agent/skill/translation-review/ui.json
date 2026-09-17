@@ -1,5 +1,5 @@
 {
-  "order": 210,
+  "order": 300,
   "displayDescriptions": {
     "zh-CN": "基于 AI 智能对译文进行自动化审校",
     "en-US": "Use AI to actively review and correct translations in the current project",

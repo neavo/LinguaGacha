@@ -5,6 +5,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import { ProjectSessionState } from "./project-session-state";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
+import type { PDFSummary } from "../../shared/pdf";
 
 // query service 测试只关心公开读取结果，item helper 提供稳定的最小项目行。
 function create_item(overrides: Record<string, unknown>): Record<string, unknown> {
@@ -59,8 +60,8 @@ describe("ProjectSummaryService", () => {
     expect(result).toMatchObject({
       snapshot: {
         entries: [
-          { rel_path: "b.txt", sort_index: 0, item_count: 1 },
-          { rel_path: "a.txt", sort_index: 1, item_count: 1 },
+          { rel_path: "b.txt", sort_index: 0, progress: { total_count: 1 } },
+          { rel_path: "a.txt", sort_index: 1, progress: { total_count: 1 } },
         ],
       },
     });
@@ -71,11 +72,10 @@ describe("ProjectSummaryService", () => {
       [
         create_item({ id: 1, status: "PROCESSED" }),
         create_item({ id: 2, src: "跳过", status: "EXCLUDED" }),
-        create_item({ id: 3, src: "待翻译", status: "NONE" }),
+        create_item({ id: 3, file_path: "waiting.txt", status: "NONE" }),
         create_item({ id: 4, src: "翻译失败", status: "ERROR" }),
       ],
       [{ path: "script.txt", sort_order: 0 }],
-      {},
     );
 
     const result = service.read_translation_stats();
@@ -90,17 +90,49 @@ describe("ProjectSummaryService", () => {
         completion_percent: 50,
       },
     });
+    expect(service.read().snapshot.entries.map((entry) => entry.progress)).toEqual([
+      {
+        unit: "line",
+        total_count: 3,
+        completed_count: 1,
+        skipped_count: 1,
+        failed_count: 1,
+        pending_count: 0,
+        completion_percent: 67,
+      },
+      {
+        unit: "line",
+        total_count: 1,
+        completed_count: 0,
+        skipped_count: 0,
+        failed_count: 0,
+        pending_count: 1,
+        completion_percent: 0,
+      },
+    ]);
   });
 
-  it("空工程完成率为零，非整比例沿用工作台取整", async () => {
-    const empty = await create_service([]);
-    expect(empty.service.read_translation_stats().stats.completion_percent).toBe(0);
-    const partial = await create_service([
-      create_item({ id: 1, status: "PROCESSED" }),
-      create_item({ id: 2 }),
-      create_item({ id: 3 }),
+  it("PDF 按原页汇总译稿、确认保留和省略，失败状态不适用", async () => {
+    const { service } = await create_service([], [{ path: "book.pdf", sort_order: 0 }], {
+      "book.pdf": { pages: 4, translated_pages: 1, omitted_pages: 1, kept_pages: 1 },
+    });
+    expect(service.read().snapshot.entries).toEqual([
+      {
+        rel_path: "book.pdf",
+        file_type: "PDF",
+        sort_index: 0,
+        progress: {
+          unit: "page",
+          total_count: 4,
+          completed_count: 1,
+          skipped_count: 2,
+          failed_count: null,
+          pending_count: 1,
+          completion_percent: 75,
+        },
+      },
     ]);
-    expect(partial.service.read_translation_stats().stats.completion_percent).toBe(33);
+    expect(service.read_translation_stats().stats.total_items).toBe(0);
   });
 
   // 通过 CacheManager 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。
@@ -109,34 +141,19 @@ describe("ProjectSummaryService", () => {
     asset_records: Array<{ path: string; sort_order: number }> = [
       { path: "script.txt", sort_order: 0 },
     ],
-    meta_overrides: Record<string, unknown> = {},
+    pdf_summaries: Record<string, PDFSummary> = {},
   ): Promise<{
     service: ProjectSummaryService;
   }> {
     const database = {
+      read_pdf_summaries: () => pdf_summaries,
       get_all_meta: () => ({
         "project_runtime_revision.items": 7,
-        "project_runtime_revision.prompts": 3,
-        "quality_rule_revision.glossary": 5,
-        glossary_enable: true,
-        text_preserve_mode: "smart",
-        translation_prompt_enable: true,
-        "quality_prompt_revision.translation": 2,
-        ...meta_overrides,
       }),
       get_all_items: () => items,
       get_all_asset_records: () => asset_records,
-      get_rules: (_project_path: string, rule_type: string) => {
-        if (rule_type === "glossary") {
-          return [{ entry_id: "hp", src: "HP", dst: "生命值" }];
-        }
-        if (rule_type === "text_preserve") {
-          return [{ entry_id: "renpy", src: "\\[[^\\]]+\\]" }];
-        }
-        return [];
-      },
-      get_rule_text: (_project_path: string, rule_type: string) =>
-        rule_type === "translation_prompt" ? "翻译提示词" : "",
+      get_rules: () => [],
+      get_rule_text: () => "",
     } as unknown as ProjectDatabase;
     const cache = new CacheManager({
       database,
@@ -153,7 +170,7 @@ describe("ProjectSummaryService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     return {
-      service: new ProjectSummaryService(session_state, cache),
+      service: new ProjectSummaryService(session_state, cache, database),
     };
   }
 });

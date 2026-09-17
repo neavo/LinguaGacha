@@ -54,11 +54,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
                   <dt>{t("log_window_page.detail.content.source_text")}</dt>
                   <dd className="log-detail-view__text">
                     {typeof pair.actor_src === "string" && pair.actor_src !== "" ? (
-                      <Badge
-                        variant="secondary"
-                        title={pair.actor_src}
-                        className="log-detail-view__name-badge"
-                      >
+                      <Badge title={pair.actor_src} className="log-detail-view__name-badge">
                         <span className="log-detail-view__name-badge-label">{pair.actor_src}</span>
                       </Badge>
                     ) : null}
@@ -69,11 +65,7 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
                   <dt>{t("log_window_page.detail.content.translated_text")}</dt>
                   <dd className="log-detail-view__text">
                     {typeof pair.actor_dst === "string" && pair.actor_dst !== "" ? (
-                      <Badge
-                        variant="secondary"
-                        title={pair.actor_dst}
-                        className="log-detail-view__name-badge"
-                      >
+                      <Badge title={pair.actor_dst} className="log-detail-view__name-badge">
                         <span className="log-detail-view__name-badge-label">{pair.actor_dst}</span>
                       </Badge>
                     ) : null}

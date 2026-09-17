@@ -10,7 +10,7 @@ import {
 } from "../workspace/runtime/policy";
 import { format_agent_workspace_typescript_api } from "../workspace/runtime/tool/api-description";
 import type { AgentWorkspacePort } from "../workspace/service";
-import workspace_package from "../../../../resources/workspace/package.json";
+import app_package from "../../../../package.json";
 
 /** AgentService 提供的窄审批端口，工作区服务不感知会话或 UI 状态。 */
 export type AgentWorkspaceApprovalPort = {
@@ -50,7 +50,9 @@ const WORKSPACE_RUN_DESCRIPTION: string = [
   `- 脚本保存到 ${AGENT_WORKSPACE_RUN_ROOT}/*.mjs`,
   "- cwd 是工作区根目录，文件相对路径从这里解析，脚本内的相对 import 从脚本文件所在目录解析。",
   "- ws.contract 提供数据集、路径和变更格式。",
-  `- 预装包：${Object.keys(workspace_package.dependencies).join("、")}，通过标准 import 使用。`,
+  "- read_skill 或显式技能注入提供原包根目录的 base_url；用 await import(new URL('scripts/example.mjs', base_url).href) 直接加载技能脚本，预装 npm 包可按包名导入。",
+  "- ws.host 只提供宿主原语；复杂流程读取技能中的示例或脚本。@lg/pdf 提供正式输出共用的文档模板。",
+  `- 预装包：${app_package.workspacePackages.join("、")}，通过标准 import 使用。`,
   "- 包版本、类型和详细 API 可从 node_modules 中读取。",
   "- 依赖由应用管理。禁止自行安装或下载依赖。",
   "",
@@ -64,6 +66,8 @@ const WORKSPACE_RUN_DESCRIPTION: string = [
   "",
   `- 执行时限为 ${AGENT_WORKSPACE_RUNTIME_POLICY.timeoutMs / 1000} 秒。程序在事件循环空闲时自然退出。`,
   "- 按任务需要选择输出内容和格式，使用 console.log 输出结果。",
+  `- 使用 await ws.emitImage(path) 返回工作区图片。后端统一转换为规范 WebP。每次最多 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} 张，累计 base64 不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB。`,
+  "- 图片按调用顺序返回，await 完成后内容已固定。模型在程序成功返回后看到图片；失败时按执行记录中的路径重新输出。",
   "- 每次执行都会保存 stdout 和 stderr 文件，无输出时文件为空。",
   `- 每路不超过 ${AGENT_WORKSPACE_RUNTIME_POLICY.inlineOutputBytes / 1024} KiB 时直接返回完整内容。超额时返回文件路径和补读提示。请读取当前任务所需的部分。`,
   "",
@@ -142,16 +146,40 @@ export function create_agent_workspace_tools(options: {
         // SDK 未提供 signal 时仍传入永不取消的标准信号，服务端口无需处理双态。
         const effective_signal = signal ?? new AbortController().signal;
         effective_signal.throwIfAborted();
-        const { execution, todos } = await options.workspace.run(
+        const { execution, todos, images } = await options.workspace.run(
           params.script,
           options.todo.read(),
           effective_signal,
         );
         // run 的协作者可能在取消后才结算；Todo 只提交仍有效的工具调用结果。
         effective_signal.throwIfAborted();
-        const result = agent_tool_result(execution);
+        const result = agent_tool_result({
+          ...execution,
+          ...(images.length === 0
+            ? {}
+            : {
+                images: images.map(({ path, image }) => ({
+                  path,
+                  mime_type: image.mimeType,
+                  width: image.width,
+                  height: image.height,
+                  original_width: image.originalWidth,
+                  original_height: image.originalHeight,
+                })),
+              }),
+        });
         options.todo.write(todos);
-        return result;
+        return {
+          ...result,
+          content: [
+            ...result.content,
+            ...images.map(({ image }) => ({
+              type: "image" as const,
+              mimeType: image.mimeType,
+              data: image.data,
+            })),
+          ],
+        };
       },
     }),
     defineTool({

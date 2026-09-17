@@ -5,6 +5,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 
 import { default_native_fs, type NativeFs } from "../../../native/native-fs";
 import {
+  agent_skill_base_url,
   load_agent_skills,
   type AgentSkillDefinition,
   type AgentSkillLog,
@@ -42,10 +43,11 @@ export function create_agent_skill_tools(
   return [
     defineTool({
       name: "read_skill",
+      executionMode: "sequential",
       label: "读技能",
       description: [
         "读取指定技能的正文或包内参考文件。",
-        "读取成功后，content 提供正文。资源缺失或路径无效时，按返回信息修正技能名称或包内路径。",
+        "content 提供正文，base_url 是以 / 结尾的技能原包根目录 file: URL，可供 workspace_run 导入脚本。资源缺失或路径无效时，按返回信息修正技能名称或包内路径。",
       ].join("\n\n"),
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
@@ -101,6 +103,7 @@ export function create_agent_skill_tools(
             name: params.name,
             path: resource_path,
             content: native_fs.read_text_file(target),
+            base_url: agent_skill_base_url(skill.filePath),
           });
         } catch (error) {
           if (error instanceof AgentToolError) throw error;

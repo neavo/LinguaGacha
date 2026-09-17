@@ -26,6 +26,7 @@ describe("Agent Workspace 工具说明投影", () => {
         `${format_agent_workspace_typescript_api()}
 const glossary = ws.tool.groupQualityRuleEntries({ kind: "glossary", entries: [{ id: "a", src: "A", case_sensitive: false, info: "full record" }] });
 const preserve = ws.tool.groupQualityRuleEntries({ kind: "text_preserve", entries: [{ id: "a", src: "A" }] });
+ws.host({ kind: "print_pdf", html: "<p>preview</p>" }).then(result => result.path);
 // @ts-expect-error glossary entries require case_sensitive
 ws.tool.groupQualityRuleEntries({ kind: "glossary", entries: [{ id: "a", src: "A" }] });
 // @ts-expect-error entry identity is required

@@ -1,0 +1,19 @@
+.quality-rule-hit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quality-rule-hit-badge__button {
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+  border-radius: var(--ui-radius-pill);
+}
+
+.quality-rule-hit-badge__button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}

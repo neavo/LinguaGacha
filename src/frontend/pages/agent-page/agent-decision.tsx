@@ -1,3 +1,4 @@
+import { badgeVariants } from "@frontend/shadcn/badge";
 import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
 import {
@@ -30,6 +31,7 @@ const SUMMARY_COUNT_MARKER = "\uE000"; // 不会出现在本地化正文中，�
 
 /** 摘要沿业务数据顺序展示，零变化类别不进入用户决定。 */
 const SUMMARY_FIELDS = [
+  ["pdf", "agent_page.approval.summary.pdf"],
   ["items", "agent_page.approval.summary.items"],
   ["glossary", "agent_page.approval.summary.glossary"],
   ["textPreserve", "agent_page.approval.summary.text_preserve"],
@@ -114,7 +116,10 @@ function AgentQuestionDecision(props: {
           />
         ))}
         <div className="agent-decision-custom">
-          <label className="agent-decision-badge" htmlFor={custom_input_id}>
+          <label
+            className={badgeVariants({ className: "agent-decision-badge" })}
+            htmlFor={custom_input_id}
+          >
             {t("agent_page.decision.custom")}
           </label>
           <InputGroup className="agent-decision-custom__field">
@@ -292,7 +297,7 @@ function AgentDecisionAction({
       <TooltipTrigger
         render={<button type="button" onClick={onClick} className="agent-decision-action" />}
       >
-        <span className="agent-decision-badge" aria-hidden="true">
+        <span className={badgeVariants({ className: "agent-decision-badge" })} aria-hidden="true">
           {ordinal}
         </span>
         <span className="agent-decision-action__label">{label}</span>

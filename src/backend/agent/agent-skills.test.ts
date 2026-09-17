@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -43,13 +44,14 @@ describe("Agent skill 模型投影", () => {
     expect(prompt).toContain("使用 &lt;能力&gt; &amp; 规则");
     expect(prompt).not.toContain("<location>");
     expect(prompt).not.toContain("manual");
-    expect(prompt).not.toContain("Read the full skill file");
   });
 
-  it("显式调用只包装产品 skill 名称和正文", () => {
-    expect(format_agent_skill_invocation(skills[0]!)).toBe(
-      '<skill name="visible">\n执行正文。\n</skill>',
-    );
+  it("显式调用携带包根 URL，并保留特殊字符和正文", () => {
+    const root = path.resolve("技能 # % & 目录");
+    const url = pathToFileURL(root + path.sep).href.replaceAll("&", "&amp;");
+    expect(
+      format_agent_skill_invocation({ ...skills[0]!, filePath: path.join(root, "SKILL.md") }),
+    ).toBe(`<skill name="visible" base_url="${url}">\n执行正文。\n</skill>`);
   });
 });
 

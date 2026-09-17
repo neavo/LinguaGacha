@@ -1,10 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
-
-export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // 只表达当前表结构能力，不承载业务写回完成状态
 
 /**
  * 迁移背景：
@@ -29,12 +26,11 @@ export const project_schema_migration: MigrationDescriptor = {
 };
 
 /**
- * schema 迁移先建表/索引，再补旧 asset 排序列，最后写 schema_version。
+ * schema 迁移先建表/索引，再补旧 asset 排序列。
  */
 export function run_project_schema_migration(db: DatabaseSync): void {
   ensure_current_schema(db);
   ensure_asset_sort_order_column(db);
-  write_meta_version(db, "schema_version", PROJECT_DATABASE_SCHEMA_VERSION);
 }
 
 /**
@@ -53,6 +49,16 @@ function ensure_current_schema(db: DatabaseSync): void {
         data BLOB NOT NULL,
         original_size INTEGER NOT NULL,
         compressed_size INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pdf_documents (
+        file_path TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pdf_pages (
+        file_path TEXT NOT NULL,
+        page INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (file_path, page)
       );
       CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,14 +91,4 @@ function ensure_asset_sort_order_column(db: DatabaseSync): void {
   for (const [index, row] of rows.entries()) {
     statement.run(index, row_number(row, "id"));
   }
-}
-
-/**
- * schema_version 使用严格 JSON 数字写入 meta，与其它 meta 序列化保持一致。
- */
-function write_meta_version(db: DatabaseSync, key: string, version: number): void {
-  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-    key,
-    JsonTool.stringifyStrict(version),
-  );
 }

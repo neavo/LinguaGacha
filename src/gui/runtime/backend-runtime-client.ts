@@ -1,3 +1,5 @@
+import type { AgentImageHost } from "../../shared/agent-image";
+import type { PDFHost } from "../../shared/pdf";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
@@ -26,6 +28,7 @@ type PendingRequest = {
 /** Electron main 对 Backend Runtime worker 的单生命周期控制端；退出后不重启或回退同进程。 */
 export class BackendRuntimeClient {
   private worker: Worker | null = null;
+  private readonly host_controllers = new Map<string, AbortController>();
   private readonly pending = new Map<string, PendingRequest>(); // requestId 隔离并发控制响应
   private start_promise: Promise<BackendRuntimeReady> | null = null; // 固化单次启动结果，禁止复用实例重启
   private start_reject: ((error: Error) => void) | null = null; // worker 提前退出时结算尚未 ready 的 start
@@ -39,7 +42,9 @@ export class BackendRuntimeClient {
       workerEntryUrl: URL;
       appRoot: string; // 安装根与便携 userdata 语义原样交给 Backend
       builtinRoot: string; // app.asar 内置资产根必须显式跨线程传递
-      agentWorkspaceRuntimeBootstrapPath: string; // 当前版本的工作区预加载入口
+      workspaceRuntimeDirectory: string; // 当前版本的工作区包与只读资源根
+      pdfHost?: PDFHost;
+      imageHost: AgentImageHost;
       resolveProxy: (url: string) => Promise<string>;
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -57,7 +62,7 @@ export class BackendRuntimeClient {
       workerData: {
         appRoot: this.options.appRoot,
         builtinRoot: this.options.builtinRoot,
-        agentWorkspaceRuntimeBootstrapPath: this.options.agentWorkspaceRuntimeBootstrapPath,
+        workspaceRuntimeDirectory: this.options.workspaceRuntimeDirectory,
       },
     });
     this.worker = worker;
@@ -101,6 +106,8 @@ export class BackendRuntimeClient {
       await this.request({ type: "stop", requestId: randomUUID() });
     } finally {
       this.worker = null;
+      for (const controller of this.host_controllers.values()) controller.abort();
+      this.host_controllers.clear();
       await worker.terminate();
     }
   }
@@ -143,6 +150,10 @@ export class BackendRuntimeClient {
 
   /** 分流宿主回调和普通控制响应；生命周期消息只由 start 监听器消费。 */
   private handle_message(message: BackendRuntimeWorkerMessage): void {
+    if (message.type === "host_cancel") {
+      this.host_controllers.get(message.requestId)?.abort();
+      return;
+    }
     if (message.type === "host_request") {
       void this.handle_host_request(message.requestId, message.operation);
       return;
@@ -161,9 +172,18 @@ export class BackendRuntimeClient {
     operation: BackendRuntimeHostOperation,
   ): Promise<void> {
     let result: BackendRuntimeResult;
+    const controller = new AbortController();
+    this.host_controllers.set(request_id, controller);
     try {
       let data: unknown;
       switch (operation.kind) {
+        case "prepare_image":
+          data = await this.options.imageHost(operation, controller.signal);
+          break;
+        case "print_pdf":
+          if (!this.options.pdfHost) throw new Error("PDF host missing.");
+          data = await this.options.pdfHost(operation, controller.signal);
+          break;
         case "resolve_proxy":
           data = await this.options.resolveProxy(operation.url);
           break;
@@ -178,6 +198,7 @@ export class BackendRuntimeClient {
     } catch (error) {
       result = { ok: false, error: to_log_error(error) };
     }
+    this.host_controllers.delete(request_id);
     this.worker?.postMessage({ type: "host_response", requestId: request_id, result });
   }
 
@@ -185,6 +206,8 @@ export class BackendRuntimeClient {
   private handle_exit(error: Error): void {
     // error 可能早于 exit 到达，必须先关闭请求入口，避免两事件之间产生永不结算的新请求。
     this.worker = null;
+    for (const controller of this.host_controllers.values()) controller.abort();
+    this.host_controllers.clear();
     if (this.exit_handled) return;
     this.exit_handled = true;
     this.start_reject?.(error);

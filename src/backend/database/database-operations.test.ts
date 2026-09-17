@@ -1,3 +1,5 @@
+import { read_pdf_document } from "../file/formats/pdf/pdf-document";
+import { create_pdf_fixture } from "../file/formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,16 +20,19 @@ import { ProjectDatabase } from "./database-operations";
 let temp_dir = "";
 let cleanup_databases: ProjectDatabase[] = [];
 
+/** 将测试工程限制在本例临时目录。 */
 function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
+/** 登记真实连接，由 afterEach 先关闭再删除临时目录。 */
 function create_database(): ProjectDatabase {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
   return database;
 }
 
+/** 创建真实工程并登记连接清理。 */
 function create_database_project(name: string): { database: ProjectDatabase; lg_path: string } {
   const database = create_database();
   const lg_path = project_path(`${name}.lg`);
@@ -35,6 +40,7 @@ function create_database_project(name: string): { database: ProjectDatabase; lg_
   return { database, lg_path };
 }
 
+/** 从公开读取结果取得指定 meta，保持数据库序列化边界。 */
 function read_meta(
   database: ProjectDatabase,
   project_path: string,
@@ -44,12 +50,9 @@ function read_meta(
   return (database.get_all_meta(project_path) as Record<string, unknown>)[key] ?? default_value;
 }
 
-function project_sidecar_paths(lg_path: string): string[] {
-  return [`${lg_path}-wal`, `${lg_path}-shm`];
-}
-
+/** 观察 SQLite 是否仍保留 WAL 侧文件。 */
 function has_project_sidecar(lg_path: string): boolean {
-  return project_sidecar_paths(lg_path).some((sidecar_path) => fs.existsSync(sidecar_path));
+  return [`${lg_path}-wal`, `${lg_path}-shm`].some((sidecar_path) => fs.existsSync(sidecar_path));
 }
 
 /** 读取 SQLite 文件头中的自动回收模式，直接观察 .lg 物理契约。 */
@@ -164,7 +167,7 @@ describe("ProjectDatabase", () => {
     const { database, lg_path } = create_database_project("legacy-quality-rule-identity");
     database.set_rules(lg_path, "glossary", [{ src: "缺失身份", dst: "译文" }]);
     database.close_project(lg_path);
-    // 新工程默认标记全部迁移，移除目标 id 才能模拟历史工程首次打开。
+    // 新工程已执行全部迁移，移除目标 id 才能模拟历史工程首次打开。
     {
       using legacy_db = new DatabaseSync(lg_path);
       const applied_ids = PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS.filter(
@@ -281,7 +284,7 @@ describe("ProjectDatabase", () => {
     fs.writeFileSync(source_path, Buffer.from("hello"));
 
     database.create_project(lg_path, "asset");
-    database.add_asset_from_source(lg_path, "source.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "source.txt", source_path, null, 0);
 
     expect(database.read_asset_content(lg_path, "source.txt")).toEqual(Buffer.from("hello"));
   });
@@ -340,11 +343,11 @@ describe("ProjectDatabase", () => {
     fs.writeFileSync(cover_path, Buffer.from("cover"));
     fs.writeFileSync(updated_beta_path, Buffer.from("updated-beta"));
 
-    database.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, 10);
-    database.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path);
-    database.add_asset_from_source(lg_path, "cover.bin", cover_path, 0);
+    database.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, null, 10);
+    database.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path, null);
+    database.add_asset_from_source(lg_path, "cover.bin", cover_path, null, 0);
     database.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]);
-    database.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path);
+    database.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path, null);
 
     expect(database.get_asset_count(lg_path)).toBe(3);
     expect(database.get_all_asset_records(lg_path)).toEqual([
@@ -379,12 +382,12 @@ describe("ProjectDatabase", () => {
     const source_path = project_path("chapter.txt");
     fs.writeFileSync(source_path, "chapter");
 
-    database.add_asset_from_source(lg_path, "chapter.txt", source_path, 0);
+    database.add_asset_from_source(lg_path, "chapter.txt", source_path, null, 0);
     database.set_items(lg_path, [
       { id: 1, src: "完成", status: "PROCESSED" },
       { id: 2, src: "失败后修复", status: "ERROR" },
       { id: 3, src: "待处理", status: "NONE" },
-      { id: 4, src: "跳过", status: "SKIPPED" },
+      { id: 4, src: "跳过", status: "RULE_SKIPPED" },
     ]);
     database.set_rule_text(lg_path, "prompt.translation", "请保持语气");
     database.transaction(lg_path, () => {
@@ -401,11 +404,8 @@ describe("ProjectDatabase", () => {
     expect(database.get_rules(lg_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
     expect(database.get_project_summary(lg_path)).toEqual(
       expect.objectContaining({
-        name: "summary",
-        source_language: "JA",
-        target_language: "ZH_CN",
+        file_paths: ["chapter.txt"],
         updated_at: "2026-05-16T00:00:00.000Z",
-        file_count: 1,
         translation_stats: {
           total_items: 4,
           completed_count: 2,
@@ -416,6 +416,20 @@ describe("ProjectDatabase", () => {
         },
       }),
     );
+  });
+
+  it("工程预览在重排并重新打开后返回完整文件顺序", () => {
+    const { database, lg_path } = create_database_project("preview-order");
+    const source_path = project_path("source.txt");
+    fs.writeFileSync(source_path, "source");
+    for (const file_path of ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]) {
+      database.add_asset_from_source(lg_path, file_path, source_path, null);
+    }
+    database.update_asset_sort_orders(lg_path, ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"]);
+    database.close_project(lg_path);
+    expect(database.get_project_summary(lg_path)).toMatchObject({
+      file_paths: ["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"],
+    });
   });
 
   it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", () => {
@@ -489,5 +503,46 @@ describe("ProjectDatabase", () => {
 
     const database = create_database();
     expect(database.read_asset_content(lg_path, "legacy.txt")).toEqual(Buffer.from("legacy"));
+  });
+});
+
+it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", async () => {
+  const { database, lg_path } = create_database_project("pdf-source-conflict");
+  const source = project_path("book.pdf");
+  const bytes = create_pdf_fixture();
+  fs.writeFileSync(source, bytes);
+  const document = read_pdf_document(bytes);
+  database.transaction(lg_path, () =>
+    database.add_asset_from_source(lg_path, "book.pdf", source, document, 0),
+  );
+  fs.writeFileSync(source, create_pdf_fixture(["changed after parse"]));
+  expect(() =>
+    database.transaction(lg_path, () =>
+      database.update_asset_from_source(lg_path, "book.pdf", source, document),
+    ),
+  ).toThrow("file.parse_failed");
+  expect(database.read_asset_content(lg_path, "book.pdf")).toEqual(Buffer.from(bytes));
+  expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
+});
+
+it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于处置", () => {
+  const { database, lg_path } = create_database_project("pdf-summary");
+  const source = project_path("summary.pdf");
+  const bytes = create_pdf_fixture(["Text", null, null, null, "Pending"]);
+  fs.writeFileSync(source, bytes);
+  const document = read_pdf_document(bytes);
+  document.pages[0]!.translation = { kind: "translate", markdown: "正文" };
+  document.pages[1]!.translation = { kind: "omit", reason: "装饰页" };
+  document.pages[2]!.translation = { kind: "keep", reason: "纯图页无需翻译" };
+  document.pages[3]!.translation = { kind: "translate", markdown: "" };
+  for (const page of document.pages) page.reviewed = true;
+  database.transaction(lg_path, () =>
+    database.add_asset_from_source(lg_path, "summary.pdf", source, document, 0),
+  );
+  expect(database.read_pdf_summaries(lg_path)["summary.pdf"]).toEqual({
+    pages: 5,
+    translated_pages: 2,
+    kept_pages: 1,
+    omitted_pages: 1,
   });
 });

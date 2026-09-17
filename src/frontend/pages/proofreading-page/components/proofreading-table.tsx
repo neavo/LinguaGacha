@@ -133,11 +133,7 @@ function ProofreadingTextCell(props: {
   return (
     <span className="proofreading-page__table-text-line">
       {props.name === null ? null : (
-        <Badge
-          variant="secondary"
-          title={props.name}
-          className="proofreading-page__table-name-badge"
-        >
+        <Badge title={props.name} className="proofreading-page__table-name-badge">
           <span className="proofreading-page__table-name-badge-label">{props.name}</span>
         </Badge>
       )}

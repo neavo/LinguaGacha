@@ -37,15 +37,12 @@ export const zh_cn_project_page = {
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },
   preview: {
-    project_name: "项目名称",
+    title: "工程概览",
     file_count: "文件数量",
+    files: "{COUNT} 个文件",
     created_at: "创建时间",
     updated_at: "最后修改",
     progress: "翻译进度",
-    translated: "已翻译:",
-    skipped: "无需翻译:",
-    total: "总计:",
-    rows_unit: "行",
   },
   loading_stages: {
     project: "正在加载项目骨架 …",
@@ -58,6 +55,7 @@ export const zh_cn_project_page = {
     task: "正在加载任务状态 …",
   },
   formats: {
+    pdf: "PDF",
     title: "支持文件格式",
     txt: "纯文本",
     md: "Markdown",

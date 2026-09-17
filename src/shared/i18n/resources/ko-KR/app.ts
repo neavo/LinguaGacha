@@ -197,6 +197,9 @@ export const ko_kr_app = {
         message: "프로젝트 파일이 없습니다 …",
       },
     },
+    translation: {
+      export_failed: { message: "번역문 내보내기에 실패했습니다 …" },
+    },
     file: {
       not_found: {
         message: "파일이 없습니다 …",
@@ -317,8 +320,6 @@ export const ko_kr_app = {
     },
     file_export: {
       open_output_folder_failed: "출력 폴더를 열지 못했습니다 …",
-      translation_failed: "번역문 생성에 실패했습니다 …",
-      write_file_failed: "파일 쓰기에 실패했습니다 …",
     },
     lifecycle: {
       app_start_failed: "LinguaGacha를 시작하지 못했습니다 …",

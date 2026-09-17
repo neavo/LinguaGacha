@@ -1,3 +1,5 @@
+import type { TranslationFileExportResult } from "@shared/translation-export";
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { format_agent_skill_reference } from "@shared/agent";
@@ -126,12 +128,15 @@ export function useTranslationExportFlow(): TranslationExportFlow {
     const generation = request_generation_ref.current;
     apply_state({ phase: "exporting", previous: current_state });
     try {
-      await api_fetch("/api/translation/files/export", {});
+      await api_fetch<TranslationFileExportResult>("/api/translation/files/export", {});
       if (generation !== request_generation_ref.current) return;
       apply_state({ phase: "closed" });
-    } catch {
+    } catch (error) {
       if (generation !== request_generation_ref.current) return;
-      push_toast("error", t("workbench_page.feedback.generate_translation_failed"));
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("app.error.translation.export_failed.message")),
+      );
       apply_state(current_state);
     }
   }, [apply_state, push_toast, t]);

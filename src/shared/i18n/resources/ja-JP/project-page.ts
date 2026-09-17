@@ -39,15 +39,12 @@ export const ja_jp_project_page = {
     missing_file_description: "プロジェクトファイルが利用できません。一覧から削除しますか？",
   },
   preview: {
-    project_name: "プロジェクト名",
+    title: "プロジェクト概要",
     file_count: "ファイル数",
+    files: "{COUNT} 個のファイル",
     created_at: "作成日時",
     updated_at: "最終更新",
     progress: "翻訳進捗",
-    translated: "翻訳済み:",
-    skipped: "翻訳不要:",
-    total: "合計:",
-    rows_unit: "行",
   },
   loading_stages: {
     project: "プロジェクト構造を読み込み中 …",
@@ -60,6 +57,7 @@ export const ja_jp_project_page = {
     task: "タスクの状態を読み込み中 …",
   },
   formats: {
+    pdf: "PDF",
     title: "対応ファイル形式",
     txt: "プレーンテキスト",
     md: "Markdown",

@@ -23,6 +23,7 @@ const POST_PATHS = new Set([
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
+  "/api/agent/image/prepare",
   "/api/agent/workspace/activate-path",
   "/api/agent/approval-mode",
   "/api/agent/question/resolve",

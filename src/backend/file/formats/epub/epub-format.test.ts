@@ -21,6 +21,18 @@ function create_format(): EPUBFormat {
 }
 
 describe("EPUBFormat", () => {
+  it("原始资产缺失时拒绝导出", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
+    await expect(
+      create_format().write_to_path(
+        [Item.from_json({ file_type: "EPUB", file_path: "book.epub", src: "原文", dst: "译文" })],
+        { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
+        () => null,
+      ),
+    ).rejects.toMatchObject({ code: "file.not_found", public_details: { file: "book.epub" } });
+    expect(fs.readdirSync(temp_dir.path)).toEqual([]);
+  });
+
   it("替换源文件时保留旧 EPUB 相对目录", () => {
     const format = create_format();
 

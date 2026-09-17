@@ -5,17 +5,6 @@ type WorkbenchActionKind =
   | "delete-file"
   | "close-project";
 
-export type WorkbenchFileEntry = {
-  rel_path: string;
-  file_type: string;
-  sort_index: number;
-  item_count: number;
-};
-
-export type WorkbenchSnapshot = {
-  entries: WorkbenchFileEntry[];
-};
-
 export type WorkbenchDialogState = {
   kind: WorkbenchActionKind | null;
   target_rel_paths: string[];

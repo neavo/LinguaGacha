@@ -2,37 +2,35 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@frontend/shadcn/classnames";
+import "./badge.css";
 
-const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-[var(--ui-radius-pill)] border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-colors has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&>svg]:pointer-events-none [&>svg]:size-3!",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground",
-        brand: "bg-primary/14 text-primary",
-        secondary: "bg-secondary text-secondary-foreground",
-        destructive: "bg-destructive/10 text-destructive dark:bg-destructive/20",
-        outline: "border-border text-foreground",
-        ghost: "text-muted-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
+// 普通徽标和组合控件共用语义色，尺寸与颜色值由 badge.css 维护。
+const badgeVariants = cva("app-badge", {
+  variants: {
+    tone: {
+      neutral: "app-badge--neutral",
+      brand: "app-badge--brand",
+      success: "app-badge--success",
+      warning: "app-badge--warning",
+      failure: "app-badge--failure",
     },
   },
-);
+  defaultVariants: {
+    tone: "neutral",
+  },
+});
 
+/** 透传原生 span 属性，供 Tooltip、姓名和状态提示共用。 */
 function Badge({
   className,
-  variant = "default",
+  tone = "neutral",
   ...props
 }: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
   return (
     <span
       data-slot="badge"
-      data-variant={variant}
-      className={cn(badgeVariants({ variant }), className)}
+      data-tone={tone}
+      className={cn(badgeVariants({ tone }), className)}
       {...props}
     />
   );

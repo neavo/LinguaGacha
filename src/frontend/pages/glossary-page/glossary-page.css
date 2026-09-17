@@ -211,27 +211,3 @@
   background: var(--primary);
   color: var(--primary-foreground);
 }
-
-.glossary-page__hit-badge-wrap,
-.glossary-page__hit-badge-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.glossary-page__hit-badge-button {
-  padding: 0;
-  border: 0;
-  background: none;
-  appearance: none;
-  cursor: pointer;
-}
-
-.glossary-page__hit-badge {
-  justify-content: center;
-  font-size: 10px;
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease;
-}

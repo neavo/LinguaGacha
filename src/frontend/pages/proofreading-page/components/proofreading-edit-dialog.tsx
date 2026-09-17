@@ -60,6 +60,7 @@ type ProofreadingNameGlossaryState = {
   applications: GlossaryApplication[];
 };
 
+/** 翻译状态只突出成功与失败，未处理和跳过沿用中性色。 */
 function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   if (status === "PROCESSED") {
     return "success";
@@ -71,6 +72,7 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   return "neutral";
 }
 
+/** 空片段不占提示区，保留可复制的逐条正文。 */
 function render_fragment_section(title: string, fragments: string[]): JSX.Element | null {
   if (fragments.length === 0) {
     return null;
@@ -90,6 +92,7 @@ function render_fragment_section(title: string, fragments: string[]): JSX.Elemen
   );
 }
 
+/** 提示分别列出已应用与缺失术语，与字段级判定保持一致。 */
 function render_glossary_tooltip_content(
   applications: GlossaryApplication[],
   t: ReturnType<typeof useI18n>["t"],
@@ -147,20 +150,13 @@ function render_warning_tooltip_content(
   return null;
 }
 
+/** 有详情时组合提示，无详情时直接显示状态胶囊。 */
 function render_status_badge(args: {
   label: string;
   tone: ProofreadingBadgeTone;
   tooltip_content?: JSX.Element | null;
 }): JSX.Element {
-  const class_name = [
-    "proofreading-page__dialog-status-badge",
-    `proofreading-page__dialog-status-badge--tone-${args.tone}`,
-  ].join(" ");
-  const badge = (
-    <Badge variant="outline" className={class_name}>
-      {args.label}
-    </Badge>
-  );
+  const badge = <Badge tone={args.tone}>{args.label}</Badge>;
 
   if (args.tooltip_content === null || args.tooltip_content === undefined) {
     return badge;
@@ -181,10 +177,12 @@ function render_status_badge(args: {
   );
 }
 
+/** 匹配文本采用编辑器的 LF 换行，使高亮偏移与显示正文一致。 */
 function normalize_code_editor_match_text(text: string): string {
   return text.replace(/\r\n|\r/gu, "\n");
 }
 
+/** 只有所有目标字段均命中才算已应用，任一字段缺失即归入失败。 */
 function split_glossary_applications(applications: GlossaryApplication[]): {
   applied: GlossaryApplication[];
   failed: GlossaryApplication[];
@@ -221,6 +219,7 @@ function evaluate_draft_glossary_applications(
   );
 }
 
+/** 按当前源或目标字段匹配术语，生成编辑器高亮与对应提示。 */
 function build_glossary_field_marks(args: {
   text: string;
   applications: GlossaryApplication[];
@@ -350,6 +349,7 @@ function resolve_name_glossary_state(
   };
 }
 
+/** 姓名输入框只在存在姓名术语结果时附加详情提示。 */
 function render_name_input_with_glossary_state(args: {
   input: JSX.Element;
   state: ProofreadingNameGlossaryState;

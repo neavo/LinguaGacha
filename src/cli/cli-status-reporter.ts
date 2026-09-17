@@ -87,7 +87,11 @@ export class CLIJsonStatusReporter {
   /**
    * 输出最终态；成功和失败都由同一事件表达，进程退出码仍由 CLI 入口负责。
    */
-  public emit_finished(status: BatchTranslationRunStatus | "error", error?: unknown): void {
+  public emit_finished(
+    status: BatchTranslationRunStatus | "error",
+    error?: unknown,
+    excluded_files: readonly string[] = [],
+  ): void {
     if (this.finished) {
       return;
     }
@@ -99,6 +103,7 @@ export class CLIJsonStatusReporter {
       status,
       timestamp: this.timestamp(),
     };
+    if (excluded_files.length) event["excluded_files"] = [...excluded_files];
     if (status === "error" && error !== undefined) {
       event["error"] = {
         message: error instanceof Error ? error.message : String(error),

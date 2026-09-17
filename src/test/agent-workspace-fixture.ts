@@ -37,9 +37,5 @@ export function create_workspace_runtime_fixture(root: string): string {
     path.join(directory, "package.json"),
     JSON.stringify({ private: true, type: "module", dependencies: {} }),
   );
-  fs.writeFileSync(
-    path.join(directory, "package-lock.json"),
-    JSON.stringify({ lockfileVersion: 3, packages: {} }),
-  );
   return directory;
 }

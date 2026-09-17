@@ -26,20 +26,17 @@ describe("Backend Runtime worker 入口", () => {
       "appRoot",
       {
         builtinRoot: "E:/app.asar/builtin",
-        agentWorkspaceRuntimeBootstrapPath: "E:/runner.js",
+        workspaceRuntimeDirectory: "E:/runtime",
       },
     ],
     [
       "builtinRoot",
       {
         appRoot: "E:/app",
-        agentWorkspaceRuntimeBootstrapPath: "E:/runner.js",
+        workspaceRuntimeDirectory: "E:/runtime",
       },
     ],
-    [
-      "agentWorkspaceRuntimeBootstrapPath",
-      { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" },
-    ],
+    ["workspaceRuntimeDirectory", { appRoot: "E:/app", builtinRoot: "E:/app.asar/builtin" }],
   ])("缺少 %s 时拒绝启动", async (field, worker_data) => {
     vi.doMock("node:worker_threads", () => ({
       default: { parentPort: {}, workerData: worker_data },
@@ -58,14 +55,14 @@ describe("Backend Runtime worker 入口", () => {
         workerData: {
           appRoot: "E:/app",
           builtinRoot: "E:/app.asar/builtin",
-          agentWorkspaceRuntimeBootstrapPath: "E:/runtime/runner.js",
+          workspaceRuntimeDirectory: "E:/runtime",
         },
       },
       parentPort: parent_port,
       workerData: {
         appRoot: "E:/app",
         builtinRoot: "E:/app.asar/builtin",
-        agentWorkspaceRuntimeBootstrapPath: "E:/runtime/runner.js",
+        workspaceRuntimeDirectory: "E:/runtime",
       },
     }));
 
@@ -74,7 +71,7 @@ describe("Backend Runtime worker 入口", () => {
     expect(run_backend_runtime).toHaveBeenCalledWith({
       appRoot: "E:/app",
       builtinRoot: "E:/app.asar/builtin",
-      agentWorkspaceRuntimeBootstrapPath: "E:/runtime/runner.js",
+      workspaceRuntimeDirectory: "E:/runtime",
       moduleUrl: expect.stringContaining("backend-runtime-worker-entry"),
       port: parent_port,
     });

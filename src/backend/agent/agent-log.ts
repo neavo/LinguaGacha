@@ -259,8 +259,14 @@ export function normalize_agent_tool_log_output(result: {
   content: readonly unknown[];
   details?: unknown;
 }): AgentToolLogOutput {
-  // SDK 工具结果固定由 content 和可选 details 组成，JSON 快照保留其中的原始内容块。
-  const content = json_snapshot(result.content) as JsonValue[];
+  // 文本块保留原文，图片块仅保留媒体类型，避免诊断日志复制图片字节。
+  const content = json_snapshot(
+    result.content.map((part) => {
+      if (is_json_record(part) && part["type"] === "image")
+        return { type: "image", mimeType: part["mimeType"] };
+      return part;
+    }),
+  ) as JsonValue[];
   const details = result.details === undefined ? undefined : json_snapshot(result.details);
   const first = content[0];
   if (

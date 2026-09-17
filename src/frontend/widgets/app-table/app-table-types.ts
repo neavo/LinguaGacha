@@ -66,6 +66,7 @@ type AppTableDragColumn = AppTableColumnBase & {
 
 export type AppTableDataColumn<Row> = AppTableColumnBase & {
   kind: "data";
+  drag_handle?: boolean; // 在内容前嵌入表格拥有的手柄，保留同一套重排与浮层行为
   title: ReactNode;
   sortable?: {
     disabled?: boolean;

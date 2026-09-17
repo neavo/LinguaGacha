@@ -1,3 +1,4 @@
+import { PROJECT_DATA_SECTIONS } from "../../shared/project-event";
 import type {
   ProjectChangeFilesPayload,
   ProjectChangeItemsPayload,
@@ -10,6 +11,7 @@ export type ProjectEventType =
   | "project.opened_for_cache"
   | "project.unloaded"
   | "project.items.changed"
+  | "project.pdf.changed"
   | "project.quality.changed"
   | "project.prompts.changed"
   | "project.settings.changed";
@@ -75,6 +77,7 @@ export type ProjectSettingsChangedEvent = BaseProjectEvent<"project.settings.cha
 
 // Backend 内部事件总线唯一事件联合类型。
 export type ProjectEvent =
+  | BaseProjectEvent<"project.pdf.changed">
   | ProjectOpenedForCacheEvent
   | ProjectUnloadedEvent
   | ProjectItemsChangedEvent
@@ -94,7 +97,7 @@ export function create_project_opened_for_cache_event(args: {
     type: "project.opened_for_cache",
     projectPath: args.projectPath,
     source: args.source ?? "project_lifecycle",
-    affectedSections: ["project", "files", "items", "quality", "prompts", "proofreading"],
+    affectedSections: [...PROJECT_DATA_SECTIONS],
     sectionRevisions: { ...args.sectionRevisions },
   };
 }

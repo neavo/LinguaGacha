@@ -52,14 +52,17 @@
 |共享 helper、状态写入口、公开契约|直接受影响的调用者及生产者、消费者相关测试|
 |测试配置、环境初始化、广泛共享基础设施|受影响的测试项目；影响面无法可靠界定时执行 `npm test`|
 |GUI / preload / native / Backend Runtime worker 行为|相关目标测试；共享资源或 GUI Backend 生命周期变化时运行真实 `BackendResources` 与 `GuiBackendBootstrap` 集成测试|
-|Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或流式网页转换的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
+|Agent 工作区或 Node runtime 行为|`src/backend/agent/workspace/`、`model-tools/` 及受影响的 Backend Runtime / main 路径测试；JavaScript 加载、权限、真实文件边界、系统代理或网页流读取的环境语义存在风险时，对相应行为运行真实 Electron Node 子进程集成验证|
 |宿主加载、组合根、资源定位或跨进程通信与启动契约变化|低层测试不足以证明变化时，对受影响的契约执行真实 Electron 集成或 smoke 验证|
+|Agent 图片处理与宿主协议|图片服务、消息受理、Workspace 输出与附件入口的目标测试；编解码或 IPC 变化运行 `src/native/agent-image-host.test.ts` 和 Workspace bootstrap 的真实 Electron 验证|
 |端到端 UI 冒烟|用户明确要求时执行；或已识别具体高风险，且低层验证不足以证明结果时执行。需要启动真机应用时使用 `npm run dev`|
 |Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
 |构建、Vite、electron-builder、afterPack、发布资产|`npm run build`，并按下文核对受影响的产物契约|
 
 Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 初始化。使用 `npm test -- --project node <测试文件路径...>` 或 `npm test -- --project renderer <测试文件路径...>` 定位目标；省略文件路径运行对应项目。
 
-`src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、流式转换与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
+`src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、网页流读取与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
 
-构建或发布资产变化时，根据影响面核对：Electron 发行包 locale 与 `src/shared/i18n` 的 `LOCALES` 一致；Workspace runtime 包含 bootstrap、清单、锁文件及完整 npm 安装目录；extraResources 安装整套运行环境，发布程序保持 runAsNode fuse 开启；涉及平台启动器时测试并构建对应 Go module。
+PDF 变更按风险运行 `formats/pdf/`、`pdf-page-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启；`src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。Workspace bootstrap 集成验证技能原目录只读执行、npm / WASM 导入、apply 后再次执行与宿主 IPC。真实模型质量另以有界样本运行记录验证。
+
+构建或发布资产变化时，核对 Electron locale 与 `LOCALES` 一致，并按 [AGENT_RUNTIME](AGENT_RUNTIME.md) 的部署契约检查 Workspace 产物。入口或运行目录定位变化运行 `src/native/workspace-runtime.test.ts`；依赖部署变化运行 `buildtools/workspace-dependencies.test.mjs`，并复用上述仓库外 Electron 集成验证。涉及平台启动器时测试并构建对应 Go module。

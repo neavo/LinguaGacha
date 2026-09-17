@@ -1,3 +1,7 @@
+import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-preview";
+import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
+import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
+import { Badge, badgeVariants } from "@frontend/shadcn/badge";
 import {
   BadgeAlert,
   File,
@@ -48,10 +52,6 @@ import {
   format_source_file_parse_failure_toast,
 } from "@frontend/app/feedback/source-file-parse-failure-feedback";
 import { cn } from "@frontend/shadcn/classnames";
-import {
-  SegmentedProgress,
-  type SegmentedProgressStats,
-} from "@frontend/widgets/segmented-progress/segmented-progress";
 import "@frontend/pages/project-page/project-page.css";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
 import { type ProjectStage } from "@frontend/app/state/desktop-project-change-types";
@@ -75,23 +75,11 @@ type ProjectPageProps = {
 };
 
 /**
- * 工程预览展示所需的轻量统计快照。
- */
-type ProjectPreviewStats = {
-  file_count: number;
-  created_at: string;
-  last_updated_at: string;
-  progress_percent: number;
-  translation_stats: SegmentedProgressStats;
-};
-
-/**
  * 已选择的 .lg 工程及其可选预览结果。
  */
 type SelectedProject = {
   path: string;
-  name: string;
-  preview: ProjectPreviewStats | null;
+  preview: ProjectPreview | null;
 };
 
 /**
@@ -108,20 +96,6 @@ type SelectedSource = ProjectSourceFileSummary & {
 type MissingRecentProjectState = {
   path: string;
 } | null;
-
-/**
- * 后端工程预览接口返回的宽松载荷，页面在边界处归一。
- */
-type ProjectPreviewPayload = {
-  preview?: {
-    path?: string;
-    name?: string;
-    file_count?: number;
-    created_at?: string;
-    updated_at?: string;
-    translation_stats?: Partial<SegmentedProgressStats>;
-  };
-};
 
 /**
  * 新建工程提交后的公开载荷，failed_files 交给专用 formatter 收窄。
@@ -334,18 +308,7 @@ function format_project_error_message(args: {
 }
 
 /**
- * 给统计文案追加单位，空单位时保持原文案。
- */
-function append_optional_unit_label(text: string, unit_label: string): string {
-  if (unit_label === "") {
-    return text;
-  } else {
-    return `${text} ${unit_label}`;
-  }
-}
-
-/**
- * 计数字段统一归一为非负整数，保护预览 UI 不显示 NaN。
+ * 源文件格式命中数归一为非负整数，供格式标签展示。
  */
 function normalize_count(value: unknown): number {
   const numeric_value = Number(value ?? 0);
@@ -367,18 +330,6 @@ function normalize_project_source_format_hit_counts(value: unknown): ProjectSour
   return Object.fromEntries(
     PROJECT_SOURCE_FORMATS.map((format) => [format.id, normalize_count(record[format.id])]),
   ) as ProjectSourceFormatHitCounts;
-}
-
-/**
- * 百分比字段固定在 0 到 100，保护进度条输入边界。
- */
-function normalize_percent(value: unknown): number {
-  const numeric_value = Number(value ?? 0);
-  if (!Number.isFinite(numeric_value)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, numeric_value));
 }
 
 /**
@@ -410,64 +361,6 @@ function collect_loaded_default_preset_names(
 
     return [t(spec.name_key)];
   });
-}
-
-/**
- * 归一工程预览统计，并在旧项目缺 completion_percent 时现场补算。
- */
-function normalize_project_preview_translation_stats(
-  preview: NonNullable<ProjectPreviewPayload["preview"]>,
-): SegmentedProgressStats {
-  const raw_stats = preview.translation_stats;
-  const total_items = normalize_count(raw_stats?.total_items);
-  const completed_count = normalize_count(raw_stats?.completed_count);
-  const failed_count = normalize_count(raw_stats?.failed_count);
-  const skipped_count = normalize_count(raw_stats?.skipped_count);
-  const pending_count = normalize_count(
-    raw_stats?.pending_count ?? total_items - completed_count - failed_count - skipped_count,
-  );
-  const computed_percent =
-    total_items > 0 ? ((completed_count + skipped_count) / total_items) * 100 : 0;
-  const raw_completion_percent = raw_stats?.completion_percent;
-  let completion_percent = normalize_percent(raw_completion_percent);
-
-  if (completion_percent === 0 && computed_percent > 0) {
-    completion_percent = normalize_percent(computed_percent);
-  }
-
-  return {
-    total_items,
-    completed_count,
-    failed_count,
-    pending_count,
-    skipped_count,
-    completion_percent,
-  };
-}
-
-/**
- * 将后端预览宽载荷收窄为页面选择态。
- */
-function normalize_project_preview(
-  project_path: string,
-  fallback_name: string,
-  payload: ProjectPreviewPayload,
-): SelectedProject {
-  const preview: NonNullable<ProjectPreviewPayload["preview"]> = payload.preview ?? {};
-  const resolved_name = String(preview.name ?? fallback_name);
-  const translation_stats = normalize_project_preview_translation_stats(preview);
-
-  return {
-    path: project_path,
-    name: resolved_name,
-    preview: {
-      file_count: Number(preview.file_count ?? 0),
-      created_at: String(preview.created_at ?? ""),
-      last_updated_at: String(preview.updated_at ?? ""),
-      progress_percent: translation_stats.completion_percent,
-      translation_stats,
-    },
-  };
 }
 
 /**
@@ -634,82 +527,56 @@ function RecentProjectEmptyState(): JSX.Element {
 }
 
 /**
- * 工程预览面板展示摘要字段和四段翻译进度。
+ * 工程概览统一排列文件、时间与进度，详细计数由胶囊提示展示。
  */
 function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   const { t } = useI18n();
   const preview = props.project.preview;
-  if (preview === null) {
-    return <></>;
-  }
-  const rows_unit = t("project_page.preview.rows_unit");
-  const translated_label = append_optional_unit_label(
-    `${t("project_page.preview.translated")} ${preview.translation_stats.completed_count.toLocaleString()}`,
-    rows_unit,
-  );
-  const skipped_label = append_optional_unit_label(
-    `${t("project_page.preview.skipped")} ${preview.translation_stats.skipped_count.toLocaleString()}`,
-    rows_unit,
-  );
-  const total_label = append_optional_unit_label(
-    `${t("project_page.preview.total")} ${preview.translation_stats.total_items.toLocaleString()}`,
-    rows_unit,
-  );
-
-  const stats = [
-    {
-      label: t("project_page.preview.project_name"),
-      value: props.project.name,
-    },
-    {
-      label: t("project_page.preview.file_count"),
-      value: preview.file_count.toLocaleString(),
-    },
-    {
-      label: t("project_page.preview.created_at"),
-      value: preview.created_at,
-    },
-    {
-      label: t("project_page.preview.updated_at"),
-      value: preview.last_updated_at,
-    },
-  ];
-
+  if (preview === null) return <></>;
   return (
     <div className="project-home__preview-panel">
       <dl className="project-home__preview-list">
-        {stats.map((stat) => (
-          <div key={stat.label} className="project-home__preview-row">
-            <dt className="project-home__preview-label">{stat.label}</dt>
-            <dd className="project-home__preview-value">{stat.value}</dd>
+        <div className="project-home__preview-row project-home__preview-files-row">
+          <dt className="project-home__preview-label">{t("project_page.preview.file_count")}</dt>
+          <dd className="project-home__preview-value">
+            <Tooltip>
+              <TooltipTrigger render={<Badge tone="brand" tabIndex={0} />}>
+                {t("project_page.preview.files", { COUNT: String(preview.file_paths.length) })}
+              </TooltipTrigger>
+              <TooltipContent>
+                <ul className="project-home__preview-files" tabIndex={0}>
+                  {preview.file_paths.map((file_path) => (
+                    <li key={file_path}>{file_path}</li>
+                  ))}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </dd>
+        </div>
+        {(
+          [
+            ["created_at", preview.created_at],
+            ["updated_at", preview.updated_at],
+          ] as const
+        ).map(([key, value]) => (
+          <div key={key} className="project-home__preview-row">
+            <dt className="project-home__preview-label">{t(`project_page.preview.${key}`)}</dt>
+            <dd className="project-home__preview-value tabular-nums">
+              {format_local_timestamp(value) ?? "—"}
+            </dd>
           </div>
         ))}
+        <div className="project-home__preview-row project-home__preview-progress">
+          <dt className="project-home__preview-label">{t("project_page.preview.progress")}</dt>
+          <dd className="project-home__preview-value">
+            <TranslationProgressBadge
+              progress={preview.translation_stats}
+              total={preview.translation_stats.total_items}
+              unit="line"
+            />
+          </dd>
+        </div>
       </dl>
-
-      <div className="project-home__preview-progress">
-        <div className="project-home__preview-row">
-          <span className="project-home__preview-label">{t("project_page.preview.progress")}</span>
-          <span className="project-home__preview-value">
-            {preview.progress_percent.toFixed(2)}%
-          </span>
-        </div>
-        <SegmentedProgress
-          stats={preview.translation_stats}
-          labels={{
-            skipped: t("task_progress.translation_skipped"),
-            failed: t("task_progress.translation_failed"),
-            completed: t("task_progress.translation_completed"),
-            pending: t("task_progress.translation_pending"),
-            total: t("task_progress.total_lines"),
-          }}
-        />
-        <div className="project-home__preview-progress-meta">
-          <span>{translated_label}</span>
-          <span aria-hidden="true" />
-          <span>{skipped_label}</span>
-          <span>{total_label}</span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -744,7 +611,7 @@ function resolve_project_loading_stage_message(
   if (stage === "project") {
     return t("project_page.loading_stages.project");
   }
-  if (stage === "files") {
+  if (stage === "files" || stage === "pdf") {
     return t("project_page.loading_stages.files");
   }
   if (stage === "items") {
@@ -869,19 +736,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   /**
    * 选择工程路径并读取预览，最近工程缺失时转入移除确认。
    */
-  async function select_project_path(
-    project_path: string,
-    recent_project_name?: string,
-  ): Promise<void> {
-    const fallback_name =
-      recent_project_name === undefined || recent_project_name === ""
-        ? extract_stem(extract_file_name(project_path))
-        : recent_project_name;
-
+  async function select_project_path(project_path: string, from_recent = false): Promise<void> {
     set_is_preview_loading(true);
     set_selected_project({
       path: project_path,
-      name: fallback_name,
       preview: null,
     });
 
@@ -889,18 +747,14 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       await run_project_loading_modal({
         initial_message: t("project_page.open.preview_loading_toast"),
         task: async () => {
-          const payload = await api_fetch<ProjectPreviewPayload>("/api/session/project/preview", {
+          const payload = await api_fetch<ProjectPreviewResponse>("/api/session/project/preview", {
             path: project_path,
           });
-          set_selected_project(normalize_project_preview(project_path, fallback_name, payload));
+          set_selected_project({ path: project_path, preview: payload.preview });
         },
       });
     } catch (error) {
-      if (
-        recent_project_name !== undefined &&
-        error instanceof DesktopApiError &&
-        error.code === "project.not_found"
-      ) {
+      if (from_recent && error instanceof DesktopApiError && error.code === "project.not_found") {
         set_missing_recent_project({
           path: project_path,
         });
@@ -1262,7 +1116,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
             path: project_to_open.path,
-            name: project_to_open.name,
+            name: extract_stem(extract_file_name(project_to_open.path)),
           });
           await Promise.all([refresh_recent_projects(), refresh_batch_translation()]);
         },
@@ -1291,16 +1145,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     } finally {
       set_is_opening_project(false);
     }
-  }
-
-  /**
-   * 最近工程点击复用普通工程路径预览，并携带展示名。
-   */
-  async function handle_recent_project_select(
-    project_path: string,
-    project_name: string,
-  ): Promise<void> {
-    await select_project_path(project_path, project_name);
   }
 
   /**
@@ -1498,14 +1342,14 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const recent_project_content =
     selected_project === null ? (
       has_recent_projects ? (
-        <div className="space-y-1">
+        <div className="project-home__recent-list space-y-1">
           {recent_projects.map((project_item) => (
             <RecentProjectRow
               key={project_item.path}
               name={project_item.name}
               path={project_item.path}
               on_select={() => {
-                void handle_recent_project_select(project_item.path, project_item.name);
+                void select_project_path(project_item.path, true);
               }}
               on_remove={() => {
                 void handle_recent_project_remove(project_item.path);
@@ -1569,28 +1413,30 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                       <Tooltip key={format.id}>
                         <TooltipTrigger
                           render={
-                            <li className="project-home__format-tag">
+                            <li
+                              className={badgeVariants({ className: "project-home__format-tag" })}
+                            >
                               <span className="project-home__format-title">
                                 {t(format.title_key)}
                               </span>
                               <span className="project-home__format-extension">
                                 {format.extension}
                               </span>
-                              {hit_count > 0 ? (
-                                <span className="project-home__format-count">{hit_count}</span>
-                              ) : null}
+                              {hit_count > 0 ? <Badge tone="brand">{hit_count}</Badge> : null}
                             </li>
                           }
                         />
-                        <TooltipContent
-                          side="top"
-                          sideOffset={8}
-                          className="flex-col items-start gap-1"
-                        >
-                          {format.description_keys.map((description_key) => (
-                            <span key={description_key}>{t(description_key)}</span>
-                          ))}
-                        </TooltipContent>
+                        {format.description_keys.length > 0 && (
+                          <TooltipContent
+                            side="top"
+                            sideOffset={8}
+                            className="flex-col items-start gap-1"
+                          >
+                            {format.description_keys.map((description_key) => (
+                              <span key={description_key}>{t(description_key)}</span>
+                            ))}
+                          </TooltipContent>
+                        )}
                       </Tooltip>
                     );
                   })}
@@ -1625,7 +1471,11 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
               <section className="project-home__panel-section project-home__recent-section">
                 <h3 className="project-home__section-title">
-                  {t("project_page.open.recent_title")}
+                  {t(
+                    selected_project === null
+                      ? "project_page.open.recent_title"
+                      : "project_page.preview.title",
+                  )}
                 </h3>
 
                 <div className="project-home__recent-content">{recent_project_content}</div>

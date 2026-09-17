@@ -1,0 +1,68 @@
+/* 信息胶囊与组合胶囊共用语义外观；业务组件只拥有布局和交互。 */
+.app-badge {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: fit-content;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  padding: 0 8px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--ui-radius-pill);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.app-badge--brand {
+  --badge-accent: var(--primary);
+}
+.app-badge--success {
+  --badge-accent: var(--ui-success);
+}
+.app-badge--warning {
+  --badge-accent: var(--ui-warning);
+}
+.app-badge--failure {
+  --badge-accent: var(--ui-failure);
+}
+
+.app-badge:is(.app-badge--brand, .app-badge--success, .app-badge--warning, .app-badge--failure) {
+  border-color: color-mix(in srgb, var(--badge-accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--badge-accent) 14%, var(--popover));
+  /* 语义色与正文色混合，浅色主题中的绿色、橙色小字也保留足够对比。 */
+  color: color-mix(in srgb, var(--badge-accent) 50%, var(--foreground));
+}
+
+.app-badge.app-badge--brand {
+  color: color-mix(in srgb, var(--primary) 85%, var(--foreground));
+}
+
+.app-badge > svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.app-badge:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-badge {
+    transition: none;
+  }
+}

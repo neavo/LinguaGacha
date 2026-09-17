@@ -1,26 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { MIGRATIONS, PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
+import { PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
 
 describe("migration-registry", () => {
-  it("注册全部当前迁移并按执行顺序导出写回迁移 ID", () => {
-    expect(MIGRATIONS.map((migration) => migration.id)).toEqual([
-      "legacy-default-config",
-      "prompt-user-preset-layout",
-      "quality-rule-preset-layout",
-      "model-selection",
-      "project-schema",
-      "project-rule-storage",
-      "quality-rule-entry-identity",
-      "project-item-stable-metadata",
-      "trans-item-metadata",
-      "project-item-public-contract",
-      "text-preserve-mode",
-      "quality-default-meta",
-      "translation-prompt-legacy-slot",
-      "epub-ruby-block-text",
-      "markdown-v2-block",
-    ]);
+  it("写回迁移标识及顺序保持持久化契约", () => {
+    // 这些标识已写入历史工程，移除或改名会改变打开旧工程时的写回行为。
     expect(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS).toEqual([
       "project-rule-storage",
       "quality-rule-entry-identity",

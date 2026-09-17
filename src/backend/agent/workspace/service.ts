@@ -1,4 +1,9 @@
+import { create_workspace_host } from "./host";
+import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
+import type { AgentImage } from "../../../shared/agent-image";
 import path from "node:path";
+import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
+import type { PDFHost } from "../../../shared/pdf";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -65,7 +70,11 @@ import {
   type AgentWorkspaceRunResult,
 } from "./runtime/runner";
 import { prepare_agent_workspace_changes } from "./changes";
-import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
+import {
+  AGENT_WORKSPACE_RUN_ROOT,
+  AGENT_WORKSPACE_WORK_ROOT,
+  AGENT_WORKSPACE_RUNTIME_POLICY,
+} from "./runtime/policy";
 import { write_agent_workspace_sources, type AgentWorkspaceSourceFile } from "./sources";
 
 type AgentWorkspaceStoreResult = {
@@ -80,6 +89,8 @@ export type AgentWorkspaceRunPort = (
   request: AgentWorkspaceRunRequest,
   signal: AbortSignal,
 ) => Promise<AgentWorkspaceRunResult>;
+
+export type AgentWorkspaceImage = Readonly<{ path: string; image: AgentImage }>;
 
 type ActiveAgentWorkspace = {
   projectPath: string; // snapshot 建立时绑定的工程身份
@@ -112,7 +123,7 @@ type WorkspacePath = Readonly<{
 /** 当前 Agent 会话磁盘工作区；协调跨快照 work、当前数据快照与 apply。 */
 export class AgentWorkspaceService {
   private readonly root_path: string;
-  private active: ActiveAgentWorkspace | null = null;
+  private active: ActiveAgentWorkspace | null = null; // 当前磁盘快照的工程身份、语言和版本基线
   private source_session: AgentWorkspaceSourceSession | null = null; // 独立于显式 Agent reset 存活
   private work_session: AgentWorkspaceWorkSession | null = null; // 不读取目录内容，只拥有生命周期
   private busy = false; // snapshot、script 与 apply 共用的进程内互斥
@@ -121,12 +132,16 @@ export class AgentWorkspaceService {
   /** 注入当前工程读侧、唯一写入口与 Node 脚本端口。 */
   public constructor(
     private readonly options: {
+      images: Pick<AgentImageService, "prepare">;
       paths: Pick<AppPathService, "get_agent_workspace_root_dir">;
       settings: Pick<AppSettingService, "read_setting">;
       sessionState: Pick<ProjectSessionState, "require_loaded_project_path">;
       cache: CacheReadPort;
       proofreading: Pick<ProofreadingQueryService, "query_warnings">;
-      database: Pick<ProjectDatabase, "get_all_meta" | "read_asset_content">;
+      database: Pick<
+        ProjectDatabase,
+        "get_all_meta" | "read_asset_content" | "read_pdf_document" | "read_pdf_documents"
+      >;
       runtimeGate: {
         run_agent_project_write(
           operation: () => Promise<AgentWorkspaceStoreResult>,
@@ -135,6 +150,7 @@ export class AgentWorkspaceService {
       writeStore: Pick<ProjectWriteStore, "apply_agent_workspace_changes">;
       logManager: Pick<LogManager, "warning">;
       run: AgentWorkspaceRunPort;
+      pdfHost?: PDFHost;
       runtimeDirectory: string; // 当前应用版本部署的预加载模块与 npm 依赖目录
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (defaultName: string) => Promise<string | null>;
@@ -256,12 +272,10 @@ export class AgentWorkspaceService {
     // 按工作区入口清理；Node 删除遇到的目录链接本身，外部部署目录不参与递归。
     await this.native_fs.remove_async(this.root_path, { recursive: true, force: true });
     await this.native_fs.make_dir_async(this.root_path);
-    for (const name of ["package.json", "package-lock.json"]) {
-      this.native_fs.copy_file(
-        path.join(this.options.runtimeDirectory, name),
-        path.join(this.root_path, name),
-      );
-    }
+    this.native_fs.copy_file(
+      path.join(this.options.runtimeDirectory, "package.json"),
+      path.join(this.root_path, "package.json"),
+    );
     this.native_fs.create_directory_link(
       this.native_fs.real_path(path.join(this.options.runtimeDirectory, "node_modules")),
       path.join(this.root_path, "node_modules"),
@@ -285,11 +299,21 @@ export class AgentWorkspaceService {
       projectEpoch: start_snapshot.epoch,
       languageKey: language_key,
     });
-    const current_items = this.options.cache.items.readItems();
-    const snapshot_files = this.options.cache.files.readFileEntries().map((entry) => ({
-      file_path: entry.rel_path,
-      file_type: entry.file_type,
-    }));
+    const current_items = [...this.options.cache.items.readItems()];
+    const snapshot_files = this.options.cache.files
+      .readFileEntries()
+      .sort((a, b) => a.sort_index - b.sort_index)
+      .map((entry) => ({
+        file_path: entry.rel_path,
+        file_type: entry.file_type,
+      }));
+    const file_order = new Map(snapshot_files.map((file, i) => [file.file_path, i]));
+    current_items.sort(
+      (a, b) =>
+        (file_order.get(a.file_path) ?? 0) - (file_order.get(b.file_path) ?? 0) ||
+        a.row_number - b.row_number ||
+        a.item_id - b.item_id,
+    );
     const quality_block = this.options.cache.quality.readBlock();
     const quality_entries = Object.fromEntries(
       QUALITY_RULE_KINDS.map((kind) => [kind, read_quality_entries(quality_block, kind)]),
@@ -319,6 +343,9 @@ export class AgentWorkspaceService {
       files: snapshot_files,
     });
 
+    const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
+      ? this.options.database.read_pdf_documents(project_path)
+      : [];
     const project_meta: JsonRecord = {
       ...language,
       counts: {
@@ -335,6 +362,18 @@ export class AgentWorkspaceService {
     try {
       // 所有并行写入必须结算后再清理；否则迟到写入会在失败目录删除后复活半成品。
       const write_results = await Promise.allSettled([
+        write_jsonl_file(
+          this.native_fs,
+          path.join(this.root_path, AGENT_WORKSPACE_PATHS.pdf),
+          pdf_documents.flatMap(({ file_path, document }) =>
+            document.pages.map((page) => ({
+              file_path,
+              fp: pdf_page_fingerprint(file_path, document.digest, page),
+              digest: document.digest,
+              ...page,
+            })),
+          ) as unknown as JsonRecord[],
+        ),
         write_json_file(
           this.native_fs,
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.projectMeta),
@@ -405,8 +444,26 @@ export class AgentWorkspaceService {
     script: string,
     todos: readonly string[],
     signal: AbortSignal,
-  ): Promise<AgentWorkspaceRunResult> {
+  ): Promise<AgentWorkspaceRunResult & { images: AgentWorkspaceImage[] }> {
     return await this.exclusive(async () => {
+      // 槽位按请求到达顺序分配，异步转换完成顺序不能改变模型看到的图片顺序。
+      const output_images = new Set<{ path: string; image: AgentImage | null }>();
+      let image_bytes = 0;
+      const image_summary = () =>
+        [...output_images.values()].flatMap(({ path, image }) =>
+          image === null
+            ? []
+            : [
+                {
+                  path,
+                  mime_type: image.mimeType,
+                  width: image.width,
+                  height: image.height,
+                  original_width: image.originalWidth,
+                  original_height: image.originalHeight,
+                },
+              ],
+        );
       const active = this.active;
       if (active === null || !this.read_freshness(active).snapshotFresh) {
         await this.create_snapshot_locked();
@@ -416,22 +473,70 @@ export class AgentWorkspaceService {
         const run_path = `${AGENT_WORKSPACE_RUN_ROOT}/task-${randomUUID()}`;
         const script_path = `${run_path}.mjs`;
         await this.native_fs.write_file(path.join(this.root_path, script_path), script);
-        return await this.options.run(
+        const result = await this.options.run(
           {
             workspacePath: this.root_path,
             scriptPath: script_path,
             stdoutPath: `${run_path}.stdout.log`,
             stderrPath: `${run_path}.stderr.log`,
             todos,
+            emitImage: async (relative, image_signal) => {
+              image_signal.throwIfAborted();
+              if (output_images.size >= AGENT_WORKSPACE_RUNTIME_POLICY.imageCount)
+                throw new Error("Image output count exceeded.");
+              const entry = { path: relative, image: null as AgentImage | null };
+              output_images.add(entry);
+              try {
+                // CodeAct 使用文件路径，链接解码只用于现有 resolve_path 入口。
+                const target = this.resolve_path(
+                  relative.split("/").map(encodeURIComponent).join("/"),
+                );
+                if (
+                  target.kind !== "file" ||
+                  this.native_fs.stat(target.path).size > AGENT_IMAGE_INPUT_MAX_BYTES
+                )
+                  throw new Error("Image input is not a supported size file.");
+                const image = await this.options.images.prepare(
+                  this.native_fs.read_file(target.path),
+                  image_signal,
+                );
+                image_signal.throwIfAborted();
+                if (
+                  image_bytes + image.data.length >
+                  AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes
+                )
+                  throw new Error("Image output size exceeded. Emit fewer images.");
+                image_bytes += image.data.length;
+                entry.image = image;
+              } finally {
+                if (entry.image === null) output_images.delete(entry);
+              }
+            },
+            host: create_workspace_host({
+              root: this.root_path,
+              nativeFs: this.native_fs,
+              pdfHost: this.options.pdfHost,
+            }),
           },
           signal,
         );
+        return {
+          ...result,
+          images: [...output_images.values()].flatMap(({ path, image }) =>
+            image === null ? [] : [{ path, image }],
+          ),
+        };
       } catch (error) {
         if (signal.aborted) throw error;
         if (error instanceof AgentWorkspaceRunError) {
           throw new AppErrors.AppError("request.validation_failed", {
             cause: error,
-            public_details: { action: "workspace_run", message: error.message, ...error.execution },
+            public_details: {
+              action: "workspace_run",
+              message: error.message,
+              ...error.execution,
+              ...(output_images.size === 0 ? {} : { images: image_summary() }),
+            },
             diagnostic_context: { reason: "agent_workspace_execution_failed" },
           });
         }
@@ -469,6 +574,15 @@ export class AgentWorkspaceService {
       try {
         const current: AgentWorkspaceCurrentFacts = {
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
+          pdf: [...new Set(parsed.batch.pdf.map((intent) => intent.file_path))].flatMap(
+            (file_path) => {
+              const document = this.options.database.read_pdf_document(
+                active.projectPath,
+                file_path,
+              );
+              return document ? [{ file_path, document }] : [];
+            },
+          ),
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [
               kind,
@@ -683,6 +797,7 @@ export class AgentWorkspaceService {
       AGENT_WORKSPACE_PATHS.projectMeta,
       AGENT_WORKSPACE_PATHS.contract,
       "items",
+      "pdf",
       AGENT_WORKSPACE_PATHS.prompts,
       ...QUALITY_RULE_KINDS,
       "changes",
@@ -757,6 +872,7 @@ function summarize_applied_changes(
   };
   return {
     items: applied.items?.updated ?? 0,
+    pdf: applied.pdf?.updated ?? 0,
     glossary: count_quality("glossary"),
     textPreserve: count_quality("text_preserve"),
     preReplacement: count_quality("pre_replacement"),
@@ -808,6 +924,13 @@ function normalize_workspace_rejections(
       ),
     ]),
   ) as Partial<Record<QualityRuleKind, Map<string, string>>>;
+  const baseline_pdf = drift_candidates.some((rejection) => rejection.scope === "pdf")
+    ? new Map(
+        read_workspace_jsonl(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.pdf)).map(
+          (row) => [JSON.stringify([row["file_path"], row["page"]]), String(row["fp"])],
+        ),
+      )
+    : new Map<string, string>();
   const needs_prompts = drift_candidates.some((rejection) => rejection.scope === "prompts");
   const baseline_prompts = needs_prompts
     ? read_workspace_json(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.prompts))
@@ -816,6 +939,16 @@ function normalize_workspace_rejections(
   return rejections.map((rejection) => {
     if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
       return rejection;
+    if (rejection.scope === "pdf") {
+      const fp = baseline_pdf.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
+      const intents = batch.pdf.filter(
+        (intent) =>
+          intent.file_path === rejection["file_path"] && intent.page === rejection["page"],
+      );
+      return fp !== undefined && intents.length > 0 && intents.every((intent) => intent.fp === fp)
+        ? rejection
+        : { ...rejection, reason: "invalid_change" };
+    }
     const baseline_fp = read_rejection_baseline_fp(
       rejection,
       baseline_items,
@@ -919,6 +1052,7 @@ function baseline_prompts_entry(prompts: JsonRecord, kind: PromptKind): JsonReco
 function all_change_paths(): string[] {
   return [
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+    AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
       AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map(
@@ -946,10 +1080,10 @@ function pick_workspace_revisions(
   );
 }
 
-/** apply 回执只暴露本工具可能改变的四个 section。 */
+/** apply 回执只暴露本工具可能改变的 section。 */
 function pick_apply_revisions(revisions: ProjectDataSectionRevisions): JsonRecord {
   return Object.fromEntries(
-    (["items", "proofreading", "quality", "prompts"] as const).map((section) => [
+    (["items", "proofreading", "quality", "prompts", "pdf"] as const).map((section) => [
       section,
       read_json_integer(revisions[section], 0),
     ]),

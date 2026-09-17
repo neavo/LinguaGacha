@@ -743,6 +743,7 @@ describe("AgentPage", () => {
       kind: "write_approval" as const,
       id: "apply-1",
       summary: {
+        pdf: 0,
         items: 1,
         glossary: 0,
         textPreserve: 0,
@@ -1186,7 +1187,7 @@ function workspace_apply_entry(id: string) {
     toolName: "workspace_apply",
     input: "{}",
     status: "success" as const,
-    output: "{}",
+    output: ["{}"],
     createdAt: 1,
   };
 }

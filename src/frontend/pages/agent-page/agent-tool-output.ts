@@ -21,16 +21,43 @@ function read_output_value(value: JsonValue): JsonValue {
   return value;
 }
 
-/** 一次生成阅读文本与高亮范围；原始输出由调用者保留，展示文本不作为 JSON 回写。 */
-export function format_agent_tool_output(content: string): AgentToolOutput {
+/** 阅读正文统一使用 LF，只裁剪首尾空白行，保留内容行缩进和内部空行。 */
+function clean_output_text(text: string): string {
+  const lines = text.replace(/\r\n?/gu, "\n").split("\n");
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start]!.trim() === "") start++;
+  while (end > start && lines[end - 1]!.trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+}
+
+/** 每块独立解释 JSON 并补齐行尾，共用一份阅读文档和高亮坐标；原始块由会话保留。 */
+export function format_agent_tool_output(contents: readonly string[]): AgentToolOutput {
+  const chunks: string[] = [];
+  const ranges: AppViewerRange[] = [];
+  let length = 0;
+  for (const content of contents) {
+    const block = format_output_block(content);
+    const text = `${block.text}\n`;
+    chunks.push(text);
+    for (const range of block.ranges) {
+      ranges.push({ ...range, start: range.start + length, end: range.end + length });
+    }
+    length += text.length;
+  }
+  return { text: chunks.join(""), ranges };
+}
+
+/** 单块递归解释完整 JSON，先整理正文再写入文本和高亮，保证偏移准确。 */
+function format_output_block(content: string): AgentToolOutput {
   let root: JsonValue;
   try {
     root = JSON.parse(content) as JsonValue;
   } catch {
-    return { text: content, ranges: [] };
+    return { text: clean_output_text(content), ranges: [] };
   }
   root = read_output_value(root);
-  if (typeof root === "string") return { text: root.replace(/\r\n?/gu, "\n"), ranges: [] };
+  if (typeof root === "string") return { text: clean_output_text(root), ranges: [] };
 
   const chunks: string[] = [];
   const ranges: AppViewerRange[] = [];
@@ -48,16 +75,13 @@ export function format_agent_tool_output(content: string): AgentToolOutput {
     const value = read_output_value(raw);
     const indent = "  ".repeat(depth);
     if (typeof value === "string") {
-      if (/[\r\n]/u.test(value)) {
-        // 块内增加结构缩进，原有空行、缩进与制表符继续保留。
+      const text = clean_output_text(value);
+      if (text.includes("\n")) {
         append("\n");
-        append(
-          indent + "  " + value.replace(/\r\n?/gu, "\n").replaceAll("\n", "\n" + indent + "  "),
-          "text",
-        );
+        append(indent + "  " + text.replaceAll("\n", "\n" + indent + "  "), "text");
         append("\n" + indent);
       } else {
-        append(JSON.stringify(value), "string");
+        append(JSON.stringify(text), "string");
       }
     } else if (value !== null && typeof value === "object") {
       const array = Array.isArray(value);

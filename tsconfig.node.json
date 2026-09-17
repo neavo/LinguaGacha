@@ -26,6 +26,6 @@
     "src/native",
     "src/shared",
     "src/test",
-    "resources/workspace/package.json"
+    "package.json"
   ]
 }

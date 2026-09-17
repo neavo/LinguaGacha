@@ -16,8 +16,9 @@
 /release
 /dist-ssr
 /.vitest
+
 node_modules
-/resources/workspace/bootstrap.mjs
+
 *.local
 *.tsbuildinfo
 npm-debug.log*

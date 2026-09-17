@@ -51,34 +51,6 @@
   white-space: nowrap;
 }
 
-.text-preserve-page__hit-badge-wrap,
-.preserve-page__hit-badge-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.preserve-page__hit-badge-button {
-  padding: 0;
-  border: 0;
-  background: none;
-  appearance: none;
-  cursor: pointer;
-}
-
-.text-preserve-page .preserve-page__hit-badge {
-  justify-content: center;
-  font-size: 10px;
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease;
-}
-
-.text-preserve-page .preserve-page__hit-badge--running {
-  padding-inline: 7px;
-}
-
 .text-preserve-page__mode-cluster {
   display: inline-flex;
   align-items: center;

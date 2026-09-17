@@ -1,9 +1,14 @@
 import { default_native_fs, normalize_native_file_bytes } from "../../../native/native-fs";
+import type { PDFDocument } from "../../../shared/pdf";
 import { Item, type ItemFileType } from "../../../domain/item";
 
-/**
- * 文件格式处理器共享配置，来源于应用设置或测试显式注入
- */
+/** 普通文件类型取自 Item，PDF 通过独立文档参与同一导入流程。 */
+export type ProjectFileType = ItemFileType | "PDF";
+export type FileFormatReadResult =
+  | { kind: "items"; items: Item[] }
+  | { kind: "pdf"; document: PDFDocument };
+
+/** 文件格式处理器共享配置，来源于应用设置或测试显式注入。 */
 export interface FileFormatServiceConfig {
   target_language: string; // 决定 EPUB 阅读排版等目标语言写回策略
   deduplication_in_bilingual?: boolean; // 原译文相同时双语文件只写一份

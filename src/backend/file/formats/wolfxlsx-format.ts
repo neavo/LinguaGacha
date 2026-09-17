@@ -1,6 +1,7 @@
 import path from "node:path";
+import { AppError } from "../../../shared/error";
 
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
@@ -58,7 +59,7 @@ export class WOLFXLSXFormat {
   }
 
   /**
-   * 写回时优先复用原始工作簿，避免破坏 WOLF 表格的其它列
+   * 写回必须复用原始工作簿，保留 WOLF 表格的其它内容。
    */
   public async write_to_path(
     items: Item[],
@@ -67,13 +68,11 @@ export class WOLFXLSXFormat {
   ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "WOLFXLSX")) {
       const original = asset_reader(rel_path);
-      const workbook =
-        original !== null ? await load_xlsx_workbook(original) : new ExcelJS.Workbook();
-      const sheet = workbook.worksheets[0] ?? workbook.addWorksheet("Sheet");
       if (original === null) {
-        sheet.getColumn(1).width = 64;
-        sheet.getColumn(2).width = 64;
+        throw new AppError("file.not_found", { public_details: { file: rel_path } });
       }
+      const workbook = await load_xlsx_workbook(original);
+      const sheet = workbook.worksheets[0] ?? workbook.addWorksheet("Sheet");
       for (const item of group.sort((left, right) => left.row - right.row)) {
         SpreadsheetTool.setCellValue(sheet, item.row, COL_SRC_TEXT, item.src);
         SpreadsheetTool.setCellValue(sheet, item.row, COL_DST_TEXT, item.dst);

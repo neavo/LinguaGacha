@@ -1,3 +1,4 @@
+import type { WorkspaceHostRequest, WorkspaceHostResult } from "./host-contract";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import type { AgentWorkspaceRuntimeContract } from "../schema";
 import {
@@ -13,6 +14,8 @@ import {
 
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
+  emitImage: (path: string) => Promise<void>;
+  host: (request: WorkspaceHostRequest, signal?: AbortSignal) => Promise<WorkspaceHostResult>;
   todo: Readonly<{
     read: () => readonly string[];
     write: (todos: readonly string[]) => void;
@@ -25,6 +28,12 @@ export function create_agent_workspace_runtime_api(
   read_port: AgentWorkspaceReadPort,
   initial_todos: readonly string[],
   write_todos: (todos: string[]) => void,
+  host: AgentWorkspaceRuntimeApi["host"] = async () => {
+    throw new Error("Workspace host unavailable.");
+  },
+  emitImage: AgentWorkspaceRuntimeApi["emitImage"] = async () => {
+    throw new Error("Workspace image output unavailable.");
+  },
 ): AgentWorkspaceRuntimeApi {
   const context = create_agent_workspace_data_tool_context(read_port);
   let todos = normalize_agent_todos(initial_todos); // 当前程序副本，宿主只在执行成功后提交
@@ -36,6 +45,8 @@ export function create_agent_workspace_runtime_api(
     ]),
   ) as AgentWorkspaceDataTools;
   return deep_freeze({
+    emitImage,
+    host,
     contract: structuredClone(context.contract), // 冻结公开接口不能改动借入的数据上下文
     todo: {
       /** 读者只能取得不可变副本。 */
