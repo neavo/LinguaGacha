@@ -44,7 +44,7 @@ export type AgentApprovalMode = "manual" | "auto";
 
 /** 待审批写入的结构化变更摘要；按业务种类统计受影响对象数量。 */
 export type AgentPendingWriteSummary = Readonly<{
-  pdf: number;
+  pdf: number; // 本批实际变化的 PDF 原页数
   items: number;
   glossary: number;
   textPreserve: number;

@@ -69,17 +69,10 @@ describe("TranslationFileExportService", () => {
     async (entry) => {
       const source = create_pdf_fixture();
       const document = read_pdf_document(source);
-      const partial: PDFDocument = {
-        ...document,
-        translation: {
-          sections: [
-            { kind: "translate", page_start: 2, page_end: 2, markdown: "已有译稿" },
-            { kind: "omit", page_start: 3, page_end: 3, reason: "装饰空页" },
-          ],
-          reviewed_pages: [],
-          notes: "待继续",
-        },
-      };
+      const partial = structuredClone(document);
+      partial.pages[1]!.translation = { kind: "translate", markdown: "已有译稿" };
+      partial.pages[1]!.notes = "待继续";
+      partial.pages[2]!.translation = { kind: "omit", reason: "装饰空页" };
       const database = create_database(
         [],
         { "book.pdf": Buffer.from(source), "original.pdf": Buffer.from(source) },
@@ -106,7 +99,7 @@ describe("TranslationFileExportService", () => {
       if (entry === "single") {
         const result = await service.export_pdf_file("book.pdf");
         const exported = read_pdf_document(new Uint8Array(fs.readFileSync(result.output_path)));
-        expect(exported.source.pages).toHaveLength(2);
+        expect(exported.pages).toHaveLength(2);
         const original = await service.export_pdf_file("original.pdf");
         expect(fs.readFileSync(original.output_path)).toEqual(Buffer.from(source));
       } else {
@@ -124,14 +117,14 @@ describe("TranslationFileExportService", () => {
         const exported = read_pdf_document(
           new Uint8Array(fs.readFileSync(path.join(result.output_path, "book.pdf"))),
         );
-        expect(exported.source.pages).toHaveLength(2);
+        expect(exported.pages).toHaveLength(2);
       }
       expect(host).toHaveBeenCalledTimes(1);
-      expect(partial.translation?.sections).toHaveLength(2);
+      expect(partial.pages.filter((page) => page.translation !== null)).toHaveLength(2);
     },
   );
 
-  it("原文导出不要求打印宿主，译稿范围错误在文本文件落盘前报告", async () => {
+  it("原文导出不要求打印宿主，页面顺序错误在文本文件落盘前报告", async () => {
     const source = create_pdf_fixture();
     const document = read_pdf_document(source);
     const database = create_database(
@@ -160,11 +153,7 @@ describe("TranslationFileExportService", () => {
     );
     const output = await service.export_pdf_file("book.pdf");
     expect(fs.readFileSync(output.output_path)).toEqual(Buffer.from(source));
-    document.translation = {
-      sections: [{ kind: "translate", page_start: 1, page_end: 4, markdown: "translation" }],
-      reviewed_pages: [],
-      notes: "",
-    };
+    document.pages[0]!.page = 4;
     const directory = path.join(temp_dir, "conflict");
     await expect(service.export_files_to_directory(directory)).rejects.toMatchObject({
       code: "file.invalid_structure",
@@ -475,11 +464,7 @@ describe("TranslationFileExportService", () => {
       session_state.mark_loaded(project_path);
       const source = create_pdf_fixture();
       const document = read_pdf_document(source);
-      document.translation = {
-        sections: [{ kind: "translate", page_start: 1, page_end: 1, markdown: "译文" }],
-        reviewed_pages: [],
-        notes: "",
-      };
+      document.pages[0]!.translation = { kind: "translate", markdown: "译文" };
       const database = create_database(
         [
           {

@@ -1,3 +1,4 @@
+import { create_empty_agent_workspace_intent_batch } from "../../project/agent-workspace-write";
 import { read_pdf_document } from "../../file/formats/pdf/pdf-document";
 import type { WorkspaceHostPort, WorkspaceHostResult } from "./runtime/host-contract";
 import fs from "node:fs";
@@ -12,10 +13,10 @@ import {
   workspace_execution,
 } from "../../../test/agent-workspace-fixture";
 import { create_pdf_fixture } from "../../file/formats/pdf/test-support";
-import { pdf_document_fingerprint } from "../../file/formats/pdf/pdf-source";
+import { pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import { ProjectDataReader } from "../../project/project-data-reader";
 
-it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工作区继续并导出", async () => {
+it("PDF 零条目工程按页保存、隔离旧指纹，语言变化后重建工作区继续并导出", async () => {
   using directory = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "lg-pdf-workspace-"));
   fs.writeFileSync(path.join(directory.path, "version.txt"), "0.0.0");
   const source = path.join(directory.path, "book.pdf");
@@ -89,6 +90,7 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     await workspace.run("", [], new AbortController().signal);
     const root = resources.paths.get_agent_workspace_root_dir();
     const project_path = services.state.session.require_loaded_project_path();
+    // 每次从数据库重读，验证保存与重开后的事实而非缓存引用。
     const read_document = () => resources.database.read_pdf_document(project_path, "book.pdf")!;
     expect(resources.database.get_item_count(project_path)).toBe(0);
     expect(services.state.cache.files.readFileEntries()).toEqual([
@@ -97,34 +99,22 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     const source_path = path.join(root, "sources/book.pdf/original.pdf");
     const source_mtime = fs.statSync(source_path).mtimeMs;
     const draft = {
-      sections: [
-        { kind: "translate", page_start: 1, page_end: 1, markdown: "跨页段落\n\n图中是蓝色矩形。" },
-      ],
-      reviewed_pages: [1, 2, 3],
+      translation: { kind: "translate" as const, markdown: "跨页段落\n\n图中是蓝色矩形。" },
+      reviewed: true,
       notes: "等待版式核对",
     };
-    const original_fp = pdf_document_fingerprint(read_document());
+    const original = read_document();
+    const original_fp = pdf_page_fingerprint("book.pdf", original.digest, original.pages[0]!);
+    const second_fp = pdf_page_fingerprint("book.pdf", original.digest, original.pages[1]!);
     const request_approval = vi.fn(async () => undefined);
-    const save = async (fp: string, translation: typeof draft) => {
-      fs.writeFileSync(path.join(root, "work/translation.json"), JSON.stringify(translation));
+    // 通过真实 JSONL 接口提交单页，保留其它页的持久状态。
+    const save = async (fp: string, update: typeof draft) => {
       fs.writeFileSync(
         path.join(root, "changes/pdf/updates.jsonl"),
-        JSON.stringify({ file_path: "book.pdf", fp, translation_path: "work/translation.json" }),
+        JSON.stringify({ file_path: "book.pdf", page: 1, fp, ...update }),
       );
       return workspace.apply_workspace(request_approval);
     };
-    fs.writeFileSync(path.join(directory.path, "outside.json"), JSON.stringify(draft));
-    fs.writeFileSync(
-      path.join(root, "changes/pdf/updates.jsonl"),
-      JSON.stringify({
-        file_path: "book.pdf",
-        fp: original_fp,
-        translation_path: path.join(directory.path, "outside.json"),
-      }),
-    );
-    expect((await workspace.apply_workspace())["rejected"]).toMatchObject([
-      { scope: "pdf", reason: "invalid_change" },
-    ]);
     const before = services.state.cache.snapshot();
     expect((await save(original_fp, draft))["status"]).toBe("applied");
     expect(request_approval).toHaveBeenCalledExactlyOnceWith({
@@ -141,7 +131,7 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
         {
           file_type: "PDF",
           item_count: 0,
-          pdf: { pages: 3, reviewed_pages: 3, translated_pages: 1 },
+          pdf: { pages: 3, reviewed_pages: 1, translated_pages: 1, omitted_pages: 0 },
         },
       ],
     });
@@ -153,7 +143,44 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     await workspace.run("", [], new AbortController().signal);
     expect(fs.statSync(source_path).mtimeMs).toBe(source_mtime);
     expect((await save(original_fp, { ...draft, notes: "stale" }))["status"]).toBe("rejected");
-    expect(read_document().translation?.notes).toBe("等待版式核对");
+    expect(read_document().pages[0]!.notes).toBe("等待版式核对");
+    await workspace.run("", [], new AbortController().signal);
+    const baseline = read_document();
+    const baseline_fp = pdf_page_fingerprint("book.pdf", baseline.digest, baseline.pages[0]!);
+    // 快照后其它写入者修改同一页，工作区应保留真实漂移的页级拒绝原因。
+    await services.state.writes.apply_agent_workspace_changes({
+      projectPath: project_path,
+      source: "agent_workspace_apply",
+      batch: {
+        ...create_empty_agent_workspace_intent_batch(),
+        pdf: [
+          { file_path: "book.pdf", page: 1, fp: baseline_fp, line: 1, ...draft, reviewed: false },
+        ],
+      },
+    });
+    fs.writeFileSync(
+      path.join(root, "changes/pdf/updates.jsonl"),
+      [
+        { file_path: "book.pdf", page: 1, fp: baseline_fp, ...draft, notes: "stale" },
+        {
+          file_path: "book.pdf",
+          page: 2,
+          fp: second_fp,
+          translation: { kind: "translate", markdown: "" },
+          reviewed: true,
+          notes: "正文归入第 1 页",
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
+    const partial = await workspace.apply_workspace(request_approval);
+    expect(partial["applied"]).toEqual({ pdf: { updated: 1 } });
+    expect(partial["rejected"]).toMatchObject([
+      { file_path: "book.pdf", page: 1, reason: "fp_mismatch" },
+    ]);
+    expect(read_document().pages[0]!.notes).toBe("等待版式核对");
+    expect(read_document().pages[2]).toEqual(original.pages[2]);
     await workspace.initialize();
     resources.settings.set_transient_overrides({ source_language: "ALL", target_language: "DE" });
     resources.database.upsert_meta_entries(project_path, {
@@ -162,13 +189,28 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     });
     resources.database.close_project(project_path);
     await workspace.run("", [], new AbortController().signal);
-    expect(JSON.parse(fs.readFileSync(path.join(root, "pdf/entries.jsonl"), "utf8"))).toMatchObject(
-      { file_path: "book.pdf", translation: draft },
-    );
+    const rows = fs
+      .readFileSync(path.join(root, "pdf/entries.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ file_path: "book.pdf", page: 1, ...draft, reviewed: false });
+    expect(rows[1]).toMatchObject({
+      page: 2,
+      translation: { kind: "translate", markdown: "" },
+      notes: "正文归入第 1 页",
+    });
+    expect(rows[2].fp).toBe(pdf_page_fingerprint("book.pdf", original.digest, original.pages[2]!));
     draft.notes = "重新读取工程设置后继续核对";
-    expect((await save(pdf_document_fingerprint(read_document()), draft))["status"]).toBe(
-      "applied",
-    );
+    expect(
+      (
+        await save(
+          pdf_page_fingerprint("book.pdf", read_document().digest, read_document().pages[0]!),
+          draft,
+        )
+      )["status"],
+    ).toBe("applied");
     operation = (host) =>
       host(
         { kind: "export_pdf", file_path: "book.pdf", fp: original_fp },
@@ -180,7 +222,8 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
         {
           kind: "export_pdf",
           file_path: "book.pdf",
-          fp: pdf_document_fingerprint(read_document()),
+          fp: JSON.parse(fs.readFileSync(path.join(root, "project_meta.json"), "utf8")).files[0]
+            .pdf_fp,
         },
         new AbortController().signal,
       );
@@ -188,9 +231,9 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
     expect(output && "output_path" in output).toBe(true);
     if (output && "output_path" in output) {
       const exported = read_pdf_document(new Uint8Array(fs.readFileSync(output.output_path)));
-      expect(exported.source.pages).toHaveLength(3);
+      expect(exported.pages).toHaveLength(2);
     }
-    expect(read_document().translation).toEqual(draft);
+    expect(read_document().pages[0]).toMatchObject(draft);
     const revision = () =>
       new ProjectDataReader(resources.database).build_manifest({
         loaded: true,
@@ -200,8 +243,12 @@ it("PDF 零条目工程保存文档、拒绝旧指纹，语言变化后重建工
       rel_paths: ["book.pdf"],
       expected_section_revisions: revision(),
     });
-    expect(read_document().translation).toBeNull();
-    expect(read_document().source.pages).toHaveLength(3);
+    expect(
+      read_document().pages.every(
+        (page) => page.translation === null && !page.reviewed && page.notes === "",
+      ),
+    ).toBe(true);
+    expect(read_document().pages).toHaveLength(3);
     await services.project.content.delete_files({
       rel_paths: ["book.pdf"],
       expected_section_revisions: revision(),

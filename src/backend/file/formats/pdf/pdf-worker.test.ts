@@ -51,12 +51,9 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
   try {
     const bytes = create_pdf_fixture();
     const document = (await worker.run({ kind: "read", bytes })) as PDFDocument;
-    expect(document.source.pages).toHaveLength(3);
-    document.translation = {
-      sections: [{ kind: "translate", page_start: 1, page_end: 2, markdown: "# Translation" }],
-      reviewed_pages: [],
-      notes: "",
-    };
+    expect(document.pages).toHaveLength(3);
+    document.pages[0]!.translation = { kind: "translate", markdown: "# Translation" };
+    document.pages[1]!.translation = { kind: "translate", markdown: "" };
     const task = { kind: "build" as const, title: "test", document, bytes };
     const result = await worker.run(task);
     expect(result).toBeInstanceOf(Uint8Array);
@@ -64,7 +61,7 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
       kind: "read",
       bytes: result as Uint8Array,
     })) as PDFDocument;
-    expect(rebuilt.source.pages).toHaveLength(2);
+    expect(rebuilt.pages).toHaveLength(2);
     cancel_print = true;
     const controller = new AbortController();
     const cancelled = worker.run(task, controller.signal);
@@ -73,9 +70,7 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
     controller.abort();
     await rejected;
     expect(print_stopped).toBe(true);
-    expect(((await worker.run({ kind: "read", bytes })) as PDFDocument).source.pages).toHaveLength(
-      3,
-    );
+    expect(((await worker.run({ kind: "read", bytes })) as PDFDocument).pages).toHaveLength(3);
   } finally {
     await worker.dispose();
   }

@@ -1,8 +1,4 @@
-import {
-  PDF_UPDATE_SCHEMA,
-  PDF_TRANSLATION_SCHEMA,
-  type PDFUpdateIntent,
-} from "../../file/formats/pdf/pdf-source";
+import { PDF_UPDATE_SCHEMA, type PDFUpdateIntent } from "../../file/formats/pdf/pdf-source";
 import path from "node:path";
 
 import { Check } from "typebox/value";
@@ -63,33 +59,7 @@ export async function prepare_agent_workspace_changes(args: {
       rejected.push(invalid_change(PDF_UPDATE_SCHEMA, row, "pdf", "update"));
       continue;
     }
-    try {
-      const work_root = args.nativeFs.real_path(path.join(args.workspacePath, "work"));
-      const target = args.nativeFs.real_path(
-        path.resolve(args.workspacePath, row.value.translation_path),
-      );
-      const relative = path.relative(work_root, target);
-      if (
-        relative === "" ||
-        relative === ".." ||
-        relative.startsWith(".." + path.sep) ||
-        path.isAbsolute(relative)
-      )
-        throw new Error("PDF translation must be inside work.");
-      const translation: unknown = JSON.parse(args.nativeFs.read_file(target).toString("utf8"));
-      if (!Check(PDF_TRANSLATION_SCHEMA, translation)) throw new Error("Invalid PDF translation.");
-      pdf.push({ ...row.value, line: row.line, translation });
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      rejected.push({
-        scope: "pdf",
-        op: "update",
-        file_path: row.value.file_path,
-        line: row.line,
-        reason: "invalid_change",
-        message: error.message,
-      });
-    }
+    pdf.push({ ...row.value, line: row.line });
   }
   const prompt_rows = await read_change_rows(
     args.nativeFs,
@@ -224,6 +194,12 @@ function invalid_change(
     op,
     reason: "invalid_change",
     line: row.line,
+    ...(scope === "pdf" && typeof row.value["file_path"] === "string"
+      ? { file_path: row.value["file_path"] }
+      : {}),
+    ...(scope === "pdf" && typeof row.value["page"] === "number"
+      ? { page: row.value["page"] }
+      : {}),
     ...(kind === undefined ? {} : { kind }),
     ...(scope !== "prompts" && op !== "create" && (typeof id === "string" || typeof id === "number")
       ? { id }

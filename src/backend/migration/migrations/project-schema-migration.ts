@@ -4,7 +4,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
-export const PROJECT_DATABASE_SCHEMA_VERSION = 3; // 只表达当前表结构能力，不承载业务写回完成状态
+export const PROJECT_DATABASE_SCHEMA_VERSION = 4; // 只表达当前表结构能力，不承载业务写回完成状态
 
 /**
  * 迁移背景：
@@ -58,6 +58,12 @@ function ensure_current_schema(db: DatabaseSync): void {
       CREATE TABLE IF NOT EXISTS pdf_documents (
         file_path TEXT PRIMARY KEY,
         data TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pdf_pages (
+        file_path TEXT NOT NULL,
+        page INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (file_path, page)
       );
       CREATE TABLE IF NOT EXISTS items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

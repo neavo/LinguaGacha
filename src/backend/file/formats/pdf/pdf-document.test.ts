@@ -2,13 +2,6 @@ import { expect, it, vi } from "vitest";
 import * as mupdf from "mupdf";
 import { create_pdf_fixture } from "./test-support";
 import { read_pdf_document, build_pdf_document, render_pdf_page } from "./pdf-document";
-import { type PDFTranslation, type PDFTranslationSection } from "../../../../shared/pdf";
-
-/** 用完整译稿载荷驱动真实页面组合。 */
-function translation(sections: PDFTranslationSection[]): PDFTranslation {
-  return { sections, reviewed_pages: [], notes: "" };
-}
-
 it("按原页尺寸和背景分组，省略页不占位置，背景位于每张译文页底层", async () => {
   const original = new mupdf.PDFDocument(
     create_pdf_fixture(["One", "Two", null, "Four", "Five", "Six"]),
@@ -22,19 +15,15 @@ it("按原页尺寸和背景分组，省略页不占位置，背景位于每张�
   original.destroy();
   const document = read_pdf_document(bytes);
   const background = { page: 3, x: 40, y: 180, width: 80, height: 73 };
-  document.translation = translation([
-    { kind: "translate", page_start: 1, page_end: 1, markdown: "First", background },
-    {
-      kind: "translate",
-      page_start: 2,
-      page_end: 2,
-      markdown: "Second",
-      background: { ...background },
-    },
-    { kind: "omit", page_start: 3, page_end: 3, reason: "装饰页" },
-    { kind: "translate", page_start: 4, page_end: 4, markdown: "Fourth" },
-    { kind: "translate", page_start: 5, page_end: 5, markdown: "Fifth" },
-  ]);
+  document.pages[0]!.translation = { kind: "translate", markdown: "First", background };
+  document.pages[1]!.translation = {
+    kind: "translate",
+    markdown: "Second",
+    background: { ...background },
+  };
+  document.pages[2]!.translation = { kind: "omit", reason: "装饰页" };
+  document.pages[3]!.translation = { kind: "translate", markdown: "Fourth" };
+  document.pages[4]!.translation = { kind: "translate", markdown: "Fifth" };
   const print = vi.fn(async (html: string) =>
     create_pdf_fixture(html.includes("First") ? ["A", "B"] : [html.includes("Fourth") ? "C" : "D"]),
   );
@@ -88,32 +77,17 @@ it("没有译稿时原样输出资产，不调用打印或图片宿主", async (
   const bytes = create_pdf_fixture();
   const document = read_pdf_document(bytes);
   const print = vi.fn();
-  for (const value of [null, translation([])]) {
-    expect(
-      await build_pdf_document({
-        title: "book",
-        document: { ...document, translation: value },
-        source_bytes: bytes,
-        print,
-      }),
-    ).toEqual(bytes);
-  }
+  expect(await build_pdf_document({ title: "book", document, source_bytes: bytes, print })).toEqual(
+    bytes,
+  );
   expect(print).not.toHaveBeenCalled();
 });
 
-it("混合导出保留头尾与中间原页，相邻译稿一起打印，译文可扩展页数", async () => {
+it("混合导出保留头尾与中间原页，译稿跨过空页连续打印，译文可扩展页数", async () => {
   const original = new mupdf.PDFDocument(
-    create_pdf_fixture([
-      "Original 1",
-      "Original 2",
-      "Original 3",
-      "Original 4",
-      "Original 5",
-      "Original 6",
-      "Original 7",
-    ]),
+    create_pdf_fixture(Array.from({ length: 8 }, (_, index) => `Original ${index + 1}`)),
   );
-  const original_page = original.loadPage(3);
+  const original_page = original.loadPage(4);
   const object = original_page.getObject();
   object.put("Rotate", 90);
   object.destroy();
@@ -123,15 +97,15 @@ it("混合导出保留头尾与中间原页，相邻译稿一起打印，译文�
   saved.destroy();
   original.destroy();
   const document = read_pdf_document(bytes);
-  document.translation = translation([
-    { kind: "translate", page_start: 2, page_end: 2, markdown: "# Second" },
-    { kind: "translate", page_start: 3, page_end: 3, markdown: "# Third" },
-    { kind: "translate", page_start: 5, page_end: 6, markdown: "# Fifth and sixth" },
-  ]);
+  document.pages[1]!.translation = { kind: "translate", markdown: "# Second" };
+  document.pages[2]!.translation = { kind: "translate", markdown: "" };
+  document.pages[3]!.translation = { kind: "translate", markdown: "# Fourth" };
+  document.pages[5]!.translation = { kind: "translate", markdown: "# Sixth and seventh" };
+  document.pages[6]!.translation = { kind: "translate", markdown: "" };
   const print = vi.fn(async (html: string) =>
     html.includes("Second")
-      ? create_pdf_fixture(["Translated 2-3 A", "Translated 2-3 B", "Translated 2-3 C"])
-      : create_pdf_fixture(["Translated 5-6"]),
+      ? create_pdf_fixture(["Translated 2-4 A", "Translated 2-4 B", "Translated 2-4 C"])
+      : create_pdf_fixture(["Translated 6-7"]),
   );
   const output = await build_pdf_document({
     title: "book",
@@ -140,26 +114,26 @@ it("混合导出保留头尾与中间原页，相邻译稿一起打印，译文�
     print,
   });
   expect(print).toHaveBeenCalledTimes(2);
-  expect(print.mock.calls[0]![0]).toContain("Third");
+  expect(print.mock.calls[0]![0]).toContain("Fourth");
   expect(await read_text(output)).toEqual([
     "Original 1",
-    "Translated 2-3 A",
-    "Translated 2-3 B",
-    "Translated 2-3 C",
-    "Original 4",
-    "Translated 5-6",
-    "Original 7",
+    "Translated 2-4 A",
+    "Translated 2-4 B",
+    "Translated 2-4 C",
+    "Original 5",
+    "Translated 6-7",
+    "Original 8",
   ]);
   const result = read_pdf_document(output);
-  expect(result.source.pages[4]).toMatchObject({ rotation: 90, width: 300, height: 300 });
+  expect(result.pages[4]).toMatchObject({ rotation: 90, width: 300, height: 300 });
 });
 
 it("全篇译稿替换全部原页，打印失败和取消不回退原文", async () => {
   const bytes = create_pdf_fixture();
   const document = read_pdf_document(bytes);
-  document.translation = translation([
-    { kind: "translate", page_start: 1, page_end: 3, markdown: "全部译稿" },
-  ]);
+  document.pages[0]!.translation = { kind: "translate", markdown: "" };
+  document.pages[1]!.translation = { kind: "translate", markdown: "全部译稿" };
+  document.pages[2]!.translation = { kind: "translate", markdown: "" };
   const args = {
     title: "book",
     document,
@@ -274,9 +248,7 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
   print_buffer.destroy();
   printed.destroy();
   const document = read_pdf_document(bytes);
-  document.translation = translation([
-    { kind: "translate", page_start: 2, page_end: 2, markdown: "Translation" },
-  ]);
+  document.pages[1]!.translation = { kind: "translate", markdown: "Translation" };
   const result = new mupdf.PDFDocument(
     await build_pdf_document({
       title: "test",

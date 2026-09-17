@@ -11,7 +11,6 @@ describe("migration-registry", () => {
       "project-item-stable-metadata",
       "trans-item-metadata",
       "project-item-public-contract",
-      "pdf-section-kind",
     ]);
   });
 });

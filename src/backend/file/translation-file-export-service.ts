@@ -186,15 +186,13 @@ export class TranslationFileExportService {
     return file_paths.map((file_path) => {
       const document = this.database.read_pdf_document(project_path, file_path);
       if (!document) throw new AppError("file.not_found", { public_details: { file: file_path } });
-      if (document.translation) {
-        try {
-          render_pdf_translation(document.translation, document.source);
-        } catch (error) {
-          throw new AppError("file.invalid_structure", {
-            public_details: { file: file_path },
-            cause: error,
-          });
-        }
+      try {
+        render_pdf_translation(document);
+      } catch (error) {
+        throw new AppError("file.invalid_structure", {
+          public_details: { file: file_path },
+          cause: error,
+        });
       }
       return { file_path, document };
     });
@@ -215,15 +213,14 @@ export class TranslationFileExportService {
     return documents.map(({ file_path, document }) => {
       let translated_pages = 0;
       let omitted_pages = 0;
-      for (const section of document.translation?.sections ?? []) {
-        const count = section.page_end - section.page_start + 1;
-        if (section.kind === "translate") translated_pages += count;
-        else omitted_pages += count;
+      for (const page of document.pages) {
+        if (page.translation?.kind === "translate") translated_pages++;
+        else if (page.translation?.kind === "omit") omitted_pages++;
       }
       return {
         file_path,
         translated_pages,
-        original_pages: document.source.pages.length - translated_pages - omitted_pages,
+        original_pages: document.pages.length - translated_pages - omitted_pages,
         omitted_pages,
       };
     });

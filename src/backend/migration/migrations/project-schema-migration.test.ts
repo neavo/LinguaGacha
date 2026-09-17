@@ -12,7 +12,7 @@ import {
 } from "./project-schema-migration";
 
 describe("run_project_schema_migration", () => {
-  it("为空数据库补齐当前 schema、索引和 schema_version", () => {
+  it("新建工程按文件与原页唯一保存页面，并记录 schema 版本", () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-schema-migration-"),
     );
@@ -20,14 +20,10 @@ describe("run_project_schema_migration", () => {
 
     run_project_schema_migration(db);
 
-    expect(read_table_names(db)).toEqual([
-      "assets",
-      "items",
-      "meta",
-      "pdf_documents",
-      "rules",
-      "sqlite_sequence",
-    ]);
+    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
+    insert.run("a.pdf", 1, "{}");
+    insert.run("b.pdf", 1, "{}");
+    expect(() => insert.run("a.pdf", 1, "{}")).toThrow("UNIQUE constraint failed");
     expect(read_meta_number(db, "schema_version")).toBe(PROJECT_DATABASE_SCHEMA_VERSION);
   });
 
@@ -65,16 +61,6 @@ describe("run_project_schema_migration", () => {
     ]);
   });
 });
-
-/**
- * 读取 sqlite_master 只用于断言 schema 迁移产生的公开表集合。
- */
-function read_table_names(db: DatabaseSync): string[] {
-  return db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-    .all()
-    .map((row) => String(row["name"]));
-}
 
 /**
  * schema_version 按 JSON 数字存储，测试读取时保持同一序列化规则。

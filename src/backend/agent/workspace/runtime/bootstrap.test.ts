@@ -138,7 +138,7 @@ it("只读技能模块可导入 npm 与应用模板，并通过 IPC 调用宿主
     export async function inspect() {
       const bytes = await build_pdf_document({
         title:'fixture', source_bytes: new Uint8Array(await readFile('work/source.pdf')),
-        document:{source:{digest:'a'.repeat(64),pages:[{number:1,width:300,height:300,rotation:0,label:null},{number:2,width:300,height:300,rotation:0,label:null},{number:3,width:300,height:300,rotation:0,label:null}]},translation:{sections:[{kind: "translate", page_start:2,page_end:2,markdown:'# fixture'}],reviewed_pages:[],notes:''}},
+        document:{digest:'a'.repeat(64),pages:[1,2,3].map(page=>({page,width:300,height:300,rotation:0,label:null,translation:page===2?{kind:'translate',markdown:'# fixture'}:null,reviewed:false,notes:''}))},
         print:async html => new Uint8Array(await readFile((await ws.host({kind:'print_pdf',html})).path)),
       });
       await writeFile('work/fixture.pdf', bytes);

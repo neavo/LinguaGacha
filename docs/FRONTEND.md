@@ -67,7 +67,7 @@
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
 
-- 工作台 PDF 摘要分别展示译稿覆盖原页数与核对页数，文本条目统计独立；pdf section 变化触发摘要补读。Agent 审批按文档数量显示变更，PDF 正文不进入前端共享缓存。
+- 工作台 PDF 摘要分别展示译稿覆盖原页数与核对页数，文本条目统计独立；pdf section 变化触发摘要补读。PDF 正文不进入前端共享缓存。
 
 ## 4. 样式消费
 

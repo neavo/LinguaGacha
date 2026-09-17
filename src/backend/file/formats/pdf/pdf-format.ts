@@ -23,7 +23,7 @@ export class PDFFormat {
     for (const { file_path, document } of documents) {
       const bytes = context.asset_reader(file_path);
       if (bytes === null) throw new AppError("file.not_found");
-      const output = !document.translation?.sections.length
+      const output = document.pages.every((page) => page.translation === null)
         ? bytes
         : await this.execute(
             { kind: "build", title: path.basename(file_path), document, bytes },

@@ -10,17 +10,17 @@ it("PDF 导入保存原页身份，文字页和纯图页均不生成 Item", asyn
     kind: "pdf",
     file_type: "PDF",
     document: {
-      source: {
-        digest: createHash("sha256").update(bytes).digest("hex"),
-        pages: [1, 2, 3].map((number) => ({
-          number,
-          width: 300,
-          height: 300,
-          rotation: 0,
-          label: null,
-        })),
-      },
-      translation: null,
+      digest: createHash("sha256").update(bytes).digest("hex"),
+      pages: [1, 2, 3].map((page) => ({
+        page,
+        width: 300,
+        height: 300,
+        rotation: 0,
+        label: null,
+        translation: null,
+        reviewed: false,
+        notes: "",
+      })),
     },
   });
 });

@@ -693,10 +693,12 @@ export class ProjectWriteStore {
       batch: request.batch,
       current: {
         items: Array.isArray(items) ? items.filter(is_json_record) : [],
-        pdf: request.batch.pdf.flatMap((intent) => {
-          const document = this.database.read_pdf_document(request.projectPath, intent.file_path);
-          return document ? [{ file_path: intent.file_path, document }] : [];
-        }),
+        pdf: [...new Set(request.batch.pdf.map((intent) => intent.file_path))].flatMap(
+          (file_path) => {
+            const document = this.database.read_pdf_document(request.projectPath, file_path);
+            return document ? [{ file_path, document }] : [];
+          },
+        ),
         quality: Object.fromEntries(
           quality_kinds.map((kind) => [kind, Array.isArray(quality[kind]) ? quality[kind] : []]),
         ),
@@ -726,7 +728,7 @@ export class ProjectWriteStore {
   ): ProjectDatabaseWrite[] {
     const writes: ProjectDatabaseWrite[] = [];
     for (const change of outcome.pdfChanges)
-      writes.push((db) => db.write_pdf_document(project_path, change.file_path, change.document));
+      writes.push((db) => db.write_pdf_page(project_path, change.file_path, change.page));
     if (outcome.itemChanges.length > 0) {
       const item_patches = outcome.itemChanges.map((change) => ({
         item_id: change.item_id,

@@ -1,47 +1,38 @@
 import { escapeText } from "entities";
-import { Check } from "typebox/value";
-import type { PDFDocument, PDFTranslation, PDFRegion } from "../../../../shared/pdf";
-import { PDF_TRANSLATION_SCHEMA, validate_pdf_region } from "./pdf-source";
+import type { PDFDocument, PDFPage, PDFRegion } from "../../../../shared/pdf";
+import { validate_pdf_region, read_pdf_document } from "./pdf-source";
 import { pdf_markdown, type PDFMarkdown } from "./pdf-markdown";
 import styles from "./pdf-print.css?raw";
 
-/** 返回值与 sections 同序；省略段没有正文。校验和编译始终共用此入口。 */
-export function render_pdf_translation(
-  translation: PDFTranslation,
-  source: PDFDocument["source"],
-): (PDFMarkdown | null)[] {
-  if (!Check(PDF_TRANSLATION_SCHEMA, translation)) throw new Error("Invalid PDF translation.");
-  if (translation.reviewed_pages.some((page) => page > source.pages.length))
-    throw new Error("Reviewed page is outside the source document.");
-  let previous_end = 0;
-  let omitted = 0; // 按原页计数，拒绝最终没有任何页面的导出。
-  const rendered = translation.sections.map((section) => {
-    if (
-      section.page_start <= previous_end ||
-      section.page_end < section.page_start ||
-      section.page_end > source.pages.length
-    )
-      throw new Error(
-        "PDF translation ranges must be ordered, disjoint and inside the source document.",
-      );
-    previous_end = section.page_end;
-    if (section.kind === "omit") {
-      if (!section.reason.trim()) throw new Error("Omitted PDF pages require a reason.");
-      omitted += section.page_end - section.page_start + 1;
-      return null;
-    }
-    if (!section.markdown.trim()) throw new Error("PDF translation section must contain text.");
-    if (section.background) validate_pdf_region(source, section.background);
-    try {
-      return pdf_markdown(section.markdown, source, `page-${section.page_start}-`);
-    } catch (error) {
-      throw new Error(
-        `PDF pages ${section.page_start}-${section.page_end}: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
-      );
-    }
-  });
-  if (omitted === source.pages.length) throw new Error("PDF output must retain at least one page.");
+/** 调用方已校验载荷与页身份；这里独立编译正文、隔离引用，保存允许暂时没有输出页。 */
+export function render_pdf_page_translation(
+  page: PDFPage,
+  source: PDFDocument,
+): PDFMarkdown | null {
+  const translation = page.translation;
+  if (translation === null) return null;
+  if (translation.kind === "omit") {
+    if (!translation.reason.trim()) throw new Error("Omitted PDF pages require a reason.");
+    return null;
+  }
+  if (translation.background) validate_pdf_region(source, translation.background);
+  if (!translation.markdown.trim()) return null;
+  try {
+    return pdf_markdown(translation.markdown, source, `page-${page.page}-`);
+  } catch (error) {
+    throw new Error(
+      `PDF page ${page.page}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+/** 预览和导出共用完整校验；全部省略或空译稿只在输出边界拒绝。 */
+export function render_pdf_translation(document: PDFDocument): (PDFMarkdown | null)[] {
+  read_pdf_document(document);
+  const rendered = document.pages.map((page) => render_pdf_page_translation(page, document));
+  if (!document.pages.some((page, index) => page.translation === null || rendered[index] !== null))
+    throw new Error("PDF output must retain at least one page.");
   return rendered;
 }
 

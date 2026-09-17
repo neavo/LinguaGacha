@@ -1,4 +1,4 @@
-import type { PDFDocument, PDFDocumentRecord, PDFSummary } from "../../shared/pdf";
+import type { PDFDocument, PDFDocumentRecord, PDFPage, PDFSummary } from "../../shared/pdf";
 import { read_pdf_document } from "../file/formats/pdf/pdf-source";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -241,60 +241,68 @@ export class ProjectDatabase {
     file_path: string,
     document: PDFDocument | null,
   ): void {
+    const db = this.open_project(project_path); // 导入入口已持有连接与资产事务。
+    db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(file_path);
     if (document === null) {
-      this.open_project(project_path)
-        .prepare("DELETE FROM pdf_documents WHERE file_path = ?")
-        .run(file_path);
+      db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(file_path);
       return;
     }
+    read_pdf_document(document);
     const bytes = this.read_asset_content(project_path, file_path);
-    if (
-      bytes === null ||
-      createHash("sha256").update(bytes).digest("hex") !== document.source.digest
-    )
+    if (bytes === null || createHash("sha256").update(bytes).digest("hex") !== document.digest)
       throw new AppErrors.AppError("file.parse_failed", {
         diagnostic_context: { reason: "source_changed_after_parse", file_path },
       });
-    this.write_pdf_document(project_path, file_path, document);
+    db.prepare(
+      "INSERT INTO pdf_documents(file_path, data) VALUES (?, ?) ON CONFLICT(file_path) DO UPDATE SET data = excluded.data",
+    ).run(file_path, JSON.stringify({ digest: document.digest }));
+    const insert = db.prepare("INSERT INTO pdf_pages(file_path, page, data) VALUES (?, ?, ?)");
+    for (const page of document.pages) insert.run(file_path, page.page, JSON.stringify(page));
   }
 
   /** 按工程相对路径读取并校验文档，缺失用 null 表达。 */
   public read_pdf_document(project_path: string, file_path: string): PDFDocument | null {
     return this.with_project_connection(project_path, (db) => {
       const row = db.prepare("SELECT data FROM pdf_documents WHERE file_path = ?").get(file_path);
-      return row ? read_pdf_document(json_parse(row["data"])) : null;
+      return row
+        ? read_pdf_document({
+            ...(json_parse(row["data"]) as JsonRecord),
+            pages: db
+              .prepare("SELECT data FROM pdf_pages WHERE file_path = ? ORDER BY page")
+              .all(file_path)
+              .map((page) => json_parse(page["data"])),
+          })
+        : null;
     });
   }
 
-  /** 快照按 asset 顺序读取文档，只包含仍属于工程的文件。 */
+  /** 快照按 asset 顺序组合文档，页面正文按原页顺序读取。 */
   public read_pdf_documents(project_path: string): PDFDocumentRecord[] {
     return this.with_project_connection(project_path, (db) =>
       db
         .prepare(
-          "SELECT p.file_path, p.data FROM pdf_documents p JOIN assets a ON a.path = p.file_path ORDER BY a.sort_order, a.id",
+          "SELECT p.file_path FROM pdf_documents p JOIN assets a ON a.path = p.file_path ORDER BY a.sort_order, a.id",
         )
         .all()
-        .map((row) => ({
-          file_path: row_text(row, "file_path"),
-          document: read_pdf_document(json_parse(row["data"])),
-        })),
+        .map((row) => {
+          const file_path = row_text(row, "file_path");
+          return { file_path, document: this.read_pdf_document(project_path, file_path)! };
+        }),
     );
   }
 
-  /** 列表只读取覆盖范围和核对页数，正文按单文档读取。 */
+  /** 列表只统计页面处理种类和核对页数，正文按单文档读取。 */
   public read_pdf_summaries(project_path: string): Record<string, PDFSummary> {
     return this.with_project_connection(project_path, (db) =>
       Object.fromEntries(
         db
           .prepare(
-            `SELECT p.file_path,
-             json_array_length(p.data, '$.source.pages') AS pages,
-             json_array_length(p.data, '$.translation.reviewed_pages') AS reviewed_pages,
-             (SELECT COALESCE(SUM(json_extract(s.value, '$.page_end') - json_extract(s.value, '$.page_start') + 1), 0)
-              FROM json_each(p.data, '$.translation.sections') s
-              WHERE json_extract(s.value, '$.kind') = 'translate') AS translated_pages
-           FROM pdf_documents p JOIN assets a ON a.path = p.file_path
-           ORDER BY a.sort_order, a.id`,
+            `SELECT p.file_path, COUNT(*) AS pages,
+             SUM(json_extract(p.data, '$.reviewed')) AS reviewed_pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'translate' THEN 1 ELSE 0 END) AS translated_pages,
+             SUM(CASE WHEN json_extract(p.data, '$.translation.kind') = 'omit' THEN 1 ELSE 0 END) AS omitted_pages
+           FROM pdf_pages p JOIN assets a ON a.path = p.file_path
+           GROUP BY p.file_path ORDER BY a.sort_order, a.id`,
           )
           .all()
           .map((row) => [
@@ -303,28 +311,29 @@ export class ProjectDatabase {
               pages: Number(row["pages"]),
               reviewed_pages: Number(row["reviewed_pages"] ?? 0),
               translated_pages: Number(row["translated_pages"]),
+              omitted_pages: Number(row["omitted_pages"]),
             },
           ]),
       ),
     );
   }
 
-  /** 正式文档写入由 ProjectWriteStore 或导入事务调用。 */
-  public write_pdf_document(project_path: string, file_path: string, document: PDFDocument): void {
-    this.with_project_connection(project_path, (db) =>
-      db
-        .prepare(
-          "INSERT INTO pdf_documents(file_path, data) VALUES (?, ?) ON CONFLICT(file_path) DO UPDATE SET data = excluded.data",
-        )
-        .run(file_path, JSON.stringify(read_pdf_document(document))),
-    );
+  /** 页级正式写入仅由 ProjectWriteStore 在复验后调用，事务负责整体回滚。 */
+  public write_pdf_page(project_path: string, file_path: string, page: PDFPage): void {
+    this.with_project_connection(project_path, (db) => {
+      db.prepare("UPDATE pdf_pages SET data = ? WHERE file_path = ? AND page = ?").run(
+        JSON.stringify(page),
+        file_path,
+        page.page,
+      );
+    });
   }
 
-  /** 重置只清空译稿，原稿身份与页面信息继续保留。 */
+  /** 重置清空各页译稿、核对与续做记录，保留原稿身份与页面信息。 */
   public reset_pdf_translations(project_path: string, file_paths: readonly string[]): void {
     this.with_project_connection(project_path, (db) => {
       const statement = db.prepare(
-        "UPDATE pdf_documents SET data = json_set(data, '$.translation', NULL) WHERE file_path = ?",
+        "UPDATE pdf_pages SET data = json_set(data, '$.translation', NULL, '$.reviewed', json('false'), '$.notes', '') WHERE file_path = ?",
       );
       for (const file_path of file_paths) statement.run(file_path);
     });
@@ -333,6 +342,7 @@ export class ProjectDatabase {
   /** PDF 文档与源资产一起删除，调用方负责整个项目写入的事务。 */
   public delete_asset(project_path: string, asset_path: string): void {
     this.with_project_connection(project_path, (db) => {
+      db.prepare("DELETE FROM pdf_pages WHERE file_path = ?").run(asset_path);
       db.prepare("DELETE FROM pdf_documents WHERE file_path = ?").run(asset_path);
       this.remove_asset(project_path, asset_path);
     });

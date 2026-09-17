@@ -16,7 +16,7 @@ export function read_pdf_document(bytes: Uint8Array): PDFDocument {
     const has_labels = !labels.isNull();
     labels.destroy();
     trailer.destroy();
-    const pages: PDFDocument["source"]["pages"] = [];
+    const pages: PDFDocument["pages"] = [];
     for (let index = 0; index < pdf.countPages(); index++) {
       const page = pdf.loadPage(index);
       try {
@@ -27,11 +27,14 @@ export function read_pdf_document(bytes: Uint8Array): PDFDocument {
         rotate.destroy();
         object.destroy();
         pages.push({
-          number: index + 1,
+          page: index + 1,
           width: x1 - x0,
           height: y1 - y0,
           rotation,
           label: has_labels ? page.getLabel() : null,
+          translation: null,
+          reviewed: false,
+          notes: "",
         });
       } finally {
         page.destroy();
@@ -39,8 +42,8 @@ export function read_pdf_document(bytes: Uint8Array): PDFDocument {
     }
     if (pages.length === 0) throw new Error("PDF has no pages.");
     return {
-      source: { digest: createHash("sha256").update(bytes).digest("hex"), pages },
-      translation: null,
+      digest: createHash("sha256").update(bytes).digest("hex"),
+      pages,
     };
   } finally {
     pdf.destroy();
@@ -114,41 +117,41 @@ export type BuildPDFDocumentArgs = {
 /** 以原稿副本为输出，保留原页对象及批注。预览和正式导出共用这个入口。 */
 export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Uint8Array> {
   args.signal?.throwIfAborted();
-  const { source, translation } = args.document;
-  const rendered = translation ? render_pdf_translation(translation, source) : [];
-  if (!translation?.sections.length) return args.source_bytes;
+  const document = args.document;
+  const rendered = render_pdf_translation(document);
+  if (document.pages.every((page) => page.translation === null)) return args.source_bytes;
   const output = new mupdf.PDFDocument(args.source_bytes);
   try {
-    const order: number[] = []; // 组合完成前保存原页索引，最后一次重排保持引用有效。
-    let next_page = 0;
-    for (let index = 0; index < translation.sections.length;) {
+    const order: number[] = []; // 最后一次重排保留原页对象与批注。
+    for (let index = 0; index < document.pages.length;) {
       args.signal?.throwIfAborted();
-      const section = translation.sections[index]!;
-      while (next_page < section.page_start - 1) order.push(next_page++);
-      if (section.kind === "omit") {
-        next_page = section.page_end;
+      const page = document.pages[index]!;
+      const translation = page.translation;
+      if (translation === null) {
+        order.push(index++);
+        continue;
+      }
+      if (translation.kind === "omit" || rendered[index] === null) {
         index++;
         continue;
       }
-      const size = source.pages[section.page_start - 1]!;
-      const group = [rendered[index]!];
-      let end = section.page_end;
-      index++;
-      while (
-        index < translation.sections.length &&
-        translation.sections[index]!.page_start === end + 1
-      ) {
-        const next = translation.sections[index]!;
-        const next_size = source.pages[next.page_start - 1]!;
+      // 有正文才发起打印；空译稿不生成空白页，也不打断兼容的连续正文。
+      const size = page;
+      const group = [rendered[index++]!];
+      while (index < document.pages.length) {
+        const next = document.pages[index]!;
+        if (next.translation?.kind !== "translate") break;
+        if (rendered[index] === null) {
+          index++;
+          continue;
+        }
         if (
-          next.kind !== "translate" ||
-          next_size.width !== size.width ||
-          next_size.height !== size.height ||
-          !isDeepStrictEqual(next.background, section.background)
+          next.width !== size.width ||
+          next.height !== size.height ||
+          !isDeepStrictEqual(next.translation.background, translation.background)
         )
           break;
-        group.push(rendered[index]!);
-        end = translation.sections[index++]!.page_end;
+        group.push(rendered[index++]!);
       }
       const html = await render_pdf_html({
         title: args.title,
@@ -164,12 +167,12 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
       const printed = new mupdf.PDFDocument(bytes);
       const map = output.newGraftMap();
       try {
-        if (section.background) {
+        if (translation.background) {
           const image = new mupdf.Image(
             render_pdf_page(output, {
-              page: section.background.page,
+              page: translation.background.page,
               scale: 2,
-              region: section.background,
+              region: translation.background,
             }),
           );
           try {
@@ -211,9 +214,7 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
         map.destroy();
         printed.destroy();
       }
-      next_page = end;
     }
-    while (next_page < source.pages.length) order.push(next_page++);
     args.signal?.throwIfAborted();
     output.rearrangePages(order);
     // 清除被替换原页的不可达对象，不进行流内容去重或图片重压缩。

@@ -70,7 +70,7 @@ export const en_us_agent_page = {
     tooltip: "Write permission approval mode",
     title: "Writing project data",
     summary: {
-      pdf: "PDF documents {count}",
+      pdf: "PDF {count} pages",
       items: "{count} text entries",
       glossary: "{count} glossary rules",
       text_preserve: "{count} text-preserve rules",

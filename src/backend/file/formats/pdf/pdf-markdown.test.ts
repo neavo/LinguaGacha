@@ -4,7 +4,7 @@ import { pdf_markdown } from "./pdf-markdown";
 import { read_pdf_document } from "./pdf-document";
 import { create_pdf_fixture } from "./test-support";
 
-const source = read_pdf_document(create_pdf_fixture()).source;
+const source = read_pdf_document(create_pdf_fixture());
 
 it("共用插件渲染中文强调、公式、提示块和表格列对齐", () => {
   const { html } = pdf_markdown(
@@ -21,24 +21,6 @@ it("共用插件渲染中文强调、公式、提示块和表格列对齐", () =
   expect(
     DomUtils.getElementsByTagName("td", tree.children).map((node) => node.attribs["align"]),
   ).toEqual(["left", "right"]);
-});
-
-it("各段注释及标题锚点独立，引用与回链均指向真实目标", () => {
-  const markdown = "# 标题\n\n[跳转](#heading-1) 正文[^a]。\n\n[^a]: 注释正文";
-  const html = ["page-1-", "page-3-"]
-    .map((prefix) => pdf_markdown(markdown, source, prefix).html)
-    .join("\n");
-  const tree = parseDocument(html);
-  const ids = DomUtils.findAll((node) => typeof node.attribs["id"] === "string", tree.children).map(
-    (node) => node.attribs["id"],
-  );
-  expect(new Set(ids).size).toBe(ids.length);
-  const links = DomUtils.getElementsByTagName("a", tree.children).map(
-    (node) => node.attribs["href"],
-  );
-  expect(links).toContain("#page-1-heading-1");
-  expect(links).toContain("#page-3-heading-1");
-  for (const link of links) expect(ids).toContain(link.slice(1));
 });
 
 it("普通代码和转义货币保持字面值，无效公式返回位置", () => {

@@ -3,7 +3,7 @@ import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-im
 import type { AgentImage } from "../../../shared/agent-image";
 import { project_workspace_skill } from "./skills";
 import path from "node:path";
-import { pdf_document_fingerprint } from "../../file/formats/pdf/pdf-source";
+import { pdf_document_fingerprint, pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import type { PDFHost } from "../../../shared/pdf";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -352,6 +352,15 @@ export class AgentWorkspaceService {
       files: snapshot_files,
     });
 
+    const pdf_documents = snapshot_files.some((file) => file.file_type === "PDF")
+      ? this.options.database.read_pdf_documents(project_path)
+      : [];
+    const pdf_fingerprints = new Map( // 导出版本与页快照来自同一批文档事实。
+      pdf_documents.map(({ file_path, document }) => [
+        file_path,
+        pdf_document_fingerprint(file_path, document),
+      ]),
+    );
     const project_meta: JsonRecord = {
       ...language,
       counts: {
@@ -362,7 +371,10 @@ export class AgentWorkspaceService {
           QUALITY_RULE_KINDS.map((kind) => [kind, quality_entries[kind].length]),
         ),
       },
-      files,
+      files: files.map((file) => {
+        const pdf_fp = pdf_fingerprints.get(file.file_path);
+        return { ...file, ...(pdf_fp === undefined ? {} : { pdf_fp }) };
+      }),
     };
     await this.clear_snapshot();
     try {
@@ -371,13 +383,14 @@ export class AgentWorkspaceService {
         write_jsonl_file(
           this.native_fs,
           path.join(this.root_path, AGENT_WORKSPACE_PATHS.pdf),
-          snapshot_files.some((file) => file.file_type === "PDF")
-            ? (this.options.database.read_pdf_documents(project_path).map((record) => ({
-                file_path: record.file_path,
-                fp: pdf_document_fingerprint(record.document),
-                ...record.document,
-              })) as unknown as JsonRecord[])
-            : [],
+          pdf_documents.flatMap(({ file_path, document }) =>
+            document.pages.map((page) => ({
+              file_path,
+              fp: pdf_page_fingerprint(file_path, document.digest, page),
+              digest: document.digest,
+              ...page,
+            })),
+          ) as unknown as JsonRecord[],
         ),
         write_json_file(
           this.native_fs,
@@ -529,7 +542,7 @@ export class AgentWorkspaceService {
                   current.projectPath,
                   file_path,
                 );
-                if (!document || pdf_document_fingerprint(document) !== fp)
+                if (!document || pdf_document_fingerprint(file_path, document) !== fp)
                   throw new Error(
                     "PDF document changed. Read the current snapshot before exporting.",
                   );
@@ -594,13 +607,15 @@ export class AgentWorkspaceService {
       try {
         const current: AgentWorkspaceCurrentFacts = {
           items: this.options.cache.items.readItems() as unknown as JsonRecord[],
-          pdf: parsed.batch.pdf.flatMap((intent) => {
-            const document = this.options.database.read_pdf_document(
-              active.projectPath,
-              intent.file_path,
-            );
-            return document ? [{ file_path: intent.file_path, document }] : [];
-          }),
+          pdf: [...new Set(parsed.batch.pdf.map((intent) => intent.file_path))].flatMap(
+            (file_path) => {
+              const document = this.options.database.read_pdf_document(
+                active.projectPath,
+                file_path,
+              );
+              return document ? [{ file_path, document }] : [];
+            },
+          ),
           quality: Object.fromEntries(
             QUALITY_RULE_KINDS.map((kind) => [
               kind,
@@ -954,7 +969,7 @@ function normalize_workspace_rejections(
   const baseline_pdf = drift_candidates.some((rejection) => rejection.scope === "pdf")
     ? new Map(
         read_workspace_jsonl(native_fs, path.join(workspace_path, AGENT_WORKSPACE_PATHS.pdf)).map(
-          (row) => [String(row["file_path"]), String(row["fp"])],
+          (row) => [JSON.stringify([row["file_path"], row["page"]]), String(row["fp"])],
         ),
       )
     : new Map<string, string>();
@@ -967,8 +982,11 @@ function normalize_workspace_rejections(
     if (rejection.reason !== "fp_mismatch" && rejection.reason !== "target_missing")
       return rejection;
     if (rejection.scope === "pdf") {
-      const fp = baseline_pdf.get(String(rejection["file_path"]));
-      const intents = batch.pdf.filter((intent) => intent.file_path === rejection["file_path"]);
+      const fp = baseline_pdf.get(JSON.stringify([rejection["file_path"], rejection["page"]]));
+      const intents = batch.pdf.filter(
+        (intent) =>
+          intent.file_path === rejection["file_path"] && intent.page === rejection["page"],
+      );
       return fp !== undefined && intents.length > 0 && intents.every((intent) => intent.fp === fp)
         ? rejection
         : { ...rejection, reason: "invalid_change" };

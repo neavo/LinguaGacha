@@ -33,10 +33,35 @@ describe("Agent workspace change parser", () => {
         JSON.stringify({ item_id: 2, fp: "ghij", dst: "乙" }),
       ].join("\n"),
     );
+    const page = {
+      file_path: "book.pdf",
+      page: 1,
+      fp: "abcd",
+      translation: null,
+      reviewed: false,
+      notes: "",
+    };
+    write(
+      workspace,
+      AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
+      [page, { ...page, page: 2, reviewed: "invalid" }]
+        .map((row) => JSON.stringify(row))
+        .join("\n"),
+    );
     const parsed = await prepare_agent_workspace_changes({
       nativeFs: new NativeFs(),
       workspacePath: workspace,
     });
+    expect(parsed.batch.pdf).toEqual([{ ...page, line: 1 }]);
+    expect(parsed.rejected).toContainEqual(
+      expect.objectContaining({
+        scope: "pdf",
+        file_path: "book.pdf",
+        page: 2,
+        line: 2,
+        reason: "invalid_change",
+      }),
+    );
     expect(parsed.batch.items.map((row) => row.item_id)).toEqual([1, 2]);
     expect(parsed.rejected).toContainEqual(
       expect.objectContaining({
@@ -180,11 +205,13 @@ describe("Agent workspace change parser", () => {
   });
 });
 
+/** 为解析器建立各类 changes 文件，退出时统一回收。 */
 function create_workspace(): string {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-parser-"));
   workspaces.push(workspace);
   for (const relative of [
     AGENT_WORKSPACE_CHANGE_PATHS.items.updates,
+    AGENT_WORKSPACE_CHANGE_PATHS.pdf.updates,
     AGENT_WORKSPACE_CHANGE_PATHS.prompts.updates,
     ...QUALITY_RULE_KINDS.flatMap((kind) =>
       AGENT_WORKSPACE_QUALITY_CHANGE_OPERATIONS.map((op) => AGENT_WORKSPACE_CHANGE_PATHS[kind][op]),
@@ -197,6 +224,7 @@ function create_workspace(): string {
   return workspace;
 }
 
+/** 保留真实 JSONL 行边界，便于核对拒绝回执的物理行号。 */
 function write(workspace: string, relative: string, value: string): void {
   fs.writeFileSync(path.join(workspace, relative), `${value}\n`, "utf8");
 }

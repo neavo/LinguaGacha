@@ -13,7 +13,10 @@ export const WORKSPACE_HOST_REQUEST_SCHEMA = Type.Union([
     {
       kind: Type.Literal("export_pdf"),
       file_path: Type.String({ minLength: 1 }),
-      fp: Type.String({ minLength: 1, description: "待导出工程文档的当前指纹" }),
+      fp: Type.String({
+        minLength: 1,
+        description: "project_meta.files 中待导出 PDF 的当前 pdf_fp",
+      }),
     },
     { additionalProperties: false },
   ),

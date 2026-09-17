@@ -13,7 +13,7 @@ import { validate_pdf_region } from "./pdf-source";
 export type PDFMarkdown = { html: string; images: Map<string, PDFRegion> };
 
 /** 引用只携带原稿身份与区域，所有消费路径共用相同资源边界。 */
-function read_image_reference(value: string, source: PDFDocument["source"]): PDFRegion {
+function read_image_reference(value: string, source: PDFDocument): PDFRegion {
   const match = /^pdf-image:([a-f0-9]{64})\/(\d+)\/([\d.]+),([\d.]+),([\d.]+),([\d.]+)$/u.exec(
     value,
   );
@@ -31,13 +31,9 @@ function read_image_reference(value: string, source: PDFDocument["source"]): PDF
 }
 
 /** 编译同时执行内容校验，预演、事务提交与输出接受完全相同的 Markdown。 */
-export function pdf_markdown(
-  markdown: string,
-  source: PDFDocument["source"],
-  prefix = "",
-): PDFMarkdown {
+export function pdf_markdown(markdown: string, source: PDFDocument, prefix = ""): PDFMarkdown {
   const images = new Map<string, PDFRegion>();
-  let heading = 0; // 沿用段内标题序号锚点，注释标题不占用正文序号。
+  let heading = 0; // 沿用页内标题序号锚点，注释标题不占用正文序号。
   const processor = unified()
     .use(remarkParse)
     .use(MARKDOWN_CJK.remarkPluginsBefore)

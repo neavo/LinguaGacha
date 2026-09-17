@@ -24,6 +24,7 @@ function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
+/** 登记真实连接，由 afterEach 先关闭再删除临时目录。 */
 function create_database(): ProjectDatabase {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
@@ -513,20 +514,15 @@ it("PDF 源文件在解析后变化时导入事务保留旧资产和译稿", asy
   expect(database.read_pdf_document(lg_path, "book.pdf")).toEqual(document);
 });
 
-it("PDF 摘要只将翻译段计入已翻译页，省略页保留独立语义", () => {
+it("PDF 摘要只将译稿页面计入已翻译页，省略页保留独立语义", () => {
   const { database, lg_path } = create_database_project("pdf-summary");
   const source = project_path("summary.pdf");
   const bytes = create_pdf_fixture();
   fs.writeFileSync(source, bytes);
   const document = read_pdf_document(bytes);
-  document.translation = {
-    sections: [
-      { kind: "translate", page_start: 1, page_end: 1, markdown: "正文" },
-      { kind: "omit", page_start: 2, page_end: 2, reason: "装饰页" },
-    ],
-    reviewed_pages: [1, 2],
-    notes: "",
-  };
+  document.pages[0]!.translation = { kind: "translate", markdown: "正文" };
+  document.pages[1]!.translation = { kind: "omit", reason: "装饰页" };
+  document.pages[0]!.reviewed = document.pages[1]!.reviewed = true;
   database.transaction(lg_path, () =>
     database.add_asset_from_source(lg_path, "summary.pdf", source, document, 0),
   );
@@ -534,5 +530,6 @@ it("PDF 摘要只将翻译段计入已翻译页，省略页保留独立语义", 
     pages: 3,
     reviewed_pages: 2,
     translated_pages: 1,
+    omitted_pages: 1,
   });
 });

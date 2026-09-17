@@ -240,14 +240,12 @@ describe("ProjectContentService", () => {
         "story.txt": { file_type: "TXT" },
       });
       const old = database.read_pdf_document(lg_path, "book.pdf")!;
-      const translation = {
-        sections: [
-          { kind: "translate" as const, page_start: 1, page_end: 1, markdown: "已有译文" },
-        ],
-        reviewed_pages: [1],
+      const update = {
+        translation: { kind: "translate" as const, markdown: "已有译文" },
+        reviewed: true,
         notes: "继续",
       };
-      database.write_pdf_document(lg_path, "book.pdf", { ...old, translation });
+      database.write_pdf_page(lg_path, "book.pdf", { ...old.pages[0]!, ...update });
       fs.writeFileSync(source, create_pdf_fixture(["replacement"]));
       await service.import_files({
         files: [{ source_path: source, target_rel_path: "book.pdf" }],
@@ -255,12 +253,16 @@ describe("ProjectContentService", () => {
         expected_section_revisions: revisions(),
       });
       const next = database.read_pdf_document(lg_path, "book.pdf")!;
-      expect(next.translation).toBeNull();
-      expect(next.source.digest).not.toBe(old.source.digest);
-      expect(next.source.pages).toHaveLength(1);
-      database.write_pdf_document(lg_path, "book.pdf", { ...next, translation });
+      expect(next.pages[0]).toMatchObject({ translation: null, reviewed: false, notes: "" });
+      expect(next.digest).not.toBe(old.digest);
+      expect(next.pages).toHaveLength(1);
+      database.write_pdf_page(lg_path, "book.pdf", { ...next.pages[0]!, ...update });
       await service.reset_translation({ mode: "all" });
-      expect(database.read_pdf_document(lg_path, "book.pdf")?.translation).toBeNull();
+      expect(database.read_pdf_document(lg_path, "book.pdf")?.pages[0]).toMatchObject({
+        translation: null,
+        reviewed: false,
+        notes: "",
+      });
       expect(database.get_item_count(lg_path)).toBe(1);
     } finally {
       database.close();

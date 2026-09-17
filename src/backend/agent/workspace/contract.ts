@@ -118,7 +118,7 @@ export const AGENT_WORKSPACE_CONTRACT = Object.freeze({
       format: "jsonl",
       schema: schema_record(PDF_WORKSPACE_SCHEMA),
       purpose:
-        "每份 PDF 的 file_path、fp、source 和 translation。完整译稿修改通过 changes.pdf 提交。",
+        "每行一个原稿页，含 file_path、page、页指纹 fp、digest、尺寸、译稿、reviewed 与 notes。changes.pdf 完整替换单页可修改内容。整份导出指纹读取 project_meta.files[].pdf_fp。",
     },
     project_meta: {
       path: AGENT_WORKSPACE_PATHS.projectMeta,

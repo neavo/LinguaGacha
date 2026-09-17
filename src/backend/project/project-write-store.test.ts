@@ -1,6 +1,6 @@
 import { read_pdf_document } from "../file/formats/pdf/pdf-document";
 import { create_pdf_fixture } from "../file/formats/pdf/test-support";
-import { pdf_document_fingerprint } from "../file/formats/pdf/pdf-source";
+import { pdf_page_fingerprint } from "../file/formats/pdf/pdf-source";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,21 +49,15 @@ describe("ProjectWriteStore", () => {
     });
     const batch = {
       ...create_empty_agent_workspace_intent_batch(),
-      pdf: [
-        {
-          file_path: "book.pdf",
-          fp: pdf_document_fingerprint(document),
-          line: 1,
-          translation_path: "work/draft.json",
-          translation: {
-            sections: [
-              { kind: "translate" as const, page_start: 1, page_end: 1, markdown: "草稿" },
-            ],
-            reviewed_pages: [1],
-            notes: "继续第 2 页",
-          },
-        },
-      ],
+      pdf: document.pages.slice(0, 2).map((page) => ({
+        file_path: "book.pdf",
+        page: page.page,
+        fp: pdf_page_fingerprint("book.pdf", document.digest, page),
+        line: page.page,
+        translation: { kind: "translate" as const, markdown: "草稿" },
+        reviewed: true,
+        notes: "继续第 3 页",
+      })),
     };
     await expect(
       store.apply_agent_workspace_changes({
@@ -788,6 +782,7 @@ describe("ProjectWriteStore", () => {
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译正文");
   });
 
+  /** 每例持有独立数据库与事件记录，并统一登记资源清理。 */
   function create_store(
     name: string,
     options: {
@@ -825,6 +820,7 @@ describe("ProjectWriteStore", () => {
     };
   }
 
+  /** 从提交后的元数据组装事件，供用例观察 revision 与实际写入的一致性。 */
   function create_project_change_publisher(
     database: ProjectDatabase,
     project_path: string,
@@ -919,6 +915,7 @@ describe("ProjectWriteStore", () => {
     return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
   }
 
+  /** 通过正式资产导入入口落盘，保持文件集合与来源读取一致。 */
   function add_test_asset(
     database: ProjectDatabase,
     project_path: string,

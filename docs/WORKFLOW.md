@@ -63,6 +63,6 @@ Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`�
 
 `src/backend/agent/workspace/runtime/bootstrap.test.ts` 在仓库外的独立目录使用生产构建与 Electron 验证标准 npm 导入、真实程序入口、自然退出、文件权限、IPC、网页流读取与取消。发布资产或入口定位变化时，以 `LINGUAGACHA_TEST_ELECTRON` 和 `LINGUAGACHA_TEST_WORKSPACE_RUNTIME` 指定发行包可执行文件和运行目录，复用该集成入口验证部署产物。
 
-PDF 变更按风险运行 `formats/pdf/`、`pdf-document-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启；`src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。Workspace bootstrap 集成验证技能模块的只读投影、npm / WASM 导入与宿主 IPC。真实模型质量另以有界样本运行记录验证。
+PDF 变更按风险运行 `formats/pdf/`、`pdf-page-write`、工作区 `service.integration.test.ts` 与数据库、`ProjectWriteStore` 的来源及事务测试。`pdf-worker.test.ts` 验证独立部署线程的计算、打印回调、取消与重启；`src/native/pdf-host.test.ts` 验证真实 Electron 打印和取消，`LINGUAGACHA_PDF_QA_DIR` 可保留产物供视觉检查。Workspace bootstrap 集成验证技能模块的只读投影、npm / WASM 导入与宿主 IPC。真实模型质量另以有界样本运行记录验证。
 
 构建或发布资产变化时，核对 Electron locale 与 `LOCALES` 一致，并按 [AGENT_RUNTIME](AGENT_RUNTIME.md) 的部署契约检查 Workspace 产物。入口或运行目录定位变化运行 `src/native/workspace-runtime.test.ts`；依赖部署变化运行 `buildtools/workspace-dependencies.test.mjs`，并复用上述仓库外 Electron 集成验证。涉及平台启动器时测试并构建对应 Go module。

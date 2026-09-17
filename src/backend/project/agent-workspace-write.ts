@@ -1,6 +1,6 @@
-import type { PDFDocumentRecord } from "../../shared/pdf";
+import type { PDFDocumentRecord, PDFPageRecord } from "../../shared/pdf";
 import type { PDFUpdateIntent } from "../file/formats/pdf/pdf-source";
-import { resolve_pdf_updates } from "./pdf-document-write";
+import { resolve_pdf_updates } from "./pdf-page-write";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
@@ -126,7 +126,7 @@ export type AgentWorkspacePromptWrite = Readonly<{
 }>;
 
 export type AgentWorkspaceWriteResolution = Readonly<{
-  pdfChanges: PDFDocumentRecord[];
+  pdfChanges: PDFPageRecord[];
   itemChanges: ProjectItemWriteChange[];
   qualityChanges: AgentWorkspaceQualityWrite[];
   promptChanges: AgentWorkspacePromptWrite[];
