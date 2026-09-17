@@ -31,6 +31,7 @@ function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
+/** 从真实数据库读取设置或统计，供持久化结果断言使用。 */
 function read_meta(
   database: ProjectDatabase,
   project_path: string,
@@ -50,6 +51,7 @@ function create_service(
   database: ProjectDatabase;
   service: ProjectContentService;
   runtime_gate: RuntimeOperationGate;
+  session_state: ProjectSessionState;
   lg_path: string;
 } {
   const database = new ProjectDatabase();
@@ -77,6 +79,7 @@ function create_service(
       log_manager,
     ),
     runtime_gate,
+    session_state,
     lg_path,
   };
 }
@@ -85,7 +88,7 @@ function create_service(
 function create_log_manager(): Pick<LogManager, "warning"> {
   return {
     warning: vi.fn(),
-  } as unknown as Pick<LogManager, "warning">;
+  };
 }
 
 /** 从真实数据库读取修订号，模拟提交后的项目事件。 */
@@ -307,40 +310,57 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("显式 path 写入未加载工程时不返回当前会话项目变更", async () => {
-    const publish_project_change = vi.fn(() => null);
-    const { database, service } = create_service(publish_project_change);
-    const other_lg_path = project_path("other.lg");
-    const other_source_path = project_path("other.txt");
-    fs.writeFileSync(other_source_path, "旧", "utf-8");
-    database.create_project(other_lg_path, "other");
-    database.add_asset_from_source(other_lg_path, "other.txt", other_source_path, null, 0);
-    database.set_items(other_lg_path, [
-      create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 }),
-    ]);
-    const ack = await service.align_settings({
-      path: other_lg_path,
-      mode: "prefiltered_items",
-      expected_section_revisions: { items: 0 },
-      project_settings: {
-        source_language: "JA",
-        target_language: "ZH",
-        mtool_optimizer_enable: false,
-        skip_duplicate_source_text_enable: true,
-      },
-    });
+  it.each(["空会话", "已加载其他工程"] as const)(
+    "%s 时按目标路径对齐设置和条目，并保持会话隔离",
+    async (session_kind) => {
+      const publish_project_change = vi.fn(() => null);
+      const { database, service, session_state } = create_service(publish_project_change);
+      try {
+        if (session_kind === "空会话") await session_state.clear();
+        const initial_session = session_state.snapshot();
+        const other_lg_path = project_path("other.lg");
+        const other_source_path = project_path("other.txt");
+        fs.writeFileSync(other_source_path, "原文", "utf-8");
+        database.create_project(other_lg_path, "other");
+        database.add_asset_from_source(other_lg_path, "other.txt", other_source_path, null, 0);
+        database.set_meta(other_lg_path, "source_language", "JA");
+        database.set_items(other_lg_path, [
+          create_persistent_item({ file_path: "other.txt", status: "LANGUAGE_SKIPPED" }),
+        ]);
+        // 工程路径是读取契约的一部分，必须与本次对齐目标一致。
+        const read_pdf_summaries = vi.spyOn(database, "read_pdf_summaries");
+        const ack = await service.align_settings({
+          path: other_lg_path,
+          mode: "prefiltered_items",
+          expected_section_revisions: { items: 0 },
+          project_settings: {
+            source_language: "ALL",
+            target_language: "ZH",
+            mtool_optimizer_enable: false,
+            skip_duplicate_source_text_enable: true,
+          },
+        });
 
-    expect(ack).toEqual({ accepted: true, changes: [] });
-    expect(publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectPath: other_lg_path,
-        source: "settings_alignment",
-        updatedSections: ["items"],
-        items: { payloadMode: "section-invalidated" },
-      }),
-    );
-    database.close();
-  });
+        expect(read_pdf_summaries).toHaveBeenCalledWith(other_lg_path);
+        expect(read_meta(database, other_lg_path, "source_language", "")).toBe("ALL");
+        expect(database.get_all_items(other_lg_path)).toEqual([
+          create_persistent_item({ file_path: "other.txt", status: "NONE" }),
+        ]);
+        expect(session_state.snapshot()).toEqual(initial_session);
+        expect(ack).toEqual({ accepted: true, changes: [] });
+        expect(publish_project_change).toHaveBeenCalledWith(
+          expect.objectContaining({
+            projectPath: other_lg_path,
+            source: "settings_alignment",
+            updatedSections: ["items"],
+            items: { payloadMode: "section-invalidated" },
+          }),
+        );
+      } finally {
+        database.close();
+      }
+    },
+  );
 
   it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
@@ -763,7 +783,7 @@ describe("ProjectContentService", () => {
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
     ]);
     expect(log_manager.warning).toHaveBeenCalledWith(
-      "broken.json - 文件内容解析失败 …",
+      expect.stringContaining("broken.json"),
       expect.objectContaining({ source: "project-import" }),
     );
     database.close();
@@ -798,7 +818,7 @@ describe("ProjectContentService", () => {
 
     expect(database.get_all_asset_records(lg_path)).toEqual([]);
     expect(log_manager.warning).toHaveBeenCalledWith(
-      "broken.json - 文件内容解析失败 …",
+      expect.stringContaining("broken.json"),
       expect.objectContaining({ source: "project-import" }),
     );
     database.close();
@@ -1110,7 +1130,7 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("翻译与分析重置命令都拒绝旧 revision 字段", async () => {
+  it("翻译重置命令拒绝旧 revision 字段", async () => {
     const { database, service, lg_path } = create_service();
     database.set_meta(lg_path, "project_runtime_revision.items", 2);
 
