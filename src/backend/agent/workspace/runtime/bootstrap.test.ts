@@ -1,5 +1,3 @@
-import { project_workspace_skill } from "../skills";
-import { default_native_fs } from "../../../../native/native-fs";
 import type { WorkspaceHostPort } from "./host-contract";
 import type { AgentWorkspaceRunRequest } from "./runner";
 import { execFileSync } from "node:child_process";
@@ -8,11 +6,18 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { AGENT_WORKSPACE_CONTRACT } from "../contract";
 import { AgentWorkspaceRunner, AgentWorkspaceRunError, type AgentWorkspaceOutput } from "./runner";
 import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import { create_pdf_fixture } from "../../../file/formats/pdf/test-support";
+import { BackendResources } from "../../../bootstrap/backend-resources";
+import { BackendServices } from "../../../bootstrap/backend-services";
+import { AgentWorkspaceService } from "../service";
+import { createPackage } from "@electron/asar";
+import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
+import type { AgentWorkspaceRuntimeParentMessage } from "./protocol";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -21,6 +26,10 @@ let root = "";
 let runtime = "";
 let workspace = "";
 let sequence = 0;
+const skill_paths = {
+  get_agent_user_skill_dir: () => path.join(root, "user skills # %"),
+  get_agent_builtin_skill_dir: () => path.join(root, "内置 skills"),
+};
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "linguagacha-node-"));
@@ -120,24 +129,33 @@ it("权限模式直接导入 MuPDF WASM 和 Markdown npm 包", async () => {
   expect(JSON.stringify(output_content(result.execution.stdout))).toContain("heading");
 });
 
-it("只读技能模块可导入 npm 与应用模板，并通过 IPC 调用宿主", async () => {
-  await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
-  await writeFile(
-    path.join(workspace, "work/printed.pdf"),
-    create_pdf_fixture(["Printed fixture"]),
-  );
-  const source = path.join(root, "skill-fixture");
-  await mkdir(path.join(source, "scripts"), { recursive: true });
-  await writeFile(
-    path.join(source, "scripts/entry.mjs"),
-    `
+it.each(["user", "builtin"])(
+  "%s 原目录技能直接导入相对模块、npm 与应用模板，并通过 IPC 调用宿主",
+  async (kind) => {
+    await writeFile(path.join(workspace, "work/source.pdf"), create_pdf_fixture());
+    await writeFile(
+      path.join(workspace, "work/printed.pdf"),
+      create_pdf_fixture(["Printed fixture"]),
+    );
+    const source = path.join(
+      kind === "user"
+        ? skill_paths.get_agent_user_skill_dir()
+        : skill_paths.get_agent_builtin_skill_dir(),
+      "fixture",
+    );
+    await mkdir(path.join(source, "scripts"), { recursive: true });
+    await writeFile(path.join(source, "scripts/helper.mjs"), "export const title = 'fixture';");
+    await writeFile(
+      path.join(source, "scripts/entry.mjs"),
+      `
     import { unified } from 'unified';
     import remarkParse from 'remark-parse';
     import { build_pdf_document } from '@lg/pdf';
     import { readFile, writeFile } from 'node:fs/promises';
+    import { title } from './helper.mjs';
     export async function inspect() {
       const bytes = await build_pdf_document({
-        title:'fixture', source_bytes: new Uint8Array(await readFile('work/source.pdf')),
+        title, source_bytes: new Uint8Array(await readFile('work/source.pdf')),
         document:{digest:'a'.repeat(64),pages:[1,2,3].map(page=>({page,width:300,height:300,rotation:0,label:null,translation:page===2?{kind:'translate',markdown:'# fixture'}:null,reviewed:false,notes:''}))},
         print:async html => new Uint8Array(await readFile((await ws.host({kind:'print_pdf',html})).path)),
       });
@@ -145,33 +163,192 @@ it("只读技能模块可导入 npm 与应用模板，并通过 IPC 调用宿主
       return {type:unified().use(remarkParse).parse('# fixture').children[0].type,path:'work/fixture.pdf'};
     }
   `,
-  );
-  project_workspace_skill(default_native_fs, workspace, "fixture", source);
-  const result = await run(
-    `
-    import {inspect} from '../../skills/fixture/scripts/entry.mjs';
+    );
+    const entry_url = pathToFileURL(path.join(source, "scripts/entry.mjs")).href;
+    const result = await run(
+      `
+    const {inspect} = await import(${JSON.stringify(entry_url)});
     import {writeFile} from 'node:fs/promises';
     const result = await inspect();
-    try { await writeFile('skills/fixture/scripts/entry.mjs', 'changed'); throw new Error('write allowed'); }
+    try { await writeFile(new URL(${JSON.stringify(entry_url)}), 'changed'); throw new Error('write allowed'); }
     catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; }
     console.log(JSON.stringify(result));
   `,
-    undefined,
-    undefined,
-    async (request) => {
-      expect(request.kind).toBe("print_pdf");
-      if (request.kind === "print_pdf") expect(request.html).toContain("fixture");
-      return { path: "work/printed.pdf" };
+      undefined,
+      undefined,
+      async (request) => {
+        expect(request.kind).toBe("print_pdf");
+        if (request.kind === "print_pdf") expect(request.html).toContain("fixture");
+        return { path: "work/printed.pdf" };
+      },
+    ).catch((error: unknown) => {
+      if (error instanceof AgentWorkspaceRunError)
+        throw new Error(JSON.stringify(error.execution), { cause: error });
+      throw error;
+    });
+    expect(output_content(result.execution.stdout)).toEqual({
+      type: "heading",
+      path: "work/fixture.pdf",
+    });
+  },
+);
+
+it("发布态 ASAR 技能在原目录授权下导入脚本、资源和预装依赖", async () => {
+  const directory = await mkdtemp(path.join(root, "asar-"));
+  const source = path.join(directory, "source");
+  const skill = path.join(source, "builtin/agent/skill/fixture");
+  await mkdir(skill, { recursive: true });
+  await writeFile(path.join(skill, "asset.txt"), "原包资源");
+  await writeFile(path.join(skill, "helper.mjs"), "export const heading = '# fixture';");
+  await writeFile(
+    path.join(skill, "entry.mjs"),
+    `
+    import { readFile, writeFile } from 'node:fs/promises';
+    import { unified } from 'unified';
+    import remarkParse from 'remark-parse';
+    import { heading } from './helper.mjs';
+    const asset = new URL('./asset.txt', import.meta.url);
+    let denied = false;
+    try { await writeFile(asset, 'changed'); }
+    catch(error) { if(error.code !== 'ERR_ACCESS_DENIED') throw error; denied = true; }
+    console.log(JSON.stringify({
+      text: await readFile(asset, 'utf8'), denied,
+      type: unified().use(remarkParse).parse(heading).children[0].type,
+      worker: import.meta.resolve('@lg/pdf/worker').endsWith('/worker.mjs'),
+    }));
+  `,
+  );
+  const archive = path.join(directory, "app.asar");
+  await createPackage(source, archive);
+  const skill_root = path.join(archive, "builtin/agent/skill");
+  const start: AgentWorkspaceRuntimeParentMessage = {
+    type: "start",
+    todos: [],
+    skillRoots: [pathToFileURL(skill_root + path.sep).href],
+  };
+  // 普通 Node 测试宿主不识别 ASAR。由真实 Electron 加载生产 bootstrap，重放父进程初始化消息。
+  const output = execFileSync(
+    electron_path,
+    [
+      "--permission",
+      `--allow-fs-read=${skill_root}`,
+      `--allow-fs-read=${workspace}`,
+      `--allow-fs-read=${runtime}`,
+      "--preserve-symlinks",
+      "--preserve-symlinks-main",
+      "--input-type=module",
+      "-e",
+      `
+      setImmediate(() => process.emit('message', ${JSON.stringify(start)}));
+      await import(${JSON.stringify(pathToFileURL(resolve_workspace_runtime_entry(runtime, "@lg/workspace/bootstrap")).href)});
+      await import(${JSON.stringify(pathToFileURL(path.join(skill_root, "fixture/entry.mjs")).href)});
+    `,
+    ],
+    {
+      cwd: workspace,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "" },
+      windowsHide: true,
+      encoding: "utf8",
+      timeout: RUN_TIMEOUT_MS,
+      stdio: "pipe",
     },
-  ).catch((error: unknown) => {
-    if (error instanceof AgentWorkspaceRunError)
-      throw new Error(JSON.stringify(error.execution), { cause: error });
-    throw error;
-  });
-  expect(output_content(result.execution.stdout)).toEqual({
+  );
+  expect(JSON.parse(output)).toEqual({
+    text: "原包资源",
+    denied: true,
     type: "heading",
-    path: "work/fixture.pdf",
+    worker: true,
   });
+});
+
+it("直接执行技能、apply、再次执行和重置均读取原包当前文件", async () => {
+  const app_root = await mkdtemp(path.join(root, "lifecycle-"));
+  await writeFile(path.join(app_root, "version.txt"), "0.0.0");
+  const source = path.join(app_root, "source.txt");
+  await writeFile(source, "Hello world.");
+  const resources = await BackendResources.start({
+    appRoot: app_root,
+    builtinRoot: path.join(app_root, "builtin"),
+    logTargets: { console: false, window: false },
+    systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+  });
+  const services = new BackendServices({
+    paths: resources.paths,
+    metadata: resources.metadata,
+    appSettingService: resources.settings,
+    database: resources.database,
+    logManager: resources.logManager,
+    publishEvent: () => {},
+    openOutputFolder: async () => {},
+    workerExecution: { kind: "in_process" },
+  });
+  try {
+    await services.project.lifecycle.create_project_commit({
+      path: path.join(app_root, "project.lg"),
+      source_paths: [source],
+      project_settings: { source_language: "EN", target_language: "ZH" },
+    });
+    const runner = new AgentWorkspaceRunner({
+      paths: resources.paths,
+      executablePath: electron_path,
+      runtimeDirectory: runtime,
+      systemProxyResolver: { resolveProxy: async () => "DIRECT" },
+    });
+    const service = new AgentWorkspaceService({
+      images: {
+        prepare: async () => {
+          throw new Error("Unexpected image");
+        },
+      },
+      paths: resources.paths,
+      settings: resources.settings,
+      sessionState: services.state.session,
+      cache: services.state.cache,
+      proofreading: services.proofreading.query,
+      database: resources.database,
+      runtimeGate: { run_agent_project_write: async (operation) => operation() },
+      writeStore: services.state.writes,
+      logManager: resources.logManager,
+      run: runner.run.bind(runner),
+      runtimeDirectory: runtime,
+      openDirectory: async () => {},
+      pickSavePath: async () => null,
+    });
+    await service.initialize();
+    // 两个空根先运行一次，后续新增文件在下一 run 自然可读。
+    await service.run("console.log('ready');", [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    const entry = path.join(resources.paths.get_agent_user_skill_dir(), "fixture", "entry.mjs");
+    await mkdir(path.dirname(entry), { recursive: true });
+    // 原包替换正文，下一进程必须看到新版本；apply 使用真实工程写入口。
+    const module_body = (value: string) => `
+      import { readFile, writeFile } from 'node:fs/promises';
+      export async function update() {
+        const row = JSON.parse((await readFile(ws.contract.datasets.items.path, 'utf8')).trim().split('\\n')[0]);
+        const dst = ${JSON.stringify(value)};
+        await writeFile(ws.contract.changes.items.updates.path, JSON.stringify({item_id:row.item_id,fp:row.fp,dst}));
+        console.log(JSON.stringify({before:row.dst,after:dst}));
+      }
+    `;
+    await writeFile(entry, module_body("第一版"));
+    const script = `const {update} = await import(${JSON.stringify(pathToFileURL(entry).href)}); await update();`;
+    await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    expect(await service.apply_workspace(async () => {})).toMatchObject({ status: "applied" });
+    expect(services.state.cache.items.readItems()[0]?.dst).toBe("第一版");
+    await writeFile(entry, module_body("第二版"));
+    const result = await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS));
+    expect(result.execution.stdout).toMatchObject({
+      content: { before: "第一版", after: "第二版" },
+    });
+    await service.reset_workspace();
+    expect(
+      (await service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS))).execution.stdout,
+    ).toMatchObject({ content: { before: "第一版", after: "第二版" } });
+    await unlink(entry);
+    await expect(service.run(script, [], AbortSignal.timeout(RUN_TIMEOUT_MS))).rejects.toThrow();
+  } finally {
+    await services.dispose();
+    await resources.dispose();
+  }
 });
 
 it("超额输出完整落盘，主动错误输出与未捕获异常都保留", async () => {
@@ -375,6 +552,7 @@ it.each([false, true])(
     `,
       );
       const result = await new AgentWorkspaceRunner({
+        paths: skill_paths,
         executablePath: electron_path,
         runtimeDirectory: runtime_link,
         systemProxyResolver: { resolveProxy: async () => "DIRECT" },
@@ -433,6 +611,7 @@ async function run(
   const scriptPath = `${AGENT_WORKSPACE_RUN_ROOT}/task-${++sequence}.mjs`;
   await writeFile(path.join(workspace, scriptPath), script);
   return await new AgentWorkspaceRunner({
+    paths: skill_paths,
     executablePath: electron_path,
     runtimeDirectory: runtime,
     systemProxyResolver: { resolveProxy },

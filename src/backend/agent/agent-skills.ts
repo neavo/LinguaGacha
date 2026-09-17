@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   BACKGROUND_CONTEXT,
@@ -43,7 +44,7 @@ type AgentSkillCatalogDefinition = Pick<
   AgentSkillDefinition,
   "name" | "description" | "disableModelInvocation"
 >;
-type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "content">;
+type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "content" | "filePath">;
 
 export type AgentSkillLog = Pick<LogManager, "error" | "warning">;
 type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
@@ -127,9 +128,14 @@ export function format_agent_skills_for_system_prompt(
   ].join("\n");
 }
 
-/** 显式 marker 直接注入完整正文，不再附带 SDK 的第二套路由说明。 */
+/** 技能地址始终指向原包根目录，供正文注入与资源读取共用。 */
+export function agent_skill_base_url(file_path: string): string {
+  return pathToFileURL(path.dirname(file_path) + path.sep).href;
+}
+
+/** 显式 marker 提供正文和原包地址，脚本可直接执行。 */
 export function format_agent_skill_invocation(skill: AgentSkillInvocationDefinition): string {
-  return `<skill name="${escape_agent_skill_xml(skill.name)}">\n${skill.content}\n</skill>`;
+  return `<skill name="${escape_agent_skill_xml(skill.name)}" base_url="${escape_agent_skill_xml(agent_skill_base_url(skill.filePath))}">\n${skill.content}\n</skill>`;
 }
 
 /** 只转义 XML 结构字段；skill 正文保持原始 Markdown。 */

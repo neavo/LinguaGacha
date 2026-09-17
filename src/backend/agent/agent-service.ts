@@ -1123,12 +1123,7 @@ export class AgentService {
           todo: this.todo_port(),
           approval: this.workspace_approval_port(),
         }),
-        ...create_agent_skill_tools(
-          resources.skills,
-          this.paths,
-          this.log_manager,
-          (name, source) => this.workspace.mount_skill(name, source),
-        ),
+        ...create_agent_skill_tools(resources.skills, this.paths, this.log_manager),
         ...(this.web_search === undefined ? [] : [create_agent_web_search_tool(this.web_search)]),
       ].map((tool) => prepare_agent_tool(tool, this.log_manager)),
       resourceLoader: resource_loader,

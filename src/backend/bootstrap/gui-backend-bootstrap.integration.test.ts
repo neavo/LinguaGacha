@@ -1,7 +1,4 @@
-import {
-  workspace_execution,
-  create_workspace_runtime_fixture,
-} from "../../test/agent-workspace-fixture";
+import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fixture";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,10 +38,6 @@ describe("GuiBackendBootstrap 集成", () => {
       },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
-      agentWorkspaceRun: async (request) => ({
-        execution: workspace_execution(),
-        todos: [...request.todos],
-      }),
       openDirectory: async () => undefined,
       pickSavePath: async () => null,
       workerExecution: { kind: "in_process" },
@@ -101,10 +94,6 @@ describe("GuiBackendBootstrap 集成", () => {
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
-      agentWorkspaceRun: async (input) => ({
-        execution: workspace_execution(),
-        todos: [...input.todos],
-      }),
       openDirectory: async () => undefined,
       pickSavePath: async () => null,
       workerExecution: { kind: "in_process" },
@@ -159,10 +148,6 @@ describe("GuiBackendBootstrap 集成", () => {
       logTargets: { console: false, window: false },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
-      agentWorkspaceRun: async (request) => ({
-        execution: workspace_execution(),
-        todos: [...request.todos],
-      }),
       openDirectory: open_directory,
       pickSavePath: pick_save_path,
       workerExecution: { kind: "in_process" },

@@ -57,7 +57,10 @@ afterEach(() => {
 describe("AgentWorkspaceRunner", () => {
   it("两路文件始终建立，正常退出后结算 Todo 并关闭句柄", async () => {
     const { child, result } = await start_run();
-    expect(child.send).toHaveBeenCalledWith({ type: "start", todos: [] }, expect.any(Function));
+    expect(child.send).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "start", todos: [] }),
+      expect.any(Function),
+    );
     child.emit("message", { type: "todos", todos: ["核验结果"] });
     child.emit("close", 0);
     await expect(result).resolves.toMatchObject({
@@ -287,6 +290,10 @@ function build_runner(
   resolveProxy: (url: string, signal?: AbortSignal) => Promise<string> = async () => "DIRECT",
 ) {
   return new AgentWorkspaceRunner({
+    paths: {
+      get_agent_user_skill_dir: () => path.join(directory, "user-skills"),
+      get_agent_builtin_skill_dir: () => path.join(directory, "builtin-skills"),
+    },
     runtimeDirectory: directory,
     systemProxyResolver: { resolveProxy },
   });

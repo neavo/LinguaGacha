@@ -949,7 +949,7 @@ describe("AgentService", () => {
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
     expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
-    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill">');
+    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill" base_url="file:');
   });
 
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
@@ -1888,7 +1888,6 @@ describe("AgentService", () => {
   it("Electron 工作区端口随工具注册，并区分会话与工程 reset", async () => {
     const workspace = {
       initialize: vi.fn(async () => undefined),
-      mount_skill: vi.fn(async (name: string) => `skills/${name}`),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
       invalidate_links: vi.fn(),
       reset_workspace: vi.fn(async () => undefined),
@@ -3124,7 +3123,6 @@ describe("AgentService", () => {
       workspace ??
       ({
         initialize: vi.fn(async () => undefined),
-        mount_skill: vi.fn(async (name: string) => `skills/${name}`),
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
         invalidate_links: vi.fn(),
         reset_workspace: vi.fn(async () => undefined),

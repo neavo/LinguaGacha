@@ -1,7 +1,6 @@
 import { create_workspace_host } from "./host";
 import { AGENT_IMAGE_INPUT_MAX_BYTES, type AgentImageService } from "../agent-image-service";
 import type { AgentImage } from "../../../shared/agent-image";
-import { project_workspace_skill } from "./skills";
 import path from "node:path";
 import { pdf_document_fingerprint, pdf_page_fingerprint } from "../../file/formats/pdf/pdf-source";
 import type { PDFHost } from "../../../shared/pdf";
@@ -281,13 +280,6 @@ export class AgentWorkspaceService {
     this.native_fs.create_directory_link(
       this.native_fs.real_path(path.join(this.options.runtimeDirectory, "node_modules")),
       path.join(this.root_path, "node_modules"),
-    );
-  }
-
-  /** read_skill 选定并校验包身份后投影，重读时刷新副本。 */
-  public async mount_skill(name: string, source: string): Promise<string> {
-    return await this.exclusive(async () =>
-      project_workspace_skill(this.native_fs, this.root_path, name, source),
     );
   }
 
@@ -688,10 +680,6 @@ export class AgentWorkspaceService {
 
   /** 显式 Agent reset 销毁当前快照和工作材料目录，同一工程会话继续复用源文件投影。 */
   public async reset_workspace(): Promise<void> {
-    await this.native_fs.remove_async(path.join(this.root_path, "skills"), {
-      recursive: true,
-      force: true,
-    });
     this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
@@ -699,10 +687,6 @@ export class AgentWorkspaceService {
 
   /** 工程切换先销毁旧投影；非空路径表示为当前工程立即生成 sources。 */
   public async reset_project(project_path: string | null): Promise<void> {
-    await this.native_fs.remove_async(path.join(this.root_path, "skills"), {
-      recursive: true,
-      force: true,
-    });
     this.invalidate_links();
     await this.clear_snapshot();
     await this.discard_work();
@@ -889,7 +873,6 @@ export type AgentWorkspacePort = Pick<
   AgentWorkspaceService,
   | "initialize"
   | "run"
-  | "mount_skill"
   | "apply_workspace"
   | "reset_workspace"
   | "reset_project"

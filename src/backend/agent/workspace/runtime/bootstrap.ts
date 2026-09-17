@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { isBuiltin, registerHooks } from "node:module";
 
 import { is_json_record, type JsonRecord } from "../../../../domain/json";
 import { iterate_utf8_lf_lines } from "../../../../shared/utils/text-tool";
@@ -22,6 +23,24 @@ const start = await new Promise<Extract<AgentWorkspaceRuntimeParentMessage, { ty
     process.once("disconnect", () => process.exit(1));
   },
 );
+registerHooks({
+  /** bootstrap 已位于部署依赖树，仅将技能的 npm 导入基准移至此处，其余解析交给 Node。 */
+  resolve(specifier, context, nextResolve) {
+    const parent_url = context.parentURL;
+    const from_skill =
+      parent_url !== undefined && start.skillRoots.some((root) => parent_url.startsWith(root));
+    const is_package_import =
+      !isBuiltin(specifier) &&
+      !specifier.startsWith(".") &&
+      !specifier.startsWith("/") &&
+      !specifier.startsWith("#") &&
+      !URL.canParse(specifier);
+    return nextResolve(
+      specifier,
+      from_skill && is_package_import ? { ...context, parentURL: import.meta.url } : context,
+    );
+  },
+});
 const request_channel = new AgentWorkspaceRequestChannel(send_message, (pending) => {
   // IPC 只在真正等待宿主响应时保活，空闲通道不得改变 Node 的自然退出语义。
   if (pending) process.channel?.ref();

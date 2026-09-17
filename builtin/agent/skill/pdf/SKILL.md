@@ -51,7 +51,7 @@ Markdown 每页独立校验和编译，支持标题、强调、列表、引用�
 
 ## JS 操作示例
 
-先调用 `read_skill` 读取本技能，返回的 `workspace_path` 是只读技能包路径。重读会刷新副本；对话重置后重新读取。下面的 `import` 相对 `workspace_run` 自动保存的 `work/runs/*.mjs` 解析。
+下面的 `base_url` 使用 `read_skill` 或显式技能注入提供的值，在 `workspace_run` 中直接导入脚本。
 
 ### 提取文字与位置
 
@@ -94,7 +94,7 @@ try {
 ### 生成预览
 
 ```js
-import { preview } from '../../skills/pdf/scripts/preview.mjs';
+const { preview } = await import(new URL('scripts/preview.mjs', base_url).href);
 console.log(await preview('book.pdf', 'work/pdf-updates.jsonl'));
 ```
 

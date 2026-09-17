@@ -4,8 +4,15 @@ import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
 /**
- * 每次首次打开 .lg 连接时，先补齐物理结构，再允许业务写回迁移读取。
- * 幂等建表与实际列检查同时适用于空库和旧工程。
+ * 迁移背景：
+ * 当前 `.lg` 是 SQLite 项目文件，所有工程在业务读取前必须具备同一组表、索引和基础列。
+ * 旧工程可能缺少新表或 `assets.sort_order`，而当前文件顺序、asset 读取和后续写回迁移都依赖它。
+ *
+ * 生效场景：
+ * `ProjectDatabase` 首次打开任意 `.lg` 连接时执行，先补齐 schema，再允许其它迁移读取项目事实。
+ *
+ * 不处理范围：
+ * 本文件只补物理结构和当前 schema 版本；规则、item、checkpoint 等业务数据写回由独立迁移点处理。
  */
 export const project_schema_migration: MigrationDescriptor = {
   id: "project-schema",

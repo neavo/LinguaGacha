@@ -10,7 +10,6 @@ import type {
   BackendRuntimeResult,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
-import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { t_main_log } from "../log/log-text";
 import {
   build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
@@ -86,10 +85,6 @@ export async function run_backend_runtime(args: {
     resolveProxy: async (url: string, signal?: AbortSignal) =>
       String(await call_host({ kind: "resolve_proxy", url }, signal)),
   };
-  const agent_workspace_runner = new AgentWorkspaceRunner({
-    runtimeDirectory: args.workspaceRuntimeDirectory,
-    systemProxyResolver: system_proxy_resolver,
-  });
   const bootstrap = new GuiBackendBootstrap({
     imageHost: async (operation, signal) => {
       const result = (await call_host(operation, signal)) as AgentImageHostResult;
@@ -115,7 +110,6 @@ export async function run_backend_runtime(args: {
       }
       return result;
     },
-    agentWorkspaceRun: agent_workspace_runner.run.bind(agent_workspace_runner),
     workspaceRuntimeDirectory: args.workspaceRuntimeDirectory,
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),

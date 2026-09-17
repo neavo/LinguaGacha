@@ -13,6 +13,7 @@ import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { SystemProxyResolver } from "../../../network/system-proxy-http-client";
+import type { AppPathService } from "../../../app/app-path-service";
 import { AGENT_WORKSPACE_RUNTIME_POLICY } from "./policy";
 import type {
   AgentWorkspaceRuntimeChildMessage,
@@ -75,16 +76,22 @@ export class AgentWorkspaceRunner {
   private readonly executable_path: string;
   private readonly runtime_directory: string;
   private readonly system_proxy_resolver: SystemProxyResolver;
+  private readonly paths: Pick<
+    AppPathService,
+    "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir"
+  >;
 
   /** 保存当前应用版本的启动资源与宿主代理端口。 */
   public constructor(options: {
     executablePath?: string;
     runtimeDirectory: string;
     systemProxyResolver: SystemProxyResolver;
+    paths: Pick<AppPathService, "get_agent_user_skill_dir" | "get_agent_builtin_skill_dir">;
   }) {
     this.executable_path = path.resolve(options.executablePath ?? process.execPath);
     this.runtime_directory = path.resolve(options.runtimeDirectory);
     this.system_proxy_resolver = options.systemProxyResolver;
+    this.paths = options.paths;
   }
 
   /** 等待 close 后才返回，调用方据此释放工作区互斥并提交 Todo。 */
@@ -106,8 +113,21 @@ export class AgentWorkspaceRunner {
         return [entry, default_native_fs.real_path(entry)];
       }),
     );
+    // 根目录授权独立于 catalog 同名选择，每次 run 都重新解析真实位置。
+    const skill_paths = [
+      this.paths.get_agent_user_skill_dir(),
+      this.paths.get_agent_builtin_skill_dir(),
+    ].flatMap((entry) => {
+      try {
+        return [entry, default_native_fs.real_path(entry)];
+      } catch (error) {
+        // 用户可以尚未创建技能目录，后续 run 会重新解析其真实位置。
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [entry];
+        throw error;
+      }
+    });
     // 包入口和共享资源处在不同层级，读取权限由整套运行目录拥有。
-    const read_paths = new Set([workspace_path, runtime_directory, ...write_paths]);
+    const read_paths = new Set([workspace_path, runtime_directory, ...write_paths, ...skill_paths]);
     // 标准异步资源释放在返回或抛错前关闭句柄，第二路打开失败也会释放第一路。
     await using stdout = await default_native_fs.open_file(
       path.join(workspace_path, request.stdoutPath),
@@ -139,6 +159,7 @@ export class AgentWorkspaceRunner {
     const process_result = await this.run_process(
       path.resolve(workspace_path, request.scriptPath),
       request.todos,
+      [...new Set(skill_paths.map((entry) => pathToFileURL(entry + path.sep).href))],
       launch_options,
       signal,
       request.host,
@@ -160,6 +181,7 @@ export class AgentWorkspaceRunner {
   private run_process(
     script_path: string,
     initial_todos: readonly string[],
+    skill_roots: readonly string[],
     launch_options: ForkOptions,
     signal: AbortSignal,
     host: WorkspaceHostPort | undefined,
@@ -286,7 +308,7 @@ export class AgentWorkspaceRunner {
             });
         });
       });
-      send({ type: "start", todos });
+      send({ type: "start", todos, skillRoots: skill_roots });
       if (signal.aborted) abort_listener();
     });
   }

@@ -50,7 +50,7 @@ const WORKSPACE_RUN_DESCRIPTION: string = [
   `- 脚本保存到 ${AGENT_WORKSPACE_RUN_ROOT}/*.mjs`,
   "- cwd 是工作区根目录，文件相对路径从这里解析，脚本内的相对 import 从脚本文件所在目录解析。",
   "- ws.contract 提供数据集、路径和变更格式。",
-  "- read_skill 返回技能包的 workspace_path；以标准 import 加载其中的模块。相对 import 从 work/runs 下的程序解析，技能入口形如 ../../skills/NAME/scripts/example.mjs。",
+  "- read_skill 或显式技能注入提供原包根目录的 base_url；用 await import(new URL('scripts/example.mjs', base_url).href) 直接加载技能脚本，预装 npm 包可按包名导入。",
   "- ws.host 只提供宿主原语；复杂流程读取技能中的示例或脚本。@lg/pdf 提供正式输出共用的文档模板。",
   `- 预装包：${app_package.workspacePackages.join("、")}，通过标准 import 使用。`,
   "- 包版本、类型和详细 API 可从 node_modules 中读取。",

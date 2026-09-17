@@ -14,21 +14,11 @@ const runtime_mocks = vi.hoisted(() => {
   const start = vi.fn();
   const stop = vi.fn(async () => undefined);
   const constructor_options: unknown[] = [];
-  const runner_constructor_options: unknown[] = [];
   const log_manager = {
     warning: vi.fn(),
     error: vi.fn(),
     fatal: vi.fn(),
   };
-  const runner_run = vi.fn(async () => ({ changed: 2 }));
-  /** 隔离脚本进程，保留运行和注入选项的观察入口。 */
-  class AgentWorkspaceRunner {
-    /** 记录宿主注入，验证脚本沿正式 runner 端口执行。 */
-    constructor(options: unknown) {
-      runner_constructor_options.push(options);
-    }
-    run = runner_run;
-  }
   /** 由测试决定启动和关闭结果，验证 worker 协议的生命周期。 */
   class GuiBackendBootstrap {
     /** 捕获组合根依赖，允许测试直接触发宿主回调。 */
@@ -41,11 +31,8 @@ const runtime_mocks = vi.hoisted(() => {
   }
   return {
     GuiBackendBootstrap,
-    AgentWorkspaceRunner,
     constructor_options,
     log_manager,
-    runner_constructor_options,
-    runner_run,
     start,
     stop,
   };
@@ -53,9 +40,6 @@ const runtime_mocks = vi.hoisted(() => {
 
 vi.mock("./gui-backend-bootstrap", () => ({
   GuiBackendBootstrap: runtime_mocks.GuiBackendBootstrap,
-}));
-vi.mock("../agent/workspace/runtime/runner", () => ({
-  AgentWorkspaceRunner: runtime_mocks.AgentWorkspaceRunner,
 }));
 vi.mock("../worker/worker-execution", () => ({
   resolve_desktop_bundle_dir_from_module_url: () => "E:/app/dist-electron",
@@ -109,13 +93,11 @@ describe("run_backend_runtime", () => {
   });
   beforeEach(() => {
     runtime_mocks.constructor_options.length = 0;
-    runtime_mocks.runner_constructor_options.length = 0;
     runtime_mocks.start.mockReset();
     runtime_mocks.stop.mockClear();
     runtime_mocks.log_manager.warning.mockClear();
     runtime_mocks.log_manager.error.mockClear();
     runtime_mocks.log_manager.fatal.mockClear();
-    runtime_mocks.runner_run.mockClear();
     runtime_mocks.start.mockResolvedValue({
       apiBaseUrl: "http://127.0.0.1:4567",
       readAppLanguage: () => "EN",
@@ -155,7 +137,6 @@ describe("run_backend_runtime", () => {
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openDirectory: (path: string) => Promise<void>;
       pickSavePath: (name: string) => Promise<string | null>;
-      agentWorkspaceRun: (request: unknown, signal: AbortSignal) => Promise<unknown>;
     };
     expect(bootstrap_options).toMatchObject({
       appRoot: "E:/app",
@@ -169,9 +150,6 @@ describe("run_backend_runtime", () => {
       result: { ok: true, data: "PROXY 127.0.0.1:7890" },
     });
     await expect(proxy).resolves.toBe("PROXY 127.0.0.1:7890");
-    expect(runtime_mocks.runner_constructor_options[0]).toMatchObject({
-      systemProxyResolver: bootstrap_options.systemProxyResolver,
-    });
 
     const open = bootstrap_options.openDirectory("E:/output");
     const open_request = get_host_request(port, "open_directory");
@@ -193,20 +171,6 @@ describe("run_backend_runtime", () => {
       });
       await expect(saved).resolves.toBe(destination);
     }
-
-    const workspace_signal = new AbortController().signal;
-    const workspace = bootstrap_options.agentWorkspaceRun(
-      {
-        workspacePath: "E:/userdata/agent/workspace/run-1",
-        script: "return { changed: 2 };",
-      },
-      workspace_signal,
-    );
-    await expect(workspace).resolves.toEqual({ changed: 2 });
-    expect(runtime_mocks.runner_run).toHaveBeenCalledWith(
-      { workspacePath: "E:/userdata/agent/workspace/run-1", script: "return { changed: 2 };" },
-      workspace_signal,
-    );
 
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({
@@ -240,12 +204,12 @@ describe("run_backend_runtime", () => {
       workspaceRuntimeDirectory: RUNTIME_DIRECTORY,
       port,
     });
-    const runner_options = runtime_mocks.runner_constructor_options[0] as {
+    const bootstrap_options = runtime_mocks.constructor_options[0] as {
       systemProxyResolver: { resolveProxy: (url: string, signal: AbortSignal) => Promise<string> };
     };
     const controller = new AbortController();
     const reason = new Error("用户停止 Agent");
-    const proxy = runner_options.systemProxyResolver.resolveProxy(
+    const proxy = bootstrap_options.systemProxyResolver.resolveProxy(
       "https://example.com",
       controller.signal,
     );

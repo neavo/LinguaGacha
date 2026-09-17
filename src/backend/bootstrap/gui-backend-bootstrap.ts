@@ -3,7 +3,8 @@ import type { AgentImageHost } from "../../shared/agent-image";
 import { AgentImageService } from "../agent/agent-image-service";
 import { AgentService } from "../agent/agent-service";
 import { WebSearchService } from "../agent/web-search-service";
-import { AgentWorkspaceService, type AgentWorkspaceRunPort } from "../agent/workspace/service";
+import { AgentWorkspaceService } from "../agent/workspace/service";
+import { AgentWorkspaceRunner } from "../agent/workspace/runtime/runner";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { t_main_log } from "../log/log-text";
@@ -24,7 +25,6 @@ export interface GuiBackendBootstrapOptions {
   builtinRoot: string; // 当前版本只读内置资产根
   logTargets?: Partial<LogTargets>; // GUI Backend 日志出口
   systemProxyResolver: SystemProxyResolver; // Electron main 提供的代理解析端口
-  agentWorkspaceRun: AgentWorkspaceRunPort; // 工作区脚本的可取消执行端口
   workspaceRuntimeDirectory: string; // 与 runner 同版本的标准 npm 环境
   openDirectory: (path: string) => Promise<void>; // Electron main 副作用端口
   pickSavePath: (defaultName: string) => Promise<string | null>; // 原生保存选择，取消返回 null
@@ -112,6 +112,12 @@ export class GuiBackendBootstrap {
       this.web_search = web_search;
       const images = new AgentImageService(this.options.imageHost);
       this.images = images;
+      // runner 与 catalog 共用同一 AppPathService，避免重复维护可写数据根的选择。
+      const runner = new AgentWorkspaceRunner({
+        paths: resources.paths,
+        runtimeDirectory: this.options.workspaceRuntimeDirectory,
+        systemProxyResolver: this.options.systemProxyResolver,
+      });
       const workspace = new AgentWorkspaceService({
         images,
         paths: resources.paths,
@@ -123,7 +129,7 @@ export class GuiBackendBootstrap {
         runtimeGate: services.state.runtimeGate,
         writeStore: services.state.writes,
         logManager: resources.logManager,
-        run: this.options.agentWorkspaceRun,
+        run: runner.run.bind(runner),
         pdfHost: this.options.pdfHost,
         exportPDF: (file_path, signal) =>
           services.files.translationExport.export_pdf_file(file_path, signal),
