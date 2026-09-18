@@ -15,8 +15,14 @@ await build_package(
   {
     bootstrap: "src/backend/agent/workspace/runtime/bootstrap.ts",
     "item-contexts": "src/backend/agent/workspace/runtime/item-contexts.ts",
+    "page-updates": "src/backend/agent/workspace/page-updates.ts",
   },
-  { "./bootstrap": "./bootstrap.mjs", "./item-contexts": "./item-contexts.mjs" },
+  {
+    "./bootstrap": "./bootstrap.mjs",
+    "./item-contexts": "./item-contexts.mjs",
+    "./page-updates": "./page-updates.mjs",
+  },
+  ["mupdf"],
 );
 await build_package(
   "@lg/text",

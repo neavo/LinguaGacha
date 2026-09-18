@@ -1,3 +1,9 @@
+export const AGENT_IMAGE_DEFAULT_MAX_EDGE = 1920; // 附件和未指定尺寸的工作区图片共用默认值。
+export const AGENT_IMAGE_MAX_EDGE = 3840; // 工作区请求 Schema 校验的单次尺寸上限。
+
+/** 单次看图按内容选择尺寸，后端继续控制像素和字节额度。 */
+export type AgentImageOptions = Readonly<{ maxEdge?: number }>;
+
 /** 图片策略由后端确定，宿主只执行 Chromium 解码与编码。 */
 export type AgentImagePolicy = Readonly<{
   maxEdge: number;

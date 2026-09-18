@@ -73,11 +73,11 @@
 
 ## 4. 产品工具与宿主能力
 
-- `AgentImageService` 由 GUI Backend 组合根创建，附件和 Workspace 共用实例，AgentService 拥有其会话清理，组合根关闭 Gateway 前取消在途图片准备以排空上传请求。后端确定格式、尺寸与字节策略，Electron 图片宿主按请求策略执行 Chromium 解码与 WebP 编码，符合规范的 WebP 复用原字节。SDK 关闭工具图片的额外自动缩放，模型消费固定结果。PDF 渲染资产仍按文件生命周期供预览与导出使用，模型图片是独立处理结果。
-- 图片缓存只保存成功结果，以输入和规范输出字节摘要关联同一不可变图片，按内存预算淘汰；草稿和历史直接持有图片，淘汰不影响既有消息。缓存不落盘，重置、工程切换和 dispose 清空并取消旧转换，迟到结果不能回填。图片准备失败沿公开错误返回，base64 不进入诊断。
+- `AgentImageService` 由 GUI Backend 组合根创建，附件和 Workspace 共用实例，AgentService 拥有其会话清理，组合根关闭 Gateway 前取消在途图片准备以排空上传请求。后端按单次图片参数确定尺寸，与统一格式和字节额度组成不可变策略，Electron 图片宿主按该策略执行 Chromium 解码与 WebP 编码，符合规范的 WebP 复用原字节。SDK 关闭工具图片的额外自动缩放，模型消费固定结果。PDF 渲染资产仍按文件生命周期供预览与导出使用，模型图片是独立处理结果。
+- 图片缓存只保存成功结果，以单次最长边上限与输入、规范输出字节摘要关联不可变图片，按内存预算淘汰。草稿和历史直接持有图片，淘汰不影响既有消息。缓存不落盘，重置、工程切换和 dispose 清空并取消旧转换，迟到结果不能回填。图片准备失败沿公开错误返回，base64 不进入诊断。
 
-- `ws.emitImage(path)` 在本次执行持有的工作区互斥内读取图片，调用统一图片服务，在 await 完成时固定内容。按请求接收顺序收集，成功时由 workspace_run 返回 SDK image content；失败执行记录只保留已接收图片的路径与格式、原图和输出尺寸摘要，可从保留工作文件重新输出。图片不进入 stdout/stderr，数量与累计 base64 额度由 runtime policy 独立限制；公开工具结果与日志只保留摘要。
-- PDF 调查直接导入 `mupdf`；`@lg/pdf` 提供页面渲染与文档生成。`ws.host` 桥接静态 HTML 打印，请求 Schema 同时生成模型声明并在父进程校验，打印产物进入 work。技能预览以 changes 结构的草稿 JSONL 覆盖页面快照副本，复用正式生成函数。Agent 负责处理、保存与预览核验，正式 PDF 由用户通过应用统一导出。
+- `ws.emitImage(path, options?)` 的单次尺寸选项由父进程按 Schema 校验，模型声明使用同一 Schema。工作区在执行互斥内固定图片内容，按请求顺序收集。数量与累计编码额度按每次 `workspace_run` 独立计算，拒绝的请求释放占位且不计入累计大小。程序成功时返回已接收图片，整体失败时只返回路径和尺寸摘要，后续调用可从现有文件重新输出。公开工具结果与日志只保留摘要。
+- PDF 调查使用 `mupdf`，`@lg/pdf` 提供渲染与正式文档生成。`ws.host` 按 Schema 桥接静态 HTML 打印，产物进入 `work/`。技能预览通过 `@lg/workspace/page-updates` 共用正式记录解析与页级判定，再覆盖快照副本并调用正式生成入口。目标更新被拒绝时预览停止，提交仍按最新事实判定并返回逐页回执。预览交付规则归 PDF 技能，正式 PDF 由用户通过应用导出。
 - 翻译对象统一使用 `items/pages`，单个对象使用 `item/page`。`items` 以 `item_id` 为身份，正文与姓名属于同一对象；`pages` 以 `(file_path, page)` 为身份，对应原稿页，与渲染后的输出页分别计数。`project_meta.counts.items` 和 `project_meta.counts.pages` 分别从对应快照的同一份事实计算。
 - `datasets.pages` 与 `changes.pages.updates` 分别公开页面快照和完整可修改载荷，路径为 `pages/entries.jsonl` 与 `changes/pages/updates.jsonl`。页面提交、拒绝 scope、实际写入回执及审批计数统一使用 `pages`。工作区 Schema 复用 PDF 内容结构；提交意图、指纹和更新解析归工程写入层。预演以对象身份查快照指纹，区分输入错误与外部漂移；提交刷新快照并保留相容 `work/`。PDF 来源与导出规则归 [BACKEND](BACKEND.md)。
 
@@ -96,7 +96,7 @@
 - `items`、`pages`、quality entry 与 prompt 对象携带基于数据对象事实计算的指纹 `fp`，用于 `workspace_apply` 时校验该对象自工作区快照后是否仍保持一致；quality 额外携带零基 `sort`。显式变更清单按对象类型及其支持的操作分开，记录形状由源码 Schema 唯一定义，模型通过索引中的 `reference` 读取生成说明。
 - `AgentWorkspaceService` 为每次执行保存同标识的程序与两路日志到 `work/runs/`，沿用 work 生命周期。runner 复用 Electron Node 模式，以 `--import` 预加载 ws 和系统代理 fetch，程序按事件循环自然退出。宿主先解析工作区与运行目录的真实路径，以运行目录为基准解析 `@lg/workspace/bootstrap` 包入口，并以整个运行目录授予只读权限。每次 run 从与 catalog 共用的 AppPathService 取得两个技能根，授予逻辑入口与真实路径只读权限；授权独立于同名选择，缺失目录不阻断执行，后续 run 重新解析。`--preserve-symlinks` 和 `--preserve-symlinks-main` 保留模块的工作区入口，使挂载的 work 仍能发现预装依赖，不同导入路径可形成独立模块实例。
 - 子进程直接写入 stdout/stderr 文件，close 后两路独立按额度返回完整 content 或文件补读提示，JSON 对象与数组优先结构化。成功、非零退出和超时共用执行记录，取消保留已写文件。IPC 传初始化、Todo、图片输出与具名宿主请求。代理查询和宿主操作共用请求关联、取消和保活通道，空闲不保活。停止、超时或父通道断开时回收进程并取消待决请求；父进程等待宿主操作实际结算及进程、文件句柄收尾后才释放工作区互斥。运行中的宿主调用使用本次执行绑定的内部端口，不重新进入工作区公开互斥入口。
-- 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 只声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。依赖部署通过 npm query 查询根安装树中的预装包及其间接依赖，保留安装相对位置和完整包资源，生成记录实际版本的 package.json；发布构建以前置根 npm ci 保证安装来源可复现。同一构建从 public/fonts 与 KaTeX 包生成工作区根目录的 pdf-print.css，字体内嵌且只由打印宿主加载。应用源码构建为 `@lg/workspace`、`@lg/text` 与 `@lg/pdf` 内部包，清单通过 exports 声明 `@lg/workspace/bootstrap`、`@lg/workspace/item-contexts`、`@lg/text`、`@lg/pdf` 和 `@lg/pdf/worker` 入口；宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析入口，解析阶段不执行模块。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 只部署一份，worker 和工作区均从此处解析。extraResources 从 build/resources 根复制整棵 workspace，以避开 builder 对复制源直属 node_modules 的过滤。GUI 与 CLI 共用运行目录定位，GUI 跨线程仅传 `workspaceRuntimeDirectory`，runAsNode fuse 保持开启。
+- 根 `package.json` 与锁文件拥有依赖版本，`workspacePackages` 只声明预装包名并供工具说明读取。`buildtools/build-workspace.mjs` 共用于开发、测试和发布，整体重建 `build/resources/workspace`。依赖部署通过 npm query 查询根安装树中的预装包及其间接依赖，保留安装相对位置和完整包资源，生成记录实际版本的 package.json；发布构建以前置根 npm ci 保证安装来源可复现。同一构建从 public/fonts 与 KaTeX 包生成工作区根目录的 pdf-print.css，字体内嵌且只由打印宿主加载。应用源码构建为 `@lg/workspace`、`@lg/text` 与 `@lg/pdf` 内部包，清单通过 exports 声明 `@lg/workspace/bootstrap`、`@lg/workspace/item-contexts`、`@lg/workspace/page-updates`、`@lg/text`、`@lg/pdf` 和 `@lg/pdf/worker` 入口；宿主通过 `src/native/workspace-runtime.ts` 从注入的运行目录解析入口，解析阶段不执行模块。PDF 库与 worker 共用一次多入口构建及包内 chunk，MuPDF JS/WASM 只部署一份，worker 和工作区均从此处解析。extraResources 从 build/resources 根复制整棵 workspace，以避开 builder 对复制源直属 node_modules 的过滤。GUI 与 CLI 共用运行目录定位，GUI 跨线程仅传 `workspaceRuntimeDirectory`，runAsNode fuse 保持开启。
 - bootstrap 通过同步 resolve hook 将技能脚本的 npm 导入基准设为自身 URL，复用部署依赖树；内置模块、文件 URL、相对路径和依赖内部导入沿用 Node 默认规则及 exports 语义。内置技能保留在 app.asar，Electron Node 模式配合现有 preserve-symlinks 参数直接读取脚本与资源。
 - 初始化复制生成的部署清单，并链接真实 node_modules（Windows 使用 junction）。这些环境文件跨快照与对话重置保留，清理只删除链接入口。work、changes 同时授权入口与实际目标，内部链接沿入口权限使用。工作区初始化与技能程序直接调用 Node 文件 API，主应用 IO 归 NativeFs。
 

@@ -25,12 +25,12 @@ import {
 } from "../../project/agent-workspace-write";
 
 import {
-  AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA,
   AGENT_WORKSPACE_ITEM_UPDATE_SCHEMA,
   AGENT_WORKSPACE_PROMPT_UPDATE_SCHEMA,
   AGENT_WORKSPACE_QUALITY_SCHEMAS,
 } from "./schema";
 import { describe_agent_workspace_schema_error } from "./validation";
+import { parse_page_update } from "./page-updates";
 
 export type ParsedAgentWorkspaceChanges = Readonly<{
   batch: AgentWorkspaceIntentBatch;
@@ -56,11 +56,9 @@ export async function prepare_agent_workspace_changes(args: {
     args.nativeFs,
     path.join(args.workspacePath, AGENT_WORKSPACE_CHANGE_PATHS.pages.updates),
   )) {
-    if (!Check(AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA, row.value)) {
-      rejected.push(invalid_change(AGENT_WORKSPACE_PAGE_UPDATE_SCHEMA, row, "pages", "update"));
-      continue;
-    }
-    pages.push({ ...row.value, line: row.line });
+    const parsed = parse_page_update(row);
+    if ("rejection" in parsed) rejected.push(parsed.rejection);
+    else pages.push(parsed.intent);
   }
   const prompt_rows = await read_change_rows(
     args.nativeFs,
@@ -195,12 +193,6 @@ function invalid_change(
     op,
     reason: "invalid_change",
     line: row.line,
-    ...(scope === "pages" && typeof row.value["file_path"] === "string"
-      ? { file_path: row.value["file_path"] }
-      : {}),
-    ...(scope === "pages" && typeof row.value["page"] === "number"
-      ? { page: row.value["page"] }
-      : {}),
     ...(kind === undefined ? {} : { kind }),
     ...(scope !== "prompts" && op !== "create" && (typeof id === "string" || typeof id === "number")
       ? { id }

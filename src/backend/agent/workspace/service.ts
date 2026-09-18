@@ -455,7 +455,8 @@ export class AgentWorkspaceService {
     return await this.exclusive(async () => {
       // 槽位按请求到达顺序分配，异步转换完成顺序不能改变模型看到的图片顺序。
       const output_images = new Set<{ path: string; image: AgentImage | null }>();
-      let image_bytes = 0;
+      let image_bytes = 0; // 仅累计已接收图片的 base64 字节，本次程序结束后释放额度。
+      // 失败记录保留定位信息，供后续程序从已有文件重新输出。
       const image_summary = () =>
         [...output_images.values()].flatMap(({ path, image }) =>
           image === null
@@ -487,10 +488,12 @@ export class AgentWorkspaceService {
             stdoutPath: `${run_path}.stdout.log`,
             stderrPath: `${run_path}.stderr.log`,
             todos,
-            emitImage: async (relative, image_signal) => {
+            emitImage: async (relative, image_signal, options) => {
               image_signal.throwIfAborted();
               if (output_images.size >= AGENT_WORKSPACE_RUNTIME_POLICY.imageCount)
-                throw new Error("Image output count exceeded.");
+                throw new Error(
+                  `Cannot emit ${JSON.stringify(relative)}: this program accepts at most ${AGENT_WORKSPACE_RUNTIME_POLICY.imageCount} images. Emit remaining images in subsequent workspace_run calls.`,
+                );
               const entry = { path: relative, image: null as AgentImage | null };
               output_images.add(entry);
               try {
@@ -506,16 +509,20 @@ export class AgentWorkspaceService {
                 const image = await this.options.images.prepare(
                   this.native_fs.read_file(target.path),
                   image_signal,
+                  options,
                 );
                 image_signal.throwIfAborted();
                 if (
                   image_bytes + image.data.length >
                   AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes
                 )
-                  throw new Error("Image output size exceeded. Emit fewer images.");
+                  throw new Error(
+                    `Cannot emit ${JSON.stringify(relative)}: total encoded image data would exceed ${AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes / 1024 / 1024} MiB for this program. Split images across subsequent workspace_run calls, or crop relevant regions or lower maxEdge before retrying.`,
+                  );
                 image_bytes += image.data.length;
                 entry.image = image;
               } finally {
+                // 被拒绝的请求释放预留槽位，脚本捕获错误后仍可继续输出。
                 if (entry.image === null) output_images.delete(entry);
               }
             },

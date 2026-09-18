@@ -1,6 +1,7 @@
 import { Check } from "typebox/value";
 import {
   WORKSPACE_HOST_REQUEST_SCHEMA,
+  WORKSPACE_IMAGE_REQUEST_SCHEMA,
   type WorkspaceHostPort,
   type WorkspaceRequest,
 } from "./host-contract";
@@ -10,6 +11,7 @@ import { pathToFileURL } from "node:url";
 
 import { is_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
+import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { default_native_fs } from "../../../../native/native-fs";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { SystemProxyResolver } from "../../../network/system-proxy-http-client";
@@ -27,7 +29,7 @@ export type AgentWorkspaceRunRequest = Readonly<{
   stderrPath: string;
   todos: readonly string[];
   host?: WorkspaceHostPort; // 父进程内绑定本次工作区执行，不经过 IPC 序列化
-  emitImage?: (path: string, signal: AbortSignal) => Promise<void>;
+  emitImage?: (path: string, signal: AbortSignal, options?: AgentImageOptions) => Promise<void>;
 }>;
 
 export type AgentWorkspaceOutputContent = string | JsonRecord | JsonValue[];
@@ -223,9 +225,9 @@ export class AgentWorkspaceRunner {
         requests.set(id, controller);
         const execute = async () => {
           if (request.kind === "emit_image") {
-            if (typeof request.path !== "string" || request.path.length === 0 || !emit_image)
+            if (!Check(WORKSPACE_IMAGE_REQUEST_SCHEMA, request) || !emit_image)
               throw new Error("Invalid workspace image request.");
-            await emit_image(request.path, controller.signal);
+            await emit_image(request.path, controller.signal, request.options);
             return null;
           }
           if (request.kind === "resolve_proxy" && typeof request.url === "string")

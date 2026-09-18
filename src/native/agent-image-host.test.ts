@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { expect, it } from "vitest";
+import { AGENT_IMAGE_MAX_EDGE } from "../shared/agent-image";
 
 it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释放", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "linguagacha-image-"));
@@ -56,6 +57,11 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           assert.equal(canonical.data, image.data);
           assert.equal(canonical.originalWidth, image.width);
           assert.ok(image.width < 4000 && image.width / image.height === 2);
+          const detailEdge = Math.min(${AGENT_IMAGE_MAX_EDGE}, 4000);
+          const detailed = await images.prepare(Buffer.from(png, 'base64'), undefined, {maxEdge:detailEdge});
+          assert.equal(detailed.width, detailEdge);
+          assert.equal(detailed.height, detailEdge / 2);
+          assert.equal((await images.prepare_base64(png)).width, image.width);
           const verifier = new BrowserWindow({show:false});
           await verifier.loadURL('about:blank');
           const decoded = await verifier.webContents.executeJavaScript(
