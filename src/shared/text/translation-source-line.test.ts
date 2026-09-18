@@ -23,13 +23,17 @@ describe("prepare_translation_source_line", () => {
           { src: "A", dst: "B", regex: false, case_sensitive: true },
         ]),
       }),
-    ).toEqual({
+    ).toMatchObject({
       state: "translatable",
       restoration_text: "<A>one</A>",
       prepared_text: "  <B><Q>one</B>  ",
       leading_whitespace: "  ",
       trailing_whitespace: "  ",
       samples: ["<B>", "<Q>", "</B>"],
+      preserve_analysis: {
+        text: "  <B><Q>one</B>  ",
+        unpreserved_text: "one",
+      },
     });
   });
 });

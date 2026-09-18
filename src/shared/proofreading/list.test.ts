@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { create_proofreading_client_item, sort_proofreading_client_items } from "./list";
+import { create_proofreading_client_item, sort_proofreading_items } from "./list";
 import type { ProofreadingWarningCode } from "./proofreading-types";
 
 /** 构造参与排序和条目输出测试的最小可见条目。 */
@@ -47,7 +47,7 @@ describe("proofreading list", () => {
     ];
 
     expect(
-      sort_proofreading_client_items(items, {
+      sort_proofreading_items(items, {
         column_id: "dst",
         direction: "ascending",
       }).map((item) => item.item_id),

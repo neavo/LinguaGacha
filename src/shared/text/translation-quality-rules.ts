@@ -88,6 +88,7 @@ export function has_translation_similarity_issue(args: {
   dst: string;
   sourceLanguage: string;
   targetLanguage: string;
+  has_foreign_residue: boolean; // 调用方复用同一译文的外文残留检查结果。
 }): boolean {
   if (!is_translation_text_similar(args.src, args.dst)) {
     return false;
@@ -103,10 +104,5 @@ export function has_translation_similarity_issue(args: {
     return true;
   }
 
-  return (
-    collect_foreign_residue_fragments({
-      text: args.dst,
-      targetLanguage: target_language,
-    }).length > 0
-  );
+  return args.has_foreign_residue;
 }

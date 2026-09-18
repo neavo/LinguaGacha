@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { run_compute_worker_task } from "./compute-worker-task";
 
 describe("run_compute_worker_task", () => {
-  it("执行校对 sync task 并返回对应项目的评估分片", async () => {
+  it("校对任务返回条目身份与警告结果", async () => {
     const result = await run_compute_worker_task({
       type: "proofreading_sync",
       input: {
@@ -17,7 +17,7 @@ describe("run_compute_worker_task", () => {
             file_order: 0,
             row_number: 1,
             src: "HP",
-            dst: "HP",
+            dst: "カナ",
             name_src: "Alice",
             name_dst: "艾丽丝",
             status: "PROCESSED",
@@ -39,13 +39,17 @@ describe("run_compute_worker_task", () => {
       },
     });
 
-    expect(result).toMatchObject({
-      projectId: "E:/Project/demo.lg",
-      total_item_count: 1,
-      sourceLanguage: "JA",
-      targetLanguage: "ZH",
+    expect(result).toEqual({
+      evaluations: [
+        {
+          item_id: 1,
+          evaluation: {
+            warnings: ["FOREIGN_CHAR_RESIDUE"],
+            warning_fragments_by_code: { FOREIGN_CHAR_RESIDUE: ["カナ"] },
+            glossary_applications: [],
+          },
+        },
+      ],
     });
-    expect(result.rawItems).toHaveLength(1);
-    expect(result.evaluatedItems).toHaveLength(1);
   });
 });

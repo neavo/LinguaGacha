@@ -1,10 +1,6 @@
 import type { QualityRuleGlossaryEntry } from "../../domain/quality";
 import type { ItemTextPart } from "../item-text";
-import {
-  compile_literal_patterns,
-  type LiteralMatcher,
-  type TextRange,
-} from "../text/literal-matcher";
+import { compile_literal_patterns, type LiteralMatcher } from "../text/literal-matcher";
 
 /** 术语匹配与应用结果必须能回传项目条目身份。 */
 export type GlossaryEntry = QualityRuleGlossaryEntry;
@@ -17,7 +13,6 @@ export type GlossarySourceMatch = {
   fields: Array<{
     source_field: GlossarySourceField; // 实际命中的原始源文字段
     target_field: GlossaryTargetField; // 必须检查的对应译文字段
-    ranges: TextRange[]; // 原始源文 UTF-16 范围
   }>;
 };
 
@@ -69,12 +64,14 @@ export function match_glossary_source(
   const fields_by_entry_id = new Map<string, GlossarySourceMatch["fields"]>();
   for (const part of source_parts) {
     if (part.field !== "src" && part.field !== "name_src") continue;
+    const source_field = part.field;
     const target_field = part.field === "src" ? "dst" : "name_dst";
-    for (const match of compiled.source_matcher.match(part.text)) {
-      const fields = fields_by_entry_id.get(match.key) ?? [];
-      fields.push({ source_field: part.field, target_field, ranges: match.ranges });
-      fields_by_entry_id.set(match.key, fields);
-    }
+    // 领域检查只消费术语身份与字段归属，字符坐标由高亮或替换入口按需计算。
+    compiled.source_matcher.scan_keys(part.text, (entry_id) => {
+      const fields = fields_by_entry_id.get(entry_id) ?? [];
+      fields.push({ source_field, target_field });
+      fields_by_entry_id.set(entry_id, fields);
+    });
   }
   return compiled.entries.flatMap((entry) => {
     const fields = fields_by_entry_id.get(entry.entry_id);

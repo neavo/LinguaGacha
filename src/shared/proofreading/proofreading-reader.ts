@@ -1,6 +1,7 @@
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
-  build_proofreading_warning_summary,
+  PROOFREADING_WARNING_CODES,
+  PROOFREADING_NO_WARNING_CODE,
   PROOFREADING_OUTCOME_GROUPS,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_options,
@@ -8,6 +9,8 @@ import {
   create_empty_proofreading_list_view,
   resolve_proofreading_outcomes,
   type ProofreadingClientItem,
+  type ProofreadingEvaluatedItem,
+  type ProofreadingEvaluation,
   type ProofreadingContextItem,
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
@@ -21,9 +24,10 @@ import {
 } from "./proofreading-types";
 import {
   build_proofreading_visible_items,
+  create_proofreading_client_item,
   compare_proofreading_runtime_items,
   compare_proofreading_text,
-  sort_proofreading_client_items,
+  sort_proofreading_items,
 } from "./list";
 import { AppError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
@@ -60,25 +64,12 @@ export type ProofreadingSyncInput = {
 };
 
 export type ProofreadingEvaluatedSlice = {
-  projectId: string;
-  revisions: ProofreadingRevisions;
-  total_item_count: number;
-  sourceLanguage: string;
-  targetLanguage: string;
-  processingConfig: TextProcessingConfig;
-  rawItems: ProofreadingItemRecord[];
-  evaluatedItems: ProofreadingClientItem[];
+  evaluations: { item_id: number; evaluation: ProofreadingEvaluation }[]; // 请求身份与配置由调用方保留的输入快照拥有。
 };
 
 // 已评估同步输入由 worker 结果和主线程质量快照组合而成。
-type ProofreadingEvaluatedSyncInput = {
-  projectId: string;
-  revisions: ProofreadingRevisions;
-  total_item_count: number;
-  rawItems: ProofreadingItemRecord[];
-  evaluatedItems: ProofreadingClientItem[];
-  quality: QualitySnapshot;
-  processingConfig: TextProcessingConfig;
+type ProofreadingEvaluatedSyncInput = ProofreadingSyncInput & {
+  evaluations: ProofreadingEvaluatedSlice["evaluations"];
 };
 
 // 增量输入只携带变化 item，质量规则和文本处理配置沿用已同步状态。
@@ -185,9 +176,11 @@ type ProofreadingReaderState = {
   processingConfig: TextProcessingConfig;
   quality_context: ProofreadingEvaluationContext;
   sample_rule_cache: Map<string, TextPreserveRule>;
-  raw_item_by_id: Map<string, ProofreadingItemRecord>;
-  natural_item_ids: string[];
-  evaluated_item_by_id: Map<string, ProofreadingClientItem>;
+  item_by_id: Map<string, ProofreadingEvaluatedItem>;
+  natural_item_ids: string[]; // 上下文沿工程文件顺序与数值 item_id 排列。
+  default_item_ids: string[] | null; // 默认列表沿文件名、行号、字符串 row_id 排列，按需生成。
+  outcome_count_by_code: Map<string, number>; // 全部状态用于筛选面板的可选结果。
+  translated_outcome_count_by_code: Map<string, number>; // 仅成功条目用于默认警告选项与警告摘要。
   file_count_by_path: Map<string, number>;
   glossary_term_count_map: Map<string, ProofreadingFilterPanelTermEntry>;
   defaultFilters: ProofreadingFilterOptions;
@@ -207,9 +200,6 @@ type ProofreadingListViewCache = {
   // 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回渲染进程。
   row_index_by_id: Map<string, number>;
 };
-
-// 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
-type ProofreadingFilterDimension = "outcomes" | "file_paths" | "glossary_entry_ids";
 
 // 单次筛选查询的预编译上下文，避免在每个 item 上重复构造 Set
 type ProofreadingFilterContext = {
@@ -238,7 +228,7 @@ type ProofreadingItemsReadQuery = {
 
 // 查询结果同时携带非法正则诊断，调用方决定展示或转成工具错误。
 type ResolvedProofreadingItems = {
-  items: ProofreadingClientItem[];
+  items: ProofreadingEvaluatedItem[];
   invalid_regex_message: string | null;
 };
 
@@ -246,32 +236,15 @@ const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制每次
 const PROOFREADING_CONTEXT_RADIUS = 2; // 固定前后各两条，避免 UI 与 reader 各自维护窗口语义
 
 /**
- * 校对运行态接收后端 query 结果，需要先归一成稳定 item 行
+ * 在响应边界构造展示字段并隔离可变数组，运行态不持有展示文本副本。
  */
-function normalize_reader_item(record: unknown): ProofreadingItemRecord | null {
-  if (typeof record !== "object" || record === null) {
-    return null;
-  }
-
-  const candidate = record as Record<string, unknown>;
-  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
-  if (!Number.isInteger(item_id)) {
-    return null;
-  }
-
-  return {
-    item_id,
-    file_path: String(candidate.file_path ?? ""),
-    file_order: Number(candidate.file_order ?? Number.NaN),
-    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
-    src: String(candidate.src ?? ""),
-    dst: String(candidate.dst ?? ""),
-    name_src: Item.normalize_name_field(candidate.name_src),
-    name_dst: Item.normalize_name_field(candidate.name_dst),
-    status: String(candidate.status ?? ""),
-    text_type: String(candidate.text_type ?? "NONE"),
-    retry_count: Number(candidate.retry_count ?? 0),
-  };
+function to_client_item(item: ProofreadingEvaluatedItem): ProofreadingClientItem {
+  return create_proofreading_client_item({
+    item,
+    warnings: item.warnings,
+    warning_fragments_by_code: item.warning_fragments_by_code,
+    glossary_applications: item.glossary_applications,
+  });
 }
 
 /**
@@ -318,7 +291,7 @@ function normalize_runtime_filter_options(args: {
 /**
  * 术语 miss 只看字段级落实结果。
  */
-function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
+function item_has_glossary_miss(item: ProofreadingEvaluatedItem): boolean {
   return item.glossary_applications.some((application) =>
     application.fields.some((field) => !field.applied),
   );
@@ -329,24 +302,14 @@ function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
  */
 function create_proofreading_filter_context(args: {
   filters: Partial<ProofreadingFilterOptions>;
-  ignored_dimensions?: ProofreadingFilterDimension[];
 }): ProofreadingFilterContext {
-  const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
   const glossary_filter_enabled =
-    !ignored_dimension_set.has("glossary_entry_ids") &&
-    (args.filters.glossary_entry_ids !== undefined ||
-      args.filters.include_without_glossary_miss !== undefined);
+    args.filters.glossary_entry_ids !== undefined ||
+    args.filters.include_without_glossary_miss !== undefined;
 
   return {
-    outcome_set:
-      ignored_dimension_set.has("outcomes") || args.filters.outcomes === undefined
-        ? null
-        : new Set(args.filters.outcomes),
-    file_path_set: ignored_dimension_set.has("file_paths")
-      ? null
-      : args.filters.file_paths === undefined
-        ? null
-        : new Set(args.filters.file_paths),
+    outcome_set: args.filters.outcomes === undefined ? null : new Set(args.filters.outcomes),
+    file_path_set: args.filters.file_paths === undefined ? null : new Set(args.filters.file_paths),
     glossary_filter_enabled,
     glossary_entry_id_set: glossary_filter_enabled
       ? new Set(args.filters.glossary_entry_ids ?? [])
@@ -378,7 +341,7 @@ function create_proofreading_search_context(args: {
  * 术语筛选支持“无术语缺失”开关和指定 miss 术语列表两种语义
  */
 function item_matches_glossary_filter(
-  item: ProofreadingClientItem,
+  item: ProofreadingEvaluatedItem,
   context: ProofreadingFilterContext,
 ): boolean {
   if (!context.glossary_filter_enabled) {
@@ -405,12 +368,18 @@ function item_matches_glossary_filter(
  * 单个 item 必须同时满足翻译结果、文件和术语筛选
  */
 function item_matches_filter_context(
-  item: ProofreadingClientItem,
+  item: ProofreadingEvaluatedItem,
   context: ProofreadingFilterContext,
 ): boolean {
   if (context.outcome_set !== null) {
     const outcome_set = context.outcome_set;
-    if (!resolve_proofreading_outcomes(item).some((outcome) => outcome_set.has(outcome))) {
+    const matches =
+      item.status === "PROCESSED"
+        ? item.warnings.length === 0
+          ? outcome_set.has(PROOFREADING_NO_WARNING_CODE)
+          : item.warnings.some((warning) => outcome_set.has(warning))
+        : outcome_set.has(item.status);
+    if (!matches) {
       return false;
     }
   }
@@ -426,10 +395,13 @@ function item_matches_filter_context(
  * 搜索范围决定比较 src、dst 还是二者任一命中；非法正则保持旧语义只提示不裁剪
  */
 function matches_proofreading_search_scope(args: {
-  item: ProofreadingClientItem;
+  item: ProofreadingEvaluatedItem;
   search_context: ProofreadingSearchContext;
 }): boolean {
-  if (args.search_context.matcher.invalid_regex !== null) {
+  if (
+    args.search_context.matcher.keywords.length === 0 ||
+    args.search_context.matcher.invalid_regex !== null
+  ) {
     return true;
   }
 
@@ -456,99 +428,6 @@ function matches_proofreading_search_scope(args: {
 }
 
 /**
- * 构建筛选面板时可忽略某个维度，得到“其它条件下该维度可选项”的计数
- */
-function filter_items_by_context(args: {
-  items: ProofreadingClientItem[];
-  filters: ProofreadingFilterOptions;
-  ignored_dimensions?: ProofreadingFilterDimension[];
-}): ProofreadingClientItem[] {
-  const filter_context = create_proofreading_filter_context({
-    filters: args.filters,
-    ignored_dimensions: args.ignored_dimensions,
-  });
-
-  return args.items.filter((item) => {
-    return item_matches_filter_context(item, filter_context);
-  });
-}
-
-/**
- * 翻译结果筛选值保留稳定顺序，同时补上运行时出现的新检查类型。
- */
-function build_outcome_values(args: {
-  items: ProofreadingClientItem[];
-  filters: ProofreadingFilterOptions;
-}): string[] {
-  const known_outcomes = PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [...group.outcome_codes]);
-  const known_outcome_set = new Set<string>(known_outcomes);
-  const dynamic_outcomes = args.items.flatMap(resolve_proofreading_outcomes);
-  const extra_outcomes = [...new Set([...dynamic_outcomes, ...args.filters.outcomes])].filter(
-    (outcome) => !known_outcome_set.has(outcome),
-  );
-  extra_outcomes.sort((left, right) => left.localeCompare(right));
-  return [...known_outcomes, ...extra_outcomes];
-}
-
-/**
- * 结果计数复用列表筛选的唯一投影，成功条目的多个检查结果分别计数。
- */
-function build_outcome_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  items.forEach((item) => {
-    resolve_proofreading_outcomes(item).forEach((outcome) => {
-      counts[outcome] = (counts[outcome] ?? 0) + 1;
-    });
-  });
-  return counts;
-}
-
-/**
- * 文件路径计数按当前上下文重新计算，不复用全局计数避免筛选串味
- */
-function build_file_count_by_path(items: ProofreadingClientItem[]): Record<string, number> {
-  const next_count_by_path: Record<string, number> = {};
-  items.forEach((item) => {
-    next_count_by_path[item.file_path] = (next_count_by_path[item.file_path] ?? 0) + 1;
-  });
-  return next_count_by_path;
-}
-
-/**
- * 术语缺失计数按 miss 术语聚合，用于筛选面板的术语维度
- */
-function build_term_count_entries(args: {
-  items: ProofreadingClientItem[];
-}): ProofreadingFilterPanelTermEntry[] {
-  const next_term_count_map = new Map<string, ProofreadingFilterPanelTermEntry>();
-
-  args.items.forEach((item) => {
-    if (!item.warnings.includes("GLOSSARY")) {
-      return;
-    }
-
-    item.glossary_applications.forEach((application) => {
-      if (application.fields.every((field) => field.applied)) return;
-      const previous_entry = next_term_count_map.get(application.entry_id);
-      next_term_count_map.set(application.entry_id, {
-        entry_id: application.entry_id,
-        src: application.src,
-        dst: application.dst,
-        count: (previous_entry?.count ?? 0) + 1,
-      });
-    });
-  });
-
-  return [...next_term_count_map.values()].sort((left_entry, right_entry) => {
-    if (left_entry.count !== right_entry.count) {
-      return right_entry.count - left_entry.count;
-    }
-
-    return left_entry.entry_id.localeCompare(right_entry.entry_id);
-  });
-}
-
-/**
  * 计数 map 支持正负增量，归零时删除键避免面板出现空值项
  */
 function increment_map_count(map: Map<string, number>, key: string, delta: number): void {
@@ -566,10 +445,16 @@ function increment_map_count(map: Map<string, number>, key: string, delta: numbe
  */
 function apply_counter_delta(args: {
   state: ProofreadingReaderState;
-  item: ProofreadingClientItem;
+  item: ProofreadingEvaluatedItem;
   delta: number;
 }): void {
   increment_map_count(args.state.file_count_by_path, args.item.file_path, args.delta);
+  for (const outcome of resolve_proofreading_outcomes(args.item)) {
+    increment_map_count(args.state.outcome_count_by_code, outcome, args.delta);
+    if (args.item.status === "PROCESSED") {
+      increment_map_count(args.state.translated_outcome_count_by_code, outcome, args.delta);
+    }
+  }
 
   args.item.glossary_applications.forEach((application) => {
     if (application.fields.every((field) => field.applied)) return;
@@ -594,42 +479,26 @@ function apply_counter_delta(args: {
  */
 function upsert_runtime_item_in_state(
   state: ProofreadingReaderState,
-  normalized_item: ProofreadingItemRecord,
+  item: ProofreadingItemRecord,
 ): ProofreadingItemChange {
-  const item_key = String(normalized_item.item_id);
-  const previous_item = state.raw_item_by_id.get(item_key) ?? null;
-  const should_rebuild_natural_order =
-    previous_item === null ||
-    compare_proofreading_runtime_items(previous_item, normalized_item) !== 0;
-  const previous_evaluated_item = state.evaluated_item_by_id.get(item_key) ?? null;
-  if (previous_evaluated_item !== null) {
-    apply_counter_delta({
-      state,
-      item: previous_evaluated_item,
-      delta: -1,
-    });
-    state.evaluated_item_by_id.delete(item_key);
-  }
-
-  state.raw_item_by_id.set(item_key, normalized_item);
-  const next_evaluated_item = evaluateProofreadingItem({
-    item: normalized_item,
-    quality_context: state.quality_context,
-    quality: state.quality,
-    processingConfig: state.processingConfig,
-    sample_rule_cache: state.sample_rule_cache,
-  });
-  state.evaluated_item_by_id.set(item_key, next_evaluated_item);
-  apply_counter_delta({
-    state,
-    item: next_evaluated_item,
-    delta: 1,
-  });
-  return {
-    item_id: item_key,
-    removed_from_runtime: false,
-    natural_order_changed: should_rebuild_natural_order,
+  const item_key = String(item.item_id);
+  const previous = state.item_by_id.get(item_key);
+  const natural_order_changed =
+    previous === undefined || compare_proofreading_runtime_items(previous, item) !== 0;
+  if (previous !== undefined) apply_counter_delta({ state, item: previous, delta: -1 });
+  const next: ProofreadingEvaluatedItem = {
+    ...item,
+    ...evaluateProofreadingItem({
+      item,
+      quality_context: state.quality_context,
+      quality: state.quality,
+      processingConfig: state.processingConfig,
+      sample_rule_cache: state.sample_rule_cache,
+    }),
   };
+  state.item_by_id.set(item_key, next);
+  apply_counter_delta({ state, item: next, delta: 1 });
+  return { item_id: item_key, removed_from_runtime: false, natural_order_changed };
 }
 
 /**
@@ -639,21 +508,13 @@ function delete_runtime_item_from_state(
   state: ProofreadingReaderState,
   item_id: string,
 ): ProofreadingItemChange {
-  const previous_item = state.raw_item_by_id.get(item_id) ?? null;
-  const previous_evaluated_item = state.evaluated_item_by_id.get(item_id) ?? null;
-  if (previous_evaluated_item !== null) {
-    apply_counter_delta({
-      state,
-      item: previous_evaluated_item,
-      delta: -1,
-    });
-  }
-  state.raw_item_by_id.delete(item_id);
-  state.evaluated_item_by_id.delete(item_id);
+  const previous = state.item_by_id.get(item_id);
+  if (previous !== undefined) apply_counter_delta({ state, item: previous, delta: -1 });
+  state.item_by_id.delete(item_id);
   return {
     item_id,
-    removed_from_runtime: previous_item !== null || previous_evaluated_item !== null,
-    natural_order_changed: previous_item !== null,
+    removed_from_runtime: previous !== undefined,
+    natural_order_changed: previous !== undefined,
   };
 }
 
@@ -666,13 +527,7 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
   const default_outcomes = PROOFREADING_OUTCOME_GROUPS.filter(
     (group) => group.selected_by_default,
   ).flatMap((group) => [...group.outcome_codes]);
-  const extra_outcomes = [
-    ...new Set(
-      [...state.evaluated_item_by_id.values()]
-        .filter((item) => item.status === "PROCESSED")
-        .flatMap((item) => resolve_proofreading_outcomes(item)),
-    ),
-  ]
+  const extra_outcomes = [...state.translated_outcome_count_by_code.keys()]
     .filter((outcome) => !known_outcome_set.has(outcome))
     .sort((left, right) => left.localeCompare(right));
 
@@ -693,11 +548,13 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
  * 自然顺序缓存只保存 row id，避免排序结果复制完整条目导致内存翻倍
  */
 function rebuild_natural_item_ids(state: ProofreadingReaderState): void {
-  state.natural_item_ids = [...state.raw_item_by_id.values()]
+  state.default_item_ids = null;
+  state.natural_item_ids = [...state.item_by_id.values()]
     .sort(compare_proofreading_runtime_items)
     .map((item) => String(item.item_id));
 }
 
+/** 视图序号隔离每次查询，修订号标识该视图对应的数据版本。 */
 function build_revision_signature(revisions: ProofreadingRevisions): string {
   return `${revisions.items.toString()}:${revisions.quality.toString()}:${revisions.proofreading.toString()}`;
 }
@@ -747,8 +604,8 @@ function build_window_rows(args: {
   const window_item_ids = args.ordered_item_ids.slice(args.start, args.start + args.count);
   return build_proofreading_visible_items(
     window_item_ids.flatMap((item_id) => {
-      const item = args.state.evaluated_item_by_id.get(item_id);
-      return item === undefined ? [] : [item];
+      const item = args.state.item_by_id.get(item_id);
+      return item === undefined ? [] : [to_client_item(item)];
     }),
   );
 }
@@ -772,42 +629,24 @@ function create_list_view_cache(args: {
 }
 
 /**
- * 分片同步只评估自己的 item 分片，返回主运行态合并所需的原始行和质量计算行。
+ * worker 返回 ID 与评估事实，原始正文由调用方保留的同次输入快照提供。
  */
 export function evaluateProofreadingSlice(
   input: ProofreadingSyncInput,
 ): ProofreadingEvaluatedSlice {
   const quality_context = buildProofreadingEvaluationContext(input.quality);
   const sample_rule_cache = new Map<string, TextPreserveRule>();
-  const rawItems: ProofreadingItemRecord[] = [];
-  const evaluatedItems: ProofreadingClientItem[] = [];
-
-  input.upsertItems.forEach((raw_item) => {
-    const normalized_item = normalize_reader_item(raw_item);
-    if (normalized_item === null) {
-      return;
-    }
-
-    rawItems.push(normalized_item);
-    const evaluated_item = evaluateProofreadingItem({
-      item: normalized_item,
-      quality_context,
-      quality: input.quality,
-      processingConfig: input.processingConfig,
-      sample_rule_cache,
-    });
-    evaluatedItems.push(evaluated_item);
-  });
-
   return {
-    projectId: input.projectId,
-    revisions: { ...input.revisions },
-    total_item_count: input.total_item_count,
-    sourceLanguage: input.processingConfig.source_language,
-    targetLanguage: input.processingConfig.target_language,
-    processingConfig: { ...input.processingConfig },
-    rawItems,
-    evaluatedItems,
+    evaluations: input.upsertItems.map((item) => ({
+      item_id: item.item_id,
+      evaluation: evaluateProofreadingItem({
+        item,
+        quality_context,
+        quality: input.quality,
+        processingConfig: input.processingConfig,
+        sample_rule_cache,
+      }),
+    })),
   };
 }
 
@@ -824,67 +663,50 @@ function create_run_state_from_evaluated(
     quality: input.quality,
     processingConfig: { ...input.processingConfig },
     quality_context: buildProofreadingEvaluationContext(input.quality),
-    sample_rule_cache: new Map<string, TextPreserveRule>(),
-    raw_item_by_id: new Map(),
+    sample_rule_cache: new Map(),
+    item_by_id: new Map(),
     natural_item_ids: [],
-    evaluated_item_by_id: new Map(),
+    default_item_ids: null,
+    outcome_count_by_code: new Map(),
+    translated_outcome_count_by_code: new Map(),
     file_count_by_path: new Map(),
     glossary_term_count_map: new Map(),
     defaultFilters: create_empty_proofreading_filter_options(),
   };
-  const evaluated_item_by_id = new Map(
-    input.evaluatedItems.map((item) => {
-      return [String(item.item_id), item] as const;
-    }),
+  const evaluations = new Map(
+    input.evaluations.map(({ item_id, evaluation }) => [item_id, evaluation]),
   );
-
-  input.rawItems.forEach((raw_item) => {
-    const normalized_item = normalize_reader_item(raw_item);
-    if (normalized_item === null) {
-      return;
-    }
-
-    const item_key = String(normalized_item.item_id);
-    state.raw_item_by_id.set(item_key, normalized_item);
-    const evaluated_item = evaluated_item_by_id.get(item_key);
-    if (evaluated_item === undefined) {
-      return;
-    }
-
-    state.evaluated_item_by_id.set(item_key, evaluated_item);
-    apply_counter_delta({
-      state,
-      item: evaluated_item,
-      delta: 1,
-    });
-  });
-
+  for (const item of input.upsertItems) {
+    const evaluation = evaluations.get(item.item_id);
+    if (evaluation === undefined)
+      throw new AppError("runtime.internal_invariant", {
+        diagnostic_context: { reason: "proofreading_evaluation_missing", item_id: item.item_id },
+      });
+    const evaluated: ProofreadingEvaluatedItem = { ...item, ...evaluation };
+    state.item_by_id.set(String(item.item_id), evaluated);
+    apply_counter_delta({ state, item: evaluated, delta: 1 });
+  }
   rebuild_natural_item_ids(state);
   state.defaultFilters = buildDefaultFiltersFromState(state);
   return state;
 }
 
 /**
- * 将自然顺序 id 序列解析为可见条目，跳过已被过滤或尚未成功评估的记录
+ * 查询沿默认列表顺序收集结果，避免重复排序；上下文继续使用独立的工程自然顺序。
  */
-function resolve_items_in_natural_order(state: ProofreadingReaderState): ProofreadingClientItem[] {
-  return state.natural_item_ids.flatMap((item_id) => {
-    const item = state.evaluated_item_by_id.get(item_id);
-    return item === undefined ? [] : [item];
-  });
-}
-
-/**
- * 校对查询沿自然 id 顺序流式收集结果，避免为搜索先复制一份全量 item 数组
- */
-function collect_visible_items_in_natural_order(args: {
+function collect_visible_items(args: {
   state: ProofreadingReaderState;
   filter_context: ProofreadingFilterContext;
   search_context: ProofreadingSearchContext;
-}): ProofreadingClientItem[] {
-  const matched_items: ProofreadingClientItem[] = [];
-  args.state.natural_item_ids.forEach((item_id) => {
-    const item = args.state.evaluated_item_by_id.get(item_id);
+}): ProofreadingEvaluatedItem[] {
+  const matched_items: ProofreadingEvaluatedItem[] = [];
+  const state = args.state;
+  const ordered_ids = (state.default_item_ids ??= sort_proofreading_items(
+    [...state.item_by_id.values()],
+    null,
+  ).map((item) => String(item.item_id)));
+  ordered_ids.forEach((item_id) => {
+    const item = args.state.item_by_id.get(item_id);
     if (item === undefined) {
       return;
     }
@@ -919,11 +741,12 @@ function resolve_proofreading_items(
     scope: query.scope,
     case_sensitive: query.case_sensitive,
   });
+  const items = collect_visible_items({ state, filter_context, search_context });
+  const uses_default_order =
+    query.sort_state === null ||
+    (query.sort_state.column_id === "file" && query.sort_state.direction === "ascending");
   return {
-    items: sort_proofreading_client_items(
-      collect_visible_items_in_natural_order({ state, filter_context, search_context }),
-      query.sort_state,
-    ),
+    items: uses_default_order ? items : sort_proofreading_items(items, query.sort_state),
     invalid_regex_message: search_context.matcher.invalid_regex?.message ?? null,
   };
 }
@@ -1016,7 +839,7 @@ export function createProofreadingReader() {
 
       input.patchItemIds.forEach((item_id) => {
         const item_key = String(item_id);
-        const previous_item = current_state.raw_item_by_id.get(item_key);
+        const previous_item = current_state.item_by_id.get(item_key);
         if (previous_item === undefined) {
           return;
         }
@@ -1032,12 +855,7 @@ export function createProofreadingReader() {
       });
 
       input.upsertItems.forEach((raw_item) => {
-        const normalized_item = normalize_reader_item(raw_item);
-        if (normalized_item === null) {
-          return;
-        }
-
-        const change = upsert_runtime_item_in_state(current_state, normalized_item);
+        const change = upsert_runtime_item_in_state(current_state, raw_item);
         item_changes.push(change);
         if (change.natural_order_changed) {
           should_rebuild_natural_order = true;
@@ -1139,7 +957,7 @@ export function createProofreadingReader() {
       });
       return {
         total_item_count: resolved.items.length,
-        items: resolved.items.slice(bounds.start, bounds.start + bounds.count),
+        items: resolved.items.slice(bounds.start, bounds.start + bounds.count).map(to_client_item),
       };
     },
     /** 汇总当前成功译文的真实 warning，不创建 GUI 列表视图。 */
@@ -1147,7 +965,12 @@ export function createProofreadingReader() {
       if (state === null) {
         return { total_count: 0, entries: [] };
       }
-      return build_proofreading_warning_summary(resolve_items_in_natural_order(state));
+      const counts = state.translated_outcome_count_by_code;
+      const entries = PROOFREADING_WARNING_CODES.flatMap((code) => {
+        const count = counts.get(code) ?? 0;
+        return count === 0 ? [] : [{ code, count }];
+      });
+      return { total_count: entries.reduce((sum, entry) => sum + entry.count, 0), entries };
     },
     /**
      * 读取已构建列表视图的窗口切片，失效 view_id 直接返回空窗口防止旧请求覆盖新 UI
@@ -1232,8 +1055,8 @@ export function createProofreadingReader() {
 
       const current_state = state;
       return query.row_ids.flatMap((row_id) => {
-        const item = current_state.evaluated_item_by_id.get(row_id);
-        return item === undefined ? [] : [item];
+        const item = current_state.item_by_id.get(row_id);
+        return item === undefined ? [] : [to_client_item(item)];
       });
     },
     /**
@@ -1246,7 +1069,7 @@ export function createProofreadingReader() {
 
       const current_state = state;
       const target_index = current_state.natural_item_ids.indexOf(query.row_id);
-      const target_item = current_state.raw_item_by_id.get(query.row_id);
+      const target_item = current_state.item_by_id.get(query.row_id);
       if (target_index < 0 || target_item === undefined) {
         return [];
       }
@@ -1262,7 +1085,7 @@ export function createProofreadingReader() {
           index += direction
         ) {
           const item_id = current_state.natural_item_ids[index];
-          const item = current_state.raw_item_by_id.get(item_id);
+          const item = current_state.item_by_id.get(item_id);
           if (item === undefined) {
             continue;
           }
@@ -1283,7 +1106,7 @@ export function createProofreadingReader() {
       }
 
       return context_item_ids.flatMap((item_id) => {
-        const item = current_state.raw_item_by_id.get(item_id);
+        const item = current_state.item_by_id.get(item_id);
         if (item === undefined) {
           return [];
         }
@@ -1311,42 +1134,62 @@ export function createProofreadingReader() {
         filters: query.filters,
         defaultFilters: state.defaultFilters,
       });
-      const items_in_natural_order = resolve_items_in_natural_order(state);
-      const outcome_scope_items = filter_items_by_context({
-        items: items_in_natural_order,
-        filters,
-        ignored_dimensions: ["outcomes", "glossary_entry_ids"],
-      });
-      const file_scope_items = filter_items_by_context({
-        items: items_in_natural_order,
-        filters,
-        ignored_dimensions: ["file_paths"],
-      });
-      const term_scope_items = filter_items_by_context({
-        items: items_in_natural_order,
-        filters,
-        ignored_dimensions: ["glossary_entry_ids"],
-      });
-      const all_file_paths = [...state.file_count_by_path.keys()].sort(compare_proofreading_text);
-      const file_count_by_path = build_file_count_by_path(file_scope_items);
-
+      const context = create_proofreading_filter_context({ filters });
+      const outcome_count_by_code: Record<string, number> = {};
+      const file_count_by_path: Record<string, number> = {};
+      const terms = new Map<string, ProofreadingFilterPanelTermEntry>();
+      let without_glossary_miss_count = 0;
+      for (const item of state.item_by_id.values()) {
+        const outcomes = resolve_proofreading_outcomes(item);
+        const file_matches =
+          context.file_path_set === null || context.file_path_set.has(item.file_path);
+        const outcome_set = context.outcome_set;
+        const outcome_matches =
+          outcome_set === null || outcomes.some((value) => outcome_set.has(value));
+        const glossary_matches = item_matches_glossary_filter(item, context);
+        if (file_matches) {
+          for (const outcome of outcomes) {
+            outcome_count_by_code[outcome] = (outcome_count_by_code[outcome] ?? 0) + 1;
+          }
+        }
+        if (outcome_matches && glossary_matches) {
+          file_count_by_path[item.file_path] = (file_count_by_path[item.file_path] ?? 0) + 1;
+        }
+        if (!file_matches || !outcome_matches) continue;
+        if (!item_has_glossary_miss(item)) without_glossary_miss_count++;
+        if (!item.warnings.includes("GLOSSARY")) continue;
+        for (const application of item.glossary_applications) {
+          if (application.fields.every((field) => field.applied)) continue;
+          const previous = terms.get(application.entry_id);
+          terms.set(application.entry_id, {
+            entry_id: application.entry_id,
+            src: application.src,
+            dst: application.dst,
+            count: (previous?.count ?? 0) + 1,
+          });
+        }
+      }
+      const known_outcomes = PROOFREADING_OUTCOME_GROUPS.flatMap((group) => [
+        ...group.outcome_codes,
+      ]);
+      const known_set = new Set<string>(known_outcomes);
+      const extra_outcomes = [
+        ...new Set([...state.outcome_count_by_code.keys(), ...filters.outcomes]),
+      ]
+        .filter((value) => !known_set.has(value))
+        .sort((left, right) => left.localeCompare(right));
       return {
-        available_outcomes: build_outcome_values({
-          items: items_in_natural_order,
-          filters,
-        }),
-        outcome_count_by_code: build_outcome_count_by_code(outcome_scope_items),
-        all_file_paths,
+        available_outcomes: [...known_outcomes, ...extra_outcomes],
+        outcome_count_by_code,
+        all_file_paths: [...state.file_count_by_path.keys()].sort(compare_proofreading_text),
         available_file_paths: [
           ...new Set([...Object.keys(file_count_by_path), ...filters.file_paths]),
         ].sort(compare_proofreading_text),
         file_count_by_path,
-        glossary_term_entries: build_term_count_entries({
-          items: term_scope_items,
-        }),
-        without_glossary_miss_count: term_scope_items.filter((item) => {
-          return !item_has_glossary_miss(item);
-        }).length,
+        glossary_term_entries: [...terms.values()].sort(
+          (left, right) => right.count - left.count || left.entry_id.localeCompare(right.entry_id),
+        ),
+        without_glossary_miss_count,
       };
     },
     /**

@@ -60,6 +60,31 @@ function evaluate(args: {
 }
 
 describe("proofreading-evaluator", () => {
+  it.each([
+    ["token", "译文\n<A>", "原文\n<A>", ["LINE_COUNT_MISMATCH"]],
+    ["token\n<A>", "译文\n<A>", "原文\r", []],
+  ])("译前替换引入换行时按组合后的实际行比较保护段：%s", (src, dst, replacement, warnings) => {
+    const quality = create_quality({
+      pre_replacement: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [
+          {
+            entry_id: "replace-line",
+            src: "token",
+            dst: replacement,
+            regex: false,
+            case_sensitive: true,
+          },
+        ],
+      },
+    });
+    const result = evaluate({ src, dst, sourceLanguage: "EN", quality });
+    expect(result.warnings).toEqual(warnings);
+    expect(result.warning_fragments_by_code).toEqual({});
+  });
+
   it("跨行标点以整条正文比较", () => {
     expect(
       evaluate({ src: "「こんにちは\n世界」", dst: "“你好世界”", sourceLanguage: "JA" }).warnings,

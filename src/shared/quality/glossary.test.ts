@@ -38,14 +38,13 @@ describe("共享术语领域规则", () => {
           {
             source_field: "src",
             target_field: "dst",
-            ranges: [{ start: 0, end: 2 }],
           },
         ],
       },
     ]);
   });
 
-  it("按原始正文与姓名分别覆盖，保留重叠次数和 entry_id 身份", () => {
+  it("按原始正文与姓名分别覆盖，同字段重复命中保留一次 entry_id 身份", () => {
     const matches = match_glossary_source(
       compile_glossary(entries),
       read_item_source_text_parts({ src: "HP HP", name_src: "ALICE" }),
@@ -58,10 +57,6 @@ describe("共享术语领域规则", () => {
           {
             source_field: "src",
             target_field: "dst",
-            ranges: [
-              { start: 0, end: 2 },
-              { start: 3, end: 5 },
-            ],
           },
         ],
       },
@@ -71,7 +66,6 @@ describe("共享术语领域规则", () => {
           {
             source_field: "name_src",
             target_field: "name_dst",
-            ranges: [{ start: 0, end: 5 }],
           },
         ],
       },
@@ -81,10 +75,6 @@ describe("共享术语领域规则", () => {
           {
             source_field: "src",
             target_field: "dst",
-            ranges: [
-              { start: 0, end: 2 },
-              { start: 3, end: 5 },
-            ],
           },
         ],
       },

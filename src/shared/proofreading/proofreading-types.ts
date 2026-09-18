@@ -115,6 +115,15 @@ export type ProofreadingItemRecord = {
   retry_count: number;
 };
 
+/** worker 只返回计算事实，原始字段由发起计算时的不可变快照提供。 */
+export type ProofreadingEvaluation = Pick<
+  ProofreadingItem,
+  "warnings" | "warning_fragments_by_code" | "glossary_applications"
+>;
+
+/** 单条运行态同时拥有原始字段和评估结果，不保存展示文本副本。 */
+export type ProofreadingEvaluatedItem = ProofreadingItemRecord & ProofreadingEvaluation;
+
 // 上下文视图只跨层传输连续阅读需要的字段，不携带列表警告和压缩投影。
 export type ProofreadingContextItem = {
   row_id: string;
