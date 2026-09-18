@@ -39,8 +39,8 @@ const JSX_VISIBLE_PROP_PATTERN =
 const RENDERER_RADIUS_LITERAL_PATTERN =
   /\bborder-radius\s*:\s*(?:4px|8px|999px)\b|rounded-(?:4xl|\[(?:4px|8px|999px)\])/g;
 
-// DesktopStateContext 是渲染进程 project change 运行态的唯一落点。
-const DESKTOP_STATE_CONTEXT_RELATIVE_PATH = "src/frontend/app/state/desktop-state-context.tsx";
+// DesktopStateProvider 是渲染进程 project change 运行态的唯一写入口。
+const DESKTOP_STATE_PROVIDER_RELATIVE_PATH = "src/frontend/app/state/desktop-state-provider.tsx";
 // TaskSnapshotStore 是渲染进程 task snapshot 运行态的唯一落点。
 const TASK_SNAPSHOT_STORE_RELATIVE_PATH = "src/frontend/app/state/task-snapshot-store.ts";
 
@@ -252,7 +252,7 @@ function create_desktop_runtime_snapshot_write_rule() {
       for (const file_path of context.files.filter(is_frontend_production_source)) {
         const relative_path = context.relative_path(file_path);
         const content = context.read_file(file_path);
-        if (relative_path !== DESKTOP_STATE_CONTEXT_RELATIVE_PATH) {
+        if (relative_path !== DESKTOP_STATE_PROVIDER_RELATIVE_PATH) {
           const matches = find_pattern_errors(
             content,
             /\bwrite_(?:project|settings)_snapshot\b/g,
@@ -269,7 +269,7 @@ function create_desktop_runtime_snapshot_write_rule() {
         }
 
         if (
-          relative_path !== DESKTOP_STATE_CONTEXT_RELATIVE_PATH &&
+          relative_path !== DESKTOP_STATE_PROVIDER_RELATIVE_PATH &&
           relative_path !== TASK_SNAPSHOT_STORE_RELATIVE_PATH
         ) {
           const matches = find_pattern_errors(content, /\.applySnapshot\s*\(/g, () => {

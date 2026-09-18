@@ -12,7 +12,7 @@ import type {
   AgentCommand,
   AgentInputSession,
 } from "@frontend/app/session/agent/agent-session-context";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";

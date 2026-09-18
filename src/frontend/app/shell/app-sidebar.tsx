@@ -17,9 +17,9 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarSeparator,
-  useSidebar,
 } from "@frontend/shadcn/sidebar";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useSidebar } from "@frontend/shadcn/sidebar-context";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import {
   AppDropdownMenu,

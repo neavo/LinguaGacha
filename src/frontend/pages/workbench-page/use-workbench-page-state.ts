@@ -8,7 +8,7 @@ import {
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
 import {
   create_workbench_delete_files_plan,
   create_workbench_planner_settings,
@@ -17,11 +17,11 @@ import {
   type WorkbenchCommandPlanningState,
   type WorkbenchCommandPlan,
 } from "@shared/workbench/workbench-command-planner";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { format_source_file_parse_failure_error_toast } from "@frontend/app/feedback/source-file-parse-failure-feedback";
@@ -244,7 +244,7 @@ export type UseWorkbenchPageStateResult = {
 /** 工作台拥有项目文件查询、选择状态和文件写入交互。 */
 export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
   const { t } = useI18n();
-  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+
   const {
     project_snapshot,
     commit_project_write,
@@ -422,7 +422,6 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
       clear_workbench_snapshot_state,
       project_snapshot.loaded,
       project_snapshot.path,
-      push_toast,
       t,
     ],
   );
@@ -700,7 +699,7 @@ export function useWorkbenchPageState(): UseWorkbenchPageStateResult {
         push_toast("error", t("workbench_page.reorder.failed"));
       }
     },
-    [entries.length, get_workbench_planning_state, push_toast, readonly, run_project_file_write, t],
+    [entries.length, get_workbench_planning_state, readonly, run_project_file_write, t],
   );
 
   /** 统一提交当前确认动作，失败保留弹窗供重试。 */

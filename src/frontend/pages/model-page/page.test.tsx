@@ -11,13 +11,11 @@ const { push_toast_mock, use_model_page_state_mock } = vi.hoisted(() => ({
   use_model_page_state_mock: vi.fn(),
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: push_toast_mock }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: push_toast_mock }));
 
 vi.mock("@frontend/pages/model-page/use-model-page-state", () => ({
   useModelPageState: use_model_page_state_mock,

@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 
 import { is_json_record } from "@domain/json";
 import type { AgentToolEntry } from "@shared/agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@frontend/shadcn/tabs";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type {
@@ -10,7 +10,11 @@ import type {
   AppViewerRange,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
-import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
+import {
+  AGENT_STATUS_LABEL_KEYS,
+  useAgentElapsed,
+} from "@frontend/pages/agent-page/agent-entry-status";
+import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
 import { format_agent_tool_output } from "./agent-tool-output";
 
 type AgentToolPayloadChannel = "input" | "output";

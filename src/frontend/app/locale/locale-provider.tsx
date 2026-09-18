@@ -1,28 +1,14 @@
-import {
-  createContext,
-  createElement,
-  useContext,
-  useEffect,
-  useMemo,
-  type ReactNode,
-} from "react";
-
-import { create_text_resolver, type Locale, type LocaleKey } from "@shared/i18n";
-
-type LocaleContextValue = {
-  locale: Locale;
-  t: (key: LocaleKey, params?: Record<string, string>) => string;
-};
-
-const LocaleContext = createContext<LocaleContextValue | null>(null);
+import { createElement, useEffect, useMemo, type ReactNode } from "react";
+import { create_text_resolver, type Locale } from "@shared/i18n";
+import { type LocaleContextValue, LocaleContext } from "./locale-context";
 
 type LocaleProviderProps = {
   locale: Locale;
   children: ReactNode;
 };
 
+/** 消费窗口已解析的语言，同步文案解析器与页面语言标记。 */
 export function LocaleProvider({ locale, children }: LocaleProviderProps): ReactNode {
-  // LocaleProvider 只消费解析后的 locale，应用语言状态和系统语言标签由各窗口边界负责投影。
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.setAttribute("data-locale", locale);
@@ -40,15 +26,3 @@ export function LocaleProvider({ locale, children }: LocaleProviderProps): React
 
   return createElement(LocaleContext.Provider, { value: context_value }, children);
 }
-
-export function useI18n(): LocaleContextValue {
-  const locale_context = useContext(LocaleContext);
-
-  if (locale_context !== null) {
-    return locale_context;
-  } else {
-    throw new Error("useI18n must be used inside LocaleProvider");
-  }
-}
-
-export type { LocaleKey };

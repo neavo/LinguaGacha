@@ -3,7 +3,7 @@ import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-ru
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import type { QualityRuleConfirmState } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import type {
   QualityRuleTextPreserveEntry as TextPreserveEntry,
   TextPreserveMode,

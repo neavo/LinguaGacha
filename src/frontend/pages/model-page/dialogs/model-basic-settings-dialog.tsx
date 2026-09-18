@@ -2,7 +2,7 @@ import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { is_model_thinking_level } from "@domain/model";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";

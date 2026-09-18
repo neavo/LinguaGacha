@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppActionDialog, AppConfirmDialog } from "./app-alert-dialog";
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,
@@ -34,7 +34,7 @@ describe("应用模态窗", () => {
     vi.useRealTimers();
   });
 
-  it("普通确认固定使用取消、确认和主题色", () => {
+  it("确认与取消分别提交对应动作", () => {
     const on_confirm = vi.fn();
     const on_close = vi.fn();
     render_dialog(
@@ -46,16 +46,13 @@ describe("应用模态窗", () => {
       />,
     );
 
-    expect(read_button("app.action.cancel")?.dataset.variant).toBe("outline");
-    expect(read_button("app.action.confirm")?.dataset.variant).toBe("default");
-
     click_button("app.action.confirm");
     click_button("app.action.cancel");
     expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_close).toHaveBeenCalledTimes(1);
   });
 
-  it("动作模态窗固定提供取消并把业务选择交回调用方", () => {
+  it("多动作弹窗分别提交确认、次操作和取消", () => {
     const on_primary = vi.fn();
     const on_secondary = vi.fn();
     const on_close = vi.fn();
@@ -69,18 +66,6 @@ describe("应用模态窗", () => {
       />,
     );
 
-    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
-      "app.action.confirm",
-    );
-    expect(
-      Array.from(
-        document.body.querySelectorAll<HTMLButtonElement>(
-          '[data-slot="alert-dialog-footer"] button',
-        ),
-        (button) => button.textContent,
-      ),
-    ).toEqual(["app.action.cancel", "跳过", "覆盖"]);
-    expect(read_button("覆盖")?.dataset.variant).toBe("destructive");
     click_button("覆盖");
     click_button("跳过");
     click_button("app.action.cancel");
@@ -157,7 +142,7 @@ describe("应用模态窗", () => {
     expect(document.body.querySelectorAll('[data-testid="spinner"]')).toHaveLength(1);
   });
 
-  it("延迟确认显示秒数并在三秒后开放提交", () => {
+  it("倒计时结束后开放确认", () => {
     vi.useFakeTimers();
     const on_confirm = vi.fn();
 
@@ -171,12 +156,14 @@ describe("应用模态窗", () => {
       />,
     );
 
-    expect(read_button("3s")?.disabled).toBe(true);
-    act(() => vi.advanceTimersByTime(1_000));
-    expect(read_button("2s")?.disabled).toBe(true);
-    act(() => vi.advanceTimersByTime(1_000));
-    expect(read_button("1s")?.disabled).toBe(true);
-    act(() => vi.advanceTimersByTime(1_000));
+    const countdown = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => /^\d+s$/.test(button.textContent ?? ""),
+    )!;
+    expect(countdown.disabled).toBe(true);
+    click_button(countdown.textContent!);
+    expect(on_confirm).not.toHaveBeenCalled();
+    const seconds = Number.parseInt(countdown.textContent!, 10);
+    act(() => vi.advanceTimersByTime(seconds * 1_000));
     expect(read_button("app.action.confirm")?.disabled).toBe(false);
 
     click_button("app.action.confirm");

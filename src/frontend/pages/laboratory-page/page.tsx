@@ -1,5 +1,5 @@
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 import { BooleanSegmentedToggle } from "@frontend/widgets/boolean-segmented-toggle";

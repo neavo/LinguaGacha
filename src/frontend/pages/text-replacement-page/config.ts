@@ -1,4 +1,4 @@
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 
 export type TextReplacementVariant = "pre" | "post";
 

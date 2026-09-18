@@ -1,4 +1,4 @@
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 

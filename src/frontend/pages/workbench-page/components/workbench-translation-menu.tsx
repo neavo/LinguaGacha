@@ -1,17 +1,12 @@
 import { BrushCleaning, Paintbrush, Play, ScanText } from "lucide-react";
 
 import "@frontend/features/batch-translation/batch-translation.css";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { ModelSelectionMenu } from "@frontend/features/model-selection/model-selection-menu";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import type { ProjectTranslationStats } from "@shared/project-translation-stats";
 import { Spinner } from "@frontend/shadcn/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
@@ -52,16 +47,18 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
     <AppDropdownMenu>
       <Tooltip>
         <TooltipTrigger
-          render={tooltip_trigger_target(
-            <AppDropdownMenuTrigger
-              render={
-                <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
-                  <ScanText data-icon="inline-start" />
-                  {t(`workbench_page.action.translation_task`)}
-                </AppButton>
-              }
-            />,
-          )}
+          render={
+            <TooltipTarget>
+              <AppDropdownMenuTrigger
+                render={
+                  <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+                    <ScanText data-icon="inline-start" />
+                    {t(`workbench_page.action.translation_task`)}
+                  </AppButton>
+                }
+              />
+            </TooltipTarget>
+          }
         />
         <TooltipContent>
           <p>{t(`batch_translation.menu.tooltip`)}</p>

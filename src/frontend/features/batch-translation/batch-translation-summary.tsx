@@ -1,4 +1,4 @@
-import { badgeVariants } from "@frontend/shadcn/badge";
+import { badgeVariants } from "@frontend/shadcn/badge-variants";
 import { useEffect, useState } from "react";
 
 import "./batch-translation-summary.css";

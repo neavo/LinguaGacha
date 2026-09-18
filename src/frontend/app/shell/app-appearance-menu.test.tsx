@@ -14,7 +14,7 @@ const appearance = vi.hoisted(() => ({
   set_theme_preference: vi.fn(),
 }));
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => appearance,
 }));
 

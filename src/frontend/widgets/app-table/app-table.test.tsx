@@ -104,7 +104,7 @@ type TestRow = {
   label: string;
 };
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

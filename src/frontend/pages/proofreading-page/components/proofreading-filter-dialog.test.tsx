@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingFilterDialog } from "./proofreading-filter-dialog";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

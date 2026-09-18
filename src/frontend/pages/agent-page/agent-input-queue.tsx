@@ -8,15 +8,10 @@ import { useReorder } from "@frontend/widgets/interactions/use-reorder";
 import { GripVertical, LoaderCircle, Pencil, Send, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type { AgentInputQueueSnapshot, AgentQueuedInput } from "@shared/agent";
 import { AppButton } from "@frontend/widgets/app-button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 
 type AgentInputQueueProps = {
   queue: AgentInputQueueSnapshot;
@@ -107,19 +102,21 @@ function AgentInputQueueItem(props: {
     <li ref={sortable.ref} className="agent-input-queue__item">
       <Tooltip>
         <TooltipTrigger
-          render={tooltip_trigger_target(
-            <AppButton
-              type="button"
-              size="icon-xs"
-              variant="ghost"
-              className="agent-input-queue__drag"
-              disabled={item_actions_disabled}
-              aria-label={t("agent_page.queue.reorder")}
-              ref={sortable.handleRef}
-            >
-              <GripVertical aria-hidden="true" />
-            </AppButton>,
-          )}
+          render={
+            <TooltipTarget>
+              <AppButton
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="agent-input-queue__drag"
+                disabled={item_actions_disabled}
+                aria-label={t("agent_page.queue.reorder")}
+                ref={sortable.handleRef}
+              >
+                <GripVertical aria-hidden="true" />
+              </AppButton>
+            </TooltipTarget>
+          }
         />
         <TooltipContent side="top">
           <p>{t("agent_page.queue.reorder")}</p>
@@ -174,21 +171,23 @@ function QueueIconAction(props: {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={tooltip_trigger_target(
-          <AppButton
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            disabled={props.disabled}
-            aria-label={props.label}
-            aria-busy={props.busy || undefined}
-            aria-live={props.busy ? "polite" : undefined}
-            className={props.busy ? "disabled:opacity-100" : undefined}
-            onClick={props.on_click}
-          >
-            {props.children}
-          </AppButton>,
-        )}
+        render={
+          <TooltipTarget>
+            <AppButton
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              disabled={props.disabled}
+              aria-label={props.label}
+              aria-busy={props.busy || undefined}
+              aria-live={props.busy ? "polite" : undefined}
+              className={props.busy ? "disabled:opacity-100" : undefined}
+              onClick={props.on_click}
+            >
+              {props.children}
+            </AppButton>
+          </TooltipTarget>
+        }
       />
       <TooltipContent side="top">
         <p>{props.label}</p>

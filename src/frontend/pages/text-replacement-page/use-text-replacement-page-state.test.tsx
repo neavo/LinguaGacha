@@ -282,13 +282,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => ({
-      push_toast: push_toast_mock,
-    }),
-  };
-});
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  push_toast: push_toast_mock,
+}));
 
 vi.mock("@frontend/app/session/quality-rule-statistics-context", () => {
   return {
@@ -498,7 +494,7 @@ vi.mock("@frontend/app/session/project-session-ui-state-context", async () => {
   };
 });
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: translate_mock,

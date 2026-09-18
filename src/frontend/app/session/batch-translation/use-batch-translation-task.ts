@@ -6,9 +6,9 @@ import {
   is_active_batch_translation_status,
   type BatchTranslationSnapshot,
 } from "@domain/batch-translation";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import {
   useDesktopState,
@@ -17,18 +17,11 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
-import { resolve_batch_translation_generated_tokens } from "@shared/batch-translation/batch-translation";
-
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
-  advance_task_waveform_state,
-  create_empty_task_waveform_state,
-  has_unsettled_task_waveform_tail,
-  TASK_WAVEFORM_SAMPLE_INTERVAL_MS,
-} from "@frontend/app/session/batch-translation/batch-translation-waveform-state";
-import {
+  resolve_batch_translation_generated_tokens,
   clone_translation_task_snapshot,
   should_open_translation_export_followup,
   create_empty_batch_translation_snapshot,
@@ -39,8 +32,15 @@ import {
   type TranslationTaskConfirmState,
   type BatchTranslationMetrics,
   type BatchTranslationPayload,
+  normalize_batch_translation_snapshot,
 } from "@shared/batch-translation/batch-translation";
-import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
+
+import {
+  advance_task_waveform_state,
+  create_empty_task_waveform_state,
+  has_unsettled_task_waveform_tail,
+  TASK_WAVEFORM_SAMPLE_INTERVAL_MS,
+} from "@frontend/app/session/batch-translation/batch-translation-waveform-state";
 
 // 翻译任务写入的诊断名由 renderer 会话拥有，desktop 层只负责提交与互斥。
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
@@ -73,7 +73,7 @@ export function useBatchTranslationTask(
 ): BatchTranslationTask {
   const { onRequestExport } = options;
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const { project_snapshot, settings_snapshot, commit_project_write, refresh_batch_translation } =
     useDesktopState();
   const sync_task_snapshot = useSyncBatchTranslationSnapshot();
@@ -204,13 +204,7 @@ export function useBatchTranslationTask(
         resolve_visible_error_message(error, t, t("batch_translation.feedback.refresh_failed")),
       );
     }
-  }, [
-    clear_translation_task_state,
-    project_snapshot.loaded,
-    push_toast,
-    sync_runtime_task_snapshot,
-    t,
-  ]);
+  }, [clear_translation_task_state, project_snapshot.loaded, sync_runtime_task_snapshot, t]);
 
   const open_translation_detail_sheet = useCallback((): void => {
     if (can_open_translation_detail_sheet) {
@@ -254,7 +248,6 @@ export function useBatchTranslationTask(
       );
     }
   }, [
-    push_toast,
     sync_runtime_task_snapshot,
     t,
     translation_action_blocked,
@@ -355,7 +348,6 @@ export function useBatchTranslationTask(
   }, [
     commit_project_write,
     refresh_batch_translation,
-    push_toast,
     settings_snapshot.mtool_optimizer_enable,
     settings_snapshot.source_language,
     settings_snapshot.skip_duplicate_source_text_enable,
@@ -415,7 +407,6 @@ export function useBatchTranslationTask(
     }
   }, [
     project_snapshot.loaded,
-    push_toast,
     t,
     translation_dialog_open,
     translation_task_snapshot,

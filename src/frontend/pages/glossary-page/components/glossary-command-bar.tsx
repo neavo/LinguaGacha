@@ -1,7 +1,7 @@
 import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem as GlossaryPresetItem } from "@frontend/features/preset-editor/preset-types";
 import { AppButton } from "@frontend/widgets/app-button";

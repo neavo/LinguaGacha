@@ -1,7 +1,7 @@
-import { useI18n } from "@frontend/app/locale/locale-provider";
-import {
-  type ProofreadingConfirmationAction,
-  type ProofreadingPendingConfirmation,
+import { useI18n } from "@frontend/app/locale/locale-context";
+import type {
+  ProofreadingConfirmationAction,
+  ProofreadingPendingConfirmation,
 } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { AppActionDialog, AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 

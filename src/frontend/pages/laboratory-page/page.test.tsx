@@ -10,7 +10,7 @@ const { laboratory_state_fixture } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     locale: "zh-CN",
     t: (key: string) => key,

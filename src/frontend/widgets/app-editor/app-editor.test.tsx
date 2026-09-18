@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 
 import { AppEditor, type AppEditorHandle } from "@frontend/widgets/app-editor/app-editor";
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => {
+vi.mock("@frontend/app/appearance/appearance-context", () => {
   return {
     useAppearance: () => {
       return {
@@ -15,7 +15,7 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => {
   };
 });
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,

@@ -14,54 +14,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentTimeline: () => ({ entries: (agent_mock.session as { entries: AgentEntry[] }).entries }),
 }));
 
-import {
-  AgentCompletionAttention,
-  resolve_agent_completion_attention,
-} from "./agent-completion-attention";
-
-describe("resolve_agent_completion_attention", () => {
-  it("只在运行后的成功或失败 round 收束时请求提醒", () => {
-    expect(
-      resolve_agent_completion_attention(true, {
-        state: "idle",
-        entries: [round_entry("success")],
-      }),
-    ).toEqual({ was_running: false, should_request: true });
-    expect(
-      resolve_agent_completion_attention(true, {
-        state: "idle",
-        entries: [round_entry("error")],
-      }),
-    ).toEqual({ was_running: false, should_request: true });
-    expect(
-      resolve_agent_completion_attention(true, {
-        state: "idle",
-        entries: [round_entry("stopped")],
-      }),
-    ).toEqual({ was_running: false, should_request: false });
-    expect(
-      resolve_agent_completion_attention(true, {
-        state: "idle",
-        entries: [],
-      }),
-    ).toEqual({ was_running: false, should_request: false });
-  });
-
-  it("运行中的中间 round 不提前提醒，历史终态也不补发", () => {
-    expect(
-      resolve_agent_completion_attention(false, {
-        state: "idle",
-        entries: [round_entry("success")],
-      }),
-    ).toEqual({ was_running: false, should_request: false });
-    expect(
-      resolve_agent_completion_attention(true, {
-        state: "running",
-        entries: [round_entry("running")],
-      }),
-    ).toEqual({ was_running: true, should_request: false });
-  });
-});
+import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
 
 describe("AgentCompletionAttention", () => {
   let container: HTMLDivElement | null = null;
@@ -83,27 +36,29 @@ describe("AgentCompletionAttention", () => {
     container = null;
   });
 
-  it("整段运行结束只请求一次提醒，停止和重复快照不重复请求", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+  it.each(["success", "error", "stopped", null] as const)(
+    "运行结束为 %s 时按轮次结果提醒一次",
+    async (status) => {
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+      const terminal = status === null ? [] : [round_entry(status)];
+      agent_mock.session = { state: "idle", entries: terminal };
+      await render_attention();
+      expect(agent_mock.request_user_attention).not.toHaveBeenCalled();
+      agent_mock.session = { state: "running", entries: terminal };
+      await render_attention();
+      expect(agent_mock.request_user_attention).not.toHaveBeenCalled();
+      agent_mock.session = { state: "idle", entries: terminal };
+      await render_attention();
+      await render_attention();
+      expect(agent_mock.request_user_attention).toHaveBeenCalledTimes(
+        status === "success" || status === "error" ? 1 : 0,
+      );
+    },
+  );
 
-    await render_attention();
-    agent_mock.session = { state: "running", entries: [round_entry("running")] };
-    await render_attention();
-    agent_mock.session = { state: "idle", entries: [round_entry("stopped")] };
-    await render_attention();
-    expect(agent_mock.request_user_attention).not.toHaveBeenCalled();
-
-    agent_mock.session = { state: "running", entries: [round_entry("running")] };
-    await render_attention();
-    agent_mock.session = { state: "idle", entries: [round_entry("success")] };
-    await render_attention();
-    await render_attention();
-
-    expect(agent_mock.request_user_attention).toHaveBeenCalledTimes(1);
-  });
-
+  /** 在同一挂载中推送连续快照，观察宿主通知次数。 */
   async function render_attention(): Promise<void> {
     await act(async () => {
       root?.render(<AgentCompletionAttention />);
@@ -111,6 +66,7 @@ describe("AgentCompletionAttention", () => {
   }
 });
 
+/** 构造后端普通用户轮次的最小有效条目。 */
 function round_entry(status: AgentEntry["status"]): AgentEntry {
   return {
     kind: "user_message",

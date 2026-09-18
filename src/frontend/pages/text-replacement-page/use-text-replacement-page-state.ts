@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import {
@@ -29,9 +29,9 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   build_user_preset_virtual_id,
   create_empty_preset_input_state,
@@ -330,7 +330,7 @@ export function useTextReplacementPageState(
 ): UseTextReplacementPageStateResult {
   const config = TEXT_REPLACEMENT_VARIANT_CONFIG[variant];
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   // 用公开 rule_type 隔离前后替换页的 session 表格状态。
   const ui_state_key = create_text_replacement_ui_state_key(config.rule_type);
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
@@ -350,7 +350,7 @@ export function useTextReplacementPageState(
         resolve_visible_error_message(error, t, t("text_replacement_page.feedback.load_failed")),
       );
     },
-    [push_toast, t],
+    [t],
   );
   const {
     quality_slice,
@@ -647,7 +647,6 @@ export function useTextReplacementPageState(
     [
       commit_project_write,
       config.rule_type,
-      push_toast,
       quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
@@ -678,7 +677,7 @@ export function useTextReplacementPageState(
 
       return true;
     },
-    [clear_selection_state, push_toast, readonly, save_entries_snapshot, t],
+    [clear_selection_state, readonly, save_entries_snapshot, t],
   );
 
   /** 复制当前规则，供导入确认重新计算。 */
@@ -785,7 +784,6 @@ export function useTextReplacementPageState(
     [
       commit_project_write,
       config.rule_type,
-      push_toast,
       quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
@@ -1027,7 +1025,6 @@ export function useTextReplacementPageState(
       entry_index_by_id,
       navigate_to_route,
       push_proofreading_lookup_intent,
-      push_toast,
       t,
     ],
   );
@@ -1100,7 +1097,6 @@ export function useTextReplacementPageState(
       config.rule_type,
       get_import_existing_entries,
       persist_entries_with_duplicate_resolution,
-      push_toast,
       readonly,
       t,
     ],
@@ -1139,7 +1135,7 @@ export function useTextReplacementPageState(
         resolve_visible_error_message(error, t, t("text_replacement_page.feedback.export_failed")),
       );
     }
-  }, [config.export_file_name, config.rule_type, entries, push_toast, t]);
+  }, [config.export_file_name, config.rule_type, entries, t]);
 
   /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
@@ -1153,7 +1149,7 @@ export function useTextReplacementPageState(
         resolve_visible_error_message(error, t, t("text_replacement_page.feedback.preset_failed")),
       );
     }
-  }, [push_toast, refresh_preset_menu, t]);
+  }, [refresh_preset_menu, t]);
 
   /** 提交所选预设，成功后关闭菜单。 */
   const apply_preset = useCallback(
@@ -1191,7 +1187,6 @@ export function useTextReplacementPageState(
       config.rule_type,
       get_import_existing_entries,
       persist_entries_with_duplicate_resolution,
-      push_toast,
       readonly,
       t,
     ],
@@ -1282,7 +1277,7 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [config.rule_type, entries, push_toast, refresh_preset_menu, t],
+    [config.rule_type, entries, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */
@@ -1325,7 +1320,7 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [apply_settings_snapshot, config, preset_items, push_toast, refresh_preset_menu, t],
+    [apply_settings_snapshot, config, preset_items, refresh_preset_menu, t],
   );
 
   /** 通过设置回包推进默认标记。 */
@@ -1348,7 +1343,7 @@ export function useTextReplacementPageState(
         );
       }
     },
-    [apply_settings_snapshot, config, push_toast, t],
+    [apply_settings_snapshot, config, t],
   );
 
   /** 空标识通过同一保存入口清除默认引用。 */
@@ -1430,15 +1425,7 @@ export function useTextReplacementPageState(
       set_dialog_state(reopen_dialog_state);
     }
     return false;
-  }, [
-    dialog_state,
-    entries,
-    entry_ids,
-    push_toast,
-    readonly,
-    save_entries_snapshot,
-    validate_entry,
-  ]);
+  }, [dialog_state, entries, entry_ids, readonly, save_entries_snapshot, validate_entry]);
 
   /** 提交当前草稿并恢复操作状态。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
@@ -1535,7 +1522,7 @@ export function useTextReplacementPageState(
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, rename_preset, save_preset, t]);
 
   /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {
@@ -1629,7 +1616,6 @@ export function useTextReplacementPageState(
     config,
     confirm_state,
     preset_items,
-    push_toast,
     readonly,
     refresh_preset_menu,
     reset_entries,

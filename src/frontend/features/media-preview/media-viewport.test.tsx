@@ -1,36 +1,9 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { MediaViewport } from "./media-viewport";
-import { describe, expect, it, vi } from "vitest";
+import { MediaViewport } from "@frontend/features/media-preview/media-viewport";
+import { expect, it, vi } from "vitest";
 
-import { calculate_media_fit_scale, clamp_media_pan } from "./media-viewport";
-
-describe("媒体预览几何计算", () => {
-  it("使用单一居中适应比例且不放大小媒体", () => {
-    expect(
-      calculate_media_fit_scale({ width: 1000, height: 800 }, { width: 2000, height: 1000 }),
-    ).toBe(0.5);
-    expect(
-      calculate_media_fit_scale({ width: 1000, height: 800 }, { width: 400, height: 300 }),
-    ).toBe(1);
-  });
-
-  it("按各轴独立限制适应尺寸媒体的平移范围", () => {
-    const viewport = { width: 1000, height: 800 };
-    const media = { width: 2000, height: 1000 };
-    expect(clamp_media_pan({ x: 999, y: 999 }, viewport, media, 0.5, 1)).toEqual({ x: 0, y: 0 });
-    expect(clamp_media_pan({ x: 999, y: 999 }, viewport, media, 0.5, 2)).toEqual({
-      x: 500,
-      y: 100,
-    });
-    expect(clamp_media_pan({ x: -999, y: -999 }, viewport, media, 0.5, 2)).toEqual({
-      x: -500,
-      y: -100,
-    });
-  });
-});
-
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

@@ -13,13 +13,11 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   open_external_url: mocks.open_external_url,
   api_fetch: mocks.api_fetch,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: mocks.push_toast }),
-}));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.push_toast }));
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { QualityRuleConfirmDialog } from "./quality-rule-confirm-dialog";
 import type { QualityRuleConfirmState } from "./quality-rule-confirm-state";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string) => `${key}:{COUNT}`,
   }),

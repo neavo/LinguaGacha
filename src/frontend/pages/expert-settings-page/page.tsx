@@ -1,8 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/expert-settings-page/expert-settings-page.css";
 import { useExpertSettingsState } from "@frontend/pages/expert-settings-page/use-expert-settings-state";
 import {
@@ -20,7 +20,7 @@ type ExpertSettingsPageProps = {
 /** 编辑器保存应用设置；数值草稿在提交前保留本地输入。 */
 export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const expert_settings_state = useExpertSettingsState();
   const [preceding_lines_threshold_draft, set_preceding_lines_threshold_draft] = useState<string>(
     () => {

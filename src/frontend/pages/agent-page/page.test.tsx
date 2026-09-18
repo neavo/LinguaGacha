@@ -139,9 +139,7 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime_state.current,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
     await import_original<
@@ -176,13 +174,13 @@ vi.mock("@frontend/app/session/translation-export/translation-export-context", (
 vi.mock("@frontend/app/session/project-translation-stats-context", () => ({
   useProjectTranslationStats: () => null,
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

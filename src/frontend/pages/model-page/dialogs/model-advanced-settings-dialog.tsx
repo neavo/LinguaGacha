@@ -5,7 +5,7 @@ import {
   type ModelAgentConfig,
   type NormalizedModelAgentConfig,
 } from "@domain/model-agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/card";
 import { Input } from "@frontend/shadcn/input";

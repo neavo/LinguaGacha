@@ -2,7 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 import { useState } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { Files } from "lucide-react";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
 import type { ProofreadingFile } from "@shared/proofreading/proofreading-types";

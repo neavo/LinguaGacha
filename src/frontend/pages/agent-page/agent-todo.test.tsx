@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
-import { act } from "react";
+import { type ReactNode, act } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/shadcn/tooltip", () => ({

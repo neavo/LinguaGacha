@@ -1,7 +1,7 @@
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import {
-  type QualityRuleConfirmKind,
-  type QualityRuleConfirmState,
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import type {
+  QualityRuleConfirmKind,
+  QualityRuleConfirmState,
 } from "@frontend/features/quality-rule-editor/quality-rule-confirm-state";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 

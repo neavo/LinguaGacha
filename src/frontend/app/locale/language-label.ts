@@ -1,5 +1,5 @@
 import type { LanguageCode } from "@domain/setting";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 
 export type LanguageLabelKey = Extract<LocaleKey, `app.language.${LanguageCode}`>;
 

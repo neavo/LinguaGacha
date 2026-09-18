@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModelThinkingLevel, ModelUsage } from "@domain/model";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   normalize_model_selection_snapshot,
   type ModelSelectionChange,
@@ -26,7 +26,6 @@ const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
 
 /** 页面生命周期内唯一拥有模型控制 query 与 command，不进入全局运行态。 */
 export function useModelSelection(): ModelSelectionController {
-  const { push_toast } = useDesktopToast();
   const { t } = useI18n();
   const runtime_idle = useRuntimeSnapshot().owner === null; // 共享运行占用变化后刷新配置快照
   const [snapshot, set_snapshot] = useState<ModelSelectionSnapshot>(EMPTY_SNAPSHOT);
@@ -59,7 +58,7 @@ export function useModelSelection(): ModelSelectionController {
     return () => {
       mounted = false;
     };
-  }, [push_toast, t, runtime_idle]);
+  }, [t, runtime_idle]);
 
   /** 模型控制命令共用提交、回包归一和错误恢复。 */
   const update_snapshot = useCallback(
@@ -82,7 +81,7 @@ export function useModelSelection(): ModelSelectionController {
         set_updating(false);
       }
     },
-    [push_toast, t],
+    [t],
   );
 
   /** 同时比较选择和全局等级，允许当前模型换档及其它模型沿用已选档位。 */

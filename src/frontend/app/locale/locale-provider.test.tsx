@@ -2,7 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LocaleProvider, useI18n } from "@frontend/app/locale/locale-provider";
+import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 
 /** 通过子树公开消费的 locale 观察 Provider 更新。 */
 function LocaleProbe(): JSX.Element {

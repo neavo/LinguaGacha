@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type {
   ModelCategorySnapshot,
   ModelConfirmState,
@@ -417,7 +417,7 @@ function reorder_snapshot_group(
 /** 持有模型页 query、乐观更新与对话框状态，后端仍是模型事实唯一来源。 */
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<ModelPageSnapshot>(EMPTY_SNAPSHOT);
   const [load_status, set_load_status] = useState<"loading" | "ready" | "error">("loading");
@@ -460,7 +460,7 @@ export function useModelPageState(): UseModelPageStateResult {
         set_load_status("error");
       }
     }
-  }, [push_toast, t]);
+  }, [t]);
 
   useEffect(() => {
     void refresh_snapshot();
@@ -524,7 +524,7 @@ export function useModelPageState(): UseModelPageStateResult {
         }
       }
     },
-    [push_toast, refresh_snapshot, t],
+    [refresh_snapshot, t],
   );
 
   /** 新增指定分类的模型并回填列表快照。 */
@@ -550,7 +550,7 @@ export function useModelPageState(): UseModelPageStateResult {
         set_is_action_running(false);
       }
     },
-    [push_toast, readonly, t],
+    [readonly, t],
   );
 
   /** 服务端复制配置，成功后以完整快照展示目标分类中的副本。 */
@@ -581,7 +581,7 @@ export function useModelPageState(): UseModelPageStateResult {
         set_is_action_running(false);
       }
     },
-    [push_toast, readonly, t],
+    [readonly, t],
   );
 
   /** 自定义分组会自动补齐至少一项；已下架预设允许清空分组。 */
@@ -608,7 +608,7 @@ export function useModelPageState(): UseModelPageStateResult {
         });
       }
     },
-    [push_toast, readonly, t],
+    [readonly, t],
   );
 
   /** 记录模型预设恢复目标供确认。 */
@@ -658,7 +658,7 @@ export function useModelPageState(): UseModelPageStateResult {
         set_is_action_running(false);
       }
     },
-    [push_toast, readonly, t],
+    [readonly, t],
   );
 
   /** 执行连接测试并展示服务端测试结果。 */
@@ -692,7 +692,7 @@ export function useModelPageState(): UseModelPageStateResult {
         set_is_testing(false);
       }
     },
-    [push_toast, test_disabled, t],
+    [test_disabled, t],
   );
 
   /** 打开指定模型的配置面板。 */
@@ -745,7 +745,7 @@ export function useModelPageState(): UseModelPageStateResult {
     } finally {
       set_is_action_running(false);
     }
-  }, [confirm_state, dialog_state.model_id, push_toast, readonly, t]);
+  }, [confirm_state, dialog_state.model_id, readonly, t]);
 
   /** 取消当前模型确认流程。 */
   function close_confirm(): void {
@@ -826,7 +826,7 @@ export function useModelPageState(): UseModelPageStateResult {
         );
       }
     },
-    [push_toast, t],
+    [t],
   );
 
   /** 将选择结果写入当前模型配置。 */

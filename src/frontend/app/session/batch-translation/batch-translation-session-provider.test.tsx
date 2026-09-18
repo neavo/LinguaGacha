@@ -2,7 +2,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
+import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-provider";
 
 import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 
@@ -14,7 +14,7 @@ const task_runtime_mock = vi.hoisted(() => {
   };
 });
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

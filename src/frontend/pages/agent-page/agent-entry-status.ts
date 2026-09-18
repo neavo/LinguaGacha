@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-
 import type { AgentEntryStatus } from "@shared/agent";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 
 /** 共享状态值只在此处映射为页面本地化键，避免各条目形成平行词表。 */
 export const AGENT_STATUS_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze(
@@ -12,17 +11,6 @@ export const AGENT_STATUS_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKe
     stopped: "agent_page.status.stopped",
   },
 );
-
-/** 状态灯以颜色和可访问名称共同表达结果。 */
-export function AgentStatusMark(props: { status: AgentEntryStatus; label: string }): JSX.Element {
-  return (
-    <span
-      className={`agent-status-mark agent-status-mark--${props.status}`}
-      role="img"
-      aria-label={props.label}
-    />
-  );
-}
 
 /** 运行条目持有单个本地时钟；已结束轮次按后端时间冻结。 */
 export function useAgentElapsed(started_at: number, running: boolean, ended_at?: number): string {

@@ -7,7 +7,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { LogContent } from "@shared/log";
 import type { LogError } from "@shared/error";
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

@@ -2,7 +2,7 @@ import { act, createRef, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TooltipTarget } from "./tooltip";
 
 describe("Tooltip", () => {
   let container: HTMLDivElement | null = null;
@@ -18,10 +18,10 @@ describe("Tooltip", () => {
     vi.useRealTimers();
   });
 
-  /** 挂载真实提示原语，可选地接入消费方的 actionsRef。 */
+  /** 挂载普通按钮或禁用控件包装，覆盖触发器的事件和 ref 转交。 */
   async function render(
     actions_ref?: RefObject<{ close: () => void; unmount: () => void } | null>,
-  ): Promise<HTMLButtonElement> {
+  ): Promise<HTMLElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -29,13 +29,23 @@ describe("Tooltip", () => {
       root?.render(
         <TooltipProvider delay={0}>
           <Tooltip actionsRef={actions_ref}>
-            <TooltipTrigger>提示按钮</TooltipTrigger>
+            {actions_ref ? (
+              <TooltipTrigger
+                render={
+                  <TooltipTarget>
+                    <button disabled>提示按钮</button>
+                  </TooltipTarget>
+                }
+              />
+            ) : (
+              <TooltipTrigger>提示按钮</TooltipTrigger>
+            )}
             <TooltipContent>提示内容</TooltipContent>
           </Tooltip>
         </TooltipProvider>,
       ),
     );
-    const trigger = container.querySelector<HTMLButtonElement>("button");
+    const trigger = container.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]');
     if (trigger === null) throw new Error("缺少 Tooltip 触发器");
     return trigger;
   }
@@ -75,7 +85,7 @@ describe("Tooltip", () => {
     expect(document.querySelector('[role="tooltip"][data-open]')).toBeNull();
 
     await act(async () => window.dispatchEvent(new Event("focus")));
-    const restored_trigger = container?.querySelector<HTMLButtonElement>("button");
+    const restored_trigger = container?.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]');
     if (restored_trigger === undefined || restored_trigger === null) {
       throw new Error("缺少恢复后的 Tooltip 触发器");
     }

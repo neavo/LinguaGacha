@@ -3,10 +3,10 @@ import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import { PROOFREADING_STATUS_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
   create_clear_translations_plan,

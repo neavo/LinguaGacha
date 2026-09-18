@@ -1,7 +1,7 @@
 import { Boxes, Circle, CircleCheck } from "lucide-react";
 
 import { MODEL_TYPES, type ModelThinkingLevel, type ModelUsage } from "@domain/model";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,

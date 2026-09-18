@@ -43,10 +43,10 @@ vi.mock("./agent-image", () => ({
   normalize_agent_images: image_mocks.normalize_agent_images,
 }));
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     locale: "zh-CN",
     t: (key: string, params?: Record<string, string>) =>

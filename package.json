@@ -11,7 +11,7 @@
     "check": "node ./buildtools/check/index.mjs",
     "dev": "node buildtools/build-workspace.mjs && electron-vite dev --config buildtools/vite/electron.vite.config.ts",
     "format": "node ./buildtools/format-related-files.mjs",
-    "lint": "oxlint .",
+    "lint": "oxlint . && oxlint --react-plugin -A all -D react/only-export-components src/frontend",
     "postinstall": "node ./node_modules/electron/install.js",
     "test": "vitest run --config buildtools/vitest/vitest.config.ts"
   },

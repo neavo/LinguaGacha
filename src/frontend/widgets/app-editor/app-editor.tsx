@@ -12,8 +12,8 @@ import {
   placeholder as editorPlaceholder,
 } from "@codemirror/view";
 
-import { useAppearance } from "@frontend/app/appearance/appearance-provider";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useAppearance } from "@frontend/app/appearance/appearance-context";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";

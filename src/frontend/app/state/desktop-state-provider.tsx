@@ -1,24 +1,14 @@
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RouteId } from "@frontend/app/navigation/types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectChangeApplyResult,
-  type ProjectChangeEventForState,
-  type ProjectStage,
+import type {
+  ProjectChangeApplyResult,
+  ProjectChangeEventForState,
+  ProjectStage,
 } from "@frontend/app/state/desktop-project-change-types";
 import { createBatchTranslationSnapshotStore } from "@frontend/app/state/batch-translation-snapshot-store";
-import { type BatchTranslationSnapshot } from "@domain/batch-translation";
+import type { BatchTranslationSnapshot } from "@domain/batch-translation";
 import { normalize_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
-
 import {
   createRuntimeActivityStore,
   normalize_runtime_activity_snapshot,
@@ -29,34 +19,27 @@ import { useDesktopRecovery } from "@frontend/app/state/desktop-recovery";
 import { useDesktopEventStream } from "@frontend/app/state/desktop-event-stream";
 import {
   useProjectWriteCommitter,
-  type ProjectWriteCommitter,
   type ProjectWriteResult,
 } from "@frontend/app/state/desktop-project-write";
 import { useProjectEventPipeline } from "@frontend/app/state/project-event-pipeline";
 import { normalize_project_change_event } from "@frontend/app/state/desktop-project-change-normalizer";
-import {
-  normalize_setting_snapshot,
-  type RecentProjectSetting,
-  type SettingSnapshot,
-} from "@domain/setting";
+import { normalize_setting_snapshot } from "@domain/setting";
 import type { AppLanguage } from "@domain/app-language";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { AppError } from "@shared/error";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
-
-type RecentProjectEntry = RecentProjectSetting;
-
-export type SettingsSnapshot = SettingSnapshot;
-
-export type ProjectSnapshot = {
-  path: string;
-  loaded: boolean;
-};
+import {
+  type SettingsSnapshot,
+  type ProjectSnapshot,
+  type SettingsSnapshotPayload,
+  DesktopStateContext,
+  type DesktopStateStores,
+  DesktopStateStoresContext,
+} from "@frontend/app/state/desktop-state-context";
+import type { ProjectSessionStatus, DesktopStateContextValue } from "./desktop-state-context";
 
 const APPLIED_PROJECT_EVENT_ID_LIMIT = 256; // 去重窗口只覆盖近期 HTTP/SSE 同源事件，避免长期保存事件历史
-
-type ProjectSessionStatus = "idle" | "warming" | "ready";
 
 type ProjectStateIdentity = {
   path: string; // 后端会话确认的当前项目路径，独立于可能滞后的页面 query
@@ -69,33 +52,6 @@ const EMPTY_PROJECT_STATE_IDENTITY: ProjectStateIdentity = {
   path: "",
   epoch: 0,
   phase: "idle",
-};
-
-type DesktopStateContextValue = {
-  initial_state_status: "loading" | "ready" | "error";
-  load_initial_state: () => Promise<void>;
-  settings_snapshot: SettingsSnapshot;
-  project_snapshot: ProjectSnapshot;
-  project_session_status: ProjectSessionStatus;
-  project_session_stage: ProjectStage | null;
-  pending_target_route: RouteId | null;
-  is_app_language_updating: boolean;
-  set_project_session_status: (status: ProjectSessionStatus) => void;
-  set_pending_target_route: (route_id: RouteId | null) => void;
-  apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
-  refresh_project_snapshot: () => Promise<ProjectSnapshot>;
-  refresh_project_state: () => Promise<void>;
-  commit_project_write: ProjectWriteCommitter;
-  update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
-  refresh_settings: () => Promise<SettingsSnapshot>;
-  refresh_batch_translation: () => Promise<BatchTranslationSnapshot>;
-  refresh_runtime: () => Promise<RuntimeActivitySnapshot>;
-};
-
-export type SettingsSnapshotPayload = {
-  settings?: Partial<SettingsSnapshot> & {
-    recent_projects?: Array<Partial<RecentProjectEntry>>;
-  };
 };
 
 type ProjectSnapshotPayload = {
@@ -118,20 +74,6 @@ const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   path: "",
   loaded: false,
 };
-
-// Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
-export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
-export type DesktopStateStores = {
-  batch_translation: ReturnType<typeof createBatchTranslationSnapshotStore>;
-  runtime: ReturnType<typeof createRuntimeActivityStore>;
-  projectChange: ReturnType<typeof createProjectChangeSignalStore>;
-};
-export const DesktopStateStoresContext = createContext<DesktopStateStores | null>(null);
-
-/** 将设置回包交给领域归一入口。 */
-export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
-  return normalize_setting_snapshot(payload.settings);
-}
 
 /** 将后端项目载荷收口为主窗口项目快照。 */
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
@@ -241,7 +183,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const initial_request_ref = useRef(0); // 重试或卸载后，仅当前初始化请求可以应用快照。
   const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
-    normalize_settings_snapshot({}),
+    normalize_setting_snapshot({}),
   );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
@@ -274,7 +216,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
-      const next_snapshot = normalize_settings_snapshot(payload);
+      const next_snapshot = normalize_setting_snapshot(payload.settings);
       write_settings_snapshot(next_snapshot);
       return next_snapshot;
     },

@@ -1,26 +1,17 @@
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 import { BatchTranslationDetailSheet } from "@frontend/features/batch-translation/batch-translation-detail-sheet";
 import { build_translation_task_detail_display } from "@frontend/features/batch-translation/batch-translation-display";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-
-import { useI18n } from "@frontend/app/locale/locale-provider";
-import {
-  useBatchTranslationTask,
-  type BatchTranslationTask,
-} from "@frontend/app/session/batch-translation/use-batch-translation-task";
+import { useMemo, type ReactNode } from "react";
+import { useI18n } from "@frontend/app/locale/locale-context";
+import { useBatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
 import type { TranslationTaskConfirmState } from "@shared/batch-translation/batch-translation";
-
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
-
-type BatchTranslationSessionContextValue = {
-  batch_translation_task: BatchTranslationTask; // 常驻监听翻译任务完成意图
-};
-
-// 当前项目的任务交互随应用 session 常驻。
-const BatchTranslationSessionContext = createContext<BatchTranslationSessionContextValue | null>(
-  null,
-);
+import {
+  type BatchTranslationSessionContextValue,
+  BatchTranslationSessionContext,
+} from "./batch-translation-session-context";
+import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 
 /** 将翻译任务动作收口为确认框可见文案。 */
 function resolve_translation_task_confirm_description(
@@ -108,16 +99,4 @@ export function BatchTranslationSessionProvider(props: { children: ReactNode }):
       <BatchTranslationDialogsLayer />
     </BatchTranslationSessionContext.Provider>
   );
-}
-
-// 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
-export function useBatchTranslationSession(): BatchTranslationSessionContextValue {
-  const context_value = useContext(BatchTranslationSessionContext);
-  if (context_value === null) {
-    throw new Error(
-      "useBatchTranslationSession must be used inside BatchTranslationSessionProvider.",
-    );
-  }
-
-  return context_value;
 }

@@ -1,13 +1,20 @@
 import {
   clone_content_filters,
   type ProofreadingContentFilters,
+  create_empty_filter_options,
+  create_empty_proofreading_view_filter_state,
+  create_proofreading_view_filter_state,
+  materialize_proofreading_filters,
+  clone_proofreading_view_filter_state,
+  type ProofreadingViewFilterState,
+  type ProofreadingFilterChoice,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { startTransition, useCallback, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import {
@@ -22,11 +29,15 @@ import {
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import {
+  dismiss_toast,
+  push_progress_toast,
+  push_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useProjectSessionTableUiState } from "@frontend/app/session/project-session-ui-state-context";
-import { type ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
+import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
 import { useProofreadingBatchActions } from "@frontend/pages/proofreading-page/use-proofreading-batch-actions";
 import { useProofreadingCacheActions } from "@frontend/pages/proofreading-page/use-proofreading-cache-actions";
 import { useProofreadingDialogActions } from "@frontend/pages/proofreading-page/use-proofreading-dialog-actions";
@@ -39,15 +50,7 @@ import {
   normalize_proofreading_sort_state,
   type UseProofreadingPageStateResult,
 } from "@frontend/pages/proofreading-page/proofreading-page-state-contract";
-import {
-  create_empty_filter_options,
-  create_empty_proofreading_view_filter_state,
-  create_proofreading_view_filter_state,
-  materialize_proofreading_filters,
-  clone_proofreading_view_filter_state,
-  type ProofreadingViewFilterState,
-  type ProofreadingFilterChoice,
-} from "@frontend/pages/proofreading-page/proofreading-filter-state";
+
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
   build_proofreading_list_query_intent_key,
@@ -87,7 +90,7 @@ type ListQueryChange = {
  */
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
-  const { dismiss_toast, push_progress_toast, push_toast } = useDesktopToast();
+
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
   const { settings_snapshot, project_snapshot, commit_project_write, refresh_batch_translation } =
     useDesktopState();
@@ -250,7 +253,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const message = resolve_visible_error_message(error, t, fallback_message);
       push_toast("error", message);
     },
-    [push_toast, t],
+    [t],
   );
 
   const report_proofreading_list_error = useCallback(
@@ -259,7 +262,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       push_toast("error", message);
       return true;
     },
-    [push_toast, t],
+    [t],
   );
 
   const update_table_filter_state = useCallback(
@@ -430,7 +433,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_is_writing(false);
       }
     },
-    [commit_project_write, handle_api_error, push_toast, refresh_batch_translation, t],
+    [commit_project_write, handle_api_error, refresh_batch_translation, t],
   );
 
   const resolve_preferred_row_id = useCallback(

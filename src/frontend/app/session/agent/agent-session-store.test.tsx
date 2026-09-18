@@ -1,10 +1,8 @@
 const decision_toast = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: decision_toast }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: decision_toast }));
 import { act, StrictMode, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,8 +25,8 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
+import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
 import {
-  AgentSessionProvider,
   useAgentControls,
   useAgentInput,
   useAgentTodo,
@@ -36,7 +34,7 @@ import {
   useAgentSessionActions,
   useAgentSkills,
   useAgentTimeline,
-} from "./agent-session-context";
+} from "@frontend/app/session/agent/agent-session-context";
 
 /** 测试探针聚合公开切片，统一观察会话与命令结果。 */
 function useAgentSession() {

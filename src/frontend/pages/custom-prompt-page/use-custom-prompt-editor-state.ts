@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api_fetch, DesktopApiError } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast, dismiss_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import { useI18n } from "@frontend/app/locale/locale-context";
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
@@ -85,7 +85,7 @@ function read_prompts_revision(value: unknown): number {
 /** 管理当前项目的提示词草稿、串行保存与恢复状态。 */
 export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
   const { t } = useI18n();
-  const { push_toast, dismiss_toast } = useDesktopToast();
+
   const { project_snapshot, settings_snapshot, commit_project_write } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
   const [load_status, set_load_status] = useState<"loading" | "ready" | "error">("loading");
@@ -112,7 +112,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       dismiss_toast(save_error_toast_ref.current);
       save_error_toast_ref.current = null;
     }
-  }, [dismiss_toast]);
+  }, []);
 
   /** 读取固定模板及默认正文。 */
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
@@ -161,7 +161,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
       );
       save_error_toast_ref.current = toast_id;
     },
-    [clear_save_error, debounced_prompt_save, push_toast, t],
+    [clear_save_error, debounced_prompt_save, t],
   );
 
   /** 保存捕获的草稿；revision 冲突刷新后只重试一次。 */
@@ -265,7 +265,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         write_promise_ref.current = null;
       }
     }
-  }, [clear_save_error, commit_captured_slice, readonly, push_toast, t]);
+  }, [clear_save_error, commit_captured_slice, readonly, t]);
 
   /** 显式保存与离页先取消防抖，再等待当前草稿收束。 */
   const flush_prompt_change = useCallback(async (): Promise<boolean> => {
@@ -289,7 +289,7 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         );
       }
     }
-  }, [fetch_prompt_template, push_toast, t]);
+  }, [fetch_prompt_template, t]);
 
   /** 初始化与重试共同读取模板、正文和提交基线。 */
   const reload_prompt = useCallback(async (): Promise<void> => {

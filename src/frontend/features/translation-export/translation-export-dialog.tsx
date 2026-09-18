@@ -1,4 +1,4 @@
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { PROOFREADING_WARNING_LABEL_KEY_BY_CODE } from "@frontend/features/proofreading/proofreading-label-keys";
 import type {
   TranslationExportFlow,

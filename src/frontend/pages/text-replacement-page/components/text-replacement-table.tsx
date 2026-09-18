@@ -1,7 +1,7 @@
 import { CaseSensitive, Regex } from "lucide-react";
 import { useMemo } from "react";
 
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { TextReplacementContextMenuItems } from "@frontend/pages/text-replacement-page/components/text-replacement-context-menu";
 import type {
   TextReplacementEntryId,

@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { ProofreadingFilePicker } from "./proofreading-file-picker";
 import type { ProofreadingFilterChoice } from "../proofreading-filter-state";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

@@ -1,8 +1,8 @@
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/text-replacement-page/text-replacement-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { TextReplacementVariant } from "@frontend/pages/text-replacement-page/config";
 import { TextReplacementCommandBar } from "@frontend/pages/text-replacement-page/components/text-replacement-command-bar";
 import { QualityRuleConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-confirm-dialog";
@@ -29,7 +29,7 @@ const TEXT_REPLACEMENT_FILTER_SCOPES: TextReplacementFilterScope[] = ["all", "sr
 /** 按译前或译后用途组装替换规则工作面。 */
 export function TextReplacementPage(props: TextReplacementPageProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const page_state = useTextReplacementPageState(props.variant);
   const regex_state_label = page_state.filter_state.is_regex
     ? t("app.state.enabled")

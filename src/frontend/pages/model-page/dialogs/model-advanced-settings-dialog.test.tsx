@@ -8,14 +8,14 @@ import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fix
 
 import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     locale: "zh-CN",
     t: (key: string) => key,
   }),
 }));
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
+import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
 import {
   normalize_project_write_result,
   type ProjectWriteResultPayload,
@@ -181,13 +181,17 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => {
-      return toast_fixture.current;
-    },
-  };
-});
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get dismiss_toast() {
+    return toast_fixture.current.dismiss_toast;
+  },
+  get push_progress_toast() {
+    return toast_fixture.current.push_progress_toast;
+  },
+  get push_toast() {
+    return toast_fixture.current.push_toast;
+  },
+}));
 
 vi.mock("@frontend/app/navigation/navigation-context", () => {
   return {
@@ -195,7 +199,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => {
       return {

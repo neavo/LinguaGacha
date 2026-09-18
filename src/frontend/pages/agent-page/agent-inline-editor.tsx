@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { type AgentMessageInput, type AgentSkillSnapshot } from "@shared/agent";
+import type { AgentMessageInput, AgentSkillSnapshot } from "@shared/agent";
 import type {
   AgentCommand,
   AgentInputSession,
 } from "@frontend/app/session/agent/agent-session-context";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentMessageEditor, type AgentMessageEditorHandle } from "./agent-message-editor";
 import { AppButton } from "@frontend/widgets/app-button";
 import { LoaderCircle } from "lucide-react";
 import { ShortcutKbd, ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipTarget } from "@frontend/shadcn/tooltip";
 
 export type AgentInlineEditTarget =
   | {
@@ -50,7 +45,7 @@ const EMPTY_INPUT_HISTORY: readonly string[] = [];
  */
 export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
   const draft_ref = useRef<AgentMessageInput>(structuredClone(props.target.message));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent session 不参与这段瞬时状态。
@@ -95,7 +90,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         set_status("idle");
       }
     },
-    [error_key, props.on_save, props.on_saved, push_toast, t],
+    [error_key, props.on_save, props.on_saved, t],
   );
 
   const submit = useCallback(
@@ -151,28 +146,30 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
                 </AppButton>
                 <Tooltip>
                   <TooltipTrigger
-                    render={tooltip_trigger_target(
-                      <AppButton
-                        className="agent-composer__inline-submit"
-                        type="submit"
-                        size="sm"
-                        disabled={!can_submit}
-                        aria-label={t("app.action.save")}
-                        aria-busy={status === "saving" || undefined}
-                        aria-keyshortcuts={can_submit ? "Enter" : undefined}
-                      >
-                        {status === "saving" ? (
-                          <LoaderCircle className="animate-spin" aria-hidden="true" />
-                        ) : null}
-                        <span>{t("app.action.save")}</span>
-                        {can_submit ? (
-                          <ShortcutKbd
-                            action="submit"
-                            className="bg-background/18 text-primary-foreground"
-                          />
-                        ) : null}
-                      </AppButton>,
-                    )}
+                    render={
+                      <TooltipTarget>
+                        <AppButton
+                          className="agent-composer__inline-submit"
+                          type="submit"
+                          size="sm"
+                          disabled={!can_submit}
+                          aria-label={t("app.action.save")}
+                          aria-busy={status === "saving" || undefined}
+                          aria-keyshortcuts={can_submit ? "Enter" : undefined}
+                        >
+                          {status === "saving" ? (
+                            <LoaderCircle className="animate-spin" aria-hidden="true" />
+                          ) : null}
+                          <span>{t("app.action.save")}</span>
+                          {can_submit ? (
+                            <ShortcutKbd
+                              action="submit"
+                              className="bg-background/18 text-primary-foreground"
+                            />
+                          ) : null}
+                        </AppButton>
+                      </TooltipTarget>
+                    }
                   />
                   <TooltipContent>
                     <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />

@@ -1,7 +1,7 @@
 import { Copy, GraduationCap, ListTodo, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { Model } from "@domain/model";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ModelDialogState, ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import {
   AppDropdownMenuContent,

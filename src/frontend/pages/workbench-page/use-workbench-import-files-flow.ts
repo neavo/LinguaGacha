@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import {

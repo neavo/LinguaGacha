@@ -1,19 +1,18 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { TranslationExportProvider, useTranslationExport } from "./translation-export-context";
+import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
+import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import type { TranslationExportFlow } from "@frontend/features/translation-export/use-translation-export-flow";
 
 const api_fetch = vi.hoisted(() =>
   vi.fn(async () => ({ projectPath: "test.lg", warningSummary: { total_count: 0, entries: [] } })),
 );
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: vi.fn() }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
 vi.mock("@frontend/app/navigation/navigation-context", () => ({
   useAppNavigation: () => ({ selected_route: "agent", navigate_to_route: vi.fn() }),
 }));

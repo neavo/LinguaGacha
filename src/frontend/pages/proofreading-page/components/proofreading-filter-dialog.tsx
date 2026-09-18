@@ -5,7 +5,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Check, LoaderCircle, Minus } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,

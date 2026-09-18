@@ -13,11 +13,9 @@ type MockComposerProps = {
 };
 
 const push_toast = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string) => key,
   }),

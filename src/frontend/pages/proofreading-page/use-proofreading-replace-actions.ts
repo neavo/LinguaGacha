@@ -1,6 +1,6 @@
 import { useCallback, type MutableRefObject } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   create_replace_all_plan,
   create_apply_item_changes_plan,

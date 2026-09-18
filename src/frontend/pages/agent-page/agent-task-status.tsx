@@ -1,5 +1,5 @@
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { build_translation_task_summary_display } from "@frontend/features/batch-translation/batch-translation-display";
 import { BatchTranslationSummary } from "@frontend/features/batch-translation/batch-translation-summary";

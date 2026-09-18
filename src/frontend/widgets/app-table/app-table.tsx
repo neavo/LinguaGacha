@@ -19,7 +19,7 @@ import {
 
 import { cn } from "@frontend/shadcn/classnames";
 import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   AppContextMenuContent,
   AppContextMenuGroup,

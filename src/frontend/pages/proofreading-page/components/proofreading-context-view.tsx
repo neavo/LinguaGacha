@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type {
   ProofreadingDialogContextState,
   ProofreadingDialogState,

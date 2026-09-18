@@ -1,3 +1,4 @@
+import { normalize_setting_snapshot } from "@domain/setting";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,6 @@ import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
 } from "@frontend/app/state/desktop-state-context";
-import { normalize_settings_snapshot } from "@frontend/app/state/desktop-state-context";
 import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 
 type RuntimeFixture = {
@@ -43,13 +43,16 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => toast_fixture.current,
-  };
-});
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get push_toast() {
+    return toast_fixture.current.push_toast;
+  },
+  get run_modal_progress_toast() {
+    return toast_fixture.current.run_modal_progress_toast;
+  },
+}));
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => {
       return {
@@ -67,17 +70,15 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 });
 
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
-  return normalize_settings_snapshot({
-    settings: {
-      app_language: "ZH",
-      source_language: "JA",
-      target_language: "ZH",
-      request_timeout: 300,
-      prompt_enhancement_enable: true,
-      mtool_optimizer_enable: false,
-      skip_duplicate_source_text_enable: true,
-      ...overrides,
-    },
+  return normalize_setting_snapshot({
+    app_language: "ZH",
+    source_language: "JA",
+    target_language: "ZH",
+    request_timeout: 300,
+    prompt_enhancement_enable: true,
+    mtool_optimizer_enable: false,
+    skip_duplicate_source_text_enable: true,
+    ...overrides,
   });
 }
 
@@ -90,7 +91,7 @@ function create_runtime_fixture(): RuntimeFixture {
       loaded: true,
     },
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => {
-      const next_settings_snapshot = normalize_settings_snapshot(payload);
+      const next_settings_snapshot = normalize_setting_snapshot(payload.settings);
       runtime_fixture.current = {
         ...runtime_fixture.current,
         settings_snapshot: next_settings_snapshot,

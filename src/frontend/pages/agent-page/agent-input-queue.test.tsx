@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@dnd-kit/react/sortable", () => ({
   useSortable: () => ({ ref: vi.fn(), handleRef: vi.fn(), isDragSource: false }),
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string) => key,
   }),
@@ -20,7 +20,7 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
   TooltipContent: (props: { children?: ReactNode; render?: ReactNode }) => (
     <>{props.render ?? props.children}</>
   ),
-  tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
+  TooltipTarget: (props: { children: ReactNode }) => <span>{props.children}</span>,
 }));
 
 import { AgentInputQueue } from "./agent-input-queue";

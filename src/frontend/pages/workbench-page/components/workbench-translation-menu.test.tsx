@@ -1,11 +1,11 @@
-import type { ReactNode } from "react";
-import { act } from "react";
+import { type ReactNode, act } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchTranslationMenu } from "./workbench-translation-menu";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string) => key,
   }),
@@ -50,7 +50,7 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
     <>{props.render ?? props.children}</>
   ),
   TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
-  tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
+  TooltipTarget: (props: { children: ReactNode }) => <span>{props.children}</span>,
 }));
 
 const workbench_stats = {

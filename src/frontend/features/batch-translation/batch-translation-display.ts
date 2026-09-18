@@ -1,4 +1,4 @@
-import type { useI18n } from "@frontend/app/locale/locale-provider";
+import type { useI18n } from "@frontend/app/locale/locale-context";
 import type { BatchTranslationMetrics } from "@shared/batch-translation/batch-translation";
 import type { BatchTranslationConfig } from "@domain/batch-translation";
 import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";

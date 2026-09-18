@@ -1,4 +1,4 @@
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { CustomPromptConfirmState } from "@frontend/pages/custom-prompt-page/types";
 import { AppConfirmDialog } from "@frontend/widgets/app-alert-dialog";
 

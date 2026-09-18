@@ -1,7 +1,8 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-import { PageLeaveProvider, usePageLeave } from "./page-leave-context";
+import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
+import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 
 describe("当前页面离开前保存", () => {
   it("等待保存结果，失败保留当前页面，再次保存成功后允许离开", async () => {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 
 /** 校对详情共用文件条和双栏结构，编辑状态、状态区和操作由各自内容拥有者提供。 */
 export function ProofreadingDetailLayout(props: {

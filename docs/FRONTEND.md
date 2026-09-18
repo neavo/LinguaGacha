@@ -18,6 +18,12 @@
 - 应用语言元数据归 `src/shared/i18n/types.ts`，菜单与发行包共用该声明且不加载词典。`src/domain/app-language.ts` 保留合法持久化编码并投影为 renderer `Locale`；系统语言只用于显式缺省场景，Provider 消费已解析的 locale。
 - 应用文案及源／目标语言展示名归 `src/shared/i18n`，菜单使用固定自称；领域语言模块只拥有语言码与字符规则。中文词典定义消息契约，其它语言保持键和占位符一致；提示词语言消费归 [`BACKEND.md`](BACKEND.md)。
 
+### 开发热更新与模块生命周期
+
+- Context 与消费 Hook 归 `*-context.ts`，状态装配归 `*-provider.tsx`，实例类型通过类型导入引用。词典更新经 `LocaleProvider` 发布，沿用同一 `LocaleContext`。
+- `desktop-toast.ts` 拥有进度快照、任务身份和关闭计时；`DesktopProgressToast` 统一展示通知与遮罩。展示更新保留任务状态，只有当前任务能更新或结束进度。
+- `renderer_runtime_reload` 沿 Vite 导入图识别前端 `*-context.ts`、`app/state/` 与 `app/session/` 下的 `*-store.ts`、`app/feedback/desktop-toast.ts` 及其运行时依赖，变更时刷新连接的窗口并重建实例。组件、样式与词典资源正常热更新。类型导入不进入该图；保留的内存数据结构变化时需显式刷新，未持久化状态随刷新清空。
+
 ## 2. 主窗口运行态
 
 - `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并查询日志文件。高频 batch translation、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。

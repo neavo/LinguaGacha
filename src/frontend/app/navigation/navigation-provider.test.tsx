@@ -2,10 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  AppNavigationProvider,
-  useAppNavigation,
-} from "@frontend/app/navigation/navigation-context";
+import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
+import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 
 function NavigationProbe(): JSX.Element {
   const navigation = useAppNavigation();

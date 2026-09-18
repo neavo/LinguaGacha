@@ -1,4 +1,4 @@
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   PROOFREADING_OUTCOME_GROUPS,
   PROOFREADING_STATUS_ORDER,
