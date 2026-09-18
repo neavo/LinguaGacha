@@ -3,8 +3,6 @@ export const zh_cn_proofreading_page = {
     view: "进入查看",
     title: "页面预览",
     source_page: "第 {PAGE} 页",
-    keep: "保留原页",
-    translated: "已有译稿",
     retry: "重试",
     select_files: "请选择文件",
     page_count: "{COUNT} 页",

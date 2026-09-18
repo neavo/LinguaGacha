@@ -1,4 +1,3 @@
-import { build_project_file_paths } from "../../shared/project/project-file-paths";
 import {
   build_project_translation_stats,
   calculate_completion_percent,
@@ -75,19 +74,10 @@ export class ProjectSummaryService {
       bucket.push(item);
       entries_by_path.set(file_path, bucket);
     }
-    // files section 在存在 asset 时只包含 asset；摘要还需补齐历史条目独有的路径。
-    const files_by_path = new Map(cached_file_entries.map((entry) => [entry.rel_path, entry]));
-    return build_project_file_paths([...files_by_path.keys()], [...entries_by_path.keys()]).map(
-      (rel_path, index) => {
-        const file_items = entries_by_path.get(rel_path) ?? [];
-        const file_entry = files_by_path.get(rel_path) ?? {
-          rel_path,
-          file_type: file_items[0]?.file_type ?? "NONE",
-          sort_index: index,
-        };
-        return this.build_project_file_entry(file_entry, file_items, pdf_summaries);
-      },
-    );
+    return cached_file_entries.map((file_entry) => {
+      const file_items = entries_by_path.get(file_entry.rel_path) ?? [];
+      return this.build_project_file_entry(file_entry, file_items, pdf_summaries);
+    });
   }
 
   /**

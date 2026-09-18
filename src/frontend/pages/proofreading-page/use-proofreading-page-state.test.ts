@@ -1606,6 +1606,57 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.visible_row_count).toBe(1000);
   });
 
+  it("文件重排使旧窗口失效后，以当前行身份恢复查询窗口", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => ({
+      ...create_list_view(),
+      row_count: 2,
+      window_rows: [1, 2].map((id) => ({
+        kind: "item" as const,
+        row_id: String(id),
+        item: create_client_item(id),
+        compressed_src: "foo",
+        compressed_dst: "bar",
+      })),
+    }));
+    await render_hook();
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["2"],
+        active_row_id: "2",
+        anchor_row_id: "2",
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string }) => ({
+        view_id: query.view_id,
+        start: 0,
+        row_count: 0,
+        rows: [],
+      }),
+    );
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "full",
+        itemIds: [],
+        updatedSections: ["files"],
+      }),
+    };
+    await render_hook();
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        window_anchor: { row_id: "2", offset: 1 },
+      }),
+    );
+    expect(latest_state?.preserve_scroll_anchor.row_id).toBe("2");
+  });
+
   it("项目刷新遇到待执行搜索时会重建当前查询", async () => {
     vi.useFakeTimers();
     await render_hook();

@@ -11,6 +11,7 @@ type AnalysisCacheReadPort = AnalysisCacheOptions["cache"] & {
 type AnalysisWorker = AnalysisCacheOptions["workerClient"];
 type AnalysisWorkerTask = Parameters<AnalysisWorker["run"]>[0];
 
+/** 暴露可更新文本，观察规则统计的失效范围。 */
 function create_cache_read_port(): AnalysisCacheReadPort {
   const port: AnalysisCacheReadPort = {
     items_value: [create_item()],
@@ -38,6 +39,7 @@ function create_cache_read_port(): AnalysisCacheReadPort {
   return port;
 }
 
+/** 构造能命中术语和译后替换的文本。 */
 function create_item(): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -57,6 +59,7 @@ function create_item(): ProjectItemPublicRecord {
   };
 }
 
+/** 返回确定结果，记录统计与父项是否重复计算。 */
 function create_worker(): AnalysisWorker & {
   run: ReturnType<typeof vi.fn>;
 } {
@@ -78,6 +81,7 @@ function create_worker(): AnalysisWorker & {
   return { run };
 }
 
+/** 默认提交文本变化，用覆盖字段表达其它失效来源。 */
 function create_cache_change(overrides: Partial<CacheChange> = {}): CacheChange {
   return {
     eventType: "project.items.changed",
@@ -85,7 +89,6 @@ function create_cache_change(overrides: Partial<CacheChange> = {}): CacheChange 
     source: "translation_batch_update",
     affectedSections: ["items"],
     sectionRevisions: { items: 2 },
-    fullRebuild: false,
     items: {
       mode: "delta",
       changedIds: [1],

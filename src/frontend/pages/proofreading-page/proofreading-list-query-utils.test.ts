@@ -332,6 +332,16 @@ describe("proofreading-list-query-utils", () => {
     });
   });
 
+  it("仅文件与页面变化保留阅读位置，窗口失效交由列表查询恢复", () => {
+    expect(
+      resolve_proofreading_refresh_signal({
+        seq: 1,
+        updated_sections: ["files", "pdf"],
+        results: [],
+      }),
+    ).toEqual({ seq: 1, mode: "delta", itemIds: [], deleteItemIds: [] });
+  });
+
   it("仅校对状态变化为 noop，质量变化为 full，无关 section 不刷新", () => {
     expect(
       resolve_proofreading_refresh_signal({

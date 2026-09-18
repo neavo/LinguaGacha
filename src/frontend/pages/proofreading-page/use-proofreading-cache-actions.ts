@@ -21,6 +21,7 @@ import {
 } from "@shared/proofreading/proofreading-types";
 import type {
   ProofreadingListWindow,
+  ProofreadingListViewQuery,
   ProofreadingSyncState,
 } from "@shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
@@ -75,7 +76,7 @@ type UseProofreadingCacheActionsOptions = {
   clear_transient_state_for_new_project: () => void;
   invalidate_cache_bound_queries: () => void;
   invalidate_list_view_requests: () => void;
-  publish_refresh_scroll_anchor: () => void;
+  publish_refresh_scroll_anchor: () => string | null;
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
   resolve_current_list_query: () => ProofreadingResolvedListQuery;
   set_cache_status: Dispatch<SetStateAction<"idle" | "refreshing" | "ready" | "error">>;
@@ -96,13 +97,19 @@ type UseProofreadingCacheActionsOptions = {
   t: LocaleTextResolver;
 };
 
+/** 重建、窗口范围与定位意图共用一个查询入口。 */
+type ProofreadingListQueryOptions = {
+  rebuild?: boolean;
+  window_bounds?: ProofreadingListWindowBounds;
+  window_anchor?: ProofreadingListViewQuery["window_anchor"];
+  scroll_to_row_id?: string | null;
+};
+
 type UseProofreadingCacheActionsResult = {
   refresh_snapshot: () => Promise<void>;
-  query_list_view: (options?: {
-    rebuild?: boolean;
-    window_bounds?: ProofreadingListWindowBounds;
-    scroll_to_row_id?: string | null;
-  }) => Promise<ProofreadingListSnapshot | null>;
+  query_list_view: (
+    options?: ProofreadingListQueryOptions,
+  ) => Promise<ProofreadingListSnapshot | null>;
   publish_list_snapshot: (snapshot: ProofreadingListSnapshot) => void;
   run_filter_panel_query: (
     filters: ProofreadingContentFilters,
@@ -127,11 +134,7 @@ export function useProofreadingCacheActions(
 ): UseProofreadingCacheActionsResult {
   // 唯一列表构建出口：执行时读取最新意图，并以 request id 阻止过期查询发布。
   const query_list_view = useCallback(
-    async (query_options?: {
-      rebuild?: boolean;
-      window_bounds?: ProofreadingListWindowBounds;
-      scroll_to_row_id?: string | null;
-    }) => {
+    async (query_options?: ProofreadingListQueryOptions) => {
       const sync_state = options.sync_state_ref.current;
       if (sync_state === null) {
         return null;
@@ -162,6 +165,9 @@ export function useProofreadingCacheActions(
             (scroll_to_row_id === null
               ? PROOFREADING_INITIAL_WINDOW_ROWS
               : PROOFREADING_INITIAL_WINDOW_ROWS + PROOFREADING_WINDOW_PREFETCH_ROWS * 2),
+          ...(query_options?.window_anchor === undefined
+            ? {}
+            : { window_anchor: query_options.window_anchor }),
           ...(scroll_to_row_id === null
             ? {}
             : {
@@ -211,24 +217,6 @@ export function useProofreadingCacheActions(
       options.set_list_snapshot(snapshot);
     },
     [options],
-  );
-
-  // 后端刷新只替换视图，不参与用户查询变化的选区连续性规则。
-  const run_refresh_list_view_query = useCallback(
-    async (query_options?: {
-      rebuild?: boolean;
-      window_bounds?: ProofreadingListWindowBounds;
-    }): Promise<ProofreadingListView | null> => {
-      const snapshot = await query_list_view(query_options);
-      if (snapshot === null) {
-        return null;
-      }
-      startTransition(() => {
-        publish_list_snapshot(snapshot);
-      });
-      return snapshot.view;
-    },
-    [publish_list_snapshot, query_list_view],
   );
 
   // 面板统计与列表视图分离缓存，避免滚动或 delta 内容刷新重复计算筛选计数。
@@ -532,9 +520,9 @@ export function useProofreadingCacheActions(
               row_count: previous_list_snapshot.view.row_count,
             })
         : undefined;
-      if (can_reuse_current_view) {
-        options.publish_refresh_scroll_anchor();
-      }
+      const refresh_anchor_id = can_reuse_current_view
+        ? options.publish_refresh_scroll_anchor()
+        : null;
       if (sync_mode !== "delta" || !options.filter_dialog_open_ref.current) {
         const next_dialog_filters = clone_content_filters(next_filters);
         options.set_filter_dialog_filters(next_dialog_filters);
@@ -597,10 +585,24 @@ export function useProofreadingCacheActions(
       }
       if (should_build_list_view) {
         // 意图变化或旧窗口失效时统一走 list query，避免在刷新路径复制成员重算规则。
-        next_list_view = await run_refresh_list_view_query({
+        const snapshot = await query_list_view({
           rebuild: true,
           window_bounds: can_reuse_current_view ? refresh_window_bounds : undefined,
+          ...(refresh_anchor_id === null
+            ? {}
+            : {
+                window_anchor: {
+                  row_id: refresh_anchor_id,
+                  offset: previous_list_snapshot.view.window_rows.findIndex(
+                    (row) => row.row_id === refresh_anchor_id,
+                  ),
+                },
+              }),
         });
+        if (snapshot !== null && request_id === options.refresh_generation_ref.current) {
+          startTransition(() => publish_list_snapshot(snapshot));
+          next_list_view = snapshot.view;
+        }
       }
       if (request_id !== options.refresh_generation_ref.current) {
         return;
@@ -637,7 +639,7 @@ export function useProofreadingCacheActions(
         options.set_is_refreshing(false);
       }
     }
-  }, [options, run_refresh_list_view_query]);
+  }, [options, publish_list_snapshot, query_list_view]);
 
   return {
     refresh_snapshot,

@@ -6,8 +6,6 @@ export const en_us_proofreading_page = {
     view: "Open preview",
     title: "Page preview",
     source_page: "Page {PAGE}",
-    keep: "Keep original",
-    translated: "Translation available",
     retry: "Retry",
     select_files: "Select files",
     page_count: "{COUNT} pages",

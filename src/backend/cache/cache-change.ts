@@ -34,7 +34,6 @@ export type CacheChange = {
   source: string;
   affectedSections: ProjectDataSection[];
   sectionRevisions: ProjectDataSectionRevisions;
-  fullRebuild: boolean;
   items: CacheItemChange;
   files: CacheBlockChange;
   quality: CacheBlockChange;
@@ -65,7 +64,6 @@ export function create_cache_change(event: ProjectEvent): CacheChange {
       affects_section(event.affectedSections, "files") || event.files !== undefined ? FULL : KEEP;
     return {
       ...base,
-      fullRebuild: items.mode === "full" || files.mode === "full",
       items,
       files,
       quality: KEEP,
@@ -76,7 +74,6 @@ export function create_cache_change(event: ProjectEvent): CacheChange {
 
   return {
     ...base,
-    fullRebuild: false,
     items: { mode: "keep" },
     files: KEEP,
     quality: event.type === "project.quality.changed" ? FULL : KEEP,

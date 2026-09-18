@@ -5,8 +5,6 @@ export const ja_jp_proofreading_page = {
     view: "開いて表示",
     title: "ページプレビュー",
     source_page: "{PAGE} ページ",
-    keep: "原稿を保持",
-    translated: "訳文あり",
     retry: "再試行",
     select_files: "ファイルを選択",
     page_count: "{COUNT} ページ",

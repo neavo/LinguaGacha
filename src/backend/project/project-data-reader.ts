@@ -167,14 +167,15 @@ export class ProjectDataReader {
   /** files section 以 rel_path map 暴露，asset 表顺序优先，缺 asset 时沿 item 顺序。 */
   public build_files_record_block(
     project_path: string,
-    snapshot = this.build_runtime_items_snapshot(project_path),
+    items: readonly Pick<
+      ProjectItemPublicRecord,
+      "file_path" | "file_type"
+    >[] = this.build_runtime_items_snapshot(project_path).item_records,
   ): JsonRecord {
     const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
     return build_project_file_records(
-      asset_records.length > 0
-        ? asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index }))
-        : [...snapshot.file_paths].map((path, sort_order) => ({ path, sort_order })),
-      snapshot.item_records,
+      asset_records.map((asset) => ({ path: asset.rel_path, sort_order: asset.sort_index })),
+      items,
       asset_records.length > 0 ? Object.keys(this.database.read_pdf_summaries(project_path)) : [],
     );
   }
@@ -351,7 +352,7 @@ export class ProjectDataReader {
       };
     }
     if (args.section === "files") {
-      return this.build_files_record_block(args.projectPath, args.readItemsSnapshot());
+      return this.build_files_record_block(args.projectPath, args.readItemsSnapshot().item_records);
     }
     if (args.section === "items") {
       return this.build_items_record_block(args.projectPath, args.readItemsSnapshot());

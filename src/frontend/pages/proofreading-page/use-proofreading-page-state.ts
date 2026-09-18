@@ -322,13 +322,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     return selected_row_id ?? current_view.window_rows[0]?.row_id ?? null;
   }, [active_row_id_ref, selected_row_ids_ref]);
 
-  const publish_refresh_scroll_anchor = useCallback((): void => {
+  const publish_refresh_scroll_anchor = useCallback((): string | null => {
     const next_revision = preserve_scroll_anchor_revision_ref.current + 1;
     preserve_scroll_anchor_revision_ref.current = next_revision;
+    const row_id = resolve_refresh_scroll_anchor_row_id();
     set_preserve_scroll_anchor({
-      row_id: resolve_refresh_scroll_anchor_row_id(),
+      row_id,
       revision: next_revision,
     });
+    return row_id;
   }, [resolve_refresh_scroll_anchor_row_id]);
 
   const clear_refresh_scroll_anchor = useCallback((): void => {

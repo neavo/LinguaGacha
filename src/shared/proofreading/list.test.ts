@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { create_proofreading_client_item, sort_proofreading_items } from "./list";
-import type { ProofreadingWarningCode } from "./proofreading-types";
+import { sort_proofreading_rows, type ProofreadingRowRecord } from "./list";
 
-/** 构造参与排序和条目输出测试的最小可见条目。 */
-function create_item(
+/** 构造查询使用的行引用，文件顺序由测试单独提供。 */
+function create_row(
   item_id: number,
   file_path: string,
   row_number: number,
   dst: string,
-  warnings: ProofreadingWarningCode[] = [],
-) {
-  return create_proofreading_client_item({
+): ProofreadingRowRecord {
+  return {
+    kind: "item",
+    row_id: String(item_id),
     item: {
       item_id,
       file_path,
@@ -21,36 +21,35 @@ function create_item(
       name_src: null,
       name_dst: null,
       status: "NONE",
+      text_type: "NONE",
       retry_count: 0,
+      warnings: [],
+      warning_fragments_by_code: {},
+      glossary_applications: [],
     },
-    warnings,
-    warning_fragments_by_code: {},
-    glossary_applications: [],
-  });
+  };
 }
 
-describe("proofreading list", () => {
-  it("条目警告按词表输出，标点结构紧邻重试阈值之前", () => {
-    const item = create_item(1, "chapter.txt", 1, "译文", [
-      "RETRY_THRESHOLD",
-      "PUNCTUATION_MISMATCH",
-      "TEXT_PRESERVE",
-    ]);
-    expect(item.warnings).toEqual(["TEXT_PRESERVE", "PUNCTUATION_MISMATCH", "RETRY_THRESHOLD"]);
-  });
-
+describe("校对列表", () => {
   it("按指定列排序并用文件与行号稳定处理同值项", () => {
     const items = [
-      create_item(1, "b.txt", 1, "A"),
-      create_item(2, "a.txt", 2, "A"),
-      create_item(3, "a.txt", 1, "B"),
+      create_row(1, "b.txt", 1, "A"),
+      create_row(2, "a.txt", 2, "A"),
+      create_row(3, "a.txt", 1, "B"),
     ];
 
     expect(
-      sort_proofreading_items(items, {
-        column_id: "dst",
-        direction: "ascending",
-      }).map((item) => item.item_id),
-    ).toEqual([2, 1, 3]);
+      sort_proofreading_rows(
+        items,
+        {
+          column_id: "dst",
+          direction: "ascending",
+        },
+        new Map([
+          ["b.txt", 0],
+          ["a.txt", 1],
+        ]),
+      ).map((row) => Number(row.row_id)),
+    ).toEqual([1, 2, 3]);
   });
 });

@@ -4,8 +4,6 @@ import {
   CircleCheck,
   CircleMinus,
   CopyX,
-  FileCheck,
-  FileMinus,
   Eraser,
   ListChecks,
   ListX,
@@ -92,8 +90,6 @@ function run_after_context_menu_close(action: () => void): void {
 
 /** 将条目处理状态映射为当前表格的状态图标。 */
 function resolve_status_icon(status: string): typeof AlertCircle | null {
-  if (status === "PDF_KEEP") return FileCheck;
-  if (status === "PDF_OMIT") return FileMinus;
   if (status === "PROCESSED") {
     return CircleCheck;
   }
@@ -182,13 +178,11 @@ function ProofreadingStatusIndicator(props: {
   );
 }
 
-/** 文本和页面共用状态图标；补充提示由所属行提供。 */
+/** 文本和页面按同一状态映射显示图标与提示。 */
 function ProofreadingStatusCell(props: {
   status: string;
   warnings: readonly ProofreadingWarningCode[];
   retranslating: boolean;
-  details?: ReactNode;
-  status_label?: string;
 }): JSX.Element | null {
   const { t } = useI18n();
   const StatusIcon = resolve_status_icon(props.status);
@@ -196,8 +190,7 @@ function ProofreadingStatusCell(props: {
     PROOFREADING_STATUS_LABEL_KEY_BY_CODE[
       props.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
     ];
-  const status_label =
-    props.status_label ?? (status_label_key === undefined ? props.status : t(status_label_key));
+  const status_label = status_label_key === undefined ? props.status : t(status_label_key);
   if (props.retranslating)
     return (
       <div className="proofreading-page__status-icons">
@@ -234,7 +227,6 @@ function ProofreadingStatusCell(props: {
               VALUE: status_label,
             })}
           </p>
-          {props.details}
         </ProofreadingStatusIndicator>
       )}
       {props.warnings.length > 0 && (
@@ -371,18 +363,8 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           return (
             <ProofreadingStatusCell
               status={row.kind === "item" ? row.item.status : row.page.status}
-              status_label={
-                row.kind === "page" && row.page.status === "PROCESSED"
-                  ? t("proofreading_page.pages.translated")
-                  : undefined
-              }
               warnings={row.kind === "item" ? row.item.warnings : []}
               retranslating={row.kind === "item" && retranslating_row_id_set.has(row.row_id)}
-              details={
-                row.kind === "page" && row.page.status === "PROCESSED" ? (
-                  <p>{t("proofreading_page.filter.no_warning")}</p>
-                ) : undefined
-              }
             />
           );
         },

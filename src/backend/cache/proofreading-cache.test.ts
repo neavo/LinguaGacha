@@ -121,7 +121,7 @@ function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange 
     source: "translation_commit",
     affectedSections: ["items"],
     sectionRevisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-    fullRebuild: false,
+
     items: {
       mode: "delta",
       changedIds: [1],
@@ -246,7 +246,7 @@ describe("ProofreadingCache", () => {
     });
   });
 
-  it("revision 或语言变化会生成新的缓存身份并重新执行 sync task", async () => {
+  it("文件修订复用文本评估，语言变化重新评估", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
@@ -262,7 +262,7 @@ describe("ProofreadingCache", () => {
     await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
     await cache.sync({ sourceLanguage: "JA", targetLanguage: "EN" });
 
-    expect(worker.run).toHaveBeenCalledTimes(3);
+    expect(worker.run).toHaveBeenCalledTimes(2);
     expect(
       worker.sync_inputs.map((input) => [
         input.revisions.files,
@@ -270,7 +270,6 @@ describe("ProofreadingCache", () => {
       ]),
     ).toEqual([
       [1, "ZH"],
-      [2, "ZH"],
       [2, "EN"],
     ]);
   });
@@ -501,7 +500,7 @@ describe("ProofreadingCache", () => {
     expect(window.data.rows.map((row) => row.row_id)).toEqual(["2"]);
   });
 
-  it("quality 或 files 变化会失效已同步的校对缓存", async () => {
+  it("quality 变化会失效已同步的文本评估", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
@@ -586,6 +585,25 @@ it("页面修订号单独触发补读，滚动和文本增量复用页面与评�
   await service.sync({});
   expect(readPages).toHaveBeenCalledTimes(2);
   expect(worker.run).toHaveBeenCalledTimes(1);
+  revisions.quality++;
+  await service.applyChange(
+    create_delta_change({ items: { mode: "keep" }, quality: { mode: "full" } }),
+    revisions,
+  );
+  await service.sync({});
+  expect(readPages).toHaveBeenCalledTimes(2);
+  expect(worker.run).toHaveBeenCalledTimes(2);
+  expect(
+    (
+      await service.list({
+        filters: initial.data.defaultFilters,
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        sort_state: null,
+      })
+    ).data.window_rows,
+  ).toMatchObject([{ kind: "page" }]);
 });
 
 it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () => {
@@ -611,4 +629,95 @@ it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () =
   await rejected;
   expect(readPages).not.toHaveBeenCalled();
   expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);
+});
+
+it.each(["files", "items"] as const)(
+  "评估进行中发生 %s 变化，按文本依赖决定是否接受结果",
+  async (section) => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const cache = create_cache_read_port({
+      revisions,
+      items: [
+        create_cache_item({ item_id: 1, file_path: "a.txt" }),
+        create_cache_item({ item_id: 2, file_path: "b.txt" }),
+      ],
+    });
+    const files = vi.fn(() => [
+      { rel_path: "a.txt", file_type: "TXT", sort_index: 0 },
+      { rel_path: "b.txt", file_type: "TXT", sort_index: 1 },
+    ]);
+    cache.files.readFileEntries = files;
+    const worker = create_worker(() => pending);
+    const reader = createProofreadingReader();
+    const service = new ProofreadingCache({
+      cache,
+      workerClient: worker,
+      reader,
+      readPages: () => [],
+      appSettingService: create_settings(),
+    });
+    const sync = service.sync({});
+    const rejected = section === "items" ? expect(sync).rejects.toThrow() : null;
+    revisions[section]++;
+    files.mockReturnValue([
+      { rel_path: "b.txt", file_type: "TXT", sort_index: 0 },
+      { rel_path: "a.txt", file_type: "TXT", sort_index: 1 },
+    ]);
+    await service.applyChange(
+      section === "items"
+        ? create_delta_change()
+        : create_delta_change({
+            items: { mode: "keep" },
+            files: { mode: "full" },
+            affectedSections: ["files"],
+          }),
+      revisions,
+    );
+    release();
+    if (rejected !== null) {
+      await rejected;
+      expect(reader.read_items_by_row_ids({ row_ids: ["1", "2"] })).toEqual([]);
+    } else {
+      const result = await sync;
+      expect(result.sectionRevisions.files).toBe(2);
+      expect(result.data.files.map((file) => file.file_path)).toEqual(["b.txt", "a.txt"]);
+      const view = await service.list({
+        filters: result.data.defaultFilters,
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        sort_state: null,
+      });
+      expect(view.data.window_rows.map((row) => row.row_id)).toEqual(["2", "1"]);
+    }
+    expect(worker.run).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("热同步响应的修订号绑定返回快照，不借用等待期间发生的新文件修订", async () => {
+  const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+  const service = new ProofreadingCache({
+    cache: create_cache_read_port({ revisions }),
+    reader: createProofreadingReader(),
+    workerClient: create_worker(),
+    readPages: () => [],
+    appSettingService: create_settings(),
+  });
+  await service.sync({});
+  const pending = service.sync({});
+  revisions.files = 2;
+  await service.applyChange(
+    create_delta_change({ items: { mode: "keep" }, files: { mode: "full" } }),
+    revisions,
+  );
+  const old = await pending;
+  expect(old.data.revisions.files).toBe(1);
+  expect(old.sectionRevisions.files).toBe(1);
+  const current = await service.sync({});
+  expect(current.data.revisions.files).toBe(2);
+  expect(current.sectionRevisions.files).toBe(2);
 });
