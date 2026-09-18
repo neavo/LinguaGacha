@@ -364,9 +364,10 @@ describe("pi-ai 请求适配", () => {
     expect(payload).toHaveProperty("reasoning_effort", "high");
   });
 
-  it("Grok 修正通过 Pi 生成特高思考字段", async () => {
+  it("Grok 在原生端点发送特高思考字段", async () => {
     const grok_request = resolve_request({
       api_format: "OpenAI",
+      api_url: "https://api.x.ai/v1",
       model_id: "vendor/grok-4.6-fast",
       thinking: { level: "XHIGH" },
     });

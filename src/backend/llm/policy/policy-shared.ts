@@ -1,10 +1,8 @@
 import type { JsonRecord } from "../../../domain/json";
 import type { ModelApiFormat } from "../../../domain/model";
 import * as AppErrors from "../../../shared/error";
+import { ENDPOINT_REQUEST_OVERRIDES } from "../llm-overrides";
 import type { ModelRequestIdentity, ModelRequestSnapshot } from "./policy-types";
-
-const OPENCODE_HOST = "opencode.ai";
-const OPENCODE_SESSION_HEADER = "x-opencode-session";
 
 /** 组装跨协议身份与扩展头；HTTP 合法性由 adapter 在请求错误边界内校验。 */
 export function build_request_headers(
@@ -12,6 +10,10 @@ export function build_request_headers(
   identity: ModelRequestIdentity,
   extra_headers: Readonly<JsonRecord>,
 ): Record<string, string> {
+  const hostname = URL.parse(base_url)?.hostname;
+  const endpoint_override = ENDPOINT_REQUEST_OVERRIDES.find(
+    (override) => override.hostname === hostname,
+  );
   const headers = Object.fromEntries(
     Object.entries(extra_headers).map(([key, value]) => [key.toLowerCase(), String(value)]),
   );
@@ -20,8 +22,8 @@ export function build_request_headers(
   delete headers["user-agent"];
   return {
     "User-Agent": user_agent,
-    ...(URL.parse(base_url)?.hostname === OPENCODE_HOST
-      ? { [OPENCODE_SESSION_HEADER]: identity.session_id }
+    ...(endpoint_override !== undefined
+      ? { [endpoint_override.session_header]: identity.session_id }
       : {}),
     ...headers,
   };

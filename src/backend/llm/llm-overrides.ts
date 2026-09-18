@@ -43,13 +43,14 @@ const DEEPSEEK_THINKING_LEVEL_MAP: CompleteThinkingLevelMap = Object.freeze({
   max: "max",
 });
 
-/** 只收录当前 Pi catalog 缺失或落后的精确修正；canonical matcher 负责常见前后缀。 */
+/** 补齐 Pi 内置目录缺失或落后的事实，上游补齐并验证后删除对应修正。 */
 export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Object.freeze([
   {
     model_id: "grok-4.6",
     protocols: {
       OpenAI: {
         reasoning: true,
+        // Pi 按 xAI 端点禁用 `reasoning_effort`，此处显式启用。
         compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
       },
     },
@@ -85,5 +86,18 @@ export const MODEL_CAPABILITY_OVERRIDES: readonly ModelCapabilityOverride[] = Ob
         thinking_level_map: DEEPSEEK_THINKING_LEVEL_MAP,
       },
     },
+  },
+]);
+
+type EndpointRequestOverride = Readonly<{
+  hostname: string;
+  session_header: string; // 请求时填入当前任务或对话的会话 ID。
+}>;
+
+/** 接入点按精确主机名匹配，会话头用于标识同一任务或对话的推理请求。 */
+export const ENDPOINT_REQUEST_OVERRIDES: readonly EndpointRequestOverride[] = Object.freeze([
+  {
+    hostname: "opencode.ai",
+    session_header: "x-opencode-session",
   },
 ]);

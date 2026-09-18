@@ -20,10 +20,7 @@ import {
   type ModelAgentConfig,
   type ModelAgentLimits,
 } from "../../domain/model-agent";
-import {
-  MODEL_CAPABILITY_OVERRIDES,
-  type ModelCapabilityOverride,
-} from "./model-capability-overrides";
+import { MODEL_CAPABILITY_OVERRIDES, type ModelCapabilityOverride } from "./llm-overrides";
 
 /** 模型容量规格缺失时的安全运行容量；不据模型名猜测规格。 */
 const FALLBACK_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
@@ -202,9 +199,8 @@ function select_pi_thinking_template(
   matches: readonly PiCatalogModel[],
 ): PiCatalogModel | null {
   const api_order = resolve_pi_api_order(api_format);
-  if (api_order.length === 0) return null;
   return (
-    [...matches]
+    matches
       .filter((model) => api_order.includes(model.api))
       .sort((left, right) => {
         const api_delta = api_order.indexOf(left.api) - api_order.indexOf(right.api);
