@@ -332,7 +332,6 @@ export class ProofreadingCache {
       source_language: String(input.sourceLanguage ?? settings.source_language),
       target_language: String(input.targetLanguage ?? settings.target_language),
       clean_ruby: settings.clean_ruby,
-      auto_process_prefix_suffix_preserved_text: settings.auto_process_prefix_suffix_preserved_text,
     });
     const revisions = {
       files: Number(sectionRevisions.files ?? 0),

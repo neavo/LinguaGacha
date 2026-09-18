@@ -9,9 +9,9 @@ export type ExpertSettingsSnapshot = Pick<
   | "clean_ruby"
   | "deduplication_in_bilingual"
   | "write_translated_name_fields_to_file"
-  | "auto_process_prefix_suffix_preserved_text"
 >;
 
+/** 将共享设置收窄为专家页面的编辑字段。 */
 export function build_expert_settings_snapshot(
   settings_snapshot: SettingsSnapshot,
 ): ExpertSettingsSnapshot {
@@ -20,7 +20,5 @@ export function build_expert_settings_snapshot(
     clean_ruby: settings_snapshot.clean_ruby,
     deduplication_in_bilingual: settings_snapshot.deduplication_in_bilingual,
     write_translated_name_fields_to_file: settings_snapshot.write_translated_name_fields_to_file,
-    auto_process_prefix_suffix_preserved_text:
-      settings_snapshot.auto_process_prefix_suffix_preserved_text,
   };
 }

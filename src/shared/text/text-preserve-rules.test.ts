@@ -77,19 +77,6 @@ describe("text-preserve-rules", () => {
     expect(collect_non_blank_text_preserve_segments("Alice 与 Bob", rule)).toEqual(["与"]);
   });
 
-  it("prefix 和 suffix 规则只匹配行首或行尾保护段", () => {
-    const rule = build_text_preserve_rule({
-      mode: "CUSTOM",
-      text_type: "NONE",
-      entries: [entry("ab")],
-    });
-
-    expect(rule.extract_prefix("ababz")).toEqual({ text: "z", segments: ["ab", "ab"] });
-    expect(rule.extract_prefix("zab")).toEqual({ text: "zab", segments: [] });
-    expect(rule.extract_suffix("zabab")).toEqual({ text: "z", segments: ["ab", "ab"] });
-    expect(rule.extract_suffix("abz")).toEqual({ text: "abz", segments: [] });
-  });
-
   it("smart 模式按文本类型使用共享预置规则", () => {
     const rule = build_text_preserve_rule({
       mode: "smart",
@@ -131,6 +118,7 @@ describe("text-preserve-rules", () => {
   });
 });
 
+/** 为测试表达式补齐规则条目的说明字段。 */
 function entry(src: string): { src: string; info: string } {
   return { src, info: "" };
 }

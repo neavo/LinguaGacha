@@ -50,6 +50,7 @@ vi.mock("@frontend/widgets/boolean-segmented-toggle", () => {
   };
 });
 
+/** 每次挂载使用独立的编辑状态和提交记录。 */
 function create_expert_settings_state_fixture() {
   return {
     snapshot: {
@@ -57,20 +58,17 @@ function create_expert_settings_state_fixture() {
       clean_ruby: false,
       deduplication_in_bilingual: false,
       write_translated_name_fields_to_file: false,
-      auto_process_prefix_suffix_preserved_text: false,
     },
     pending_state: {
       preceding_lines_threshold: false,
       clean_ruby: false,
       deduplication_in_bilingual: false,
       write_translated_name_fields_to_file: false,
-      auto_process_prefix_suffix_preserved_text: false,
     },
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
     update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
     update_write_translated_name_fields_to_file: vi.fn(async (_next_checked: boolean) => {}),
-    update_auto_process_prefix_suffix_preserved_text: vi.fn(async (_next_checked: boolean) => {}),
   };
 }
 
@@ -86,6 +84,7 @@ function set_input_value(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** 断言前确认页面状态已经初始化。 */
 function get_current_expert_settings_state(): ReturnType<
   typeof create_expert_settings_state_fixture
 > {
@@ -117,6 +116,7 @@ describe("ExpertSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
+  /** 在独立容器中挂载页面并等待状态生效。 */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -127,6 +127,7 @@ describe("ExpertSettingsPage", () => {
     });
   }
 
+  /** 从页面读取阈值输入框，缺失时终止交互断言。 */
   function get_preceding_lines_threshold_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 

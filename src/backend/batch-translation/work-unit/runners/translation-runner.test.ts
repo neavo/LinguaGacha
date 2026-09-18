@@ -160,6 +160,41 @@ describe("TranslationWorkUnitRunner", () => {
     ]);
   });
 
+  it("实际请求发送完整保护文本，译后按行恢复保留行", async () => {
+    const captured_requests: LLMRequestBody[] = [];
+    const source = "  <b>こんにちは</b>  \n<skip>";
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client(
+        { response_result: JSON.stringify({ id: 0, text: "<b>你好</b>\n<changed>" }) },
+        captured_requests,
+      ),
+    );
+    const quality = create_quality_payload();
+    const quality_block = quality["quality"] as JsonRecord;
+    quality_block["text_preserve"] = {
+      mode: "custom",
+      entries: [{ entry_id: "tag", src: "<[^>]+>", info: "" }],
+    };
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        src: source,
+        quality_snapshot: quality,
+      }),
+      new AbortController().signal,
+    );
+
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      JSON.stringify({ id: 0, text: source }),
+    );
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      items: [{ dst: "  <b>你好</b>  \n<skip>", status: "PROCESSED" }],
+    });
+  });
+
   it("含姓名请求走完整 pipeline 并分别写回正文和姓名", async () => {
     const captured_requests: LLMRequestBody[] = [];
     const runner = new TranslationWorkUnitRunner(
@@ -714,7 +749,6 @@ function create_config_payload(overrides: JsonRecord = {}): JsonRecord {
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    auto_process_prefix_suffix_preserved_text: true,
     ...overrides,
   };
 }

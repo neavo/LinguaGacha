@@ -39,15 +39,6 @@ export const de_de_expert_settings_page = {
         "\n" +
         "• VNTextPatch oder SExtractor exportierter Spieltext mit Namensfeldern (.json)",
     },
-    auto_process_prefix_suffix_preserved_text: {
-      title: "Präfix/Suffix-geschützten Text automatisch verarbeiten",
-      description:
-        "Geschützte Textanfänge/-enden automatisch verarbeiten (standardmäßig an)." +
-        "\n" +
-        "• An: Geschützte Segmente vor der Übersetzung entfernen und danach wieder einfügen." +
-        "\n" +
-        "• Aus: Den vollständigen Eintrag übersetzen; mehr Kontext, aber schwächerer Textschutz.",
-    },
   },
   feedback: {
     refresh_failed:

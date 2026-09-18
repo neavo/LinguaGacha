@@ -12,6 +12,7 @@ import type { ConfiguredSourceLanguageCode, TargetLanguageCode } from "../../dom
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
 import type { TextProcessingConfig } from "../text/text-types";
 
+/** 提供本轮评估使用的语言与注音清理配置。 */
 function create_processing_config(
   source_language: ConfiguredSourceLanguageCode = "JA",
   target_language: TargetLanguageCode = "ZH",
@@ -20,7 +21,6 @@ function create_processing_config(
     source_language,
     target_language,
     clean_ruby: false,
-    auto_process_prefix_suffix_preserved_text: true,
   };
 }
 
@@ -66,6 +66,7 @@ function create_item(input: {
   };
 }
 
+/** 先执行真实评估，再将结果和质量规则同步到读取器。 */
 function sync_full(
   service: ReturnType<typeof createProofreadingReader>,
   input: ProofreadingSyncInput,
@@ -710,7 +711,7 @@ describe("proofreading-reader", () => {
     });
   });
 
-  it("增量评估沿用全量同步冻结的文本处理配置", () => {
+  it("增量校对沿用全量同步的译前替换规则", () => {
     const service = createProofreadingReader();
     const quality: QualitySnapshot = {
       ...create_quality(),
@@ -736,7 +737,7 @@ describe("proofreading-reader", () => {
       processingConfig: create_processing_config(),
       quality,
       upsertItems: [
-        create_item({ item_id: 1, src: "<A>hello", dst: "<A>你好", status: "PROCESSED" }),
+        create_item({ item_id: 1, src: "<A>hello", dst: "<X>你好", status: "PROCESSED" }),
       ],
     });
 
@@ -746,7 +747,7 @@ describe("proofreading-reader", () => {
       total_item_count: 1,
       upsertItems: [],
       patchItemIds: [1],
-      fieldPatch: { dst: "<A>您好" },
+      fieldPatch: { dst: "<X>您好" },
       deleteItemIds: [],
     });
 

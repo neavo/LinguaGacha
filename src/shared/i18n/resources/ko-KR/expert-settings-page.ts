@@ -39,15 +39,6 @@ export const ko_kr_expert_settings_page = {
         "\n" +
         "• VNTextPatch 또는 SExtractor에서 내보낸 name 필드가 있는 게임 텍스트(.json)",
     },
-    auto_process_prefix_suffix_preserved_text: {
-      title: "앞뒤 보호 텍스트 자동 처리",
-      description:
-        "각 텍스트 항목의 앞뒤에서 보호 규칙에 일치하는 부분을 자동 처리합니다. 기본적으로 사용합니다" +
-        "\n" +
-        "• 사용하면 앞뒤에서 보호 규칙에 일치하는 부분을 제거하고 번역이 끝난 후 다시 붙입니다" +
-        "\n" +
-        "• 사용하지 않으면 전체 텍스트 항목을 모델에 전송합니다. 의미를 더 온전히 전달할 수 있지만 텍스트 보호 효과는 낮아집니다",
-    },
   },
   feedback: {
     refresh_failed: "전문가 설정을 새로 고칠 수 없습니다. 잠시 후 다시 시도해 주세요.",

@@ -13,6 +13,7 @@ import type { CacheChange } from "./cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
 import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
 
+/** 提供缓存读取器所需的完整条目，各用例覆盖关注字段。 */
 function create_cache_item(
   overrides: Partial<ProjectItemPublicRecord> = {},
 ): ProjectItemPublicRecord {
@@ -84,7 +85,6 @@ function create_settings(
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    auto_process_prefix_suffix_preserved_text: true,
   },
 ): AppSettingService {
   return {
@@ -276,7 +276,6 @@ describe("ProofreadingCache", () => {
       source_language: "JA",
       target_language: "ZH",
       clean_ruby: false,
-      auto_process_prefix_suffix_preserved_text: true,
     };
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({}),
@@ -288,27 +287,17 @@ describe("ProofreadingCache", () => {
     await cache.sync({});
     settings.clean_ruby = true;
     await cache.sync({});
-    settings.auto_process_prefix_suffix_preserved_text = false;
-    await cache.sync({});
 
     expect(worker.sync_inputs.map((input) => input.processingConfig)).toEqual([
       {
         source_language: "JA",
         target_language: "ZH",
         clean_ruby: false,
-        auto_process_prefix_suffix_preserved_text: true,
       },
       {
         source_language: "JA",
         target_language: "ZH",
         clean_ruby: true,
-        auto_process_prefix_suffix_preserved_text: true,
-      },
-      {
-        source_language: "JA",
-        target_language: "ZH",
-        clean_ruby: true,
-        auto_process_prefix_suffix_preserved_text: false,
       },
     ]);
   });

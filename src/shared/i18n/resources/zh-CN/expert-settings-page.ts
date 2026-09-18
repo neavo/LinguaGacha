@@ -35,15 +35,6 @@ export const zh_cn_expert_settings_page = {
         "\n" +
         "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）",
     },
-    auto_process_prefix_suffix_preserved_text: {
-      title: "自动处理前后缀的保护文本段",
-      description:
-        "是否自动处理每个文本条目头尾命中保护规则的文本段，默认启用" +
-        "\n" +
-        "• 启用后，头尾命中保护规则的文本段将被移除，翻译完成后再拼接回去" +
-        "\n" +
-        "• 禁用后，会将完整的文本条目发送给模型翻译，可能会获得更完整的语义，但会降低文本保护效果",
-    },
   },
   feedback: {
     refresh_failed: "当前无法刷新专家设置，请稍后重试。",

@@ -37,15 +37,6 @@ export const ja_jp_expert_settings_page = {
         "\n" +
         "• VNTextPatch または SExtractor から出力した name フィールド付きゲームテキスト（.json）",
     },
-    auto_process_prefix_suffix_preserved_text: {
-      title: "先頭・末尾の保護テキストを自動処理",
-      description:
-        "各テキスト項目の先頭・末尾で保護ルールに一致する部分を自動処理します。既定で有効です" +
-        "\n" +
-        "• 有効にすると、先頭・末尾で保護ルールに一致する部分を取り除き、翻訳後に元の位置へ戻します" +
-        "\n" +
-        "• 無効にすると、テキスト全体をモデルに送信します。文脈をより正確に伝えられる場合がありますが、テキストの保護効果は低下します",
-    },
   },
   feedback: {
     refresh_failed: "エキスパート設定を更新できません。しばらくしてから再試行してください。",
