@@ -85,12 +85,12 @@
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
-- 20260914 v0.121.0
-  - Verschiedene Verbesserungen der Benutzeroberfläche
-    - Neue Oberflächensprachen: `Japanisch` und `Koreanisch` [#875](../../issues/875)
-    - Neue Darstellung von `Markdown` [#884](../../issues/884)
-    - Weitere Verbesserungen der Bedienung [#878](../../issues/878) [#882](../../issues/882)
-  - Fehlerbehebungen und Verbesserungen [#876](../../issues/876) [#879](../../issues/879) [#880](../../issues/880) [#883](../../issues/883) [#885](../../issues/885)
+- 20260918 v0.122.0
+  - Unterstützung für `.pdf`-Dateien [#895](../../issues/895)
+    - Kann nur im `AGENT`-Modus übersetzt werden
+    - Unterstützt `normalen Text` und `Bildtext`
+  - Unterstützung für spezielle Feldregeln von `OpenCode Go` [#894](../../issues/894)
+  - Fehlerbehebungen und Verbesserungen [#877](../../issues/877) [#888](../../issues/888) [#890](../../issues/890) [#891](../../issues/891) [#892](../../issues/892) [#893](../../issues/893) [#896](../../issues/896) [#897](../../issues/897) [#898](../../issues/898) [#899](../../issues/899)
 
 ## Entwicklung 🛠️
 - Installieren Sie [Go](https://go.dev) und [`Node.js`](https://nodejs.org)
