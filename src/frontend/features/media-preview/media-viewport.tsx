@@ -7,20 +7,21 @@ import {
   type ReactNode,
 } from "react";
 import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
-
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-
 import "./media-viewport.css";
+import {
+  type MediaSize,
+  type MediaPoint,
+  calculate_media_fit_scale,
+  clamp_media_pan,
+} from "./media-geometry";
 
 // 缩放范围与步长只定义画布手感，不属于媒体协议。
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 1.25;
-
-export type MediaSize = { width: number; height: number };
-export type MediaPoint = { x: number; y: number };
 
 type MediaViewportProps = {
   label: string;
@@ -54,30 +55,6 @@ export function MediaControl(props: {
       <TooltipContent>{props.label}</TooltipContent>
     </Tooltip>
   );
-}
-
-/** 计算不放大原图的适应比例。 */
-export function calculate_media_fit_scale(viewport: MediaSize, media: MediaSize): number {
-  if (viewport.width <= 0 || viewport.height <= 0 || media.width <= 0 || media.height <= 0) {
-    return 0;
-  }
-  return Math.min(viewport.width / media.width, viewport.height / media.height, 1);
-}
-
-/** 以“相对适应尺寸”的缩放倍率计算可平移边界。 */
-export function clamp_media_pan(
-  pan: MediaPoint,
-  viewport: MediaSize,
-  media: MediaSize,
-  fit_scale: number,
-  zoom: number,
-): MediaPoint {
-  const max_x = Math.max(0, (media.width * fit_scale * zoom - viewport.width) / 2);
-  const max_y = Math.max(0, (media.height * fit_scale * zoom - viewport.height) / 2);
-  return {
-    x: Math.min(max_x, Math.max(-max_x, pan.x)),
-    y: Math.min(max_y, Math.max(-max_y, pan.y)),
-  };
 }
 
 /** 图片与图表共用的居中画布；内容身份变化由调用方通过 key 重置视图。 */

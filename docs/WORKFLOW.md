@@ -36,7 +36,7 @@
 |触发条件|命令与范围|
 |---|---|
 |TypeScript 源码、类型、测试或影响其解析的配置变化|`npx tsc -b --noEmit`；本次运行 `npm run build` 时使用其内置 typecheck 结果|
-|lint 覆盖的源码、测试、脚本或规则配置变化|`npm run lint`，使用现有仓库检查入口|
+|lint 覆盖的源码、测试、脚本或规则配置变化|`npm run lint`，同时检查前端 `react/only-export-components` 导出边界|
 |`src/`、`buildtools/` 中受架构和错误规则检查的源码或规则实现变化|`npm run check`，覆盖错误契约及 GUI、前端、后端边界|
 |格式化脚本支持的源码、CSS、JSON 或相关配置变化|`npm run format -- --check <文件路径...>`；需要修复时对相同文件执行 `npm run format -- <文件路径...>` 后复查|
 
@@ -58,6 +58,7 @@
 |端到端 UI 冒烟|用户明确要求时执行；或已识别具体高风险，且低层验证不足以证明结果时执行。需要启动真机应用时使用 `npm run dev`|
 |Windows Go launcher|在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...`|
 |构建、Vite、electron-builder、afterPack、发布资产|`npm run build`，并按下文核对受影响的产物契约|
+|renderer 热更新边界或运行态刷新策略|`npm test -- --project node buildtools/vite/renderer-runtime-reload.test.mjs`，以真实 Vite 和隐藏 Electron 窗口验证热更新保留状态与运行态重建|
 
 Vitest 在 `buildtools/vitest/vitest.config.ts` 中划分 `node` 与 `renderer`：后端、CLI、共享逻辑、Electron 主进程和构建工具使用 Node 环境，前端与 preload 桥接使用 `happy-dom` 及 renderer 初始化。使用 `npm test -- --project node <测试文件路径...>` 或 `npm test -- --project renderer <测试文件路径...>` 定位目标；省略文件路径运行对应项目。
 

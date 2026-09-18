@@ -1,10 +1,13 @@
-import { type ProofreadingContentFilters } from "@frontend/pages/proofreading-page/proofreading-filter-state";
+import {
+  type ProofreadingContentFilters,
+  type ProofreadingViewFilterState,
+  create_default_proofreading_filter_selection,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useEffect, type MutableRefObject, type SetStateAction } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import type { ProofreadingLookupIntent } from "@frontend/app/navigation/types";
-import type { ProofreadingViewFilterState } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import { create_default_proofreading_filter_selection } from "@frontend/pages/proofreading-page/proofreading-filter-state";
+
 import {
   resolve_list_view_window_bounds,
   type ProofreadingListSnapshot,

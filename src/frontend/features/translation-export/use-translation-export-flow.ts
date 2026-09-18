@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format_agent_skill_reference } from "@shared/agent";
 import type { ProofreadingWarningSummary } from "@shared/proofreading/proofreading-types";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useAgentInput } from "@frontend/app/session/agent/agent-session-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
@@ -49,7 +49,7 @@ export type TranslationExportFlow = {
 /** 统一承接手动与任务完成后的译文导出预检、确认和跳转。 */
 export function useTranslationExportFlow(): TranslationExportFlow {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const { navigate_to_route, selected_route } = useAppNavigation();
   const agent_input = useAgentInput();
   const { project_snapshot } = useDesktopState();
@@ -139,7 +139,7 @@ export function useTranslationExportFlow(): TranslationExportFlow {
       );
       apply_state(current_state);
     }
-  }, [apply_state, push_toast, t]);
+  }, [apply_state, t]);
 
   /** 进入 Agent 时保留用户草稿，只有空草稿才补入审校建议。 */
   const jump_to_agent = useCallback((): void => {

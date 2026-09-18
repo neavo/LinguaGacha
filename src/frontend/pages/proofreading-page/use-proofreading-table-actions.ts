@@ -1,27 +1,25 @@
 import {
   clone_content_filters,
   type ProofreadingContentFilters,
+  resolve_proofreading_filter_selection_from_filters,
+  type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useCallback, type MutableRefObject } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
-import {
-  type ProofreadingFilterOptions,
-  type ProofreadingFilterPanelState,
-  type ProofreadingListView,
-  type ProofreadingSearchScope,
-  type ProofreadingRow,
+import type {
+  ProofreadingFilterOptions,
+  ProofreadingFilterPanelState,
+  ProofreadingListView,
+  ProofreadingSearchScope,
+  ProofreadingRow,
 } from "@shared/proofreading/proofreading-types";
 import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
-import {
-  resolve_proofreading_filter_selection_from_filters,
-  type ProofreadingViewFilterState,
-} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 

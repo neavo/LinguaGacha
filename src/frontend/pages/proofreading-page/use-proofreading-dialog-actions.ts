@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   create_apply_item_changes_plan,
   type ProofreadingCommandPlan,

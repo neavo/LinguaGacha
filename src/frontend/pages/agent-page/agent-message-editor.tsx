@@ -39,14 +39,9 @@ import {
   type AgentResponseAnnotationAttachment,
   type AgentSkillSnapshot,
 } from "@shared/agent";
-import { useAppearance } from "@frontend/app/appearance/appearance-provider";
-import { useI18n } from "@frontend/app/locale/locale-provider";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { useAppearance } from "@frontend/app/appearance/appearance-context";
+import { useI18n } from "@frontend/app/locale/locale-context";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   resolve_app_editor_readonly_extensions,
@@ -637,23 +632,25 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           {!assistant_editing ? (
             <Tooltip>
               <TooltipTrigger
-                render={tooltip_trigger_target(
-                  <AppButton
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    className="agent-composer__image-trigger"
-                    disabled={!can_append_images}
-                    aria-label={t("agent_page.action.add_image")}
-                    onClick={() => file_input_ref.current?.click()}
-                  >
-                    {image_processing ? (
-                      <LoaderCircle className="animate-spin" aria-hidden="true" />
-                    ) : (
-                      <ImagePlus aria-hidden="true" />
-                    )}
-                  </AppButton>,
-                )}
+                render={
+                  <TooltipTarget>
+                    <AppButton
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      className="agent-composer__image-trigger"
+                      disabled={!can_append_images}
+                      aria-label={t("agent_page.action.add_image")}
+                      onClick={() => file_input_ref.current?.click()}
+                    >
+                      {image_processing ? (
+                        <LoaderCircle className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <ImagePlus aria-hidden="true" />
+                      )}
+                    </AppButton>
+                  </TooltipTarget>
+                }
               />
               <TooltipContent>
                 <p>{t("agent_page.action.add_image")}</p>

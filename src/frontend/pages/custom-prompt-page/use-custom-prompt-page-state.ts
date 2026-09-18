@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   build_user_preset_virtual_id,
   create_empty_preset_input_state,
@@ -53,7 +53,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
     reload_prompt,
   } = useCustomPromptEditorState();
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const { project_snapshot, settings_snapshot, apply_settings_snapshot } = useDesktopState();
   const [preset_snapshot, set_preset_snapshot] = useState<PromptPresetPayload>({
     builtin_presets: [],
@@ -116,7 +116,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.import_failed")),
       );
     }
-  }, [replace_prompt_text, push_toast, readonly, t]);
+  }, [replace_prompt_text, readonly, t]);
 
   /** 先等待草稿保存，再导出后端已确认的正文。 */
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
@@ -141,7 +141,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.export_failed")),
       );
     }
-  }, [flush_prompt_change, push_toast, t]);
+  }, [flush_prompt_change, t]);
 
   /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
@@ -153,7 +153,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
       );
     }
-  }, [push_toast, refresh_preset_menu, t]);
+  }, [refresh_preset_menu, t]);
 
   /** 提交所选预设，成功后关闭菜单。 */
   const apply_preset = useCallback(
@@ -177,7 +177,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         );
       }
     },
-    [replace_prompt_text, push_toast, readonly, t],
+    [replace_prompt_text, readonly, t],
   );
 
   /** 重置正文前记录待确认操作。 */
@@ -247,7 +247,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
     },
-    [prompt_text, push_toast, refresh_preset_menu, t],
+    [prompt_text, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */
@@ -289,7 +289,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
     },
-    [apply_settings_snapshot, preset_items, push_toast, refresh_preset_menu, t],
+    [apply_settings_snapshot, preset_items, refresh_preset_menu, t],
   );
 
   /** 通过设置回包推进默认标记。 */
@@ -307,7 +307,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         );
       }
     },
-    [apply_settings_snapshot, push_toast, t],
+    [apply_settings_snapshot, t],
   );
 
   /** 空标识通过同一保存入口清除默认引用。 */
@@ -397,7 +397,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, rename_preset, save_preset, t]);
 
   /** 删除预设并清除指向它的默认引用。 */
   const delete_preset = useCallback(
@@ -424,7 +424,7 @@ export function useCustomPromptPageState(): UseCustomPromptPageStateResult {
         return false;
       }
     },
-    [apply_settings_snapshot, preset_items, push_toast, refresh_preset_menu, t],
+    [apply_settings_snapshot, preset_items, refresh_preset_menu, t],
   );
 
   /** 执行已确认的操作，失败时恢复确认界面的可操作状态。 */

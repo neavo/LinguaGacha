@@ -3,7 +3,7 @@ import { MessageSquareQuote } from "lucide-react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import type { AgentMessageAttachment } from "@shared/agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AgentResponseAnnotationEditor,

@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Input } from "@frontend/shadcn/input";

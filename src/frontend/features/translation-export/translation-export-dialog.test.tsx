@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TranslationExportDialog } from "./translation-export-dialog";
 import type { TranslationExportState } from "./use-translation-export-flow";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
       params?.COUNT === undefined ? key : `${key}:${params.COUNT}`,

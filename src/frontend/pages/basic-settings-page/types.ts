@@ -1,5 +1,5 @@
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   ALL_LANGUAGE_CODE,
   PROJECT_SAVE_MODES,

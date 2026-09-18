@@ -1,6 +1,6 @@
 import { GripVertical } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import type { Ref } from "react";
 

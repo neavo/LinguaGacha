@@ -1,9 +1,9 @@
-import type { ModelAgentLimits } from "@domain/model-agent";
+import { type ModelAgentLimits, AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import { useState, type ReactNode } from "react";
 import { BookOpenText, Boxes, Brain, ChevronDown, Circle, CircleCheck } from "lucide-react";
 import type { ModelThinkingLevel } from "@domain/model";
-import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   ModelSelectionOptions,
   ModelThinkingLevelOptions,
@@ -13,12 +13,7 @@ import {
   read_selected_model,
   type ModelSelectionController,
 } from "@frontend/features/model-selection/use-model-selection";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
@@ -221,25 +216,27 @@ function ModelMenuButton(props: {
     <AppDropdownMenu open={props.open} onOpenChange={props.on_open_change}>
       <Tooltip>
         <TooltipTrigger
-          render={tooltip_trigger_target(
-            <AppDropdownMenuTrigger
-              render={
-                <AppButton
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="agent-composer__model-trigger"
-                  disabled={props.disabled}
-                  aria-label={props.label}
-                >
-                  {props.icon}
-                  <span className="agent-composer__model-name">{props.name}</span>
-                  {props.detail}
-                  <ChevronDown aria-hidden="true" />
-                </AppButton>
-              }
-            />,
-          )}
+          render={
+            <TooltipTarget>
+              <AppDropdownMenuTrigger
+                render={
+                  <AppButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="agent-composer__model-trigger"
+                    disabled={props.disabled}
+                    aria-label={props.label}
+                  >
+                    {props.icon}
+                    <span className="agent-composer__model-name">{props.name}</span>
+                    {props.detail}
+                    <ChevronDown aria-hidden="true" />
+                  </AppButton>
+                }
+              />
+            </TooltipTarget>
+          }
         />
         <TooltipContent className="flex-col items-start gap-0.5">{props.tooltip}</TooltipContent>
       </Tooltip>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 

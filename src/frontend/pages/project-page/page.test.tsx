@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { act, cloneElement, isValidElement } from "react";
+import { type ReactNode, act, cloneElement, isValidElement } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -43,16 +43,12 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => ({
-      dismiss_toast: dismiss_toast_mock,
-      push_progress_toast: push_progress_toast_mock,
-      push_toast: push_toast_mock,
-      update_progress_toast: update_progress_toast_mock,
-    }),
-  };
-});
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  dismiss_toast: dismiss_toast_mock,
+  push_progress_toast: push_progress_toast_mock,
+  push_toast: push_toast_mock,
+  update_progress_toast: update_progress_toast_mock,
+}));
 
 vi.mock("@frontend/widgets/app-context-menu", () => {
   return {

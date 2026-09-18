@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SETTING_KEYS } from "@domain/setting";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
@@ -49,7 +49,7 @@ export function useSettingsEditor<
 } {
   const { settings_snapshot, apply_settings_snapshot, refresh_settings, commit_project_write } =
     useDesktopState();
-  const { push_toast } = useDesktopToast();
+
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState(() => options.select_snapshot(settings_snapshot));
   const [pending_state, set_pending_state] = useState(() =>
@@ -78,7 +78,7 @@ export function useSettingsEditor<
         push_toast("error", resolve_visible_error_message(error, t, t(options.refresh_error_key)));
       }
     })();
-  }, [options.refresh_error_key, push_toast, refresh_settings, sync_snapshot, t]);
+  }, [options.refresh_error_key, refresh_settings, sync_snapshot, t]);
 
   const commit_update = useCallback(
     async (field: PendingField, patch: Partial<Snapshot>): Promise<SettingsSnapshot | null> => {
@@ -141,7 +141,6 @@ export function useSettingsEditor<
       options.update_error_key,
       options.refresh_error_key,
       options.select_snapshot,
-      push_toast,
       refresh_settings,
       sync_snapshot,
       t,

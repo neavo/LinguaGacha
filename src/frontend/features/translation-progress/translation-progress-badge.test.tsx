@@ -5,7 +5,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { TranslationProgressBadge } from "./translation-progress-badge";
 
 // 观察状态键、计数和单位的绑定，不锁定可编辑的本地化措辞。
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, values?: Record<string, string>) =>
       values ? JSON.stringify({ key, ...values }) : key,

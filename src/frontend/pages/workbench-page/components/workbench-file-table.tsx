@@ -2,7 +2,7 @@ import { TranslationProgressBadge } from "@frontend/features/translation-progres
 import { CircleEllipsis } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   WorkbenchTableActionMenu,
   WorkbenchTableContextMenuItems,

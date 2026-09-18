@@ -6,14 +6,14 @@ import type { AgentToolEntry } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import * as tool_output from "./agent-tool-output";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
 
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

@@ -83,15 +83,16 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   };
 });
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => {
-  return {
-    useDesktopToast: () => {
-      return toast_fixture.current;
-    },
-  };
-});
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  get push_toast() {
+    return toast_fixture.current.push_toast;
+  },
+  get run_modal_progress_toast() {
+    return toast_fixture.current.run_modal_progress_toast;
+  },
+}));
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => {
       return {

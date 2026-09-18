@@ -1,5 +1,5 @@
 import type { LogDetail } from "@frontend/app/desktop/desktop-api";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { format_log_readable_text } from "@shared/log";

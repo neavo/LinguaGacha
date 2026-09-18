@@ -1,5 +1,5 @@
 import type { ModelThinkingLevel, ModelType } from "@domain/model";
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 
 /** 模型管理页与任务选择菜单共享同一类型标题词表。 */
 export const MODEL_TYPE_TITLE_KEY = {

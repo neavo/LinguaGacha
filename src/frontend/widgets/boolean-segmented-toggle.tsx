@@ -1,4 +1,4 @@
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { SegmentedToggle } from "@frontend/shadcn/segmented-toggle";
 
 type BooleanSegmentedToggleProps = {

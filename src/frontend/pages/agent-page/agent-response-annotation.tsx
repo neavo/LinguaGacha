@@ -19,7 +19,7 @@ import {
 } from "@floating-ui/react-dom";
 
 import type { AgentResponseAnnotationAttachment } from "@shared/agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import { Textarea } from "@frontend/shadcn/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";

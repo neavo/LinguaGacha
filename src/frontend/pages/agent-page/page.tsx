@@ -18,9 +18,9 @@ import {
   type AgentMessageInput,
   type AgentQueuedInput,
 } from "@shared/agent";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   read_selected_model,
   useModelSelection,
@@ -84,7 +84,7 @@ type PendingThinkingOffAction =
 /** 会话事实由跨路由 session 提供，页面组合交互入口并持有原位编辑状态。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const { entries } = useAgentTimeline();
   const controls = useAgentControls();
   const { inputQueue } = useAgentQueue();
@@ -196,7 +196,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     (error: unknown, fallback_key: LocaleKey): void => {
       push_toast("error", resolve_visible_error_message(error, t, t(fallback_key)));
     },
-    [push_toast, t],
+    [t],
   );
 
   const selected_agent_model = read_selected_model(model_selection, "agent");
@@ -359,7 +359,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   /** 图片处理失败通过页面反馈，保留正在编辑的内容。 */
   const handle_inline_image_error = useCallback((): void => {
     push_toast("error", t("agent_page.error.image"));
-  }, [push_toast, t]);
+  }, [t]);
 
   /** 时间线与队列只决定编辑目标，共享同一套编辑器装配。 */
   const render_inline_editor = useCallback(

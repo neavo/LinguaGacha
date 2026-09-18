@@ -18,13 +18,11 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_get: api.get,
   api_fetch: api.fetch,
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
 vi.mock("@frontend/app/feedback/visible-error-message", () => ({
   resolve_visible_error_message: (_error: unknown, _t: unknown, fallback: string) => fallback,
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: translate }),
 }));
 

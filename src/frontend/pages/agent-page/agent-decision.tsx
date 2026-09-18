@@ -1,11 +1,11 @@
-import { badgeVariants } from "@frontend/shadcn/badge";
+import { badgeVariants } from "@frontend/shadcn/badge-variants";
 import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { ArrowRight, CircleQuestionMark, X } from "lucide-react";
-import {
-  type AgentPendingDecision,
-  type AgentPendingWriteSummary,
-  type AgentQuestionResponse,
-  type AgentWriteApprovalDecision,
+import type {
+  AgentPendingDecision,
+  AgentPendingWriteSummary,
+  AgentQuestionResponse,
+  AgentWriteApprovalDecision,
 } from "@shared/agent";
 import {
   AGENT_QUESTION_DEFAULT_OPTION_INDEX,
@@ -16,7 +16,7 @@ import {
   useAgentDecisionCountdown,
   useAgentSessionActions,
 } from "@frontend/app/session/agent/agent-session-context";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   InputGroup,
   InputGroupAddon,

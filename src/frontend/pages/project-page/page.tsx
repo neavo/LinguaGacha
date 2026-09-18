@@ -1,7 +1,8 @@
 import type { ProjectPreview, ProjectPreviewResponse } from "@shared/project-preview";
 import { format_local_timestamp } from "@shared/utils/format-local-timestamp";
 import { TranslationProgressBadge } from "@frontend/features/translation-progress/translation-progress-badge";
-import { Badge, badgeVariants } from "@frontend/shadcn/badge";
+import { Badge } from "@frontend/shadcn/badge";
+import { badgeVariants } from "@frontend/shadcn/badge-variants";
 import {
   BadgeAlert,
   File,
@@ -23,8 +24,13 @@ import {
   useState,
 } from "react";
 
-import { type SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
+import {
+  push_toast,
+  push_progress_toast,
+  update_progress_toast,
+  dismiss_toast,
+} from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -44,7 +50,7 @@ import {
 } from "@frontend/widgets/app-context-menu";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
-import { type LocaleKey, useI18n } from "@frontend/app/locale/locale-provider";
+import { type LocaleKey, useI18n } from "@frontend/app/locale/locale-context";
 import { has_path_drop_payload, resolve_dropped_path } from "@frontend/app/desktop/file-drop-paths";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
 import {
@@ -54,7 +60,7 @@ import {
 import { cn } from "@frontend/shadcn/classnames";
 import "@frontend/pages/project-page/project-page.css";
 import { DesktopApiError, api_fetch } from "@frontend/app/desktop/desktop-api";
-import { type ProjectStage } from "@frontend/app/state/desktop-project-change-types";
+import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
 import {
   format_project_settings_aligned_toast,
   type ProjectSettingsAlignmentChangedFields,
@@ -652,8 +658,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     refresh_settings,
     refresh_batch_translation,
   } = useDesktopState();
-  const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
-    useDesktopToast();
+
   const { t } = useI18n();
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
   const [selected_project, set_selected_project] = useState<SelectedProject | null>(null);
@@ -702,7 +707,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       message: normalized_message,
       presentation: "modal",
     });
-  }, [project_session_stage, t, update_progress_toast]);
+  }, [project_session_stage, t]);
 
   /**
    * 包裹创建、打开和预览流程，统一展示可更新的模态进度。

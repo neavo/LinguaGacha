@@ -1,18 +1,20 @@
-import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-context";
-import { PageLeaveProvider, usePageLeave } from "@frontend/app/navigation/page-leave-context";
+import { TranslationExportProvider } from "@frontend/app/session/translation-export/translation-export-provider";
+import { PageLeaveProvider } from "@frontend/app/navigation/page-leave-provider";
+import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { DEFAULT_ROUTE_ID, NAVIGATION_GROUPS } from "@frontend/app/navigation/schema";
-import { AppearanceProvider, useAppearance } from "@frontend/app/appearance/appearance-provider";
+import { AppearanceProvider } from "@frontend/app/appearance/appearance-provider";
+import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
-import { AppNavigationProvider } from "@frontend/app/navigation/navigation-context";
-import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
-import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
-import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-context";
-import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-context";
-import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-context";
-import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
+import { AppNavigationProvider } from "@frontend/app/navigation/navigation-provider";
+import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
+import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-provider";
+import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
+import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-provider";
+import { BatchTranslationSessionProvider } from "@frontend/app/session/batch-translation/batch-translation-session-provider";
+import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-provider";
 import {
   api_fetch,
   check_github_release_update,
@@ -28,15 +30,14 @@ import {
   useDesktopState,
   useBatchTranslationSnapshot,
 } from "@frontend/app/state/use-desktop-state";
-import {
-  DesktopProgressToastModalLayer,
-  useDesktopToast,
-} from "@frontend/app/feedback/desktop-toast";
+import { DesktopProgressToast } from "@frontend/app/feedback/desktop-progress-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AgentCompletionAttention } from "@frontend/app/feedback/agent-completion-attention";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import "@frontend/app/shell/app-shell.css";
 import type { RouteId } from "@frontend/app/navigation/types";
-import { LocaleProvider, useI18n } from "@frontend/app/locale/locale-provider";
+import { LocaleProvider } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { SidebarInset, SidebarProvider } from "@frontend/shadcn/sidebar";
 import { Toaster } from "@frontend/shadcn/sonner";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
@@ -108,7 +109,7 @@ function AppContent(): JSX.Element {
     set_pending_target_route,
     update_app_language,
   } = useDesktopState();
-  const { push_toast } = useDesktopToast();
+
   const { t } = useI18n();
   const shell_info = window.desktopApp.shell;
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
@@ -701,7 +702,7 @@ function MainWindowApp(): JSX.Element {
           <PageLeaveProvider>
             <AppContent />
           </PageLeaveProvider>
-          <DesktopProgressToastModalLayer />
+          <DesktopProgressToast />
         </WindowVisualProviders>
       </MainWindowLocaleProvider>
     </DesktopStateProvider>

@@ -12,10 +12,8 @@ import type {
   QualityRuleStatisticsCacheSnapshot,
   QualityRuleStatisticsRuleType,
 } from "@frontend/app/session/quality-rule-statistics-store";
-import {
-  QualityRuleStatisticsProvider,
-  useQualityRuleStatistics,
-} from "@frontend/app/session/quality-rule-statistics-context";
+import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-provider";
+import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 
 const { api_fetch_mock } = vi.hoisted(() => {
   return {

@@ -1,5 +1,5 @@
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { read_log_dates, read_log_page } from "@frontend/app/desktop/desktop-api";
 import {
@@ -23,7 +23,6 @@ type PageState = {
 
 /** 页面是唯一轮询拥有者；按整页释放缓存，游标始终对应实际保留的页边界。 */
 export function useLogPages(selectedId: string | null) {
-  const { push_toast } = useDesktopToast();
   const { t } = useI18n();
   const [date, set_date] = useState<string | null>(null);
   const [dates, set_dates] = useState<string[]>([]);
@@ -239,7 +238,7 @@ export function useLogPages(selectedId: string | null) {
       load_older_ref.current = null;
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [date, revision, push_toast, t, refresh_dates]);
+  }, [date, revision, t, refresh_dates]);
 
   /** 稳定回调转交当前日期的历史读取队列。 */
   const load_older = useCallback(() => load_older_ref.current?.(), []);

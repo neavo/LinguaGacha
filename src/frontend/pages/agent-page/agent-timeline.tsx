@@ -17,8 +17,8 @@ import type {
   AgentResponseAnnotationAttachment,
   AgentToolEntry,
 } from "@shared/agent";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   find_agent_mention_ranges,
@@ -27,7 +27,11 @@ import {
 } from "./agent-mention";
 import { AgentMarkdown } from "./agent-markdown";
 import { AgentMessageAttachments } from "./agent-message-attachments";
-import { AGENT_STATUS_LABEL_KEYS, AgentStatusMark, useAgentElapsed } from "./agent-entry-status";
+import {
+  AGENT_STATUS_LABEL_KEYS,
+  useAgentElapsed,
+} from "@frontend/pages/agent-page/agent-entry-status";
+import { AgentStatusMark } from "@frontend/pages/agent-page/agent-status-mark";
 import { useAgentFollowLatest } from "./agent-scroll";
 import { AgentToolDetailDialog } from "./agent-tool-detail-dialog";
 import { AgentResponseAnnotationSelection } from "./agent-response-annotation";
@@ -331,7 +335,7 @@ function AgentMessageActions(props: {
 }): JSX.Element {
   const copy_text = get_agent_copy_text(props.entry);
   const can_copy = copy_text.trim() !== "";
-  const { push_toast } = useDesktopToast();
+
   const [copy_state, set_copy_state] = useState<"idle" | "copied">("idle");
 
   useEffect(() => {

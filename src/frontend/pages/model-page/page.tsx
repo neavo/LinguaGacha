@@ -1,9 +1,9 @@
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import { Plus } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/model-page/model-page.css";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { ModelCategoryCard } from "@frontend/pages/model-page/components/model-category-card";
 import { ModelItemChip } from "@frontend/pages/model-page/components/model-item-chip";
 import { ModelItemMenu } from "@frontend/pages/model-page/components/model-item-menu";
@@ -22,7 +22,7 @@ type ModelPageProps = {
 /** 管理模型配置与排序；具体任务使用哪个模型由各任务入口选择。 */
 export function ModelPage(_props: ModelPageProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const model_page_state = useModelPageState();
   const selector_model =
     model_page_state.snapshot.models.find(

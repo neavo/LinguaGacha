@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModelBasicSettingsDialog } from "./model-basic-settings-dialog";
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
 }));
 

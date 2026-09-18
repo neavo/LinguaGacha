@@ -12,7 +12,7 @@ import { ProofreadingFilterDialog } from "@frontend/pages/proofreading-page/comp
 import { ProofreadingTable } from "@frontend/pages/proofreading-page/components/proofreading-table";
 import type { ProofreadingSearchScope } from "@shared/proofreading/proofreading-types";
 import { AppButton } from "@frontend/widgets/app-button";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
 
 const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {

@@ -1,8 +1,5 @@
-"use client";
-
 import * as React from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-
 import { cn } from "@frontend/shadcn/classnames";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 
@@ -155,9 +152,9 @@ function TooltipContent({
   );
 }
 
-/** 外层承接禁用按钮的悬停，尺寸由实际控件撑开。 */
-function tooltip_trigger_target(trigger: React.ReactElement): React.ReactElement {
-  return <span className="inline-flex">{trigger}</span>;
+/** 外层承接禁用控件的悬停，并转交触发器注入的事件、属性和 ref。 */
+function TooltipTarget({ className, ...props }: React.ComponentProps<"span">): JSX.Element {
+  return <span {...props} className={cn("inline-flex", className)} />;
 }
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, tooltip_trigger_target };
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TooltipTarget };

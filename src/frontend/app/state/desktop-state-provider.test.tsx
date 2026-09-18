@@ -2,12 +2,8 @@ import { StrictMode, act, useEffect, useMemo, useRef, type ReactNode } from "rea
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { normalize_setting_snapshot } from "@domain/setting";
 import type { QualitySnapshot } from "@shared/quality/quality-rule-snapshot";
-import {
-  DesktopStateProvider,
-  normalize_settings_snapshot,
-} from "@frontend/app/state/desktop-state-context";
+import { DesktopStateProvider } from "@frontend/app/state/desktop-state-provider";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
 import {
@@ -437,12 +433,6 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
     throw new Error(`未预期的请求：${path}`);
   });
 }
-
-describe("设置快照归一", () => {
-  it("缺字段 settings payload 与设置领域默认快照一致", () => {
-    expect(normalize_settings_snapshot({ settings: {} })).toEqual(normalize_setting_snapshot({}));
-  });
-});
 
 describe("DesktopStateProvider", () => {
   let container: HTMLDivElement | null = null;

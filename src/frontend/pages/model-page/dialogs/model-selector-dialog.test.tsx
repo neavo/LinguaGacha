@@ -6,7 +6,7 @@ import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debo
 import { ModelSelectorDialog } from "@frontend/pages/model-page/dialogs/model-selector-dialog";
 import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

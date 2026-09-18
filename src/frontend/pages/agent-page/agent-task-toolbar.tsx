@@ -9,15 +9,10 @@ import {
 } from "lucide-react";
 import type { ModelThinkingLevel } from "@domain/model";
 import type { AgentApprovalMode, AgentContextSnapshot } from "@shared/agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   AppDropdownMenu,
@@ -64,20 +59,22 @@ export function AgentTaskToolbar(props: {
     <>
       <Tooltip>
         <TooltipTrigger
-          render={tooltip_trigger_target(
-            <AppButton
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="agent-composer__reset"
-              disabled={!props.can_reset}
-              aria-keyshortcuts={props.can_reset ? new_task_aria_shortcut : undefined}
-              onClick={props.on_reset}
-            >
-              <MessageSquarePlus aria-hidden="true" />
-              <span>{t("agent_page.action.new_task")}</span>
-            </AppButton>,
-          )}
+          render={
+            <TooltipTarget>
+              <AppButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="agent-composer__reset"
+                disabled={!props.can_reset}
+                aria-keyshortcuts={props.can_reset ? new_task_aria_shortcut : undefined}
+                onClick={props.on_reset}
+              >
+                <MessageSquarePlus aria-hidden="true" />
+                <span>{t("agent_page.action.new_task")}</span>
+              </AppButton>
+            </TooltipTarget>
+          }
         />
         <TooltipContent>
           {props.can_reset ? (
@@ -118,28 +115,30 @@ export function AgentTaskToolbar(props: {
       <AppDropdownMenu open={approval_open} onOpenChange={set_approval_open}>
         <Tooltip>
           <TooltipTrigger
-            render={tooltip_trigger_target(
-              <AppDropdownMenuTrigger
-                render={
-                  <AppButton
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="agent-composer__approval-trigger"
-                    data-approval-mode={props.approval_mode}
-                    disabled={props.approval_disabled}
-                    aria-label={approval_mode_label}
-                  >
-                    <ApprovalModeIcon
-                      className="agent-composer__approval-icon"
-                      aria-hidden="true"
-                    />
-                    <span className="agent-composer__approval-label">{approval_mode_label}</span>
-                    <ChevronDown aria-hidden="true" />
-                  </AppButton>
-                }
-              />,
-            )}
+            render={
+              <TooltipTarget>
+                <AppDropdownMenuTrigger
+                  render={
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="agent-composer__approval-trigger"
+                      data-approval-mode={props.approval_mode}
+                      disabled={props.approval_disabled}
+                      aria-label={approval_mode_label}
+                    >
+                      <ApprovalModeIcon
+                        className="agent-composer__approval-icon"
+                        aria-hidden="true"
+                      />
+                      <span className="agent-composer__approval-label">{approval_mode_label}</span>
+                      <ChevronDown aria-hidden="true" />
+                    </AppButton>
+                  }
+                />
+              </TooltipTarget>
+            }
           />
           <TooltipContent>
             <p>{t("agent_page.approval.tooltip")}</p>

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { usePageLeave } from "@frontend/app/navigation/page-leave-context";
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/custom-prompt-page/custom-prompt-page.css";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { CustomPromptCommandBar } from "@frontend/pages/custom-prompt-page/components/custom-prompt-command-bar";
 import { CustomPromptConfirmDialog } from "@frontend/pages/custom-prompt-page/components/custom-prompt-confirm-dialog";
 import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";

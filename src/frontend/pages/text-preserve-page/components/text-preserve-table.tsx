@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { PencilLine } from "lucide-react";
 import {
   AppContextMenuGroup,

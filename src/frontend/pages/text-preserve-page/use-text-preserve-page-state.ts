@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import {
   useProjectSessionTableUiState,
@@ -30,10 +30,11 @@ import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-des
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import {
   ModalProgressToastTimeoutError,
-  useDesktopToast,
+  push_toast,
+  run_modal_progress_toast,
 } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   build_user_preset_virtual_id,
   create_empty_preset_input_state,
@@ -265,7 +266,7 @@ function build_text_preserve_hit_state_from_cache(
  */
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
-  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const {
     project_snapshot,
@@ -283,7 +284,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         resolve_visible_error_message(error, t, t("text_preserve_page.feedback.load_failed")),
       );
     },
-    [push_toast, t],
+    [t],
   );
   const {
     quality_slice,
@@ -532,7 +533,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     (error: unknown): void => {
       push_toast("error", resolve_visible_error_message(error, t, unknown_error_message));
     },
-    [push_toast, unknown_error_message],
+    [unknown_error_message],
   );
 
   /** 通过统一写入口保存规则，并按策略刷新结果成员。 */
@@ -605,7 +606,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       return true;
     },
-    [clear_selection_state, push_toast, save_entries_snapshot, t],
+    [clear_selection_state, save_entries_snapshot, t],
   );
 
   /** 复制当前规则，供导入确认重新计算。 */
@@ -727,12 +728,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [
       commit_project_write,
-      push_toast,
       push_action_error_toast,
       quality_slice.section_revision,
       refresh_quality_rule_snapshot,
       readonly,
-      run_modal_progress_toast,
       t,
     ],
   );
@@ -949,7 +948,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       get_import_existing_entries,
       persist_entries_with_duplicate_resolution,
       push_action_error_toast,
-      push_toast,
       readonly,
       t,
     ],
@@ -985,7 +983,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     } catch (error) {
       push_action_error_toast(error);
     }
-  }, [entries, push_action_error_toast, push_toast, t]);
+  }, [entries, push_action_error_toast, t]);
 
   /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
@@ -1110,7 +1108,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
     },
-    [entries, push_action_error_toast, push_toast, refresh_preset_menu, t],
+    [entries, push_action_error_toast, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */
@@ -1146,14 +1144,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
     },
-    [
-      preset_items,
-      push_action_error_toast,
-      push_toast,
-      refresh_preset_menu,
-      apply_settings_snapshot,
-      t,
-    ],
+    [preset_items, push_action_error_toast, refresh_preset_menu, apply_settings_snapshot, t],
   );
 
   /** 通过设置回包推进默认标记。 */
@@ -1251,15 +1242,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       set_dialog_state(reopen_dialog_state);
     }
     return false;
-  }, [
-    dialog_state,
-    entries,
-    entry_ids,
-    push_toast,
-    readonly,
-    save_entries_snapshot,
-    validate_entry,
-  ]);
+  }, [dialog_state, entries, entry_ids, readonly, save_entries_snapshot, validate_entry]);
 
   /** 提交当前草稿并恢复操作状态。 */
   const save_dialog_entry = useCallback(async (): Promise<void> => {
@@ -1356,7 +1339,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, rename_preset, save_preset, t]);
 
   /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {

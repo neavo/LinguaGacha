@@ -1,6 +1,6 @@
 import { useTranslationExport } from "@frontend/app/session/translation-export/translation-export-context";
 import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
 import { WorkbenchCommandBar } from "@frontend/pages/workbench-page/components/workbench-command-bar";

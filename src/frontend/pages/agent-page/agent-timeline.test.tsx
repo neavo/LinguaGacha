@@ -12,16 +12,14 @@ import type {
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 const push_toast = vi.hoisted(() => vi.fn());
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast }),
-}));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
 

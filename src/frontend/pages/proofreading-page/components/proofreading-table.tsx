@@ -14,7 +14,7 @@ import {
 import { useMemo, type ReactNode } from "react";
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,

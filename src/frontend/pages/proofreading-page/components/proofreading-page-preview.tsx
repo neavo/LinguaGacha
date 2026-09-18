@@ -2,7 +2,7 @@ import type { ProofreadingPagePreviewResult as PreviewResult } from "@shared/pro
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { AppButton } from "@frontend/widgets/app-button";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { MediaControl, MediaViewport } from "@frontend/features/media-preview/media-viewport";

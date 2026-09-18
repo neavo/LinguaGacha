@@ -11,10 +11,10 @@ type RenderComposerOptions = Partial<ComponentProps<typeof AgentComposer>>;
 vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
   useTranslationExport: () => ({ can_request_export: true, request_export: vi.fn() }),
 }));
-vi.mock("@frontend/app/appearance/appearance-provider", () => ({
+vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
 }));
 

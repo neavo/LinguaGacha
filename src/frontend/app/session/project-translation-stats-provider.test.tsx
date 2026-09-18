@@ -3,10 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectTranslationStatsResponse } from "@shared/project-translation-stats";
 import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
-import {
-  ProjectTranslationStatsProvider,
-  useProjectTranslationStats,
-} from "./project-translation-stats-context";
+import { ProjectTranslationStatsProvider } from "@frontend/app/session/project-translation-stats-provider";
+import { useProjectTranslationStats } from "@frontend/app/session/project-translation-stats-context";
 
 const fixture = vi.hoisted(() => ({
   project: { loaded: true, path: "E:/first.lg" },
@@ -23,10 +21,8 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useProjectChangeSignal: () => fixture.signal,
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: fixture.query }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: fixture.toast }),
-}));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: fixture.toast }));
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

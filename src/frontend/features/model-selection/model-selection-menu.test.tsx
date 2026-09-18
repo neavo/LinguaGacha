@@ -9,7 +9,7 @@ const menu_state = vi.hoisted(() => ({
   item_actions: new Map<string, (() => void) | undefined>(),
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

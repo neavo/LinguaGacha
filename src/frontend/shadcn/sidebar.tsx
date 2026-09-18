@@ -1,13 +1,11 @@
-"use client";
-
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
-
 import { cn } from "@frontend/shadcn/classnames";
 import { Separator } from "@frontend/shadcn/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { type SidebarContextProps, SidebarContext, useSidebar } from "./sidebar-context";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -15,24 +13,7 @@ const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
-type SidebarContextProps = {
-  state: "expanded" | "collapsed";
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  toggleSidebar: () => void;
-};
-
-const SidebarContext = React.createContext<SidebarContextProps | null>(null);
-
-function useSidebar() {
-  const context = React.useContext(SidebarContext);
-  if (!context) {
-    throw new Error("useSidebar must be used within a SidebarProvider.");
-  }
-
-  return context;
-}
-
+/** 同步受控或本地展开状态，供侧栏与标题栏共用切换动作。 */
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -425,5 +406,4 @@ export {
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarSeparator,
-  useSidebar,
 };

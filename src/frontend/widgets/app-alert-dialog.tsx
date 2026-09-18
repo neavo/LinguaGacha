@@ -1,7 +1,7 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { Spinner } from "@frontend/shadcn/spinner";
 import { AppButton } from "@frontend/widgets/app-button";
 

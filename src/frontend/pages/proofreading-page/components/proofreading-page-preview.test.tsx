@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { ProofreadingPagePreview } from "./proofreading-page-preview";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ api_fetch: vi.fn() }));

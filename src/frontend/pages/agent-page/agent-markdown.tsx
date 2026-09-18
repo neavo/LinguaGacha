@@ -25,11 +25,11 @@ import {
   type StreamdownTranslations,
 } from "streamdown";
 
-import { useAppearance } from "@frontend/app/appearance/appearance-provider";
+import { useAppearance } from "@frontend/app/appearance/appearance-context";
 import { open_external_url, api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type { AgentWorkspaceLinkResult } from "@shared/agent";
 import { AgentMediaPreviewDialog } from "./agent-media-preview-dialog";
 
@@ -98,7 +98,7 @@ const MARKDOWN_COMPONENTS: Components = {
 export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
   const { t } = useI18n();
   const { resolved_theme } = useAppearance();
-  const { push_toast } = useDesktopToast();
+
   const pending_links = useRef(new Set<string>()); // 同正文的重复链接共用待决状态
   const [diagram_config, set_diagram_config] = useState<MermaidConfig>(() => ({
     theme: resolved_theme === "dark" ? "dark" : "default",

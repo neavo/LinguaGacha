@@ -5,7 +5,7 @@ import type { ModelSelectionController } from "@frontend/features/model-selectio
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentComposerModelControls } from "./agent-composer-model-controls";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

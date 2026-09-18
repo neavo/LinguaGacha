@@ -4,8 +4,8 @@ import {
   type FontPreference,
   type ThemePreference,
   useAppearance,
-} from "@frontend/app/appearance/appearance-provider";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+} from "@frontend/app/appearance/appearance-context";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { cn } from "@frontend/shadcn/classnames";
 import { SidebarMenuButton, SidebarMenuItem } from "@frontend/shadcn/sidebar";
 import {

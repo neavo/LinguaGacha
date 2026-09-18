@@ -6,7 +6,7 @@ import { ProofreadingEditDialog } from "@frontend/pages/proofreading-page/compon
 import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => {
       return {

@@ -1,6 +1,6 @@
 import { CaseSensitive } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type { GlossaryDialogMode, GlossaryEntryDraft } from "@frontend/pages/glossary-page/types";
 import { AppButton } from "@frontend/widgets/app-button";

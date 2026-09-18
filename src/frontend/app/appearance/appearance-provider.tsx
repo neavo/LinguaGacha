@@ -1,48 +1,43 @@
 import { ThemeProvider, useTheme } from "next-themes";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-
+import { useEffect, useState, type ReactNode } from "react";
 import type { ResolvedThemeMode } from "@gui/bridge-types";
+import {
+  type ThemePreference,
+  type FontPreference,
+  type AppearanceContextValue,
+  AppearanceContext,
+} from "./appearance-context";
 
 const THEME_STORAGE_KEY = "lg-theme-mode"; // 跨窗口持久化契约，由 next-themes 负责同步
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode"; // 沿用 enabled / disabled 存储值，避免迁移既有偏好
 
-export type ThemePreference = "system" | ResolvedThemeMode;
-export type FontPreference = "lg-base" | "system";
-
-type AppearanceContextValue = {
-  theme_preference: ThemePreference;
-  resolved_theme: ResolvedThemeMode;
-  font_preference: FontPreference;
-  set_theme_preference: (preference: ThemePreference) => void;
-  set_font_preference: (preference: FontPreference) => void;
-};
-
-const AppearanceContext = createContext<AppearanceContextValue | null>(null);
-
+/** 将 next-themes 的任意主题名收窄为应用支持的三种偏好。 */
 function normalize_theme_preference(theme: string | undefined): ThemePreference {
-  // next-themes 的公开类型允许任意主题名，进入应用状态前必须收窄到产品支持的三种偏好。
   if (theme === "light" || theme === "dark" || theme === "system") {
     return theme;
   }
   return "system";
 }
 
+/** 主题解析前从根节点读取首屏实际明暗。 */
 function resolve_theme_mode(resolved_theme: string | undefined): ResolvedThemeMode {
-  // next-themes 首次解析前可能没有值，此时根节点类名是当前窗口最可靠的首帧结果。
   if (resolved_theme === "light" || resolved_theme === "dark") {
     return resolved_theme;
   }
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+/** 将持久化字体开关转换为界面偏好。 */
 function read_font_preference(): FontPreference {
   return window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY) === "disabled" ? "system" : "lg-base";
 }
 
+/** 字体偏好写回既有存储值，供其他窗口同步。 */
 function serialize_font_preference(preference: FontPreference): "enabled" | "disabled" {
   return preference === "lg-base" ? "enabled" : "disabled";
 }
 
+/** 汇合主题组件状态与字体偏好，投影到页面和宿主。 */
 function AppearanceStateProvider({ children }: { children: ReactNode }): JSX.Element {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [font_preference, set_font_preference] = useState<FontPreference>(() =>
@@ -102,13 +97,4 @@ export function AppearanceProvider({ children }: { children: ReactNode }): JSX.E
       <AppearanceStateProvider>{children}</AppearanceStateProvider>
     </ThemeProvider>
   );
-}
-
-/** 读取当前窗口外观状态，并拒绝绕过统一 provider 的消费者。 */
-export function useAppearance(): AppearanceContextValue {
-  const value = useContext(AppearanceContext);
-  if (value === null) {
-    throw new Error("useAppearance must be used within AppearanceProvider.");
-  }
-  return value;
 }

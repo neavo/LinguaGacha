@@ -8,7 +8,7 @@ const request_export = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
   useTranslationExport: () => ({ can_request_export: true, request_export }),
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

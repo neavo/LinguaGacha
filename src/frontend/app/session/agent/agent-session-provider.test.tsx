@@ -1,9 +1,7 @@
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: vi.fn() }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: vi.fn() }));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +18,7 @@ vi.mock("./agent-session-store", () => ({
   },
 }));
 
-import { AgentSessionProvider, useAgentSessionActions } from "./agent-session-context";
+import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-provider";
 
 describe("AgentSessionProvider", () => {
   let container: HTMLDivElement | null = null;
@@ -43,19 +41,5 @@ describe("AgentSessionProvider", () => {
     await act(async () => root?.unmount());
     root = null;
     expect(store.disconnect).toHaveBeenCalledOnce();
-  });
-
-  it("拒绝在 Provider 外使用会话 Hook", async () => {
-    function Consumer(): null {
-      useAgentSessionActions();
-      return null;
-    }
-
-    container = document.createElement("div");
-    root = createRoot(container);
-
-    await expect(act(async () => root?.render(<Consumer />))).rejects.toThrow(
-      "Agent session hooks must be used inside AgentSessionProvider.",
-    );
   });
 });

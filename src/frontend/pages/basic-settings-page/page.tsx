@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { parse_bounded_setting_number_draft } from "@frontend/features/settings-editor/setting-number-draft";
 import { get_language_label_key } from "@frontend/app/locale/language-label";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import "@frontend/pages/basic-settings-page/basic-settings-page.css";
 import {
   ALL_LANGUAGE_VALUE,
@@ -31,13 +31,10 @@ import {
 type BasicSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
-function replace_placeholder(template: string, value: string): string {
-  return template.replace("{PATH}", value);
-}
-
+/** 保留数值输入草稿，在失焦或确认后提交设置。 */
 export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const basic_settings_state = useBasicSettingsState();
   const [request_timeout_draft, set_request_timeout_draft] = useState<string>(() => {
     return String(basic_settings_state.snapshot.request_timeout);
@@ -85,10 +82,9 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   const project_save_mode_description =
     basic_settings_state.snapshot.project_save_mode === "FIXED" &&
     basic_settings_state.snapshot.project_fixed_path !== ""
-      ? replace_placeholder(
-          t("basic_settings_page.fields.project_save_mode.description_fixed"),
-          basic_settings_state.snapshot.project_fixed_path,
-        )
+      ? t("basic_settings_page.fields.project_save_mode.description_fixed", {
+          PATH: basic_settings_state.snapshot.project_fixed_path,
+        })
       : t("basic_settings_page.fields.project_save_mode.description");
 
   const language_locked = basic_settings_state.runtime_locked;

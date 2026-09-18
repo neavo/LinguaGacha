@@ -2,8 +2,8 @@ import type {
   AppTableProps,
   AppTableDataColumn,
 } from "@frontend/widgets/app-table/app-table-types";
-import type { ReactNode } from "react";
-import { StrictMode, act } from "react";
+import { type ReactNode, StrictMode, act } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LogEntry } from "@shared/log";
@@ -43,7 +43,7 @@ vi.mock("./use-log-pages", () => ({
   }),
 }));
 vi.mock("@frontend/app/desktop/desktop-api", () => ({ read_log_detail: mocks.detail }));
-vi.mock("@frontend/app/appearance/appearance-provider", () => {
+vi.mock("@frontend/app/appearance/appearance-context", () => {
   return {
     useAppearance: () => ({
       resolved_theme: "dark",
@@ -51,7 +51,7 @@ vi.mock("@frontend/app/appearance/appearance-provider", () => {
   };
 });
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,
@@ -68,7 +68,7 @@ vi.mock("@frontend/shadcn/tooltip", () => {
     TooltipTrigger: (props: { children?: ReactNode; render?: ReactNode }) => (
       <>{props.render ?? props.children}</>
     ),
-    tooltip_trigger_target: (trigger: ReactNode) => <span className="inline-flex">{trigger}</span>,
+    TooltipTarget: (props: { children: ReactNode }) => <span>{props.children}</span>,
   };
 });
 

@@ -3,7 +3,7 @@ import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "luci
 
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type { BatchTranslationTask } from "@frontend/app/session/batch-translation/use-batch-translation-task";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import type { TranslationTaskActionKind } from "@shared/batch-translation/batch-translation";
 
 import type { ProjectTranslationStats } from "@shared/project-translation-stats";

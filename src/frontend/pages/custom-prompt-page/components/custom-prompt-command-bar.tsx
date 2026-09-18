@@ -1,6 +1,6 @@
 import { FileDown, FileUp } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
 import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";

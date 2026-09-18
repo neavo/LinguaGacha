@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { read_log_detail, type LogDetail, type LogEntry } from "@frontend/app/desktop/desktop-api";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
 import { cn } from "@frontend/shadcn/classnames";
 import {
@@ -25,12 +25,7 @@ import { useLogPages } from "./use-log-pages";
 import { LogDetailView } from "@frontend/pages/log-window-page/log-detail-view";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  tooltip_trigger_target,
-} from "@frontend/shadcn/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipTarget } from "@frontend/shadcn/tooltip";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
@@ -579,23 +574,25 @@ export function LogWindowPage(): JSX.Element {
               <div className="log-window-page__detail-head-actions">
                 <Tooltip>
                   <TooltipTrigger
-                    render={tooltip_trigger_target(
-                      <AppButton
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="log-window-page__detail-action"
-                        aria-label={t("log_window_page.detail.previous")}
-                        disabled={previous_event_id === null}
-                        onClick={() => {
-                          if (previous_event_id !== null) {
-                            select_event_id(previous_event_id);
-                          }
-                        }}
-                      >
-                        <ChevronUp aria-hidden="true" />
-                      </AppButton>,
-                    )}
+                    render={
+                      <TooltipTarget>
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="log-window-page__detail-action"
+                          aria-label={t("log_window_page.detail.previous")}
+                          disabled={previous_event_id === null}
+                          onClick={() => {
+                            if (previous_event_id !== null) {
+                              select_event_id(previous_event_id);
+                            }
+                          }}
+                        >
+                          <ChevronUp aria-hidden="true" />
+                        </AppButton>
+                      </TooltipTarget>
+                    }
                   />
                   <TooltipContent side="bottom">
                     <p>{t("log_window_page.detail.previous")}</p>
@@ -603,23 +600,25 @@ export function LogWindowPage(): JSX.Element {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
-                    render={tooltip_trigger_target(
-                      <AppButton
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="log-window-page__detail-action"
-                        aria-label={t("log_window_page.detail.next")}
-                        disabled={next_event_id === null}
-                        onClick={() => {
-                          if (next_event_id !== null) {
-                            select_event_id(next_event_id);
-                          }
-                        }}
-                      >
-                        <ChevronDown aria-hidden="true" />
-                      </AppButton>,
-                    )}
+                    render={
+                      <TooltipTarget>
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="log-window-page__detail-action"
+                          aria-label={t("log_window_page.detail.next")}
+                          disabled={next_event_id === null}
+                          onClick={() => {
+                            if (next_event_id !== null) {
+                              select_event_id(next_event_id);
+                            }
+                          }}
+                        >
+                          <ChevronDown aria-hidden="true" />
+                        </AppButton>
+                      </TooltipTarget>
+                    }
                   />
                   <TooltipContent side="bottom">
                     <p>{t("log_window_page.detail.next")}</p>

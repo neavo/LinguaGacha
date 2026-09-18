@@ -1,6 +1,6 @@
 import { CaseSensitive, PencilLine, Regex } from "lucide-react";
 
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import {
   AppContextMenuGroup,
   AppContextMenuItem,

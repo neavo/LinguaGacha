@@ -1,20 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-
-type BeforePageLeave = () => Promise<boolean>;
-type PageLeaveContextValue = {
-  leaving: boolean;
-  prepare_page_leave: () => Promise<boolean>;
-  register_before_leave: (handler: BeforePageLeave) => () => void;
-};
-const PageLeaveContext = createContext<PageLeaveContextValue | null>(null);
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { type BeforePageLeave, PageLeaveContext } from "./page-leave-context";
 
 /** 主窗口只持有当前页面的离开前动作，草稿和保存仍由页面拥有。 */
 export function PageLeaveProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -48,11 +33,4 @@ export function PageLeaveProvider({ children }: { children: ReactNode }): JSX.El
     [leaving, register_before_leave, prepare_page_leave],
   );
   return <PageLeaveContext.Provider value={value}>{children}</PageLeaveContext.Provider>;
-}
-
-/** 页面注册保存动作，壳层等待当前动作后离开。 */
-export function usePageLeave(): PageLeaveContextValue {
-  const context = useContext(PageLeaveContext);
-  if (context === null) throw new Error("usePageLeave requires PageLeaveProvider");
-  return context;
 }

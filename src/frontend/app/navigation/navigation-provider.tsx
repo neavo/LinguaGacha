@@ -1,16 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-
+import { useMemo, useState, type ReactNode } from "react";
 import type { ProofreadingLookupIntent, RouteId } from "@frontend/app/navigation/types";
-
-type AppNavigationContextValue = {
-  selected_route: RouteId;
-  navigate_to_route: (route_id: RouteId) => void;
-  proofreading_lookup_intent: ProofreadingLookupIntent | null;
-  push_proofreading_lookup_intent: (intent: ProofreadingLookupIntent) => void;
-  clear_proofreading_lookup_intent: () => void;
-};
-
-const AppNavigationContext = createContext<AppNavigationContextValue | null>(null);
+import { type AppNavigationContextValue, AppNavigationContext } from "./navigation-context";
 
 type AppNavigationProviderProps = {
   selected_route: RouteId;
@@ -18,6 +8,7 @@ type AppNavigationProviderProps = {
   children: ReactNode;
 };
 
+/** 壳层提供当前路由，Provider 保留跨页面的一次性查找意图。 */
 export function AppNavigationProvider(props: AppNavigationProviderProps): JSX.Element {
   const [proofreading_lookup_intent, set_proofreading_lookup_intent] =
     useState<ProofreadingLookupIntent | null>(null);
@@ -37,13 +28,4 @@ export function AppNavigationProvider(props: AppNavigationProviderProps): JSX.El
   return (
     <AppNavigationContext.Provider value={value}>{props.children}</AppNavigationContext.Provider>
   );
-}
-
-export function useAppNavigation(): AppNavigationContextValue {
-  const value = useContext(AppNavigationContext);
-  if (value === null) {
-    throw new Error("useAppNavigation must be used inside AppNavigationProvider");
-  }
-
-  return value;
 }

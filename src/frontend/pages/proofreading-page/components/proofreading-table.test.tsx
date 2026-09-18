@@ -9,7 +9,7 @@ import type {
   ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => {
       return {

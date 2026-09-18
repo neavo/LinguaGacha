@@ -7,7 +7,7 @@ import {
   build_translation_task_detail_display,
   build_translation_task_summary_display,
 } from "./batch-translation-display";
-import type { useI18n } from "@frontend/app/locale/locale-provider";
+import type { useI18n } from "@frontend/app/locale/locale-context";
 const t: ReturnType<typeof useI18n>["t"] = (key) => key;
 describe("批量翻译展示", () => {
   it("详情采用工程完成率，时间与速度继续消费本轮任务", () => {

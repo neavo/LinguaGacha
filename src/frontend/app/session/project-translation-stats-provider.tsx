@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -11,26 +9,24 @@ import {
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import type { ProjectDataSection } from "@shared/project-event";
 import type {
   ProjectTranslationStats,
   ProjectTranslationStatsResponse,
 } from "@shared/project-translation-stats";
+import { ProjectTranslationStatsContext } from "./project-translation-stats-context";
 
 const STATS_SECTIONS: readonly ProjectDataSection[] = ["project", "items"];
-const ProjectTranslationStatsContext = createContext<ProjectTranslationStats | null | undefined>(
-  undefined,
-);
 
 /** 工程会话独占统计查询；任务显示时钟和各页面只消费结果。 */
 export function ProjectTranslationStatsProvider(props: { children: ReactNode }): JSX.Element {
   const { project_snapshot, project_session_status } = useDesktopState();
   const change_seq = useProjectChangeSeqForSections(useProjectChangeSignal(), STATS_SECTIONS);
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const ready = project_snapshot.loaded && project_session_status === "ready";
   const project_path = project_snapshot.path;
   const [snapshot, set_snapshot] = useState<{
@@ -104,12 +100,4 @@ export function ProjectTranslationStatsProvider(props: { children: ReactNode }):
       {props.children}
     </ProjectTranslationStatsContext.Provider>
   );
-}
-
-/** 消费会话统计；null 表示当前工程尚无有效结果。 */
-export function useProjectTranslationStats(): ProjectTranslationStats | null {
-  const stats = useContext(ProjectTranslationStatsContext);
-  if (stats === undefined)
-    throw new Error("useProjectTranslationStats requires ProjectTranslationStatsProvider.");
-  return stats;
 }

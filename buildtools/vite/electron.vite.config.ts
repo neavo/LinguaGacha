@@ -3,6 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 
 import { frontend_resolve_alias, project_path } from "./project-paths";
+import { renderer_runtime_reload } from "./renderer-runtime-reload";
 
 const desktop_dist_dir = project_path("build", "dist-electron");
 
@@ -54,7 +55,7 @@ export default defineConfig({
     resolve: {
       alias: frontend_resolve_alias,
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [renderer_runtime_reload(), react(), tailwindcss()],
     build: {
       outDir: project_path("build", "dist"),
       rolldownOptions: {

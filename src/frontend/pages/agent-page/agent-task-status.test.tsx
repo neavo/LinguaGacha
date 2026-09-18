@@ -12,7 +12,7 @@ const task = vi.hoisted(() => ({
   open: vi.fn(),
   percent: null as number | null,
 }));
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("@frontend/app/session/batch-translation/batch-translation-session-context", () => ({

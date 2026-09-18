@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
+import { AppearanceProvider } from "@frontend/app/appearance/appearance-provider";
 import {
-  AppearanceProvider,
   useAppearance,
   type FontPreference,
   type ThemePreference,
-} from "./appearance-provider";
+} from "@frontend/app/appearance/appearance-context";
 
 let system_dark = false;
 const system_theme_listeners = new Set<(event: MediaQueryListEvent) => void>();

@@ -15,10 +15,8 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   read_log_dates: mocks.dates,
 }));
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: mocks.toast }),
-}));
-vi.mock("@frontend/app/locale/locale-provider", () => ({ useI18n: () => ({ t: mocks.text }) }));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast: mocks.toast }));
+vi.mock("@frontend/app/locale/locale-context", () => ({ useI18n: () => ({ t: mocks.text }) }));
 
 /** 构造单日期分页响应，保留前后游标约束。 */
 function page(line: number, date = "20260913"): LogPage {

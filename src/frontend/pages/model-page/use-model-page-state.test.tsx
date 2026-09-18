@@ -19,11 +19,9 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useRuntimeSnapshot: () => runtime,
 }));
 
-vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast }),
-}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({ push_toast }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: translate }),
 }));
 

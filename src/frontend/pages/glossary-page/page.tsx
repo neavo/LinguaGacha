@@ -1,8 +1,8 @@
 import { AppContentState } from "@frontend/widgets/app-content-state";
 import "@frontend/pages/glossary-page/glossary-page.css";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import { GlossaryCommandBar } from "@frontend/pages/glossary-page/components/glossary-command-bar";
 import { QualityRuleConfirmDialog } from "@frontend/features/quality-rule-editor/quality-rule-confirm-dialog";
 import { GlossaryEditDialog } from "@frontend/pages/glossary-page/components/glossary-edit-dialog";
@@ -25,7 +25,7 @@ const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "inf
 /** 组装术语表的查询状态、列表与编辑操作。 */
 export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const glossary_page_state = useGlossaryPageState();
   const regex_state_label = glossary_page_state.filter_state.is_regex
     ? t("app.state.enabled")

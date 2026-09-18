@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { act } from "react";
+import { type ReactNode, act } from "react";
+
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ const proofreading_state_fixture = vi.hoisted(() => ({
   current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
+vi.mock("@frontend/app/locale/locale-context", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

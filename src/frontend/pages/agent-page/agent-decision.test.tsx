@@ -8,7 +8,7 @@ import type {
   AgentWriteApprovalDecision,
 } from "@shared/agent";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({
     locale: "zh-CN",
     t: (key: string, params?: Record<string, string>) =>

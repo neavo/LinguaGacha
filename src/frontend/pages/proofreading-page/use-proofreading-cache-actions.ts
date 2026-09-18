@@ -1,6 +1,9 @@
 import {
   clone_content_filters,
   type ProofreadingContentFilters,
+  clone_proofreading_filter_selection,
+  create_default_proofreading_filter_selection,
+  type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   startTransition,
@@ -10,7 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { LocaleKey } from "@frontend/app/locale/locale-context";
 import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import {
   clone_proofreading_filter_options,
@@ -25,11 +28,7 @@ import type {
   ProofreadingSyncState,
 } from "@shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
-import {
-  clone_proofreading_filter_selection,
-  create_default_proofreading_filter_selection,
-  type ProofreadingViewFilterState,
-} from "@frontend/pages/proofreading-page/proofreading-filter-state";
+
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
   PROOFREADING_WINDOW_PREFETCH_ROWS,

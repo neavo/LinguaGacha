@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast, run_modal_progress_toast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n } from "@frontend/app/locale/locale-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
@@ -38,7 +38,7 @@ type UseLaboratoryPageStateResult = {
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const { project_snapshot } = useDesktopState();
   const runtime_snapshot = useRuntimeSnapshot();
-  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_laboratory_snapshot,
@@ -75,15 +75,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         await save();
       }
     },
-    [
-      commit_update,
-      project_snapshot.loaded,
-      push_toast,
-      run_modal_progress_toast,
-      runtime_locked,
-      snapshot,
-      t,
-    ],
+    [commit_update, project_snapshot.loaded, runtime_locked, snapshot, t],
   );
 
   return {

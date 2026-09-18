@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
+import type {
+  ProjectWriteOperation,
+  ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
@@ -27,9 +27,9 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-context";
 import {
   build_user_preset_virtual_id,
   create_empty_preset_input_state,
@@ -358,7 +358,7 @@ type UseGlossaryPageStateResult = {
  */
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+
   const {
     project_snapshot,
     project_session_status = "ready",
@@ -376,7 +376,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         resolve_visible_error_message(error, t, t("glossary_page.feedback.load_failed")),
       );
     },
-    [push_toast, t],
+    [t],
   );
   const {
     quality_slice,
@@ -647,7 +647,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [
       commit_project_write,
-      push_toast,
       quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
@@ -677,7 +676,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       return true;
     },
-    [clear_selection_state, push_toast, save_entries_snapshot, t],
+    [clear_selection_state, save_entries_snapshot, t],
   );
 
   /** 复制当前条目，供待确认操作重新计算。 */
@@ -851,7 +850,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [
       commit_project_write,
-      push_toast,
       quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
@@ -1067,7 +1065,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     dialog_state,
     entry_ids,
     persist_entries_with_duplicate_resolution,
-    push_toast,
     readonly,
     t,
   ]);
@@ -1106,7 +1103,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, push_toast, t],
+    [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, t],
   );
 
   /** 读取文件并通过重复项确认流程提交规则。 */
@@ -1142,13 +1139,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [
-      persist_entries_with_duplicate_resolution,
-      push_toast,
-      read_current_glossary_entries,
-      readonly,
-      t,
-    ],
+    [persist_entries_with_duplicate_resolution, read_current_glossary_entries, readonly, t],
   );
 
   /** 把宿主文件选择结果交给规则导入入口。 */
@@ -1184,7 +1175,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         resolve_visible_error_message(error, t, t("glossary_page.feedback.export_failed")),
       );
     }
-  }, [entries, push_toast, t]);
+  }, [entries, t]);
 
   /** 菜单打开时读取当前可用预设。 */
   const open_preset_menu = useCallback(async (): Promise<void> => {
@@ -1198,7 +1189,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
       );
     }
-  }, [push_toast, refresh_preset_menu, t]);
+  }, [refresh_preset_menu, t]);
 
   /** 提交所选预设，成功后关闭菜单。 */
   const apply_preset = useCallback(
@@ -1234,13 +1225,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [
-      persist_entries_with_duplicate_resolution,
-      push_toast,
-      read_current_glossary_entries,
-      readonly,
-      t,
-    ],
+    [persist_entries_with_duplicate_resolution, read_current_glossary_entries, readonly, t],
   );
 
   /** 重置规则前记录待确认操作。 */
@@ -1324,7 +1309,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
     },
-    [entries, push_toast, refresh_preset_menu, t],
+    [entries, refresh_preset_menu, t],
   );
 
   /** 重命名后同步默认项引用并刷新列表。 */
@@ -1365,7 +1350,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
     },
-    [apply_settings_snapshot, preset_items, push_toast, refresh_preset_menu, t],
+    [apply_settings_snapshot, preset_items, refresh_preset_menu, t],
   );
 
   /** 通过设置回包推进默认标记。 */
@@ -1383,7 +1368,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [apply_settings_snapshot, push_toast, t],
+    [apply_settings_snapshot, t],
   );
 
   /** 空标识通过同一保存入口清除默认引用。 */
@@ -1477,7 +1462,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, rename_preset, save_preset, t]);
 
   /** 提交规则重置并清理选择和菜单状态。 */
   const reset_entries = useCallback(async (): Promise<boolean> => {
@@ -1568,7 +1553,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     commit_delete_selected_entries,
     confirm_state,
     preset_items,
-    push_toast,
     refresh_preset_menu,
     reset_entries,
     readonly,

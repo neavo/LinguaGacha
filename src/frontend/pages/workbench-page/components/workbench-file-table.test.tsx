@@ -7,7 +7,7 @@ import type { WorkbenchFileEntry } from "@shared/workbench/workbench-query";
 import { create_text_resolver } from "@shared/i18n";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: create_text_resolver("zh-CN") }),
 }));
 

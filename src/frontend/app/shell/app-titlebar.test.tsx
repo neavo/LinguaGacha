@@ -10,11 +10,11 @@ const sidebar_mock = vi.hoisted(() => ({
   toggle_sidebar: vi.fn(),
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
+vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@frontend/shadcn/sidebar", () => ({
+vi.mock("@frontend/shadcn/sidebar-context", () => ({
   useSidebar: () => ({
     state: sidebar_mock.state,
     toggleSidebar: sidebar_mock.toggle_sidebar,
