@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
-import type { AgentImage, AgentImageHost, AgentImageHostResult } from "../../shared/agent-image";
+import {
+  AGENT_IMAGE_DEFAULT_MAX_EDGE,
+  type AgentImage,
+  type AgentImageHost,
+  type AgentImageHostResult,
+  type AgentImageOptions,
+} from "../../shared/agent-image";
 import { AppError } from "../../shared/error";
 
 export const AGENT_IMAGE_INPUT_MAX_BYTES = 20 * 1024 * 1024;
 export const AGENT_IMAGE_POLICY = Object.freeze({
-  maxEdge: 1920,
+  maxEdge: AGENT_IMAGE_DEFAULT_MAX_EDGE,
   maxPixels: 32_000_000,
   maxBytes: 3 * 1024 * 1024,
   quality: 0.85,
@@ -33,15 +39,21 @@ export class AgentImageService {
     return await this.prepare(bytes);
   }
 
-  /** 读取时固定输入内容，缓存按字节身份复用，文件路径不参与图片身份。 */
-  public async prepare(input: Uint8Array, signal?: AbortSignal): Promise<AgentImage> {
+  /** 工作区选项由父进程校验。这里捕获单次策略，使宿主处理和缓存使用同一尺寸。 */
+  public async prepare(
+    input: Uint8Array,
+    signal?: AbortSignal,
+    options: AgentImageOptions = {},
+  ): Promise<AgentImage> {
+    const maxEdge = options.maxEdge ?? AGENT_IMAGE_DEFAULT_MAX_EDGE;
+    const policy = Object.freeze({ ...AGENT_IMAGE_POLICY, maxEdge });
     const effective_signal =
       signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal]);
     effective_signal.throwIfAborted();
     if (input.byteLength === 0 || input.byteLength > AGENT_IMAGE_INPUT_MAX_BYTES)
       throw image_error("image_input_too_large");
     const bytes = Uint8Array.from(input);
-    const key = digest(bytes);
+    const key = `${maxEdge}:${digest(bytes)}`;
     const cached = this.cache.get(key);
     if (cached !== undefined) {
       this.cache.delete(key);
@@ -53,7 +65,7 @@ export class AgentImageService {
     let result: AgentImageHostResult;
     try {
       result = await this.host(
-        { kind: "prepare_image", bytes, mimeType, policy: AGENT_IMAGE_POLICY },
+        { kind: "prepare_image", bytes, mimeType, policy },
         effective_signal,
       );
     } catch (cause) {
@@ -63,12 +75,12 @@ export class AgentImageService {
     effective_signal.throwIfAborted();
     if (
       read_image_type(result.bytes) !== "image/webp" ||
-      result.bytes.byteLength > AGENT_IMAGE_POLICY.maxBytes ||
+      result.bytes.byteLength > policy.maxBytes ||
       !Number.isInteger(result.width) ||
       !Number.isInteger(result.height) ||
       result.width < 1 ||
       result.height < 1 ||
-      Math.max(result.width, result.height) > AGENT_IMAGE_POLICY.maxEdge
+      Math.max(result.width, result.height) > policy.maxEdge
     )
       throw image_error("invalid_image_result");
     const image: AgentImage = Object.freeze({
@@ -82,7 +94,7 @@ export class AgentImageService {
     this.remember(key, image);
     // 上传准备后的规范字节会随消息再次提交，同样命中此结果。
     this.remember(
-      digest(result.bytes),
+      `${maxEdge}:${digest(result.bytes)}`,
       image.originalWidth === image.width && image.originalHeight === image.height
         ? image
         : Object.freeze({ ...image, originalWidth: image.width, originalHeight: image.height }),

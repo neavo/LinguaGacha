@@ -16,6 +16,7 @@ import {
 import { NativeFs } from "../../../native/native-fs";
 import type { CacheReadPort } from "../../cache/cache-types";
 import type { ProjectWriteStore } from "../../project/project-write-store";
+import type { AgentImageService } from "../agent-image-service";
 import {
   has_agent_workspace_applied_changes,
   resolve_agent_workspace_writes,
@@ -31,7 +32,11 @@ import {
   AGENT_WORKSPACE_QUALITY_ENTRY_PATHS,
 } from "./contract";
 import { AgentWorkspaceRunError } from "./runtime/runner";
-import { AGENT_WORKSPACE_RUN_ROOT, AGENT_WORKSPACE_WORK_ROOT } from "./runtime/policy";
+import {
+  AGENT_WORKSPACE_RUN_ROOT,
+  AGENT_WORKSPACE_WORK_ROOT,
+  AGENT_WORKSPACE_RUNTIME_POLICY,
+} from "./runtime/policy";
 
 import {
   workspace_execution,
@@ -60,7 +65,7 @@ describe("AgentWorkspaceService", () => {
       fs.writeFileSync(file, "first");
       await request.emitImage!("work/页面 # %23.webp", signal);
       fs.writeFileSync(file, "second");
-      await request.emitImage!("work/页面 # %23.webp", signal);
+      await request.emitImage!("work/页面 # %23.webp", signal, { maxEdge: 3840 });
       fs.unlinkSync(file);
       await expect(request.emitImage!("../outside.webp", signal)).rejects.toBeDefined();
       return { execution: workspace_execution(), todos: [] };
@@ -73,6 +78,68 @@ describe("AgentWorkspaceService", () => {
     expect(result.images.map(({ image }) => Buffer.from(image.data, "base64").toString())).toEqual([
       "first",
       "second",
+    ]);
+    expect(result.images.map(({ image }) => image.width)).toEqual([1, 3840]);
+  });
+
+  it("图片数量超限提供恢复信息，后续程序可继续输出现有文件", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    const limit = AGENT_WORKSPACE_RUNTIME_POLICY.imageCount;
+    const image_path = "work/image.webp";
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      fs.writeFileSync(path.join(request.workspacePath, image_path), "image");
+      for (let i = 0; i < limit; i++) await request.emitImage!(image_path, signal);
+      await expect(request.emitImage!(image_path, signal)).rejects.toThrow(image_path);
+      return { execution: workspace_execution(), todos: [] };
+    });
+    expect((await run_workspace(fixture)).images).toHaveLength(limit);
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      await request.emitImage!(image_path, signal);
+      return { execution: workspace_execution(), todos: [] };
+    });
+    expect((await run_workspace(fixture)).images).toHaveLength(1);
+  });
+
+  it("累计大小超限释放占位且不占额度，捕获后可补足额度并在下一次程序重新输出", async () => {
+    const fixture = create_fixture(temp_dir);
+    await fixture.service.initialize();
+    const limit = AGENT_WORKSPACE_RUNTIME_POLICY.imageOutputBytes;
+    const count = AGENT_WORKSPACE_RUNTIME_POLICY.imageCount;
+    const chunk = Math.floor(limit / (count - 1) / 4) * 4 - 4;
+    const remaining = limit - chunk * (count - 1); // 留出一个槽位与少量字节，验证拒绝后两者都能复用。
+    const image_path = "work/image.webp";
+    const refused_path = "work/refused.webp";
+    fixture.prepare_image.mockImplementation(async (bytes) => ({
+      data: "A".repeat(Buffer.from(bytes).toString() === "refused" ? remaining + 4 : chunk),
+      mimeType: "image/webp",
+      width: 1,
+      height: 1,
+      originalWidth: 1,
+      originalHeight: 1,
+    }));
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      fs.writeFileSync(path.join(request.workspacePath, image_path), "image");
+      fs.writeFileSync(path.join(request.workspacePath, refused_path), "refused");
+      for (let i = 0; i < count - 1; i++) await request.emitImage!(image_path, signal);
+      // 重复拒绝覆盖占位泄漏，成功补足额度同时证明失败没有增加累计大小。
+      for (let i = 0; i < count; i++)
+        await expect(request.emitImage!(refused_path, signal)).rejects.toThrow(refused_path);
+      const prepared = await fixture.prepare_image(Buffer.from("image"));
+      fixture.prepare_image.mockResolvedValueOnce({ ...prepared, data: "A".repeat(remaining) });
+      await request.emitImage!(image_path, signal);
+      return { execution: workspace_execution(), todos: [] };
+    });
+    const result = await run_workspace(fixture);
+    expect(result.images).toHaveLength(count);
+    expect(result.images.every((image) => image.path === image_path)).toBe(true);
+    expect(result.images.reduce((total, { image }) => total + image.data.length, 0)).toBe(limit);
+    fixture.run.mockImplementationOnce(async (request, signal) => {
+      await request.emitImage!(refused_path, signal);
+      return { execution: workspace_execution(), todos: [] };
+    });
+    expect((await run_workspace(fixture)).images.map((image) => image.path)).toEqual([
+      refused_path,
     ]);
   });
 
@@ -825,8 +892,10 @@ describe("AgentWorkspaceService", () => {
 });
 
 /** 通过公开脚本入口按需建立或刷新工作区。 */
-async function run_workspace(fixture: ReturnType<typeof create_fixture>): Promise<void> {
-  await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
+async function run_workspace(
+  fixture: ReturnType<typeof create_fixture>,
+): ReturnType<AgentWorkspaceService["run"]> {
+  return await fixture.service.run(VALID_WORKSPACE_SCRIPT, [], new AbortController().signal);
 }
 
 /** 用真实磁盘工作区替换宿主脚本端口，其余协作者保持最小可观察 fake。 */
@@ -939,17 +1008,16 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   }));
   const open_directory = vi.fn(async (_path: string) => undefined);
   const pick_save_path = vi.fn(async (_default_name: string): Promise<string | null> => null);
+  const prepare_image = vi.fn<AgentImageService["prepare"]>(async (bytes, _signal, options) => ({
+    data: Buffer.from(bytes).toString("base64"),
+    mimeType: "image/webp",
+    width: options?.maxEdge ?? 1,
+    height: 1,
+    originalWidth: 1,
+    originalHeight: 1,
+  }));
   const service = new AgentWorkspaceService({
-    images: {
-      prepare: async (bytes) => ({
-        data: Buffer.from(bytes).toString("base64"),
-        mimeType: "image/webp",
-        width: 1,
-        height: 1,
-        originalWidth: 1,
-        originalHeight: 1,
-      }),
-    },
+    images: { prepare: prepare_image },
     runtimeDirectory: create_workspace_runtime_fixture(temp_dir),
     paths: {
       get_agent_workspace_root_dir: () => workspace_root,
@@ -974,6 +1042,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
   });
   return {
     service,
+    prepare_image,
     open_directory,
     pick_save_path,
     workspace_root,

@@ -74,8 +74,8 @@ Object.defineProperty(globalThis, "ws", {
       if (typeof result === "string" || result === null) throw new Error("Invalid host response.");
       return result;
     },
-    async (path) => {
-      await request_channel.call({ kind: "emit_image", path });
+    async (path, options) => {
+      await request_channel.call({ kind: "emit_image", path, options });
     },
   ),
 });

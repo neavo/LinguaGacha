@@ -18,6 +18,7 @@ import { AgentWorkspaceService } from "../service";
 import { createPackage } from "@electron/asar";
 import { resolve_workspace_runtime_entry } from "../../../../native/workspace-runtime";
 import type { AgentWorkspaceRuntimeParentMessage } from "./protocol";
+import { AGENT_IMAGE_MAX_EDGE } from "../../../../shared/agent-image";
 
 const electron_path =
   process.env.LINGUAGACHA_TEST_ELECTRON ?? (createRequire(import.meta.url)("electron") as string);
@@ -594,23 +595,43 @@ it.each([false, true])(
 
 it("emitImage 通过真实 IPC 等待接收，宿主拒绝可由脚本捕获", async () => {
   const paths: string[] = [];
+  const edges: (number | undefined)[] = [];
   const result = await run(
     `
     await ws.emitImage('work/第一页.webp');
     try { await ws.emitImage('invalid'); } catch (error) { console.log(error.message); }
-    await ws.emitImage('work/第二页.webp');
+    for (const options of [{maxEdge: 0}, {maxEdge: ${AGENT_IMAGE_MAX_EDGE + 1}}, {maxEdge: 1.5}, {maxEdge: '1920'}, {other: 1}]) {
+      try { await ws.emitImage('invalid-options', options); throw new Error('accepted invalid options'); }
+      catch (error) { if (!error.message.includes('Invalid workspace image request')) throw error; }
+    }
+    await ws.emitImage('work/第二页.webp', { maxEdge: ${AGENT_IMAGE_MAX_EDGE} });
   `,
     undefined,
     undefined,
     undefined,
-    async (path) => {
+    async (path, _signal, options) => {
       if (path === "invalid") throw new Error("image rejected");
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
       paths.push(path);
+      edges.push(options?.maxEdge);
     },
   );
   expect(paths).toEqual(["work/第一页.webp", "work/第二页.webp"]);
+  expect(edges).toEqual([undefined, AGENT_IMAGE_MAX_EDGE]);
   expect(output_content(result.execution.stdout)).toContain("image rejected");
+});
+
+it("页面更新模块在部署工作区解析记录并判定目标", async () => {
+  const result = await run(`
+    import { parse_page_update, resolve_agent_workspace_page_updates } from '@lg/workspace/page-updates';
+    const value = {file_path:'sample.pdf',page:1,fp:'abcd',translation:null,reviewed:false,notes:''};
+    const valid = parse_page_update({line:2,value});
+    const missing = resolve_agent_workspace_page_updates([valid.intent], []);
+    console.log(JSON.stringify(missing.rejected));
+  `);
+  expect(output_content(result.execution.stdout)).toMatchObject([
+    { reason: "target_missing", line: 2 },
+  ]);
 });
 
 /** 保存真实 ESM 文件并通过生产 runner 观察进程结果。 */

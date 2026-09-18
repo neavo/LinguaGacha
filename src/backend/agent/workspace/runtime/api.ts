@@ -1,4 +1,5 @@
 import type { WorkspaceHostRequest, WorkspaceHostResult } from "./host-contract";
+import type { AgentImageOptions } from "../../../../shared/agent-image";
 import { normalize_agent_todos } from "../../../../shared/agent-todo";
 import type { AgentWorkspaceRuntimeContract } from "../schema";
 import { Check } from "typebox/value";
@@ -6,7 +7,7 @@ import { AGENT_WORKSPACE_CONTRACT_SCHEMA } from "../schema";
 
 export type AgentWorkspaceRuntimeApi = Readonly<{
   contract: AgentWorkspaceRuntimeContract;
-  emitImage: (path: string) => Promise<void>;
+  emitImage: (path: string, options?: AgentImageOptions) => Promise<void>;
   host: (request: WorkspaceHostRequest, signal?: AbortSignal) => Promise<WorkspaceHostResult>;
   todo: Readonly<{
     read: () => readonly string[];

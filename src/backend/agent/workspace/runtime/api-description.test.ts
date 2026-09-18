@@ -10,6 +10,9 @@ describe("Agent Workspace 工具说明投影", () => {
 ws.host({ kind: "print_pdf", html: "<p>preview</p>" }).then(result => result.path);
 ws.todo.write(["核验"]);
 ws.emitImage("work/page.png");
+ws.emitImage("work/detail.png", { maxEdge: 3840 });
+// @ts-expect-error 尺寸使用数字。
+ws.emitImage("work/detail.png", { maxEdge: "3840" });
 const reference: string = ws.contract.datasets.items.reference;
 // @ts-expect-error 宿主打印请求必须包含 html。
 ws.host({ kind: "print_pdf" });
