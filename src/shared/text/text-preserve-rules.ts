@@ -18,6 +18,13 @@ type TextPreserveMatch = {
   definition_index: number;
 };
 
+/** 同一文本的一次保护段裁决，同时供准备、正文剥离和保护段比较消费。 */
+export type TextPreserveAnalysis = {
+  text: string; // 绑定被分析的文本，处理阶段改变后据此重新分析。
+  segments: readonly string[];
+  unpreserved_text: string;
+};
+
 // 翻译与校对按 `text_type` 选择同一份预设条目。
 const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   NONE: [],
@@ -35,6 +42,16 @@ export class TextPreserveRule {
   /** 一次编译本轮规则，后续文本操作复用同一组正则。 */
   public constructor(entries: readonly Pick<TextPreserveEntry, "src">[]) {
     this.patterns = entries.map(({ src }) => new RegExp(src, "giu"));
+  }
+
+  /** 一次裁决同时提供保护段与剩余正文，后续检查复用相同结果。 */
+  public analyze(text: string): TextPreserveAnalysis {
+    const matches = this.collect_sample_matches(text);
+    return {
+      text,
+      segments: matches.map((match) => match.value),
+      unpreserved_text: this.replace_matches(text, matches, ""),
+    };
   }
 
   /**
@@ -64,22 +81,6 @@ export class TextPreserveRule {
       cursor = match.index + match.value.length;
     }
     return result + transform(text.slice(cursor));
-  }
-
-  /** 保护段连续覆盖整行时，该行按原文保留。 */
-  public matches_entire_text(text: string): boolean {
-    if (text === "") {
-      return false;
-    }
-    const matches = this.collect_sample_matches(text);
-    let cursor = 0;
-    for (const match of matches) {
-      if (match.index !== cursor) {
-        return false;
-      }
-      cursor += match.value.length;
-    }
-    return cursor === text.length;
   }
 
   /** 收集全部候选后统一裁决重叠，避免规则遍历顺序改变文本顺序。 */

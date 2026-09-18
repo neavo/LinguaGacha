@@ -8,6 +8,20 @@ import {
 } from "./text-pattern";
 
 describe("text-pattern", () => {
+  it.each([
+    ["STRASSE", "Straße"],
+    ["HP", "ＨＰ"],
+    ["가", "가"],
+    ["😀", "前😀后"],
+    ["\uD83D", "😀"],
+  ])("单关键词与多关键词保持相同 Unicode 命中：%s", (keyword, text) => {
+    for (const keywords of [[keyword], [keyword, "__not_present__"]]) {
+      const matcher = create_text_keywords_matcher({ keywords, is_regex: false });
+      expect(matcher.matches(text)).toBe(true);
+      expect(matcher.match(text)).toEqual([keyword]);
+    }
+  });
+
   it("交互式正则替换支持 JS 捕获组引用并返回替换次数", () => {
     const pattern = compile_text_pattern({
       source_text: "Name: (.+)",

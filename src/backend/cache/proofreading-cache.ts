@@ -302,8 +302,8 @@ export class ProofreadingCache {
       )
       .then((result) => {
         const sync_state = this.reader.sync_evaluated_full({
+          ...sync_input,
           ...result,
-          quality: sync_input.quality,
         });
         this.synced_key = identity.keyString;
         this.synced_state = sync_state;

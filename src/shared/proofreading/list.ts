@@ -35,11 +35,18 @@ const PROOFREADING_NATURAL_SORT_STATE: ProofreadingSortState = {
   direction: "ascending",
 };
 
+type ProofreadingListSortFields = Pick<
+  ProofreadingClientItem,
+  "item_id" | "file_path" | "row_number" | "src" | "dst" | "status"
+>;
+
+const PROOFREADING_TEXT_SORTER = new Intl.Collator("zh-Hans-CN");
+
 /**
  * 文本排序固定使用简体中文 locale，确保文件名和术语排序在各系统上稳定。
  */
 export function compare_proofreading_text(left: string, right: string): number {
-  return left.localeCompare(right, "zh-Hans-CN");
+  return PROOFREADING_TEXT_SORTER.compare(left, right);
 }
 
 /**
@@ -83,8 +90,8 @@ export function compare_proofreading_runtime_items(
  * 可见 item 的列排序只解释当前 UI 支持的列，未知列回退自然顺序。
  */
 function compare_visible_items(
-  left_item: ProofreadingClientItem,
-  right_item: ProofreadingClientItem,
+  left_item: ProofreadingListSortFields,
+  right_item: ProofreadingListSortFields,
   sort_state: ProofreadingSortState,
 ): number {
   const direction = normalize_sort_direction(sort_state.direction);
@@ -124,8 +131,8 @@ function compare_visible_items(
  * 可见列表排序会叠加自然顺序兜底，保证相同列值时行顺序不抖动。
  */
 function compare_list_view_items(
-  left_item: ProofreadingClientItem,
-  right_item: ProofreadingClientItem,
+  left_item: ProofreadingListSortFields,
+  right_item: ProofreadingListSortFields,
   sort_state: ProofreadingSortState | null,
 ): number {
   const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
@@ -145,16 +152,16 @@ function compare_list_view_items(
     }
   }
 
-  return compare_proofreading_text(left_item.row_id, right_item.row_id);
+  return compare_proofreading_text(String(left_item.item_id), String(right_item.item_id));
 }
 
 /**
  * 原地排序列表行，调用方在构建临时列表后使用，避免复制大项目窗口数组。
  */
-export function sort_proofreading_client_items(
-  items: ProofreadingClientItem[],
+export function sort_proofreading_items<TItem extends ProofreadingListSortFields>(
+  items: TItem[],
   sort_state: ProofreadingSortState | null,
-): ProofreadingClientItem[] {
+): TItem[] {
   return items.sort((left_item, right_item) => {
     return compare_list_view_items(left_item, right_item, sort_state);
   });

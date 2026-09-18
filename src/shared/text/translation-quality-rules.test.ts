@@ -91,8 +91,15 @@ describe("translation-quality-rules", () => {
     ["非日韩译中时相似即报告", "same text", "same text", "EN", "ZH", true],
     ["日韩译非中文时相似即报告", "東京", "東京", "JA", "EN", true],
   ] as const)("%s", (_name, src, dst, sourceLanguage, targetLanguage, expected) => {
-    expect(has_translation_similarity_issue({ src, dst, sourceLanguage, targetLanguage })).toBe(
-      expected,
-    );
+    expect(
+      has_translation_similarity_issue({
+        src,
+        dst,
+        sourceLanguage,
+        targetLanguage,
+        has_foreign_residue:
+          collect_foreign_residue_fragments({ text: dst, targetLanguage }).length > 0,
+      }),
+    ).toBe(expected);
   });
 });

@@ -6,15 +6,15 @@ import {
 } from "../../domain/quality";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type {
-  ProofreadingClientItem,
+  ProofreadingEvaluation,
   ProofreadingItemRecord,
   ProofreadingWarningFragmentsByCode,
   ProofreadingWarningCode,
 } from "./proofreading-types";
-import { create_proofreading_client_item } from "./list";
+import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
 import {
   build_text_preserve_rule,
-  collect_non_blank_text_preserve_segments,
+  type TextPreserveAnalysis,
   type TextPreserveRule,
 } from "../text/text-preserve-rules";
 import {
@@ -125,7 +125,7 @@ export function evaluateProofreadingItem(args: {
   quality: QualitySnapshot;
   processingConfig: TextProcessingConfig;
   sample_rule_cache: Map<string, TextPreserveRule>;
-}): ProofreadingClientItem {
+}): ProofreadingEvaluation {
   const warnings: ProofreadingWarningCode[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
   let glossary_applications: GlossaryApplication[] = [];
@@ -144,34 +144,40 @@ export function evaluateProofreadingItem(args: {
     PROOFREADING_SKIPPED_WARNING_STATUSES.has(args.item.status) ||
     !has_item_translation_text(args.item)
   ) {
-    return create_proofreading_client_item({
-      item: args.item,
+    return {
       warnings,
       warning_fragments_by_code,
       glossary_applications,
-    });
+    };
   }
 
   if (args.item.dst !== "") {
-    const review_src = split_text_lines(args.item.src)
-      .map(
-        (raw_text) =>
-          prepare_translation_source_line({
-            raw_text,
-            text_type: args.item.text_type,
-            config: args.processingConfig,
-            preserve_rule: sample_rule,
-            pre_replacements: args.quality_context.pre_replacements,
-          }).prepared_text,
-      )
-      .join("\n");
-    const normalized_dst = strip_preserved_segments_by_line(args.item.dst, sample_rule);
-    const natural_dst = remove_text_resource_references(normalized_dst);
+    const source_lines = split_text_lines(args.item.src);
+    const translation_lines = split_text_lines(args.item.dst);
+    const prepared_lines = source_lines.map((raw_text) =>
+      prepare_translation_source_line({
+        raw_text,
+        text_type: args.item.text_type,
+        config: args.processingConfig,
+        preserve_rule: sample_rule,
+        pre_replacements: args.quality_context.pre_replacements,
+      }),
+    );
+    // 替换可能在行尾引入 CR，与拼接的 LF 组成 CRLF；先组合完整正文再分行才能保持原行号。
+    const source_analysis = prepared_lines.some((line) => /[\r\n]/u.test(line.prepared_text))
+      ? split_text_lines(prepared_lines.map((line) => line.prepared_text).join("\n")).map((line) =>
+          sample_rule.analyze(line),
+        )
+      : prepared_lines.map((line) => line.preserve_analysis);
+    const translation_analysis = translation_lines.map((line) => sample_rule.analyze(line));
+    const natural_dst = remove_text_resource_references(
+      translation_analysis.map((line) => line.unpreserved_text).join("\n"),
+    );
     // 相似度与标点检查共用准备后的源文，避免两项检查采用不同的替换与保护语义。
     const natural_src = remove_text_resource_references(
-      strip_preserved_segments_by_line(review_src, sample_rule),
+      source_analysis.map((line) => line.unpreserved_text).join("\n"),
     );
-    if (split_text_lines(args.item.src).length !== split_text_lines(args.item.dst).length) {
+    if (source_lines.length !== translation_lines.length) {
       warnings.push("LINE_COUNT_MISMATCH");
     }
     const foreign_residue_fragments = collect_foreign_residue_fragments({
@@ -183,11 +189,8 @@ export function evaluateProofreadingItem(args: {
       warning_fragments_by_code.FOREIGN_CHAR_RESIDUE = foreign_residue_fragments;
     }
 
-    const source_preserved_segments = collect_non_blank_segments_by_line(review_src, sample_rule);
-    const translation_preserved_segments = collect_non_blank_segments_by_line(
-      args.item.dst,
-      sample_rule,
-    );
+    const source_preserved_segments = collect_non_blank_segments_by_line(source_analysis);
+    const translation_preserved_segments = collect_non_blank_segments_by_line(translation_analysis);
     if (
       JSON.stringify(source_preserved_segments) !== JSON.stringify(translation_preserved_segments)
     ) {
@@ -204,6 +207,7 @@ export function evaluateProofreadingItem(args: {
         dst: natural_dst,
         sourceLanguage: args.processingConfig.source_language,
         targetLanguage: args.processingConfig.target_language,
+        has_foreign_residue: foreign_residue_fragments.length > 0,
       })
     ) {
       warnings.push("SIMILARITY");
@@ -232,27 +236,18 @@ export function evaluateProofreadingItem(args: {
     warnings.push("RETRY_THRESHOLD");
   }
 
-  return create_proofreading_client_item({
-    item: args.item,
-    warnings,
+  return {
+    warnings: PROOFREADING_WARNING_CODES.filter((code) => warnings.includes(code)),
     warning_fragments_by_code,
     glossary_applications,
-  });
-}
-
-/** 逐行移除保护片段，避免正则跨行改变翻译与校对共用的处理语义。 */
-function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule): string {
-  return split_text_lines(text)
-    .map((line) => rule.replace(line, ""))
-    .join("\n");
+  };
 }
 
 /** 按原行号收集非空保护片段，供源文与译文做精确对照。 */
 function collect_non_blank_segments_by_line(
-  text: string,
-  rule: TextPreserveRule,
+  lines: readonly TextPreserveAnalysis[],
 ): ProofreadingPreservedSegment[] {
-  return split_text_lines(text).flatMap((line, line_index) =>
-    collect_non_blank_text_preserve_segments(line, rule).map((value) => ({ line_index, value })),
+  return lines.flatMap((line, line_index) =>
+    line.segments.filter((value) => value.trim() !== "").map((value) => ({ line_index, value })),
   );
 }

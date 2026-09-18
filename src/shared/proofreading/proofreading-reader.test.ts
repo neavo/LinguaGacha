@@ -72,12 +72,79 @@ function sync_full(
   input: ProofreadingSyncInput,
 ) {
   return service.sync_evaluated_full({
+    ...input,
     ...evaluateProofreadingSlice(input),
-    quality: input.quality,
   });
 }
 
 describe("proofreading-reader", () => {
+  it("增量维护计数和默认顺序，并保持上下文顺序与旧视图身份", () => {
+    const reader = createProofreadingReader();
+    const input: ProofreadingSyncInput = {
+      projectId: "E:/demo/order.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 3,
+      quality: create_quality(),
+      processingConfig: create_processing_config(),
+      upsertItems: [
+        create_item({ item_id: 3, file_path: "b.txt", row_number: 1, dst: "", file_order: 0 }),
+        create_item({ item_id: 2, file_path: "a.txt", row_number: 1, dst: "", file_order: 1 }),
+        create_item({ item_id: 10, file_path: "a.txt", row_number: 1, dst: "", file_order: 1 }),
+      ],
+    };
+    const initial = sync_full(reader, input);
+    const query: ProofreadingListViewQuery = {
+      filters: initial.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    };
+    const view = reader.read_list_view(query);
+    expect(view.window_rows.map((row) => row.row_id)).toEqual(["10", "2", "3"]);
+    expect(reader.read_context_items({ row_id: "2" }).map((row) => row.row_id)).toEqual([
+      "2",
+      "10",
+    ]);
+    const changed = {
+      ...input.upsertItems[2]!,
+      file_path: "c.txt",
+      file_order: 2,
+      status: "PROCESSED",
+      dst: "かな",
+    };
+    const revisions = { ...input.revisions, items: 2 };
+    const updated = reader.apply_item_delta({
+      projectId: input.projectId,
+      revisions,
+      total_item_count: 2,
+      upsertItems: [changed],
+      patchItemIds: [],
+      fieldPatch: null,
+      deleteItemIds: [2],
+    });
+    expect(
+      reader
+        .read_list_window({ view_id: view.view_id, start: 0, count: 10 })
+        .rows.map((row) => row.row_id),
+    ).toEqual(["10", "3"]);
+    const fresh = createProofreadingReader();
+    const full = sync_full(fresh, {
+      ...input,
+      revisions,
+      total_item_count: 2,
+      upsertItems: [input.upsertItems[0]!, changed],
+    });
+    expect(updated.defaultFilters).toEqual(full.defaultFilters);
+    expect(
+      reader.read_list_view({ ...query, filters: updated.defaultFilters }).window_rows,
+    ).toEqual(fresh.read_list_view({ ...query, filters: full.defaultFilters }).window_rows);
+    expect(reader.build_filter_panel({ filters: updated.defaultFilters })).toEqual(
+      fresh.build_filter_panel({ filters: full.defaultFilters }),
+    );
+    expect(reader.read_warning_summary()).toEqual(fresh.read_warning_summary());
+  });
+
   it("标点警告进入筛选和统计，并在译文修正后增量清除", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {

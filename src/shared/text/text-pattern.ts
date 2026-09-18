@@ -132,6 +132,20 @@ export function create_text_keywords_matcher(args: {
   }
 
   if (!args.is_regex) {
+    // 单关键词只判断包含关系，沿用相同规范化，避免承担多模式逐字符扫描的成本。
+    if (keywords.length === 1) {
+      const keyword = keywords[0]!;
+      const case_sensitive = args.case_sensitive === true;
+      const normalized = normalize_literal_text(keyword.normalized, case_sensitive);
+      const matches = (value: string): boolean =>
+        normalize_literal_text(value, case_sensitive).includes(normalized);
+      return {
+        keywords: public_keywords,
+        invalid_regex: null,
+        match: (value) => (matches(value) ? [keyword.raw] : []),
+        matches,
+      };
+    }
     const matcher = compile_literal_patterns(
       keywords.map((keyword, index) => ({
         key: index.toString(),

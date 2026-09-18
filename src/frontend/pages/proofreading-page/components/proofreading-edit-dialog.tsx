@@ -203,7 +203,6 @@ function evaluate_draft_glossary_applications(
       fields: fields.map(({ source_field, target_field }) => ({
         source_field,
         target_field,
-        ranges: [],
       })),
     }),
   );
