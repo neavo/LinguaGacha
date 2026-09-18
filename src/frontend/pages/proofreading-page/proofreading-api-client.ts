@@ -68,6 +68,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         targetLanguage: input.targetLanguage,
         revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
         defaultFilters: create_empty_proofreading_filter_options(),
+        files: [],
       };
       return {
         syncState,

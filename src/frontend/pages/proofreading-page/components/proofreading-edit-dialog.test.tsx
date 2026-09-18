@@ -292,7 +292,7 @@ describe("ProofreadingEditDialog", () => {
     expect(translation_input.readOnly).toBe(false);
     expect(translation_input.disabled).toBe(false);
     expect(translation_input.getAttribute("data-readonly")).toBe("false");
-    expect(rendered.querySelector("label.proofreading-page__dialog-editor-section")).toBeNull();
+    expect(rendered.querySelector("label.proofreading-page__dialog-content-section")).toBeNull();
 
     await act(async () => {
       const value_setter = Object.getOwnPropertyDescriptor(

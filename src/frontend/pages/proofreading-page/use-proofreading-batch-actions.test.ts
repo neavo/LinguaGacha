@@ -19,7 +19,15 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
     is_writing: false,
     dialog_open: true,
     list_revisions: {},
-    read_items_by_row_ids: vi.fn(async () => []),
+    read_items_by_row_ids: vi.fn(async (ids: string[]) =>
+      ids.map((id) => ({
+        item_id: Number(id),
+        dst: "译文",
+        name_dst: null,
+        status: "PROCESSED",
+        retry_count: 0,
+      })),
+    ),
     sync_task_snapshot: vi.fn(),
     run_project_write: vi.fn(),
     set_is_writing: vi.fn(),
@@ -40,6 +48,11 @@ it.each([false, true])("重翻确认提交稳定身份并完成回执或错误�
     await act(async () => {
       root.render(createElement(Probe));
     });
+    await act(async () => {
+      actions.request_retranslate_row_ids(["1", 'page:["book.pdf",1]']);
+    });
+    expect(actions.pending_confirmation).toBeNull();
+    expect(options.read_items_by_row_ids).not.toHaveBeenCalled();
     await act(async () => {
       actions.request_retranslate_row_ids(["2", "1", "2"]);
     });

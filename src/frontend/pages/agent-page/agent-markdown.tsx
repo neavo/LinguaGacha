@@ -135,9 +135,9 @@ export const AgentMarkdown = memo(function AgentMarkdown(props: AgentMarkdownPro
     downloadDiagramAsMmd: t("agent_page.markdown.download_format", { format: "Mermaid" }),
     downloadDiagramAsPng: t("agent_page.markdown.download_format", { format: "PNG" }),
     downloadDiagramAsSvg: t("agent_page.markdown.download_format", { format: "SVG" }),
-    zoomIn: t("agent_page.media.zoom_in"),
-    zoomOut: t("agent_page.media.zoom_out"),
-    resetView: t("agent_page.media.reset_zoom"),
+    zoomIn: t("app.media.zoom_in"),
+    zoomOut: t("app.media.zoom_out"),
+    resetView: t("app.media.reset_zoom"),
   };
 
   /** 事件委托保留组件映射身份；读取属性原值，避免相对工作区路径变为后端 URL。 */

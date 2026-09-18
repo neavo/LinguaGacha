@@ -33,7 +33,7 @@ export class PDFFormat {
   /** 返回独立文档，PDF 页面不进入文本 Item 管线。 */
   public async read_from_stream(content: Uint8Array): Promise<PDFDocument> {
     const document = await this.execute({ kind: "read", bytes: content });
-    if (document instanceof Uint8Array) throw new TypeError("Invalid PDF document.");
+    if (!("pages" in document)) throw new TypeError("Invalid PDF document.");
     return document;
   }
 }

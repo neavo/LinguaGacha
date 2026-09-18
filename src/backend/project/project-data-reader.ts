@@ -159,9 +159,12 @@ export class ProjectDataReader {
     };
   }
 
-  /**
-   * files section 以 rel_path map 暴露；asset 表顺序优先，缺 asset 时回退 item 首次出现顺序
-   */
+  /** 校对按 pdf revision 补读页面，正文只进入后端查询运行态。 */
+  public read_pdf_documents(project_path: string) {
+    return this.database.read_pdf_documents(project_path);
+  }
+
+  /** files section 以 rel_path map 暴露，asset 表顺序优先，缺 asset 时沿 item 顺序。 */
   public build_files_record_block(
     project_path: string,
     snapshot = this.build_runtime_items_snapshot(project_path),

@@ -1,8 +1,24 @@
 import type { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_proofreading_page = {
+  pages: {
+    view: "開いて表示",
+    title: "ページプレビュー",
+    source_page: "{PAGE} ページ",
+    keep: "原稿を保持",
+    translated: "訳文あり",
+    retry: "再試行",
+    select_files: "ファイルを選択",
+    page_count: "{COUNT} ページ",
+    item_count: "{COUNT} 件",
+    text_only: "この操作にはテキスト項目を選択してください",
+    failed: "プレビューに失敗しました",
+    previous: "前のページ",
+    next: "次のページ",
+  },
   title: "校正",
   action: {
+    files: "ファイル",
     filter: "絞り込み",
     replace_all: "すべて置換",
     retranslate: "再翻訳",
@@ -68,11 +84,9 @@ export const ja_jp_proofreading_page = {
     translated_group: "翻訳成功",
     unfinished_group: "未完了",
     not_required_group: "翻訳不要",
-    file_scope: "ファイル範囲",
     select_all: "すべて選択",
     select_group: "すべて選択",
     deselect_group: "選択解除",
-    clear: "クリア",
     search_placeholder: "絞り込み …",
     glossary_detail: "未適用の用語",
     without_glossary_miss: "用語なし、または適用済み",

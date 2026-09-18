@@ -1,8 +1,24 @@
 import type { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ko_kr_proofreading_page = {
+  pages: {
+    view: "열어서 보기",
+    title: "페이지 미리보기",
+    source_page: "{PAGE} 페이지",
+    keep: "원본 유지",
+    translated: "번역 있음",
+    retry: "다시 시도",
+    select_files: "파일 선택",
+    page_count: "{COUNT}페이지",
+    item_count: "{COUNT}개 항목",
+    text_only: "이 작업에는 텍스트 항목을 선택하세요",
+    failed: "미리보기 실패",
+    previous: "이전 페이지",
+    next: "다음 페이지",
+  },
   title: "교정",
   action: {
+    files: "파일",
     filter: "필터",
     replace_all: "모두 바꾸기",
     retranslate: "다시 번역",
@@ -68,11 +84,9 @@ export const ko_kr_proofreading_page = {
     translated_group: "번역 성공",
     unfinished_group: "미완료",
     not_required_group: "번역 불필요",
-    file_scope: "파일 범위",
     select_all: "전체 선택",
     select_group: "모두 선택",
     deselect_group: "선택 해제",
-    clear: "지우기",
     search_placeholder: "필터링 …",
     glossary_detail: "적용되지 않은 용어",
     without_glossary_miss: "용어가 없거나 적용됨",

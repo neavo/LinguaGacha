@@ -22,13 +22,6 @@ export const ja_jp_agent_page = {
     download_format: "{format} としてダウンロード",
   },
   image: { title: "画像", open_preview: "画像のプレビューを開く" },
-  media: {
-    canvas_label: "メディアプレビュー領域",
-    controls_label: "メディアの拡大・縮小",
-    zoom_out: "縮小",
-    zoom_in: "拡大",
-    reset_zoom: "倍率をリセット",
-  },
   loading: "セッションを復元中 …",
   empty: {
     message: "「あいぼう」、次は何をしようか  ( •̀ ᗜ •́ )つ▱",

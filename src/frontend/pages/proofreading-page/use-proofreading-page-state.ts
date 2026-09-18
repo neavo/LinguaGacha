@@ -1,3 +1,7 @@
+import {
+  clone_content_filters,
+  type ProofreadingContentFilters,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { startTransition, useCallback, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
@@ -42,6 +46,7 @@ import {
   materialize_proofreading_filters,
   clone_proofreading_view_filter_state,
   type ProofreadingViewFilterState,
+  type ProofreadingFilterChoice,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   PROOFREADING_INITIAL_WINDOW_ROWS,
@@ -127,11 +132,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     };
   });
   const list_view = list_snapshot.view;
-  const [filter_dialog_filters, set_filter_dialog_filters] = useState<ProofreadingFilterOptions>(
+  const [filter_dialog_filters, set_filter_dialog_filters] = useState<ProofreadingContentFilters>(
     () =>
-      materialize_proofreading_filters(
-        table_ui_state.filter_state.selection,
-        defaultFiltersRef.current,
+      clone_content_filters(
+        materialize_proofreading_filters(
+          table_ui_state.filter_state.selection,
+          defaultFiltersRef.current,
+        ),
       ),
   );
   const [filter_panel, set_filter_panel] = useState(() => {
@@ -209,9 +216,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [list_view.window_start, visible_items]);
   const visible_item_by_id = useMemo(() => {
     return new Map(
-      visible_items.map((item) => {
-        return [item.row_id, item.item] as const;
-      }),
+      visible_items.flatMap((row) =>
+        row.kind === "item" ? [[row.row_id, row.item] as const] : [],
+      ),
     );
   }, [visible_items]);
   const readonly = is_runtime_busy(runtime_snapshot);
@@ -500,7 +507,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   });
 
   const filter_panel_query_scheduler = useDebouncedCallback(
-    (filters: ProofreadingFilterOptions): void => {
+    (filters: ProofreadingContentFilters): void => {
       void run_filter_panel_query(filters, {
         mark_loading: true,
       }).catch((error) => {
@@ -543,7 +550,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const clear_transient_state_for_new_project = useCallback((): void => {
     clear_pending_confirmation();
-    const empty_dialog_filters = create_empty_filter_options();
+    const empty_dialog_filters = clone_content_filters(create_empty_filter_options());
     reset_table_state({ persist: false });
     set_filter_dialog_filters(empty_dialog_filters);
     filter_dialog_filters_ref.current = empty_dialog_filters;
@@ -755,6 +762,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     read_list_window,
     report_proofreading_list_error,
     materialize_active_filters,
+    read_file_selection: () => table_filter_state_ref.current.selection.file_paths,
     run_filter_panel_query,
     run_list_query_change,
     schedule_list_query_change,
@@ -827,9 +835,24 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     t,
   });
 
+  // 文件选择直接更新查询意图，弹窗确认只接管内容条件。
+  const update_file_selection = useCallback(
+    (choice: ProofreadingFilterChoice<string>): void => {
+      update_table_filter_state({
+        selection: { ...table_filter_state_ref.current.selection, file_paths: choice },
+      });
+      void run_list_query_change({ target_row_id: active_row_id_ref.current });
+    },
+    [update_table_filter_state, table_filter_state_ref, run_list_query_change, active_row_id_ref],
+  );
+  const file_selection = table_ui_state.filter_state.selection.file_paths;
+
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {
       cache_status,
+      file_selection,
+      files: sync_state_ref.current?.files ?? [],
+      update_file_selection,
       list_revisions,
       required_sections: PROOFREADING_REQUIRED_SECTIONS,
       settled_project_path,
@@ -890,6 +913,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       close_pending_confirmation,
     };
   }, [
+    file_selection,
+    update_file_selection,
     active_row_id,
     anchor_row_id,
     apply_table_selection,

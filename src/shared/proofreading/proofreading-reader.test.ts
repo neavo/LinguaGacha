@@ -1,3 +1,5 @@
+import type { PDFDocumentRecord, PDFPageTranslation } from "../pdf";
+import { build_proofreading_page_row_id } from "./proofreading-types";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -114,7 +116,7 @@ describe("proofreading-reader", () => {
       dst: "かな",
     };
     const revisions = { ...input.revisions, items: 2 };
-    const updated = reader.apply_item_delta({
+    reader.apply_item_delta({
       projectId: input.projectId,
       revisions,
       total_item_count: 2,
@@ -135,6 +137,14 @@ describe("proofreading-reader", () => {
       total_item_count: 2,
       upsertItems: [input.upsertItems[0]!, changed],
     });
+    const updated = reader.sync_pages(
+      [],
+      [
+        { rel_path: "b.txt", file_type: "TXT" },
+        { rel_path: "c.txt", file_type: "TXT" },
+      ],
+      0,
+    );
     expect(updated.defaultFilters).toEqual(full.defaultFilters);
     expect(
       reader.read_list_view({ ...query, filters: updated.defaultFilters }).window_rows,
@@ -174,7 +184,10 @@ describe("proofreading-reader", () => {
     };
     const view = service.read_list_view(query);
     expect(view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
-    expect(view.window_rows[0]?.item.warnings).toEqual(["PUNCTUATION_MISMATCH", "RETRY_THRESHOLD"]);
+    expect(view.window_rows.filter((row) => row.kind === "item")[0]?.item.warnings).toEqual([
+      "PUNCTUATION_MISMATCH",
+      "RETRY_THRESHOLD",
+    ]);
     expect(service.read_warning_summary()).toEqual({
       total_count: 2,
       entries: [
@@ -193,8 +206,9 @@ describe("proofreading-reader", () => {
       deleteItemIds: [],
     });
     expect(
-      service.read_list_window({ view_id: view.view_id, start: 0, count: 1 }).rows[0]?.item
-        .warnings,
+      service
+        .read_list_window({ view_id: view.view_id, start: 0, count: 1 })
+        .rows.filter((row) => row.kind === "item")[0]?.item.warnings,
     ).toEqual([]);
     expect(service.read_list_view(query).row_count).toBe(0);
     expect(service.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
@@ -438,7 +452,7 @@ describe("proofreading-reader", () => {
     });
 
     expect(view.row_count).toBe(1);
-    expect(view.window_rows[0]?.item).toMatchObject({
+    expect(view.window_rows.filter((row) => row.kind === "item")[0]?.item).toMatchObject({
       item_id: 1,
       warnings: expect.arrayContaining(["GLOSSARY"]),
       glossary_applications: [
@@ -722,7 +736,7 @@ describe("proofreading-reader", () => {
     });
 
     expect(window.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
-    expect(window.rows[1]?.item).toMatchObject({
+    expect(window.rows.filter((row) => row.kind === "item")[1]?.item).toMatchObject({
       item_id: 2,
       dst: "A",
       status: "PROCESSED",
@@ -771,7 +785,7 @@ describe("proofreading-reader", () => {
       count: 10,
     });
 
-    expect(window.rows[0]?.item).toMatchObject({
+    expect(window.rows.filter((row) => row.kind === "item")[0]?.item).toMatchObject({
       item_id: 1,
       name_src: ["Alice", "Bob"],
       name_dst: ["新译名", "保留译名"],
@@ -944,4 +958,152 @@ describe("proofreading-reader", () => {
       rows: [],
     });
   });
+});
+
+it("混合窗口按原页定位，页面只受文件和搜索限制，文本内容筛选不改变页面可见性", () => {
+  const reader = createProofreadingReader();
+  sync_full(reader, {
+    projectId: "mixed",
+    revisions: { files: 1, items: 1, quality: 0, proofreading: 0 },
+    total_item_count: 1,
+    quality: create_quality(),
+    processingConfig: create_processing_config(),
+    upsertItems: [create_item({ item_id: 1, file_path: "a.txt", dst: "" })],
+  });
+  const documents: PDFDocumentRecord[] = [
+    {
+      file_path: "b.pdf",
+      document: {
+        digest: "source",
+        pages: (
+          [
+            null,
+            { kind: "translate", markdown: "needle" },
+            { kind: "keep", reason: "封面" },
+            { kind: "omit", reason: "空页" },
+            { kind: "translate", markdown: "" },
+          ] satisfies PDFPageTranslation[]
+        ).map((translation, index) => ({
+          page: index + 1,
+          width: 300,
+          height: 300,
+          rotation: 0,
+          label: null,
+          translation,
+          reviewed: false,
+          notes: "",
+        })),
+      },
+    },
+  ];
+  const files = [
+    { rel_path: "a.txt", file_type: "TXT" },
+    { rel_path: "b.pdf", file_type: "PDF" },
+    { rel_path: "empty.txt", file_type: "NONE" },
+  ];
+  const sync = reader.sync_pages(documents, files, 1);
+  expect(sync.files).toContainEqual({ file_path: "empty.txt", kind: "item", count: 0 });
+  const query: ProofreadingListViewQuery = {
+    filters: sync.defaultFilters,
+    keyword: "",
+    scope: "all",
+    is_regex: false,
+    sort_state: null,
+  };
+  const view = reader.read_list_view(query);
+  expect(
+    view.window_rows.filter((row) => row.kind === "page").map((row) => row.page.status),
+  ).toEqual(["NONE", "PROCESSED", "PDF_KEEP", "PDF_OMIT", "PROCESSED"]);
+  expect(view.row_count).toBe(6);
+  expect(view.window_rows.map((row) => row.kind)).toEqual([
+    "item",
+    "page",
+    "page",
+    "page",
+    "page",
+    "page",
+  ]);
+  for (const direction of ["ascending", "descending"] as const) {
+    const sorted = reader.read_list_view({ ...query, sort_state: { column_id: "dst", direction } });
+    expect(
+      sorted.window_rows.filter((row) => row.kind === "page").map((row) => row.page.page),
+    ).toEqual([1, 2, 3, 4, 5]);
+  }
+  const text_filtered = reader.read_list_view({
+    ...query,
+    filters: { ...query.filters, outcomes: ["NO_WARNING"] },
+  });
+  expect(text_filtered.window_rows.map((row) => row.row_id)).toEqual(
+    [1, 2, 3, 4, 5].map((page) => build_proofreading_page_row_id("b.pdf", page)),
+  );
+  expect(
+    reader.read_items_by_row_ids({ row_ids: text_filtered.window_rows.map((row) => row.row_id) }),
+  ).toEqual([]);
+  expect(reader.read_list_view({ ...query, keyword: "needle", scope: "dst" }).row_count).toBe(1);
+  expect(reader.read_list_view({ ...query, keyword: "needle", scope: "src" }).row_count).toBe(0);
+  expect(
+    reader.read_list_view({ ...query, filters: { ...query.filters, file_paths: [] } }).row_count,
+  ).toBe(0);
+  expect(
+    reader.read_list_view({
+      ...query,
+      filters: {
+        ...query.filters,
+        glossary_entry_ids: ["hp"],
+        include_without_glossary_miss: false,
+      },
+    }).row_count,
+  ).toBe(5);
+  expect(reader.build_filter_panel({ filters: query.filters }).outcome_count_by_code).toMatchObject(
+    { NONE: 1 },
+  );
+  const content_filters = {
+    ...query.filters,
+    outcomes: [],
+    glossary_entry_ids: [],
+    include_without_glossary_miss: false,
+  };
+  expect(
+    reader
+      .read_list_view({ ...query, filters: content_filters })
+      .window_rows.map((row) => row.kind),
+  ).toEqual(Array(5).fill("page"));
+  expect(
+    reader.read_list_view({ ...query, filters: content_filters, keyword: "needle", scope: "dst" })
+      .row_count,
+  ).toBe(1);
+  expect(
+    reader
+      .read_list_view({ ...query, filters: { ...query.filters, file_paths: ["a.txt"] } })
+      .window_rows.map((row) => row.kind),
+  ).toEqual(["item"]);
+  const panel = reader.build_filter_panel({
+    filters: { ...query.filters, outcomes: ["PDF_KEEP", "PDF_OMIT"] },
+  });
+  expect(panel.available_outcomes).not.toContain("PDF_KEEP");
+  expect(panel.available_outcomes).not.toContain("PDF_OMIT");
+  expect(panel.outcome_count_by_code).toEqual({ NONE: 1 });
+  expect(panel.without_glossary_miss_count).toBe(0);
+  const page_only_panel = reader.build_filter_panel({
+    filters: { ...query.filters, file_paths: ["b.pdf"] },
+  });
+  expect(page_only_panel.outcome_count_by_code).toEqual({});
+  expect(page_only_panel.without_glossary_miss_count).toBe(0);
+  expect(page_only_panel.glossary_term_entries).toEqual([]);
+  expect(sync.defaultFilters.outcomes).not.toContain("PDF_KEEP");
+  expect(sync.defaultFilters.outcomes).not.toContain("PDF_OMIT");
+  const stable = reader.read_list_view({ ...query, keyword: "needle" });
+  documents[0]!.document.pages[1]!.translation = { kind: "translate", markdown: "updated" };
+  reader.sync_pages(documents, files, 2);
+  const window = reader.read_list_window({ view_id: stable.view_id, start: 0, count: 10 });
+  expect(window.rows).toMatchObject([
+    {
+      kind: "page",
+      page: { page: 2, status: "PROCESSED" },
+    },
+  ]);
+  expect(
+    reader.resolve_row_index({ view_id: stable.view_id, row_id: window.rows[0]!.row_id }),
+  ).toBe(0);
+  expect(reader.read_list_view({ ...query, keyword: "needle" }).row_count).toBe(0);
 });

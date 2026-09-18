@@ -27,6 +27,7 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
     });
 
     const selection = resolve_proofreading_filter_selection_from_filters({
+      file_selection: { mode: "default" },
       filters: create_filters({
         glossary_entry_ids: ["magic"],
       }),
@@ -50,6 +51,7 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
     const next_glossary_entry_id = "kingdom";
 
     const selection = resolve_proofreading_filter_selection_from_filters({
+      file_selection: { mode: "default" },
       filters: create_filters({
         glossary_entry_ids: [],
       }),
@@ -72,6 +74,7 @@ describe("resolve_proofreading_filter_selection_from_filters", () => {
   // 普通筛选维度按集合比较，面板展示顺序变化不能改变用户意图。
   it("默认筛选值顺序变化不会固化普通筛选维度", () => {
     const selection = resolve_proofreading_filter_selection_from_filters({
+      file_selection: { mode: "default" },
       filters: create_filters({
         outcomes: ["ERROR", "NONE", "PROCESSED"],
       }),

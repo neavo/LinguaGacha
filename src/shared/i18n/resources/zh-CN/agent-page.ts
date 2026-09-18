@@ -20,13 +20,6 @@ export const zh_cn_agent_page = {
     download_format: "下载为 {format}",
   },
   image: { title: "图片", open_preview: "打开图片预览" },
-  media: {
-    canvas_label: "媒体预览画布",
-    controls_label: "媒体缩放控制",
-    zoom_out: "缩小",
-    zoom_in: "放大",
-    reset_zoom: "重置缩放",
-  },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",

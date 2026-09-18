@@ -1,3 +1,4 @@
+import { is_proofreading_page_row_id } from "@shared/proofreading/proofreading-types";
 import { useCallback, useState } from "react";
 
 import type { ItemManualStatus } from "@domain/item";
@@ -69,24 +70,9 @@ type UseProofreadingBatchActionsResult = {
   clear_pending_confirmation: () => void;
 };
 
-/** 行选择在发送命令前统一转换为去重的正整数 item 身份。 */
-function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
-  if (!Array.isArray(raw_item_ids)) {
-    return [];
-  }
-
-  const item_ids: number[] = [];
-  const seen_ids = new Set<number>();
-  raw_item_ids.forEach((raw_item_id) => {
-    const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
-      return;
-    }
-
-    seen_ids.add(item_id);
-    item_ids.push(item_id);
-  });
-  return item_ids;
+/** 文本快照拥有写入身份，列表 row_id 不参与数值转换。 */
+function read_item_ids(items: ProofreadingCommandItemSnapshot[]): number[] {
+  return [...new Set(items.map((item) => Number(item.item_id)))];
 }
 
 // 校对页批量动作的唯一归宿：高风险动作先确认，状态设置保持直接提交。
@@ -114,14 +100,33 @@ export function useProofreadingBatchActions(
 
   const can_request_action = useCallback(
     (row_ids: string[]): boolean => {
-      return row_ids.length > 0 && !readonly && !is_refreshing && !is_writing;
+      return (
+        row_ids.length > 0 &&
+        row_ids.every((id) => !is_proofreading_page_row_id(id)) &&
+        !readonly &&
+        !is_refreshing &&
+        !is_writing
+      );
     },
     [is_writing, is_refreshing, readonly],
   );
 
+  // 提交前回读文本身份，读取失败统一反馈并终止本次写入。
+  const read_text_items = useCallback(
+    async (row_ids: string[]): Promise<ProofreadingCommandItemSnapshot[]> => {
+      try {
+        return await read_items_by_row_ids(row_ids);
+      } catch (error) {
+        handle_api_error(error, t("proofreading_page.feedback.selection_failed"));
+        return [];
+      }
+    },
+    [read_items_by_row_ids, handle_api_error, t],
+  );
+
   const submit_retranslate_row_ids = useCallback(
     async (row_ids: string[], preferred_row_id: string | null): Promise<void> => {
-      const item_ids = normalize_numeric_item_ids(row_ids);
+      const item_ids = read_item_ids(await read_text_items(row_ids));
       if (item_ids.length === 0) {
         return;
       }
@@ -144,6 +149,7 @@ export function useProofreadingBatchActions(
       }
     },
     [
+      read_text_items,
       close_edit_dialog,
       dialog_open,
       handle_api_error,
@@ -161,7 +167,7 @@ export function useProofreadingBatchActions(
       preferred_row_id: string | null,
       reset_status: boolean,
     ): Promise<void> => {
-      const target_item_ids = normalize_numeric_item_ids(row_ids);
+      const target_item_ids = read_item_ids(await read_text_items(row_ids));
       if (target_item_ids.length === 0) {
         return;
       }
@@ -185,7 +191,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, list_revisions, run_project_write, t],
+    [dialog_open, list_revisions, read_text_items, run_project_write, t],
   );
 
   const submit_set_translation_status_row_ids = useCallback(
@@ -194,7 +200,8 @@ export function useProofreadingBatchActions(
       status: ItemManualStatus,
       preferred_row_id: string | null,
     ): Promise<void> => {
-      const target_item_ids = normalize_numeric_item_ids(row_ids);
+      const items = await read_text_items(row_ids);
+      const target_item_ids = read_item_ids(items);
       if (target_item_ids.length === 0) {
         return;
       }
@@ -204,7 +211,7 @@ export function useProofreadingBatchActions(
         path: "/api/proofreading/items/update",
         plan: create_apply_item_changes_plan({
           snapshot: {
-            items: await read_items_by_row_ids(row_ids),
+            items,
             section_revisions: list_revisions,
           },
           changes: target_item_ids.map((item_id) => ({ item_id, status })),
@@ -220,7 +227,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, list_revisions, read_items_by_row_ids, run_project_write, t],
+    [dialog_open, list_revisions, read_text_items, run_project_write, t],
   );
 
   const request_retranslate_row_ids = useCallback(

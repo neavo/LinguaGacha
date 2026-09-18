@@ -1,5 +1,6 @@
 import type { ItemNameField } from "../../domain/item";
 import type { GlossaryApplication } from "../quality/glossary";
+import type { PDFPageTranslation } from "../pdf";
 
 // 筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
@@ -41,7 +42,7 @@ export const PROOFREADING_TRANSLATED_OUTCOME_CODES = [
   ...PROOFREADING_WARNING_CODES,
 ] as const;
 
-// 分组定义统一提供显示顺序、默认选择和组内结果词表。
+// 文本筛选分组统一提供显示顺序、默认选择和组内结果词表。
 export const PROOFREADING_OUTCOME_GROUPS = [
   {
     code: "translated",
@@ -63,7 +64,7 @@ export const PROOFREADING_OUTCOME_GROUPS = [
 // 运行时可能出现尚未进入内置词表的新检查结果，因此公开筛选值保留字符串扩展点。
 export type ProofreadingOutcomeCode = string;
 
-// 同时服务排序和默认状态筛选。
+// 文本和页面共用的列表状态排序，不决定内容筛选选项。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -72,6 +73,8 @@ export const PROOFREADING_STATUS_ORDER = [
   "EXCLUDED",
   "RULE_SKIPPED",
   "DUPLICATED",
+  "PDF_KEEP",
+  "PDF_OMIT",
 ] as const;
 
 export type ProofreadingWarningFragmentsByCode = Partial<
@@ -141,11 +144,47 @@ export type ProofreadingClientItem = ProofreadingItem & {
 };
 
 export type ProofreadingVisibleItem = {
+  kind: "item";
   row_id: string;
   item: ProofreadingClientItem;
   compressed_src: string;
   compressed_dst: string;
 };
+
+export type ProofreadingPageSummary = {
+  file_path: string;
+  page: number;
+  status: "NONE" | "PROCESSED" | "PDF_KEEP" | "PDF_OMIT";
+};
+
+export type ProofreadingRow =
+  | ProofreadingVisibleItem
+  | {
+      kind: "page";
+      row_id: string;
+      page: ProofreadingPageSummary;
+    };
+
+export type ProofreadingFile = { file_path: string; kind: "item" | "page"; count: number };
+
+/** 页面身份按路径和原页编码，不能转换成文本写入 ID。 */
+export function build_proofreading_page_row_id(file_path: string, page: number): string {
+  return `page:${JSON.stringify([file_path, page])}`;
+}
+
+/** 用页面命名空间隔离文本写入入口，包含未加载的选区行。 */
+export function is_proofreading_page_row_id(row_id: string): boolean {
+  return row_id.startsWith("page:");
+}
+
+/** 校对展示直接映射原页处置，空正文沿用已翻译状态。 */
+export function proofreading_page_status(
+  translation: PDFPageTranslation,
+): ProofreadingPageSummary["status"] {
+  if (translation === null) return "NONE";
+  if (translation.kind === "translate") return "PROCESSED";
+  return translation.kind === "keep" ? "PDF_KEEP" : "PDF_OMIT";
+}
 
 export type ProofreadingListView = {
   projectId: string;
@@ -154,11 +193,12 @@ export type ProofreadingListView = {
     items: number;
     quality: number;
     proofreading: number;
+    pdf?: number;
   };
   view_id: string;
   row_count: number;
   window_start: number;
-  window_rows: ProofreadingVisibleItem[];
+  window_rows: ProofreadingRow[];
   invalid_regex_message: string | null;
 };
 
@@ -172,9 +212,6 @@ export type ProofreadingFilterPanelTermEntry = {
 export type ProofreadingFilterPanelState = {
   available_outcomes: ProofreadingOutcomeCode[];
   outcome_count_by_code: Record<string, number>;
-  all_file_paths: string[];
-  available_file_paths: string[];
-  file_count_by_path: Record<string, number>;
   glossary_term_entries: ProofreadingFilterPanelTermEntry[];
   without_glossary_miss_count: number;
 };
@@ -302,10 +339,13 @@ export function create_empty_proofreading_filter_panel_state(): ProofreadingFilt
   return {
     available_outcomes: [],
     outcome_count_by_code: {},
-    all_file_paths: [],
-    available_file_paths: [],
-    file_count_by_path: {},
     glossary_term_entries: [],
     without_glossary_miss_count: 0,
   };
 }
+
+export type ProofreadingPagePreviewResult = {
+  image?: string;
+  count?: number;
+  page?: number;
+};

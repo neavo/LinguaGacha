@@ -1,3 +1,4 @@
+import { type ProofreadingContentFilters } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useEffect, type MutableRefObject, type SetStateAction } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -10,7 +11,6 @@ import {
   type ProofreadingListWindowBounds,
   type ProofreadingRefreshSignal,
 } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
-import type { ProofreadingFilterOptions } from "@shared/proofreading/proofreading-types";
 
 type DesktopToastId = string | number;
 
@@ -24,7 +24,7 @@ type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => s
 
 type UseProofreadingPageEffectsOptions = {
   current_query_intent_key: string;
-  filter_dialog_filters: ProofreadingFilterOptions;
+  filter_dialog_filters: ProofreadingContentFilters;
   filter_dialog_open: boolean;
   list_snapshot: ProofreadingListSnapshot;
   loading_toast_visible: boolean;
@@ -32,7 +32,7 @@ type UseProofreadingPageEffectsOptions = {
   project_path: string;
   proofreading_change_signal: ProofreadingRefreshSignal | null;
   proofreading_lookup_intent: ProofreadingLookupIntent | null;
-  filter_dialog_filters_ref: MutableRefObject<ProofreadingFilterOptions>;
+  filter_dialog_filters_ref: MutableRefObject<ProofreadingContentFilters>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
   filter_panel_request_id_ref: MutableRefObject<number>;
   list_snapshot_ref: MutableRefObject<ProofreadingListSnapshot>;

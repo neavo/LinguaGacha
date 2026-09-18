@@ -1,7 +1,12 @@
 import { expect, it, vi } from "vitest";
 import * as mupdf from "mupdf";
 import { create_pdf_fixture } from "./test-support";
-import { read_pdf_document, build_pdf_document, render_pdf_page } from "./pdf-document";
+import {
+  read_pdf_document,
+  build_pdf_document,
+  render_pdf_page,
+  build_pdf_page_preview,
+} from "./pdf-document";
 it("按原页尺寸和背景分组，省略页不占位置，背景位于每张译文页底层", async () => {
   const original = new mupdf.PDFDocument(
     create_pdf_fixture(["One", "Two", null, "Four", "Five", "Six"]),
@@ -281,5 +286,42 @@ it("部分替换保留原页批注，并迁移译文外链与内部页跳转", a
     }
   } finally {
     result.destroy();
+  }
+});
+
+it("单页预览保留完整原稿引用并独立分页，复用导出背景合成", async () => {
+  const bytes = create_pdf_fixture();
+  const document = read_pdf_document(bytes);
+  document.pages[0]!.translation = {
+    kind: "translate",
+    markdown: `![图](pdf-image:${document.digest}/3/40,180,80,73)`,
+    background: { page: 3, x: 40, y: 180, width: 80, height: 73 },
+  };
+  document.pages[1]!.translation = { kind: "translate", markdown: "邻页正文" };
+  const print = vi.fn(async () => create_pdf_fixture(["First", "Second"]));
+  const preview = await build_pdf_page_preview({
+    title: "book",
+    document,
+    source_bytes: bytes,
+    page: 1,
+    print,
+  });
+  expect(print).toHaveBeenCalledWith(expect.stringContaining("data:image/png;base64,"));
+  expect(print).not.toHaveBeenCalledWith(expect.stringContaining("邻页正文"));
+  expect(await read_text(preview)).toEqual(["First", "Second"]);
+  const output = new mupdf.PDFDocument(preview);
+  try {
+    for (let index = 0; index < 2; index++) {
+      const page = output.loadPage(index);
+      const pixels = page.toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false);
+      try {
+        expect([...pixels.getPixels().subarray(0, 3)]).toEqual([25, 102, 204]);
+      } finally {
+        pixels.destroy();
+        page.destroy();
+      }
+    }
+  } finally {
+    output.destroy();
   }
 });

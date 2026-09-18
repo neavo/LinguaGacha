@@ -2,6 +2,11 @@ import { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
+  media: {
+    zoom_out: "Zoom out",
+    zoom_in: "Zoom in",
+    reset_zoom: "Reset zoom",
+  },
   metadata: {
     app_name: "LinguaGacha",
   },

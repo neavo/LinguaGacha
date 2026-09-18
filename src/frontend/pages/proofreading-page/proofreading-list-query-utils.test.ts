@@ -88,6 +88,7 @@ describe("proofreading-list-query-utils", () => {
       ...create_list_view(5),
       window_start: 1,
       window_rows: Array.from({ length: 3 }, (_, index) => ({
+        kind: "item" as const,
         row_id: (1 + index).toString(),
         item: {} as never,
         compressed_src: "",
@@ -129,6 +130,7 @@ describe("proofreading-list-query-utils", () => {
           quality: 2,
           proofreading: 4,
         },
+        files: [],
         defaultFilters: create_empty_filter_options(),
       },
       window: {
@@ -262,6 +264,7 @@ describe("proofreading-list-query-utils", () => {
         quality: 2,
         proofreading: 3,
       },
+      files: [],
       defaultFilters: create_empty_filter_options(),
     };
     const base_args = {
