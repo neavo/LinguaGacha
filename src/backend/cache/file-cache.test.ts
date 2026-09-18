@@ -17,4 +17,12 @@ describe("FileCache", () => {
       { rel_path: "a.txt", file_type: "NONE", sort_index: 2 },
     ]);
   });
+  it("按保存顺序排列文件，数字路径不受对象键枚举顺序影响", () => {
+    const cache = new FileCache();
+    cache.replace({
+      "1": { rel_path: "1", file_type: "TXT", sort_index: 1 },
+      "2": { rel_path: "2", file_type: "TXT", sort_index: 0 },
+    });
+    expect(cache.readFileEntries().map((file) => file.rel_path)).toEqual(["2", "1"]);
+  });
 });

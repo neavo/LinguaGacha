@@ -185,7 +185,7 @@ export function resolve_requested_sync_mode(args: {
 }
 
 /**
- * 只把能精确表达行级变化的公开事件降为 delta，其余相关变化要求全量刷新。
+ * 文件和页面同步复用读取器事实，旧视图失效时重查；文本只接受精确行级增量。
  */
 export function resolve_proofreading_refresh_signal(signal: {
   seq: number;
@@ -208,6 +208,9 @@ export function resolve_proofreading_refresh_signal(signal: {
       itemIds: [],
       deleteItemIds: [],
     };
+  }
+  if (signal.updated_sections.every((section) => ["files", "pdf"].includes(section))) {
+    return { seq: signal.seq, mode: "delta", itemIds: [], deleteItemIds: [] };
   }
   if (
     signal.updated_sections.some((section) => ["project", "files", "quality"].includes(section)) ||
@@ -245,11 +248,7 @@ export function resolve_proofreading_refresh_signal(signal: {
       deleteItemIds: [],
     };
   }
-  if (
-    signal.updated_sections.some((section) =>
-      ["project", "items", "quality", "proofreading"].includes(section),
-    )
-  ) {
+  if (signal.updated_sections.includes("proofreading")) {
     return {
       seq: signal.seq,
       mode: "full",

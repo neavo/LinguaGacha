@@ -16,22 +16,24 @@ export class FileCache {
    * 用 files block 重建文件条目，过滤缺少相对路径的无效记录。
    */
   public replace(files_block: JsonRecord): void {
-    this.file_entries = Object.values(files_block).flatMap((value, index) => {
-      if (!is_json_record(value)) {
-        return [];
-      }
-      const rel_path = String(value["rel_path"] ?? "").trim();
-      if (rel_path === "") {
-        return [];
-      }
-      return [
-        {
-          rel_path,
-          file_type: String(value["file_type"] ?? "NONE"),
-          sort_index: this.read_number(value["sort_index"], index),
-        },
-      ];
-    });
+    this.file_entries = Object.values(files_block)
+      .flatMap((value, index) => {
+        if (!is_json_record(value)) {
+          return [];
+        }
+        const rel_path = String(value["rel_path"] ?? "").trim();
+        if (rel_path === "") {
+          return [];
+        }
+        return [
+          {
+            rel_path,
+            file_type: String(value["file_type"] ?? "NONE"),
+            sort_index: this.read_number(value["sort_index"], index),
+          },
+        ];
+      })
+      .sort((left, right) => left.sort_index - right.sort_index);
   }
 
   /**

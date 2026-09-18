@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { create_cache_change } from "./cache-change";
 
 describe("create_cache_change", () => {
-  it("把 items 规范化增量归一成 cache item 增量", () => {
+  it("把条目变更转换为缓存增量", () => {
     const change = create_cache_change({
       type: "project.items.changed",
       projectPath: "E:/Project/demo.lg",
@@ -19,7 +19,6 @@ describe("create_cache_change", () => {
     });
 
     expect(change).toMatchObject({
-      fullRebuild: false,
       items: {
         mode: "delta",
         changedIds: [1, 2],
@@ -31,7 +30,7 @@ describe("create_cache_change", () => {
     });
   });
 
-  it("缺少精确范围或文件变化时回落全量重建", () => {
+  it("缺少精确范围时重建对应分区，文件变化保留文本分区", () => {
     const missing_range = create_cache_change({
       type: "project.items.changed",
       projectPath: "E:/Project/demo.lg",
@@ -51,16 +50,15 @@ describe("create_cache_change", () => {
     });
 
     expect(missing_range).toMatchObject({
-      fullRebuild: true,
       items: { mode: "full", reason: "missing-range" },
     });
     expect(files_changed).toMatchObject({
-      fullRebuild: true,
+      items: { mode: "keep" },
       files: { mode: "full" },
     });
   });
 
-  it("把 quality 和 settings 变化交给 view cache 自己失效", () => {
+  it("质量规则与设置变化由视图缓存处理失效", () => {
     const quality_change = create_cache_change({
       type: "project.quality.changed",
       projectPath: "E:/Project/demo.lg",
@@ -79,12 +77,10 @@ describe("create_cache_change", () => {
     });
 
     expect(quality_change).toMatchObject({
-      fullRebuild: false,
       quality: { mode: "full" },
       items: { mode: "keep" },
     });
     expect(settings_change).toMatchObject({
-      fullRebuild: false,
       settings: { mode: "full" },
       items: { mode: "keep" },
     });

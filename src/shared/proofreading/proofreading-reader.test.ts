@@ -48,7 +48,6 @@ function create_item(input: {
   dst: string;
   status?: string;
   file_path?: string;
-  file_order?: number;
   row_number?: number;
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
@@ -56,7 +55,6 @@ function create_item(input: {
   return {
     item_id: input.item_id,
     file_path: input.file_path ?? "script.txt",
-    file_order: input.file_order ?? 0,
     row_number: input.row_number ?? input.item_id,
     src: input.src ?? `原文 ${input.item_id.toString()}`,
     dst: input.dst,
@@ -73,10 +71,17 @@ function sync_full(
   service: ReturnType<typeof createProofreadingReader>,
   input: ProofreadingSyncInput,
 ) {
-  return service.sync_evaluated_full({
+  service.sync_evaluated_full({
     ...input,
     ...evaluateProofreadingSlice(input),
   });
+  return service.sync_files(
+    [...new Set(input.upsertItems.map((item) => item.file_path))].map((rel_path) => ({
+      rel_path,
+      file_type: "TXT",
+    })),
+    input.revisions.files,
+  );
 }
 
 describe("proofreading-reader", () => {
@@ -89,9 +94,9 @@ describe("proofreading-reader", () => {
       quality: create_quality(),
       processingConfig: create_processing_config(),
       upsertItems: [
-        create_item({ item_id: 3, file_path: "b.txt", row_number: 1, dst: "", file_order: 0 }),
-        create_item({ item_id: 2, file_path: "a.txt", row_number: 1, dst: "", file_order: 1 }),
-        create_item({ item_id: 10, file_path: "a.txt", row_number: 1, dst: "", file_order: 1 }),
+        create_item({ item_id: 3, file_path: "b.txt", row_number: 1, dst: "" }),
+        create_item({ item_id: 2, file_path: "a.txt", row_number: 1, dst: "" }),
+        create_item({ item_id: 10, file_path: "a.txt", row_number: 1, dst: "" }),
       ],
     };
     const initial = sync_full(reader, input);
@@ -103,7 +108,7 @@ describe("proofreading-reader", () => {
       sort_state: null,
     };
     const view = reader.read_list_view(query);
-    expect(view.window_rows.map((row) => row.row_id)).toEqual(["10", "2", "3"]);
+    expect(view.window_rows.map((row) => row.row_id)).toEqual(["3", "2", "10"]);
     expect(reader.read_context_items({ row_id: "2" }).map((row) => row.row_id)).toEqual([
       "2",
       "10",
@@ -111,7 +116,7 @@ describe("proofreading-reader", () => {
     const changed = {
       ...input.upsertItems[2]!,
       file_path: "c.txt",
-      file_order: 2,
+
       status: "PROCESSED",
       dst: "かな",
     };
@@ -129,7 +134,7 @@ describe("proofreading-reader", () => {
       reader
         .read_list_window({ view_id: view.view_id, start: 0, count: 10 })
         .rows.map((row) => row.row_id),
-    ).toEqual(["10", "3"]);
+    ).toEqual(["3", "10"]);
     const fresh = createProofreadingReader();
     const full = sync_full(fresh, {
       ...input,
@@ -137,8 +142,7 @@ describe("proofreading-reader", () => {
       total_item_count: 2,
       upsertItems: [input.upsertItems[0]!, changed],
     });
-    const updated = reader.sync_pages(
-      [],
+    const updated = reader.sync_files(
       [
         { rel_path: "b.txt", file_type: "TXT" },
         { rel_path: "c.txt", file_type: "TXT" },
@@ -173,8 +177,6 @@ describe("proofreading-reader", () => {
     });
     const panel = service.build_filter_panel({ filters: sync_state.defaultFilters });
     expect(panel.outcome_count_by_code.PUNCTUATION_MISMATCH).toBe(1);
-    const punctuation_index = panel.available_outcomes.indexOf("PUNCTUATION_MISMATCH");
-    expect(panel.available_outcomes[punctuation_index + 1]).toBe("RETRY_THRESHOLD");
     const query: ProofreadingListViewQuery = {
       filters: { ...sync_state.defaultFilters, outcomes: ["PUNCTUATION_MISMATCH"] },
       keyword: "",
@@ -296,6 +298,13 @@ describe("proofreading-reader", () => {
         }),
       ],
     });
+    service.sync_files(
+      [
+        { rel_path: "a.txt", file_type: "TXT" },
+        { rel_path: "b.txt", file_type: "TXT" },
+      ],
+      1,
+    );
     const first_view = service.read_list_view({
       filters: sync_state.defaultFilters,
       keyword: "",
@@ -366,8 +375,7 @@ describe("proofreading-reader", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(first_view.view_id).toMatch(/:1$/u);
-    expect(second_view.view_id).toMatch(/:2$/u);
+    expect(second_view.view_id).not.toBe(first_view.view_id);
   });
 
   it("warning 分页把搜索元字符视为普通文本且未同步时返回空页", () => {
@@ -415,7 +423,6 @@ describe("proofreading-reader", () => {
         {
           item_id: 1,
           file_path: "b.txt",
-          file_order: 1,
           row_number: 1,
           src: "HP",
           dst: "HP",
@@ -428,7 +435,6 @@ describe("proofreading-reader", () => {
         {
           item_id: 2,
           file_path: "a.txt",
-          file_order: 0,
           row_number: 1,
           src: "菜单",
           dst: "菜单",
@@ -501,15 +507,15 @@ describe("proofreading-reader", () => {
   it("上下文跳过空行并按同文件自然顺序读取前后各两条且不替换当前列表视图", () => {
     const service = createProofreadingReader();
     const items = [
-      create_item({ item_id: 1, file_path: "before.txt", file_order: 0, dst: "前文件" }),
-      create_item({ item_id: 9, file_path: "script.txt", file_order: 1, dst: "译文 9" }),
-      create_item({ item_id: 10, file_path: "script.txt", file_order: 1, src: "  ", dst: "" }),
-      create_item({ item_id: 11, file_path: "script.txt", file_order: 1, dst: "译文 11" }),
-      create_item({ item_id: 12, file_path: "script.txt", file_order: 1, dst: "译文 12" }),
-      create_item({ item_id: 13, file_path: "script.txt", file_order: 1, src: "\t　", dst: "" }),
-      create_item({ item_id: 14, file_path: "script.txt", file_order: 1, dst: "译文 14" }),
-      create_item({ item_id: 15, file_path: "script.txt", file_order: 1, dst: "译文 15" }),
-      create_item({ item_id: 20, file_path: "after.txt", file_order: 2, dst: "后文件" }),
+      create_item({ item_id: 1, file_path: "before.txt", dst: "前文件" }),
+      create_item({ item_id: 9, file_path: "script.txt", dst: "译文 9" }),
+      create_item({ item_id: 10, file_path: "script.txt", src: "  ", dst: "" }),
+      create_item({ item_id: 11, file_path: "script.txt", dst: "译文 11" }),
+      create_item({ item_id: 12, file_path: "script.txt", dst: "译文 12" }),
+      create_item({ item_id: 13, file_path: "script.txt", src: "\t　", dst: "" }),
+      create_item({ item_id: 14, file_path: "script.txt", dst: "译文 14" }),
+      create_item({ item_id: 15, file_path: "script.txt", dst: "译文 15" }),
+      create_item({ item_id: 20, file_path: "after.txt", dst: "后文件" }),
     ];
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
@@ -566,7 +572,6 @@ describe("proofreading-reader", () => {
         {
           item_id: 1,
           file_path: "a.txt",
-          file_order: 0,
           row_number: 1,
           src: "文本",
           dst: "译文",
@@ -960,7 +965,7 @@ describe("proofreading-reader", () => {
   });
 });
 
-it("混合窗口按原页定位，页面只受文件和搜索限制，文本内容筛选不改变页面可见性", () => {
+it("混合窗口统一工程顺序、页面状态、筛选与计数，并保留内容更新后的结果快照", () => {
   const reader = createProofreadingReader();
   sync_full(reader, {
     projectId: "mixed",
@@ -997,12 +1002,12 @@ it("混合窗口按原页定位，页面只受文件和搜索限制，文本内�
     },
   ];
   const files = [
-    { rel_path: "a.txt", file_type: "TXT" },
     { rel_path: "b.pdf", file_type: "PDF" },
+    { rel_path: "a.txt", file_type: "TXT" },
     { rel_path: "empty.txt", file_type: "NONE" },
   ];
-  const sync = reader.sync_pages(documents, files, 1);
-  expect(sync.files).toContainEqual({ file_path: "empty.txt", kind: "item", count: 0 });
+  reader.sync_files(files, 1);
+  const sync = reader.sync_pages(documents, 1);
   const query: ProofreadingListViewQuery = {
     filters: sync.defaultFilters,
     keyword: "",
@@ -1010,35 +1015,49 @@ it("混合窗口按原页定位，页面只受文件和搜索限制，文本内�
     is_regex: false,
     sort_state: null,
   };
+  const page_id = (page: number) => build_proofreading_page_row_id("b.pdf", page);
   const view = reader.read_list_view(query);
-  expect(
-    view.window_rows.filter((row) => row.kind === "page").map((row) => row.page.status),
-  ).toEqual(["NONE", "PROCESSED", "PDF_KEEP", "PDF_OMIT", "PROCESSED"]);
-  expect(view.row_count).toBe(6);
-  expect(view.window_rows.map((row) => row.kind)).toEqual([
-    "item",
-    "page",
-    "page",
-    "page",
-    "page",
-    "page",
+  expect(view.window_rows.map((row) => row.row_id)).toEqual([
+    page_id(1),
+    page_id(2),
+    page_id(5),
+    "1",
   ]);
-  for (const direction of ["ascending", "descending"] as const) {
-    const sorted = reader.read_list_view({ ...query, sort_state: { column_id: "dst", direction } });
-    expect(
-      sorted.window_rows.filter((row) => row.kind === "page").map((row) => row.page.page),
-    ).toEqual([1, 2, 3, 4, 5]);
-  }
-  const text_filtered = reader.read_list_view({
-    ...query,
-    filters: { ...query.filters, outcomes: ["NO_WARNING"] },
-  });
-  expect(text_filtered.window_rows.map((row) => row.row_id)).toEqual(
-    [1, 2, 3, 4, 5].map((page) => build_proofreading_page_row_id("b.pdf", page)),
-  );
+  expect(sync.files.map((file) => file.file_path)).toEqual(["b.pdf", "a.txt", "empty.txt"]);
+  expect(sync.files.map((file) => file.count)).toEqual([5, 1, 0]);
+  const all_filters = {
+    ...query.filters,
+    outcomes: ["NONE", "NO_WARNING", "RULE_SKIPPED", "EXCLUDED"],
+  };
+  const all_view = reader.read_list_view({ ...query, filters: all_filters });
   expect(
-    reader.read_items_by_row_ids({ row_ids: text_filtered.window_rows.map((row) => row.row_id) }),
-  ).toEqual([]);
+    all_view.window_rows.filter((row) => row.kind === "page").map((row) => row.page.status),
+  ).toEqual(["NONE", "PROCESSED", "RULE_SKIPPED", "EXCLUDED", "PROCESSED"]);
+  for (const direction of ["ascending", "descending"] as const) {
+    const sorted = reader.read_list_view({
+      ...query,
+      filters: all_filters,
+      sort_state: { column_id: "dst", direction },
+    });
+    expect(sorted.window_rows.map((row) => row.row_id)).toEqual(
+      [1, 2, 3, 4, 5].map(page_id).concat("1"),
+    );
+  }
+  const statuses = [
+    ["NONE", [page_id(1), "1"]],
+    ["NO_WARNING", [page_id(2), page_id(5)]],
+    ["RULE_SKIPPED", [page_id(3)]],
+    ["EXCLUDED", [page_id(4)]],
+    ["GLOSSARY", []],
+  ] as const;
+  for (const [outcome, expected] of statuses) {
+    expect(
+      reader
+        .read_list_view({ ...query, filters: { ...all_filters, outcomes: [outcome] } })
+        .window_rows.map((row) => row.row_id),
+    ).toEqual(expected);
+  }
+  expect(reader.read_items_by_row_ids({ row_ids: [page_id(2), page_id(3)] })).toEqual([]);
   expect(reader.read_list_view({ ...query, keyword: "needle", scope: "dst" }).row_count).toBe(1);
   expect(reader.read_list_view({ ...query, keyword: "needle", scope: "src" }).row_count).toBe(0);
   expect(
@@ -1047,54 +1066,45 @@ it("混合窗口按原页定位，页面只受文件和搜索限制，文本内�
   expect(
     reader.read_list_view({
       ...query,
-      filters: {
-        ...query.filters,
-        glossary_entry_ids: ["hp"],
-        include_without_glossary_miss: false,
-      },
+      filters: { ...all_filters, glossary_entry_ids: ["hp"], include_without_glossary_miss: false },
     }).row_count,
-  ).toBe(5);
-  expect(reader.build_filter_panel({ filters: query.filters }).outcome_count_by_code).toMatchObject(
-    { NONE: 1 },
-  );
-  const content_filters = {
-    ...query.filters,
-    outcomes: [],
-    glossary_entry_ids: [],
-    include_without_glossary_miss: false,
-  };
+  ).toBe(0);
+  expect(
+    reader.read_list_view({
+      ...query,
+      filters: { ...all_filters, glossary_entry_ids: [], include_without_glossary_miss: true },
+    }).row_count,
+  ).toBe(6);
+  expect(
+    reader.read_list_view({ ...query, filters: { ...all_filters, outcomes: [] } }).row_count,
+  ).toBe(0);
   expect(
     reader
-      .read_list_view({ ...query, filters: content_filters })
-      .window_rows.map((row) => row.kind),
-  ).toEqual(Array(5).fill("page"));
-  expect(
-    reader.read_list_view({ ...query, filters: content_filters, keyword: "needle", scope: "dst" })
-      .row_count,
-  ).toBe(1);
-  expect(
-    reader
-      .read_list_view({ ...query, filters: { ...query.filters, file_paths: ["a.txt"] } })
+      .read_list_view({ ...query, filters: { ...all_filters, file_paths: ["a.txt"] } })
       .window_rows.map((row) => row.kind),
   ).toEqual(["item"]);
-  const panel = reader.build_filter_panel({
-    filters: { ...query.filters, outcomes: ["PDF_KEEP", "PDF_OMIT"] },
+  expect(reader.build_filter_panel({ filters: query.filters })).toMatchObject({
+    outcome_count_by_code: { NONE: 2, NO_WARNING: 2, RULE_SKIPPED: 1, EXCLUDED: 1 },
+    without_glossary_miss_count: 4,
   });
-  expect(panel.available_outcomes).not.toContain("PDF_KEEP");
-  expect(panel.available_outcomes).not.toContain("PDF_OMIT");
-  expect(panel.outcome_count_by_code).toEqual({ NONE: 1 });
-  expect(panel.without_glossary_miss_count).toBe(0);
-  const page_only_panel = reader.build_filter_panel({
-    filters: { ...query.filters, file_paths: ["b.pdf"] },
+  expect(
+    reader.build_filter_panel({ filters: { ...all_filters, file_paths: ["b.pdf"] } }),
+  ).toMatchObject({
+    outcome_count_by_code: { NONE: 1, NO_WARNING: 2, RULE_SKIPPED: 1, EXCLUDED: 1 },
+    without_glossary_miss_count: 5,
+    glossary_term_entries: [],
   });
-  expect(page_only_panel.outcome_count_by_code).toEqual({});
-  expect(page_only_panel.without_glossary_miss_count).toBe(0);
-  expect(page_only_panel.glossary_term_entries).toEqual([]);
-  expect(sync.defaultFilters.outcomes).not.toContain("PDF_KEEP");
-  expect(sync.defaultFilters.outcomes).not.toContain("PDF_OMIT");
+  expect(reader.read_warning_summary()).toEqual({ total_count: 0, entries: [] });
+  reader.sync_files([files[1]!, files[0]!, files[2]!], 2);
+  expect(reader.read_list_window({ view_id: all_view.view_id, start: 0, count: 10 }).rows).toEqual(
+    [],
+  );
+  expect(
+    reader.read_list_view({ ...query, filters: all_filters }).window_rows.map((row) => row.row_id),
+  ).toEqual(["1", ...[1, 2, 3, 4, 5].map(page_id)]);
   const stable = reader.read_list_view({ ...query, keyword: "needle" });
   documents[0]!.document.pages[1]!.translation = { kind: "translate", markdown: "updated" };
-  reader.sync_pages(documents, files, 2);
+  reader.sync_pages(documents, 2);
   const window = reader.read_list_window({ view_id: stable.view_id, start: 0, count: 10 });
   expect(window.rows).toMatchObject([
     {

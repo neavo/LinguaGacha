@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { build_project_file_records } from "./project-file-records";
 
-it("asset 决定文件集合与顺序，PDF 身份优先于旧条目且允许零条目文件", () => {
+it("asset 提供工程顺序，历史条目补在末尾，PDF 身份优先且允许零条目文件", () => {
   expect(
     build_project_file_records(
       [
@@ -22,5 +22,6 @@ it("asset 决定文件集合与顺序，PDF 身份优先于旧条目且允许零
     "book.pdf": { rel_path: "book.pdf", file_type: "PDF", sort_index: 5 },
     "text.txt": { rel_path: "text.txt", file_type: "TXT", sort_index: 8 },
     "other.bin": { rel_path: "other.bin", file_type: "NONE", sort_index: 9 },
+    "orphan.txt": { rel_path: "orphan.txt", file_type: "TXT", sort_index: 10 },
   });
 });

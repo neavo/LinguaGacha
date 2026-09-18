@@ -141,9 +141,9 @@ describe("ProofreadingTable", () => {
   });
   it.each([
     ["NONE", null],
-    ["PROCESSED", "proofreading_page.pages.translated"],
-    ["PDF_KEEP", "proofreading_page.pages.keep"],
-    ["PDF_OMIT", "proofreading_page.status.excluded"],
+    ["PROCESSED", "task_progress.translation_completed"],
+    ["RULE_SKIPPED", "proofreading_page.status.rule_skipped"],
+    ["EXCLUDED", "proofreading_page.status.excluded"],
   ] as const)("页面 %s 按四种状态显示查看入口和状态提示，保留行激活", async (status, label) => {
     vi.useFakeTimers();
     const on_open = vi.fn();
@@ -166,12 +166,9 @@ describe("ProofreadingTable", () => {
       ".proofreading-page__table-status-cell",
     )!;
     expect(translation.textContent).toBe(status === "NONE" ? "" : "proofreading_page.pages.view");
-    expect(translation.querySelector("[data-slot='tooltip-trigger']")).toBeNull();
-    expect(status_cell.textContent).toBe("");
     await act(async () => translation.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
     expect(on_open).toHaveBeenCalledWith('page:["book.pdf",1]');
     if (status === "NONE") {
-      expect(status_cell.querySelector("svg")).toBeNull();
       expect(status_cell.querySelector("[data-slot='tooltip-trigger']")).toBeNull();
       return;
     }
@@ -182,9 +179,6 @@ describe("ProofreadingTable", () => {
       vi.runAllTimers();
     });
     const tooltip = document.querySelector('[role="tooltip"]')!;
-    expect(tooltip.textContent).toContain(label);
-
-    if (status === "PROCESSED")
-      expect(tooltip.textContent).toContain("proofreading_page.filter.no_warning");
+    expect(tooltip.textContent).toBe(label);
   });
 });

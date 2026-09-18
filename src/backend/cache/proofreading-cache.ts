@@ -1,7 +1,7 @@
 import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import type { CacheFileEntry, CacheReadPort } from "./cache-types";
+import type { CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
 import { Item, type ProjectItemPublicRecord } from "../../domain/item";
 import { is_json_record, read_json_record, type JsonValue } from "../../domain/json";
@@ -37,19 +37,15 @@ import {
   type TextProcessingConfig,
 } from "../../shared/text/text-types";
 
-const PROOFREADING_CACHE_VERSION = 3;
-
-export type ProofreadingCacheKey = {
+type ProofreadingCacheKey = {
   projectPath: string;
   sessionEpoch: number;
   revisions: {
-    files: number;
     items: number;
     quality: number;
     proofreading: number;
   };
   processingConfig: TextProcessingConfig;
-  cacheVersion: number;
 };
 
 // 热查询只传递轻量身份，完整同步输入在身份未命中后再构造。
@@ -66,7 +62,7 @@ export type ProofreadingCacheResult<TData> = {
 };
 
 /**
- * 按工程、会话 epoch、依赖 revision 和完整文本处理配置缓存校对评估运行态。
+ * 按工程、会话 epoch、依赖修订和完整文本处理配置缓存校对评估运行态。
  */
 export class ProofreadingCache {
   private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
@@ -74,8 +70,10 @@ export class ProofreadingCache {
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
   private readonly read_pages: (projectPath: string) => PDFDocumentRecord[]; // 只在页面身份未命中时补读数据库事实。
-  private pages_key: string | null = null; // 页面独立按会话和 pdf revision 同步。
-  private synced_key: string | null = null; // synced_state 对应的完整身份
+  private session_key: string | null = null; // 工程或缓存世代变化同时撤销三个同步范围。
+  private files_revision: number | null = null; // null 表示文件索引需要同步。
+  private pages_revision: number | null = null; // 页面正文只随独立修订补读。
+  private synced_key: ProofreadingCacheKey | null = null; // 已同步文本评估的身份，文件和页面独立推进。
   private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
   private sync_promises = new Map<string, Promise<ProofreadingSyncState>>(); // 合并同身份并发同步
 
@@ -105,7 +103,7 @@ export class ProofreadingCache {
   }): Promise<ProofreadingCacheResult<ProofreadingSyncState>> {
     const identity = this.build_identity(input);
     const syncState = await this.ensure_synced(identity);
-    return this.with_identity(identity, syncState);
+    return this.with_identity(identity, syncState, syncState.revisions);
   }
 
   /**
@@ -199,23 +197,26 @@ export class ProofreadingCache {
   /**
    * 清理指定项目的校对评估运行态；未传项目时清掉当前身份。
    */
-  public async clearProject(projectPath?: string): Promise<void> {
-    const current_key = this.synced_key;
-    if (current_key === null) {
-      this.sync_promises.clear();
+  public clearProject(projectPath?: string): void {
+    if (
+      projectPath !== undefined &&
+      this.synced_state !== null &&
+      this.synced_state.projectId !== projectPath
+    )
       return;
-    }
-    const parsed_key = this.parse_key(current_key);
-    if (projectPath !== undefined && parsed_key?.projectPath !== projectPath) {
-      return;
-    }
-    this.pages_key = null;
+    if (this.synced_state !== null) this.reader.dispose_project(this.synced_state.projectId);
+    this.session_key = null;
+    this.files_revision = null;
+    this.pages_revision = null;
     this.synced_key = null;
     this.synced_state = null;
     this.sync_promises.clear();
-    if (parsed_key !== null) {
-      this.reader.dispose_project(parsed_key.projectPath);
-    }
+  }
+
+  /** 文本依赖变化只撤销评估身份，独立的文件和页面事实可继续复用。 */
+  private invalidate_evaluation(): void {
+    this.synced_key = null;
+    this.sync_promises.clear();
   }
 
   /**
@@ -226,8 +227,13 @@ export class ProofreadingCache {
     nextSectionRevisions: ProjectDataSectionRevisions,
   ): Promise<void> {
     if (change.items.mode !== "delta") {
-      if (this.should_clear_for_full_change(change)) {
-        await this.clearProject(change.projectPath);
+      if (change.items.mode === "full") this.files_revision = null;
+      if (
+        change.items.mode === "full" ||
+        change.quality.mode === "full" ||
+        change.settings.mode === "full"
+      ) {
+        this.invalidate_evaluation();
       }
       return;
     }
@@ -238,20 +244,19 @@ export class ProofreadingCache {
       this.sync_promises.clear();
       return;
     }
-    const parsed_key = this.parse_key(current_key);
-    if (parsed_key === null || parsed_key.projectPath !== change.projectPath) {
+    if (current_key.projectPath !== change.projectPath) {
       return;
     }
-    const next_revisions = this.to_proofreading_revisions(nextSectionRevisions, parsed_key);
-    if (this.should_clear_delta_identity(parsed_key, next_revisions)) {
-      await this.clearProject(change.projectPath);
+    const next_revisions = this.to_proofreading_revisions(nextSectionRevisions, current_key);
+    if (this.should_clear_delta_identity(current_key, next_revisions)) {
+      this.invalidate_evaluation();
       return;
     }
 
     try {
       const sync_state = this.reader.apply_item_delta({
         projectId: change.projectPath,
-        revisions: next_revisions,
+        revisions: { ...next_revisions, files: this.synced_state.revisions.files },
         total_item_count: this.cache.snapshot().itemCount,
         upsertItems:
           item_change.sourcePayloadMode === "field-patch"
@@ -265,13 +270,10 @@ export class ProofreadingCache {
         deleteItemIds: item_change.deleteIds,
       });
       this.synced_state = sync_state;
-      this.synced_key = JSON.stringify({
-        ...parsed_key,
-        revisions: next_revisions,
-      });
+      this.synced_key = { ...current_key, revisions: next_revisions };
     } catch {
       // 增量应用失败只丢弃派生运行态，下次查询会从权威缓存快照完整重建。
-      await this.clearProject(change.projectPath);
+      this.invalidate_evaluation();
     }
   }
 
@@ -280,17 +282,22 @@ export class ProofreadingCache {
    */
   private async query_current<TData>(read: () => TData): Promise<ProofreadingCacheResult<TData>> {
     const identity = this.build_identity({});
-    await this.ensure_synced(identity);
-    return this.with_identity(identity, read());
+    const sync_state = await this.ensure_synced(identity);
+    return this.with_identity(identity, read(), sync_state.revisions);
   }
 
   /**
    * 同一身份复用进行中的 Promise；未命中时经 worker 和列表读取器完整重建。
    */
   private async ensure_synced(identity: ProofreadingCacheIdentity): Promise<ProofreadingSyncState> {
-    if (this.synced_key === identity.keyString) {
+    const session_key = JSON.stringify([identity.key.projectPath, identity.key.sessionEpoch]);
+    if (this.session_key !== session_key) {
+      this.clearProject();
+      this.session_key = session_key;
+    }
+    if (this.synced_key !== null && JSON.stringify(this.synced_key) === identity.keyString) {
       if (this.synced_state !== null) {
-        return this.sync_pages(identity);
+        return this.sync_content();
       }
     }
     const pending = this.sync_promises.get(identity.keyString);
@@ -312,7 +319,11 @@ export class ProofreadingCache {
         if (
           this.sync_promises.get(identity.keyString) !== promise ||
           current.projectPath !== identity.key.projectPath ||
-          current.epoch !== identity.key.sessionEpoch
+          current.epoch !== identity.key.sessionEpoch ||
+          this.build_identity({
+            sourceLanguage: identity.key.processingConfig.source_language,
+            targetLanguage: identity.key.processingConfig.target_language,
+          }).keyString !== identity.keyString
         ) {
           throw new AppErrors.AppError("request.validation_failed", {
             diagnostic_context: { reason: "stale_proofreading_sync" },
@@ -322,10 +333,9 @@ export class ProofreadingCache {
           ...sync_input,
           ...result,
         });
-        this.synced_key = identity.keyString;
+        this.synced_key = identity.key;
         this.synced_state = sync_state;
-        this.pages_key = null;
-        return this.sync_pages(identity);
+        return this.sync_content();
       });
     this.sync_promises.set(identity.keyString, promise);
     try {
@@ -336,27 +346,29 @@ export class ProofreadingCache {
     }
   }
 
-  /** 页面修订号独立命中，滚动读取复用现有页面索引。 */
-  private sync_pages(identity: ProofreadingCacheIdentity): ProofreadingSyncState {
-    const revision = Number(identity.sectionRevisions.pdf ?? 0);
-    const key = JSON.stringify([
-      identity.key.projectPath,
-      identity.key.sessionEpoch,
-      identity.key.revisions.files,
-      revision,
-    ]);
-    if (this.pages_key !== key) {
-      this.synced_state = this.reader.sync_pages(
-        this.read_pages(identity.key.projectPath),
+  /** 文件与页面独立同步，文本评估完成后读取最新排列，避免迟到结果恢复旧顺序。 */
+  private sync_content(): ProofreadingSyncState {
+    const revisions = this.cache.readSectionRevisions();
+    const files_revision = Number(revisions.files ?? 0);
+    const pages_revision = Number(revisions.pdf ?? 0);
+    if (this.files_revision !== files_revision) {
+      this.synced_state = this.reader.sync_files(
         this.cache.files.readFileEntries(),
-        revision,
+        files_revision,
       );
-      this.pages_key = key;
+      this.files_revision = files_revision;
+    }
+    if (this.pages_revision !== pages_revision) {
+      this.synced_state = this.reader.sync_pages(
+        this.read_pages(this.synced_state!.projectId),
+        pages_revision,
+      );
+      this.pages_revision = pages_revision;
     }
     return this.synced_state!;
   }
 
-  /** 用会话身份、依赖 revision、文本处理配置和版本构造轻量同步 key。 */
+  /** 用会话身份、依赖修订和文本处理配置构造同步身份。 */
   private build_identity(input: {
     sourceLanguage?: JsonValue;
     targetLanguage?: JsonValue;
@@ -373,7 +385,6 @@ export class ProofreadingCache {
       clean_ruby: settings.clean_ruby,
     });
     const revisions = {
-      files: Number(sectionRevisions.files ?? 0),
       items: Number(sectionRevisions.items ?? 0),
       quality: Number(sectionRevisions.quality ?? 0),
       proofreading: Number(sectionRevisions.proofreading ?? 0),
@@ -383,7 +394,6 @@ export class ProofreadingCache {
       sessionEpoch: snapshot.epoch,
       revisions,
       processingConfig,
-      cacheVersion: PROOFREADING_CACHE_VERSION,
     };
     return {
       key,
@@ -394,10 +404,10 @@ export class ProofreadingCache {
 
   /** 缓存身份未命中时才复制完整条目与质量配置，热查询不承担 O(N) 输入构造。 */
   private build_sync_input(identity: ProofreadingCacheIdentity): ProofreadingSyncInput {
-    const items = this.build_items();
+    const items = this.cache.items.readItems().map((item) => this.to_runtime_item(item));
     return {
       projectId: identity.key.projectPath,
-      revisions: identity.key.revisions,
+      revisions: { ...identity.key.revisions, files: Number(identity.sectionRevisions.files ?? 0) },
       total_item_count: items.length,
       upsertItems: items,
       quality: this.normalize_quality_state(this.cache.quality.readBlock()),
@@ -406,7 +416,7 @@ export class ProofreadingCache {
   }
 
   /**
-   * 将派生数据与计算时的工程身份绑定，供 API 检测陈旧结果。
+   * 响应绑定实际同步快照的修订号，避免等待期间的新修订给旧结果背书。
    */
   private with_identity<TData>(
     identity: {
@@ -414,58 +424,40 @@ export class ProofreadingCache {
       sectionRevisions: ProjectDataSectionRevisions;
     },
     data: TData,
+    revisions: ProofreadingSyncState["revisions"],
   ): ProofreadingCacheResult<TData> {
+    if (
+      this.session_key !== JSON.stringify([identity.key.projectPath, identity.key.sessionEpoch])
+    ) {
+      throw new AppErrors.AppError("request.validation_failed", {
+        diagnostic_context: { reason: "stale_proofreading_sync" },
+      });
+    }
     return {
       projectPath: identity.key.projectPath,
-      sectionRevisions: identity.sectionRevisions,
+      sectionRevisions: { ...identity.sectionRevisions, ...revisions },
       data,
     };
-  }
-
-  /**
-   * 从基础缓存构造完整校对 item 输入。
-   */
-  private build_items(): ProofreadingItemRecord[] {
-    const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
-    return this.cache.items
-      .readItems()
-      .map((item) => this.to_runtime_item(item, file_order_by_path));
   }
 
   /**
    * 只为增量变更读取受影响 item，减少大项目重复复制。
    */
   private build_delta_items(item_ids: number[]): ProofreadingItemRecord[] {
-    const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
     return item_ids.flatMap((item_id) => {
       const item = this.cache.items.readItem(item_id);
-      return item === null ? [] : [this.to_runtime_item(item, file_order_by_path)];
+      return item === null ? [] : [this.to_runtime_item(item)];
     });
-  }
-
-  /**
-   * 构造文件路径到稳定排序值的映射，缺少 sort_index 时使用数组顺序兜底。
-   */
-  private build_file_order_by_path(file_entries: CacheFileEntry[]): Map<string, number> {
-    return new Map(
-      file_entries.map((entry, index) => {
-        return [entry.rel_path, Number.isFinite(entry.sort_index) ? entry.sort_index : index];
-      }),
-    );
   }
 
   /**
    * 将基础 item 缓存收窄为校对列表需要的稳定字段。
    */
-  private to_runtime_item(
-    item: ProjectItemPublicRecord,
-    file_order_by_path: Map<string, number>,
-  ): ProofreadingItemRecord {
+  private to_runtime_item(item: ProjectItemPublicRecord): ProofreadingItemRecord {
     const file_path = String(item["file_path"] ?? "");
     return {
       item_id: item.item_id,
       file_path,
-      file_order: file_order_by_path.get(file_path) ?? Number.MAX_SAFE_INTEGER,
       row_number: item.row_number,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
@@ -508,55 +500,27 @@ export class ProofreadingCache {
   }
 
   /**
-   * 解析已同步身份 key，失败时返回 null 触发保守清理。
-   */
-  private parse_key(value: string): ProofreadingCacheKey | null {
-    try {
-      const parsed = JSON.parse(value) as Partial<ProofreadingCacheKey>;
-      return typeof parsed.projectPath === "string" ? (parsed as ProofreadingCacheKey) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 任一基础事实全量重建都会使校对运行态身份失效。
-   */
-  private should_clear_for_full_change(change: CacheChange): boolean {
-    return (
-      change.fullRebuild ||
-      change.items.mode === "full" ||
-      change.files.mode === "full" ||
-      change.quality.mode === "full" ||
-      change.settings.mode === "full"
-    );
-  }
-
-  /**
-   * 文件、质量或倒退 revision 变化需要丢弃当前增量身份。
+   * 质量或倒退 revision 变化需要丢弃当前增量身份。
    */
   private should_clear_delta_identity(
     current_key: ProofreadingCacheKey,
     next_revisions: ProofreadingCacheKey["revisions"],
   ): boolean {
     return (
-      next_revisions.files !== current_key.revisions.files ||
       next_revisions.quality !== current_key.revisions.quality ||
       next_revisions.items < current_key.revisions.items ||
-      next_revisions.proofreading < current_key.revisions.proofreading ||
-      current_key.cacheVersion !== PROOFREADING_CACHE_VERSION
+      next_revisions.proofreading < current_key.revisions.proofreading
     );
   }
 
   /**
-   * 将全局 section revision 收窄成校对运行态关心的四个分区。
+   * 将全局 section revision 收窄成校对运行态关心的三个分区。
    */
   private to_proofreading_revisions(
     sectionRevisions: ProjectDataSectionRevisions,
     current_key: ProofreadingCacheKey,
   ): ProofreadingCacheKey["revisions"] {
     return {
-      files: this.read_number(sectionRevisions.files, current_key.revisions.files),
       items: this.read_number(sectionRevisions.items, current_key.revisions.items),
       quality: this.read_number(sectionRevisions.quality, current_key.revisions.quality),
       proofreading: this.read_number(

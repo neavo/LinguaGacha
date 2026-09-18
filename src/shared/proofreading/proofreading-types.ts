@@ -42,7 +42,7 @@ export const PROOFREADING_TRANSLATED_OUTCOME_CODES = [
   ...PROOFREADING_WARNING_CODES,
 ] as const;
 
-// 文本筛选分组统一提供显示顺序、默认选择和组内结果词表。
+// 文本与页面的筛选分组统一提供显示顺序、默认选择和组内结果词表。
 export const PROOFREADING_OUTCOME_GROUPS = [
   {
     code: "translated",
@@ -64,7 +64,7 @@ export const PROOFREADING_OUTCOME_GROUPS = [
 // 运行时可能出现尚未进入内置词表的新检查结果，因此公开筛选值保留字符串扩展点。
 export type ProofreadingOutcomeCode = string;
 
-// 文本和页面共用的列表状态排序，不决定内容筛选选项。
+// 文本和页面共用列表状态与排序。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -73,8 +73,6 @@ export const PROOFREADING_STATUS_ORDER = [
   "EXCLUDED",
   "RULE_SKIPPED",
   "DUPLICATED",
-  "PDF_KEEP",
-  "PDF_OMIT",
 ] as const;
 
 export type ProofreadingWarningFragmentsByCode = Partial<
@@ -107,7 +105,6 @@ export type ProofreadingItem = {
 export type ProofreadingItemRecord = {
   item_id: number;
   file_path: string;
-  file_order?: number;
   row_number: number;
   src: string;
   dst: string;
@@ -154,7 +151,7 @@ export type ProofreadingVisibleItem = {
 export type ProofreadingPageSummary = {
   file_path: string;
   page: number;
-  status: "NONE" | "PROCESSED" | "PDF_KEEP" | "PDF_OMIT";
+  status: "NONE" | "PROCESSED" | "RULE_SKIPPED" | "EXCLUDED";
 };
 
 export type ProofreadingRow =
@@ -183,7 +180,7 @@ export function proofreading_page_status(
 ): ProofreadingPageSummary["status"] {
   if (translation === null) return "NONE";
   if (translation.kind === "translate") return "PROCESSED";
-  return translation.kind === "keep" ? "PDF_KEEP" : "PDF_OMIT";
+  return translation.kind === "keep" ? "RULE_SKIPPED" : "EXCLUDED";
 }
 
 export type ProofreadingListView = {

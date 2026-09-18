@@ -54,6 +54,13 @@ describe("ItemCache", () => {
     );
 
     expect(cache.readItems().map((item) => item["item_id"])).toEqual([1, 3, 4]);
+    const files = cache.readFileMetadata();
+    expect(files).toEqual([
+      { file_path: "a.txt", file_type: "TXT" },
+      { file_path: "c.txt", file_type: "TXT" },
+    ]);
+    files[0]!.file_path = "changed";
+    expect(cache.readItem(1)?.file_path).toBe("a.txt");
     expect(cache.readItem(1)).toMatchObject({
       item_id: 1,
       file_path: "a.txt",
@@ -64,6 +71,7 @@ describe("ItemCache", () => {
   });
 });
 
+/** 默认文本条目只覆盖用例需要变化的字段。 */
 function create_item(
   item_id: number,
   overrides: Partial<ProjectItemPublicRecord> = {},

@@ -75,6 +75,18 @@ export class ItemCache {
     return Array.from(this.items_by_id.values(), (item) => ({ ...item }));
   }
 
+  /** 文件索引只需要路径与格式，重排文件时无需复制正文。 */
+  public readFileMetadata(): Pick<ProjectItemPublicRecord, "file_path" | "file_type">[] {
+    this.before_read();
+    const files = new Map<string, Pick<ProjectItemPublicRecord, "file_path" | "file_type">>();
+    for (const item of this.items_by_id.values()) {
+      if (item.file_path !== "" && !files.has(item.file_path)) {
+        files.set(item.file_path, { file_path: item.file_path, file_type: item.file_type });
+      }
+    }
+    return [...files.values()];
+  }
+
   /**
    * 按 item_id 读取单条记录，未命中返回 null。
    */

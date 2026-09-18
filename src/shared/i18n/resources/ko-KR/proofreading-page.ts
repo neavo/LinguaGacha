@@ -5,8 +5,6 @@ export const ko_kr_proofreading_page = {
     view: "열어서 보기",
     title: "페이지 미리보기",
     source_page: "{PAGE} 페이지",
-    keep: "원본 유지",
-    translated: "번역 있음",
     retry: "다시 시도",
     select_files: "파일 선택",
     page_count: "{COUNT}페이지",

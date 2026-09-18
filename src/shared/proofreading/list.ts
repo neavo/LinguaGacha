@@ -3,11 +3,16 @@ import {
   build_proofreading_row_id,
   compress_proofreading_text,
   resolve_proofreading_status_sort_rank,
+  proofreading_page_status,
+  resolve_proofreading_outcomes,
+  type ProofreadingEvaluatedItem,
+  type ProofreadingItemRecord,
   type ProofreadingClientItem,
   type ProofreadingVisibleItem,
   type ProofreadingWarningCode,
   type ProofreadingWarningFragmentsByCode,
 } from "./proofreading-types";
+import type { PDFPageRecord } from "../pdf";
 import type { GlossaryApplication } from "../quality/glossary";
 import type { ItemNameField } from "../../domain/item";
 
@@ -16,154 +21,98 @@ export type ProofreadingSortState = {
   direction: "ascending" | "descending";
 };
 
-type ProofreadingSortableItemRecord = {
-  item_id: number;
-  file_path: string;
-  file_order?: number;
-  row_number: number;
-  src: string;
-  dst: string;
-  name_src: ItemNameField;
-  name_dst: ItemNameField;
-  status: string;
-  retry_count: number;
-};
-
-// 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底。
-const PROOFREADING_NATURAL_SORT_STATE: ProofreadingSortState = {
-  column_id: "file",
-  direction: "ascending",
-};
-
-type ProofreadingListSortFields = Pick<
-  ProofreadingClientItem,
-  "item_id" | "file_path" | "row_number" | "src" | "dst" | "status"
->;
+/** 查询只持有原始事实的引用，展示字段在窗口响应边界生成。 */
+export type ProofreadingRowRecord =
+  | { kind: "item"; row_id: string; item: ProofreadingEvaluatedItem }
+  | { kind: "page"; row_id: string; record: PDFPageRecord };
 
 const PROOFREADING_TEXT_SORTER = new Intl.Collator("zh-Hans-CN");
 
-/**
- * 文本排序固定使用简体中文 locale，确保文件名和术语排序在各系统上稳定。
- */
+/** 文本比较固定 locale，文件排列位置由工程文件索引提供。 */
 export function compare_proofreading_text(left: string, right: string): number {
   return PROOFREADING_TEXT_SORTER.compare(left, right);
 }
 
-/**
- * 表格排序方向转成乘数，避免每个比较器重复写升降序分支。
- */
-function normalize_sort_direction(direction: "ascending" | "descending"): number {
-  return direction === "ascending" ? 1 : -1;
+/** 文本与页面使用各自记录中的文件归属。 */
+export function read_proofreading_row_file_path(row: ProofreadingRowRecord): string {
+  return row.kind === "item" ? row.item.file_path : row.record.file_path;
 }
 
-/**
- * 原始 item 的自然顺序必须按文件、行号、item_id 固定，支撑虚拟列表稳定窗口。
- */
-export function compare_proofreading_runtime_items(
-  left_item: ProofreadingSortableItemRecord,
-  right_item: ProofreadingSortableItemRecord,
+/** 页面处置映射为共享校对状态，文本沿用已保存状态。 */
+function read_proofreading_row_status(row: ProofreadingRowRecord): string {
+  return row.kind === "item"
+    ? row.item.status
+    : proofreading_page_status(row.record.page.translation);
+}
+
+/** 页面没有文本质量评估记录，已翻译页进入无警告集合。 */
+export function resolve_proofreading_row_outcomes(row: ProofreadingRowRecord): string[] {
+  return resolve_proofreading_outcomes(
+    row.kind === "item"
+      ? row.item
+      : {
+          status: read_proofreading_row_status(row),
+          warnings: [],
+        },
+  );
+}
+
+/** 自然顺序统一为工程文件顺序、行号或页码和数值身份。 */
+function compare_natural_rows(
+  left: ProofreadingRowRecord,
+  right: ProofreadingRowRecord,
+  file_order: ReadonlyMap<string, number>,
 ): number {
-  const left_file_order = Number(left_item.file_order ?? Number.NaN);
-  const right_file_order = Number(right_item.file_order ?? Number.NaN);
-  const file_order_result =
-    Number.isFinite(left_file_order) && Number.isFinite(right_file_order)
-      ? left_file_order - right_file_order
-      : 0;
-  if (file_order_result !== 0) {
-    return file_order_result;
-  }
-
-  const file_result = compare_proofreading_text(left_item.file_path, right_item.file_path);
-  if (file_result !== 0) {
-    return file_result;
-  }
-
-  const row_result = left_item.row_number - right_item.row_number;
-  if (row_result !== 0) {
-    return row_result;
-  }
-
-  return left_item.item_id - right_item.item_id;
+  const left_path = read_proofreading_row_file_path(left);
+  const right_path = read_proofreading_row_file_path(right);
+  const file_result =
+    (file_order.get(left_path) ?? Number.MAX_SAFE_INTEGER) -
+    (file_order.get(right_path) ?? Number.MAX_SAFE_INTEGER);
+  if (file_result !== 0) return file_result;
+  const path_result = compare_proofreading_text(left_path, right_path);
+  if (path_result !== 0) return path_result;
+  const position_result =
+    (left.kind === "item" ? left.item.row_number : left.record.page.page) -
+    (right.kind === "item" ? right.item.row_number : right.record.page.page);
+  if (position_result !== 0) return position_result;
+  if (left.kind === "item" && right.kind === "item") return left.item.item_id - right.item.item_id;
+  return compare_proofreading_text(left.row_id, right.row_id);
 }
 
-/**
- * 可见 item 的列排序只解释当前 UI 支持的列，未知列回退自然顺序。
- */
-function compare_visible_items(
-  left_item: ProofreadingListSortFields,
-  right_item: ProofreadingListSortFields,
-  sort_state: ProofreadingSortState,
-): number {
-  const direction = normalize_sort_direction(sort_state.direction);
-
-  if (sort_state.column_id === "file") {
-    const file_path_result = compare_proofreading_text(left_item.file_path, right_item.file_path);
-    if (file_path_result !== 0) {
-      return file_path_result * direction;
-    }
-
-    return (left_item.row_number - right_item.row_number) * direction;
-  }
-
-  if (sort_state.column_id === "status") {
-    const status_rank_result =
-      resolve_proofreading_status_sort_rank(left_item.status) -
-      resolve_proofreading_status_sort_rank(right_item.status);
-    if (status_rank_result !== 0) {
-      return status_rank_result * direction;
-    }
-
-    return compare_proofreading_text(left_item.status, right_item.status) * direction;
-  }
-
-  if (sort_state.column_id === "src") {
-    return compare_proofreading_text(left_item.src, right_item.src) * direction;
-  }
-
-  if (sort_state.column_id === "dst") {
-    return compare_proofreading_text(left_item.dst, right_item.dst) * direction;
-  }
-
-  return 0;
+/** 页面原文列显示页码，译文列只提供预览入口。 */
+function read_row_column_text(row: ProofreadingRowRecord, column: "src" | "dst"): string {
+  if (row.kind === "item") return row.item[column];
+  return column === "src" ? String(row.record.page.page).padStart(12, "0") : "";
 }
 
-/**
- * 可见列表排序会叠加自然顺序兜底，保证相同列值时行顺序不抖动。
- */
-function compare_list_view_items(
-  left_item: ProofreadingListSortFields,
-  right_item: ProofreadingListSortFields,
+/** 临时行引用只排序一次，同列值始终沿自然顺序兜底。 */
+export function sort_proofreading_rows(
+  rows: ProofreadingRowRecord[],
   sort_state: ProofreadingSortState | null,
-): number {
-  const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
-  const result = compare_visible_items(left_item, right_item, effective_sort_state);
-  if (result !== 0) {
-    return result;
-  }
-
-  if (effective_sort_state.column_id !== PROOFREADING_NATURAL_SORT_STATE.column_id) {
-    const natural_order_result = compare_visible_items(
-      left_item,
-      right_item,
-      PROOFREADING_NATURAL_SORT_STATE,
-    );
-    if (natural_order_result !== 0) {
-      return natural_order_result;
+  file_order: ReadonlyMap<string, number>,
+): ProofreadingRowRecord[] {
+  return rows.sort((left, right) => {
+    let result = 0;
+    if (sort_state?.column_id === "file") {
+      result = compare_proofreading_text(
+        read_proofreading_row_file_path(left),
+        read_proofreading_row_file_path(right),
+      );
+    } else if (sort_state?.column_id === "status") {
+      const left_status = read_proofreading_row_status(left);
+      const right_status = read_proofreading_row_status(right);
+      result =
+        resolve_proofreading_status_sort_rank(left_status) -
+          resolve_proofreading_status_sort_rank(right_status) ||
+        compare_proofreading_text(left_status, right_status);
+    } else if (sort_state?.column_id === "src" || sort_state?.column_id === "dst") {
+      result = compare_proofreading_text(
+        read_row_column_text(left, sort_state.column_id),
+        read_row_column_text(right, sort_state.column_id),
+      );
     }
-  }
-
-  return compare_proofreading_text(String(left_item.item_id), String(right_item.item_id));
-}
-
-/**
- * 原地排序列表行，调用方在构建临时列表后使用，避免复制大项目窗口数组。
- */
-export function sort_proofreading_items<TItem extends ProofreadingListSortFields>(
-  items: TItem[],
-  sort_state: ProofreadingSortState | null,
-): TItem[] {
-  return items.sort((left_item, right_item) => {
-    return compare_list_view_items(left_item, right_item, sort_state);
+    if (result !== 0) return result * (sort_state?.direction === "descending" ? -1 : 1);
+    return compare_natural_rows(left, right, file_order);
   });
 }
 
@@ -171,7 +120,7 @@ export function sort_proofreading_items<TItem extends ProofreadingListSortFields
  * 构建对外可见 item 时一次性压缩文本和克隆数组，避免 UI 改到缓存对象。
  */
 export function create_proofreading_client_item(args: {
-  item: ProofreadingSortableItemRecord;
+  item: Omit<ProofreadingItemRecord, "text_type">;
   warnings: ProofreadingWarningCode[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   glossary_applications: GlossaryApplication[];

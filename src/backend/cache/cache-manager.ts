@@ -140,11 +140,6 @@ export class CacheManager implements CacheReadPort {
    */
   public async applyChange(change: CacheChange): Promise<void> {
     const next_section_revisions = this.merge_section_revisions(change.sectionRevisions);
-    if (change.fullRebuild) {
-      this.rebuild_full_project_cache(change.projectPath);
-      await this.apply_view_change(change, this.section_revisions);
-      return;
-    }
     this.apply_base_change(change);
     await this.apply_view_change(change, next_section_revisions);
     this.section_revisions = next_section_revisions;
@@ -177,7 +172,10 @@ export class CacheManager implements CacheReadPort {
   private rebuild_full_project_cache(project_path: string): void {
     const meta = this.data_reader.get_all_meta(project_path);
     const items_snapshot = this.data_reader.build_runtime_items_snapshot(project_path);
-    const files_block = this.data_reader.build_files_record_block(project_path, items_snapshot);
+    const files_block = this.data_reader.build_files_record_block(
+      project_path,
+      items_snapshot.item_records,
+    );
     const quality_block = this.data_reader.build_quality_block(project_path, meta);
     const prompts_block = this.data_reader.build_prompts_block(project_path, meta);
     const section_revisions = this.data_reader.build_section_revisions(meta);
@@ -224,8 +222,20 @@ export class CacheManager implements CacheReadPort {
    */
   private apply_base_change(change: CacheChange): void {
     const meta_reader = this.create_meta_reader(change.projectPath);
-    if (change.items.mode === "delta") {
+    if (change.items.mode === "full") {
+      this.items.replace(
+        this.data_reader.build_runtime_items_snapshot(change.projectPath).item_records,
+      );
+    } else if (change.items.mode === "delta") {
       this.items.applyChange(change.items, this.read_item_delta_records(change));
+    }
+    if (change.files.mode === "full" || change.items.mode === "full") {
+      this.files.replace(
+        this.data_reader.build_files_record_block(
+          change.projectPath,
+          this.items.readFileMetadata(),
+        ),
+      );
     }
     if (change.quality.mode === "full") {
       this.quality.replace(this.data_reader.build_quality_block(change.projectPath, meta_reader()));
