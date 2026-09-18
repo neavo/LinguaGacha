@@ -27,11 +27,10 @@ import type { TranslationRequestItem } from "../translation-item";
  * 翻译译前流程产物，显式保存译后恢复需要的每行状态
  */
 export interface TranslationPrePipelineContext {
-  item: TextTaskItemRecord | null; // 保留当前 work unit 的可写快照，译后流程只回写这份对象
-  prepared_lines: PreparedTranslationSourceLine[]; // Per-line facts used only for deterministic restoration
-  request_item: TranslationRequestItem | null; // One complete item record sent to the model, when translatable
+  prepared_lines: PreparedTranslationSourceLine[]; // 请求与译后恢复共用逐行准备结果。
+  request_item: TranslationRequestItem | null; // 全部行均保留时跳过请求。
   samples: string[]; // 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
-  preserve_rule: TextPreserveRule | null; // 同一 item 的保护能力只编译一次并交给译后流程
+  preserve_rule: TextPreserveRule; // 同一条目的保护规则由译前和译后共用。
   reference_mappings: TextResourceReferenceMapping[]; // 当前请求正文的临时引用恢复映射
   actor_reference_mappings: TextResourceReferenceMapping[]; // 当前请求姓名的临时引用恢复映射
 }
@@ -60,30 +59,31 @@ export class TranslationPrePipeline {
    * 按固定顺序执行：引用投影、纯文本 ruby、保护、替换
    */
   public process_item(
-    item: TextTaskItemRecord | null,
+    item: TextTaskItemRecord,
     item_index = 0,
     request_id = 0,
   ): TranslationPrePipelineContext {
-    const context = this.create_empty_context(item);
-    if (item === null) {
-      return context;
-    }
     const text_type = String(item.text_type ?? "TXT").toUpperCase();
     const actor_text = read_optional_item_name_text(item.name_src);
     const actor_projection = actor_text === null ? null : this.project_text(actor_text);
     const source_projection = this.project_text(String(item.src ?? "").replace(/\r\n|\r/gu, "\n"));
-    context.reference_mappings = source_projection.mappings;
-    context.actor_reference_mappings = actor_projection?.mappings ?? [];
-    context.preserve_rule = build_text_preserve_rule({
+    const preserve_rule = build_text_preserve_rule({
       mode: this.quality_snapshot.text_preserve_mode,
       text_type,
       entries: this.quality_snapshot.text_preserve_entries,
     });
     const actor_src = actor_projection?.text ?? null;
     const source = source_projection.text;
-    for (const [line_index, raw_text] of source.split("\n").entries()) {
+    const context: TranslationPrePipelineContext = {
+      prepared_lines: [],
+      request_item: null,
+      samples: [],
+      preserve_rule,
+      reference_mappings: source_projection.mappings,
+      actor_reference_mappings: actor_projection?.mappings ?? [],
+    };
+    for (const raw_text of source.split("\n")) {
       const prepared_line = prepare_translation_source_line({
-        line_index,
         raw_text,
         text_type,
         config: this.config,
@@ -112,21 +112,6 @@ export class TranslationPrePipeline {
       };
     }
     return context;
-  }
-
-  /**
-   * 创建空上下文，保证无 item 和空 item 分支也返回同一形状
-   */
-  private create_empty_context(item: TextTaskItemRecord | null): TranslationPrePipelineContext {
-    return {
-      item,
-      prepared_lines: [],
-      request_item: null,
-      samples: [],
-      preserve_rule: null,
-      reference_mappings: [],
-      actor_reference_mappings: [],
-    };
   }
 
   /** 投影只读上文并延续当前 work unit 序号，不保存无需恢复的映射。 */

@@ -124,7 +124,7 @@ export function evaluateProofreadingItem(args: {
   quality_context: ProofreadingEvaluationContext;
   quality: QualitySnapshot;
   processingConfig: TextProcessingConfig;
-  sample_rule_cache: Map<string, TextPreserveRule | null>;
+  sample_rule_cache: Map<string, TextPreserveRule>;
 }): ProofreadingClientItem {
   const warnings: ProofreadingWarningCode[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
@@ -155,9 +155,8 @@ export function evaluateProofreadingItem(args: {
   if (args.item.dst !== "") {
     const review_src = split_text_lines(args.item.src)
       .map(
-        (raw_text, line_index) =>
+        (raw_text) =>
           prepare_translation_source_line({
-            line_index,
             raw_text,
             text_type: args.item.text_type,
             config: args.processingConfig,
@@ -242,20 +241,17 @@ export function evaluateProofreadingItem(args: {
 }
 
 /** 逐行移除保护片段，避免正则跨行改变翻译与校对共用的处理语义。 */
-function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule | null): string {
-  return rule === null
-    ? text
-    : split_text_lines(text)
-        .map((line) => rule.replace(line, ""))
-        .join("\n");
+function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule): string {
+  return split_text_lines(text)
+    .map((line) => rule.replace(line, ""))
+    .join("\n");
 }
 
 /** 按原行号收集非空保护片段，供源文与译文做精确对照。 */
 function collect_non_blank_segments_by_line(
   text: string,
-  rule: TextPreserveRule | null,
+  rule: TextPreserveRule,
 ): ProofreadingPreservedSegment[] {
-  if (rule === null) return [];
   return split_text_lines(text).flatMap((line, line_index) =>
     collect_non_blank_text_preserve_segments(line, rule).map((value) => ({ line_index, value })),
   );

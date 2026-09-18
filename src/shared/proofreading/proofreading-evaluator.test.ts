@@ -53,7 +53,6 @@ function evaluate(args: {
       source_language: args.sourceLanguage,
       target_language: args.targetLanguage ?? "ZH",
       clean_ruby: false,
-      auto_process_prefix_suffix_preserved_text: true,
       ...args.processingConfig,
     },
     sample_rule_cache: new Map(),
@@ -355,14 +354,14 @@ describe("proofreading-evaluator", () => {
     ).toContain("TEXT_PRESERVE");
   });
 
-  it("校对复用翻译的保护前缀优先顺序", () => {
+  it("校对按译前替换后的首尾保护段报告差异", () => {
     const quality = create_quality({
       pre_replacement: {
         enabled: true,
         mode: "custom",
         revision: 1,
         entries: [
-          { entry_id: "replace-a", src: "<A>", dst: "<X>", regex: false, case_sensitive: true },
+          { entry_id: "replace-a", src: "A", dst: "X", regex: false, case_sensitive: true },
         ],
       },
       text_preserve: {
@@ -374,7 +373,13 @@ describe("proofreading-evaluator", () => {
     });
 
     expect(
-      evaluate({ src: "<A>hello", dst: "<A>你好", sourceLanguage: "EN", quality })?.warnings,
+      evaluate({ src: "<A>hello</A>", dst: "<X>你好</X>", sourceLanguage: "EN", quality })
+        ?.warnings,
     ).not.toContain("TEXT_PRESERVE");
+    for (const dst of ["<A>你好</A>", "你好"]) {
+      expect(
+        evaluate({ src: "<A>hello</A>", dst, sourceLanguage: "EN", quality }).warnings,
+      ).toContain("TEXT_PRESERVE");
+    }
   });
 });

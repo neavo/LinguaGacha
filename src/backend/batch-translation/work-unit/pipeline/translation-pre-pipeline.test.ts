@@ -7,7 +7,10 @@ describe("TranslationPrePipeline", () => {
   it("混合保护行和可翻译行时产出完整 item 文本", () => {
     const context = new TranslationPrePipeline(
       create_config(),
-      create_quality_snapshot(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+      }),
     ).process_item(
       {
         src: "<skip>\nhello\n\nworld",
@@ -33,43 +36,7 @@ describe("TranslationPrePipeline", () => {
       text_type: "TXT",
     });
 
-    expect(line_texts(context)).toEqual([source_text]);
-  });
-
-  it("记录并剥离每行头尾空白", () => {
-    const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
-
-    const context = pipeline.process_item({
-      src: "  hello\t ",
-      text_type: "TXT",
-    });
-
-    expect(line_texts(context)).toEqual(["hello"]);
-    expect(context.prepared_lines[0]).toMatchObject({
-      leading_whitespace: "  ",
-      trailing_whitespace: "\t ",
-    });
-  });
-
-  it("抽取保护前后缀并记录恢复所需的位置", () => {
-    const pipeline = new TranslationPrePipeline(
-      create_config(),
-      create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
-      }),
-    );
-
-    const context = pipeline.process_item({
-      src: "  \\n[1]こんにちは\\n[2]  ",
-      text_type: "TXT",
-    });
-
-    expect(line_texts(context)).toEqual(["こんにちは"]);
-    expect(context.prepared_lines[0]).toMatchObject({
-      prefix_segments: ["\\n[1]"],
-      suffix_segments: ["\\n[2]"],
-    });
+    expect(context.request_item?.text_src).toBe(source_text);
   });
 
   it("启用译前替换时把规则结果送入模型", () => {
@@ -83,7 +50,9 @@ describe("TranslationPrePipeline", () => {
       }),
     );
 
-    expect(line_texts(pipeline.process_item({ src: "hello", text_type: "TXT" }))).toEqual(["你好"]);
+    expect(pipeline.process_item({ src: "hello", text_type: "TXT" }).request_item?.text_src).toBe(
+      "你好",
+    );
   });
 
   it("带姓名的 item 不向模型输入注入姓名前缀", () => {
@@ -95,7 +64,7 @@ describe("TranslationPrePipeline", () => {
       text_type: "TXT",
     });
 
-    expect(line_texts(context)).toEqual(["こんにちは"]);
+    expect(context.request_item?.text_src).toBe("こんにちは");
     expect(context.request_item?.actor_src).toBe("Alice");
   });
 
@@ -122,34 +91,6 @@ describe("TranslationPrePipeline", () => {
     expect(context.samples).toEqual(["lg-uri/1", "lg-uri/2"]);
   });
 
-  it("空 item 会返回同一形状的空上下文", () => {
-    const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
-
-    const context = pipeline.process_item(null);
-
-    expect(line_texts(context)).toEqual([]);
-    expect(context.samples).toEqual([]);
-    expect(context.prepared_lines).toEqual([]);
-  });
-
-  it("跳过空白行并为 Markdown 追加固定控制字符示例", () => {
-    const pipeline = new TranslationPrePipeline(
-      create_config(),
-      create_quality_snapshot({
-        text_preserve_mode: "OFF",
-      }),
-    );
-
-    const context = pipeline.process_item({
-      src: "   \nhello",
-      text_type: "MD",
-    });
-
-    expect(line_texts(context)).toEqual(["hello"]);
-    expect(context.prepared_lines.map((line) => line.state)).toEqual(["preserved", "translatable"]);
-    expect(context.samples).toEqual(["Markdown Code"]);
-  });
-
   it("只读取 item.src，不消费 EPUB 私有候选字段", () => {
     const pipeline = new TranslationPrePipeline(
       create_config({ clean_ruby: true }),
@@ -167,13 +108,13 @@ describe("TranslationPrePipeline", () => {
       },
     });
 
-    expect(line_texts(context)).toEqual(["宝條直希"]);
+    expect(context.request_item?.text_src).toBe("宝條直希");
     expect(context.prepared_lines[0]?.state).toBe("translatable");
   });
 
-  it("关闭自动前后缀保护时保留原文并跳过完全保护行", () => {
+  it("完全保护条目跳过请求，混合正文保留标签", () => {
     const pipeline = new TranslationPrePipeline(
-      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
@@ -189,19 +130,15 @@ describe("TranslationPrePipeline", () => {
       text_type: "TXT",
     });
 
-    expect(line_texts(fully_preserved)).toEqual([]);
+    expect(fully_preserved.request_item).toBeNull();
     expect(fully_preserved.prepared_lines[0]?.state).toBe("preserved");
     expect(fully_preserved.samples).toEqual(["<b>", "</b>"]);
-    expect(line_texts(partially_preserved)).toEqual(["<b>hello</b>"]);
-    expect(partially_preserved.prepared_lines[0]).toMatchObject({
-      prefix_segments: [],
-      suffix_segments: [],
-    });
+    expect(partially_preserved.request_item?.text_src).toBe("<b>hello</b>");
   });
 
-  it("保护模式关闭时即使自动前后缀保护关闭也不会跳过整行代码", () => {
+  it("保护模式关闭时自定义规则不参与整行保护判断", () => {
     const pipeline = new TranslationPrePipeline(
-      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_config(),
       create_quality_snapshot({
         text_preserve_mode: "OFF",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
@@ -213,19 +150,10 @@ describe("TranslationPrePipeline", () => {
       text_type: "TXT",
     });
 
-    expect(line_texts(context)).toEqual(["<b></b>"]);
+    expect(context.request_item?.text_src).toBe("<b></b>");
     expect(context.prepared_lines[0]?.state).toBe("translatable");
   });
 });
-
-/**
- * 读取译前产物中的模型输入正文，测试只关心公开 context 内容。
- */
-function line_texts(context: ReturnType<TranslationPrePipeline["process_item"]>): string[] {
-  return context.prepared_lines
-    .filter((line) => line.state === "translatable")
-    .map((line) => line.model_text);
-}
 
 /**
  * 生成翻译 pipeline 默认配置，测试通过 overrides 聚焦单个规则分支。
@@ -235,7 +163,6 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    auto_process_prefix_suffix_preserved_text: true,
     ...overrides,
   };
 }

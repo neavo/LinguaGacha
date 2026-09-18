@@ -40,8 +40,7 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     title_key:
       | "expert_settings_page.fields.clean_ruby.title"
       | "expert_settings_page.fields.deduplication_in_bilingual.title"
-      | "expert_settings_page.fields.write_translated_name_fields_to_file.title"
-      | "expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title";
+      | "expert_settings_page.fields.write_translated_name_fields_to_file.title";
     value: boolean;
     disabled: boolean;
     on_value_change: (next_value: boolean) => void;
@@ -167,24 +166,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
             disabled: expert_settings_state.pending_state.write_translated_name_fields_to_file,
             on_value_change: (next_value) => {
               void expert_settings_state.update_write_translated_name_fields_to_file(next_value);
-            },
-          })}
-        />
-
-        <SettingCardRow
-          title={t("expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title")}
-          description={t(
-            "expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.description",
-          )}
-          action={render_boolean_toggle({
-            title_key:
-              "expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title",
-            value: expert_settings_state.snapshot.auto_process_prefix_suffix_preserved_text,
-            disabled: expert_settings_state.pending_state.auto_process_prefix_suffix_preserved_text,
-            on_value_change: (next_value) => {
-              void expert_settings_state.update_auto_process_prefix_suffix_preserved_text(
-                next_value,
-              );
             },
           })}
         />

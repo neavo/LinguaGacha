@@ -11,14 +11,11 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import type { TextPreserveEntry, TextReplacementEntry } from "../../domain/quality";
 import { AppError } from "../error";
 
-/**
- * 文本处理只依赖的配置字段，字段名保持配置快照兼容
- */
+/** 翻译与校对共享的文本处理配置。 */
 export interface TextProcessingConfig {
   source_language: ConfiguredSourceLanguageCode; // 源/目标语言在快照恢复时完成归一与校验
   target_language: TargetLanguageCode;
   clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
-  auto_process_prefix_suffix_preserved_text: boolean; // 自动保护前后缀开关决定完全保护行是否仍进入翻译流程
 }
 
 /** 将外部设置收窄为翻译与校对共享的规范语言配置。 */
@@ -26,7 +23,6 @@ export function normalize_text_processing_config(args: {
   source_language: string;
   target_language: string;
   clean_ruby: boolean;
-  auto_process_prefix_suffix_preserved_text: boolean;
 }): TextProcessingConfig {
   const source_language = normalize_source_language_code(args.source_language);
   if (source_language === null) {
@@ -47,7 +43,6 @@ export function normalize_text_processing_config(args: {
     source_language,
     target_language,
     clean_ruby: args.clean_ruby,
-    auto_process_prefix_suffix_preserved_text: args.auto_process_prefix_suffix_preserved_text,
   };
 }
 
@@ -83,13 +78,9 @@ export type TextTaskItemRecord = JsonRecord & {
   extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };
 
-/**
- * 质量快照解析工具，集中兼容嵌套 payload 和旧扁平字段
- */
+/** 从嵌套质量载荷提取翻译任务所需的规则。 */
 export class TextQualitySnapshotTool {
-  /**
-   * 从 API JSON 恢复成不可变值对象；缺失字段按质量规则领域默认值处理
-   */
+  /** 复用质量规则归一入口，缺失字段沿用领域默认值。 */
   public static from_api_value(value: JsonValue | undefined): TextQualitySnapshot {
     const snapshot = QualityRuleSnapshotTool.from_json(value);
     return {
@@ -120,7 +111,6 @@ export class TextProcessingConfigTool {
       source_language: snapshot.source_language,
       target_language: snapshot.target_language,
       clean_ruby: snapshot.clean_ruby,
-      auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
     });
   }
 }

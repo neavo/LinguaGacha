@@ -35,7 +35,6 @@ describe("run_compute_worker_task", () => {
           source_language: "JA",
           target_language: "ZH",
           clean_ruby: false,
-          auto_process_prefix_suffix_preserved_text: true,
         },
       },
     });

@@ -148,7 +148,6 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
     clean_ruby: false,
     deduplication_in_bilingual: true,
     write_translated_name_fields_to_file: true,
-    auto_process_prefix_suffix_preserved_text: true,
     mtool_optimizer_enable: true,
     skip_duplicate_source_text_enable: true,
     glossary_default_preset: "",

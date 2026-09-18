@@ -38,15 +38,6 @@ export const en_us_expert_settings_page = {
         "\n" +
         "• VNTextPatch or SExtractor exported game text with name fields (.json)",
     },
-    auto_process_prefix_suffix_preserved_text: {
-      title: "Auto Process Prefix/Suffix Preserved Text",
-      description:
-        "Whether to auto-process text segments at the start/end that match preserve rules, enabled by default" +
-        "\n" +
-        "• Enabled: Removes segments matching preserve rules and restores them after translation" +
-        "\n" +
-        "• Disabled: Sends the full text for better context, but may reduce preserve effectiveness",
-    },
   },
   feedback: {
     refresh_failed: "Unable to refresh expert settings right now. Please try again later.",

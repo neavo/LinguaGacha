@@ -184,7 +184,7 @@ type ProofreadingReaderState = {
   quality: QualitySnapshot;
   processingConfig: TextProcessingConfig;
   quality_context: ProofreadingEvaluationContext;
-  sample_rule_cache: Map<string, TextPreserveRule | null>;
+  sample_rule_cache: Map<string, TextPreserveRule>;
   raw_item_by_id: Map<string, ProofreadingItemRecord>;
   natural_item_ids: string[];
   evaluated_item_by_id: Map<string, ProofreadingClientItem>;
@@ -778,7 +778,7 @@ export function evaluateProofreadingSlice(
   input: ProofreadingSyncInput,
 ): ProofreadingEvaluatedSlice {
   const quality_context = buildProofreadingEvaluationContext(input.quality);
-  const sample_rule_cache = new Map<string, TextPreserveRule | null>();
+  const sample_rule_cache = new Map<string, TextPreserveRule>();
   const rawItems: ProofreadingItemRecord[] = [];
   const evaluatedItems: ProofreadingClientItem[] = [];
 
@@ -824,7 +824,7 @@ function create_run_state_from_evaluated(
     quality: input.quality,
     processingConfig: { ...input.processingConfig },
     quality_context: buildProofreadingEvaluationContext(input.quality),
-    sample_rule_cache: new Map<string, TextPreserveRule | null>(),
+    sample_rule_cache: new Map<string, TextPreserveRule>(),
     raw_item_by_id: new Map(),
     natural_item_ids: [],
     evaluated_item_by_id: new Map(),

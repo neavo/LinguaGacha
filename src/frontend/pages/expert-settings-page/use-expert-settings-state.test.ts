@@ -11,7 +11,6 @@ const snapshot: ExpertSettingsSnapshot = {
   clean_ruby: false,
   deduplication_in_bilingual: false,
   write_translated_name_fields_to_file: false,
-  auto_process_prefix_suffix_preserved_text: false,
 };
 
 vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
@@ -22,7 +21,6 @@ vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({
       clean_ruby: false,
       deduplication_in_bilingual: false,
       write_translated_name_fields_to_file: false,
-      auto_process_prefix_suffix_preserved_text: false,
     },
     commit_update,
   }),
@@ -46,11 +44,13 @@ describe("useExpertSettingsState", () => {
     commit_update.mockClear();
   });
 
+  /** 记录本次渲染返回的编辑入口。 */
   function Probe(): null {
     latest_state = useExpertSettingsState();
     return null;
   }
 
+  /** 挂载探针并等待编辑入口可用。 */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");

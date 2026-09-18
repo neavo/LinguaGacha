@@ -5,7 +5,7 @@ import { compile_text_replacements } from "./text-replacement-rules";
 import { prepare_translation_source_line } from "./translation-source-line";
 
 describe("prepare_translation_source_line", () => {
-  it("先抽取保护前缀，再执行译前替换并生成可恢复投影", () => {
+  it("首尾保护段参与译前替换，恢复依据保留替换前正文", () => {
     const preserve_rule = build_text_preserve_rule({
       mode: "CUSTOM",
       text_type: "TXT",
@@ -14,27 +14,22 @@ describe("prepare_translation_source_line", () => {
 
     expect(
       prepare_translation_source_line({
-        line_index: 2,
-        raw_text: "  <A>one  ",
+        raw_text: "  <A>one</A>  ",
         text_type: "TXT",
-        config: { clean_ruby: false, auto_process_prefix_suffix_preserved_text: true },
+        config: { clean_ruby: false },
         preserve_rule,
         pre_replacements: compile_text_replacements([
           { src: "one", dst: "<Q>one", regex: false, case_sensitive: true },
+          { src: "A", dst: "B", regex: false, case_sensitive: true },
         ]),
       }),
     ).toEqual({
-      line_index: 2,
-      raw_text: "  <A>one  ",
       state: "translatable",
-      restoration_text: "one",
-      model_text: "<Q>one",
-      prepared_text: "  <A><Q>one  ",
+      restoration_text: "<A>one</A>",
+      prepared_text: "  <B><Q>one</B>  ",
       leading_whitespace: "  ",
       trailing_whitespace: "  ",
-      prefix_segments: ["<A>"],
-      suffix_segments: [],
-      samples: ["<A>", "<Q>"],
+      samples: ["<B>", "<Q>", "</B>"],
     });
   });
 });

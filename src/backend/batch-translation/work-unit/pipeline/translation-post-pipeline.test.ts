@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import type { TranslationDecodedItem } from "../translation-item";
 import { TranslationPostPipeline } from "./translation-post-pipeline";
 import {
   TranslationPrePipeline,
@@ -8,25 +7,42 @@ import {
 } from "./translation-pre-pipeline";
 
 describe("TranslationPostPipeline", () => {
-  it("按译前上下文恢复保护前后缀和原始空白", () => {
+  it.each([
+    ["<b>你好</b>", "<b>你好</b>"],
+    ["你好", "你好"],
+    ["<b><b>你好</b></b>", "<b>你好</b>"],
+  ])("按完整请求中的保护段处理模型响应：%s", (response, expected) => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
-    const context = pre.process_item({
-      src: "  \\n[1]こんにちは\\n[2]  ",
-      text_type: "TXT",
-    });
+    const context = pre.process_item({ src: "<b>hello</b>", text_type: "TXT" });
 
-    const result = process_text(post, context, ["你好"]);
-
-    expect(result).toBe("  \\n[1]你好\\n[2]  ");
+    expect(process_text(post, context, [response])).toBe(expected);
   });
 
-  it("使用剥离物理结构后的源文恢复标点和圆圈数字", () => {
+  it("译前和译后替换覆盖首尾保护段", () => {
+    const { pre, post } = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+        pre_replacement_enable: true,
+        pre_replacement_entries: [{ src: "A", dst: "B", regex: false, case_sensitive: true }],
+        post_replacement_enable: true,
+        post_replacement_entries: [{ src: "B", dst: "C", regex: false, case_sensitive: true }],
+      }),
+    );
+    const context = pre.process_item({ src: "<A>hello</A>", text_type: "TXT" });
+
+    expect(context.request_item?.text_src).toBe("<B>hello</B>");
+    expect(process_text(post, context, ["<B>你好</B>"])).toBe("<C>你好</C>");
+  });
+
+  it("使用包含保护段的源文恢复标点和圆圈数字", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
@@ -39,20 +55,12 @@ describe("TranslationPostPipeline", () => {
       text_type: "TXT",
     });
 
-    expect(process_text(post, context, ['"1"'])).toBe("  \\n[7]「①」\\n[8]  ");
+    expect(process_text(post, context, ['\\n[7]"1"\\n[8]'])).toBe("  \\n[7]「①」\\n[8]  ");
   });
 
-  it("空 item 返回空译后结果", () => {
-    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
-
-    const result = process_text(post, pre.process_item(null), ["ignored"]);
-
-    expect(result).toBe("");
-  });
-
-  it("译后保留空行、纯空白行和未进入模型的行", () => {
+  it("行数对应时恢复空白行和完全保护行", () => {
     const { pre, post } = create_pipeline_pair(
-      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
         text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
@@ -63,7 +71,7 @@ describe("TranslationPostPipeline", () => {
       text_type: "TXT",
     });
 
-    const result = process_text(post, context, ["ok"]);
+    const result = process_text(post, context, ["ok", "模型改写空行", "<changed>"]);
 
     expect(result).toBe("ok\n \n<skip>");
   });
@@ -83,7 +91,7 @@ describe("TranslationPostPipeline", () => {
     expect(result).toBe("  ok  ");
   });
 
-  it("处理混合多行和前后缀保护时按行恢复译文", () => {
+  it("混合多行文本保留模型标签并恢复空白", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
       create_quality_snapshot({
@@ -97,7 +105,7 @@ describe("TranslationPostPipeline", () => {
       name_src: "Alice",
       text_type: "TXT",
     });
-    const result = process_text(post, context, ["uno", "dos"]);
+    const result = process_text(post, context, ["<b>uno</b>", "", "dos"]);
 
     expect(result).toBe("  <b>uno</b>  \n\n  dos  ");
   });
@@ -234,23 +242,6 @@ describe("TranslationPostPipeline", () => {
     expect(process_text(post, context, ["B<x><1>1"])).toBe("B<1>①");
   });
 
-  it("代码修复以实际模型源文为准，保留译前替换生成的保护码", () => {
-    const { pre, post } = create_pipeline_pair(
-      create_config(),
-      create_quality_snapshot({
-        text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
-        pre_replacement_enable: true,
-        pre_replacement_entries: [
-          { src: "one", dst: "<Q>one", regex: false, case_sensitive: true },
-        ],
-      }),
-    );
-    const context = pre.process_item({ src: "one", text_type: "TXT" });
-
-    expect(process_text(post, context, ["<Q>一"])).toBe("<Q>一");
-  });
-
   it("保护段使用模型源文，数字形式使用恢复源文", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
@@ -324,34 +315,21 @@ function create_pipeline_pair(config: TextProcessingConfig, quality_snapshot: Te
   };
 }
 
-/**
- * 以 text 模式执行译后流程，构造与真实响应相同的完整 item 文本。
- */
+/** 以完整模型响应执行译后流程，测试输入显式包含每一行。 */
 function process_text(
   post_pipeline: TranslationPostPipeline,
   context: TranslationPrePipelineContext,
   dsts: string[],
 ): string {
-  return post_pipeline.process_item(context, decoded_item(context, dsts), "text").dst;
-}
-
-/**
- * 将可翻译行译文嵌回完整 item，保留保护行与空行以命中正常恢复路径。
- */
-function decoded_item(
-  context: TranslationPrePipelineContext,
-  dsts: string[],
-): TranslationDecodedItem {
-  let translated_index = 0;
-  const lines = context.prepared_lines.map((line) => {
-    if (line.state === "preserved") return line.raw_text;
-    return dsts[translated_index++] ?? "";
-  });
-  return {
-    request_id: context.request_item?.request_id ?? 0,
-    text_dst: lines.join("\n"),
-    actor_dst: null,
-  };
+  return post_pipeline.process_item(
+    context,
+    {
+      request_id: context.request_item?.request_id ?? 0,
+      text_dst: dsts.join("\n"),
+      actor_dst: null,
+    },
+    "text",
+  ).dst;
 }
 
 /**
@@ -362,7 +340,6 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    auto_process_prefix_suffix_preserved_text: true,
     ...overrides,
   };
 }

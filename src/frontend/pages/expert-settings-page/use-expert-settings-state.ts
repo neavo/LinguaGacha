@@ -13,7 +13,6 @@ const EXPERT_SETTINGS_PENDING_FIELDS = [
   "clean_ruby",
   "deduplication_in_bilingual",
   "write_translated_name_fields_to_file",
-  "auto_process_prefix_suffix_preserved_text",
 ] as const;
 
 type ExpertSettingsPendingField = (typeof EXPERT_SETTINGS_PENDING_FIELDS)[number];
@@ -25,7 +24,6 @@ type UseExpertSettingsStateResult = {
   update_clean_ruby: (next_checked: boolean) => Promise<void>;
   update_deduplication_in_bilingual: (next_checked: boolean) => Promise<void>;
   update_write_translated_name_fields_to_file: (next_checked: boolean) => Promise<void>;
-  update_auto_process_prefix_suffix_preserved_text: (next_checked: boolean) => Promise<void>;
 };
 
 /**
@@ -98,17 +96,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     [commit_update, snapshot.write_translated_name_fields_to_file],
   );
 
-  const update_auto_process_prefix_suffix_preserved_text = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      if (snapshot.auto_process_prefix_suffix_preserved_text !== next_checked) {
-        await commit_update("auto_process_prefix_suffix_preserved_text", {
-          auto_process_prefix_suffix_preserved_text: next_checked,
-        });
-      }
-    },
-    [commit_update, snapshot.auto_process_prefix_suffix_preserved_text],
-  );
-
   return {
     snapshot,
     pending_state,
@@ -116,6 +103,5 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     update_clean_ruby,
     update_deduplication_in_bilingual,
     update_write_translated_name_fields_to_file,
-    update_auto_process_prefix_suffix_preserved_text,
   };
 }

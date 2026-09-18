@@ -12,7 +12,7 @@ describe("restore_translation_line", () => {
 
     expect(
       restore({
-        model_text: "A<1>B<3>C",
+        prepared_text: "A<1>B<3>C",
         restoration_text: "A<1>B<3>C",
         translation: "A<1>B<x><3><y>C",
         preserve_rule: rule,
@@ -20,7 +20,7 @@ describe("restore_translation_line", () => {
     ).toBe("A<1>B<3>C");
     expect(
       restore({
-        model_text: "A<1>B<2>C",
+        prepared_text: "A<1>B<2>C",
         restoration_text: "A<1>B<2>C",
         translation: "A<1><x>B<3>C",
         preserve_rule: rule,
@@ -31,14 +31,18 @@ describe("restore_translation_line", () => {
   it("按后继字符恢复反斜杠段长度", () => {
     const source = String.raw`\\n[1] \\E`;
     expect(
-      restore({ restoration_text: source, model_text: source, translation: String.raw`\n[1] \E` }),
+      restore({
+        restoration_text: source,
+        prepared_text: source,
+        translation: String.raw`\n[1] \E`,
+      }),
     ).toBe(source);
 
     const reordered = String.raw`\b \a`;
     expect(
       restore({
         restoration_text: String.raw`\\a \\b`,
-        model_text: String.raw`\\a \\b`,
+        prepared_text: String.raw`\\a \\b`,
         translation: reordered,
       }),
     ).toBe(reordered);
@@ -46,13 +50,13 @@ describe("restore_translation_line", () => {
 
   it("全部数字值一致时一次性恢复圆圈数字形式", () => {
     expect(
-      restore({ restoration_text: "① 2 ㉑", model_text: "① 2 ㉑", translation: "1 2 21" }),
+      restore({ restoration_text: "① 2 ㉑", prepared_text: "① 2 ㉑", translation: "1 2 21" }),
     ).toBe("① 2 ㉑");
 
     const mismatched = "1 3";
-    expect(restore({ restoration_text: "① 2", model_text: "① 2", translation: mismatched })).toBe(
-      mismatched,
-    );
+    expect(
+      restore({ restoration_text: "① 2", prepared_text: "① 2", translation: mismatched }),
+    ).toBe(mismatched);
   });
 
   it.each([
@@ -66,7 +70,7 @@ describe("restore_translation_line", () => {
     expect(
       restore({
         restoration_text: source,
-        model_text: source,
+        prepared_text: source,
         translation,
         source_language,
         target_language,
@@ -79,7 +83,7 @@ describe("restore_translation_line", () => {
     expect(
       restore({
         restoration_text: "<tag title=“name”>“text”",
-        model_text: "<tag title=“name”>“text”",
+        prepared_text: "<tag title=“name”>“text”",
         translation: "<tag title=“name”>“译文”",
         preserve_rule: rule,
         target_language: "ZH",
@@ -92,7 +96,7 @@ describe("restore_translation_line", () => {
     expect(
       restore({
         restoration_text: "A:B：C",
-        model_text: "A:B：C",
+        prepared_text: "A:B：C",
         translation,
         source_language: "EN",
         target_language: "EN",
@@ -104,7 +108,7 @@ describe("restore_translation_line", () => {
     const rule = create_rule(["<[^>]+>"]);
     const args = {
       restoration_text: String.raw`「①\\n」<x>`,
-      model_text: String.raw`「①\\n」<x>`,
+      prepared_text: String.raw`「①\\n」<x>`,
       translation: String.raw`“1\n”<extra><x>`,
       preserve_rule: rule,
       source_language: "JA" as const,
@@ -116,11 +120,12 @@ describe("restore_translation_line", () => {
   });
 });
 
+/** 默认使用日译中配置，各用例显式提供恢复依据与响应。 */
 function restore(
   overrides: Partial<Parameters<typeof restore_translation_line>[0]> &
     Pick<
       Parameters<typeof restore_translation_line>[0],
-      "restoration_text" | "model_text" | "translation"
+      "restoration_text" | "prepared_text" | "translation"
     >,
 ): string {
   return restore_translation_line({
@@ -131,6 +136,7 @@ function restore(
   });
 }
 
+/** 用测试自有表达式构造保护规则。 */
 function create_rule(sources: string[]): TextPreserveRule {
   const rule = build_text_preserve_rule({
     mode: "CUSTOM",

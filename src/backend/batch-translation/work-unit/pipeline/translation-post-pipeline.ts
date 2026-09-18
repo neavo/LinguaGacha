@@ -18,16 +18,16 @@ import {
   type TextResourceReferenceMapping,
 } from "../../../../shared/text/text-resource-reference";
 
-/** Public item writeback produced after deterministic restoration stages. */
+/** 逐行恢复后的正文与可选姓名，交给调用方写回条目。 */
 export interface TranslationPostPipelineResult {
-  dst: string; // Restored item body; its line count may follow the model on mismatch.
-  name_dst?: string | null; // Present only when the source item carried an actor name.
+  dst: string; // 行数不对应时保留模型返回的完整正文。
+  name_dst?: string | null; // 请求包含姓名时才返回该字段。
 }
 
-/** Restores deterministic source structure when the model preserves item line count. */
+/** 行数对应时恢复源文结构，并执行译后替换和资源引用还原。 */
 export class TranslationPostPipeline {
   private readonly post_replacements: CompiledTextReplacements | null;
-  /** Freezes post-replacement rules for the current task run. */
+  /** 本轮译后替换规则只编译一次。 */
   public constructor(
     private readonly config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
@@ -37,29 +37,28 @@ export class TranslationPostPipeline {
       : null;
   }
 
-  /** Applies model output to one item and restores protected source structure. */
+  /** 模型响应按行对应恢复依据，姓名按请求是否包含姓名决定写回。 */
   public process_item(
     context: TranslationPrePipelineContext,
     decoded_item: TranslationDecodedItem,
     mode: TranslationPromptMode,
   ): TranslationPostPipelineResult {
-    if (context.item === null) return { dst: "" };
     const output_lines = split_text_lines(decoded_item.text_dst);
-    const corresponding = output_lines.length === context.prepared_lines.length;
+    const corresponding = output_lines.length === context.prepared_lines.length; // 行数一致才有逐行恢复依据。
     const projected_dst = corresponding
       ? context.prepared_lines
           .map((prepared_line, index) => {
-            if (prepared_line.state === "preserved") return prepared_line.raw_text;
+            if (prepared_line.state === "preserved") return prepared_line.prepared_text;
             let line = restore_translation_line({
               restoration_text: prepared_line.restoration_text,
-              model_text: prepared_line.model_text,
+              prepared_text: prepared_line.prepared_text,
               translation: (output_lines[index] ?? "").trim(),
               preserve_rule: context.preserve_rule,
               source_language: this.config.source_language,
               target_language: this.config.target_language,
             });
             line = this.replace_post_translation(line, context.reference_mappings);
-            return `${prepared_line.leading_whitespace}${prepared_line.prefix_segments.join("")}${line}${prepared_line.suffix_segments.join("")}${prepared_line.trailing_whitespace}`;
+            return `${prepared_line.leading_whitespace}${line}${prepared_line.trailing_whitespace}`;
           })
           .join("\n")
       : output_lines
@@ -77,7 +76,7 @@ export class TranslationPostPipeline {
     };
   }
 
-  /** Applies the compiled post-translation replacement snapshot. */
+  /** 替换只作用于普通文本，临时资源引用由映射单独恢复。 */
   private replace_post_translation(
     dst: string,
     reference_mappings: readonly TextResourceReferenceMapping[],

@@ -3,11 +3,15 @@ import {
   type ConfiguredSourceLanguageCode,
   type TargetLanguageCode,
 } from "../../../../domain/language";
-import type { TextPreserveRule } from "../../../../shared/text/text-preserve-rules";
+import {
+  collect_non_blank_text_preserve_segments,
+  type TextPreserveRule,
+} from "../../../../shared/text/text-preserve-rules";
 
 const ESCAPE_RUN_PATTERN = /\\+/gu;
 const NUMBER_TOKEN_PATTERN = /\d+|[①-⑳㉑-㉟㊱-㊿]/gu;
 
+// Unicode 将 1～50 的圆圈数字分成三个区段，下标保持实际数值。
 const CIRCLED_NUMBER_BY_VALUE = [
   "",
   ...Array.from({ length: 20 }, (_, index) => String.fromCodePoint(0x2460 + index)),
@@ -66,14 +70,14 @@ const ADAPTABLE_ASCII_FORM_RULES: readonly PunctuationFormRule[] = [
  */
 export function restore_translation_line(args: {
   restoration_text: string;
-  model_text: string;
+  prepared_text: string;
   translation: string;
   preserve_rule: TextPreserveRule | null;
   source_language: ConfiguredSourceLanguageCode;
   target_language: TargetLanguageCode;
 }): string {
   let result = remove_extra_preserved_segments(
-    args.model_text,
+    args.prepared_text,
     args.translation,
     args.preserve_rule,
   );
@@ -95,8 +99,8 @@ function remove_extra_preserved_segments(
   rule: TextPreserveRule | null,
 ): string {
   if (rule === null) return translation;
-  const expected_segments = collect_non_blank_preserved_segments(expected_text, rule);
-  const actual_segments = collect_non_blank_preserved_segments(translation, rule);
+  const expected_segments = collect_non_blank_text_preserve_segments(expected_text, rule);
+  const actual_segments = collect_non_blank_text_preserve_segments(translation, rule);
   if (expected_segments.length >= actual_segments.length) return translation;
 
   const extra_indexes = find_extra_segment_indexes(expected_segments, actual_segments);
@@ -106,10 +110,6 @@ function remove_extra_preserved_segments(
     if (match.trim() === "") return match;
     return extra_indexes.has(segment_index++) ? "" : match;
   });
-}
-
-function collect_non_blank_preserved_segments(text: string, rule: TextPreserveRule): string[] {
-  return rule.collect(text).filter((segment) => segment.trim() !== "");
 }
 
 /** 仅当期望序列完整构成实际序列的子序列时，返回可安全删除的位置。 */
@@ -180,6 +180,7 @@ function restore_circled_number_forms(source: string, translation: string): stri
   });
 }
 
+/** 统一普通数字与圆圈数字的数值，供逐项对应检查。 */
 function number_token_value(token: string | undefined): string | null {
   if (token === undefined) return null;
   const circled_value = CIRCLED_NUMBER_VALUE_BY_TOKEN.get(token);
@@ -275,6 +276,7 @@ function can_restore_by_total_count(
   );
 }
 
+/** 以去除保护段后的源文首尾确定引号恢复目标。 */
 function restore_boundary_quotes(
   source: string,
   translation: string,
@@ -288,6 +290,7 @@ function restore_boundary_quotes(
   return transform_unpreserved_boundaries(translation, preserve_rule, opening, closing);
 }
 
+/** 保留日式开引号，中文、日文、韩文目标另接受对应弯引号。 */
 function resolve_opening_quote(source: string, target_language: TargetLanguageCode): string | null {
   const quote = Array.from(source)[0] ?? "";
   if (quote === "「" || quote === "『") return quote;
@@ -296,6 +299,7 @@ function resolve_opening_quote(source: string, target_language: TargetLanguageCo
   return quote === "‘" ? quote : null;
 }
 
+/** 闭引号按与开引号相同的语言规则选择恢复形式。 */
 function resolve_closing_quote(source: string, target_language: TargetLanguageCode): string | null {
   const quote = Array.from(source).at(-1) ?? "";
   if (quote === "」" || quote === "』") return quote;
@@ -304,6 +308,7 @@ function resolve_closing_quote(source: string, target_language: TargetLanguageCo
   return quote === "’" ? quote : null;
 }
 
+/** 只修改首尾非空正文片段，跳过保护段和空白片段。 */
 function transform_unpreserved_boundaries(
   text: string,
   rule: TextPreserveRule | null,
@@ -329,6 +334,7 @@ function transform_unpreserved_boundaries(
   });
 }
 
+/** 仅替换已有的边界引号，并保留紧邻空白。 */
 function replace_boundary_quotes(
   text: string,
   opening: string | null,
@@ -348,6 +354,7 @@ function replace_boundary_quotes(
   return result;
 }
 
+/** 存在保护规则时，仅转换规则之外的正文。 */
 function transform_unpreserved(
   text: string,
   rule: TextPreserveRule | null,
@@ -356,10 +363,12 @@ function transform_unpreserved(
   return rule === null ? transform(text) : rule.transform_unpreserved(text, transform);
 }
 
+/** 为标点计数生成排除保护段的文本。 */
 function remove_preserved_segments(text: string, rule: TextPreserveRule | null): string {
   return rule === null ? text : rule.replace(text, "");
 }
 
+/** 按完整字面量计数，支持多字符标点。 */
 function count_token(text: string, token: string): number {
   return token === "" ? 0 : text.split(token).length - 1;
 }

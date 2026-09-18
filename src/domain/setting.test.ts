@@ -1,21 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_SETTING,
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
   Setting,
 } from "./setting";
 
 describe("设置快照", () => {
-  it("设置快照缺字段时统一使用领域默认值", () => {
-    expect(normalize_setting_snapshot({})).toMatchObject({
-      source_language: "JA",
-      target_language: "ZH",
-      output_folder_open_on_finish: false,
-      request_timeout: 180,
-      prompt_enhancement_enable: true,
-      mtool_optimizer_enable: true,
-      skip_duplicate_source_text_enable: true,
+  it("缺失或非法设置沿用默认值，合法语言标识按规范保存", () => {
+    expect(
+      normalize_setting_snapshot({ source_language: " en ", request_timeout: Infinity }),
+    ).toMatchObject({
+      source_language: "EN",
+      target_language: DEFAULT_SETTING["target_language"],
+      request_timeout: DEFAULT_SETTING["request_timeout"],
     });
   });
 
