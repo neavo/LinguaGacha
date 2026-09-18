@@ -165,12 +165,7 @@ function render_status_badge(args: {
   return (
     <Tooltip>
       <TooltipTrigger render={badge} />
-      <TooltipContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className="proofreading-page__dialog-badge-tooltip"
-      >
+      <TooltipContent align="start" className="proofreading-page__dialog-badge-tooltip">
         {args.tooltip_content}
       </TooltipContent>
     </Tooltip>
@@ -367,12 +362,7 @@ function render_name_input_with_glossary_state(args: {
           <span className="proofreading-page__dialog-name-tooltip-trigger">{args.input}</span>
         }
       />
-      <TooltipContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className="proofreading-page__dialog-badge-tooltip"
-      >
+      <TooltipContent align="start" className="proofreading-page__dialog-badge-tooltip">
         {tooltip_content}
       </TooltipContent>
     </Tooltip>

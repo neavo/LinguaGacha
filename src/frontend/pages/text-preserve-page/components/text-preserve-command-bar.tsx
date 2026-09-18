@@ -168,12 +168,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               </div>
             }
           />
-          <TooltipContent
-            side="top"
-            align="end"
-            sideOffset={8}
-            className="text-preserve-page__mode-tooltip"
-          >
+          <TooltipContent align="end" className="text-preserve-page__mode-tooltip">
             <div className="text-preserve-page__mode-tooltip-copy">
               <p className="text-preserve-page__mode-tooltip-title font-medium text-background">
                 {mode_tooltip_title}

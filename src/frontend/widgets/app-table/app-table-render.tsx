@@ -89,7 +89,7 @@ export function AppTableHeadCell<Row>(args: {
     trigger === null ? null : (
       <Tooltip>
         <TooltipTrigger render={trigger} />
-        <TooltipContent side="top" sideOffset={8}>
+        <TooltipContent>
           <p>{action_label}</p>
         </TooltipContent>
       </Tooltip>

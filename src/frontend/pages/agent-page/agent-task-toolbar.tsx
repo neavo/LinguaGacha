@@ -79,7 +79,7 @@ export function AgentTaskToolbar(props: {
             </AppButton>,
           )}
         />
-        <TooltipContent side="top" sideOffset={8}>
+        <TooltipContent>
           {props.can_reset ? (
             <ShortcutTooltipRow label={t("agent_page.action.new_task")} shortcut="create" />
           ) : (
@@ -141,7 +141,7 @@ export function AgentTaskToolbar(props: {
               />,
             )}
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>{t("agent_page.approval.tooltip")}</p>
           </TooltipContent>
         </Tooltip>

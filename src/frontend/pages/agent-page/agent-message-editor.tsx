@@ -655,7 +655,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                   </AppButton>,
                 )}
               />
-              <TooltipContent side="top" sideOffset={8}>
+              <TooltipContent>
                 <p>{t("agent_page.action.add_image")}</p>
               </TooltipContent>
             </Tooltip>

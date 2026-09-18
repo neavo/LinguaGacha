@@ -76,6 +76,7 @@
 - `AppearanceProvider` 是各 renderer 窗口持久化主题 / 字体偏好、解析系统主题、同步根节点视觉状态与原生标题栏的唯一入口；宿主桥只接收已解析的 `light / dark`，不持有 `system` 等用户偏好。
 - `src/frontend/index.css` 拥有全局 token 与主题样式，`src/frontend/shadcn` 拥有基础控件，`widgets`、`features` 与 `pages` 只消费外观运行态、token，并组合各自所有权内的界面。
 - 信息胶囊外观归 `shadcn/badge`，组合控件通过 `badgeVariants` 复用；业务组件只映射状态并提供布局与交互。
+- 提示框的箭头与触发器间距统一归 `shadcn/tooltip`，消费方按布局选择方向与对齐方式。
 - Agent Markdown 的普通正文排版归 `agent-markdown.css`，通过 Streamdown 公开组件映射使用原生标签。
 - 应用自绘界面的快捷键提示统一复用 `Kbd` 键帽，动作键位文案由 `ShortcutKbd` 提供。
 - 下拉与右键菜单主、子定位层共用 `widgets/app-menu` 的鼠标命中样式，覆盖宿主透明容器经 Portal 继承的穿透规则。菜单与 Tooltip 通过 `useWindowDeactivation` 及 Base UI 公开入口响应失焦和页面隐藏；Tooltip 在新交互后恢复悬停，窗口切换保持触发器 DOM 身份。

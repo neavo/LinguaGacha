@@ -101,12 +101,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
               </div>
             }
           />
-          <TooltipContent
-            side="top"
-            align="end"
-            sideOffset={8}
-            className="custom-prompt-page__toggle-tooltip"
-          >
+          <TooltipContent align="end" className="custom-prompt-page__toggle-tooltip">
             <div className="custom-prompt-page__toggle-tooltip-copy">
               <p className="custom-prompt-page__toggle-tooltip-title font-medium text-background">
                 {toggle_tooltip_title}

@@ -83,7 +83,7 @@ export function BatchTranslationDetailSheet(props: BatchTranslationDetailSheetPr
                           </article>
                         }
                       />
-                      <TooltipContent side="left" sideOffset={8}>
+                      <TooltipContent side="left">
                         <div className="min-w-0 space-y-1 text-left">
                           <p>{props.display.provider.name}</p>
                           <p>{props.display.provider.model}</p>

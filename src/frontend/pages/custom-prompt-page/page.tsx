@@ -63,12 +63,7 @@ export function CustomPromptPage(): JSX.Element {
               </section>
             }
           />
-          <TooltipContent
-            side="top"
-            align="start"
-            sideOffset={8}
-            className="custom-prompt-page__readonly-tooltip"
-          >
+          <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
             <pre className="custom-prompt-page__readonly-tooltip-copy">
               {page_state.template.prefix_text}
             </pre>
@@ -101,12 +96,7 @@ export function CustomPromptPage(): JSX.Element {
               </section>
             }
           />
-          <TooltipContent
-            side="top"
-            align="start"
-            sideOffset={8}
-            className="custom-prompt-page__readonly-tooltip"
-          >
+          <TooltipContent align="start" className="custom-prompt-page__readonly-tooltip">
             <pre className="custom-prompt-page__readonly-tooltip-copy">
               {page_state.template.suffix_text}
             </pre>

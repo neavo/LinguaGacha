@@ -597,7 +597,7 @@ export function LogWindowPage(): JSX.Element {
                       </AppButton>,
                     )}
                   />
-                  <TooltipContent side="bottom" sideOffset={8}>
+                  <TooltipContent side="bottom">
                     <p>{t("log_window_page.detail.previous")}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -621,7 +621,7 @@ export function LogWindowPage(): JSX.Element {
                       </AppButton>,
                     )}
                   />
-                  <TooltipContent side="bottom" sideOffset={8}>
+                  <TooltipContent side="bottom">
                     <p>{t("log_window_page.detail.next")}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -646,7 +646,7 @@ export function LogWindowPage(): JSX.Element {
                       </AppButton>
                     }
                   />
-                  <TooltipContent side="bottom" sideOffset={8}>
+                  <TooltipContent side="bottom">
                     <p>{detail_expand_label}</p>
                   </TooltipContent>
                 </Tooltip>

@@ -73,7 +73,7 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger render={badge} />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent>
         <p className="whitespace-pre-line">{props.tooltip}</p>
       </TooltipContent>
     </Tooltip>

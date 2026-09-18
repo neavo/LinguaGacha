@@ -4,22 +4,33 @@
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 8px;
+  cursor: pointer;
 }
 
 .batch-translation__summary--capsule.app-badge {
-  /* 内边距由可点击按钮承接，让胶囊边缘也能打开详情。 */
-  padding: 0;
+  /* 只裁剪进度填充，状态灯的扩散保留在完整按钮边界之外。 */
   overflow: visible;
 }
 
 .batch-translation__summary--card {
+  display: grid;
+  /* 对称侧列让文字相对整张卡片居中，状态灯独占左列。 */
+  grid-template-columns: 12px minmax(0, 1fr) 12px;
+  gap: 8px;
+  padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   border-radius: var(--ui-radius-card);
+  background: transparent;
   color: var(--foreground);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  transition: background-color 120ms ease;
 }
 
 .batch-translation__summary--card.batch-translation__summary--idle {
@@ -43,44 +54,21 @@
   transition: transform 150ms ease-out;
 }
 
-.batch-translation__summary-trigger {
-  position: relative;
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-variant-numeric: inherit;
-  transition: background-color 120ms ease;
+.batch-translation__summary--capsule:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--foreground) 4%, var(--secondary));
 }
 
-.batch-translation__summary--card .batch-translation__summary-trigger {
-  display: grid;
-  /* 对称侧列让文字相对整张卡片居中，状态灯独占左列。 */
-  grid-template-columns: 12px minmax(0, 1fr) 12px;
-  gap: 8px;
-  padding: 0 12px;
-}
-
-.batch-translation__summary-trigger:hover,
-.batch-translation__summary-trigger:focus-visible {
+.batch-translation__summary--card:is(:hover, :focus-visible) {
   background: color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
-.batch-translation__summary-trigger:focus-visible {
+.batch-translation__summary:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: 2px;
 }
 
 .batch-translation__summary-mark {
+  position: relative;
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
@@ -98,11 +86,17 @@
 }
 
 .batch-translation__summary-content {
+  /* 文字与状态灯在装饰性进度层之后绘制，填充不遮挡内容。 */
+  position: relative;
   display: flex;
   min-width: 0;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+
+.batch-translation__summary--card .batch-translation__summary-content {
+  grid-column: 2;
 }
 
 .batch-translation__summary-label {
@@ -134,7 +128,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .batch-translation__summary-fill,
-  .batch-translation__summary-trigger {
+  .batch-translation__summary {
     transition: none;
   }
 

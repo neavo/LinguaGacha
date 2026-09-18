@@ -145,12 +145,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               </div>
             }
           />
-          <TooltipContent
-            side="top"
-            align="end"
-            sideOffset={8}
-            className="text-replacement-page__toggle-tooltip"
-          >
+          <TooltipContent align="end" className="text-replacement-page__toggle-tooltip">
             <div className="text-replacement-page__toggle-tooltip-copy">
               <p className="text-replacement-page__toggle-tooltip-title font-medium text-background">
                 {toggle_tooltip_title}
