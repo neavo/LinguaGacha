@@ -1,6 +1,11 @@
 import type { LanguageCode } from "../../../../domain/language";
 
 export const zh_cn_app = {
+  media: {
+    zoom_out: "缩小",
+    zoom_in: "放大",
+    reset_zoom: "重置缩放",
+  },
   metadata: {
     app_name: "LinguaGacha",
   },

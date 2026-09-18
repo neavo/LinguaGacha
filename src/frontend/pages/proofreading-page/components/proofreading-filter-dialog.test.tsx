@@ -32,7 +32,6 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 
 const filters = {
   outcomes: [],
-  file_paths: ["chapter01.txt", "appendix.txt"],
   glossary_entry_ids: [],
   include_without_glossary_miss: true,
 };
@@ -40,9 +39,7 @@ const filters = {
 const panel = {
   available_outcomes: ["CUSTOM"],
   outcome_count_by_code: { CUSTOM: 2 },
-  all_file_paths: ["chapter01.txt", "appendix.txt"],
-  available_file_paths: ["chapter01.txt", "appendix.txt"],
-  file_count_by_path: { "chapter01.txt": 1, "appendix.txt": 1 },
+
   glossary_term_entries: [],
   without_glossary_miss_count: 0,
 };
@@ -141,26 +138,6 @@ describe("ProofreadingFilterDialog", () => {
     );
   });
 
-  it("文件关键字只保留匹配项", async () => {
-    const rendered = await render_dialog();
-    const file_search = rendered.querySelectorAll("input")[0];
-    if (!(file_search instanceof HTMLInputElement)) {
-      throw new Error("缺少文件筛选输入框");
-    }
-
-    await act(async () => {
-      const value_setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )?.set;
-      value_setter?.call(file_search, "appendix");
-      file_search.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    expect(rendered.textContent).toContain("appendix.txt");
-    expect(rendered.textContent).not.toContain("chapter01.txt");
-  });
-
   it("同文案术语仍按 entry_id 独立切换", async () => {
     const on_change = vi.fn();
     const rendered = await render_dialog({
@@ -183,4 +160,50 @@ describe("ProofreadingFilterDialog", () => {
       expect.objectContaining({ glossary_entry_ids: ["second"] }),
     );
   });
+  it.each([
+    { ids: [], include_without: false, checked: "false" },
+    { ids: ["first"], include_without: true, checked: "mixed" },
+    { ids: ["first", "second"], include_without: false, checked: "mixed" },
+    { ids: ["first", "second"], include_without: true, checked: "true" },
+  ])(
+    "术语组 $checked 使用三态切换，搜索不缩小全选范围",
+    async ({ ids, include_without, checked }) => {
+      const on_change = vi.fn();
+      const rendered = await render_dialog({
+        on_change,
+        filters: {
+          outcomes: ["NONE"],
+          glossary_entry_ids: ids,
+          include_without_glossary_miss: include_without,
+        },
+        panel: {
+          ...panel,
+          glossary_term_entries: [
+            { entry_id: "first", src: "HP", dst: "生命值", count: 2 },
+            { entry_id: "second", src: "MP", dst: "魔力", count: 1 },
+          ],
+        },
+      });
+      const group = rendered.querySelector<HTMLButtonElement>(
+        '[role="checkbox"][aria-label^="proofreading_page.filter.glossary_detail"]',
+      )!;
+      expect(group.getAttribute("aria-checked")).toBe(checked);
+      const input = rendered.querySelector("input")!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          "HP",
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(rendered.textContent).not.toContain("MP -> 魔力");
+      expect(group.getAttribute("aria-checked")).toBe(checked);
+      await act(async () => group.click());
+      expect(on_change).toHaveBeenLastCalledWith({
+        outcomes: ["NONE"],
+        glossary_entry_ids: checked === "true" ? [] : ["first", "second"],
+        include_without_glossary_miss: checked !== "true",
+      });
+    },
+  );
 });

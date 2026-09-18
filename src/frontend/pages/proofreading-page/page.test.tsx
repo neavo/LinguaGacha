@@ -172,6 +172,11 @@ function create_proofreading_state_fixture() {
     update_replace_text: vi.fn(),
     update_search_keyword: vi.fn(),
     update_search_scope: vi.fn(),
+    files: [],
+    file_selection: {
+      mode: "default",
+    } as import("./proofreading-filter-state").ProofreadingFilterChoice<string>,
+    update_file_selection: vi.fn(),
     visible_items: [],
     visible_row_count: 0,
   };
@@ -320,5 +325,17 @@ describe("ProofreadingPage", () => {
     expect(
       container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
     ).toBe("true");
+  });
+  it("空文件选择提示只占用表格空态区域", async () => {
+    proofreading_state_fixture.current!.file_selection = { mode: "selected", values: [] };
+    proofreading_state_fixture.current!.visible_row_count = 0;
+    await mount_page();
+    const empty = container!.querySelector('[role="status"]')!;
+    expect(empty.textContent).toBe("proofreading_page.pages.select_files");
+    expect(empty.parentElement?.className).toBe("proofreading-page__table-host");
+    expect(
+      container!.querySelector(".proofreading-page__table-host")?.previousElementSibling
+        ?.textContent,
+    ).not.toContain("proofreading_page.pages.select_files");
   });
 });

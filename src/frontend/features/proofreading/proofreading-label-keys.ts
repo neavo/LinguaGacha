@@ -13,6 +13,8 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   RULE_SKIPPED: "proofreading_page.status.rule_skipped",
   LANGUAGE_SKIPPED: "proofreading_page.status.non_target_source_language",
   DUPLICATED: "proofreading_page.status.duplicated",
+  PDF_KEEP: "proofreading_page.pages.keep",
+  PDF_OMIT: "proofreading_page.status.excluded",
   ERROR: "task_progress.translation_failed",
 } as const satisfies Record<(typeof PROOFREADING_STATUS_ORDER)[number], LocaleKey>;
 

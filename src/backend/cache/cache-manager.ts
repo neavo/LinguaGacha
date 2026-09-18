@@ -20,16 +20,20 @@ import { QualityRuleStatisticsCache } from "./quality-rule-statistics-cache";
 class ProjectDataBlockCache {
   private block: JsonRecord = {};
 
+  /** 恢复钩子由组合根提供，每次读取先确认热缓存可用。 */
   public constructor(private readonly before_read: () => void) {}
 
+  /** 替换时隔离顶层引用，嵌套项目事实按不可变值共享。 */
   public replace(block: JsonRecord): void {
     this.block = { ...block };
   }
 
+  /** 工程卸载时释放该数据块。 */
   public clear(): void {
     this.block = {};
   }
 
+  /** 恢复完成后返回顶层副本，避免调用者修改缓存结构。 */
   public readBlock(): JsonRecord {
     this.before_read();
     return { ...this.block };
@@ -70,6 +74,7 @@ export class CacheManager implements CacheReadPort {
       appSettingService: options.appSettingService,
       workerClient: options.workerClient,
       reader: createProofreadingReader(),
+      readPages: (projectPath) => this.data_reader.read_pdf_documents(projectPath),
     });
     this.qualityStatistics = new QualityRuleStatisticsCache({
       cache: this,

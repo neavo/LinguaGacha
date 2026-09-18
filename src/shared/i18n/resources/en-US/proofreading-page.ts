@@ -2,8 +2,24 @@ import { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_proofreading_page = {
+  pages: {
+    view: "Open preview",
+    title: "Page preview",
+    source_page: "Page {PAGE}",
+    keep: "Keep original",
+    translated: "Translation available",
+    retry: "Retry",
+    select_files: "Select files",
+    page_count: "{COUNT} pages",
+    item_count: "{COUNT} items",
+    text_only: "Select text items for this operation",
+    failed: "Preview failed",
+    previous: "Previous page",
+    next: "Next page",
+  },
   title: "Proofreading",
   action: {
+    files: "Files",
     filter: "Filter",
     replace_all: "Replace All",
     retranslate: "Retranslate",
@@ -69,11 +85,9 @@ export const en_us_proofreading_page = {
     translated_group: "Translated",
     unfinished_group: "Not Complete",
     not_required_group: "Not Required",
-    file_scope: "File Scope",
     select_all: "All",
     select_group: "Select all",
     deselect_group: "Deselect",
-    clear: "Clear",
     search_placeholder: "Filter …",
     glossary_detail: "Glossary Misses",
     without_glossary_miss: "No glossary terms or all glossary terms applied",

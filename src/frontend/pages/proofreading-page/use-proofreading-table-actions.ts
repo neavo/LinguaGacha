@@ -1,14 +1,17 @@
+import {
+  clone_content_filters,
+  type ProofreadingContentFilters,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useCallback, type MutableRefObject } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import {
-  clone_proofreading_filter_options,
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
   type ProofreadingListView,
   type ProofreadingSearchScope,
-  type ProofreadingVisibleItem,
+  type ProofreadingRow,
 } from "@shared/proofreading/proofreading-types";
 import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
@@ -33,21 +36,22 @@ type UseProofreadingTableActionsOptions = {
   is_refreshing: boolean;
   list_view: ProofreadingListView;
   project_loaded: boolean;
-  visible_items: ProofreadingVisibleItem[];
+  visible_items: ProofreadingRow[];
   visible_row_index_by_id: Map<string, number>;
-  filter_dialog_filters_ref: MutableRefObject<ProofreadingFilterOptions>;
+  filter_dialog_filters_ref: MutableRefObject<ProofreadingContentFilters>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
   proofreading_runtime_client_ref: MutableRefObject<ProofreadingApiClient>;
   selected_row_ids_ref: MutableRefObject<string[]>;
   sync_state_ref: MutableRefObject<ProofreadingSyncState | null>;
   visible_range_ref: MutableRefObject<{ start: number; count: number } | null>;
-  filter_panel_query_scheduler: QueryScheduler<ProofreadingFilterOptions>;
+  filter_panel_query_scheduler: QueryScheduler<ProofreadingContentFilters>;
   read_current_view_row_ids: (start: number, count: number) => Promise<string[]>;
   read_list_window: (range: { start: number; count: number }) => Promise<unknown>;
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
+  read_file_selection: () => ProofreadingViewFilterState["selection"]["file_paths"];
   materialize_active_filters: () => ProofreadingFilterOptions;
   run_filter_panel_query: (
-    filters: ProofreadingFilterOptions,
+    filters: ProofreadingContentFilters,
     options?: { force?: boolean; mark_loading?: boolean },
   ) => Promise<ProofreadingFilterPanelState | null>;
   run_list_query_change: (change: {
@@ -55,7 +59,7 @@ type UseProofreadingTableActionsOptions = {
     rebuild?: boolean;
   }) => Promise<void>;
   schedule_list_query_change: (change: { target_row_id: string | null }) => void;
-  set_filter_dialog_filters: (filters: ProofreadingFilterOptions) => void;
+  set_filter_dialog_filters: (filters: ProofreadingContentFilters) => void;
   set_filter_dialog_open: (open: boolean) => void;
   set_replace_text: (text: string) => void;
   set_table_filter_state: (
@@ -78,7 +82,7 @@ type UseProofreadingTableActionsResult = {
   update_regex: (next_is_regex: boolean) => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
-  get_visible_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
+  get_visible_row_at_index: (index: number) => ProofreadingRow | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
   resolve_visible_row_index_async: (row_id: string) => Promise<number | undefined>;
@@ -87,7 +91,7 @@ type UseProofreadingTableActionsResult = {
   handle_table_selection_error: (error: unknown) => void;
   open_filter_dialog: () => void;
   close_filter_dialog: () => void;
-  update_filter_dialog_filters: (next_filters: ProofreadingFilterOptions) => void;
+  update_filter_dialog_filters: (next_filters: ProofreadingContentFilters) => void;
   confirm_filter_dialog_filters: () => Promise<void>;
 };
 
@@ -163,7 +167,7 @@ export function useProofreadingTableActions(
   );
 
   const get_visible_row_at_index = useCallback(
-    (index: number): ProofreadingVisibleItem | undefined => {
+    (index: number): ProofreadingRow | undefined => {
       const window_index = index - options.list_view.window_start;
       if (window_index < 0 || window_index >= options.visible_items.length) {
         return undefined;
@@ -247,7 +251,7 @@ export function useProofreadingTableActions(
       return;
     }
 
-    const next_dialog_filters = options.materialize_active_filters();
+    const next_dialog_filters = clone_content_filters(options.materialize_active_filters());
     options.set_filter_dialog_filters(next_dialog_filters);
     options.filter_dialog_filters_ref.current = next_dialog_filters;
     options.set_filter_dialog_open(true);
@@ -258,7 +262,7 @@ export function useProofreadingTableActions(
     options.filter_panel_query_scheduler.cancel();
     options.set_filter_dialog_open(false);
     options.filter_dialog_open_ref.current = false;
-    const restored_filters = options.materialize_active_filters();
+    const restored_filters = clone_content_filters(options.materialize_active_filters());
     options.set_filter_dialog_filters(restored_filters);
     options.filter_dialog_filters_ref.current = restored_filters;
     void options
@@ -275,8 +279,8 @@ export function useProofreadingTableActions(
   }, [options]);
 
   const update_filter_dialog_filters = useCallback(
-    (next_filters: ProofreadingFilterOptions): void => {
-      const cloned_filters = clone_proofreading_filter_options(next_filters);
+    (next_filters: ProofreadingContentFilters): void => {
+      const cloned_filters = clone_content_filters(next_filters);
       options.set_filter_dialog_filters(cloned_filters);
       options.filter_dialog_filters_ref.current = cloned_filters;
 
@@ -302,21 +306,19 @@ export function useProofreadingTableActions(
       return;
     }
 
-    const normalized_filters = clone_proofreading_filter_options(
-      options.filter_dialog_filters_ref.current,
-    );
+    const normalized_filters = clone_content_filters(options.filter_dialog_filters_ref.current);
     // 筛选弹窗只编辑物化后的勾选值，确认时要恢复意图，未改动维度继续跟随默认筛选。
     const next_filter_selection = resolve_proofreading_filter_selection_from_filters({
       filters: normalized_filters,
       default_filters: sync_state.defaultFilters,
+      file_selection: options.read_file_selection(),
     });
     options.filter_panel_query_scheduler.cancel();
     options.set_table_filter_state({
       selection: next_filter_selection,
     });
-    options.set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
-    options.filter_dialog_filters_ref.current =
-      clone_proofreading_filter_options(normalized_filters);
+    options.set_filter_dialog_filters(normalized_filters);
+    options.filter_dialog_filters_ref.current = normalized_filters;
 
     try {
       await Promise.all([

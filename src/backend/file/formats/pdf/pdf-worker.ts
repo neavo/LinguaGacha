@@ -5,8 +5,13 @@ import { to_log_error } from "../../../../shared/error";
 
 export type PDFTask =
   | { kind: "read"; bytes: Uint8Array }
+  | { kind: "preview"; bytes: Uint8Array; title: string; document: PDFDocument; page: number }
+  | { kind: "render"; bytes: Uint8Array; page: number }
   | { kind: "build"; bytes: Uint8Array; title: string; document: PDFDocument };
-export type PDFTaskResult = PDFDocument | Uint8Array;
+export type PDFTaskResult =
+  | PDFDocument
+  | Uint8Array
+  | { image: string; count: number; page: number };
 export type PDFWorkerRequest =
   | { kind: "task"; task: PDFTask }
   | { kind: "printed"; bytes: Uint8Array }
@@ -40,10 +45,17 @@ export class PDFWorker {
       combined.throwIfAborted();
       if (this.entry === null) {
         // 源码测试显式同进程执行；发行版只通过构建后的独立线程调用。
-        const { read_pdf_document, build_pdf_document } = await import("./pdf-document");
+        const {
+          read_pdf_document,
+          build_pdf_document,
+          build_pdf_page_preview,
+          render_pdf_preview,
+        } = await import("./pdf-document");
+        if (snapshot.kind === "render") return render_pdf_preview(snapshot.bytes, snapshot.page);
         return snapshot.kind === "read"
           ? read_pdf_document(snapshot.bytes)
-          : await build_pdf_document({
+          : await (snapshot.kind === "preview" ? build_pdf_page_preview : build_pdf_document)({
+              page: snapshot.kind === "preview" ? snapshot.page : 1,
               title: snapshot.title,
               document: snapshot.document,
               source_bytes: snapshot.bytes,

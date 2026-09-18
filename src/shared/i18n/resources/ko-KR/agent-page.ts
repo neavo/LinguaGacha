@@ -22,13 +22,6 @@ export const ko_kr_agent_page = {
     download_format: "{format} 형식으로 다운로드",
   },
   image: { title: "이미지", open_preview: "이미지 미리 보기 열기" },
-  media: {
-    canvas_label: "미디어 미리 보기 영역",
-    controls_label: "미디어 확대·축소",
-    zoom_out: "축소",
-    zoom_in: "확대",
-    reset_zoom: "배율 초기화",
-  },
   loading: "세션 복원 중 …",
   empty: {
     message: "「Aibō」, 다음엔 뭘 할까  ( •̀ ᗜ •́ )つ▱",

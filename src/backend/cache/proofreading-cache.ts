@@ -1,3 +1,4 @@
+import type { PDFDocumentRecord } from "../../shared/pdf";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheFileEntry, CacheReadPort } from "./cache-types";
@@ -72,23 +73,27 @@ export class ProofreadingCache {
   private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
+  private readonly read_pages: (projectPath: string) => PDFDocumentRecord[]; // 只在页面身份未命中时补读数据库事实。
+  private pages_key: string | null = null; // 页面独立按会话和 pdf revision 同步。
   private synced_key: string | null = null; // synced_state 对应的完整身份
   private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
   private sync_promises = new Map<string, Promise<ProofreadingSyncState>>(); // 合并同身份并发同步
 
   /**
-   * 注入共享缓存、设置与 worker；本类不读取数据库或写项目事实。
+   * 注入共享缓存、设置、worker 与页面只读入口；本类只维护查询运行态。
    */
   public constructor(options: {
     cache: CacheReadPort;
     appSettingService: AppSettingService;
     workerClient: ComputeWorkerClient;
     reader: ReturnType<typeof createProofreadingReader>;
+    readPages: (projectPath: string) => PDFDocumentRecord[];
   }) {
     this.cache = options.cache;
     this.app_setting_service = options.appSettingService;
     this.worker_client = options.workerClient;
     this.reader = options.reader;
+    this.read_pages = options.readPages;
   }
 
   /**
@@ -204,6 +209,7 @@ export class ProofreadingCache {
     if (projectPath !== undefined && parsed_key?.projectPath !== projectPath) {
       return;
     }
+    this.pages_key = null;
     this.synced_key = null;
     this.synced_state = null;
     this.sync_promises.clear();
@@ -284,7 +290,7 @@ export class ProofreadingCache {
   private async ensure_synced(identity: ProofreadingCacheIdentity): Promise<ProofreadingSyncState> {
     if (this.synced_key === identity.keyString) {
       if (this.synced_state !== null) {
-        return this.synced_state;
+        return this.sync_pages(identity);
       }
     }
     const pending = this.sync_promises.get(identity.keyString);
@@ -301,20 +307,53 @@ export class ProofreadingCache {
         new AbortController().signal,
       )
       .then((result) => {
+        const current = this.cache.snapshot();
+        // 工程切换或失效已撤销这个同步任务，迟到计算不能重新发布旧索引。
+        if (
+          this.sync_promises.get(identity.keyString) !== promise ||
+          current.projectPath !== identity.key.projectPath ||
+          current.epoch !== identity.key.sessionEpoch
+        ) {
+          throw new AppErrors.AppError("request.validation_failed", {
+            diagnostic_context: { reason: "stale_proofreading_sync" },
+          });
+        }
         const sync_state = this.reader.sync_evaluated_full({
           ...sync_input,
           ...result,
         });
         this.synced_key = identity.keyString;
         this.synced_state = sync_state;
-        return sync_state;
+        this.pages_key = null;
+        return this.sync_pages(identity);
       });
     this.sync_promises.set(identity.keyString, promise);
     try {
       return await promise;
     } finally {
-      this.sync_promises.delete(identity.keyString);
+      if (this.sync_promises.get(identity.keyString) === promise)
+        this.sync_promises.delete(identity.keyString);
     }
+  }
+
+  /** 页面修订号独立命中，滚动读取复用现有页面索引。 */
+  private sync_pages(identity: ProofreadingCacheIdentity): ProofreadingSyncState {
+    const revision = Number(identity.sectionRevisions.pdf ?? 0);
+    const key = JSON.stringify([
+      identity.key.projectPath,
+      identity.key.sessionEpoch,
+      identity.key.revisions.files,
+      revision,
+    ]);
+    if (this.pages_key !== key) {
+      this.synced_state = this.reader.sync_pages(
+        this.read_pages(identity.key.projectPath),
+        this.cache.files.readFileEntries(),
+        revision,
+      );
+      this.pages_key = key;
+    }
+    return this.synced_state!;
   }
 
   /** 用会话身份、依赖 revision、文本处理配置和版本构造轻量同步 key。 */

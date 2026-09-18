@@ -1,4 +1,8 @@
 import {
+  clone_content_filters,
+  type ProofreadingContentFilters,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
+import {
   startTransition,
   useCallback,
   type Dispatch,
@@ -52,7 +56,7 @@ type UseProofreadingCacheActionsOptions = {
   source_language: string;
   target_language: string;
   defaultFiltersRef: MutableRefObject<ProofreadingFilterOptions>;
-  filter_dialog_filters_ref: MutableRefObject<ProofreadingFilterOptions>;
+  filter_dialog_filters_ref: MutableRefObject<ProofreadingContentFilters>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
   filter_panel_request_id_ref: MutableRefObject<number>;
   last_filter_panel_signature_ref: MutableRefObject<string>;
@@ -76,7 +80,7 @@ type UseProofreadingCacheActionsOptions = {
   resolve_current_list_query: () => ProofreadingResolvedListQuery;
   set_cache_status: Dispatch<SetStateAction<"idle" | "refreshing" | "ready" | "error">>;
   set_list_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>; // 列表内写入锁
-  set_filter_dialog_filters: Dispatch<SetStateAction<ProofreadingFilterOptions>>;
+  set_filter_dialog_filters: Dispatch<SetStateAction<ProofreadingContentFilters>>;
   set_filter_dialog_open: Dispatch<SetStateAction<boolean>>;
   set_filter_panel: Dispatch<SetStateAction<ProofreadingFilterPanelState>>;
   set_filter_panel_loading: Dispatch<SetStateAction<boolean>>;
@@ -101,7 +105,7 @@ type UseProofreadingCacheActionsResult = {
   }) => Promise<ProofreadingListSnapshot | null>;
   publish_list_snapshot: (snapshot: ProofreadingListSnapshot) => void;
   run_filter_panel_query: (
-    filters: ProofreadingFilterOptions,
+    filters: ProofreadingContentFilters,
     options?: {
       force?: boolean;
       mark_loading?: boolean;
@@ -230,7 +234,7 @@ export function useProofreadingCacheActions(
   // 面板统计与列表视图分离缓存，避免滚动或 delta 内容刷新重复计算筛选计数。
   const run_filter_panel_query = useCallback(
     async (
-      filters: ProofreadingFilterOptions,
+      content_filters: ProofreadingContentFilters,
       query_options?: {
         force?: boolean;
         mark_loading?: boolean;
@@ -241,6 +245,10 @@ export function useProofreadingCacheActions(
         return null;
       }
 
+      const filters = {
+        ...content_filters,
+        file_paths: options.resolve_current_list_query().query.filters.file_paths,
+      };
       const query_signature = build_filter_panel_signature({
         revisions: sync_state.revisions,
         filters,
@@ -383,9 +391,11 @@ export function useProofreadingCacheActions(
       }
 
       const items_by_row_id = new Map(
-        options.list_snapshot_ref.current.view.window_rows.map((visible_item) => {
-          return [visible_item.row_id, visible_item.item] as const;
-        }),
+        options.list_snapshot_ref.current.view.window_rows
+          .filter((row) => row.kind === "item")
+          .map((visible_item) => {
+            return [visible_item.row_id, visible_item.item] as const;
+          }),
       );
       const missing_row_ids = row_ids.filter((row_id) => {
         return !items_by_row_id.has(row_id);
@@ -526,7 +536,7 @@ export function useProofreadingCacheActions(
         options.publish_refresh_scroll_anchor();
       }
       if (sync_mode !== "delta" || !options.filter_dialog_open_ref.current) {
-        const next_dialog_filters = clone_proofreading_filter_options(next_filters);
+        const next_dialog_filters = clone_content_filters(next_filters);
         options.set_filter_dialog_filters(next_dialog_filters);
         options.filter_dialog_filters_ref.current = next_dialog_filters;
       }

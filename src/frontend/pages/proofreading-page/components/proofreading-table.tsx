@@ -4,6 +4,8 @@ import {
   CircleCheck,
   CircleMinus,
   CopyX,
+  FileCheck,
+  FileMinus,
   Eraser,
   ListChecks,
   ListX,
@@ -11,7 +13,7 @@ import {
   RefreshCcw,
   TriangleAlert,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { ITEM_MANUAL_STATUSES, type ItemManualStatus } from "@domain/item";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -20,8 +22,9 @@ import {
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
-  type ProofreadingItem,
-  type ProofreadingVisibleItem,
+  is_proofreading_page_row_id,
+  type ProofreadingWarningCode,
+  type ProofreadingRow,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent } from "@frontend/shadcn/card";
@@ -48,7 +51,7 @@ import type {
 
 // 收口校对页状态 Hook 给表格层的只读展示和行操作入口。
 type ProofreadingTableProps = {
-  items: ProofreadingVisibleItem[];
+  items: ProofreadingRow[];
   visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
@@ -56,7 +59,7 @@ type ProofreadingTableProps = {
   anchor_row_id: string | null;
   retranslating_row_ids: string[];
   readonly: boolean;
-  get_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
+  get_row_at_index: (index: number) => ProofreadingRow | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
   resolve_row_index: (row_id: string) => number | undefined;
   resolve_row_index_async: (row_id: string) => Promise<number | undefined>;
@@ -89,6 +92,8 @@ function run_after_context_menu_close(action: () => void): void {
 
 /** 将条目处理状态映射为当前表格的状态图标。 */
 function resolve_status_icon(status: string): typeof AlertCircle | null {
+  if (status === "PDF_KEEP") return FileCheck;
+  if (status === "PDF_OMIT") return FileMinus;
   if (status === "PROCESSED") {
     return CircleCheck;
   }
@@ -151,111 +156,96 @@ function ProofreadingTextCell(props: {
   );
 }
 
-// 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
+/** 状态、警告和重翻共用图标与提示容器，行操作继续由表格拥有。 */
+function ProofreadingStatusIndicator(props: {
+  tone: ProofreadingStatusIconTone;
+  icon: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={`proofreading-page__status-icon proofreading-page__status-icon--${props.tone}`}
+            data-app-table-ignore-box-select="true"
+            data-app-table-ignore-row-click="true"
+          >
+            {props.icon}
+          </span>
+        }
+      />
+      <TooltipContent>
+        <div className="grid gap-1">{props.children}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** 文本和页面共用状态图标；补充提示由所属行提供。 */
 function ProofreadingStatusCell(props: {
-  item: ProofreadingItem;
+  status: string;
+  warnings: readonly ProofreadingWarningCode[];
   retranslating: boolean;
+  details?: ReactNode;
+  status_label?: string;
 }): JSX.Element | null {
   const { t } = useI18n();
-  const StatusIcon = resolve_status_icon(props.item.status);
-  const status_icon_tone = resolve_status_icon_tone(props.item.status);
-  const warning_label = props.item.warnings
-    .map((warning) => {
-      const label_key =
-        PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
-          warning as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
-        ];
-      return label_key === undefined ? warning : t(label_key);
-    })
-    .join(" | ");
+  const StatusIcon = resolve_status_icon(props.status);
   const status_label_key =
     PROOFREADING_STATUS_LABEL_KEY_BY_CODE[
-      props.item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
+      props.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
     ];
-  const status_label = status_label_key === undefined ? props.item.status : t(status_label_key);
-  if (props.retranslating) {
+  const status_label =
+    props.status_label ?? (status_label_key === undefined ? props.status : t(status_label_key));
+  if (props.retranslating)
     return (
       <div className="proofreading-page__status-icons">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span
-                className="proofreading-page__status-icon"
-                data-app-table-ignore-box-select="true"
-                data-app-table-ignore-row-click="true"
-              >
-                <Spinner className="proofreading-page__status-spinner" />
-              </span>
-            }
-          />
-          <TooltipContent>
-            <p>
-              {t("app.tooltip.value", {
-                TITLE: t("proofreading_page.fields.status"),
-                VALUE: t("proofreading_page.action.retranslate"),
-              })}
-            </p>
-          </TooltipContent>
-        </Tooltip>
+        <ProofreadingStatusIndicator
+          tone="neutral"
+          icon={<Spinner className="proofreading-page__status-spinner" />}
+        >
+          <p>
+            {t("app.tooltip.value", {
+              TITLE: t("proofreading_page.fields.status"),
+              VALUE: t("proofreading_page.action.retranslate"),
+            })}
+          </p>
+        </ProofreadingStatusIndicator>
       </div>
     );
-  }
-
-  if (StatusIcon === null && props.item.warnings.length === 0) {
-    return null;
-  }
-
+  if (StatusIcon === null && props.warnings.length === 0) return null;
+  const warning_label = props.warnings
+    .map((warning) => {
+      const key = PROOFREADING_WARNING_LABEL_KEY_BY_CODE[warning];
+      return key === undefined ? warning : t(key);
+    })
+    .join(" | ");
   return (
     <div className="proofreading-page__status-icons">
-      {StatusIcon === null ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span
-                className={[
-                  "proofreading-page__status-icon",
-                  `proofreading-page__status-icon--${status_icon_tone}`,
-                ].join(" ")}
-                data-app-table-ignore-box-select="true"
-                data-app-table-ignore-row-click="true"
-              >
-                <StatusIcon />
-              </span>
-            }
-          />
-          <TooltipContent>
-            <p>
-              {t("app.tooltip.value", {
-                TITLE: t("proofreading_page.fields.status"),
-                VALUE: status_label,
-              })}
-            </p>
-          </TooltipContent>
-        </Tooltip>
+      {StatusIcon && (
+        <ProofreadingStatusIndicator
+          tone={resolve_status_icon_tone(props.status)}
+          icon={<StatusIcon />}
+        >
+          <p>
+            {t("app.tooltip.value", {
+              TITLE: t("proofreading_page.fields.status"),
+              VALUE: status_label,
+            })}
+          </p>
+          {props.details}
+        </ProofreadingStatusIndicator>
       )}
-
-      {props.item.warnings.length === 0 ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span
-                className="proofreading-page__status-icon proofreading-page__status-icon--warning"
-                data-app-table-ignore-box-select="true"
-                data-app-table-ignore-row-click="true"
-              >
-                <TriangleAlert />
-              </span>
-            }
-          />
-          <TooltipContent>
-            <p>
-              {t("app.tooltip.value", {
-                TITLE: t("proofreading_page.tooltip.warning_title"),
-                VALUE: warning_label,
-              })}
-            </p>
-          </TooltipContent>
-        </Tooltip>
+      {props.warnings.length > 0 && (
+        <ProofreadingStatusIndicator tone="warning" icon={<TriangleAlert />}>
+          <p>
+            {t("app.tooltip.value", {
+              TITLE: t("proofreading_page.tooltip.warning_title"),
+              VALUE: warning_label,
+            })}
+          </p>
+        </ProofreadingStatusIndicator>
       )}
     </div>
   );
@@ -269,7 +259,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     return new Set(props.retranslating_row_ids);
   }, [props.retranslating_row_ids]);
   // 暴露远端窗口读取能力，AppTable 不需要理解校对页 view id。
-  const row_model = useMemo<AppTableRowModel<ProofreadingVisibleItem>>(() => {
+  const row_model = useMemo<AppTableRowModel<ProofreadingRow>>(() => {
     return {
       row_count: props.visible_row_count,
       loaded_row_ids: props.items.map((item) => item.row_id),
@@ -291,7 +281,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     props.visible_row_count,
   ]);
   // 校对页表格语义和菜单入口的唯一列配置。
-  const columns = useMemo<AppTableColumn<ProofreadingVisibleItem>[]>(() => {
+  const columns = useMemo<AppTableColumn<ProofreadingRow>[]>(() => {
     return [
       {
         kind: "drag",
@@ -316,6 +306,13 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-source-head",
         cell_class_name: "proofreading-page__table-source-cell",
         render_cell: (payload) => {
+          if (payload.row.kind === "page")
+            return (
+              <span className="proofreading-page__table-text">
+                {payload.row.page.file_path} ·{" "}
+                {t("proofreading_page.pages.source_page", { PAGE: String(payload.row.page.page) })}
+              </span>
+            );
           return (
             <ProofreadingTextCell
               name={read_optional_item_name_text(payload.row.item.name_src)}
@@ -339,6 +336,12 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-translation-head",
         cell_class_name: "proofreading-page__table-translation-cell",
         render_cell: (payload) => {
+          if (payload.row.kind === "page")
+            return payload.row.page.status === "NONE" ? null : (
+              <span className="proofreading-page__table-text">
+                {t("proofreading_page.pages.view")}
+              </span>
+            );
           return (
             <ProofreadingTextCell
               name={read_optional_item_name_text(payload.row.item.name_dst)}
@@ -364,10 +367,22 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-status-head",
         cell_class_name: "proofreading-page__table-status-cell",
         render_cell: (payload) => {
+          const row = payload.row;
           return (
             <ProofreadingStatusCell
-              item={payload.row.item}
-              retranslating={retranslating_row_id_set.has(payload.row.row_id)}
+              status={row.kind === "item" ? row.item.status : row.page.status}
+              status_label={
+                row.kind === "page" && row.page.status === "PROCESSED"
+                  ? t("proofreading_page.pages.translated")
+                  : undefined
+              }
+              warnings={row.kind === "item" ? row.item.warnings : []}
+              retranslating={row.kind === "item" && retranslating_row_id_set.has(row.row_id)}
+              details={
+                row.kind === "page" && row.page.status === "PROCESSED" ? (
+                  <p>{t("proofreading_page.filter.no_warning")}</p>
+                ) : undefined
+              }
             />
           );
         },
@@ -396,9 +411,15 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           on_row_activate={props.on_open_edit}
           render_row_context_menu_items={(payload) => {
             const target_row_ids = payload.target_row_ids;
+            const text_only = target_row_ids.every((id) => !is_proofreading_page_row_id(id));
 
             return (
               <AppContextMenuGroup>
+                {!text_only && (
+                  <span className="px-2 text-xs text-muted-foreground">
+                    {t("proofreading_page.pages.text_only")}
+                  </span>
+                )}
                 <AppContextMenuItem
                   aria-keyshortcuts="Enter"
                   onClick={() => {
@@ -408,11 +429,15 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   }}
                 >
                   <PencilLine />
-                  {t("app.action.edit")}
+                  {t(
+                    is_proofreading_page_row_id(payload.row_id)
+                      ? "proofreading_page.pages.title"
+                      : "app.action.edit",
+                  )}
                   <AppContextMenuShortcut>Enter</AppContextMenuShortcut>
                 </AppContextMenuItem>
                 <AppContextMenuItem
-                  disabled={props.readonly}
+                  disabled={props.readonly || !text_only}
                   onClick={() => {
                     run_after_context_menu_close(() => {
                       props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
@@ -423,7 +448,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   {t("proofreading_page.action.retranslate")}
                 </AppContextMenuItem>
                 <AppContextMenuItem
-                  disabled={props.readonly}
+                  disabled={props.readonly || !text_only}
                   onClick={() => {
                     run_after_context_menu_close(() => {
                       props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
@@ -434,7 +459,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   {t("proofreading_page.action.clear_translation")}
                 </AppContextMenuItem>
                 <AppContextMenuSub>
-                  <AppContextMenuSubTrigger disabled={props.readonly}>
+                  <AppContextMenuSubTrigger disabled={props.readonly || !text_only}>
                     <ListChecks />
                     {t("proofreading_page.action.set_translation_status")}
                   </AppContextMenuSubTrigger>
@@ -442,7 +467,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                     {ITEM_MANUAL_STATUSES.map((status) => (
                       <AppContextMenuItem
                         key={status}
-                        disabled={props.readonly}
+                        disabled={props.readonly || !text_only}
                         onClick={() => {
                           props.on_request_set_translation_status_row_ids(
                             target_row_ids,

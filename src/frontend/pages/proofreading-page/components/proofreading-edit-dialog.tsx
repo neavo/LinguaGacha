@@ -1,3 +1,4 @@
+import { ProofreadingDetailLayout } from "./proofreading-detail-layout";
 import { useEffect, useRef } from "react";
 import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
@@ -560,11 +561,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             }}
           />
         ) : null}
-        <div className="proofreading-page__dialog-form" hidden={context_open}>
-          <section className="proofreading-page__dialog-file-card">
-            <span className="proofreading-page__dialog-file-path" title={file_path_label}>
-              {file_path_label}
-            </span>
+        <ProofreadingDetailLayout
+          hidden={context_open}
+          file_label={file_path_label}
+          file_actions={
             <AppButton
               ref={context_trigger_ref}
               type="button"
@@ -579,13 +579,9 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               <BookOpenText data-icon="inline-start" />
               {t("proofreading_page.action.view_context")}
             </AppButton>
-          </section>
-
-          <section className="proofreading-page__dialog-editor-block">
-            <section className="proofreading-page__dialog-editor-section">
-              <span className="proofreading-page__dialog-editor-title font-medium">
-                {t("proofreading_page.fields.source")}
-              </span>
+          }
+          source={
+            <>
               {show_name_fields
                 ? render_name_input_with_glossary_state({
                     input: (
@@ -610,12 +606,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                 marks={source_marks}
                 class_name="proofreading-page__dialog-editor-host"
               />
-            </section>
-
-            <section className="proofreading-page__dialog-editor-section">
-              <span className="proofreading-page__dialog-editor-title font-medium">
-                {t("proofreading_page.fields.translation")}
-              </span>
+            </>
+          }
+          translation={
+            <>
               {show_name_fields
                 ? render_name_input_with_glossary_state({
                     input: (
@@ -646,9 +640,9 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                   props.on_change({ dst: next_value });
                 }}
               />
-            </section>
-          </section>
-
+            </>
+          }
+        >
           <section className="proofreading-page__dialog-status-section">
             <h3 className="proofreading-page__dialog-status-title font-medium">
               {t("proofreading_page.fields.status")}
@@ -683,7 +677,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               })}
             </div>
           </section>
-        </div>
+        </ProofreadingDetailLayout>
       </div>
     </AppPageDialog>
   );

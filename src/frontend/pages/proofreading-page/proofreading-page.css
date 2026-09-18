@@ -10,6 +10,7 @@
 }
 
 .proofreading-page__table-host {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -134,31 +135,19 @@
 }
 
 .proofreading-page__filter-dialog-scroll {
-  display: flex;
   flex: 1;
   min-width: 0;
   padding: 18px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .proofreading-page__filter-layout {
   display: grid;
-  min-height: 0;
   min-width: 0;
-  width: 100%;
   height: 100%;
-  flex: 1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: max-content minmax(180px, 1fr);
   gap: 12px;
-  align-items: stretch;
-}
-
-.proofreading-page__filter-left-column {
-  display: grid;
-  min-height: 0;
-  min-width: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
 }
 
 .proofreading-page__filter-section {
@@ -173,45 +162,17 @@
   padding: 10px;
 }
 
-.proofreading-page__filter-section--stretch {
-  min-height: 0;
-}
-
 .proofreading-page__filter-section--compact-toggles {
-  --proofreading-filter-group-inset: 10px;
-
+  align-self: start;
   gap: 0;
-  padding: 6px 0;
+  padding: 6px 10px;
 }
 
-.proofreading-page__filter-section-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.proofreading-page__filter-section-title,
 .proofreading-page__filter-group-label {
   margin: 0;
   font-size: 13px;
-  line-height: 1.2;
-}
-
-.proofreading-page__filter-section-title {
-  font-weight: 500;
-}
-
-.proofreading-page__filter-group-label {
   font-weight: 400;
-}
-
-.proofreading-page__filter-section-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  line-height: 1.2;
 }
 
 .proofreading-page__filter-toggle-grid {
@@ -219,7 +180,7 @@
   flex-wrap: wrap;
   column-gap: 6px;
   row-gap: 4px;
-  padding: 0 var(--proofreading-filter-group-inset);
+  padding: 0;
 }
 
 .proofreading-page__filter-outcome-group {
@@ -240,7 +201,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--foreground);
-  padding: 2px 6px 2px var(--proofreading-filter-group-inset);
+  padding: 2px 0;
 }
 
 .proofreading-page__filter-group-actions {
@@ -428,7 +389,7 @@
 }
 
 .proofreading-page__dialog-file-card,
-.proofreading-page__dialog-editor-block,
+.proofreading-page__dialog-content-block,
 .proofreading-page__dialog-status-section {
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
@@ -705,7 +666,7 @@
   white-space: pre-wrap;
 }
 
-.proofreading-page__dialog-editor-title {
+.proofreading-page__dialog-content-title {
   font-size: 13px;
   line-height: 1.2;
 }
@@ -720,7 +681,7 @@
   flex: 0 0 32px;
 }
 
-.proofreading-page__dialog-editor-block {
+.proofreading-page__dialog-content-block {
   display: grid;
   min-height: 0;
   flex: 1;
@@ -729,7 +690,7 @@
   padding: 16px;
 }
 
-.proofreading-page__dialog-editor-section {
+.proofreading-page__dialog-content-section {
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -739,4 +700,69 @@
 .proofreading-page__dialog-editor-host {
   min-height: 0;
   flex: 1 1 0;
+}
+
+.proofreading-page__file-picker {
+  width: min(440px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+.proofreading-page__file-options {
+  max-height: 320px;
+  overflow: auto;
+}
+.proofreading-page__file-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  font-size: 12px;
+}
+.proofreading-page__file-option:hover {
+  background: var(--accent);
+}
+.proofreading-page__file-option input {
+  accent-color: var(--primary);
+}
+
+.proofreading-page__table-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.proofreading-page__preview-pane {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: var(--popover);
+}
+.proofreading-page__preview-pane[aria-disabled="true"] {
+  border-color: color-mix(in srgb, var(--border) 88%, white 12%);
+  background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
+}
+.proofreading-page__preview-feedback {
+  position: absolute;
+  inset: auto 8px 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--ui-radius-card);
+  background: var(--popover);
 }

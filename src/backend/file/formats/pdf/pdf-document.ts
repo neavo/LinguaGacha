@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import * as mupdf from "mupdf";
-import type { PDFDocument, PDFRegion } from "../../../../shared/pdf";
-import { is_pdf_original_page, render_pdf_translation, render_pdf_html } from "./pdf-translation";
+import type { PDFDocument, PDFRegion, PDFPage } from "../../../../shared/pdf";
+import {
+  is_pdf_original_page,
+  render_pdf_translation,
+  render_pdf_html,
+  render_pdf_page_translation,
+} from "./pdf-translation";
 
 const PDF_MAX_PIXELS = 32_000_000;
 const PDF_COORDINATE_DECIMALS = 6;
+const PDF_PREVIEW_MAX_EDGE = 1600;
 
 /** 原稿身份由字节决定；阅读和渲染共用旋转后的左上角页面坐标。 */
 export function read_pdf_document(bytes: Uint8Array): PDFDocument {
@@ -153,34 +159,9 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
           break;
         group.push(rendered[index++]!);
       }
-      const html = await render_pdf_html({
-        title: args.title,
-        size,
-        rendered: group,
-        renderImage: async (region) => {
-          args.signal?.throwIfAborted();
-          return render_pdf_page(output, { page: region.page, scale: 2, region });
-        },
-      });
-      const bytes = await args.print(html);
-      args.signal?.throwIfAborted();
-      const printed = new mupdf.PDFDocument(bytes);
+      const printed = await print_pdf_group(args, output, size, group, translation.background);
       const map = output.newGraftMap();
       try {
-        if (translation.background) {
-          const image = new mupdf.Image(
-            render_pdf_page(output, {
-              page: translation.background.page,
-              scale: 2,
-              region: translation.background,
-            }),
-          );
-          try {
-            apply_pdf_background(printed, image);
-          } finally {
-            image.destroy();
-          }
-        }
         const offset = output.countPages();
         for (let page = 0; page < printed.countPages(); page++) {
           map.graftPage(-1, printed, page);
@@ -226,6 +207,103 @@ export async function build_pdf_document(args: BuildPDFDocumentArgs): Promise<Ui
     }
   } finally {
     output.destroy();
+  }
+}
+
+/** 共用排版和背景，保留完整来源；返回文档由调用方释放，导出可直接接页而无需中间序列化。 */
+async function print_pdf_group(
+  args: BuildPDFDocumentArgs,
+  source: mupdf.PDFDocument,
+  size: PDFPage,
+  rendered: NonNullable<ReturnType<typeof render_pdf_page_translation>>[],
+  background: PDFRegion | undefined,
+): Promise<mupdf.PDFDocument> {
+  const html = await render_pdf_html({
+    title: args.title,
+    size,
+    rendered,
+    renderImage: async (region) => {
+      args.signal?.throwIfAborted();
+      return render_pdf_page(source, { page: region.page, scale: 2, region });
+    },
+  });
+  const bytes = await args.print(html);
+  args.signal?.throwIfAborted();
+  const printed = new mupdf.PDFDocument(bytes);
+  try {
+    if (background) {
+      const image = new mupdf.Image(
+        render_pdf_page(source, { page: background.page, scale: 2, region: background }),
+      );
+      try {
+        apply_pdf_background(printed, image);
+      } finally {
+        image.destroy();
+      }
+    }
+    return printed;
+  } catch (error) {
+    printed.destroy();
+    throw error;
+  }
+}
+
+/** 单页译稿允许没有输出；调用方先按处置状态展示空态。 */
+export async function build_pdf_page_preview(
+  args: BuildPDFDocumentArgs & { page: number },
+): Promise<Uint8Array> {
+  const page = args.document.pages[args.page - 1];
+  if (!page) throw new Error("PDF page does not exist.");
+  const rendered = render_pdf_page_translation(page, args.document);
+  if (!rendered || page.translation?.kind !== "translate")
+    throw new Error("PDF page has no translation output.");
+  const source = new mupdf.PDFDocument(args.source_bytes);
+  try {
+    const printed = await print_pdf_group(
+      args,
+      source,
+      page,
+      [rendered],
+      page.translation.background,
+    );
+    try {
+      const buffer = printed.saveToBuffer("garbage=1,compress");
+      try {
+        return new Uint8Array(buffer.asUint8Array());
+      } finally {
+        buffer.destroy();
+      }
+    } finally {
+      printed.destroy();
+    }
+  } finally {
+    source.destroy();
+  }
+}
+
+/** 页数收缩时夹取到末页，按预览尺寸上限输出图像和实际页码。 */
+export function render_pdf_preview(
+  bytes: Uint8Array,
+  page: number,
+): { image: string; count: number; page: number } {
+  const document = new mupdf.PDFDocument(bytes);
+  try {
+    page = Math.min(page, document.countPages());
+    const target = document.loadPage(page - 1);
+    let scale: number;
+    try {
+      const [x0, y0, x1, y1] = target.getBounds();
+      scale = Math.min(2, PDF_PREVIEW_MAX_EDGE / Math.max(x1 - x0, y1 - y0));
+    } finally {
+      target.destroy();
+    }
+    return {
+      image: `data:image/png;base64,${Buffer.from(render_pdf_page(document, { page, scale })).toString("base64")}`,
+      count: document.countPages(),
+      page,
+    };
+  } finally {
+    document.destroy();
   }
 }
 

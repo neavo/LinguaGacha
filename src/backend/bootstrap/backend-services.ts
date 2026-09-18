@@ -1,3 +1,4 @@
+import { ProofreadingPagePreview } from "../proofreading/proofreading-page-preview";
 import { resolve_workspace_runtime_entry } from "../../native/workspace-runtime";
 import { pathToFileURL } from "node:url";
 import { PDFWorker } from "../file/formats/pdf/pdf-worker";
@@ -89,6 +90,7 @@ export interface BackendProjectServices {
 }
 
 export interface BackendProofreadingServices {
+  preview: ProofreadingPagePreview;
   query: ProofreadingQueryService;
   commands: ProofreadingService;
 }
@@ -246,6 +248,7 @@ export class BackendServices {
       updateSettings: (request) => settings_commands.update(request),
     };
     this.proofreading = {
+      preview: new ProofreadingPagePreview(options.database, session_state, this.pdf_worker.run),
       query: new ProofreadingQueryService({
         sessionState: session_state,
         cache: this.cache_manager.proofreading,
@@ -329,6 +332,7 @@ export class BackendServices {
    * 释放组合根拥有的运行态资源；数据库和日志由 Bootstrap 关闭。
    */
   public async dispose(): Promise<void> {
+    this.proofreading.preview.dispose();
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
     this.runtime_stream_unsubscribe?.();

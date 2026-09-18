@@ -103,6 +103,7 @@ export function build_refreshed_proofreading_list_view(args: {
       items: args.sync_state.revisions.items,
       quality: args.sync_state.revisions.quality,
       proofreading: args.sync_state.revisions.proofreading,
+      pdf: args.sync_state.revisions.pdf,
     },
     row_count: args.window.row_count,
     window_start: args.window.start,
@@ -143,6 +144,7 @@ export function build_filter_panel_signature(args: {
     items: number;
     quality: number;
     proofreading: number;
+    pdf?: number;
   };
   filters: ProofreadingFilterOptions;
 }): string {
@@ -224,6 +226,9 @@ export function resolve_proofreading_refresh_signal(signal: {
   const delete_item_ids = normalize_refresh_item_ids(
     signal.results.flatMap((result) => result.itemDelta?.deleteItemIds ?? []),
   );
+  if (signal.updated_sections.includes("pdf") && !signal.updated_sections.includes("items")) {
+    return { seq: signal.seq, mode: "delta", itemIds: [], deleteItemIds: [] };
+  }
   if (signal.updated_sections.includes("items")) {
     if (item_ids.length > 0 || delete_item_ids.length > 0) {
       return {

@@ -1,3 +1,6 @@
+import { type ProofreadingContentFilters } from "@frontend/pages/proofreading-page/proofreading-filter-state";
+import type { ProofreadingFile } from "@shared/proofreading/proofreading-types";
+import type { ProofreadingFilterChoice } from "./proofreading-filter-state";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type { ItemManualStatus } from "@domain/item";
 import type {
@@ -12,15 +15,16 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 import type {
-  ProofreadingFilterOptions,
   ProofreadingFilterPanelState,
   ProofreadingItem,
   ProofreadingSearchScope,
-  ProofreadingVisibleItem,
+  ProofreadingRow,
 } from "@shared/proofreading/proofreading-types";
 
 export const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "project",
+  "files",
+  "pdf",
   "items",
   "quality",
   "proofreading",
@@ -55,6 +59,9 @@ export function normalize_proofreading_sort_state(
 }
 
 export type UseProofreadingPageStateResult = {
+  files: ProofreadingFile[];
+  file_selection: ProofreadingFilterChoice<string>;
+  update_file_selection: (choice: ProofreadingFilterChoice<string>) => void;
   cache_status: "idle" | "refreshing" | "ready" | "error";
   list_revisions: ProjectDataSectionRevisions;
   required_sections: ProjectDataSection[];
@@ -67,10 +74,10 @@ export type UseProofreadingPageStateResult = {
   search_scope: ProofreadingSearchScope;
   is_regex: boolean;
   invalid_regex_message: string | null;
-  filter_dialog_filters: ProofreadingFilterOptions;
+  filter_dialog_filters: ProofreadingContentFilters;
   filter_panel: ProofreadingFilterPanelState;
   filter_panel_loading: boolean;
-  visible_items: ProofreadingVisibleItem[];
+  visible_items: ProofreadingRow[];
   visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
@@ -90,7 +97,7 @@ export type UseProofreadingPageStateResult = {
   update_regex: (next_is_regex: boolean) => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
-  get_visible_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
+  get_visible_row_at_index: (index: number) => ProofreadingRow | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
   resolve_visible_row_index_async: (row_id: string) => Promise<number | undefined>;
@@ -99,7 +106,7 @@ export type UseProofreadingPageStateResult = {
   handle_table_selection_error: (error: unknown) => void;
   open_filter_dialog: () => void;
   close_filter_dialog: () => void;
-  update_filter_dialog_filters: (next_filters: ProofreadingFilterOptions) => void;
+  update_filter_dialog_filters: (next_filters: ProofreadingContentFilters) => void;
   confirm_filter_dialog_filters: () => Promise<void>;
   open_edit_dialog: (row_id: string) => void;
   request_close_dialog: () => void;

@@ -142,7 +142,7 @@ describe("AgentMarkdown", () => {
 
     const dialog = document.body.querySelector('[data-slot="dialog-content"]');
     expect(dialog?.querySelector('img[src="https://example.com/a.png"]')).not.toBeNull();
-    expect(dialog?.querySelector(".agent-media-preview-dialog__viewport")).not.toBeNull();
+    expect(dialog?.querySelector(".media-viewport__viewport")).not.toBeNull();
   });
 
   it("代码使用官方高亮并提供复制和下载入口", async () => {

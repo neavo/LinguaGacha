@@ -1,5 +1,10 @@
 import { parentPort } from "node:worker_threads";
-import { build_pdf_document, read_pdf_document } from "./pdf-document";
+import {
+  build_pdf_document,
+  read_pdf_document,
+  build_pdf_page_preview,
+  render_pdf_preview,
+} from "./pdf-document";
 import { to_log_error } from "../../../../shared/error";
 import type { PDFWorkerRequest, PDFWorkerResponse } from "./pdf-worker";
 
@@ -26,18 +31,21 @@ parentPort!.on("message", async (message: PDFWorkerRequest) => {
   try {
     const task = message.task;
     const result =
-      task.kind === "read"
-        ? read_pdf_document(task.bytes)
-        : await build_pdf_document({
-            title: task.title,
-            document: task.document,
-            source_bytes: task.bytes,
-            print: (html) =>
-              new Promise<Uint8Array>((resolve, reject) => {
-                printing = { resolve, reject };
-                send({ kind: "print", html });
-              }),
-          });
+      task.kind === "render"
+        ? render_pdf_preview(task.bytes, task.page)
+        : task.kind === "read"
+          ? read_pdf_document(task.bytes)
+          : await (task.kind === "preview" ? build_pdf_page_preview : build_pdf_document)({
+              page: task.kind === "preview" ? task.page : 1,
+              title: task.title,
+              document: task.document,
+              source_bytes: task.bytes,
+              print: (html) =>
+                new Promise<Uint8Array>((resolve, reject) => {
+                  printing = { resolve, reject };
+                  send({ kind: "print", html });
+                }),
+            });
     send({ kind: "result", result });
   } catch (error) {
     send({ kind: "error", error: to_log_error(error) });

@@ -333,6 +333,7 @@ function create_sync_state(
       quality: 0,
       proofreading: 1,
     },
+    files: [],
     defaultFilters: default_filters,
   };
   return {
@@ -400,6 +401,7 @@ function create_list_view() {
     window_start: 0,
     window_rows: [
       {
+        kind: "item" as const,
         row_id: "1",
         item: create_client_item(1),
         compressed_src: "foo",
@@ -462,11 +464,7 @@ function create_filter_panel() {
     outcome_count_by_code: {
       NONE: 1,
     },
-    all_file_paths: ["chapter01.txt"],
-    available_file_paths: ["chapter01.txt"],
-    file_count_by_path: {
-      "chapter01.txt": 1,
-    },
+
     glossary_term_entries: [],
     without_glossary_miss_count: 1,
   };
@@ -487,9 +485,11 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
     }),
     read_proofreading_row_ids_range: vi.fn(async () => ["1"]),
     resolve_proofreading_row_index: vi.fn(async () => 0),
-    read_proofreading_items_by_row_ids: vi.fn(async () => {
-      return create_list_view().window_rows.map((row) => row.item);
-    }),
+    read_proofreading_items_by_row_ids: vi.fn(async ({ row_ids }: { row_ids: string[] }) =>
+      row_ids.map((id) =>
+        id === "1" ? create_list_view().window_rows[0]!.item : create_client_item(Number(id)),
+      ),
+    ),
     read_proofreading_context: vi.fn(async () => []),
     build_proofreading_filter_panel: vi.fn(async () => create_filter_panel()),
   };
@@ -635,6 +635,39 @@ describe("useProofreadingPageState", () => {
     });
   });
 
+  it("内容筛选确认保留搜索条的显式文件意图，空选择和全选分别生效", async () => {
+    await render_hook();
+    await act(async () =>
+      latest_state?.update_file_selection({ mode: "selected", values: ["chapter01.txt"] }),
+    );
+    await flush_async_updates();
+    await act(async () => latest_state?.open_filter_dialog());
+    await act(async () => {
+      latest_state?.update_filter_dialog_filters({
+        outcomes: ["NONE"],
+        glossary_entry_ids: [],
+        include_without_glossary_miss: true,
+      });
+      await latest_state?.confirm_filter_dialog_filters();
+    });
+    expect(latest_state?.file_selection).toEqual({ mode: "selected", values: ["chapter01.txt"] });
+    expect(latest_state?.filter_dialog_filters).not.toHaveProperty("file_paths");
+    await act(async () => latest_state?.update_file_selection({ mode: "selected", values: [] }));
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ file_paths: [] }) }),
+    );
+    await act(async () => latest_state?.update_file_selection({ mode: "default" }));
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({ file_paths: ["chapter01.txt"] }),
+      }),
+    );
+  });
+
   it("收到导航查找意图时会重置旧筛选并执行统一列表查询", async () => {
     await render_hook();
     await act(async () => {
@@ -647,7 +680,6 @@ describe("useProofreadingPageState", () => {
       }
       latest_state.update_filter_dialog_filters({
         outcomes: [],
-        file_paths: [],
         glossary_entry_ids: ["stale"],
         include_without_glossary_miss: false,
       });
@@ -739,6 +771,7 @@ describe("useProofreadingPageState", () => {
       ...create_list_view(),
       window_rows: [
         {
+          kind: "item" as const,
           row_id: "1",
           item: {
             ...create_client_item(1),
@@ -775,7 +808,9 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.cache_status).toBe("ready");
-    expect(latest_state?.visible_items[0]?.item.warnings).toEqual(["FULL_SYNCED"]);
+    expect(
+      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.item.warnings,
+    ).toEqual(["FULL_SYNCED"]);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.any(Object),
     );
@@ -858,12 +893,14 @@ describe("useProofreadingPageState", () => {
       row_count: 2,
       window_rows: [
         {
+          kind: "item" as const,
           row_id: "1",
           item: create_client_item(1),
           compressed_src: "foo-1",
           compressed_dst: "bar-1",
         },
         {
+          kind: "item" as const,
           row_id: "2",
           item: create_client_item(2),
           compressed_src: "foo-2",
@@ -944,7 +981,9 @@ describe("useProofreadingPageState", () => {
       proofreading_client_fixture.current.read_proofreading_list_window,
     ).toHaveBeenLastCalledWith(expect.objectContaining({ view_id: "view-1" }));
     expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["1", "2"]);
-    expect(latest_state?.visible_items.map((item) => item.item.dst)).toEqual(["", ""]);
+    expect(
+      latest_state?.visible_items.filter((row) => row.kind === "item").map((item) => item.item.dst),
+    ).toEqual(["", ""]);
     expect(latest_state?.selected_row_ids).toEqual(["1", "2"]);
     expect(latest_state?.active_row_id).toBe("2");
     expect(latest_state?.anchor_row_id).toBe("1");
@@ -1243,7 +1282,9 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1"]);
-    expect(latest_state?.visible_items[0]?.compressed_src).toBe("current-query-row");
+    expect(
+      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
+    ).toBe("current-query-row");
 
     await act(async () => {
       stale_query.resolve(create_query_view("stale-query-view", "stale-query-row"));
@@ -1251,7 +1292,9 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1"]);
-    expect(latest_state?.visible_items[0]?.compressed_src).toBe("current-query-row");
+    expect(
+      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
+    ).toBe("current-query-row");
   });
 
   it("用户查询失败时保留旧视图和旧选区", async () => {
@@ -1271,7 +1314,9 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
-    expect(latest_state?.visible_items[0]?.compressed_src).toBe("foo");
+    expect(
+      latest_state?.visible_items.filter((row) => row.kind === "item")[0]?.compressed_src,
+    ).toBe("foo");
   });
 
   it("筛选面板统计会跟随弹窗筛选输入统一 250ms 防抖", async () => {
@@ -1509,6 +1554,7 @@ describe("useProofreadingPageState", () => {
           row_count: 1000,
           rows: [
             {
+              kind: "item" as const,
               row_id: String(query.start),
               item: create_client_item(query.start),
               compressed_src: `foo-${query.start}`,
@@ -1720,6 +1766,7 @@ describe("useProofreadingPageState", () => {
         window_start: 0,
         window_rows: [
           {
+            kind: "item" as const,
             row_id: "1",
             item: create_client_item(1),
             compressed_src: "foo-1",
@@ -1735,6 +1782,7 @@ describe("useProofreadingPageState", () => {
         row_count: 3,
         rows: [
           {
+            kind: "item" as const,
             row_id: "2",
             item: create_client_item(2),
             compressed_src: "foo-2",
@@ -1806,18 +1854,21 @@ describe("useProofreadingPageState", () => {
         window_start: 0,
         window_rows: [
           {
+            kind: "item" as const,
             row_id: "1",
             item: create_client_item(1),
             compressed_src: "foo-1",
             compressed_dst: "bar-1",
           },
           {
+            kind: "item" as const,
             row_id: "2",
             item: create_client_item(2),
             compressed_src: "foo-2",
             compressed_dst: "bar-2",
           },
           {
+            kind: "item" as const,
             row_id: "3",
             item: create_client_item(3),
             compressed_src: "foo-3",
@@ -1859,18 +1910,21 @@ describe("useProofreadingPageState", () => {
         window_start: 0,
         window_rows: [
           {
+            kind: "item" as const,
             row_id: "1",
             item: create_client_item(1),
             compressed_src: "foo-1",
             compressed_dst: "bar-1",
           },
           {
+            kind: "item" as const,
             row_id: "2",
             item: create_client_item(2),
             compressed_src: "foo-2",
             compressed_dst: "bar-2",
           },
           {
+            kind: "item" as const,
             row_id: "3",
             item: create_client_item(3),
             compressed_src: "foo-3",

@@ -2,6 +2,11 @@ import type { zh_cn_app } from "../zh-CN/app";
 import type { LocaleMessageSchema } from "../../types";
 
 export const ko_kr_app = {
+  media: {
+    zoom_out: "축소",
+    zoom_in: "확대",
+    reset_zoom: "배율 초기화",
+  },
   metadata: {
     app_name: "LinguaGacha",
   },

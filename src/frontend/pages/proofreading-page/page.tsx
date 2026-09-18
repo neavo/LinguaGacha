@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { ProofreadingFilePicker } from "./components/proofreading-file-picker";
+import { ProofreadingPagePreview } from "./components/proofreading-page-preview";
 import { Funnel } from "lucide-react";
 
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
@@ -25,6 +28,27 @@ const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "ds
 export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
+  const [preview, set_preview] = useState<{
+    project: string;
+    file_path: string;
+    page: number;
+  } | null>(null);
+  useEffect(() => {
+    set_preview((current) =>
+      current?.project === proofreading_page_state.settled_project_path ? current : null,
+    );
+  }, [proofreading_page_state.settled_project_path]);
+  // 行类型决定详情入口，页面身份与工程绑定以隔离旧预览。
+  const open_detail = (row_id: string): void => {
+    const row = proofreading_page_state.visible_items.find((row) => row.row_id === row_id);
+    if (row?.kind === "page")
+      set_preview({
+        project: proofreading_page_state.settled_project_path,
+        file_path: row.page.file_path,
+        page: row.page.page,
+      });
+    else proofreading_page_state.open_edit_dialog(row_id);
+  };
   // 搜索控件只在本地写入期间暂停，任务执行和刷新期间仍可重建只读 query。
   const search_controls_disabled = proofreading_page_state.is_writing;
   // 写入口统一覆盖替换、表格操作和编辑弹窗，避免旧 view 或任务写回期间提交项目事实。
@@ -95,21 +119,36 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           on_change: proofreading_page_state.update_regex,
         }}
         extra_actions={
-          <AppButton
-            type="button"
-            size="toolbar"
-            variant="ghost"
-            disabled={filter_disabled}
-            data-active={proofreading_page_state.filter_dialog_open ? "true" : undefined}
-            onClick={proofreading_page_state.open_filter_dialog}
-          >
-            <Funnel data-icon="inline-start" />
-            {t("proofreading_page.action.filter")}
-          </AppButton>
+          <>
+            <AppButton
+              type="button"
+              size="toolbar"
+              variant="ghost"
+              disabled={filter_disabled}
+              data-active={proofreading_page_state.filter_dialog_open ? "true" : undefined}
+              onClick={proofreading_page_state.open_filter_dialog}
+            >
+              <Funnel data-icon="inline-start" />
+              {t("proofreading_page.action.filter")}
+            </AppButton>
+            <ProofreadingFilePicker
+              files={proofreading_page_state.files}
+              selection={proofreading_page_state.file_selection}
+              on_change={proofreading_page_state.update_file_selection}
+              disabled={filter_disabled}
+            />
+          </>
         }
       />
 
       <div className="proofreading-page__table-host">
+        {proofreading_page_state.file_selection.mode === "selected" &&
+          proofreading_page_state.file_selection.values.length === 0 &&
+          proofreading_page_state.visible_row_count === 0 && (
+            <p className="proofreading-page__table-empty" role="status">
+              {t("proofreading_page.pages.select_files")}
+            </p>
+          )}
         <ProofreadingTable
           items={proofreading_page_state.visible_items}
           visible_row_count={proofreading_page_state.visible_row_count}
@@ -130,7 +169,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           on_sort_change={proofreading_page_state.apply_table_sort_state}
           on_selection_change={proofreading_page_state.apply_table_selection}
           on_selection_error={proofreading_page_state.handle_table_selection_error}
-          on_open_edit={proofreading_page_state.open_edit_dialog}
+          on_open_edit={open_detail}
           on_request_retranslate_row_ids={proofreading_page_state.request_retranslate_row_ids}
           on_request_clear_translation_row_ids={
             proofreading_page_state.request_clear_translation_row_ids
@@ -151,6 +190,18 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         on_close={proofreading_page_state.close_filter_dialog}
       />
 
+      {preview &&
+        preview.project === proofreading_page_state.settled_project_path &&
+        proofreading_page_state.files.some(
+          (file) => file.file_path === preview.file_path && file.count >= preview.page,
+        ) && (
+          <ProofreadingPagePreview
+            key={`${preview.project}:${preview.file_path}:${preview.page}:${proofreading_page_state.list_revisions.files ?? 0}`}
+            target={preview}
+            revision={proofreading_page_state.list_revisions.pdf ?? 0}
+            on_close={() => set_preview(null)}
+          />
+        )}
       <ProofreadingEditDialog
         state={proofreading_page_state.dialog_state}
         item={proofreading_page_state.dialog_item}

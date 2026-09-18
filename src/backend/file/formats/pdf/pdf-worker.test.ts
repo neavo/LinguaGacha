@@ -62,6 +62,20 @@ it("独立部署线程读取、打印回调与合并共用同一引擎，取消�
       bytes: result as Uint8Array,
     })) as PDFDocument;
     expect(rebuilt.pages).toHaveLength(2);
+    const preview = await worker.run({
+      kind: "preview",
+      title: "preview",
+      document,
+      bytes,
+      page: 1,
+    });
+    expect(preview).toBeInstanceOf(Uint8Array);
+    const image = await worker.run({ kind: "render", bytes: preview as Uint8Array, page: 1 });
+    expect(image).toMatchObject({
+      count: 1,
+      page: 1,
+      image: expect.stringMatching(/^data:image\/png;base64,/),
+    });
     cancel_print = true;
     const controller = new AbortController();
     const cancelled = worker.run(task, controller.signal);

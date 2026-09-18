@@ -219,6 +219,7 @@ export function build_proofreading_visible_items(
 ): ProofreadingVisibleItem[] {
   return items.map((item) => {
     return {
+      kind: "item",
       row_id: item.row_id,
       item,
       compressed_src: item.compressed_src,

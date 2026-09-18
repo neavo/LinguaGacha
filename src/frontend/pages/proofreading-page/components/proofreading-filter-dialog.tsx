@@ -1,3 +1,7 @@
+import {
+  clone_content_filters,
+  type ProofreadingContentFilters,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import { useEffect, useMemo, useState } from "react";
 import { Check, LoaderCircle, Minus } from "lucide-react";
 
@@ -8,10 +12,8 @@ import {
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
 } from "@frontend/features/proofreading/proofreading-label-keys";
 import {
-  clone_proofreading_filter_options,
   format_proofreading_glossary_term,
   PROOFREADING_OUTCOME_GROUPS,
-  type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
@@ -23,10 +25,10 @@ import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 
 type ProofreadingFilterDialogProps = {
   open: boolean;
-  filters: ProofreadingFilterOptions;
+  filters: ProofreadingContentFilters;
   panel: ProofreadingFilterPanelState;
   loading: boolean;
-  on_change: (next_filters: ProofreadingFilterOptions) => void;
+  on_change: (next_filters: ProofreadingContentFilters) => void;
   on_confirm: () => Promise<void>;
   on_close: () => void;
 };
@@ -140,7 +142,7 @@ function FilterGroupHeader(props: {
   );
 }
 
-/** 文件与术语筛选共用列表行，提示保留被截断的完整标签。 */
+/** 术语选项保留被截断的完整标签。 */
 function FilterListRow(props: {
   label: string;
   count: number;
@@ -173,7 +175,6 @@ function FilterListRow(props: {
 /** 弹窗持有局部搜索词，筛选结果与提交动作交由页面管理。 */
 export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): JSX.Element {
   const { t } = useI18n();
-  const [file_keyword, set_file_keyword] = useState("");
   const [term_keyword, set_term_keyword] = useState("");
   const [submitting, set_submitting] = useState(false);
 
@@ -182,21 +183,9 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
       return;
     }
 
-    set_file_keyword("");
     set_term_keyword("");
     set_submitting(false);
   }, [props.open]);
-
-  const visible_file_paths = useMemo(() => {
-    const normalized_keyword = file_keyword.trim().toLocaleLowerCase();
-    if (normalized_keyword === "") {
-      return props.panel.available_file_paths;
-    }
-
-    return props.panel.available_file_paths.filter((file_path) => {
-      return file_path.toLocaleLowerCase().includes(normalized_keyword);
-    });
-  }, [file_keyword, props.panel.available_file_paths]);
 
   const visible_term_entries = useMemo(() => {
     const normalized_keyword = term_keyword.trim().toLocaleLowerCase();
@@ -214,6 +203,17 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     (outcome) => !KNOWN_PROOFREADING_OUTCOMES.has(outcome),
   );
 
+  // 搜索只收窄候选显示，组选择同时覆盖全部候选术语和「无术语缺失」。
+  const selected_terms = new Set(props.filters.glossary_entry_ids);
+  const selected_term_count = props.panel.glossary_term_entries.filter((entry) =>
+    selected_terms.has(entry.entry_id),
+  ).length;
+  const all_terms_selected =
+    props.filters.include_without_glossary_miss &&
+    selected_term_count === props.panel.glossary_term_entries.length;
+  const some_terms_selected =
+    props.filters.include_without_glossary_miss || selected_term_count > 0;
+
   /** 确认期间阻止关闭和重复提交，完成后恢复操作。 */
   async function handle_confirm(): Promise<void> {
     set_submitting(true);
@@ -228,10 +228,10 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     <AppPageDialog
       open={props.open}
       title={t("proofreading_page.action.filter")}
-      size="xl"
+      size="lg"
       dismissBehavior={submitting ? "blocked" : "default"}
       onClose={props.on_close}
-      contentClassName="h-[720px] max-h-[calc(100vh-32px)] sm:max-w-[1180px]"
+      contentClassName="h-[720px] max-h-[calc(100vh-32px)] sm:max-w-[960px]"
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
@@ -259,167 +259,87 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     >
       <div className="proofreading-page__filter-dialog-scroll">
         <div className="proofreading-page__filter-layout">
-          <div className="proofreading-page__filter-left-column">
-            <section
-              className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles"
-              aria-busy={props.loading}
-            >
-              {PROOFREADING_OUTCOME_GROUPS.map((group) => {
-                const dynamic_outcomes = group.code === "translated" ? extra_outcomes : [];
-                const outcomes = [...group.outcome_codes, ...dynamic_outcomes].filter((outcome) =>
-                  props.panel.available_outcomes.includes(outcome),
-                );
-                const selected_count = outcomes.filter((outcome) =>
-                  props.filters.outcomes.includes(outcome),
-                ).length;
-                const all_selected = outcomes.length > 0 && selected_count === outcomes.length;
-                return (
-                  <div key={group.code} className="proofreading-page__filter-outcome-group">
-                    <FilterGroupHeader
-                      label_id={`proofreading-filter-group-${group.code}`}
-                      label={t(PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE[group.code])}
-                      action_label={t(
-                        all_selected
-                          ? "proofreading_page.filter.deselect_group"
-                          : "proofreading_page.filter.select_group",
-                      )}
-                      selected={all_selected}
-                      partial={selected_count > 0 && !all_selected}
-                      loading={group.code === "translated" ? props.loading : undefined}
-                      onClick={() => {
-                        const next_outcomes = all_selected
-                          ? props.filters.outcomes.filter((outcome) => !outcomes.includes(outcome))
-                          : [...new Set([...props.filters.outcomes, ...outcomes])];
-                        props.on_change({
-                          ...clone_proofreading_filter_options(props.filters),
-                          outcomes: next_outcomes,
-                        });
-                      }}
-                    />
-                    <div className="proofreading-page__filter-toggle-grid">
-                      {outcomes.map((outcome) => (
-                        <FilterToggleButton
-                          key={outcome}
-                          label={outcome_label(outcome, t)}
-                          count={props.panel.outcome_count_by_code[outcome] ?? 0}
-                          selected={props.filters.outcomes.includes(outcome)}
-                          onClick={() => {
-                            props.on_change({
-                              ...clone_proofreading_filter_options(props.filters),
-                              outcomes: toggle_string(props.filters.outcomes, outcome),
-                            });
-                          }}
-                        />
-                      ))}
-                    </div>
+          <section
+            className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles"
+            aria-busy={props.loading}
+          >
+            {PROOFREADING_OUTCOME_GROUPS.map((group) => {
+              const dynamic_outcomes = group.code === "translated" ? extra_outcomes : [];
+              const outcomes = [...group.outcome_codes, ...dynamic_outcomes].filter((outcome) =>
+                props.panel.available_outcomes.includes(outcome),
+              );
+              const selected_count = outcomes.filter((outcome) =>
+                props.filters.outcomes.includes(outcome),
+              ).length;
+              const all_selected = outcomes.length > 0 && selected_count === outcomes.length;
+              return (
+                <div key={group.code} className="proofreading-page__filter-outcome-group">
+                  <FilterGroupHeader
+                    label_id={`proofreading-filter-group-${group.code}`}
+                    label={t(PROOFREADING_OUTCOME_GROUP_LABEL_KEY_BY_CODE[group.code])}
+                    action_label={t(
+                      all_selected
+                        ? "proofreading_page.filter.deselect_group"
+                        : "proofreading_page.filter.select_group",
+                    )}
+                    selected={all_selected}
+                    partial={selected_count > 0 && !all_selected}
+                    loading={group.code === "translated" ? props.loading : undefined}
+                    onClick={() => {
+                      const next_outcomes = all_selected
+                        ? props.filters.outcomes.filter((outcome) => !outcomes.includes(outcome))
+                        : [...new Set([...props.filters.outcomes, ...outcomes])];
+                      props.on_change({
+                        ...clone_content_filters(props.filters),
+                        outcomes: next_outcomes,
+                      });
+                    }}
+                  />
+                  <div className="proofreading-page__filter-toggle-grid">
+                    {outcomes.map((outcome) => (
+                      <FilterToggleButton
+                        key={outcome}
+                        label={outcome_label(outcome, t)}
+                        count={props.panel.outcome_count_by_code[outcome] ?? 0}
+                        selected={props.filters.outcomes.includes(outcome)}
+                        onClick={() => {
+                          props.on_change({
+                            ...clone_content_filters(props.filters),
+                            outcomes: toggle_string(props.filters.outcomes, outcome),
+                          });
+                        }}
+                      />
+                    ))}
                   </div>
-                );
-              })}
-            </section>
-
-            <section className="proofreading-page__filter-section proofreading-page__filter-section--stretch">
-              <div className="proofreading-page__filter-section-head">
-                <h3 className="proofreading-page__filter-section-title">
-                  {t("proofreading_page.filter.file_scope")}
-                </h3>
-                <div className="proofreading-page__filter-section-actions">
-                  <AppButton
-                    type="button"
-                    size="xs"
-                    variant="outline"
-                    onClick={() => {
-                      props.on_change({
-                        ...clone_proofreading_filter_options(props.filters),
-                        file_paths: [...props.panel.all_file_paths],
-                      });
-                    }}
-                  >
-                    {t("proofreading_page.filter.select_all")}
-                  </AppButton>
-                  <AppButton
-                    type="button"
-                    size="xs"
-                    variant="outline"
-                    onClick={() => {
-                      props.on_change({
-                        ...clone_proofreading_filter_options(props.filters),
-                        file_paths: [],
-                      });
-                    }}
-                  >
-                    {t("proofreading_page.filter.clear")}
-                  </AppButton>
                 </div>
-              </div>
+              );
+            })}
+          </section>
 
-              <Input
-                className="h-[30px] px-2 text-xs leading-none md:text-xs placeholder:text-xs"
-                value={file_keyword}
-                placeholder={t("proofreading_page.filter.search_placeholder")}
-                onChange={(event) => {
-                  set_file_keyword(event.target.value);
-                }}
-              />
-
-              <ScrollArea className="proofreading-page__filter-list">
-                <div className="proofreading-page__filter-list-body">
-                  {visible_file_paths.map((file_path) => (
-                    <FilterListRow
-                      key={file_path}
-                      label={file_path}
-                      count={props.panel.file_count_by_path[file_path] ?? 0}
-                      selected={props.filters.file_paths.includes(file_path)}
-                      onClick={() => {
-                        props.on_change({
-                          ...clone_proofreading_filter_options(props.filters),
-                          file_paths: toggle_string(props.filters.file_paths, file_path),
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </ScrollArea>
-            </section>
-          </div>
-
-          <section className="proofreading-page__filter-section proofreading-page__filter-section--stretch">
-            <div className="proofreading-page__filter-section-head">
-              <h3 className="proofreading-page__filter-section-title">
-                {t("proofreading_page.filter.glossary_detail")}
-              </h3>
-              <div className="proofreading-page__filter-section-actions">
-                <AppButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    props.on_change({
-                      ...clone_proofreading_filter_options(props.filters),
-                      glossary_entry_ids: props.panel.glossary_term_entries.map(
-                        (entry) => entry.entry_id,
-                      ),
-                      include_without_glossary_miss: true,
-                    });
-                  }}
-                >
-                  {t("proofreading_page.filter.select_all")}
-                </AppButton>
-                <AppButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    props.on_change({
-                      ...clone_proofreading_filter_options(props.filters),
-                      glossary_entry_ids: [],
-                      include_without_glossary_miss: false,
-                    });
-                  }}
-                >
-                  {t("proofreading_page.filter.clear")}
-                </AppButton>
-              </div>
-            </div>
+          <section
+            className="proofreading-page__filter-section"
+            aria-labelledby="proofreading-filter-group-glossary"
+          >
+            <FilterGroupHeader
+              label_id="proofreading-filter-group-glossary"
+              label={t("proofreading_page.filter.glossary_detail")}
+              action_label={t(
+                all_terms_selected
+                  ? "proofreading_page.filter.deselect_group"
+                  : "proofreading_page.filter.select_group",
+              )}
+              selected={all_terms_selected}
+              partial={some_terms_selected && !all_terms_selected}
+              onClick={() =>
+                props.on_change({
+                  ...clone_content_filters(props.filters),
+                  glossary_entry_ids: all_terms_selected
+                    ? []
+                    : props.panel.glossary_term_entries.map((entry) => entry.entry_id),
+                  include_without_glossary_miss: !all_terms_selected,
+                })
+              }
+            />
 
             <Input
               className="h-[30px] px-2 text-xs leading-none md:text-xs placeholder:text-xs"
@@ -441,7 +361,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                       selected={props.filters.include_without_glossary_miss}
                       onClick={() => {
                         props.on_change({
-                          ...clone_proofreading_filter_options(props.filters),
+                          ...clone_content_filters(props.filters),
                           include_without_glossary_miss:
                             !props.filters.include_without_glossary_miss,
                         });
@@ -455,7 +375,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                         selected={props.filters.glossary_entry_ids.includes(entry.entry_id)}
                         onClick={() => {
                           props.on_change({
-                            ...clone_proofreading_filter_options(props.filters),
+                            ...clone_content_filters(props.filters),
                             glossary_entry_ids: toggle_string(
                               props.filters.glossary_entry_ids,
                               entry.entry_id,

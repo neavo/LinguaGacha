@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProofreadingTable } from "@frontend/pages/proofreading-page/components/proofreading-table";
 import type {
   ProofreadingItem,
+  ProofreadingRow,
   ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
@@ -12,7 +13,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {
-        t: (key: string) => key,
+        t: (key: string, params?: Record<string, string>) => params?.VALUE ?? key,
       };
     },
   };
@@ -54,6 +55,7 @@ function create_visible_item(overrides: Partial<ProofreadingItem>): Proofreading
     ...overrides,
   };
   return {
+    kind: "item",
     row_id: item.row_id,
     item,
     compressed_src: item.compressed_src,
@@ -79,7 +81,7 @@ describe("ProofreadingTable", () => {
   });
 
   // 挂载生产表格，行读取沿用页面提供的远端窗口接口。
-  async function render_table(item: ProofreadingVisibleItem): Promise<void> {
+  async function render_table(item: ProofreadingRow, on_open_edit = vi.fn()): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -107,7 +109,7 @@ describe("ProofreadingTable", () => {
             on_sort_change={() => {}}
             on_selection_change={() => {}}
             on_selection_error={() => {}}
-            on_open_edit={() => {}}
+            on_open_edit={on_open_edit}
             on_request_retranslate_row_ids={() => {}}
             on_request_clear_translation_row_ids={() => {}}
             on_request_set_translation_status_row_ids={() => {}}
@@ -136,5 +138,53 @@ describe("ProofreadingTable", () => {
       vi.runAllTimers();
     });
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(body);
+  });
+  it.each([
+    ["NONE", null],
+    ["PROCESSED", "proofreading_page.pages.translated"],
+    ["PDF_KEEP", "proofreading_page.pages.keep"],
+    ["PDF_OMIT", "proofreading_page.status.excluded"],
+  ] as const)("页面 %s 按四种状态显示查看入口和状态提示，保留行激活", async (status, label) => {
+    vi.useFakeTimers();
+    const on_open = vi.fn();
+    await render_table(
+      {
+        kind: "page",
+        row_id: 'page:["book.pdf",1]',
+        page: {
+          file_path: "book.pdf",
+          page: 1,
+          status,
+        },
+      },
+      on_open,
+    );
+    const translation = container!.querySelector<HTMLElement>(
+      ".proofreading-page__table-translation-cell",
+    )!;
+    const status_cell = container!.querySelector<HTMLElement>(
+      ".proofreading-page__table-status-cell",
+    )!;
+    expect(translation.textContent).toBe(status === "NONE" ? "" : "proofreading_page.pages.view");
+    expect(translation.querySelector("[data-slot='tooltip-trigger']")).toBeNull();
+    expect(status_cell.textContent).toBe("");
+    await act(async () => translation.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(on_open).toHaveBeenCalledWith('page:["book.pdf",1]');
+    if (status === "NONE") {
+      expect(status_cell.querySelector("svg")).toBeNull();
+      expect(status_cell.querySelector("[data-slot='tooltip-trigger']")).toBeNull();
+      return;
+    }
+    const trigger = status_cell.querySelector<HTMLElement>(".proofreading-page__status-icon")!;
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      vi.runAllTimers();
+    });
+    const tooltip = document.querySelector('[role="tooltip"]')!;
+    expect(tooltip.textContent).toContain(label);
+
+    if (status === "PROCESSED")
+      expect(tooltip.textContent).toContain("proofreading_page.filter.no_warning");
   });
 });

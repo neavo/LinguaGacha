@@ -20,13 +20,6 @@ export const de_de_agent_page = {
     download_format: "Als {format} herunterladen",
   },
   image: { title: "Bild", open_preview: "Bildvorschau öffnen" },
-  media: {
-    canvas_label: "Medienvorschaufläche",
-    controls_label: "Medien-Zoom-Steuerung",
-    zoom_out: "Verkleinern",
-    zoom_in: "Vergrößern",
-    reset_zoom: "Zoom zurücksetzen",
-  },
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",

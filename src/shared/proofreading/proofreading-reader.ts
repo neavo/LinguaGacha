@@ -1,3 +1,10 @@
+import type { PDFDocumentRecord, PDFPageRecord } from "../pdf";
+import {
+  build_proofreading_page_row_id,
+  proofreading_page_status,
+  type ProofreadingRow,
+  type ProofreadingFile,
+} from "./proofreading-types";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
   PROOFREADING_WARNING_CODES,
@@ -19,7 +26,6 @@ import {
   type ProofreadingItemRecord,
   type ProofreadingSearchScope,
   type ProofreadingWarningSummary,
-  type ProofreadingVisibleItem,
   type ProofreadingWarningCode,
 } from "./proofreading-types";
 import {
@@ -51,6 +57,7 @@ type ProofreadingRevisions = {
   items: number;
   quality: number;
   proofreading: number;
+  pdf?: number;
 };
 
 // 全量同步输入包含项目分段 revision、质量规则快照和完整文本处理配置。
@@ -155,7 +162,7 @@ export type ProofreadingListWindow = {
   view_id: string;
   start: number;
   row_count: number;
-  rows: ProofreadingVisibleItem[];
+  rows: ProofreadingRow[];
 };
 
 // 同步状态是页面判断列表缓存是否可继续复用的最小凭据，语言变化必须触发全量重建
@@ -165,6 +172,7 @@ export type ProofreadingSyncState = {
   targetLanguage: string;
   revisions: ProofreadingRevisions;
   defaultFilters: ProofreadingFilterOptions;
+  files: ProofreadingFile[];
 };
 
 // 校对完整运行态，GUI 列表与 Agent warning 查询共享同一份评估事实。
@@ -176,6 +184,8 @@ type ProofreadingReaderState = {
   processingConfig: TextProcessingConfig;
   quality_context: ProofreadingEvaluationContext;
   sample_rule_cache: Map<string, TextPreserveRule>;
+  page_by_id: Map<string, PDFPageRecord>;
+  files: ProofreadingFile[];
   item_by_id: Map<string, ProofreadingEvaluatedItem>;
   natural_item_ids: string[]; // 上下文沿工程文件顺序与数值 item_id 排列。
   default_item_ids: string[] | null; // 默认列表沿文件名、行号、字符串 row_id 排列，按需生成。
@@ -192,11 +202,11 @@ type ProofreadingItemChange = {
   natural_order_changed: boolean; // 文件、行号或 item_id 变化会影响所有排序的兜底顺序
 };
 
-// 列表视图缓存只保存显式查询生成的稳定 id 序列，让用户在筛选校对后能先确认重翻结果
+// 列表视图缓存只保存显式查询生成的稳定行 ID 序列，让用户在筛选校对后能先确认重翻结果
 type ProofreadingListViewCache = {
   view_id: string;
   projectId: string;
-  ordered_item_ids: string[];
+  ordered_row_ids: string[];
   // 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回渲染进程。
   row_index_by_id: Map<string, number>;
 };
@@ -531,7 +541,7 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
     .filter((outcome) => !known_outcome_set.has(outcome))
     .sort((left, right) => left.localeCompare(right));
 
-  const file_paths = [...state.file_count_by_path.keys()].sort(compare_proofreading_text);
+  const file_paths = state.files.map((file) => file.file_path).sort(compare_proofreading_text);
   const glossary_entry_ids = [...state.glossary_term_count_map.keys()].sort(
     compare_proofreading_text,
   );
@@ -569,6 +579,7 @@ function build_sync_state(state: ProofreadingReaderState): ProofreadingSyncState
     targetLanguage: state.processingConfig.target_language,
     revisions: { ...state.revisions },
     defaultFilters: clone_proofreading_filter_options(state.defaultFilters),
+    files: state.files.map((file) => ({ ...file })),
   };
 }
 
@@ -597,31 +608,45 @@ function normalize_window_bounds(args: {
  */
 function build_window_rows(args: {
   state: ProofreadingReaderState;
-  ordered_item_ids: string[];
+  ordered_row_ids: string[];
   start: number;
   count: number;
-}): ProofreadingVisibleItem[] {
-  const window_item_ids = args.ordered_item_ids.slice(args.start, args.start + args.count);
-  return build_proofreading_visible_items(
-    window_item_ids.flatMap((item_id) => {
-      const item = args.state.item_by_id.get(item_id);
-      return item === undefined ? [] : [to_client_item(item)];
-    }),
-  );
+}): ProofreadingRow[] {
+  return args.ordered_row_ids
+    .slice(args.start, args.start + args.count)
+    .flatMap((row_id): ProofreadingRow[] => {
+      const item = args.state.item_by_id.get(row_id);
+      if (item) return build_proofreading_visible_items([to_client_item(item)]);
+      const record = args.state.page_by_id.get(row_id);
+      if (!record) return [];
+      const { file_path, page } = record;
+      const translation = page.translation;
+      return [
+        {
+          kind: "page",
+          row_id,
+          page: {
+            file_path,
+            page: page.page,
+            status: proofreading_page_status(translation),
+          },
+        },
+      ];
+    });
 }
 
 // 统一维护有序 id 列表和反向索引，避免增量更新忘记重建索引。
 function create_list_view_cache(args: {
   view_id: string;
   projectId: string;
-  ordered_item_ids: string[];
+  ordered_row_ids: string[];
 }): ProofreadingListViewCache {
   return {
     view_id: args.view_id,
     projectId: args.projectId,
-    ordered_item_ids: args.ordered_item_ids,
+    ordered_row_ids: args.ordered_row_ids,
     row_index_by_id: new Map(
-      args.ordered_item_ids.map((item_id, index) => {
+      args.ordered_row_ids.map((item_id, index) => {
         return [item_id, index] as const;
       }),
     ),
@@ -665,6 +690,8 @@ function create_run_state_from_evaluated(
     quality_context: buildProofreadingEvaluationContext(input.quality),
     sample_rule_cache: new Map(),
     item_by_id: new Map(),
+    page_by_id: new Map(),
+    files: [],
     natural_item_ids: [],
     default_item_ids: null,
     outcome_count_by_code: new Map(),
@@ -687,6 +714,11 @@ function create_run_state_from_evaluated(
     apply_counter_delta({ state, item: evaluated, delta: 1 });
   }
   rebuild_natural_item_ids(state);
+  state.files = [...state.file_count_by_path].map(([file_path, count]) => ({
+    file_path,
+    kind: "item",
+    count,
+  }));
   state.defaultFilters = buildDefaultFiltersFromState(state);
   return state;
 }
@@ -770,13 +802,13 @@ function apply_item_changes_to_list_view_cache(args: {
     return args.cache;
   }
 
-  const next_ordered_item_ids = args.cache.ordered_item_ids.filter((item_id) => {
+  const next_ordered_row_ids = args.cache.ordered_row_ids.filter((item_id) => {
     return !deleted_item_ids.has(item_id);
   });
   return create_list_view_cache({
     view_id: args.cache.view_id,
     projectId: args.cache.projectId,
-    ordered_item_ids: next_ordered_item_ids,
+    ordered_row_ids: next_ordered_row_ids,
   });
 }
 
@@ -789,6 +821,47 @@ export function createProofreadingReader() {
   let next_list_view_id = 0; // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求
 
   return {
+    /** 页面快照独立同步，不触发文本评估，也不改变旧视图的排序成员。 */
+    sync_pages(
+      documents: PDFDocumentRecord[],
+      files: { rel_path: string; file_type: string }[],
+      revision: number,
+    ): ProofreadingSyncState {
+      if (state === null) throw new AppError("runtime.internal_invariant");
+      const previous_pages = state.page_by_id;
+      state.page_by_id = new Map(
+        documents.flatMap(({ file_path, document }) =>
+          document.pages.map(
+            (page) =>
+              [
+                build_proofreading_page_row_id(file_path, page.page),
+                { file_path, page: structuredClone(page) },
+              ] as const,
+          ),
+        ),
+      );
+      const page_counts = new Map(
+        documents.map(({ file_path, document }) => [file_path, document.pages.length]),
+      );
+      state.files = files.map(({ rel_path, file_type }) => ({
+        file_path: rel_path,
+        kind: file_type === "PDF" ? "page" : "item",
+        count: page_counts.get(rel_path) ?? state!.file_count_by_path.get(rel_path) ?? 0,
+      }));
+      state.revisions = { ...state.revisions, pdf: revision };
+      state.defaultFilters = buildDefaultFiltersFromState(state);
+      const deleted_page_ids = new Set(
+        [...previous_pages.keys()].filter((id) => !state!.page_by_id.has(id)),
+      );
+      if (list_view_cache && deleted_page_ids.size > 0)
+        list_view_cache = create_list_view_cache({
+          ...list_view_cache,
+          ordered_row_ids: list_view_cache.ordered_row_ids.filter(
+            (id) => !deleted_page_ids.has(id),
+          ),
+        });
+      return build_sync_state(state);
+    },
     /**
      * 合并已评估分片并重建完整运行态，最终索引仍由主 reader 持有。
      */
@@ -824,7 +897,7 @@ export function createProofreadingReader() {
         });
       }
 
-      current_state.revisions = revisions;
+      current_state.revisions = { ...revisions, pdf: current_state.revisions.pdf };
       current_state.total_item_count = input.total_item_count;
 
       const item_changes: ProofreadingItemChange[] = [];
@@ -866,6 +939,11 @@ export function createProofreadingReader() {
         rebuild_natural_item_ids(current_state);
       }
 
+      current_state.files = current_state.files.map((file) =>
+        file.kind === "item"
+          ? { ...file, count: current_state.file_count_by_path.get(file.file_path) ?? 0 }
+          : file,
+      );
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
       list_view_cache = apply_item_changes_to_list_view_cache({
         cache: list_view_cache,
@@ -891,16 +969,56 @@ export function createProofreadingReader() {
         is_regex: query.is_regex,
         scope: query.scope,
         case_sensitive: false,
-        sort_state: query.sort_state,
+        sort_state: state.page_by_id.size === 0 ? query.sort_state : null,
       });
       next_list_view_id += 1;
       const revision_signature = build_revision_signature(state.revisions);
       const view_id = `${state.projectId}:${revision_signature}:${next_list_view_id.toString()}`;
-      const ordered_item_ids = resolved.items.map((item) => String(item.item_id));
+      let ordered_row_ids = resolved.items.map((item) => String(item.item_id));
+      if (state.page_by_id.size > 0) {
+        // 内容条件属于文本校对；原稿页只消费公共文件范围与搜索。
+        const file_paths = new Set(filters.file_paths);
+        const search = create_proofreading_search_context({
+          keywords: [query.keyword],
+          scope: query.scope,
+          is_regex: query.is_regex,
+          case_sensitive: false,
+        });
+        const pages = [...state.page_by_id.values()].filter((record) => {
+          if (!file_paths.has(record.file_path)) return false;
+          if (search.matcher.keywords.length === 0 || search.matcher.invalid_regex !== null)
+            return true;
+          return (
+            search.scope !== "src" &&
+            record.page.translation?.kind === "translate" &&
+            search.matcher.matches(record.page.translation.markdown)
+          );
+        });
+        // 临时排序字段不进入运行态或响应，不把页面伪造为可编辑 Item。
+        const rows = resolved.items.map((item) => ({
+          item_id: String(item.item_id),
+          file_path: item.file_path,
+          row_number: item.row_number,
+          src: item.src,
+          dst: item.dst,
+          status: item.status,
+        }));
+        rows.push(
+          ...pages.map(({ file_path, page }) => ({
+            item_id: build_proofreading_page_row_id(file_path, page.page),
+            file_path,
+            row_number: page.page,
+            src: String(page.page).padStart(12, "0"),
+            dst: "", // 页面译文列只提供查看入口，排序沿文件和页码兜底。
+            status: proofreading_page_status(page.translation),
+          })),
+        );
+        ordered_row_ids = sort_proofreading_items(rows, query.sort_state).map((row) => row.item_id);
+      }
       list_view_cache = create_list_view_cache({
         view_id,
         projectId: state.projectId,
-        ordered_item_ids,
+        ordered_row_ids,
       });
       const anchor_offset = query.window_anchor?.offset ?? 0;
       const anchor_index =
@@ -910,18 +1028,18 @@ export function createProofreadingReader() {
       const window_bounds = normalize_window_bounds({
         start: anchor_index === undefined ? query.window_start : anchor_index - anchor_offset,
         count: query.window_count,
-        row_count: ordered_item_ids.length,
+        row_count: ordered_row_ids.length,
       });
 
       return {
         projectId: state.projectId,
         revisions: { ...state.revisions },
         view_id,
-        row_count: ordered_item_ids.length,
+        row_count: ordered_row_ids.length,
         window_start: window_bounds.start,
         window_rows: build_window_rows({
           state,
-          ordered_item_ids,
+          ordered_row_ids,
           start: window_bounds.start,
           count: window_bounds.count,
         }),
@@ -993,15 +1111,15 @@ export function createProofreadingReader() {
       const window_bounds = normalize_window_bounds({
         start: query.start,
         count: query.count,
-        row_count: list_view_cache.ordered_item_ids.length,
+        row_count: list_view_cache.ordered_row_ids.length,
       });
       return {
         view_id: list_view_cache.view_id,
         start: window_bounds.start,
-        row_count: list_view_cache.ordered_item_ids.length,
+        row_count: list_view_cache.ordered_row_ids.length,
         rows: build_window_rows({
           state,
-          ordered_item_ids: list_view_cache.ordered_item_ids,
+          ordered_row_ids: list_view_cache.ordered_row_ids,
           start: window_bounds.start,
           count: window_bounds.count,
         }),
@@ -1023,9 +1141,9 @@ export function createProofreadingReader() {
       const window_bounds = normalize_window_bounds({
         start: query.start,
         count: query.count,
-        row_count: list_view_cache.ordered_item_ids.length,
+        row_count: list_view_cache.ordered_row_ids.length,
       });
-      return list_view_cache.ordered_item_ids.slice(
+      return list_view_cache.ordered_row_ids.slice(
         window_bounds.start,
         window_bounds.start + window_bounds.count,
       );
@@ -1136,7 +1254,6 @@ export function createProofreadingReader() {
       });
       const context = create_proofreading_filter_context({ filters });
       const outcome_count_by_code: Record<string, number> = {};
-      const file_count_by_path: Record<string, number> = {};
       const terms = new Map<string, ProofreadingFilterPanelTermEntry>();
       let without_glossary_miss_count = 0;
       for (const item of state.item_by_id.values()) {
@@ -1146,14 +1263,10 @@ export function createProofreadingReader() {
         const outcome_set = context.outcome_set;
         const outcome_matches =
           outcome_set === null || outcomes.some((value) => outcome_set.has(value));
-        const glossary_matches = item_matches_glossary_filter(item, context);
         if (file_matches) {
           for (const outcome of outcomes) {
             outcome_count_by_code[outcome] = (outcome_count_by_code[outcome] ?? 0) + 1;
           }
-        }
-        if (outcome_matches && glossary_matches) {
-          file_count_by_path[item.file_path] = (file_count_by_path[item.file_path] ?? 0) + 1;
         }
         if (!file_matches || !outcome_matches) continue;
         if (!item_has_glossary_miss(item)) without_glossary_miss_count++;
@@ -1173,19 +1286,13 @@ export function createProofreadingReader() {
         ...group.outcome_codes,
       ]);
       const known_set = new Set<string>(known_outcomes);
-      const extra_outcomes = [
-        ...new Set([...state.outcome_count_by_code.keys(), ...filters.outcomes]),
-      ]
+      // 扩展选项来自当前文本结果，查询条件本身不创建面板选项。
+      const extra_outcomes = [...state.outcome_count_by_code.keys()]
         .filter((value) => !known_set.has(value))
         .sort((left, right) => left.localeCompare(right));
       return {
         available_outcomes: [...known_outcomes, ...extra_outcomes],
         outcome_count_by_code,
-        all_file_paths: [...state.file_count_by_path.keys()].sort(compare_proofreading_text),
-        available_file_paths: [
-          ...new Set([...Object.keys(file_count_by_path), ...filters.file_paths]),
-        ].sort(compare_proofreading_text),
-        file_count_by_path,
         glossary_term_entries: [...terms.values()].sort(
           (left, right) => right.count - left.count || left.entry_id.localeCompare(right.entry_id),
         ),

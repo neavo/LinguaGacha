@@ -2,8 +2,24 @@ import { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
 import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_proofreading_page = {
+  pages: {
+    view: "Vorschau öffnen",
+    title: "Seitenvorschau",
+    source_page: "Seite {PAGE}",
+    keep: "Original beibehalten",
+    translated: "Übersetzung vorhanden",
+    retry: "Erneut versuchen",
+    select_files: "Dateien auswählen",
+    page_count: "{COUNT} Seiten",
+    item_count: "{COUNT} Einträge",
+    text_only: "Für diesen Vorgang Texteinträge auswählen",
+    failed: "Vorschau fehlgeschlagen",
+    previous: "Vorherige Seite",
+    next: "Nächste Seite",
+  },
   title: "Korrekturlesen",
   action: {
+    files: "Dateien",
     filter: "Filtern",
     replace_all: "Alle ersetzen",
     retranslate: "Neu übersetzen",
@@ -69,11 +85,9 @@ export const de_de_proofreading_page = {
     translated_group: "Übersetzt",
     unfinished_group: "Nicht abgeschlossen",
     not_required_group: "Keine Übersetzung erforderlich",
-    file_scope: "Dateibereich",
     select_all: "Alle",
     select_group: "Alle auswählen",
     deselect_group: "Auswahl aufheben",
-    clear: "Löschen",
     search_placeholder: "Filtern …",
     glossary_detail: "Glossar-Fehlschläge",
     without_glossary_miss: "Keine Glossarbegriffe oder alle Glossarbegriffe angewendet",

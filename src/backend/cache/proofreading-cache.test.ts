@@ -93,7 +93,7 @@ function create_settings(
 }
 
 // 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
-function create_worker(): ComputeWorkerClient & {
+function create_worker(before_sync?: () => Promise<void>): ComputeWorkerClient & {
   sync_inputs: ProofreadingSyncInput[];
 } {
   const sync_inputs: ProofreadingSyncInput[] = [];
@@ -103,6 +103,7 @@ function create_worker(): ComputeWorkerClient & {
       if (task.type !== "proofreading_sync") {
         throw new Error(`测试未实现 task：${task.type}`);
       }
+      await before_sync?.();
       sync_inputs.push(task.input);
       return evaluateProofreadingSlice(task.input);
     }),
@@ -141,6 +142,7 @@ describe("ProofreadingCache", () => {
   it("同一工程身份下只执行一次 sync task 并用本地 reader 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -195,6 +197,7 @@ describe("ProofreadingCache", () => {
     const cache_port = create_cache_read_port({});
     const read_items = vi.spyOn(cache_port.items, "readItems");
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: cache_port,
       appSettingService: create_settings(),
       workerClient: worker,
@@ -227,6 +230,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -246,6 +250,7 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -278,6 +283,7 @@ describe("ProofreadingCache", () => {
       clean_ruby: false,
     };
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(settings),
       workerClient: worker,
@@ -305,6 +311,7 @@ describe("ProofreadingCache", () => {
   it("只清理匹配工程或当前校对缓存", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -332,6 +339,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -387,6 +395,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -424,7 +433,7 @@ describe("ProofreadingCache", () => {
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(window.data.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
-    expect(window.data.rows[1]?.item).toMatchObject({
+    expect(window.data.rows.filter((row) => row.kind === "item")[1]?.item).toMatchObject({
       item_id: 2,
       dst: "A",
       status: "PROCESSED",
@@ -451,6 +460,7 @@ describe("ProofreadingCache", () => {
       }),
     ];
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -495,6 +505,7 @@ describe("ProofreadingCache", () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({
+      readPages: () => [],
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
@@ -517,4 +528,87 @@ describe("ProofreadingCache", () => {
 
     expect(worker.run).toHaveBeenCalledTimes(2);
   });
+});
+
+it("页面修订号单独触发补读，滚动和文本增量复用页面与评估", async () => {
+  const revisions = { files: 1, items: 1, quality: 1, proofreading: 0, pdf: 1 };
+  const cache = create_cache_read_port({ revisions, items: [] });
+  cache.files.readFileEntries = () => [
+    { rel_path: "book.pdf", file_type: "PDF", sort_index: 0 },
+    { rel_path: "script.txt", file_type: "TXT", sort_index: 1 },
+  ];
+  const readPages = vi.fn(() => [
+    {
+      file_path: "book.pdf",
+      document: {
+        digest: "test",
+        pages: [
+          {
+            page: 1,
+            width: 300,
+            height: 300,
+            rotation: 0,
+            label: null,
+            translation: null,
+            reviewed: false,
+            notes: "",
+          },
+        ],
+      },
+    },
+  ]);
+  const worker = create_worker();
+  const service = new ProofreadingCache({
+    cache,
+    readPages,
+    appSettingService: create_settings(),
+    workerClient: worker,
+    reader: createProofreadingReader(),
+  });
+  const initial = await service.sync({});
+  const view = await service.list({
+    filters: initial.data.defaultFilters,
+    keyword: "",
+    scope: "all",
+    is_regex: false,
+    sort_state: null,
+  });
+  expect(view.data.window_rows).toMatchObject([{ kind: "page" }]);
+  expect(view.data.row_count).toBe(1);
+  revisions.pdf++;
+  const updated = await service.sync({});
+  await service.window({ view_id: view.data.view_id, start: 0, count: 10 });
+  expect(updated.data.revisions.pdf).toBe(2);
+  expect(worker.run).toHaveBeenCalledTimes(1);
+  expect(readPages).toHaveBeenCalledTimes(2);
+  revisions.items++;
+  await service.applyChange(create_delta_change(), revisions);
+  await service.sync({});
+  expect(readPages).toHaveBeenCalledTimes(2);
+  expect(worker.run).toHaveBeenCalledTimes(1);
+});
+
+it("撤销同步后，迟到计算结果不能恢复旧工程索引", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const cache = create_cache_read_port({});
+  const worker = create_worker(() => pending);
+  const reader = createProofreadingReader();
+  const readPages = vi.fn(() => []);
+  const service = new ProofreadingCache({
+    cache,
+    readPages,
+    appSettingService: create_settings(),
+    workerClient: worker,
+    reader,
+  });
+  const sync = service.sync({});
+  const rejected = expect(sync).rejects.toThrow();
+  await service.clearProject();
+  release();
+  await rejected;
+  expect(readPages).not.toHaveBeenCalled();
+  expect(reader.read_items_by_row_ids({ row_ids: ["1"] })).toEqual([]);
 });
