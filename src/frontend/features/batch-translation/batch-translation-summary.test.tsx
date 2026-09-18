@@ -14,6 +14,7 @@ const running_display: BatchTranslationSummaryDisplay = {
 };
 
 type RenderSummaryProps = {
+  variant?: "capsule" | "card";
   open_tooltip_on_start?: boolean;
   active?: boolean;
   on_open?: () => void;
@@ -38,7 +39,8 @@ describe("BatchTranslationSummary", () => {
       root?.render(
         <TooltipProvider>
           <BatchTranslationSummary
-            variant="capsule"
+            variant={props.variant ?? "capsule"}
+            class_name="summary-layout"
             open_tooltip_on_start={props.open_tooltip_on_start ?? false}
             display={{
               ...running_display,
@@ -66,23 +68,37 @@ describe("BatchTranslationSummary", () => {
     root = null;
   });
 
-  it("任务活跃时提示详情入口，点击后收起提示并打开详情", async () => {
-    const on_open = vi.fn();
-    await render_summary({ on_open, open_tooltip_on_start: true });
-    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
-    await render_summary({ active: true, on_open, open_tooltip_on_start: true });
-    expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
+  it.each(["capsule", "card"] as const)(
+    "%s 任务开始时提示详情入口，点击后收起提示并打开详情",
+    async (variant) => {
+      const on_open = vi.fn();
+      await render_summary({ variant, on_open, open_tooltip_on_start: true });
+      expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+      await render_summary({
+        variant,
+        active: true,
+        on_open,
+        open_tooltip_on_start: true,
+        completion_percent: 40,
+      });
+      expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
 
-    const trigger = container?.querySelector("button");
-    expect(trigger).not.toBeNull();
+      const trigger = container?.querySelector("button");
+      expect(trigger).not.toBeNull();
+      // 页面设置的尺寸直接作用于详情按钮，提示锚点与可见边界共用该元素。
+      expect(container?.querySelector(".summary-layout")).toBe(trigger);
+      const progress = container?.querySelector('[role="progressbar"]');
+      expect(progress).not.toBeNull();
+      expect(progress?.closest("button")).toBeNull();
 
-    await act(async () => {
-      trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    expect(on_open).toHaveBeenCalledTimes(1);
-    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
-  });
+      expect(on_open).toHaveBeenCalledTimes(1);
+      expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+    },
+  );
 
   it("未开启主动提示时，任务开始后等待用户交互", async () => {
     await render_summary({ active: true });
@@ -97,7 +113,6 @@ describe("BatchTranslationSummary", () => {
       await render_summary({ active: true, completion_percent });
       const progress = container?.querySelector('[role="progressbar"]');
       expect(progress?.getAttribute("aria-valuenow")).toBe(String(completion_percent));
-      expect(progress?.closest("button")).toBeNull();
     }
   });
 

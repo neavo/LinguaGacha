@@ -486,7 +486,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           </AppButton>
         }
       />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent>
         <ShortcutTooltipRow label={follow_latest_status} shortcut="follow_latest" />
       </TooltipContent>
     </Tooltip>

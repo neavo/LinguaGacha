@@ -140,7 +140,7 @@ function ProofreadingTextCell(props: {
       {props.full_text !== "" ? (
         <Tooltip>
           <TooltipTrigger render={text} />
-          <TooltipContent className="proofreading-page__text-preview" sideOffset={8}>
+          <TooltipContent className="proofreading-page__text-preview">
             <div className="proofreading-page__text-preview-body">{props.full_text}</div>
           </TooltipContent>
         </Tooltip>
@@ -188,7 +188,7 @@ function ProofreadingStatusCell(props: {
               </span>
             }
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>
               {t("app.tooltip.value", {
                 TITLE: t("proofreading_page.fields.status"),
@@ -223,7 +223,7 @@ function ProofreadingStatusCell(props: {
               </span>
             }
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>
               {t("app.tooltip.value", {
                 TITLE: t("proofreading_page.fields.status"),
@@ -247,7 +247,7 @@ function ProofreadingStatusCell(props: {
               </span>
             }
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>
               {t("app.tooltip.value", {
                 TITLE: t("proofreading_page.tooltip.warning_title"),

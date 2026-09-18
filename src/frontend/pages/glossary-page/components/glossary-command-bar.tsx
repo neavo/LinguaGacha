@@ -143,12 +143,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               </div>
             }
           />
-          <TooltipContent
-            side="top"
-            align="end"
-            sideOffset={8}
-            className="glossary-page__toggle-tooltip"
-          >
+          <TooltipContent align="end" className="glossary-page__toggle-tooltip">
             <div className="glossary-page__toggle-tooltip-copy">
               <p className="glossary-page__toggle-tooltip-title font-medium">
                 {toggle_tooltip_title}

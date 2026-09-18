@@ -547,7 +547,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
               </AppButton>
             }
           />
-          <TooltipContent side="left" sideOffset={8}>
+          <TooltipContent side="left">
             <p>
               {t("app.tooltip.value", {
                 TITLE: t("app.editor.line_wrap_target", { TARGET: props.aria_label }),

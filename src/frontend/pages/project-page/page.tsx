@@ -488,12 +488,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
               </span>
             }
           />
-          <TooltipContent
-            side="top"
-            align="start"
-            sideOffset={8}
-            className="max-w-[512px] break-all"
-          >
+          <TooltipContent align="start" className="max-w-[512px] break-all">
             {props.path}
           </TooltipContent>
         </Tooltip>
@@ -1427,11 +1422,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
                           }
                         />
                         {format.description_keys.length > 0 && (
-                          <TooltipContent
-                            side="top"
-                            sideOffset={8}
-                            className="flex-col items-start gap-1"
-                          >
+                          <TooltipContent className="flex-col items-start gap-1">
                             {format.description_keys.map((description_key) => (
                               <span key={description_key}>{t(description_key)}</span>
                             ))}

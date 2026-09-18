@@ -208,7 +208,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
                   </InputGroupButton>,
                 )}
               />
-              <TooltipContent side="top" sideOffset={8}>
+              <TooltipContent>
                 <p>{props.clear_label}</p>
               </TooltipContent>
             </Tooltip>
@@ -226,7 +226,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
                   </InputGroupButton>
                 }
               />
-              <TooltipContent side="bottom" sideOffset={8}>
+              <TooltipContent side="bottom">
                 <p className="search-bar__invalid-tooltip">{props.invalid_message}</p>
               </TooltipContent>
             </Tooltip>
@@ -279,7 +279,7 @@ export function SearchBarMenuAction<Value extends string>(
             />,
           )}
         />
-        <TooltipContent side="bottom" sideOffset={8}>
+        <TooltipContent side="bottom">
           <p>{props.tooltip}</p>
         </TooltipContent>
       </Tooltip>
@@ -325,7 +325,7 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
           </AppButton>,
         )}
       />
-      <TooltipContent side="bottom" sideOffset={8}>
+      <TooltipContent side="bottom">
         <p>{props.regex.tooltip}</p>
       </TooltipContent>
     </Tooltip>
@@ -383,7 +383,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
                 </InputGroupButton>,
               )}
             />
-            <TooltipContent side="top" sideOffset={8}>
+            <TooltipContent>
               <p>{props.replace_clear_label}</p>
             </TooltipContent>
           </Tooltip>
@@ -404,7 +404,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
               </InputGroupButton>,
             )}
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>{props.replace_next_label}</p>
           </TooltipContent>
         </Tooltip>
@@ -424,7 +424,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
               </InputGroupButton>,
             )}
           />
-          <TooltipContent side="top" sideOffset={8}>
+          <TooltipContent>
             <p>{props.replace_all_label}</p>
           </TooltipContent>
         </Tooltip>

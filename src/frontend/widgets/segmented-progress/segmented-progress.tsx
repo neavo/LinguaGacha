@@ -29,19 +29,7 @@ type ProgressSegment = {
   label: string;
 };
 
-function format_progress_label(args: {
-  labels: SegmentedProgressLabels;
-  stats: SegmentedProgressStats;
-}): string {
-  return [
-    `${args.labels.skipped} - ${args.stats.skipped_count}`,
-    `${args.labels.failed} - ${args.stats.failed_count}`,
-    `${args.labels.completed} - ${args.stats.completed_count}`,
-    `${args.labels.pending} - ${args.stats.pending_count}`,
-    `${args.labels.total} - ${args.stats.total_items}`,
-  ].join(" / ");
-}
-
+/** 分段宽度反映各状态占比，悬停提示保留完整统计。 */
 export function SegmentedProgress(props: SegmentedProgressProps): JSX.Element {
   const segments: ProgressSegment[] = [
     {
@@ -65,10 +53,11 @@ export function SegmentedProgress(props: SegmentedProgressProps): JSX.Element {
       label: props.labels.pending,
     },
   ];
-  const progress_label = format_progress_label({
-    labels: props.labels,
-    stats: props.stats,
-  });
+  // 标签与图形共用状态顺序，标签额外保留零值与总数。
+  const progress_label = [
+    ...segments.map((segment) => `${segment.label} - ${segment.value}`),
+    `${props.labels.total} - ${props.stats.total_items}`,
+  ].join(" / ");
 
   return (
     <Tooltip>
@@ -98,15 +87,13 @@ export function SegmentedProgress(props: SegmentedProgressProps): JSX.Element {
           </div>
         }
       />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent>
         <div className="segmented-progress__tooltip">
-          {segments.map((segment) => {
-            return (
-              <span key={segment.key} className="segmented-progress__tooltip-row">
-                {segment.label} - {segment.value.toLocaleString()}
-              </span>
-            );
-          })}
+          {segments.map((segment) => (
+            <span key={segment.key} className="segmented-progress__tooltip-row">
+              {segment.label} - {segment.value.toLocaleString()}
+            </span>
+          ))}
         </div>
       </TooltipContent>
     </Tooltip>

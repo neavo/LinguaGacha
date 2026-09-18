@@ -60,7 +60,7 @@ export function QualityRuleHitBadge(props: QualityRuleHitBadgeProps): JSX.Elemen
     <Badge tone={TONE_BY_KIND[props.badge_state.kind]}>{props.badge_state.hits.toString()}</Badge>
   );
   const tooltip_content = (
-    <TooltipContent side="top" sideOffset={8}>
+    <TooltipContent>
       <p className="whitespace-pre-line">{props.badge_state.tooltip}</p>
     </TooltipContent>
   );

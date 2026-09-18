@@ -133,9 +133,7 @@ function FilterGroupHeader(props: {
               </button>
             }
           />
-          <TooltipContent side="top" sideOffset={8}>
-            {props.action_label}
-          </TooltipContent>
+          <TooltipContent>{props.action_label}</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -166,7 +164,7 @@ function FilterListRow(props: {
           </button>
         }
       />
-      <TooltipContent side="top" sideOffset={8}>
+      <TooltipContent>
         <p className="proofreading-page__filter-list-row-tooltip">{props.label}</p>
       </TooltipContent>
     </Tooltip>
@@ -216,6 +214,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     (outcome) => !KNOWN_PROOFREADING_OUTCOMES.has(outcome),
   );
 
+  /** 确认期间阻止关闭和重复提交，完成后恢复操作。 */
   async function handle_confirm(): Promise<void> {
     set_submitting(true);
     try {

@@ -63,7 +63,7 @@ export function WorkbenchTranslationMenu(props: WorkbenchTranslationMenuProps): 
             />,
           )}
         />
-        <TooltipContent side="top" sideOffset={8}>
+        <TooltipContent>
           <p>{t(`batch_translation.menu.tooltip`)}</p>
         </TooltipContent>
       </Tooltip>

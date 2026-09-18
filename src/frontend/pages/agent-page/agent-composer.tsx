@@ -158,11 +158,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 }
               />
               {submit_command_active ? null : (
-                <TooltipContent
-                  className="flex-col items-stretch gap-1 whitespace-nowrap"
-                  side="top"
-                  sideOffset={8}
-                >
+                <TooltipContent className="flex-col items-stretch gap-1 whitespace-nowrap">
                   {props.unavailable_reason !== null ? (
                     <p>{t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason])}</p>
                   ) : stopping || queue_full_for_submit ? (

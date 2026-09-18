@@ -174,7 +174,7 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
                       </AppButton>,
                     )}
                   />
-                  <TooltipContent side="top" sideOffset={8}>
+                  <TooltipContent>
                     <ShortcutTooltipRow label={t("agent_page.input.newline")} shortcut="newline" />
                   </TooltipContent>
                 </Tooltip>

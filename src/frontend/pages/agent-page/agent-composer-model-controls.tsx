@@ -149,7 +149,7 @@ export function AgentComposerModelControls(props: {
                 </span>
               }
             />
-            <TooltipContent side="top" sideOffset={8}>
+            <TooltipContent>
               <p>
                 {thinking_unavailable
                   ? t("app.model.thinking_level.unsupported")
@@ -241,9 +241,7 @@ function ModelMenuButton(props: {
             />,
           )}
         />
-        <TooltipContent className="flex-col items-start gap-0.5" side="top" sideOffset={8}>
-          {props.tooltip}
-        </TooltipContent>
+        <TooltipContent className="flex-col items-start gap-0.5">{props.tooltip}</TooltipContent>
       </Tooltip>
       <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
         {props.children}

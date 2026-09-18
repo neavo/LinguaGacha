@@ -226,7 +226,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     }
                   />
                   {thinking_unavailable ? (
-                    <TooltipContent side="top" sideOffset={8}>
+                    <TooltipContent>
                       <p>{t("app.model.thinking_level.unsupported")}</p>
                     </TooltipContent>
                   ) : null}

@@ -6,6 +6,8 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@frontend/shadcn/classnames";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 
+const TOOLTIP_SIDE_OFFSET = 8; // 包含箭头向外伸出的 6px 与箭头尖端到触发器的 2px 留白。
+
 const tooltipContentClassName =
   "relative box-border flex w-max min-w-0 max-w-[min(320px,var(--available-width))] items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background origin-(--transform-origin) whitespace-normal break-words [overflow-wrap:anywhere] has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 const tooltipArrowClassName =
@@ -117,25 +119,22 @@ function TooltipTrigger({
   );
 }
 
+/** 浮层统一补偿箭头尺寸，消费方只选择方向和对齐方式。 */
 function TooltipContent({
   className,
   side = "top",
-  sideOffset = 0,
   align = "center",
   alignOffset = 0,
   children,
   ...props
 }: TooltipPrimitive.Popup.Props &
-  Pick<
-    TooltipPrimitive.Positioner.Props,
-    "side" | "sideOffset" | "align" | "alignOffset"
-  >): JSX.Element {
+  Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "alignOffset">): JSX.Element {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
         data-slot="tooltip-positioner"
         side={side}
-        sideOffset={sideOffset}
+        sideOffset={TOOLTIP_SIDE_OFFSET}
         align={align}
         alignOffset={alignOffset}
         collisionPadding={8}
@@ -156,6 +155,7 @@ function TooltipContent({
   );
 }
 
+/** 外层承接禁用按钮的悬停，尺寸由实际控件撑开。 */
 function tooltip_trigger_target(trigger: React.ReactElement): React.ReactElement {
   return <span className="inline-flex">{trigger}</span>;
 }
