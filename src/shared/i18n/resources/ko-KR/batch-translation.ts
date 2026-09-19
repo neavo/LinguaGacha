@@ -26,8 +26,10 @@ export const ko_kr_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "프로젝트 번역 통계를 새로 고치지 못했습니다",
-    done: "완료 …",
-    stopped: "중지됨 …",
+    done: "번역 완료 …",
+    stopped: "번역 중지 …",
+    done_with_errors: "번역 완료, 일부 항목 실패 …",
+    keys_exhausted: "번역 중지: 모든 Key를 사용할 수 없습니다 …",
     refresh_failed: "번역 작업 상태를 새로 고치지 못했습니다",
     start_failed: "번역 작업을 시작하지 못했습니다",
     stop_failed: "번역 작업을 중지하지 못했습니다",

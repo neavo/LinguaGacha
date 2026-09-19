@@ -26,8 +26,10 @@ export const en_us_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "Failed to refresh project translation statistics",
-    done: "Completed …",
-    stopped: "Stopped …",
+    done: "Translation completed …",
+    stopped: "Translation stopped …",
+    done_with_errors: "Translation completed, some items failed …",
+    keys_exhausted: "Translation stopped: all Keys are unavailable …",
     refresh_failed: "Failed to refresh the translation task.",
     start_failed: "Failed to start the translation task.",
     stop_failed: "Failed to stop the translation task.",

@@ -9,7 +9,7 @@ import {
   Headers as UndiciHeaders,
   FormData as UndiciFormData,
 } from "undici";
-import { record_http_response_status } from "./http-response-status";
+import { record_http_response_info } from "./http-response-info";
 
 type FetchGlobals = Pick<
   typeof globalThis,
@@ -71,7 +71,7 @@ export class SystemProxyHttpClient {
       dispatcher,
       ...(this.redirects === "error" ? { redirect: "error" as const } : {}),
     })) as unknown as Response;
-    record_http_response_status(response.status);
+    record_http_response_info(response);
     return response;
   };
 

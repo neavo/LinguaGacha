@@ -158,13 +158,13 @@ describe("共享工程翻译统计", () => {
     await act(async () => requests[1]!.reject(new Error("offline")));
     expect(values()).toEqual(["80", "80"]);
     expect(fixture.toast).toHaveBeenCalledOnce();
-    const retry = fixture.toast.mock.calls[0]![2] as { onClick: () => void };
-    await act(async () => retry.onClick());
+    const retry = fixture.toast.mock.calls[0]![2] as { action: { onClick: () => void } };
+    await act(async () => retry.action.onClick());
     await act(async () => requests[2]!.resolve(response(90)));
     expect(values()).toEqual(["90", "90"]);
     fixture.project = { loaded: false, path: "" };
     await render();
-    await act(async () => retry.onClick());
+    await act(async () => retry.action.onClick());
     expect(fixture.query).toHaveBeenCalledTimes(3);
   });
 });

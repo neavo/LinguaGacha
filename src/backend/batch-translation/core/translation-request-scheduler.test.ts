@@ -18,17 +18,71 @@ describe("TranslationRequestScheduler", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    [undefined, 120, 30_000],
+    [10_000, 120, 30_000],
+    [90_000, 120, 90_000],
+    [180_000, 120, 120_000],
+    [90_000, 10, 30_000],
+  ])(
+    "429 等待 %s 毫秒、超时 %s 秒时遵循上下限",
+    async (retry_after_ms, request_timeout, expected) => {
+      vi.mocked(Math.random).mockReturnValue(0);
+      const request = vi
+        .fn<LLMClientPort["request"]>()
+        .mockResolvedValueOnce(response({ ...failure(), retry_after_ms, http_received_at: 0 }))
+        .mockResolvedValue(response());
+      const { scheduler } = setup(request);
+      const result = scheduler.request(
+        { ...body(), config_snapshot: { request_timeout } },
+        new AbortController().signal,
+      );
+      await vi.advanceTimersByTimeAsync(expected - 1);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(request).toHaveBeenCalledTimes(2);
+      await result;
+    },
+  );
+
+  it("同波 429 取最晚恢复时间，收束后不重新开始等待", async () => {
+    const first = deferred();
+    const second = deferred();
+    const request = vi
+      .fn<LLMClientPort["request"]>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockResolvedValue(response());
+    const { scheduler } = setup(request);
+    const results = [1, 2].map(() =>
+      scheduler.request(
+        { ...body(), config_snapshot: { request_timeout: 120 } },
+        new AbortController().signal,
+      ),
+    );
+    first.resolve(response({ ...failure(), retry_after_ms: 90_000, http_received_at: 0 }));
+    await vi.advanceTimersByTimeAsync(60_000);
+    second.resolve(response({ ...failure(), retry_after_ms: 10_000, http_received_at: 10_000 }));
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(request).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.all(results);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(Date.now()).toBe(90_000);
+  });
+
   it("双零从 4 开始，每次成功升档至 32，新任务重新探测", async () => {
     const request = vi.fn(async () => response());
     const { scheduler } = setup(request, "A", { concurrency_limit: 0, rpm_limit: 0 });
-    expect(scheduler.get_concurrency_limit()).toBe(4);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(4);
     for (let count = 1; count <= 30; count += 1) {
       await vi.advanceTimersByTimeAsync(1_000);
       await scheduler.request(body(), new AbortController().signal);
     }
-    expect(scheduler.get_concurrency_limit()).toBe(32);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(32);
     expect(
-      setup(request, "A", { concurrency_limit: 0, rpm_limit: 0 }).scheduler.get_concurrency_limit(),
+      setup(request, "A", { concurrency_limit: 0, rpm_limit: 0 }).scheduler.read_dispatch_state()
+        .concurrency_limit,
     ).toBe(4);
   });
 
@@ -46,10 +100,10 @@ describe("TranslationRequestScheduler", () => {
       });
       const result = scheduler.request(body(), new AbortController().signal);
       await vi.advanceTimersByTimeAsync(0);
-      expect(scheduler.get_concurrency_limit()).toBe(expected);
+      expect(scheduler.read_dispatch_state().concurrency_limit).toBe(expected);
       await vi.advanceTimersByTimeAsync(30_000);
       await result;
-      expect(scheduler.get_concurrency_limit()).toBe(expected);
+      expect(scheduler.read_dispatch_state().concurrency_limit).toBe(expected);
     },
   );
 
@@ -70,25 +124,25 @@ describe("TranslationRequestScheduler", () => {
     expect(attempts).toHaveLength(4);
     attempts[0]!.resolve(failure());
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(scheduler.get_concurrency_limit()).toBe(2);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(2);
     expect(attempts).toHaveLength(4); // 在途尚未低于新额度，不能补发。
     attempts[1]!.resolve(failure());
     await vi.advanceTimersByTimeAsync(0);
-    expect(scheduler.get_concurrency_limit()).toBe(2);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(2);
     attempts[2]!.resolve(response());
     attempts[3]!.resolve(response());
     await vi.advanceTimersByTimeAsync(0);
-    expect(scheduler.get_concurrency_limit()).toBe(2);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(2);
     expect(attempts).toHaveLength(6);
     attempts[4]!.resolve(response());
     await vi.advanceTimersByTimeAsync(0);
-    expect(scheduler.get_concurrency_limit()).toBe(3);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(3);
     attempts[5]!.resolve(failure());
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(scheduler.get_concurrency_limit()).toBe(1);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(1);
     attempts[6]!.resolve(response());
     await Promise.all(results);
-    expect(scheduler.get_concurrency_limit()).toBe(2);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(2);
   });
 
   it("非 429 网络错误和取消不调整额度，内容终态错误仍计请求成功", async () => {
@@ -103,26 +157,26 @@ describe("TranslationRequestScheduler", () => {
     const { scheduler } = setup(request, "A", { concurrency_limit: 0, rpm_limit: 0 });
     const result = scheduler.request(body(), new AbortController().signal);
     await vi.advanceTimersByTimeAsync(0);
-    expect(scheduler.get_concurrency_limit()).toBe(4);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(4);
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(scheduler.get_concurrency_limit()).toBe(4);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(4);
     await vi.advanceTimersByTimeAsync(30_000);
     await result;
-    expect(scheduler.get_concurrency_limit()).toBe(5);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(5);
     await scheduler.request(body(), new AbortController().signal);
-    expect(scheduler.get_concurrency_limit()).toBe(5);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(5);
   });
 
   it("连续恢复仍返回 429 时最低保持 1，Key 耗尽正常结算", async () => {
     const { scheduler } = setup(async () => failure(), "A", { concurrency_limit: 0, rpm_limit: 0 });
     const result = scheduler.request(body(), new AbortController().signal);
     await vi.advanceTimersByTimeAsync(0);
-    expect(scheduler.get_concurrency_limit()).toBe(2);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(2);
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(scheduler.get_concurrency_limit()).toBe(1);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(1);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(await result).toMatchObject({ keys_exhausted: true });
-    expect(scheduler.get_concurrency_limit()).toBe(1);
+    expect(scheduler.read_dispatch_state().concurrency_limit).toBe(1);
   });
 
   it("失败批次立即转用健康 Key，冷却不占请求压力或等待原 Key", async () => {
@@ -150,7 +204,7 @@ describe("TranslationRequestScheduler", () => {
     const started_at: number[] = [];
     const request = vi.fn(async () => {
       started_at.push(Date.now());
-      return failure();
+      return response({ timeout: true });
     });
     const { scheduler, pressure } = setup(request);
     const result = scheduler.request(body(), new AbortController().signal);

@@ -10,6 +10,22 @@ import {
 } from "./batch-translation";
 
 describe("批量翻译展示", () => {
+  it("密钥耗尽原因经过传输归一和历史复制保留，且不触发自动导出", () => {
+    const snapshot = clone_translation_task_snapshot(
+      normalize_batch_translation_snapshot({
+        batch_translation: {
+          status: "error",
+          reason: "keys_exhausted",
+          source: "standalone",
+          operation: "translate",
+          scope: { kind: "all" },
+        },
+      }),
+    );
+    expect(snapshot.reason).toBe("keys_exhausted");
+    expect(should_open_translation_export_followup("running", snapshot)).toBe(false);
+    expect(normalize_batch_translation_snapshot({}).reason).toBeUndefined();
+  });
   it.each(["standalone", "agent", null] as const)("任务来源 %s 经归一与复制保留", (source) => {
     const snapshot = normalize_batch_translation_snapshot({ batch_translation: { source } });
     expect(clone_translation_task_snapshot(snapshot).source).toBe(source);

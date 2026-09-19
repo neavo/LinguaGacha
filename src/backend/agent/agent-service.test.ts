@@ -2907,9 +2907,13 @@ describe("AgentService", () => {
     expect(run.mock.calls.at(-1)?.[2]).toMatchObject({ id: "next" });
   });
 
-  it.each([false, true])(
-    "用户停止后同轮重复调用保留结果，后续用户轮次可继续，收尾失败=%s",
-    async (cleanup_failed) => {
+  it.each([
+    { cleanup_failed: false, exhausted: false },
+    { cleanup_failed: true, exhausted: false },
+    { cleanup_failed: false, exhausted: true },
+  ])(
+    "用户停止或密钥耗尽后同轮暂停，后续用户轮次可继续，$cleanup_failed / $exhausted",
+    async ({ cleanup_failed, exhausted }) => {
       fake_agent_state.batch_mode = true;
       fake_agent_state.batch_retries = 2;
       const progress = {
@@ -2926,8 +2930,8 @@ describe("AgentService", () => {
       };
       const run = vi.fn(async () => {
         const result = {
-          status: cleanup_failed ? ("error" as const) : ("stopped" as const),
-          stop_source: "user" as const,
+          status: cleanup_failed || exhausted ? ("error" as const) : ("stopped" as const),
+          ...(exhausted ? { reason: "keys_exhausted" as const } : { stop_source: "user" as const }),
           progress,
         };
         if (cleanup_failed)
@@ -2942,8 +2946,8 @@ describe("AgentService", () => {
       await wait_for_idle(service);
       expect(run).toHaveBeenCalledTimes(1);
       expect(read_tool_output(service, "batch-translation")).toMatchObject({
-        status: cleanup_failed ? "error" : "stopped",
-        stop_source: "user",
+        status: cleanup_failed || exhausted ? "error" : "stopped",
+        ...(exhausted ? { reason: "keys_exhausted" } : { stop_source: "user" }),
       });
       if (cleanup_failed) {
         expect(log_error).toHaveBeenCalledWith(

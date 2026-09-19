@@ -61,6 +61,7 @@ export function create_agent_batch_item_translation_tool(
       "|progress|工程 `items` 累计翻译进度|",
       "|status|done 表示本轮运行结束。仍需核对失败和剩余目标|",
       "|stop_source|user 表示用户停止。汇报当前结果，等待用户明确要求继续|",
+      "|reason|`keys_exhausted` 表示密钥耗尽。汇报已完成和剩余目标，等待用户调整或明确继续。同轮再次调用返回本次结果|",
     ].join("\n"),
     parameters: PARAMETERS,
     executionMode: "sequential",

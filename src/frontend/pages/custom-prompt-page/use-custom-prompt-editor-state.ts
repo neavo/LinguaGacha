@@ -148,14 +148,16 @@ export function useCustomPromptEditorState(): UseCustomPromptEditorStateResult {
         "error",
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.save_failed")),
         {
-          label: t("custom_prompt_page.save.discard"),
-          onClick: () => {
-            if (save_error_toast_ref.current !== toast_id) return;
-            debounced_prompt_save.cancel();
-            clear_save_error();
-            desired_ref.current = persisted_ref.current;
-            set_prompt_text(persisted_ref.current.text);
-            set_enabled(persisted_ref.current.enabled);
+          action: {
+            label: t("custom_prompt_page.save.discard"),
+            onClick: () => {
+              if (save_error_toast_ref.current !== toast_id) return;
+              debounced_prompt_save.cancel();
+              clear_save_error();
+              desired_ref.current = persisted_ref.current;
+              set_prompt_text(persisted_ref.current.text);
+              set_enabled(persisted_ref.current.enabled);
+            },
           },
         },
       );

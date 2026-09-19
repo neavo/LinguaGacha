@@ -26,8 +26,10 @@ export const de_de_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "Die Übersetzungsstatistik des Projekts konnte nicht aktualisiert werden",
-    done: "Abgeschlossen …",
-    stopped: "Gestoppt …",
+    done: "Übersetzung abgeschlossen …",
+    stopped: "Übersetzung gestoppt …",
+    done_with_errors: "Übersetzung abgeschlossen, einige Einträge sind fehlgeschlagen …",
+    keys_exhausted: "Übersetzung gestoppt: Alle Keys sind nicht verfügbar …",
     refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe.",
     start_failed: "Fehler beim Starten der Übersetzungsaufgabe.",
     stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe.",

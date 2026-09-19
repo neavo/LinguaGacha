@@ -195,6 +195,7 @@ export type BatchTranslationSnapshot = {
   run_progress?: BatchTranslationProgress; // 本轮目标和实际提交结果，只属于内存运行态
   revision: number;
   status: BatchTranslationRunStatus;
+  reason?: "keys_exhausted"; // 本轮密钥耗尽导致提前结束，终态保留。
   source: BatchTranslationSource | null; // 预约入口决定本轮来源，终态保留，工程切换清空
   stop_source?: BatchTranslationStopSource; // 本轮首次受理的取消来源，收尾失败也保留
   request_in_flight_count: number;
@@ -204,6 +205,7 @@ export type BatchTranslationSnapshot = {
 
 export type BatchTranslationResult = Readonly<{
   status: "done" | "stopped" | "error";
+  reason?: "keys_exhausted";
   stop_source?: BatchTranslationStopSource;
   progress: Readonly<BatchTranslationProgress>;
   run_progress?: Readonly<BatchTranslationProgress>;

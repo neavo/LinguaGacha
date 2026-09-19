@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { LLMClient } from "./llm-client";
 import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
+import { record_http_response_info } from "../network/http-response-info";
 
 const api_mocks = vi.hoisted(() => ({
   openai: vi.fn<ProviderStreams["stream"]>(),
@@ -55,6 +56,22 @@ beforeEach(() => {
 });
 
 describe("LLMClient", () => {
+  it("SDK 错误归一后仍保留 HTTP 响应的重试事实", async () => {
+    api_mocks.openai.mockImplementation(() => {
+      record_http_response_info(
+        new Response(null, { status: 429, headers: { "Retry-After": "90" } }),
+      );
+      throw new Error("rate limited");
+    });
+    await expect(
+      create_client().request(create_body(), new AbortController().signal),
+    ).resolves.toMatchObject({
+      http_status: 429,
+      retry_after_ms: 90_000,
+      http_received_at: expect.any(Number),
+      request_error: expect.any(Object),
+    });
+  });
   it("非法扩展头在实际 adapter 边界归一为请求错误", async () => {
     const { openAICompletionsApi } = await vi.importActual<
       typeof import("@earendil-works/pi-ai/api/openai-completions.lazy")

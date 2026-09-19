@@ -3,6 +3,10 @@ import { toast } from "sonner";
 type DesktopToastKind = "info" | "warning" | "error" | "success";
 type DesktopToastId = string | number;
 type DesktopToastAction = { label: string; onClick: () => void };
+type DesktopToastOptions = {
+  action?: DesktopToastAction;
+  persistent?: boolean; // 需要用户确认的结果持续显示，使用已有关闭按钮。
+};
 type ProgressToastOptions = {
   message: string;
   progress_percent?: number;
@@ -43,11 +47,12 @@ function write_progress_toast(state: ProgressToastState | null): void {
 export function push_toast(
   kind: DesktopToastKind,
   message: string,
-  action?: DesktopToastAction,
+  options: DesktopToastOptions = {},
 ): DesktopToastId {
+  const { action, persistent = false } = options;
   return toast[kind](
     message,
-    action !== undefined
+    persistent || action !== undefined
       ? { action, duration: Number.POSITIVE_INFINITY }
       : kind === "error"
         ? { duration: ERROR_TOAST_DURATION_MS }

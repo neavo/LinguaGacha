@@ -20,6 +20,7 @@ import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { push_toast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-context";
+import type { LocaleKey } from "@shared/i18n";
 import {
   resolve_batch_translation_generated_tokens,
   clone_translation_task_snapshot,
@@ -394,8 +395,9 @@ export function useBatchTranslationTask(
 
     // 为什么：提示只应该响应一次真实的生命周期跃迁，不能被首屏初始状态读取或快照重刷重复触发
     if (is_active_batch_translation_status(previous_status)) {
-      if (next_status === "done" || next_status === "stopped") {
-        push_toast("success", t(`batch_translation.feedback.${next_status}`));
+      const feedback = resolve_batch_translation_feedback(translation_task_snapshot);
+      if (feedback !== null) {
+        push_toast(feedback.kind, t(feedback.message), { persistent: feedback.persistent });
       }
     }
 
@@ -459,4 +461,32 @@ export function useBatchTranslationTask(
     translation_task_metrics,
     translation_waveform_history,
   ]);
+}
+
+/** 终态反馈只消费本轮事实；Agent 子步骤由工具结果承接后续汇报。 */
+function resolve_batch_translation_feedback(snapshot: BatchTranslationSnapshot): {
+  kind: "success" | "warning" | "info";
+  message: LocaleKey;
+  persistent: boolean;
+} | null {
+  if (snapshot.source !== "standalone") return null;
+  if (snapshot.reason === "keys_exhausted") {
+    return {
+      kind: "warning",
+      message: "batch_translation.feedback.keys_exhausted",
+      persistent: true,
+    };
+  }
+  if (snapshot.status === "stopped") {
+    return { kind: "info", message: "batch_translation.feedback.stopped", persistent: false };
+  }
+  if (snapshot.status !== "done") return null;
+  if ((snapshot.run_progress?.error_line ?? 0) > 0) {
+    return {
+      kind: "warning",
+      message: "batch_translation.feedback.done_with_errors",
+      persistent: true,
+    };
+  }
+  return { kind: "success", message: "batch_translation.feedback.done", persistent: false };
 }

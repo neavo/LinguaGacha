@@ -280,9 +280,8 @@ export class TranslationWorkUnitRunner {
         actor_dsts.push(null);
       }
       if (!valid && item) {
-        // 此循环只消费实际请求条目，预处理完成项保留；Key 耗尽不消耗内容重试次数。
-        if (response.keys_exhausted) item.status = "ERROR";
-        else if (context.request_items.length === 1)
+        // 密钥耗尽保留未完成副本，Runner 只提交已完成项和用量。
+        if (!response.keys_exhausted && context.request_items.length === 1)
           item.retry_count = read_json_integer(item.retry_count, 0) + 1;
       }
     }
