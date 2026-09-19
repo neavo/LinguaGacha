@@ -78,6 +78,7 @@ export const ko_kr_proofreading_page = {
     text_preserve_failed: "활성화되지 않음",
     foreign_char_residue_fragments: "다른 언어가 남은 구간",
   },
+  no_files: "프로젝트에 파일이 없습니다",
   filter: {
     translated_group: "번역 성공",
     unfinished_group: "미완료",

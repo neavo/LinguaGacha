@@ -76,6 +76,7 @@ export const zh_cn_proofreading_page = {
     text_preserve_failed: "未生效",
     foreign_char_residue_fragments: "外文残留片段",
   },
+  no_files: "工程中没有文件",
   filter: {
     translated_group: "翻译成功",
     unfinished_group: "尚未完成",
