@@ -83,7 +83,7 @@
 
 - GUI 的 `WebSearchService` 拥有应用级供应商连接与成功来源偏好，工程切换不重置；工具按顺序调用，组合根先等待 Agent 释放，再关闭搜索连接。MCP 使用 [`BACKEND.md`](BACKEND.md) 的共用 HTTP transport；单家连接、调用与会话重建共用一次预算。取消或超时必须关闭本地连接，以终止旧协议取消通知之外仍可能存活的 HTTP。
 
-- `run_batch_item_translation` 是处理 `items` 的顺序工具，接收全部条目或明确 `item_id` 范围及是否纳入失败条目的决定。工具以当前轮次的 Agent lease 调用共享 `BatchTranslationService`，批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮条目进度和工程条目累计进度。范围、失败条目决定与执行分流归 Agent 工作流；工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 使 AgentService 缓存停止结果并暂停同轮翻译调用，收尾失败也保留停止事实与诊断；自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
+- `run_batch_item_translation` 是处理 `items` 的顺序工具，接收全部条目或明确 `item_id` 范围及是否纳入失败条目的决定。工具以当前轮次的 Agent lease 调用共享 `BatchTranslationService`，批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮条目进度和工程条目累计进度。范围、失败条目决定与执行分流归 Agent 工作流。工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 或 `reason: keys_exhausted` 使 AgentService 缓存停止结果并暂停同轮翻译调用，重复调用返回缓存结果。用户取消后的收尾失败也保留停止事实与诊断。自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
 - System Prompt 拥有通用决策规则，skill 拥有领域流程，工具说明提供调用与恢复语义。参数约束归 Schema，`workspace_run` 的限制与包名来自运行策略和依赖清单，`workspace_apply` 从 contract 投影提交与回执语义。
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。

@@ -2,9 +2,22 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import * as notifications from "./desktop-toast";
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), dismiss: vi.fn(), getToasts: () => [] } }));
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), dismiss: vi.fn(), getToasts: () => [] },
+}));
 
 beforeEach(() => vi.useFakeTimers());
+it("持续警告指定无限展示时长并支持显式关闭", () => {
+  vi.mocked(toast.warning).mockReturnValue("warning");
+  const id = notifications.push_toast("warning", "部分条目失败", { persistent: true });
+  expect(toast.warning).toHaveBeenCalledWith("部分条目失败", {
+    action: undefined,
+    duration: Infinity,
+  });
+  vi.mocked(toast.dismiss).mockClear();
+  notifications.dismiss_toast(id);
+  expect(toast.dismiss).toHaveBeenCalledWith("warning");
+});
 afterEach(async () => {
   notifications.dismiss_toast();
   await vi.runOnlyPendingTimersAsync();
@@ -13,7 +26,7 @@ afterEach(async () => {
 
 it("恢复动作持续可用并交给通知展示层", () => {
   const action = { label: "撤销", onClick: vi.fn() };
-  notifications.push_toast("error", "保存失败", action);
+  notifications.push_toast("error", "保存失败", { action });
   expect(toast.error).toHaveBeenCalledWith("保存失败", {
     action,
     duration: Number.POSITIVE_INFINITY,

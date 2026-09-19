@@ -312,7 +312,7 @@ describe("BatchTranslationRunner", () => {
     expect((await runtime.build_snapshot()).status).toBe("error");
   });
 
-  it("真实 work unit 在所有 Key 耗尽后整批提交 ERROR，正常完成且不切分", async () => {
+  it("密钥耗尽后收尾，保留未完成重翻状态与实际用量", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     const builtin_root = create_template_root();
@@ -320,9 +320,22 @@ describe("BatchTranslationRunner", () => {
       builtinRoot: builtin_root,
       execution: { kind: "in_process" },
     });
-    const finished = create_status_waiter("done");
+    const finished = create_status_waiter("error");
     const runtime = create_task_runtime(finished.listener);
     const committed: MutableJsonRecord[] = [];
+    const items = [
+      create_pending_item(1),
+      create_pending_item(2, "demo.txt", ""),
+      {
+        ...create_pending_item(3, "next.txt"),
+        status: "PROCESSED",
+        dst: "已有译文",
+        retry_count: 2,
+      },
+      { ...create_pending_item(4, "last.txt"), status: "ERROR", dst: "失败译文", retry_count: 3 },
+    ];
+    const original = structuredClone(items);
+    const execute = vi.spyOn(pool, "execute_unit");
     let started!: () => void;
     const first_request = new Promise<void>((resolve) => {
       started = resolve;
@@ -332,7 +345,7 @@ describe("BatchTranslationRunner", () => {
       return {
         response_result: "",
         response_think: "",
-        input_tokens: 0,
+        input_tokens: 1,
         reasoning_tokens: 0,
         output_tokens: 0,
         cancelled: false,
@@ -348,37 +361,39 @@ describe("BatchTranslationRunner", () => {
       taskPlanner: create_test_task_planner(),
       logManager: create_log_manager(),
       taskStore: create_task_store({
-        get_translation_items: () => [create_pending_item(1), create_pending_item(2)],
+        get_translation_items: () => items,
         commit_translation_items: async (items) => {
           committed.push(...items);
           return { changed_item_ids: [], section_revisions: {} };
         },
       }),
     });
-    const base_context = create_run_context(2);
+    const base_context = create_run_context(1);
     const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
     try {
-      await start_task(
-        runner,
-        runtime,
-        { operation: "translate", mode: "new", scope: { kind: "all" } },
-        context,
-      );
+      const command: BatchTranslationStartCommand = {
+        operation: "retranslate",
+        scope: { kind: "items", item_ids: [1, 2, 3, 4] },
+      };
+      const handle = runtime.begin_standalone(command.scope, command.operation);
+      await runtime.execute(handle, () => runner.run(handle, command, context));
       await first_request;
       await vi.advanceTimersByTimeAsync(100_000);
       await finished.promise;
       expect(request).toHaveBeenCalledTimes(6);
-      expect(committed.map((item) => [item.id, item.status])).toEqual([
-        [1, "ERROR"],
-        [2, "ERROR"],
-      ]);
+      expect(committed.map((item) => [item.id, item.status])).toEqual([[2, "PROCESSED"]]);
       expect((await runtime.build_snapshot()).run_progress).toMatchObject({
-        line: 2,
-        processed_line: 0,
-        error_line: 2,
+        total_line: 4,
+        line: 1,
+        processed_line: 1,
+        error_line: 0,
+        total_input_tokens: 6,
       });
       expect((await runtime.build_snapshot()).request_in_flight_count).toBe(0);
       expect(vi.getTimerCount()).toBe(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(items).toEqual(original);
+      expect(await handle.completion).toMatchObject({ status: "error", reason: "keys_exhausted" });
     } finally {
       await pool.dispose();
     }

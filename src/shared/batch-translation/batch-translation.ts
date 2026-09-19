@@ -162,6 +162,7 @@ export function normalize_batch_translation_snapshot(
       : { run_progress: normalize_batch_translation_progress(raw.run_progress) }),
     ...(config === undefined ? {} : { config }),
     status,
+    ...(raw.reason === "keys_exhausted" ? { reason: raw.reason } : {}),
     source: raw.source === "standalone" || raw.source === "agent" ? raw.source : null,
     ...(raw.stop_source !== undefined && BATCH_TRANSLATION_STOP_SOURCES.includes(raw.stop_source)
       ? { stop_source: raw.stop_source }

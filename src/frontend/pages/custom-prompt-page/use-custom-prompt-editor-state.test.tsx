@@ -72,6 +72,7 @@ vi.mock("@frontend/app/locale/locale-context", () => {
   };
 });
 
+/** 按当前工程身份构造提示词提交事件。 */
 function create_prompt_change(prompts_revision: number): Record<string, unknown> {
   return {
     source: "quality_prompt_save",
@@ -85,6 +86,7 @@ function create_prompt_change(prompts_revision: number): Record<string, unknown>
   };
 }
 
+/** 模拟写入口回传版本号与提交事件的契约。 */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     project_snapshot: {
@@ -113,6 +115,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
+/** 将场景控制的正文与版本号组成查询响应。 */
 function create_query_payload(): Record<string, unknown> {
   return {
     prompt: {
@@ -125,6 +128,7 @@ function create_query_payload(): Record<string, unknown> {
   };
 }
 
+/** 在 React 生命周期内观察编辑 Hook 的公开状态。 */
 function Probe(): JSX.Element | null {
   const state = useCustomPromptEditorState();
 
@@ -199,6 +203,7 @@ describe("useCustomPromptEditorState", () => {
     vi.useRealTimers();
   });
 
+  /** 复用挂载点并等待查询回写。 */
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -211,6 +216,7 @@ describe("useCustomPromptEditorState", () => {
     await flush_async_updates();
   }
 
+  /** 排空查询、提交与 React 状态更新的微任务。 */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -219,6 +225,7 @@ describe("useCustomPromptEditorState", () => {
     });
   }
 
+  /** 只提取保存请求，隔离初始化查询对断言的影响。 */
   function get_save_payloads(): Record<string, unknown>[] {
     return api_fetch_mock.mock.calls
       .filter(([path]) => path === "/api/quality/prompts/save")
@@ -359,14 +366,13 @@ describe("useCustomPromptEditorState", () => {
       "error",
       "custom_prompt_page.feedback.save_failed",
       expect.objectContaining({
-        label: "custom_prompt_page.save.discard",
-        onClick: expect.any(Function),
+        action: { label: "custom_prompt_page.save.discard", onClick: expect.any(Function) },
       }),
     );
     expect(push_toast_mock).toHaveBeenCalledTimes(1);
 
     expect(latest_state).toMatchObject({ prompt_text: "失败版本" });
-    const old_action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
+    const old_action = push_toast_mock.mock.lastCall?.[2] as { action: { onClick: () => void } };
 
     await act(async () => {
       latest_state?.update_prompt_text("重试版本");
@@ -378,7 +384,7 @@ describe("useCustomPromptEditorState", () => {
     expect(dismiss_toast_mock).toHaveBeenCalledWith(1);
     await act(async () => {
       latest_state?.update_prompt_text("后续草稿");
-      old_action.onClick();
+      old_action.action.onClick();
     });
     expect(latest_state?.prompt_text).toBe("后续草稿");
     expect(get_save_payloads()).toEqual([
@@ -546,9 +552,9 @@ describe("useCustomPromptEditorState", () => {
     });
     expect(latest_state?.prompt_text).toBe("临时草稿");
     expect(push_toast_mock).toHaveBeenCalledTimes(1);
-    const action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
+    const action = push_toast_mock.mock.lastCall?.[2] as { action: { onClick: () => void } };
     await act(async () => {
-      action.onClick();
+      action.action.onClick();
       expect(await latest_state?.flush_prompt_change()).toBe(true);
       await vi.advanceTimersByTimeAsync(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
     });
@@ -567,14 +573,14 @@ describe("useCustomPromptEditorState", () => {
     await act(async () => {
       expect(await latest_state?.flush_prompt_change()).toBe(false);
     });
-    const old_action = push_toast_mock.mock.lastCall?.[2] as { onClick: () => void };
+    const old_action = push_toast_mock.mock.lastCall?.[2] as { action: { onClick: () => void } };
     runtime_fixture.project_snapshot.path = "E:/demo/next.lg";
     query_text = "新项目正文";
     await render_probe();
     expect(dismiss_toast_mock).toHaveBeenCalledWith(1);
     await act(async () => {
       latest_state?.update_prompt_text("新项目草稿");
-      old_action.onClick();
+      old_action.action.onClick();
     });
     expect(latest_state?.prompt_text).toBe("新项目草稿");
   });

@@ -25,6 +25,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+/** 提供已完成两条的最小运行结果。 */
 const result = () => ({
   status: "done" as const,
   progress: normalize_batch_translation_progress({ line: 2, total_line: 2 }),
@@ -32,7 +33,7 @@ const result = () => ({
 
 describe("批量翻译完成链", () => {
   it.each(["standalone", "agent"] as const)(
-    "%s 来源从预约保留到终态，工程关闭后清空",
+    "%s 来源与耗尽原因保留至终态，新任务和工程关闭清空原因",
     async (source) => {
       const { runtime, gate, database, session } = setup();
       const lease = source === "agent" ? gate.begin_runtime("agent") : null;
@@ -46,22 +47,30 @@ describe("批量翻译完成链", () => {
           : runtime.begin_under_agent({ kind: "all" }, lease, new AbortController().signal);
       await runtime.execute(handle, async () => {
         await runtime.publish_status(handle, "running");
-        return result();
+        return { ...result(), status: "error", reason: "keys_exhausted" };
       });
       await handle.completion;
       expect(frames).toEqual([
         { status: "requested", source },
         { status: "running", source },
-        { status: "done", source },
+        { status: "error", source },
       ]);
-      expect((await runtime.build_snapshot()).source).toBe(source);
+      expect(await handle.completion).toMatchObject({ reason: "keys_exhausted" });
+      expect(await runtime.build_snapshot()).toMatchObject({ source, reason: "keys_exhausted" });
       if (lease !== null) gate.finish_runtime(lease);
       const next = runtime.begin_standalone({ kind: "all" });
-      expect((await runtime.build_snapshot()).source).toBe("standalone");
+      expect(await runtime.build_snapshot()).toMatchObject({
+        source: "standalone",
+        reason: undefined,
+      });
       await runtime.execute(next, async () => result());
       await next.completion;
       await session.clear();
-      expect(await runtime.build_snapshot()).toMatchObject({ status: "idle", source: null });
+      expect(await runtime.build_snapshot()).toMatchObject({
+        status: "idle",
+        source: null,
+        reason: undefined,
+      });
       await runtime.dispose();
       database.close();
     },

@@ -542,7 +542,7 @@ describe("TranslationWorkUnitRunner", () => {
     expect(read_log_summary(result.logs[0])).not.toContain("ProviderError:");
   });
 
-  it("Key 耗尽终结待翻译条目，保留预处理完成项且不增加内容重试次数", async () => {
+  it("Key 耗尽保留未完成条目和预处理完成项，且不增加内容重试次数", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),
       create_llm_client({
@@ -561,7 +561,7 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
     expect(result.output.items).toMatchObject([
-      { id: 1, status: "ERROR", retry_count: 2 },
+      { id: 1, status: "NONE", retry_count: 2 },
       { id: 2, status: "PROCESSED", retry_count: 0 },
     ]);
   });

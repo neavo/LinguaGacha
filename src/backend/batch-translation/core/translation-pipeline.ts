@@ -3,11 +3,12 @@ import type {
   TranslationCommitEntry,
 } from "../planning/translation-plan-types";
 import type { TranslationPipelineWorkerResult } from "./batch-translation-runner-options";
+import type { TranslationDispatchState } from "./translation-request-scheduler";
 
 export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 500; // worker 结果提交窗口固定为每秒 2 次，避免高频写库
 
 interface TranslationPipelineOptions {
-  get_concurrency_limit: () => number;
+  read_dispatch_state: () => TranslationDispatchState;
   signal: AbortSignal;
   execute: (
     context: TranslationContext,
@@ -26,7 +27,7 @@ export class TranslationPipeline {
 
   private readonly commit_queue: TranslationCommitEntry[] = []; // 聚合 worker 产物，再按固定窗口批量提交
 
-  private readonly get_concurrency_limit: () => number;
+  private readonly read_dispatch_state: () => TranslationDispatchState;
   private readonly upstream_signal: AbortSignal;
   private readonly abort_controller: AbortController;
   private readonly signal: AbortSignal;
@@ -43,7 +44,7 @@ export class TranslationPipeline {
 
   /** 将上游取消传入执行链，额度始终从请求调度器读取。 */
   public constructor(options: TranslationPipelineOptions) {
-    this.get_concurrency_limit = options.get_concurrency_limit;
+    this.read_dispatch_state = options.read_dispatch_state;
     this.upstream_signal = options.signal;
     this.abort_controller = new AbortController();
     this.signal = this.abort_controller.signal;
@@ -67,7 +68,15 @@ export class TranslationPipeline {
     const active = new Set<Promise<void>>();
     try {
       for (;;) {
-        while (!this.signal.aborted && active.size < this.get_concurrency_limit()) {
+        while (!this.signal.aborted) {
+          const dispatch = this.read_dispatch_state();
+          // 耗尽只关闭供给，活动任务继续交付有效结果与用量。
+          if (dispatch.keys_exhausted) {
+            this.queue.length = 0;
+            this.retry_queue.length = 0;
+            break;
+          }
+          if (active.size >= dispatch.concurrency_limit) break;
           const context = this.retry_queue.shift() ?? this.queue.shift(); // 内容重试优先。
           if (context === undefined) break;
           const task = this.run_context(context).finally(() => active.delete(task));

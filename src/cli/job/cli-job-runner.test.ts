@@ -137,29 +137,31 @@ describe("run_cli_job", () => {
     expect_temp_project_removed(harness.created_project_paths);
   });
 
-  it("任务失败时撤销订阅、设置覆盖与非空临时工程", async () => {
-    const paths = create_cli_paths();
-    const harness = create_backend_services_harness();
-    const run_promise = run_cli_job(
-      harness.backend_services,
-      create_command(paths, { command: "translate" }),
-      harness.status_reporter,
-    );
-    const rejection = expect(run_promise).rejects.toThrow("Translation task failed");
+  it.each([undefined, "keys_exhausted"] as const)(
+    "任务失败 %s 时跳过导出并清理资源",
+    async (reason) => {
+      const paths = create_cli_paths();
+      const harness = create_backend_services_harness({ reason });
+      const run_promise = run_cli_job(
+        harness.backend_services,
+        create_command(paths, { command: "translate" }),
+        harness.status_reporter,
+      );
+      const rejection = run_promise.catch((error: unknown) => error);
 
-    await wait_for_task_start(harness, run_promise);
-    await harness.emit_snapshot("error");
-    await rejection;
+      await wait_for_task_start(harness, run_promise);
+      await harness.emit_snapshot("error");
+      const error = await rejection;
+      expect(error).toBeInstanceOf(Error);
 
-    expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
-    expect(harness.unload_project).toHaveBeenCalledOnce();
-    expect(harness.subscriber_count()).toBe(0);
-    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
-      "error",
-      expect.objectContaining({ message: "Translation task failed" }),
-    );
-    expect_temp_project_removed(harness.created_project_paths);
-  });
+      expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
+      expect(harness.unload_project).toHaveBeenCalledOnce();
+      expect(harness.subscriber_count()).toBe(0);
+      expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", error);
+      expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+      expect_temp_project_removed(harness.created_project_paths);
+    },
+  );
 
   it("输入不存在时在任何工程副作用前失败", async () => {
     const paths = create_cli_paths();
@@ -236,7 +238,10 @@ describe("run_cli_job", () => {
   });
 });
 
-function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
+/** 组合可控任务完成链与磁盘临时工程，观察导出及资源清理顺序。 */
+function create_backend_services_harness(
+  failures: { unloadFailure?: Error; reason?: "keys_exhausted" } = {},
+) {
   const events: string[] = [];
   const created_project_paths: string[] = [];
   const task_listeners = new Set<
@@ -245,10 +250,12 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
   let started = false;
   let finish!: (result: {
     status: "done" | "idle" | "error";
+    reason?: "keys_exhausted";
     progress: BatchTranslationSnapshot["progress"];
   }) => void;
   const completion = new Promise<{
     status: "done" | "idle" | "error";
+    reason?: "keys_exhausted";
     progress: BatchTranslationSnapshot["progress"];
   }>((resolve) => {
     finish = resolve;
@@ -372,11 +379,12 @@ function create_backend_services_harness(failures: { unloadFailure?: Error } = {
       const snapshot = create_task_snapshot(status, progress);
       await Promise.all([...task_listeners].map(async (listener) => await listener(snapshot)));
       if (status === "done" || status === "idle" || status === "error")
-        finish({ status, progress: snapshot.progress });
+        finish({ status, progress: snapshot.progress, reason: failures.reason });
     },
   };
 }
 
+/** 等待受理完成，提前失败时直接传播原始错误。 */
 async function wait_for_task_start(
   harness: ReturnType<typeof create_backend_services_harness>,
   run_promise: Promise<unknown>,
@@ -389,6 +397,7 @@ async function wait_for_task_start(
   ]);
 }
 
+/** 构造独立任务的公开进度快照。 */
 function create_task_snapshot(
   status: BatchTranslationSnapshot["status"],
   progress: Partial<BatchTranslationSnapshot["progress"]> = {},
@@ -415,6 +424,7 @@ function create_task_snapshot(
   };
 }
 
+/** 只覆盖场景相关参数，其余沿用完整 CLI 命令形状。 */
 function create_command(
   paths: ReturnType<typeof create_cli_paths>,
   options: {
@@ -440,6 +450,7 @@ function create_command(
   };
 }
 
+/** 创建真实输入文件，并登记测试结束时的清理目录。 */
 function create_cli_paths(): { input_path: string; output_dir: string; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-cli-job-"));
   cleanup_roots.push(root);
@@ -449,6 +460,7 @@ function create_cli_paths(): { input_path: string; output_dir: string; root: str
   return { input_path, output_dir, root };
 }
 
+/** 核对整个临时工程目录已清理。 */
 function expect_temp_project_removed(project_paths: string[]): void {
   const project_path = project_paths[0];
   expect(project_path).toBeDefined();

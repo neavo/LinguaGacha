@@ -1,6 +1,6 @@
 import { read_json_record } from "../../../domain/json";
 import { AppError, log_error_from_message, type LogError } from "../../../shared/error";
-import { collect_api_keys } from "../../llm/llm-client-policy";
+import { collect_api_keys, read_request_timeout_ms } from "../../llm/llm-client-policy";
 import type { LLMClientPort, LLMRequestBody } from "../../llm/llm-types";
 import type {
   TranslationRequestPort,
@@ -23,8 +23,13 @@ interface RequestKey {
   failures: number; // 首次故障与两次间隔恢复；同一波并发失败只占首次机会。
   in_flight: number; // 本 Key 的请求全部结束后才能进入冷却。
   state: "ready" | "draining" | "cooling" | "probing" | "disabled"; // 区分正常并发与单次恢复派发。
-  available_at: number; // 仅 cooling 状态消费的冷却截止时间。
+  available_at: number; // 0 表示未定时，429 在收束期记录最晚恢复时间，其余故障在收束后定时。
 }
+
+export type TranslationDispatchState = Readonly<{
+  concurrency_limit: number;
+  keys_exhausted: boolean;
+}>;
 
 interface PendingRequest {
   body: LLMRequestBody;
@@ -71,8 +76,11 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
   }
 
   /** 流水线据此供应 work unit，额度只由请求完成路径修改。 */
-  public get_concurrency_limit(): number {
-    return this.concurrency_limit;
+  public read_dispatch_state(): TranslationDispatchState {
+    return {
+      concurrency_limit: this.concurrency_limit,
+      keys_exhausted: this.keys.every((key) => key.state === "disabled"),
+    };
   }
 
   /** 一个 Promise 对应一个逻辑请求，换 Key 重试仍留在本轮队列。 */
@@ -113,7 +121,7 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
         head.reject(new AppError("runtime.cancelled"));
         continue;
       }
-      if (this.keys.every((key) => key.state === "disabled")) {
+      if (this.read_dispatch_state().keys_exhausted) {
         for (const pending of this.queue.splice(0)) {
           pending.signal.removeEventListener("abort", pending.abort);
           pending.resolve({
@@ -149,7 +157,10 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
       const pending = this.queue.shift()!;
       const key = this.keys[key_index]!;
       this.offset = (key_index + 1) % this.keys.length;
-      if (key.state === "cooling") key.state = "probing";
+      if (key.state === "cooling") {
+        key.state = "probing";
+        key.available_at = 0;
+      }
       key.in_flight += 1;
       this.in_flight += 1;
       this.options.rate.consume_dispatch_permit(now);
@@ -196,7 +207,20 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
           key.available_at = Date.now();
         }
       } else if (result.timeout || result.request_error !== undefined) {
-        if (result.http_status === HTTP_TOO_MANY_REQUESTS) this.adjust_concurrency(version, false);
+        if (result.http_status === HTTP_TOO_MANY_REQUESTS) {
+          this.adjust_concurrency(version, false);
+          const delay = Math.max(
+            KEY_COOLDOWN_MS,
+            Math.min(
+              result.retry_after_ms ?? KEY_COOLDOWN_MS,
+              read_request_timeout_ms(pending.body.config_snapshot),
+            ),
+          );
+          key.available_at = Math.max(
+            key.available_at,
+            (result.http_received_at ?? Date.now()) + delay,
+          );
+        }
         this.fail_key(key);
         this.options.on_failure(
           key_index,
@@ -205,6 +229,7 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
       } else {
         this.adjust_concurrency(version, true);
         key.failures = 0;
+        key.available_at = 0;
         // 正常响应即恢复 Key；仍在收束的并发请求按完成顺序参与最终判断。
         if (key.state !== "draining") key.state = "ready";
         outcome = { result: { ...result, ...pending.usage } };
@@ -267,9 +292,10 @@ export class TranslationRequestScheduler implements TranslationRequestPort {
     }
   }
 
-  /** 每轮独立取一次抖动，截止时间属于 Key，批次可以换 Key。 */
+  /** 429 使用已记录的截止时间，其余故障在收束后开始带抖动的冷却。 */
   private cool_key(key: RequestKey): void {
     key.state = "cooling";
-    key.available_at = Date.now() + KEY_COOLDOWN_MS + (Math.random() * 2 - 1) * KEY_JITTER_MS;
+    if (key.available_at === 0)
+      key.available_at = Date.now() + KEY_COOLDOWN_MS + (Math.random() * 2 - 1) * KEY_JITTER_MS;
   }
 }

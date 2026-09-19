@@ -41,8 +41,10 @@ export function ProjectTranslationStatsProvider(props: { children: ReactNode }):
       "error",
       resolve_visible_error_message(error, t, t("batch_translation.feedback.stats_refresh_failed")),
       {
-        label: t("app.action.retry"),
-        onClick: retry,
+        action: {
+          label: t("app.action.retry"),
+          onClick: retry,
+        },
       },
     );
   });

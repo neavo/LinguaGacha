@@ -24,8 +24,10 @@ export const zh_cn_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "工程翻译统计刷新失败",
-    done: "已完成 …",
-    stopped: "已停止 …",
+    done: "翻译完成 …",
+    stopped: "翻译停止 …",
+    done_with_errors: "翻译完成，部分条目失败 …",
+    keys_exhausted: "翻译停止：所有的 Key 都不可用 …",
     refresh_failed: "翻译任务状态刷新失败",
     start_failed: "启动翻译任务失败",
     stop_failed: "停止翻译任务失败",

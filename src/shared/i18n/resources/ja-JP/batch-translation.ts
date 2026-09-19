@@ -26,8 +26,10 @@ export const ja_jp_batch_translation = {
   },
   feedback: {
     stats_refresh_failed: "プロジェクトの翻訳統計を更新できませんでした",
-    done: "完了 …",
-    stopped: "停止済み …",
+    done: "翻訳が完了しました …",
+    stopped: "翻訳を停止しました …",
+    done_with_errors: "翻訳が完了しましたが、一部の項目が失敗しました …",
+    keys_exhausted: "翻訳を停止しました：すべての Key が利用できません …",
     refresh_failed: "翻訳タスクの状態を更新できませんでした",
     start_failed: "翻訳タスクを開始できませんでした",
     stop_failed: "翻訳タスクを停止できませんでした",

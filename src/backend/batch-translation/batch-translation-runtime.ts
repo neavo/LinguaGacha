@@ -84,6 +84,7 @@ export class BatchTranslationRuntime {
         config: undefined,
         operation: undefined,
         run_progress: undefined,
+        reason: undefined,
         stop_source: undefined,
         scope: { kind: "all" },
         request_in_flight_count: 0,
@@ -199,6 +200,7 @@ export class BatchTranslationRuntime {
       config: undefined,
       operation,
       run_progress: undefined,
+      reason: undefined,
       stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
       request_in_flight_count: 0,
@@ -246,6 +248,7 @@ export class BatchTranslationRuntime {
       const output = await runner();
       result = Object.freeze({
         status: output.status,
+        ...(output.reason === undefined ? {} : { reason: output.reason }),
         ...(output.run_progress === undefined
           ? {}
           : { run_progress: Object.freeze({ ...output.run_progress }) }),
@@ -289,6 +292,7 @@ export class BatchTranslationRuntime {
         this.snapshot = {
           ...this.snapshot,
           status: result.status,
+          reason: result.reason,
           stop_source: run.stop_source,
           request_in_flight_count: 0,
           // 终态保留任务范围类型，同时清除校对页的正在重翻标记。

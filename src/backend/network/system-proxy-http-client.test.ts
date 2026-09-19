@@ -17,6 +17,7 @@ vi.mock("undici", () => {
   class Agent {
     public readonly close = vi.fn(async () => undefined);
 
+    /** 登记直连池，供测试观察释放。 */
     public constructor() {
       mocks.direct_dispatchers.push(this);
     }
@@ -26,6 +27,7 @@ vi.mock("undici", () => {
     public readonly uri: string;
     public readonly close = vi.fn(async () => undefined);
 
+    /** 记录代理地址与对应连接池。 */
     public constructor(uri: string) {
       this.uri = uri;
       mocks.proxy_dispatchers.push(this);
@@ -45,6 +47,7 @@ vi.mock("undici", () => {
 });
 
 import { SystemProxyHttpClient, parse_system_proxy_route } from "./system-proxy-http-client";
+import { with_http_response_info } from "./http-response-info";
 
 beforeEach(() => {
   mocks.fetch.mockReset().mockResolvedValue(new Response("ok"));
@@ -71,6 +74,25 @@ describe("system proxy route", () => {
 });
 
 describe("SystemProxyHttpClient", () => {
+  it("共享 HTTP 入口把响应状态与重试时间交给调用上下文", async () => {
+    mocks.fetch.mockResolvedValue(
+      new Response(null, { status: 429, headers: { "Retry-After": "90" } }),
+    );
+    const client = new SystemProxyHttpClient({ resolveProxy: vi.fn(async () => "DIRECT") });
+    try {
+      const result = await with_http_response_info(async () => {
+        await client.fetch("https://api.example/v1/chat");
+        return {};
+      });
+      expect(result).toMatchObject({
+        http_status: 429,
+        retry_after_ms: 90_000,
+        http_received_at: expect.any(Number),
+      });
+    } finally {
+      await client.dispose();
+    }
+  });
   it("安装唯一线程 transport 并在释放时恢复原 fetch", async () => {
     const original_fetch = globalThis.fetch;
     const client = new SystemProxyHttpClient({ resolveProxy: vi.fn(async () => "DIRECT") });
