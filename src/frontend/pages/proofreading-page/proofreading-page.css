@@ -61,6 +61,17 @@
   gap: 8px;
 }
 
+/* 透明按钮保留布局和键盘焦点，浮层打开时保持入口可见。 */
+.proofreading-page__text-preview-trigger {
+  opacity: 0;
+  color: var(--muted-foreground);
+}
+
+.app-table__row:is(:hover, :focus-within) .proofreading-page__text-preview-trigger,
+.proofreading-page__text-preview-trigger[data-popup-open] {
+  opacity: 1;
+}
+
 .proofreading-page__text-preview {
   max-width: min(560px, var(--available-width));
 }
