@@ -61,7 +61,7 @@ describe("AgentDecision", () => {
     expect(on_resolve_question).toHaveBeenCalledWith({ kind: "option", optionId: "safe" });
   });
 
-  it("自定义单行输入由内嵌按钮提交", async () => {
+  it("自定义答案通过点击提交，输入焦点控制倒计时暂停与释放", async () => {
     const on_resolve_question = vi.fn();
     await render_decision(root, question_decision(), on_resolve_question);
     const input = container.querySelector<HTMLInputElement>('[data-slot="input-group-control"]');
@@ -81,17 +81,73 @@ describe("AgentDecision", () => {
     await act(async () => input.blur());
     expect(session.actions.setQuestionFocused).toHaveBeenLastCalledWith("question-1", false);
     expect(confirm.disabled).toBe(true);
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      setter?.call(input, "  按章节处理  ");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await enter_custom_text(input, "  按章节处理  ");
     expect(confirm.disabled).toBe(false);
-    await act(async () => confirm.click());
-    expect(on_resolve_question).toHaveBeenCalledWith({ kind: "custom", text: "按章节处理" });
     await act(async () => input.focus());
+    await act(async () => {
+      const pointer = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+      confirm.dispatchEvent(pointer);
+      // 阻止指针默认移焦，发送前保持问题倒计时暂停。
+      expect(pointer.defaultPrevented).toBe(true);
+      confirm.click();
+    });
+    expect(on_resolve_question).toHaveBeenCalledExactlyOnceWith({
+      kind: "custom",
+      text: "按章节处理",
+    });
     await act(async () => root.render(null));
     expect(session.actions.setQuestionFocused).toHaveBeenLastCalledWith("question-1", false);
+  });
+
+  it("自定义答案通过 Enter 提交并清理首尾空白", async () => {
+    const on_resolve_question = vi.fn();
+    await render_decision(root, question_decision(), on_resolve_question);
+    const input = container.querySelector<HTMLInputElement>("input")!;
+    await enter_custom_text(input, "  按章节处理  ");
+    await act(async () =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+    );
+    expect(on_resolve_question).toHaveBeenCalledExactlyOnceWith({
+      kind: "custom",
+      text: "按章节处理",
+    });
+  });
+
+  it.each<{ label: string; text: string; key: KeyboardEventInit }>([
+    { label: "空文本", text: "", key: { key: "Enter" } },
+    { label: "纯空格", text: "   ", key: { key: "Enter" } },
+    { label: "输入法选词", text: "按章节处理", key: { key: "Enter", isComposing: true } },
+    { label: "Shift+Enter", text: "按章节处理", key: { key: "Enter", shiftKey: true } },
+    { label: "Ctrl+Enter", text: "按章节处理", key: { key: "Enter", ctrlKey: true } },
+    { label: "Alt+Enter", text: "按章节处理", key: { key: "Enter", altKey: true } },
+    { label: "Meta+Enter", text: "按章节处理", key: { key: "Enter", metaKey: true } },
+    { label: "普通按键", text: "按章节处理", key: { key: "a" } },
+  ])("自定义输入在 $label 时不提交", async ({ text, key }) => {
+    const on_resolve_question = vi.fn();
+    await render_decision(root, question_decision(), on_resolve_question);
+    const input = container.querySelector<HTMLInputElement>("input")!;
+    await enter_custom_text(input, text);
+    const event = new KeyboardEvent("keydown", { ...key, bubbles: true, cancelable: true });
+    await act(async () => input.dispatchEvent(event));
+    expect(on_resolve_question).not.toHaveBeenCalled();
+    if (text.trim() !== "") expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("自定义发送按钮的悬停提示显示确认文案与 Enter 键帽", async () => {
+    vi.useFakeTimers();
+    await render_decision(root, question_decision());
+    await enter_custom_text(container.querySelector<HTMLInputElement>("input")!, "按章节处理");
+    const confirm = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="agent_page.decision.confirm"]',
+    )!;
+    await act(async () => {
+      confirm.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      confirm.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const tooltip = document.querySelector('[role="tooltip"][data-open]');
+    expect(tooltip?.textContent).toContain("agent_page.decision.confirm");
+    expect(tooltip?.querySelector("kbd")?.textContent).toBe("Enter");
   });
 
   it("问题取消提交取消裁决", async () => {
@@ -165,8 +221,6 @@ describe("AgentDecision", () => {
         container,
         kind === "question" ? "安全范围" : "agent_page.approval.allow_once",
       );
-      // 整个按钮是提示触发器，图标与文字共同命中。
-      expect(button.dataset.slot).toBe("tooltip-trigger");
       await act(async () => {
         button.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
         button.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
@@ -190,6 +244,15 @@ describe("AgentDecision", () => {
     },
   );
 });
+
+/** 通过原生属性写入口绕过 React 的值跟踪，使输入事件触发受控状态更新。 */
+async function enter_custom_text(input: HTMLInputElement, text: string): Promise<void> {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    setter.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 
 /** 在真实 Tooltip 宿主中渲染决定，裁决回调由各场景观察。 */
 async function render_decision(

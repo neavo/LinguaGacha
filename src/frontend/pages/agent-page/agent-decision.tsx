@@ -25,6 +25,7 @@ import {
 } from "@frontend/shadcn/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppButton } from "@frontend/widgets/app-button";
+import { ShortcutTooltipRow } from "@frontend/widgets/interactions/shortcut-kbd";
 
 const AGENT_DECISION_WARNING_REMAINING_PERCENT = 25; // 最后四分之一期限切换为警告语义
 const SUMMARY_COUNT_MARKER = "\uE000"; // 不会出现在本地化正文中，为数量保留独立视觉语义
@@ -91,12 +92,18 @@ function AgentQuestionDecision(props: {
   const custom_input_id = useId();
   const [custom_text, set_custom_text] = useState("");
   const custom_value = custom_text.trim();
+  const can_submit = custom_value !== "";
   const {
     on_focus,
     decision: { id },
   } = props;
   // 切页卸载也释放焦点；身份校验由 Store 承担，旧卡片不会恢复新问题的计时。
   useEffect(() => () => on_focus(id, false), [id, on_focus]);
+
+  /** 点击与回车共用答案校验，提交互斥和倒计时停止由会话状态处理。 */
+  const submit_custom_answer = (): void => {
+    if (can_submit) props.on_resolve({ kind: "custom", text: custom_value });
+  };
 
   return (
     <AgentDecisionFrame
@@ -130,6 +137,20 @@ function AgentQuestionDecision(props: {
               onFocus={() => on_focus(id, true)}
               onBlur={() => on_focus(id, false)}
               onChange={(event) => set_custom_text(event.target.value)}
+              onKeyDown={(event) => {
+                // 输入法选词优先，仅接管无修饰键的 Enter。
+                if (
+                  event.key !== "Enter" ||
+                  event.nativeEvent.isComposing ||
+                  event.shiftKey ||
+                  event.ctrlKey ||
+                  event.altKey ||
+                  event.metaKey
+                )
+                  return;
+                event.preventDefault();
+                submit_custom_answer();
+              }}
             />
             <InputGroupAddon align="inline-end">
               <Tooltip>
@@ -138,21 +159,20 @@ function AgentQuestionDecision(props: {
                     <InputGroupButton
                       className="agent-decision-icon agent-decision-custom__submit"
                       size="icon-xs"
-                      disabled={custom_value === ""}
+                      disabled={!can_submit}
                       aria-label={t("agent_page.decision.confirm")}
+                      aria-keyshortcuts={can_submit ? "Enter" : undefined}
                       // 保持输入框焦点，点击发送不会先恢复零秒计时。
                       onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        if (custom_value !== "") {
-                          props.on_resolve({ kind: "custom", text: custom_value });
-                        }
-                      }}
+                      onClick={submit_custom_answer}
                     >
                       <ArrowRight aria-hidden="true" />
                     </InputGroupButton>
                   }
                 />
-                <TooltipContent>{t("agent_page.decision.confirm")}</TooltipContent>
+                <TooltipContent>
+                  <ShortcutTooltipRow label={t("agent_page.decision.confirm")} shortcut="submit" />
+                </TooltipContent>
               </Tooltip>
             </InputGroupAddon>
           </InputGroup>
@@ -192,7 +212,7 @@ function AgentWriteDecision(props: {
   );
 }
 
-/** 公共框架统一标题语义、取消轨和选项内容位置。 */
+/** 公共框架统一组织标题、说明、取消按钮和内容区域。 */
 function AgentDecisionFrame(props: {
   title: string;
   title_ref?: RefObject<HTMLHeadingElement | null>;
@@ -345,7 +365,7 @@ function AgentDecisionAction({
   );
 }
 
-/** 按当前 locale 投影非零变更类别。 */
+/** 按当前语言格式显示非零变更类别。 */
 function AgentWriteSummary(props: { summary: AgentPendingWriteSummary }): JSX.Element {
   const { locale, t } = useI18n();
 
