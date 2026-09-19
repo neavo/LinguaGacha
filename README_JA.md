@@ -87,6 +87,10 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260919 v0.122.1
+  - LinguaGachaちゃんのアバターが新しくなりました 😎
+  - 修正と改善 [#902](../../issues/902) [#903](../../issues/903) [#905](../../issues/905)
+
 - 20260918 v0.122.0
   - `.pdf` ファイルに対応 [#895](../../issues/895)
     - `AGENT` モードでのみ翻訳できます

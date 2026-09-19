@@ -85,6 +85,10 @@
 - Beispiele finden Sie unter [Wiki – Unterstützte Dateiformate](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F). Weitere Formate werden laufend ergänzt. Wünsche können Sie unter [ISSUES](https://github.com/neavo/LinguaGacha/issues) einreichen
 
 ## Neueste Updates 📅
+- 20260919 v0.122.1
+  - LinguaGacha-chan hat einen neuen Avatar 😎
+  - Fehlerbehebungen und Verbesserungen [#902](../../issues/902) [#903](../../issues/903) [#905](../../issues/905)
+
 - 20260918 v0.122.0
   - Unterstützung für `.pdf`-Dateien [#895](../../issues/895)
     - Kann nur im `AGENT`-Modus übersetzt werden

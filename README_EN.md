@@ -88,6 +88,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260919 v0.122.1
+  - LinguaGacha-chan has a new avatar 😎
+  - Fixes and improvements [#902](../../issues/902) [#903](../../issues/903) [#905](../../issues/905)
+
 - 20260918 v0.122.0
   - Added support for `.pdf` files [#895](../../issues/895)
     - Can only be translated in `AGENT` mode
