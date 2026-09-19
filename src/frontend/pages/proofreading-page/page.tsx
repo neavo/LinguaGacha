@@ -132,6 +132,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
               {t("proofreading_page.action.filter")}
             </AppButton>
             <ProofreadingFilePicker
+              key={proofreading_page_state.settled_project_path}
               files={proofreading_page_state.files}
               selection={proofreading_page_state.file_selection}
               on_change={proofreading_page_state.update_file_selection}

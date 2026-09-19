@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
+import type { ProofreadingFile } from "@shared/proofreading/proofreading-types";
 
 const proofreading_state_fixture = vi.hoisted(() => ({
   current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
@@ -20,21 +22,6 @@ vi.mock("@frontend/app/locale/locale-context", () => {
 vi.mock("@frontend/pages/proofreading-page/use-proofreading-page-state", () => {
   return {
     useProofreadingPageState: () => proofreading_state_fixture.current,
-  };
-});
-
-vi.mock("@frontend/widgets/app-button", () => {
-  return {
-    AppButton: (props: {
-      children: ReactNode;
-      disabled?: boolean;
-      onClick?: () => void;
-      type?: "button";
-    }) => (
-      <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
-        {props.children}
-      </button>
-    ),
   };
 });
 
@@ -172,7 +159,7 @@ function create_proofreading_state_fixture() {
     update_replace_text: vi.fn(),
     update_search_keyword: vi.fn(),
     update_search_scope: vi.fn(),
-    files: [],
+    files: [] as ProofreadingFile[],
     file_selection: {
       mode: "default",
     } as import("./proofreading-filter-state").ProofreadingFilterChoice<string>,
@@ -211,7 +198,11 @@ describe("ProofreadingPage", () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ProofreadingPage is_sidebar_collapsed={false} />);
+      root?.render(
+        <TooltipProvider>
+          <ProofreadingPage is_sidebar_collapsed={false} />
+        </TooltipProvider>,
+      );
     });
   }
 
@@ -337,5 +328,34 @@ describe("ProofreadingPage", () => {
       container!.querySelector(".proofreading-page__table-host")?.previousElementSibling
         ?.textContent,
     ).not.toContain("proofreading_page.pages.select_files");
+  });
+
+  it("工程切换关闭文件浮层并重置目录展开状态", async () => {
+    const state = proofreading_state_fixture.current!;
+    state.files = [{ file_path: "game/tl/chapter.rpy", kind: "item", count: 1 }];
+    await mount_page();
+    // 从真实页面入口打开浮层，验证工程切换时组件身份与本地状态一起重建。
+    const open_files = async () => {
+      const button = [...container!.querySelectorAll("button")].find(
+        (element) => element.textContent === "proofreading_page.action.files",
+      )!;
+      await act(async () => button.click());
+    };
+    const directory_toggle = () =>
+      document.querySelector<HTMLButtonElement>('button[aria-label="game"]')!;
+    await open_files();
+    await act(async () => directory_toggle().click());
+    expect(directory_toggle().getAttribute("aria-expanded")).toBe("false");
+    state.settled_project_path = "E:/demo/other.lg";
+    await act(async () =>
+      root!.render(
+        <TooltipProvider>
+          <ProofreadingPage is_sidebar_collapsed={false} />
+        </TooltipProvider>,
+      ),
+    );
+    expect(document.querySelector(".proofreading-page__file-picker")).toBeNull();
+    await open_files();
+    expect(directory_toggle().getAttribute("aria-expanded")).toBe("true");
   });
 });

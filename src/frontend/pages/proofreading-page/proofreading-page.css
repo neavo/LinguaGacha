@@ -704,6 +704,9 @@
 
 .proofreading-page__file-picker {
   width: min(440px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  max-height: var(--available-height);
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -711,21 +714,84 @@
   color: var(--popover-foreground);
 }
 .proofreading-page__file-options {
+  min-height: 0;
   max-height: 320px;
   overflow: auto;
 }
-.proofreading-page__file-option {
+.proofreading-page__file-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.proofreading-page__file-tree .proofreading-page__file-tree {
+  padding-left: 16px;
+}
+.proofreading-page__file-row {
   display: flex;
   align-items: center;
+  min-width: min-content;
+  min-height: 32px;
   gap: 8px;
-  padding: 8px;
-  font-size: 12px;
+  padding: 0 8px;
 }
-.proofreading-page__file-option:hover {
+.proofreading-page__file-body,
+.proofreading-page__file-all {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  text-align: start;
+}
+.proofreading-page__file-row:hover,
+.proofreading-page__file-all:hover {
   background: var(--accent);
 }
-.proofreading-page__file-option input {
+.proofreading-page__file-row input,
+.proofreading-page__file-all input {
+  flex-shrink: 0;
   accent-color: var(--primary);
+  cursor: pointer;
+}
+.proofreading-page__file-row input:focus-visible,
+.proofreading-page__file-body:focus-visible,
+.proofreading-page__file-all input:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+.proofreading-page__file-body > svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.proofreading-page__file-row[data-directory="true"],
+button.proofreading-page__file-body,
+.proofreading-page__file-all {
+  cursor: pointer;
+}
+button.proofreading-page__file-body:hover > .app-badge {
+  background: var(--muted);
+}
+.proofreading-page__file-name {
+  flex: 1;
+  min-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proofreading-page__file-all {
+  flex: none;
+  padding-inline: 8px;
+}
+.proofreading-page__file-hint {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .proofreading-page__table-empty {
