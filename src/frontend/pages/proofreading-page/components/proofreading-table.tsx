@@ -5,6 +5,7 @@ import {
   CircleMinus,
   CopyX,
   Eraser,
+  Eye,
   ListChecks,
   ListX,
   PencilLine,
@@ -36,6 +37,7 @@ import {
   AppContextMenuSubTrigger,
 } from "@frontend/widgets/app-context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AppButton } from "@frontend/widgets/app-button";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { read_optional_item_name_text } from "@shared/item-name";
 import type {
@@ -47,7 +49,7 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 
-// 收口校对页状态 Hook 给表格层的只读展示和行操作入口。
+// 收口校对页状态 Hook 提供的只读展示和行操作入口。
 type ProofreadingTableProps = {
   items: ProofreadingRow[];
   visible_row_count: number;
@@ -124,13 +126,13 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   return "neutral";
 }
 
-// 浮层读取完整正文；姓名和压缩后的列表文本各自保留原有展示。
+// 正文负责单行展示，尾部按钮通过表格交互标记独立预览全文。
 function ProofreadingTextCell(props: {
   name: string | null;
   text: string;
   full_text: string;
+  label: string; // 复用列标题作为按钮名称，让辅助技术区分原文和译文。
 }): JSX.Element {
-  const text = <span className="proofreading-page__table-text">{props.text}</span>;
   return (
     <span className="proofreading-page__table-text-line">
       {props.name === null ? null : (
@@ -138,15 +140,27 @@ function ProofreadingTextCell(props: {
           <span className="proofreading-page__table-name-badge-label">{props.name}</span>
         </Badge>
       )}
-      {props.full_text !== "" ? (
+      <span className="proofreading-page__table-text">{props.text}</span>
+      {props.full_text !== "" && (
         <Tooltip>
-          <TooltipTrigger render={text} />
+          <TooltipTrigger
+            render={
+              <AppButton
+                variant="ghost"
+                size="icon-xs"
+                className="proofreading-page__text-preview-trigger"
+                aria-label={props.label}
+                data-app-table-ignore-row-click="true"
+                data-app-table-ignore-box-select="true"
+              >
+                <Eye aria-hidden="true" />
+              </AppButton>
+            }
+          />
           <TooltipContent className="proofreading-page__text-preview">
             <div className="proofreading-page__text-preview-body">{props.full_text}</div>
           </TooltipContent>
         </Tooltip>
-      ) : (
-        text
       )}
     </span>
   );
@@ -243,14 +257,14 @@ function ProofreadingStatusCell(props: {
   );
 }
 
-// 把校对页远端窗口模型适配给通用 AppTable。
+// 把校对页远端窗口模型适配给通用 `AppTable`。
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
   // 让状态列 O(1) 判断行级重翻状态。
   const retranslating_row_id_set = useMemo(() => {
     return new Set(props.retranslating_row_ids);
   }, [props.retranslating_row_ids]);
-  // 暴露远端窗口读取能力，AppTable 不需要理解校对页 view id。
+  // 表格通过行身份和位置读取远端窗口，查询视图身份由校对页维护。
   const row_model = useMemo<AppTableRowModel<ProofreadingRow>>(() => {
     return {
       row_count: props.visible_row_count,
@@ -307,6 +321,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             );
           return (
             <ProofreadingTextCell
+              label={t("proofreading_page.fields.source")}
               name={read_optional_item_name_text(payload.row.item.name_src)}
               text={payload.row.compressed_src}
               full_text={payload.row.item.src}
@@ -336,6 +351,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             );
           return (
             <ProofreadingTextCell
+              label={t("proofreading_page.fields.translation")}
               name={read_optional_item_name_text(payload.row.item.name_dst)}
               text={payload.row.compressed_dst}
               full_text={payload.row.item.dst}
@@ -467,8 +483,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             );
           }}
           box_selection_enabled
-          table_class_name="proofreading-page__table"
-          row_class_name={() => "proofreading-page__table-row"}
         />
       </CardContent>
     </Card>
