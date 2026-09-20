@@ -63,13 +63,14 @@
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次 assistant 请求之间统一自动压缩；空闲会话也可由公开手动入口立即压缩。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；`AgentService` 只把 SDK 压缩事件投影到公开时间线，成功后 `context` 采用 SDK 对新模型历史的估算并重新计算可压缩性，失败保留原上下文快照并沿用 SDK 后续请求语义。
 - Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
-- `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章；其短正文与 System Prompt 的“任务与准则”有意重复。模型负责确保它在任务前已经加载；后端不注入任务阶段副本，也不跟踪加载状态。
+- `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章，其短正文与系统提示有意重复。模型负责在任务前加载，后端通过普通技能读取提供正文，加载状态由模型判断。
 - `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理。`displayDescriptions` 面向用户解释能力，技能触发依据 `SKILL.md` 的描述，UI 配置不进入模型上下文。
 - `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 与显式 marker 注入共用宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
 - 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。
-- System Prompt 从静态 Markdown 加载，会话技能目录附加在正文之后。它拥有人格、任务范围、技能选择、程序先行、业务单元组织、通用后继调查、提交恢复与交付要求。任务类型 `report / apply` 由模型遵守，后端不持有任务类型状态机；`report` 允许分析和准备工作材料，跳过工程写入及依赖持久化结果的步骤，包括直接写入工具。运行环境与权限归工具说明，参数、回执及快照恢复语义归工具 Schema 和 `ws.contract`。
-- 技能入口区分领域意图、必要初探与包内资源分派，组合任务共用 System Prompt 的交互和事实复用规则。包内判据拥有对象资格与安全条件，领域流程补充取证、后继调查方向、提交时机和验收成果，格式与文本质量参考提供专业知识。共同调查机制在 System Prompt 维护，领域流程保留具体触发条件及回到对象判断的入口。`writing-guide-` 前缀扩展由所属技能正文驱动加载，宿主不维护依赖图。
-- 领域证据、关系图、方案与覆盖记录由模型按任务规模保存在工作资产中，工程事实以有效快照与实际回执为准；技能加载器和后端不维护领域流程状态。完整 `items` 决定条目范围，`warnings` 仅提供关联证据；`pages` 以来源页追踪内容，视觉核验定位到渲染后的输出页。Agent 页面消费 Markdown、Mermaid 和结构化决策状态，不从标题或表情符号推断领域状态。
+- [系统提示](../builtin/agent/system_prompt.md) 负责人格、任务与授权边界、技能选择、CodeAct、业务单元与提交、恢复和交付要求，加载后在正文末尾附加会话技能目录。
+- 任务类型 `report / apply` 由模型遵守。`report` 允许分析和准备工作材料，`apply` 承担工程写入、回执核对及依赖写入结果的检查，直接写入工具同样受此边界约束。后端按工具契约执行，任务类型由模型在工作记录中保存。
+- 模型按[技能入口](../builtin/agent/skill/)选择任务文件、领域判据与扩展技能，包括 `writing-guide-` 前缀扩展。各任务文件完整维护自身流程及所需的全局要求，判据与参考提供领域知识。自启发调查的步骤、种子账本格式和结束条件随领域流程维护。
+- 模型通过 `workspace_run` 在 `work/` 中保存领域证据、种子账本、方案与覆盖记录，并据此恢复调查进度。领域流程状态由模型维护，工程事实以有效快照与实际回执为准。完整 `items` 决定条目范围，`warnings` 仅提供关联证据。`pages` 以来源页追踪内容，视觉核验定位到渲染后的输出页。Agent 页面消费 Markdown、Mermaid 和结构化决策状态。
 
 ## 4. 产品工具与宿主能力
 
@@ -85,7 +86,7 @@
 
 - `run_batch_item_translation` 是处理 `items` 的顺序工具，接收全部条目或明确 `item_id` 范围及是否纳入失败条目的决定。工具以当前轮次的 Agent lease 调用共享 `BatchTranslationService`，批量引擎在运行中自行提交译文，等待提交与收尾后返回终态、本轮条目进度和工程条目累计进度。范围、失败条目决定与执行分流归 Agent 工作流。工具取消单向传给翻译，Agent lease 在 SDK settle 后释放，后续工作区操作重新加载工程快照。`stop_source: user` 或 `reason: keys_exhausted` 使 AgentService 缓存停止结果并暂停同轮翻译调用，重复调用返回缓存结果。用户取消后的收尾失败也保留停止事实与诊断。自动工具循环和压缩沿用暂停，新用户 round、显式 continue、重新运行、reset 与工程切换清理缓存。共享运行态与提交协议归 [`BACKEND.md`](BACKEND.md)。
 
-- System Prompt 拥有通用决策规则，skill 拥有领域流程，工具说明提供调用与恢复语义。参数约束归 Schema，`workspace_run` 的限制与包名来自运行策略和依赖清单，`workspace_apply` 从 contract 投影提交与回执语义。
+- 工具说明负责运行环境、权限、调用与恢复行为，Schema 规定参数约束。`workspace_run` 的执行限制与可用包名来自运行策略和依赖清单，`workspace_apply` 的提交与回执说明依据 `ws.contract` 生成。对象结构、修改格式与副作用由下述契约参考统一提供。
 - 模型 FC 的 JSON 结果统一由 `model-tools/definition` 生成同源的模型正文与 `details`；FC 的 TypeBox Schema 独占模型参数，并统一使用跨供应商稳定的普通 `object` 根，条件字段组合由工具执行入口收窄。注册边界在模型请求前拒绝非 `object` 根和根级联合，且不按供应商改写 Schema。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地诊断。SDK 的 `tool_execution_start/end` 仍是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常。
 - `ask_user` 始终注册，承接任务开始前或执行中的单个有界决定，适用于可通过二至三个选项表达的范围、处理策略或偏好。`prompt`、`description` 与选项 `label` 均受 shared Agent 问题文本上限约束，分别承担简短问题、共用背景和短行动或结果；证据与长篇说明留在正文或工作资产中。通用交互原则归 System Prompt，领域技能拥有具体触发条件，调用、返回、到期与取消语义归工具说明。工具参数包含一个 `prompt`、可选的问题级 `description` 和二至三个身份唯一、按推荐顺序排列的固定选项；宿主提供自定义答案与取消。宿主提交固定选择时返回 `selected` 与其 `optionId`，自定义答案同样返回原工具轮次，显式取消返回 `cancelled`，模型暂停依赖该决定的动作。所有结果均返回原工具轮次，不追加公开 user 消息。完成后沿用普通工具条目与详情。工程写入授权使用独立权限入口，`allow_once` 仅允许当前批次写入。
 - 当前对话只持有一份由短阶段标签组成的有界有序 Todo，不保存领域事实、工程证据或完成历史。每次 `workspace_run` 以当前 Todo 初始化 `ws.todo`；同步 `read()` 返回不可变副本，`write(todos)` 替换本次程序副本并通过 IPC 发送独立快照。runner 暂存最后有效值，进程成功退出且调用未取消时由 `AgentService` 原子提交；失败、停止或超时保留调用前状态。公开 Agent snapshot 与 SSE 使用 `todos` 投影完整数组，空数组表示不展示。
