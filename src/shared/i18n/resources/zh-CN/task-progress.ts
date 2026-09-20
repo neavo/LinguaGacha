@@ -4,7 +4,6 @@ export const zh_cn_task_progress = {
   translation_failed: "翻译失败",
   translation_pending: "等待翻译",
   translation_skipped: "无需翻译",
-
   toggle_tooltip: "点击切换",
   line: "{status} - {count} 行",
   page: "{status} - {count} 页",

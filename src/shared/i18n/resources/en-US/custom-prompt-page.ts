@@ -7,17 +7,14 @@ export const en_us_custom_prompt_page = {
     waiting: "Wait for the current task to finish before saving.",
   },
   title: "Custom Prompts",
-
   header: {
     description_html:
       "Add extra translation requirements such as story settings and writing styles via custom prompts",
   },
-
   section: {
     prefix_label: "Fixed Prefix",
     suffix_label: "Fixed Suffix",
   },
-
   confirm: {
     reset: {
       description: "Confirm resetting data …?",

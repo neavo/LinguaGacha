@@ -9,7 +9,6 @@ export const zh_cn_glossary_page = {
   fields: {
     translation: "译文",
     description: "描述",
-
     hit: "命中",
   },
   hit: {
@@ -26,16 +25,12 @@ export const zh_cn_glossary_page = {
       description: "备注",
     },
   },
-
   feedback: {
     load_failed: "术语表加载失败，请稍后重试。",
     save_failed: "术语表保存失败",
     import_failed: "术语表导入失败",
-
     export_failed: "术语表导出失败",
-
     preset_failed: "术语表预设加载失败",
-
     query_failed: "术语表查询失败",
   },
 } as const;

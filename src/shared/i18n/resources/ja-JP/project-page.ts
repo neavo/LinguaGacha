@@ -52,7 +52,6 @@ export const ja_jp_project_page = {
     items: "プロジェクトの項目を読み込み中 …",
     quality: "品質ルールを読み込み中 …",
     prompts: "プロンプト設定を読み込み中 …",
-
     proofreading: "校正画面を読み込み中 …",
     task: "タスクの状態を読み込み中 …",
   },

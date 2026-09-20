@@ -13,7 +13,6 @@ export const de_de_glossary_page = {
   fields: {
     translation: "Übersetzung",
     description: "Beschreibung",
-
     hit: "Treffer",
   },
   hit: {
@@ -30,16 +29,12 @@ export const de_de_glossary_page = {
       description: "Notizen",
     },
   },
-
   feedback: {
     load_failed: "Glossar konnte nicht geladen werden. Bitte später erneut versuchen.",
     save_failed: "Fehler beim Speichern des Glossars.",
     import_failed: "Fehler beim Importieren des Glossars.",
-
     export_failed: "Fehler beim Exportieren des Glossars.",
-
     preset_failed: "Fehler beim Laden der Glossar-Voreinstellungen.",
-
     query_failed: "Fehler bei der Korrekturabfrage.",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

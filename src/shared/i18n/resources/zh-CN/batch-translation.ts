@@ -19,7 +19,6 @@ export const zh_cn_batch_translation = {
     output_tokens: "输出 Token",
     waveform_title: "实时速度",
     metrics_title: "统计信息",
-
     active_requests: "实时任务数",
   },
   feedback: {

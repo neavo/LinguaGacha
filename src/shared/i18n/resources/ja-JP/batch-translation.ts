@@ -21,7 +21,6 @@ export const ja_jp_batch_translation = {
     output_tokens: "出力 Token",
     waveform_title: "現在の速度",
     metrics_title: "統計",
-
     active_requests: "実行中のタスク数",
   },
   feedback: {

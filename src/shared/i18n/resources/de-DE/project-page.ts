@@ -54,7 +54,6 @@ export const de_de_project_page = {
     items: "Projekteinträge werden geladen …",
     quality: "Qualitätsregeln werden geladen …",
     prompts: "Prompt-Einstellungen werden geladen …",
-
     proofreading: "Korrekturansicht wird geladen …",
     task: "Aufgabenstatus wird geladen …",
   },

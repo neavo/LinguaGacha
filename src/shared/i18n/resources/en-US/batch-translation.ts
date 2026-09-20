@@ -21,7 +21,6 @@ export const en_us_batch_translation = {
     output_tokens: "Output Tokens",
     waveform_title: "Real-time Speed",
     metrics_title: "Statistics",
-
     active_requests: "Real Time Tasks",
   },
   feedback: {

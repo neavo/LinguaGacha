@@ -50,7 +50,6 @@ export const zh_cn_project_page = {
     items: "正在加载项目条目 …",
     quality: "正在加载质量规则 …",
     prompts: "正在加载提示词配置 …",
-
     proofreading: "正在加载校对视图 …",
     task: "正在加载任务状态 …",
   },

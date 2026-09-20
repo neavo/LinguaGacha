@@ -358,7 +358,6 @@ export const ko_kr_app = {
     engine_api_name: "API 이름",
     engine_api_url: "API 주소",
     engine_task_done: "작업이 완료되었습니다 …",
-
     engine_task_fail:
       "일부 작업이 완료되지 않았습니다. 미처리 데이터가 있으니 처리 결과를 확인해 주세요 …",
     engine_task_rule_analysis: "규칙 분석:",

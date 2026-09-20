@@ -7,17 +7,14 @@ export const de_de_custom_prompt_page = {
     waiting: "Bitte vor dem Speichern warten, bis die aktuelle Aufgabe abgeschlossen ist.",
   },
   title: "Eigene Prompts",
-
   header: {
     description_html:
       "Fügen Sie zusätzliche Übersetzungsanforderungen wie Handlungseinstellungen und Schreibstile über benutzerdefinierte Prompts hinzu",
   },
-
   section: {
     prefix_label: "Festes Präfix",
     suffix_label: "Festes Suffix",
   },
-
   confirm: {
     reset: {
       description: "Daten wirklich zurücksetzen …?",

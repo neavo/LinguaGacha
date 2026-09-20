@@ -2,10 +2,8 @@ import type { zh_cn_text_preserve_page } from "../zh-CN/text-preserve-page";
 import type { LocaleMessageSchema } from "../../types";
 export const ja_jp_text_preserve_page = {
   title: "テキスト保護",
-
   mode: {
     label: "テキスト保護モード",
-
     loading_toast: "校正キャッシュを更新中 …",
     content_html:
       "翻訳不要なコード、制御文字、装飾文字などを保護し、誤って翻訳されるのを防ぎます" +
@@ -31,7 +29,6 @@ export const ja_jp_text_preserve_page = {
       note: "備考",
     },
   },
-
   preset: {
     dialog: {
       name_placeholder: "プリセット名を入力 …",
@@ -40,13 +37,10 @@ export const ja_jp_text_preserve_page = {
   hit: {
     hit_count: "一致する項目数：{COUNT}",
   },
-
   feedback: {
     load_failed: "テキスト保護ルールを読み込めませんでした。しばらくしてから再試行してください。",
     preset_name_required: "プリセット名を入力してください",
-
     unknown_error: "操作に失敗しました。しばらくしてから再試行してください。",
-
     mode_refresh_pending:
       "テキスト保護モードを切り替えました。校正キャッシュの更新後に結果を確認してください。",
   },

@@ -52,7 +52,6 @@ export const ko_kr_project_page = {
     items: "프로젝트 항목 불러오는 중 …",
     quality: "품질 규칙 불러오는 중 …",
     prompts: "프롬프트 설정 불러오는 중 …",
-
     proofreading: "교정 화면 불러오는 중 …",
     task: "작업 상태 불러오는 중 …",
   },
