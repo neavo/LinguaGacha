@@ -7,20 +7,11 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
 import { Model } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
-import {
-  apply_agent_request_overrides,
-  read_model_request_snapshot,
-} from "../llm/llm-client-policy";
+import { read_model_request_snapshot, type ModelRequestIdentity } from "../llm/llm-request";
+import { apply_request_overrides } from "../llm/llm-payload";
 import { resolve_model_capability } from "../llm/model-capability";
-import { resolve_pi_model } from "../llm/llm-pi";
+import { resolve_pi_model, type PiApi } from "../llm/llm-pi";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
-import type { ModelRequestIdentity } from "../llm/policy/policy-types";
-
-type AgentApi =
-  | "openai-completions"
-  | "openai-responses"
-  | "anthropic-messages"
-  | "google-generative-ai";
 
 /** 把当前统一请求快照注册到 coding-agent 模型运行时。 */
 export function register_agent_model(
@@ -28,7 +19,7 @@ export function register_agent_model(
   config: JsonRecord,
   identity: ModelRequestIdentity,
 ): {
-  model: PiModel<AgentApi>;
+  model: PiModel<PiApi>;
   thinkingLevel: PiModelThinkingLevel;
   model_config: Model;
 } {
@@ -39,18 +30,11 @@ export function register_agent_model(
   const snapshot = read_model_request_snapshot(raw_model, identity);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
-  const pi = resolve_pi_model(snapshot, {
+  const pi = resolve_pi_model(snapshot, capability, {
     name: configured_name || snapshot.model_id,
     contextWindow: capability.agent_limits.context_window,
     maxTokens: capability.agent_limits.max_output_tokens,
     input: ["text", "image"],
-  });
-  // SDK 会为压缩分配独立路由身份；最终请求统一使用产品对话身份及本轮配置。
-  const force_request_policy = <TOptions extends object>(options?: TOptions) => ({
-    ...options,
-    apiKey: api_key,
-    headers: { ...snapshot.headers },
-    onPayload: (payload: unknown) => apply_agent_request_overrides(snapshot, payload),
   });
   const provider_config = {
     name: `LinguaGacha ${pi.model.provider}`,
@@ -59,12 +43,18 @@ export function register_agent_model(
     api: pi.model.api,
     authHeader: false,
     models: [pi.model],
+    // SDK 压缩可使用独立路由身份，最终请求仍采用产品对话身份及本轮配置。
     streamSimple: (active_model, context, options) =>
-      pi.streamSimple(active_model, context, force_request_policy(options)),
+      pi.streamSimple(active_model, context, {
+        ...options,
+        apiKey: api_key,
+        headers: { ...snapshot.headers },
+        onPayload: (payload) => apply_request_overrides(snapshot, payload),
+      }),
   } satisfies Parameters<ModelRuntime["registerProvider"]>[1];
   model_runtime.registerProvider(pi.model.provider, provider_config);
   const model = model_runtime.getModel(pi.model.provider, snapshot.model_id) as
-    | PiModel<AgentApi>
+    | PiModel<PiApi>
     | undefined;
   if (model === undefined) {
     throw new AppErrors.AppError("runtime.internal_invariant", {

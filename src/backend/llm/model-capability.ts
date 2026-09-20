@@ -42,8 +42,8 @@ const PRODUCT_TO_PI_LEVEL = {
   MAX: "max",
 } as const satisfies Record<ModelThinkingLevel, PiModelThinkingLevel>;
 
-/** 同协议存在多条 Pi 思考模板时，原生供应商优先于代理供应商。 */
-const NATIVE_PROVIDER_ORDER = [
+/** 同协议按已知来源选择完整模板；原厂优先，聚合目录次之，托管平台最后。 */
+const MODEL_PROVIDER_ORDER = [
   "openai",
   "anthropic",
   "google",
@@ -54,6 +54,14 @@ const NATIVE_PROVIDER_ORDER = [
   "xiaomi",
   "zai",
   "zai-coding-cn",
+  "openrouter",
+  "opencode",
+  "opencode-go",
+  "vercel-ai-gateway",
+  "fireworks",
+  "together",
+  "baseten",
+  "nvidia",
 ] as const;
 
 type PiCatalogModel = PiModel<Api>;
@@ -77,28 +85,35 @@ const PI_CATALOG_MODELS: readonly PiCatalogModel[] = Object.freeze(
 );
 
 /**
- * 解析唯一运行能力；模型容量与协议思考能力分别采用应用修正，再合并用户 Agent 配置。
+ * 解析唯一运行能力；容量来自目录，协议能力合并必要修正，再应用用户 Agent 配置。
  */
 export function resolve_model_capability(model: ModelCapabilityInput): ResolvedModelCapability {
   const matches = match_pi_catalog_models(model.model_id, PI_CATALOG_MODELS);
   const pi_template = select_pi_thinking_template(model.api_format, matches);
   const app_override = match_model_capability_override(model.model_id);
-  const protocol_override = app_override?.protocols?.[model.api_format];
+  const protocol_override = app_override?.protocols[model.api_format];
   const reasoning = protocol_override?.reasoning ?? pi_template?.reasoning === true;
-  const thinking_level_map = protocol_override?.thinking_level_map ?? pi_template?.thinkingLevelMap;
-  const compat = protocol_override?.compat ?? pi_template?.compat;
+  const thinking_level_map =
+    protocol_override?.thinking_level_map === undefined
+      ? pi_template?.thinkingLevelMap
+      : { ...pi_template?.thinkingLevelMap, ...protocol_override.thinking_level_map };
+  const template_compat = read_template_compat(model.api_format, pi_template);
+  const compat =
+    protocol_override?.compat === undefined
+      ? template_compat
+      : { ...template_compat, ...protocol_override.compat };
   const available_thinking_levels = resolve_available_thinking_levels(
     model.api_format,
     reasoning,
     thinking_level_map,
     compat,
   );
-  const context_window =
-    app_override?.capacity?.context_window ??
-    maximum_positive_integer(matches.map((catalog_model) => catalog_model.contextWindow));
-  const max_tokens =
-    app_override?.capacity?.max_tokens ??
-    maximum_positive_integer(matches.map((catalog_model) => catalog_model.maxTokens));
+  const context_window = maximum_positive_integer(
+    matches.map((catalog_model) => catalog_model.contextWindow),
+  );
+  const max_tokens = maximum_positive_integer(
+    matches.map((catalog_model) => catalog_model.maxTokens),
+  );
   const automatic_agent_limits = resolve_automatic_agent_limits(context_window, max_tokens);
   const agent = resolve_agent_limits(model.agent, automatic_agent_limits);
   return {
@@ -198,16 +213,32 @@ function select_pi_thinking_template(
   api_format: ModelApiFormat,
   matches: readonly PiCatalogModel[],
 ): PiCatalogModel | null {
-  const api_order = resolve_pi_api_order(api_format);
-  return (
-    matches
-      .filter((model) => api_order.includes(model.api))
-      .sort((left, right) => {
-        const api_delta = api_order.indexOf(left.api) - api_order.indexOf(right.api);
-        if (api_delta !== 0) return api_delta;
-        return provider_order(left.provider) - provider_order(right.provider);
-      })[0] ?? null
-  );
+  for (const api of resolve_pi_api_order(api_format)) {
+    const candidates = matches.filter((model) => model.api === api);
+    if (candidates.length === 0) continue;
+    for (const provider of MODEL_PROVIDER_ORDER) {
+      const candidate = candidates.find((model) => model.provider === provider);
+      if (candidate !== undefined) return candidate;
+    }
+    // 唯一未知来源仍可使用；多个未知来源没有可信优先级，按能力缺失处理。
+    return candidates.length === 1 ? candidates[0]! : null;
+  }
+  return null;
+}
+
+/** 兼容字段属于具体协议；OpenAI 两种格式回退只借用思考档位，不携带供应商传输规则。 */
+function read_template_compat(
+  api_format: ModelApiFormat,
+  template: PiCatalogModel | null,
+): PiCatalogModel["compat"] | undefined {
+  if (template === null) return undefined;
+  const target_api = resolve_pi_api_order(api_format)[0];
+  if (template.api === target_api) return template.compat;
+  // Azure Responses 与 Responses 共用同一组选项及序列化契约。
+  if (target_api === "openai-responses" && template.api === "azure-openai-responses") {
+    return template.compat;
+  }
+  return undefined;
 }
 
 /** 按产品协议选择 Pi API 形态；同形态再交给供应商优先级决胜。 */
@@ -219,12 +250,6 @@ function resolve_pi_api_order(api_format: ModelApiFormat): readonly Api[] {
   }
   if (api_format === "OpenAI") return ["openai-completions", "openai-responses"];
   return [];
-}
-
-/** 未列入原生供应商表的代理记录统一排在末尾。 */
-function provider_order(provider: string): number {
-  const index = NATIVE_PROVIDER_ORDER.indexOf(provider as (typeof NATIVE_PROVIDER_ORDER)[number]);
-  return index < 0 ? NATIVE_PROVIDER_ORDER.length : index;
 }
 
 /** 用 Pi 的公开能力探针投影产品六档；OpenAI 开关型兼容模型只暴露关/低。 */

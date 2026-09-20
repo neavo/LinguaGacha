@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createProvider,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   createFauxCore,
   fauxAssistantMessage,
   fauxText,
   fauxToolCall,
   type AssistantMessage,
-  type Context,
+  type TranscriptContext,
   type FauxResponseStep,
   type Model,
   type ProviderStreams,
@@ -153,7 +155,7 @@ const fake_agent_state = vi.hoisted(() => ({
   hold_next_summary: false,
   release_summary: null as (() => void) | null,
   request_kinds: [] as Array<"model" | "summary">,
-  model_contexts: [] as Context["messages"][],
+  model_contexts: [] as TranscriptContext["messages"][],
   auth_configured: true,
   hold_auth: false,
   auth_wait: null as Promise<void> | null,
@@ -187,23 +189,26 @@ const fake_provider_streams: ProviderStreams = {
 /** 记录每次模型或摘要请求，并按当前测试剧本创建可控远程响应。 */
 function create_fake_agent_stream(
   model: Model<any>,
-  context: Context,
+  context: TranscriptContext,
   options: StreamOptions | undefined,
 ) {
-  const is_summary = context.systemPrompt?.includes("context summarization assistant") === true;
+  const is_summary =
+    getCurrentSystemPrompt(context.messages)?.includes("context summarization assistant") === true;
   fake_agent_state.request_kinds.push(is_summary ? "summary" : "model");
   if (!is_summary) {
     fake_agent_state.model_call_count += 1;
     fake_agent_state.model_contexts.push(structuredClone(context.messages));
   }
-  fake_agent_state.system_prompts.push(context.systemPrompt ?? "");
+  fake_agent_state.system_prompts.push(getCurrentSystemPrompt(context.messages) ?? "");
   fake_agent_state.prompts.push(read_last_user_text(context));
   fake_agent_state.model_ids.push(model.id);
   fake_agent_state.request_model_limits.push({
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
   });
-  fake_agent_state.tool_names.push(context.tools?.map((tool) => tool.name) ?? []);
+  fake_agent_state.tool_names.push(
+    getCurrentTools(context.messages).map((tool) => tool.name) ?? [],
+  );
   const hold_summary = is_summary && fake_agent_state.hold_next_summary;
   if (hold_summary) fake_agent_state.hold_next_summary = false;
   const faux = createFauxCore({
@@ -216,7 +221,7 @@ function create_fake_agent_stream(
     tokensPerSecond: fake_agent_state.stream_tokens_per_second,
   });
   const response = hold_summary
-    ? async (_context: Context, stream_options: StreamOptions | undefined) =>
+    ? async (_context: TranscriptContext, stream_options: StreamOptions | undefined) =>
         await wait_for_summary_release(stream_options?.signal)
     : is_summary && fake_agent_state.summary_failures_remaining > 0
       ? (() => {
@@ -301,7 +306,7 @@ function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonReco
 }
 
 /** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
-function create_fake_response(context: Context): FauxResponseStep {
+function create_fake_response(context: TranscriptContext): FauxResponseStep {
   if (fake_agent_state.mode === "pending") {
     return async (_context, options) => await wait_for_pending_release(options?.signal);
   }
@@ -444,7 +449,7 @@ function create_fake_response(context: Context): FauxResponseStep {
 }
 
 /** 从模型实际收到的上下文读取最近 user 文本，兼容字符串与 text block。 */
-function read_last_user_text(context: Context): string {
+function read_last_user_text(context: TranscriptContext): string {
   const message = context.messages.findLast((candidate) => candidate.role === "user");
   if (message?.role !== "user") return "";
   if (typeof message.content === "string") return message.content;
@@ -958,7 +963,9 @@ describe("AgentService", () => {
     await fixture.service.send_message({ text: "正文", attachments: [] });
     await wait_for_idle(fixture.service);
 
-    const context = fake_agent_state.model_contexts[0] ?? [];
+    const context = (fake_agent_state.model_contexts[0] ?? []).filter(
+      (message) => message.role !== "system",
+    );
     expect(context.slice(0, agent_resource_fixture.session_seed.length)).toMatchObject(
       agent_resource_fixture.session_seed.map((message) =>
         message.role === "assistant"
@@ -1248,7 +1255,11 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(fake_agent_state.request_kinds).toContain("summary");
-    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1)?.[0])).toContain("压缩摘要");
+    expect(
+      JSON.stringify(
+        fake_agent_state.model_contexts.at(-1)?.find((message) => message.role !== "system"),
+      ),
+    ).toContain("压缩摘要");
   });
 
   it("按上游顺序流式公开可见思考与正文，并隔离空白、脱敏内容和签名", async () => {
@@ -2538,7 +2549,9 @@ describe("AgentService", () => {
     await service.send_message({ text: "继续", attachments: [] });
     await wait_for_idle(service);
     const next_context = fake_agent_state.model_contexts.at(-1);
-    expect(JSON.stringify(next_context?.[0])).toContain("压缩摘要");
+    expect(JSON.stringify(next_context?.find((message) => message.role !== "system"))).toContain(
+      "压缩摘要",
+    );
     expect(JSON.stringify(next_context)).toContain("第5轮");
     expect(service.get_snapshot().context.tokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
       Math.max(...usage_tokens),
@@ -3296,7 +3309,7 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).not.toContain("You are an expert coding assistant operating inside pi");
   expect(prompt).not.toContain("Read the full skill file when the task matches");
   expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
-  expect(prompt?.match(/Current working directory:/gu)).toHaveLength(1);
-  const working_directory = prompt?.trimEnd().split("Current working directory:").at(-1)?.trim();
+  expect(prompt?.match(/<cwd>/gu)).toHaveLength(1);
+  const working_directory = prompt?.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/u)?.[1];
   expect(working_directory?.replaceAll("\\", "/")).toBe(skill_test_fixture.app_root);
 }

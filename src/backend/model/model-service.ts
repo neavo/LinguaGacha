@@ -7,7 +7,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { list_available_models } from "../llm/llm-model-catalog";
 import { adjust_model_thinking_level, resolve_model_capability } from "../llm/model-capability";
 import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../llm/llm-types";
-import { collect_api_keys } from "../llm/llm-client-policy";
+import { collect_api_keys } from "../llm/llm-request";
 import {
   MODEL_USAGES,
   Model,

@@ -1,4 +1,8 @@
-import { InMemoryCredentialStore, type Context, type ProviderStreams } from "@earendil-works/pi-ai";
+import {
+  InMemoryCredentialStore,
+  normalizeContext,
+  type ProviderStreams,
+} from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -94,7 +98,7 @@ describe("Agent 模型注册", () => {
       const provider = runtime.getRegisteredProviderConfig("openai");
       if (provider?.streamSimple === undefined) throw new Error("Agent 缺少 provider streamSimple");
       // Agent core 关闭思考时省略 reasoning；注册结果须将 off 映射交给共享适配器。
-      void provider.streamSimple(resolved.model, { messages: [] });
+      void provider.streamSimple(resolved.model, normalizeContext({ messages: [] }));
       expect(api_mocks.streamSimple.mock.calls.at(-1)?.[0]).toMatchObject({
         thinkingLevelMap: { off: "minimal" },
       });
@@ -152,7 +156,7 @@ describe("Agent 模型注册", () => {
     }
 
     const signal = new AbortController().signal;
-    const context: Context = { messages: [] };
+    const context = normalizeContext({ messages: [] });
     void provider_config.streamSimple(resolved.model, context, {
       signal,
       reasoning: "high",
@@ -230,7 +234,9 @@ describe("Agent 模型注册", () => {
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 Responses streamSimple");
     }
-    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "xhigh" });
+    void provider_config.streamSimple(resolved.model, normalizeContext({ messages: [] }), {
+      reasoning: "xhigh",
+    });
     const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
     expect(options).toMatchObject({ reasoning: "xhigh" });
     if (options?.onPayload === undefined) throw new Error("Agent 缺少 Responses payload hook");
@@ -295,7 +301,7 @@ describe("Agent 模型注册", () => {
     if (provider_config?.streamSimple === undefined) {
       throw new Error("Agent 缺少 provider streamSimple");
     }
-    void provider_config.streamSimple(resolved.model, { messages: [] });
+    void provider_config.streamSimple(resolved.model, normalizeContext({ messages: [] }));
     const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
     expect(options?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
     if (options?.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");

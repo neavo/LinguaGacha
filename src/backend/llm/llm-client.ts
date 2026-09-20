@@ -1,10 +1,13 @@
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
-import { read_model_request_snapshot, read_request_timeout_ms } from "./llm-client-policy";
+import {
+  read_model_request_snapshot,
+  read_request_timeout_ms,
+  type ModelRequestSnapshot,
+} from "./llm-request";
 import { resolve_one_shot_pi_request } from "./llm-pi";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
-import type { ModelRequestSnapshot } from "./policy/policy-types";
 import { with_http_response_info } from "../network/http-response-info";
 
 interface LLMClientOptions {
@@ -33,15 +36,13 @@ export class LLMClient implements LLMClientPort {
     });
     const controller = new AbortController();
     const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
-    // AbortController 只传递中止；两个标记保留触发原因并决定最终结果优先级。
+    // 外部信号记录用户取消，独立超时标记保留同时发生时的结果优先级。
     let timeout = false;
-    let cancelled = false;
     const timer = setTimeout(() => {
       timeout = true;
       controller.abort();
     }, read_request_timeout_ms(body.config_snapshot));
     const abort_listener = (): void => {
-      cancelled = true;
       controller.abort();
     };
     signal.addEventListener("abort", abort_listener, { once: true });
@@ -53,13 +54,13 @@ export class LLMClient implements LLMClientPort {
         .stream(request.model, request.context, request.options)
         .result();
       if (timeout) return empty_llm_result({ timeout: true });
-      if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
+      if (signal.aborted) return empty_llm_result({ cancelled: true });
 
       const response_result = contentText(message.content, "").trim();
       return normalize_pi_result(snapshot, message, response_result);
     } catch (error) {
       if (timeout) return empty_llm_result({ timeout: true });
-      if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
+      if (signal.aborted) return empty_llm_result({ cancelled: true });
       return empty_llm_result({ request_error: build_request_error(error, snapshot, body) });
     } finally {
       clearTimeout(timer);
