@@ -88,6 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260920 v0.122.2
+  - Fixes and improvements [#908](../../issues/908) [#912](../../issues/912) [#913](../../issues/913) [#914](../../issues/914)
+
 - 20260919 v0.122.1
   - LinguaGacha-chan has a new avatar 😎
   - Fixes and improvements [#902](../../issues/902) [#903](../../issues/903) [#905](../../issues/905)
