@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { create_agent_mention_candidates, create_agent_mention_tokens } from "./agent-mention";
+import { create_agent_mention_candidates } from "./agent-mention";
 
 const skills = [
   {
@@ -48,13 +48,28 @@ describe("Agent mention 菜单候选", () => {
     expect(create_candidates("术语").skills).toHaveLength(1);
     expect(create_candidates("压缩").instructions).toHaveLength(1);
     expect(create_candidates("compact").instructions).toHaveLength(1);
-    expect(create_candidates("missing")).toEqual({ skills: [], instructions: [] });
+    expect(create_candidates("missing")).toEqual({
+      skills: [],
+      files: [],
+      instructions: [],
+      fileCount: 0,
+    });
   });
 });
 
-describe("Agent mention 视觉投影", () => {
-  it("只为技能生成唯一 marker", () => {
-    const tokens = create_agent_mention_tokens([...skills, ...skills]);
-    expect(tokens).toEqual([{ marker: "@skill(glossary-review)" }]);
+it("项目和上传文件按路径检索，并生成不同来源的引用", () => {
+  const result = create_agent_mention_candidates({
+    locale: "zh-CN",
+    query: "资料 设定",
+    skills: [],
+    instructions: [],
+    files: [
+      { kind: "project", path: "资料/设定.xlsx", count: 3, unit: "items" },
+      { kind: "upload", path: "uploads/资料_设定.xlsx", size: 128 },
+    ],
   });
+  expect(result.files.map((file) => (file.kind === "instruction" ? "" : file.insertText))).toEqual([
+    '@project_file("资料/设定.xlsx")',
+    '@upload_file("uploads/资料_设定.xlsx")',
+  ]);
 });

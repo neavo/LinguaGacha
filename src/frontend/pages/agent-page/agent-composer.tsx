@@ -25,7 +25,7 @@ export type AgentComposerHandle = AgentMessageEditorHandle;
 type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling" | "disconnected";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
-  image_drop_target_ref?: RefObject<HTMLElement | null>;
+  file_drop_target_ref?: RefObject<HTMLElement | null>;
   locked?: boolean;
   skills: readonly AgentSkillSnapshot[];
   instructions?: readonly AgentMentionInstruction[];
@@ -44,7 +44,6 @@ type AgentComposerProps = {
   on_send: (message: AgentMessageInput) => void;
   on_thinking_level_change?: (thinking_level: ModelThinkingLevel) => void; // 主 Composer 交给页面决定是否确认关闭思考
   on_approval_mode_change?: (approval_mode: AgentApprovalMode) => void;
-  on_image_error: () => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
@@ -70,14 +69,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   return (
     <AgentMessageEditor
       ref={props.ref}
-      image_drop_target_ref={props.image_drop_target_ref}
+      file_drop_target_ref={props.file_drop_target_ref}
       read_only={editor_read_only}
       skills={props.skills}
       instructions={props.instructions}
       input_session={props.input_session}
       on_submit={props.on_send}
-      on_image_error={props.on_image_error}
-      render_actions={({ has_content, image_processing }) => {
+      render_actions={({ has_content, uploads_pending }) => {
         const continuing_queue = props.can_continue_queue && !props.running && !locked;
         // 主按钮只表达稳定动作：运行中有内容发送、空内容停止，暂停队列统一继续。
         const stopping = props.running && !has_content && !locked;
@@ -89,7 +87,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           !locked &&
           props.unavailable_reason === null &&
           props.command === null &&
-          !image_processing &&
+          !uploads_pending &&
           (has_content || continuing_queue) &&
           !queue_full_for_submit;
         const can_stop = !props.stop_disabled && !compacting && props.command === null;

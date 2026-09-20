@@ -44,7 +44,7 @@ export class GuiBackendBootstrap {
   private services: BackendServices | null = null;
   private event_stream: ApiStreamHub | null = null;
   private agent: AgentService | null = null;
-  private images: AgentImageService | null = null; // 关闭 Gateway 前取消上传，避免等待窗口超时才排空 HTTP
+  private images: AgentImageService | null = null; // 关闭 Gateway 前取消模型图片准备，排空正在受理的发送请求
   private web_search: WebSearchService | null = null;
   private gateway: ApiGatewayServer | null = null;
   private start_promise: Promise<GuiBackendBootstrapStartResult> | null = null; // stop 等待在途启动后再释放资源
@@ -214,6 +214,7 @@ export class GuiBackendBootstrap {
   private async dispose_runtime(failures: unknown[]): Promise<void> {
     if (this.state === "stopped" && this.resources === null) return;
     this.state = "stopping";
+    this.agent?.cancel_uploads();
     this.images?.clear();
     this.images = null;
     const gateway = this.gateway;

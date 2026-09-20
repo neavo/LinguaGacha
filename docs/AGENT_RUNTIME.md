@@ -4,10 +4,10 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件只包含后端归一的 WebP base64 图片或用户确认的回复批注，正文与附件不能同时为空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
+- Agent 公开入口提供 snapshot、message、写入请求审批模式 update、普通问题 resolve、写入授权 resolve、continue、输入队列 update / delete / reorder / send、最新轮次 revise、手动上下文压缩、stop 与 reset。message 请求和公开 user 条目携带规范化后的 `text` 与有序 `attachments`，附件包含上传文件引用（包括图片）或用户确认的回复批注。文件附件提交 `uploadId`，后端补齐队列与时间线元数据。正文或附件至少有一项非空。批注冻结所选助手正文与允许为空的用户评论，不追踪来源消息；后端只把选文和评论投影为模型可读的引用上下文，图片仍通过模型图片通道传递。
 - 空闲且没有暂停队列时，message 建立新的公开轮次；运行时 message 进入当前会话最多保留 5 条的有界内存输入队列，达到上限后 renderer 禁止新增入队，AgentService 仍以共享上限拒绝越界请求。正常轮次成功后在同一运行 lease 内按 FIFO 续取，stop 或模型失败保留并暂停剩余队列。continue 原子追加可选消息、解除暂停，并按需恢复失败 round 或启动队首；空 continue 只表达继续意图。立即发送在空闲时启动选中 round，在运行时经 Pi `steer` 发送，并仅在对应 user `message_start` 后从 `sending` 提交为成功的 `delivery: steer` 条目；提交前失败、停止或取消恢复为 `queued`。普通 user 使用 `delivery: round`；只有 round 建立 SDK history checkpoint 和轮次终态，因而可作为 revise（包括以原输入重新运行）与失败 continue 的目标。
 - revise 目标为最新 round user 时删除整轮旧尝试并以完整替换消息重新调用模型，替换为原输入即表示重试；目标为该轮最终可见 assistant 时保留此前 user 与工具历史、写入零 usage 的纯文本 assistant 而不调用模型。continue 以隐藏“继续”消息续跑失败的原 user 轮次。两种操作都要求会话空闲，revision 另校验最新 round 输入或最终输出身份；更早轮次、steer 输入和同轮中间 assistant 不可修订。会话状态只区分 `idle | running`；round user、assistant 与 tool 条目携带 `running | success | error | stopped` 状态，steer user 只在成功提交后公开，上下文压缩条目只使用 `running | success | error`。
-- `AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、审批模式、revise、手动压缩、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；手动压缩在 `context_compaction` running 条目发布后返回 ack，最终 success / error 由后续增量事件结算。完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
+- `AgentSessionSnapshot.sessionId` 标识当前对话，对话重置或工程切换后改变，前端据此清除旧草稿与上传任务。`AgentSessionSnapshot` 与所有 `agent.session_event` 都携带同一会话内单调 `revision`；`snapshot_seed` 先分配 revision，再用同值构造事件顶层和嵌套快照。普通 message、continue、队列、用户决定、审批模式、revise、手动压缩、stop 与 reset 命令只返回 `{ revision }` 的 `AgentCommandAck`，公开事实必须由增量事件表达；手动压缩在 `context_compaction` running 条目发布后返回 ack，最终 success / error 由后续增量事件结算。完整 snapshot 只用于首次加载、重连、revision 缺口和 reset 恢复。renderer 对旧 / 重复事件丢弃，对缺口暂停应用并重新 GET 快照。
 - 时间线由 snapshot 与 revisioned `agent.session_event` 共同恢复本次 reset 以来的内存历史；连续的压缩尝试复用最近一次失败 entry。公开 assistant 条目只保留非空白的 text / thinking parts、合并相邻同类且至少包含一项；空投影不产生条目。公开 `context` 同时携带模型可见历史的估算 token 与后端判定的 `compactable`；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开工具条目冻结规范化后的完整输入，并只在 SDK 工具终帧后以字符串数组按顺序保留模型实际收到的文本块原文；终态空数组表示没有文本块，运行与停止状态使用 null，块间排版归前端；公开协议不承载 SDK 原始参数引用、结构化 details、压缩诊断、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -51,7 +51,7 @@
 
 - GUI Agent 在 `userdata/agent/workspace` 持有固定物理工作区：数据快照、`changes`、`work` 与 `sources` 都使用真实相对路径。work 绑定当前 Agent 对话、工程 epoch 与权威语言；这些目录都是 Agent 工作资产，公开会话和项目事实分别由 `AgentService` 与项目读写边界拥有。
 - 工程加载从 `.lg` 原始资产生成 `sources`；同一工程 `epoch` 与文件修订号复用同一投影，文件修订号变化时完整重建。`workspace_run` 在普通 section revision 后刷新数据快照与空变更清单，保留相容的 `work`；reset 清除快照和 work 并保留相容 sources，工程切换与应用启动清除旧工作区。`sources` 生成和目录清理故障进入诊断，项目加载与提交事实保持其权威结果。
-- 普通文本映射为单文件，EPUB / XLSX 按容器内部路径展开文本成员。PDF 投影保留原始二进制，`project_meta.files` 公开 source_binary_path；`pages` 基线随数据快照逐页投影到 `pages/entries.jsonl`。
+- 所有项目原始资产按原字节投影到 `sources/<file_path>`，包括文本、PDF、EPUB 和 XLSX。`project_meta.files` 只公开工程路径与类型，读取路径由统一目录规则确定；容器与文本编码由工作区程序按需处理。`pages` 基线随数据快照投影到 `pages/entries.jsonl`。
 - 工作区链接使用相对根目录的 URL 编码路径；`POST /api/agent/workspace/activate-path` 接收 `{ path }`，由 `AgentWorkspaceService` 校验工作区相对入口，文件访问自然跟随目录链接，允许目标位于工作区外；来源失效范围按 work、sources 或快照入口确定。目录经宿主打开；文件经宿主选择保存路径，由工作区服务复制，返回 `{ status: "saved" | "opened" | "cancelled" }`。
 - 文件保存采用确认时的当前内容，不建立点击时副本。对话框等待期间释放工作区互斥；会话清理开始立即使待决链接失效，work、sources 与数据快照按各自清理生命周期失效。确认后重新检查来源与脚本互斥，拒绝向工作区内部保存；同目录临时文件完整复制后才替换目标，保留工作原件与失败前的已有目标。
 - 脚本成功、失败、超时或停止后已经完成的文件写入均保留；后续调用按需要重新读取并修复或覆盖，不建立工作文件事务或回滚。
@@ -59,14 +59,14 @@
 ## 3. 模型、资源与 skill
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的唯一模型能力解析和请求覆盖边界。模型配置中的 `agent.context_window` 与 `agent.max_output_tokens` 各自以 `0` 表示自动：自动上下文采用统一能力解析器提供的模型窗口；自动输出先取模型最大输出与产品档位的较小值，模型最大窗口低于 500K 时产品档位为 32K，否则为 64K。用户非零值优先，最终输出仍不得超过 `context_window - 32K`；格式损坏或无法容纳固定预留时整组恢复 `0/0`。每次 Agent 模型操作前把生效容量与已经确认可用的思考等级同步到既有 `AgentSession`，请求期保持该档位稳定。页面从 `context_window - max_output_tokens - 32K` 起预警；设置作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。隐藏“继续”消息在操作发起时按当前 `app_language` 解析。
-- Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注先进入 text prompt，规范 WebP 则直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
+- Agent 模型在 Pi 请求边界固定声明 text / image 输入；消息附件中的批注与文件清单进入文本提示，普通文件由 `workspace_run` 按需读取；图片清单中的序号对应视觉输入，规范 WebP 直接交给当前供应商，OneShot 仍只声明 text。产品不探测或配置具体模型的视觉能力，不自动删图、降级或回退 JPEG，供应商拒绝图片时沿用普通模型失败语义。
 - Pi 在模型历史的 `system` 消息中保存指令与工具声明，由 SDK 负责压缩、分支和重放。这些消息参与上下文估算。
 - 模型可见上下文超过 `context_window - 32K` 时，`AgentSession` 在新用户请求前、自然结束后，以及完整工具批次与下一次 assistant 请求之间统一自动压缩；空闲会话也可由公开手动入口立即压缩。历史切点完全交给 SDK，保留侧不拆分 assistant 工具调用与其结果；`AgentService` 只把 SDK 压缩事件投影到公开时间线，成功后 `context` 采用 SDK 对新模型历史的估算并重新计算可压缩性，失败保留原上下文快照并沿用 SDK 后续请求语义。
 - Workspace 是 `AgentService` 的构造依赖、初始化前置和恒定工具面，初始化失败会阻止 Agent 启动资源完成加载。Agent 启动期原子加载必需的 `builtin/agent/system_prompt.md` 与 `builtin/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。GUI Backend 的完整装配与启动顺序归 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 - coding-agent 的默认工具与项目资源发现全部关闭，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。产品在初始会话及每次 reset 或工程切换时按用户目录、当前版本内置目录的优先级依次扫描，同名 skill 取首个有效定义，坏 skill 只记录诊断；安装根的历史资源目录不参与发现。形成的会话 catalog 同时拥有 System Prompt 能力清单、公开 mention、用户 marker 注入和名称到获胜 skill 包的内部绑定，并在当前对话内冻结。模型能力清单只公开名称与描述；`SKILL.md` 描述同时作为模型描述和 `ui.json` 展示描述缺失时的回退。
 - `agent-charter` 是隐藏但保留在模型能力清单中的最高层任务宪章，其短正文与系统提示有意重复。模型负责在任务前加载，后端通过普通技能读取提供正文，加载状态由模型判断。
-- `ui.json` 的 `visible` 只控制公开列表和用户 marker：隐藏 skill 不进入公开快照，用户输入的同名 marker 不展开，但不影响模型能力清单或文件读取；`disableModelInvocation` 只排除模型能力清单，因此可见且禁用模型调用的 skill 仍能由用户 marker 显式注入。`@skill(name)` 是用户消息中的显式技能 marker，已知且公开时由宿主直接展开为完整技能块；它不调用 `read_skill`，也不表示 skill 依赖。未展开或未知的 `@skill(...)` 与裸 `@name` 按普通文本处理。`displayDescriptions` 面向用户解释能力，技能触发依据 `SKILL.md` 的描述，UI 配置不进入模型上下文。
-- `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 与显式 marker 注入共用宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
+- `ui.json` 的 `visible` 控制公开技能列表；`disableModelInvocation` 排除模型的自动能力清单，显式用户引用仍可要求读取该技能。技能目录保留名称、描述、包路径与 UI 元数据，正文只由 `read_skill` 在实际调用时读取。系统提示词引导模型先加载用户指定的技能，同一上下文已有正文时复用。
+- `read_skill` 独立于 Workspace Service，按 `name` 和可选包内相对 `path` 读取文件，默认 `SKILL.md`；路径必须规范且真实目标位于获胜包内，同名包不合并或回退。返回 `{ name, path, content, base_url }`。`base_url` 是宿主生成的原包根目录 file: URL，始终以 / 结尾，不随被读文件改变。脚本可直接执行，无需先读取技能。
 - 同名覆盖在下一会话生效；catalog 外的新名称在 `read_skill` 时按同一优先级发现，不加入当前能力清单、mention 或 marker。包内文件在读取或后续 run 时消费当前磁盘内容，删除后正常失败；上下文中已有正文需显式重读才会更新。apply、快照刷新、对话重置和工程切换均不处理技能原文件。
 - [系统提示](../builtin/agent/system_prompt.md) 负责人格、任务与授权边界、技能选择、CodeAct、业务单元与提交、恢复和交付要求，加载后在正文末尾附加会话技能目录。
 - 任务类型 `report / apply` 由模型遵守。`report` 允许分析和准备工作材料，`apply` 承担工程写入、回执核对及依赖写入结果的检查，直接写入工具同样受此边界约束。后端按工具契约执行，任务类型由模型在工作记录中保存。
@@ -75,8 +75,12 @@
 
 ## 4. 产品工具与宿主能力
 
-- `AgentImageService` 由 GUI Backend 组合根创建，附件和 Workspace 共用实例，AgentService 拥有其会话清理，组合根关闭 Gateway 前取消在途图片准备以排空上传请求。后端按单次图片参数确定尺寸，与统一格式和字节额度组成不可变策略，Electron 图片宿主按该策略执行 Chromium 解码与 WebP 编码，符合规范的 WebP 复用原字节。SDK 关闭工具图片的额外自动缩放，模型消费固定结果。PDF 渲染资产仍按文件生命周期供预览与导出使用，模型图片是独立处理结果。
-- 图片缓存只保存成功结果，以单次最长边上限与输入、规范输出字节摘要关联不可变图片，按内存预算淘汰。草稿和历史直接持有图片，淘汰不影响既有消息。缓存不落盘，重置、工程切换和 dispose 清空并取消旧转换，迟到结果不能回填。图片准备失败沿公开错误返回，base64 不进入诊断。
+
+- `AgentWorkspaceService` 持有 `AgentUploadStore`。`POST /api/agent/uploads?name=...` 流式保存原文件，完成后发布当前会话的文件引用。上传独立于脚本互斥，可在 Agent 运行期间进行。`GET /api/agent/uploads/:id` 提供原文件预览或下载。
+- `uploads/` 对工作区程序只读，跨快照刷新、`workspace_apply`、停止和失败保留。草稿移除只解除引用。对话重置、工程切换与退出先取消上传，再等待上传和工具收尾后清理目录。启动时清理崩溃遗留。`prepare_agent_message` 在实际发送前准备图片，成功后才移除队列项或裁剪修订历史。自动出队准备失败保留并暂停队列，旧世代结果不能提交。
+
+- GUI Backend 创建附件与 Workspace 共用的 `AgentImageService`，`AgentService` 管理其会话清理。组合根关闭 Gateway 前取消在途上传和图片准备。后端确定图片策略，Electron 宿主用 Chromium 解码并编码为 WebP，合规 WebP 复用原字节。SDK 直接消费固定结果。PDF 预览和导出资产沿用文件生命周期。
+- 图片缓存按输入字节摘要和单次尺寸保存成功结果，按内存预算淘汰。相同输入共用在途转换，调用者取消只结束自身等待。重置、工程切换和 `dispose` 清空缓存并取消共享转换，迟到结果不能回填。Pi 历史持有已固定的图片结果。处理失败沿公开错误返回，base64 不进入诊断。
 
 - `ws.emitImage(path, options?)` 的单次尺寸选项由父进程按 Schema 校验，模型声明使用同一 Schema。工作区在执行互斥内固定图片内容，按请求顺序收集。数量与累计编码额度按每次 `workspace_run` 独立计算，拒绝的请求释放占位且不计入累计大小。程序成功时返回已接收图片，整体失败时只返回路径和尺寸摘要，后续调用可从现有文件重新输出。公开工具结果与日志只保留摘要。
 - PDF 调查使用 `mupdf`，`@lg/pdf` 提供渲染与正式文档生成。`ws.host` 按 Schema 桥接静态 HTML 打印，产物进入 `work/`。技能预览通过 `@lg/workspace/page-updates` 共用正式记录解析与页级判定，再覆盖快照副本并调用正式生成入口。目标更新被拒绝时预览停止，提交仍按最新事实判定并返回逐页回执。预览交付规则归 PDF 技能，正式 PDF 由用户通过应用导出。
@@ -102,14 +106,20 @@
 - bootstrap 通过同步 resolve hook 将技能脚本的 npm 导入基准设为自身 URL，复用部署依赖树；内置模块、文件 URL、相对路径和依赖内部导入沿用 Node 默认规则及 exports 语义。内置技能保留在 app.asar，Electron Node 模式配合现有 preserve-symlinks 参数直接读取脚本与资源。
 - 初始化复制生成的部署清单，并链接真实 node_modules（Windows 使用 junction）。这些环境文件跨快照与对话重置保留，清理只删除链接入口。work、changes 同时授权入口与实际目标，内部链接沿入口权限使用。工作区初始化与技能程序直接调用 Node 文件 API，主应用 IO 归 NativeFs。
 
+### 文件与技能引用
+
+- 正文使用 `@project_file("path")`、`@upload_file("path")`、`@skill("name")`，参数遵循 JSON 字符串转义。项目参数相对工程根，上传参数相对工作区根，技能参数是逻辑名称。`shared/agent-reference` 统一解析与格式化，保留转义与不完整输入的普通文本语义。
+- 正文保存引用，后端原样提供给模型。系统提示词引导模型通过工作区或 `read_skill` 按需读取，读取入口报告缺失资源。直接附件沿用文件受理和图片视觉输入契约。
+- `GET /api/agent/files` 返回会话身份与菜单候选。项目文件读取文件事实和数据库分组计数，上传文件读取已发布记录。候选由页面查询持有，客户端按会话身份隔离异步结果。
+
 ## 5. 前端消费
 
 - 后端按 `ui.json` 过滤、排序并补全 Agent skill snapshot；页面保持该顺序并按当前 locale 选择描述，不另建排序或翻译表。
-- `AgentSessionStore` 跨路由持有经过 revision 校验的 snapshot / SSE 镜像、独立 transport、当前 command、`inputQueue`、审批模式、`pendingDecision`、模型可见历史 `context`、`todos`、普通 Composer 草稿与 renderer 全局纯文本输入历史；这些会话事实不进入 `DesktopStateProvider` 或项目 session UI 缓存。Store 通过 `useSyncExternalStore` 暴露 timeline、controls、queue、todo、skills 与 input 切片，actions 在 Store 生命周期内保持稳定；恢复时先拿到并订阅 EventSource 再读取 snapshot，连接断开是可逆的，旧连接世代的异步结果不得写回当前 Store。历史消息与队列项的修订草稿由页面原位编辑器短暂拥有，不覆盖普通 Composer 草稿。草稿与队列附件不写入 localStorage、项目资源、`.lg` 或 Agent 磁盘工作区；公开时间线、输入队列与模型历史中的附件随内存会话在 reset、工程切换或 dispose 时清理。
+- `AgentSessionStore` 跨路由持有会话镜像、普通草稿与纯文本输入历史，通过 `useSyncExternalStore` 分片订阅。恢复时先订阅 EventSource 再读取快照，以 `revision` 和连接世代隔离旧结果。历史消息与队列的原位编辑器拥有各自的临时草稿。草稿只驻内存，文件存储生命周期归上文上传边界。
 - `AgentCompletionAttention` 在跨路由会话镜像中观察一次运行从 `running` 收束到最终 round `success | error` 的转换，并忽略 `stopped`、reset 与自动队列中间轮次；确认后只请求宿主注意力，不新增 Agent SSE 事件或通知正文。
-- 图片选择、拖入与粘贴只提交原始图片 base64 到 `POST /api/agent/image/prepare`，返回规范图片供草稿预览。消息发送、队列修改、修订与继续在受理前经过同一后端图片入口，异步准备结果不能跨 stop、reset 或工程切换提交。
+- `AgentInputDraft` 拥有草稿及串行上传任务。普通输入随 Store 跨路由保留，原位编辑结束时取消上传。失败项可原位重试或移除，全部附件就绪后提交文件身份。
 - 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；所有命令复用轻量 ack 与命令期 SSE revision 重放，删除、重排和立即发送的受理失败由页面解析为安全 Toast，队列原位编辑失败保留在编辑器旁，不写入共享会话状态。合法 message ack 与携带消息的 continue ack 都把非空文本更新到输入历史并原子清空普通 Composer 草稿，空 continue 不改写草稿或历史；队列项与时间线条目各自在目标位置展开独立编辑器，成功后由页面显式替换 user 输入历史，assistant 修改不改写输入历史。
 - 页面持有活动原生选区与当前原位编辑目标；这些页面局部事实不进入 Agent snapshot、历史或发送协议。
 - 每轮最后一个成功 assistant 正文允许把单一原生选区和可选评论确认到当前消息草稿，不建立来源定位或第二套批注状态。页面在状态区固定展示 Todo 队首与最多 5 条输入队列；Todo 完整列表在提示浮层中展示，并在超出可用高度时内部滚动，列表支持键盘聚焦；输入队列不使用内部滚动，输入队列达到上限时发送按钮显示容量提示并保持禁用，空数组不占位。
-- 消息级“复制”与“编辑”共用当前可修订消息的操作区；复制仅对其中有正文的 user / assistant 开放且不改变会话状态，输入消息的保存并重试会重新运行最新 round。历史 user、assistant 与队列项各自在目标位置展开独立编辑器，失败时保留编辑内容。assistant 编辑隐藏附件与 marker 能力。输入框、引导卡片与时间线只把当前已知技能 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
+- 消息级“复制”与“编辑”共用当前可修订消息的操作区；复制仅对其中有正文的 user / assistant 开放且不改变会话状态，输入消息的保存并重试会重新运行最新 round。历史 user、assistant 与队列项各自在目标位置展开独立编辑器，失败时保留编辑内容。assistant 编辑隐藏附件与 marker 能力。输入框、引导卡片与时间线通过共享语法解析器把引用投影为整块视觉，正文是唯一事实来源，识别不依赖当前候选列表。
 - Agent round 运行态与 stop 命令不锁定普通草稿编辑；send、continue、revise、queue update 与 reset 受理期间相关编辑器只读。运行中有效普通草稿通过 message 入队，空草稿执行 stop；空闲且队列暂停时 Composer 统一执行 continue，可选草稿随请求追加队尾。压缩和 `workspace_apply` 期间仍允许有效普通草稿排队，但不可 stop。队列组件只消费后端顺序与能力快照，修改、删除、重排和立即发送均经页面调用 `AgentSessionProvider` 命令入口；steer user 不开放 round 的修改或重试操作。失败恢复仍由后端拥有，renderer 不监听终态补发命令。

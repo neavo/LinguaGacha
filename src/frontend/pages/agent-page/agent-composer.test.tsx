@@ -1,11 +1,15 @@
+import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { AgentMessageInput } from "@shared/agent";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { AgentComposer } from "./agent-composer";
+
+vi.mock("./use-agent-mention-files", () => ({
+  useAgentMentionFiles: () => ({ files: [], status: "idle" }),
+}));
 
 type RenderComposerOptions = Partial<ComponentProps<typeof AgentComposer>>;
 vi.mock("@frontend/app/session/translation-export/translation-export-context", () => ({
@@ -21,13 +25,13 @@ vi.mock("@frontend/app/locale/locale-context", () => ({
 describe("AgentComposer", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let draft: AgentMessageInput = { text: "", attachments: [] };
+  let draft = new AgentInputDraft();
   afterEach(async () => {
     if (root) await act(async () => root?.unmount());
     container?.remove();
     container = null;
     root = null;
-    draft = { text: "", attachments: [] };
+    draft = new AgentInputDraft();
   });
   it("运行中有内容发送，清空草稿后停止任务", async () => {
     const on_send = vi.fn();
@@ -136,17 +140,13 @@ describe("AgentComposer", () => {
             }}
             input_session={{
               revision: 0,
-              read_draft: () => draft,
-              write_draft: (next) => {
-                draft = next;
-              },
+              draft,
               read_history: () => [],
               replace_history: () => {},
             }}
             on_send={vi.fn()}
             on_stop={async () => {}}
             on_reset={vi.fn()}
-            on_image_error={vi.fn()}
             {...options}
           />
         </TooltipProvider>,

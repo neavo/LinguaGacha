@@ -36,6 +36,33 @@ describe("desktop-api", () => {
     vi.resetModules();
   });
 
+  it("文件上传保持 Blob 请求体，预览读取字节并复用错误壳", async () => {
+    install_desktop_api_host("http://127.0.0.1:38191/");
+    const fetch_mock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ ok: true, data: { uploadId: "id" } }))
+      .mockResolvedValueOnce(new Response(Uint8Array.of(0, 255)))
+      .mockResolvedValueOnce(
+        Response.json({ ok: false, error: { code: "file.not_found" } }, { status: 404 }),
+      );
+    vi.stubGlobal("fetch", fetch_mock);
+    const { api_upload, api_blob } = await import("./desktop-api");
+    const controller = new AbortController();
+    const file = new Blob(["file"]);
+    await expect(
+      api_upload("/api/agent/uploads?name=test", file, controller.signal),
+    ).resolves.toEqual({ uploadId: "id" });
+    expect(fetch_mock).toHaveBeenCalledWith(
+      "http://127.0.0.1:38191/api/agent/uploads?name=test",
+      expect.objectContaining({ body: file, signal: controller.signal }),
+    );
+    const blob = await api_blob("/api/agent/uploads/id", controller.signal);
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(Uint8Array.of(0, 255));
+    await expect(api_blob("/api/agent/uploads/missing", controller.signal)).rejects.toMatchObject({
+      code: "file.not_found",
+    });
+  });
+
   it("open_event_stream 通过统一 SSE 路径连接 Backend 事件流", async () => {
     install_desktop_api_host("http://127.0.0.1:38191/");
     vi.stubGlobal("EventSource", EventSourceStub);

@@ -7,7 +7,7 @@ description: 涉及 PDF 阅读、文字与图像提取、页面定位、译稿�
 
 ## 确认原稿与范围
 
-通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以对应 `reference` 为准。`project_meta.files[].source_binary_path` 提供原稿路径。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。翻译和审校的覆盖、提交及完成要求使用 `translation` 中对应的 `pages` 流程。
+通过 `ws.contract.datasets.pages.path` 读取 `pages`，身份与字段以对应 `reference` 为准。原稿路径是 `sources/` 加上 `project_meta.files[].file_path`。`page` 是从 1 开始的原稿页码，MuPDF 的页索引从 0 开始。翻译和审校的覆盖、提交及完成要求使用 `translation` 中对应的 `pages` 流程。
 
 先确定目标原页、已有处置和 `notes`。内容归属按原页身份追踪，视觉问题按生成后的输出页定位，输出页数和页码可以随排版变化。
 
@@ -23,8 +23,8 @@ import * as mupdf from 'mupdf';
 import { render_pdf_page } from '@lg/pdf';
 const meta = JSON.parse(await readFile(ws.contract.datasets.project_meta.path, 'utf8'));
 const source = meta.files.find(file => file.file_path === 'book.pdf');
-if (!source?.source_binary_path) throw new Error('PDF source not found');
-const document = new mupdf.PDFDocument(new Uint8Array(await readFile(source.source_binary_path)));
+if (!source) throw new Error('PDF source not found');
+const document = new mupdf.PDFDocument(new Uint8Array(await readFile(`sources/${source.file_path}`)));
 try {
   const page = document.loadPage(0);
   let scale;

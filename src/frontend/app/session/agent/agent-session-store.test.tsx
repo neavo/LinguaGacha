@@ -1,3 +1,4 @@
+import { uploaded_file } from "../../../../test/agent-upload-fixture";
 const decision_toast = vi.hoisted(() => vi.fn());
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -349,7 +350,7 @@ describe("AgentSessionStore", () => {
       });
     });
     expect(latest.inputQueue).toEqual({ paused: true, canSendNow: true, items: [item] });
-    latest.input.write_draft({ text: "普通草稿", attachments: [] });
+    latest.input.draft.write({ text: "普通草稿", attachments: [] });
 
     await act(async () => {
       await latest.updateQueuedMessage(item.id, { text: "修改后", attachments: [] });
@@ -363,7 +364,7 @@ describe("AgentSessionStore", () => {
       ["/api/agent/queue/reorder", { ids: [item.id] }],
       ["/api/agent/queue/send", { id: item.id }],
     ]);
-    expect(latest.input.read_draft()).toEqual({ text: "普通草稿", attachments: [] });
+    expect(latest.input.draft.read()).toEqual({ text: "普通草稿", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
   });
 
@@ -392,7 +393,7 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "排队", attachments: [] });
+    latest.input.draft.write({ text: "排队", attachments: [] });
 
     await act(async () => latest.send({ text: "排队", attachments: [] }));
 
@@ -400,7 +401,7 @@ describe("AgentSessionStore", () => {
       text: "排队",
       attachments: [],
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
   });
 
   it("写入审批模式通过后端命令更新并由快照回流", async () => {
@@ -752,14 +753,14 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "追加消息", attachments: [] });
+    latest.input.draft.write({ text: "追加消息", attachments: [] });
 
     await act(async () => latest.continue({ text: "追加消息", attachments: [] }));
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/continue", {
       message: { text: "追加消息", attachments: [] },
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
     expect(latest.input.read_history()).toEqual(["追加消息"]);
   });
 
@@ -850,6 +851,7 @@ describe("AgentSessionStore", () => {
 
   it("skill 清单只接纳完整的新 UI 描述协议", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
+      sessionId: "test-session",
       revision: 0,
       state: "idle",
       approvalMode: "manual",
@@ -882,6 +884,7 @@ describe("AgentSessionStore", () => {
 
   it("只接纳字段完整且值域合法的时间线条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
+      sessionId: "test-session",
       revision: 0,
       state: "idle",
       approvalMode: "manual",
@@ -1013,7 +1016,7 @@ describe("AgentSessionStore", () => {
           kind: "user_message",
           id: "user-new",
           delivery: "round",
-          text: "@skill(glossary-audit) 审校",
+          text: '@skill("glossary-audit") 审校',
           attachments: [
             ...image_attachments("webp-image"),
             { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
@@ -1146,7 +1149,7 @@ describe("AgentSessionStore", () => {
         kind: "user_message",
         id: "user-new",
         delivery: "round",
-        text: "@skill(glossary-audit) 审校",
+        text: '@skill("glossary-audit") 审校',
         attachments: [
           ...image_attachments("webp-image"),
           { kind: "response_annotation", selectedText: "旧回复", comment: "审校" },
@@ -1265,22 +1268,45 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
+    latest.input.draft.write({ text: '  请处理 @skill("corpus-search")  ', attachments: [] });
 
     await act(async () => {
-      await latest.send({ text: "  请处理 @skill(corpus-search)  ", attachments: [] });
+      await latest.send({ text: '  请处理 @skill("corpus-search")  ', attachments: [] });
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
-      text: "请处理 @skill(corpus-search)",
+      text: '请处理 @skill("corpus-search")',
       attachments: [],
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
-    expect(latest.input.read_history()).toEqual(["请处理 @skill(corpus-search)"]);
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.read_history()).toEqual(['请处理 @skill("corpus-search")']);
     expect(
       JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
     ).toEqual(latest.input.read_history());
     expect(latest.input.revision).toBe(1);
+  });
+
+  it("新会话身份清理普通草稿的旧文件引用，同会话快照保留草稿", async () => {
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+    latest.input.draft.write({ text: "草稿", attachments: [uploaded_file("old")] });
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        snapshot: agent_snapshot({ revision: 1 }),
+      }),
+    );
+    expect(latest.input.draft.read().attachments).toHaveLength(1);
+    await act(async () =>
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "snapshot_seed",
+        snapshot: agent_snapshot({ revision: 2, sessionId: "new-session" }),
+      }),
+    );
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
   });
 
   it("纯图片受理后清空完整草稿且不写入文本历史", async () => {
@@ -1290,7 +1316,7 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "", attachments: image_attachments("webp-image") });
+    latest.input.draft.write({ text: "", attachments: image_attachments("webp-image") });
 
     await act(async () => {
       await latest.send({ text: "", attachments: image_attachments("webp-image") });
@@ -1298,9 +1324,9 @@ describe("AgentSessionStore", () => {
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
       text: "",
-      attachments: image_attachments("webp-image"),
+      attachments: [{ kind: "file", uploadId: "webp-image" }],
     });
-    expect(latest.input.read_draft()).toEqual({ text: "", attachments: [] });
+    expect(latest.input.draft.read()).toEqual({ text: "", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
   });
 
@@ -1312,7 +1338,7 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({
+    latest.input.draft.write({
       text: "正在编辑的新任务",
       attachments: image_attachments("webp-draft"),
     });
@@ -1325,7 +1351,7 @@ describe("AgentSessionStore", () => {
       entryId: "user-1",
       message: { text: "历史消息", attachments: [] },
     });
-    expect(latest.input.read_draft()).toEqual({
+    expect(latest.input.draft.read()).toEqual({
       text: "正在编辑的新任务",
       attachments: image_attachments("webp-draft"),
     });
@@ -1345,7 +1371,7 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "普通草稿", attachments: image_attachments("draft-image") });
+    latest.input.draft.write({ text: "普通草稿", attachments: image_attachments("draft-image") });
 
     await act(async () => {
       await latest.reviseLatestRound("user-1", { text: "新消息", attachments: [] });
@@ -1355,7 +1381,7 @@ describe("AgentSessionStore", () => {
       entryId: "user-1",
       message: { text: "新消息", attachments: [] },
     });
-    expect(latest.input.read_draft()).toEqual({
+    expect(latest.input.draft.read()).toEqual({
       text: "普通草稿",
       attachments: image_attachments("draft-image"),
     });
@@ -1382,8 +1408,8 @@ describe("AgentSessionStore", () => {
 
     await render_visible(true);
     await wait_for(() => expect(latest?.transport).toBe("ready"));
-    latest!.input.write_draft({
-      text: "检查 @skill(glossary-audit)",
+    latest!.input.draft.write({
+      text: '检查 @skill("glossary-audit")',
       attachments: [
         ...image_attachments("webp-image"),
         {
@@ -1399,8 +1425,8 @@ describe("AgentSessionStore", () => {
     await render_visible(true);
 
     const restored_session = latest as ReturnType<typeof useAgentSession> | null;
-    expect(restored_session?.input.read_draft()).toEqual({
-      text: "检查 @skill(glossary-audit)",
+    expect(restored_session?.input.draft.read()).toEqual({
+      text: '检查 @skill("glossary-audit")',
       attachments: [
         ...image_attachments("webp-image"),
         {
@@ -1533,12 +1559,12 @@ describe("AgentSessionStore", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.transport).toBe("ready"));
-    latest.input.write_draft({ text: "重试草稿", attachments: [] });
+    latest.input.draft.write({ text: "重试草稿", attachments: [] });
 
     await act(async () => {
       await expect(latest.send({ text: "重试", attachments: [] })).rejects.toBe(offline);
     });
-    expect(latest.input.read_draft()).toEqual({ text: "重试草稿", attachments: [] });
+    expect(latest.input.draft.read()).toEqual({ text: "重试草稿", attachments: [] });
     expect(latest.input.read_history()).toEqual([]);
     expect(latest.input.revision).toBe(0);
   });
@@ -1733,12 +1759,13 @@ function user_entry(id: string, text: string, images: string[] = []) {
 
 /** 按协议编码有序图片附件。 */
 function image_attachments(...images: string[]): AgentMessageAttachment[] {
-  return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
+  return images.map((id) => uploaded_file(id));
 }
 
 /** 为恢复和重连提供完整会话载荷。 */
 function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSessionSnapshot {
   return {
+    sessionId: "test-session",
     revision: 0,
     state: "idle",
     approvalMode: "manual",

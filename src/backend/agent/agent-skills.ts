@@ -33,18 +33,17 @@ type AgentSkillUi = {
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
-/** 会话 skill 快照保留 Pi 路由语义、冻结正文与产品 UI 投影。 */
+/** 会话 skill 快照保留 Pi 路由语义、名称绑定与产品 UI 投影。 */
 export type AgentSkillDefinition = Pick<
   Skill,
   "name" | "description" | "filePath" | "disableModelInvocation"
 > &
-  AgentSkillUi & { content: string };
+  AgentSkillUi;
 
 type AgentSkillCatalogDefinition = Pick<
   AgentSkillDefinition,
   "name" | "description" | "disableModelInvocation"
 >;
-type AgentSkillInvocationDefinition = Pick<AgentSkillDefinition, "name" | "content" | "filePath">;
 
 export type AgentSkillLog = Pick<LogManager, "error" | "warning">;
 type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
@@ -105,7 +104,6 @@ function create_agent_skill_definition(
     description: skill.description,
     filePath: skill.filePath.replaceAll("\\", "/"),
     disableModelInvocation: skill.disableModelInvocation,
-    content: skill.content,
     ...load_skill_ui(skill, log_manager, native_fs),
   };
 }
@@ -128,14 +126,9 @@ export function format_agent_skills_for_system_prompt(
   ].join("\n");
 }
 
-/** 技能地址始终指向原包根目录，供正文注入与资源读取共用。 */
+/** 技能地址始终指向原包根目录，供资源读取和脚本导入使用。 */
 export function agent_skill_base_url(file_path: string): string {
   return pathToFileURL(path.dirname(file_path) + path.sep).href;
-}
-
-/** 显式 marker 提供正文和原包地址，脚本可直接执行。 */
-export function format_agent_skill_invocation(skill: AgentSkillInvocationDefinition): string {
-  return `<skill name="${escape_agent_skill_xml(skill.name)}" base_url="${escape_agent_skill_xml(agent_skill_base_url(skill.filePath))}">\n${skill.content}\n</skill>`;
 }
 
 /** 只转义 XML 结构字段；skill 正文保持原始 Markdown。 */

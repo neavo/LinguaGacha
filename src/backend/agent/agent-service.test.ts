@@ -1,3 +1,4 @@
+import { uploaded_file } from "../../test/agent-upload-fixture";
 import { workspace_execution } from "../../test/agent-workspace-fixture";
 import { Model as AppModel } from "../../domain/model";
 import { normalize_batch_translation_progress } from "../../domain/batch-translation";
@@ -790,20 +791,14 @@ describe("AgentService", () => {
 
     await fixture.service.send_message({
       text: "",
-      attachments: [
-        { kind: "image", webpBase64: "webp-a" },
-        { kind: "image", webpBase64: "webp-b" },
-      ],
+      attachments: [uploaded_file("webp-a"), uploaded_file("webp-b")],
     });
     await wait_for_idle(fixture.service);
 
     expect(fixture.service.get_snapshot().entries[0]).toMatchObject({
       kind: "user_message",
       text: "",
-      attachments: [
-        { kind: "image", webpBase64: "webp-a" },
-        { kind: "image", webpBase64: "webp-b" },
-      ],
+      attachments: [uploaded_file("webp-a"), uploaded_file("webp-b")],
       status: "success",
     });
     const last_user = fake_agent_state.model_contexts
@@ -812,7 +807,7 @@ describe("AgentService", () => {
     expect(last_user).toMatchObject({
       role: "user",
       content: [
-        { type: "text", text: "(see attached image)" },
+        { type: "text", text: expect.stringContaining("uploads/webp-a.png") },
         { type: "image", data: "webp-a", mimeType: "image/webp" },
         { type: "image", data: "webp-b", mimeType: "image/webp" },
       ],
@@ -822,7 +817,7 @@ describe("AgentService", () => {
   it("附件准备与消息受理都使用后端结果，图片准备不能跨 reset 提交", async () => {
     const images = {
       clear: vi.fn(),
-      prepare_base64: vi.fn(async (_data: unknown) => ({
+      prepare: vi.fn(async (_data: unknown) => ({
         data: "prepared",
         mimeType: "image/webp" as const,
         width: 1,
@@ -832,14 +827,13 @@ describe("AgentService", () => {
       })),
     };
     const { service } = await create_service(true, undefined, undefined, undefined, images);
-    expect(await service.prepare_image({ data: "raw" })).toMatchObject({ data: "prepared" });
     await service.send_message({
       text: "image",
-      attachments: [{ kind: "image", webpBase64: "raw" }],
+      attachments: [uploaded_file("raw")],
     });
     await wait_for_idle(service);
     expect(service.get_snapshot().entries[0]).toMatchObject({
-      attachments: [{ kind: "image", webpBase64: "prepared" }],
+      attachments: [uploaded_file("raw")],
     });
     expect(
       fake_agent_state.model_contexts.at(-1)?.findLast((message) => message.role === "user"),
@@ -848,8 +842,8 @@ describe("AgentService", () => {
         { type: "image", data: "prepared", mimeType: "image/webp" },
       ]),
     });
-    let release!: (image: Awaited<ReturnType<typeof images.prepare_base64>>) => void;
-    images.prepare_base64.mockImplementationOnce(
+    let release!: (image: Awaited<ReturnType<typeof images.prepare>>) => void;
+    images.prepare.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           release = resolve;
@@ -857,10 +851,11 @@ describe("AgentService", () => {
     );
     const pending = service.send_message({
       text: "late",
-      attachments: [{ kind: "image", webpBase64: "raw" }],
+      attachments: [uploaded_file("raw")],
     });
     const rejected = expect(pending).rejects.toMatchObject({ code: "runtime.cancelled" });
-    await service.reset();
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const reset = service.reset();
     release({
       data: "late",
       mimeType: "image/webp",
@@ -870,6 +865,7 @@ describe("AgentService", () => {
       originalHeight: 1,
     });
     await rejected;
+    await reset;
     expect(images.clear).toHaveBeenCalled();
     expect(service.get_snapshot().entries).toEqual([]);
   });
@@ -950,11 +946,11 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills.map(({ name }) => name)).toContain("new-skill");
     expect(skill_test_fixture.loader).toHaveBeenCalledTimes(2);
 
-    await fixture.service.send_message({ text: "@skill(new-skill) 开始", attachments: [] });
+    await fixture.service.send_message({ text: '@skill("new-skill") 开始', attachments: [] });
     await wait_for_idle(fixture.service);
     expect(fake_agent_state.system_prompts.at(-1)).toContain("<name>new-skill</name>");
     expect(fake_agent_state.system_prompts.at(-1)).not.toContain("<location>");
-    expect(fake_agent_state.prompts.at(-1)).toContain('<skill name="new-skill" base_url="file:');
+    expect(fake_agent_state.prompts.at(-1)).toBe('@skill("new-skill") 开始');
   });
 
   it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
@@ -988,34 +984,32 @@ describe("AgentService", () => {
     }
   });
 
-  it("按 marker 首次出现顺序展开多个 skill，并保留原始用户正文", async () => {
+  it("技能引用只保留用户正文，具体读取由模型决定", async () => {
     const fixture = await create_service();
 
     await fixture.service.send_message({
-      text: "先用 @skill(corpus-search)，再用 @skill(glossary-audit)。",
+      text: '先用 @skill("corpus-search")，再用 @skill("glossary-audit")。',
       attachments: [],
     });
     await wait_for_idle(fixture.service);
     const prompt = fake_agent_state.prompts.at(-1) ?? "";
 
-    expect(prompt.indexOf('name="corpus-search"')).toBeLessThan(
-      prompt.indexOf('name="glossary-audit"'),
-    );
-    expect(prompt).toContain("先用 @skill(corpus-search)，再用 @skill(glossary-audit)。");
+    expect(prompt).not.toContain("<skill ");
+    expect(prompt).toContain('先用 @skill("corpus-search")，再用 @skill("glossary-audit")。');
     expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
     expect(prompt).not.toContain("完整正文。");
   });
 
-  it("重复与未知 marker 不阻断消息，已知能力只注入一次", async () => {
+  it("重复与未知引用按用户正文传递", async () => {
     const fixture = await create_service();
     const text =
-      "@skill(glossary-audit) @skill(unknown) @skill(glossary-audit) @unknown(reference) @glossary-audit";
+      '@skill("glossary-audit") @skill("unknown") @skill("glossary-audit") @unknown(reference) @glossary-audit';
 
     await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
 
     const prompt = fake_agent_state.prompts.at(-1) ?? "";
-    expect(prompt.match(/<skill name="glossary-audit"/gu)).toHaveLength(1);
+    expect(prompt).not.toContain('<skill name="glossary-audit"');
     expect(prompt).not.toContain('<skill name="unknown"');
     expect(prompt).toContain(text);
     expect(fixture.service.get_snapshot().entries[0]).toMatchObject({ text });
@@ -1023,7 +1017,7 @@ describe("AgentService", () => {
 
   it("转义 marker 只作为用户正文，不注入 skill", async () => {
     const fixture = await create_service();
-    const text = String.raw`\@skill(glossary-audit) 只讨论语法`;
+    const text = String.raw`\@skill(\"glossary-audit\") 只讨论语法`;
 
     await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
@@ -1035,7 +1029,7 @@ describe("AgentService", () => {
 
   it("隐藏知识保留在模型清单，但用户精确 marker 不注入正文", async () => {
     const fixture = await create_service();
-    const text = "@skill(internal-guidance)";
+    const text = '@skill("internal-guidance")';
 
     await fixture.service.send_message({ text, attachments: [] });
     await wait_for_idle(fixture.service);
@@ -1050,7 +1044,7 @@ describe("AgentService", () => {
 
     await service.send_message({
       text: "开始",
-      attachments: [{ kind: "image", webpBase64: "webp-image" }],
+      attachments: [uploaded_file("webp-image")],
     });
     expect(service.get_snapshot().state).toBe("running");
     expect(service.get_snapshot().entries[0]).toMatchObject({
@@ -1066,7 +1060,7 @@ describe("AgentService", () => {
         {
           kind: "user_message",
           text: "开始",
-          attachments: [{ kind: "image", webpBase64: "webp-image" }],
+          attachments: [uploaded_file("webp-image")],
           status: "success",
           endedAt: expect.any(Number),
         },
@@ -1571,7 +1565,7 @@ describe("AgentService", () => {
 
     await service.send_message({
       text: "开始",
-      attachments: [{ kind: "image", webpBase64: "webp-image" }],
+      attachments: [uploaded_file("webp-image")],
     });
     await wait_for_idle(service);
 
@@ -1588,7 +1582,7 @@ describe("AgentService", () => {
         {
           kind: "user_message",
           text: "开始",
-          attachments: [{ kind: "image", webpBase64: "webp-image" }],
+          attachments: [uploaded_file("webp-image")],
           status: "error",
           endedAt: expect.any(Number),
         },
@@ -1708,7 +1702,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     await service.send_message({
       text: "原输入",
-      attachments: [{ kind: "image", webpBase64: "old-image" }],
+      attachments: [uploaded_file("old-image")],
     });
     await wait_for_idle(service);
     const user = service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message");
@@ -1718,7 +1712,7 @@ describe("AgentService", () => {
       entryId: user.id,
       message: {
         text: "新输入",
-        attachments: [{ kind: "image", webpBase64: "new-image" }],
+        attachments: [uploaded_file("new-image")],
       },
     });
     await wait_for_idle(service);
@@ -1727,12 +1721,15 @@ describe("AgentService", () => {
     expect(entries[0]).toMatchObject({
       kind: "user_message",
       text: "新输入",
-      attachments: [{ kind: "image", webpBase64: "new-image" }],
+      attachments: [uploaded_file("new-image")],
       status: "success",
     });
     expect(entries.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
     expect(entries.filter((entry) => entry.kind === "assistant_message")).toHaveLength(1);
-    expect(fake_agent_state.prompts).toEqual(["原输入", "新输入"]);
+    expect(fake_agent_state.prompts).toEqual([
+      expect.stringContaining("原输入"),
+      expect.stringContaining("新输入"),
+    ]);
     expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).not.toContain("原输入");
   });
 
@@ -1762,7 +1759,7 @@ describe("AgentService", () => {
         entryId: assistant.id,
         message: {
           text: "",
-          attachments: [{ kind: "image", webpBase64: "image" }],
+          attachments: [uploaded_file("image")],
         },
       }),
     ).rejects.toThrow("request.validation_failed");
@@ -1814,6 +1811,7 @@ describe("AgentService", () => {
     await session_state.mark_loaded("next.lg");
 
     expect(service.get_snapshot()).toEqual({
+      sessionId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
       approvalMode: "manual",
@@ -1831,7 +1829,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "success";
 
-    await service.send_message({ text: "@skill(glossary-audit) 写入", attachments: [] });
+    await service.send_message({ text: '@skill("glossary-audit") 写入', attachments: [] });
     await wait_for_idle(service);
     expect([...(fake_agent_state.tool_names.at(-1) ?? [])].sort()).toEqual(
       [
@@ -1900,6 +1898,8 @@ describe("AgentService", () => {
 
   it("Electron 工作区端口初始化并区分会话与工程 reset", async () => {
     const workspace = {
+      uploads: fake_uploads(),
+      list_files: () => [],
       initialize: vi.fn(async () => undefined),
       activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
       invalidate_links: vi.fn(),
@@ -2123,7 +2123,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    await service.send_message({ text: "@skill(corpus-search) 旧任务", attachments: [] });
+    await service.send_message({ text: '@skill("corpus-search") 旧任务', attachments: [] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
 
     let settled = false;
@@ -2133,6 +2133,7 @@ describe("AgentService", () => {
     });
     expect(fake_agent_state.abort_count).toBe(1);
     expect(service.get_snapshot()).toEqual({
+      sessionId: expect.any(String),
       revision: expect.any(Number),
       state: "idle",
       approvalMode: "manual",
@@ -2238,17 +2239,17 @@ describe("AgentService", () => {
     expect(disposed).toBe(true);
   });
 
-  it("skill 进入消息历史后，后续普通回合仍使用稳定基础 system prompt", async () => {
+  it("技能引用进入消息历史后，普通回合继续使用稳定 system prompt", async () => {
     const { service } = await create_service();
 
-    await service.send_message({ text: "@skill(glossary-audit) 审校", attachments: [] });
+    await service.send_message({ text: '@skill("glossary-audit") 审校', attachments: [] });
     await wait_for_idle(service);
     await service.send_message({ text: "普通对话", attachments: [] });
     await wait_for_idle(service);
 
     expect(fake_agent_state.system_prompts.at(-1)).toBe(fake_agent_state.system_prompts.at(-2));
     expect_agent_system_prompt(fake_agent_state.system_prompts.at(-1));
-    expect(fake_agent_state.prompts.at(-2)).toContain(
+    expect(fake_agent_state.prompts.at(-2)).not.toContain(
       skill_test_fixture.fixture_contents.glossary_audit,
     );
     expect(fake_agent_state.prompts.at(-1)).toBe("普通对话");
@@ -2753,6 +2754,76 @@ describe("AgentService", () => {
     ).toEqual(["第一轮", "第二轮", "第三轮"]);
   });
 
+  it("入队与修改只验证引用，发送准备失败保留队列和修订前历史", async () => {
+    const images = {
+      clear: vi.fn(),
+      prepare: vi.fn(async () => {
+        throw new Error("decode failed");
+      }),
+    };
+    const { service } = await create_service(true, undefined, undefined, undefined, images);
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    const file_message = { text: "文件", attachments: [uploaded_file("broken")] };
+    await service.send_message(file_message);
+    const id = service.get_snapshot().inputQueue.items[0]!.id;
+    await service.update_queued_message({ id, message: file_message });
+    expect(images.prepare).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(service.get_snapshot().inputQueue.canSendNow).toBe(true));
+    await expect(service.send_queued_message({ id })).rejects.toThrow("decode failed");
+    expect(service.get_snapshot().inputQueue.items).toMatchObject([{ id, status: "queued" }]);
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_pending?.();
+    await wait_for_idle(service);
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ id, status: "queued" }],
+    });
+    const before = service.get_snapshot().entries;
+    expect(before.filter((entry) => entry.kind === "user_message")).toHaveLength(1);
+    await expect(
+      service.revise_latest_round({ entryId: before[0]!.id, message: file_message }),
+    ).rejects.toThrow("decode failed");
+    expect(service.get_snapshot().entries).toEqual(before);
+  });
+
+  it("自动出队图片准备期间停止，保留已完成轮次与待发送附件并释放运行权", async () => {
+    let release!: (image: import("../../shared/agent-image").AgentImage) => void;
+    const prepare = vi.fn(
+      () =>
+        new Promise<import("../../shared/agent-image").AgentImage>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const { service, runtime_gate } = await create_service(true, undefined, undefined, undefined, {
+      clear: vi.fn(),
+      prepare,
+    });
+    fake_agent_state.mode = "pending";
+    await service.send_message({ text: "第一轮", attachments: [] });
+    await service.send_message({ text: "图片", attachments: [uploaded_file("pending")] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    fake_agent_state.mode = "success";
+    fake_agent_state.release_pending?.();
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+    service.stop();
+    release({
+      data: "ready",
+      mimeType: "image/webp",
+      width: 1,
+      height: 1,
+      originalWidth: 1,
+      originalHeight: 1,
+    });
+    await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
+    expect(service.get_snapshot().entries[0]).toMatchObject({ text: "第一轮", status: "success" });
+    expect(service.get_snapshot().inputQueue).toMatchObject({
+      paused: true,
+      items: [{ text: "图片", status: "queued" }],
+    });
+    expect(fake_agent_state.model_call_count).toBe(1);
+  });
+
   it("队列轮次换模失败时记录该轮失败并暂停剩余输入", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "pending";
@@ -3063,8 +3134,8 @@ describe("AgentService", () => {
     >,
     images: ConstructorParameters<typeof AgentService>[0]["images"] = {
       clear: vi.fn(),
-      prepare_base64: async (data) => ({
-        data: String(data),
+      prepare: async (data) => ({
+        data: Buffer.from(data).toString(),
         mimeType: "image/webp",
         width: 1,
         height: 1,
@@ -3128,6 +3199,8 @@ describe("AgentService", () => {
     const effective_workspace =
       workspace ??
       ({
+        uploads: fake_uploads(),
+        list_files: () => [],
         initialize: vi.fn(async () => undefined),
         activate_path: vi.fn(async () => ({ status: "cancelled" as const })),
         invalidate_links: vi.fn(),
@@ -3308,4 +3381,16 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt?.match(/<cwd>/gu)).toHaveLength(1);
   const working_directory = prompt?.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/u)?.[1];
   expect(working_directory?.replaceAll("\\", "/")).toBe(skill_test_fixture.app_root);
+}
+
+/** 服务编排测试通过字节身份隔离编解码，磁盘发布由上传存储测试验证。 */
+function fake_uploads(): AgentWorkspacePort["uploads"] {
+  return {
+    get: (id) => uploaded_file(id),
+    read_image: (id) => Buffer.from(id),
+    upload: vi.fn(),
+    open: vi.fn(),
+    cancel: vi.fn(),
+    clear: vi.fn(async () => undefined),
+  };
 }

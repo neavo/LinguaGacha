@@ -84,8 +84,8 @@ describe("Agent 输入历史持久化", () => {
         throw new Error("quota exceeded");
       }),
     );
-    expect(update_agent_input_history(storage, [], "@skill(glossary-audit)")).toEqual([
-      "@skill(glossary-audit)",
+    expect(update_agent_input_history(storage, [], '@skill("glossary-audit")')).toEqual([
+      '@skill("glossary-audit")',
     ]);
   });
 

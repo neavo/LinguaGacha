@@ -1,12 +1,15 @@
 import ExcelJS from "exceljs";
-import type { Row } from "exceljs";
+import { read_workbook, cell_text, write_cell } from "../file/spreadsheet";
 
 import type { JsonRecord } from "../../domain/json";
 import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 
 export type QualityRuleFileEntry = JsonRecord;
+
+const RULE_COLUMNS = ["src", "dst", "info", "regex", "case_sensitive"] as const;
+const RULE_COLUMN_WIDTH = 24;
+const RULE_FONT_SIZE = 10;
 
 /**
  * 从外部规则文件读取质量规则条目，供 GUI 导入和 CLI 单次任务资源复用同一解析口径。
@@ -42,19 +45,14 @@ export async function export_quality_rule_entries_to_files(
     JsonTool.stringifyStrict(export_entries, { indent: 4 }),
   );
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("rules");
-  worksheet.columns = [{ width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }];
-  ["src", "dst", "info", "regex", "case_sensitive"].forEach((value, index) => {
-    SpreadsheetTool.setCellValue(worksheet, 1, index + 1, value, 10);
-  });
-  export_entries.forEach((entry, index) => {
-    const row = index + 2;
-    SpreadsheetTool.setCellValue(worksheet, row, 1, entry["src"] ?? "", 10);
-    SpreadsheetTool.setCellValue(worksheet, row, 2, entry["dst"] ?? "", 10);
-    SpreadsheetTool.setCellValue(worksheet, row, 3, entry["info"] ?? "", 10);
-    SpreadsheetTool.setCellValue(worksheet, row, 4, entry["regex"] ?? "", 10);
-    SpreadsheetTool.setCellValue(worksheet, row, 5, entry["case_sensitive"] ?? "", 10);
-  });
+  const sheet = workbook.addWorksheet("rules");
+  sheet.columns = RULE_COLUMNS.map(() => ({ width: RULE_COLUMN_WIDTH }));
+  RULE_COLUMNS.forEach((label, index) => write_cell(sheet, 1, index + 1, label, RULE_FONT_SIZE));
+  export_entries.forEach((entry, index) =>
+    RULE_COLUMNS.forEach((key, column) =>
+      write_cell(sheet, index + 2, column + 1, entry[key] as string | boolean, RULE_FONT_SIZE),
+    ),
+  );
   native_fs.write_file_sync(
     `${base_path}.xlsx`,
     normalize_native_file_bytes(await workbook.xlsx.writeBuffer()),
@@ -121,27 +119,21 @@ async function load_quality_rule_entries_from_xlsx(
   file_path: string,
   native_fs: NativeFs,
 ): Promise<QualityRuleFileEntry[]> {
-  const workbook = new ExcelJS.Workbook();
-  await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(
-    native_fs.read_file(file_path),
-  );
-  const worksheet = workbook.worksheets[0];
-  if (worksheet === undefined) {
-    return [];
-  }
+  const workbook = await read_workbook(native_fs.read_file(file_path));
+  const sheet = workbook.worksheets[0];
   const result: QualityRuleFileEntry[] = [];
-  worksheet.eachRow((row) => {
-    const src = read_excel_cell_text(row, 1);
-    const dst = read_excel_cell_text(row, 2);
-    if (src === "" || (src === "src" && dst === "dst")) {
-      return;
-    }
+  sheet?.eachRow((row) => {
+    const [src = "", dst = "", info = "", regex = "", case_sensitive = ""] = Array.from(
+      { length: RULE_COLUMNS.length },
+      (_, index) => cell_text(row.getCell(index + 1).value).trim(),
+    );
+    if (src === "" || (src === "src" && dst === "dst")) return;
     push_normalized_rule(result, {
       src,
       dst,
-      info: read_excel_cell_text(row, 3),
-      regex: read_excel_cell_text(row, 4).toLowerCase() === "true",
-      case_sensitive: read_excel_cell_text(row, 5).toLowerCase() === "true",
+      info,
+      regex: regex.toLowerCase() === "true",
+      case_sensitive: case_sensitive.toLowerCase() === "true",
     });
   });
   return result;
@@ -213,6 +205,7 @@ function project_external_rule_fields(entry: QualityRuleFileEntry): QualityRuleF
   return result;
 }
 
+/** 导出只保留规则的可编辑字段，并补齐空值。 */
 function normalize_external_rule(entry: QualityRuleFileEntry): QualityRuleFileEntry {
   return {
     src: String(entry["src"] ?? "").trim(),
@@ -221,11 +214,4 @@ function normalize_external_rule(entry: QualityRuleFileEntry): QualityRuleFileEn
     regex: Boolean(entry["regex"] ?? false),
     case_sensitive: Boolean(entry["case_sensitive"] ?? false),
   };
-}
-
-/**
- * Excel 单元格转文本只在文件 IO 边界处理，业务层不接触表格对象。
- */
-function read_excel_cell_text(row: Row, column_number: number): string {
-  return SpreadsheetTool.cellValueToText(row.getCell(column_number).value).trim();
 }

@@ -1,3 +1,4 @@
+import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentMessageInput, AgentSkillSnapshot } from "@shared/agent";
@@ -35,7 +36,6 @@ type AgentInlineEditorProps = {
   on_save: (message: AgentMessageInput) => Promise<void>;
   on_saved: (message: AgentMessageInput) => void;
   on_cancel: () => void;
-  on_image_error: () => void;
 };
 
 const EMPTY_INPUT_HISTORY: readonly string[] = [];
@@ -47,14 +47,10 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const { t } = useI18n();
 
   const composer_ref = useRef<AgentMessageEditorHandle | null>(null);
-  const draft_ref = useRef<AgentMessageInput>(structuredClone(props.target.message));
+  const [draft] = useState(() => new AgentInputDraft(props.target.message));
   // 保存只锁定当前编辑器，普通 Composer 和 Agent session 不参与这段瞬时状态。
   const [status, set_status] = useState<"idle" | "saving">("idle");
 
-  const read_draft = useCallback((): AgentMessageInput => draft_ref.current, []);
-  const write_draft = useCallback((message: AgentMessageInput): void => {
-    draft_ref.current = structuredClone(message);
-  }, []);
   /** 保存期间禁止取消，失败后仍保留可编辑草稿。 */
   const cancel_edit = useCallback((): void => {
     if (status === "saving") return;
@@ -63,13 +59,14 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
   const input_session = useMemo<AgentInputSession>(
     () => ({
       revision: 0,
-      read_draft,
-      write_draft,
+      draft,
       read_history: () => EMPTY_INPUT_HISTORY,
       replace_history: () => undefined,
     }),
-    [read_draft, write_draft],
+    [draft],
   );
+
+  useEffect(() => () => draft.cancel_uploads(), [draft]);
 
   useEffect(() => {
     composer_ref.current?.focus();
@@ -124,10 +121,9 @@ export function AgentInlineEditor(props: AgentInlineEditorProps): JSX.Element {
         skills={props.skills}
         input_session={input_session}
         on_submit={submit}
-        on_image_error={props.on_image_error}
-        render_actions={({ has_content, image_processing }) => {
+        render_actions={({ has_content, uploads_pending }) => {
           const can_submit =
-            !read_only && props.unavailable_reason === null && has_content && !image_processing;
+            !read_only && props.unavailable_reason === null && has_content && !uploads_pending;
           return {
             can_submit,
             submit: (

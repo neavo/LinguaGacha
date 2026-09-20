@@ -14,7 +14,7 @@ function webp(marker: number, size = 16): Uint8Array {
   return bytes;
 }
 
-it("工作区字节、上传 base64 与规范结果共用缓存，内容变化重新处理", async () => {
+it("相同输入复用结果，内容变化重新处理", async () => {
   const output = webp(2);
   const host = vi.fn(async () => ({
     bytes: output,
@@ -26,8 +26,7 @@ it("工作区字节、上传 base64 与规范结果共用缓存，内容变化�
   const service = new AgentImageService(host);
   const source = webp(1);
   const image = await service.prepare(source);
-  expect(await service.prepare_base64(Buffer.from(source).toString("base64"))).toBe(image);
-  expect(await service.prepare_base64(image.data)).toBe(image);
+  expect(await service.prepare(source)).toBe(image);
   expect(host).toHaveBeenCalledTimes(1);
   source[15] = 3;
   await service.prepare(source);
@@ -44,7 +43,7 @@ it("缓存淘汰后，已有消息仍持有完整图片，重读只重新计算"
   }));
   const service = new AgentImageService(host);
   const first = await service.prepare(webp(1));
-  for (let marker = 2; marker <= 4; marker++) await service.prepare(webp(marker));
+  for (let marker = 2; marker <= 6; marker++) await service.prepare(webp(marker));
   const calls = host.mock.calls.length;
   expect(await service.prepare(webp(1))).toEqual(first);
   expect(host).toHaveBeenCalledTimes(calls + 1);
@@ -72,14 +71,6 @@ it("同一原图按单次尺寸隔离缓存，在途参数修改不会改变结�
   expect(large.width).toBe(large_edge);
   expect(await service.prepare(source, undefined, { maxEdge: small_edge })).toBe(small);
   expect(await service.prepare(source, undefined, { maxEdge: large_edge })).toBe(large);
-  const canonical = await service.prepare(Buffer.from(large.data, "base64"), undefined, {
-    maxEdge: large_edge,
-  });
-  expect(canonical).toMatchObject({
-    data: large.data,
-    originalWidth: large_edge,
-    originalHeight: Math.floor(large_edge / 2),
-  });
   expect(host).toHaveBeenCalledTimes(2);
 });
 
@@ -109,7 +100,7 @@ it("重置取消在途转换，迟到结果不能重新填入缓存", async () =
   expect(host).toHaveBeenCalledTimes(2);
 });
 
-it("失败不进入缓存，输入格式和 base64 在宿主调用前校验", async () => {
+it("失败不进入缓存，输入格式在宿主调用前校验", async () => {
   const host = vi
     .fn()
     .mockRejectedValueOnce(new Error("decode failed"))
@@ -121,9 +112,6 @@ it("失败不进入缓存，输入格式和 base64 在宿主调用前校验", as
       originalHeight: 1,
     });
   const service = new AgentImageService(host);
-  await expect(service.prepare_base64("invalid!base64")).rejects.toMatchObject({
-    code: "request.validation_failed",
-  });
   await expect(service.prepare(new Uint8Array([1, 2]))).rejects.toMatchObject({
     code: "request.validation_failed",
   });
@@ -133,4 +121,22 @@ it("失败不进入缓存，输入格式和 base64 在宿主调用前校验", as
   });
   await service.prepare(webp(1));
   expect(host).toHaveBeenCalledTimes(2);
+});
+
+it("相同原图的并发请求共享转换，单个调用取消不影响其它消费者", async () => {
+  let resolve!: (value: AgentImageHostResult) => void;
+  const pending = new Promise<AgentImageHostResult>((done) => {
+    resolve = done;
+  });
+  const host = vi.fn(() => pending);
+  const service = new AgentImageService(host);
+  const controller = new AbortController();
+  const first = service.prepare(webp(1), controller.signal);
+  const second = service.prepare(webp(1));
+  const rejected = expect(first).rejects.toBeDefined();
+  controller.abort();
+  await rejected;
+  resolve({ bytes: webp(2), width: 1, height: 1, originalWidth: 1, originalHeight: 1 });
+  await expect(second).resolves.toMatchObject({ mimeType: "image/webp" });
+  expect(host).toHaveBeenCalledTimes(1);
 });

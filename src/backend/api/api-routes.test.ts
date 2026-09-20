@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { JsonRecord } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
 import type { AgentService } from "../agent/agent-service";
-import type { ApiJsonHandler } from "./api-json";
+import type { ApiJsonHandler } from "./api-request";
 import { register_api_routes } from "./api-routes";
 
 /** 路由集合是公开面契约，注册顺序不是。 */
 // 公开 HTTP 路径属于客户端契约，独立清单用于发现误删、改名与重复注册。
 const GET_PATHS = new Set([
+  "/api/agent/files",
+  "/api/agent/uploads/:id",
   "/api/health",
   "/api/events/stream",
   "/api/agent/snapshot",
@@ -17,13 +19,13 @@ const GET_PATHS = new Set([
 ]);
 
 const POST_PATHS = new Set([
+  "/api/agent/uploads",
   "/api/logs/detail",
   "/api/logs/files",
   "/api/logs/page",
   "/api/diagnostics/renderer-error",
   "/api/runtime/snapshot",
   "/api/agent/message",
-  "/api/agent/image/prepare",
   "/api/agent/workspace/activate-path",
   "/api/agent/approval-mode",
   "/api/agent/question/resolve",
@@ -144,7 +146,7 @@ describe("register_api_routes", () => {
   it("POST 路由把任务与 Agent 命令原样转交组合根", async () => {
     const fixture = create_route_fixture();
     const task = { task_type: "translation" };
-    const message: JsonRecord = { text: "@skill(glossary-audit) 审校" };
+    const message: JsonRecord = { text: '@skill("glossary-audit") 审校' };
 
     expect(read_post_handler(fixture.post_json, "/api/batch-translation/start")(task)).toEqual({
       accepted: true,
@@ -351,6 +353,8 @@ function create_route_fixture() {
     services,
     agent,
     postJson: post_json,
+    request: (method, route, handler) =>
+      method === "GET" ? get(route, handler) : post_json(route, handler),
     createEventStreamResponse: vi.fn(),
     readLogFiles: vi.fn(),
     readLogPage: vi.fn(),

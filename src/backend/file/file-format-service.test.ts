@@ -2,7 +2,7 @@ import { create_pdf_execution } from "./formats/pdf/test-support";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import ExcelJS from "exceljs";
+import { spreadsheet_fixture } from "../../test/spreadsheet-fixture";
 
 import { describe, expect, it } from "vitest";
 
@@ -25,18 +25,12 @@ function create_service(): FileFormatService {
 
 describe("FileFormatService", () => {
   it.each(["XLSX", "WOLFXLSX"] as const)("XLSX 分发保留 %s 的解析身份", async (file_type) => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Sheet");
-    if (file_type === "WOLFXLSX") {
-      sheet.addRow(["code", "flag", "type", "info"]);
-      sheet.getCell(2, 6).value = "正文";
-    } else {
-      sheet.addRow(["正文", "译文"]);
-    }
-    const result = await create_service().parse_asset(
-      "book.xlsx",
-      new Uint8Array(await workbook.xlsx.writeBuffer()),
+    const bytes = await spreadsheet_fixture(
+      file_type === "WOLFXLSX"
+        ? { A1: "code", B1: "flag", C1: "type", D1: "info", F2: "正文" }
+        : { A1: "正文", B1: "译文" },
     );
+    const result = await create_service().parse_asset("book.xlsx", bytes);
     expect(result).toMatchObject({
       kind: "items",
       items: [expect.objectContaining({ src: "正文", file_type })],

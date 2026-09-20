@@ -53,7 +53,11 @@ const stream = {
   stop: mocks.stream_stop,
   create_stream_response: vi.fn(),
 };
-const agent = { load_resources: mocks.agent_load, dispose: mocks.agent_dispose };
+const agent = {
+  load_resources: mocks.agent_load,
+  dispose: mocks.agent_dispose,
+  cancel_uploads: vi.fn(),
+};
 
 vi.mock("./backend-resources", () => ({
   /** 由用例控制共享资源启动，并记录其生命周期顺序。 */

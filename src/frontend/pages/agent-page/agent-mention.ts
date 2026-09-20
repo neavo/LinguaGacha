@@ -1,10 +1,8 @@
-import {
-  find_agent_reference_ranges,
-  format_agent_skill_reference,
-  type AgentReferenceRange,
-  type AgentSkillSnapshot,
-} from "@shared/agent";
-import type { Locale } from "@shared/i18n";
+import type { AgentSkillSnapshot } from "@shared/agent";
+import { format_agent_reference, type AgentFileCandidate } from "@shared/agent-reference";
+import { create_text_resolver, type Locale } from "@shared/i18n";
+
+const FILE_CANDIDATE_LIMIT = 50; // 菜单只渲染有界候选，完整匹配数量用于提示收窄查询。
 
 /** 页面提供宿主指令的显示状态与即时动作；它不进入消息协议。 */
 export type AgentMentionInstruction = Readonly<{
@@ -15,10 +13,10 @@ export type AgentMentionInstruction = Readonly<{
   execute: () => void;
 }>;
 
-/** 候选只保留渲染与选择所需事实；技能写入正文，指令立即执行宿主动作。 */
+/** 候选只保留渲染与选择所需事实；文件和技能写入正文，指令立即执行宿主动作。 */
 export type AgentMentionCandidate = Readonly<
   | {
-      kind: "skill";
+      kind: "skill" | "file";
       key: string;
       title: string;
       description: string;
@@ -27,10 +25,12 @@ export type AgentMentionCandidate = Readonly<
   | (AgentMentionInstruction & { kind: "instruction"; key: string })
 >;
 
-/** 分组保持渲染顺序显式，连续活动索引由 Composer 在两组之上统一计算。 */
+/** 分组保持渲染顺序显式，连续活动索引由 Composer 跨分组统一计算。 */
 type AgentMentionCandidateGroups = Readonly<{
   skills: readonly AgentMentionCandidate[];
   instructions: readonly AgentMentionCandidate[];
+  files: readonly AgentMentionCandidate[];
+  fileCount: number;
 }>;
 
 /** 指令文案和可用性由调用方注入，纯投影不依赖 React i18n 或会话状态。 */
@@ -39,12 +39,14 @@ type CreateAgentMentionCandidatesArgs = Readonly<{
   locale: Locale;
   skills: readonly AgentSkillSnapshot[];
   instructions: readonly AgentMentionInstruction[];
+  files?: readonly AgentFileCandidate[];
 }>;
 
 /** 统一投影菜单分组；稳定指令名与本地化标题都可以用于筛选。 */
 export function create_agent_mention_candidates(
   args: CreateAgentMentionCandidatesArgs,
 ): AgentMentionCandidateGroups {
+  const t = create_text_resolver(args.locale);
   const query_text = args.query.toLocaleLowerCase(args.locale);
   const skills = args.skills
     .filter((skill) =>
@@ -57,7 +59,7 @@ export function create_agent_mention_candidates(
       key: `skill:${skill.name}`,
       title: skill.name,
       description: skill.displayDescriptions[args.locale],
-      insertText: format_agent_skill_reference(skill.name),
+      insertText: format_agent_reference({ kind: "skill", name: skill.name }),
     }));
   const instructions = args.instructions
     .filter((instruction) =>
@@ -71,31 +73,28 @@ export function create_agent_mention_candidates(
       key: `instruction:${instruction.id}`,
     }));
 
-  return { skills, instructions };
-}
-
-/** 已知 mention 只提供字面量 marker；显示与消息协议共用同一字符串。 */
-export type AgentMentionToken = Readonly<{ marker: string }>;
-
-/** 已知 marker 在正文中的非重叠范围，供编辑器与时间线分别投影。 */
-export type AgentMentionRange = AgentReferenceRange;
-
-/** 只有技能会进入正文；动作型指令选择后立即执行，不产生 marker。 */
-export function create_agent_mention_tokens(
-  skills: readonly AgentSkillSnapshot[],
-): AgentMentionToken[] {
-  return [...new Set(skills.map((skill) => format_agent_skill_reference(skill.name)))]
-    .sort((left, right) => right.length - left.length)
-    .map((marker) => ({ marker }));
-}
-
-/** 找出正文中的已知 marker；重叠时只保留已排序列表中更长的完整 marker。 */
-export function find_agent_mention_ranges(
-  text: string,
-  tokens: readonly AgentMentionToken[],
-): AgentMentionRange[] {
-  return find_agent_reference_ranges(
-    text,
-    tokens.map((token) => token.marker),
+  const terms = query_text.trim().split(/\s+/u).filter(Boolean);
+  const matching_files = (args.files ?? []).filter((file) =>
+    terms.every((term) => file.path.toLocaleLowerCase(args.locale).includes(term)),
   );
+  const files = matching_files
+    .slice(0, FILE_CANDIDATE_LIMIT)
+    .map((file): AgentMentionCandidate => ({
+      kind: "file",
+      key: `${file.kind}:${file.path}`,
+      title: file.path,
+      description:
+        file.kind === "project"
+          ? `${t("agent_page.mention.files.project")} · ${t(file.unit === "pages" ? "agent_page.mention.files.pages" : "agent_page.mention.files.items", { COUNT: file.count.toLocaleString(args.locale) })}`
+          : `${t("agent_page.mention.files.upload")} · ${format_file_size(file.size)}`,
+      insertText: format_agent_reference(file),
+    }));
+  return { skills, files, instructions, fileCount: matching_files.length };
+}
+
+/** 文件大小只用于候选摘要，原始字节数仍由后端持有。 */
+function format_file_size(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

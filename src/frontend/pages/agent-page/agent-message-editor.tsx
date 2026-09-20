@@ -1,14 +1,17 @@
+import { find_agent_reference_ranges } from "@shared/agent-reference";
+import { useAgentMentionFiles } from "./use-agent-mention-files";
 import {
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
   type Ref,
   type RefObject,
   type ReactNode,
 } from "react";
-import { ImagePlus, LoaderCircle, Shrink, Sparkles } from "lucide-react";
+import { FileText, Paperclip, Shrink, Sparkles } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
@@ -16,7 +19,6 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
-  StateEffect,
   StateField,
   Transaction,
   type Extension,
@@ -33,8 +35,6 @@ import {
 } from "@codemirror/view";
 
 import {
-  AGENT_MESSAGE_IMAGE_LIMIT,
-  type AgentMessageAttachment,
   type AgentMessageInput,
   type AgentResponseAnnotationAttachment,
   type AgentSkillSnapshot,
@@ -50,15 +50,12 @@ import {
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 import {
   create_agent_mention_candidates,
-  create_agent_mention_tokens,
-  find_agent_mention_ranges,
   type AgentMentionCandidate,
   type AgentMentionInstruction,
-  type AgentMentionToken,
 } from "./agent-mention";
-import { AGENT_IMAGE_FILE_ACCEPT, normalize_agent_images } from "./agent-image";
+import type { AgentDraftAttachment } from "@frontend/app/session/agent/agent-input-draft";
 import { AgentMessageAttachments } from "./agent-message-attachments";
-import { AgentImageDropTarget } from "./agent-image-drop-target";
+import { AgentFileDropTarget } from "./agent-file-drop-target";
 
 /** 光标前当前 @ 查询范围。 */
 type MentionQuery = {
@@ -80,11 +77,11 @@ export type AgentMessageEditorHandle = {
   focus: () => void;
 };
 
-type AgentEditorState = { has_content: boolean; image_processing: boolean };
+type AgentEditorState = { has_content: boolean; uploads_pending: boolean };
 
 type AgentMessageEditorProps = {
   ref?: Ref<AgentMessageEditorHandle>;
-  image_drop_target_ref?: RefObject<HTMLElement | null>; // 缺省接收当前表单，主输入由页面指定整页区域
+  file_drop_target_ref?: RefObject<HTMLElement | null>; // 缺省接收当前表单，主输入由页面指定整页区域
   presentation?: "composer" | "inline";
   role?: "user" | "assistant";
   read_only: boolean;
@@ -93,7 +90,6 @@ type AgentMessageEditorProps = {
   input_session: AgentInputSession;
   on_submit: (message: AgentMessageInput) => void;
   on_cancel?: () => void;
-  on_image_error: () => void;
   /** 消费方统一决定按钮与提交权限，包含只读、内容和图片处理条件。 */
   render_actions: (state: AgentEditorState) => {
     can_submit: boolean;
@@ -120,31 +116,12 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
-/** mention 配置与 Decoration 都可由当前技能和纯文本正文重建。 */
-const set_mention_tokens_effect = StateEffect.define<readonly AgentMentionToken[]>();
-const mention_token_config_field = StateField.define<readonly AgentMentionToken[]>({
-  create: () => [],
-  /** 技能配置仅随显式 effect 替换，普通编辑沿用当前配置。 */
-  update(tokens, transaction) {
-    for (const effect of transaction.effects) {
-      if (effect.is(set_mention_tokens_effect)) return effect.value;
-    }
-    return tokens;
-  },
-});
 const mention_tokens_field = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  /** 正文或技能集合改变时重建 marker 装饰，其余事务复用结果。 */
+  create: (state) => create_mention_token_decorations(state.doc.toString()),
+  /** 正文改变时重建引用装饰，其余事务复用结果。 */
   update(tokens, transaction) {
-    let config = transaction.startState.field(mention_token_config_field);
-    let config_changed = false;
-    for (const effect of transaction.effects) {
-      if (!effect.is(set_mention_tokens_effect)) continue;
-      config = effect.value;
-      config_changed = true;
-    }
-    if (!transaction.docChanged && !config_changed) return tokens;
-    return create_mention_token_decorations(transaction.newDoc.toString(), config);
+    if (!transaction.docChanged) return tokens;
+    return create_mention_token_decorations(transaction.newDoc.toString());
   },
   /** 同一装饰范围同时拥有绘制与整块光标导航语义。 */
   provide(field) {
@@ -154,7 +131,7 @@ const mention_tokens_field = StateField.define<DecorationSet>({
     ];
   },
 });
-const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
+const mention_token_extension: Extension = [mention_tokens_field];
 
 /** 主输入与原位编辑共享正文、附件和键盘交互，按草稿 revision 同步 CodeMirror。 */
 export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element {
@@ -183,46 +160,46 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   // CodeMirror 回调从 ref 读取最新跨路由输入状态；历史索引只属于当前 Composer。
   const input_session_ref = useRef(props.input_session);
   const input_history_index_ref = useRef<number | null>(null);
-  // 附件 ref 负责异步批次的顺序与同步判定，React state 只负责渲染当前投影。
-  const draft_attachments_ref = useRef(
-    structuredClone(props.input_session.read_draft().attachments),
+  const draft = useSyncExternalStore(
+    props.input_session.draft.subscribe,
+    props.input_session.draft.read,
   );
-  const image_processing_ref = useRef(false);
+  const draft_attachments = draft.attachments;
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
-  const [draft_attachments, set_draft_attachments] = useState<AgentMessageAttachment[]>(() => [
-    ...draft_attachments_ref.current,
-  ]);
-  const [image_processing, set_image_processing] = useState(false);
+  const uploads_pending = draft_attachments.some((attachment) => attachment.kind === "upload");
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
   const mention_query_text = snapshot.query?.text;
+  const file_query = useAgentMentionFiles(
+    !assistant_editing && mention_query_text !== undefined && !props.read_only && !menu_suppressed,
+    draft_attachments
+      .filter((file) => file.kind === "file")
+      .map((file) => file.uploadId)
+      .join("|"),
+  );
   const candidate_groups =
     assistant_editing || mention_query_text === undefined
-      ? { skills: [], instructions: [] }
+      ? { skills: [], files: [], instructions: [], fileCount: 0 }
       : create_agent_mention_candidates({
           query: mention_query_text,
           locale,
           skills: props.skills,
+          files: file_query.files,
           instructions: props.instructions ?? [],
         });
   const matching_skills = candidate_groups.skills;
+  const matching_files = candidate_groups.files;
   const matching_instructions = candidate_groups.instructions;
-  const matching_candidates = [...matching_skills, ...matching_instructions];
+  const matching_candidates = [...matching_skills, ...matching_files, ...matching_instructions];
   const editor_read_only = props.read_only;
   const menu_open =
     !assistant_editing && snapshot.query !== null && !editor_read_only && !menu_suppressed;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const has_sendable_content =
     snapshot.text !== "" || (!assistant_editing && draft_attachments.length > 0);
-  const actions = props.render_actions({ has_content: has_sendable_content, image_processing });
-  const image_count = draft_attachments.reduce(
-    (count, attachment) => count + (attachment.kind === "image" ? 1 : 0),
-    0,
-  );
-  const image_limit_reached = image_count >= AGENT_MESSAGE_IMAGE_LIMIT;
-  const can_append_images =
-    !editor_read_only && !assistant_editing && !image_processing && !image_limit_reached;
+  const actions = props.render_actions({ has_content: has_sendable_content, uploads_pending });
+  const can_append_files = !editor_read_only && !assistant_editing;
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
@@ -324,9 +301,9 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 )
               ) {
                 input_history_index_ref.current = null;
-                input_session_ref.current.write_draft({
+                input_session_ref.current.draft.write({
                   text: state.doc.toString(),
-                  attachments: draft_attachments_ref.current,
+                  attachments: input_session_ref.current.draft.read().attachments,
                 });
               }
               emit_snapshot(state);
@@ -349,19 +326,11 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   useEffect(() => {
     const view = view_ref.current;
     if (view === null) return;
+    const current = input_session_ref.current.draft.read();
+    if (view.state.doc.toString() === current.text) return;
     input_history_index_ref.current = null;
-    const draft = input_session_ref.current.read_draft();
-    draft_attachments_ref.current = structuredClone(draft.attachments);
-    set_draft_attachments([...draft_attachments_ref.current]);
-    write_agent_message_text(view, draft.text, input_session_sync_annotations);
-  }, [props.input_session, input_revision]);
-
-  useEffect(() => {
-    view_ref.current?.dispatch({
-      effects: set_mention_tokens_effect.of(create_agent_mention_tokens(props.skills)),
-      annotations: input_session_sync_annotations,
-    });
-  }, [props.skills]);
+    write_agent_message_text(view, current.text, input_session_sync_annotations);
+  }, [props.input_session, input_revision, draft.text]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -447,62 +416,30 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
   select_candidate_ref.current = select_candidate;
 
   /** 同步更新异步判定、可见附件与跨路由草稿，唯一数组同时拥有混排顺序。 */
-  const write_draft_attachments = useCallback((attachments: AgentMessageAttachment[]): void => {
-    draft_attachments_ref.current = attachments;
-    set_draft_attachments(attachments);
-    input_session_ref.current.write_draft({
-      text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.read_draft().text,
+  const write_draft_attachments = useCallback((attachments: AgentDraftAttachment[]): void => {
+    input_session_ref.current.draft.write({
+      text: view_ref.current?.state.doc.toString() ?? input_session_ref.current.draft.read().text,
       attachments,
     });
   }, []);
 
-  /** 三类输入共用后端图片准备入口；同步锁避免同一帧重复批次打乱图片顺序。 */
-  const append_image_files = async (files: Iterable<File>): Promise<void> => {
-    if (!can_append_images || image_processing_ref.current) return;
-    const view = view_ref.current;
-    if (view === null) return;
-    const session = input_session_ref.current;
-    const revision = session.revision;
-    // 转换属于发起时的编辑器和草稿；卸载或替换后丢弃结果及错误，避免污染新输入。
-    const is_current = (): boolean =>
-      view_ref.current === view &&
-      input_session_ref.current === session &&
-      session.revision === revision;
-    const current_image_count = draft_attachments_ref.current.filter(
-      (attachment) => attachment.kind === "image",
-    ).length;
-    const remaining_slots = AGENT_MESSAGE_IMAGE_LIMIT - current_image_count;
-    if (remaining_slots <= 0) return;
-    const input_files = Array.from(files).slice(0, remaining_slots);
-    if (input_files.length === 0) return;
-    image_processing_ref.current = true;
-    set_image_processing(true);
-    try {
-      const images = await normalize_agent_images(input_files);
-      if (!is_current()) return;
-      // 批次互斥且草稿仍有效，转换期间图片数量不会增加；读取最新附件以保留期间加入的批注。
-      write_draft_attachments([
-        ...draft_attachments_ref.current,
-        ...images.map<AgentMessageAttachment>((webpBase64) => ({ kind: "image", webpBase64 })),
-      ]);
-    } catch {
-      if (is_current()) props.on_image_error();
-    } finally {
-      image_processing_ref.current = false;
-      if (view_ref.current === view) set_image_processing(false);
-    }
+  /** 输入只交给常驻草稿，上传状态和取消由草稿自身拥有。 */
+  const append_files = (files: Iterable<File>): void => {
+    if (can_append_files) props.input_session.draft.append(files);
   };
 
   /** 按混合附件列表的原始索引删除，并同步权威草稿。 */
   const remove_attachment = (index: number): void => {
     write_draft_attachments(
-      draft_attachments_ref.current.filter((_, attachment_index) => attachment_index !== index),
+      input_session_ref.current.draft
+        .read()
+        .attachments.filter((_, attachment_index) => attachment_index !== index),
     );
   };
 
   /** 附件组件只提交用户意图，Composer 仍在当前权威草稿中按原索引写入。 */
   const update_annotation = (index: number, comment: string): void => {
-    const current = draft_attachments_ref.current;
+    const current = input_session_ref.current.draft.read().attachments;
     const annotation = current[index];
     if (annotation?.kind !== "response_annotation") return;
     write_draft_attachments(
@@ -526,7 +463,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       /** 复制批注后加入当前草稿，助手历史编辑遵循纯正文边界。 */
       add_response_annotation(annotation) {
         if (editor_read_only || assistant_editing) return;
-        write_draft_attachments([...draft_attachments_ref.current, structuredClone(annotation)]);
+        write_draft_attachments([
+          ...input_session_ref.current.draft.read().attachments,
+          structuredClone(annotation),
+        ]);
         view_ref.current?.focus();
       },
       /** 页面动作完成后将焦点交回当前编辑器。 */
@@ -542,7 +482,20 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     const view = view_ref.current;
     if (view === null || !actions.can_submit) return;
     const text = view.state.doc.toString().trim();
-    props.on_submit({ text, attachments: structuredClone(draft_attachments_ref.current) });
+    if (
+      input_session_ref.current.draft
+        .read()
+        .attachments.some((attachment) => attachment.kind === "upload")
+    )
+      return;
+    props.on_submit({
+      text,
+      attachments: structuredClone(
+        input_session_ref.current.draft
+          .read()
+          .attachments.filter((attachment) => attachment.kind !== "upload"),
+      ),
+    });
   };
   submit_ref.current = submit;
 
@@ -557,13 +510,13 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       onPaste={(event) => {
         if (event.clipboardData.files.length === 0) return;
         event.preventDefault();
-        void append_image_files(event.clipboardData.files);
+        append_files(event.clipboardData.files);
       }}
     >
-      <AgentImageDropTarget
-        target_ref={props.image_drop_target_ref ?? form_ref}
-        enabled={can_append_images}
-        on_files={append_image_files}
+      <AgentFileDropTarget
+        target_ref={props.file_drop_target_ref ?? form_ref}
+        enabled={can_append_files}
+        on_files={append_files}
       />
       {menu_open && (
         <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
@@ -579,6 +532,31 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
               {matching_skills.map((candidate, index) => render_candidate(candidate, index))}
             </div>
           )}
+          {(matching_files.length > 0 ||
+            file_query.status === "loading" ||
+            file_query.status === "error") && (
+            <div
+              className="agent-mention-menu__group"
+              role="group"
+              aria-labelledby="agent-mention-files-label"
+            >
+              <div id="agent-mention-files-label" className="agent-mention-menu__group-label">
+                {t("agent_page.mention.groups.files")}
+              </div>
+              {matching_files.map((candidate, index) =>
+                render_candidate(candidate, matching_skills.length + index),
+              )}
+              {file_query.status === "loading" && (
+                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.loading")}</p>
+              )}
+              {file_query.status === "error" && (
+                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.error")}</p>
+              )}
+              {candidate_groups.fileCount > matching_files.length && (
+                <p className="agent-mention-menu__empty">{t("agent_page.mention.files.more")}</p>
+              )}
+            </div>
+          )}
           {matching_instructions.length > 0 && (
             <div
               className="agent-mention-menu__group"
@@ -592,13 +570,15 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                 {t("agent_page.mention.groups.instructions")}
               </div>
               {matching_instructions.map((candidate, index) =>
-                render_candidate(candidate, matching_skills.length + index),
+                render_candidate(candidate, matching_skills.length + matching_files.length + index),
               )}
             </div>
           )}
-          {matching_candidates.length === 0 && (
-            <p className="agent-mention-menu__empty">{t("agent_page.mention.no_matches")}</p>
-          )}
+          {matching_candidates.length === 0 &&
+            file_query.status !== "loading" &&
+            file_query.status !== "error" && (
+              <p className="agent-mention-menu__empty">{t("agent_page.mention.no_matches")}</p>
+            )}
         </div>
       )}
       {!assistant_editing && draft_attachments.length > 0 ? (
@@ -607,9 +587,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
           key={input_revision}
           mode="draft"
           attachments={draft_attachments}
-          disabled={editor_read_only || image_processing}
+          disabled={editor_read_only}
           on_update_annotation={update_annotation}
           on_remove={remove_attachment}
+          on_retry={(id) => props.input_session.draft.retry(id)}
         />
       ) : null}
       <div className="agent-composer__editor">
@@ -619,11 +600,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         ref={file_input_ref}
         className="agent-composer__file-input"
         type="file"
-        accept={AGENT_IMAGE_FILE_ACCEPT}
         multiple
         tabIndex={-1}
         onChange={(event) => {
-          void append_image_files(event.currentTarget.files ?? []);
+          append_files(event.currentTarget.files ?? []);
           event.currentTarget.value = "";
         }}
       />
@@ -638,22 +618,18 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
                       type="button"
                       size="icon-sm"
                       variant="ghost"
-                      className="agent-composer__image-trigger"
-                      disabled={!can_append_images}
-                      aria-label={t("agent_page.action.add_image")}
+                      className="agent-composer__file-trigger"
+                      disabled={!can_append_files}
+                      aria-label={t("agent_page.action.add_file")}
                       onClick={() => file_input_ref.current?.click()}
                     >
-                      {image_processing ? (
-                        <LoaderCircle className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <ImagePlus aria-hidden="true" />
-                      )}
+                      <Paperclip aria-hidden="true" />
                     </AppButton>
                   </TooltipTarget>
                 }
               />
               <TooltipContent>
-                <p>{t("agent_page.action.add_image")}</p>
+                <p>{t("agent_page.action.add_file")}</p>
               </TooltipContent>
             </Tooltip>
           ) : null}
@@ -664,9 +640,10 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
     </form>
   );
 
-  /** 两个分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
+  /** 所有分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
   function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
-    const Icon = candidate.kind === "skill" ? Sparkles : Shrink;
+    const Icon =
+      candidate.kind === "skill" ? Sparkles : candidate.kind === "file" ? FileText : Shrink;
     return (
       <button
         id={`agent-mention-option-${index.toString()}`}
@@ -676,13 +653,14 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
         aria-selected={index === menu_index}
         disabled={candidate.kind === "instruction" && candidate.disabled}
         data-highlight={index === menu_index}
+        data-kind={candidate.kind}
         tabIndex={-1}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => select_candidate(candidate)}
       >
         <Icon aria-hidden="true" />
-        <strong>{candidate.title}</strong>
-        {candidate.description !== "" && <small>{candidate.description}</small>}
+        <MentionCell text={candidate.title} emphasis />
+        <MentionCell text={candidate.description} />
       </button>
     );
   }
@@ -724,7 +702,7 @@ export function AgentMessageEditor(props: AgentMessageEditorProps): JSX.Element 
       input_history_index_ref.current = null;
       write_agent_message_text(
         view,
-        input_session_ref.current.read_draft().text,
+        input_session_ref.current.draft.read().text,
         input_history_navigation_annotations,
       );
       return true;
@@ -767,13 +745,13 @@ function read_editor_snapshot(state: EditorState): EditorSnapshot {
   };
 }
 
-/** 只把光标前当前单词视为查询，不扫描整篇正文。 */
+/** 只读取当前行光标前的查询，允许路径包含空格。 */
 function find_mention_query(state: EditorState): MentionQuery | null {
   const selection = state.selection.main;
   if (!selection.empty) return null;
   const line = state.doc.lineAt(selection.head);
   const before = state.doc.sliceString(line.from, selection.head);
-  const match = before.match(/(^|\s)@([^\s@]*)$/u);
+  const match = before.match(/(^|\s)@([^@]*)$/u);
   if (match === null) return null;
   const from = selection.head - match[0].length + match[1].length;
   const token = state.field(mention_tokens_field).iter(from);
@@ -781,13 +759,10 @@ function find_mention_query(state: EditorState): MentionQuery | null {
   return { from, to: selection.head, text: match[2] ?? "" };
 }
 
-/** 把已知 marker 投影成原子视觉块，底层文档仍保留完整稳定协议。 */
-function create_mention_token_decorations(
-  text: string,
-  tokens: readonly AgentMentionToken[],
-): DecorationSet {
+/** 把完整引用投影成原子视觉块，底层文档仍保留完整稳定协议。 */
+function create_mention_token_decorations(text: string): DecorationSet {
   return Decoration.set(
-    find_agent_mention_ranges(text, tokens).map((range) =>
+    find_agent_reference_ranges(text).map((range) =>
       Decoration.replace({
         widget: new MentionTokenWidget(range.marker),
         inclusive: false,
@@ -829,4 +804,22 @@ class MentionTokenWidget extends WidgetType {
     const x = pos === 0 ? rect.left : rect.right + MentionTokenWidget.CURSOR_GAP_PX;
     return { left: x, right: x, top: rect.top, bottom: rect.bottom };
   }
+}
+
+/** 两列共用截断与应用提示，触发器保持为文本元素，整行负责选择。 */
+function MentionCell({
+  text,
+  emphasis = false,
+}: {
+  text: string;
+  emphasis?: boolean;
+}): JSX.Element {
+  const cell = emphasis ? <strong>{text}</strong> : <small>{text}</small>;
+  if (text === "") return cell;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={cell} tabIndex={-1} />
+      <TooltipContent align="start">{text}</TooltipContent>
+    </Tooltip>
+  );
 }

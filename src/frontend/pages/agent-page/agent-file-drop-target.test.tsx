@@ -1,13 +1,13 @@
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentImageDropTarget } from "./agent-image-drop-target";
+import { AgentFileDropTarget } from "./agent-file-drop-target";
 
 vi.mock("@frontend/app/locale/locale-context", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-describe("AgentImageDropTarget", () => {
+describe("AgentFileDropTarget", () => {
   let root: Root | null = null;
   let target: HTMLDivElement;
   const target_ref = createRef<HTMLElement>();
@@ -33,7 +33,7 @@ describe("AgentImageDropTarget", () => {
     }
     await act(async () =>
       root?.render(
-        <AgentImageDropTarget target_ref={target_ref} enabled={enabled} on_files={on_files} />,
+        <AgentFileDropTarget target_ref={target_ref} enabled={enabled} on_files={on_files} />,
       ),
     );
   }

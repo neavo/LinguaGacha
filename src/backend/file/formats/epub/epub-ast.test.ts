@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { describe, expect, it } from "vitest";
+import { write_zip } from "../../../../test/zip-fixture";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
 import { Item } from "../../../../domain/item";
@@ -119,12 +120,12 @@ describe("EpubAst", () => {
 
   it("提取 OPF 标题、NCX 目录并跳过非 HTML spine", async () => {
     const ast = new EpubAst();
-    const zip = new JSZip();
-    zip.file(
+    const zip = new Map<string, string | Uint8Array>();
+    zip.set(
       "META-INF/container.xml",
       `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
     );
-    zip.file(
+    zip.set(
       "OPS/package.opf",
       `<package version="x" xmlns:dc="http://purl.org/dc/elements/1.1/">
         <metadata><dc:title>  Book  Title  </dc:title></metadata>
@@ -136,12 +137,12 @@ describe("EpubAst", () => {
         <spine toc="ncx"><itemref idref="bin"/><itemref idref="chap"/></spine>
       </package>`,
     );
-    zip.file("OPS/chapter.xhtm", "<html><body><p>正文</p></body></html>");
-    zip.file(
+    zip.set("OPS/chapter.xhtm", "<html><body><p>正文</p></body></html>");
+    zip.set(
       "OPS/toc.ncx",
       "<ncx><navMap><navPoint><navLabel><text>A&B</text></navLabel></navPoint></navMap></ncx>",
     );
-    const epub_asset = await zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+    const epub_asset = await write_zip(zip);
 
     const items = await ast.read_from_stream(epub_asset, "book.epub");
 
@@ -155,12 +156,12 @@ describe("EpubAst", () => {
 
   it("回归 EPUB issue：多个 spine 文档都会提取正文，不会只读取前言", async () => {
     const ast = new EpubAst();
-    const zip = new JSZip();
-    zip.file(
+    const zip = new Map<string, string | Uint8Array>();
+    zip.set(
       "META-INF/container.xml",
       `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
     );
-    zip.file(
+    zip.set(
       "OPS/package.opf",
       `<package version="3.0">
         <manifest>
@@ -175,10 +176,10 @@ describe("EpubAst", () => {
         </spine>
       </package>`,
     );
-    zip.file("OPS/intro.xhtml", "<html><body><p>前言</p></body></html>");
-    zip.file("OPS/chapter.xhtml", "<html><body><p>正文</p><p>第二段</p></body></html>");
-    zip.file("OPS/tail.xhtml", "<html><body><p>尾声</p></body></html>");
-    const epub_asset = await zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+    zip.set("OPS/intro.xhtml", "<html><body><p>前言</p></body></html>");
+    zip.set("OPS/chapter.xhtml", "<html><body><p>正文</p><p>第二段</p></body></html>");
+    zip.set("OPS/tail.xhtml", "<html><body><p>尾声</p></body></html>");
+    const epub_asset = await write_zip(zip);
 
     const items = await ast.read_from_stream(epub_asset, "book.epub");
 
@@ -307,10 +308,11 @@ describe("EpubAst", () => {
 
   it("EPUB 入口缺少 OPF rootfile 时抛出文件结构错误", async () => {
     const ast = new EpubAst();
-    const zip = new JSZip();
-    zip.file("META-INF/container.xml", "<container><rootfiles></rootfiles></container>");
+    const zip = new Map<string, string | Uint8Array>();
+    zip.set("META-INF/container.xml", "<container><rootfiles></rootfiles></container>");
 
-    await expect(ast.parse_container_opf_path(zip)).rejects.toMatchObject({
+    const archive = await JSZip.loadAsync(await write_zip(zip));
+    await expect(ast.parse_container_opf_path(archive)).rejects.toMatchObject({
       code: "file.invalid_structure",
     });
   });

@@ -546,3 +546,18 @@ it("PDF 摘要区分译稿覆盖、确认保留和省略，核对标记独立于
     omitted_pages: 1,
   });
 });
+
+it("文件候选按外层路径统计全部条目", () => {
+  const { database, lg_path } = create_database_project("file-counts");
+  database.set_items(lg_path, [
+    { file_path: "目录/书.epub", src: "一", status: "NONE" },
+    { file_path: "目录/书.epub", src: "二", status: "EXCLUDED" },
+    { file_path: "规则.xlsx", src: "三", status: "PROCESSED" },
+  ]);
+  expect(database.read_file_counts(lg_path)).toEqual(
+    new Map([
+      ["目录/书.epub", 2],
+      ["规则.xlsx", 1],
+    ]),
+  );
+});

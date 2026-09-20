@@ -3,18 +3,18 @@ import { createPortal } from "react-dom";
 import { useI18n } from "@frontend/app/locale/locale-context";
 import { useWindowDeactivation } from "@frontend/widgets/interactions/use-window-deactivation";
 
-type AgentImageDropTargetProps = {
+type AgentFileDropTargetProps = {
   target_ref: RefObject<HTMLElement | null>;
   enabled: boolean;
-  on_files: (files: readonly File[]) => Promise<void>;
+  on_files: (files: readonly File[]) => void;
 };
 
-/** 编辑器拥有图片输入能力；接收区域只负责文件事件和同一区域内的反馈。 */
-export function AgentImageDropTarget({
+/** 编辑器拥有文件输入能力；接收区域只负责文件事件和同一区域内的反馈。 */
+export function AgentFileDropTarget({
   target_ref,
   enabled,
   on_files,
-}: AgentImageDropTargetProps): JSX.Element | null {
+}: AgentFileDropTargetProps): JSX.Element | null {
   const { t } = useI18n();
   const [target, set_target] = useState<HTMLElement | null>(null);
   const [active, set_active] = useState(false);
@@ -52,7 +52,7 @@ export function AgentImageDropTarget({
         break;
       case "drop":
         reset();
-        if (enabled) void on_files(Array.from(transfer.files));
+        if (enabled) on_files(Array.from(transfer.files));
         break;
     }
   });
@@ -73,11 +73,11 @@ export function AgentImageDropTarget({
     ? null
     : createPortal(
         <div
-          className="agent-image-drop-overlay"
+          className="agent-file-drop-overlay"
           data-active={active && enabled ? "true" : undefined}
           aria-hidden={!active || !enabled}
         >
-          {t("agent_page.input.drop_images")}
+          {t("agent_page.input.drop_files")}
         </div>,
         target,
       );

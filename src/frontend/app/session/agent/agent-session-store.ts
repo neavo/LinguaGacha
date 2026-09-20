@@ -1,3 +1,5 @@
+import { AgentInputDraft } from "./agent-input-draft";
+import { agent_message_request } from "@shared/agent";
 import type {
   AgentApprovalMode,
   AgentCommandAck,
@@ -79,8 +81,7 @@ export type AgentSkillsSlice = Readonly<{ skills: readonly AgentSkillSnapshot[] 
 
 export type AgentInputSession = {
   revision: number;
-  read_draft: () => AgentMessageInput;
-  write_draft: (draft: AgentMessageInput) => void;
+  draft: AgentInputDraft;
   read_history: () => readonly string[];
   replace_history: (previous_text: string, next_text: string) => void;
 };
@@ -124,6 +125,7 @@ const EMPTY_SKILLS: AgentSkillsSlice = { skills: [] };
 
 /** renderer 侧唯一 Agent 会话镜像；后端事实经 revision 校验进入切片，本地决策时钟独立发布。 */
 export class AgentSessionStore {
+  private session_id: string | null = null;
   private timeline = EMPTY_TIMELINE;
   private controls = EMPTY_CONTROLS;
   private queue = EMPTY_QUEUE;
@@ -137,7 +139,7 @@ export class AgentSessionStore {
   private restoring_generation: number | null = null; // 同一连接世代只允许一个 snapshot 恢复请求
   private pending_events: AgentSessionEvent[] = []; // snapshot 期间暂存，成功后按 revision 重放
   private command_events: CommandEventQueue | null = null;
-  private draft: AgentMessageInput = { text: "", attachments: [] };
+  private readonly draft = new AgentInputDraft();
   private input_history: string[];
   private readonly listeners: Record<StoreSlice, Set<Listener>> = {
     timeline: new Set(),
@@ -205,6 +207,8 @@ export class AgentSessionStore {
   public readonly get_todo = (): AgentTodoSlice => this.todo;
   /** 返回当前可用技能集合。 */
   public readonly get_skills = (): AgentSkillsSlice => this.skills;
+  /** 返回当前对话身份，用于隔离异步文件查询。 */
+  public readonly get_session_id = (): string | null => this.session_id;
   /** 返回跨路由稳定的草稿与历史入口。 */
   public readonly get_input = (): AgentInputSession => this.input;
   /** 返回前端时钟缓存，隔离每秒更新。 */
@@ -382,6 +386,12 @@ export class AgentSessionStore {
   /** 旧快照不得覆盖已确认的新投影；合法恢复一次性替换完整业务切片。 */
   private apply_snapshot(snapshot: AgentSessionSnapshot): void {
     if (snapshot.revision < this.revision) return;
+    if (this.session_id !== null && snapshot.sessionId !== this.session_id) {
+      this.draft.clear();
+      this.input = this.create_input_session(this.input.revision + 1);
+      this.emit("input");
+    }
+    this.session_id = snapshot.sessionId;
     this.revision = snapshot.revision;
     this.timeline = { entries: snapshot.entries };
     this.queue = { inputQueue: snapshot.inputQueue };
@@ -510,7 +520,7 @@ export class AgentSessionStore {
     if (normalized === null) return;
     await this.execute_command(
       "send",
-      () => api_fetch<AgentCommandAck>("/api/agent/message", normalized),
+      () => api_fetch<AgentCommandAck>("/api/agent/message", agent_message_request(normalized)),
       () => this.accept_message(normalized),
     );
   };
@@ -523,7 +533,10 @@ export class AgentSessionStore {
     const normalized = normalize_agent_message_input(message);
     if (normalized === null) return;
     await this.execute_command("queue_update", () =>
-      api_fetch<AgentCommandAck>("/api/agent/queue/update", { id, message: normalized }),
+      api_fetch<AgentCommandAck>("/api/agent/queue/update", {
+        id,
+        message: agent_message_request(normalized),
+      }),
     );
   };
 
@@ -565,7 +578,7 @@ export class AgentSessionStore {
     await this.execute_command("revise", () =>
       api_fetch<AgentCommandAck>("/api/agent/round/revise", {
         entryId: entry_id,
-        message: normalized,
+        message: agent_message_request(normalized),
       }),
     );
   };
@@ -590,7 +603,7 @@ export class AgentSessionStore {
       () =>
         api_fetch<AgentCommandAck>(
           "/api/agent/continue",
-          normalized === undefined ? {} : { message: normalized },
+          normalized === undefined ? {} : { message: agent_message_request(normalized) },
         ),
       normalized === undefined ? undefined : () => this.accept_message(normalized),
     );
@@ -674,10 +687,7 @@ export class AgentSessionStore {
   private create_input_session(revision: number): AgentInputSession {
     return {
       revision,
-      read_draft: () => this.draft,
-      write_draft: (draft) => {
-        this.draft = draft;
-      },
+      draft: this.draft,
       read_history: () => this.input_history,
       replace_history: (previous_text, next_text) => {
         this.input_history = replace_agent_input_history(
@@ -699,7 +709,7 @@ export class AgentSessionStore {
         message.text,
       );
     }
-    this.draft = { text: "", attachments: [] };
+    this.draft.clear();
     this.input = this.create_input_session(this.input.revision + 1);
     this.emit("input");
   }
@@ -714,6 +724,9 @@ function normalize_acknowledgement(value: unknown): AgentCommandAck {
 /** API 与 SSE 都是不可信 JSON 边界，完整快照必须一次通过全部公开字段。 */
 function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const record = read_json_record(value);
+  const session_id = record["sessionId"];
+  if (typeof session_id !== "string" || session_id === "")
+    throw new TypeError("Agent session identity is invalid.");
   const revision = normalize_revision(record["revision"], "snapshot");
   const state = normalize_state(record["state"]);
   const approval_mode = normalize_approval_mode(record["approvalMode"]);
@@ -735,6 +748,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     throw new TypeError("Agent snapshot is invalid.");
   }
   return {
+    sessionId: session_id,
     revision,
     state,
     approvalMode: approval_mode,

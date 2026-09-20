@@ -1,3 +1,8 @@
+vi.mock("@frontend/app/desktop/desktop-api", () => ({
+  api_blob: async () => new Blob([], { type: "image/png" }),
+  api_file_url: (path: string) => `http://localhost${path}`,
+}));
+import { uploaded_file } from "../../../test/agent-upload-fixture";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,14 +29,7 @@ vi.mock("@frontend/app/appearance/appearance-context", () => ({
 }));
 
 import { AgentTimeline } from "./agent-timeline";
-import { create_agent_mention_tokens } from "./agent-mention";
 
-const MENTION_TOKENS = create_agent_mention_tokens([
-  {
-    name: "glossary-audit",
-    displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "", "ja-JP": "", "ko-KR": "" },
-  },
-]);
 type ScrollMetrics = {
   top: number;
   height: number;
@@ -100,7 +98,7 @@ describe("AgentTimeline", () => {
         <TooltipProvider>
           <AgentTimeline
             entries={entries}
-            mention_tokens={MENTION_TOKENS}
+
             follow_reset_revision={follow_reset_revision}
             on_continue={on_continue}
             on_edit={on_edit}
@@ -603,7 +601,7 @@ describe("AgentTimeline", () => {
 
   it("按后端顺序渲染工具摘要并只在唯一模态挂载当前输出", async () => {
     const view = await render_timeline([
-      user_entry("user-1", "请用 @skill(glossary-audit)\n查询", "success", 0, 2_000),
+      user_entry("user-1", '请用 @skill("glossary-audit")\n查询', "success", 0, 2_000),
       assistant_entry("assistant-1", "准备查询", "success", 1000),
       tool_entry(
         "tool-1",
@@ -628,7 +626,7 @@ describe("AgentTimeline", () => {
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     expect(get_tool_dialog_text()).toContain('"src": "Alice"');
     expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(
-      "请用 @skill(glossary-audit)\n查询",
+      '请用 @skill("glossary-audit")\n查询',
     );
     expect(view.querySelector(".agent-round-footer")?.textContent).toContain("2s");
   });
@@ -659,7 +657,7 @@ function user_entry(
     id,
     delivery: "round" as const,
     text,
-    attachments: images.map((webpBase64) => ({ kind: "image" as const, webpBase64 })),
+    attachments: images.map((id) => uploaded_file(id)),
     status,
     createdAt,
     endedAt,

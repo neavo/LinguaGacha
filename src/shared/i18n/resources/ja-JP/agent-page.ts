@@ -37,10 +37,19 @@ export const ja_jp_agent_page = {
     placeholder: "タスクを入力するか、@ でスキルや指示を選択 …",
     edit_assistant_placeholder: "モデルの返信を編集 …",
     newline: "改行",
-    drop_images: "ドロップして画像を追加",
+    drop_files: "ドロップしてファイルを追加",
   },
   mention: {
-    groups: { skills: "スキル", instructions: "指示" },
+    files: {
+      project: "プロジェクト",
+      upload: "アップロード",
+      items: "{COUNT} 件",
+      pages: "{COUNT} ページ",
+      loading: "ファイルを読み込み中…",
+      error: "読み込みに失敗しました。メニューを開き直してください。",
+      more: "入力を続けて候補を絞り込んでください。",
+    },
+    groups: { files: "ファイル", skills: "スキル", instructions: "指示" },
     instructions: {
       compact_context: {
         title: "コンテキストを圧縮",
@@ -95,7 +104,7 @@ export const ja_jp_agent_page = {
     stop: "停止",
     applying: "プロジェクトの変更を適用中です。完了するまで停止できません",
     new_task: "新しいタスク",
-    add_image: "画像を追加",
+    add_file: "ファイルを追加",
     continue: "続ける",
     edit: "編集",
     copy: "コピー",
@@ -135,6 +144,7 @@ export const ja_jp_agent_page = {
     error: "失敗 · {duration}",
     stopped: "停止済み · {duration}",
   },
+  upload: { uploading: "アップロード中", failed: "アップロードに失敗", retry: "再試行" },
   file_saved: "ファイルを保存しました。",
   error: {
     activate_link: "リンクを処理できませんでした。",
@@ -148,7 +158,6 @@ export const ja_jp_agent_page = {
     queue_delete: "待機中のメッセージを削除できませんでした。再試行してください。",
     queue_reorder: "キューの順序を更新できませんでした。再試行してください。",
     queue_send: "メッセージを今すぐ送信できませんでした。キューに保持されています。",
-    image: "画像を読み込めませんでした。PNG、JPG、BMP、WebP、AVIF に対応しています。",
     stop: "停止できませんでした。再試行してください。",
     reset: "新しいタスクを作成できませんでした。再試行してください。",
     approval_mode: "書き込みの承認モードを更新できませんでした。再試行してください。",

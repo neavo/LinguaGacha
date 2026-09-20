@@ -1,3 +1,4 @@
+import http from "node:http";
 import { create_workspace_runtime_fixture } from "../../test/agent-workspace-fixture";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,31 +11,16 @@ import { AppPathService } from "../app/app-path-service";
 import { LLMClient } from "../llm/llm-client";
 
 describe("GuiBackendBootstrap 集成", () => {
-  it("关闭 Gateway 时取消正在准备的图片并排空请求", async ({ onTestFinished }) => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-image-upload-"));
+  it("关闭 Gateway 时取消流式上传并清理半成品", async ({ onTestFinished }) => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "lg-file-upload-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf8");
     onTestFinished(() => fs.rmSync(app_root, { recursive: true, force: true }));
-    let entered!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    let cancelled = false;
     const bootstrap = new GuiBackendBootstrap({
       appRoot: app_root,
       builtinRoot: path.resolve("builtin"),
       logTargets: { console: false, window: false },
-      imageHost: async (_request, signal) => {
-        entered();
-        return await new Promise((_resolve, reject) =>
-          signal.addEventListener(
-            "abort",
-            () => {
-              cancelled = true;
-              reject(signal.reason);
-            },
-            { once: true },
-          ),
-        );
+      imageHost: async () => {
+        throw new Error("Upload must not decode images");
       },
       systemProxyResolver: { resolveProxy: async () => "DIRECT" },
       workspaceRuntimeDirectory: create_workspace_runtime_fixture(app_root),
@@ -44,17 +30,48 @@ describe("GuiBackendBootstrap 集成", () => {
     });
     try {
       const { apiBaseUrl } = await bootstrap.start();
-      const pending = Promise.allSettled([
-        fetch(`${apiBaseUrl}/api/agent/image/prepare`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: Buffer.from("RIFF0000WEBPfixture").toString("base64") }),
+      const source = path.join(app_root, "source.txt");
+      fs.writeFileSync(source, "source");
+      const created = await fetch(`${apiBaseUrl}/api/session/project/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: path.join(app_root, "test.lg"),
+          source_paths: [source],
+          project_settings: {
+            source_language: "EN",
+            target_language: "ZH",
+            skip_duplicate_source_text_enable: true,
+            mtool_optimizer_enable: false,
+          },
         }),
-      ]);
-      await ready;
+      });
+      expect(await created.json()).toMatchObject({ ok: true });
+      const paths = new AppPathService({ appRoot: app_root, builtinRoot: path.resolve("builtin") });
+      const uploads = path.join(paths.get_agent_workspace_root_dir(), "uploads");
+      const pending = new Promise<void>((resolve) => {
+        const request = http.request(
+          `${apiBaseUrl}/api/agent/uploads?name=unfinished.bin`,
+          { method: "POST", headers: { "Content-Type": "application/octet-stream" } },
+          (response) => {
+            response.resume();
+            response.on("end", resolve);
+          },
+        );
+        request.on("error", () => resolve());
+        request.write(Buffer.from([0, 255, 1]));
+        onTestFinished(() => {
+          request.destroy();
+        });
+      });
+      await vi.waitFor(() =>
+        expect(
+          fs.existsSync(uploads) && fs.readdirSync(uploads).some((name) => name.endsWith(".part")),
+        ).toBe(true),
+      );
       await bootstrap.stop();
       await pending;
-      expect(cancelled).toBe(true);
+      expect(fs.existsSync(uploads)).toBe(false);
       expect(bootstrap.isStopped()).toBe(true);
     } finally {
       await bootstrap.stop();

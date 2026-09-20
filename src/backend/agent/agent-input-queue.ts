@@ -85,32 +85,15 @@ export class AgentInputQueue {
     this.items = ordered as AgentQueuedInput[];
   }
 
-  /** 自动续取遵守暂停态，并在 steer 尚未提交时保持 FIFO 不动。 */
-  public take_next(): AgentQueuedInput | null {
-    if (this.paused || this.items.some((item) => item.status === "sending")) return null;
-    const index = this.items.findIndex((item) => item.status === "queued");
-    if (index < 0) return null;
-    const item = this.items.splice(index, 1)[0]!;
-    this.normalize_pause();
-    return structuredClone(item);
-  }
-
-  /** 显式启动选中项时只允许提交仍处于 queued 的身份。 */
-  public take(id: string): AgentQueuedInput {
-    const index = this.find_queued_index(id);
-    const item = this.items.splice(index, 1)[0]!;
-    this.normalize_pause();
-    return structuredClone(item);
-  }
-
   /** 异步准备运行时前读取选中项，但不提前移除。 */
   public read(id: string): AgentQueuedInput {
     const index = this.find_queued_index(id);
     return structuredClone(this.items[index]!);
   }
 
-  /** continue 在取得 lease 后读取当前 FIFO 队首。 */
+  /** 读取等待队首但不提交，准备完成后统一通过 commit_send 消费。 */
   public read_next(): AgentQueuedInput | null {
+    if (this.paused || this.items.some((item) => item.status === "sending")) return null;
     const item = this.items.find((candidate) => candidate.status === "queued");
     return item === undefined ? null : structuredClone(item);
   }
@@ -133,7 +116,7 @@ export class AgentInputQueue {
     return structuredClone(sending);
   }
 
-  /** Pi 确认消费 user 后才从队列永久移除 sending 项。 */
+  /** 普通轮次准备成功或 Pi 确认 steer 后，从队列永久移除 sending 项。 */
   public commit_send(): AgentQueuedInput | null {
     const index = this.items.findIndex((item) => item.status === "sending");
     if (index < 0) return null;

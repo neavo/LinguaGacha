@@ -246,6 +246,25 @@ export async function api_fetch<data_type>(
   });
 }
 
+/** 文件字节直接交给浏览器传输，复用 JSON 回执和错误映射。 */
+export async function api_upload<data_type>(
+  path: string,
+  file: Blob,
+  signal: AbortSignal,
+): Promise<data_type> {
+  return api_request<data_type>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+    signal,
+  });
+}
+
+/** 文件下载链接只消费宿主注入的后端地址。 */
+export function api_file_url(path: string): string {
+  return build_api_url(read_backend_api_base_url(), path);
+}
+
 /**
  * 通过同一错误映射读取 Backend GET query。
  */
@@ -257,13 +276,7 @@ export async function api_get<data_type>(path: string): Promise<data_type> {
  * 收口 Backend 请求、网络异常与公开错误 envelope，调用方只接收 data。
  */
 async function api_request<data_type>(path: string, init: RequestInit): Promise<data_type> {
-  const base_url = read_backend_api_base_url();
-  let response: Response;
-  try {
-    response = await fetch(build_api_url(base_url, path), init);
-  } catch (error) {
-    throw create_network_error(path, error);
-  }
+  const response = await fetch_api_response(path, init);
   const payload = await read_api_envelope<data_type>(response);
 
   if (!response.ok || payload?.ok !== true || payload.data === undefined) {
@@ -271,6 +284,23 @@ async function api_request<data_type>(path: string, init: RequestInit): Promise<
   }
 
   return payload.data;
+}
+
+/** 字节预览复用网络与错误边界，由组件管理 Blob URL 生命周期。 */
+export async function api_blob(path: string, signal: AbortSignal): Promise<Blob> {
+  const response = await fetch_api_response(path, { method: "GET", signal });
+  if (!response.ok) throw build_desktop_api_error(path, await read_api_envelope(response));
+  return response.blob();
+}
+
+/** 各类请求共用宿主地址和网络错误转换。 */
+async function fetch_api_response(path: string, init: RequestInit): Promise<Response> {
+  const base_url = read_backend_api_base_url();
+  try {
+    return await fetch(build_api_url(base_url, path), init);
+  } catch (error) {
+    throw create_network_error(path, error);
+  }
 }
 
 /**

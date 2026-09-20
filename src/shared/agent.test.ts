@@ -1,8 +1,7 @@
+import { uploaded_file } from "../test/agent-upload-fixture";
 import { describe, expect, it } from "vitest";
 
 import {
-  find_agent_reference_ranges,
-  format_agent_skill_reference,
   normalize_agent_assistant_message_parts,
   normalize_agent_message_input,
   normalize_agent_revision_request,
@@ -45,14 +44,14 @@ describe("Agent 用户消息协议", () => {
       normalize_agent_message_input({
         text: "  处理附件  ",
         attachments: [
-          { kind: "image", webpBase64: " image-a " },
+          uploaded_file("image-a"),
           { kind: "response_annotation", selectedText: " 旧回复 ", comment: " 改写 " },
         ],
       }),
     ).toEqual({
       text: "处理附件",
       attachments: [
-        { kind: "image", webpBase64: "image-a" },
+        uploaded_file("image-a"),
         { kind: "response_annotation", selectedText: "旧回复", comment: "改写" },
       ],
     });
@@ -76,25 +75,20 @@ describe("Agent 用户消息协议", () => {
     ).toBeNull();
   });
 
-  it("按输入顺序只保留前十张图片并忽略溢出项", () => {
-    const accepted_images = Array.from({ length: 10 }, (_, index) => `image-${index + 1}`);
-
+  it("请求只信任上传身份，快照保留后端记录并拒绝旧图片载荷", () => {
+    const file = uploaded_file("known");
+    expect(
+      normalize_agent_message_input(
+        { text: "", attachments: [{ kind: "file", uploadId: "known", path: "../../private" }] },
+        () => file,
+      ),
+    ).toEqual({ text: "", attachments: [file] });
     expect(
       normalize_agent_message_input({
         text: "",
-        attachments: [
-          ...accepted_images.map((webpBase64) => ({ kind: "image", webpBase64 })),
-          { kind: "image", webpBase64: 1 },
-          { kind: "response_annotation", selectedText: "旧回复", comment: "保留" },
-        ],
+        attachments: [{ kind: "image", webpBase64: "old" }],
       }),
-    ).toEqual({
-      text: "",
-      attachments: [
-        ...accepted_images.map((webpBase64) => ({ kind: "image", webpBase64 })),
-        { kind: "response_annotation", selectedText: "旧回复", comment: "保留" },
-      ],
-    });
+    ).toBeNull();
   });
 
   it("规范轮次修订的目标身份与替换消息", () => {
@@ -108,21 +102,5 @@ describe("Agent 用户消息协议", () => {
       normalize_agent_revision_request({ entryId: "", message: { text: "修订", attachments: [] } }),
     ).toBeNull();
     expect(normalize_agent_revision_request({ entryId: "assistant-1" })).toBeNull();
-  });
-
-  it("生成固定能力 marker", () => {
-    expect(format_agent_skill_reference("glossary-review")).toBe("@skill(glossary-review)");
-  });
-
-  it("按长 marker 优先解析未转义引用，并保留偶数反斜线后的真实引用", () => {
-    expect(
-      find_agent_reference_ranges(
-        String.raw`\@skill(review) \\@skill(review) @skill(review-long)`,
-        ["@skill(review)", "@skill(review-long)"],
-      ),
-    ).toEqual([
-      { from: 18, to: 32, marker: "@skill(review)" },
-      { from: 33, to: 52, marker: "@skill(review-long)" },
-    ]);
   });
 });

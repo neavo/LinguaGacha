@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -28,7 +28,7 @@ vi.mock("@frontend/app/feedback/visible-error-message", () => ({
 vi.mock("./agent-message-editor", () => ({
   AgentMessageEditor: (props: MockComposerProps) => (
     <div data-read_only={props.read_only ? "true" : "false"}>
-      <span data-draft>{props.input_session.read_draft().text}</span>
+      <span data-draft>{props.input_session.draft.read().text}</span>
       <button
         type="button"
         data-send
@@ -123,16 +123,17 @@ describe("AgentInlineEditor", () => {
     root = createRoot(container);
     act(() => {
       root?.render(
-        <AgentInlineEditor
-          target={target}
-          skills={[]}
-          command={null}
-          unavailable_reason={null}
-          on_save={on_save}
-          on_saved={on_saved}
-          on_cancel={on_cancel}
-          on_image_error={vi.fn()}
-        />,
+        <StrictMode>
+          <AgentInlineEditor
+            target={target}
+            skills={[]}
+            command={null}
+            unavailable_reason={null}
+            on_save={on_save}
+            on_saved={on_saved}
+            on_cancel={on_cancel}
+          />
+        </StrictMode>,
       );
     });
     return container;

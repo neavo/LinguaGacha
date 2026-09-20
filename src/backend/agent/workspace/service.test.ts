@@ -337,7 +337,6 @@ describe("AgentWorkspaceService", () => {
         {
           file_path: "script.txt",
           file_type: "TXT",
-          source_text_path: "sources/script.txt",
         },
       ],
     });
@@ -1032,6 +1031,7 @@ function create_fixture(temp_dir: string, native_fs?: NativeFs) {
       read_asset_content,
       read_pdf_document: () => null,
       read_pdf_documents: () => [],
+      read_file_counts: () => new Map(),
     },
     runtimeGate: { run_agent_project_write: runtime_gate },
     writeStore: { apply_agent_workspace_changes: write_store },

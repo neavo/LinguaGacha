@@ -11,7 +11,6 @@ import { RenPyFormat } from "./formats/renpy/renpy-format";
 import { SRTFormat } from "./formats/srt-format";
 import { TRANSFormat } from "./formats/trans/trans-format";
 import { TXTFormat } from "./formats/txt-format";
-import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub/epub-format";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -46,7 +45,6 @@ export class FileFormatService {
   private readonly kvjson: KVJSONFormat;
   private readonly messagejson: MESSAGEJSONFormat;
   private readonly xlsx: XLSXFormat;
-  private readonly wolfxlsx: WOLFXLSXFormat;
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
   private readonly epub: EPUBFormat;
@@ -67,7 +65,6 @@ export class FileFormatService {
     this.kvjson = new KVJSONFormat();
     this.messagejson = new MESSAGEJSONFormat(config);
     this.xlsx = new XLSXFormat();
-    this.wolfxlsx = new WOLFXLSXFormat();
     this.trans = new TRANSFormat();
     this.renpy = new RenPyFormat(config);
     this.epub = new EPUBFormat(config);
@@ -104,12 +101,9 @@ export class FileFormatService {
       case ".srt":
         format = this.srt;
         break;
-      case ".xlsx": {
-        const items = await this.wolfxlsx.read_from_stream(content, rel_path);
-        if (items.length > 0) return { items, kind: "items" };
+      case ".xlsx":
         format = this.xlsx;
         break;
-      }
       case ".json": {
         const items = await this.kvjson.read_from_stream(content, rel_path);
         if (items.length > 0) return { items, kind: "items" };
@@ -217,8 +211,7 @@ export class FileFormatService {
     await this.srt.write_to_path(items, paths);
     await this.kvjson.write_to_path(items, paths);
     await this.messagejson.write_to_path(items, paths);
-    await this.xlsx.write_to_path(items, paths);
-    await this.wolfxlsx.write_to_path(items, paths, asset_reader);
+    await this.xlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
     await this.epub.write_to_path(items, paths, asset_reader);

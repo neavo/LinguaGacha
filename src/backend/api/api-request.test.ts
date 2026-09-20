@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import { register_post_json_route } from "./api-json";
+import { register_post_json_route } from "./api-request";
 
 describe("register_post_json_route", () => {
   it("解析 JSON 并返回统一成功响应壳", async () => {

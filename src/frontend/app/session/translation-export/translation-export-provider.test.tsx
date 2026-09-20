@@ -18,8 +18,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => ({
 }));
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentInput: () => ({
-    read_draft: () => ({ text: "", attachments: [] }),
-    write_draft: vi.fn(),
+    draft: { read: () => ({ text: "", attachments: [] }), write: vi.fn() },
   }),
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({

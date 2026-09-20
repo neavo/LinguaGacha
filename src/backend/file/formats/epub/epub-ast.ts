@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import crypto from "node:crypto";
 import posix from "node:path/posix";
 
@@ -13,7 +14,6 @@ import {
   type ChildNode,
 } from "domhandler";
 import { decodeHTML } from "entities";
-import JSZip from "jszip";
 
 import { Item } from "../../../../domain/item";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
@@ -1096,22 +1096,22 @@ export class EpubAst {
    * 读取必需 zip 文本资源，缺文件时抛出带路径的错误方便定位坏包
    */
   private async require_zip_text(zip_reader: JSZip, file_path: string): Promise<string> {
-    const file = zip_reader.file(file_path);
+    const file = (await zip_reader.file(file_path)?.async("uint8array")) ?? null;
     if (file === null) {
       throw new AppError("file.invalid_structure", {
         public_details: { format: "EPUB" },
         diagnostic_context: { entry: file_path, reason: "missing_required_zip_entry" },
       });
     }
-    return this.decode_bytes(await file.async("uint8array"));
+    return this.decode_bytes(file);
   }
 
   /**
    * 读取可选 zip 资源，缺失时返回 null 让上层按 EPUB 容错策略跳过
    */
   private async read_zip_bytes(zip_reader: JSZip, file_path: string): Promise<Uint8Array | null> {
-    const file = zip_reader.file(file_path);
-    return file === null ? null : await file.async("uint8array");
+    const file = (await zip_reader.file(file_path)?.async("uint8array")) ?? null;
+    return file;
   }
 
   /**

@@ -49,19 +49,15 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           );
           fixture.destroy();
           const images = new AgentImageService(prepare_agent_image);
-          const image = await images.prepare_base64(png);
+          const image = await images.prepare(Buffer.from(png, "base64"));
           assert.equal(image.mimeType, 'image/webp');
           assert.equal(image.originalWidth, 4000);
           assert.equal(image.originalHeight, 2000);
-          const canonical = await images.prepare_base64(image.data);
-          assert.equal(canonical.data, image.data);
-          assert.equal(canonical.originalWidth, image.width);
           assert.ok(image.width < 4000 && image.width / image.height === 2);
           const detailEdge = Math.min(${AGENT_IMAGE_MAX_EDGE}, 4000);
           const detailed = await images.prepare(Buffer.from(png, 'base64'), undefined, {maxEdge:detailEdge});
           assert.equal(detailed.width, detailEdge);
           assert.equal(detailed.height, detailEdge / 2);
-          assert.equal((await images.prepare_base64(png)).width, image.width);
           const verifier = new BrowserWindow({show:false});
           await verifier.loadURL('about:blank');
           const decoded = await verifier.webContents.executeJavaScript(
@@ -71,8 +67,9 @@ it("真实 Chromium 转换、缩小、透明度、规范字节复用与取消释
           assert.equal(decoded.width, image.width);
           assert.equal(decoded.alpha, 0);
           images.clear();
-          const reused = await images.prepare_base64(image.data);
+          const reused = await images.prepare(Buffer.from(image.data, "base64"));
           assert.equal(reused.data, image.data);
+          assert.equal(reused.originalWidth, image.width);
           const bytes = Buffer.from(png, 'base64');
           const small = await prepare_agent_image({ kind:'prepare_image',bytes,mimeType:'image/png',policy:{...AGENT_IMAGE_POLICY,maxBytes:2048}}, new AbortController().signal);
           assert.ok(small.bytes.length <= 2048);

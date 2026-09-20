@@ -1,15 +1,14 @@
+import type { AgentFileCandidate } from "@shared/agent-reference";
+import { AgentInputDraft } from "@frontend/app/session/agent/agent-input-draft";
+import { uploaded_file } from "../../../test/agent-upload-fixture";
 import { act, createRef, type ComponentProps, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import {
-  AGENT_MESSAGE_IMAGE_LIMIT,
-  type AgentMessageAttachment,
-  type AgentMessageInput,
-} from "@shared/agent";
+import { type AgentMessageAttachment } from "@shared/agent";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
@@ -24,7 +23,6 @@ type RenderEditorOptions = Partial<
     | "on_cancel"
     | "skills"
     | "instructions"
-    | "on_image_error"
     | "input_session"
     | "on_submit"
   >
@@ -32,17 +30,17 @@ type RenderEditorOptions = Partial<
 
 type TestAgentInputSession = AgentInputSession & { accept_message: () => void };
 
-const image_mocks = vi.hoisted(() => ({
-  normalize_agent_images: vi.fn(async (files: Iterable<File>) =>
-    Array.from(files, (file) => `webp-${file.name}`),
-  ),
+const mention_files = vi.hoisted(() => ({ files: [] as AgentFileCandidate[] }));
+vi.mock("./use-agent-mention-files", () => ({
+  useAgentMentionFiles: () => ({ files: mention_files.files, status: "ready" }),
 }));
-
-vi.mock("./agent-image", () => ({
-  AGENT_IMAGE_FILE_ACCEPT: ".png,.jpg,.jpeg,.bmp,.webp,.avif",
-  normalize_agent_images: image_mocks.normalize_agent_images,
+const image_mocks = vi.hoisted(() => ({ upload: vi.fn() }));
+vi.mock("@frontend/app/desktop/desktop-api", async (original) => ({
+  ...(await original<typeof import("@frontend/app/desktop/desktop-api")>()),
+  api_blob: async () => new Blob([], { type: "image/png" }),
+  api_file_url: (path: string) => `http://localhost${path}`,
+  api_upload: image_mocks.upload,
 }));
-
 vi.mock("@frontend/app/appearance/appearance-context", () => ({
   useAppearance: () => ({ resolved_theme: "light" }),
 }));
@@ -82,13 +80,20 @@ describe("AgentMessageEditor", () => {
   let root: Root | null = null;
   let default_input_session: TestAgentInputSession | null = null;
 
+  beforeEach(() => {
+    mention_files.files = [];
+    image_mocks.upload.mockImplementation(async (_path: string, file: File) =>
+      uploaded_file(`webp-${file.name}`),
+    );
+  });
+
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
     container = null;
     root = null;
     default_input_session = null;
-    image_mocks.normalize_agent_images.mockClear();
+    image_mocks.upload.mockClear();
   });
 
   it("选择技能插入 marker，选择压缩指令则移除筛选文本并立即执行", async () => {
@@ -111,9 +116,9 @@ describe("AgentMessageEditor", () => {
 
     await set_document(editor, "前 @glo", 6);
     await dispatch_key(content, "Enter");
-    expect(editor.state.doc.toString()).toBe("前 @skill(glossary-audit) ");
+    expect(editor.state.doc.toString()).toBe('前 @skill("glossary-audit") ');
     expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(
-      "@skill(glossary-audit)",
+      '@skill("glossary-audit")',
     );
 
     await set_document(editor, "前 @compact 后", 10);
@@ -183,7 +188,7 @@ describe("AgentMessageEditor", () => {
   it("技能 marker 在输入框中整块显示和删除，底层仍保留原始文本", async () => {
     const view = await render_editor();
     const editor = get_editor(view);
-    const marker = "@skill(glossary-audit)";
+    const marker = '@skill("glossary-audit")';
     await set_document(editor, marker, marker.length);
 
     expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(marker);
@@ -238,12 +243,12 @@ describe("AgentMessageEditor", () => {
   });
 
   it("用纯文本历史双向浏览并恢复当前草稿", async () => {
-    const input_session = create_input_session(["第一条", "检查 @skill(glossary-audit) 完成"]);
+    const input_session = create_input_session(["第一条", '检查 @skill("glossary-audit") 完成']);
     const view = await render_editor({ input_session });
     const editor = get_editor(view);
     await set_document(editor, "当前草稿", 4);
     await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("检查 @skill(glossary-audit) 完成");
+    expect(editor.state.doc.toString()).toBe('检查 @skill("glossary-audit") 完成');
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe("第一条");
     await dispatch_key(editor.contentDOM, "ArrowDown");
@@ -281,10 +286,10 @@ describe("AgentMessageEditor", () => {
     const editor_ref = createRef<AgentMessageEditorHandle>();
     const on_submit = vi.fn();
     const view = await render_editor({ editor_ref, input_session, on_submit });
-    await act(async () => editor_ref.current?.write_draft("  检查 @skill(glossary-audit)  "));
+    await act(async () => editor_ref.current?.write_draft('  检查 @skill("glossary-audit")  '));
     await click_send(view);
     expect(on_submit).toHaveBeenCalledWith({
-      text: "检查 @skill(glossary-audit)",
+      text: '检查 @skill("glossary-audit")',
       attachments: [],
     });
     input_session.accept_message();
@@ -348,70 +353,11 @@ describe("AgentMessageEditor", () => {
       await Promise.resolve();
     });
 
-    expect(input_session.read_draft()).toEqual({
+    expect(input_session.draft.read()).toEqual({
       text: "",
       attachments: image_attachments("webp-drop.webp", "webp-paste.png"),
     });
     expect(view.querySelectorAll(".agent-attachment")).toHaveLength(2);
-  });
-
-  it("达到图片上限后静默忽略新输入，删除后恢复入口", async () => {
-    const input_session = create_input_session();
-    const existing_images = Array.from(
-      { length: AGENT_MESSAGE_IMAGE_LIMIT - 2 },
-      (_, index) => `existing-${index + 1}`,
-    );
-    input_session.write_draft({ text: "", attachments: image_attachments(...existing_images) });
-    const on_image_error = vi.fn();
-    const view = await render_editor({ input_session, on_image_error });
-    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
-    const image_trigger = view.querySelector<HTMLButtonElement>(".agent-composer__image-trigger");
-    if (input === null || image_trigger === null) throw new Error("缺少图片输入控件");
-    const selected = Array.from(
-      { length: 5 },
-      (_, index) => new File([], `selected-${index + 1}.png`, { type: "image/png" }),
-    );
-    Object.defineProperty(input, "files", { configurable: true, value: selected });
-
-    await act(async () => {
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    const full_draft = {
-      text: "",
-      attachments: image_attachments(
-        ...existing_images,
-        "webp-selected-1.png",
-        "webp-selected-2.png",
-      ),
-    };
-    expect(input_session.read_draft()).toEqual(full_draft);
-    expect(view.querySelectorAll(".agent-attachment")).toHaveLength(AGENT_MESSAGE_IMAGE_LIMIT);
-    expect(image_trigger.disabled).toBe(true);
-
-    const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", {
-      value: { files: [new File([], "ignored.png", { type: "image/png" })] },
-    });
-    await act(async () => {
-      view.querySelector(".agent-composer")?.dispatchEvent(paste);
-      await Promise.resolve();
-    });
-
-    expect(on_image_error).not.toHaveBeenCalled();
-    expect(input_session.read_draft()).toEqual(full_draft);
-
-    await act(async () =>
-      view
-        .querySelector<HTMLButtonElement>('button[aria-label="agent_page.image.title 1"]')
-        ?.click(),
-    );
-    const remove = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "app.action.delete",
-    );
-    await act(async () => remove?.click());
-    expect(image_trigger.disabled).toBe(false);
   });
 
   it("新增批注在修改后随完整消息提交", async () => {
@@ -427,7 +373,7 @@ describe("AgentMessageEditor", () => {
         comment: "原评论",
       }),
     );
-    expect(input_session.read_draft().attachments).toEqual([
+    expect(input_session.draft.read().attachments).toEqual([
       { kind: "response_annotation", selectedText: "旧回复", comment: "原评论" },
     ]);
 
@@ -459,18 +405,18 @@ describe("AgentMessageEditor", () => {
 
   it("混合附件按原索引编辑而不改写草稿顺序", async () => {
     const input_session = create_input_session();
-    input_session.write_draft({
+    input_session.draft.write({
       text: "",
       attachments: [
         { kind: "response_annotation", selectedText: "被引用的旧回复", comment: "内部评论" },
-        { kind: "image", webpBase64: "webp-a" },
+        uploaded_file("webp-a"),
       ],
     });
 
     const view = await render_editor({ input_session });
-    expect(input_session.read_draft().attachments.map((attachment) => attachment.kind)).toEqual([
+    expect(input_session.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
       "response_annotation",
-      "image",
+      "file",
     ]);
     const annotation = view.querySelector<HTMLButtonElement>(
       'button[aria-label^="agent_page.annotation.title "]',
@@ -483,36 +429,10 @@ describe("AgentMessageEditor", () => {
     ].find((button) => button.textContent?.includes("agent_page.annotation.remove"));
     if (remove === undefined) throw new Error("缺少批注删除动作");
     await act(async () => remove.click());
-    expect(input_session.read_draft().attachments.map((attachment) => attachment.kind)).toEqual([
-      "image",
+    expect(input_session.draft.read().attachments.map((attachment) => attachment.kind)).toEqual([
+      "file",
     ]);
   });
-
-  it.each(["replacement", "revision", "unmount"] as const)(
-    "图片转换结束时只写入仍有效的草稿：%s",
-    async (change) => {
-      const pending = Promise.withResolvers<string[]>();
-      image_mocks.normalize_agent_images.mockReturnValueOnce(pending.promise);
-      const input_session = create_input_session();
-      const view = await render_editor({ input_session });
-      const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input")!;
-      Object.defineProperty(input, "files", {
-        value: [new File([], "old.png", { type: "image/png" })],
-      });
-      await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-
-      const next_session = change === "replacement" ? create_input_session() : input_session;
-      if (change === "unmount") {
-        await act(async () => root?.unmount());
-        root = null;
-      } else {
-        if (change === "revision") input_session.accept_message();
-        await render_editor({ input_session: next_session });
-      }
-      await act(async () => pending.resolve(["old-image"]));
-      expect(next_session.read_draft().attachments).toEqual([]);
-    },
-  );
 
   it("文件选择返回时遵循当前编辑锁", async () => {
     const input_session = create_input_session();
@@ -523,30 +443,28 @@ describe("AgentMessageEditor", () => {
       value: [new File([], "locked.png", { type: "image/png" })],
     });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-    expect(input_session.read_draft().attachments).toEqual([]);
-    expect(image_mocks.normalize_agent_images).not.toHaveBeenCalled();
+    expect(input_session.draft.read().attachments).toEqual([]);
+    expect(image_mocks.upload).not.toHaveBeenCalled();
   });
 
-  it("图片转换失败时保留原草稿并交给页面提示", async () => {
-    image_mocks.normalize_agent_images.mockRejectedValueOnce(new Error("decode failed"));
-    const on_image_error = vi.fn();
+  it("上传失败保留文件卡片，重试后可以发送", async () => {
+    image_mocks.upload.mockRejectedValueOnce(new Error("offline"));
     const input_session = create_input_session();
-    const view = await render_editor({ input_session, on_image_error });
-    const input = view.querySelector<HTMLInputElement>(".agent-composer__file-input");
-    if (input === null) throw new Error("缺少图片文件输入");
-    Object.defineProperty(input, "files", {
-      configurable: true,
-      value: [new File([], "broken.avif", { type: "image/avif" })],
+    const on_submit = vi.fn();
+    const view = await render_editor({ input_session, on_submit });
+    await act(async () => input_session.draft.append([new File(["text"], "notes.txt")]));
+    expect(view.textContent).toContain("agent_page.upload.failed");
+    await click_send(view);
+    expect(on_submit).not.toHaveBeenCalled();
+    const retry = [...view.querySelectorAll("button")].find(
+      (button) => button.textContent === "agent_page.upload.retry",
+    );
+    await act(async () => retry?.click());
+    await click_send(view);
+    expect(on_submit).toHaveBeenCalledWith({
+      text: "",
+      attachments: [uploaded_file("webp-notes.txt")],
     });
-
-    await act(async () => {
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(on_image_error).toHaveBeenCalledOnce();
-    expect(input_session.read_draft()).toEqual({ text: "", attachments: [] });
-    expect(view.querySelector(".agent-attachment")).toBeNull();
   });
 
   it("禁用的底栏控件仍由非禁用外壳承接鼠标提示", async () => {
@@ -554,7 +472,7 @@ describe("AgentMessageEditor", () => {
       read_only: true,
     });
 
-    const image_button = view.querySelector<HTMLButtonElement>(".agent-composer__image-trigger");
+    const image_button = view.querySelector<HTMLButtonElement>(".agent-composer__file-trigger");
     const trigger = image_button?.parentElement;
     expect(image_button?.disabled).toBe(true);
     expect(trigger).not.toBeNull();
@@ -568,7 +486,7 @@ describe("AgentMessageEditor", () => {
         vi.runOnlyPendingTimers();
       });
       expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain(
-        "agent_page.action.add_image",
+        "agent_page.action.add_file",
       );
     } finally {
       vi.useRealTimers();
@@ -588,6 +506,54 @@ describe("AgentMessageEditor", () => {
     await render_editor({ presentation: "inline", on_cancel, read_only: true });
     expect((await dispatch_key(editor.contentDOM, "Escape")).defaultPrevented).toBe(false);
     expect(on_cancel).toHaveBeenCalledOnce();
+  });
+
+  it("文件候选展示完整路径，并只把引用写入正文", async () => {
+    mention_files.files = [
+      { kind: "project", path: "资料/角色设定.xlsx", count: 320, unit: "items" },
+      { kind: "upload", path: "uploads/角色设定.xlsx", size: 128 },
+    ];
+    const input = create_input_session();
+    const view = await render_editor({ input_session: input });
+    const editor = get_editor(view);
+    await set_document(editor, "@角色", 3);
+    await wait_for_element(view, 'button[data-kind="file"]');
+    const options = [...view.querySelectorAll<HTMLButtonElement>('button[data-kind="file"]')];
+    expect(options.map((option) => option.querySelector("strong")?.textContent)).toEqual([
+      "资料/角色设定.xlsx",
+      "uploads/角色设定.xlsx",
+    ]);
+    await act(async () => options[0]!.click());
+    expect(editor.state.doc.toString()).toBe('@project_file("资料/角色设定.xlsx") ');
+    expect(input.draft.read().attachments).toEqual([]);
+  });
+
+  it.each(["strong", "small"])("候选 %s 列使用应用提示显示自身全文", async (column) => {
+    mention_files.files = [
+      { kind: "project", path: "资料/很长的目录/角色设定.xlsx", count: 320, unit: "items" },
+    ];
+    const view = await render_editor();
+    const editor = get_editor(view);
+    await set_document(editor, "@角色", 3);
+    await wait_for_element(view, 'button[data-kind="file"]');
+    const row = view.querySelector('button[data-kind="file"]')!;
+    const trigger = row.querySelector<HTMLElement>(column)!;
+    expect(row.querySelectorAll("button")).toHaveLength(0);
+    expect(trigger.getAttribute("title")).toBeNull();
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        trigger.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }),
+        );
+        vi.runOnlyPendingTimers();
+      });
+      const tooltip = document.body.querySelector('[role="tooltip"]');
+      expect(tooltip?.textContent).toBe(trigger.textContent);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /** 同一编辑实例消费测试草稿，业务按钮仅承接发送当前消息。 */
@@ -611,9 +577,9 @@ describe("AgentMessageEditor", () => {
             input_session={options.input_session ?? default_input_session!}
             on_submit={options.on_submit ?? vi.fn()}
             on_cancel={options.on_cancel}
-            on_image_error={options.on_image_error ?? vi.fn()}
-            render_actions={({ has_content, image_processing }) => {
-              const can_submit = !options.read_only && has_content && !image_processing;
+
+            render_actions={({ has_content, uploads_pending }) => {
+              const can_submit = !options.read_only && has_content && !uploads_pending;
               return {
                 can_submit,
                 submit: (
@@ -641,17 +607,14 @@ function get_editor(container: HTMLElement): EditorView {
 
 /** 组件测试只模拟草稿与历史读取契约，持久化责任由 Provider 和历史 helper 单独验证。 */
 function create_input_session(history: readonly string[] = []): TestAgentInputSession {
-  let draft: AgentMessageInput = { text: "", attachments: [] };
+  const draft = new AgentInputDraft();
   const session: TestAgentInputSession = {
     revision: 0,
-    read_draft: () => draft,
-    write_draft: (next_draft) => {
-      draft = next_draft;
-    },
+    draft,
     read_history: () => history,
     replace_history: vi.fn(),
     accept_message: () => {
-      draft = { text: "", attachments: [] };
+      draft.clear();
       session.revision += 1;
     },
   };
@@ -660,7 +623,7 @@ function create_input_session(history: readonly string[] = []): TestAgentInputSe
 
 /** 按协议保留图片附件顺序。 */
 function image_attachments(...images: string[]): AgentMessageAttachment[] {
-  return images.map((webpBase64) => ({ kind: "image", webpBase64 }));
+  return images.map((id) => uploaded_file(id));
 }
 
 /** 使用原生输入事件更新批注，经过 React 表单边界。 */

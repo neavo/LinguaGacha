@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { write_zip, read_zip_fixture } from "../../../test/zip-fixture";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -85,8 +85,8 @@ describe("EpubRubyBlockTextMigration", () => {
   });
 
   it("正文扩展改变提取序号时仅转换旧 ruby 条目，保留同文件其它记录", async () => {
-    const zip = await JSZip.loadAsync(await create_epub_fixture("正文"));
-    zip.file(
+    const zip = await read_zip_fixture(await create_epub_fixture("正文"));
+    zip.set(
       "OPS/chapter.xhtml",
       "<html><body>新增正文<p>既有段落</p><p><ruby>漢<rt>かん</rt></ruby></p></body></html>",
     );
@@ -121,7 +121,7 @@ describe("EpubRubyBlockTextMigration", () => {
     };
     const { database, migration } = create_migration({
       items: [plain, ruby],
-      asset_content_by_path: { "book.epub": await zip.generateAsync({ type: "nodebuffer" }) },
+      asset_content_by_path: { "book.epub": await write_zip(zip) },
     });
     for (const write of await migration.build_writes("demo.lg")) write(database);
     const items = vi.mocked(database.set_items).mock.calls[0]?.[1];
@@ -140,7 +140,7 @@ describe("EpubRubyBlockTextMigration", () => {
     ruby.extra_field.epub.ruby_clean_candidate.cleaned_src = "不同正文";
     const unsafe = create_migration({
       items: [plain, ruby],
-      asset_content_by_path: { "book.epub": await zip.generateAsync({ type: "nodebuffer" }) },
+      asset_content_by_path: { "book.epub": await write_zip(zip) },
     });
     expect(await unsafe.migration.build_writes("demo.lg")).toEqual([]);
   });

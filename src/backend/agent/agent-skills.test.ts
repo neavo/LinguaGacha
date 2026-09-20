@@ -1,36 +1,31 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { LOCALES } from "../../shared/i18n/types";
 import { AppPathService } from "../app/app-path-service";
-import {
-  format_agent_skill_invocation,
-  format_agent_skills_for_system_prompt,
-  load_agent_skills,
-} from "./agent-skills";
+import { format_agent_skills_for_system_prompt, load_agent_skills } from "./agent-skills";
 
 describe("Agent skill 模型投影", () => {
   const skills = [
     {
       name: "visible",
       description: "使用 <能力> & 规则",
-      content: "执行正文。",
+
       disableModelInvocation: false,
     },
     {
       name: "manual",
       description: "仅手动调用",
-      content: "手动正文。",
+
       disableModelInvocation: true,
     },
     {
       name: "knowledge",
       description: "UI 隐藏的模型知识",
-      content: "知识正文。",
+
       disableModelInvocation: false,
       visible: false,
     },
@@ -44,14 +39,6 @@ describe("Agent skill 模型投影", () => {
     expect(prompt).toContain("使用 &lt;能力&gt; &amp; 规则");
     expect(prompt).not.toContain("<location>");
     expect(prompt).not.toContain("manual");
-  });
-
-  it("显式调用携带包根 URL，并保留特殊字符和正文", () => {
-    const root = path.resolve("技能 # % & 目录");
-    const url = pathToFileURL(root + path.sep).href.replaceAll("&", "&amp;");
-    expect(
-      format_agent_skill_invocation({ ...skills[0]!, filePath: path.join(root, "SKILL.md") }),
-    ).toBe(`<skill name="visible" base_url="${url}">\n执行正文。\n</skill>`);
   });
 });
 
@@ -104,7 +91,7 @@ describe("Agent skill 加载", () => {
         description: "手动能力",
         visible: true,
         displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "手动能力"])),
-        content: "执行手动任务。",
+
         filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
         disableModelInvocation: true,
       },
@@ -113,7 +100,7 @@ describe("Agent skill 加载", () => {
         description: "合法能力",
         visible: true,
         displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "合法能力"])),
-        content: "执行合法任务。",
+
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         disableModelInvocation: false,
       },
@@ -169,7 +156,7 @@ describe("Agent skill 加载", () => {
           "ja-JP": "ユーザー機能",
           "ko-KR": "사용자 기능",
         },
-        content: "用户正文。",
+
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
         disableModelInvocation: false,
       },
@@ -237,7 +224,7 @@ describe("Agent skill 加载", () => {
     expect(skills[0]).toMatchObject({
       name: "hidden",
       description: "内部能力",
-      content: "执行内部任务。",
+
       visible: false,
       displayDescriptions: Object.fromEntries(LOCALES.map((locale) => [locale, "内部能力"])),
     });
