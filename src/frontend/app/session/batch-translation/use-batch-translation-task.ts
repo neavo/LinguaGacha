@@ -470,13 +470,6 @@ function resolve_batch_translation_feedback(snapshot: BatchTranslationSnapshot):
   persistent: boolean;
 } | null {
   if (snapshot.source !== "standalone") return null;
-  if (snapshot.reason === "keys_exhausted") {
-    return {
-      kind: "warning",
-      message: "batch_translation.feedback.keys_exhausted",
-      persistent: true,
-    };
-  }
   if (snapshot.status === "stopped") {
     return { kind: "info", message: "batch_translation.feedback.stopped", persistent: false };
   }

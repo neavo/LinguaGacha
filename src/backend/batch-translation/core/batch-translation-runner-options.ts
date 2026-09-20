@@ -33,7 +33,7 @@ export interface BatchTranslationRunnerOptions {
   >; // 任务编排器只依赖项目任务事实的公开能力
   taskRuntime: Pick<
     BatchTranslationRuntime,
-    | "change_request_in_flight_count"
+    | "update_request_state"
     | "is_current"
     | "publish_progress"
     | "read_run_progress"

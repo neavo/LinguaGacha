@@ -2,7 +2,7 @@ import { read_json_integer, read_json_record } from "../../../domain/json";
 
 export const AUTO_CONCURRENCY_INITIAL = 4; // 自动模式的启动额度与上下界由产品规则固定。
 export const AUTO_CONCURRENCY_MIN = 1;
-export const AUTO_CONCURRENCY_MAX = 32;
+export const AUTO_CONCURRENCY_MAX = 16;
 const ONE_MINUTE_MS = 60_000;
 const ONE_SECOND_MS = 1_000;
 type RequestModelRecord = Record<string, unknown>;

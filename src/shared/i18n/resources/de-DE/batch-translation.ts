@@ -29,7 +29,10 @@ export const de_de_batch_translation = {
     done: "Übersetzung abgeschlossen …",
     stopped: "Übersetzung gestoppt …",
     done_with_errors: "Übersetzung abgeschlossen, einige Einträge sind fehlgeschlagen …",
-    keys_exhausted: "Übersetzung gestoppt: Alle Keys sind nicht verfügbar …",
+    keys_retry_wait:
+      "Keine Schlüssel verfügbar. {count} Wiederholungen, nächster Versuch in {seconds} Sekunden …",
+    keys_retry_running:
+      "Keine Schlüssel verfügbar. {count} Wiederholungen, erneuter Versuch läuft …",
     refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe.",
     start_failed: "Fehler beim Starten der Übersetzungsaufgabe.",
     stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe.",

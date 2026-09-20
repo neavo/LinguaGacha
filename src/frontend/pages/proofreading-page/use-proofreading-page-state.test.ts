@@ -281,6 +281,7 @@ function create_runtime_fixture(): RuntimeFixture {
       status: "idle",
       source: null,
       request_in_flight_count: 0,
+      request_recovery: null,
       progress: normalize_batch_translation_progress({}),
 
       scope: { kind: "all" },
@@ -539,6 +540,7 @@ describe("useProofreadingPageState", () => {
     vi.useRealTimers();
   });
 
+  // 在 React 生命周期内取得 Hook 的公开状态。
   function ProofreadingProbe(): JSX.Element | null {
     latest_state = useProofreadingPageState();
     return null;

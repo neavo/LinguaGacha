@@ -31,10 +31,7 @@ import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-bui
 import { split_translation_response } from "../response/split-translation-response";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
-import type {
-  TranslationRequestPort,
-  TranslationRequestResult,
-} from "../../protocol/translation-request";
+import type { TranslationRequestPort } from "../../protocol/translation-request";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import type { LogError } from "../../../../shared/error";
@@ -224,7 +221,7 @@ export class TranslationWorkUnitRunner {
       request_error?: LogError;
       request_timeout: boolean;
     },
-    response: TranslationRequestResult,
+    response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const request_failed = context.request_error !== undefined || context.request_timeout;
     // 规划器保证 Sakura 请求只有一个 item，正文可安全整体归属。
@@ -280,8 +277,7 @@ export class TranslationWorkUnitRunner {
         actor_dsts.push(null);
       }
       if (!valid && item) {
-        // 密钥耗尽保留未完成副本，Runner 只提交已完成项和用量。
-        if (!response.keys_exhausted && context.request_items.length === 1)
+        if (context.request_items.length === 1)
           item.retry_count = read_json_integer(item.retry_count, 0) + 1;
       }
     }

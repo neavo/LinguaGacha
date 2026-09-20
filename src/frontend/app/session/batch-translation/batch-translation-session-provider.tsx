@@ -12,6 +12,7 @@ import {
   BatchTranslationSessionContext,
 } from "./batch-translation-session-context";
 import { useBatchTranslationSession } from "@frontend/app/session/batch-translation/batch-translation-session-context";
+import { BatchTranslationRecoveryToast } from "./batch-translation-recovery-toast";
 
 /** 将翻译任务动作收口为确认框可见文案。 */
 function resolve_translation_task_confirm_description(
@@ -96,6 +97,7 @@ export function BatchTranslationSessionProvider(props: { children: ReactNode }):
   return (
     <BatchTranslationSessionContext.Provider value={context_value}>
       {props.children}
+      <BatchTranslationRecoveryToast />
       <BatchTranslationDialogsLayer />
     </BatchTranslationSessionContext.Provider>
   );

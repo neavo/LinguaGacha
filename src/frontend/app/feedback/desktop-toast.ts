@@ -4,8 +4,10 @@ type DesktopToastKind = "info" | "warning" | "error" | "success";
 type DesktopToastId = string | number;
 type DesktopToastAction = { label: string; onClick: () => void };
 type DesktopToastOptions = {
+  id?: DesktopToastId; // 持续状态以同一 ID 更新内容。
   action?: DesktopToastAction;
   persistent?: boolean; // 需要用户确认的结果持续显示，使用已有关闭按钮。
+  dismissible?: boolean; // 运行状态通知由拥有者随状态解除。
 };
 type ProgressToastOptions = {
   message: string;
@@ -49,15 +51,17 @@ export function push_toast(
   message: string,
   options: DesktopToastOptions = {},
 ): DesktopToastId {
-  const { action, persistent = false } = options;
-  return toast[kind](
-    message,
-    persistent || action !== undefined
-      ? { action, duration: Number.POSITIVE_INFINITY }
+  const { id, action, persistent = false, dismissible } = options;
+  return toast[kind](message, {
+    ...(id === undefined ? {} : { id }),
+    ...(action === undefined ? {} : { action }),
+    ...(dismissible === undefined ? {} : { dismissible, closeButton: dismissible }),
+    ...(persistent || action !== undefined || dismissible === false
+      ? { duration: Number.POSITIVE_INFINITY }
       : kind === "error"
         ? { duration: ERROR_TOAST_DURATION_MS }
-        : undefined,
-  );
+        : {}),
+  });
 }
 
 /** 新任务取得唯一进度通知的所有权。 */

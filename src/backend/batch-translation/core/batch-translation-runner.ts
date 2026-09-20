@@ -70,7 +70,6 @@ export class BatchTranslationRunner {
     run_context: BatchTranslationRunContext,
   ): Promise<BatchTranslationResult> {
     let final_status: "done" | "stopped" | "error" = "done";
-    let reason: "keys_exhausted" | undefined;
     let app_language: unknown = "ZH";
     let progress = this.task_runtime.read_progress(); // 工程累计事实，由项目写入口维护。
     let run_progress = TranslationProgressAccumulator.empty(); // 本轮计数随已提交结果推进。
@@ -114,12 +113,12 @@ export class BatchTranslationRunner {
         model: run_context.model,
         client: this.llm_client,
         rate,
-        on_pressure: (delta) => this.task_runtime.change_request_in_flight_count(handle, delta),
+        on_state: (state) => this.task_runtime.update_request_state(handle, state),
         on_failure: (key_index, error) =>
           this.log_replay.request_failure(key_index, error, app_language),
       });
       const pipeline = new TranslationPipeline({
-        read_dispatch_state: () => request_scheduler.read_dispatch_state(),
+        read_concurrency_limit: () => request_scheduler.read_concurrency_limit(),
         signal: handle.signal,
         execute: (context, signal) =>
           this.execute_translation_context(
@@ -143,9 +142,6 @@ export class BatchTranslationRunner {
       await pipeline.run(plan.contexts);
       if (handle.signal.aborted) {
         final_status = "stopped";
-      } else if (request_scheduler.read_dispatch_state().keys_exhausted) {
-        final_status = "error";
-        reason = "keys_exhausted";
       }
     } catch (error) {
       final_status = handle.signal.aborted ? "stopped" : "error";
@@ -178,7 +174,7 @@ export class BatchTranslationRunner {
         infrastructure_errors.push(error);
       }
       try {
-        this.log_replay.task_run_finish(final_status, app_language, reason);
+        this.log_replay.task_run_finish(final_status, app_language);
       } catch (error) {
         infrastructure_errors.push(error);
       }
@@ -189,7 +185,6 @@ export class BatchTranslationRunner {
         : new AggregateError(infrastructure_errors, "Batch translation cleanup failed.");
     return {
       status: final_status,
-      ...(reason === undefined ? {} : { reason }),
       progress: { ...progress },
       run_progress: { ...run_progress },
     };
@@ -230,13 +225,7 @@ export class BatchTranslationRunner {
       request_scheduler,
     );
     this.log_replay.work_unit_logs(result.logs);
-    return this.build_translation_worker_result(
-      context,
-      result,
-      metrics,
-      signal,
-      request_scheduler.read_dispatch_state().keys_exhausted,
-    );
+    return this.build_translation_worker_result(context, result, metrics, signal);
   }
 
   /**
@@ -247,7 +236,6 @@ export class BatchTranslationRunner {
     result: WorkUnitExecutionResult,
     metrics: ReadonlyMap<number, TranslationTokenMetric>,
     signal: AbortSignal,
-    keys_exhausted: boolean,
   ) {
     if (result.outcome === "stopped") {
       return { commit_entries: [], retry_contexts: [] };
@@ -256,16 +244,14 @@ export class BatchTranslationRunner {
     const terminal_items = returned_items.filter((item) =>
       TRANSLATION_TERMINAL_STATUSES.has(read_task_item_status(item)),
     );
-    const retry_plan = keys_exhausted
-      ? { retry_contexts: [], forced_error_items: [] }
-      : this.task_planner.build_translation_retry_plan(
-          context,
-          returned_items,
-          metrics,
-          TRANSLATION_RETRY_LIMIT,
-          (item) => this.mark_translation_item_error(item),
-          signal,
-        );
+    const retry_plan = this.task_planner.build_translation_retry_plan(
+      context,
+      returned_items,
+      metrics,
+      TRANSLATION_RETRY_LIMIT,
+      (item) => this.mark_translation_item_error(item),
+      signal,
+    );
     const commit_items = [...terminal_items, ...retry_plan.forced_error_items];
     // 用量与条目终态独立提交，内容重试也保留已经报告的消耗。
     const has_usage = Object.values(result.metrics).some((tokens) => tokens > 0);

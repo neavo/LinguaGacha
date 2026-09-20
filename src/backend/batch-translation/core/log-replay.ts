@@ -51,19 +51,13 @@ export class TranslationLogReplay {
   /**
    * 任务终态日志和公开 task snapshot 分开写，避免只看日志时丢失收尾信息
    */
-  public task_run_finish(
-    status: "stopped" | "done" | "error",
-    app_language: unknown,
-    reason?: "keys_exhausted",
-  ): void {
+  public task_run_finish(status: "stopped" | "done" | "error", app_language: unknown): void {
     const message =
-      reason === "keys_exhausted"
-        ? this.t(app_language, "batch_translation.feedback.keys_exhausted")
-        : status === "done"
-          ? this.t(app_language, "app.log.engine_task_done")
-          : status === "stopped"
-            ? this.t(app_language, "app.log.engine_task_stop")
-            : this.t(app_language, "app.log.engine_task_fail");
+      status === "done"
+        ? this.t(app_language, "app.log.engine_task_done")
+        : status === "stopped"
+          ? this.t(app_language, "app.log.engine_task_stop")
+          : this.t(app_language, "app.log.engine_task_fail");
     this.append_text("info", "", "engine");
     this.append_text(status === "error" ? "warning" : "info", message, "engine");
     this.append_text("info", "", "engine");

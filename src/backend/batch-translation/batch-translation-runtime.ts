@@ -4,6 +4,7 @@ import {
   normalize_translation_scope,
   normalize_batch_translation_progress,
   type BatchTranslationProgress,
+  type BatchTranslationRequestState,
   type BatchTranslationStopSource,
   type BatchTranslationSource,
   type BatchTranslationResult,
@@ -30,7 +31,7 @@ export class BatchTranslationCompletionError extends Error {
   }
 }
 
-export const BATCH_TRANSLATION_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500;
+export const BATCH_TRANSLATION_REQUEST_STATE_PUBLISH_INTERVAL_MS = 500;
 export type BatchTranslationRunHandle = Readonly<{
   run_id: string;
   signal: AbortSignal;
@@ -56,6 +57,7 @@ export class BatchTranslationRuntime {
     status: "idle",
     source: null,
     request_in_flight_count: 0,
+    request_recovery: null,
     progress: normalize_batch_translation_progress({}),
     scope: { kind: "all" },
   };
@@ -63,9 +65,9 @@ export class BatchTranslationRuntime {
   private disposed = false;
   private readonly listeners = new Set<BatchTranslationSnapshotListener>();
   private readonly completions = new Set<Promise<BatchTranslationResult>>();
-  private pressure_timer: ReturnType<typeof setTimeout> | null = null;
-  private pressure_flush: Promise<void> = Promise.resolve();
-  private readonly pressure_errors: unknown[] = [];
+  private request_state_timer: ReturnType<typeof setTimeout> | null = null;
+  private request_state_flush: Promise<void> = Promise.resolve();
+  private readonly publication_errors: unknown[] = [];
   private readonly unsubscribe_session: () => void;
 
   /** 绑定工程世代切换，清空上一工程的运行展示。 */
@@ -84,10 +86,10 @@ export class BatchTranslationRuntime {
         config: undefined,
         operation: undefined,
         run_progress: undefined,
-        reason: undefined,
         stop_source: undefined,
         scope: { kind: "all" },
         request_in_flight_count: 0,
+        request_recovery: null,
       };
       await this.publish_snapshot();
     });
@@ -200,10 +202,10 @@ export class BatchTranslationRuntime {
       config: undefined,
       operation,
       run_progress: undefined,
-      reason: undefined,
       stop_source: run.stop_source,
       scope: normalize_translation_scope(scope),
       request_in_flight_count: 0,
+      request_recovery: null,
     };
     run.ready = this.publish_snapshot();
     void run.ready.catch(() => undefined); // 原始拒绝由 execute 的完成链消费。
@@ -248,7 +250,6 @@ export class BatchTranslationRuntime {
       const output = await runner();
       result = Object.freeze({
         status: output.status,
-        ...(output.reason === undefined ? {} : { reason: output.reason }),
         ...(output.run_progress === undefined
           ? {}
           : { run_progress: Object.freeze({ ...output.run_progress }) }),
@@ -258,16 +259,16 @@ export class BatchTranslationRuntime {
       errors.push(error);
     }
     try {
-      if (this.pressure_timer !== null) {
-        this.clear_pressure_timer();
+      if (this.request_state_timer !== null) {
+        this.clear_request_state_timer();
         try {
           await this.publish_snapshot();
         } catch (error) {
           errors.push(error);
         }
       }
-      await this.pressure_flush;
-      errors.push(...this.pressure_errors.splice(0));
+      await this.request_state_flush;
+      errors.push(...this.publication_errors.splice(0));
       if (!started) {
         this.snapshot = { ...run.previous, revision: this.snapshot.revision };
         await this.publish_snapshot();
@@ -292,9 +293,9 @@ export class BatchTranslationRuntime {
         this.snapshot = {
           ...this.snapshot,
           status: result.status,
-          reason: result.reason,
           stop_source: run.stop_source,
           request_in_flight_count: 0,
+          request_recovery: null,
           // 终态保留任务范围类型，同时清除校对页的正在重翻标记。
           scope:
             this.snapshot.scope.kind === "items"
@@ -356,7 +357,7 @@ export class BatchTranslationRuntime {
     try {
       await this.publish_snapshot();
     } catch (error) {
-      this.pressure_errors.push(error);
+      this.publication_errors.push(error);
       throw error;
     }
   }
@@ -374,6 +375,7 @@ export class BatchTranslationRuntime {
   private cancel_run(run: ActiveRun, source: BatchTranslationStopSource): void {
     if (run.stop_source !== undefined) return;
     run.stop_source = source;
+    this.snapshot = { ...this.snapshot, request_recovery: null };
     run.controller.abort();
   }
   /** 已提交结果退出待处理范围，同值结果也完成本轮尝试。 */
@@ -383,7 +385,7 @@ export class BatchTranslationRuntime {
     run_progress?: BatchTranslationProgress,
   ): Promise<void> {
     if (!this.is_current(handle.run_id)) return;
-    this.clear_pressure_timer();
+    this.clear_request_state_timer();
     if (run_progress !== undefined)
       this.snapshot = { ...this.snapshot, run_progress: { ...run_progress } };
     if (this.snapshot.scope.kind === "items") {
@@ -399,36 +401,40 @@ export class BatchTranslationRuntime {
     try {
       await this.publish_snapshot();
     } catch (error) {
-      this.pressure_errors.push(error);
+      this.publication_errors.push(error);
       throw error;
     }
   }
-  /** 请求计数在内存累积，由单个定时窗口合并发布。 */
-  public change_request_in_flight_count(handle: BatchTranslationRunHandle, delta: number): void {
+  /** 请求数与恢复阶段来自同一次调度，复用一个窗口发布；取消后拒绝重新挂起恢复提示。 */
+  public update_request_state(
+    handle: BatchTranslationRunHandle,
+    state: BatchTranslationRequestState,
+  ): void {
     if (!this.is_current(handle.run_id)) return;
     this.snapshot = {
       ...this.snapshot,
-      request_in_flight_count: Math.max(
-        0,
-        this.snapshot.request_in_flight_count + (Number.isFinite(delta) ? Math.trunc(delta) : 0),
-      ),
+      request_in_flight_count: state.request_in_flight_count,
+      request_recovery:
+        handle.signal.aborted || state.request_recovery === null
+          ? null
+          : Object.freeze({ ...state.request_recovery }),
     };
-    if (this.pressure_timer !== null) return;
-    this.pressure_timer = setTimeout(() => {
-      this.pressure_timer = null;
-      this.pressure_flush = this.pressure_flush
+    if (this.request_state_timer !== null) return;
+    this.request_state_timer = setTimeout(() => {
+      this.request_state_timer = null;
+      this.request_state_flush = this.request_state_flush
         .then(async () => {
           if (this.is_current(handle.run_id)) await this.publish_snapshot();
         })
         .catch((error) => {
-          this.pressure_errors.push(error);
+          this.publication_errors.push(error);
         });
-    }, BATCH_TRANSLATION_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS);
+    }, BATCH_TRANSLATION_REQUEST_STATE_PUBLISH_INTERVAL_MS);
   }
   /** 撤销待发布窗口，终态收尾负责冲刷计数。 */
-  private clear_pressure_timer(): void {
-    if (this.pressure_timer !== null) clearTimeout(this.pressure_timer);
-    this.pressure_timer = null;
+  private clear_request_state_timer(): void {
+    if (this.request_state_timer !== null) clearTimeout(this.request_state_timer);
+    this.request_state_timer = null;
   }
   /** 推进 revision 并等待全部消费者，汇总发布异常。 */
   private async publish_snapshot(progress?: Readonly<BatchTranslationProgress>): Promise<void> {
@@ -469,7 +475,7 @@ export class BatchTranslationRuntime {
       }));
     }
     await Promise.allSettled(this.completions);
-    this.clear_pressure_timer();
+    this.clear_request_state_timer();
     this.listeners.clear();
   }
 }

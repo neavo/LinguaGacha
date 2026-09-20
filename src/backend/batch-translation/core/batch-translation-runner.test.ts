@@ -312,92 +312,125 @@ describe("BatchTranslationRunner", () => {
     expect((await runtime.build_snapshot()).status).toBe("error");
   });
 
-  it("密钥耗尽后收尾，保留未完成重翻状态与实际用量", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
-    const builtin_root = create_template_root();
-    const pool = new TranslationWorkerPool({
-      builtinRoot: builtin_root,
-      execution: { kind: "in_process" },
-    });
-    const finished = create_status_waiter("error");
-    const runtime = create_task_runtime(finished.listener);
-    const committed: MutableJsonRecord[] = [];
-    const items = [
-      create_pending_item(1),
-      create_pending_item(2, "demo.txt", ""),
-      {
-        ...create_pending_item(3, "next.txt"),
-        status: "PROCESSED",
-        dst: "已有译文",
-        retry_count: 2,
-      },
-      { ...create_pending_item(4, "last.txt"), status: "ERROR", dst: "失败译文", retry_count: 3 },
-    ];
-    const original = structuredClone(items);
-    const execute = vi.spyOn(pool, "execute_unit");
-    let started!: () => void;
-    const first_request = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    const request = vi.fn(async () => {
-      started();
-      return {
-        response_result: "",
-        response_think: "",
-        input_tokens: 1,
-        reasoning_tokens: 0,
-        output_tokens: 0,
-        cancelled: false,
-        timeout: false,
-        request_error: log_error_from_message("429"),
-      };
-    });
-    const runner = new BatchTranslationRunner({
-      llmClient: { request },
-      builtinRoot: builtin_root,
-      taskRuntime: runtime,
-      executorClient: pool,
-      taskPlanner: create_test_task_planner(),
-      logManager: create_log_manager(),
-      taskStore: create_task_store({
-        get_translation_items: () => items,
-        commit_translation_items: async (items) => {
-          committed.push(...items);
-          return { changed_item_ids: [], section_revisions: {} };
-        },
-      }),
-    });
-    const base_context = create_run_context(1);
-    const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
-    try {
-      const command: BatchTranslationStartCommand = {
-        operation: "retranslate",
-        scope: { kind: "items", item_ids: [1, 2, 3, 4] },
-      };
-      const handle = runtime.begin_standalone(command.scope, command.operation);
-      await runtime.execute(handle, () => runner.run(handle, command, context));
-      await first_request;
-      await vi.advanceTimersByTimeAsync(100_000);
-      await finished.promise;
-      expect(request).toHaveBeenCalledTimes(6);
-      expect(committed.map((item) => [item.id, item.status])).toEqual([[2, "PROCESSED"]]);
-      expect((await runtime.build_snapshot()).run_progress).toMatchObject({
-        total_line: 4,
-        line: 1,
-        processed_line: 1,
-        error_line: 0,
-        total_input_tokens: 6,
+  it.each(["recover", "stop"] as const)(
+    "持续网络故障保持原条目，随后 %s 正常收尾",
+    async (action) => {
+      vi.useFakeTimers();
+      const builtin_root = create_template_root();
+      const pool = new TranslationWorkerPool({
+        builtinRoot: builtin_root,
+        execution: { kind: "in_process" },
       });
-      expect((await runtime.build_snapshot()).request_in_flight_count).toBe(0);
-      expect(vi.getTimerCount()).toBe(0);
-      expect(execute).toHaveBeenCalledTimes(1);
-      expect(items).toEqual(original);
-      expect(await handle.completion).toMatchObject({ status: "error", reason: "keys_exhausted" });
-    } finally {
-      await pool.dispose();
-    }
-  });
+      const finished = create_status_waiter(action === "recover" ? "done" : "stopped");
+      const runtime = create_task_runtime(finished.listener);
+      const committed: MutableJsonRecord[] = [];
+      const items = [
+        create_pending_item(1),
+        create_pending_item(2, "demo.txt", ""),
+        {
+          ...create_pending_item(3, "next.txt"),
+          status: "PROCESSED",
+          dst: "已有译文",
+          retry_count: 2,
+        },
+        { ...create_pending_item(4, "last.txt"), status: "ERROR", dst: "失败译文", retry_count: 3 },
+      ];
+      const original = structuredClone(items);
+      const execute = vi.spyOn(pool, "execute_unit");
+      let started!: () => void;
+      const first_request = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      let recovered = false;
+      const request = vi.fn(async () => {
+        started();
+        return {
+          response_result: recovered ? '{"id":0,"text":"译文"}' : "",
+          response_think: "",
+          input_tokens: 1,
+          reasoning_tokens: 0,
+          output_tokens: 0,
+          cancelled: false,
+          timeout: false,
+          ...(recovered ? {} : { request_error: log_error_from_message("网络故障") }),
+        };
+      });
+      const runner = new BatchTranslationRunner({
+        llmClient: { request },
+        builtinRoot: builtin_root,
+        taskRuntime: runtime,
+        executorClient: pool,
+        taskPlanner: create_test_task_planner(),
+        logManager: create_log_manager(),
+        taskStore: create_task_store({
+          get_translation_items: () => items,
+          commit_translation_items: async (items) => {
+            committed.push(...items);
+            return { changed_item_ids: [], section_revisions: {} };
+          },
+        }),
+      });
+      const base_context = create_run_context(1);
+      const context = { ...base_context, model: { ...base_context.model, api_key: "A\nB" } };
+      try {
+        const command: BatchTranslationStartCommand = {
+          operation: "retranslate",
+          scope: { kind: "items", item_ids: [1, 2, 3, 4] },
+        };
+        const handle = runtime.begin_standalone(command.scope, command.operation);
+        await runtime.execute(handle, () => runner.run(handle, command, context));
+        await first_request;
+        await vi.advanceTimersByTimeAsync(100_000);
+        expect(request).toHaveBeenCalledTimes(6);
+        expect(committed).toEqual([]);
+        expect(items).toEqual(original);
+        expect((await runtime.build_snapshot()).run_progress).toMatchObject({
+          total_line: 4,
+          line: 0,
+          error_line: 0,
+        });
+        expect((await runtime.build_snapshot()).request_recovery).toMatchObject({
+          retry_count: 4,
+        });
+        if (action === "recover") {
+          recovered = true;
+          await vi.advanceTimersByTimeAsync(10_000);
+        } else {
+          await runtime.request_stop();
+        }
+        await finished.promise;
+        expect(await handle.completion).toMatchObject({
+          status: action === "recover" ? "done" : "stopped",
+        });
+        if (action === "recover") {
+          expect(committed.map((item) => [item.id, item.status])).toEqual([
+            [1, "PROCESSED"],
+            [2, "PROCESSED"],
+            [3, "PROCESSED"],
+            [4, "PROCESSED"],
+          ]);
+          expect((await runtime.build_snapshot()).run_progress).toMatchObject({
+            line: 4,
+            error_line: 0,
+            total_input_tokens: 9,
+          });
+          expect(execute).toHaveBeenCalledTimes(3);
+        } else {
+          expect(committed).toEqual([]);
+          expect(execute).toHaveBeenCalledTimes(1);
+        }
+        expect(await runtime.build_snapshot()).toMatchObject({
+          request_in_flight_count: 0,
+          request_recovery: null,
+        });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(items).toEqual(original);
+      } finally {
+        await runtime.dispose();
+        await pool.dispose();
+      }
+    },
+  );
 
   it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
     const executed_batches: number[][] = []; // 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并

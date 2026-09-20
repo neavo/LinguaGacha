@@ -11,7 +11,6 @@ it("持续警告指定无限展示时长并支持显式关闭", () => {
   vi.mocked(toast.warning).mockReturnValue("warning");
   const id = notifications.push_toast("warning", "部分条目失败", { persistent: true });
   expect(toast.warning).toHaveBeenCalledWith("部分条目失败", {
-    action: undefined,
     duration: Infinity,
   });
   vi.mocked(toast.dismiss).mockClear();

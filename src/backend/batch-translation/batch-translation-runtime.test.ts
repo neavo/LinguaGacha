@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BatchTranslationRuntime,
-  BATCH_TRANSLATION_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS,
+  BATCH_TRANSLATION_REQUEST_STATE_PUBLISH_INTERVAL_MS,
 } from "./batch-translation-runtime";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -33,7 +33,7 @@ const result = () => ({
 
 describe("批量翻译完成链", () => {
   it.each(["standalone", "agent"] as const)(
-    "%s 来源与耗尽原因保留至终态，新任务和工程关闭清空原因",
+    "%s 来源保留至终态，新任务和工程关闭重置展示",
     async (source) => {
       const { runtime, gate, database, session } = setup();
       const lease = source === "agent" ? gate.begin_runtime("agent") : null;
@@ -47,7 +47,7 @@ describe("批量翻译完成链", () => {
           : runtime.begin_under_agent({ kind: "all" }, lease, new AbortController().signal);
       await runtime.execute(handle, async () => {
         await runtime.publish_status(handle, "running");
-        return { ...result(), status: "error", reason: "keys_exhausted" };
+        return { ...result(), status: "error" };
       });
       await handle.completion;
       expect(frames).toEqual([
@@ -55,13 +55,12 @@ describe("批量翻译完成链", () => {
         { status: "running", source },
         { status: "error", source },
       ]);
-      expect(await handle.completion).toMatchObject({ reason: "keys_exhausted" });
-      expect(await runtime.build_snapshot()).toMatchObject({ source, reason: "keys_exhausted" });
+      expect(await runtime.build_snapshot()).toMatchObject({ source, request_recovery: null });
       if (lease !== null) gate.finish_runtime(lease);
       const next = runtime.begin_standalone({ kind: "all" });
       expect(await runtime.build_snapshot()).toMatchObject({
         source: "standalone",
-        reason: undefined,
+        request_recovery: null,
       });
       await runtime.execute(next, async () => result());
       await next.completion;
@@ -69,7 +68,7 @@ describe("批量翻译完成链", () => {
       expect(await runtime.build_snapshot()).toMatchObject({
         status: "idle",
         source: null,
-        reason: undefined,
+        request_recovery: null,
       });
       await runtime.dispose();
       database.close();
@@ -103,6 +102,47 @@ describe("批量翻译完成链", () => {
     database.close();
   });
   afterEach(() => vi.useRealTimers());
+  it("恢复快照隔离输入，取消和新运行拒绝旧恢复状态", async () => {
+    vi.useFakeTimers();
+    const { runtime, database } = setup();
+    const work = deferred<ReturnType<typeof result>>();
+    const handle = runtime.begin_standalone({ kind: "all" });
+    try {
+      await runtime.execute(handle, () => work.promise);
+      await runtime.publish_status(handle, "running");
+      const recovery = { retry_count: 3, retry_at: Date.now() + 60_000 };
+      runtime.update_request_state(handle, {
+        request_in_flight_count: 0,
+        request_recovery: recovery,
+      });
+      recovery.retry_count = 99;
+      expect((await runtime.build_snapshot()).request_recovery?.retry_count).toBe(3);
+      await runtime.request_stop();
+      runtime.update_request_state(handle, {
+        request_in_flight_count: 1,
+        request_recovery: recovery,
+      });
+      expect((await runtime.build_snapshot()).request_recovery).toBeNull();
+      work.resolve(result());
+      await handle.completion;
+      const next = runtime.begin_standalone({ kind: "all" });
+      runtime.update_request_state(handle, {
+        request_in_flight_count: 1,
+        request_recovery: recovery,
+      });
+      expect(await runtime.build_snapshot()).toMatchObject({
+        request_in_flight_count: 0,
+        request_recovery: null,
+      });
+      await runtime.execute(next, async () => result());
+      await next.completion;
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      work.resolve(result());
+      await runtime.dispose();
+      database.close();
+    }
+  });
   it("压力按发布窗口合并且终态前冲刷，迟到进度不覆盖新运行", async () => {
     vi.useFakeTimers();
     const { runtime, gate, database } = setup();
@@ -114,13 +154,13 @@ describe("批量翻译完成链", () => {
     const handle = runtime.begin_standalone({ kind: "all" });
     await runtime.execute(handle, () => work.promise);
     frames.length = 0;
-    runtime.change_request_in_flight_count(handle, 1);
-    runtime.change_request_in_flight_count(handle, 1);
-    await vi.advanceTimersByTimeAsync(BATCH_TRANSLATION_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS - 1);
+    runtime.update_request_state(handle, { request_in_flight_count: 1, request_recovery: null });
+    runtime.update_request_state(handle, { request_in_flight_count: 2, request_recovery: null });
+    await vi.advanceTimersByTimeAsync(BATCH_TRANSLATION_REQUEST_STATE_PUBLISH_INTERVAL_MS - 1);
     expect(frames).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(frames).toEqual([{ status: "requested", count: 2 }]);
-    runtime.change_request_in_flight_count(handle, 1);
+    runtime.update_request_state(handle, { request_in_flight_count: 3, request_recovery: null });
     work.resolve(result());
     await handle.completion;
     expect(frames.slice(-2)).toEqual([
@@ -177,7 +217,7 @@ describe("批量翻译完成链", () => {
     });
     const handle = runtime.begin_standalone({ kind: "all" });
     await runtime.execute(handle, () => work.promise);
-    runtime.change_request_in_flight_count(handle, 1);
+    runtime.update_request_state(handle, { request_in_flight_count: 1, request_recovery: null });
     work.resolve(result());
     await publishing.promise;
     expect(await runtime.request_stop()).toBe(true);

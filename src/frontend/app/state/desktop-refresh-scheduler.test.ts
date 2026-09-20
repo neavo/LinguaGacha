@@ -1,3 +1,4 @@
+import { create_empty_batch_translation_snapshot } from "@shared/batch-translation/batch-translation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
@@ -20,7 +21,7 @@ describe("DesktopRefreshScheduler", () => {
         applied_tasks.push(snapshot);
       },
       applyProjectChangeBatch: () => {},
-      onFlushError: noop_flush_error_handler,
+      onFlushError: vi.fn(),
     });
 
     scheduler.enqueue_task_snapshot(create_task_snapshot(2));
@@ -41,7 +42,7 @@ describe("DesktopRefreshScheduler", () => {
       applyProjectChangeBatch: (events) => {
         applied_batches.push([...events]);
       },
-      onFlushError: noop_flush_error_handler,
+      onFlushError: vi.fn(),
     });
 
     scheduler.enqueue_project_change(create_project_change(2));
@@ -60,7 +61,7 @@ describe("DesktopRefreshScheduler", () => {
       applyTaskSnapshot: () => {},
       applyProjectChangeBatch: apply_project_change_batch,
       shouldApplyProjectChange: (event) => event.projectRevision >= 5,
-      onFlushError: noop_flush_error_handler,
+      onFlushError: vi.fn(),
     });
 
     scheduler.enqueue_project_change(create_project_change(4));
@@ -122,7 +123,7 @@ describe("DesktopRefreshScheduler", () => {
     const scheduler = new DesktopRefreshScheduler({
       applyTaskSnapshot: apply_task_snapshot,
       applyProjectChangeBatch: apply_project_change_batch,
-      onFlushError: noop_flush_error_handler,
+      onFlushError: vi.fn(),
     });
 
     scheduler.enqueue_task_snapshot(create_task_snapshot(1));
@@ -136,28 +137,16 @@ describe("DesktopRefreshScheduler", () => {
   });
 });
 
-function noop_flush_error_handler(): void {}
-
 // 构造最小可用 task snapshot，方便断言调度器只保留最新运行态
 function create_task_snapshot(line: number): BatchTranslationSnapshot {
+  const snapshot = create_empty_batch_translation_snapshot();
   return {
+    ...snapshot,
     revision: line,
     status: "running",
     source: "standalone",
     request_in_flight_count: line,
-    progress: {
-      line,
-      total_line: 10,
-      processed_line: line,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_reasoning_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-    },
-    scope: { kind: "all" },
+    progress: { ...snapshot.progress, line, total_line: 10, processed_line: line },
   };
 }
 

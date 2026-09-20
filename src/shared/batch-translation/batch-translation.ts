@@ -8,6 +8,7 @@ import {
   BATCH_TRANSLATION_STOP_SOURCES,
   type BatchTranslationSnapshot,
   type BatchTranslationRunStatus,
+  type BatchTranslationRequestRecovery,
 } from "../../domain/batch-translation";
 export type BatchTranslationMetrics = {
   active: boolean;
@@ -139,6 +140,7 @@ export function create_empty_batch_translation_snapshot(): BatchTranslationSnaps
     status: "idle",
     source: null,
     request_in_flight_count: 0,
+    request_recovery: null,
     progress: normalize_batch_translation_progress({}),
     scope: { kind: "all" },
   };
@@ -162,15 +164,29 @@ export function normalize_batch_translation_snapshot(
       : { run_progress: normalize_batch_translation_progress(raw.run_progress) }),
     ...(config === undefined ? {} : { config }),
     status,
-    ...(raw.reason === "keys_exhausted" ? { reason: raw.reason } : {}),
     source: raw.source === "standalone" || raw.source === "agent" ? raw.source : null,
     ...(raw.stop_source !== undefined && BATCH_TRANSLATION_STOP_SOURCES.includes(raw.stop_source)
       ? { stop_source: raw.stop_source }
       : {}),
     request_in_flight_count: Math.max(0, Number(raw.request_in_flight_count) || 0),
+    request_recovery:
+      status === "running" ? normalize_request_recovery(raw.request_recovery) : null,
     progress: normalize_batch_translation_progress(raw.progress),
     scope: normalize_translation_scope(raw.scope),
   };
+}
+/** HTTP 与 SSE 共用校验入口，并冻结恢复事实供历史快照共享。 */
+function normalize_request_recovery(raw: unknown): BatchTranslationRequestRecovery | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { retry_count, retry_at } = raw as Record<string, unknown>;
+  if (
+    typeof retry_count !== "number" ||
+    !Number.isSafeInteger(retry_count) ||
+    retry_count < 0 ||
+    (retry_at !== null && (typeof retry_at !== "number" || !Number.isFinite(retry_at)))
+  )
+    return null;
+  return Object.freeze({ retry_count, retry_at });
 }
 /** 隔离历史展示中的进度和定点范围引用。 */
 export function clone_translation_task_snapshot(

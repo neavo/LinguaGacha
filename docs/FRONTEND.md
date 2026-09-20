@@ -73,7 +73,8 @@
 ### 批量翻译与工程导出
 
 - `BatchTranslationSessionProvider` 拥有历史、波形、动作确认与唯一详情侧栏；工程级 `TranslationExportProvider` 独立拥有跨页面导出流程和唯一导出弹窗。两者在应用 session 常驻，工程切换或关闭时清空对应交互；页面计算缓存、其它弹窗、导入和提交状态随页面挂载与卸载。
-- 批量翻译终态反馈由会话 Hook 统一触发，仅独立任务发送 Toast。完成时按本轮 `run_progress.error_line` 区分成功与部分失败，主动停止使用中性提示，密钥耗尽原因优先。部分失败和密钥耗尽警告由用户手动关闭，Agent 子步骤由工具结果承接汇报。
+- 批量翻译终态反馈由会话 Hook 统一触发，仅独立任务发送 Toast。完成时按本轮 `run_progress.error_line` 区分成功与部分失败，主动停止使用中性提示。部分失败警告由用户手动关闭，Agent 子步骤由工具结果承接汇报。
+- `BatchTranslationRecoveryToast` 在会话层订阅当前快照的 `request_recovery`，独立与 Agent 任务共用固定 ID、不可手动关闭的警告。前端按 `retry_at` 每秒重算倒计时，其余恢复情况显示正在重试。恢复信息清空时解除通知。恢复协议归 [`BACKEND.md`](BACKEND.md)。
 - 独立全量翻译（`source: standalone`、`operation: translate`、`scope.kind: all`）从活跃态进入 `done` 时请求导出确认，包含部分失败的情况。页面与任务完成通知共用预检及确认流程，运行态不锁定导出。前往 Agent 时保留已有草稿，仅为空草稿填入审校请求。该请求复用 Agent 空态快捷入口的本地化文案及技能引用，两处都表达检查并校正的任务意图。
 - `ProjectTranslationStatsProvider` 独占工程统计缓存，工作台、Agent 卡片和详情共享结果；仅工程就绪后及相关 `project` / `items` 变化时串行刷新。工程关闭、切换和同路径重载使旧请求与重试失效，读取失败保留有效值。统计口径归 [`BACKEND.md`](BACKEND.md)。
 - `features/batch-translation` 提供共享摘要、详情、格式化与样式。速度、耗时、用量和剩余时间优先消费本轮 `run_progress`，工程重开后消费累计 `progress`；完成率显式消费共享工程统计。校对页按重翻目的与剩余 item 范围展示行级状态，详情侧栏的模型信息直接消费快照 `config`。Agent 在翻译活跃时显示摘要，终态恢复 Todo。
